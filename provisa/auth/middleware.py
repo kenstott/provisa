@@ -20,7 +20,6 @@ import logging
 import jwt
 
 from sqlalchemy import func, select
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -153,7 +152,12 @@ def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
     ]
 
 
-class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
+# Plain ASGI middleware, not starlette.middleware.base.BaseHTTPMiddleware: that class relays the
+# inner app's response body through a background task + anyio memory stream, which fails to signal
+# completion to the client for unbounded StreamingResponse bodies (SSE subscriptions, REQ-219) even
+# after the inner generator has fully finished — the connection hangs open. A pure ASGI middleware
+# calls the inner app's `send` directly, so no such relay exists.
+class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
     """Extract and validate Bearer tokens, resolve identity to role."""
 
     def __init__(
@@ -172,7 +176,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         bootstrap_superadmin: bool = False,
         config_resolver=None,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self._provider = provider
         self._mapping_rules = mapping_rules or []
         self._default_role = default_role
@@ -275,9 +279,20 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             ]
         return []
 
-    async def dispatch(self, request: Request, call_next):  # REQ-486
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope, receive=receive)
+        response = await self._process(request)
+        if response is not None:
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+    async def _process(self, request: Request):  # REQ-486
         if request.url.path in _SKIP_PATHS:
-            return await call_next(request)
+            return None
 
         await self._ensure_resolved()
 
@@ -301,7 +316,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
             request.state.role = unsecured_role
             request.state.assignments = [RoleAssignment(role_id=unsecured_role, domain_id="*")]
             request.state.active_org_id = self._default_org_id
-            return await call_next(request)
+            return None
 
         # REQ-125: superuser bootstrap — works regardless of the configured provider.
         # The superuser presents HTTP Basic credentials; on match, short-circuit to an
@@ -327,7 +342,7 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
                     request.state.role = PLATFORM_ADMIN_ROLE
                     request.state.assignments = su_assignments
                     request.state.active_org_id = self._default_org_id
-                    return await call_next(request)
+                    return None
 
         scheme = getattr(self._provider, "auth_scheme", "bearer")
         if scheme == "basic":
@@ -632,4 +647,4 @@ class AuthMiddleware(BaseHTTPMiddleware):  # REQ-120, REQ-125, REQ-273
         request.state.role = role
         request.state.assignments = assignments
         request.state.active_org_id = active_org_id
-        return await call_next(request)
+        return None

@@ -149,15 +149,11 @@ class TestAuthMiddlewareSkipPaths:
             # No identity on request state — auth resolution must be skipped entirely
             request.state = MagicMock(spec=[])
 
-            call_next_called = False
-
-            async def call_next(_):
-                nonlocal call_next_called
-                call_next_called = True
-                return MagicMock(status_code=200)
-
-            await middleware.dispatch(request, call_next)
-            assert call_next_called, f"call_next not called for skip path {skip_path}"
+            # None from _process means __call__ falls through to the inner app (the
+            # ASGI equivalent of "call_next was invoked") — AuthMiddleware no longer
+            # exposes dispatch(request, call_next) after the pure-ASGI conversion.
+            result = await middleware._process(request)
+            assert result is None, f"skip path {skip_path} was not bypassed"
 
 
 class TestOrgRoutingIsRegistered:

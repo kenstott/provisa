@@ -1380,23 +1380,35 @@ def create_app() -> FastAPI:
     # _active_runtime() then resolved the DEFAULT org's data plane for every caller, i.e. a cross-org
     # read. The single-org case needs no guard: the dispatch below no-ops when the request carries no
     # org or carries the default one.
-    from starlette.middleware.base import BaseHTTPMiddleware as _OrgBaseHTTPMiddleware
+    # Plain ASGI middleware, not starlette.middleware.base.BaseHTTPMiddleware: that class relays
+    # the inner app's response body through a background task + anyio memory stream, which fails
+    # to signal completion to the client for unbounded StreamingResponse bodies (SSE subscriptions,
+    # REQ-219) even after the inner generator has fully finished — the connection hangs open. A
+    # pure ASGI middleware calls the inner app's `send` directly, so no such relay exists.
+    class _OrgRoutingMiddleware:
+        def __init__(self, app):
+            self.app = app
 
-    class _OrgRoutingMiddleware(_OrgBaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            active_org = getattr(request.state, "active_org_id", None)
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
+
+            request_state = scope.setdefault("state", {})
+            active_org = request_state.get("active_org_id")
             # No org bound (unauthenticated, or a default-org request): the AppState shims resolve
             # the default-org runtime. Never fabricate a non-default org here.
             if active_org is None or active_org == state.org_id:
-                return await call_next(request)
+                await self.app(scope, receive, send)
+                return
             # Keep existing tenant cache-key call sites (which read request.state.tenant_id)
             # pointed at the same id space as the org router.
-            request.state.tenant_id = active_org
+            request_state["tenant_id"] = active_org
 
             await ensure_org_runtime(active_org)
             token = set_current_org(active_org)
             try:
-                response = await call_next(request)
+                await self.app(scope, receive, send)
             finally:
                 reset_current_org(token)
             # REQ-462: tag the trace with the org that served the request. Folded in from the
@@ -1411,7 +1423,6 @@ def create_app() -> FastAPI:
                 # Best-effort span decoration: tolerate an absent OTel install or a no-op shim
                 # span lacking is_recording/set_attribute. Never break a request for a tag.
                 pass
-            return response
 
     app.add_middleware(_OrgRoutingMiddleware)
 

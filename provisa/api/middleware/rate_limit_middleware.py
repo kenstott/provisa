@@ -16,23 +16,35 @@ that means it is added BEFORE ``wire_auth`` so auth ends up the outer layer.
 
 from __future__ import annotations
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):  # REQ-369, REQ-371
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+# Plain ASGI middleware, not starlette.middleware.base.BaseHTTPMiddleware: that class relays the
+# inner app's response body through a background task + anyio memory stream, which fails to signal
+# completion to the client for unbounded StreamingResponse bodies (SSE subscriptions, REQ-219) even
+# after the inner generator has fully finished — the connection hangs open. A pure ASGI middleware
+# calls the inner app's `send` directly, so no such relay exists.
+class RateLimitMiddleware:  # REQ-369, REQ-371
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        response = await self._process(scope)
+        if response is not None:
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+    async def _process(self, scope):
         from provisa.api.app import state
-        from starlette.requests import ClientDisconnect
 
         limiter = getattr(state, "rate_limiter", None)
-        role_id = getattr(request.state, "role", None)
+        role_id = scope.setdefault("state", {}).get("role")
         if limiter is None or not role_id:
-            try:
-                return await call_next(request)
-            except ClientDisconnect:
-                return Response(status_code=499)
+            return None
 
         # An empty roles registry means no config was loaded (unsecured / not-yet-set-up native
         # server): there is no role model to validate against and no per-role limits to apply, so
@@ -56,7 +68,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):  # REQ-369, REQ-371
                         content={"error": "rate_limited", "detail": "request rate limit exceeded"},
                         headers={"Retry-After": str(max(1, int(retry_after + 0.999)))},
                     )
-        try:
-            return await call_next(request)
-        except ClientDisconnect:
-            return Response(status_code=499)
+        return None

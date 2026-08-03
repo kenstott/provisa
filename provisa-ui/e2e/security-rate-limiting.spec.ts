@@ -5,7 +5,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 // REQ-369: Per-role rate limits — 429 + Retry-After header when exceeded
 test("REQ-369: rate limit exceeded returns 429 with Retry-After header", async ({
@@ -17,7 +17,7 @@ test("REQ-369: rate limit exceeded returns 429 with Retry-After header", async (
   };
 
   // First request should succeed
-  const resp1 = await request.post("http://localhost:8000/data/cypher", {
+  const resp1 = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n) RETURN n LIMIT 1" },
     headers,
   });
@@ -27,7 +27,7 @@ test("REQ-369: rate limit exceeded returns 429 with Retry-After header", async (
   // subsequent rapid requests may hit 429. We test the response format when it occurs.
   // This test verifies the infrastructure is in place; actual rate limit behavior
   // depends on role configuration.
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n) RETURN n LIMIT 1" },
     headers,
   });
@@ -51,7 +51,7 @@ test("REQ-370: NL query rate limit enforced before LLM call", async ({ request }
   };
 
   // First NL query should be accepted
-  const resp1 = await request.post("http://localhost:8000/query/nl", {
+  const resp1 = await request.post(`${BACKEND_URL}/query/nl`, {
     data: nlPayload,
     headers: { "Content-Type": "application/json" },
   });
@@ -61,7 +61,7 @@ test("REQ-370: NL query rate limit enforced before LLM call", async ({ request }
 
   // If rate limiting is configured for NL queries with a low limit,
   // rapid subsequent requests may hit 429 before any LLM call is made.
-  const resp2 = await request.post("http://localhost:8000/query/nl", {
+  const resp2 = await request.post(`${BACKEND_URL}/query/nl`, {
     data: nlPayload,
     headers: { "Content-Type": "application/json" },
   });
@@ -80,7 +80,7 @@ test("REQ-370: NL query rate limit enforced before LLM call", async ({ request }
 test("REQ-536: response includes X-Provisa-Cache header (HIT or MISS)", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n) RETURN n LIMIT 1" },
     headers: {
       "Content-Type": "application/json",
@@ -104,13 +104,13 @@ test("REQ-536: response includes X-Provisa-Cache header (HIT or MISS)", async ({
 
 // REQ-539: GET /health and GET /setup/status always unauthenticated
 test("REQ-539: GET /health endpoint is always unauthenticated", async ({ request }) => {
-  const resp = await request.get("http://localhost:8000/health");
+  const resp = await request.get(`${BACKEND_URL}/health`);
   expect(resp.status()).toBeLessThan(500); // Should return 200 or similar, not 401
   expect(resp.status()).not.toBe(401);
 });
 
 test("REQ-539: HEAD /health endpoint is always unauthenticated", async ({ request }) => {
-  const resp = await request.head("http://localhost:8000/health");
+  const resp = await request.head(`${BACKEND_URL}/health`);
   expect(resp.status()).toBeLessThan(500);
   expect(resp.status()).not.toBe(401);
 });
@@ -118,7 +118,7 @@ test("REQ-539: HEAD /health endpoint is always unauthenticated", async ({ reques
 test("REQ-539: GET /setup/status endpoint is always unauthenticated", async ({
   request,
 }) => {
-  const resp = await request.get("http://localhost:8000/setup/status");
+  const resp = await request.get(`${BACKEND_URL}/setup/status`);
   expect(resp.status()).toBeLessThan(500); // Should return 200, not 401
   expect(resp.status()).not.toBe(401);
 
@@ -131,21 +131,21 @@ test("REQ-539: GET /setup/status endpoint is always unauthenticated", async ({
 test("REQ-594: /health is skipped by TenantMiddleware and requires no JWT", async ({
   request,
 }) => {
-  const resp = await request.get("http://localhost:8000/health");
+  const resp = await request.get(`${BACKEND_URL}/health`);
   // Should not require a JWT or tenant_id claim
   expect(resp.status()).not.toBe(401);
   expect(resp.status()).not.toBe(403);
 });
 
 test("REQ-594: /openapi.json is skipped by TenantMiddleware", async ({ request }) => {
-  const resp = await request.get("http://localhost:8000/openapi.json");
+  const resp = await request.get(`${BACKEND_URL}/openapi.json`);
   // Should not require tenant_id or auth
   expect(resp.status()).not.toBe(401);
   expect(resp.status()).not.toBe(403);
 });
 
 test("REQ-594: /docs is skipped by TenantMiddleware", async ({ request }) => {
-  const resp = await request.get("http://localhost:8000/docs");
+  const resp = await request.get(`${BACKEND_URL}/docs`);
   // Should not require tenant_id or auth
   expect(resp.status()).not.toBe(401);
   expect(resp.status()).not.toBe(403);
@@ -159,7 +159,7 @@ test("REQ-555: gRPC approval hook infrastructure exists", async ({ request }) =>
   // We verify that the config endpoint exposes approval hook settings.
 
   // Query admin schema to verify approval hook config is accessible
-  const resp = await request.post("http://localhost:8000/admin/graphql", {
+  const resp = await request.post(`${BACKEND_URL}/admin/graphql`, {
     data: {
       query: `
         query {
@@ -187,7 +187,7 @@ test("REQ-638: availableSchemas endpoint exists and routes to correct adapter", 
 }) => {
   // Query the admin GraphQL schema for availableSchemas
   // This endpoint must exist and handle source type routing internally
-  const resp = await request.post("http://localhost:8000/admin/graphql", {
+  const resp = await request.post(`${BACKEND_URL}/admin/graphql`, {
     data: {
       query: `
         query {
@@ -215,7 +215,7 @@ test("REQ-638: availableTables endpoint exists and routes to correct adapter", a
   request,
 }) => {
   // Query the admin GraphQL schema for availableTables
-  const resp = await request.post("http://localhost:8000/admin/graphql", {
+  const resp = await request.post(`${BACKEND_URL}/admin/graphql`, {
     data: {
       query: `
         query {
@@ -242,14 +242,14 @@ test("REQ-369 + REQ-539: rate limiting bypassed for unauthenticated health check
   request,
 }) => {
   // Health checks should never be rate limited since they're unauthenticated
-  const resp = await request.get("http://localhost:8000/health");
+  const resp = await request.get(`${BACKEND_URL}/health`);
   expect(resp.status()).not.toBe(429);
   expect(resp.status()).not.toBe(401);
 });
 
 // REQ-536: Verify cache headers on GraphQL responses
 test("REQ-536: cache headers present on GraphQL responses", async ({ request }) => {
-  const resp = await request.post("http://localhost:8000/admin/graphql", {
+  const resp = await request.post(`${BACKEND_URL}/admin/graphql`, {
     data: {
       query: `
         query {

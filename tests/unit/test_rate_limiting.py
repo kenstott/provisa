@@ -152,12 +152,9 @@ class TestMiddleware:
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        request = SimpleNamespace(state=SimpleNamespace(role="analyst"))
+        scope = {"type": "http", "state": {"role": "analyst"}}
 
-        async def _call_next(_req):
-            raise AssertionError("handler should not run when rate limited")
-
-        resp = await mw.dispatch(request, _call_next)
+        resp = await mw._process(scope)
         assert resp.status_code == 429
         assert resp.headers["Retry-After"] == "2"
 
@@ -167,19 +164,15 @@ class TestMiddleware:
 
         import provisa.api.app as app_module
         from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
-        from starlette.responses import PlainTextResponse
 
         fake_state = SimpleNamespace(rate_limiter=NoopRateLimiter(), roles={"analyst": {}})
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        request = SimpleNamespace(state=SimpleNamespace(role="analyst"))
+        scope = {"type": "http", "state": {"role": "analyst"}}
 
-        async def _call_next(_req):
-            return PlainTextResponse("ok")
-
-        resp = await mw.dispatch(request, _call_next)
-        assert resp.status_code == 200
+        resp = await mw._process(scope)
+        assert resp is None  # pass-through: __call__ falls through to self.app
 
     @pytest.mark.asyncio
     async def test_unknown_role_denied_when_roles_configured(self, monkeypatch):
@@ -193,12 +186,9 @@ class TestMiddleware:
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        request = SimpleNamespace(state=SimpleNamespace(role="admin"))
+        scope = {"type": "http", "state": {"role": "admin"}}
 
-        async def _call_next(_req):
-            raise AssertionError("handler should not run for an unknown role")
-
-        resp = await mw.dispatch(request, _call_next)
+        resp = await mw._process(scope)
         assert resp.status_code == 403
 
     @pytest.mark.asyncio
@@ -209,16 +199,12 @@ class TestMiddleware:
 
         import provisa.api.app as app_module
         from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
-        from starlette.responses import PlainTextResponse
 
         fake_state = SimpleNamespace(rate_limiter=NoopRateLimiter(), roles={})
         monkeypatch.setattr(app_module, "state", fake_state)
 
         mw = RateLimitMiddleware(app=lambda *a, **k: None)
-        request = SimpleNamespace(state=SimpleNamespace(role="admin"))
+        scope = {"type": "http", "state": {"role": "admin"}}
 
-        async def _call_next(_req):
-            return PlainTextResponse("ok")
-
-        resp = await mw.dispatch(request, _call_next)
-        assert resp.status_code == 200
+        resp = await mw._process(scope)
+        assert resp is None  # pass-through: __call__ falls through to self.app

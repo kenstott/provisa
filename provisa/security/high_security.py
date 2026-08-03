@@ -32,8 +32,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
+from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 
 KMS_KEY_HEADER = "x-provisa-kms-key"
@@ -92,16 +91,25 @@ def high_security_reject(path: str, headers: Any) -> JSONResponse | None:
     )
 
 
-class HighSecurityMiddleware(BaseHTTPMiddleware):  # REQ-693
+# Plain ASGI middleware, not starlette.middleware.base.BaseHTTPMiddleware: that class relays the
+# inner app's response body through a background task + anyio memory stream, which fails to signal
+# completion to the client for unbounded StreamingResponse bodies (SSE subscriptions, REQ-219) even
+# after the inner generator has fully finished — the connection hangs open. A pure ASGI middleware
+# calls the inner app's `send` directly, so no such relay exists.
+class HighSecurityMiddleware:  # REQ-693
     """Refuse plaintext data requests when high-security mode is active."""
 
     def __init__(self, app: Any, state: Any) -> None:
-        super().__init__(app)  # type: ignore[arg-type]
+        self.app = app
         self._state = state
 
-    async def dispatch(self, request: Request, call_next):
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
         if is_high_security(self._state):
-            refusal = high_security_reject(request.url.path, request.headers)
+            refusal = high_security_reject(scope["path"], Headers(scope=scope))
             if refusal is not None:
-                return refusal
-        return await call_next(request)
+                await refusal(scope, receive, send)
+                return
+        await self.app(scope, receive, send)

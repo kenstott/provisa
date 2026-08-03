@@ -164,6 +164,16 @@ async def _next(_req):
     return "OK"
 
 
+async def _dispatch(mw, req):
+    """AuthMiddleware is pure ASGI now (__call__(scope, receive, send)); _process(request) is the
+    extracted decision step that __call__ delegates to. Mirror the old dispatch(request, call_next)
+    return shape: None means "not denied" -> call_next runs, else the denial response is returned."""
+    resp = await mw._process(req)
+    if resp is not None:
+        return resp
+    return await _next(req)
+
+
 class _Provider:
     auth_scheme = "bearer"
 
@@ -181,7 +191,7 @@ async def test_unsecured_honors_any_requested_role():
     # REQ-273 caveat: no auth provider → client-supplied role is taken at face value.
     mw = AuthMiddleware(app=None, provider=None)
     req = _Req({"x-provisa-role": "steward"})
-    out = await mw.dispatch(req, _next)
+    out = await _dispatch(mw, req)
     assert out == "OK"
     assert req.state.role == "steward"
 
@@ -190,7 +200,7 @@ async def test_unsecured_honors_any_requested_role():
 async def test_unsecured_defaults_org_admin_without_header():
     mw = AuthMiddleware(app=None, provider=None)
     req = _Req({})
-    await mw.dispatch(req, _next)
+    await _dispatch(mw, req)
     # REQ-1327: the unsecured default is the DATA-plane administrator; platform_admin is
     # control-plane only and never defaults onto the data plane.
     assert req.state.role == "org_admin"
@@ -200,7 +210,7 @@ async def test_unsecured_defaults_org_admin_without_header():
 async def test_secured_honors_assigned_requested_role():
     mw = AuthMiddleware(app=None, provider=_Provider(["analyst", "viewer"]), default_role="analyst")
     req = _Req({"authorization": "Bearer tok", "x-provisa-role": "viewer"})
-    out = await mw.dispatch(req, _next)
+    out = await _dispatch(mw, req)
     assert out == "OK"
     assert req.state.role == "viewer"
 
@@ -217,7 +227,7 @@ async def test_platform_admin_never_acts_on_the_data_plane_in_root():
         default_role="platform_admin",
     )
     req = _Req({"authorization": "Bearer tok"})
-    out = await mw.dispatch(req, _next)
+    out = await _dispatch(mw, req)
     assert out == "OK"
     assert req.state.role == "org_admin"
 
@@ -232,7 +242,7 @@ async def test_requested_platform_admin_resolves_to_the_data_plane_role():
         default_role="platform_admin",
     )
     req = _Req({"authorization": "Bearer tok", "x-provisa-role": "platform_admin"})
-    out = await mw.dispatch(req, _next)
+    out = await _dispatch(mw, req)
     assert out == "OK"
     assert req.state.role == "org_admin"
 
@@ -245,7 +255,7 @@ async def test_platform_admin_alone_keeps_the_control_plane_role():
         app=None, provider=_Provider(["platform_admin"]), default_role="platform_admin"
     )
     req = _Req({"authorization": "Bearer tok"})
-    out = await mw.dispatch(req, _next)
+    out = await _dispatch(mw, req)
     assert out == "OK"
     assert req.state.role == "platform_admin"
 
@@ -254,6 +264,6 @@ async def test_platform_admin_alone_keeps_the_control_plane_role():
 async def test_secured_rejects_unassigned_requested_role():
     mw = AuthMiddleware(app=None, provider=_Provider(["analyst", "viewer"]), default_role="analyst")
     req = _Req({"authorization": "Bearer tok", "x-provisa-role": "admin"})
-    out = await mw.dispatch(req, _next)
+    out = await _dispatch(mw, req)
     # a role the user does not hold is rejected, not honored
     assert getattr(out, "status_code", None) == 403
