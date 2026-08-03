@@ -156,11 +156,16 @@ async def compile_endpoint(  # REQ-161, REQ-163
     role_id = auth_role or x_provisa_role
     if not role_id or role_id not in state.contexts:
         raise ApiError(403, "data.no_accessible_schema_for_role", "No accessible schema for role")
+    from dataclasses import asdict
+
     try:
         results = await _compile_only(role_id, request.query, request.variables)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return JSONResponse({"compiled": results})
+    serializable_results = [
+        {**r, "enforcement": asdict(r["enforcement"])} for r in results
+    ]
+    return JSONResponse({"compiled": serializable_results})
 
 
 async def _handle_normalized(document, ctx, rls, state, variables, role_id, role):

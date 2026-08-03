@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from provisa.api.admin.dev_queries import EnforcementMetadata
 from provisa.api.data.endpoint import CompileRequest, compile_endpoint
 
 
@@ -24,7 +25,22 @@ def _raw_request(role=None):
 async def test_compile_returns_compiled_results():
     fake_state = MagicMock()
     fake_state.contexts = {"analyst": object()}
-    results = [{"sql": "SELECT 1", "route": "DIRECT", "sources": ["pg"]}]
+    enforcement = EnforcementMetadata(
+        rls_filters_applied=[],
+        columns_excluded=[],
+        schema_scope="analyst",
+        masking_applied=[],
+        ceiling_applied=None,
+        route="DIRECT",
+    )
+    results = [
+        {
+            "sql": "SELECT 1",
+            "route": "DIRECT",
+            "sources": ["pg"],
+            "enforcement": enforcement,
+        }
+    ]
     with (
         patch("provisa.api.app.state", fake_state),
         patch(
@@ -38,7 +54,21 @@ async def test_compile_returns_compiled_results():
             x_provisa_role=None,
         )
     body = json.loads(bytes(resp.body))
-    assert body["compiled"] == results
+    assert body["compiled"] == [
+        {
+            "sql": "SELECT 1",
+            "route": "DIRECT",
+            "sources": ["pg"],
+            "enforcement": {
+                "rls_filters_applied": [],
+                "columns_excluded": [],
+                "schema_scope": "analyst",
+                "masking_applied": [],
+                "ceiling_applied": None,
+                "route": "DIRECT",
+            },
+        }
+    ]
     cq.assert_awaited_once()
     assert cq.await_args.args[0] == "analyst"  # role from auth
 
