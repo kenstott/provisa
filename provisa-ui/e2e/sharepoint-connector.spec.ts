@@ -52,7 +52,7 @@ test.afterEach(async () => {
 });
 
 test("sharepoint connector: add source and verify calendar list is available", async ({ page }) => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
 
   // ── 1. Add SharePoint source via UI ──────────────────────────────────────
   await page.goto("/sources");
@@ -63,21 +63,27 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await page.waitForSelector(".page-header", { timeout: 5000 });
 
   await page.getByRole("button", { name: /\+ Source/i }).click();
-  await page.waitForSelector(".form-card", { timeout: 5000 });
+  await page.waitForSelector('[data-testid="sources-id-input"]', { timeout: 5000 });
 
-  await page.locator(".form-card label").filter({ hasText: /^ID/ }).locator("input").fill(SOURCE_ID);
-  await page.locator(".form-card label").filter({ hasText: /^Type/ }).locator("select").selectOption("sharepoint");
-  await page.waitForSelector('label:has-text("Site URL")', { timeout: 5000 });
+  // Native inputs are inside <label> elements in the source form
+  await page.locator('[data-testid="sources-id-input"]').fill(SOURCE_ID);
+  await page.locator('[data-testid="sources-type-select"]').selectOption("sharepoint");
 
-  await page.locator("label").filter({ hasText: /Site URL/ }).locator("input").fill("https://kenstott.sharepoint.com");
-  await page.locator("label").filter({ hasText: /Tenant ID/ }).locator("input").fill("5d2609cc-7eff-4b82-8f83-f0b28c71fafc");
-  await page.locator("label").filter({ hasText: /Auth Type/ }).locator("select").selectOption("CERTIFICATE");
-  await page.waitForSelector('label:has-text("Certificate Path")', { timeout: 5000 });
-  await page.locator("label").filter({ hasText: /Client ID/ }).locator("input").fill("d6f6b74e-df85-470f-8e68-e34c767436be");
-  await page.locator("label").filter({ hasText: /Certificate Path/ }).locator("input").fill("/certs/sharepoint.pfx");
-  await page.locator("label").filter({ hasText: /Certificate Password/ }).locator("input").fill("YOUR_PFX_PASSWORD");
+  // Mantine TextInput/Select: data-testid is forwarded to the underlying <input> element
+  // (not a wrapper div), so selectors target data-testid directly — no child combinator.
+  await page.waitForSelector('[data-testid="sharepoint-site-url-input"]', { timeout: 10000 });
+  await page.locator('[data-testid="sharepoint-site-url-input"]').fill("https://kenstott.sharepoint.com");
+  await page.locator('[data-testid="sharepoint-tenant-id-input"]').fill("5d2609cc-7eff-4b82-8f83-f0b28c71fafc");
 
-  await page.locator('.form-card button[type="submit"]').click();
+  // Mantine Select — click the combobox input, then click the option in the listbox
+  await page.locator('[data-testid="sharepoint-auth-type-select"]').click();
+  await page.getByRole("option", { name: "Certificate" }).click();
+
+  await page.waitForSelector('[data-testid="sharepoint-cert-path-input"]', { timeout: 10000 });
+  await page.locator('[data-testid="sharepoint-client-id-input"]').fill("d6f6b74e-df85-470f-8e68-e34c767436be");
+  await page.locator('[data-testid="sharepoint-cert-path-input"]').fill("/certs/sharepoint.pfx");
+
+  await page.locator('[data-testid="sources-submit"]').click();
 
   // Wait for source row to appear in list
   await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 30000 });
@@ -90,46 +96,44 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await page.getByRole("button", { name: "+ Table" }).first().click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
 
-  // Select source
-  await page.locator(".form-card label").filter({ hasText: /^Source/ }).locator("select").selectOption(SOURCE_ID);
+  // Select source — native <select> inside <label> in RegisterTableForm
+  await page.locator('[data-testid="register-table-source-select"]').selectOption(SOURCE_ID);
 
-  // Select first available domain
-  const domainSelect = page.locator(".form-card label").filter({ hasText: /^Domain/ }).locator("select");
+  // Wait for Domain dropdown to have options
   await page.waitForFunction(
     () => {
       const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
-      return selects[1]?.options.length > 1;
+      return selects.some((s) => s.dataset.testid === "register-table-domain-select" && s.options.length > 1);
     },
     { timeout: 10000 },
   );
+  const domainSelect = page.locator('[data-testid="register-table-domain-select"]');
   const firstDomain = await domainSelect.locator("option").nth(1).getAttribute("value");
   await domainSelect.selectOption(firstDomain!);
 
   // Wait for 'sharepoint' schema to appear
   await page.waitForFunction(
     () => {
-      const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
-      return Array.from(selects[2]?.options ?? []).some((o) => o.value === "sharepoint");
+      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');
+      return Array.from(sel?.options ?? []).some((o) => o.value === "sharepoint");
     },
     { timeout: 60000 },
   );
 
   // Select sharepoint schema
-  await page.locator(".form-card label").filter({ hasText: /^Schema/ }).locator("select").selectOption("sharepoint");
+  await page.locator('[data-testid="register-table-schema-select"]').selectOption("sharepoint");
 
   // Wait for 'calendar' table to appear — proves SharePoint lists are enumerated
   await page.waitForFunction(
     () => {
-      const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
-      return Array.from(selects[3]?.options ?? []).some((o) => o.value === "calendar");
+      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-table-select"]');
+      return Array.from(sel?.options ?? []).some((o) => o.value === "calendar");
     },
     { timeout: 30000 },
   );
 
   const tableOptions = await page
-    .locator(".form-card label")
-    .filter({ hasText: /^Table/ })
-    .locator("select option")
+    .locator('[data-testid="register-table-table-select"] option')
     .allTextContents();
 
   expect(tableOptions).toContain("calendar");

@@ -125,6 +125,12 @@ export function GraphFrame({
   const [queryFocused, setQueryFocused] = useState(false);
   const editorViewRef = useRef<import("@codemirror/view").EditorView | null>(null);
   const pendingFocusRef = useRef(false);
+  // justOpenedRef: true from the moment the user clicks the collapsed display until the
+  // CodeMirror view confirms focus (focusChanged && hasFocus).  While true, suppress
+  // the onUpdate blur→collapse path so that headless/background windows (where
+  // document.hasFocus() is false and view.focus() has no effect) don't immediately
+  // re-collapse the editor before the test can observe it.
+  const justOpenedRef = useRef(false);
   /* eslint-disable react-hooks/set-state-in-effect -- sync the editable query buffer to the frame.query prop when the frame is re-run or replaced externally */
   useEffect(() => {
     setEditQuery(frame.query);
@@ -461,10 +467,11 @@ export function GraphFrame({
   const renderHeader = (isModal: boolean) => (
     <div className="gf-header">
       <div className="gf-query-editor-wrap">
-        {!queryFocused && (
+        {!queryFocused && !isModal && (
           <div
             className="gf-header-query-collapsed"
             onClick={() => {
+              justOpenedRef.current = true;
               setQueryFocused(true);
               pendingFocusRef.current = true;
             }}
@@ -473,7 +480,7 @@ export function GraphFrame({
             {editQuery.replace(/\s*\n\s*/g, " ")}
           </div>
         )}
-        {queryFocused && (
+        {(queryFocused || isModal) && (
           <CodeMirror
             className="gf-header-query-input"
             value={editQuery}
@@ -505,7 +512,13 @@ export function GraphFrame({
             }}
             onUpdate={(vu) => {
               if (vu.docChanged) vu.view.requestMeasure();
-              if (vu.focusChanged && !vu.view.hasFocus) setQueryFocused(false);
+              if (vu.focusChanged) {
+                if (vu.view.hasFocus) {
+                  justOpenedRef.current = false;
+                } else if (!justOpenedRef.current) {
+                  setQueryFocused(false);
+                }
+              }
             }}
             basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
           />
@@ -540,7 +553,7 @@ export function GraphFrame({
             <ActionIcon
               variant="subtle"
               className="gf-icon-btn"
-              onClick={() => setExpanded(true)}
+              onClick={() => { setExpanded(true); setQueryFocused(true); }}
               title={t("graphFrame.expand")}
               aria-label={t("graphFrame.expand")}
               data-testid="graph-frame-expand-btn"

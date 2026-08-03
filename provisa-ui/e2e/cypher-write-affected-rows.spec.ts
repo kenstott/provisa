@@ -13,11 +13,16 @@ import type { APIRequestContext } from "playwright/test";
 
 const BASE = `${BACKEND_URL}/data/cypher`;
 const HEADERS = { "Content-Type": "application/json", "x-provisa-role": "org_admin" };
-const ID = 99981; // sentinel id, cleaned up by the DELETE step
+const ID = 99981; // sentinel id, cleaned up by afterAll
 
 async function cypher(request: APIRequestContext, query: string) {
   return request.post(BASE, { data: { query }, headers: HEADERS });
 }
+
+// Always remove the sentinel regardless of which test in this file failed or was interrupted.
+test.afterAll(async ({ request }) => {
+  await cypher(request, `MATCH (n:Users) WHERE n.id = ${ID} DELETE n`);
+});
 
 test("REQ-670: Cypher CREATE returns affected_rows count of inserted rows", async ({
   request,

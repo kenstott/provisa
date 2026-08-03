@@ -8,6 +8,7 @@
     "password": "Password",
     "database": "Database",
     "filePath": "File Path",
+    "filesGlob": "Directory Glob",
     "filePathPlaceholder": "/path/to/db.duckdb",
     "sqliteFilePath": "SQLite File Path",
     "csvFilePath": "CSV File Path or URL",

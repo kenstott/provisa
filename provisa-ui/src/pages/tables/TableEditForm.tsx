@@ -162,9 +162,16 @@ export function TableEditForm({
         })
         // The debounced preview outlives the form: closing the editor (or a test unmounting it)
         // leaves this query in flight, and a rejection with no handler becomes an unhandled
-        // rejection that kills the surrounding context. Report it — the banner keeps the persisted
-        // summary, which is the same state a null preview produces.
+        // rejection that kills the surrounding context. The banner keeps the persisted summary,
+        // which is the same state a null preview produces.
         .catch((err: unknown) => {
+          // Apollo fires InvariantViolation("Store reset while query was in flight") whenever
+          // client.resetStore() (triggered by a schema-version bump on any mutation response)
+          // cancels this in-flight query.  That is expected behaviour — the next effect cycle
+          // will re-issue the preview against the refreshed store.  Logging it to console.error
+          // would surface as a spurious uncaught-browser-error in e2e coverage checks.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("Store reset while query was in flight")) return;
           console.error("refreshPolicyPreview failed:", err);
         });
     }, 300);

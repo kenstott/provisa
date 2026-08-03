@@ -10,7 +10,7 @@ import { test, expect, BACKEND_URL } from "./coverage";
 const SOURCE_ID = "e2e-northwind";
 const SCHEMA_NAME = "e2e_northwind";
 const GQL = `${BACKEND_URL}/admin/graphql`;
-const GLOB = "/data/files/northwind/**";
+const GLOB = "demo/files/northwind/**";
 
 // LINQ4J maps camelCase CSV headers to snake_case column names
 const CUSTOMERS_COLUMNS = [
@@ -110,7 +110,17 @@ test("file connector: add northwind source and query customers", async ({ page }
     { timeout: 60000 },
   );
 
-  await page.locator(".form-card label").filter({ hasText: /^Schema/ }).locator("select").selectOption(SCHEMA_NAME);
+  // Northwind glob resolves to exactly one schema, so RegisterTableForm auto-selects
+  // and disables the schema control (isFixedSchema) — wait for the auto-select instead
+  // of driving it manually.
+  await page.waitForFunction(
+    (schema) => {
+      const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
+      return selects[2]?.value === schema;
+    },
+    SCHEMA_NAME,
+    { timeout: 10000 },
+  );
 
   // Wait for customers table to appear
   await page.waitForFunction(

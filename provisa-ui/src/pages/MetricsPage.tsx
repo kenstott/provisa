@@ -257,7 +257,7 @@ export function MetricsPage() {
     });
     const match = BUILDER_EXPR_RE.exec(m.expression);
     setBuilder(
-      match && factTables.some((tbl) => tbl.tableName === match[2])
+      match
         ? { agg: match[1].toUpperCase(), fact: match[2], column: match[3] }
         : { ...EMPTY_BUILDER },
     );

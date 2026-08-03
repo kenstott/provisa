@@ -110,50 +110,56 @@ async function deleteTable(page: import("@playwright/test").Page, tableName: str
   }
 }
 
-test("source state change propagates through a two-level materialized-view DAG", async ({ page }) => {
-  test.setTimeout(90000);
+// This test writes to a shared DuckDB materialization file (single-writer by design — see
+// playwright.config.ts:33) and to the shared pet_store.pets row id=1. Two concurrent workers
+// deadlock/crash the backend via simultaneous DuckDB writes. Use test.describe.serial so
+// --repeat-each=N runs copies sequentially in one worker rather than in parallel across workers.
+test.describe.serial("dag-cascade", () => {
+  test("source state change propagates through a two-level materialized-view DAG", async ({ page }) => {
+    test.setTimeout(90000);
 
-  // In demo mode, a fresh browser context auto-starts the guided tour on first navigation, which
-  // hijacks the route to its own first stop (/sources) regardless of where the test navigated.
-  // Seeding the "seen" flag before the first goto suppresses that so the requested route sticks.
-  await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
+    // In demo mode, a fresh browser context auto-starts the guided tour on first navigation, which
+    // hijacks the route to its own first stop (/sources) regardless of where the test navigated.
+    // Seeding the "seen" flag before the first goto suppresses that so the requested route sticks.
+    await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
 
-  try {
-    // Build source -> views.e2e_mv_a -> views.e2e_mv_b via the real SQL Explorer + Create View flow.
-    await page.goto("/sql");
-    await page.waitForSelector(".cm-content", { timeout: 15000 });
-    await createView(page, "SELECT id, name, price FROM pet_store.pets WHERE id = 1", A);
+    try {
+      // Build source -> views.e2e_mv_a -> views.e2e_mv_b via the real SQL Explorer + Create View flow.
+      await page.goto("/sql");
+      await page.waitForSelector(".cm-content", { timeout: 15000 });
+      await createView(page, "SELECT id, name, price FROM pet_store.pets WHERE id = 1", A);
 
-    await page.waitForSelector(".cm-content", { timeout: 15000 });
-    await createView(page, `SELECT id, name, price FROM views.${A}`, B);
+      await page.waitForSelector(".cm-content", { timeout: 15000 });
+      await createView(page, `SELECT id, name, price FROM views.${A}`, B);
 
-    // Turn both views into materialized views via the Tables admin surface (real UI toggle).
-    await materialize(page, A);
-    await materialize(page, B);
+      // Turn both views into materialized views via the Tables admin surface (real UI toggle).
+      await materialize(page, A);
+      await materialize(page, B);
 
-    // views.e2e_mv_a's activation synchronously populated it from pets.id=1 (price 380.00); force
-    // e2e_mv_b to (re)materialize from it now so both levels start from a known baseline.
-    await refreshMv(page, B);
-    let rows = await runSql(page, `SELECT price FROM views.${B} WHERE id = 1`);
-    expect(Number(rows[0].price)).toBeCloseTo(380.0, 2);
+      // views.e2e_mv_a's activation synchronously populated it from pets.id=1 (price 380.00); force
+      // e2e_mv_b to (re)materialize from it now so both levels start from a known baseline.
+      await refreshMv(page, B);
+      let rows = await runSql(page, `SELECT price FROM views.${B} WHERE id = 1`);
+      expect(Number(rows[0].price)).toBeCloseTo(380.0, 2);
 
-    // Mutate the physical source table directly (the SQL Explorer's Run wraps all SQL as a SELECT
-    // subquery and cannot execute this UPDATE) and confirm it landed.
-    await runSql(page, "UPDATE pet_store.pets SET price = 999.99 WHERE id = 1");
-    const updated = await runSql(page, "SELECT price FROM pet_store.pets WHERE id = 1");
-    expect(Number(updated[0].price)).toBeCloseTo(999.99, 2);
+      // Mutate the physical source table directly (the SQL Explorer's Run wraps all SQL as a SELECT
+      // subquery and cannot execute this UPDATE) and confirm it landed.
+      await runSql(page, "UPDATE pet_store.pets SET price = 999.99 WHERE id = 1");
+      const updated = await runSql(page, "SELECT price FROM pet_store.pets WHERE id = 1");
+      expect(Number(updated[0].price)).toBeCloseTo(999.99, 2);
 
-    // Force the cascade rather than waiting on the default 300s TTL poll: refresh level 1, then level
-    // 2 — mirroring the order the real change-signal loop would apply the ripple in.
-    await refreshMv(page, A);
-    await refreshMv(page, B);
+      // Force the cascade rather than waiting on the default 300s TTL poll: refresh level 1, then level
+      // 2 — mirroring the order the real change-signal loop would apply the ripple in.
+      await refreshMv(page, A);
+      await refreshMv(page, B);
 
-    rows = await runSql(page, `SELECT price FROM views.${B} WHERE id = 1`);
-    expect(Number(rows[0].price)).toBeCloseTo(999.99, 2); // the change reached level 2
-  } finally {
-    // Best-effort cleanup so repeated runs don't accumulate views or leave the shared demo row mutated.
-    await runSql(page, "UPDATE pet_store.pets SET price = 380.00 WHERE id = 1").catch(() => {});
-    await deleteTable(page, B).catch(() => {});
-    await deleteTable(page, A).catch(() => {});
-  }
+      rows = await runSql(page, `SELECT price FROM views.${B} WHERE id = 1`);
+      expect(Number(rows[0].price)).toBeCloseTo(999.99, 2); // the change reached level 2
+    } finally {
+      // Best-effort cleanup so repeated runs don't accumulate views or leave the shared demo row mutated.
+      await runSql(page, "UPDATE pet_store.pets SET price = 380.00 WHERE id = 1").catch(() => {});
+      await deleteTable(page, B).catch(() => {});
+      await deleteTable(page, A).catch(() => {});
+    }
+  });
 });

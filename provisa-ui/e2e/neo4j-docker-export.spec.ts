@@ -30,10 +30,17 @@ type ExportNode = { id: number; tableLabel: string; properties: Record<string, u
 type ExportEdge = { start: number; end: number; type: string; startNodeLabel: string; endNodeLabel: string };
 
 async function waitForNeo4j(timeoutMs = 90_000): Promise<void> {
+  // Poll the transactional endpoint (not the discovery root) because the root `/`
+  // responds with 200 before the database engine is ready to accept queries —
+  // an export attempt in that window returns 502 (ConnectError from the backend).
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${NEO4J_URL}/`);
+      const res = await fetch(`${NEO4J_URL}/db/neo4j/tx/commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ statements: [] }),
+      });
       if (res.ok) return;
     } catch {
       // not ready yet
@@ -66,7 +73,7 @@ async function tryCypherQuery(
 function extractNodesAndEdges(
   rows: Array<Record<string, unknown>>,
   nodesById: Map<number, ExportNode>,
-  edges: ExportEdge[],
+  edgesMap: Map<string, ExportEdge>,
 ): void {
   for (const row of rows) {
     for (const val of Object.values(row)) {
@@ -74,13 +81,16 @@ function extractNodesAndEdges(
       const v = val as Record<string, unknown>;
       if ("identity" in v && "startNode" in v && "endNode" in v) {
         const e = v as unknown as ApiEdge;
-        edges.push({
+        const edge: ExportEdge = {
           start: e.start,
           end: e.end,
           type: e.type,
           startNodeLabel: e.startNode.tableLabel,
           endNodeLabel: e.endNode.tableLabel,
-        });
+        };
+        // Key by (start, end, type) — Neo4j MERGE deduplicates on these three
+        const key = `${edge.start}|${edge.end}|${edge.type}`;
+        edgesMap.set(key, edge);
         for (const n of [e.startNode, e.endNode]) {
           if (!nodesById.has(n.id))
             nodesById.set(n.id, { id: n.id, tableLabel: n.tableLabel, properties: n.properties ?? {} });
@@ -131,12 +141,14 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
 
   // ── 2. Query every label; skip those that require WHERE clause parameters ──
   const nodesById = new Map<number, ExportNode>();
-  const edges: ExportEdge[] = [];
+  // Use a Map keyed by "start|end|type" so MERGE-duplicate relationships are not
+  // double-counted — Neo4j MERGE deduplicates by (start, type, end).
+  const edgesMap = new Map<string, ExportEdge>();
   const BASE = `${BACKEND_URL}`;
 
   for (const label of allLabels) {
     const rows = await tryCypherQuery(BASE, `MATCH (n:${label}) RETURN n`);
-    if (rows !== null) extractNodesAndEdges(rows, nodesById, edges);
+    if (rows !== null) extractNodesAndEdges(rows, nodesById, edgesMap);
   }
 
   // ── 3. Query all relationships from schema ────────────────────────────────
@@ -147,10 +159,11 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
       BASE,
       `MATCH (a:${rel.source})-[r:${rel.type}]->(b:${rel.target}) RETURN a, r, b`,
     );
-    if (relRows) extractNodesAndEdges(relRows, nodesById, edges);
+    if (relRows) extractNodesAndEdges(relRows, nodesById, edgesMap);
   }
 
   const nodes = Array.from(nodesById.values());
+  const edges = Array.from(edgesMap.values());
   expect(nodes.length, "must have nodes to export").toBeGreaterThan(0);
 
   // ── 4. Export in batches to avoid Neo4j transaction timeout ───────────────

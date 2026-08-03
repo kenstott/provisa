@@ -21,6 +21,9 @@ async function getOverlayKeys(page: import("@playwright/test").Page): Promise<st
 }
 
 test("show children for two nodes keeps both visible", async ({ page }) => {
+  // waitForFunction uses { timeout: 45000 } which exceeds the default 30s test timeout.
+  // On cold DuckDB start the Cypher query alone can take ~28s, so give the test 90s total.
+  test.setTimeout(90000);
   // Set pending query before navigation so the page auto-runs it on mount
   await page.goto("/graph");
   await page.evaluate(() => {
@@ -90,6 +93,18 @@ test("show children for two nodes keeps both visible", async ({ page }) => {
   const keysAfterFirst = await getOverlayKeys(page);
   console.log("Overlay keys after first node:", keysAfterFirst);
   expect(keysAfterFirst.some((k) => k.endsWith(":children"))).toBe(true);
+
+  // Wait for the cytoscape canvas to reflect the new children nodes before trying to click node 1.
+  // __overlayData is updated in a React effect; the cytoscape DOM update runs in a subsequent
+  // render cycle. Without this guard, we would read node 1's renderedPosition while the canvas
+  // still shows only the original 5 query-result nodes, causing a misclick into empty space.
+  await page.waitForFunction(
+    () => {
+      const cy = (window as Record<string, unknown>).__cy as CyInstance | undefined;
+      return cy != null && cy.nodes().length > 5;
+    },
+    { timeout: 10000 },
+  );
 
   // Show children for second node
   await openContextMenuForNode(nodeIds[1]);

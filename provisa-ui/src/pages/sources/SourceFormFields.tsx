@@ -204,6 +204,16 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
           }
         />
       )}
+      {form.type === "files" && (
+        <label style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          {t("sourceFormFields.filesGlob")}
+          <input
+            value={form.path}
+            onChange={(e) => setForm({ ...form, path: e.currentTarget.value })}
+            placeholder="/data/files/**"
+          />
+        </label>
+      )}
       {form.type === "snowflake" && (
         <>
           <TextInput
