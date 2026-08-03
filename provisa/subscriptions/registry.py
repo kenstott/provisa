@@ -45,6 +45,11 @@ _RSS_TYPES = {"rss"}
 # GovData — Calcite JDBC adapter over US government datasets (JPype, polling)
 _GOVDATA_TYPES = {"govdata"}
 
+def supports_polling_fallback(source_type: str) -> bool:
+    """Whether *source_type* falls back to watermark polling when native CDC/push is unavailable."""
+    return source_type in _POLLING_TYPES
+
+
 # All other SQL-ish sources fall back to polling
 _POLLING_TYPES = {
     "mysql",
@@ -52,6 +57,7 @@ _POLLING_TYPES = {
     "mariadb",
     "sqlserver",
     "oracle",
+    "sqlite",
     "duckdb",
     "snowflake",
     "bigquery",
@@ -81,7 +87,7 @@ def get_provider(
       - pg: ``pool`` (asyncpg Pool)
       - mongo: ``database`` (motor Database)
       - kafka: ``bootstrap_servers``, ``group_id``
-      - polling: ``pool``, ``poll_interval``, ``soft_delete_column``
+      - polling: ``source_pool``, ``source_id``, ``poll_interval``, ``watermark_column``
     """
     if source_type in _PG_TYPES:
         from provisa.subscriptions.pg_provider import PgNotificationProvider
@@ -143,7 +149,7 @@ def get_provider(
         from provisa.subscriptions.polling_provider import PollingNotificationProvider
 
         return PollingNotificationProvider(  # REQ-260, REQ-282, REQ-283, REQ-285
-            pool=config["pool"],
+            row_source=config["row_source"],
             poll_interval=config.get("poll_interval", 5.0),
             watermark_column=config.get("watermark_column", "updated_at"),
         )

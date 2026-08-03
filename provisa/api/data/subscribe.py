@@ -40,6 +40,27 @@ router = APIRouter(prefix="/data", tags=["data"])
 CHANNEL_PREFIX = "provisa_"
 
 
+def _tables_key(table: str, tables: dict, state) -> str | None:
+    """Resolve *table* (the bare physical table name from the URL) to its key in a
+    CompilationContext's ``tables`` dict.
+
+    Compiled schemas prefix GraphQL field names by domain alias (e.g. physical table
+    "pets" becomes field "ps__pets") so two domains can register same-named tables —
+    REST/JSON:API already resolve through ``state.table_path_maps`` (REQ-256). The
+    ``/data/subscribe/{table}`` route stays domain-agnostic per REQ-219, so this checks
+    the bare name first (pre-domain-prefixing schemas, e.g. test-built contexts), then
+    falls back to the first ``table_path_maps`` entry across all roles whose
+    ``table_name`` matches.
+    """
+    if table in tables:
+        return table
+    for path_map in (getattr(state, "table_path_maps", None) or {}).values():
+        for gql_field, meta in path_map.items():
+            if meta.get("table_name") == table and gql_field in tables:
+                return gql_field
+    return None
+
+
 def _resolve_table_source(table: str) -> tuple[str, str] | None:
     """Return (source_id, source_type) for *table* if it exists in config.
 
@@ -48,10 +69,11 @@ def _resolve_table_source(table: str) -> tuple[str, str] | None:
     from provisa.api.app import state
 
     # Check contexts — each context has table metadata keyed by table name
-    for ctx in state.contexts.values():
+    for ctx_key, ctx in state.contexts.items():
         tables = getattr(ctx, "tables", {})
-        if table in tables:
-            tbl = tables[table]
+        key = _tables_key(table, tables, state)
+        if key is not None:
+            tbl = tables[key]
             source_id = getattr(tbl, "source_id", None)
             if source_id and source_id in state.source_types:
                 return source_id, state.source_types[source_id]
@@ -132,8 +154,10 @@ def _build_websocket_config(state, source_id: str) -> dict:  # REQ-338, REQ-341
     return config
 
 
-def _build_fallback_config(state, tbl_meta) -> dict:
-    config: dict = {"pool": state.tenant_db}
+def _build_fallback_config(state, source_id: str, tbl_meta) -> dict:
+    from provisa.subscriptions.polling_provider import SourcePoolRowSource
+
+    config: dict = {"row_source": SourcePoolRowSource(state.source_pools, source_id)}
     if tbl_meta is not None:
         wc = getattr(tbl_meta, "watermark_column", None)
         if wc:
@@ -236,14 +260,15 @@ def _build_provider_config(  # REQ-258
         return _build_websocket_config(state, source_id)
     if source_type == "debezium":  # REQ-824
         return _build_cdc_config(state, source_id)
-    return _build_fallback_config(state, tbl_meta)
+    return _build_fallback_config(state, source_id, tbl_meta)
 
 
 def _resolve_tbl_meta(table: str, state):
     for ctx in state.contexts.values():
         tables = getattr(ctx, "tables", {})
-        if table in tables:
-            return tables[table]
+        key = _tables_key(table, tables, state)
+        if key is not None:
+            return tables[key]
     return None
 
 
@@ -284,13 +309,22 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
 ) -> AsyncGenerator[str, None]:
     """Yield SSE-formatted events from the appropriate subscription provider."""
     from provisa.api.app import state
-    from provisa.subscriptions.registry import get_provider
+    from provisa.subscriptions.registry import get_provider, supports_polling_fallback
 
     tbl_meta = _resolve_tbl_meta(table, state)
     table_id = getattr(tbl_meta, "table_id", None) if tbl_meta else None
     provider_type = _resolve_provider_type(source_type, source_id, tbl_meta, state)  # REQ-814
     provider_config = _build_provider_config(provider_type, source_id, table, tbl_meta, state)
-    provider = get_provider(provider_type, provider_config)
+
+    if supports_polling_fallback(provider_type) and "watermark_column" not in provider_config:
+        # REQ-260: without an explicit watermark_column, poll subscriptions are unavailable
+        # for this source. The stream still opens (REQ-219) but has nothing to deliver —
+        # guessing a watermark column that may not exist on the table crashes the connection.
+        from provisa.subscriptions.polling_provider import NullNotificationProvider
+
+        provider = NullNotificationProvider()
+    else:
+        provider = get_provider(provider_type, provider_config)
 
     async for chunk in _stream_provider_events(
         provider, table, table_id, role_id, rls_contexts, masking_rules, disconnect
@@ -519,13 +553,13 @@ async def subscribe(
     if role_id and role_id in state.contexts:
         ctx = state.contexts[role_id]
         tables = getattr(ctx, "tables", {})
-        if table in tables:
+        if _tables_key(table, tables, state) is not None:
             table_found = True
     # If no role context, check all contexts
     if not table_found:
         for ctx in state.contexts.values():
             tables = getattr(ctx, "tables", {})
-            if table in tables:
+            if _tables_key(table, tables, state) is not None:
                 table_found = True
                 break
 

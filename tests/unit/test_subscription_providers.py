@@ -228,47 +228,38 @@ class TestMongoProvider:
 # ---------------------------------------------------------------------------
 
 
-class FakeRow(dict):
-    """Dict subclass that supports asyncpg-style Record access."""
-
-    pass
-
-
-class FakePollingConn:
-    def __init__(self, rows_batches):
-        self._batches = rows_batches
+class FakeSourcePool:
+    def __init__(self, batches):
+        self._batches = batches
         self._call_count = 0
 
-    async def fetch(self, query, *args):
+    async def execute(self, source_id, sql, params=None):
+        from provisa.executor.result import QueryResult
+
         if self._call_count < len(self._batches):
-            batch = self._batches[self._call_count]
+            rows, column_names = self._batches[self._call_count]
             self._call_count += 1
-            return batch
-        return []
-
-
-class FakePollingPool:
-    def __init__(self, conn):
-        self._conn = conn
-
-    async def acquire(self):
-        return self._conn
-
-    async def release(self, conn):
-        pass
+            return QueryResult(rows=rows, column_names=column_names)
+        return QueryResult(rows=[], column_names=[])
 
 
 class TestPollingProvider:
     @pytest.mark.asyncio
     async def test_emits_update_events(self):
-        from provisa.subscriptions.polling_provider import PollingNotificationProvider
+        from provisa.subscriptions.polling_provider import (
+            PollingNotificationProvider,
+            SourcePoolRowSource,
+        )
 
         now = datetime.now(timezone.utc)
-        rows = [FakeRow({"id": 1, "updated_at": now, "name": "a"})]
-        conn = FakePollingConn([rows, []])
-        pool = FakePollingPool(conn)
+        batches = [
+            ([(1, now, "a")], ["id", "updated_at", "name"]),
+            ([], []),
+        ]
+        pool = FakeSourcePool(batches)
+        row_source = SourcePoolRowSource(pool, "src1")
 
-        provider = PollingNotificationProvider(pool=pool, poll_interval=0.01)
+        provider = PollingNotificationProvider(row_source=row_source, poll_interval=0.01)
         events = []
         count = 0
         async for ev in provider.watch("orders"):
@@ -403,7 +394,7 @@ class TestRegistry:
         assert isinstance(provider, KafkaNotificationProvider)
 
     def test_polling_fallback(self):
-        provider = get_provider("mysql", {"pool": MagicMock()})
+        provider = get_provider("mysql", {"row_source": MagicMock()})
         from provisa.subscriptions.polling_provider import PollingNotificationProvider
 
         assert isinstance(provider, PollingNotificationProvider)

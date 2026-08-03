@@ -219,7 +219,9 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
 
             provider_config: dict = {}
             if use_polling_fallback:
-                provider_config["pool"] = state.tenant_db
+                from provisa.subscriptions.polling_provider import DatabaseRowSource
+
+                provider_config["row_source"] = DatabaseRowSource(state.tenant_db)
                 provider_config["watermark_column"] = effective_watermark
             elif use_engine_polling:
                 pass
@@ -235,7 +237,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
 
                     watermark_col: str = cast(str, provider_config["watermark_column"])
                     provider = PollingNotificationProvider(
-                        pool=provider_config["pool"],
+                        row_source=provider_config["row_source"],
                         watermark_column=watermark_col,
                     )
                 elif use_engine_polling:
@@ -386,10 +388,13 @@ async def _launch_kafka_sink(  # REQ-176, REQ-177, REQ-286
 
         try:
             if use_polling_fallback:
-                from provisa.subscriptions.polling_provider import PollingNotificationProvider
+                from provisa.subscriptions.polling_provider import (
+                    DatabaseRowSource,
+                    PollingNotificationProvider,
+                )
 
                 provider = PollingNotificationProvider(
-                    pool=state.tenant_db,
+                    row_source=DatabaseRowSource(state.tenant_db),
                     watermark_column=state.table_watermarks[table_name],
                 )
             elif use_engine_polling:
