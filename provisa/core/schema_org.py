@@ -205,6 +205,7 @@ table_columns = Table(
     Column("is_alternate_key", Boolean, nullable=False, server_default=false()),
     Column("object_fields", JSON, nullable=False, default=list, server_default="[]"),
     Column("scope", Text, nullable=False, server_default="domain"),
+    Column("gql_selection", Text),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
     CheckConstraint(

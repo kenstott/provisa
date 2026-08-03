@@ -311,7 +311,19 @@ async def _execute_with_gql_remote(
         drop_union_branches_for_table,
         where_referenced_tables,
     )
-    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name, apply_gql_name as _apply_gql_name
+
+    def _gql_selection(c: dict) -> str:
+        # The store lands under the semantic sql name; the remote keys the field by its GraphQL
+        # name. Both derive from the naming authority. When they differ, emit a GraphQL alias
+        # ``<sql_name>: <gqlField>`` so the outbound field matches the remote AND the response
+        # comes back keyed by the sql name the store expects; when they coincide, the bare field.
+        # gql_selection (nested object path) still wins. Mirrors source_loader.py's _selection.
+        if c.get("gql_selection"):
+            return c["gql_selection"]
+        sql_name = _apply_sql_name(c["name"])
+        gql_field = _apply_gql_name(c["name"])
+        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
 
     @dataclass
     class _Col:
@@ -388,7 +400,7 @@ async def _execute_with_gql_remote(
 
         hit = await loop.run_in_executor(None, _check_or_create_cache, None)
         if not hit:
-            col_selections = [c.get("gql_selection", c["name"]) for c in info["columns"]]
+            col_selections = [_gql_selection(c) for c in info["columns"]]
             fetched_rows = await execute_remote(
                 url=info["url"],
                 auth=info["auth"],

@@ -31,6 +31,12 @@ def _safe_json(resp: httpx.Response) -> dict:
 
 _OBJECT_FIELD_RE = re.compile(r"Field '([^']+)' of type '[^']+' must have a selection of subfields")
 
+# Matches a column selection that aliases a single-subfield object projection down to a scalar,
+# e.g. ``employee_id: employee { id }`` — the alias is the sql column name, the braces hold exactly
+# one subfield. Rows come back keyed by the alias but holding a nested {subfield: value} dict; this
+# flattens it to the scalar the column is declared as, per the alias's own selection contract.
+_SCALAR_PROJECTION_RE = re.compile(r"^(\w+):\s*\w+\s*\{\s*(\w+)\s*\}$")
+
 
 def _object_fields_from_errors(errors: list) -> set[str]:
     """Extract field names that require subfield selection from GQL error list."""
@@ -40,6 +46,20 @@ def _object_fields_from_errors(errors: list) -> set[str]:
         if m:
             found.add(m.group(1))
     return found
+
+
+def _flatten_scalar_projections(rows: list[dict], columns: list[str]) -> None:
+    """Unwrap ``alias: field { subfield }`` projections in place from {subfield: v} to v."""
+    projections = [m.groups() for c in columns if (m := _SCALAR_PROJECTION_RE.match(c.strip()))]
+    if not projections:
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        for alias, subfield in projections:
+            v = row.get(alias)
+            if isinstance(v, dict):
+                row[alias] = v.get(subfield)
 
 
 async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
@@ -114,4 +134,6 @@ async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
             break
 
     rows = data.get("data", {}).get(field_name, [])
-    return rows if isinstance(rows, list) else [rows]
+    rows = rows if isinstance(rows, list) else [rows]
+    _flatten_scalar_projections(rows, selected_cols)
+    return rows

@@ -67,6 +67,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.is_alternate_key,
     table_columns.c.object_fields,
     table_columns.c.scope,
+    table_columns.c.gql_selection,
 ]
 
 
@@ -221,6 +222,7 @@ async def upsert(
                 is_alternate_key=getattr(col, "is_alternate_key", False),
                 object_fields=object_fields,
                 scope=getattr(col, "scope", "domain"),
+                gql_selection=getattr(col, "gql_selection", None),
             )
         )
     return table_id

@@ -352,6 +352,7 @@ class Column(
     mask_value: str | None = None  # constant value
     mask_precision: str | None = None  # truncate precision (year, month, day, etc.)
     alias: str | None = None  # GraphQL field name override
+    gql_selection: str | None = None  # literal GraphQL selection override (e.g. "employee_id: employee { id }")
     description: str | None = None  # GraphQL field description
     path: str | None = None  # JSON extraction path (e.g. "payload.order_id")
     native_filter_type: str | None = None  # "path_param" | "query_param" for OpenAPI sources

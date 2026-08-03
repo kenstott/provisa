@@ -184,7 +184,19 @@ async def _mat_gql_remote_table(
         }
         if _governed_excluded:
             col_dicts = [c for c in col_dicts if c["name"] not in _governed_excluded]
-    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name, apply_gql_name as _apply_gql_name
+
+    def _gql_selection(c: dict) -> str:
+        # The store lands under the semantic sql name; the remote keys the field by its GraphQL
+        # name. When they differ, emit a GraphQL alias ``<sql_name>: <gqlField>`` so the outbound
+        # field matches the remote AND the response comes back keyed by the sql name the store
+        # expects; when they coincide, the bare field. gql_selection (nested object path) still
+        # wins. Mirrors source_loader.py's _selection / cypher_exec.py's _gql_selection.
+        if c.get("gql_selection"):
+            return c["gql_selection"]
+        sql_name = _apply_sql_name(c["name"])
+        gql_field = _apply_gql_name(c["name"])
+        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
 
     def _sel_from_obj_fields(fname: str, sub_fields: list) -> str:
         parts = []
@@ -203,7 +215,7 @@ async def _mat_gql_remote_table(
     # Map raw GQL field name → SQL name (snake_case) so CTE headers match SQL column refs
     _gql_to_sql = {c["name"]: _apply_sql_name(c["name"]) for c in col_dicts}
     col_names = [_gql_to_sql[c["name"]] for c in col_dicts]
-    col_selections = [c.get("gql_selection", c["name"]) for c in col_dicts]
+    col_selections = [_gql_selection(c) for c in col_dicts]
     col_objs = [
         _GCol(name=_gql_to_sql[c["name"]], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string"))
         for c in col_dicts

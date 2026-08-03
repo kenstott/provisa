@@ -665,6 +665,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                                     _table_columns_t.c.data_type,
                                     _table_columns_t.c.object_fields,
                                     _table_columns_t.c.native_filter_type,
+                                    _table_columns_t.c.gql_selection,
                                 ).where(_table_columns_t.c.table_id == tr["id"])
                             )
                         ).fetchall()
@@ -685,6 +686,8 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             "name": cr["column_name"],
                             "type": cr["data_type"] or "text",
                         }
+                        if cr["gql_selection"]:
+                            col_dict["gql_selection"] = cr["gql_selection"]
                         raw_of = cr["object_fields"]
                         if raw_of:
                             # Malformed optional object-field metadata is skipped; any
