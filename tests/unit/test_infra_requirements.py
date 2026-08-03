@@ -634,7 +634,12 @@ class TestREQ558BackendPort8001:
     def test_start_ui_sh_uses_port_8001(self):
         # REQ-558
         content = (REPO_ROOT / "start-ui.sh").read_text()
-        assert "--port 8001" in content, "start-ui.sh must start uvicorn on port 8001"
+        assert 'PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"' in content, (
+            "start-ui.sh must default PROVISA_API_PORT to 8001"
+        )
+        assert '--port "$PROVISA_API_PORT"' in content, (
+            "start-ui.sh must start uvicorn on $PROVISA_API_PORT, not a hardcoded port"
+        )
 
     def test_dev_compose_files_do_not_expose_port_8001(self):
         # REQ-558 — backend runs on host, not in container during dev

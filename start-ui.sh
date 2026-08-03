@@ -53,9 +53,16 @@ export PROVISA_REDIRECT_BUCKET="${PROVISA_REDIRECT_BUCKET:-provisa-results}"
 export PROVISA_CHANGE_EVENT_BOOTSTRAP="${PROVISA_CHANGE_EVENT_BOOTSTRAP:-localhost:9092}"
 export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 export QUERY_ENGINE_CONTAINER="${QUERY_ENGINE_CONTAINER:-provisa-trino-1}"
+export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+export PROVISA_UI_PORT="${PROVISA_UI_PORT:-3000}"
 
-# Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch, observability)
+# Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch)
 COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev.yml"
+if [ "$OBSERVABILITY" = true ]; then
+  # docker-compose.dev.yml only carries port overrides for prometheus/otlp2parquet;
+  # this overlay supplies their image/build definitions.
+  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml"
+fi
 if [ "$DEMO" = true ]; then
   # Demo servers (petstore-mock, graphql-demo) run as host processes, not Docker.
   echo "Resetting volumes for pristine demo environment..."
@@ -109,16 +116,15 @@ fi
 # Wait for critical services to be healthy
 echo -n "Waiting for infrastructure services"
 for i in $(seq 1 120); do
-  PG_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-postgres-1 2>/dev/null)
-  KF_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-kafka-1 2>/dev/null)
-  REDIS_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-redis-1 2>/dev/null)
-  if [ "$PG_OK" = "healthy" ] && [ "$KF_OK" = "healthy" ] && [ "$REDIS_OK" = "healthy" ]; then
+  PG_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-postgres-1 2>/dev/null || true)
+  REDIS_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-redis-1 2>/dev/null || true)
+  if [ "$PG_OK" = "healthy" ] && [ "$REDIS_OK" = "healthy" ]; then
     echo " OK"
     break
   fi
   if [ "$i" -eq 120 ]; then
     echo " TIMEOUT"
-    echo "Critical services did not become healthy. postgres=$PG_OK kafka=$KF_OK redis=$REDIS_OK"
+    echo "Critical services did not become healthy. postgres=$PG_OK redis=$REDIS_OK"
     exit 1
   fi
   echo -n "."
@@ -194,11 +200,16 @@ if [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
     echo "Syncing Python dependencies..."
     "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR" -q &
     PIP_PID=$!
-    sleep 30 &
-    SLEEP_PID=$!
-    wait -n $PIP_PID $SLEEP_PID 2>/dev/null
-    kill $PIP_PID $SLEEP_PID 2>/dev/null
-    wait $PIP_PID 2>/dev/null && echo "$LOCK_HASH" > "$SCRIPT_DIR/.venv/.dep-hash" || echo "Warning: dependency sync timed out or failed — continuing"
+    for _i in $(seq 1 30); do
+      kill -0 $PIP_PID 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 $PIP_PID 2>/dev/null; then
+      kill $PIP_PID 2>/dev/null
+      echo "Warning: dependency sync timed out or failed — continuing"
+    else
+      wait $PIP_PID 2>/dev/null && echo "$LOCK_HASH" > "$SCRIPT_DIR/.venv/.dep-hash" || echo "Warning: dependency sync timed out or failed — continuing"
+    fi
   fi
 fi
 
@@ -213,8 +224,8 @@ if [ "$IDP" = "firebase" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
 fi
 
 # Kill any stale processes on our ports
-lsof -i :8001 -P -t 2>/dev/null | xargs kill 2>/dev/null || true
-lsof -i :3000 -P -t 2>/dev/null | xargs kill 2>/dev/null || true
+lsof -i ":$PROVISA_API_PORT" -P -t 2>/dev/null | xargs kill 2>/dev/null || true
+lsof -i ":$PROVISA_UI_PORT" -P -t 2>/dev/null | xargs kill 2>/dev/null || true
 sleep 1
 
 # Truncate old log
@@ -225,7 +236,7 @@ _start_backend() {
     export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
     export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
   fi
-  "$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port 8001 \
+  "$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port "$PROVISA_API_PORT" \
     >> "$LOG_DIR/server.log" 2>&1 &
   BACKEND_PID=$!
 }
@@ -242,14 +253,14 @@ restart_backend() {
 }
 trap restart_backend USR1
 
-echo "Starting Provisa backend on port 8001..."
+echo "Starting Provisa backend on port $PROVISA_API_PORT..."
 cd "$SCRIPT_DIR"
 _start_backend
 
 # Wait for backend to be healthy
 echo -n "  Waiting for backend"
 for i in $(seq 1 60); do
-  if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+  if curl -sf "http://localhost:$PROVISA_API_PORT/health" > /dev/null 2>&1; then
     echo " OK (PID $BACKEND_PID)"
     break
   fi
@@ -265,14 +276,14 @@ for i in $(seq 1 60); do
 done
 
 # Final check
-if ! curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+if ! curl -sf "http://localhost:$PROVISA_API_PORT/health" > /dev/null 2>&1; then
   echo " TIMEOUT"
   echo "Backend did not become healthy. Last 20 lines of log:"
   tail -20 "$LOG_DIR/server.log"
   exit 1
 fi
 
-echo "Starting Provisa UI on port 3000..."
+echo "Starting Provisa UI on port $PROVISA_UI_PORT..."
 cd "$SCRIPT_DIR/provisa-ui"
 npx vite --host 0.0.0.0 &
 UI_PID=$!
@@ -280,7 +291,7 @@ UI_PID=$!
 # Wait for UI to be reachable
 echo -n "  Waiting for UI"
 for i in $(seq 1 15); do
-  if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+  if curl -sf "http://localhost:$PROVISA_UI_PORT" > /dev/null 2>&1; then
     echo " OK (PID $UI_PID)"
     break
   fi
@@ -296,8 +307,8 @@ done
 echo ""
 if [ "$DEMO" = true ]; then
   echo "Provisa running (demo mode):"
-  echo "  Backend: http://localhost:8001  (logs: $LOG_DIR/server.log)"
-  echo "  UI:      http://localhost:3000"
+  echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: $LOG_DIR/server.log)"
+  echo "  UI:      http://localhost:$PROVISA_UI_PORT"
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -306,8 +317,8 @@ if [ "$DEMO" = true ]; then
   echo "  - graphql-demo       (GraphQL remote, http://localhost:4000/graphql)"
 else
   echo "Provisa running:"
-  echo "  Backend: http://localhost:8001  (logs: $LOG_DIR/server.log)"
-  echo "  UI:      http://localhost:3000"
+  echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: $LOG_DIR/server.log)"
+  echo "  UI:      http://localhost:$PROVISA_UI_PORT"
 fi
 echo ""
 echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend."
