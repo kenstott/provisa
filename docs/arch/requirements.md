@@ -492,7 +492,7 @@ Simple username/password auth for testing — users defined in config YAML with 
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Superuser bootstrap access — superuser credentials in config (username + password from env secret). Always admin role + all capabilities regardless of auth provider. For initial setup.
+Superuser bootstrap access — superuser credentials in config (username + password from env secret). Always platform_admin role + all capabilities regardless of auth provider. For initial setup. Role name updated by [REQ-1327](#REQ-1327)'s platform_admin/org_admin split (the old undifferentiated "admin" role no longer exists).
 
 **Use case:** Superuser bootstrap ensures admins can always access the platform for initial setup regardless of auth provider.
 
@@ -504,7 +504,7 @@ Superuser bootstrap access — superuser credentials in config (username + passw
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-When no auth provider is configured (dev mode), any request is treated as a role identity — the username IS the role, taken from the `x-provisa-role` header or defaulting to `admin`. This identity maps to all configured roles with wildcard domain access, enabling unrestricted local development without configuring an IdP.
+When no auth provider is configured (dev mode), any request is treated as the anonymous dev principal (user_id `anonymous`), with the role taken from the `x-provisa-role` header or defaulting to `org_admin` ([REQ-1327](#REQ-1327)'s data-plane administrator — the undifferentiated `admin` role no longer exists, and platform_admin is control-plane only so a demo deployment need not define it). This identity maps to all configured roles with wildcard domain access, enabling unrestricted local development without configuring an IdP.
 
 **Use case:** Dev mode role identity lets developers test without an IdP while still exercising role-based code paths.
 
