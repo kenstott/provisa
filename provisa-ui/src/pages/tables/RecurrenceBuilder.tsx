@@ -92,6 +92,7 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
           { value: "custom", label: t("recurrence.custom") },
         ]}
         value={mode}
+        allowDeselect={false}
         onChange={(v) => {
           if (!v) return onChange(null);
           if (v === "custom") return emit({});

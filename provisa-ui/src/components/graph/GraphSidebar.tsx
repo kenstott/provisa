@@ -204,6 +204,7 @@ export function Sidebar({
             className={`graph-sidebar-tab ${section === "db" ? "active" : ""}`}
             onClick={() => setSection("db")}
             aria-label={t("graphSidebar.tabDatabase")}
+            title={t("graphSidebar.tabDatabase")}
             aria-selected={section === "db"}
             role="tab"
             data-testid="graph-sidebar-tab-db"
@@ -217,6 +218,7 @@ export function Sidebar({
             className={`graph-sidebar-tab ${section === "history" ? "active" : ""}`}
             onClick={() => setSection("history")}
             aria-label={t("graphSidebar.tabHistory")}
+            title={t("graphSidebar.tabHistory")}
             aria-selected={section === "history"}
             role="tab"
             data-testid="graph-sidebar-tab-history"
@@ -230,6 +232,7 @@ export function Sidebar({
             className={`graph-sidebar-tab ${section === "favorites" ? "active" : ""}`}
             onClick={() => setSection("favorites")}
             aria-label={t("graphSidebar.tabFavorites")}
+            title={t("graphSidebar.tabFavorites")}
             aria-selected={section === "favorites"}
             role="tab"
             data-testid="graph-sidebar-tab-favorites"
@@ -244,6 +247,7 @@ export function Sidebar({
               className="graph-sidebar-tab"
               onClick={onNeo4jExport}
               aria-label={t("graphSidebar.tabExport")}
+              title={t("graphSidebar.tabExport")}
               data-testid="graph-sidebar-tab-export"
             >
               <ExportIcon size={15} />

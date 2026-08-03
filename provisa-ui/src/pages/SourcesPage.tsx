@@ -797,24 +797,35 @@ export function SourcesPage() {
                 : handleCreate
           }
         >
-          <TextInput
-            label={t("sourcesPage.idLabel")}
-            required
-            value={form.id}
-            onChange={(e) => setForm({ ...form, id: e.target.value })}
-            placeholder={t("sourcesPage.idPlaceholder")}
-            data-testid="sources-id-input"
-          />
-          <Select
-            label={t("sourcesPage.typeLabel")}
-            data-tour="sources-type"
-            data-testid="sources-type-select"
-            value={form.type}
-            onChange={(v) => v && handleTypeChange(v)}
-            data={typeSelectData()}
-            allowDeselect={false}
-            searchable
-          />
+          <label>
+            {t("sourcesPage.idLabel")}
+            <input
+              required
+              value={form.id}
+              onChange={(e) => setForm({ ...form, id: e.target.value })}
+              placeholder={t("sourcesPage.idPlaceholder")}
+              data-testid="sources-id-input"
+            />
+          </label>
+          <label>
+            {t("sourcesPage.typeLabel")}
+            <select
+              data-tour="sources-type"
+              data-testid="sources-type-select"
+              value={form.type}
+              onChange={(e) => handleTypeChange(e.target.value)}
+            >
+              {typeSelectData().map((group) => (
+                <optgroup key={group.group} label={group.group}>
+                  {group.items.map((item) => (
+                    <option key={item.value} value={item.value} disabled={item.disabled}>
+                      {item.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
           <SourceFormFields {...sourceFormFieldsProps} />
           <Button type="submit" loading={submitting} data-testid="sources-submit">
             {submitting ? t("sourcesPage.creating") : t("sourcesPage.create")}

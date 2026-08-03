@@ -21,28 +21,30 @@ export function FilterInput({ value, onChange, placeholder }: {
 }) {
   const { t } = useTranslation();
   return (
-    <TextInput
-      type="search"
-      aria-label={placeholder ?? t("filterInput.filter")}
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      data-testid="filter-input"
-      rightSection={
-        <Group gap={2} wrap="nowrap">
-          <CopyButton text={value} size={11} />
-          <ActionIcon
-            type="button"
-            variant="transparent"
-            aria-label={t("filterInput.clear")}
-            data-testid="filter-input-clear"
-            onClick={() => onChange("")}
-          >
-            <X size={11} />
-          </ActionIcon>
-        </Group>
-      }
-      rightSectionWidth={54}
-    />
+    <div className="search-wrap">
+      <TextInput
+        type="search"
+        aria-label={placeholder ?? t("filterInput.filter")}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid="filter-input"
+        rightSection={
+          <Group gap={2} wrap="nowrap">
+            <CopyButton text={value} size={11} />
+            <ActionIcon
+              type="button"
+              variant="transparent"
+              aria-label={t("filterInput.clear")}
+              data-testid="filter-input-clear"
+              onClick={() => onChange("")}
+            >
+              <X size={11} />
+            </ActionIcon>
+          </Group>
+        }
+        rightSectionWidth={54}
+      />
+    </div>
   );
 }

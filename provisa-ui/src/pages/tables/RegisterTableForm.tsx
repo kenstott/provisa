@@ -14,7 +14,6 @@ import {
   Button,
   Checkbox,
   Select,
-  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -271,94 +270,116 @@ export function RegisterTableForm({
   const isCdcSource = CDC_TYPES.has(sourceType);
 
   return (
-    <Stack data-tour="tables-form" gap="md">
-      <SimpleGrid cols={{ base: 1, sm: 2 }}>
-        <Select
-          label={t("registerTableForm.sourceLabel")}
-          placeholder={t("registerTableForm.sourcePlaceholder")}
-          data={sources
+    <div data-tour="tables-form" className="form-card">
+      <label>
+        {t("registerTableForm.sourceLabel")}
+        <select
+          value={sourceId}
+          onChange={(e) => setSourceId(e.target.value)}
+          data-testid="register-table-source-select"
+        >
+          <option value="">{t("registerTableForm.sourcePlaceholder")}</option>
+          {sources
             .filter(
               (s) =>
                 s.allowedDomains.length === 0 ||
                 s.allowedDomains.some((d) => checkedDomains.has(d)),
             )
-            .map((s) => ({ value: s.id, label: s.id }))}
-          value={sourceId || null}
-          onChange={(v) => setSourceId(v ?? "")}
-          data-testid="register-table-source-select"
-        />
-        {domainsEnabled && (
-          <Select
-            label={t("registerTableForm.domainLabel")}
-            placeholder={t("registerTableForm.domainPlaceholder")}
-            data={domainHints
+            .map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.id}
+              </option>
+            ))}
+        </select>
+      </label>
+      {domainsEnabled && (
+        <label>
+          {t("registerTableForm.domainLabel")}
+          <select
+            value={domainId}
+            onChange={(e) => setDomainId(e.target.value)}
+            data-testid="register-table-domain-select"
+          >
+            <option value="">{t("registerTableForm.domainPlaceholder")}</option>
+            {domainHints
               .filter((d) => d !== "" && d !== "meta" && d !== "ops")
               .filter((d) => domainAccess.includes("*") || domainAccess.includes(d))
-              .map((d) => ({ value: d, label: d }))}
-            value={domainId || null}
-            onChange={(v) => setDomainId(v ?? "")}
-            data-testid="register-table-domain-select"
-          />
-        )}
-        <Select
-          label={t("registerTableForm.schemaLabel")}
-          placeholder={
-            loadingSchemas
-              ? t("registerTableForm.schemaLoading")
-              : t("registerTableForm.schemaPlaceholder")
-          }
-          data={availableSchemas.map((s) => ({ value: s, label: s }))}
-          value={schemaName || null}
-          onChange={(v) => setSchemaName(v ?? "")}
+              .map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+          </select>
+        </label>
+      )}
+      <label>
+        {t("registerTableForm.schemaLabel")}
+        <select
+          value={schemaName}
+          onChange={(e) => setSchemaName(e.target.value)}
           disabled={!sourceId || loadingSchemas || isFixedSchema}
           data-testid="register-table-schema-select"
-        />
-        <Select
-          label={t("registerTableForm.tableLabel")}
-          placeholder={
-            loadingTables
+        >
+          <option value="">
+            {loadingSchemas
+              ? t("registerTableForm.schemaLoading")
+              : t("registerTableForm.schemaPlaceholder")}
+          </option>
+          {availableSchemas.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        {t("registerTableForm.tableLabel")}
+        <select
+          value={tableName}
+          onChange={(e) => setTableName(e.target.value)}
+          disabled={!schemaName || loadingTables || allTablesRegistered}
+          data-testid="register-table-table-select"
+        >
+          <option value="">
+            {loadingTables
               ? t("registerTableForm.tableLoading")
               : allTablesRegistered
                 ? t("registerTableForm.tableAllRegistered")
-                : t("registerTableForm.tablePlaceholder")
-          }
-          data={availableTables.map((tbl) => ({
-            value: tbl.name,
-            label: tbl.name,
-            disabled: isRegistered(tbl),
-          }))}
-          value={tableName || null}
-          onChange={(v) => setTableName(v ?? "")}
-          disabled={!schemaName || loadingTables || allTablesRegistered}
-          data-testid="register-table-table-select"
-        />
-        <TextInput
-          label={
-            <>
-              {t("registerTableForm.aliasLabel")}{" "}
-              <Text span fw="normal" c="dimmed" fz="xs">
-                {t("registerTableForm.aliasOptional")}
-              </Text>
-            </>
-          }
-          value={tableAlias}
-          onChange={(e) => setTableAlias(e.currentTarget.value)}
-          placeholder={t("registerTableForm.aliasPlaceholder")}
-        />
-        <TextInput
-          label={
-            <>
-              {t("registerTableForm.descriptionLabel")}{" "}
-              <Text span fw="normal" c="dimmed" fz="xs">
-                {t("registerTableForm.descriptionOptional")}
-              </Text>
-            </>
-          }
-          value={tableDescription}
-          onChange={(e) => setTableDescription(e.currentTarget.value)}
-          placeholder={t("registerTableForm.descriptionPlaceholder")}
-        />
-      </SimpleGrid>
+                : t("registerTableForm.tablePlaceholder")}
+          </option>
+          {availableTables.map((tbl) => (
+            <option key={tbl.name} value={tbl.name} disabled={isRegistered(tbl)}>
+              {tbl.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <TextInput
+        label={
+          <>
+            {t("registerTableForm.aliasLabel")}{" "}
+            <Text span fw="normal" c="dimmed" fz="xs">
+              {t("registerTableForm.aliasOptional")}
+            </Text>
+          </>
+        }
+        value={tableAlias}
+        onChange={(e) => setTableAlias(e.currentTarget.value)}
+        placeholder={t("registerTableForm.aliasPlaceholder")}
+      />
+      <TextInput
+        label={
+          <>
+            {t("registerTableForm.descriptionLabel")}{" "}
+            <Text span fw="normal" c="dimmed" fz="xs">
+              {t("registerTableForm.descriptionOptional")}
+            </Text>
+          </>
+        }
+        value={tableDescription}
+        onChange={(e) => setTableDescription(e.currentTarget.value)}
+        placeholder={t("registerTableForm.descriptionPlaceholder")}
+      />
       <Checkbox
         checked={dataProduct}
         onChange={(e) => setDataProduct(e.currentTarget.checked)}
@@ -411,7 +432,7 @@ export function RegisterTableForm({
           data-testid="register-table-watermark-select"
         />
       )}
-      <Stack gap="xs">
+      <Stack gap="xs" style={{ gridColumn: "1 / -1" }}>
         <Text fw={600} fz="sm">
           {t("registerTableForm.columnsLabel")} {loadingColumns && t("registerTableForm.columnsLoading")}
         </Text>
@@ -586,15 +607,21 @@ export function RegisterTableForm({
         )}
       </Stack>
       {columns.length > 0 && (
-        <UniquesPanel
-          uniques={uniqueConstraints}
-          columns={columns.map((c) => c.name)}
-          onChange={setUniqueConstraints}
-        />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <UniquesPanel
+            uniques={uniqueConstraints}
+            columns={columns.map((c) => c.name)}
+            onChange={setUniqueConstraints}
+          />
+        </div>
       )}
-      <Button onClick={handleSubmit} style={{ alignSelf: "flex-start" }} data-testid="register-table-submit">
+      <Button
+        onClick={handleSubmit}
+        style={{ gridColumn: "1 / -1", alignSelf: "flex-start" }}
+        data-testid="register-table-submit"
+      >
         {t("registerTableForm.submitButton")}
       </Button>
-    </Stack>
+    </div>
   );
 }
