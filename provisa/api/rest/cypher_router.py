@@ -512,7 +512,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             _result = await state.federation_engine.execute_native(
                 state.source_pools, _source_id, _target_sql
             )
-            affected = len(_result.rows)
+            affected = len(_result.rows) if _result.rows else (_result.rowcount or 0)
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": f"Write failed: {exc}"})
 

@@ -86,6 +86,10 @@ class QueryResult:  # REQ-028
     # returning rows, this carries the delivery handle ({sink, url|table_name, row_count, ...}) that
     # every transport reports in its own envelope. None for an inline row result.
     redirect: dict | None = field(default=None)
+    # Native driver-reported DML row count (e.g. SQLAlchemy CursorResult.rowcount), for dialects
+    # where a write has no RETURNING clause and ``rows`` is therefore empty. None when the driver
+    # doesn't report one or the statement wasn't a DML write.
+    rowcount: int | None = field(default=None)
     stats: StreamStats = field(init=False)
 
     def __post_init__(self) -> None:

@@ -101,9 +101,12 @@ class SQLAlchemyDriver(DirectDriver):  # REQ-229, REQ-550
             if result.returns_rows:
                 rows = [tuple(row) for row in result.fetchall()]
                 columns = list(result.keys())
-            else:
-                rows, columns = [], []  # a write with no RETURNING has no result set
-            return QueryResult(rows=rows, column_names=columns)
+                return QueryResult(rows=rows, column_names=columns)
+            # a write with no RETURNING has no result set; report the driver's DML row count instead
+            rowcount = result.rowcount
+            return QueryResult(
+                rows=[], column_names=[], rowcount=rowcount if rowcount >= 0 else None
+            )
 
     async def close(self) -> None:
         engine = self._engine

@@ -5,7 +5,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 const QUERY = `
 MATCH r = (n:PetStore:Inquiries)-[*..5]-(mEmployees:Shelter:Employees)
@@ -14,7 +14,7 @@ LIMIT 2500
 `;
 
 test("variable-length cross-source path executes without FederationError", async ({ request }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: QUERY },
     headers: { "Content-Type": "application/json" },
   });
@@ -36,7 +36,7 @@ test("variable-length cross-source path executes without FederationError", async
 });
 
 test("variable-length path RETURN a, b returns node objects not flat columns", async ({ request }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: {
       query:
         "MATCH r = ((a:PetStore:Inquiries)-[*..5]-(b:Shelter:Employees)) RETURN a, b LIMIT 5",

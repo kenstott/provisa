@@ -170,10 +170,25 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
     results = sqlglot.transpile(pg_sql, read="postgres", write=target_dialect)
     if not results:
         raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
+    result = results[0]
+    if target_dialect == "sqlite":
+        # SQLite has no schema/catalog concept — a direct-execution write against a sqlite
+        # source must reference the bare table name (matches provisa/observability/ops_schema.py's
+        # `use_schema = engine.dialect.name != "sqlite"` convention elsewhere in the codebase).
+        result = _strip_schema_qualifiers(result)
     from provisa.observability.stage_trace import trace_stage
 
-    trace_stage(f"transpile.{target_dialect}", results[0])
-    return results[0]
+    trace_stage(f"transpile.{target_dialect}", result)
+    return result
+
+
+def _strip_schema_qualifiers(sql: str) -> str:
+    """Drop db/catalog qualifiers from every table reference (sqlite target only)."""
+    tree = sqlglot.parse_one(sql, read="sqlite")
+    for table in tree.find_all(exp.Table):
+        table.set("db", None)
+        table.set("catalog", None)
+    return tree.sql(dialect="sqlite")
 
 
 # ── CTE rewriter ──────────────────────────────────────────────────────────────

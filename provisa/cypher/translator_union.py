@@ -61,6 +61,13 @@ class _UnionMixin:  # mixin for _Translator
             else None
         )
 
+        # Scope startNode/endNode properties to what the query actually references (mirrors
+        # _build_domain_union's use of _collect_var_props). An unreferenced n/m — e.g.
+        # `MATCH (n)-[r]->(m) RETURN r` — pulls in zero property columns, so masked columns
+        # on node types the query never asked for don't trip V003 column-visibility checks.
+        src_props_wanted = set(self._collect_var_props(src_col))
+        tgt_props_wanted = set(self._collect_var_props(tgt_col))
+
         branches: list[exp.Select] = []
         for rm in self._lm.relationships.values():
             src_nm = self._lm.nodes.get(rm.source_label)
@@ -96,6 +103,8 @@ class _UnionMixin:  # mixin for _Translator
             )
             src_props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]
             for prop_name, col_name in src_nm.properties.items():
+                if prop_name not in src_props_wanted:
+                    continue
                 src_props_exprs.extend(
                     [
                         exp.Literal.string(prop_name),
@@ -127,6 +136,8 @@ class _UnionMixin:  # mixin for _Translator
             )
             tgt_props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]
             for prop_name, col_name in tgt_nm.properties.items():
+                if prop_name not in tgt_props_wanted:
+                    continue
                 tgt_props_exprs.extend(
                     [
                         exp.Literal.string(prop_name),

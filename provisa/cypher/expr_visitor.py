@@ -170,6 +170,19 @@ class ExprLowering:
         right = self.lower(node.right)
         if op in _BINARY_ARITH:
             return _BINARY_ARITH[op](this=left, expression=right)
+        if op in ("=", "<>", "!="):
+            # `n.id` is the graph's synthetic identity property — always engine-typed VARCHAR
+            # (built via CAST(... AS TEXT) across heterogeneous node types in a UNION). Comparing
+            # it to a bound parameter/literal lets the engine infer the parameter's Python type
+            # (e.g. INTEGER) and coerce the VARCHAR column instead, which raises a conversion
+            # error on any non-numeric id value (blank/UUID ids from other node types in the
+            # same UNION). Casting the non-property side to VARCHAR forces string-space
+            # comparison, matching the column's actual engine type.
+            if isinstance(node.left, Property) and node.left.name == "id":
+                right = exp.Cast(this=right, to=exp.DataType.build("text"))
+            elif isinstance(node.right, Property) and node.right.name == "id":
+                left = exp.Cast(this=left, to=exp.DataType.build("text"))
+            return _BINARY_CMP[op](this=left, expression=right)
         if op in _BINARY_CMP:
             return _BINARY_CMP[op](this=left, expression=right)
         if op == "^":

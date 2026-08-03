@@ -5,7 +5,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 const QUERY = `MATCH (n)
 WHERE n.email IS NOT NULL
@@ -18,9 +18,9 @@ RETURN DISTINCT "relationship" AS entity, r.email AS email
 LIMIT 25`;
 
 test("UNION ALL query with email filter executes without SYNTAX_ERROR", async ({ request }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: QUERY },
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Role": "DEV" },
   });
 
   const body = await resp.json();

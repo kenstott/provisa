@@ -5,7 +5,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 const QUERY = `
 MATCH (a:Inquiries)
@@ -20,7 +20,7 @@ RETURN a, b, c, d, e, rUsers, mUsers, r1, r2, r3, r4
 `;
 
 test("cypher breed filter resolves breedName without FederationError", async ({ request }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: QUERY },
     headers: { "Content-Type": "application/json" },
   });

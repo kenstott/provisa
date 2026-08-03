@@ -8,11 +8,11 @@
 // REQ-670: Cypher write endpoints (CREATE/SET/DELETE) return the number of rows
 // affected in an `affected_rows` field of the JSON response body.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 import type { APIRequestContext } from "playwright/test";
 
-const BASE = "http://localhost:8000/data/cypher";
-const HEADERS = { "Content-Type": "application/json", "x-provisa-role": "admin" };
+const BASE = `${BACKEND_URL}/data/cypher`;
+const HEADERS = { "Content-Type": "application/json", "x-provisa-role": "org_admin" };
 const ID = 99981; // sentinel id, cleaned up by the DELETE step
 
 async function cypher(request: APIRequestContext, query: string) {
@@ -23,11 +23,11 @@ test("REQ-670: Cypher CREATE returns affected_rows count of inserted rows", asyn
   request,
 }) => {
   // Pre-clean any leftover sentinel row from a prior aborted run.
-  await cypher(request, `MATCH (n:Customers) WHERE n.id = ${ID} DELETE n`);
+  await cypher(request, `MATCH (n:Users) WHERE n.id = ${ID} DELETE n`);
 
   const resp = await cypher(
     request,
-    `CREATE (n:Customers {id: ${ID}, name: 'E2E Cypher', email: 'e2e-cypher@example.com', region: 'e2e-cypher'})`,
+    `CREATE (n:Users {id: ${ID}, name: 'E2E Cypher', email: 'e2e-cypher@example.com'})`,
   );
 
   expect(resp.status()).toBe(200);
@@ -42,7 +42,7 @@ test("REQ-670: Cypher SET returns affected_rows count of updated rows", async ({
 }) => {
   const resp = await cypher(
     request,
-    `MATCH (n:Customers) WHERE n.id = ${ID} SET n.name = 'E2E Cypher Updated'`,
+    `MATCH (n:Users) WHERE n.id = ${ID} SET n.name = 'E2E Cypher Updated'`,
   );
 
   expect(resp.status()).toBe(200);
@@ -57,7 +57,7 @@ test("REQ-670: Cypher DELETE returns affected_rows count of deleted rows", async
 }) => {
   const resp = await cypher(
     request,
-    `MATCH (n:Customers) WHERE n.id = ${ID} DELETE n`,
+    `MATCH (n:Users) WHERE n.id = ${ID} DELETE n`,
   );
 
   expect(resp.status()).toBe(200);

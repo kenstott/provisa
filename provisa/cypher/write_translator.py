@@ -363,15 +363,46 @@ class WriteTranslator:
         self._label_map = label_map
 
     def _resolve_mapping(self, label: str) -> NodeMapping:
-        mapping = self._label_map.nodes.get(label)
-        if mapping is None:
+        parts = [self._label_map.canonical_label(p) for p in label.split(":")]
+        full_type = [p for p in parts if p in self._label_map.nodes]
+        domain_hits = [p for p in parts if p in self._label_map.domains]
+        table_hits = [p for p in parts if p in self._label_map.nodes_by_table]
+
+        type_name: str | None = None
+        if full_type:
+            if len(full_type) > 1:
+                raise CypherWriteParseError(
+                    f"Ambiguous label {label!r}: multiple full type labels {full_type}"
+                )
+            type_name = full_type[0]
+        elif domain_hits and table_hits:
+            domain_set = set(self._label_map.domains[domain_hits[0]])
+            table_set = set(self._label_map.nodes_by_table[table_hits[0]])
+            candidates = domain_set & table_set
+            if len(candidates) == 1:
+                type_name = candidates.pop()
+            elif len(candidates) > 1:
+                raise CypherWriteParseError(
+                    f"Ambiguous label {label!r}: matches multiple types {sorted(candidates)}"
+                )
+            else:
+                raise CypherWriteParseError(f"No node type found for label {label!r}")
+        elif table_hits:
+            candidates = self._label_map.nodes_by_table[table_hits[0]]
+            if len(candidates) == 1:
+                type_name = candidates[0]
+            else:
+                raise CypherWriteParseError(
+                    f"Label {label!r} is ambiguous across domains {sorted(candidates)}; "
+                    "qualify with Domain:Table"
+                )
+
+        if type_name is None:
             raise CypherWriteParseError(f"Label {label!r} is not registered in the label map")
-        return mapping
+        return self._label_map.nodes[type_name]
 
     def _qualified_table(self, mapping: NodeMapping) -> str:
         parts = []
-        if mapping.catalog_name:
-            parts.append(_q(mapping.catalog_name))
         if mapping.schema_name:
             parts.append(_q(mapping.schema_name))
         parts.append(_q(mapping.sql_table_name))

@@ -5,13 +5,13 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 // REQ-345: POST /query/cypher endpoint accepts Cypher SELECT query and optional named parameters
 test("REQ-345: POST /data/cypher executes basic Cypher SELECT query", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n) RETURN n LIMIT 1" },
     headers: { "Content-Type": "application/json" },
   });
@@ -27,7 +27,7 @@ test("REQ-345: POST /data/cypher executes basic Cypher SELECT query", async ({
 test("REQ-345: POST /data/cypher accepts optional named parameters", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: {
       query: "MATCH (n) WHERE n.id = $id RETURN n LIMIT 1",
       params: { id: 1 },
@@ -46,7 +46,7 @@ test("REQ-345: POST /data/cypher accepts optional named parameters", async ({
 test("REQ-345: POST /data/cypher accepts Cypher query without params field", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n) RETURN COUNT(n) as count" },
     headers: { "Content-Type": "application/json" },
   });
@@ -62,7 +62,7 @@ test("REQ-345: POST /data/cypher accepts Cypher query without params field", asy
 test("REQ-345: POST /data/cypher applies RLS and column masking governance", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: {
       query: "MATCH (n) RETURN n LIMIT 5",
     },
@@ -83,7 +83,7 @@ test("REQ-345: POST /data/cypher applies RLS and column masking governance", asy
 test("REQ-354: POST /query/nl accepts natural language question and returns job_id", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/query/nl", {
+  const resp = await request.post(`${BACKEND_URL}/query/nl`, {
     data: {
       q: "Show me all entities",
       role: "default",
@@ -103,7 +103,7 @@ test("REQ-354: POST /query/nl accepts natural language question and returns job_
 test("REQ-354: POST /query/nl accepts role parameter in request body", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/query/nl", {
+  const resp = await request.post(`${BACKEND_URL}/query/nl`, {
     data: {
       q: "What is the count of all records?",
       role: "analyst",
@@ -121,7 +121,7 @@ test("REQ-354: GET /query/nl/{job_id} polls for NL query result", async ({
   request,
 }) => {
   // First, submit an NL query
-  const submitResp = await request.post("http://localhost:8000/query/nl", {
+  const submitResp = await request.post(`${BACKEND_URL}/query/nl`, {
     data: {
       q: "List all entities",
       role: "default",
@@ -135,7 +135,7 @@ test("REQ-354: GET /query/nl/{job_id} polls for NL query result", async ({
 
   // Poll for result
   const pollResp = await request.get(
-    `http://localhost:8000/query/nl/${jobId}`,
+    `${BACKEND_URL}/query/nl/${jobId}`,
     {
       headers: { "Content-Type": "application/json" },
     }
@@ -151,7 +151,7 @@ test("REQ-354: GET /query/nl/{job_id} polls for NL query result", async ({
 test("REQ-537: GET /data/schema-version returns boot_id-counter format string", async ({
   request,
 }) => {
-  const resp = await request.get("http://localhost:8000/data/schema-version", {
+  const resp = await request.get(`${BACKEND_URL}/data/schema-version`, {
     headers: { "Content-Type": "application/json" },
   });
 
@@ -170,11 +170,11 @@ test("REQ-537: GET /data/schema-version returns boot_id-counter format string", 
 test("REQ-537: GET /data/schema-version maintains monotonic counter", async ({
   request,
 }) => {
-  const resp1 = await request.get("http://localhost:8000/data/schema-version");
+  const resp1 = await request.get(`${BACKEND_URL}/data/schema-version`);
   const body1 = await resp1.json();
   const version1 = body1.version;
 
-  const resp2 = await request.get("http://localhost:8000/data/schema-version");
+  const resp2 = await request.get(`${BACKEND_URL}/data/schema-version`);
   const body2 = await resp2.json();
   const version2 = body2.version;
 
@@ -186,7 +186,7 @@ test("REQ-537: GET /data/schema-version maintains monotonic counter", async ({
 test("REQ-642: POST /data/graph-analytics accepts Cypher query and algorithm name", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/graph-analytics", {
+  const resp = await request.post(`${BACKEND_URL}/data/graph-analytics`, {
     data: {
       query: "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 10",
       algorithm: "pagerank",
@@ -210,7 +210,7 @@ test("REQ-642: POST /data/graph-analytics accepts Cypher query and algorithm nam
 test("REQ-642: POST /data/graph-analytics returns nodes with _analytics field", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/graph-analytics", {
+  const resp = await request.post(`${BACKEND_URL}/data/graph-analytics`, {
     data: {
       query: "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 5",
       algorithm: "betweenness_centrality",
@@ -236,7 +236,7 @@ test("REQ-642: POST /data/graph-analytics returns nodes with _analytics field", 
 test("REQ-642: POST /data/graph-analytics response includes elapsed_ms", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/graph-analytics", {
+  const resp = await request.post(`${BACKEND_URL}/data/graph-analytics`, {
     data: {
       query: "MATCH (n) RETURN n LIMIT 1",
       algorithm: "pagerank",
@@ -256,7 +256,7 @@ test("REQ-642: POST /data/graph-analytics response includes elapsed_ms", async (
 test("REQ-750: POST /data/cypher supports CALL db.labels() procedure", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "CALL db.labels()" },
     headers: { "Content-Type": "application/json" },
   });
@@ -272,7 +272,7 @@ test("REQ-750: POST /data/cypher supports CALL db.labels() procedure", async ({
 test("REQ-750: POST /data/cypher supports CALL db.relationshipTypes() procedure", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "CALL db.relationshipTypes()" },
     headers: { "Content-Type": "application/json" },
   });
@@ -288,7 +288,7 @@ test("REQ-750: POST /data/cypher supports CALL db.relationshipTypes() procedure"
 test("REQ-750: POST /data/cypher supports CALL db.propertyKeys() procedure", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "CALL db.propertyKeys()" },
     headers: { "Content-Type": "application/json" },
   });
@@ -304,7 +304,7 @@ test("REQ-750: POST /data/cypher supports CALL db.propertyKeys() procedure", asy
 test("REQ-750: Cypher nodes returned with id, label, tableLabel, and properties", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n) RETURN n LIMIT 1" },
     headers: { "Content-Type": "application/json" },
   });
@@ -331,7 +331,7 @@ test("REQ-750: Cypher nodes returned with id, label, tableLabel, and properties"
 test("REQ-750: Cypher edges returned with identity, start, end, type, and properties", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: {
       query: "MATCH (n)-[r]->(m) RETURN r LIMIT 1",
     },
@@ -360,9 +360,9 @@ test("REQ-750: Cypher edges returned with identity, start, end, type, and proper
 test("REQ-750: Cypher paths returned with nodes, edges, and length/hops", async ({
   request,
 }) => {
-  const resp = await request.post("http://localhost:8000/data/cypher", {
+  const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: {
-      query: "MATCH p = (n)-[*1..2]->(m) RETURN p LIMIT 1",
+      query: "MATCH p = (a:Inquiries)-[:HAS_PETS*1..2]->(b:Pets) RETURN p LIMIT 1",
     },
     headers: { "Content-Type": "application/json" },
   });

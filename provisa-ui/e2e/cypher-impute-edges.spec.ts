@@ -5,7 +5,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 /**
  * Verifies that auto-impute adds edges between nodes returned from a node-only query.
@@ -13,7 +13,12 @@ import { test, expect } from "./coverage";
  * integer ids (registered via node_ids table), causing canvas lookup failures.
  */
 test("auto-impute fires and returns integer-id edges for meta node query", async ({ page }) => {
-  await page.goto("http://localhost:3000/graph");
+  await page.goto("/graph");
+
+  // The Meta domain is admin-only (config/provisa.yaml grants it to org_admin, not the
+  // default "analyst" role) — select org_admin so the query below has access.
+  await page.locator('[data-testid="role-selector-trigger"]').click();
+  await page.getByRole("menuitem", { name: "org_admin", exact: true }).click();
 
   // Intercept impute responses before anything fires
   const imputeResponsePromise = page.waitForResponse(
@@ -75,7 +80,7 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
  */
 test("impute-relationships API returns integer startNode/endNode ids", async ({ request }) => {
   // Get a few Meta nodes from a real query first
-  const queryResp = await request.post("http://localhost:8000/data/cypher", {
+  const queryResp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n:Meta) RETURN n LIMIT 10" },
     headers: { "Content-Type": "application/json", "X-Role": "DEV" },
   });
@@ -92,7 +97,7 @@ test("impute-relationships API returns integer startNode/endNode ids", async ({ 
   }
 
   // Now impute with all 10 nodes (using stable integer ids as the frontend sends)
-  const imputeResp = await request.post("http://localhost:8000/data/impute-relationships", {
+  const imputeResp = await request.post(`${BACKEND_URL}/data/impute-relationships`, {
     data: { nodes },
     headers: { "Content-Type": "application/json", "X-Role": "DEV" },
   });
