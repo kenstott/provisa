@@ -538,7 +538,8 @@
           </div>
           <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
             <div class="term-bar"><span></span><span></span><span></span></div>
-            <pre><code><span class="c-comment"># One wheel. Everything inside. (Requires CPython 3.12)</span>
+            <pre><code><span class="c-comment"># One wheel. Everything inside. (Python 3.12 or 3.13)</span>
+<span class="c-cmd">python3</span> -m venv .venv <span class="c-comment">&& source .venv/bin/activate</span>
 <span class="c-cmd">pip</span> install <span class="c-str">"provisa[embedded]"</span>
 
 <span class="c-cmd">provisa</span> run          <span class="c-comment"># your data</span>
