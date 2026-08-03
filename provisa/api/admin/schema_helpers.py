@@ -412,6 +412,11 @@ async def _fetch_table_with_columns(
         mv_persist=row.get("mv_persist") or "replace",  # REQ-965
         mv_primary_key=list(row.get("mv_primary_key") or []),  # REQ-970
         mv_incremental=bool(row.get("mv_incremental", False)),  # REQ-969
+        mv_calendar=row.get("mv_calendar"),  # REQ-962
+        mv_grain=row.get("mv_grain"),  # REQ-962/1168
+        mv_allowed_lateness=float(row.get("mv_allowed_lateness") or 0.0),  # REQ-961
+        mv_expected_events=row.get("mv_expected_events"),  # REQ-961
+        mv_business_day_grain=bool(row.get("mv_business_day_grain", False)),  # REQ-962
         modeling_role=row.get("modeling_role"),  # REQ-1320
         modeling_history=row.get("modeling_history"),  # REQ-1320
         data_product=bool(row.get("data_product", False)),

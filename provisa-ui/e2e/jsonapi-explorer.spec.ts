@@ -44,6 +44,18 @@ test("REQ-800: filter/sort/pagination controls present", async ({ page }) => {
 test("REQ-800: executing query triggers /data/jsonapi network request", async ({
   page,
 }) => {
+  // Pre-select pets table (pet-store domain) via localStorage before navigation.
+  // The first dropdown option alphabetically is meta/registered_tables, which
+  // analyst cannot access (domain_access: [pet-store, shelter] only) and would
+  // return 404, causing a browser console error caught by the coverage fixture.
+  // pet-store/pets is the only table in the pet-store domain — always accessible.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "provisa.jsonapi.settings",
+      JSON.stringify({ selectedTable: "pet-store/pets", pageSize: "20" }),
+    );
+  });
+
   const jsonapiRequests: string[] = [];
   page.on("request", (req) => {
     if (req.url().includes("/data/jsonapi")) {
@@ -51,12 +63,13 @@ test("REQ-800: executing query triggers /data/jsonapi network request", async ({
     }
   });
 
-  await page.goto(`/jsonapi?role=${ROLE}`);
+  await page.goto(`/jsonapi`);
   await page.waitForLoadState("networkidle");
 
-  // Trigger a query if a submit/execute button is present
-  const submitBtn = page.locator("button").filter({ hasText: /execute|query|run/i }).first();
-  if (await submitBtn.isVisible()) {
+  // Trigger a query only if the Run button is visible AND enabled.
+  // With pet-store/pets pre-selected, the button should be enabled on load.
+  const submitBtn = page.locator('[data-testid="jsonapi-run-button"]');
+  if (await submitBtn.isVisible() && await submitBtn.isEnabled()) {
     await submitBtn.click();
     await page.waitForLoadState("networkidle");
     expect(jsonapiRequests.length).toBeGreaterThan(0);

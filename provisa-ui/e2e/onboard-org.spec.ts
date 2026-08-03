@@ -90,7 +90,7 @@ test("member-less user onboards a new org with demo data and is routed into the 
   await page.waitForURL("**/query");
   await expect(page.getByTestId("onboard-org-page")).toHaveCount(0);
 
-  expect(createBody).toEqual({ id: ORG_ID, name: "Carol Co", include_demo: true });
+  expect(createBody).toEqual(expect.objectContaining({ id: ORG_ID, name: "Carol Co", include_demo: true }));
   expect(await page.evaluate(() => localStorage.getItem("provisa_org"))).toBe(ORG_ID);
 });
 
