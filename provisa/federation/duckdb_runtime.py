@@ -122,27 +122,44 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
 
-    def attach_control_plane(self, db_path: str, schema_name: str) -> None:
-        """Attach the tenant control-plane SQLite DB as the ``provisa_admin`` catalog.
+    def attach_control_plane(self, db_path: str, schema_name: str, dialect: str = "sqlite") -> None:
+        """Attach the tenant control-plane DB as the ``provisa_admin`` catalog.
 
         Trino parity: on Trino, ``provisa_admin`` is a real catalog backed by the Postgres
         control-plane DB (configured via a catalog file). On the native DuckDB tier there is no
-        such catalog, so this method provides it by ATTACHing the local SQLite tenant DB
-        READ_ONLY and wrapping every table under the schema the compiler emits (``org_<id>``).
+        such catalog, so this method provides it by ATTACHing the tenant control-plane DB itself.
 
-        READ_ONLY prevents DuckDB from acquiring a write lock on the SQLite file while aiosqlite
-        (SQLAlchemy) concurrently writes it. Safe concurrency depends on the control-plane engine
-        opening this file in WAL mode (set by core.database._on_sqlite_connect) — WAL lets this
-        READ_ONLY reader run alongside the writer; without it, a write commit would transiently
-        lock out the reader.
+        Two dialects:
+        - sqlite: ATTACH the local file READ_ONLY, then wrap every table under the schema the
+          compiler emits (``org_<id>``), since a SQLite ATTACH flattens everything into ``main``
+          with no real multi-schema support. READ_ONLY prevents DuckDB from acquiring a write
+          lock on the file while aiosqlite (SQLAlchemy) concurrently writes it. Safe concurrency
+          depends on the control-plane engine opening this file in WAL mode (set by
+          core.database._on_sqlite_connect) — WAL lets this READ_ONLY reader run alongside the
+          writer; without it, a write commit would transiently lock out the reader.
+        - postgresql: ATTACH the connection DSN directly (READ_ONLY). DuckDB's postgres extension
+          maps every real Postgres schema (including ``schema_name``, and the meta views it
+          already holds per api._meta_views) 1:1 under the catalog, so no per-table view-wrapping
+          is needed.
 
-        All tables found in the attached file are exposed — not a hardcoded subset — so future
-        control-plane schema additions are automatically visible without touching this method.
-        Called once from NativeEngineBackend._attach_registered when the tenant DB is SQLite."""
+        All tables/schemas found are exposed — not a hardcoded subset — so future control-plane
+        schema additions are automatically visible without touching this method. Called once from
+        NativeEngineBackend._attach_registered."""
         if self._control_plane_attached:
             return
         if not db_path or db_path == ":memory:":
             return  # in-memory tenant DB (tests/CI without a file): no-op, not an error
+        catalog = "provisa_admin"
+        if dialect == "postgresql":
+            if not self._pg_ext_loaded:
+                self._con.execute("INSTALL postgres")
+                self._con.execute("LOAD postgres")
+                self._pg_ext_loaded = True
+            if catalog not in self._phys_catalogs:
+                self._con.execute(f"ATTACH '{db_path}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
+                self._phys_catalogs.add(catalog)
+            self._control_plane_attached = True
+            return
         if not self._sqlite_loaded:
             self._con.execute("INSTALL sqlite")
             self._con.execute("LOAD sqlite")
@@ -151,7 +168,6 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if raw_alias not in self._raw_attached:
             self._con.execute(f"ATTACH '{db_path}' AS \"{raw_alias}\" (TYPE sqlite, READ_ONLY)")
             self._raw_attached.add(raw_alias)
-        catalog = "provisa_admin"
         if catalog not in self._phys_catalogs:
             self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
             self._phys_catalogs.add(catalog)

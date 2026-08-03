@@ -132,20 +132,28 @@ class NativeEngineBackend(EngineBackend):
             except self._attach_errors:
                 _log.warning("%s attach of %s failed; table not queryable", self.engine.name, key)
 
-        # Native DuckDB path: attach the control-plane SQLite DB as the provisa_admin catalog so
+        # Native DuckDB path: attach the control-plane DB as the provisa_admin catalog so
         # meta/ops entities resolve (parity with Trino, where provisa_admin is a real catalog).
-        # Only runs when: the runtime supports it (DuckDB), the tenant DB is SQLite (native), and
-        # the DB URL points at a real file. Idempotent — the runtime guards with a flag.
+        # Supports both SQLite (file path) and Postgres (libpq DSN) tenant DBs. Idempotent — the
+        # runtime guards with a flag.
         tdb = getattr(state, "tenant_db", None)
+        _dialect = getattr(tdb, "dialect", None)
         if (
             tdb is not None
-            and getattr(tdb, "dialect", None) == "sqlite"
+            and _dialect in ("sqlite", "postgresql")
             and hasattr(self._runtime, "attach_control_plane")
         ):
             _db_url = tdb.engine.url
-            _db_path = str(_db_url.database or "")
             _org_id = getattr(state, "org_id", "default")
-            self._runtime.attach_control_plane(_db_path, f"org_{_org_id}")
+            if _dialect == "postgresql":
+                _pw = f" password={_db_url.password}" if _db_url.password else ""
+                _db_path = (
+                    f"host={_db_url.host} port={_db_url.port} dbname={_db_url.database} "
+                    f"user={_db_url.username}{_pw}"
+                )
+            else:
+                _db_path = str(_db_url.database or "")
+            self._runtime.attach_control_plane(_db_path, f"org_{_org_id}", dialect=_dialect)
 
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------
 
