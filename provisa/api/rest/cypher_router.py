@@ -52,6 +52,7 @@ from provisa.compiler.naming import apply_cql_property as _cql_prop
 
 
 from provisa.executor import stats as _qs_mod
+from provisa.cache.middleware import build_cache_headers
 from provisa.api.rest.cypher_exec import (
     _build_label_map,
     _execute,
@@ -216,7 +217,10 @@ async def _execute_multi_call(
     except Exception as exc:
         log.exception("Cypher serialization failed")
         return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
-    return JSONResponse(content={"columns": columns, "rows": serializable_rows, "type": "cypher"})
+    return JSONResponse(
+        content={"columns": columns, "rows": serializable_rows, "type": "cypher"},
+        headers=build_cache_headers(None),  # REQ-536
+    )
 
 
 def _build_sql_from_ast(
@@ -691,7 +695,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"
-    return JSONResponse(content=content)
+    return JSONResponse(content=content, headers=build_cache_headers(None))  # REQ-536
 
 
 @router.get("/data/graph-schema")
