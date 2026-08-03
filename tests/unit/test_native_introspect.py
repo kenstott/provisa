@@ -232,6 +232,54 @@ async def test_native_tables_sqlite_wrong_schema_returns_empty():
     assert result == []
 
 
+# ── files (directory of CSVs) ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_native_schemas_files_returns_normalised_source_id():
+    result = await native_schemas("e2e-northwind", "files", _empty_pool(), None)
+    assert result == ["e2e_northwind"]
+
+
+@pytest.mark.asyncio
+async def test_native_tables_files_reads_csv_stems(tmp_path):
+    # Write two CSV files into a temp directory
+    (tmp_path / "customers.csv").write_text("id,name\n1,Alice\n")
+    (tmp_path / "orders.csv").write_text("id,customer_id\n1,1\n")
+
+    config_conn = AsyncMock()
+    _res = MagicMock()
+    _res.fetchone.return_value = (str(tmp_path / "**"),)
+    config_conn.execute_core = AsyncMock(return_value=_res)
+
+    result = await native_tables("src", "files", "src", _empty_pool(), config_conn, MagicMock())
+    assert result is not None
+    names = {t.name for t in result}
+    assert names == {"customers", "orders"}
+
+
+@pytest.mark.asyncio
+async def test_native_tables_files_missing_path_returns_none():
+    config_conn = AsyncMock()
+    _res = MagicMock()
+    _res.fetchone.return_value = (None,)
+    config_conn.execute_core = AsyncMock(return_value=_res)
+
+    result = await native_tables("src", "files", "src", _empty_pool(), config_conn, MagicMock())
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_native_tables_files_nonexistent_dir_returns_none():
+    config_conn = AsyncMock()
+    _res = MagicMock()
+    _res.fetchone.return_value = ("/no/such/directory/**",)
+    config_conn.execute_core = AsyncMock(return_value=_res)
+
+    result = await native_tables("src", "files", "src", _empty_pool(), config_conn, MagicMock())
+    assert result is None
+
+
 @pytest.mark.asyncio
 async def test_native_tables_neo4j_returns_empty():
     result = await native_tables("src", "neo4j", "neo4j", _empty_pool(), None, MagicMock())

@@ -463,6 +463,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         DuckDBCsvConnector,
         DuckDBDeltaConnector,
         DuckDBDuckdbConnector,
+        DuckDBFilesConnector,
         DuckDBFirebirdConnector,
         DuckDBGsheetsConnector,
         DuckDBIcebergConnector,
@@ -483,6 +484,7 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
             DuckDBCsvConnector(),
             DuckDBParquetConnector(),
+            DuckDBFilesConnector(),
             # REQ-899 community-extension connectors: external DB / warehouse / SaaS reach in place.
             DuckDBMssqlConnector(),
             DuckDBMongoConnector(),
