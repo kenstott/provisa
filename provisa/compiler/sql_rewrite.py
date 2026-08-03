@@ -184,8 +184,8 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     # Build lookup structures from ctx
     # table_name (lower) → list of (schema_name, table_name) physical pairs
     by_name: dict[str, list[tuple[str, str]]] = {}
-    # (schema_lower, name_lower) → (schema_name, table_name) canonical pair
-    by_schema_name: dict[tuple[str, str], tuple[str, str]] = {}
+    # (schema_lower, name_lower) → (catalog_name, schema_name, table_name) canonical triple
+    by_schema_name: dict[tuple[str, str], tuple[str, str, str]] = {}
 
     seen: set[tuple[str, str]] = set()
     for meta in ctx.tables.values():
@@ -196,21 +196,25 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         nl = meta.table_name.lower()
         sl = meta.schema_name.lower()
         by_name.setdefault(nl, []).append((meta.schema_name, meta.table_name))
-        by_schema_name[(sl, nl)] = (meta.schema_name, meta.table_name)
+        by_schema_name[(sl, nl)] = (meta.catalog_name, meta.schema_name, meta.table_name)
         # Also map pre-alias name → physical name (e.g. "registered_tables" → "registered_tables_meta")
         orig_nl: str | None = meta.original_table_name.lower() if meta.original_table_name else None
         if orig_nl is not None:
             by_name.setdefault(orig_nl, []).append((meta.schema_name, meta.table_name))
-            by_schema_name[(sl, orig_nl)] = (meta.schema_name, meta.table_name)
+            by_schema_name[(sl, orig_nl)] = (meta.catalog_name, meta.schema_name, meta.table_name)
         # Map domain-name schema variant → physical (e.g. "shelter"."shelter__animal_breeds" → "graphql_remote"."shelter__animal_breeds")
         if meta.domain_id:
             from provisa.compiler.naming import domain_to_sql_name
 
             domain_sl = domain_to_sql_name(meta.domain_id).lower()
             if domain_sl != sl:
-                by_schema_name[(domain_sl, nl)] = (meta.schema_name, meta.table_name)
+                by_schema_name[(domain_sl, nl)] = (meta.catalog_name, meta.schema_name, meta.table_name)
                 if orig_nl is not None:
-                    by_schema_name[(domain_sl, orig_nl)] = (meta.schema_name, meta.table_name)
+                    by_schema_name[(domain_sl, orig_nl)] = (
+                        meta.catalog_name,
+                        meta.schema_name,
+                        meta.table_name,
+                    )
 
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
     tree = sqlglot.parse_one(sql, read="postgres")
@@ -220,26 +224,32 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             return node
         name = node.name
         db = node.db  # schema
+        catalog = node.catalog
         alias = node.alias
 
         if db:
             # Already schema-qualified — just ensure quoting
             canonical = by_schema_name.get((db.lower(), name.lower()))
             if canonical:
-                schema_q, table_q = canonical
+                catalog_q, schema_q, table_q = canonical
             else:
-                schema_q, table_q = db, name
+                # No canonical match — preserve whatever catalog the input already carried
+                # (e.g. hand-authored view_sql already written as "catalog"."schema"."table")
+                # rather than silently dropping it.
+                catalog_q, schema_q, table_q = catalog, db, name
         else:
             # Unqualified — try unique match
             matches = by_name.get(name.lower(), [])
             if len(matches) == 1:
                 schema_q, table_q = matches[0]
+                catalog_q = None
             else:
                 return node  # ambiguous or unknown — leave unchanged
 
         new_tbl = exp.Table(
             this=exp.Identifier(this=table_q, quoted=True),
             db=exp.Identifier(this=schema_q, quoted=True),
+            catalog=exp.Identifier(this=catalog_q, quoted=True) if catalog_q else None,
             alias=exp.TableAlias(this=exp.Identifier(this=alias)) if alias else None,
         )
         return new_tbl
@@ -271,7 +281,9 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
         if ref not in replacements:
             replacements[ref] = physical
     sql = _apply_replacements(sql, replacements)
-    return normalize_table_refs(sql, ctx)
+    # DIRECT route: a native driver addresses schema.table, not catalog.schema.table — strip the
+    # catalog normalize_table_refs re-attaches for already-qualified refs (REQ-641/REQ-863).
+    return strip_catalog(normalize_table_refs(sql, ctx))
 
 
 def _all_table_metas(ctx: CompilationContext) -> list[TableMeta]:

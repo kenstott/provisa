@@ -84,6 +84,12 @@ from provisa.compiler.schema_inputs import (
 # schema never exposes ops tables/columns to any query surface.
 _IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta"})
 
+# Domains where an empty visible_to=[] means visible to NO role (not unrestricted),
+# matching stage2.py::build_governance_context's interpretation for the same seeded
+# data. Ops columns are seeded with visible_to=[] (REQ-884/_seed_ops_domain) and
+# require an explicit per-role grant (REQ-1133) rather than defaulting open.
+_LOCKDOWN_DOMAINS: frozenset[str] = frozenset({"ops"})
+
 
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
     """Filter tables by role's domain access. Build per-table metadata."""
@@ -137,7 +143,10 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         visible_cols = [
             c
             for c in table["columns"]
-            if (not c["visible_to"] or role["id"] in c["visible_to"])
+            if (
+                (not c["visible_to"] and table["domain_id"] not in _LOCKDOWN_DOMAINS)
+                or role["id"] in c["visible_to"]
+            )
             and not c.get("native_filter_type")
             and not (_hide_meta_gov and c["column_name"] in GOVERNANCE_META_COLUMNS)
         ]

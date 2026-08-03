@@ -486,7 +486,7 @@ tables:
   source_id: __derived__
   table: dim_pet
   view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM
-    "pet_store"."pets"
+    "pet_store_sqlite"."pet_store"."pets"
 - columns:
   - name: _nf_id
     native_filter_type: query_param
@@ -601,8 +601,8 @@ tables:
   schema: views
   source_id: __derived__
   table: fact_pet_inquiries
-  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "default"."inquiries" GROUP
-    BY "pet_id"
+  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "inquiries_sqlite"."default"."inquiries"
+    GROUP BY "pet_id"
 - alias: pet_by_status
   columns:
   - name: _nf_status
@@ -870,6 +870,7 @@ tables:
     - org_admin
     - analyst
   - name: employee_id
+    gql_selection: "employee_id: employee { id }"
     visible_to:
     - org_admin
     - analyst
@@ -901,6 +902,7 @@ tables:
     - org_admin
     - analyst
   - name: employee_id
+    gql_selection: "employee_id: employee { id }"
     visible_to:
     - org_admin
     - analyst

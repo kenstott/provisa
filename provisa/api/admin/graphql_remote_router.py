@@ -23,10 +23,10 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlalchemy import and_, delete
+from sqlalchemy import and_, delete, select
 
 from provisa.api.errors import ApiError
-from provisa.core.schema_org import domains, registered_tables, sources
+from provisa.core.schema_org import domains, registered_tables, sources, table_columns
 
 if TYPE_CHECKING:
     pass
@@ -134,7 +134,28 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     from provisa.compiler.naming import apply_sql_name
 
     async with tenant_db.acquire() as conn:
-        # Delete stale rows (e.g. pre-fix camelCase names) before upserting fresh sql-convention set
+        # Introspection is not the authority on governance grants — preserve any
+        # visible_to already set (e.g. by config apply) before the stale rows
+        # (e.g. pre-fix camelCase names) are dropped and re-inserted.
+        _existing_rows = await conn.execute_core(
+            select(
+                registered_tables.c.table_name,
+                table_columns.c.column_name,
+                table_columns.c.visible_to,
+            ).select_from(
+                registered_tables.join(
+                    table_columns, table_columns.c.table_id == registered_tables.c.id
+                )
+            ).where(
+                and_(
+                    registered_tables.c.source_id == source_id,
+                    registered_tables.c.schema_name == "graphql",
+                )
+            )
+        )
+        _existing_grants: dict[tuple[str, str], list] = {
+            (r.table_name, r.column_name): list(r.visible_to or []) for r in _existing_rows.fetchall()
+        }
         await conn.execute_core(
             delete(registered_tables).where(
                 and_(
@@ -155,7 +176,9 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 columns=[
                     Column(
                         name=apply_sql_name(c["name"]),
-                        visible_to=[],
+                        visible_to=_existing_grants.get(
+                            (_sql_name, apply_sql_name(c["name"])), []
+                        ),
                         description=c.get("description"),
                         data_type=_PROVISA_TO_PHYSICAL_TYPE.get(c.get("type") or "text", "varchar"),
                         object_fields=_build_object_fields(c.get("gql_object_fields") or []),
