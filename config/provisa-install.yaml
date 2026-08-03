@@ -952,6 +952,15 @@ tables:
   schema: default
   source_id: inquiries-sqlite
   table: users
+vector_models:
+  # REQ-1008: MCP catalog search (search_catalog) needs an enabled embedding model registered
+  # here, or it raises "catalog search requires an enabled embedding model" and the explore
+  # chat falls back to browsing. Local sentence-transformers — no API key, no network at query
+  # time once the model is cached — so the demo works offline (provisa[vector] extra).
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
 webhooks:
 - arguments:
   - name: name

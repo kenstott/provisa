@@ -125,6 +125,9 @@ oracle = ["oracledb"]
 all-drivers = ["aiomysql", "aioodbc", "oracledb"]
 govdata = ["askamerica[engine]"]
 firebase = ["firebase-admin"]
+# Local embedding provider for catalog search (REQ-1008, provisa/vector/providers.py
+# HuggingFaceLocalProvider). No network at query time once the model is cached.
+vector = ["sentence-transformers"]
 # Encryption master-key providers (REQ-690-694). boto3 (AWS KMS) is a base dependency,
 # so aws_kms needs no extra. These optional SDKs auto-enable their provider in the
 # registry (provisa/encryption/registry.py) once installed.

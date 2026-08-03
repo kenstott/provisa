@@ -7,7 +7,9 @@ COPY vendor/ ./vendor/
 # [firebase] pulls firebase-admin — the container is the single artifact for cloud deploys where
 # Firebase is a first-class IdP (REQ-1266). Without it FirebaseAuthProvider raises ImportError and
 # every authenticated request 500s. The desktop wheel keeps firebase optional; the image bakes it in.
-RUN pip install --no-cache-dir '.[firebase]'
+# [vector] pulls sentence-transformers — the demo config (provisa-install.yaml) registers a
+# huggingface vector_models entry so MCP catalog search (REQ-1008) works out of the box.
+RUN pip install --no-cache-dir '.[firebase,vector]'
 
 # Stage 2: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
