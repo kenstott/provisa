@@ -12,11 +12,12 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
 const SNAPSHOT_PATH = CONFIG_PATH + ".snapshot";
+const BACKEND_URL = `http://localhost:${process.env.PROVISA_E2E_API_PORT ?? "8901"}`;
 
 export default async function globalSetup() {
   const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
   fs.writeFileSync(SNAPSHOT_PATH, yaml);
-  const res = await fetch("http://localhost:8000/admin/config", {
+  const res = await fetch(`${BACKEND_URL}/admin/config`, {
     method: "PUT",
     headers: { "Content-Type": "application/yaml" },
     body: yaml,
@@ -28,11 +29,11 @@ export default async function globalSetup() {
   // Ensure the setup wizard will not block page tests: if needs_setup=true, run the
   // setup endpoint to create the initial admin user.  The config already contains
   // auth.provider = basic, so POST /setup with provider=basic completes the flow.
-  const statusRes = await fetch("http://localhost:8000/setup/status");
+  const statusRes = await fetch(`${BACKEND_URL}/setup/status`);
   if (statusRes.ok) {
     const status = await statusRes.json() as { needs_setup: boolean };
     if (status.needs_setup) {
-      const setupRes = await fetch("http://localhost:8000/setup", {
+      const setupRes = await fetch(`${BACKEND_URL}/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -52,7 +53,7 @@ export default async function globalSetup() {
   // Wait for schema to rebuild (graph-schema endpoint reflects PetStore tables)
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
-    const schema = await fetch("http://localhost:8000/data/graph-schema").then((r) => r.json());
+    const schema = await fetch(`${BACKEND_URL}/data/graph-schema`).then((r) => r.json());
     const labels: string[] = (schema.node_labels ?? []).map((n: { label: string }) => n.label);
     if (labels.some((l) => l.startsWith("PetStore:"))) return;
   }

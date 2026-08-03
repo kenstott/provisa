@@ -7,13 +7,12 @@
 
 import { test, expect } from "./coverage";
 
-const BASE = "http://localhost:5173";
 const ROLE = "admin";
 
 // REQ-800: JSON:API Explorer UI page at /jsonapi
 
 test("REQ-800: /jsonapi page loads without errors", async ({ page }) => {
-  await page.goto(`${BASE}/jsonapi`);
+  await page.goto(`/jsonapi`);
   await expect(page).not.toHaveTitle(/error/i);
   await expect(page.locator("body")).toBeVisible();
 });
@@ -21,21 +20,21 @@ test("REQ-800: /jsonapi page loads without errors", async ({ page }) => {
 test("REQ-800: /jsonapi page renders domain/table selector", async ({
   page,
 }) => {
-  await page.goto(`${BASE}/jsonapi?role=${ROLE}`);
+  await page.goto(`/jsonapi?role=${ROLE}`);
   await page.waitForLoadState("networkidle");
   const body = await page.locator("body").textContent();
   expect(body).not.toMatch(/TypeError|ReferenceError/);
 });
 
 test("REQ-800: tables listed grouped by domain", async ({ page }) => {
-  await page.goto(`${BASE}/jsonapi?role=${ROLE}`);
+  await page.goto(`/jsonapi?role=${ROLE}`);
   await page.waitForLoadState("networkidle");
   // With a live backend, table groups should appear; without one, graceful empty state
   await expect(page.locator("body")).toBeVisible();
 });
 
 test("REQ-800: filter/sort/pagination controls present", async ({ page }) => {
-  await page.goto(`${BASE}/jsonapi?role=${ROLE}`);
+  await page.goto(`/jsonapi?role=${ROLE}`);
   await page.waitForLoadState("networkidle");
   const body = await page.locator("body").textContent();
   // Controls may say Filter, Sort, Page, or similar
@@ -52,7 +51,7 @@ test("REQ-800: executing query triggers /data/jsonapi network request", async ({
     }
   });
 
-  await page.goto(`${BASE}/jsonapi?role=${ROLE}`);
+  await page.goto(`/jsonapi?role=${ROLE}`);
   await page.waitForLoadState("networkidle");
 
   // Trigger a query if a submit/execute button is present
@@ -67,7 +66,7 @@ test("REQ-800: executing query triggers /data/jsonapi network request", async ({
 test("REQ-800: pagination links rendered after successful query", async ({
   page,
 }) => {
-  await page.goto(`${BASE}/jsonapi?role=${ROLE}`);
+  await page.goto(`/jsonapi?role=${ROLE}`);
   await page.waitForLoadState("networkidle");
   await expect(page.locator("body")).toBeVisible();
 });

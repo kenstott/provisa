@@ -9,9 +9,9 @@
 // REQ-1324: the create/edit dialog composes AGG(fact.column) from the fact-sourced
 // three-picker builder; a fact-derived metric prefills the pickers on edit.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
-const ADMIN_GQL = "http://localhost:8000/admin/graphql";
+const ADMIN_GQL = `${BACKEND_URL}/admin/graphql`;
 const FACT_NAME = "e2e_pet_sales";
 const FACT_METRIC = `${FACT_NAME}_price_sum`;
 const BUILT_METRIC = "e2e_avg_pet_price";

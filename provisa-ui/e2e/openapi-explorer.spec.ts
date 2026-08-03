@@ -7,26 +7,25 @@
 
 import { test, expect } from "./coverage";
 
-const BASE = "http://localhost:5173";
 const ROLE = "admin";
 
 // REQ-801: OpenAPI Explorer UI page at /openapi (Swagger UI iframe)
 
 test("REQ-801: /openapi page loads without errors", async ({ page }) => {
-  await page.goto(`${BASE}/openapi`);
+  await page.goto(`/openapi`);
   await expect(page).not.toHaveTitle(/error/i);
   await expect(page.locator("body")).toBeVisible();
 });
 
 test("REQ-801: /openapi page contains an iframe", async ({ page }) => {
-  await page.goto(`${BASE}/openapi?role=${ROLE}`);
+  await page.goto(`/openapi?role=${ROLE}`);
   await page.waitForLoadState("domcontentloaded");
   const iframe = page.locator("iframe");
   await expect(iframe).toBeAttached();
 });
 
 test("REQ-801: iframe src points to /data/rest/docs", async ({ page }) => {
-  await page.goto(`${BASE}/openapi?role=${ROLE}`);
+  await page.goto(`/openapi?role=${ROLE}`);
   await page.waitForLoadState("domcontentloaded");
   const iframe = page.locator("iframe");
   const src = await iframe.getAttribute("src");
@@ -35,7 +34,7 @@ test("REQ-801: iframe src points to /data/rest/docs", async ({ page }) => {
 
 test("REQ-801: page does not throw JS errors on load", async ({ page }) => {
   // coverage.ts fixture asserts no uncaught browser errors automatically
-  await page.goto(`${BASE}/openapi?role=${ROLE}`);
+  await page.goto(`/openapi?role=${ROLE}`);
   await page.waitForLoadState("networkidle");
   await expect(page.locator("body")).toBeVisible();
 });
@@ -51,7 +50,7 @@ test("REQ-801: autoRun param navigates to specific endpoint", async ({
   });
 
   await page.goto(
-    `${BASE}/openapi?role=${ROLE}&autoRun=GET:/default/orders`,
+    `/openapi?role=${ROLE}&autoRun=GET:/default/orders`,
   );
   await page.waitForLoadState("networkidle");
 

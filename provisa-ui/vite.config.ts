@@ -41,6 +41,12 @@ function serveOfflineDocsSite(): Plugin {
   };
 }
 
+// REQ-1363: isolated e2e harness must not share ports with the interactive dev
+// environment (start-ui.sh). Defaults preserve current dev behavior; Playwright's
+// config overrides both via env vars to run on collision-proof ports.
+const DEV_SERVER_PORT = Number(process.env.PROVISA_UI_PORT ?? 3000);
+const BACKEND_TARGET = `http://127.0.0.1:${process.env.PROVISA_API_PORT ?? 8001}`;
+
 export default defineConfig((config) => ({
   plugins: [
     react(),
@@ -119,7 +125,11 @@ export default defineConfig((config) => ({
     },
   },
   server: {
-    port: 3000,
+    port: DEV_SERVER_PORT,
+    // Node's "localhost" default resolves to the IPv6 loopback ([::1]) first on this platform, but
+    // Chromium's --host-resolver-rules below maps the e2e hostnames to the IPv4 loopback — bind
+    // explicitly to it so those origins can actually connect.
+    host: "127.0.0.1",
     // REQ-1348: cross-subdomain sign-in only exists between two hosts under one base domain, so it
     // cannot be exercised on `localhost` — the relay's `isSiblingOrigin` check needs a real base
     // domain to compare. The e2e maps `*.provisa.test` and `*.example.test` (the non-sibling case)
@@ -131,28 +141,28 @@ export default defineConfig((config) => ({
       ignored: ["**/._*"],
     },
     proxy: {
-      "/data": "http://127.0.0.1:8000",
+      "/data": BACKEND_TARGET,
       "/admin": {
-        target: "http://127.0.0.1:8000",
+        target: BACKEND_TARGET,
         bypass(req) {
           // Page navigations (Accept: text/html) are SPA routes — serve index.html
           if (req.headers.accept?.includes("text/html")) return "/index.html";
         },
       },
       "/query": {
-        target: "http://127.0.0.1:8000",
+        target: BACKEND_TARGET,
         bypass(req) {
           // Page navigations (Accept: text/html) are SPA routes — serve index.html
           if (req.headers.accept?.includes("text/html")) return "/index.html";
         },
       },
-      "/health": "http://127.0.0.1:8000",
-      "/setup": "http://127.0.0.1:8000",
+      "/health": BACKEND_TARGET,
+      "/setup": BACKEND_TARGET,
       // REQ-1348: the trailing slash matters. Vite matches a proxy key as a path PREFIX, so a bare
       // "/auth" also captured "/auth-relay.html" — the control plane's cross-subdomain token
       // endpoint — and forwarded it to the API, which has no such route. Every auth endpoint lives
       // under /auth/ (auth_router's prefix + a path), so the relay is the only thing this excludes.
-      "/auth/": "http://127.0.0.1:8000",
+      "/auth/": BACKEND_TARGET,
     },
   },
 }));

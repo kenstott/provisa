@@ -24,9 +24,12 @@
 
 import { expect, test } from "./coverage";
 
-const CONTROL_PLANE = "http://cloud.provisa.test:3000";
-const ORG_SUBDOMAIN = "http://kstott.provisa.test:3000";
-const FOREIGN = "http://evil.example.test:3000";
+// Matches playwright.config.ts's E2E_UI_PORT — the isolated harness's vite dev server is the
+// only thing listening, and it binds to this port, not a hardcoded one (REQ-1363).
+const UI_PORT = process.env.PROVISA_E2E_UI_PORT ?? "3901";
+const CONTROL_PLANE = `http://cloud.provisa.test:${UI_PORT}`;
+const ORG_SUBDOMAIN = `http://kstott.provisa.test:${UI_PORT}`;
+const FOREIGN = `http://evil.example.test:${UI_PORT}`;
 
 const RELAY_PATH = "/auth-relay.html";
 const TOKEN_FIXTURE = "relay-e2e-bearer";

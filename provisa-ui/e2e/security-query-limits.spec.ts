@@ -5,14 +5,14 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 // REQ-1174: per-role query-complexity limits (max_query_depth / max_query_nodes /
 // max_query_time_ms) enforced at the GraphQL→IR compile boundary. An over-limit request is
 // rejected with HTTP 413 BEFORE any SQL is planned or run. These limits complement the per-role
 // request-rate limits of REQ-369 (429) and are configured on the roles table via the admin API.
 
-const GRAPHQL_URL = "http://localhost:8000/data/graphql";
+const GRAPHQL_URL = `${BACKEND_URL}/data/graphql`;
 
 // A deeply nested query — if the acting role carries a low max_query_depth/max_query_nodes,
 // the compile-boundary guard rejects it with 413.

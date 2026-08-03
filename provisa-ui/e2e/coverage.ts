@@ -10,6 +10,16 @@ import AxeBuilder from "@axe-core/playwright";
 
 export { expect } from "playwright/test";
 
+// Single source of truth for the isolated e2e backend's URL — matches
+// playwright.config.ts's PROVISA_E2E_API_PORT. Specs must reference this instead
+// of hardcoding a port, so the harness stays collision-proof with the dev backend.
+export const BACKEND_PORT = process.env.PROVISA_E2E_API_PORT ?? "8901";
+export const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+
+// Same rationale as BACKEND_PORT — matches playwright.config.ts's PROVISA_E2E_FLIGHT_PORT.
+export const FLIGHT_PORT = process.env.PROVISA_E2E_FLIGHT_PORT ?? "8903";
+export const FLIGHT_URL = `http://localhost:${FLIGHT_PORT}`;
+
 // WCAG 2.1 Level AA gate (REQ-1013, REQ-1014). `expectNoA11yViolations` runs
 // axe-core against the current page state, scoped to the tags that constitute
 // AA conformance, and fails the test with a readable rule/target breakdown.

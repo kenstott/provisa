@@ -5,10 +5,10 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 const SOURCE_ID = "e2e-sharepoint";
-const GQL = "http://localhost:8000/admin/graphql";
+const GQL = `${BACKEND_URL}/admin/graphql`;
 
 // SharePoint calendar list columns (obtained via Graph API — information_schema.columns
 // returns empty for the Calcite-based sharepoint connector, so we supply known columns)

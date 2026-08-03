@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { test, expect } from './coverage';
+import { test, expect, BACKEND_URL } from './coverage';
 
-const ADMIN_GQL = 'http://localhost:8000/admin/graphql';
+const ADMIN_GQL = `${BACKEND_URL}/admin/graphql`;
 
 test.describe('Source Registration & Admin Endpoints', () => {
   // REQ-012: Source registration validates connection (queries sources endpoint)
@@ -62,7 +62,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
 
   // REQ-209: Webhook-backed mutations (queries tracked webhooks via admin/actions endpoint)
   test('REQ-209: Webhook-backed mutations (queries tracked webhooks endpoint)', async ({ request }) => {
-    const response = await request.get('http://localhost:8000/admin/actions');
+    const response = await request.get(`${BACKEND_URL}/admin/actions`);
 
     expect([200, 401, 403]).toContain(response.status());
     if (response.status() === 200) {
@@ -73,7 +73,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
 
   // REQ-253: Naming convention changes (verifies schema updates after convention changes)
   test('REQ-253: Naming convention changes (verifies schema updates)', async ({ request }) => {
-    const getResponse = await request.get('http://localhost:8000/admin/settings');
+    const getResponse = await request.get(`${BACKEND_URL}/admin/settings`);
 
     expect(getResponse.status()).toBe(200);
     const getJson = await getResponse.json();
@@ -83,7 +83,7 @@ test.describe('Source Registration & Admin Endpoints', () => {
 
   // REQ-296: Neo4j table registration query preview (tests cypher endpoint)
   test('REQ-296: Neo4j table registration query preview (tests cypher endpoint)', async ({ request }) => {
-    const response = await request.post('http://localhost:8000/data/cypher', {
+    const response = await request.post(`${BACKEND_URL}/data/cypher`, {
       data: {
         query: 'MATCH (n) RETURN count(n) as count',
       },

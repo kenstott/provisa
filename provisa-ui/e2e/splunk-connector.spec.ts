@@ -6,10 +6,10 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import https from "https";
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 const SOURCE_ID = "e2e-splunk";
-const ADMIN_GQL = "http://localhost:8000/admin/graphql";
+const ADMIN_GQL = `${BACKEND_URL}/admin/graphql`;
 // Splunk management port — mapped to host from Docker container
 const SPLUNK_URL = "https://localhost:8089";
 // Splunk runs inside Docker; Trino connects to it via the service name
@@ -182,7 +182,7 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 15000 });
 
   // ── 4. Query internal_server via GQL data endpoint ───────────────────────
-  const introRes = await fetch("http://localhost:8000/data/graphql", {
+  const introRes = await fetch(`${BACKEND_URL}/data/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: `{ __schema { queryType { fields { name } } } }` }),
@@ -194,7 +194,7 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   );
   expect(tableField, `internal_server field not found. Available: ${allFields.join(", ")}`).toBeDefined();
 
-  const dataRes = await fetch("http://localhost:8000/data/graphql", {
+  const dataRes = await fetch(`${BACKEND_URL}/data/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: `{ ${tableField} { host source } }` }),

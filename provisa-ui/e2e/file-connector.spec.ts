@@ -5,11 +5,11 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 const SOURCE_ID = "e2e-northwind";
 const SCHEMA_NAME = "e2e_northwind";
-const GQL = "http://localhost:8000/admin/graphql";
+const GQL = `${BACKEND_URL}/admin/graphql`;
 const GLOB = "/data/files/northwind/**";
 
 // LINQ4J maps camelCase CSV headers to snake_case column names
@@ -156,7 +156,7 @@ test("file connector: add northwind source and query customers", async ({ page }
 
   // ── 4. Query customers via GQL data endpoint ──────────────────────────────
   // Domain prefix (e.g. "pet-store" → "ps__") is prepended to the field name.
-  const introRes = await fetch("http://localhost:8000/data/graphql", {
+  const introRes = await fetch(`${BACKEND_URL}/data/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: `{ __schema { queryType { fields { name } } } }` }),
@@ -166,7 +166,7 @@ test("file connector: add northwind source and query customers", async ({ page }
   const customersField = allFields.find((f) => f.toLowerCase().endsWith("customers") && !f.toLowerCase().includes("aggregate"));
   expect(customersField, `customers field not found in schema. Available: ${allFields.join(", ")}`).toBeDefined();
 
-  const dataRes = await fetch("http://localhost:8000/data/graphql", {
+  const dataRes = await fetch(`${BACKEND_URL}/data/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: `{ ${customersField} { customerId companyName } }` }),

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { execSync, spawnSync } from "child_process";
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 const NEO4J_HTTP_PORT = 17474;
 const NEO4J_BOLT_PORT = 17687;
@@ -121,7 +121,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   await waitForNeo4j();
 
   // ── 1. Discover all node labels from the graph schema ─────────────────────
-  const schemaResp = await request.get("http://localhost:8000/data/graph-schema");
+  const schemaResp = await request.get(`${BACKEND_URL}/data/graph-schema`);
   expect(schemaResp.status()).toBe(200);
   const schema = await schemaResp.json();
   const allLabels: string[] = (schema.node_labels ?? []).map(
@@ -132,7 +132,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   // ── 2. Query every label; skip those that require WHERE clause parameters ──
   const nodesById = new Map<number, ExportNode>();
   const edges: ExportEdge[] = [];
-  const BASE = "http://localhost:8000";
+  const BASE = `${BACKEND_URL}`;
 
   for (const label of allLabels) {
     const rows = await tryCypherQuery(BASE, `MATCH (n:${label}) RETURN n`);
@@ -157,7 +157,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   const allErrors: string[] = [];
 
   for (let i = 0; i < nodes.length; i += EXPORT_BATCH) {
-    const resp = await request.post("http://localhost:8000/data/neo4j-export", {
+    const resp = await request.post(`${BACKEND_URL}/data/neo4j-export`, {
       data: {
         url: NEO4J_URL, username: "neo4j", password: "neo4j", database: "neo4j",
         nodes: nodes.slice(i, i + EXPORT_BATCH), edges: [],
@@ -170,7 +170,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   }
 
   if (edges.length > 0) {
-    const resp = await request.post("http://localhost:8000/data/neo4j-export", {
+    const resp = await request.post(`${BACKEND_URL}/data/neo4j-export`, {
       data: {
         url: NEO4J_URL, username: "neo4j", password: "neo4j", database: "neo4j",
         nodes: [], edges,
