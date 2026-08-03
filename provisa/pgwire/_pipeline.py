@@ -525,6 +525,12 @@ async def _govern_and_route(
 
                 _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
             _qualified = expand_view_refs(_qualified, _vmap)
+            # View bodies are stored in semantic form; after expansion, lower any
+            # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
+            # went through at line 456 before routing).
+            _qualified = rewrite_semantic_to_catalog_physical(
+                normalize_table_refs(_qualified, ctx), ctx
+            )
 
         _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",

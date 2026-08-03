@@ -317,6 +317,9 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
         # did not convert because join targets are not in ctx.tables.
         if physical_no_catalog not in replacements:
             replacements[physical_no_catalog] = physical_with_catalog
+        # Anchor already-catalog-qualified refs so the shorter no-catalog key cannot match
+        # them as a substring (longest-first regex wins; self-mapping is a no-op).
+        replacements.setdefault(physical_with_catalog, physical_with_catalog)
     return _apply_replacements(sql, replacements)
 
 

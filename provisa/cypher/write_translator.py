@@ -403,6 +403,8 @@ class WriteTranslator:
 
     def _qualified_table(self, mapping: NodeMapping) -> str:
         parts = []
+        if mapping.catalog_name:
+            parts.append(_q(mapping.catalog_name))
         if mapping.schema_name:
             parts.append(_q(mapping.schema_name))
         parts.append(_q(mapping.sql_table_name))
