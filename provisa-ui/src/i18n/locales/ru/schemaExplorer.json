@@ -2,6 +2,8 @@
   "schemaExplorer": {
     "selectRole": "Выберите роль для просмотра схемы.",
     "loadFailed": "Не удалось загрузить схему: {{error}}",
-    "loading": "Загрузка схемы..."
+    "loading": "Загрузка схемы...",
+    "sdlTab": "SDL",
+    "erdTab": "ERD"
   }
 }

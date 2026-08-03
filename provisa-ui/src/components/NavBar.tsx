@@ -20,6 +20,7 @@ import { OrgSwitcher } from "./OrgSwitcher";
 import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useSubnavExtraSlot } from "../context/SubnavExtraContext";
 import { useAuth } from "../context/AuthContext";
 import { clearSessionState, LAST_SUBNAV_KEY } from "../lib/session";
 import { hasCapability } from "../lib/capabilities";
@@ -164,6 +165,7 @@ export function NavBar() {
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode, authEnabled, capabilities } = useAuth();
   const { startTour, canResume } = useTour();
+  const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
@@ -423,6 +425,7 @@ export function NavBar() {
               )}
             </span>
           ))}
+          <div className="subnav-extra" ref={setSubnavExtraNode} />
         </nav>
       )}
       {profileOpen && <UserProfileModal onClose={() => setProfileOpen(false)} />}

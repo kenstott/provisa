@@ -18,10 +18,20 @@ export interface TooltipState {
   body: string;
 }
 
+export interface ErdPanelProps {
+  tables: RegisteredTable[];
+  relationships: Relationship[];
+  domains: Domain[];
+  // Domains to render, driven by the host page's own domain filter. Null means unfiltered (show all).
+  checkedDomains: Set<string> | null;
+  // Omit to embed as a plain panel (no close button, no modal chrome).
+  onClose?: () => void;
+}
+
 export interface ErdModalProps {
   tables: RegisteredTable[];
   relationships: Relationship[];
   domains: Domain[];
-  activeDomain: string | null;
+  checkedDomains: Set<string> | null;
   onClose: () => void;
 }

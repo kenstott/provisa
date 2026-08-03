@@ -81,7 +81,14 @@ export function RelationshipsPage() {
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
-  const { selectedDomain, domainsEnabled } = useDomainFilter();
+  const {
+    selectedDomain,
+    domainsEnabled,
+    domains: filterDomains,
+    checkedDomains,
+  } = useDomainFilter();
+  const erdCheckedDomains =
+    checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
   const { capabilities } = useAuth();
   const canManage = capabilities.includes("create_relationship");
 
@@ -869,7 +876,7 @@ export function RelationshipsPage() {
           tables={tables}
           relationships={allRels}
           domains={domains}
-          activeDomain={selectedDomain !== "all" ? selectedDomain : null}
+          checkedDomains={erdCheckedDomains}
           onClose={() => setShowErd(false)}
         />
       )}

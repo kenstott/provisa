@@ -14,6 +14,7 @@ import { ApolloProvider } from "@apollo/client/react";
 import { client } from "./apolloClient";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
+import { SubnavExtraProvider } from "./context/SubnavExtraContext";
 import { NavBar, NAV_GROUPS, entryItem } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { OnboardGate } from "./components/OnboardGate";
@@ -177,6 +178,7 @@ function App() {
             <DomainFilterProvider>
               <RequireAuth>
                 <TourProvider>
+                <SubnavExtraProvider>
                 <TourAutoStart demoMode={demoMode} />
                 {/* REQ-1294: the sign-in that claims the platform-admin slot lands here; this is
                     where the user is told what they now are and how to invite anyone else. */}
@@ -413,6 +415,7 @@ function App() {
                 </Routes>
                 </Suspense>
               </main>
+                </SubnavExtraProvider>
                 </TourProvider>
               </RequireAuth>
             </DomainFilterProvider>

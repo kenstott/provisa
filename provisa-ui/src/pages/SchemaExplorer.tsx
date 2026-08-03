@@ -9,30 +9,43 @@
 // permission from the copyright holder.
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Alert, Box, Loader, Stack, Text } from "@mantine/core";
+import { Alert, Box, Loader, SegmentedControl, Stack, Text } from "@mantine/core";
 import { AlertCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useSubnavExtraSlot } from "../context/SubnavExtraContext";
+import { useTables, useAllRelationships, useDomains } from "../hooks/useAdminQueries";
+import { ErdPanel } from "../components/erd/ErdPanel";
 
 /**
- * Schema Explorer — renders GraphQL Voyager in an iframe.
+ * Schema Explorer — SDL sub-tab renders GraphQL Voyager in an iframe.
  * Pre-fetches introspection from the parent window, then passes it
  * as static data to Voyager inside the iframe, avoiding CDN/CORS issues.
  * When a domain is selected, filters to that domain + relationship-reachable tables.
+ * ERD sub-tab embeds the same ErdPanel component used (inside a Modal) by the
+ * Relationships page — one diagram implementation, two entry points.
  */
 export function SchemaExplorer() {
   const { t } = useTranslation();
   const { role } = useAuth();
   const { domains, checkedDomains } = useDomainFilter();
+  const { node: subnavExtraNode } = useSubnavExtraSlot();
+  const [view, setView] = useState<"sdl" | "erd">("sdl");
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const domainParam =
-    checkedDomains.size > 0 && checkedDomains.size < domains.length
-      ? `?domain=${encodeURIComponent([...checkedDomains].sort().join(","))}`
-      : "";
+  const { tables } = useTables();
+  const { relationships } = useAllRelationships();
+  const { domains: allDomains } = useDomains();
+
+  const domainFiltered = checkedDomains.size > 0 && checkedDomains.size < domains.length;
+  const domainParam = domainFiltered
+    ? `?domain=${encodeURIComponent([...checkedDomains].sort().join(","))}`
+    : "";
+  const erdCheckedDomains = domainFiltered ? checkedDomains : null;
 
   useEffect(() => {
     if (!role) return;
@@ -84,9 +97,10 @@ setTimeout(function() {
       </Box>
     );
 
-  if (error)
-    return (
-      <Box className="page error" p="md">
+  let sdlContent;
+  if (error) {
+    sdlContent = (
+      <Box p="md">
         <Alert
           color="red"
           icon={<AlertCircle size={16} />}
@@ -94,22 +108,50 @@ setTimeout(function() {
         />
       </Box>
     );
-
-  if (loading || !srcDoc)
-    return (
-      <Stack className="page" align="center" justify="center" p="md">
+  } else if (loading || !srcDoc) {
+    sdlContent = (
+      <Stack align="center" justify="center" h="100%" p="md">
         <Loader size="sm" aria-label={t("schemaExplorer.loading")} />
         <Text>{t("schemaExplorer.loading")}</Text>
       </Stack>
     );
-
-  return (
-    <div className="schema-explorer-page">
+  } else {
+    sdlContent = (
       <iframe
         title="GraphQL Voyager"
         style={{ width: "100%", height: "100%", border: "none" }}
         srcDoc={srcDoc}
       />
-    </div>
+    );
+  }
+
+  return (
+    <Stack className="page" gap={0} h="100%">
+      {subnavExtraNode &&
+        createPortal(
+          <SegmentedControl
+            size="xs"
+            value={view}
+            onChange={(v) => setView(v as "sdl" | "erd")}
+            data={[
+              { label: t("schemaExplorer.sdlTab"), value: "sdl" },
+              { label: t("schemaExplorer.erdTab"), value: "erd" },
+            ]}
+          />,
+          subnavExtraNode,
+        )}
+      <div className="schema-explorer-page">
+        {view === "sdl" ? (
+          sdlContent
+        ) : (
+          <ErdPanel
+            tables={tables}
+            relationships={relationships}
+            domains={allDomains}
+            checkedDomains={erdCheckedDomains}
+          />
+        )}
+      </div>
+    </Stack>
   );
 }

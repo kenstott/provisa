@@ -2,6 +2,8 @@
   "schemaExplorer": {
     "selectRole": "स्कीमा देखने के लिए एक भूमिका चुनें।",
     "loadFailed": "स्कीमा लोड करने में विफल: {{error}}",
-    "loading": "स्कीमा लोड हो रहा है..."
+    "loading": "स्कीमा लोड हो रहा है...",
+    "sdlTab": "SDL",
+    "erdTab": "ERD"
   }
 }

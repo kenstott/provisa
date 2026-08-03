@@ -2827,5 +2827,7 @@
   "fr/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
   "fr/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
-  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table"
+  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
+  "fr/schemaExplorer.json::schemaExplorer.sdlTab": "SDL",
+  "fr/schemaExplorer.json::schemaExplorer.erdTab": "ERD"
 }

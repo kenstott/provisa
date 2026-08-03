@@ -2,6 +2,8 @@
   "schemaExplorer": {
     "selectRole": "Selecione uma função para exibir o esquema.",
     "loadFailed": "Falha ao carregar o esquema: {{error}}",
-    "loading": "Carregando esquema..."
+    "loading": "Carregando esquema...",
+    "sdlTab": "SDL",
+    "erdTab": "ERD"
   }
 }

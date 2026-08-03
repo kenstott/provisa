@@ -9,9 +9,11 @@
 // permission from the copyright holder.
 
 import { labelColor, darkenColor } from "../../graph/graph-model";
+import { getErdPalette } from "./erd-palette";
 
 // ── stylesheet ────────────────────────────────────────────────────────────────
-export function buildErdStylesheet() {
+export function buildErdStylesheet(isDark: boolean) {
+  const p = getErdPalette(isDark);
   return [
     {
       selector: "node",
@@ -31,7 +33,7 @@ export function buildErdStylesheet() {
         label: (ele: { data(k: string): unknown }) => ele.data("label") as string,
         "text-valign": "top",
         "text-halign": "center",
-        color: "#e2e8f0",
+        color: p.text,
         "font-size": 13,
         "font-weight": "bold",
         padding: "32px",
@@ -44,7 +46,7 @@ export function buildErdStylesheet() {
       selector: ".erd-table",
       style: {
         shape: "rectangle",
-        "background-color": "#1e293b",
+        "background-color": p.tableBg,
         "border-color": (ele: { data(k: string): unknown }) =>
           darkenColor(labelColor(ele.data("domainId") as string), 1.2),
         "border-width": 1,
@@ -52,7 +54,7 @@ export function buildErdStylesheet() {
         "text-valign": "center",
         "text-halign": "center",
         "text-justification": "left",
-        color: "#e2e8f0",
+        color: p.text,
         "font-size": 10,
         "text-wrap": "wrap",
         width: 170,
@@ -62,17 +64,17 @@ export function buildErdStylesheet() {
     },
     {
       selector: ".erd-table:selected",
-      style: { "border-color": "#60a5fa", "border-width": 2 },
+      style: { "border-color": p.accent, "border-width": 2 },
     },
     {
       selector: ".erd-rel",
       style: {
         "curve-style": "bezier",
-        "line-color": "#475569",
+        "line-color": p.relLine,
         width: 1.5,
-        "target-arrow-color": "#475569",
+        "target-arrow-color": p.relLine,
         "target-arrow-shape": "triangle",
-        "source-arrow-color": "#475569",
+        "source-arrow-color": p.relLine,
         "source-arrow-shape": (ele: { data(k: string): unknown }) =>
           (ele.data("cardinality") as string) === "many_to_many" ||
           (ele.data("cardinality") as string) === "many_to_one"
@@ -80,14 +82,14 @@ export function buildErdStylesheet() {
             : "none",
         label: (ele: { data(k: string): unknown }) => ele.data("label") as string,
         "font-size": 9,
-        color: "#94a3b8",
+        color: p.textMuted,
         "text-rotation": "none",
         "text-margin-y": (ele: { data(k: string): unknown }) => {
           const label = (ele.data("label") as string) ?? "";
           const hash = label.split("").reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
           return (hash % 3 - 1) * 14;
         },
-        "text-background-color": "#1e293b",
+        "text-background-color": p.tableBg,
         "text-background-opacity": 1,
         "text-background-padding": "3px",
       },
@@ -98,10 +100,10 @@ export function buildErdStylesheet() {
       style: {
         "line-style": "dashed",
         "line-dash-pattern": [6, 3],
-        "line-color": "#334155",
-        "target-arrow-color": "#334155",
-        "source-arrow-color": "#334155",
-        color: "#475569",
+        "line-color": p.relLineFaint,
+        "target-arrow-color": p.relLineFaint,
+        "source-arrow-color": p.relLineFaint,
+        color: p.textFaint,
       },
     },
   ];

@@ -2,6 +2,8 @@
   "schemaExplorer": {
     "selectRole": "选择一个角色以查看架构。",
     "loadFailed": "加载架构失败：{{error}}",
-    "loading": "正在加载架构…"
+    "loading": "正在加载架构…",
+    "sdlTab": "SDL",
+    "erdTab": "ERD"
   }
 }

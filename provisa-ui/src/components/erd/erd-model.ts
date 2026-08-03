@@ -107,16 +107,11 @@ export function buildErdElements(
   collapsedDomains: Set<string>,
   hiddenDomains: Set<string>,
   columnDetail: ColumnDetail,
-  activeDomain: string | null,
 ): ErdElements {
   const domainMap = new Map(domains.map((d) => [d.id, d]));
   const tableMap = new Map(tables.map((t) => [t.id, t]));
 
-  const scopedTables = activeDomain
-    ? tables.filter((t) => t.domainId === activeDomain)
-    : tables;
-
-  const filteredTables = scopedTables.filter((t) => !hiddenDomains.has(t.domainId));
+  const filteredTables = tables.filter((t) => !hiddenDomains.has(t.domainId));
 
   const usedDomainIds = new Set(filteredTables.map((t) => t.domainId));
 

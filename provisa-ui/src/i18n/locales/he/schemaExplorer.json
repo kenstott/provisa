@@ -2,6 +2,8 @@
   "schemaExplorer": {
     "selectRole": "יש לבחור תפקיד כדי לצפות בסכמה.",
     "loadFailed": "טעינת הסכמה נכשלה: {{error}}",
-    "loading": "טוען סכמה..."
+    "loading": "טוען סכמה...",
+    "sdlTab": "SDL",
+    "erdTab": "ERD"
   }
 }

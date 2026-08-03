@@ -217,17 +217,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
-  const handleNamingChange = async (tableId: number, value: string) => {
-    setError(null);
-    try {
-      const result = await updateTableNaming(tableId, value === "" ? null : value);
-      if (!result.success) throw new Error(result.message);
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
   useEffect(() => {
     // useQuery hooks (tables/sources/domains/roles) fetch on mount automatically.
     // Only the imperative REST call (fetchSettings) needs explicit initialization.
@@ -316,7 +305,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         setError(result.message);
         return;
       }
-      await handleNamingChange(editingTable.id, editingTable.gqlNamingConvention ?? "");
+      // Apply naming convention directly — skip handleNamingChange to avoid its intermediate
+      // reload() call which fires refetchTables() and races with updateTable's refetchQueries.
+      const _namingVal = editingTable.gqlNamingConvention ?? "";
+      const namingResult = await updateTableNaming(
+        editingTable.id,
+        _namingVal === "" ? null : _namingVal,
+      );
+      if (!namingResult.success) {
+        setError(namingResult.message);
+        return;
+      }
       const ttlEdit = cacheTtlEdits[editingTable.id];
       if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
       const preferResult = await updateTablePreferMaterialized(
@@ -347,7 +346,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
-  if (loading || tablesLoading) return <div className="page">{translate("tablesPage.loading")}</div>;
+  // Only full-page block on the INITIAL load (no cached tables yet). Background refetches
+  // (refetchQueries after mutations, reload()) serve stale-then-fresh from Apollo's cache —
+  // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
+  // under concurrent load where backend schema rebuilds extend refetch latency to >10s.
+  if (loading || (tablesLoading && tables.length === 0)) return <div className="page">{translate("tablesPage.loading")}</div>;
 
   return (
     <div className="page">
@@ -1020,7 +1023,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           tables={tables}
           relationships={relationships}
           domains={domains}
-          activeDomain={checkedDomains.size === 1 ? [...checkedDomains][0] : null}
+          checkedDomains={
+            checkedDomains.size > 0 && checkedDomains.size < domains.length ? checkedDomains : null
+          }
           onClose={() => setShowErd(false)}
         />
       )}
