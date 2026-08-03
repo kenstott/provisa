@@ -25,8 +25,7 @@ from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # n
 
 _META_TABLE_VIEWS: dict[str, str] = {
     "registered_tables": """
-        DROP VIEW IF EXISTS registered_tables_meta;
-        CREATE VIEW registered_tables_meta AS
+        CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT id, source_id, domain_id, schema_name, table_name,
                alias, description, cache_ttl, gql_naming_convention, watermark_column,
                column_presets,
@@ -36,8 +35,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM registered_tables
     """,
     "table_columns": """
-        DROP VIEW IF EXISTS table_columns_meta;
-        CREATE VIEW table_columns_meta AS
+        CREATE OR REPLACE VIEW table_columns_meta AS
         SELECT id, table_id, column_name, data_type, is_primary_key,
                alias, description, path, scope,
                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
@@ -50,8 +48,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM table_columns
     """,
     "roles": """
-        DROP VIEW IF EXISTS roles_meta;
-        CREATE VIEW roles_meta AS
+        CREATE OR REPLACE VIEW roles_meta AS
         SELECT id, parent_role_id, org_id,
                capabilities,
                tenant_id,
@@ -59,8 +56,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM roles
     """,
     "roles_domain_access": """
-        DROP VIEW IF EXISTS roles_domain_access;
-        CREATE VIEW roles_domain_access AS
+        CREATE OR REPLACE VIEW roles_domain_access AS
         SELECT r.id || ':' || d.id AS id,
                r.id AS role_id, 'meta' AS domain_id, d.id AS accessed_domain_id
         FROM roles r
@@ -68,8 +64,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         WHERE d.id <> ''
     """,
     "tracked_webhooks": """
-        DROP VIEW IF EXISTS tracked_webhooks_meta;
-        CREATE VIEW tracked_webhooks_meta AS
+        CREATE OR REPLACE VIEW tracked_webhooks_meta AS
         SELECT id, name, url, method, timeout_ms, returns, kind,
                inline_return_type,
                arguments,
@@ -78,8 +73,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM tracked_webhooks
     """,
     "tracked_functions": """
-        DROP VIEW IF EXISTS tracked_functions_meta;
-        CREATE VIEW tracked_functions_meta AS
+        CREATE OR REPLACE VIEW tracked_functions_meta AS
         SELECT id, name, source_id, schema_name, function_name, returns, kind,
                arguments,
                return_schema,
@@ -106,8 +100,7 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
 
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
-        DROP VIEW IF EXISTS query_audit_log_ops;
-        CREATE VIEW query_audit_log_ops AS
+        CREATE OR REPLACE VIEW query_audit_log_ops AS
         SELECT id, tenant_id, user_id, role_id, query_hash,
                table_ids, source, status_code, duration_ms, logged_at
         FROM query_audit_log
