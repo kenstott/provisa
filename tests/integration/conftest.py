@@ -8,6 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+import importlib.util
 import os
 import re
 import shutil
@@ -165,7 +166,16 @@ def _reap_stray_pgserver_processes() -> None:
     suite run to fail with a shared-memory allocation error. Since this fixture runs
     before this session starts any pgserver instance of its own, any matching process
     found here is necessarily a leftover from a previous session — safe to stop.
+
+    No-ops where pgserver itself is absent (the linux-mem lane's container: pgserver ships no
+    linux/aarch64 wheel, which is why that lane exists at all). Nothing there can leak a pgserver
+    instance, so there is nothing to reap. psutil is imported only after that check because it
+    reaches this process as a pgserver dependency — if pgserver is installed and psutil is not,
+    that is a broken environment and must raise rather than silently skip the reap.
     """
+    if importlib.util.find_spec("pgserver") is None:
+        return
+
     import psutil
 
     for proc in psutil.process_iter(["name", "cmdline"]):
