@@ -1164,6 +1164,12 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     }
     state.schema_version += 1
     await _finalize_rebuild_state(_rebuild_log)
+    # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
+    # the one chokepoint every model mutation passes through, which is why the event is posted
+    # here rather than at each mutation — a new mutation cannot forget to publish.
+    from provisa.api.metadata_egress.sync import notify_model_changed
+
+    await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
 
 @asynccontextmanager
@@ -1548,6 +1554,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.ai_models_router import router as ai_models_router
 
     app.include_router(ai_models_router)
+    from provisa.api.admin.metadata_egress_router import (  # REQ-1074
+        router as metadata_egress_router,
+    )
+
+    app.include_router(metadata_egress_router)
     from provisa.api.admin.source_meta_router import router as source_meta_router
 
     app.include_router(source_meta_router)

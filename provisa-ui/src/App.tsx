@@ -399,6 +399,7 @@ function App() {
                       ["/admin/local-users", "admin"],
                       ["/admin/orgs", "cross_org"],
                       ["/admin/ai-models", "org_settings"],
+                      ["/admin/metadata-egress", "org_settings"],
                       ["/admin/security", "platform_settings"],
                     ] as const
                   ).map(([path, capability]) => (

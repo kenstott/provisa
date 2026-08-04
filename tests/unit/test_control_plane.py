@@ -24,7 +24,11 @@ from provisa.control_plane.store import ControlPlaneStore
 def test_register_and_get_org():
     store = ControlPlaneStore()
     org = Org(
-        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+        id="o1",
+        name="Acme",
+        data_plane_id="dp1",
+        created_at="2026-01-01T00:00:00+00:00",
+        tier="free",
     )
     store.register_org(org)
     result = store.get_org("o1")
@@ -43,7 +47,11 @@ def test_register_and_route_query():
     )
     store.register_data_plane(dp)
     org = Org(
-        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+        id="o1",
+        name="Acme",
+        data_plane_id="dp1",
+        created_at="2026-01-01T00:00:00+00:00",
+        tier="free",
     )
     store.register_org(org)
     result = store.route_query("o1")
@@ -61,7 +69,11 @@ def test_route_query_inactive_data_plane_raises():
     )
     store.register_data_plane(dp)
     org = Org(
-        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+        id="o1",
+        name="Acme",
+        data_plane_id="dp1",
+        created_at="2026-01-01T00:00:00+00:00",
+        tier="free",
     )
     store.register_org(org)
     with pytest.raises(ValueError):
@@ -85,7 +97,11 @@ def test_list_orgs_and_data_planes():
     )
     store.register_data_plane(dp)
     org = Org(
-        id="o1", name="Acme", data_plane_id="dp1", created_at="2026-01-01T00:00:00+00:00"
+        id="o1",
+        name="Acme",
+        data_plane_id="dp1",
+        created_at="2026-01-01T00:00:00+00:00",
+        tier="free",
     )
     store.register_org(org)
     assert len(store.list_orgs()) == 1
@@ -144,7 +160,7 @@ def test_router_register_and_list_orgs(client):
     )
     resp = client.post(
         "/control-plane/orgs",
-        json={"id": "o1", "name": "Acme", "data_plane_id": "dp1"},
+        json={"id": "o1", "name": "Acme", "data_plane_id": "dp1", "tier": "premium"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -156,6 +172,28 @@ def test_router_register_and_list_orgs(client):
     orgs = list_resp.json()
     assert len(orgs) == 1
     assert orgs[0]["name"] == "Acme"
+    assert orgs[0]["tier"] == "premium"  # REQ-1053
+
+
+def test_router_register_org_rejects_unknown_tier(client):  # REQ-1053
+    client.post(
+        "/control-plane/data-planes",
+        json={
+            "id": "dp1",
+            "org_id": "o1",
+            "endpoint": "https://dp1.example.com",
+            "region": "us-east-1",
+        },
+    )
+    resp = client.post(
+        "/control-plane/orgs",
+        json={"id": "o1", "name": "Acme", "data_plane_id": "dp1", "tier": "platinum"},
+    )
+    assert resp.status_code == 400
+    # The bare test app registers no ApiError handler, so the default HTTPException shape
+    # applies; the i18n code is asserted on the exception itself below.
+    assert "platinum" in resp.json()["detail"]
+    assert client.get("/control-plane/orgs").json() == []
 
 
 def test_router_route_returns_endpoint(client):
@@ -170,7 +208,7 @@ def test_router_route_returns_endpoint(client):
     )
     client.post(
         "/control-plane/orgs",
-        json={"id": "o1", "name": "Acme", "data_plane_id": "dp1"},
+        json={"id": "o1", "name": "Acme", "data_plane_id": "dp1", "tier": "premium"},
     )
     resp = client.get("/control-plane/orgs/o1/route")
     assert resp.status_code == 200

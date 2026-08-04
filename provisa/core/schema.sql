@@ -24,9 +24,12 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
     description   TEXT NOT NULL DEFAULT '',
+    steward       TEXT,
     graphql_alias TEXT
 );
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
+-- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
 
 -- Seed default (no-domain) row so domain_id='' is always a valid FK target
 INSERT INTO domains (id, description) VALUES ('', 'No domain')

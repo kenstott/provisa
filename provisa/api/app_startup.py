@@ -572,6 +572,16 @@ def _start_scheduler(_log: logging.Logger) -> None:
         scheduler.start()
         state._scheduler = scheduler
         _log.info("APScheduler started")
+        # REQ-1072: the metadata-egress drain + per-org reconcile. Scheduled after start so a
+        # config read that needs the running loop has one.
+        try:
+            import asyncio
+
+            from provisa.api.metadata_egress.sync import register_all_orgs
+
+            asyncio.ensure_future(register_all_orgs(scheduler))
+        except (ImportError, RuntimeError):
+            _log.exception("metadata egress sync jobs could not be scheduled")
         # Wire the event loop onto the same scheduler (REQ-941) — best-effort, never bricks boot.
         try:
             import asyncio

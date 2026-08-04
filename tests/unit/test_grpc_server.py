@@ -58,12 +58,21 @@ def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None)
     if fields is None:
         fields = ["id", "amount"]
 
+    from google.protobuf.descriptor import FieldDescriptor
+
     field_descriptors = []
     for f in fields:
-        fd = SimpleNamespace(name=f, message_type=None)
+        # ``type`` is what the value coercion switches on, so the fake carries protobuf's own
+        # constant rather than omitting it — an int64 column coerces as an int64 here too.
+        fd = SimpleNamespace(name=f, message_type=None, type=FieldDescriptor.TYPE_INT64)
         field_descriptors.append(fd)
 
-    descriptor = SimpleNamespace(fields=field_descriptors)
+    # A real protobuf descriptor exposes both, and the servicer looks a column up by name when
+    # it builds a message — a fake with only ``fields`` tests a descriptor protobuf never hands it.
+    descriptor = SimpleNamespace(
+        fields=field_descriptors,
+        fields_by_name={fd.name: fd for fd in field_descriptors},
+    )
     msg_cls = MagicMock()
     msg_cls.DESCRIPTOR = descriptor
 

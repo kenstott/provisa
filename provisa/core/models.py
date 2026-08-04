@@ -22,6 +22,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SecretStr,
     field_validator,
     model_validator,
 )
@@ -281,9 +282,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         return f"{p}://{h}:{po}/{self.database}"
 
 
-class Domain(BaseModel):  # REQ-471
+class Domain(BaseModel):  # REQ-471, REQ-609
     id: str
     description: str = ""
+    # REQ-609: the designated steward (role or user id). None means the domain is PENDING —
+    # it exists but may not serve governed data. The distinction is published to external
+    # catalogs (REQ-1070), so an unstewarded domain shows as a gap rather than disappearing.
+    steward: str | None = None
     graphql_alias: str | None = None
     ddl_catalog: str | None = None  # the engine catalog for DDL; defaults to system Iceberg catalog
     ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
@@ -945,6 +950,61 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330
     base_url: str = "http://localhost:5173"
 
 
+class MetadataEgressConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
+    """Outbound publication of governance metadata to an external catalog.
+
+    Per-org, premium-gated (REQ-1073). Outbound only — there is no ingest counterpart, by
+    design (REQ-1068): Provisa is the upstream, and an external catalog is never read back
+    as the source of truth.
+
+    provider: which MetadataEgress adapter backs the port — "openlineage", "openmetadata",
+        "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
+        "datahub", "atlan" or "collibra". An unknown name is refused at construction.
+    endpoint: base URL of the target catalog.
+    api_key / token: adapter credentials, held as SecretStr so a config dump or a log line
+        renders them redacted.
+    auth_mode: how the adapter authenticates — "api_key", "bearer", "basic" (Apache Atlas's
+        own default authentication, which pairs `username` with the secret in token/api_key),
+        or "entra" for Purview's Entra ID client-credentials flow, which needs the
+        tenant/client fields below.
+    username: the account name for "basic". Unused by the other modes.
+    reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
+        dropped events (REQ-1072). Empty disables the reconcile and leaves only the
+        event-driven path.
+    """
+
+    enabled: bool = False
+    provider: str = ""
+    endpoint: str = ""
+    api_key: SecretStr = SecretStr("")
+    token: SecretStr = SecretStr("")
+    auth_mode: str = "api_key"
+    username: str = ""
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: SecretStr = SecretStr("")
+    reconcile_cron: str = "0 * * * *"
+    timeout_seconds: int = 30
+
+    @model_validator(mode="after")
+    def _validate_enabled(self) -> "MetadataEgressConfig":
+        # REQ-1068: an enabled egress with no provider or no endpoint cannot publish. Failing
+        # here names the setting; failing at publish time names a connection.
+        if not self.enabled:
+            return self
+        missing = [
+            name
+            for name, value in (("provider", self.provider), ("endpoint", self.endpoint))
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"metadata_egress.enabled is true but {', '.join(missing)} "
+                f"{'is' if len(missing) == 1 else 'are'} unset"
+            )
+        return self
+
+
 class OtelConfig(BaseModel):  # REQ-545
     """OpenTelemetry tracing configuration.
 
@@ -1243,6 +1303,9 @@ class ProvisaConfig(BaseModel):
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
+    metadata_egress: MetadataEgressConfig = Field(
+        default_factory=MetadataEgressConfig
+    )  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     nl: NlConfig = Field(default_factory=NlConfig)

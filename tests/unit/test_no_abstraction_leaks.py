@@ -78,6 +78,9 @@ OWNERS: dict[str, set[str]] = {
     },
     "sqlite3": {
         "provisa/federation/connector_sqlite.py",
+        # snapshots the control-plane file with sqlite3's own online-backup API before DuckDB
+        # attaches it — reading Provisa's own store, not federating an external one.
+        "provisa/federation/duckdb_runtime.py",
     },
     "aiosqlite": set(),
     "motor": set(),

@@ -1,0 +1,29 @@
+# REQ-1069 — Marquez server config for the metadata-egress e2e stack.
+#
+# The image's bundled marquez.dev.yml hardcodes the database host as `postgres`, which on the
+# shared test network is Provisa's own core Postgres, not Marquez's. This config names the
+# dedicated `marquez-db` service instead, and is selected with MARQUEZ_CONFIG.
+server:
+  applicationConnectors:
+    - type: http
+      port: ${MARQUEZ_PORT:-5000}
+      httpCompliance: RFC7230_LEGACY
+  adminConnectors:
+    - type: http
+      port: ${MARQUEZ_ADMIN_PORT:-5001}
+
+db:
+  driverClass: org.postgresql.Driver
+  url: jdbc:postgresql://${POSTGRES_HOST:-marquez-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-marquez}
+  user: ${POSTGRES_USER:-marquez}
+  password: ${POSTGRES_PASSWORD:-marquez}
+
+migrateOnStartup: true
+
+graphql:
+  enabled: true
+
+logging:
+  level: INFO
+  appenders:
+    - type: console

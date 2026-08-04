@@ -61,6 +61,7 @@ import { FederationEngineTab } from "../components/admin/FederationEngineTab";
 import { McpServerTab } from "../components/admin/McpServerTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
+import { MetadataEgressTab } from "../components/admin/MetadataEgressTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { ConfigDiffView } from "../components/admin/ConfigDiffView";
 
@@ -77,6 +78,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/mcp-server": "MCP Server",
   "/admin/orgs": "Orgs",
   "/admin/ai-models": "AI Models",
+  "/admin/metadata-egress": "Metadata Egress",
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",
@@ -744,6 +746,7 @@ export function AdminPage() {
         {activeTab === "MCP Server" && <McpServerTab />}
         {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab />}
         {activeTab === "AI Models" && <AiModelsTab />}
+        {activeTab === "Metadata Egress" && <MetadataEgressTab />}
       </Stack>
 
       <Modal

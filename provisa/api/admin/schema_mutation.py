@@ -553,7 +553,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         model = DomainModel(
-            id=input.id, description=input.description, graphql_alias=input.graphql_alias or None
+            id=input.id,
+            description=input.description,
+            steward=input.steward or None,  # REQ-609
+            graphql_alias=input.graphql_alias or None,
         )
         async with pool.acquire() as conn:
             await domain_repo.upsert(cast("Connection", conn), model)

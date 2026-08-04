@@ -1557,8 +1557,8 @@
   type: behavioral
   description: Superuser bootstrap access — superuser credentials in config (username + password from
     env secret). Always platform_admin role + all capabilities regardless of auth provider. For initial
-    setup. Role name updated by REQ-1327's platform_admin/org_admin split (the old undifferentiated
-    "admin" role no longer exists).
+    setup. Role name updated by REQ-1327's platform_admin/org_admin split (the old undifferentiated "admin"
+    role no longer exists).
   use_case: Superuser bootstrap ensures admins can always access the platform for initial setup regardless
     of auth provider.
   code:
@@ -1596,8 +1596,8 @@
   description: When no auth provider is configured (dev mode), any request is treated as the anonymous
     dev principal (user_id `anonymous`), with the role taken from the `x-provisa-role` header or defaulting
     to `org_admin` (REQ-1327's data-plane administrator — the undifferentiated `admin` role no longer
-    exists, and platform_admin is control-plane only so a demo deployment need not define it). This
-    identity maps to all configured roles with wildcard domain access, enabling unrestricted local development
+    exists, and platform_admin is control-plane only so a demo deployment need not define it). This identity
+    maps to all configured roles with wildcard domain access, enabling unrestricted local development
     without configuring an IdP.
   use_case: Dev mode role identity lets developers test without an IdP while still exercising role-based
     code paths.
@@ -1611,8 +1611,8 @@
 
     When any request arrives
 
-    Then it is treated as the anonymous dev principal with role org_admin by default, all roles, and
-    wildcard domain access
+    Then it is treated as the anonymous dev principal with role org_admin by default, all roles, and wildcard
+    domain access
 
     '
   integration_test: not_required
@@ -1945,6 +1945,7 @@
   - tests/integration/test_schema_gen.py
   - tests/integration/test_introspect.py
   - tests/unit/test_core_registration.py
+  - tests/unit/test_metadata_snapshot_builder.py
   since: 2026-01
   scenario: 'Given two tables in different registered sources
 
@@ -1982,6 +1983,7 @@
   - tests/integration/test_schema_gen.py
   - tests/unit/test_core_registration.py
   - tests/unit/test_relationship_metadata.py
+  - tests/unit/test_metadata_snapshot_builder.py
   since: 2026-01
   scenario: 'Given a registered relationship between two tables
 
@@ -3486,6 +3488,7 @@
   - provisa/core/domain_policy.py
   tests:
   - tests/unit/test_domain_policy.py
+  - tests/unit/test_metadata_snapshot_builder.py
   since: 2026-01
   scenario: 'Given a domain with no steward assigned
 
@@ -30563,6 +30566,8 @@
   e2e_reason: Accurate tier-limit rendering from runtime definitions requires the full stack (tier store,
     pricing page, live presentation); unit tests cannot verify marketing/product alignment without end-to-end
     execution.
+  tests:
+  - tests/unit/test_entitlements.py
 - id: REQ-1054
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -30855,6 +30860,8 @@
   - REQ-203
   - REQ-204
   - REQ-1019
+  tests:
+  - tests/unit/test_entitlements.py
 - id: REQ-1067
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
@@ -30874,7 +30881,7 @@
   - REQ-1048
   - REQ-1063
 - id: REQ-1068
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
@@ -30895,7 +30902,7 @@
   - REQ-1330
   - REQ-1066
 - id: REQ-1069
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
@@ -30908,10 +30915,18 @@
   use_case: Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor
     lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend
     to enterprises already on Atlan or Collibra.
+  code:
+  - provisa/api/metadata_egress/openlineage.py
+  - provisa/api/metadata_egress/openmetadata.py
+  - provisa/api/metadata_egress/registry.py
+  tests:
+  - tests/unit/test_metadata_egress_standards.py
+  - tests/integration/test_metadata_egress_openlineage_e2e.py
+  - tests/integration/test_metadata_egress_openmetadata_e2e.py
   relates_to:
   - REQ-1068
 - id: REQ-1070
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
@@ -30933,8 +30948,26 @@
   - REQ-942
   - REQ-1068
   - REQ-1069
+  code:
+  - provisa/api/metadata_egress/model.py
+  - provisa/api/metadata_egress/builder.py
+  scenario: 'Given a governed config with a stewarded domain, a table with described columns, an approved
+
+    relationship, and a view derived from that table
+
+    When a metadata snapshot is built for the org
+
+    Then the snapshot publishes the source, domain, table and every column as addressable assets
+
+    And the approved relationship carries its defining steward, version and review flag
+
+    And the view''s lineage is published per column with the transform that produces it
+
+    And a domain with no designated steward is published as pending rather than omitted
+
+    '
 - id: REQ-1071
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
@@ -30951,8 +30984,23 @@
   - REQ-040
   - REQ-1068
   - REQ-1070
+  code:
+  - provisa/api/metadata_egress/governance.py
+  tests:
+  - tests/unit/test_metadata_egress_governance.py
+  scenario: 'Given a governed config with a masked column, a column hidden from one role, and an RLS rule
+
+    When a metadata snapshot is built for the org
+
+    Then each restricted asset carries a governance tag naming the signal and the rule
+
+    And every tag names the roles the restriction applies to and the roles exempt from it
+
+    And no mask pattern or RLS predicate appears anywhere in the snapshot
+
+    '
 - id: REQ-1072
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
@@ -30969,8 +31017,26 @@
   - REQ-942
   - REQ-1068
   - REQ-1070
+  code:
+  - provisa/api/metadata_egress/sync.py
+  tests:
+  - tests/unit/test_metadata_egress_sync.py
+  - tests/steps/steps_metadata_egress_docs.py
+  scenario: 'Given an org whose metadata egress target is configured and entitled
+
+    When the governed model changes
+
+    Then a publish is queued for that org and no other
+
+    And one drain publishes the whole pending change set as a single snapshot
+
+    And a publish the catalog rejected stays claimable instead of being completed
+
+    And the org''s scheduled reconcile republishes the full snapshot on its own cron
+
+    '
 - id: REQ-1073
-  status: proposed
+  status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: MUST
@@ -30984,6 +31050,78 @@
     DG systems.
   relates_to:
   - REQ-1066
+  - REQ-1068
+  - REQ-1069
+  - REQ-1070
+  - REQ-1071
+  - REQ-1072
+  code:
+  - provisa/control_plane/entitlements.py
+  tests:
+  - tests/unit/test_entitlements.py
+  - tests/unit/test_metadata_egress_admin_surface.py
+  - tests/unit/test_metadata_egress_gate.py
+- id: REQ-1074
+  status: accepted
+  group: 10. UI & Admin Surfaces
+  category: Admin Configuration
+  priority: MUST
+  type: ui
+  target: 2026-Q4
+  description: 'Metadata egress admin surface: an Admin tab that configures the per-org egress target
+    (provider, endpoint, credentials, reconcile schedule), runs a connection health check against the
+    live catalog, triggers an on-demand full reconcile, and shows the last publish outcome including the
+    per-asset errors a partial publish returns. Credentials are write-only in the UI — an existing secret
+    renders as set/not-set, never as its value. The tab is hidden for orgs without the REQ-1073 entitlement.'
+  use_case: A data-governance admin configures and operates the catalog connection without editing YAML,
+    and diagnoses a partial publish from the assets the target rejected rather than from server logs.
+  code:
+  - provisa/api/admin/metadata_egress_router.py
+  - provisa-ui/src/components/admin/MetadataEgressTab.tsx
+  - provisa-ui/src/api/metadataEgress.ts
+  tests:
+  - tests/unit/test_metadata_egress_admin_surface.py
+  - provisa-ui/src/__tests__/MetadataEgressTab.test.tsx
+  - provisa-ui/e2e/metadata-egress-admin.spec.ts
+  relates_to:
+  - REQ-1068
+  - REQ-1069
+  - REQ-1072
+  - REQ-1073
+- id: REQ-1363
+  status: accepted
+  group: 11. Platform, Infrastructure & Delivery
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q4
+  description: 'Metadata egress user documentation: a published docs page (docs/metadata-egress.md, navigated
+    under Security & Governance) covering the supported targets, the YAML configuration, what the payload
+    contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile
+    sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.'
+  use_case: An admin evaluating or configuring catalog integration finds the supported targets and the
+    exact configuration in the product docs instead of in the architecture notes.
+  code:
+  - docs/metadata-egress.md
+  - mkdocs.yml
+  tests:
+  - tests/steps/steps_metadata_egress_docs.py
+  scenario: 'Given the published documentation set
+
+    When a reader looks for how to publish metadata to an external catalog
+
+    Then the metadata egress page is reachable from the Security and Governance navigation
+
+    And the page states that publication is outbound only
+
+    And the page names every registered egress provider
+
+    And the page documents each configuration setting the egress config accepts
+
+    And the page describes the sync model the scheduler actually runs
+
+    '
+  relates_to:
   - REQ-1068
   - REQ-1069
   - REQ-1070
@@ -41281,9 +41419,9 @@
   description: In demo mode, all application page chunks must be preloaded and compiled before the guided
     product tour begins showing any steps. This prevents the tour popover from displaying over a destination
     page stuck in a loading state.
-  use_case: Product tours require destination pages to be ready for display when the tour navigates to them.
-    Pre-loading ensures a smooth tour experience without popover overlays appearing over in-flight page
-    loads.
+  use_case: Product tours require destination pages to be ready for display when the tour navigates to
+    them. Pre-loading ensures a smooth tour experience without popover overlays appearing over in-flight
+    page loads.
   code:
   - provisa-ui/src/pageChunks.ts
   - provisa-ui/src/tour/useTour.tsx

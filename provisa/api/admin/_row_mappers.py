@@ -118,7 +118,10 @@ def _source_from_row(row) -> SourceType:
 
 def _domain_from_row(row) -> DomainType:
     return DomainType(
-        id=row["id"], description=row["description"], graphql_alias=row["graphql_alias"]
+        id=row["id"],
+        description=row["description"],
+        steward=row["steward"],  # REQ-609
+        graphql_alias=row["graphql_alias"],
     )
 
 

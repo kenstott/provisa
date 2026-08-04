@@ -669,8 +669,153 @@ services:
       retries: 36
       start_period: 90s
 
+  # REQ-1069 — the OpenLineage reference server. The metadata-egress e2e publishes a snapshot
+  # through the real adapter and reads the datasets and column lineage back out of Marquez, so
+  # what the suite proves is that a standards-compliant consumer accepts the payload, not that
+  # our own mapping agrees with itself.
+  marquez-db:
+    restart: unless-stopped
+    image: postgres:16
+    environment:
+      POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: marquez
+      POSTGRES_DB: marquez
+    volumes:
+      - marquez_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marquez -d marquez"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  marquez:
+    restart: unless-stopped
+    image: marquezproject/marquez:0.49.0
+    depends_on:
+      marquez-db:
+        condition: service_healthy
+    ports:
+      - "${MARQUEZ_PORT:-5000}:5000"
+    # The bundled marquez.dev.yml hardcodes the db host as `postgres`, which on this network is
+    # Provisa's core Postgres. MARQUEZ_CONFIG points the server at a config that names marquez-db.
+    volumes:
+      - ./docker/marquez.yml:/usr/src/app/marquez.yml:ro
+    environment:
+      MARQUEZ_CONFIG: marquez.yml
+      POSTGRES_HOST: marquez-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: marquez
+      POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: marquez
+      MARQUEZ_PORT: 5000
+      MARQUEZ_ADMIN_PORT: 5001
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5001/healthcheck || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # REQ-1069 — OpenMetadata, the asset target. Its own MySQL; search reuses the core-stack
+  # `elasticsearch` service rather than a second cluster, because two 512m JVMs plus the
+  # OpenMetadata server itself is more than the Docker VM has to spare.
+  openmetadata-db:
+    restart: unless-stopped
+    image: mysql:8.0
+    command: --sql_mode=""
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: openmetadata_db
+      MYSQL_USER: openmetadata_user
+      MYSQL_PASSWORD: openmetadata_password
+    volumes:
+      - openmetadata_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -ppassword || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  # The server refuses to boot against an unmigrated database, so migrate runs in the same
+  # entrypoint rather than in a one-shot sidecar: `up --wait` on a sidecar that exits is the kind
+  # of thing that reports the whole stack unhealthy, and OpenMetadata's migrate is idempotent —
+  # a second run against an already-migrated schema is a no-op.
+  openmetadata:
+    restart: unless-stopped
+    image: openmetadata/server:1.5.11
+    depends_on:
+      openmetadata-db:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "${OPENMETADATA_PORT:-8585}:8585"
+    entrypoint:
+      - /bin/bash
+      - -c
+      # The start script lives at the image root, not in the /opt/openmetadata workdir the ops
+      # script sits under — the image's own CMD is `/openmetadata-start.sh`.
+      - ./bootstrap/openmetadata-ops.sh -d migrate && /openmetadata-start.sh
+    environment:
+      DB_HOST: openmetadata-db
+      DB_PORT: 3306
+      DB_SCHEME: mysql
+      DB_USER: openmetadata_user
+      DB_USER_PASSWORD: openmetadata_password
+      OM_DATABASE: openmetadata_db
+      SEARCH_TYPE: elasticsearch
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_SCHEME: http
+      AUTHENTICATION_PROVIDER: basic
+      AUTHENTICATION_PUBLIC_KEYS: '[http://openmetadata:8585/api/v1/system/config/jwks]'
+      AUTHENTICATION_AUTHORITY: https://accounts.google.com
+      AUTHORIZER_CLASS_NAME: org.openmetadata.service.security.DefaultAuthorizer
+      AUTHORIZER_REQUEST_FILTER: org.openmetadata.service.security.JwtFilter
+      AUTHORIZER_ADMIN_PRINCIPALS: '[admin]'
+      AUTHORIZER_PRINCIPAL_DOMAIN: open-metadata.org
+      RSA_PUBLIC_KEY_FILE_PATH: ./conf/public_key.der
+      RSA_PRIVATE_KEY_FILE_PATH: ./conf/private_key.der
+      JWT_ISSUER: open-metadata.org
+      JWT_KEY_ID: Gb389a-9f76-gdjs-a92j-0242bk94356
+      PIPELINE_SERVICE_CLIENT_ENABLED: "false"
+      OPENMETADATA_HEAP_OPTS: "-Xmx1G -Xms1G"
+    healthcheck:
+      # wget, not curl: the image ships no curl, so a curl probe fails for the life of the
+      # container and the server never reports healthy however long it is given.
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8586/healthcheck || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 180s
+
+  # REQ-1069 — Apache Atlas, the vendor target Microsoft Purview is API-compatible with. The
+  # image bundles its own embedded HBase and Solr, so it needs no companion services; that is
+  # also why it is slow to become healthy and carries a long start_period.
+  atlas:
+    restart: unless-stopped
+    image: sburn/apache-atlas:latest
+    # No `command`: the image's own CMD starts Atlas and then tails its log to keep PID 1 alive.
+    # Naming the start script explicitly gets the path wrong for whatever version is tagged.
+    ports:
+      - "${ATLAS_PORT:-21000}:21000"
+    healthcheck:
+      # wget, not curl: the image ships no curl. Every Atlas API route requires auth, so the
+      # probe carries the image's built-in admin credentials.
+      test:
+        - "CMD-SHELL"
+        - "wget -q -O /dev/null --user=admin --password=admin http://localhost:21000/api/atlas/admin/status || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
 volumes:
   hive_warehouse:
+  marquez_db_data:
+  openmetadata_db_data:
   kafka_test_data:
   mariadb_test_data:
   tidb_test_data:

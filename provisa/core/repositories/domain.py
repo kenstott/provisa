@@ -29,11 +29,12 @@ async def upsert(conn: "Connection", domain: Domain) -> None:  # REQ-021, REQ-36
         {
             "id": domain.id,
             "description": domain.description,
+            "steward": domain.steward,  # REQ-609
             "graphql_alias": domain.graphql_alias,
             "org_id": "root",
         },
         index_elements=["id"],
-        update_columns=["description", "graphql_alias"],
+        update_columns=["description", "steward", "graphql_alias"],
     )
 
 

@@ -44,3 +44,16 @@ class ControlPlaneStore:  # REQ-073
 
     def list_data_planes(self) -> list[DataPlane]:  # REQ-506
         return list(self._data_planes.values())
+
+
+_STORE = ControlPlaneStore()
+
+
+def control_plane_store() -> ControlPlaneStore:  # REQ-073, REQ-1073
+    """The process's control-plane store.
+
+    One instance, because an org registered through the control-plane router is the same org an
+    entitlement check elsewhere in the process has to find. A second instance would report every
+    org as unregistered to whichever surface did not own it.
+    """
+    return _STORE

@@ -388,8 +388,18 @@ class TestREQ617RoleSelectionViaMetadata:
 def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None):
     if fields is None:
         fields = ["id", "amount"]
-    field_descriptors = [SimpleNamespace(name=f, message_type=None) for f in fields]
-    descriptor = SimpleNamespace(fields=field_descriptors)
+    from google.protobuf.descriptor import FieldDescriptor
+
+    # A real protobuf descriptor carries the by-name index and each field's type, and the
+    # servicer uses both when it builds a message — a fake without them tests a shape protobuf
+    # never hands it.
+    field_descriptors = [
+        SimpleNamespace(name=f, message_type=None, type=FieldDescriptor.TYPE_INT64) for f in fields
+    ]
+    descriptor = SimpleNamespace(
+        fields=field_descriptors,
+        fields_by_name={fd.name: fd for fd in field_descriptors},
+    )
     msg_cls = MagicMock()
     msg_cls.DESCRIPTOR = descriptor
     pb2 = SimpleNamespace(

@@ -74,7 +74,7 @@ _REL_KEYS = frozenset(
 )
 _ROLE_KEYS = frozenset({"id", "capabilities", "domain_access"})
 _RLS_KEYS = frozenset({"table_id", "domain_id", "role_id", "filter"})
-_DOMAIN_KEYS = frozenset({"id", "description"})
+_DOMAIN_KEYS = frozenset({"id", "description", "steward"})  # REQ-609
 
 
 def _plain(obj: Any) -> Any:

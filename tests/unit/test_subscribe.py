@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -49,16 +50,19 @@ class FakeConnection:
 
 
 class FakePool:
-    """Minimal stand-in for asyncpg.Pool."""
+    """Minimal stand-in for :class:`provisa.core.database.Database`.
+
+    ``acquire`` is an async context manager, not a coroutine returning a connection: the SSE
+    generator enters and exits it by hand to hold ONE connection open for the whole stream, so a
+    fake that returns a bare connection would test a shape the production pool does not have.
+    """
 
     def __init__(self, conn: FakeConnection):
         self._conn = conn
 
+    @asynccontextmanager
     async def acquire(self):
-        return self._conn
-
-    async def release(self, conn):
-        pass
+        yield self._conn
 
 
 # ---------------------------------------------------------------------------

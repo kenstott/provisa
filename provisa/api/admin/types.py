@@ -80,9 +80,10 @@ class SourceType:  # REQ-012
 
 
 @strawberry.type
-class DomainType:  # REQ-533
+class DomainType:  # REQ-533, REQ-609
     id: str
     description: str
+    steward: str | None = None  # REQ-609: None = pending, no designated steward
     graphql_alias: str | None = None
 
 
@@ -346,9 +347,10 @@ class SourceInput:  # REQ-012
 
 
 @strawberry.input
-class DomainInput:  # REQ-533
+class DomainInput:  # REQ-533, REQ-609
     id: str
     description: str = ""
+    steward: str | None = None  # REQ-609
     graphql_alias: str | None = None
 
 

@@ -131,6 +131,7 @@ nav:
       - Column-Level Lineage: lineage.md
   - Security & Governance:
       - Security Model: security.md
+      - Metadata Egress: metadata-egress.md
   - Clients:
       - Python Client: python-client.md
   - Administration:

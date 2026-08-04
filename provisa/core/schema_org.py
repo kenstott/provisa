@@ -95,6 +95,7 @@ domains = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column("description", Text, nullable=False, server_default=""),
+    Column("steward", Text),  # REQ-609: designated steward; NULL = pending
     Column("graphql_alias", Text),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),

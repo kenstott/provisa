@@ -27,8 +27,12 @@ class DataPlane:  # REQ-073, REQ-1355
 
 
 @dataclass
-class Org:  # REQ-073, REQ-1355
+class Org:  # REQ-073, REQ-1355, REQ-1053
     id: str
     name: str
     data_plane_id: str
     created_at: str
+    # REQ-1053: subscription tier, one of provisa.control_plane.entitlements.Tier. Required —
+    # every tier-gated feature (REQ-1066/1073) resolves its entitlement from this field, and a
+    # default here would entitle an org nobody priced.
+    tier: str

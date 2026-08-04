@@ -21,12 +21,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
+from provisa.control_plane.entitlements import UnknownTierError, parse_tier
 from provisa.control_plane.models import DataPlane, Org
-from provisa.control_plane.store import ControlPlaneStore
+from provisa.control_plane.store import control_plane_store
 
 router = APIRouter(prefix="/control-plane", tags=["control-plane"])
 
-_store = ControlPlaneStore()
+_store = control_plane_store()
 
 
 def _require_multitenancy() -> None:
@@ -40,6 +41,7 @@ class RegisterOrgRequest(BaseModel):  # REQ-457
     id: str
     name: str
     data_plane_id: str
+    tier: str  # REQ-1053: required — the caller names the tier; the platform never assumes one
 
 
 class RegisterDataPlaneRequest(BaseModel):  # REQ-456
@@ -52,11 +54,18 @@ class RegisterDataPlaneRequest(BaseModel):  # REQ-456
 @router.post("/orgs")
 def register_org(body: RegisterOrgRequest) -> dict:  # REQ-073, REQ-592
     _require_multitenancy()
+    # REQ-1053: reject an unrecognised tier at registration; an org that reaches the store
+    # with an untyped tier fails every later entitlement check instead of this one.
+    try:
+        parse_tier(body.id, body.tier)
+    except UnknownTierError as exc:
+        raise ApiError(400, "control_plane.unknown_tier", str(exc)) from exc
     org = Org(
         id=body.id,
         name=body.name,
         data_plane_id=body.data_plane_id,
         created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        tier=body.tier,
     )
     _store.register_org(org)
     return {
@@ -64,6 +73,7 @@ def register_org(body: RegisterOrgRequest) -> dict:  # REQ-073, REQ-592
         "name": org.name,
         "data_plane_id": org.data_plane_id,
         "created_at": org.created_at,
+        "tier": org.tier,
     }
 
 
@@ -71,7 +81,13 @@ def register_org(body: RegisterOrgRequest) -> dict:  # REQ-073, REQ-592
 def list_orgs() -> list[dict]:  # REQ-073, REQ-592
     _require_multitenancy()
     return [
-        {"id": o.id, "name": o.name, "data_plane_id": o.data_plane_id, "created_at": o.created_at}
+        {
+            "id": o.id,
+            "name": o.name,
+            "data_plane_id": o.data_plane_id,
+            "created_at": o.created_at,
+            "tier": o.tier,
+        }
         for o in _store.list_orgs()
     ]
 
