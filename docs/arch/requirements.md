@@ -13973,3 +13973,45 @@ In demo mode, all application page chunks must be preloaded and compiled before 
 **Code:** `provisa-ui/src/pageChunks.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`
 
 **Tests:** `provisa-ui/e2e/tour-page-preload.spec.ts`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1363 · Domain Hierarchy {#REQ-1363}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
+
+Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers.
+
+**Use case:** Enable organizations to structure domains hierarchically for governance metadata and organization, while maintaining a single flat execution model and addressing scheme.
+
+**Code:** `provisa/core/models.py`, `provisa/core/governance.py`, `provisa/federation/duckdb_runtime.py`
+
+**Tests:** —
+
+## 7. Result Delivery
+
+### REQ-1364 · Config Export {#REQ-1364}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Config exports carry JSON Pointer refs for internal cross-references plus composed physical resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN) to resolve semantic and physical locations without second passes.
+
+**Use case:** JSON Pointers make exported references self-resolving for downstream validators and format converters; resourcePaths provide precise physical source locations (e.g. postgresql://host:5432/db/schema/table#column) for interchange systems.
+
+**Code:** `provisa/api/admin/config_export.py`
+
+**Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-1365 · URI Dereferencing API {#REQ-1365}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri, as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally at a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`, addressing a single value as table → primary-key predicate → column. Only semantic addresses (provisa://<org>/<domain_schema>/...) are dereferenceable; physical URIs are refused.
+
+**Use case:** Exported documents, lineage nodes, audit records, and agent citations carry resolvable links to live or historical governed values — dereferenceable provenance. Complements [REQ-1364](#REQ-1364) (export addressing).
+
+**Code:** `provisa/api/`
+
+**Tests:** —

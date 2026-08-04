@@ -105,12 +105,20 @@ jobs:
         working-directory: provisa-ui
         run: npx playwright install --with-deps chromium
 
-      # docker-compose.core.yml bind-mounts ./sharepoint.pfx into Trino. It is a real
-      # certificate on a developer box and is gitignored, so it is absent here — and Docker
-      # silently creates a DIRECTORY in place of a missing bind-mount source. Create the empty
-      # file instead; no catalog in this lane reads it.
-      - name: Placeholder for the gitignored SharePoint cert mount
-        run: touch sharepoint.pfx
+      # docker-compose.core.yml bind-mounts ./sharepoint.pfx into Trino, and sharepoint-connector
+      # .spec.ts registers a certificate-authenticated SharePoint source that Trino authenticates
+      # with. The cert is gitignored, so it arrives as a base64 secret; an empty placeholder file
+      # would let the mount succeed and then fail the catalog handshake instead.
+      - name: Materialize the SharePoint client certificate
+        env:
+          SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
+        run: |
+          if [ -z "$SP_CERT_P12_BASE64" ]; then
+            echo "SP_CERT_P12_BASE64 is not set; the sharepoint catalog cannot authenticate." >&2
+            exit 1
+          fi
+          printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > sharepoint.pfx
+          chmod 600 sharepoint.pfx
 
       # The Calcite-derived connector plugins are gitignored (they exist only where built), and
       # Trino aborts with "No service providers of type io.trino.spi.Plugin" without them — a
@@ -136,7 +144,12 @@ jobs:
       # Pull before `up` so the compose wait below spends its budget on Trino's JVM boot rather
       # than on a 1 GB image download racing the healthcheck's start_period.
       - name: Pre-pull service images
-        run: docker compose -f docker-compose.core.yml pull postgres trino minio minio-init
+        run: |
+          docker compose -f docker-compose.core.yml pull postgres trino minio minio-init
+          # splunk-connector.spec.ts starts this container itself (it needs the core project's
+          # network alias), so compose never pulls it. Doing it here keeps the ~2 GB pull off the
+          # spec's beforeAll budget, which otherwise has to cover pull + cold boot in one window.
+          docker pull splunk/splunk:latest
 
       # zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest).
       - name: Build the Zaychik Flight SQL image
@@ -157,6 +170,12 @@ jobs:
 
       - name: Run Playwright Trino lane
         working-directory: provisa-ui
+        env:
+          # The backends run on the host, not inside the compose project, so the compose service
+          # name in the default endpoint ("http://minio:9000") does not resolve and the OTel
+          # Parquet->Iceberg compaction job fails every tick with NameResolutionError. minio
+          # publishes 9000 on the host (docker-compose.core.yml), so dial it there.
+          PROVISA_OTEL_S3_ENDPOINT: http://localhost:9000
         run: npx playwright test --project=trino --reporter=list,html
 
       - name: Upload Playwright report

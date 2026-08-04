@@ -59,7 +59,9 @@ test.afterEach(async () => {
 
 test("sharepoint connector: add source and verify calendar list is available", async ({ page }) => {
   // 600s: beforeEach cleanup + navigation + form fill (~150s) + Trino SharePoint catalog init
-  // (~135s) + concurrent splunk Trino init may queue ours (~270s worst case) + 30s headroom.
+  // (~135s) + headroom. The trino lane runs with workers = 1 (playwright.config.ts derives
+  // `workers` from CORE_BACKENDS, which is a single entry outside the core lane), so the splunk
+  // spec is serialized against this one and cannot queue a competing catalog init.
   test.setTimeout(600000);
 
   // Redirect the UI's API calls from the default DuckDB backend to the Trino backend so
@@ -79,8 +81,8 @@ test("sharepoint connector: add source and verify calendar list is available", a
     () => !document.body.textContent?.includes("Loading sources..."),
     { timeout: 30000 },
   );
-  // Apollo resetStore() may fire if a concurrent test advances the schema version,
-  // causing "Loading sources..." to reappear briefly. Use 30s to survive the reset.
+  // A schema-version advance makes apolloClient.ts re-fetch every active query, causing
+  // "Loading sources..." to reappear briefly. Use 30s to survive the re-fetch.
   await page.waitForSelector(".page-header", { timeout: 30000 });
 
   await page.getByRole("button", { name: /\+ Source/i }).click();
@@ -146,8 +148,7 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await domainSelect.selectOption(firstDomain!);
 
   // Wait for 'sharepoint' schema to appear — Trino SharePoint catalog loads asynchronously; allow
-  // 240s for Trino catalog initialisation + schema enumeration via SharePoint REST API. A concurrent
-  // splunk test may queue a second Trino catalog init that delays ours by ~135s.
+  // 240s for Trino catalog initialisation + schema enumeration via SharePoint REST API.
   await page.waitForFunction(
     () => {
       const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');

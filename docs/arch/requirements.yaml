@@ -41305,3 +41305,102 @@
   e2e: true
   e2e_reason: Tour step display timing relative to destination page rendering is only verifiable through
     full end-to-end UI interaction with the tour system navigating between pages.
+- id: REQ-1363
+  status: accepted
+  since: 2026-08
+  group: "3. Source Registration & Data Modeling"
+  category: Domain Hierarchy
+  priority: MUST
+  type: structural
+  description: Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers.
+  use_case: Enable organizations to structure domains hierarchically for governance metadata and organization, while maintaining a single flat execution model and addressing scheme.
+  code:
+  - provisa/core/models.py
+  - provisa/core/governance.py
+  - provisa/federation/duckdb_runtime.py
+  scenario: 'Given a domain hierarchy with parent-child relationships
+
+    When a role grants access to a parent domain
+
+    Then the grant expands to all descendant domains at build_governance_context() time
+
+    And addressing (domain_schema.table) remains two-part and flat
+
+    And no per-domain scoped namespaces are created (roles, operations, serverInstances remain global)
+
+    And tables continue to attach to exactly one domain (leaf or non-leaf)
+
+    '
+  design_notes: >-
+    Mirrors Role.parent_role_id + flatten_roles() pattern (provisa/core/models.py:714,722).
+    Flattening applies to: (1) addressing — domain_schema.table two-part unchanged, PG-schema mapping flat;
+    (2) roles + rights — parent domain grants expand to descendants at governance context build time,
+    Source.allowed_domains and RLS domain_id rules gain subtree expansion;
+    (3) execution — compiler, RLS, row-scoping, all surfaces see flattened domain sets.
+    Rejected alternative: recursive domains with per-domain scoped namespaces (from Simple is Hard appendix-B)
+    as fragmenting the single control plane.
+- id: REQ-1364
+  status: proposed
+  target: "2026-Q4"
+  group: "7. Result Delivery"
+  category: Config Export
+  priority: SHOULD
+  type: structural
+  description: Config exports carry JSON Pointer refs for internal cross-references plus composed physical resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN) to resolve semantic and physical locations without second passes.
+  use_case: JSON Pointers make exported references self-resolving for downstream validators and format converters; resourcePaths provide precise physical source locations (e.g. postgresql://host:5432/db/schema/table#column) for interchange systems.
+  code:
+  - provisa/api/admin/config_export.py
+  design_notes: >-
+    Scope is export projection only — config/export layer (provisa/api/admin/config_export.py and interchange
+    converters). NOT used in model definition (YAML stays name-based refs) or execution (DB stays int FKs);
+    no pipeline changes. Every exported object (domain, table, column, relationship, metric, role, RLS rule,
+    function) is addressable at a stable JSON Pointer (e.g., #/domains/finance/tables/orders/columns/amount).
+    Internal cross-references in the exported document (relationship endpoints, metric expression refs, RLS
+    targets, function returns) are emitted as JSON Pointers instead of bare name strings. Each table and
+    column additionally carries a composed physical resourcePath URI (from Source connection info +
+    catalog.schema.table, e.g., postgresql://host:5432/db/schema/table#column).
+- id: REQ-1365
+  status: accepted
+  since: 2026-08
+  group: "8. Client Access & Protocols"
+  category: URI Dereferencing API
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri, as_of?)`
+    that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally at
+    a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`,
+    addressing a single value as table → primary-key predicate → column. Only semantic addresses
+    (provisa://<org>/<domain_schema>/...) are dereferenceable; physical URIs are refused.
+  use_case: >-
+    Exported documents, lineage nodes, audit records, and agent citations carry resolvable links to live or
+    historical governed values — dereferenceable provenance. Complements REQ-1364 (export addressing).
+  code:
+  - provisa/api/
+  design_notes: >-
+    Execution routes through the single settled query pipeline (_govern_and_route/_execute_plan), never
+    a second pipeline. Dereferencing is automatically role-scoped, RLS-filtered, masked, row-capped, and
+    audited. Row selection uses primary-key-based predicates validated against the model's key metadata
+    (not free-form SQL). Point-in-time maps to existing bitemporal read path (X-Provisa-As-Of) when target
+    table has bitemporal mode enabled. Physical URIs are explicitly rejected.
+
+    Name durability is best-effort, steward-mediated, and NOT guaranteed. There is no schema history, so
+    semantic-model renames (domain/table/column renames or re-keying) can orphan previously exported
+    addresses. Physical changes (re-platforming, physical schema renames, source moves) never orphan names
+    — the address is semantic and binding is indirection. Orphaning therefore only results from deliberate
+    steward action, expected to be rare in stable data environments (more common in modernizing ones). Stewards
+    may elect to retain old addresses via existing mechanisms — Table.alias or view_sql virtual tables over
+    the renamed definition — but the system does not enforce address permanence.
+  scenario: |
+    Given a semantic-address URI with role-based visibility and RLS restrictions
+    When resolve(uri) is called
+    Then the returned value is filtered by the caller's role, RLS rules, and applicable masking
+    And the value is audited like any other query execution
+    And physical URIs are refused with an error
+  e2e: true
+  e2e_reason: >-
+    API behavior verifiable only through end-to-end governance application — role scoping, RLS filtering,
+    masking, row capping, and audit logging must be verified across REST and MCP transports with actual
+    governance context.
+  related_reqs:
+  - REQ-1364

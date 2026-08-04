@@ -26,26 +26,31 @@ test("show children for two nodes keeps both visible", async ({ page }) => {
   // warms both, but belt-and-suspenders: pre-warm here too so any post-setup server restart
   // doesn't cause a cold-start during the test.
   // Timeout breakdown: pre-warm (fast if warm, 90s if cold) + page interactions ~40s ⇒ 180s.
-  // 600s: concurrent sharepoint/splunk tests each trigger a Trino catalog init that can stall
-  // the backend for ~135s each; two concurrent inits consumed ~270s of pre-warm POST budget in
-  // run7, leaving only 90s for the waitForFunction which fired the test timeout at 360s.
-  // 600s = 270s (two Trino inits) + 90s (waitForFunction) + 60s (interactions) + 180s headroom.
-  test.setTimeout(600000);
+  // The sharepoint/splunk specs that used to stall this backend with a ~135s Trino catalog init
+  // now run in their own lane (playwright.config.ts TRINO_SPECS), so that budget is gone.
+  test.setTimeout(180000);
+  // Every step below carries its OWN timeout. Playwright's actionTimeout and navigationTimeout
+  // both default to 0 (unbounded), so an unqualified post/goto/reload hangs until the test wall
+  // and the report then blames whatever line the clock happened to expire on rather than the
+  // step that actually stalled.
+  const PREWARM_MS = 60000;
   await page.request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n:PetStore:Inquiries) RETURN n LIMIT 5", params: {} },
+    timeout: PREWARM_MS,
   });
   await page.request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: "MATCH (n:PetStore:Pets) RETURN n LIMIT 5", params: {} },
+    timeout: PREWARM_MS,
   });
   // Set pending query before navigation so the page auto-runs it on mount
-  await page.goto("/graph");
+  await page.goto("/graph", { timeout: 30000 });
   await page.evaluate(() => {
     localStorage.setItem(
       "provisa.graph.pending_query",
       "MATCH (n:PetStore:Inquiries) RETURN n LIMIT 5",
     );
   });
-  await page.reload();
+  await page.reload({ timeout: 30000 });
 
   // Wait for cytoscape to initialize and have at least 2 nodes.
   // Use a long timeout: cold backend + Vite compilation can take >15s on first load.

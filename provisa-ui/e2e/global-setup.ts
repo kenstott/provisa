@@ -12,12 +12,17 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
 const SNAPSHOT_PATH = CONFIG_PATH + ".snapshot";
-const BACKEND_URL = `http://localhost:${process.env.PROVISA_E2E_API_PORT ?? "8901"}`;
+// One backend per Playwright worker — see playwright.config.ts. Every one of them boots empty and
+// has to be bootstrapped here; a worker whose backend never got its config would see no tables at
+// all. The list is published by playwright.config.ts, which runs in this same process.
+const BACKEND_URLS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "8901")
+  .split(",")
+  .map((port) => `http://localhost:${port}`);
 // Use 127.0.0.1 explicitly — Node.js resolves `localhost` to ::1 on this platform
 // but the Vite dev server binds to 127.0.0.1 (IPv4) only.
 const UI_URL = `http://127.0.0.1:${process.env.PROVISA_E2E_UI_PORT ?? "3901"}`;
 // Trino backend (sharepoint/splunk tests) — PROVISA_E2E_TRINO_CONFIG is set by playwright.config.ts.
-const TRINO_BACKEND_URL = `http://localhost:${process.env.PROVISA_E2E_TRINO_API_PORT ?? "8910"}`;
+const TRINO_BACKEND_URL = `http://localhost:${process.env.PROVISA_E2E_TRINO_API_PORT ?? "8990"}`;
 const TRINO_CONFIG_PATH = process.env.PROVISA_E2E_TRINO_CONFIG ?? path.resolve(__dirname, "../../.playwright-trino-data/provisa-trino.yaml");
 
 /** PUT /admin/config with connection-level retry.
@@ -48,9 +53,8 @@ async function putAdminConfig(url: string, body: string): Promise<Response> {
   throw new Error("unreachable");
 }
 
-export default async function globalSetup() {
-  const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
-  fs.writeFileSync(SNAPSHOT_PATH, yaml);
+/** Bring one worker's backend from a bare uvicorn to a queryable, warmed-up instance. */
+async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
   const res = await putAdminConfig(`${BACKEND_URL}/admin/config`, yaml);
   if (!res.ok) {
     throw new Error(`Config reload failed: ${res.status} ${await res.text()}`);
@@ -131,6 +135,15 @@ export default async function globalSetup() {
   if (!shelterWarmRes.ok) {
     throw new Error(`Shelter DuckDB warm-up query failed: ${shelterWarmRes.status} ${await shelterWarmRes.text()}`);
   }
+}
+
+export default async function globalSetup() {
+  const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
+  fs.writeFileSync(SNAPSHOT_PATH, yaml);
+  // In parallel: the bootstrap is dominated by each backend's cold DuckDB warm-up queries
+  // (30-90 s apiece), and they are separate processes on separate data dirs with nothing to
+  // serialise on. Serially this would add minutes to every run's fixed cost.
+  await Promise.all(BACKEND_URLS.map((url) => bootstrapBackend(url, yaml)));
 
   // Bootstrap the Trino-backed backend (sharepoint/splunk tests).  It uses a minimal
   // config (domains only, no pre-registered sources) so TrinoPgBackedConnector is never

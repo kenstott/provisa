@@ -70,6 +70,28 @@ test.beforeEach(async ({ page }) => {
 test("REQ-1323: row click opens detail panel with source fact; edit lives inside", async ({
   page,
 }) => {
+  page.on("console", (m) => console.log(`PAGE CONSOLE [${m.type()}] ${m.text().slice(0, 300)}`));
+  page.on("response", async (r) => {
+    if (!r.url().includes("/admin/graphql")) return;
+    try {
+      const body = await r.text();
+      if (!body.includes('"tables"')) return;
+      const j = JSON.parse(body);
+      const t = j.data?.tables ?? null;
+      console.log(
+        `PAGE GQL ${r.status()} len=${body.length} tables=${t === null ? "null" : t.length}` +
+          ` facts=${t === null ? "-" : JSON.stringify(t.filter((x: { modelingRole?: string }) => x.modelingRole === "fact").map((x: { tableName: string }) => x.tableName))}` +
+          ` errors=${JSON.stringify(j.errors ?? null).slice(0, 400)}`,
+      );
+    } catch (e) {
+      console.log(`PAGE GQL probe failed: ${String(e).slice(0, 200)}`);
+    }
+  });
+  page.on("requestfailed", (r) => {
+    if (r.url().includes("/admin/graphql"))
+      console.log(`PAGE GQL REQUEST FAILED ${r.failure()?.errorText}`);
+  });
+
   await page.goto("/metrics");
   const row = page.getByTestId(`metrics-row-${FACT_METRIC}`);
   await expect(row).toBeVisible({ timeout: 15000 });
@@ -89,6 +111,10 @@ test("REQ-1323: row click opens detail panel with source fact; edit lives inside
   await expect(page.getByTestId("metric-expression-input")).toHaveValue(
     `SUM(${FACT_NAME}.price)`,
   );
+  // MetricsPage derives factTables from the tables query, so the picker stays disabled until that
+  // query lands — it returns every registered table with its columns (~200 KB). Asserting the
+  // prefilled value straight away reads the still-disabled empty input.
+  await expect(page.getByTestId("metric-builder-fact")).toBeEnabled({ timeout: 30000 });
   await expect(page.getByTestId("metric-builder-fact")).toHaveValue(FACT_NAME);
   await expect(page.getByTestId("metric-builder-measure")).toHaveValue("price");
   await expect(page.getByTestId("metric-builder-agg")).toHaveValue("SUM");
@@ -103,6 +129,8 @@ test("REQ-1324: builder composes AGG(fact.column); delete lives inside detail", 
   await page.getByTestId("metrics-new-button").click();
   await expect(page.getByTestId("metric-create-card")).toBeVisible();
 
+  // Same as the edit path: the picker stays disabled until the tables query lands.
+  await expect(page.getByTestId("metric-builder-fact")).toBeEnabled({ timeout: 30000 });
   await page.getByTestId("metric-builder-fact").click();
   await page.getByRole("option", { name: FACT_NAME }).click();
   await page.getByTestId("metric-builder-measure").click();

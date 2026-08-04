@@ -209,6 +209,137 @@ def test_attach_control_plane_survives_a_concurrent_control_plane_writer(sqlite_
     assert writer_errors == []
 
 
+def test_control_plane_refresh_never_empties_a_concurrent_query(sqlite_cp_db: Path):
+    """Regression: a query running while the control plane is re-snapshotted came back with ZERO
+    ROWS instead of the real result. The rebuild DROPs the org schema CASCADE, DETACHes the snapshot
+    alias and replaces the file; a query already bound to those views silently scanned nothing.
+
+    Reproduced in the e2e suite as meta Cypher queries intermittently returning no rows on every
+    worker while /data/graph-counts on the same backend reported the real counts. The reader here
+    goes through run_sync (an execution path) rather than rt._con directly, because the gate that
+    excludes readers from the rebuild is what the execution paths take."""
+    stop = threading.Event()
+    empties: list[str] = []
+    errors: list[str] = []
+
+    rt = DuckDBFederationRuntime()
+    rt.attach_control_plane(str(sqlite_cp_db), "org_default")
+
+    def writer() -> None:
+        """Commits to the control plane — every commit makes the next attach re-snapshot."""
+        con = sqlite3.connect(str(sqlite_cp_db))
+        con.execute("PRAGMA busy_timeout=5000")
+        i = 1000
+        try:
+            while not stop.is_set():
+                con.execute("INSERT INTO sources VALUES (?, 'sqlite')", (f"src-{i}",))
+                con.commit()
+                i += 1
+                time.sleep(0.002)
+        except Exception as exc:
+            errors.append(f"writer {type(exc).__name__}: {exc}")
+        finally:
+            con.close()
+
+    def refresher() -> None:
+        """The engine's per-query attach — this is what rebuilds the catalog under the reader."""
+        try:
+            while not stop.is_set():
+                rt.attach_control_plane(str(sqlite_cp_db), "org_default")
+        except Exception as exc:
+            errors.append(f"refresher {type(exc).__name__}: {exc}")
+
+    def reader() -> None:
+        try:
+            while not stop.is_set():
+                rows = rt.run_sync(
+                    'SELECT id FROM "provisa_admin"."org_default"."registered_tables"'
+                ).rows
+                # The fixture's two rows are committed before the run and never deleted, so any
+                # result short of two means the reader saw the catalog mid-rebuild.
+                if len(rows) < 2:
+                    empties.append(f"{len(rows)} rows")
+        except Exception as exc:
+            errors.append(f"reader {type(exc).__name__}: {exc}")
+
+    threads = [
+        threading.Thread(target=writer, daemon=True),
+        threading.Thread(target=refresher, daemon=True),
+        threading.Thread(target=reader, daemon=True),
+        threading.Thread(target=reader, daemon=True),
+    ]
+    try:
+        for t in threads:
+            t.start()
+        time.sleep(5)
+    finally:
+        stop.set()
+        for t in threads:
+            t.join(timeout=10)
+        rt.close()
+    assert errors == []
+    assert empties == [], f"{len(empties)} short reads during a control-plane rebuild: {empties[:5]}"
+
+
+def test_concurrent_queries_never_steal_each_others_results(sqlite_cp_db: Path):
+    """Regression: two queries running at once on the shared DuckDB connection came back with ZERO
+    ROWS. A duckdb connection holds ONE pending result — the second execute() replaces the first,
+    and the first caller's fetchall() then returns an empty list rather than raising. run() and
+    run_arrow() executed on the shared connection; only run_sync/run_arrow_stream took a cursor.
+
+    Observed in the e2e suite as meta/admin queries intermittently returning no rows while the
+    control plane demonstrably held the data (a count(*) against the attached snapshot returned no
+    row at all, with no exception)."""
+    rt = DuckDBFederationRuntime()
+    rt.attach_control_plane(str(sqlite_cp_db), "org_default")
+
+    stop = threading.Event()
+    empties: list[str] = []
+    errors: list[str] = []
+
+    async def _query(sql: str) -> list:
+        return (await rt.run(sql)).rows
+
+    def hammer(sql: str, expected: int) -> None:
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        try:
+            while not stop.is_set():
+                rows = loop.run_until_complete(_query(sql))
+                if len(rows) != expected:
+                    empties.append(f"{sql[:40]}: {len(rows)} rows")
+        except Exception as exc:
+            errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            loop.close()
+
+    threads = [
+        threading.Thread(
+            target=hammer,
+            args=('SELECT id FROM "provisa_admin"."org_default"."registered_tables"', 2),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=hammer,
+            args=('SELECT id FROM "provisa_admin"."org_default"."sources"', 2),
+            daemon=True,
+        ),
+        threading.Thread(target=hammer, args=("SELECT * FROM range(500)", 500), daemon=True),
+    ]
+    try:
+        for t in threads:
+            t.start()
+        time.sleep(3)
+    finally:
+        stop.set()
+        for t in threads:
+            t.join(timeout=10)
+        rt.close()
+    assert errors == []
+    assert empties == [], f"{len(empties)} wrong-length results under concurrency: {empties[:5]}"
+
+
 def test_attach_control_plane_is_read_only(sqlite_cp_db: Path):
     """The SQLite ATTACH is READ_ONLY: DuckDB cannot write to the control-plane DB via provisa_admin."""
     rt = DuckDBFederationRuntime()
