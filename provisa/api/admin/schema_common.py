@@ -186,9 +186,13 @@ def _configure_govdata_env(input: SourceInput) -> None:
     import os as _os
     from provisa.core.secrets import resolve_secrets as _rs
 
-    _os.environ.setdefault("AWS_ACCESS_KEY_ID", _rs(input.username))
+    # Overwrite, never setdefault: the credential the caller registered the source with is the
+    # authoritative one. Deferring to an ambient AWS_ACCESS_KEY_ID silently authenticates govdata
+    # with whatever unrelated key happens to be in the environment, and is inconsistent with the
+    # endpoint below, which already overwrites.
+    _os.environ["AWS_ACCESS_KEY_ID"] = _rs(input.username)
     if input.password:
-        _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", _rs(input.password))
+        _os.environ["AWS_SECRET_ACCESS_KEY"] = _rs(input.password)
     if input.host:
         _os.environ["AWS_ENDPOINT_OVERRIDE"] = _rs(input.host)
 

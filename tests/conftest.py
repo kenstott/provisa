@@ -20,6 +20,12 @@ import pytest_asyncio
 import trino
 
 from provisa.compiler import naming as _naming
+from tests.env_creds import load_provider_creds
+
+# Before ANY test module is imported: the cloud-DW e2es gate on os.environ inside module-level
+# skipif conditions evaluated at collection time, so live .env creds must be present now or those
+# tests report as skipped while the credentials sit unused on disk. See tests/env_creds.py.
+load_provider_creds()
 
 # A native engine caches/lands into a materialization store, which MUST exist (the engine invariant).
 # Positive-case tests therefore define one, built from the same PG_* the test PG uses; a negative
