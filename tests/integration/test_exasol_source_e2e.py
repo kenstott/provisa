@@ -221,9 +221,13 @@ def _seed_exasol() -> str:
     else:
         raise RuntimeError(f"exasol schema creation never succeeded: {last_err}")
 
+    # DROP before CREATE, not CREATE IF NOT EXISTS: the source test and the pipeline test each seed,
+    # and the container outlives the first of them, so idempotent DDL plus non-idempotent INSERTs
+    # left six rows — three of each widget — and the pipeline test's served rows came back doubled.
+    _exaplus(container_id, f"DROP TABLE IF EXISTS {_SCHEMA}.{_TABLE}", fingerprint)
     _exaplus(
         container_id,
-        f"CREATE TABLE IF NOT EXISTS {_SCHEMA}.{_TABLE} (ID DECIMAL(18,0), NAME VARCHAR(64))",
+        f"CREATE TABLE {_SCHEMA}.{_TABLE} (ID DECIMAL(18,0), NAME VARCHAR(64))",
         fingerprint,
     )
     for wid, name in _WIDGETS:
@@ -235,10 +239,20 @@ def _seed_exasol() -> str:
     # Read the seeded rows back through exasol itself. The engine reaching an empty catalog is the
     # symptom of a seed that never landed, and the two are indistinguishable from the Trino side —
     # so the seed asserts its own result here, at the source.
-    count = _exaplus(container_id, f"SELECT COUNT(*) FROM {_SCHEMA}.{_TABLE};", fingerprint)
-    if str(len(_WIDGETS)) not in count:
+    #
+    # The count travels inside a tagged string because exaplus surrounds the result with a banner
+    # carrying its own digits (version, timestamp) — a substring test for "3" matched that banner
+    # and passed while the table actually held six rows.
+    out = _exaplus(
+        container_id,
+        f"SELECT 'ROWCOUNT=' || CAST(COUNT(*) AS VARCHAR(20)) FROM {_SCHEMA}.{_TABLE};",
+        fingerprint,
+    )
+    found = re.search(r"ROWCOUNT=(\d+)", out)
+    if not found or int(found.group(1)) != len(_WIDGETS):
         raise RuntimeError(
-            f"exasol seed did not land: SELECT COUNT(*) FROM {_SCHEMA}.{_TABLE} returned:\n{count}"
+            f"exasol seed did not land: expected {len(_WIDGETS)} rows in {_SCHEMA}.{_TABLE}, "
+            f"exaplus returned:\n{out}"
         )
     return fingerprint
 
