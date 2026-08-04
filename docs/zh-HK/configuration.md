@@ -337,7 +337,7 @@ sources:
     mapping:
       tables:
         - name: sessions
-          key_pattern: "session:*"
+          key_pattern: "sessions:*"
           key_column: key           # default "key"
           value_type: hash          # hash | string | zset | list; default hash
           columns:

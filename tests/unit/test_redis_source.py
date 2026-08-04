@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -59,7 +60,7 @@ class TestRedisDataFormat:
 
 def _simple_config(**kwargs) -> RedisSourceConfig:
     """Build a minimal RedisSourceConfig for catalog-property tests."""
-    defaults = dict(
+    defaults: dict[str, Any] = dict(
         id="redis-1",
         host="redis.example.com",
         port=6379,
@@ -67,12 +68,12 @@ def _simple_config(**kwargs) -> RedisSourceConfig:
         tables=[
             RedisTableConfig(
                 name="orders",
-                key_pattern="order:*",
+                key_pattern="orders:*",
                 key_column="order_key",
             ),
             RedisTableConfig(
                 name="users",
-                key_pattern="user:*",
+                key_pattern="users:*",
                 key_column="user_key",
             ),
         ],
@@ -93,7 +94,22 @@ class TestGenerateCatalogProperties:
     def test_table_names_comma_separated(self):
         props = generate_catalog_properties(_simple_config())
         names = props["redis.table-names"].split(",")
-        assert set(names) == {"orders", "users"}
+        assert set(names) == {"default.orders", "default.users"}
+
+    def test_key_prefix_schema_table_enabled(self):
+        """Each table must scan its own key prefix, not the whole keyspace."""
+        props = generate_catalog_properties(_simple_config())
+        assert props["redis.key-prefix-schema-table"] == "true"
+
+    def test_unmappable_key_pattern_rejected(self):
+        """A key_pattern the connector cannot scan is an error, not a silently ignored setting."""
+        cfg = _simple_config(
+            tables=[
+                RedisTableConfig(name="orders", key_pattern="default:orders:*", key_column="order_key"),
+            ]
+        )
+        with pytest.raises(ValueError, match="orders:\\*"):
+            generate_catalog_properties(cfg)
 
     def test_key_delimiter_is_colon(self):
         props = generate_catalog_properties(_simple_config())
@@ -121,7 +137,7 @@ class TestGenerateCatalogProperties:
 def _hash_table(
     name: str = "orders",
     key_column: str = "order_key",
-    key_pattern: str = "order:*",
+    key_pattern: str = "orders:*",
     value_type: str = ValueType.HASH,
     columns: list[RedisColumn] | None = None,
 ) -> RedisTableConfig:
@@ -149,14 +165,16 @@ class TestGenerateTableDefinitions:
         assert "key" in td
         assert "value" in td
 
-    def test_key_column_in_key_section_with_mapping_key(self):
+    def test_key_column_in_key_section_without_mapping(self):
         cfg = _config_with_tables(_hash_table(key_column="order_key"))
         defs = generate_table_definitions(cfg)
         key_fields = defs[0]["key"]["fields"]
         assert len(key_fields) == 1
         key_field = key_fields[0]
         assert key_field["name"] == "order_key"
-        assert key_field["mapping"] == "key"
+        # The raw key decoder's mapping grammar is "<start>[:<end>]"; a name like "key" fails
+        # decoder construction, and omitting mapping decodes the whole key.
+        assert "mapping" not in key_field
         assert key_field["type"] == "VARCHAR"
 
     def test_each_column_in_value_section(self):
@@ -215,8 +233,8 @@ class TestGenerateTableDefinitions:
         assert defs[0]["value"]["fields"] == []
 
     def test_multiple_tables_produce_multiple_definitions(self):
-        t1 = _hash_table(name="orders", key_column="order_key", key_pattern="order:*")
-        t2 = _hash_table(name="sessions", key_column="session_key", key_pattern="session:*")
+        t1 = _hash_table(name="orders", key_column="order_key", key_pattern="orders:*")
+        t2 = _hash_table(name="sessions", key_column="session_key", key_pattern="sessions:*")
         cfg = _config_with_tables(t1, t2)
         defs = generate_table_definitions(cfg)
         assert len(defs) == 2
@@ -250,14 +268,14 @@ class TestGenerateTableJson:
         result = generate_table_json(cfg)
         parsed = json.loads(result["orders.json"])
         assert parsed["tableName"] == "orders"
-        assert parsed["key"]["fields"][0]["mapping"] == "key"
+        assert "mapping" not in parsed["key"]["fields"][0]
         value_field = parsed["value"]["fields"][0]
         assert value_field["name"] == "amount"
         assert value_field["mapping"] == "amt"
 
     def test_multiple_tables_produce_multiple_json_files(self):
-        t1 = _hash_table(name="orders", key_column="order_key", key_pattern="order:*")
-        t2 = _hash_table(name="sessions", key_column="session_key", key_pattern="session:*")
+        t1 = _hash_table(name="orders", key_column="order_key", key_pattern="orders:*")
+        t2 = _hash_table(name="sessions", key_column="session_key", key_pattern="sessions:*")
         cfg = _config_with_tables(t1, t2)
         result = generate_table_json(cfg)
         assert "orders.json" in result
@@ -285,11 +303,11 @@ class TestRedisColumnConfig:
         tbl = RedisTableConfig(
             name="orders",
             key_column="order_key",
-            key_pattern="order:*",
+            key_pattern="orders:*",
             value_type=ValueType.HASH,
         )
         assert tbl.key_column == "order_key"
-        assert tbl.key_pattern == "order:*"
+        assert tbl.key_pattern == "orders:*"
         assert tbl.value_type == ValueType.HASH
         assert tbl.columns == []
 

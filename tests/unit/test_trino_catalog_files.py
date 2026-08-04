@@ -24,7 +24,7 @@ def _redis_source() -> Source:
             "tables": [
                 {
                     "name": "users",
-                    "key_pattern": "user:*",
+                    "key_pattern": "users:*",
                     "key_column": "id",
                     "value_type": "hash",
                     "columns": [{"name": "email", "data_type": "VARCHAR", "field": "email"}],
@@ -41,14 +41,14 @@ class TestRedis:
         # connector.name is set by USING <connector>, not the WITH clause.
         assert "connector.name" not in props
         assert props["redis.nodes"] == "redis-host:6379"
-        assert props["redis.table-names"] == "users"
+        assert props["redis.table-names"] == "default.users"
 
     def test_table_definition_files_written(self, tmp_path):
         written = tcf.write_table_definitions(_redis_source(), "", tmp_path)
         assert [p.name for p in written] == ["users.json"]
         doc = json.loads(written[0].read_text())
         assert doc["tableName"] == "users"
-        assert doc["key"]["fields"][0]["mapping"] == "key"
+        assert "mapping" not in doc["key"]["fields"][0]
 
     def test_is_mapping_dsl_source(self):
         assert tcf.is_mapping_dsl_source(_redis_source()) is True

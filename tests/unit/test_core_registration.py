@@ -362,7 +362,7 @@ class TestReq250ConfigDrivenTrinoCatalog:
         s = Source(
             id="redis1",
             type=SourceType.redis,
-            mapping={"tables": [{"name": "sessions", "key_pattern": "session:*"}]},
+            mapping={"tables": [{"name": "sessions", "key_pattern": "sessions:*"}]},
         )
         assert "tables" in s.mapping
 
@@ -380,14 +380,14 @@ class TestReq251NoSQLMappingDSL:
             "tables": [
                 {
                     "name": "sessions",
-                    "key_pattern": "session:*",
+                    "key_pattern": "sessions:*",
                     "value": {"type": "hash"},
                     "columns": [{"mapping": "session_id", "name": "session_id", "type": "VARCHAR"}],
                 }
             ]
         }
         s = Source(id="redis-src", type=SourceType.redis, mapping=dsl)
-        assert s.mapping["tables"][0]["key_pattern"] == "session:*"
+        assert s.mapping["tables"][0]["key_pattern"] == "sessions:*"
 
     def test_source_mapping_field_accepts_elasticsearch_dsl(self):
         # REQ-251
