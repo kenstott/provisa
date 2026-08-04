@@ -34,22 +34,39 @@ if (fs.existsSync(rootEnv)) {
 // deadlock/error). All defaults are distinct from start-ui.sh's and from each other.
 const E2E_UI_PORT = Number(process.env.PROVISA_E2E_UI_PORT ?? 3901);
 const E2E_API_PORT = Number(process.env.PROVISA_E2E_API_PORT ?? 8901);
-const E2E_GRPC_PORT = Number(process.env.PROVISA_E2E_GRPC_PORT ?? 8902);
-const E2E_FLIGHT_PORT = Number(process.env.PROVISA_E2E_FLIGHT_PORT ?? 8903);
-const E2E_BOLT_PORT = Number(process.env.PROVISA_E2E_BOLT_PORT ?? 8904);
-const E2E_MCP_PORT = Number(process.env.PROVISA_E2E_MCP_PORT ?? 8905);
-const E2E_PGWIRE_PORT = Number(process.env.PROVISA_E2E_PGWIRE_PORT ?? 8906);
+// One backend PER PLAYWRIGHT WORKER, not one shared by all of them. `state.schema_version`
+// (api/app.py) is a process-global counter bumped by every schema rebuild, and the UI's Apollo
+// link (src/apolloClient.ts) calls client.resetStore() the moment it sees X-Schema-Version
+// change — which empties every active query's data. With one backend behind six workers, any
+// worker's table mutation blanked the table lists the other five were mid-assertion on:
+// tables-register, tables-enable-aggregates, metrics-detail-edit, mv-cascade-propagation and
+// the mv/graph specs all failed in parallel and all passed at --workers=1. Per-worker orgs
+// cannot fix it — state.tables and state.schema_version are single-org process state
+// (native_backend.py's REQ-1266 guard) — so the isolation boundary has to be the process.
+// Each backend gets its own contiguous 10-port block, data dir, config copy, control-plane
+// files and org. Block 0 keeps today's 8901-8906 so a single-worker run is unchanged; the
+// demo servers on 8907/8908 sit in the gap above it.
+const E2E_WORKERS = Number(process.env.PROVISA_E2E_WORKERS ?? 4);
+if (!Number.isInteger(E2E_WORKERS) || E2E_WORKERS < 1) {
+  throw new Error(`PROVISA_E2E_WORKERS must be a positive integer, got: ${E2E_WORKERS}`);
+}
+// Block layout, offset from the block's own base: 0 http, 1 grpc, 2 flight, 3 bolt, 4 mcp,
+// 5 pgwire — so block 0 reproduces the previous flat 8901/8902/8903/8904/8905/8906 exactly.
+const backendPort = (worker: number) => E2E_API_PORT + worker * 10;
 // Trino-backed E2E backend — a second isolated backend instance for sharepoint/splunk
 // tests that require Trino catalog creation (TrinoBackend.register_source creates the
 // catalog; NativeBackend.register_source is a no-op so the schema dropdown never
 // populates). Uses a minimal config (domains only, no pre-registered sources) to
 // avoid the TrinoPgBackedConnector PG-host networking complexity at startup.
-const E2E_TRINO_API_PORT = Number(process.env.PROVISA_E2E_TRINO_API_PORT ?? 8910);
-const E2E_TRINO_GRPC_PORT = Number(process.env.PROVISA_E2E_TRINO_GRPC_PORT ?? 8911);
-const E2E_TRINO_FLIGHT_PORT = Number(process.env.PROVISA_E2E_TRINO_FLIGHT_PORT ?? 8912);
-const E2E_TRINO_BOLT_PORT = Number(process.env.PROVISA_E2E_TRINO_BOLT_PORT ?? 8913);
-const E2E_TRINO_MCP_PORT = Number(process.env.PROVISA_E2E_TRINO_MCP_PORT ?? 8914);
-const E2E_TRINO_PGWIRE_PORT = Number(process.env.PROVISA_E2E_TRINO_PGWIRE_PORT ?? 8915);
+//
+// Based at 8990, well above the per-worker blocks: at the old 8910 it sat inside worker 1's
+// block (8911-8916) and the two backends fought for the same ports.
+const E2E_TRINO_API_PORT = Number(process.env.PROVISA_E2E_TRINO_API_PORT ?? 8990);
+const E2E_TRINO_GRPC_PORT = Number(process.env.PROVISA_E2E_TRINO_GRPC_PORT ?? 8991);
+const E2E_TRINO_FLIGHT_PORT = Number(process.env.PROVISA_E2E_TRINO_FLIGHT_PORT ?? 8992);
+const E2E_TRINO_BOLT_PORT = Number(process.env.PROVISA_E2E_TRINO_BOLT_PORT ?? 8993);
+const E2E_TRINO_MCP_PORT = Number(process.env.PROVISA_E2E_TRINO_MCP_PORT ?? 8994);
+const E2E_TRINO_PGWIRE_PORT = Number(process.env.PROVISA_E2E_TRINO_PGWIRE_PORT ?? 8995);
 // provisa-install.yaml (the config this harness boots from) statically registers a
 // graphql-demo and a petstore-mock source. Both default to compose-network hostnames
 // (graphql-demo:4000, petstore-mock:8080) that don't resolve outside docker-compose, so
@@ -125,12 +142,33 @@ const E2E_TRINO_ORG_ID = process.env.PROVISA_E2E_TRINO_ORG_ID ?? "e2e_trino";
 // none) so PUT /admin/config below can run unauthenticated, matching a fresh install.
 const E2E_CONFIG_PATH =
   process.env.PROVISA_E2E_CONFIG ?? path.resolve(E2E_DATA_DIR, "provisa.yaml");
+
+// The per-worker backend table. Worker 0 keeps the original data dir, config path and org so a
+// single-worker run and every env override (PROVISA_E2E_DATA_DIR, PROVISA_E2E_CONFIG,
+// PROVISA_E2E_ORG_ID) behave exactly as before; workers 1..n-1 get siblings of them. The org
+// differs per worker as well as the process, so the Postgres control plane (org_<id> schemas)
+// isolates them too — on SQLite it is already file-per-dir.
+// Only the core lane fans out. The Trino lane still boots one DuckDB backend — it serves the
+// same UI these specs drive — but its two specs address TRINO_BACKEND_URL, and a second and
+// third uvicorn would just compete for RAM with Trino's 7 GB limit on the CI runner.
+const CORE_BACKENDS = Array.from({ length: RUNS_CORE ? E2E_WORKERS : 1 }, (_, i) => {
+  const dataDir = i === 0 ? E2E_DATA_DIR : `${E2E_DATA_DIR}-w${i}`;
+  return {
+    worker: i,
+    port: backendPort(i),
+    dataDir,
+    configPath: i === 0 ? E2E_CONFIG_PATH : path.resolve(dataDir, "provisa.yaml"),
+    orgId: i === 0 ? E2E_ORG_ID : `${E2E_ORG_ID}_w${i}`,
+  };
+});
 if (IS_RUNNER) {
-  fs.mkdirSync(path.dirname(E2E_CONFIG_PATH), { recursive: true });
-  fs.copyFileSync(
-    path.resolve(__dirname, "../config/provisa-install.yaml"),
-    E2E_CONFIG_PATH,
-  );
+  for (const b of CORE_BACKENDS) {
+    fs.mkdirSync(path.dirname(b.configPath), { recursive: true });
+    fs.copyFileSync(
+      path.resolve(__dirname, "../config/provisa-install.yaml"),
+      b.configPath,
+    );
+  }
 }
 // Trino backend uses a minimal config (domains only, no pre-registered sources) so the
 // TrinoPgBackedConnector PG-host networking requirement is not triggered at startup.
@@ -148,6 +186,11 @@ if (RUNS_TRINO && IS_RUNNER) {
 // them derive the backend URL from the single source of truth above instead of
 // hardcoding it a second time.
 process.env.PROVISA_E2E_API_PORT = String(E2E_API_PORT);
+// The full per-worker backend list, in worker order. global-setup bootstraps every entry;
+// e2e/coverage.ts indexes it by TEST_PARALLEL_INDEX to pick the worker's own backend; and the
+// Vite dev server reads it to route each proxied request to the backend named by the
+// x-e2e-worker header the same fixture attaches.
+process.env.PROVISA_E2E_BACKEND_PORTS = CORE_BACKENDS.map((b) => b.port).join(",");
 // Exported so global-setup can pre-warm the Vite dev server before workers start.
 process.env.PROVISA_E2E_UI_PORT = String(E2E_UI_PORT);
 // Exported so global-setup can bootstrap the Trino backend.
@@ -221,8 +264,9 @@ function postgresControlPlaneEnv(port: string): Record<string, string> {
 // Only resolved on the Postgres path — the Trino webServer below also needs the raw port for
 // PROVISA_ENGINE_CONTROL_PLANE_PORT, and that webServer only exists when the control plane is PG.
 const pgPort = E2E_CONTROL_PLANE === "postgres" ? resolveControlPlanePort() : null;
-const controlPlaneEnv =
-  pgPort === null ? sqliteControlPlaneEnv(E2E_DATA_DIR) : postgresControlPlaneEnv(pgPort);
+const controlPlaneEnvFor = (dataDir: string) =>
+  pgPort === null ? sqliteControlPlaneEnv(dataDir) : postgresControlPlaneEnv(pgPort);
+const controlPlaneEnv = controlPlaneEnvFor(E2E_DATA_DIR);
 
 export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
@@ -231,6 +275,10 @@ export default defineConfig({
   testMatch: /[/\\][^.][^/\\]*\.spec\.ts$/,
   timeout: 30000,
   retries: 1,
+  // Pinned to the number of backends started above: a worker with no backend of its own would
+  // have to share one, which is the isolation defect this layout exists to remove. Playwright's
+  // default (half the cores) is what put six workers behind one backend.
+  workers: CORE_BACKENDS.length,
   use: {
     baseURL: `http://localhost:${E2E_UI_PORT}`,
     headless: true,
@@ -242,6 +290,10 @@ export default defineConfig({
       env: {
         PROVISA_UI_PORT: String(E2E_UI_PORT),
         PROVISA_API_PORT: String(E2E_API_PORT),
+        // One Vite server for all workers, but its proxy picks the backend per request from the
+        // x-e2e-worker header (see vite.config.ts). N dev servers would be the alternative and
+        // would cost N × this heap.
+        PROVISA_E2E_BACKEND_PORTS: CORE_BACKENDS.map((b) => b.port).join(","),
         // Increase Vite's Node.js heap: 6 concurrent workers loading the full React app
         // bundle (Monaco, Cytoscape, Istanbul-instrumented sources) can OOM the default
         // 1.5 GB heap, crashing the dev server mid-run.
@@ -262,25 +314,25 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 15000,
     },
-    {
-      command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${E2E_API_PORT}'`,
-      url: `http://localhost:${E2E_API_PORT}/health`,
+    ...CORE_BACKENDS.map((b) => ({
+      command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${b.port}'`,
+      url: `http://localhost:${b.port}/health`,
       env: {
-        GRPC_PORT: String(E2E_GRPC_PORT),
-        FLIGHT_PORT: String(E2E_FLIGHT_PORT),
-        PROVISA_BOLT_PORT: String(E2E_BOLT_PORT),
-        PROVISA_MCP_PORT: String(E2E_MCP_PORT),
-        PROVISA_PGWIRE_PORT: String(E2E_PGWIRE_PORT),
-        PROVISA_DATA_DIR: E2E_DATA_DIR,
-        PROVISA_CONFIG: E2E_CONFIG_PATH,
-        ORG_ID: E2E_ORG_ID,
+        GRPC_PORT: String(b.port + 1),
+        FLIGHT_PORT: String(b.port + 2),
+        PROVISA_BOLT_PORT: String(b.port + 3),
+        PROVISA_MCP_PORT: String(b.port + 4),
+        PROVISA_PGWIRE_PORT: String(b.port + 5),
+        PROVISA_DATA_DIR: b.dataDir,
+        PROVISA_CONFIG: b.configPath,
+        ORG_ID: b.orgId,
         GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
         PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
-        ...controlPlaneEnv,
+        ...controlPlaneEnvFor(b.dataDir),
       },
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
-    },
+    })),
     // Trino-backed backend for sharepoint/splunk tests.  sharepoint/splunk require
     // TrinoBackend.register_source() to create a Trino catalog; NativeBackend (DuckDB) is a
     // no-op so the schema dropdown never populates.  A minimal config (domains only, no
@@ -304,12 +356,16 @@ export default defineConfig({
         GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
         PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
         PROVISA_ENGINE: "trino",
-        // Trino runs inside Docker; "localhost" in the app's control-plane URL
-        // resolves to the Trino container itself, not the host.  These vars
-        // make engine_visible_address() (trino_system_catalogs.py) substitute
-        // the Docker host address so Trino's JDBC catalog specs reach Postgres.
-        PROVISA_ENGINE_CONTROL_PLANE_HOST: "host.docker.internal",
-        PROVISA_ENGINE_CONTROL_PLANE_PORT: String(pgPort),
+        // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
+        // Trino container itself, not the host. These vars make engine_visible_address()
+        // (trino_system_catalogs.py) substitute an address Trino can actually dial. Both
+        // containers come from docker-compose.core.yml and share its default network, so the
+        // compose service name and the CONTAINER port are the address — not the host gateway and
+        // the published port. host.docker.internal does not resolve on a Linux runner at all,
+        // which is why CI failed with "Failed to connect: jdbc:postgresql://host.docker.internal".
+        // Same values tests/conftest.py and tests/integration/isolated_server.py already export.
+        PROVISA_ENGINE_CONTROL_PLANE_HOST: "postgres",
+        PROVISA_ENGINE_CONTROL_PLANE_PORT: "5432",
         ...controlPlaneEnv,
       },
       reuseExistingServer: !process.env.CI,

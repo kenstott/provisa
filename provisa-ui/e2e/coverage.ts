@@ -13,7 +13,26 @@ export { expect } from "playwright/test";
 // Single source of truth for the isolated e2e backend's URL — matches
 // playwright.config.ts's PROVISA_E2E_API_PORT. Specs must reference this instead
 // of hardcoding a port, so the harness stays collision-proof with the dev backend.
-export const BACKEND_PORT = process.env.PROVISA_E2E_API_PORT ?? "8901";
+//
+// Each worker gets its OWN backend process (playwright.config.ts starts one per worker and
+// publishes the port list here). They cannot share one: `state.schema_version` is a
+// process-global counter, and src/apolloClient.ts resets the entire Apollo store whenever the
+// X-Schema-Version header changes — so one worker registering a table blanked the lists every
+// other worker was asserting on.
+//
+// TEST_PARALLEL_INDEX, not TEST_WORKER_INDEX: both are set in worker processes, but only the
+// parallel index is bounded by the worker count and stable across retries (a retry spawns a
+// replacement worker with a fresh workerIndex and the same parallelIndex). Indexing the port
+// list by workerIndex would run off the end on the first retry.
+const BACKEND_PORTS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "8901").split(",");
+const PARALLEL_INDEX = Number(process.env.TEST_PARALLEL_INDEX ?? "0");
+if (!BACKEND_PORTS[PARALLEL_INDEX]) {
+  throw new Error(
+    `No backend for parallel index ${PARALLEL_INDEX} in PROVISA_E2E_BACKEND_PORTS=` +
+      `${BACKEND_PORTS.join(",")} — playwright.config.ts must start one backend per worker.`,
+  );
+}
+export const BACKEND_PORT = BACKEND_PORTS[PARALLEL_INDEX];
 export const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 
 // UI dev server port — matches playwright.config.ts's E2E_UI_PORT.
@@ -27,7 +46,7 @@ export const UI_URL = `http://localhost:${UI_PORT}`;
 // Trino-backed backend URL for sharepoint/splunk specs.  These tests redirect the UI's
 // API calls to this backend (via page.route()) so that register_source() creates a real
 // Trino catalog and the schema dropdown populates.
-export const TRINO_BACKEND_PORT = process.env.PROVISA_E2E_TRINO_API_PORT ?? "8910";
+export const TRINO_BACKEND_PORT = process.env.PROVISA_E2E_TRINO_API_PORT ?? "8990";
 export const TRINO_BACKEND_URL = `http://localhost:${TRINO_BACKEND_PORT}`;
 
 // Same rationale as BACKEND_PORT — matches playwright.config.ts's PROVISA_E2E_FLIGHT_PORT.
@@ -56,6 +75,12 @@ export async function expectNoA11yViolations(page: Page, context?: string) {
 }
 
 export const test = base.extend<{ expectNoA11yViolations: typeof expectNoA11yViolations }>({
+  // Names this worker's backend on every request the browser makes to the Vite dev server,
+  // which routes the proxied API paths accordingly (vite.config.ts). One Vite server serves all
+  // workers — the alternative, one dev server per worker, costs a 4 GB Node heap each.
+  // Overriding the built-in option this way rather than calling test.use(): test.use() is
+  // illegal outside a spec/describe body, and this module is imported by every spec.
+  extraHTTPHeaders: [{ "x-e2e-worker": String(PARALLEL_INDEX) }, { option: true }],
   page: async ({ page }, use) => {
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));

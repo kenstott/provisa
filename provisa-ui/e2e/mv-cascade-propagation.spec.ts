@@ -77,14 +77,30 @@ async function createView(page: import("@playwright/test").Page, sql: string, al
 async function materialize(page: import("@playwright/test").Page, tableName: string) {
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
+  // Separate "createView never registered it" from "the row did not render": the row locator alone
+  // reports both as the same timeout. Assert the registration server-side first, against the same
+  // backend the page is routed to.
+  const reg = await page.request.post(`${BACKEND_URL}/admin/graphql`, {
+    data: { query: "{ tables { tableName } }" },
+  });
+  const names = ((await reg.json()).data?.tables ?? []).map(
+    (t: { tableName: string }) => t.tableName,
+  );
+  expect(names, `${tableName} is not registered; createView did not persist it`).toContain(
+    tableName,
+  );
+
   const row = page.locator("tr").filter({ hasText: tableName }).first();
-  await row.waitFor({ timeout: 10000 });
+  // The row appears only once the tables query resolves; that query returns every registered table
+  // with its full column list (~200 KB) and takes several seconds under a full-parallel run, so a
+  // 10 s budget times out on the query rather than on a genuinely missing row.
+  await row.waitFor({ timeout: 60000 });
   await row.click();
   const editBtn = page.getByTestId("table-read-view-edit");
   await editBtn.waitFor({ timeout: 5000 });
   await editBtn.click();
-  // Apollo resetStore() fires when concurrent schema-version advances are detected,
-  // briefly clearing the cache and delaying form render by up to 15s; 30s allows headroom.
+  // A schema-version advance makes apolloClient.ts re-fetch every active query, delaying the
+  // form render by up to 15s; 30s allows headroom.
   await page.waitForSelector("input[type='checkbox']", { timeout: 30000 });
 
   // Mantine's Checkbox renders <input> and <label> as siblings (label uses a `for` attribute rather
@@ -106,6 +122,10 @@ async function deleteTable(page: import("@playwright/test").Page, tableName: str
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
   const row = page.locator("tr").filter({ hasText: tableName }).first();
+  // Reading count() before the tables query resolves reports 0 and silently skips the cleanup,
+  // leaking the registration into later specs. Wait for the list to render first — the seeded
+  // tables guarantee at least one body row — so a 0 here means genuinely absent.
+  await page.locator("tbody tr").first().waitFor({ timeout: 60000 });
   if ((await row.count()) === 0) return;
   await row.click();
   page.once("dialog", (d) => d.accept());

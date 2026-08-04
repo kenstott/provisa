@@ -339,16 +339,24 @@ if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EX
     _allocate_itest_ports()
 
 
-# The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the release
-# they come from. Kept in step with .github/workflows/build-dmg.yml's download-plugins job —
-# CI and the test harness must fetch the same build, or a connector behaves differently here
-# than in the shipped image.
-_TRINO_PLUGIN_RELEASE = "https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
+# The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the Maven
+# coordinates they come from. Kept in step with .github/workflows/build-dmg.yml's
+# download-plugins job and ui-e2e-trino.yml — CI and the test harness must fetch the same
+# build, or a connector behaves differently here than in the shipped image.
+#
+# Maven Central, not the kenstott/calcite GitHub release: the engine-v0.32.0 release was
+# deleted mid-CI-run and every download started 404ing. Central is immutable once published,
+# and unlike GitHub Packages it serves anonymously (Packages returns 401 even for public
+# artifacts). Each published jar is a shaded fat jar carrying its own
+# META-INF/services/io.trino.spi.Plugin and no io.trino.spi classes, so a single jar dropped
+# into trino/plugins/<name>/ is a complete plugin directory.
+_TRINO_PLUGIN_MAVEN = "https://repo1.maven.org/maven2/io/simpleishard"
+_TRINO_PLUGIN_VERSION = "0.70.0"
 _TRINO_PLUGINS = ("trino-sharepoint", "trino-splunk", "trino-file")
 
 
 def _download_trino_plugins(plugins: str, missing: list[str]) -> None:
-    """Fetch the plugin zips for ``missing`` into ``plugins``.
+    """Fetch the plugin jars for ``missing`` into ``plugins``.
 
     Tests provision the services they need, and Trino is no exception: without these jars it
     aborts with "No service providers of type io.trino.spi.Plugin", which surfaces only as an
@@ -356,20 +364,18 @@ def _download_trino_plugins(plugins: str, missing: list[str]) -> None:
     cost instead of an unexplained stack failure.
     """
     import urllib.request
-    import zipfile
 
+    version = _TRINO_PLUGIN_VERSION
     for name in missing:
-        url = f"{_TRINO_PLUGIN_RELEASE}/{name}-plugin.zip"
-        archive = os.path.join(plugins, f"{name}-plugin.zip")
+        url = f"{_TRINO_PLUGIN_MAVEN}/{name}/{version}/{name}-{version}.jar"
+        target = os.path.join(plugins, name)
+        os.makedirs(target, exist_ok=True)
         print(f"[conftest] downloading Trino plugin {name} from {url}")
-        urllib.request.urlretrieve(url, archive)  # noqa: S310 — pinned https release URL
-        try:
-            with zipfile.ZipFile(archive) as zf:
-                zf.extractall(plugins)  # noqa: S202 — trusted first-party release artifact
-        finally:
-            os.unlink(archive)
-        if not _has_jars(os.path.join(plugins, name)):
-            raise RuntimeError(f"{url} extracted no jars into {plugins}/{name}")
+        urllib.request.urlretrieve(  # noqa: S310 — pinned https Maven Central URL
+            url, os.path.join(target, f"{name}-{version}.jar")
+        )
+        if not _has_jars(target):
+            raise RuntimeError(f"{url} produced no jars in {target}")
 
 
 def _has_jars(path: str) -> bool:

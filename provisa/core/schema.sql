@@ -750,6 +750,36 @@ CREATE TABLE IF NOT EXISTS rel_ids (
     properties   JSONB NOT NULL DEFAULT '{}'
 );
 
+-- Event substrate (REQ-940/941): the control-plane event table as a transactional outbox.
+-- Injectors POST events here in the same transaction as the state change (atomic); table
+-- processors CLAIM their work via event_status; repeaters fanout-read events by id cursor.
+-- Mirrors provisa.core.schema_org.events.
+CREATE TABLE IF NOT EXISTS events (
+    id           BIGSERIAL PRIMARY KEY,  -- ordering key AND repeater replay cursor
+    source_table TEXT NOT NULL,          -- the data-source table or MV this event is ABOUT
+    event_type   TEXT NOT NULL,
+    payload      JSONB NOT NULL DEFAULT '{}',  -- cursor / changed rows / warn|error detail
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT events_event_type_check
+        CHECK (event_type IN ('delta','append','replace','warn','error','quarantine'))
+);
+
+-- One row per (event x dependent node): the fanout work item, dispatched from the SQLGlot lineage
+-- and claimed exactly once. unclaimed -> claimed (heartbeat-leased) -> completed; a stale heartbeat
+-- reverts to unclaimed. Mirrors schema_org.event_status.
+CREATE TABLE IF NOT EXISTS event_status (
+    event_id        BIGINT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    dependent_table TEXT NOT NULL,
+    claim_status    TEXT NOT NULL DEFAULT 'unclaimed',
+    processor_name  TEXT,                -- lease owner while claimed; the REQ-959 ownership-CAS key
+    heartbeat_at    TIMESTAMPTZ,         -- lease; stale -> reaper reclaims
+    deadline        TIMESTAMPTZ,         -- REQ-959 fire-by deadline (NULL = heartbeat lapse only)
+    completed_at    TIMESTAMPTZ,
+    PRIMARY KEY (event_id, dependent_table),
+    CONSTRAINT event_status_claim_status_check
+        CHECK (claim_status IN ('unclaimed','claimed','completed'))
+);
+
 -- Per-node freshness state (REQ-981/982/961): content hash of the last land (output gate),
 -- the last probe token (input probe baseline), and the last-refresh timestamp/outcome the
 -- periodic freshness contract PULLs (REQ-961). One row per node; upserted on each successful

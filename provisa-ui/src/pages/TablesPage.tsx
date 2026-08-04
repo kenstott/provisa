@@ -134,13 +134,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     // These refetches outlive this callback (a subsequent navigation can abort them in
     // flight), so an unhandled rejection here becomes an uncaught error in the page —
     // Apollo's own error state already reflects the failure, so just swallow it.
-    refetchTables().catch(() => {});
-    refetchSources().catch(() => {});
-    refetchDomains().catch(() => {});
-    refetchRoles().catch(() => {});
-    fetchSettings()
-      .then((st) => setSettings(st))
-      .finally(() => setLoading(false));
+    // Returned so a caller that must not act on pre-reload data (handleSaveEdit) can await it.
+    // Callers that only want a background revalidation ignore the promise, as before.
+    return Promise.all([
+      refetchTables().catch(() => {}),
+      refetchSources().catch(() => {}),
+      refetchDomains().catch(() => {}),
+      refetchRoles().catch(() => {}),
+      fetchSettings()
+        .then((st) => setSettings(st))
+        .finally(() => setLoading(false)),
+    ]);
   }, [refetchTables, refetchSources, refetchDomains, refetchRoles]);
 
   // Seed/refresh per-table TTL edits whenever the tables list changes. Preserve any
@@ -337,8 +341,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         setError(lpResult.message);
         return;
       }
+      // Await the reload before clearing the form. The refetches are otherwise fire-and-forget, so
+      // the read view (and any editor re-opened from it) would render off the pre-save cache entry
+      // and show the values as they were before this save until the refetch happens to land.
+      await reload();
       setEditingTable(null);
-      reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

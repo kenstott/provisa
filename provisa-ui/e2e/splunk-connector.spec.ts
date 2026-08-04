@@ -111,7 +111,12 @@ async function cleanupSource() {
   });
 }
 
-test.beforeAll(() => {
+test.beforeAll(async () => {
+  // Splunk's cold start (image pull + first boot) dominates this spec: up to 420 s before the
+  // management port accepts a login. Doing it here rather than in the test body keeps it off the
+  // test clock, so a slow boot no longer expires the test wall on whichever assertion the timer
+  // happened to reach — it fails the hook with waitForSplunk's own explicit message instead.
+  test.setTimeout(600_000);
   // Remove any stale container from a prior run, then start fresh.
   spawnSync("docker", ["rm", "-f", CONTAINER_NAME], { stdio: "pipe" });
   const result = spawnSync(
@@ -135,6 +140,21 @@ test.beforeAll(() => {
   if (result.status !== 0) {
     throw new Error(`Failed to start Splunk container: ${result.stderr.toString()}`);
   }
+  await waitForSplunk();
+
+  // Trino begins connecting to Splunk immediately after the container is up, causing transient
+  // backend errors. Wait for the Trino backend to stabilise before any test navigates — poll
+  // /health until stable or 60 s elapsed.
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`${TRINO_BACKEND_URL}/health`);
+      if (r.ok) break;
+    } catch {
+      // backend not yet reachable
+    }
+    await new Promise((res) => setTimeout(res, 3000));
+  }
 });
 
 test.afterAll(() => {
@@ -150,29 +170,12 @@ test.afterEach(async () => {
 });
 
 test("splunk connector: add source and query internal_server", async ({ page }) => {
-  // Splunk cold-start takes up to 420s; allow 15 minutes total for start +
-  // backend stabilisation + test interactions.
-  test.setTimeout(900_000);
+  // beforeAll has already paid for the Splunk cold start and the backend stabilisation; what is
+  // left on this clock is the UI walk plus the Trino catalog init behind the schema dropdown.
+  test.setTimeout(420_000);
 
-  // ── 0. Wait for Splunk container to be healthy and get a session key ──────
-  await waitForSplunk();
+  // ── 0. Splunk is up (beforeAll waited); take a session key for the seed step ──
   const sessionKey = await getSplunkSessionKey();
-
-  // Trino begins connecting to Splunk immediately after the container is up,
-  // causing transient backend errors. Wait for the Trino backend to stabilise before
-  // navigating — poll /health until stable or 60s elapsed.
-  {
-    const deadline = Date.now() + 60_000;
-    while (Date.now() < deadline) {
-      try {
-        const r = await fetch(`${TRINO_BACKEND_URL}/health`);
-        if (r.ok) break;
-      } catch {
-        // backend not yet reachable
-      }
-      await new Promise((res) => setTimeout(res, 3000));
-    }
-  }
 
   // Redirect the UI's API calls from the default DuckDB backend to the Trino backend so
   // that register_source() creates a real Trino catalog and schema enumeration succeeds.
@@ -243,7 +246,8 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   await domainSelect.selectOption(firstDomain!);
 
   // Wait for 'splunk' schema to appear — Trino Splunk catalog loads asynchronously after the source
-  // is registered; allow 180s for Splunk cold-start + Trino catalog initialisation + schema query.
+  // is registered; allow 180s for Trino catalog initialisation + schema query. Splunk's cold start
+  // is already paid for in beforeAll, so this budget covers only the catalog handshake.
   await page.waitForFunction(
     () => {
       const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');

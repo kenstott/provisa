@@ -161,3 +161,6 @@ config/provisa-install.yaml.snapshot
 .playwright-trino-data/
 provisa-ui/.playwright-trino-data/
 None
+
+.playwright*
+

@@ -168,15 +168,24 @@ def tls_fingerprint(container_id: str) -> str:
     return match.group(1)
 
 
-def _exaplus(container_id: str, statement: str, fingerprint: str) -> None:
+def _exaplus(container_id: str, statement: str, fingerprint: str) -> str:
     """Run one SQL statement inside the exasol container via exaplus (no python driver installed;
-    the container already ships exaplus — see module docstring)."""
+    the container already ships exaplus — see module docstring). Returns exaplus's stdout.
+
+    ``-x`` is what makes a failed statement a failed process: without it exaplus reports the SQL
+    error on stdout and still exits 0, so a rejected CREATE SCHEMA looked like a successful seed and
+    the failure only surfaced later as an empty catalog.
+
+    exaplus needs the terminating semicolon: without it every statement is rejected with
+    "Error: Unfinished command" and nothing is executed, which is how the schema never got
+    created."""
+    terminated = statement if statement.rstrip().endswith(";") else f"{statement};"
     proc = subprocess.run(
         [
             "docker", "exec", container_id,
             "exaplus", "-c", f"localhost/{fingerprint}:8563",
             "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
-            "-sql", statement,
+            "-x", "-sql", terminated,
         ],  # fmt: skip
         capture_output=True,
         text=True,
@@ -188,6 +197,7 @@ def _exaplus(container_id: str, statement: str, fingerprint: str) -> None:
             f"exaplus failed (rc={proc.returncode}) for {statement!r}:\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
+    return proc.stdout
 
 
 def _seed_exasol() -> str:
@@ -211,9 +221,13 @@ def _seed_exasol() -> str:
     else:
         raise RuntimeError(f"exasol schema creation never succeeded: {last_err}")
 
+    # DROP before CREATE, not CREATE IF NOT EXISTS: the source test and the pipeline test each seed,
+    # and the container outlives the first of them, so idempotent DDL plus non-idempotent INSERTs
+    # left six rows — three of each widget — and the pipeline test's served rows came back doubled.
+    _exaplus(container_id, f"DROP TABLE IF EXISTS {_SCHEMA}.{_TABLE}", fingerprint)
     _exaplus(
         container_id,
-        f"CREATE TABLE IF NOT EXISTS {_SCHEMA}.{_TABLE} (ID DECIMAL(18,0), NAME VARCHAR(64))",
+        f"CREATE TABLE {_SCHEMA}.{_TABLE} (ID DECIMAL(18,0), NAME VARCHAR(64))",
         fingerprint,
     )
     for wid, name in _WIDGETS:
@@ -221,6 +235,24 @@ def _seed_exasol() -> str:
             container_id,
             f"INSERT INTO {_SCHEMA}.{_TABLE} (ID, NAME) VALUES ({wid}, '{name}')",
             fingerprint,
+        )
+    # Read the seeded rows back through exasol itself. The engine reaching an empty catalog is the
+    # symptom of a seed that never landed, and the two are indistinguishable from the Trino side —
+    # so the seed asserts its own result here, at the source.
+    #
+    # The count travels inside a tagged string because exaplus surrounds the result with a banner
+    # carrying its own digits (version, timestamp) — a substring test for "3" matched that banner
+    # and passed while the table actually held six rows.
+    out = _exaplus(
+        container_id,
+        f"SELECT 'ROWCOUNT=' || CAST(COUNT(*) AS VARCHAR(20)) FROM {_SCHEMA}.{_TABLE};",
+        fingerprint,
+    )
+    found = re.search(r"ROWCOUNT=(\d+)", out)
+    if not found or int(found.group(1)) != len(_WIDGETS):
+        raise RuntimeError(
+            f"exasol seed did not land: expected {len(_WIDGETS)} rows in {_SCHEMA}.{_TABLE}, "
+            f"exaplus returned:\n{out}"
         )
     return fingerprint
 

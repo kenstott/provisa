@@ -41443,3 +41443,217 @@
   e2e: true
   e2e_reason: Tour step display timing relative to destination page rendering is only verifiable through
     full end-to-end UI interaction with the tour system navigating between pages.
+- id: REQ-1363
+  status: accepted
+  since: 2026-08
+  group: "3. Source Registration & Data Modeling"
+  category: Domain Hierarchy
+  priority: MUST
+  type: structural
+  description: Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers.
+  use_case: Enable organizations to structure domains hierarchically for governance metadata and organization, while maintaining a single flat execution model and addressing scheme.
+  code:
+  - provisa/core/models.py
+  - provisa/core/governance.py
+  - provisa/federation/duckdb_runtime.py
+  scenario: 'Given a domain hierarchy with parent-child relationships
+
+    When a role grants access to a parent domain
+
+    Then the grant expands to all descendant domains at build_governance_context() time
+
+    And addressing (domain_schema.table) remains two-part and flat
+
+    And no per-domain scoped namespaces are created (roles, operations, serverInstances remain global)
+
+    And tables continue to attach to exactly one domain (leaf or non-leaf)
+
+    '
+  design_notes: >-
+    Mirrors Role.parent_role_id + flatten_roles() pattern (provisa/core/models.py:714,722).
+    Flattening applies to: (1) addressing — domain_schema.table two-part unchanged, PG-schema mapping flat;
+    (2) roles + rights — parent domain grants expand to descendants at governance context build time,
+    Source.allowed_domains and RLS domain_id rules gain subtree expansion;
+    (3) execution — compiler, RLS, row-scoping, all surfaces see flattened domain sets.
+    Rejected alternative: recursive domains with per-domain scoped namespaces (from Simple is Hard appendix-B)
+    as fragmenting the single control plane.
+- id: REQ-1364
+  status: proposed
+  target: "2026-Q4"
+  group: "7. Result Delivery"
+  category: Config Export
+  priority: SHOULD
+  type: structural
+  description: Config exports carry JSON Pointer refs for internal cross-references plus composed physical resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN) to resolve semantic and physical locations without second passes.
+  use_case: JSON Pointers make exported references self-resolving for downstream validators and format converters; resourcePaths provide precise physical source locations (e.g. postgresql://host:5432/db/schema/table#column) for interchange systems.
+  code:
+  - provisa/api/admin/config_export.py
+  design_notes: >-
+    Scope is export projection only — config/export layer (provisa/api/admin/config_export.py and interchange
+    converters). NOT used in model definition (YAML stays name-based refs) or execution (DB stays int FKs);
+    no pipeline changes. Every exported object (domain, table, column, relationship, metric, role, RLS rule,
+    function) is addressable at a stable JSON Pointer (e.g., #/domains/finance/tables/orders/columns/amount).
+    Internal cross-references in the exported document (relationship endpoints, metric expression refs, RLS
+    targets, function returns) are emitted as JSON Pointers instead of bare name strings. Each table and
+    column additionally carries a composed physical resourcePath URI (from Source connection info +
+    catalog.schema.table, e.g., postgresql://host:5432/db/schema/table#column).
+- id: REQ-1365
+  status: accepted
+  since: 2026-08
+  group: "8. Client Access & Protocols"
+  category: URI Dereferencing API
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri, as_of?)`
+    that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally at
+    a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`,
+    addressing a single value as table → primary-key predicate → column. Only semantic addresses
+    (provisa://<org>/<domain_schema>/...) are dereferenceable; physical URIs are refused.
+  use_case: >-
+    Exported documents, lineage nodes, audit records, and agent citations carry resolvable links to live or
+    historical governed values — dereferenceable provenance. Complements REQ-1364 (export addressing).
+  code:
+  - provisa/api/
+  design_notes: >-
+    Execution routes through the single settled query pipeline (_govern_and_route/_execute_plan), never
+    a second pipeline. Dereferencing is automatically role-scoped, RLS-filtered, masked, row-capped, and
+    audited. Row selection uses primary-key-based predicates validated against the model's key metadata
+    (not free-form SQL). Point-in-time maps to existing bitemporal read path (X-Provisa-As-Of) when target
+    table has bitemporal mode enabled. Physical URIs are explicitly rejected.
+
+    Name durability is best-effort, steward-mediated, and NOT guaranteed. There is no schema history, so
+    semantic-model renames (domain/table/column renames or re-keying) can orphan previously exported
+    addresses. Physical changes (re-platforming, physical schema renames, source moves) never orphan names
+    — the address is semantic and binding is indirection. Orphaning therefore only results from deliberate
+    steward action, expected to be rare in stable data environments (more common in modernizing ones). Stewards
+    may elect to retain old addresses via existing mechanisms — Table.alias or view_sql virtual tables over
+    the renamed definition — but the system does not enforce address permanence.
+  scenario: |
+    Given a semantic-address URI with role-based visibility and RLS restrictions
+    When resolve(uri) is called
+    Then the returned value is filtered by the caller's role, RLS rules, and applicable masking
+    And the value is audited like any other query execution
+    And physical URIs are refused with an error
+  e2e: true
+  e2e_reason: >-
+    API behavior verifiable only through end-to-end governance application — role scoping, RLS filtering,
+    masking, row capping, and audit logging must be verified across REST and MCP transports with actual
+    governance context.
+  related_reqs:
+  - REQ-1364
+- id: REQ-1366
+  status: proposed
+  target: "2026-Q4"
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Federation Engine Abstraction
+  priority: SHOULD
+  type: structural
+  description: >-
+    Spike: generalize time-travel (as_of) from a hardcoded Iceberg/Delta source-type special case
+    to a first-class connector capability, enabling synthesized time-travel over non-versioned sources
+    (REST APIs, MongoDB, etc.) via materialization snapshots.
+  use_case: >-
+    Time-travel as an engine-profile capability rather than a hardcoded source list decouples the
+    feature from Trino and enables synthesized time-travel over non-versioned sources — a semantic-layer
+    differentiator no single engine natively offers, concentrating IP per REQ-825.
+  code:
+  - provisa/core/source_registry.py
+  - provisa/compiler/sql_gen.py
+  - provisa/federation/connector_base.py
+  - provisa/federation/store_writer.py
+  design_notes: >-
+    Spike investigates three escalating degrees:
+    (1) GATE — add time_travel to Capability; since capability is per (engine, source_type) and
+    the compiler is engine-blind, the gate moves from compile to the PLAN stage (aligned with REQ-825).
+    (2) CONNECTOR-OWNED RENDERING — as_of becomes a neutral IR attribute; stage-4 codegen asks the
+    connector to render it. Mechanisms differ structurally per engine: Trino = table-suffix clause
+    (FOR TIMESTAMP/VERSION AS OF); DuckDB Iceberg = scan-function argument (iceberg_scan snapshot_from_timestamp),
+    which lands in view DDL, so per-query as_of requires an inline table-ref substitution, not a clause append.
+    Rides the REQ-825 REMAINING codegen-to-stage-4 refactor.
+    (3) SYNTHESIZED TT — for MATERIALIZED sources (REQ-826) the copy destroys native TT; retain N snapshots
+    in the materialization store instead of replace-style lands and resolve as_of to a retained snapshot in
+    the PLAN prep phase. Capability becomes three-valued: native | synthesized | none. Scope degree 3 to the
+    Iceberg-backed store only, where Iceberg snapshot history makes it nearly free.
+    Cross-cutting: governance-parity conformance (REQ-827) must cover as_of — RLS/masking on historical
+    rows must diff identically per engine; synthesized snapshots are governed at read time (stage 3 governs
+    whatever relation is read), never at capture time.
+    Deliverable: a decision on degrees 1+2 landing with the REQ-825 pipeline work and a scoped design for
+    degree 3 on the Iceberg store backend.
+    Full analysis: docs/arch/spikes/0001-time-travel-as-connector-capability.md.
+  related_reqs:
+  - REQ-467
+  - REQ-825
+  - REQ-826
+  - REQ-827
+  - REQ-841
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Synthesized time-travel over non-versioned sources (REST APIs, MongoDB, NoSQL) is not offered by
+      Trino, Snowflake, or BigQuery, which expose time-travel only on natively versioned tables. Provisa's
+      ability to retain materialization snapshots and surface as_of across all source types creates a
+      differentiating capability.
+- id: REQ-1367
+  status: accepted
+  target: "2026-Q4"
+  group: "0. Architecture & Design Principles"
+  category: Platform Thesis & Operational Proof
+  priority: MUST
+  type: constraint
+  description: >-
+    Provisa's thesis: with sufficient rigor, every aspect of a data environment EXCEPT the systems of origin
+    can be described declaratively, and then PROVEN compliant to policy and to operate as declared. Systems
+    of origin are excluded by design — Provisa proves properties of its projection of a source, never of the
+    external system itself. "Proven" means operational proof, not formal verification: (1) compliance-by-construction
+    where a single enforcement choke point exists (governance defined in the semantic layer, enforced once at
+    the governed-IR stage — REQ-825 stage 3, one pipeline); (2) certification where realizations vary
+    (governance-parity conformance diffing per engine — REQ-827); (3) drift-impossibility where state is derived
+    (engine catalog is rebuildable projection of the declaration, never hand-maintained — REQ-843); (4)
+    self-description where operation is observable (the estate's operational metadata as governed MVs over its
+    own event streams — REQ-964 reflexivity, freshness contracts REQ-961). Every subsystem admitted to the
+    platform must fit one of these proof modes; a feature that can only be trusted, not proven, is a defect
+    in its design.
+  use_case: >-
+    The thesis is the platform's admission rule — it explains why capabilities are declared profiles
+    (REQ-825/840/841), why governance is IR-injected rather than engine-delegated, why derived state must be
+    rebuildable, and why the config surface is a queryable ledger (REQ-966). Recording it top-level gives
+    future requirements a fixed test: declarative description + a stated proof mode, or redesign.
+  design_notes: >-
+    The SOO (system-of-origin) carve-out is a DEFINITION, not an enumerated exception. An origin is any
+    point where new information enters the estate by ASSERTION rather than DERIVATION — external systems,
+    arbitrary business-rule transforms, human input, ML inference — regardless of whether it runs inside or
+    outside the platform. Every node in the estate is exactly one of two kinds: DERIVED (declaratively lowered
+    — SQL/IR, MVs, entity/fact lowering, governance transforms — provable in one of the four proof modes) or
+    ORIGIN (semantics attested, not proven; governed at its boundary — schema-validated both ends, vintage-labeled,
+    lineage-tracked, policy-enforced on output; the external-processor pure contract of REQ-957/REQ-976-era
+    adapters is the origin boundary mechanism). Arbitrary computation is therefore not EXCLUDED from the estate
+    but RECLASSIFIED: any code may run, provided it is named as an origin and passes through the attested boundary
+    contract. A derived node that embeds an arbitrary UDF is an origin misclassified as derived — a design defect.
+    Consequence: origin-ness must be an explicit classification on every estate node, and the ratio of origin to
+    derived nodes is a measurable estate-maturity metric (the "unprovable residue"). The thesis in closed form:
+    the estate is theorems over declared axioms; the method makes the axiom set explicit, minimal, and boundary-governed.
+    Every origin is a DECLARED BLACK BOX — a first-class registered entity with its own governance regime: named
+    owner, explicit contract (schema in/out, purity, vintage), an attestation discipline in place of proof (boundary
+    gates/validation, change control), and its own policy scope. Two operational rules follow: (1) MINIMIZATION PRESSURE
+    — any logic expressible declaratively must be migrated from origin to derived (rewriting an imperative transform
+    as SQL/lowered spec shrinks the axiom set); an origin is admitted only when its semantics genuinely cannot be
+    derived. (2) NO ANONYMOUS ORIGINS — an unnamed origin (a UDF or business rule embedded in a derived node) is a
+    design defect; the named-origin registry IS the estate's axiom registry and is itself queryable/auditable. Analogy:
+    Rust's `unsafe` blocks — named, minimized, individually justified, with safety proven by construction around them.
+  related_reqs:
+  - REQ-825
+  - REQ-827
+  - REQ-843
+  - REQ-957
+  - REQ-961
+  - REQ-964
+  - REQ-966
+  - REQ-976
+  - REQ-1366
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Peers offer declarative modeling (dbt, Cube) or policy translation (Immuta) or reconciliation
+      (Kubernetes-style controllers) separately; none unify description, enforcement, and operational proof
+      over one declared artifact.

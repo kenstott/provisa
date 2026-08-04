@@ -31,6 +31,8 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import threading
+from contextlib import contextmanager
 from typing import Any
 
 import duckdb
@@ -80,6 +82,62 @@ def _mat_table_name(source: Any) -> str:
     return f"{source.id}__{source.schema_name}__{source.table_name}"
 
 
+class _CatalogGate:
+    """Readers-writer gate over the shared DuckDB connection's catalog.
+
+    The control-plane refresh (attach_control_plane, SQLite dialect) rebuilds ``provisa_admin`` in
+    place: it DROPs the org schema CASCADE, DETACHes the snapshot alias, replaces the snapshot file
+    and re-creates every view. A query that binds or scans during that window does not fail — it
+    comes back with ZERO ROWS, because the views it resolved point at an alias whose file was swapped
+    out from under it. Under the e2e suite that surfaced as meta/ops Cypher queries intermittently
+    returning nothing on every worker while /data/graph-counts on the same backend reported the real
+    counts. Queries therefore hold the gate for read; the rebuild holds it for write.
+
+    Reader-priority, deliberately: a waiting writer must NOT block new readers. Execution paths that
+    stream (run_sync, run_arrow_stream) keep their read hold until the cursor drains, and the thread
+    that opened such a stream may itself be the next one to trigger a refresh — writer preference
+    would let that thread block on its own outstanding read. A refresh happens only when the control
+    plane has actually committed something, so writer starvation is not a live concern."""
+
+    def __init__(self) -> None:
+        self._cond = threading.Condition()
+        self._readers = 0
+        self._writing = False
+
+    def acquire_read(self) -> None:
+        with self._cond:
+            while self._writing:
+                self._cond.wait()
+            self._readers += 1
+
+    def release_read(self) -> None:
+        with self._cond:
+            self._readers -= 1
+            if self._readers == 0:
+                self._cond.notify_all()
+
+    @contextmanager
+    def read(self):
+        self.acquire_read()
+        try:
+            yield
+        finally:
+            self.release_read()
+
+    @contextmanager
+    def write(self):
+        with self._cond:
+            while self._writing or self._readers:
+                self._cond.wait()
+            self._writing = True
+        try:
+            yield
+        finally:
+            with self._cond:
+                self._writing = False
+                self._cond.notify_all()
+
+
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(self, *, materialize_dsn: str | None = None) -> None:
         # When PROVISA_DUCKDB_EXT_DIR is set (the embedded tier stages the pinned extension blobs there
@@ -110,6 +168,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._cp_snapshot_dir = ""  # created with the probe, on the first SQLite control plane
         self._cp_snapshot_path = ""
         self._cp_data_version: int | None = None  # PRAGMA data_version at the last snapshot
+        # attach_control_plane runs on whatever worker thread serves the request, and its
+        # DETACH -> os.replace -> ATTACH sequence leaves the catalog momentarily unbound. Two
+        # threads interleaving there would query a detached alias, so the whole refresh is
+        # serialized. The same lock covers _cp_probe, whose PRAGMA data_version caching requires a
+        # single long-lived connection (a per-call probe would report a fresh version every time).
+        # It is taken BEFORE _catalog_gate on the refresh path; nothing takes them the other way.
+        self._cp_lock = threading.Lock()
+        # ...and the rebuild is invisible to concurrent queries only if they are excluded from it —
+        # see _CatalogGate. Held for read by every execution path, for write by the rebuild.
+        self._catalog_gate = _CatalogGate()
 
     # -- source exposure -------------------------------------------------------
 
@@ -193,9 +261,18 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._phys_catalogs.add(catalog)
             self._control_plane_attached = True
             return
-        scratch = self._refresh_control_plane_snapshot(db_path)
-        if scratch is None:
-            return  # nothing committed since the last snapshot; the attached views are current
+        with self._cp_lock:
+            scratch = self._refresh_control_plane_snapshot(db_path)
+            if scratch is None:
+                return  # nothing committed since the last snapshot; the attached views are current
+            # Only a real rebuild excludes queries. The no-change path above is the common one — this
+            # method runs before EVERY query (NativeEngineBackend._attach_registered), so taking the
+            # write gate unconditionally would serialize the whole engine behind one query at a time.
+            with self._catalog_gate.write():
+                self._rebuild_control_plane(catalog, schema_name, scratch)
+
+    def _rebuild_control_plane(self, catalog: str, schema_name: str, scratch: str) -> None:
+        """Swap in a freshly snapshotted control plane. Caller holds _cp_lock and the write gate."""
         if not self._sqlite_loaded:
             self._con.execute("INSTALL sqlite")
             self._con.execute("LOAD sqlite")
@@ -211,7 +288,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if raw_alias in self._raw_attached:
             self._con.execute(f'DETACH "{raw_alias}"')
             self._raw_attached.discard(raw_alias)
-        # Only now that DuckDB has released the previous snapshot can the fresh copy take its place.
+        # Only now that DuckDB released the previous snapshot can the fresh copy take its place.
         os.replace(scratch, self._cp_snapshot_path)
         self._con.execute(
             f"ATTACH '{self._cp_snapshot_path}' AS \"{raw_alias}\" (TYPE sqlite, READ_ONLY)"
@@ -243,7 +320,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         long-lived reader changes exactly when another connection commits, so an unchanged value
         means the existing snapshot is still current and no copy is needed."""
         if self._cp_probe is None:
-            self._cp_probe = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            # check_same_thread=False: the probe outlives the request that created it and is read
+            # from whichever worker thread later serves a query. _cp_lock is what makes that safe —
+            # every use of the probe happens under it.
+            self._cp_probe = sqlite3.connect(
+                f"file:{db_path}?mode=ro", uri=True, check_same_thread=False
+            )
             self._cp_snapshot_dir = tempfile.mkdtemp(prefix="provisa-control-plane-snapshot-")
             self._cp_snapshot_path = os.path.join(self._cp_snapshot_dir, "control_plane.sqlite")
         version = self._cp_probe.execute("PRAGMA data_version").fetchone()[0]
@@ -541,9 +623,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         the engine-introspection seam (REQ-825/840); callers reach it via EngineRuntime."""
         self.attach_source(source)
         phys = self._phys_name(source)
-        res = self._con.execute(f"DESCRIBE {phys}")
-        # DESCRIBE rows: (column_name, column_type, null, key, default, extra)
-        return columns_from_describe(res.fetchall())
+        # PRIVATE cursor: introspection runs on request threads concurrently with queries, and the
+        # shared connection holds only one pending result (see run()).
+        cur = self._con.cursor()
+        try:
+            res = cur.execute(f"DESCRIBE {phys}")
+            # DESCRIBE rows: (column_name, column_type, null, key, default, extra)
+            return columns_from_describe(res.fetchall())
+        finally:
+            cur.close()
 
     # -- execution -------------------------------------------------------------
 
@@ -557,10 +645,24 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         loop = asyncio.get_event_loop()
 
         def _run() -> QueryResult:
-            res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
-            cols = [d[0] for d in res.description] if res.description else []
-            types = [str(d[1]) for d in res.description] if res.description else []
-            return QueryResult(rows=res.fetchall(), column_names=cols, column_types=types)
+            # Read gate: a control-plane rebuild swaps the provisa_admin snapshot out from under any
+            # query already bound to it, which returns zero rows rather than failing (_CatalogGate).
+            with self._catalog_gate.read():
+                # A PRIVATE cursor, never the shared connection: run() is dispatched to an executor
+                # thread, so two queries overlap routinely. A DuckDB connection holds ONE pending
+                # result — the second execute() replaces the first, and the first thread's fetchall()
+                # then returns an EMPTY list rather than raising. That is what made meta/admin
+                # queries intermittently come back with no rows under the parallel e2e suite while
+                # the control plane plainly held the data (run_sync and run_arrow_stream already
+                # took a cursor for this reason).
+                cur = self._con.cursor()
+                try:
+                    res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                    cols = [d[0] for d in res.description] if res.description else []
+                    types = [str(d[1]) for d in res.description] if res.description else []
+                    return QueryResult(rows=res.fetchall(), column_names=cols, column_types=types)
+                finally:
+                    cur.close()
 
         return await loop.run_in_executor(None, _run)
 
@@ -572,17 +674,37 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         (not the shared connection) keeps concurrent worker-thread queries from corrupting each
         other's fetch state. Consumers that call ``.rows`` still get the full list — the buffering
         is then explicit at their call site."""
-        cur = self._con.cursor()
-        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-        return stream_from_dbapi(cur, on_close=lambda *_: cur.close())
+        # The read gate is held until the stream drains, not just past execute(): the rows are pulled
+        # from the cursor lazily, so the scan is still live and a rebuild mid-drain would empty it.
+        self._catalog_gate.acquire_read()
+        try:
+            cur = self._con.cursor()
+            cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+        except BaseException:
+            self._catalog_gate.release_read()
+            raise
+
+        def _close(*_: Any) -> None:
+            cur.close()
+            self._catalog_gate.release_read()
+
+        return stream_from_dbapi(cur, on_close=_close)
 
     # -- Arrow transport (REQ-986) ---------------------------------------------
 
     def run_arrow(self, duck_sql: str, params: list | None = None):
         """Execute dialect-DuckDB SQL and return a ``pyarrow.Table`` — DuckDB produces Arrow natively
         (``fetch_arrow_table``), so no Python rows are materialized for the Flight transport."""
-        res = self._con.execute(duck_sql, params) if params else self._con.execute(duck_sql)
-        return res.to_arrow_table()
+        with self._catalog_gate.read():
+            # PRIVATE cursor for the same reason as run_sync/run_arrow_stream: a concurrent query on
+            # the shared connection replaces this one's pending result, and the fetch then yields
+            # nothing instead of raising.
+            cur = self._con.cursor()
+            try:
+                res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                return res.to_arrow_table()
+            finally:
+                cur.close()
 
     def run_arrow_stream(self, duck_sql: str, params: list | None = None):
         """Execute dialect-DuckDB SQL and return ``(schema, batch_generator)`` for lazy record-batch
@@ -593,10 +715,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         bounded by one record batch, not the total result size. A private cursor (not the shared
         connection) keeps concurrent worker-thread streams from corrupting each other's fetch state;
         it is closed when the generator drains or the consumer stops early."""
-        cur = self._con.cursor()
-        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-        reader = cur.fetch_record_batch(_ARROW_STREAM_BATCH_ROWS)
-        schema = reader.schema
+        # Held for the whole stream — same reason as run_sync: the batches are scanned on demand.
+        self._catalog_gate.acquire_read()
+        try:
+            cur = self._con.cursor()
+            cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+            reader = cur.fetch_record_batch(_ARROW_STREAM_BATCH_ROWS)
+            schema = reader.schema
+        except BaseException:
+            self._catalog_gate.release_read()
+            raise
 
         def _batches():
             try:
@@ -604,15 +732,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     yield batch
             finally:
                 cur.close()
+                self._catalog_gate.release_read()
 
         return schema, _batches()
 
     def close(self) -> None:
         self._con.close()
-        if self._cp_probe is not None:
-            self._cp_probe.close()
-            self._cp_probe = None
-        if self._cp_snapshot_dir:
-            shutil.rmtree(self._cp_snapshot_dir)
-            self._cp_snapshot_dir = ""
-            self._cp_snapshot_path = ""
+        with self._cp_lock:  # never tear the probe/snapshot out from under a refresh in flight
+            if self._cp_probe is not None:
+                self._cp_probe.close()
+                self._cp_probe = None
+            if self._cp_snapshot_dir:
+                shutil.rmtree(self._cp_snapshot_dir)
+                self._cp_snapshot_dir = ""
+                self._cp_snapshot_path = ""

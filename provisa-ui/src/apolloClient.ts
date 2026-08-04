@@ -81,7 +81,7 @@ if (typeof window !== "undefined") {
 
 // Afterware: read X-Schema-Version from every /admin/graphql response.
 // When the server-side version advances (schema rebuilt after table mutations),
-// reset the store so all active queries re-fetch and stale cached data is evicted.
+// re-fetch every active query so no view keeps rendering pre-rebuild data.
 let _resetting = false;
 const schemaVersionLink = new ApolloLink((operation, forward) =>
   forward(operation).pipe(map((response) => {
@@ -93,11 +93,18 @@ const schemaVersionLink = new ApolloLink((operation, forward) =>
     if (stored !== null && stored !== version) {
       localStorage.setItem(SCHEMA_VERSION_KEY, version);
       _resetting = true;
-      // resetStore() refetches every active watchQuery app-wide; a navigation away mid-refetch
-      // aborts them and rejects this promise. Nothing awaits it (it's fired from a response
-      // interceptor), so an unhandled rejection would otherwise surface as an uncaught page error.
-      client
-        .resetStore()
+      // refetchQueries, NOT resetStore. This runs inside a response interceptor, so a sibling
+      // query issued by the same page mount is still in flight; resetStore() clears the store
+      // out from under it and terminates it with "Store reset while query was in flight". Its
+      // useQuery then holds error set and data undefined permanently — cache-and-network never
+      // retries — which is how MetricsPage ended up rendering a forever-disabled fact picker
+      // (factTables derives from useTables(), and an errored TablesQuery yields zero tables).
+      // refetchQueries re-runs the same active queries without touching the store, so nothing
+      // in flight is disturbed; the Query.tables/domains/relationships/roles merge policies above
+      // replace each list wholesale, so the refetched result cannot merge with stale entries.
+      // A navigation away mid-refetch aborts them and rejects this promise; nothing awaits it,
+      // so an unhandled rejection would otherwise surface as an uncaught page error.
+      Promise.all(client.refetchQueries({ include: "active" }))
         .catch(() => {})
         .finally(() => { _resetting = false; });
     } else if (stored === null) {

@@ -61,7 +61,20 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-012
 
 
 async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014
-    result = await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
+    """Delete a source and, in the same transaction, every table registered against it.
+
+    A registered_tables row whose source_id names no source is a referential inconsistency:
+    _refresh_summary._load_source raises on it (REQ-1143), and because refreshPolicySummary is
+    resolved per row inside the `tables` query, one orphan turns that whole query into a partial
+    error — Apollo's default errorPolicy discards the data with it, so every admin view relying
+    on the table list renders empty. `rename` already retargets these rows for the same reason;
+    delete is its missing counterpart.
+    """
+    async with conn.transaction():
+        await conn.execute_core(
+            _delete(registered_tables).where(registered_tables.c.source_id == source_id)
+        )
+        result = await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
     return (result.rowcount or 0) > 0
 
 

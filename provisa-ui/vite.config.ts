@@ -10,6 +10,7 @@
 
 import { defineConfig } from "vite";
 import type { Plugin } from "vite";
+import { Agent as HttpAgent, request as httpRequest } from "http";
 import react from "@vitejs/plugin-react";
 import istanbul from "vite-plugin-istanbul";
 import path from "path";
@@ -47,8 +48,94 @@ function serveOfflineDocsSite(): Plugin {
 const DEV_SERVER_PORT = Number(process.env.PROVISA_UI_PORT ?? 3000);
 const BACKEND_TARGET = `http://127.0.0.1:${process.env.PROVISA_API_PORT ?? 8001}`;
 
+// e2e only: the harness runs one backend process per Playwright worker (see playwright.config.ts
+// — `state.schema_version` is process-global and the UI resets its Apollo store whenever it
+// changes, so workers sharing a backend blank each other's queries mid-assertion). One Vite dev
+// server still serves them all, so each proxied request has to be routed to the backend belonging
+// to the worker that made it. e2e/coverage.ts stamps `x-e2e-worker` on every request via
+// extraHTTPHeaders; this reads it back.
+//
+// Empty outside the harness, which leaves every proxy entry on BACKEND_TARGET exactly as before.
+const E2E_BACKEND_PORTS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "")
+  .split(",")
+  .filter(Boolean);
+
+// Same prefixes `server.proxy` below forwards to the backend. Kept as one list so the two cannot
+// drift into disagreeing about what is an API call.
+const BACKEND_PREFIXES = ["/data", "/admin", "/query", "/health", "/setup", "/auth/"];
+
+/** Routes e2e API traffic to the calling worker's own backend.
+ *
+ * Installed as a plugin middleware rather than by picking a target inside `server.proxy`'s
+ * `bypass`: vite stores the proxy options as `[proxy, {...opts}]` (a shallow copy) and hands
+ * `bypass` the copy, so assigning `opts.target` there changes nothing — the ProxyServer was
+ * constructed over the original object. A `configureServer` middleware runs before every internal
+ * middleware including the proxy, so it can claim these requests outright.
+ *
+ * Requests with no `x-e2e-worker` header get 421 Misdirected Request rather than a default
+ * backend: silently sending them to worker 0 is exactly the shared-backend condition this exists
+ * to eliminate, and it would resurface as an unrelated assertion failure in some other spec.
+ */
+// keepAlive: false is required, not a tuning choice. Node's http.globalAgent pools sockets with
+// keepAlive on (keepAliveMsecs 1000, timeout 5000) and uvicorn closes idle connections at its own
+// 5 s --timeout-keep-alive. The two deadlines coincide, so a pooled socket the agent believes is
+// reusable is being closed by the backend at the same instant the next request is written to it:
+// the write fails with ECONNRESET and the error handler below turns it into a 502. In the browser
+// that 502 lands on /admin/graphql, errors the Apollo query, and useTables() then returns an empty
+// list for the rest of the page's life (cache-and-network never retries an errored query) — which
+// is how a spec ends up staring at a table list or fact picker that never populates. A fresh
+// connection per request cannot hit the race; the cost is irrelevant on loopback in a test harness.
+const e2eProxyAgent = new HttpAgent({ keepAlive: false });
+
+function e2eWorkerBackendRouter(): Plugin {
+  return {
+    name: "provisa-e2e-worker-backend-router",
+    apply: "serve",
+    configureServer(server) {
+      if (E2E_BACKEND_PORTS.length === 0) return;
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? "";
+        if (!BACKEND_PREFIXES.some((p) => url.startsWith(p))) return next();
+        // Page navigations are SPA routes — vite's own proxy bypass serves index.html for them.
+        if (req.headers.accept?.includes("text/html")) return next();
+        const header = req.headers["x-e2e-worker"];
+        const port = typeof header === "string" ? E2E_BACKEND_PORTS[Number(header)] : undefined;
+        if (!port) {
+          res.writeHead(421, { "Content-Type": "text/plain" });
+          res.end(
+            `x-e2e-worker header ${JSON.stringify(header ?? null)} names no backend in ` +
+              `${E2E_BACKEND_PORTS.join(",")}; every e2e request must carry it ` +
+              `(provisa-ui/e2e/coverage.ts).`,
+          );
+          return;
+        }
+        const upstream = httpRequest(
+          {
+            host: "127.0.0.1",
+            port: Number(port),
+            method: req.method,
+            path: url,
+            agent: e2eProxyAgent,
+            headers: { ...req.headers, host: `127.0.0.1:${port}`, connection: "close" },
+          },
+          (upstreamRes) => {
+            res.writeHead(upstreamRes.statusCode ?? 502, upstreamRes.headers);
+            upstreamRes.pipe(res);
+          },
+        );
+        upstream.on("error", (err) => {
+          if (!res.headersSent) res.writeHead(502, { "Content-Type": "text/plain" });
+          res.end(`e2e worker ${header} backend :${port} — ${err.message}`);
+        });
+        req.pipe(upstream);
+      });
+    },
+  };
+}
+
 export default defineConfig((config) => ({
   plugins: [
+    e2eWorkerBackendRouter(),
     react(),
     serveOfflineDocsSite(),
     graphqlLoader(),

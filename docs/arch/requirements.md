@@ -13973,3 +13973,73 @@ In demo mode, all application page chunks must be preloaded and compiled before 
 **Code:** `provisa-ui/src/pageChunks.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`
 
 **Tests:** `provisa-ui/e2e/tour-page-preload.spec.ts`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1363 · Domain Hierarchy {#REQ-1363}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** structural
+
+Add hierarchical domain structure via parent_domain_id to Domain model, with flattening applied at execution time to governance, addressing, and access control layers.
+
+**Use case:** Enable organizations to structure domains hierarchically for governance metadata and organization, while maintaining a single flat execution model and addressing scheme.
+
+**Code:** `provisa/core/models.py`, `provisa/core/governance.py`, `provisa/federation/duckdb_runtime.py`
+
+**Tests:** —
+
+## 7. Result Delivery
+
+### REQ-1364 · Config Export {#REQ-1364}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Config exports carry JSON Pointer refs for internal cross-references plus composed physical resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN) to resolve semantic and physical locations without second passes.
+
+**Use case:** JSON Pointers make exported references self-resolving for downstream validators and format converters; resourcePaths provide precise physical source locations (e.g. postgresql://host:5432/db/schema/table#column) for interchange systems.
+
+**Code:** `provisa/api/admin/config_export.py`
+
+**Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-1365 · URI Dereferencing API {#REQ-1365}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+Governed dereference API for semantic data-location URIs: REST and MCP tool `resolve(uri, as_of?)` that takes a Provisa semantic-address URI and returns the governed value(s) it addresses, optionally at a point in time. For relational sources, the canonical address shape is `<table>/pk=<value>/<column>`, addressing a single value as table → primary-key predicate → column. Only semantic addresses (provisa://<org>/<domain_schema>/...) are dereferenceable; physical URIs are refused.
+
+**Use case:** Exported documents, lineage nodes, audit records, and agent citations carry resolvable links to live or historical governed values — dereferenceable provenance. Complements [REQ-1364](#REQ-1364) (export addressing).
+
+**Code:** `provisa/api/`
+
+**Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1366 · Federation Engine Abstraction {#REQ-1366}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Spike: generalize time-travel (as_of) from a hardcoded Iceberg/Delta source-type special case to a first-class connector capability, enabling synthesized time-travel over non-versioned sources (REST APIs, MongoDB, etc.) via materialization snapshots.
+
+**Use case:** Time-travel as an engine-profile capability rather than a hardcoded source list decouples the feature from Trino and enables synthesized time-travel over non-versioned sources — a semantic-layer differentiator no single engine natively offers, concentrating IP per [REQ-825](#REQ-825).
+
+**Code:** `provisa/core/source_registry.py`, `provisa/compiler/sql_gen.py`, `provisa/federation/connector_base.py`, `provisa/federation/store_writer.py`
+
+**Tests:** —
+
+## 0. Architecture & Design Principles
+
+### REQ-1367 · Platform Thesis & Operational Proof {#REQ-1367}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
+
+Provisa's thesis: with sufficient rigor, every aspect of a data environment EXCEPT the systems of origin can be described declaratively, and then PROVEN compliant to policy and to operate as declared. Systems of origin are excluded by design — Provisa proves properties of its projection of a source, never of the external system itself. "Proven" means operational proof, not formal verification: (1) compliance-by-construction where a single enforcement choke point exists (governance defined in the semantic layer, enforced once at the governed-IR stage — [REQ-825](#REQ-825) stage 3, one pipeline); (2) certification where realizations vary (governance-parity conformance diffing per engine — [REQ-827](#REQ-827)); (3) drift-impossibility where state is derived (engine catalog is rebuildable projection of the declaration, never hand-maintained — [REQ-843](#REQ-843)); (4) self-description where operation is observable (the estate's operational metadata as governed MVs over its own event streams — [REQ-964](#REQ-964) reflexivity, freshness contracts [REQ-961](#REQ-961)). Every subsystem admitted to the platform must fit one of these proof modes; a feature that can only be trusted, not proven, is a defect in its design.
+
+**Use case:** The thesis is the platform's admission rule — it explains why capabilities are declared profiles ([REQ-825](#REQ-825)/840/841), why governance is IR-injected rather than engine-delegated, why derived state must be rebuildable, and why the config surface is a queryable ledger ([REQ-966](#REQ-966)). Recording it top-level gives future requirements a fixed test: declarative description + a stated proof mode, or redesign.
+
+**Code:** —
+
+**Tests:** —
