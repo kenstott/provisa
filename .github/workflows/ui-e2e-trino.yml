@@ -114,16 +114,22 @@ jobs:
 
       # The Calcite-derived connector plugins are gitignored (they exist only where built), and
       # Trino aborts with "No service providers of type io.trino.spi.Plugin" without them — a
-      # failure that surfaces only as an unhealthy container two minutes in. Release pinned to
-      # the same tag tests/conftest.py::_TRINO_PLUGIN_RELEASE and build-dmg.yml use; all three
-      # must move together or a connector behaves differently here than in the shipped image.
+      # failure that surfaces only as an unhealthy container two minutes in. Version pinned to
+      # the same coordinates tests/conftest.py::_TRINO_PLUGIN_VERSION and build-dmg.yml use; all
+      # three must move together or a connector behaves differently here than in the shipped
+      # image. Source is Maven Central rather than a kenstott/calcite GitHub release: that
+      # release was deleted mid-run and every download began 404ing, while Central is immutable
+      # once published and serves anonymously (GitHub Packages 401s even for public artifacts).
+      # Each jar is shaded and carries its own META-INF/services/io.trino.spi.Plugin, so one jar
+      # per directory is a complete plugin.
       - name: Download Calcite Trino plugins
         run: |
-          CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
+          MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
+          VERSION="0.70.0"
           for plugin in trino-sharepoint trino-splunk trino-file; do
-            curl -fsSL "$CALCITE_RELEASE/$plugin-plugin.zip" -o "trino/plugins/$plugin-plugin.zip"
-            unzip -q -o "trino/plugins/$plugin-plugin.zip" -d trino/plugins
-            rm -f "trino/plugins/$plugin-plugin.zip"
+            mkdir -p "trino/plugins/$plugin"
+            curl -fsSL "$MAVEN/$plugin/$VERSION/$plugin-$VERSION.jar" \
+              -o "trino/plugins/$plugin/$plugin-$VERSION.jar"
             ls "trino/plugins/$plugin"/*.jar >/dev/null
           done
 

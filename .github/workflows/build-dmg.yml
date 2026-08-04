@@ -80,14 +80,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download plugins from kenstott/calcite release
+      # Maven Central rather than a kenstott/calcite GitHub release: that release was deleted
+      # out from under CI and every download began 404ing, while Central is immutable once
+      # published and serves anonymously (GitHub Packages 401s even for public artifacts). Each
+      # jar is shaded and carries its own META-INF/services/io.trino.spi.Plugin, so one jar per
+      # directory is a complete plugin. Version pinned to the same coordinates
+      # tests/conftest.py::_TRINO_PLUGIN_VERSION and ui-e2e-trino.yml use.
+      - name: Download plugins from Maven Central
         run: |
-          CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
+          MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
+          VERSION="0.70.0"
           PLUGINS_DIR="trino/plugins"
           for plugin in trino-sharepoint trino-splunk trino-file; do
-            curl -fsSL "$CALCITE_RELEASE/$plugin-plugin.zip" -o "$PLUGINS_DIR/$plugin-plugin.zip"
-            unzip -q -o "$PLUGINS_DIR/$plugin-plugin.zip" -d "$PLUGINS_DIR"
-            rm -f "$PLUGINS_DIR/$plugin-plugin.zip"
+            mkdir -p "$PLUGINS_DIR/$plugin"
+            curl -fsSL "$MAVEN/$plugin/$VERSION/$plugin-$VERSION.jar" \
+              -o "$PLUGINS_DIR/$plugin/$plugin-$VERSION.jar"
+            ls "$PLUGINS_DIR/$plugin"/*.jar >/dev/null
           done
 
       - name: Upload plugin directories
