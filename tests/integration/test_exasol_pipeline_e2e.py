@@ -13,10 +13,11 @@
 ``test_exasol_source_e2e.py`` proves Trino can reach Exasol. This proves Provisa can — see
 ``connector_source_harness`` for why the two are different claims.
 
-Exasol folds unquoted identifiers to UPPER CASE, so the schema, table, and columns are all
-uppercase here. That is the interesting part of this source for the registration path: every
-identifier travels from ``registerTable`` into an ``information_schema.columns`` lookup, and a
-case mismatch anywhere resolves zero column types and refuses the registration.
+Exasol folds unquoted identifiers to UPPER CASE, and Trino's JDBC connectors surface remote names
+lower-cased, so the seeded ``PROVISA.WIDGETS`` is ``provisa.widgets`` at the engine. Registration
+uses the engine-visible (lower-case) names: every identifier travels from ``registerTable`` into an
+``information_schema.columns`` lookup, and a case mismatch anywhere resolves zero column types and
+refuses the registration — which is exactly how the uppercase spelling failed here.
 """
 
 from __future__ import annotations
@@ -48,8 +49,9 @@ pytestmark = [
     pytest.mark.skipif(not _AMD64, reason=_UNBOOTABLE),
 ]
 
-_SCHEMA = "PROVISA"
-_TABLE = "WIDGETS"
+# The engine-visible spelling of the seeded PROVISA.WIDGETS (see the module docstring).
+_SCHEMA = "provisa"
+_TABLE = "widgets"
 
 # Hyphen-free id, empty database — keeps the recorded catalog name and the physical one identical.
 _SOURCE_ID = "exasol_pipeline"
@@ -81,7 +83,7 @@ async def test_exasol_registers_and_serves_semantic_query(connector_client):  # 
         schema_name=_SCHEMA,
         table_name=_TABLE,
         alias="widgets",
-        columns=["ID", "NAME"],
-        order_by="ID",
-        expected_rows=[{"ID": wid, "NAME": name} for wid, name in _WIDGETS],
+        columns=["id", "name"],
+        order_by="id",
+        expected_rows=[{"id": wid, "name": name} for wid, name in _WIDGETS],
     )

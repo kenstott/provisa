@@ -257,6 +257,9 @@ async def test_exasol_catalog_created_and_queryable():
         host="exasol",
         port=8563,
         username=_EXASOL_USER,
+        # The connector resolves the password off the model, not create_catalog's argument
+        # (_build_catalog_properties deletes it and delegates to Connector.details).
+        password=_EXASOL_PASSWORD,
         federation_hints={"tls_fingerprint": fingerprint},
     )
     try:
