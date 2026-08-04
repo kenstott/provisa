@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS sources (
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
+    federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
     path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- password never stored; resolved at runtime via secrets provider
 );
@@ -138,6 +139,9 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS mapping JSONB NOT NULL DEFAULT '{}';
+    -- Connection extras the typed columns cannot carry (warehouse account/http_path, remote-schema
+    -- override, Exasol server-certificate fingerprint) — Source.federation_hints.
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS federation_hints JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS change_signal TEXT NOT NULL DEFAULT 'ttl';  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;

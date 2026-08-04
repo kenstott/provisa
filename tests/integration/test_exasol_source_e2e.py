@@ -256,10 +256,11 @@ async def test_exasol_catalog_created_and_queryable():
         type=SourceType.exasol,
         host="exasol",
         port=8563,
+        username=_EXASOL_USER,
         federation_hints={"tls_fingerprint": fingerprint},
     )
     try:
-        create_catalog(conn, src, "")
+        create_catalog(conn, src, _EXASOL_PASSWORD)
 
         # The catalog now exists and exposes the seeded schema as a Trino schema.
         cur.execute(f"SHOW SCHEMAS FROM {catalog}")
