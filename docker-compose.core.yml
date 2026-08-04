@@ -63,6 +63,15 @@ services:
   # arrives root-owned, so uid 1000 gets "Permission denied" and every catalog
   # registration fails with CATALOG_STORE_ERROR — which took the whole API down
   # at startup, since register_system_catalogs runs inside the lifespan.
+  #
+  # PROVISA_TRINO_ETC_HOST (catalog/, kafka/, redis/) is the host side of the three
+  # directories the APP writes into at runtime — dynamic catalog .properties, and the Kafka and
+  # Redis table-description JSON. Sharing the repo's ./trino across pytest sessions made a
+  # previous session's catalog outlive it: Trino loaded kafka_pipeline.properties at container
+  # start, BEFORE the app rewrote the description file, so the FILE supplier cached a table with
+  # no columns and the connector fell back to topic == table name. The isolated stack points this
+  # at a per-session directory (tests/itest_stack.py) so each session starts from an empty
+  # catalog store and the description files are always written before CREATE CATALOG.
   trino-exchange-init:
     image: busybox
     # One line: a YAML folded scalar keeps the newline before a MORE-indented continuation, so the
@@ -71,7 +80,7 @@ services:
     command: sh -c "mkdir -p /data/provisa/exchange && chown -R 1000:1000 /data/provisa/exchange && mkdir -p /etc/trino/catalog && chown -R 1000:1000 /etc/trino/catalog"
     volumes:
       - provisa_exchange:/data/provisa/exchange
-      - ./trino/catalog:/etc/trino/catalog
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
     restart: "no"
 
   trino:
@@ -87,8 +96,13 @@ services:
       - ./trino/etc/node.properties:/etc/trino/node.properties:ro
       - ./trino/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
       - ./trino/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
-      - ./trino/catalog:/etc/trino/catalog
-      - ./trino/kafka:/etc/trino/kafka:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
+      # Redis table-description files (REQ-251): write_table_definitions writes them here on the
+      # host; the connector reads them at redis.table-description-dir (provisa/redis/source.py
+      # TABLE_DESCRIPTION_DIR). Without the mount the catalog loads and every table has no columns.
+      # Mounted on the worker too — splits read the same descriptions the coordinator planned with.
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/redis:/etc/trino/redis:ro
       - trino_cache:/data/trino/cache
       - provisa_exchange:/data/provisa/exchange
       - ./observability/trino-otel:/etc/trino/otel:ro
@@ -124,8 +138,13 @@ services:
       - ./trino/etc/exchange-manager.properties:/etc/trino/exchange-manager.properties:ro
       - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
       - ./trino/etc/worker/entrypoint.sh:/etc/trino/worker/entrypoint.sh:ro
-      - ./trino/catalog:/etc/trino/catalog
-      - ./trino/kafka:/etc/trino/kafka:ro
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/catalog:/etc/trino/catalog
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/kafka:/etc/trino/kafka:ro
+      # Redis table-description files (REQ-251): write_table_definitions writes them here on the
+      # host; the connector reads them at redis.table-description-dir (provisa/redis/source.py
+      # TABLE_DESCRIPTION_DIR). Without the mount the catalog loads and every table has no columns.
+      # Mounted on the worker too — splits read the same descriptions the coordinator planned with.
+      - ${PROVISA_TRINO_ETC_HOST:-./trino}/redis:/etc/trino/redis:ro
       - trino_worker_cache:/data/trino/cache
       - provisa_exchange:/data/provisa/exchange
       - ./observability/trino-otel:/etc/trino/otel:ro

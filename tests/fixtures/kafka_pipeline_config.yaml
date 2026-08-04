@@ -1,0 +1,62 @@
+# Config for tests/integration/test_kafka_pipeline_e2e.py.
+#
+# Kafka is the one source type that does NOT register from a Source row: TrinoKafkaConnector.details
+# returns {}, so createSource has nothing to build a catalog from. Kafka catalogs come from
+# kafka_sources[] at config load (_process_kafka_sources, provisa/api/app_loaders.py:114), which also
+# appends one tables[] entry per topic. That is why this bucket's Kafka test points PROVISA_CONFIG at
+# a file instead of driving the admin mutations the other modules use.
+#
+# The roles block is carried here rather than inherited: pointing PROVISA_CONFIG at this file means
+# config/provisa.yaml is never loaded by that app instance, and the harness queries as org_admin.
+# Its capability list mirrors tests/fixtures/sample_config.yaml — no platform-bypass 'admin'.
+
+domains:
+  - id: kafka_e2e
+    description: Kafka topic served through the semantic pipeline
+
+roles:
+  - id: org_admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - create_relationship
+      - create_view
+      - approve_view
+      - approve_relationship
+      - access_config
+      - user_management
+      - masking_config
+      - column_grant
+      - view_governance
+      - query_development
+      - full_results
+      - write
+      - usage
+    domain_access: ["*"]
+  - id: analyst
+    capabilities:
+      - query_development
+      - ad_hoc_query
+    domain_access:
+      - kafka_e2e
+
+kafka_sources:
+  # Trino is a container on the compose network and reaches the broker at the INTERNAL listener
+  # kafka:29092. The test process produces to the same broker over the host listener
+  # (KAFKA_HOST_PORT), exactly as tests/fixtures/sample_config.yaml documents.
+  - id: kafka-pipeline
+    bootstrap_servers: kafka:29092
+    topics:
+      # table_name pins the semantic table to the sanitized physical name. Without it the table is
+      # registered under the topic id while the Kafka table-description file is written under
+      # topic.replace('.', '_'), and the two no longer name the same table.
+      - id: pipeline-orders
+        topic: provisa.pipeline.orders
+        table_name: provisa_pipeline_orders
+        domain_id: kafka_e2e
+        description: Orders produced by the Kafka pipeline e2e test
+        columns:
+          - name: order_id
+            visible_to: [org_admin, analyst]
+          - name: sku
+            visible_to: [org_admin, analyst]

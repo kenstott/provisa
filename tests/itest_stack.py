@@ -42,6 +42,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 
@@ -75,6 +76,30 @@ _PREFIXES = (_ITEST_PREFIX, _E2E_PREFIX)
 ITEST_PROJECT = session_project(_ITEST_PREFIX, "PROVISA_ITEST_PROJECT")
 E2E_PROJECT = session_project(_E2E_PREFIX, "PROVISA_E2E_PROJECT")
 COMPOSE_ARGS = ["-p", ITEST_PROJECT, "-f", CORE_COMPOSE, "-f", TEST_COMPOSE]
+
+
+def _session_trino_etc() -> str:
+    """The per-session host directory Trino's mutable config is mounted from.
+
+    ``trino/catalog``, ``trino/kafka`` and ``trino/redis`` are WRITTEN by the running app —
+    dynamic catalog ``.properties`` (FileCatalogStore) and the Kafka/Redis table-description
+    JSON. Sharing the repo copy across sessions let a previous session's catalog store outlive
+    it: with ``catalog.management=dynamic`` Trino loads ``<name>.properties`` at container start,
+    so the Kafka catalog existed BEFORE this session's app wrote its description file. The FILE
+    supplier had already cached a table with no columns, the connector fell back to topic ==
+    table name, and the resulting auto-created topic then blocked the real dotted topic
+    (``collides with existing topic``). One empty directory per session removes the carry-over;
+    ``PROVISA_TRINO_ETC_DIR`` points the app's writers at the same place the containers mount.
+    """
+    path = os.path.join(_REPO_ROOT, ".itest-trino", ITEST_PROJECT)
+    for sub in ("catalog", "kafka", "redis"):
+        os.makedirs(os.path.join(path, sub), exist_ok=True)
+    os.environ.setdefault("PROVISA_TRINO_ETC_HOST", path)
+    os.environ.setdefault("PROVISA_TRINO_ETC_DIR", path)
+    return path
+
+
+TRINO_ETC_DIR = _session_trino_etc()
 
 
 def _pid_alive(pid: int) -> bool:
@@ -120,6 +145,8 @@ def reap_orphaned_projects() -> None:
             cwd=_REPO_ROOT,
             check=False,
         )
+        # The dead session's Trino config directory goes with its containers.
+        shutil.rmtree(os.path.join(_REPO_ROOT, ".itest-trino", name), ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

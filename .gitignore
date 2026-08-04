@@ -112,6 +112,9 @@ identifier.sqlite
 # at a Postgres holding no landed demo data and every query died with
 # SCHEMA_NOT_FOUND "Schema 'default' does not exist".
 /trino/catalog/*.properties
+# Redis table-description files are written at runtime by write_table_definitions (REQ-251) from
+# each source's mapping; only the directory itself is tracked, so the compose bind mount resolves.
+/trino/redis/*.json
 sharepoint.pfx
 Volumes/
 coverage.xml
@@ -148,3 +151,7 @@ site/.wrangler/
 # Terraform plan binaries embed resolved variable values, including the Cloud SQL password.
 *.tfplan
 .scratch/
+.splunk-cim/
+
+# Per-pytest-session Trino config directories (tests/itest_stack.py).
+/.itest-trino/
