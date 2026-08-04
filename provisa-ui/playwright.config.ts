@@ -304,12 +304,16 @@ export default defineConfig({
         GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
         PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
         PROVISA_ENGINE: "trino",
-        // Trino runs inside Docker; "localhost" in the app's control-plane URL
-        // resolves to the Trino container itself, not the host.  These vars
-        // make engine_visible_address() (trino_system_catalogs.py) substitute
-        // the Docker host address so Trino's JDBC catalog specs reach Postgres.
-        PROVISA_ENGINE_CONTROL_PLANE_HOST: "host.docker.internal",
-        PROVISA_ENGINE_CONTROL_PLANE_PORT: String(pgPort),
+        // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
+        // Trino container itself, not the host. These vars make engine_visible_address()
+        // (trino_system_catalogs.py) substitute an address Trino can actually dial. Both
+        // containers come from docker-compose.core.yml and share its default network, so the
+        // compose service name and the CONTAINER port are the address — not the host gateway and
+        // the published port. host.docker.internal does not resolve on a Linux runner at all,
+        // which is why CI failed with "Failed to connect: jdbc:postgresql://host.docker.internal".
+        // Same values tests/conftest.py and tests/integration/isolated_server.py already export.
+        PROVISA_ENGINE_CONTROL_PLANE_HOST: "postgres",
+        PROVISA_ENGINE_CONTROL_PLANE_PORT: "5432",
         ...controlPlaneEnv,
       },
       reuseExistingServer: !process.env.CI,

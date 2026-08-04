@@ -31,6 +31,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import threading
 from typing import Any
 
 import duckdb
@@ -110,6 +111,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._cp_snapshot_dir = ""  # created with the probe, on the first SQLite control plane
         self._cp_snapshot_path = ""
         self._cp_data_version: int | None = None  # PRAGMA data_version at the last snapshot
+        # attach_control_plane runs on whatever worker thread serves the request, and its
+        # DETACH -> os.replace -> ATTACH sequence leaves the catalog momentarily unbound. Two
+        # threads interleaving there would query a detached alias, so the whole refresh is
+        # serialized. The same lock covers _cp_probe, whose PRAGMA data_version caching requires a
+        # single long-lived connection (a per-call probe would report a fresh version every time).
+        self._cp_lock = threading.Lock()
 
     # -- source exposure -------------------------------------------------------
 
@@ -193,38 +200,39 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._phys_catalogs.add(catalog)
             self._control_plane_attached = True
             return
-        scratch = self._refresh_control_plane_snapshot(db_path)
-        if scratch is None:
-            return  # nothing committed since the last snapshot; the attached views are current
-        if not self._sqlite_loaded:
-            self._con.execute("INSTALL sqlite")
-            self._con.execute("LOAD sqlite")
-            self._sqlite_loaded = True
-        raw_alias = "_raw_provisa_admin"
-        if catalog not in self._phys_catalogs:
-            self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
-            self._phys_catalogs.add(catalog)
-        else:
-            # Rebuild from scratch: the refreshed snapshot may have gained or dropped tables, and
-            # the views must be unbound before the stale snapshot file can be detached.
-            self._con.execute(f'DROP SCHEMA IF EXISTS "{catalog}"."{schema_name}" CASCADE')
-        if raw_alias in self._raw_attached:
-            self._con.execute(f'DETACH "{raw_alias}"')
-            self._raw_attached.discard(raw_alias)
-        # Only now that DuckDB has released the previous snapshot can the fresh copy take its place.
-        os.replace(scratch, self._cp_snapshot_path)
-        self._con.execute(
-            f"ATTACH '{self._cp_snapshot_path}' AS \"{raw_alias}\" (TYPE sqlite, READ_ONLY)"
-        )
-        self._raw_attached.add(raw_alias)
-        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema_name}"')
-        # Enumerate every table from the SQLite file via SHOW TABLES (sqlite_master is not
-        # accessible at the 3-part name DuckDB expects after a TYPE sqlite ATTACH).
-        for (tbl,) in self._con.execute(f'SHOW TABLES FROM "{raw_alias}"').fetchall():
-            view = f'"{catalog}"."{schema_name}"."{tbl}"'
-            remote = f'"{raw_alias}"."main"."{tbl}"'
-            self._con.execute(f"CREATE OR REPLACE VIEW {view} AS SELECT * FROM {remote}")
-        self._control_plane_attached = True
+        with self._cp_lock:
+            scratch = self._refresh_control_plane_snapshot(db_path)
+            if scratch is None:
+                return  # nothing committed since the last snapshot; the attached views are current
+            if not self._sqlite_loaded:
+                self._con.execute("INSTALL sqlite")
+                self._con.execute("LOAD sqlite")
+                self._sqlite_loaded = True
+            raw_alias = "_raw_provisa_admin"
+            if catalog not in self._phys_catalogs:
+                self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
+                self._phys_catalogs.add(catalog)
+            else:
+                # Rebuild from scratch: the refreshed snapshot may have gained or dropped tables, and
+                # the views must be unbound before the stale snapshot file can be detached.
+                self._con.execute(f'DROP SCHEMA IF EXISTS "{catalog}"."{schema_name}" CASCADE')
+            if raw_alias in self._raw_attached:
+                self._con.execute(f'DETACH "{raw_alias}"')
+                self._raw_attached.discard(raw_alias)
+            # Only now that DuckDB released the previous snapshot can the fresh copy take its place.
+            os.replace(scratch, self._cp_snapshot_path)
+            self._con.execute(
+                f"ATTACH '{self._cp_snapshot_path}' AS \"{raw_alias}\" (TYPE sqlite, READ_ONLY)"
+            )
+            self._raw_attached.add(raw_alias)
+            self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema_name}"')
+            # Enumerate every table from the SQLite file via SHOW TABLES (sqlite_master is not
+            # accessible at the 3-part name DuckDB expects after a TYPE sqlite ATTACH).
+            for (tbl,) in self._con.execute(f'SHOW TABLES FROM "{raw_alias}"').fetchall():
+                view = f'"{catalog}"."{schema_name}"."{tbl}"'
+                remote = f'"{raw_alias}"."main"."{tbl}"'
+                self._con.execute(f"CREATE OR REPLACE VIEW {view} AS SELECT * FROM {remote}")
+            self._control_plane_attached = True
 
     def _refresh_control_plane_snapshot(self, db_path: str) -> str | None:
         """Copy the live control-plane SQLite file into a private snapshot; return the path of the
@@ -243,7 +251,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         long-lived reader changes exactly when another connection commits, so an unchanged value
         means the existing snapshot is still current and no copy is needed."""
         if self._cp_probe is None:
-            self._cp_probe = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            # check_same_thread=False: the probe outlives the request that created it and is read
+            # from whichever worker thread later serves a query. _cp_lock is what makes that safe —
+            # every use of the probe happens under it.
+            self._cp_probe = sqlite3.connect(
+                f"file:{db_path}?mode=ro", uri=True, check_same_thread=False
+            )
             self._cp_snapshot_dir = tempfile.mkdtemp(prefix="provisa-control-plane-snapshot-")
             self._cp_snapshot_path = os.path.join(self._cp_snapshot_dir, "control_plane.sqlite")
         version = self._cp_probe.execute("PRAGMA data_version").fetchone()[0]
@@ -609,10 +622,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     def close(self) -> None:
         self._con.close()
-        if self._cp_probe is not None:
-            self._cp_probe.close()
-            self._cp_probe = None
-        if self._cp_snapshot_dir:
-            shutil.rmtree(self._cp_snapshot_dir)
-            self._cp_snapshot_dir = ""
-            self._cp_snapshot_path = ""
+        with self._cp_lock:  # never tear the probe/snapshot out from under a refresh in flight
+            if self._cp_probe is not None:
+                self._cp_probe.close()
+                self._cp_probe = None
+            if self._cp_snapshot_dir:
+                shutil.rmtree(self._cp_snapshot_dir)
+                self._cp_snapshot_dir = ""
+                self._cp_snapshot_path = ""
