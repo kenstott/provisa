@@ -13,9 +13,9 @@ import { test, expect } from "./coverage";
 // Uses the pre-seeded `dim_pet` view (source_id: __derived__, materialize: true) which has viewSql
 // set — source tables without viewSql do not expose the MV snapshot schedule panel.
 test("create a calendar and configure an MV snapshot schedule", async ({ page }) => {
-  // Apollo resetStore() fires when concurrent schema-version advances are detected
-  // (file-connector / sharepoint tests register tables), briefly clearing the cache
-  // and showing "Loading tables..." for up to 15s. All per-step timeouts are increased.
+  // A schema-version advance (file-connector / sharepoint tests registering tables) makes
+  // apolloClient.ts re-fetch every active query, so "Loading tables..." can reappear for up to
+  // 15s mid-test. All per-step timeouts are increased to survive that.
   test.setTimeout(120000);
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 30000 });

@@ -175,27 +175,28 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { TablesPage } from "../TablesPage";
 
-// Mantine Select renders a readonly text input with role="combobox". Options mount
-// into a portal (role="listbox"/"option") only once the dropdown is open, so choosing
-// a value means: click the input to open, wait for the option, click it. Clicking the
-// already-selected option again toggles it off (Mantine's default allowDeselect), which
-// is how these tests clear a source/schema selection.
-async function selectOption(combobox: HTMLElement, name: string) {
-  await userEvent.click(combobox);
-  // Mantine mounts each Select's options into its own listbox (referenced by the
-  // input's aria-controls). jsdom applies no layout, so the dropdown reads as
-  // "hidden" to Testing Library — hence { hidden: true }. Scoping to this Select's
-  // listbox keeps a shared label (e.g. "public" also used by scope pickers) unique.
-  const listboxId = combobox.getAttribute("aria-controls");
-  const listbox = listboxId ? document.getElementById(listboxId) : null;
-  if (!listbox) throw new Error(`No listbox for combobox ${combobox.getAttribute("data-testid")}`);
-  const option = await within(listbox).findByRole("option", { name, hidden: true });
-  await userEvent.click(option);
+// The RegisterTableForm pickers are native <select> elements (RegisterTableForm.tsx:276-355),
+// each with a leading placeholder <option value="">. Option value and label are identical for
+// all four, so selecting by value is selecting by visible name. The schema and table selects
+// stay `disabled` until their prerequisite fetch resolves and are repopulated when the source
+// changes, so wait for the option to exist and the select to be enabled before choosing.
+async function selectOption(select: HTMLElement, name: string) {
+  await waitFor(() => {
+    const el = select as HTMLSelectElement;
+    expect(el.disabled).toBe(false);
+    expect(Array.from(el.options).some((o) => o.value === name)).toBe(true);
+  });
+  await userEvent.selectOptions(select, name);
 }
 
-// The RegisterTableForm pickers are Mantine Selects. Each input carries its own
-// data-testid; keep the original index layout the tests relied on (0=source,
-// 1=domain, 2=schema, 3=table) so per-test references stay unchanged.
+// Clearing a native select means selecting its placeholder back — there is no click-the-
+// selected-option-again deselect the way a Mantine Select offers.
+async function clearOption(select: HTMLElement) {
+  await userEvent.selectOptions(select, "");
+}
+
+// Each picker carries its own data-testid; keep the original index layout the tests relied on
+// (0=source, 1=domain, 2=schema, 3=table) so per-test references stay unchanged.
 function formSelects(): HTMLElement[] {
   const arr: HTMLElement[] = [];
   arr[0] = screen.getByTestId("register-table-source-select");
@@ -309,8 +310,8 @@ describe("Table description auto-fill from physical database", () => {
       expect(descInput).toHaveValue("Registered customer accounts");
     });
 
-    // Clicking the selected schema option again deselects it, clearing schema/table/desc.
-    await selectOption(selects[2], "public");
+    // Clearing the schema clears table and description with it.
+    await clearOption(selects[2]);
 
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
@@ -347,14 +348,9 @@ describe("Schema population — source type routing", () => {
     const selects = formSelects();
     await selectOption(selects[0], "sales-pg");
 
-    // Open the schema dropdown and assert the backend-provided option appears.
-    await userEvent.click(selects[2]);
-    const schemaListbox = document.getElementById(selects[2].getAttribute("aria-controls")!)!;
+    // A native <select> renders its options inline, so assert on the element's own option list.
     await waitFor(() => {
-      const schemaOptions = within(schemaListbox).getAllByRole("option", {
-        name: "public",
-        hidden: true,
-      });
+      const schemaOptions = within(selects[2]).getAllByRole("option", { name: "public" });
       expect(schemaOptions.length).toBeGreaterThan(0);
     });
   });
@@ -438,8 +434,8 @@ describe("Schema population — source type routing", () => {
     await selectOption(selects[2], "public");
     await selectOption(selects[3], "customers");
 
-    // Change source — deselect it (click the selected option again); schema/table reset.
-    await selectOption(selects[0], "sales-pg");
+    // Change source — clear it; schema/table reset.
+    await clearOption(selects[0]);
 
     await waitFor(() => {
       expect(selects[2]).toHaveValue("");

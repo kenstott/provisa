@@ -10,7 +10,7 @@
 
 import { defineConfig } from "vite";
 import type { Plugin } from "vite";
-import { request as httpRequest } from "http";
+import { Agent as HttpAgent, request as httpRequest } from "http";
 import react from "@vitejs/plugin-react";
 import istanbul from "vite-plugin-istanbul";
 import path from "path";
@@ -76,6 +76,17 @@ const BACKEND_PREFIXES = ["/data", "/admin", "/query", "/health", "/setup", "/au
  * backend: silently sending them to worker 0 is exactly the shared-backend condition this exists
  * to eliminate, and it would resurface as an unrelated assertion failure in some other spec.
  */
+// keepAlive: false is required, not a tuning choice. Node's http.globalAgent pools sockets with
+// keepAlive on (keepAliveMsecs 1000, timeout 5000) and uvicorn closes idle connections at its own
+// 5 s --timeout-keep-alive. The two deadlines coincide, so a pooled socket the agent believes is
+// reusable is being closed by the backend at the same instant the next request is written to it:
+// the write fails with ECONNRESET and the error handler below turns it into a 502. In the browser
+// that 502 lands on /admin/graphql, errors the Apollo query, and useTables() then returns an empty
+// list for the rest of the page's life (cache-and-network never retries an errored query) — which
+// is how a spec ends up staring at a table list or fact picker that never populates. A fresh
+// connection per request cannot hit the race; the cost is irrelevant on loopback in a test harness.
+const e2eProxyAgent = new HttpAgent({ keepAlive: false });
+
 function e2eWorkerBackendRouter(): Plugin {
   return {
     name: "provisa-e2e-worker-backend-router",
@@ -104,7 +115,8 @@ function e2eWorkerBackendRouter(): Plugin {
             port: Number(port),
             method: req.method,
             path: url,
-            headers: { ...req.headers, host: `127.0.0.1:${port}` },
+            agent: e2eProxyAgent,
+            headers: { ...req.headers, host: `127.0.0.1:${port}`, connection: "close" },
           },
           (upstreamRes) => {
             res.writeHead(upstreamRes.statusCode ?? 502, upstreamRes.headers);
