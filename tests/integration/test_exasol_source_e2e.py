@@ -174,13 +174,18 @@ def _exaplus(container_id: str, statement: str, fingerprint: str) -> str:
 
     ``-x`` is what makes a failed statement a failed process: without it exaplus reports the SQL
     error on stdout and still exits 0, so a rejected CREATE SCHEMA looked like a successful seed and
-    the failure only surfaced later as an empty catalog."""
+    the failure only surfaced later as an empty catalog.
+
+    exaplus needs the terminating semicolon: without it every statement is rejected with
+    "Error: Unfinished command" and nothing is executed, which is how the schema never got
+    created."""
+    terminated = statement if statement.rstrip().endswith(";") else f"{statement};"
     proc = subprocess.run(
         [
             "docker", "exec", container_id,
             "exaplus", "-c", f"localhost/{fingerprint}:8563",
             "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
-            "-x", "-sql", statement,
+            "-x", "-sql", terminated,
         ],  # fmt: skip
         capture_output=True,
         text=True,
