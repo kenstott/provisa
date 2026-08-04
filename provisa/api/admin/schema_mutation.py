@@ -66,6 +66,7 @@ from provisa.api.admin import schema_mutation_ops as _ops
 
 
 from provisa.api.admin._row_mappers import (  # noqa: E402
+    _federation_hints_from_input,
     _parse_mapping_json,
     _cdc_model_from_input,
 )
@@ -336,6 +337,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             path=input.path,
             description=input.description,
             mapping=_parse_mapping_json(input.mapping_json),
+            federation_hints=_federation_hints_from_input(input),
             change_signal=input.change_signal,
             load_protected=input.load_protected,  # REQ-1141
             off_peak_window=input.off_peak_window,  # REQ-1141
@@ -369,6 +371,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             state.source_allowed_domains[input.id] = _domains
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
+        if model.federation_hints:
+            # Mirrors _populate_source_catalog_names in app_loaders.py: the config path publishes
+            # the hints to runtime state, so the dynamic path must too.
+            state.source_federation_hints[input.id] = dict(model.federation_hints)
 
         # Populate the org-scoped catalog name so catalog_for() resolves this source
         # after dynamic creation (mirrors _populate_source_catalog_names in app_loaders.py).
@@ -422,6 +428,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 path=input.path,
                 description=input.description,
                 mapping=_parse_mapping_json(input.mapping_json),
+                federation_hints=_federation_hints_from_input(input),
                 change_signal=input.change_signal,
                 load_protected=input.load_protected,  # REQ-1141
                 off_peak_window=input.off_peak_window,  # REQ-1141

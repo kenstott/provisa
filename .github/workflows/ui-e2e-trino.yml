@@ -1,0 +1,157 @@
+name: UI e2e (Trino lane)
+
+# The two connector specs (sharepoint, splunk) that cannot run in ui-e2e-core.yml. Both need
+# TrinoBackend.register_source() to create a real Trino catalog — NativeBackend (DuckDB) is a
+# no-op there, so the schema dropdown never populates — and Trino loads those catalog specs over
+# JDBC from inside its own container, which a SQLite control plane cannot serve. Hence the compose
+# Postgres plus a Trino coordinator for two tests. Every other spec is in the core lane; between
+# the two workflows nothing is skipped.
+#
+# playwright.config.ts still starts the DuckDB backend, the graphql-demo and petstore-mock servers
+# and Vite here: the UI these specs drive is served by the same app.
+#
+# Runner is amd64 ubuntu-latest: the Trino coordinator alone takes mem_limit 7g, so the job
+# brings up only postgres + trino (no worker — replicas: 0 — and no zaychik, which nothing in
+# this lane queries). Redis is not started either: neither provisa-install.yaml nor
+# provisa-trino-e2e.yaml sets cache.redis_url and the harness sets no REDIS_URL, so app.py
+# resolves state.redis_url to None and both the response cache and the rate limiter (REQ-371)
+# run on embedded fakeredis.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "provisa-ui/e2e/sharepoint-connector.spec.ts"
+      - "provisa-ui/e2e/splunk-connector.spec.ts"
+      - "provisa-ui/playwright.config.ts"
+      - "provisa/federation/**"
+      - "provisa/core/trino_*.py"
+      - "main.py"
+      - "config/provisa-install.yaml"
+      - "config/provisa-trino-e2e.yaml"
+      - "docker-compose.core.yml"
+      - "demo/**"
+      - ".github/workflows/ui-e2e-trino.yml"
+  pull_request:
+    paths:
+      - "provisa-ui/e2e/sharepoint-connector.spec.ts"
+      - "provisa-ui/e2e/splunk-connector.spec.ts"
+      - "provisa-ui/playwright.config.ts"
+      - "provisa/federation/**"
+      - "provisa/core/trino_*.py"
+      - "main.py"
+      - "config/provisa-install.yaml"
+      - "config/provisa-trino-e2e.yaml"
+      - "docker-compose.core.yml"
+      - "demo/**"
+      - ".github/workflows/ui-e2e-trino.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-e2e-trino-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright Trino lane
+    runs-on: ubuntu-latest
+    # Trino's healthcheck start_period alone is 120s, and the Trino-engine backend's
+    # register_system_catalogs() gets a 300s webServer timeout on a cold JVM.
+    timeout-minutes: 90
+    env:
+      # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer
+      # must be started by the harness, never adopted from a stale process.
+      CI: "true"
+      # Declares the Trino webServer, restricts the run to the two Trino specs, and keeps the
+      # control plane on the compose Postgres (playwright.config.ts rejects lane=trino on sqlite).
+      PROVISA_E2E_LANE: trino
+      # docker-compose.core.yml publishes postgres/trino on the host with ${PG_PORT}/${TRINO_PORT}
+      # defaults of 5432/8080. Pinned explicitly so playwright.config.ts's `docker compose port`
+      # lookup and the Trino backend's PROVISA_ENGINE_CONTROL_PLANE_PORT agree with the binding.
+      PG_PORT: "5432"
+      TRINO_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v4
+
+      # A skip caused by the wrong arch would be a green run that executed nothing.
+      - name: Assert the runner is amd64
+        run: |
+          arch="$(uname -m)"
+          echo "runner arch: $arch"
+          [ "$arch" = "x86_64" ] || { echo "::error::ui-e2e lane running on $arch"; exit 1; }
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
+      # environment must be a real repo-root .venv — uv sync creates exactly that.
+      - name: Install Python deps
+        run: uv sync --frozen --extra dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install UI deps
+        working-directory: provisa-ui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: provisa-ui
+        run: npx playwright install --with-deps chromium
+
+      # docker-compose.core.yml bind-mounts ./sharepoint.pfx into Trino. It is a real
+      # certificate on a developer box and is gitignored, so it is absent here — and Docker
+      # silently creates a DIRECTORY in place of a missing bind-mount source. Create the empty
+      # file instead; no catalog in this lane reads it.
+      - name: Placeholder for the gitignored SharePoint cert mount
+        run: touch sharepoint.pfx
+
+      # The Calcite-derived connector plugins are gitignored (they exist only where built), and
+      # Trino aborts with "No service providers of type io.trino.spi.Plugin" without them — a
+      # failure that surfaces only as an unhealthy container two minutes in. Release pinned to
+      # the same tag tests/conftest.py::_TRINO_PLUGIN_RELEASE and build-dmg.yml use; all three
+      # must move together or a connector behaves differently here than in the shipped image.
+      - name: Download Calcite Trino plugins
+        run: |
+          CALCITE_RELEASE="https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
+          for plugin in trino-sharepoint trino-splunk trino-file; do
+            curl -fsSL "$CALCITE_RELEASE/$plugin-plugin.zip" -o "trino/plugins/$plugin-plugin.zip"
+            unzip -q -o "trino/plugins/$plugin-plugin.zip" -d trino/plugins
+            rm -f "trino/plugins/$plugin-plugin.zip"
+            ls "trino/plugins/$plugin"/*.jar >/dev/null
+          done
+
+      # Pull before `up` so the compose wait below spends its budget on Trino's JVM boot rather
+      # than on a 1 GB image download racing the healthcheck's start_period.
+      - name: Pre-pull service images
+        run: docker compose -f docker-compose.core.yml pull postgres trino
+
+      # Only the services this lane queries. trino-worker stays at replicas: 0 and zaychik is
+      # never started — both would compete for RAM with Trino's 7g limit, the Vite dev server's
+      # 4 GB heap, and two uvicorn backends on a 16 GB runner.
+      - name: Start core services
+        run: docker compose -f docker-compose.core.yml up -d --wait postgres trino
+
+      - name: Run Playwright Trino lane
+        working-directory: provisa-ui
+        run: npx playwright test --project=trino --reporter=list,html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-trino
+          path: provisa-ui/playwright-report/
+          retention-days: 7
+
+      - name: Container state and logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker compose -f docker-compose.core.yml logs --tail=200

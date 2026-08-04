@@ -35,6 +35,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from provisa.federation.backend import EngineBackend
+from provisa.federation.engine import UnreachableSource
 
 if TYPE_CHECKING:
     from provisa.executor.result import QueryResult, ResultStream
@@ -50,7 +51,13 @@ class NativeEngineBackend(EngineBackend):
     # Errors from attach_source that mean "this table is not queryable" (offline source, or a LAND
     # source not yet materialized) — logged and skipped so one bad table never fails other queries.
     # A subclass ORs in its driver error type. Anything else is a real bug and propagates.
-    _attach_errors: tuple[type[BaseException], ...] = (KeyError,)
+    #
+    # UnreachableSource belongs here for the same reason: reachability is binary and engine-scoped
+    # (REQ-841), so on a PARTIAL/SELF_ONLY engine some registered source types simply have no
+    # connector — the seeded provisa-otel iceberg store on the Synapse engine, for example. That is
+    # the declared state of that pair, not a failure of the attach loop, and reconcile_landed_tables
+    # already skips the same condition the same way (see its `except UnreachableSource: continue`).
+    _attach_errors: tuple[type[BaseException], ...] = (KeyError, UnreachableSource)
 
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
@@ -251,7 +258,6 @@ class NativeEngineBackend(EngineBackend):
         with no type is a registration/config gap and the table is skipped (logged), never guessed.
         Returns the (source_id, table_name) reconciled."""
         from provisa.core.ir_types import to_ir
-        from provisa.federation.engine import UnreachableSource
         from provisa.federation.strategy import Strategy, federate
 
         config = getattr(state, "config", None)

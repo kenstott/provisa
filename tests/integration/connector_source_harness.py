@@ -156,6 +156,7 @@ async def create_source(
     password: str = "",
     path: str = "",
     mapping: dict[str, Any] | None = None,
+    federation_hints: dict[str, str] | None = None,
 ) -> None:
     """Register the source through the real ``createSource`` mutation.
 
@@ -180,6 +181,13 @@ async def create_source(
         # to escape it as a literal — so quotes inside the mapping survive.
         mapping_arg = f", mappingJson: {json.dumps(json.dumps(mapping))}"
     path_arg = f", path: {json.dumps(path)}" if path else ""
+    # Connection extras the typed args can't carry (an Exasol server-certificate fingerprint is
+    # the case here) — same double-dumps escaping as mapping.
+    hints_arg = (
+        f", federationHintsJson: {json.dumps(json.dumps(federation_hints))}"
+        if federation_hints
+        else ""
+    )
     await _gql(
         client,
         f"""
@@ -194,6 +202,7 @@ async def create_source(
                 password: {json.dumps(password)}
                 {path_arg}
                 {mapping_arg}
+                {hints_arg}
             }}) {{ success message }}
         }}
         """,
@@ -297,6 +306,7 @@ async def assert_registration_and_query(
     path: str = "",
     column_types: dict[str, str] | None = None,
     mapping: dict[str, Any] | None = None,
+    federation_hints: dict[str, str] | None = None,
     alias: str | None = None,
     settle_seconds: float = 0,
     seed_after_create_source: Callable[[str], None] | None = None,
@@ -330,6 +340,7 @@ async def assert_registration_and_query(
         password=password,
         path=path,
         mapping=mapping,
+        federation_hints=federation_hints,
     )
     if seed_after_create_source is not None:
         # source_to_catalog only maps '-' → '_'; every id in this bucket is already hyphen-free,

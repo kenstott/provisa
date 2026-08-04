@@ -36,6 +36,7 @@ def _source_values(source: Source) -> dict:
         "description": source.description,
         # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
         "mapping": source.mapping or {},
+        "federation_hints": source.federation_hints or {},
         "cdc": source.cdc.model_dump() if source.cdc else None,  # REQ-824
         "change_signal": getattr(source, "change_signal", "ttl"),  # REQ-929
         "load_protected": getattr(source, "load_protected", False),  # REQ-1141

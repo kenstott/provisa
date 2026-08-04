@@ -1,0 +1,91 @@
+name: UI e2e (core lane)
+
+# 143 of the 145 Playwright tests run against the DuckDB (NativeBackend) backend and need no
+# container at all:
+#   - control plane on SQLite  — db.py::_init_schema_portable bootstraps from the dialect-neutral
+#     schema_org metadata instead of the PostgreSQL-only schema.sql, and OrgRouter gives
+#     file-per-org isolation where PG uses org_<id> schemas (capabilities.yaml presets already
+#     declare control_plane_store: sqlite, so this is the shipped embedded tier, not a test-only
+#     shortcut)
+#   - cache on embedded fakeredis — no config sets cache.redis_url and no REDIS_URL is exported,
+#     so app.py resolves state.redis_url to None
+#   - federation on DuckDB — PROVISA_ENGINE is only set to trino on the second backend
+#
+# The remaining two specs (sharepoint, splunk) need a Trino catalog and a networked control plane;
+# they live in ui-e2e-trino.yml. Together the two lanes run every spec — neither skips.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "provisa-ui/**"
+      - "provisa/**"
+      - "main.py"
+      - "config/provisa-install.yaml"
+      - "demo/**"
+      - ".github/workflows/ui-e2e-core.yml"
+  pull_request:
+    paths:
+      - "provisa-ui/**"
+      - "provisa/**"
+      - "main.py"
+      - "config/provisa-install.yaml"
+      - "demo/**"
+      - ".github/workflows/ui-e2e-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-e2e-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright core lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must be
+      # started by the harness, never adopted from a stale process.
+      CI: "true"
+      # Selects the SQLite control plane and drops the Trino webServer from the config. Without it
+      # the config would call `docker compose port postgres`, which throws with no daemon running.
+      PROVISA_E2E_LANE: core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
+      # environment must be a real repo-root .venv — uv sync creates exactly that.
+      - name: Install Python deps
+        run: uv sync --frozen --extra dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install UI deps
+        working-directory: provisa-ui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: provisa-ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright core lane
+        working-directory: provisa-ui
+        run: npx playwright test --project=core --reporter=list,html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-core
+          path: provisa-ui/playwright-report/
+          retention-days: 7

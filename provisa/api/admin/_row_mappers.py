@@ -39,6 +39,24 @@ def _parse_mapping_json(mapping_json: str | None) -> dict:
         return {}
 
 
+def _federation_hints_from_input(input: SourceInput) -> dict[str, str]:
+    """Parse SourceInput.federation_hints_json into the Source model's hints map.
+
+    Unlike ``_parse_mapping_json`` this does NOT swallow a decode error: a hint that fails to
+    parse is a connection parameter that silently goes missing, and the source then attaches with
+    the wrong certificate pin / account / schema instead of refusing.
+    """
+    raw = getattr(input, "federation_hints_json", None)
+    if not raw:
+        return {}
+    import json as _json
+
+    hints = _json.loads(raw)
+    if not isinstance(hints, dict):
+        raise ValueError(f"federationHintsJson must be a JSON object, got {type(hints).__name__}")
+    return {str(k): str(v) for k, v in hints.items()}
+
+
 def _cdc_from_row(row):  # REQ-824
     """Deserialize the sources.cdc JSONB column into a SourceCdcConfigType."""
     import json as _json

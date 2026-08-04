@@ -83,6 +83,9 @@ sources = Table(
     Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
     Column("description", Text, nullable=False, server_default=""),
     Column("mapping", JSON, nullable=False, default=dict, server_default="{}"),
+    # Connection extras the typed columns cannot carry (warehouse account/http_path, remote-schema
+    # override, Exasol server-certificate fingerprint) — Source.federation_hints.
+    Column("federation_hints", JSON, nullable=False, default=dict, server_default="{}"),
     Column("cdc", JSON),
     Column("change_signal", Text, nullable=False, server_default="ttl"),  # REQ-929
 )

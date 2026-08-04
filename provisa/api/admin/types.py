@@ -333,6 +333,11 @@ class SourceInput:  # REQ-012
     description: str = ""
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     mapping_json: str | None = None
+    # Connection extras the standard args cannot carry — a warehouse's account/http_path, a
+    # remote-schema override, an Exasol server-certificate fingerprint. The config path has always
+    # been able to declare these (Source.federation_hints); this is the same channel through the
+    # admin API, as a JSON object literal.
+    federation_hints_json: str | None = None
     change_signal: str = "ttl"  # REQ-929: source default change signal
     load_protected: bool = False  # REQ-1141: scheduled-refresh-only load protection
     off_peak_window: str | None = None  # REQ-1141: "HH:MM-HH:MM" maintenance window

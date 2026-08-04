@@ -1,0 +1,3 @@
+# Redis table-description files (REQ-251) are written here at runtime by
+# provisa.core.trino_catalog_files.write_table_definitions and mounted into the Trino
+# containers at /etc/trino/redis. The directory must exist for the bind mount to resolve.

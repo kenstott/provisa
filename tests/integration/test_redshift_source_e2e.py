@@ -24,13 +24,12 @@ engine's Trino ``redshift`` catalog:
 Why this is credential-gated, not docker-gated
 -------------------------------------------------
 Redshift is AWS-only — there is no local/OSS image to self-provision (unlike cassandra/exasol,
-which run as docker-compose services on this host). A real Redshift cluster is required to exercise
-this end to end, so the test is unconditionally skipped unless ALL of
-``REDSHIFT_HOST``/``REDSHIFT_PORT``/``REDSHIFT_DATABASE``/``REDSHIFT_USER``/``REDSHIFT_PASSWORD``
-are set in the environment — no AWS/Redshift creds exist in this repo's ``.env`` today, so this
-test SKIPS here. Not added to ``tests/conftest.py::_MARKER_SERVICES`` — there is no docker service
-for the provisioner to bring up; the isolated stack's core Trino (always started for `integration`
-tests) is reused as-is and simply reaches out to the real AWS endpoint over the network.
+which run as docker-compose services on this host). The ``redshift_cluster`` fixture provisions a
+real Serverless workgroup for the session and deletes it afterwards (see that module for why it is
+a fixture and not a wrapper script), so the only gate here is whether AWS credentials exist in
+``.env``. Not added to ``tests/conftest.py::_MARKER_SERVICES`` — there is no docker service for the
+provisioner to bring up; the isolated stack's core Trino (always started for `integration` tests) is
+reused as-is and simply reaches out to the real AWS endpoint over the network.
 
 Seeding uses ``psycopg2`` (already a project dependency) rather than the AWS ``redshift_connector``
 package: Redshift's leader node speaks the Postgres wire protocol for ordinary DDL/DML, so a plain
@@ -46,20 +45,23 @@ import pytest
 import trino.dbapi
 import trino.exceptions
 
+from tests.integration.redshift_cluster import (
+    have_aws_creds,
+    redshift_cluster,  # noqa: F401 — imported for pytest fixture discovery
+)
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_redshift, pytest.mark.requires_warehouse]
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
 
-_ENV = ("REDSHIFT_HOST", "REDSHIFT_PORT", "REDSHIFT_DATABASE", "REDSHIFT_USER", "REDSHIFT_PASSWORD")
-_HAVE_CREDS = all(os.environ.get(v) for v in _ENV)
 pytestmark.append(
     pytest.mark.skipif(
-        not _HAVE_CREDS,
+        not have_aws_creds(),
         reason=(
-            "No AWS Redshift cluster available (AWS-only, not self-provisionable on this host); "
-            "set REDSHIFT_HOST/REDSHIFT_PORT/REDSHIFT_DATABASE/REDSHIFT_USER/REDSHIFT_PASSWORD to "
-            "run against a real cluster"
+            "No AWS credentials for the ephemeral Redshift lane (AWS-only, billable, not "
+            "self-provisionable on this host); set REDSHIFT_AWS_ACCESS_KEY_ID / "
+            "REDSHIFT_AWS_SECRET_ACCESS_KEY in .env"
         ),
     )
 )
@@ -147,7 +149,7 @@ def _drop_redshift_table() -> None:
         conn.close()
 
 
-def test_redshift_catalog_created_and_queryable():
+def test_redshift_catalog_created_and_queryable(redshift_cluster):  # noqa: F811
     """Register a redshift Source, project it as a live Trino catalog, query it end-to-end.
 
     Drives the REAL registration path: provisa.core.catalog.create_catalog builds the catalog

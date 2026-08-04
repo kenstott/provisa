@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import subprocess
 import time
 
@@ -137,13 +138,44 @@ def _exasol_container_id() -> str:
     return ids[0]
 
 
-def _exaplus(container_id: str, statement: str) -> None:
+_FINGERPRINT_RE = re.compile(r"localhost/([0-9A-F]{64}):8563")
+
+
+def tls_fingerprint(container_id: str) -> str:
+    """The SHA-256 fingerprint of the certificate this exasol container serves on 8563.
+
+    Exasol 8 always serves TLS with a certificate generated at boot, so there is no CA to import
+    and no stable cert to ship: the driver's documented alternative is pinning the fingerprint
+    inline as ``<host>/<FINGERPRINT>:<port>``, and it names that exact string in the PKIX failure.
+    Reading it from the failure keeps this free of assumptions about where the image stores the
+    cert or whether it ships openssl.
+    """
+    proc = subprocess.run(
+        [
+            "docker", "exec", container_id,
+            "exaplus", "-c", "localhost:8563", "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
+            "-sql", "SELECT 1;", "-q",
+        ],  # fmt: skip
+        capture_output=True,
+        text=True,
+    )
+    match = _FINGERPRINT_RE.search(proc.stdout + proc.stderr)
+    if match is None:
+        raise RuntimeError(
+            "exasol did not offer a certificate fingerprint (rc="
+            f"{proc.returncode}):\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
+    return match.group(1)
+
+
+def _exaplus(container_id: str, statement: str, fingerprint: str) -> None:
     """Run one SQL statement inside the exasol container via exaplus (no python driver installed;
     the container already ships exaplus — see module docstring)."""
     proc = subprocess.run(
         [
             "docker", "exec", container_id,
-            "exaplus", "-c", "localhost:8563", "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
+            "exaplus", "-c", f"localhost/{fingerprint}:8563",
+            "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
             "-sql", statement,
         ],  # fmt: skip
         capture_output=True,
@@ -158,15 +190,20 @@ def _exaplus(container_id: str, statement: str) -> None:
         )
 
 
-def _seed_exasol() -> None:
+def _seed_exasol() -> str:
     """Create the PROVISA.WIDGETS schema/table and insert 3 rows, retrying while the engine
-    finishes booting right after the healthcheck first passes."""
+    finishes booting right after the healthcheck first passes.
+
+    Returns the container's certificate fingerprint, which the caller must also hand to the
+    ``Source`` — the engine reaches the same TLS listener over JDBC and pins the same certificate.
+    """
     container_id = _exasol_container_id()
+    fingerprint = tls_fingerprint(container_id)
     deadline = time.monotonic() + 300
     last_err: RuntimeError | None = None
     while time.monotonic() < deadline:
         try:
-            _exaplus(container_id, f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
+            _exaplus(container_id, f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}", fingerprint)
             break
         except RuntimeError as e:
             last_err = e
@@ -177,9 +214,15 @@ def _seed_exasol() -> None:
     _exaplus(
         container_id,
         f"CREATE TABLE IF NOT EXISTS {_SCHEMA}.{_TABLE} (ID DECIMAL(18,0), NAME VARCHAR(64))",
+        fingerprint,
     )
     for wid, name in _WIDGETS:
-        _exaplus(container_id, f"INSERT INTO {_SCHEMA}.{_TABLE} (ID, NAME) VALUES ({wid}, '{name}')")
+        _exaplus(
+            container_id,
+            f"INSERT INTO {_SCHEMA}.{_TABLE} (ID, NAME) VALUES ({wid}, '{name}')",
+            fingerprint,
+        )
+    return fingerprint
 
 
 @pytest.mark.requires_exasol
@@ -199,13 +242,22 @@ async def test_exasol_catalog_created_and_queryable():
     from provisa.core.catalog import create_catalog
     from provisa.core.models import Source, SourceType
 
-    _seed_exasol()
+    fingerprint = _seed_exasol()
 
     conn, cur = _trino_cursor()
 
     catalog = "exasol_itest"
     _drop(cur, catalog)
-    src = Source(id="exasol-itest", type=SourceType.exasol, host="exasol", port=8563)
+    # The container's TLS certificate is generated at boot and signed by nothing the engine's
+    # truststore knows, so the source pins its fingerprint — the declaration Source.jdbc_url turns
+    # into the exasol JDBC ``<host>/<FINGERPRINT>:<port>`` form.
+    src = Source(
+        id="exasol-itest",
+        type=SourceType.exasol,
+        host="exasol",
+        port=8563,
+        federation_hints={"tls_fingerprint": fingerprint},
+    )
     try:
         create_catalog(conn, src, "")
 

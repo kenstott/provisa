@@ -1,0 +1,5 @@
+# The data-model search executes in the `search` app; an eventtype, tag, or macro that is not
+# exported globally does not resolve there, and the model comes back empty with no error.
+[]
+access = read : [ * ], write : [ admin ]
+export = system

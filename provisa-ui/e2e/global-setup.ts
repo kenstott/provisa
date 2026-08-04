@@ -136,10 +136,14 @@ export default async function globalSetup() {
   // config (domains only, no pre-registered sources) so TrinoPgBackedConnector is never
   // invoked at startup.  No DuckDB warm-up needed — the Trino backend has no sqlite tables.
   // The minimal config was already written to TRINO_CONFIG_PATH by playwright.config.ts.
-  const trinoYaml = fs.readFileSync(TRINO_CONFIG_PATH, "utf8");
-  const trinoRes = await putAdminConfig(`${TRINO_BACKEND_URL}/admin/config`, trinoYaml);
-  if (!trinoRes.ok) {
-    throw new Error(`Trino backend config reload failed: ${trinoRes.status} ${await trinoRes.text()}`);
+  // Skipped in the core lane, where playwright.config.ts declares no Trino webServer at all —
+  // there is nothing listening on TRINO_BACKEND_URL to configure.
+  if (process.env.PROVISA_E2E_LANE !== "core") {
+    const trinoYaml = fs.readFileSync(TRINO_CONFIG_PATH, "utf8");
+    const trinoRes = await putAdminConfig(`${TRINO_BACKEND_URL}/admin/config`, trinoYaml);
+    if (!trinoRes.ok) {
+      throw new Error(`Trino backend config reload failed: ${trinoRes.status} ${await trinoRes.text()}`);
+    }
   }
 
   // Pre-warm the Vite dev server: fetch the root so Node compiles the full React bundle once

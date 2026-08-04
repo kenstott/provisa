@@ -270,7 +270,14 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         if self.type == SourceType.exasol:
             # Exasol JDBC is colon-delimited with no //-authority and no db in the URL
             # (schema is selected per-query): jdbc:exa:<host>:<port>.
-            return f"{p}:{h}:{po}"
+            #
+            # Exasol 8 always serves TLS. A deployment whose certificate the engine's truststore
+            # cannot chain (the default self-signed one) is reachable only by pinning the server's
+            # SHA-256 fingerprint inline as <host>/<FINGERPRINT>:<port>. That pin is declared per
+            # source in federation_hints — never implied, and never a switch that turns validation
+            # off: with no declaration the driver validates against the truststore as usual.
+            fingerprint = self.federation_hints.get("tls_fingerprint")
+            return f"{p}:{h}/{fingerprint}:{po}" if fingerprint else f"{p}:{h}:{po}"
         return f"{p}://{h}:{po}/{self.database}"
 
 

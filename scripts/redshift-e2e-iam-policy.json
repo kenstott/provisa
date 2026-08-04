@@ -1,0 +1,79 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EphemeralServerlessLifecycle",
+      "Effect": "Allow",
+      "Action": [
+        "redshift-serverless:CreateNamespace",
+        "redshift-serverless:CreateWorkgroup",
+        "redshift-serverless:GetNamespace",
+        "redshift-serverless:GetWorkgroup",
+        "redshift-serverless:ListNamespaces",
+        "redshift-serverless:ListWorkgroups",
+        "redshift-serverless:DeleteNamespace",
+        "redshift-serverless:DeleteWorkgroup"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DefaultVpcPlacementAndIngress",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeAccountAttributes",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupIngress"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ServerlessVpcEndpointPlumbing",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateNetworkInterface",
+        "ec2:DeleteNetworkInterface",
+        "ec2:ModifyNetworkInterfaceAttribute",
+        "ec2:CreateVpcEndpoint",
+        "ec2:DeleteVpcEndpoints",
+        "ec2:DescribeVpcEndpoints"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ServiceLinkedRoleOnFirstUse",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::*:role/aws-service-role/redshift.amazonaws.com/*",
+      "Condition": {
+        "StringLike": {
+          "iam:AWSServiceName": "redshift.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "DenyProvisionedClustersWhichBillWallClock",
+      "Effect": "Deny",
+      "Action": [
+        "redshift:CreateCluster",
+        "redshift:RestoreFromClusterSnapshot",
+        "redshift:ResizeCluster"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenySnapshotsWhichOutliveTeardown",
+      "Effect": "Deny",
+      "Action": [
+        "redshift-serverless:CreateSnapshot",
+        "redshift-serverless:ConvertRecoveryPointToSnapshot",
+        "redshift-serverless:CreateScheduledAction"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

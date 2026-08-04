@@ -63,7 +63,7 @@ async def test_exasol_registers_and_serves_semantic_query(connector_client):  # 
     ``ID`` is ``DECIMAL(18,0)`` on the Exasol side and arrives as a JSON number, so the integer
     literals in ``_WIDGETS`` compare equal to it without any coercion in the assertion.
     """
-    _seed_exasol()
+    fingerprint = _seed_exasol()
 
     await assert_registration_and_query(
         connector_client,
@@ -71,6 +71,10 @@ async def test_exasol_registers_and_serves_semantic_query(connector_client):  # 
         source_type="exasol",
         host="exasol",
         port=8563,
+        # The container's TLS certificate is generated at boot, so the engine can only reach it by
+        # pinning this fingerprint — Source.jdbc_url turns the hint into exasol JDBC's
+        # <host>/<FINGERPRINT>:<port> form.
+        federation_hints={"tls_fingerprint": fingerprint},
         username=_EXASOL_USER,
         password=_EXASOL_PASSWORD,
         domain_id=_DOMAIN,

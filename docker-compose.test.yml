@@ -261,9 +261,17 @@ services:
       # invocations' stdout in .State.Health.Log, and that is the ONLY place the reason surfaces:
       # exasol/docker-db writes nothing to the container's stdout, so `docker compose logs exasol`
       # is empty. Discarding this output left a 60-retry CI failure with no reason recorded at all.
+      #
+      # Exasol 8 always serves TLS, with a self-signed certificate generated per container, so the
+      # plain form fails PKIX validation ("unable to find valid certification path"). The driver's
+      # documented alternative to importing the CA is pinning the server's SHA-256 fingerprint in
+      # the connection string as host/<FINGERPRINT>:port — and exaplus prints exactly that string
+      # in the failure, so the probe takes it from there rather than guessing a cert path or an
+      # openssl invocation that may not exist in the image. Pinning what this container presents is
+      # the point: the certificate is generated at boot, so there is nothing else to pin it to.
       test:
         - "CMD-SHELL"
-        - "out=$$(exaplus -c localhost:8563 -u sys -p exasol -sql 'SELECT 1;' -q 2>&1) || { printf '%s\\n' \"$$out\" | tail -20; exit 1; }"
+        - "out=$$(exaplus -c localhost:8563 -u sys -p exasol -sql 'SELECT 1;' -q 2>&1) && exit 0; fp=$$(printf '%s' \"$$out\" | sed -n 's|.*localhost/\\([0-9A-F]\\{64\\}\\):8563.*|\\1|p' | head -1); [ -n \"$$fp\" ] || { printf '%s\\n' \"$$out\" | tail -20; exit 1; }; out=$$(exaplus -c localhost/$$fp:8563 -u sys -p exasol -sql 'SELECT 1;' -q 2>&1) || { printf '%s\\n' \"$$out\" | tail -20; exit 1; }"
       interval: 10s
       timeout: 15s
       retries: 60

@@ -959,8 +959,16 @@ async def resolve_available_columns_metadata(
     view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
     catalog = view_catalog if source_id == DERIVED_SOURCE_ID else state.catalog_for(source_id)
     cols_meta: list[AvailableColumnType] = []
-    with discovery_fallback(f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"):
-        # PK columns + column metadata via the engine terminal (information_schema).
+    # Two INDEPENDENT introspection reads, each with its own boundary. Constraint metadata is
+    # optional — many engine connectors (Cassandra, Elasticsearch, Kafka, Druid, …) implement
+    # information_schema.columns but not table_constraints/key_column_usage, and asking for the
+    # missing view raises TABLE_NOT_FOUND. Sharing one boundary made that raise abandon the column
+    # read too, so every such source resolved ZERO column types and registration was refused with
+    # "no data type could be resolved" (_ensure_source_column_types, _table_ops.py:214) — a source
+    # Trino can read perfectly well. Primary keys are decoration on the result; column types are
+    # the contract. They must not fail together.
+    pk_cols: set[str] = set()
+    with discovery_fallback(f"engine primary keys for {source_id!r}.{schema_name}.{table_name}"):
         pk_res = await state.federation_engine.execute_engine(
             f"SELECT kcu.column_name "
             f'FROM "{catalog}".information_schema.table_constraints tc '
@@ -972,6 +980,7 @@ async def resolve_available_columns_metadata(
             f"  AND tc.constraint_type = 'PRIMARY KEY'"
         )
         pk_cols = {row[0] for row in pk_res.rows}
+    with discovery_fallback(f"engine column metadata for {source_id!r}.{schema_name}.{table_name}"):
         col_res = await state.federation_engine.execute_engine(
             f"SELECT column_name, data_type, comment "
             f'FROM "{catalog}".information_schema.columns '

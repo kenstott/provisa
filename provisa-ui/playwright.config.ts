@@ -59,6 +59,46 @@ const E2E_TRINO_PGWIRE_PORT = Number(process.env.PROVISA_E2E_TRINO_PGWIRE_PORT ?
 const E2E_GRAPHQL_DEMO_PORT = Number(process.env.PROVISA_E2E_GRAPHQL_DEMO_PORT ?? 8907);
 const E2E_PETSTORE_PORT = Number(process.env.PROVISA_E2E_PETSTORE_PORT ?? 8908);
 const E2E_DATA_DIR = process.env.PROVISA_E2E_DATA_DIR ?? path.resolve(__dirname, "../.playwright-data");
+// Lane selection. `core` is every spec that runs on the DuckDB (NativeBackend) backend — 37 of the
+// 39 specs — and needs no container at all: the control plane runs on SQLite (see
+// E2E_CONTROL_PLANE below) and the cache is embedded fakeredis (neither config sets
+// cache.redis_url and no REDIS_URL is exported, so app.py resolves state.redis_url to None).
+// `trino` is the two connector specs (sharepoint, splunk) that require TrinoBackend.register_source
+// to create a catalog. `all` runs both and is the default so a bare `npx playwright test` on a dev
+// box behaves exactly as before.
+// The specs that address the Trino backend (TRINO_BACKEND_URL from e2e/coverage.ts). Kept as one
+// literal so the project split and the lane's server list cannot drift apart.
+const TRINO_SPECS = ["**/sharepoint-connector.spec.ts", "**/splunk-connector.spec.ts"];
+const LANE = process.env.PROVISA_E2E_LANE ?? "all";
+if (!["core", "trino", "all"].includes(LANE)) {
+  throw new Error(`PROVISA_E2E_LANE must be core|trino|all, got: ${LANE}`);
+}
+const RUNS_CORE = LANE === "core" || LANE === "all";
+const RUNS_TRINO = LANE === "trino" || LANE === "all";
+// Control-plane store. SQLite is a first-class metadata home (REQ-889 / capabilities.yaml presets
+// declare control_plane_store: sqlite): db.py::_init_schema_portable bootstraps from the
+// dialect-neutral schema_org metadata instead of the PostgreSQL-only schema.sql, and OrgRouter
+// gives file-per-org isolation where PG uses org_<id> schemas. It is the default for the core
+// lane — no Docker, no compose project, no port discovery.
+//
+// The Trino lane cannot use it: Trino reaches the control plane over JDBC from inside its own
+// container (PROVISA_ENGINE_CONTROL_PLANE_HOST below), which a local SQLite file cannot serve.
+// That lane therefore requires the compose Postgres, and asking for the pair explicitly is an
+// error rather than a silent downgrade.
+const E2E_CONTROL_PLANE =
+  process.env.PROVISA_E2E_CONTROL_PLANE ?? (LANE === "core" ? "sqlite" : "postgres");
+if (!["sqlite", "postgres"].includes(E2E_CONTROL_PLANE)) {
+  throw new Error(
+    `PROVISA_E2E_CONTROL_PLANE must be sqlite|postgres, got: ${E2E_CONTROL_PLANE}`,
+  );
+}
+if (RUNS_TRINO && E2E_CONTROL_PLANE === "sqlite") {
+  throw new Error(
+    "PROVISA_E2E_CONTROL_PLANE=sqlite cannot serve the Trino lane: Trino loads its catalog " +
+      "specs over JDBC from inside its container and needs a networked control plane. Use " +
+      "PROVISA_E2E_LANE=core, or run the Trino lane on postgres.",
+  );
+}
 // Control-plane isolation: state.tenant_db scopes every org's tables/domains/relationships to a
 // Postgres schema named org_<ORG_ID> on the SHARED control-plane database (provisa/core/models.py
 // resolves org_id from this env var). Without an override the e2e backend lands in org_default —
@@ -86,11 +126,13 @@ fs.copyFileSync(
 // TrinoPgBackedConnector PG-host networking requirement is not triggered at startup.
 const E2E_TRINO_CONFIG_PATH =
   process.env.PROVISA_E2E_TRINO_CONFIG ?? path.resolve(E2E_TRINO_DATA_DIR, "provisa-trino.yaml");
-fs.mkdirSync(path.dirname(E2E_TRINO_CONFIG_PATH), { recursive: true });
-fs.copyFileSync(
-  path.resolve(__dirname, "../config/provisa-trino-e2e.yaml"),
-  E2E_TRINO_CONFIG_PATH,
-);
+if (RUNS_TRINO) {
+  fs.mkdirSync(path.dirname(E2E_TRINO_CONFIG_PATH), { recursive: true });
+  fs.copyFileSync(
+    path.resolve(__dirname, "../config/provisa-trino-e2e.yaml"),
+    E2E_TRINO_CONFIG_PATH,
+  );
+}
 
 // global-setup.ts/global-teardown.ts run in this same process — exporting these lets
 // them derive the backend URL from the single source of truth above instead of
@@ -101,6 +143,8 @@ process.env.PROVISA_E2E_UI_PORT = String(E2E_UI_PORT);
 // Exported so global-setup can bootstrap the Trino backend.
 process.env.PROVISA_E2E_TRINO_API_PORT = String(E2E_TRINO_API_PORT);
 process.env.PROVISA_E2E_TRINO_CONFIG = E2E_TRINO_CONFIG_PATH;
+// Exported so global-setup knows whether a Trino backend exists to bootstrap.
+process.env.PROVISA_E2E_LANE = LANE;
 
 // The control-plane postgres (see E2E_ORG_ID comment above) is the shared `provisa`
 // compose project's `postgres` service. Its host port is docker-assigned (`${PG_PORT:-5432}`
@@ -135,13 +179,31 @@ function resolveControlPlanePort(): string {
   }
 }
 
-const pgPort = resolveControlPlanePort();
-const pgPassword = process.env.PG_PASSWORD ?? "provisa";
-const controlPlaneUrl = `postgresql+asyncpg://provisa:${pgPassword}@localhost:${pgPort}/provisa`;
-const controlPlaneEnv: Record<string, string> = {
-  TENANT_DATABASE_URL: controlPlaneUrl,
-  PLATFORM_DATABASE_URL: controlPlaneUrl,
-};
+// SQLite control plane: two files under the lane's own data dir. ORG_ID isolation is by FILE here,
+// not by schema — Capabilities.schemas is false on SQLite, so OrgRouter (core/database.py) puts each
+// org in a sibling org_<id>.db. The connect listener there sets journal_mode=WAL, which is what lets
+// the DuckDB federation engine ATTACH the tenant file READ_ONLY while SQLAlchemy writes config.
+// resolveControlPlanePort() is deliberately NOT called on this path: it shells out to
+// `docker compose port` and throws when no daemon is running, which is the whole point of the lane.
+function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
+  fs.mkdirSync(dataDir, { recursive: true });
+  return {
+    TENANT_DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, "tenant.db")}`,
+    PLATFORM_DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, "platform.db")}`,
+  };
+}
+
+function postgresControlPlaneEnv(port: string): Record<string, string> {
+  const pgPassword = process.env.PG_PASSWORD ?? "provisa";
+  const url = `postgresql+asyncpg://provisa:${pgPassword}@localhost:${port}/provisa`;
+  return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
+}
+
+// Only resolved on the Postgres path — the Trino webServer below also needs the raw port for
+// PROVISA_ENGINE_CONTROL_PLANE_PORT, and that webServer only exists when the control plane is PG.
+const pgPort = E2E_CONTROL_PLANE === "postgres" ? resolveControlPlanePort() : null;
+const controlPlaneEnv =
+  pgPort === null ? sqliteControlPlaneEnv(E2E_DATA_DIR) : postgresControlPlaneEnv(pgPort);
 
 export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
@@ -205,7 +267,10 @@ export default defineConfig({
     // no-op so the schema dropdown never populates.  A minimal config (domains only, no
     // pre-registered sources) avoids TrinoPgBackedConnector startup failures (that connector
     // requires PG_HOST resolvable from inside the Trino Docker container).
-    {
+    //
+    // Declared only when the Trino lane runs: booting a Trino-engine backend costs a cold JVM
+    // and a compose stack, and the core lane's specs never address it.
+    ...(RUNS_TRINO ? [{
       command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${E2E_TRINO_API_PORT}'`,
       url: `http://localhost:${E2E_TRINO_API_PORT}/health`,
       env: {
@@ -234,6 +299,18 @@ export default defineConfig({
       // trip can take 10-30 s on a cold Trino JVM. 300 s gives headroom for 3 catalogs
       // × 2 ops × 30 s plus seed_ops_trino() Iceberg DDL on a cold JIT.
       timeout: 300000,
-    },
+    }] : []),
+  ],
+  // The lane split is expressed as projects so `--project=core` / `--project=trino` selects it
+  // per-run, while PROVISA_E2E_LANE controls which servers get booted for it. TRINO_SPECS is the
+  // exhaustive list of specs that address the Trino backend (they import TRINO_BACKEND_URL from
+  // ./coverage); everything else runs on the DuckDB backend and belongs to core.
+  projects: [
+    ...(RUNS_CORE
+      ? [{ name: "core", testIgnore: TRINO_SPECS }]
+      : []),
+    ...(RUNS_TRINO
+      ? [{ name: "trino", testMatch: TRINO_SPECS }]
+      : []),
   ],
 });
