@@ -256,7 +256,14 @@ services:
       # loading the database, and every login in that window fails with "no-8563". The probe
       # therefore executes a statement — the same exaplus the tests use — so "healthy" means
       # the engine accepts SQL.
-      test: ["CMD-SHELL", "exaplus -c localhost:8563 -u sys -p exasol -sql 'SELECT 1;' -q >/dev/null 2>&1 || exit 1"]
+      #
+      # On failure the probe echoes exaplus's own output. Docker keeps the last five healthcheck
+      # invocations' stdout in .State.Health.Log, and that is the ONLY place the reason surfaces:
+      # exasol/docker-db writes nothing to the container's stdout, so `docker compose logs exasol`
+      # is empty. Discarding this output left a 60-retry CI failure with no reason recorded at all.
+      test:
+        - "CMD-SHELL"
+        - "out=$$(exaplus -c localhost:8563 -u sys -p exasol -sql 'SELECT 1;' -q 2>&1) || { printf '%s\\n' \"$$out\" | tail -20; exit 1; }"
       interval: 10s
       timeout: 15s
       retries: 60
