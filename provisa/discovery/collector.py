@@ -15,12 +15,13 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any
-
-import asyncpg
+from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.naming import source_to_catalog
 from provisa.otel_compat import get_tracer as _get_tracer
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 _tracer = _get_tracer(__name__)
 
@@ -137,7 +138,7 @@ async def _fetch_fk_candidates(engine: Any, catalog: str, schema: str, table: st
 
 async def collect_metadata(  # REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
     engine: Any,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     scope: str,
     scope_id: str | int | None = None,
     sample_size: int = 20,
@@ -204,7 +205,7 @@ async def collect_metadata(  # REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
 
 async def collect_fk_candidates(  # REQ-018, REQ-413
     engine: Any,
-    pg_conn: asyncpg.Connection,
+    pg_conn: "Connection",
     scope: str,
     scope_id: str | int | None = None,
 ) -> list:

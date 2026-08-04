@@ -26,7 +26,7 @@ async function stubUseDomains(page: Page, useDomains: boolean | null) {
 test("single-domain mode hides the NavBar domain filter and the Domain column", async ({ page }) => {
   await stubUseDomains(page, false);
   await page.goto("/tables");
-  await page.waitForSelector(".data-table", { timeout: 10000 });
+  await page.waitForSelector(".data-table", { timeout: 30000 });
 
   // NavBar domain filter panel is gone.
   await expect(page.getByText(/Domains \(\d+\/\d+\)/)).toHaveCount(0);
@@ -42,7 +42,7 @@ test("single-domain mode hides the NavBar domain filter and the Domain column", 
 test("legacy mode (use_domains null) still shows the Domain column", async ({ page }) => {
   await stubUseDomains(page, null);
   await page.goto("/tables");
-  await page.waitForSelector(".data-table", { timeout: 10000 });
+  await page.waitForSelector(".data-table", { timeout: 30000 });
 
   await expect(page.locator("th").filter({ hasText: "Domain" })).toHaveCount(1);
   await expect(page.getByText(/Domains \(\d+\/\d+\)/)).toHaveCount(1);

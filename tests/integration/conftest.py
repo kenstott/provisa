@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,104 @@ from unittest.mock import patch
 import pytest
 
 from tests._noauth_config import pin_no_auth_config
+
+# Ordered (first match wins) filename patterns splitting tests/integration into 5 logical,
+# roughly-balanced groups for local/CI parallelization. See analysis in the conversation that
+# introduced this: source connectors and native/federation engines are the two heaviest,
+# self-provisioning buckets, so they're kept separate from the lighter protocol/admin/pipeline
+# tests. New files that don't match anything fall into group_pipeline (never silently unmarked
+# — pytest_collection_modifyitems below asserts every collected item gets exactly one group_*
+# marker).
+_INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
+    (
+        "group_sources",
+        re.compile(
+            r"^test_("
+            r".+_source_e2e"
+            r"|kafka_source|kafka_sink"
+            r"|graphql_remote_source|graphql_remote_integration"
+            r"|openapi_source|openapi_pet_by_status|openapi_spec"
+            r"|govdata_source|nosql_catalogs|elasticsearch_introspect"
+            r"|custom_connectors.*"
+            r"|debezium_cdc|jsonapi_integration|jsonapi_spec"
+            r")\.py$"
+        ),
+    ),
+    (
+        "group_engines",
+        re.compile(
+            r"^test_("
+            r".+_federation_engine_e2e"
+            r"|duckdb_runtime_e2e|duckdb_attach_pgwire.*"
+            r"|postgres_native_engine_e2e|pg_runtime_e2e|clickhouse_runtime_e2e"
+            r"|sqlalchemy_dialect|sqlalchemy_runtime_e2e"
+            r"|trino_flight_engine_e2e|trino_fte_exchange|trino_tls_flight_e2e|trino_worker_fanout"
+            r"|two_org_trino_isolation"
+            r"|embedded_pg_duckdb_engine_e2e|embedded_pg_duckdb_iceberg_e2e"
+            r"|embedded_pg_fdw_engine_e2e|embedded_pg_sqlite_fdw_e2e"
+            r"|duckdb_sqlite_control_plane_e2e|adbc|cross_vendor_parity_e2e"
+            r"|engine_runtime_binding|execution_routing|direct_exec"
+            r"|federation_integration|databricks_external_link_e2e"
+            r")\.py$"
+        ),
+    ),
+    (
+        "group_protocols",
+        re.compile(
+            r"^test_("
+            r"bolt_domain_ceiling|bolt_rel_ids|bolt_server"
+            r"|pgwire_column_visibility_integration|pgwire_integration|jdbc_introspection_pgwire"
+            r"|grpc_execution|grpc_proxy|graphql_execution"
+            r"|cypher_endpoint|cypher_integration_extra|cypher_router_api"
+            r"|sparql_exec|neo4j_exec|rest_endpoints|sse_subscriptions"
+            r"|websocket_rss_integration|live_sse_integration"
+            r"|arrow_flight_integration|airport_service_e2e|airport_source_e2e"
+            r"|apq_integration|schema_gen|compile_endpoint|nl_endpoint"
+            r")\.py$"
+        ),
+    ),
+    (
+        "group_auth_org",
+        re.compile(
+            r"^test_("
+            r"auth_integration|api_auth_encryption|audit_auth_integration"
+            r"|client_access_integration"
+            r"|org_.*|multi_org_onboarding_flow|create_org_onboarding"
+            r"|invite_.*|redeem_invite|my_invites"
+            r"|first_login_bootstrap_admin|bootstrap_claimant_data_plane|bootstrap_status"
+            r"|system_roles_seed"
+            r")\.py$"
+        ),
+    ),
+    (
+        "group_governance",
+        re.compile(
+            r"^test_("
+            r"admin_api|audit_encryption|abac_hook_endpoint|domain_policy_integration"
+            r"|governance_integration|governance_parity_e2e|registration_governance_integration"
+            r"|rls_execution|rls_filter_encryption|security_integration_extra"
+            r"|rate_limiting_integration|tenancy_role_grants|redirect_encryption_minio"
+            r"|settings_router_api|schema_mutation_api|schema_query_api"
+            r"|mutations|mutation_parity_integration|mutation_writable_by_preservation"
+            r")\.py$"
+        ),
+    ),
+]
+_INTEGRATION_GROUP_DEFAULT = "group_pipeline"
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        path = Path(str(item.fspath))
+        if "tests/integration" not in path.as_posix():
+            continue
+        name = path.name
+        group = _INTEGRATION_GROUP_DEFAULT
+        for marker_name, pattern in _INTEGRATION_GROUP_PATTERNS:
+            if pattern.match(name):
+                group = marker_name
+                break
+        item.add_marker(getattr(pytest.mark, group))
 
 
 def _pg_tool(name: str) -> str:
@@ -53,6 +152,56 @@ def _pg_args() -> list[str]:
         os.environ.get("PG_USER", "provisa"),
         os.environ.get("PG_DATABASE", "provisa"),
     ]
+
+
+def _reap_stray_pgserver_processes() -> None:
+    """Stop postgres processes leaked by pgserver-backed tests in prior sessions.
+
+    pgserver's teardown is registered via atexit (postgres_server.py), which never
+    fires when a test session is killed by SIGTERM (e.g. a shell `timeout` wrapper or
+    a hard-killed CI job) rather than exiting normally. Leaked instances accumulate
+    across sessions and exhaust macOS's small default SysV shared-memory pool
+    (kern.sysv.shmall/shmmax), causing unrelated pgserver-based tests deep in a later
+    suite run to fail with a shared-memory allocation error. Since this fixture runs
+    before this session starts any pgserver instance of its own, any matching process
+    found here is necessarily a leftover from a previous session — safe to stop.
+    """
+    import psutil
+
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        try:
+            name = proc.info["name"] or ""
+            cmdline = proc.info["cmdline"] or []
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if "postgres" not in name:
+            continue
+        joined = " ".join(cmdline)
+        if "pytest-of-" not in joined:
+            continue
+        pgdata = None
+        for i, arg in enumerate(cmdline):
+            if arg == "-D" and i + 1 < len(cmdline):
+                pgdata = cmdline[i + 1]
+                break
+        if pgdata is None:
+            continue
+        result = subprocess.run(
+            [_pg_tool("pg_ctl"), "-D", pgdata, "stop", "-m", "fast"],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            try:
+                proc.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _reap_stray_pgserver():
+    _reap_stray_pgserver_processes()
+    yield
 
 
 @pytest.fixture(scope="session", autouse=True)

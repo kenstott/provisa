@@ -30,35 +30,33 @@ def _conn_with_advisory_lock() -> AsyncMock:
 
 
 class TestPoolSearchPath:
-    @pytest.mark.asyncio
-    async def test_init_conn_sets_search_path_for_org(self):  # REQ-695
-        from provisa.core.db import _make_init_conn
+    """REQ-695: an acquired connection is scoped to org_<org_id> via search_path.
 
-        conn = AsyncMock()
-        init = _make_init_conn("acme")
-        await init(conn)
-        calls = [str(c) for c in conn.execute.await_args_list]
-        assert any("org_acme" in c for c in calls)
+    core/db.py's raw asyncpg pool ``setup`` hook (``_make_init_conn``) was dead
+    code with zero production call sites (fix 8, abstraction-leak remediation)
+    and has been removed. The live mechanism is
+    ``Database.acquire()`` (core/database.py), which issues
+    ``Capabilities.enter_org_sql(search_path)`` on every acquired connection.
+    """
 
-    @pytest.mark.asyncio
-    async def test_init_conn_default_org_uses_org_default(self):  # REQ-695
-        from provisa.core.db import _make_init_conn
+    def test_init_conn_sets_search_path_for_org(self):  # REQ-695
+        from provisa.core.database import Capabilities
 
-        conn = AsyncMock()
-        init = _make_init_conn("default")
-        await init(conn)
-        calls = [str(c) for c in conn.execute.await_args_list]
-        assert any("org_default" in c for c in calls)
+        sql = Capabilities.for_dialect("postgresql").enter_org_sql("org_acme")
+        assert sql is not None and "org_acme" in sql
 
-    @pytest.mark.asyncio
-    async def test_init_conn_uses_set_search_path(self):  # REQ-695
-        from provisa.core.db import _make_init_conn
+    def test_init_conn_default_org_uses_org_default(self):  # REQ-695
+        from provisa.core.database import Capabilities
 
-        conn = AsyncMock()
-        init = _make_init_conn("tenant1")
-        await init(conn)
-        sql_calls = [c.args[0] for c in conn.execute.await_args_list if c.args]
-        assert any("SET search_path" in s and "org_tenant1" in s for s in sql_calls)
+        sql = Capabilities.for_dialect("postgresql").enter_org_sql("org_default")
+        assert sql is not None and "org_default" in sql
+
+    def test_init_conn_uses_set_search_path(self):  # REQ-695
+        from provisa.core.database import Capabilities
+
+        sql = Capabilities.for_dialect("postgresql").enter_org_sql("org_tenant1")
+        assert sql is not None
+        assert "SET search_path" in sql and "org_tenant1" in sql
 
 
 # ---------------------------------------------------------------------------

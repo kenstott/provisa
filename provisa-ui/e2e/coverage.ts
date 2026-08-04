@@ -16,6 +16,20 @@ export { expect } from "playwright/test";
 export const BACKEND_PORT = process.env.PROVISA_E2E_API_PORT ?? "8901";
 export const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 
+// UI dev server port — matches playwright.config.ts's E2E_UI_PORT.
+// The Apollo client uses relative URLs (/admin/graphql) so the browser sends
+// API calls to this origin; Vite then proxies them server-side to the backend.
+// Tests that redirect API traffic (e.g. sharepoint/splunk) must intercept at
+// this origin, not at the backend port.
+export const UI_PORT = process.env.PROVISA_E2E_UI_PORT ?? "3901";
+export const UI_URL = `http://localhost:${UI_PORT}`;
+
+// Trino-backed backend URL for sharepoint/splunk specs.  These tests redirect the UI's
+// API calls to this backend (via page.route()) so that register_source() creates a real
+// Trino catalog and the schema dropdown populates.
+export const TRINO_BACKEND_PORT = process.env.PROVISA_E2E_TRINO_API_PORT ?? "8910";
+export const TRINO_BACKEND_URL = `http://localhost:${TRINO_BACKEND_PORT}`;
+
 // Same rationale as BACKEND_PORT — matches playwright.config.ts's PROVISA_E2E_FLIGHT_PORT.
 export const FLIGHT_PORT = process.env.PROVISA_E2E_FLIGHT_PORT ?? "8903";
 export const FLIGHT_URL = `http://localhost:${FLIGHT_PORT}`;

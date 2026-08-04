@@ -5,7 +5,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 type CyNode = { id: () => string; length: number };
 type CyInstance = {
@@ -21,9 +21,22 @@ async function getOverlayKeys(page: import("@playwright/test").Page): Promise<st
 }
 
 test("show children for two nodes keeps both visible", async ({ page }) => {
-  // waitForFunction uses { timeout: 45000 } which exceeds the default 30s test timeout.
-  // On cold DuckDB start the Cypher query alone can take ~28s, so give the test 90s total.
-  test.setTimeout(90000);
+  // The test exercises the "Show children" context-menu action which fetches Pets data via
+  // HAS_PETS relationships.  DuckDB materialises Inquiries and Pets independently; global-setup
+  // warms both, but belt-and-suspenders: pre-warm here too so any post-setup server restart
+  // doesn't cause a cold-start during the test.
+  // Timeout breakdown: pre-warm (fast if warm, 90s if cold) + page interactions ~40s ⇒ 180s.
+  // 600s: concurrent sharepoint/splunk tests each trigger a Trino catalog init that can stall
+  // the backend for ~135s each; two concurrent inits consumed ~270s of pre-warm POST budget in
+  // run7, leaving only 90s for the waitForFunction which fired the test timeout at 360s.
+  // 600s = 270s (two Trino inits) + 90s (waitForFunction) + 60s (interactions) + 180s headroom.
+  test.setTimeout(600000);
+  await page.request.post(`${BACKEND_URL}/data/cypher`, {
+    data: { query: "MATCH (n:PetStore:Inquiries) RETURN n LIMIT 5", params: {} },
+  });
+  await page.request.post(`${BACKEND_URL}/data/cypher`, {
+    data: { query: "MATCH (n:PetStore:Pets) RETURN n LIMIT 5", params: {} },
+  });
   // Set pending query before navigation so the page auto-runs it on mount
   await page.goto("/graph");
   await page.evaluate(() => {
@@ -36,12 +49,14 @@ test("show children for two nodes keeps both visible", async ({ page }) => {
 
   // Wait for cytoscape to initialize and have at least 2 nodes.
   // Use a long timeout: cold backend + Vite compilation can take >15s on first load.
+  // 90s matches the pre-warm budget above — if DuckDB was cold the pre-warm takes up to 90s,
+  // but after that the graph query should be fast.
   await page.waitForFunction(
     () => {
       const cy = (window as Record<string, unknown>).__cy as CyInstance | undefined;
       return cy != null && cy.nodes().length >= 2;
     },
-    { timeout: 45000 },
+    { timeout: 90000 },
   );
 
   // Collect node IDs (only root result nodes, not overlay nodes)
@@ -81,13 +96,14 @@ test("show children for two nodes keeps both visible", async ({ page }) => {
   }
   await btn0.click();
 
-  // Wait for first node's children to appear in overlayData
+  // Wait for first node's children to appear in overlayData.
+  // 60s: the Pets children query may be queued behind other backend work; allow generous budget.
   await page.waitForFunction(
     () => {
       const od = (window as Record<string, unknown>).__overlayData as Map<string, unknown> | undefined;
       return od != null && Array.from(od.keys()).some((k) => k.endsWith(":children"));
     },
-    { timeout: 10000 },
+    { timeout: 60000 },
   );
 
   const keysAfterFirst = await getOverlayKeys(page);
@@ -103,7 +119,7 @@ test("show children for two nodes keeps both visible", async ({ page }) => {
       const cy = (window as Record<string, unknown>).__cy as CyInstance | undefined;
       return cy != null && cy.nodes().length > 5;
     },
-    { timeout: 10000 },
+    { timeout: 60000 },
   );
 
   // Show children for second node
@@ -118,7 +134,7 @@ test("show children for two nodes keeps both visible", async ({ page }) => {
       if (!od) return false;
       return Array.from(od.keys()).filter((k) => k.endsWith(":children")).length >= 2;
     },
-    { timeout: 10000 },
+    { timeout: 60000 },
   );
 
   const keysAfterBoth = await getOverlayKeys(page);

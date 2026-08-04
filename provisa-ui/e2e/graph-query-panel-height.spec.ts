@@ -5,13 +5,23 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
+// Three-line Cypher against PetStore:Inquiries only — the test exercises LAYOUT (line count /
+// clipping), not data.  Inquiries is warmed in global-setup; avoiding the Pets OPTIONAL MATCH
+// prevents a Pets cold-start from blocking DuckDB and starving concurrent workers.
 const MULTI_LINE_QUERY =
-  "MATCH (a:Inquiries)\nOPTIONAL MATCH (a:Inquiries)-[:HAS_PETS]->(b:Pets)\nRETURN a, b LIMIT 10";
+  "MATCH (n:PetStore:Inquiries)\nWHERE n.id IS NOT NULL\nRETURN n LIMIT 5";
 
 test("query panel expands to show all lines without clipping", async ({ page }) => {
-  test.setTimeout(90000);
+  // 360s: concurrent sharepoint/splunk tests can block the backend for ~170s during Trino
+  // catalog init, stalling the pre-warm POST; 360s gives ample headroom above that.
+  test.setTimeout(360000);
+  // Pre-warm DuckDB for PetStore:Inquiries in case the server restarted mid-suite
+  // (uvicorn --reload restarts cold DuckDB; this ensures the cache is hot before the graph query).
+  await page.request.post(`${BACKEND_URL}/data/cypher`, {
+    data: { query: "MATCH (n:PetStore:Inquiries) RETURN n LIMIT 5", params: {} },
+  });
   await page.goto("/graph");
 
   // Inject a multi-line pending query so the frame appears on load
@@ -24,10 +34,10 @@ test("query panel expands to show all lines without clipping", async ({ page }) 
   // Use .gf-query-editor-wrap to target GraphFrame's collapsed div — not QueryBar's
   // (QueryBar uses .graph-query-editor-wrap and .graph-query-input, different classes).
   const collapsedQuery = page.locator(".gf-query-editor-wrap .gf-header-query-collapsed").first();
-  // 60s budget: concurrent DuckDB-heavy tests can block the Python event loop for up to ~30s
-  // (single uvicorn worker, sync DuckDB I/O), delaying auth GraphQL calls and thus runQuery.
-  // The test total is 90s so 60s here still leaves headroom for the assertions below.
-  await expect(collapsedQuery).toBeVisible({ timeout: 60000 });
+  // 90s budget: concurrent DuckDB-heavy tests or a server restart (uvicorn --reload) can delay
+  // auth GraphQL calls by up to ~60s; 90s leaves headroom for the assertions below within the
+  // 120s test total.
+  await expect(collapsedQuery).toBeVisible({ timeout: 90000 });
   await collapsedQuery.click();
 
   const editorEl = page.locator(".gf-header-query-input .cm-editor").first();
@@ -62,7 +72,13 @@ test("query panel expands to show all lines without clipping", async ({ page }) 
 });
 
 test("query panel in expanded modal shows all lines without clipping", async ({ page }) => {
-  test.setTimeout(90000);
+  // 360s: same reason as test 1 — sharepoint/splunk backend blocking can consume ~170s.
+  test.setTimeout(360000);
+  // Pre-warm DuckDB for PetStore:Inquiries in case the server restarted mid-suite
+  // (uvicorn --reload restarts cold DuckDB; this ensures the cache is hot before the graph query).
+  await page.request.post(`${BACKEND_URL}/data/cypher`, {
+    data: { query: "MATCH (n:PetStore:Inquiries) RETURN n LIMIT 5", params: {} },
+  });
   await page.goto("/graph");
 
   await page.evaluate((q) => {
@@ -74,8 +90,8 @@ test("query panel in expanded modal shows all lines without clipping", async ({ 
   // Use .gf-query-editor-wrap to target GraphFrame's collapsed div — not QueryBar's
   // (QueryBar uses .graph-query-editor-wrap and .graph-query-input, different classes).
   const collapsedQuery = page.locator(".gf-query-editor-wrap .gf-header-query-collapsed").first();
-  // 60s budget for same reason as test 1: concurrent DuckDB load can delay auth up to ~30s.
-  await expect(collapsedQuery).toBeVisible({ timeout: 60000 });
+  // 90s budget: same reason as test 1 — DuckDB load / server restart can delay auth up to ~60s.
+  await expect(collapsedQuery).toBeVisible({ timeout: 90000 });
   await collapsedQuery.click();
   const inlineEditor = page.locator(".gf-header-query-input .cm-editor").first();
   await expect(inlineEditor).toBeVisible({ timeout: 5000 });

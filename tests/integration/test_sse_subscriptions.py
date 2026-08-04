@@ -88,7 +88,11 @@ class TestPgNotificationProvider:
                 break  # stop after first event
 
         task = asyncio.create_task(_consume())
-        await asyncio.sleep(0.2)  # let listener register
+        # Let the listener register. Under the full integration suite, dozens of
+        # Docker-backed services run concurrently and can starve the event loop for
+        # longer than a fixed short sleep — 0.2s was enough in isolation but not under
+        # that contention (isolation-only failure, not a race in the code under test).
+        await asyncio.sleep(1.0)
 
         # Send a NOTIFY from a separate connection
         async with pool.acquire() as notify_conn:
@@ -96,7 +100,7 @@ class TestPgNotificationProvider:
             await notify_conn.execute("SELECT pg_notify($1, $2)", channel, payload)
 
         try:
-            await asyncio.wait_for(task, timeout=5.0)
+            await asyncio.wait_for(task, timeout=15.0)
         except asyncio.TimeoutError:
             task.cancel()
             pytest.fail("Provider did not yield an event within timeout")

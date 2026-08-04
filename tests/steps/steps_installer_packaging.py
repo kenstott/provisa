@@ -184,32 +184,31 @@ def secondary_reads_from_shared_pool(shared_data: dict) -> None:
 
     import asyncio
 
-    import asyncpg
-
-    from provisa.core.db import create_pool, init_schema
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.db import init_schema
 
     host = os.getenv("POSTGRES_HOST", os.getenv("PG_HOST", "localhost"))
     port = os.getenv("PG_PORT", "5432")
     database = os.getenv("PG_DATABASE", "provisa")
     user = os.getenv("PG_USER", "provisa")
     password = os.getenv("PG_PASSWORD", "provisa")
-    dsn = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+    dsn = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}"
 
     async def _run() -> None:
-        primary_pool = await create_pool(dsn)
+        primary_db = Database(create_engine_from_url(dsn), name="primary")
         try:
-            await init_schema(primary_pool)
+            await init_schema(primary_db)
             # A secondary node opens its own pool to the SAME primary PG.
-            secondary_pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2)
+            secondary_db = Database(create_engine_from_url(dsn), name="secondary")
             try:
-                async with primary_pool.acquire() as c1, secondary_pool.acquire() as c2:
+                async with primary_db.acquire() as c1, secondary_db.acquire() as c2:
                     v1 = await c1.fetchval("SELECT current_database()")
                     v2 = await c2.fetchval("SELECT current_database()")
                     assert v1 == v2 == database
             finally:
-                await secondary_pool.close()
+                await secondary_db.close()
         finally:
-            await primary_pool.close()
+            await primary_db.close()
 
     asyncio.run(_run())
 

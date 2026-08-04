@@ -22,14 +22,15 @@ Endpoints:
 
 from __future__ import annotations
 import logging
-from typing import cast
-
-import asyncpg
+from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, model_validator
 
 from provisa.api.errors import ApiError
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/openapi", tags=["admin", "openapi"])
@@ -105,7 +106,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         from provisa.core.repositories import source as source_repo
 
         await source_repo.upsert(
-            cast(asyncpg.Connection, _conn),
+            cast("Connection", _conn),
             Source(
                 id=source_id,
                 type=SourceType.openapi,

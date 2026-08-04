@@ -588,14 +588,6 @@ async def _execute_one_field(
         cache_hit=cached is not None,
         no_cache=_cache_off,
     )
-    log.warning(
-        "[QUERY %s] Route: %s | source=%s | reason: %s",
-        root_field,
-        decision.route.value,
-        decision.source_id or "(engine)",
-        decision.reason,
-    )
-
     if decision.route == Route.CACHE and cached is not None:
         cached_data = json.loads(cached.data)
         field_rows = cached_data.get("data", {}).get(root_field, [])

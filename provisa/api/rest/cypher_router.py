@@ -585,6 +585,27 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     except CypherParseError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
+    # REQ-603: Reject Cypher queries that reference unregistered relationship types.
+    # The SQL translator converts unknown rel types to exp.false() (best-effort, no crash),
+    # so the V002 SQL-layer guard (bypass_relationship_guard=True below) cannot catch this.
+    # We check explicitly at the AST level before SQL generation.
+    from provisa.cypher.parser import PathPattern as _PathPattern, PathFunction as _PathFunction  # noqa: PLC0415,E501
+    _unknown_rels: list[str] = []
+    for _mc in ast.match_clauses:
+        _pat = _mc.pattern
+        _ppath = _pat.pattern if isinstance(_pat, _PathFunction) else _pat
+        if isinstance(_ppath, _PathPattern):
+            for _rp in _ppath.rels:
+                for _rt in _rp.types:
+                    if _rt not in label_map.aliases:
+                        _unknown_rels.append(_rt)
+    if _unknown_rels:
+        _unique = sorted(set(_unknown_rels))
+        return JSONResponse(
+            status_code=403,
+            content={"error": f"Unregistered relationship type(s): {', '.join(_unique)}"},
+        )
+
     # Validate and bind params
     param_names = collect_param_names(query_text)
     try:

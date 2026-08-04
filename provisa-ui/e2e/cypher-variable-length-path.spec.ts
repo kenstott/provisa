@@ -14,6 +14,10 @@ LIMIT 2500
 `;
 
 test("variable-length cross-source path executes without FederationError", async ({ request }) => {
+  // Cross-source path: Inquiries → Pets → Assignments (GQL) → Employees (GQL).
+  // DuckDB cold-start + GQL materialisation can exceed 30s under full-suite load.
+  // 120s budget matches global-setup warm-up budget.
+  test.setTimeout(120000);
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: QUERY },
     headers: { "Content-Type": "application/json" },

@@ -880,22 +880,9 @@ def _fetch_row_counts(ctx, idx: CatalogIndex, engine_conn) -> dict[int, float]:
 
 
 def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
-    import duckdb
+    from provisa.federation.duckdb_backend import local_catalog_connection
 
-    db = duckdb.connect(":memory:")
-    db.execute("CREATE MACRO pg_backend_pid() AS 0")
-    db.execute("CREATE MACRO age(x) AS 0")
-    db.execute("CREATE MACRO quote_ident(x) AS '\"' || replace(x, '\"', '\"\"') || '\"'")
-    db.execute("""CREATE MACRO pg_available_extensions() AS TABLE
-        SELECT CAST(NULL AS VARCHAR) AS name, CAST(NULL AS VARCHAR) AS default_version,
-               CAST(NULL AS VARCHAR) AS installed_version, CAST(NULL AS VARCHAR) AS comment
-        LIMIT 0""")
-    db.execute("""CREATE MACRO pg_available_extension_versions() AS TABLE
-        SELECT CAST(NULL AS VARCHAR) AS name, CAST(NULL AS VARCHAR) AS version,
-               FALSE AS installed, FALSE AS superuser, FALSE AS trusted,
-               FALSE AS relocatable, CAST(NULL AS VARCHAR) AS schema,
-               CAST(NULL AS VARCHAR[]) AS requires, CAST(NULL AS VARCHAR) AS comment
-        LIMIT 0""")
+    db = local_catalog_connection()
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
     # REQ-1319: governed metrics from the loaded config, filtered to the connected role's

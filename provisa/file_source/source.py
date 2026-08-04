@@ -18,19 +18,20 @@ Each adapter exposes:
 
 For CSV and Parquet, a DuckDB in-memory instance executes SQL against the
 file, enabling full SQL support without a running database server.
-For SQLite, the standard sqlite3 module is used directly.
+For SQLite, ``provisa.federation.connector_sqlite`` owns the sqlite3 driver.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.federation import connector_sqlite
+from provisa.federation.connector_duckdb import read_flat_file_sync
 
 # Requirements: REQ-012, REQ-016, REQ-229, REQ-250, REQ-252
 
@@ -134,26 +135,21 @@ def _discover_for_path(config: FileSourceConfig, path: str) -> list[dict]:
 
 def _discover_sqlite(config: FileSourceConfig) -> list[dict]:
     """Discover all tables and their columns from a SQLite file."""
-    conn = sqlite3.connect(config.path)
-    try:
-        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-        tables = [row[0] for row in cursor.fetchall()]
-        columns: list[dict] = []
-        for table in tables:
-            info = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
-            for col in info:
-                # col: (cid, name, type, notnull, default_val, pk)
-                columns.append(
-                    {
-                        "table": table,
-                        "name": col[1],
-                        "type": _sqlite_type_to_sql(col[2]),
-                        "nullable": col[3] == 0,
-                    }
-                )
-        return columns
-    finally:
-        conn.close()
+    tables = connector_sqlite.table_names(config.path)
+    columns: list[dict] = []
+    for table in tables:
+        info = connector_sqlite.table_info(config.path, table)
+        for col in info:
+            # col: (cid, name, type, notnull, default_val, pk)
+            columns.append(
+                {
+                    "table": table,
+                    "name": col[1],
+                    "type": _sqlite_type_to_sql(col[2]),
+                    "nullable": col[3] == 0,
+                }
+            )
+    return columns
 
 
 def _sqlite_type_to_sql(sqlite_type: str) -> str:
@@ -240,7 +236,7 @@ def execute_query(config: FileSourceConfig, sql: str) -> list[dict]:  # REQ-229
     """Execute a SQL statement against a file-based source.
 
     For CSV/Parquet: uses DuckDB in-memory (auto-registered as a view).
-    For SQLite: uses the sqlite3 module directly.
+    For SQLite: uses provisa.federation.connector_sqlite.
 
     Returns list of row dicts.
     Raises ValueError for unsupported source_type.
@@ -254,33 +250,12 @@ def execute_query(config: FileSourceConfig, sql: str) -> list[dict]:  # REQ-229
 
 def _execute_sqlite(config: FileSourceConfig, sql: str) -> list[dict]:
     """Execute SQL against a SQLite file."""
-    conn = sqlite3.connect(config.path)
-    conn.row_factory = sqlite3.Row
-    try:
-        cursor = conn.execute(sql)
-        return [dict(row) for row in cursor.fetchall()]
-    finally:
-        conn.close()
+    return connector_sqlite.execute_sync(config.path, sql)
 
 
 def _execute_duckdb(config: FileSourceConfig, sql: str) -> list[dict]:
     """Execute SQL against a CSV or Parquet file via DuckDB in-memory."""
-    import duckdb  # optional dep — raises ImportError if not installed
-
-    ext = config.source_type
-    path = config.path
-    view_name = Path(path).stem.replace("-", "_").replace(".", "_")
-
-    con = duckdb.connect(":memory:")
-    if ext == "csv":
-        con.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_csv_auto('{path}')")
-    else:
-        con.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{path}')")
-
-    rel = con.execute(sql)
-    cols = [desc[0] for desc in rel.description]
-    rows = rel.fetchall()
-    return [dict(zip(cols, row)) for row in rows]
+    return read_flat_file_sync(config.path, config.source_type, sql)
 
 
 # ---------------------------------------------------------------------------

@@ -259,8 +259,11 @@ class EngineBackend:
 
     @contextmanager
     def isolated_sync(self, state: Any):
-        """Native engines share the bound in-process connection."""
-        yield state.engine_conn
+        """Native engines share the bound in-process connection. Yields an :class:`EngineSession`,
+        never the raw physical-driver connection."""
+        from provisa.executor.session import EngineSession
+
+        yield EngineSession(state.engine_conn)
 
     def cache_catalog(self, state: Any) -> str | None:
         """Catalog the API-result cache lives in for THIS engine — the reference to its materialization
@@ -590,14 +593,17 @@ class TrinoBackend(EngineBackend):
 
     @contextmanager
     def isolated_sync(self, state: Any):
-        """A fresh, thread-isolated Trino dbapi connection, closed on exit."""
+        """A fresh, thread-isolated Trino dbapi connection, closed on exit. Yields an
+        :class:`EngineSession`, never the raw ``trino.dbapi`` connection."""
+        from provisa.executor.session import EngineSession
         from provisa.federation import trino_lifecycle
 
         conn = trino_lifecycle.connect(state.engine_conn_kwargs)
+        session = EngineSession(conn)
         try:
-            yield conn
+            yield session
         finally:
-            conn.close()
+            session.close()
 
     # -- introspection ---------------------------------------------------------
 

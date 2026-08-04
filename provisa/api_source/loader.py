@@ -13,8 +13,7 @@
 from __future__ import annotations
 
 import json
-
-import asyncpg
+from typing import TYPE_CHECKING
 
 from provisa.api_source.models import (
     ApiColumn,
@@ -28,6 +27,9 @@ from provisa.api_source.models import (
 )
 from provisa.api_source.schema_integration import register_api_columns
 from provisa.compiler.introspect import ColumnMetadata
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 # Requirements: REQ-119, REQ-314, REQ-316, REQ-322
 
@@ -46,7 +48,7 @@ def _resolve_param_type(c: dict) -> str | None:
 
 
 async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
-    conn: asyncpg.Connection,
+    conn: "Connection",
     tables: list[dict],
     col_types: dict[int, list[ColumnMetadata]],
     roles: list[dict],

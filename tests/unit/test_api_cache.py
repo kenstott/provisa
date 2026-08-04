@@ -171,6 +171,13 @@ class _FakeConn:
     def cursor(self):
         return _FakeCursor(self.executed)
 
+    def execute(self, sql, params=None):
+        self.executed.append(sql)
+        return self
+
+    def fetchall(self):
+        return []
+
 
 class _Col:
     def __init__(self, name, type_="VARCHAR"):

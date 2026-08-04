@@ -20,12 +20,10 @@ REQ-747 — SQL validator bypass for remote same-source relationship pairs."""
 
 from __future__ import annotations
 
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
-from starlette.middleware.base import RequestResponseEndpoint
 
 from provisa.security.visibility import (
     is_column_visible,
@@ -500,42 +498,37 @@ def request_to_skip_path(shared_data: dict) -> None:
 def middleware_processes_skip_request(shared_data: dict) -> None:
     import asyncio
 
-    sentinel_responses: dict[str, object] = {}
-    call_next_invoked: dict[str, bool] = {}
+    results: dict[str, object] = {}
 
     middleware = AuthMiddleware(MagicMock())
 
     async def _run() -> None:
         for path, request in shared_data["requests"].items():
-            sentinel = object()
-            invoked = {"called": False}
-
-            async def call_next(_req, _sentinel=sentinel, _invoked=invoked):
-                _invoked["called"] = True
-                return _sentinel
-
-            result = await middleware.dispatch(request, cast(RequestResponseEndpoint, call_next))
-            sentinel_responses[path] = (result, sentinel)
-            call_next_invoked[path] = invoked["called"]
+            # AuthMiddleware is pure ASGI (no dispatch method). _process() returns None
+            # for skip paths — meaning __call__ delegates to self.app (call_next equivalent).
+            # A non-None return value is an auth-rejection Response (401/403).
+            result = await middleware._process(request)
+            results[path] = result
 
     asyncio.run(_run())
 
-    shared_data["sentinel_responses"] = sentinel_responses
-    shared_data["call_next_invoked"] = call_next_invoked
+    # call_next_invoked: True when _process returned None (skip path passes through)
+    shared_data["results"] = results
+    shared_data["sentinel_responses"] = {p: (results[p], None) for p in results}
+    shared_data["call_next_invoked"] = {p: results[p] is None for p in results}
 
 
 @then("the bearer-token gate is bypassed and no JWT is required")
 def skip_path_bypasses_the_token_gate(shared_data: dict) -> None:
-    sentinel_responses = shared_data["sentinel_responses"]
+    results = shared_data["results"]
     call_next_invoked = shared_data["call_next_invoked"]
 
     for path in shared_data["skip_paths"]:
-        result, sentinel = sentinel_responses[path]
-
-        # The downstream app was reached directly: call_next was invoked and its
-        # exact response object was returned unchanged (no 401 substituted).
+        # _process returns None for skip paths → __call__ delegates to self.app (pass-through).
+        # A non-None result would be an auth rejection (401/403 JSONResponse).
         assert call_next_invoked[path] is True, f"{path}: call_next not invoked"
-        assert result is sentinel, f"{path}: response was not passthrough from call_next"
+        result = results[path]
+        assert result is None, f"{path}: response was not passthrough (got {result!r})"
 
         # No identity or role was resolved or attached for the skip path — proving the auth
         # gate was bypassed entirely rather than passing an anonymous principal through it.
@@ -544,7 +537,7 @@ def skip_path_bypasses_the_token_gate(shared_data: dict) -> None:
         assert getattr(request.state, "role", None) is None
         assert getattr(request.state, "active_org_id", None) is None
 
-        # And it succeeded with no identity present — no JWT tenant_id required.
+        # The bypass result is None (not a JSONResponse rejection).
         from starlette.responses import JSONResponse
 
         assert not isinstance(result, JSONResponse)

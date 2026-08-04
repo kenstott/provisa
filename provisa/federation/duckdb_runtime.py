@@ -44,6 +44,31 @@ from provisa.transpiler.transpile import transpile
 _ARROW_STREAM_BATCH_ROWS = 65_536
 
 
+def build_vss_index_connection(
+    dim: int, rows: list[tuple[str, str, str | None, str | None, list[float]]]
+) -> duckdb.DuckDBPyConnection:
+    """Embed catalog chunks into a fresh in-process DuckDB VSS (HNSW) index (REQ-1008, MCP catalog
+    search — ``api.mcp.search.CatalogSearchIndex``). ``rows`` are pre-computed
+    (level, schema, table, column, embedding) tuples; this owns the connect + extension load +
+    index DDL so the MCP module has no direct DuckDB dependency. VSS is genuinely
+    duckdb-specific (no cross-engine equivalent), hence its own connection rather than the shared
+    federation runtime's."""
+    from provisa.federation.duckdb_extensions import connect, install_and_load
+
+    con = connect()
+    install_and_load(con, "vss", from_community=False)
+    con.execute(
+        f"CREATE TABLE chunks (level VARCHAR, schema VARCHAR, tbl VARCHAR, "
+        f"col VARCHAR, embedding FLOAT[{dim}])"
+    )
+    con.executemany("INSERT INTO chunks VALUES (?, ?, ?, ?, ?)", rows)
+    # Cosine HNSW: query with array_cosine_distance; smaller = more similar.
+    con.execute(
+        "CREATE INDEX chunk_hnsw ON chunks USING HNSW (embedding) WITH (metric = 'cosine')"
+    )
+    return con
+
+
 def _mat_table_name(source: Any) -> str:
     """The internal ``mat`` schema table name for a landed (source, physical table). Keyed by the
     source id AND its physical schema/table so a multi-table materialize-only source lands each

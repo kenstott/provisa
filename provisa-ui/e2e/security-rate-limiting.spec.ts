@@ -16,9 +16,11 @@ test("REQ-369: rate limit exceeded returns 429 with Retry-After header", async (
     "X-Role": "DEV",
   };
 
-  // First request should succeed
+  // First request should succeed.
+  // Use a label-specific query (Meta:RegisteredTables always exists) to avoid 500 errors
+  // when concurrent tests add/remove sources and destabilise the all-node federation scan.
   const resp1 = await request.post(`${BACKEND_URL}/data/cypher`, {
-    data: { query: "MATCH (n) RETURN n LIMIT 1" },
+    data: { query: "MATCH (n:Meta:RegisteredTables) RETURN n LIMIT 1" },
     headers,
   });
   expect(resp1.status()).toBeLessThan(500); // Should not error
@@ -28,7 +30,7 @@ test("REQ-369: rate limit exceeded returns 429 with Retry-After header", async (
   // This test verifies the infrastructure is in place; actual rate limit behavior
   // depends on role configuration.
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
-    data: { query: "MATCH (n) RETURN n LIMIT 1" },
+    data: { query: "MATCH (n:Meta:RegisteredTables) RETURN n LIMIT 1" },
     headers,
   });
 
@@ -80,8 +82,10 @@ test("REQ-370: NL query rate limit enforced before LLM call", async ({ request }
 test("REQ-536: response includes X-Provisa-Cache header (HIT or MISS)", async ({
   request,
 }) => {
+  // Use a label-specific query (Meta:RegisteredTables always exists) to avoid 500 errors
+  // when concurrent tests add/remove sources and destabilise the all-node federation scan.
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
-    data: { query: "MATCH (n) RETURN n LIMIT 1" },
+    data: { query: "MATCH (n:Meta:RegisteredTables) RETURN n LIMIT 1" },
     headers: {
       "Content-Type": "application/json",
     },

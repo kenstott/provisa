@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
 
 // REQ-966/158/133: a genuine end-to-end DAG cascade — a source-table state change propagates through
 // a two-level chain of materialized views, verified via the running app's own SQL/table-admin surfaces
@@ -25,14 +25,16 @@ const A = "e2e_mv_a";
 const B = "e2e_mv_b";
 
 async function runSql(page: import("@playwright/test").Page, sql: string) {
-  const resp = await page.request.post("/data/sql", { data: { sql, role: "admin" } });
+  // Use BACKEND_URL directly (not Vite proxy) — page.request resolves localhost to ::1 but
+  // the API server listens on all interfaces; the Vite proxy on port 3901 is IPv4-only.
+  const resp = await page.request.post(`${BACKEND_URL}/data/sql`, { data: { sql, role: "admin" } });
   expect(resp.ok(), await resp.text()).toBeTruthy();
   const json = await resp.json();
   return json.data.sql as Record<string, unknown>[];
 }
 
 async function refreshMv(page: import("@playwright/test").Page, tableName: string) {
-  const resp = await page.request.post("/admin/graphql", {
+  const resp = await page.request.post(`${BACKEND_URL}/admin/graphql`, {
     data: {
       query: "mutation($mvId: String!) { refreshMv(mvId: $mvId) { success message } }",
       variables: { mvId: `view-${tableName}` },
@@ -55,18 +57,20 @@ async function createView(page: import("@playwright/test").Page, sql: string, al
   const runResp = page.waitForResponse((r) => r.url().includes("/data/sql") && r.request().method() === "POST");
   await page.getByTestId("sql-run").click();
   await runResp;
-  await expect(page.getByTestId("download-csv-btn")).toBeVisible({ timeout: 10000 });
+  // 60s: concurrent Trino catalog init (sharepoint/splunk/neo4j-export) can block the
+  // backend's event loop for ~170s; 60s gives headroom beyond typical SQL query latency.
+  await expect(page.getByTestId("download-csv-btn")).toBeVisible({ timeout: 60000 });
 
   await page.getByTestId("sql-open-view-modal").click();
   // data-testid="view-modal" sits on Mantine's Modal.Root, which is a zero-height wrapper (its
   // content is fixed-positioned/portaled) — assert on the actual field instead of the wrapper.
-  await expect(page.getByTestId("view-alias-input")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("view-alias-input")).toBeVisible({ timeout: 30000 });
   await page.getByTestId("view-alias-input").fill(alias);
   await page.getByTestId("view-domain-select").click();
   await page.getByRole("option", { name: /pet-store/i }).first().click();
   await page.getByTestId("save-view-button").click();
 
-  await expect(page.getByTestId("view-saved-close-button")).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId("view-saved-close-button")).toBeVisible({ timeout: 30000 });
   await page.getByTestId("view-saved-close-button").click();
 }
 
@@ -79,13 +83,15 @@ async function materialize(page: import("@playwright/test").Page, tableName: str
   const editBtn = page.getByTestId("table-read-view-edit");
   await editBtn.waitFor({ timeout: 5000 });
   await editBtn.click();
-  await page.waitForSelector("input[type='checkbox']", { timeout: 5000 });
+  // Apollo resetStore() fires when concurrent schema-version advances are detected,
+  // briefly clearing the cache and delaying form render by up to 15s; 30s allows headroom.
+  await page.waitForSelector("input[type='checkbox']", { timeout: 30000 });
 
   // Mantine's Checkbox renders <input> and <label> as siblings (label uses a `for` attribute rather
   // than wrapping the input), so getByLabel — which resolves that association — is required here;
   // a `label`-then-descendant-`input` locator never matches.
   const matCheckbox = page.getByLabel(/Materialized View/i);
-  await matCheckbox.waitFor({ timeout: 5000 });
+  await matCheckbox.waitFor({ timeout: 30000 });
   if (!(await matCheckbox.isChecked())) await matCheckbox.check();
 
   await page.getByRole("button", { name: /save/i }).first().click();
@@ -93,7 +99,7 @@ async function materialize(page: import("@playwright/test").Page, tableName: str
   // timeout races them against the next helper's page.goto (which aborts them mid-flight and trips
   // the uncaught-browser-error check). Wait for the read view's edit button to reappear instead —
   // it only renders once editingTable is cleared, i.e. after the whole save chain has resolved.
-  await editBtn.waitFor({ timeout: 10000 });
+  await editBtn.waitFor({ timeout: 30000 });
 }
 
 async function deleteTable(page: import("@playwright/test").Page, tableName: string) {
@@ -116,7 +122,7 @@ async function deleteTable(page: import("@playwright/test").Page, tableName: str
 // --repeat-each=N runs copies sequentially in one worker rather than in parallel across workers.
 test.describe.serial("dag-cascade", () => {
   test("source state change propagates through a two-level materialized-view DAG", async ({ page }) => {
-    test.setTimeout(90000);
+    test.setTimeout(150000);
 
     // In demo mode, a fresh browser context auto-starts the guided tour on first navigation, which
     // hijacks the route to its own first stop (/sources) regardless of where the test navigated.

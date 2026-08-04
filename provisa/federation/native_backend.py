@@ -99,19 +99,38 @@ class NativeEngineBackend(EngineBackend):
 
         sources = {s.id: s for s in config.sources}
 
+        # Merge in dynamically created sources that exist in the DB but not in the YAML config.
+        # state.runtime_sources is populated by _rebuild_schemas from the DB sources table; it
+        # carries full source rows for sources registered via create_source after startup, whose
+        # tables would otherwise never be attached (config.tables is YAML-only, never updated at
+        # runtime). Using SimpleNamespace keeps the attribute-access shape identical to config
+        # source model objects so the merged creation below works for both.
+        runtime_sources = getattr(state, "runtime_sources", None) or {}
+        for _rs_id, _rs_dict in runtime_sources.items():
+            if _rs_id not in sources:
+                sources[_rs_id] = SimpleNamespace(
+                    id=_rs_id,
+                    type=SimpleNamespace(value=(_rs_dict.get("type") or "")),
+                    path=_rs_dict.get("path"),
+                    host=_rs_dict.get("host"),
+                    port=_rs_dict.get("port"),
+                    database=_rs_dict.get("database"),
+                    username=_rs_dict.get("username"),
+                    password=_rs_dict.get("password"),
+                    federation_hints={},
+                )
+
         def _rs(v: Any) -> Any:
             return resolve_secrets(v) if isinstance(v, str) else v
 
-        for tbl in config.tables:
-            key = f"{tbl.schema_name}.{tbl.table_name}"
+        def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
+            """Attach one table into the runtime; skip if already attached or attach fails."""
+            key = f"{schema_name}.{table_name}"
             if key in self._attached:
-                continue
-            src = sources.get(tbl.source_id)
-            if src is None:
-                continue
+                return
             merged = SimpleNamespace(
-                id=src.id,
-                type=src.type,
+                id=getattr(src, "id", None),
+                type=getattr(src, "type", SimpleNamespace(value="")),
                 host=_rs(getattr(src, "host", None)),
                 port=getattr(src, "port", None),
                 database=_rs(getattr(src, "database", None)),
@@ -123,14 +142,28 @@ class NativeEngineBackend(EngineBackend):
                 federation_hints={
                     k: _rs(v) for k, v in (getattr(src, "federation_hints", {}) or {}).items()
                 },
-                schema_name=tbl.schema_name,
-                table_name=tbl.table_name,
+                schema_name=schema_name,
+                table_name=table_name,
             )
             try:
                 self._runtime.attach_source(merged)
                 self._attached.add(key)
-            except self._attach_errors:
-                _log.warning("%s attach of %s failed; table not queryable", self.engine.name, key)
+            except self._attach_errors as _ae:
+                _log.warning("%s attach of %s failed; table not queryable: %s", self.engine.name, key, _ae)
+
+        for tbl in config.tables:
+            src = sources.get(tbl.source_id)
+            if src is not None:
+                _attach_tbl(src, tbl.schema_name, tbl.table_name)
+
+        # Also attach tables registered dynamically after startup via registerTable. These live in
+        # state.tables (set by _rebuild_schemas from the DB) but not in config.tables (YAML-only).
+        _state_tables = getattr(state, "tables", None) or []
+        for tbl_dict in _state_tables:
+            _sid = tbl_dict.get("source_id")
+            src = sources.get(_sid)
+            if src is not None:
+                _attach_tbl(src, tbl_dict.get("schema_name", ""), tbl_dict.get("table_name", ""))
 
         # Native DuckDB path: attach the control-plane DB as the provisa_admin catalog so
         # meta/ops entities resolve (parity with Trino, where provisa_admin is a real catalog).
@@ -434,10 +467,14 @@ class NativeEngineBackend(EngineBackend):
     def isolated_sync(self, state: Any):
         """The API-result cache terminal: the runtime connection with the materialization store
         attached. Cache writes land in the store — never the engine's transient storage. A missing
-        store errors at attach (the engine invariant)."""
+        store errors at attach (the engine invariant). Yields an :class:`EngineSession`, never the
+        raw physical-driver connection — the runtime's connection is shared/persistent, so the
+        session is not closed on exit."""
+        from provisa.executor.session import EngineSession
+
         rt = self._runtime_for(state)
         rt.ensure_materialize_attached()
-        yield rt.connection
+        yield EngineSession(rt.connection)
 
     def _materialize_store_ref(self, state: Any) -> str | None:
         """A native engine's source exposure is not itself a durable catalog, so API results a source

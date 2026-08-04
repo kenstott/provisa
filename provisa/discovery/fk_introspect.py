@@ -32,11 +32,11 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, cast
 
-import asyncpg
-
 if TYPE_CHECKING:
     from inflect import Word
     from inflect import engine as _Engine
+
+    from provisa.core.database import Connection
 
 _log = logging.getLogger(__name__)
 # inflect's import + engine() build costs ~0.8s — lazy so it never hits cold start; paid once on
@@ -277,7 +277,7 @@ def _o2m_alias(fk_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
 
 
 async def _insert_rel(
-    conn: asyncpg.Connection,
+    conn: "Connection",
     rel_id: str,
     src_id: int,
     tgt_id: int,
@@ -309,7 +309,7 @@ async def _govdata_fks(
     source_id: str,
     schema_name: str,
     table_name: str,
-    config_conn: asyncpg.Connection,
+    config_conn: "Connection",
 ) -> list[dict]:  # REQ-018, REQ-413
     from provisa.core.models import GovDataSource, GovDataSubject
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
@@ -353,7 +353,7 @@ async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
     source_id: str,
     schema_name: str,
     table_name: str,
-    config_conn: asyncpg.Connection,
+    config_conn: "Connection",
     hasura_v2_relationship_style: bool = False,
 ) -> int:
     """Introspect FK constraints and insert BOTH relationship directions.

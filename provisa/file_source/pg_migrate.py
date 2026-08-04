@@ -12,7 +12,6 @@ PG schema name matches the table's registered schema_name so the engine paths ar
 
 import logging
 import os
-import sqlite3
 import time
 
 from typing import TYPE_CHECKING
@@ -20,6 +19,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+from provisa.federation import connector_sqlite
 from provisa.file_source.source import _sqlite_type_to_sql
 
 # Requirements: REQ-012, REQ-017, REQ-250
@@ -67,11 +67,7 @@ _PHYSICAL_TYPE_MAP = {
 
 def sqlite_column_types(source_path: str, sqlite_table: str) -> dict[str, str]:  # REQ-250
     """Return {column_name: column_type} for a SQLite table from its declared schema."""
-    sq = sqlite3.connect(source_path)
-    try:
-        info = sq.execute(f'PRAGMA table_info("{sqlite_table}")').fetchall()
-    finally:
-        sq.close()
+    info = connector_sqlite.table_info(source_path, sqlite_table)
     return {row[1]: _PHYSICAL_TYPE_MAP.get(_sqlite_type_to_sql(row[2]), "varchar") for row in info}
 
 
@@ -87,55 +83,50 @@ async def migrate_sqlite_table(  # REQ-012, REQ-017, REQ-250
     Creates the PG schema and table if they don't exist, then truncates and reloads.
     Returns row count inserted.
     """
-    sq = sqlite3.connect(source_path)
-    sq.row_factory = sqlite3.Row
-    try:
-        info = sq.execute(f'PRAGMA table_info("{sqlite_table}")').fetchall()
-        if not info:
-            log.warning("SQLite table %r not found in %s", sqlite_table, source_path)
-            return 0
+    info = connector_sqlite.table_info(source_path, sqlite_table)
+    if not info:
+        log.warning("SQLite table %r not found in %s", sqlite_table, source_path)
+        return 0
 
-        col_names = [row[1] for row in info]
-        col_defs = ", ".join(f'"{row[1]}" {_to_pg_type(row[2])}' for row in info)
-        # PRAGMA table_info columns: (cid, name, type, notnull, dflt_value, pk).
-        # pk > 0 marks PRIMARY KEY membership (value = 1-based position for composites).
-        # Preserve it so the migrated PG table carries the constraint — the PK
-        # resolution pass reads it from there (SQLite has no the engine/native driver path).
-        pk_cols = [r[1] for r in sorted((r for r in info if r[5]), key=lambda r: r[5])]
-        if pk_cols:
-            col_defs += ", PRIMARY KEY (" + ", ".join(f'"{c}"' for c in pk_cols) + ")"
+    col_names = [row[1] for row in info]
+    col_defs = ", ".join(f'"{row[1]}" {_to_pg_type(row[2])}' for row in info)
+    # PRAGMA table_info columns: (cid, name, type, notnull, dflt_value, pk).
+    # pk > 0 marks PRIMARY KEY membership (value = 1-based position for composites).
+    # Preserve it so the migrated PG table carries the constraint — the PK
+    # resolution pass reads it from there (SQLite has no the engine/native driver path).
+    pk_cols = [r[1] for r in sorted((r for r in info if r[5]), key=lambda r: r[5])]
+    if pk_cols:
+        col_defs += ", PRIMARY KEY (" + ", ".join(f'"{c}"' for c in pk_cols) + ")"
 
-        # Honor the target backend's schema capability (REQ-837): schema-capable stores (Postgres)
-        # isolate the replica under ``pg_schema``; a schema-less store (SQLite control plane) has no
-        # namespaces, so land in its default ``main`` and never emit CREATE SCHEMA (a syntax error
-        # there). The abstraction decides — no dialect string is hardcoded at the call site.
-        _schemas = getattr(getattr(pg_conn, "capabilities", None), "schemas", True)
-        _qual = f'"{pg_schema}".' if _schemas else ""
-        if _schemas:
-            await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
-        await pg_conn.execute(f'DROP TABLE IF EXISTS {_qual}"{pg_table}"')
-        await pg_conn.execute(f'CREATE TABLE {_qual}"{pg_table}" ({col_defs})')
+    # Honor the target backend's schema capability (REQ-837): schema-capable stores (Postgres)
+    # isolate the replica under ``pg_schema``; a schema-less store (SQLite control plane) has no
+    # namespaces, so land in its default ``main`` and never emit CREATE SCHEMA (a syntax error
+    # there). The abstraction decides — no dialect string is hardcoded at the call site.
+    _schemas = getattr(getattr(pg_conn, "capabilities", None), "schemas", True)
+    _qual = f'"{pg_schema}".' if _schemas else ""
+    if _schemas:
+        await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
+    await pg_conn.execute(f'DROP TABLE IF EXISTS {_qual}"{pg_table}"')
+    await pg_conn.execute(f'CREATE TABLE {_qual}"{pg_table}" ({col_defs})')
 
-        rows = sq.execute(f'SELECT * FROM "{sqlite_table}"').fetchall()
-        if rows:
-            placeholders = ", ".join(f"${i + 1}" for i in range(len(col_names)))
-            col_list = ", ".join(f'"{c}"' for c in col_names)
-            await pg_conn.executemany(
-                f'INSERT INTO {_qual}"{pg_table}" ({col_list}) VALUES ({placeholders})',
-                [tuple(row) for row in rows],
-            )
-
-        log.info(
-            "Migrated SQLite %s.%s → PG %s.%s (%d rows)",
-            sqlite_table,
-            source_path,
-            pg_schema,
-            pg_table,
-            len(rows),
+    rows = connector_sqlite.fetch_all_rows(source_path, sqlite_table)
+    if rows:
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(col_names)))
+        col_list = ", ".join(f'"{c}"' for c in col_names)
+        await pg_conn.executemany(
+            f'INSERT INTO {_qual}"{pg_table}" ({col_list}) VALUES ({placeholders})',
+            [tuple(row) for row in rows],
         )
-        return len(rows)
-    finally:
-        sq.close()
+
+    log.info(
+        "Migrated SQLite %s.%s → PG %s.%s (%d rows)",
+        sqlite_table,
+        source_path,
+        pg_schema,
+        pg_table,
+        len(rows),
+    )
+    return len(rows)
 
 
 async def record_mtime(table_id: int, source_path: str, pg_conn: "Connection") -> None:

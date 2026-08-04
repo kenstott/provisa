@@ -90,12 +90,24 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     return Path(target)
 
 
-def _connect() -> duckdb.DuckDBPyConnection:
+def connect() -> duckdb.DuckDBPyConnection:
+    """A DuckDB connection honoring ``PROVISA_DUCKDB_EXT_DIR`` — the shared entry point for any
+    caller that needs a bare connection able to load bundled extensions (probing here,
+    the VSS catalog index in ``duckdb_runtime.build_vss_index_connection``)."""
     ext_dir = extension_directory()
     config: dict[str, str | bool | int | float | list[str]] = (
         {"extension_directory": ext_dir} if ext_dir else {}
     )
     return duckdb.connect(config=config)
+
+
+def install_and_load(
+    con: duckdb.DuckDBPyConnection, extension: str, *, from_community: bool = True
+) -> None:
+    """INSTALL then LOAD ``extension`` on ``con`` — the one place that spells the two-step DuckDB
+    extension bring-up, so callers never write a bare ``INSTALL``/``LOAD`` string themselves."""
+    con.execute(f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}")
+    con.execute(f"LOAD {extension}")
 
 
 def _fetch(con: duckdb.DuckDBPyConnection):
@@ -138,7 +150,7 @@ async def stage_and_probe() -> list[ExtensionProbe]:
     """
     probes: list[ExtensionProbe] = []
     for connector in duckdb_extension_connectors():
-        con = _connect()
+        con = connect()
         try:
             result = await connector.probe(_fetch(con))
         finally:

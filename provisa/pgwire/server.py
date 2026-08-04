@@ -157,7 +157,7 @@ def _tag_from_sql(sql: str) -> str:
     return ""
 
 
-_DUCKDB_TYPE_TO_BVTYPE: dict[str, BVType] = {
+_TYPE_TO_BVTYPE: dict[str, BVType] = {
     "INTEGER[]": BVType.INTEGERARRAY,
     "VARCHAR[]": BVType.STRINGARRAY,
     "BOOLEAN": BVType.BOOL,
@@ -176,7 +176,7 @@ _DUCKDB_TYPE_TO_BVTYPE: dict[str, BVType] = {
     "TIMESTAMPTZ": BVType.TIMESTAMP,
     "TIMETZ": BVType.TIME,
 }
-_DUCKDB_INT_TYPES = {
+_INT_TYPES = {
     "INTEGER",
     "BIGINT",
     "HUGEINT",
@@ -193,10 +193,10 @@ _DUCKDB_INT_TYPES = {
 }
 
 
-def _duckdb_type_to_bvtype(type_str: str) -> BVType:
-    if type_str in _DUCKDB_TYPE_TO_BVTYPE:
-        return _DUCKDB_TYPE_TO_BVTYPE[type_str]
-    if type_str in _DUCKDB_INT_TYPES:
+def _sql_type_to_bvtype(type_str: str) -> BVType:
+    if type_str in _TYPE_TO_BVTYPE:
+        return _TYPE_TO_BVTYPE[type_str]
+    if type_str in _INT_TYPES:
         return BVType.BIGINT
     return BVType.TEXT
 
@@ -255,7 +255,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             self._head = next(self._batch_iter, [])
         if ctypes:
             self._types = [
-                _duckdb_type_to_bvtype(t) if t else _infer_bvtype(self._head or [], i)
+                _sql_type_to_bvtype(t) if t else _infer_bvtype(self._head or [], i)
                 for i, t in enumerate(ctypes)
             ]
         else:

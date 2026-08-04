@@ -127,9 +127,8 @@ def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, 
     else:
         sql = f"CREATE SCHEMA IF NOT EXISTS {loc.catalog}.{loc.schema}"
     try:
-        cur = conn.cursor()
-        cur.execute(sql)
-        cur.fetchall()
+        conn.execute(sql)
+        conn.fetchall()
         _SCHEMA_EXISTS_CACHE.add(key)
     except Exception as exc:
         raise RuntimeError(f"ensure_cache_schema failed for {key}: {exc}") from exc
@@ -152,9 +151,8 @@ def table_exists(  # REQ-318, REQ-309, REQ-327
 
     sql = f'SELECT 1 FROM {loc.catalog}.{loc.schema}."{table_name}" LIMIT 1'
     try:
-        cur = conn.cursor()
-        cur.execute(sql)
-        cur.fetchall()
+        conn.execute(sql)
+        conn.fetchall()
         # Cache the positive result; expire before the engine drops the table
         if ttl is not None and ttl > _TABLE_EXISTS_SAFETY_MARGIN:
             _TABLE_EXISTS_CACHE[key] = time.monotonic() + ttl - _TABLE_EXISTS_SAFETY_MARGIN
@@ -198,9 +196,8 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
         create_sql = (
             f'CREATE TABLE IF NOT EXISTS {loc.catalog}.{loc.schema}."{table_name}" ({col_defs})'
         )
-    cur = conn.cursor()
-    cur.execute(create_sql)
-    cur.fetchall()
+    conn.execute(create_sql)
+    conn.fetchall()
 
     if not rows:
         return
@@ -227,21 +224,18 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
                 "(" + ", ".join(_lit(r.get(c)) for c in col_names) + ")" for r in batch
             )
             insert_sql = f'INSERT INTO {loc.catalog}.{loc.schema}."{table_name}" VALUES {vals}'
-            cur2 = conn.cursor()
-            cur2.execute(insert_sql)
-            cur2.fetchall()
+            conn.execute(insert_sql)
+            conn.fetchall()
 
     try:
         _do_inserts()
     except Exception as exc:
         if "TYPE_MISMATCH" in str(exc):
             # Stale cache table has wrong schema — drop and recreate
-            drop_cur = conn.cursor()
-            drop_cur.execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
-            drop_cur.fetchall()
-            create_cur = conn.cursor()
-            create_cur.execute(create_sql.replace("IF NOT EXISTS ", ""))
-            create_cur.fetchall()
+            conn.execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
+            conn.fetchall()
+            conn.execute(create_sql.replace("IF NOT EXISTS ", ""))
+            conn.fetchall()
             _do_inserts()
         else:
             raise
@@ -250,9 +244,8 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
     # optimizer can plan joins against it. ANALYZE support varies by connector, so a failure is
     # logged (not raised) — matching analyze_source_tables (REQ-275).
     try:
-        analyze_cur = conn.cursor()
-        analyze_cur.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
-        analyze_cur.fetchall()
+        conn.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
+        conn.fetchall()
     except Exception:
         log.warning(
             "[API CACHE] ANALYZE failed for %s.%s.%s",
@@ -287,9 +280,8 @@ def _analyze_cache_table(engine, loc: CacheLocation, table_name: str) -> None:  
     connector, so a failure is logged, not raised (matching analyze_source_tables, REQ-275)."""
     try:
         with engine.isolated_sync() as conn:
-            cur = conn.cursor()
-            cur.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
-            cur.fetchall()
+            conn.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
+            conn.fetchall()
     except Exception:
         log.warning(
             "[API CACHE] ANALYZE failed for %s.%s.%s",
@@ -412,7 +404,8 @@ async def schedule_drop(  # REQ-318, REQ-309, REQ-327
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
     try:
         with engine.isolated_sync() as conn:
-            conn.cursor().execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
+            conn.execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
+            conn.fetchall()
         log.info("[API CACHE] dropped %s after TTL=%ds", table_name, ttl)
     except Exception as exc:
         log.warning("[API CACHE] drop failed for %s: %s", table_name, exc)

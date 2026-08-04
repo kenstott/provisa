@@ -699,6 +699,10 @@ async def get_cache_storage(request: Request):  # REQ-917
             "store_url": cfg.get("materialize_store_url") or "",
             "default_store_url": default_store or "",
         },
+        # Telemetry-store DSN (REQ — mirrors materialize_store_url). Read by
+        # observability.ops_schema.configured_ops_store_url(); empty -> embedded
+        # DuckDB under telemetry_dir().
+        "ops": {"store_url": cfg.get("ops_store_url") or ""},
         "restart_required_note": "Redis and materialize-store connections bind at startup — changes take effect after a service restart.",
     }
 
@@ -750,6 +754,9 @@ async def set_cache_storage(request: Request):  # REQ-917
     if "materialize" in body and "store_url" in body["materialize"]:
         cfg["materialize_store_url"] = body["materialize"]["store_url"] or None
         updated.append("materialize_store_url")
+    if "ops" in body and "store_url" in body["ops"]:
+        cfg["ops_store_url"] = body["ops"]["store_url"] or None
+        updated.append("ops_store_url")
 
     write_config(path, cfg)
     return {"success": True, "updated": updated, "restart_required": True}

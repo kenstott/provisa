@@ -25,9 +25,9 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import asyncpg
 import yaml
 from fastapi import FastAPI, Request, Response
+from sqlalchemy.exc import SQLAlchemyError
 
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
@@ -115,6 +115,7 @@ if TYPE_CHECKING:
     from provisa.core.tenant_context import TenantContextCache
     from provisa.kafka.window import KafkaTableConfig
     from provisa.core.models import Source
+    from provisa.core.database import Connection
     from sqlalchemy.ext.asyncio import AsyncEngine
     import graphql
 
@@ -639,7 +640,7 @@ async def _load_and_build(
         tenant_db = state.tenant_db
         assert tenant_db is not None
         async with tenant_db.acquire() as _rls_conn:
-            await _init_meta_rls(cast(asyncpg.Connection, _rls_conn))
+            await _init_meta_rls(cast("Connection", _rls_conn))
 
     # Apply observability config to state
     if config.observability:
@@ -960,7 +961,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     state.mcp_catalog_index = None
 
     async with state.tenant_db.acquire() as conn:
-        _pg = cast(asyncpg.Connection, conn)
+        _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)
         _assert_domain_table_unique(tables)
         relationships = await _fetch_relationships(_pg)
@@ -1015,6 +1016,9 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 state.source_types[_sid] = _src_dict["type"]
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
+        # Publish the full DB source map so NativeEngineBackend._attach_registered can attach
+        # dynamically registered sources that are not in state.config (YAML-loaded only).
+        state.runtime_sources = sources
         roles = [
             dict(r._mapping)
             for r in (
@@ -1622,7 +1626,7 @@ def create_app() -> FastAPI:
                 async with state.tenant_db.acquire() as conn:
                     await conn.fetchval("SELECT 1")
                 pg_status = "ok"
-            except (asyncpg.PostgresError, asyncpg.InterfaceError, OSError, asyncio.TimeoutError):
+            except (SQLAlchemyError, OSError, asyncio.TimeoutError):
                 pg_status = "unavailable"
         return {
             "status": "ok",

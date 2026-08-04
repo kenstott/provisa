@@ -876,6 +876,42 @@ async def resolve_available_columns_metadata(
     source_type = state.source_types.get(source_id, "")
     if source_type == "govdata":
         return await _govdata_columns(source_id, schema_name, table_name, None)
+    if source_type == "files":
+        # Files sources use the engine abstraction (EngineRuntime.introspect_columns) which
+        # dispatches to the bound engine's backend — DuckDB, ClickHouse, etc. — and resolves
+        # secrets on path/host/database/username/password. Callers must never reference a
+        # concrete engine type from outside provisa/federation/. (Architectural rule.)
+        pool = await _get_pool()
+        async with pool.acquire() as _fc:
+            _path_res = await _fc.execute_core(
+                select(sources.c.path).where(sources.c.id == source_id)
+            )
+            _path_row = _path_res.fetchone()
+        if _path_row is None:
+            return []
+        from types import SimpleNamespace
+
+        _src = SimpleNamespace(
+            id=source_id,
+            type=SimpleNamespace(value=source_type),
+            path=_path_row[0],  # secret templates (${env:…}) resolved by backend
+            host=None,
+            port=None,
+            database=None,
+            username=None,
+            password=None,
+            schema_name=schema_name,
+            table_name=table_name,
+        )
+        try:
+            col_dict = state.federation_engine.introspect_columns(_src, schema_name, table_name)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "introspect_columns failed for files source %r %s.%s",
+                source_id, schema_name, table_name, exc_info=True,
+            )
+            return []
+        return [AvailableColumnType(name=name, data_type=dtype, comment=None) for name, dtype in col_dict.items()]
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
         from provisa.openapi.register import _schema_to_columns

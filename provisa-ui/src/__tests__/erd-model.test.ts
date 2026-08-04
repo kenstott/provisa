@@ -205,7 +205,6 @@ describe("buildErdElements", () => {
       new Set(),
       NO_HIDDEN,
       "none",
-      null,
     );
     const domainNodes = nodes.filter((n) => n.classes === "erd-domain");
     expect(domainNodes.map((n) => n.data.domainId)).toEqual(
@@ -221,7 +220,6 @@ describe("buildErdElements", () => {
       new Set(),
       NO_HIDDEN,
       "none",
-      null,
     );
     const tableNodes = nodes.filter((n) => n.classes === "erd-table");
     expect(tableNodes).toHaveLength(3);
@@ -237,7 +235,6 @@ describe("buildErdElements", () => {
       new Set(),
       NO_HIDDEN,
       "none",
-      null,
     );
     expect(edges).toHaveLength(1);
     expect(edges[0].data.source).toBe("t:1");
@@ -253,7 +250,6 @@ describe("buildErdElements", () => {
       new Set(["sales"]),
       NO_HIDDEN,
       "none",
-      null,
     );
     const domainNodes = nodes.filter((n) => n.classes === "erd-domain");
     const tableNodes = nodes.filter((n) => n.classes === "erd-table");
@@ -269,7 +265,6 @@ describe("buildErdElements", () => {
       new Set(["sales"]),
       NO_HIDDEN,
       "none",
-      null,
     );
     expect(edges).toHaveLength(1);
     expect(edges[0].data.source).toBe("d:sales");
@@ -285,7 +280,6 @@ describe("buildErdElements", () => {
       new Set(["hr"]),
       NO_HIDDEN,
       "none",
-      null,
     );
     expect(edges).toHaveLength(1);
     expect(edges[0].data.source).toBe("t:1");
@@ -301,7 +295,6 @@ describe("buildErdElements", () => {
       new Set(["sales", "hr"]),
       NO_HIDDEN,
       "none",
-      null,
     );
     expect(edges).toHaveLength(1);
     expect(edges[0].data.source).toBe("d:sales");
@@ -317,7 +310,6 @@ describe("buildErdElements", () => {
       new Set(["sales"]),
       NO_HIDDEN,
       "none",
-      null,
     );
     expect(edges).toHaveLength(0);
   });
@@ -332,7 +324,6 @@ describe("buildErdElements", () => {
       new Set(["sales", "hr"]),
       NO_HIDDEN,
       "none",
-      null,
     );
     // All three collapse to d:sales → d:hr; should appear once
     expect(edges).toHaveLength(1);
@@ -346,7 +337,6 @@ describe("buildErdElements", () => {
       new Set(),
       new Set(["hr"]),
       "none",
-      null,
     );
     const domainNodes = nodes.filter((n) => n.classes === "erd-domain");
     const tableNodes = nodes.filter((n) => n.classes === "erd-table");
@@ -355,8 +345,9 @@ describe("buildErdElements", () => {
     expect(edges).toHaveLength(0);
   });
 
-  it("activeDomain filters to only that domain's tables", () => {
-    const { nodes } = buildErdElements(tables, [], domains, new Set(), NO_HIDDEN, "none", "hr");
+  it("hiddenDomains filters out unwanted domain's tables", () => {
+    // activeDomain was removed in 312e63a3; callers now pass hiddenDomains to scope the view.
+    const { nodes } = buildErdElements(tables, [], domains, new Set(), new Set(["sales"]), "none");
     const tableNodes = nodes.filter((n) => n.classes === "erd-table");
     expect(tableNodes).toHaveLength(1);
     expect(tableNodes[0].data.type === "table" && tableNodes[0].data.tableId).toBe(3);
@@ -364,19 +355,19 @@ describe("buildErdElements", () => {
 
   it("skips edges where targetTableId is null", () => {
     const fnRel = makeRel({ targetTableId: null });
-    const { edges } = buildErdElements([t1], [fnRel], domains, new Set(), NO_HIDDEN, "none", null);
+    const { edges } = buildErdElements([t1], [fnRel], domains, new Set(), NO_HIDDEN, "none");
     expect(edges).toHaveLength(0);
   });
 
   it("domain node carries description from Domain list", () => {
-    const { nodes } = buildErdElements(tables, [], domains, new Set(), NO_HIDDEN, "none", null);
+    const { nodes } = buildErdElements(tables, [], domains, new Set(), NO_HIDDEN, "none");
     const salesNode = nodes.find((n) => n.classes === "erd-domain" && n.data.domainId === "sales");
     expect(salesNode?.data.description).toBe("Sales domain");
   });
 
   it("uses table alias when set", () => {
     const aliased = makeTable({ id: 4, domainId: "sales", tableName: "ord", alias: "Orders" });
-    const { nodes } = buildErdElements([aliased], [], domains, new Set(), NO_HIDDEN, "none", null);
+    const { nodes } = buildErdElements([aliased], [], domains, new Set(), NO_HIDDEN, "none");
     const tableNode = nodes.find(
       (n) => n.classes === "erd-table" && n.data.type === "table" && n.data.tableId === 4,
     );

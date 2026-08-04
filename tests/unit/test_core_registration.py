@@ -821,30 +821,13 @@ class TestReq562StatelessSecondaryNodes:
 
 
 # ---------------------------------------------------------------------------
-# REQ-591 — SET LOCAL scopes app.tenant_id to the current transaction
-# set_tenant_context uses SET LOCAL (transaction-scoped, not session-scoped).
+# REQ-591 — SET LOCAL scopes app.tenant_id to the current transaction.
+# core/db.py::set_tenant_context (raw asyncpg helper) was dead code with zero
+# production call sites (fix 8, abstraction-leak remediation) and has been
+# removed; tenant isolation for meta/governance tables is enforced instead by
+# provisa.core.meta_rls.apply_meta_tenant_guard, the un-bypassable seam wired
+# into Connection.execute_core (core/database.py).
 # ---------------------------------------------------------------------------
-
-
-class TestReq591TenantContextTransactionScoped:
-    def test_set_tenant_context_uses_set_local(self):
-        # REQ-591
-        import inspect
-
-        from provisa.core.db import set_tenant_context
-
-        src = inspect.getsource(set_tenant_context)
-        assert "SET LOCAL" in src
-
-    def test_set_tenant_context_does_not_use_set_session(self):
-        # REQ-591 — must NOT use SET (session-scoped)
-        import inspect
-
-        from provisa.core.db import set_tenant_context
-
-        src = inspect.getsource(set_tenant_context)
-        # "SET LOCAL" is acceptable; bare "SET app" without LOCAL would leak
-        assert "SET app.tenant_id" not in src or "SET LOCAL app.tenant_id" in src
 
 
 # ---------------------------------------------------------------------------

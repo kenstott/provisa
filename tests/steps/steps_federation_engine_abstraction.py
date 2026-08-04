@@ -22,7 +22,7 @@ from provisa.federation.engine import (
 )
 from provisa.pgwire.copy_binary import (
     _COPY_BINARY_SIGNATURE,
-    _duckdb_binary_tag,
+    _sql_binary_tag,
     _encode_binary_field,
 )
 from provisa.pgwire.copy_handler import _queryresult_to_copy_bytes
@@ -153,8 +153,8 @@ def then_binary_copy_stream_is_correct(shared_data):
     assert _encode_binary_field(1, "int4") == struct.pack("!i", 4) + struct.pack("!i", 1)
 
     # 7. Type-tag mapping for the columns.
-    assert _duckdb_binary_tag("INTEGER") == "int4"
-    assert _duckdb_binary_tag("VARCHAR") == "text"
+    assert _sql_binary_tag("INTEGER") == "int4"
+    assert _sql_binary_tag("VARCHAR") == "text"
 
 
 @then("the same COPY in text/csv format is byte-for-byte unchanged from before")

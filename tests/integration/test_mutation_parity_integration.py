@@ -754,14 +754,15 @@ class TestDBEventTriggers:
 
     @pytest.mark.asyncio
     async def test_dispatch_posts_to_webhook_url(self):
-        # REQ-220: _dispatch calls _post_webhook which POSTs to the configured URL
-        # integration: mock-justified — httpx.AsyncClient is the external HTTP service,
-        # not the boundary under test (dispatch logic ↔ EventTrigger config).
+        # REQ-220: _dispatch calls _post_webhook which delivers via execute_webhook
+        # integration: mock-justified — execute_webhook's httpx.AsyncClient talks to the
+        # external HTTP service, not the boundary under test (dispatch logic ↔ EventTrigger).
         import json
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock, patch
 
         from provisa.core.models import EventTrigger
         from provisa.events.triggers import EventTriggerManager, _channel_name
+        from provisa.webhooks.executor import WebhookResult
 
         trigger = EventTrigger(
             table_id="public.orders",
@@ -771,14 +772,9 @@ class TestDBEventTriggers:
             retry_delay=0.0,
         )
         manager = EventTriggerManager([trigger])
-
-        # Inject a mock HTTP client
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(return_value=mock_resp)
-        manager._http_client = mock_client
         manager._running = True
+
+        mock_execute = AsyncMock(return_value=WebhookResult(status_code=200, data={}, headers={}))
 
         payload = json.dumps(
             {
@@ -789,17 +785,18 @@ class TestDBEventTriggers:
             }
         )
         channel = _channel_name("public.orders")
-        await manager._dispatch(channel, payload)
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await manager._dispatch(channel, payload)
 
-        mock_client.post.assert_awaited_once()
-        call_kwargs = mock_client.post.call_args
-        assert "https://example.com/hook" in call_kwargs.args
+        mock_execute.assert_awaited_once()
+        webhook_arg, data_arg = mock_execute.call_args.args
+        assert webhook_arg.url == "https://example.com/hook"
 
     @pytest.mark.asyncio
     async def test_dispatch_filters_unmatched_operations(self):
         # REQ-220: NOTIFY with operation not in trigger.operations is ignored
         import json
-        from unittest.mock import AsyncMock
+        from unittest.mock import AsyncMock, patch
 
         from provisa.core.models import EventTrigger
         from provisa.events.triggers import EventTriggerManager, _channel_name
@@ -811,25 +808,27 @@ class TestDBEventTriggers:
             retry_max=0,
         )
         manager = EventTriggerManager([trigger])
-
-        mock_client = AsyncMock()
-        manager._http_client = mock_client
         manager._running = True
+
+        mock_execute = AsyncMock()
 
         payload = json.dumps(
             {"operation": "DELETE", "table": "orders", "schema": "public", "row": {"id": 1}}
         )
         channel = _channel_name("public.orders")
-        await manager._dispatch(channel, payload)
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await manager._dispatch(channel, payload)
 
-        mock_client.post.assert_not_awaited()
-        assert mock_client.post.await_count == 0
+        mock_execute.assert_not_awaited()
+        assert mock_execute.await_count == 0
 
     @pytest.mark.asyncio
     async def test_dispatch_retries_on_error_status(self):
         # REQ-220: webhook with non-2xx response is retried up to retry_max times
         import json
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock, patch
+
+        import httpx
 
         from provisa.core.models import EventTrigger
         from provisa.events.triggers import EventTriggerManager, _channel_name
@@ -842,22 +841,23 @@ class TestDBEventTriggers:
             retry_delay=0.0,  # zero delay so test is fast
         )
         manager = EventTriggerManager([trigger])
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 500
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(return_value=mock_resp)
-        manager._http_client = mock_client
         manager._running = True
+
+        request = httpx.Request("POST", "https://example.com/hook")
+        fail = httpx.HTTPStatusError(
+            "status 500", request=request, response=httpx.Response(500, request=request)
+        )
+        mock_execute = AsyncMock(side_effect=fail)
 
         payload = json.dumps(
             {"operation": "INSERT", "table": "orders", "schema": "public", "row": {"id": 1}}
         )
         channel = _channel_name("public.orders")
-        await manager._dispatch(channel, payload)
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await manager._dispatch(channel, payload)
 
         # retry_max=2 means 3 total attempts (initial + 2 retries)
-        assert mock_client.post.await_count == 3
+        assert mock_execute.await_count == 3
 
     def test_channel_name_is_deterministic(self):
         # REQ-220: channel name is stable for a given table_id

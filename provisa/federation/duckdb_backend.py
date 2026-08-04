@@ -32,3 +32,24 @@ class DuckDBBackend(NativeEngineBackend):
 
     def _new_runtime(self) -> Any:
         return DuckDBFederationRuntime()
+
+
+def local_catalog_connection() -> duckdb.DuckDBPyConnection:
+    """Private in-memory DuckDB connection for pgwire's pg_catalog emulation (REQ-127,
+    REQ-128, REQ-363). Independent of any federated engine's dialect — this connection
+    only ever serves synthetic catalog tables, never physical source data."""
+    db = duckdb.connect(":memory:")
+    db.execute("CREATE MACRO pg_backend_pid() AS 0")
+    db.execute("CREATE MACRO age(x) AS 0")
+    db.execute("CREATE MACRO quote_ident(x) AS '\"' || replace(x, '\"', '\"\"') || '\"'")
+    db.execute("""CREATE MACRO pg_available_extensions() AS TABLE
+        SELECT CAST(NULL AS VARCHAR) AS name, CAST(NULL AS VARCHAR) AS default_version,
+               CAST(NULL AS VARCHAR) AS installed_version, CAST(NULL AS VARCHAR) AS comment
+        LIMIT 0""")
+    db.execute("""CREATE MACRO pg_available_extension_versions() AS TABLE
+        SELECT CAST(NULL AS VARCHAR) AS name, CAST(NULL AS VARCHAR) AS version,
+               FALSE AS installed, FALSE AS superuser, FALSE AS trusted,
+               FALSE AS relocatable, CAST(NULL AS VARCHAR) AS schema,
+               CAST(NULL AS VARCHAR[]) AS requires, CAST(NULL AS VARCHAR) AS comment
+        LIMIT 0""")
+    return db

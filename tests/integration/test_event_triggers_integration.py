@@ -19,7 +19,7 @@ Requires: Docker Compose stack with postgres running.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, patch
 
 import asyncpg
 import pytest
@@ -137,19 +137,16 @@ class TestNotifyDispatch:
         )
         mgr = EventTriggerManager([trigger])
 
-        # Intercept webhook POST
-        mock_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
+        # Intercept webhook delivery
+        from provisa.webhooks.executor import WebhookResult
 
-        async def capture_post(url, *, json=None, **kwargs):
-            received.append(json or {})
-            return mock_response
+        async def capture_execute(webhook, arguments):
+            received.append(arguments or {})
+            return WebhookResult(status_code=200, data={}, headers={})
 
-        mock_client.post = AsyncMock(side_effect=capture_post)
+        mock_execute = AsyncMock(side_effect=capture_execute)
 
         await mgr.setup(tenant_db)
-        mgr._http_client = mock_client  # override after setup (setup creates a real client)
         mgr._running = True
 
         # Manually send a NOTIFY to simulate the PG trigger firing
@@ -162,7 +159,8 @@ class TestNotifyDispatch:
                 "row": {"id": 42, "val": "hello"},
             }
         )
-        await mgr._dispatch(channel, payload)
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await mgr._dispatch(channel, payload)
 
         assert len(received) == 1
         assert received[0]["operation"] == "INSERT"
@@ -178,8 +176,7 @@ class TestNotifyDispatch:
             webhook_url="https://example.com/hook",
         )
         mgr = EventTriggerManager([trigger])
-        mock_client = AsyncMock()
-        mgr._http_client = mock_client
+        mock_execute = AsyncMock()
         mgr._running = True
 
         channel = _channel_name(scratch_table)
@@ -191,10 +188,11 @@ class TestNotifyDispatch:
                 "row": {"id": 1},
             }
         )
-        await mgr._dispatch(channel, payload)
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await mgr._dispatch(channel, payload)
 
-        mock_client.post.assert_not_called()
-        assert mock_client.post.call_count == 0
+        mock_execute.assert_not_called()
+        assert mock_execute.call_count == 0
 
 
 class TestRetryPolicy:
@@ -204,6 +202,10 @@ class TestRetryPolicy:
 
     async def test_webhook_retried_on_failure_then_success(self, tenant_db):
         """Webhook is retried up to retry_max times on failure."""
+        import httpx
+
+        from provisa.webhooks.executor import WebhookResult
+
         trigger = EventTrigger(
             table_id="orders",
             operations=["insert"],
@@ -213,21 +215,25 @@ class TestRetryPolicy:
         )
         mgr = EventTriggerManager([trigger])
 
-        fail = MagicMock(status_code=503)
-        success = MagicMock(status_code=200)
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=[fail, fail, success])
-        mgr._http_client = mock_client
+        request = httpx.Request("POST", "https://example.com/hook")
+        fail = httpx.HTTPStatusError(
+            "status 503", request=request, response=httpx.Response(503, request=request)
+        )
+        success = WebhookResult(status_code=200, data={}, headers={})
+        mock_execute = AsyncMock(side_effect=[fail, fail, success])
         mgr._running = True
 
-        await mgr._post_webhook(
-            trigger, {"operation": "INSERT", "table": "orders", "schema": "public", "row": {}}
-        )
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await mgr._post_webhook(
+                trigger, {"operation": "INSERT", "table": "orders", "schema": "public", "row": {}}
+            )
 
-        assert mock_client.post.call_count == 3
+        assert mock_execute.call_count == 3
 
     async def test_webhook_exhausted_retries_logs_but_does_not_raise(self, tenant_db):
         """All retries exhausted — manager logs error and completes without raising."""
+        import httpx
+
         trigger = EventTrigger(
             table_id="orders",
             operations=["insert"],
@@ -237,17 +243,19 @@ class TestRetryPolicy:
         )
         mgr = EventTriggerManager([trigger])
 
-        fail = MagicMock(status_code=500)
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(return_value=fail)
-        mgr._http_client = mock_client
+        request = httpx.Request("POST", "https://example.com/hook")
+        fail = httpx.HTTPStatusError(
+            "status 500", request=request, response=httpx.Response(500, request=request)
+        )
+        mock_execute = AsyncMock(side_effect=fail)
         mgr._running = True
 
         # Must not raise (REQ-220: delivery failure is logged, not propagated)
-        await mgr._post_webhook(
-            trigger, {"operation": "INSERT", "table": "orders", "schema": "public", "row": {}}
-        )
-        assert mock_client.post.call_count == 2  # 1 initial + 1 retry
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await mgr._post_webhook(
+                trigger, {"operation": "INSERT", "table": "orders", "schema": "public", "row": {}}
+            )
+        assert mock_execute.call_count == 2  # 1 initial + 1 retry
 
 
 class TestInvalidPayload:
@@ -262,13 +270,13 @@ class TestInvalidPayload:
             webhook_url="https://example.com/hook",
         )
         mgr = EventTriggerManager([trigger])
-        mock_client = AsyncMock()
-        mgr._http_client = mock_client
+        mock_execute = AsyncMock()
         mgr._running = True
 
         channel = _channel_name("orders")
         # Must not raise
-        await mgr._dispatch(channel, "not valid json {{")
+        with patch("provisa.events.triggers.execute_webhook", mock_execute):
+            await mgr._dispatch(channel, "not valid json {{")
 
-        mock_client.post.assert_not_called()
-        assert mock_client.post.call_count == 0
+        mock_execute.assert_not_called()
+        assert mock_execute.call_count == 0

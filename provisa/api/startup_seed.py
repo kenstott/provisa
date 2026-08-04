@@ -22,6 +22,7 @@ from app.py are safe because this module is never loaded at app.py module-initia
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -95,13 +96,40 @@ WHERE span_name LIKE 'provisa.query%'
 ]
 
 
+_CREATE_OR_REPLACE_VIEW_RE = re.compile(
+    r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(\w+)\s+AS", re.IGNORECASE
+)
+
+
+def _adapt_view_ddl(ddl: str, dialect: str) -> str:
+    """Rewrite ``CREATE OR REPLACE VIEW name AS`` to dialect-appropriate DDL.
+
+    SQLite does not support ``CREATE OR REPLACE VIEW`` (syntax error near "OR").
+    For SQLite we emit ``DROP VIEW IF EXISTS name; CREATE VIEW name AS ...``
+    instead.  The result is a multi-statement DDL string; ``Connection.execute``
+    detects multiple statements and routes to ``execute_script``, which splits on
+    ``;`` and runs each statement individually on the SQLite driver.
+
+    PostgreSQL and all other dialects that support ``CREATE OR REPLACE VIEW``
+    receive the original DDL unchanged.
+    """
+    if dialect != "sqlite":
+        return ddl
+    m = _CREATE_OR_REPLACE_VIEW_RE.search(ddl)
+    if not m:
+        return ddl
+    view_name = m.group(1)
+    select_sql = ddl[m.end():].strip()
+    return f"DROP VIEW IF EXISTS {view_name};\nCREATE VIEW {view_name} AS {select_sql}"
+
+
 async def _seed_meta_domain(
     conn: "Connection", org_id: str = "default"
 ) -> None:  # REQ-012, REQ-016, REQ-695
     """Register admin tables in the built-in meta domain (idempotent)."""
     schema_name = f"org_{org_id}"
     for ddl in _META_TABLE_VIEWS.values():
-        await conn.execute(ddl)
+        await conn.execute(_adapt_view_ddl(ddl, conn.capabilities.dialect))
 
     # Remove any stale view-named entries left by older code versions.
     for view_name in _META_TABLE_ALIAS.values():
@@ -202,7 +230,7 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
     ``_OPS_LOG_TABLE_VIEWS`` — not a new subsystem."""
     schema_name = f"org_{org_id}"
     for ddl in _OPS_LOG_TABLE_VIEWS.values():
-        await conn.execute(ddl)
+        await conn.execute(_adapt_view_ddl(ddl, conn.capabilities.dialect))
 
     for tbl, view_name in _OPS_LOG_TABLE_ALIAS.items():
         table_id = await conn.upsert_returning(

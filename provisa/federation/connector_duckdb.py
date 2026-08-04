@@ -19,6 +19,7 @@ pg_duckdb scan connectors. Extracted from connector.py; leaf module.
 from __future__ import annotations
 
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from provisa.federation.connector_base import (
@@ -29,9 +30,37 @@ from provisa.federation.connector_base import (
     ProbeResult,
     RuntimeDep,
 )
+from provisa.federation.duckdb_extensions import connect as _duckdb_connect
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
+
+
+def read_flat_file_sync(path: str, fmt: str, sql: str) -> list[dict]:  # REQ-229
+    """Execute *sql* against a CSV or Parquet file via an in-memory DuckDB connection.
+
+    Registers the file as a view named after its path stem, then runs *sql* against it.
+    Sync, stateless, one-shot — the file_source contract, not federation's session-lived
+    async contract, so it's a plain helper rather than a Connector/runtime. Reuses
+    ``duckdb_extensions.connect()`` for the connection so ``PROVISA_DUCKDB_EXT_DIR`` is
+    honored the same way every other DuckDB connection in federation is built.
+    """
+    if fmt not in ("csv", "parquet"):
+        raise ValueError(f"Unsupported flat-file format: {fmt!r}")
+
+    view_name = Path(path).stem.replace("-", "_").replace(".", "_")
+    con = _duckdb_connect()
+    try:
+        if fmt == "csv":
+            con.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_csv_auto('{path}')")
+        else:
+            con.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{path}')")
+        rel = con.execute(sql)
+        cols = [desc[0] for desc in rel.description]
+        rows = rel.fetchall()
+        return [dict(zip(cols, row)) for row in rows]
+    finally:
+        con.close()
 
 
 class DuckDBPostgresConnector(Connector):

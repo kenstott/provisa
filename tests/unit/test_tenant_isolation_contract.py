@@ -35,16 +35,17 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_pg_realization_scopes_connection_to_org_schema():
-    """On PostgreSQL, a per-connection init binds the org's physical schema (search_path)."""
-    from provisa.core.db import _make_init_conn
+def test_pg_realization_scopes_connection_to_org_schema():
+    """On PostgreSQL, a per-connection init binds the org's physical schema (search_path).
 
-    conn = AsyncMock()
-    await _make_init_conn("acme")(conn)
+    core/db.py's raw asyncpg pool ``setup`` hook (``_make_init_conn``) was dead code with
+    zero production call sites (fix 8, abstraction-leak remediation) and has been removed;
+    the live mechanism is ``Database.acquire()`` (core/database.py) issuing
+    ``Capabilities.enter_org_sql(search_path)``."""
+    from provisa.core.database import Capabilities
 
-    issued = [c.args[0] for c in conn.execute.await_args_list if c.args]
-    assert any("SET search_path" in s and "org_acme" in s for s in issued)
+    sql = Capabilities.for_dialect("postgresql").enter_org_sql("org_acme")
+    assert sql is not None and "SET search_path" in sql and "org_acme" in sql
 
 
 @pytest.mark.asyncio

@@ -30,11 +30,11 @@ import logging
 import os
 from dataclasses import dataclass
 
-import trino
 from sqlalchemy.engine import URL
 
 # The results catalog name is owned by the CTAS-redirect writer; import rather than restate it.
 from provisa.executor.trino_write import RESULTS_CATALOG
+from provisa.federation.trino_lifecycle import TrinoConnection, TrinoQueryError
 
 log = logging.getLogger(__name__)
 
@@ -197,7 +197,7 @@ def spec_for(name: str, url: URL, org_id: str) -> CatalogSpec:
     raise ValueError(f"{name!r} is not a Provisa system catalog ({', '.join(SYSTEM_CATALOGS)})")
 
 
-def register_catalog(conn: trino.dbapi.Connection, spec: CatalogSpec) -> None:
+def register_catalog(conn: TrinoConnection, spec: CatalogSpec) -> None:
     """Drop and recreate one system catalog so its properties match ``spec`` exactly.
 
     Trino exposes no way to read a live catalog's properties back, and ``CREATE CATALOG IF NOT
@@ -214,7 +214,7 @@ def register_catalog(conn: trino.dbapi.Connection, spec: CatalogSpec) -> None:
     try:
         cur.execute(f"DROP CATALOG IF EXISTS {name}")
         cur.fetchall()
-    except trino.exceptions.TrinoQueryError as exc:
+    except TrinoQueryError as exc:
         raise RuntimeError(
             f"Trino catalog {name!r} cannot be dropped ({exc}) — it is loaded from a static "
             f"/etc/trino/catalog/{name}.properties file, which shadows the runtime definition. "
@@ -279,7 +279,7 @@ def ensure_iceberg_catalog_tables(url: URL) -> None:
     pg.close()
 
 
-def register_system_catalogs(conn: trino.dbapi.Connection, url: URL, org_id: str) -> None:
+def register_system_catalogs(conn: TrinoConnection, url: URL, org_id: str) -> None:
     """Register every Provisa-owned catalog from runtime values. Boot-time; blocking."""
     from provisa.core.catalog import wait_until_ready
 

@@ -19,12 +19,11 @@ from __future__ import annotations
 import datetime
 import logging
 
-import trino
-
 from provisa.observability.ops_schema import OPS_TABLES
 
 # Postgres column types (ops_schema's source of truth) mapped to Trino/Iceberg types.
 from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL
+from provisa.federation.trino_lifecycle import TrinoConnection, TrinoError
 
 
 def _ops_physical(pg_type: str) -> str:
@@ -34,7 +33,7 @@ def _ops_physical(pg_type: str) -> str:
 
 
 def seed_ops_trino(  # REQ-016
-    trino_conn: trino.dbapi.Connection,
+    trino_conn: TrinoConnection,
     ops_views: list[tuple[str, list[tuple[str, str, bool]], str]],
     snapshot_retention_hours: int | None = None,
 ) -> None:
@@ -98,7 +97,7 @@ def seed_ops_trino(  # REQ-016
         for tbl_name in OPS_TABLES:
             try:
                 _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
-            except trino.exceptions.Error:
+            except TrinoError:
                 pass  # already present, unsupported, or Trino transient — best-effort, not fatal
 
         # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;

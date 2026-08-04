@@ -11,7 +11,7 @@ const QUERY = `
 MATCH (a:Inquiries)
 OPTIONAL MATCH (a:Inquiries)-[r1:HAS_PETS]->(b:Pets)
 OPTIONAL MATCH (b:Pets)-[r2:IS_ASSIGNMENT]->(c:Assignments)
-OPTIONAL MATCH (c:Assignments)-[r3:IS_EMPLOYEE]->(d:Employees)
+OPTIONAL MATCH (c:Assignments)-[r3:ASSIGNMENT_EMPLOYEE]->(d:Employees)
 OPTIONAL MATCH (c:Assignments)-[r4:ASSIGNMENT_BREED]->(e:AnimalBreeds)
 OPTIONAL MATCH (a)-[rUsers:SUBMITTED_BY]-(mUsers:PetStore:Users)
 WHERE NOT b.id IN [2]
@@ -20,6 +20,10 @@ RETURN a, b, c, d, e, rUsers, mUsers, r1, r2, r3, r4
 `;
 
 test("cypher breed filter resolves breedName without FederationError", async ({ request }) => {
+  // This query hits Inquiries, Pets, Assignments, Employees, AnimalBreeds, Users across
+  // multiple sources. DuckDB cold-start + concurrent suite load can exceed 30s.
+  // 120s budget: ~30-90s for DuckDB + GQL materialisation, ~30s headroom.
+  test.setTimeout(120000);
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: { query: QUERY },
     headers: { "Content-Type": "application/json" },

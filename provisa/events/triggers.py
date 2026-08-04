@@ -15,12 +15,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any
 
-import asyncpg
 import httpx
 
-from provisa.core.models import EventTrigger
+from provisa.core.models import EventTrigger, Webhook
+from provisa.webhooks.executor import execute_webhook
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection, Database
 
 logger = logging.getLogger(__name__)
 
@@ -91,27 +94,29 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
 
     def __init__(self, triggers: list[EventTrigger]) -> None:
         self._triggers = {t.table_id: t for t in triggers}
-        self._listen_conn: asyncpg.Connection | None = None
+        self._listen_conn: "Connection | None" = None
+        # The async-context-manager returned by Database.acquire() for the persistent LISTEN
+        # connection — Database has no bare acquire/release pair (unlike asyncpg.Pool), so the
+        # context manager is entered/exited manually across setup()/teardown() instead.
+        self._listen_ctx: Any = None
         self._listen_task: asyncio.Task | None = None
-        self._http_client: httpx.AsyncClient | None = None
         self._running = False
 
-    async def setup(self, pool: asyncpg.Pool) -> None:  # REQ-219, REQ-220, REQ-258
+    async def setup(self, pool: "Database") -> None:  # REQ-219, REQ-220, REQ-258
         """Install PG triggers and start listening."""
         if not self._triggers:
             return
-
-        self._http_client = httpx.AsyncClient(timeout=30.0)
 
         # Install trigger functions and triggers
         async with pool.acquire() as conn:
             for trigger in self._triggers.values():
                 if not trigger.enabled:
                     continue
-                await self._install_trigger(cast(asyncpg.Connection, conn), trigger)
+                await self._install_trigger(conn, trigger)
 
-        # Acquire a dedicated connection for LISTEN
-        self._listen_conn = cast(asyncpg.Connection, await pool.acquire())
+        # Acquire a dedicated connection for LISTEN, held open across setup()/teardown().
+        self._listen_ctx = pool.acquire()
+        self._listen_conn = await self._listen_ctx.__aenter__()
         self._running = True
 
         assert self._listen_conn is not None
@@ -124,7 +129,7 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
 
         logger.info("EventTriggerManager started with %d triggers", len(self._triggers))
 
-    async def teardown(self, pool: asyncpg.Pool) -> None:  # REQ-220
+    async def teardown(self, pool: "Database") -> None:  # REQ-220
         """Remove listeners and drop PG triggers."""
         self._running = False
 
@@ -135,23 +140,20 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
                     await self._listen_conn.remove_listener(channel, self._on_notify)
                 except Exception:
                     pass
-            await pool.release(self._listen_conn)
+            await self._listen_ctx.__aexit__(None, None, None)
+            self._listen_ctx = None
             self._listen_conn = None
 
         # Drop triggers
         async with pool.acquire() as conn:
             for trigger in self._triggers.values():
-                await self._drop_trigger(cast(asyncpg.Connection, conn), trigger)
-
-        if self._http_client is not None:
-            await self._http_client.aclose()
-            self._http_client = None
+                await self._drop_trigger(conn, trigger)
 
         logger.info("EventTriggerManager stopped")
 
     async def _install_trigger(  # REQ-220
         self,
-        conn: asyncpg.Connection,
+        conn: "Connection",
         trigger: EventTrigger,
     ) -> None:
         safe = _safe_name(trigger.table_id)
@@ -178,7 +180,7 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
 
     async def _drop_trigger(  # REQ-220
         self,
-        conn: asyncpg.Connection,
+        conn: "Connection",
         trigger: EventTrigger,
     ) -> None:
         safe = _safe_name(trigger.table_id)
@@ -193,12 +195,12 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
 
     def _on_notify(  # REQ-219, REQ-220, REQ-258
         self,
-        connection: asyncpg.Connection,
+        connection: Any,
         pid: int,
         channel: str,
         payload: str,
     ) -> None:
-        """asyncpg listener callback — schedule webhook dispatch."""
+        """PG LISTEN callback (raw driver connection, unused) — schedule webhook dispatch."""
         if not self._running:
             return
         asyncio.ensure_future(self._dispatch(channel, payload))
@@ -236,32 +238,34 @@ class EventTriggerManager:  # REQ-219, REQ-220, REQ-258
         trigger: EventTrigger,
         data: dict[str, Any],
     ) -> None:
-        """POST data to webhook URL with exponential backoff retry."""
-        if self._http_client is None:
-            return
+        """POST data to webhook URL with exponential backoff retry.
 
+        Delivery goes through provisa.webhooks.executor.execute_webhook — the single owner of
+        webhook HTTP delivery — instead of a locally-built httpx.AsyncClient (REQ-220 dedup)."""
+        webhook = Webhook(
+            name=trigger.table_id,
+            url=trigger.webhook_url,
+            method="POST",
+            timeout_ms=30000,
+        )
         max_retries = trigger.retry_max
         base_delay = trigger.retry_delay
 
         for attempt in range(max_retries + 1):
             try:
-                resp = await self._http_client.post(
-                    trigger.webhook_url,
-                    json=data,
-                    headers={"Content-Type": "application/json"},
+                result = await execute_webhook(webhook, data)
+                logger.debug(
+                    "Webhook delivered for %s (attempt %d): %d",
+                    trigger.table_id,
+                    attempt + 1,
+                    result.status_code,
                 )
-                if resp.status_code < 400:
-                    logger.debug(
-                        "Webhook delivered for %s (attempt %d): %d",
-                        trigger.table_id,
-                        attempt + 1,
-                        resp.status_code,
-                    )
-                    return
+                return
+            except httpx.HTTPStatusError as exc:
                 logger.warning(
                     "Webhook %s returned %d (attempt %d/%d)",
                     trigger.webhook_url,
-                    resp.status_code,
+                    exc.response.status_code,
                     attempt + 1,
                     max_retries + 1,
                 )

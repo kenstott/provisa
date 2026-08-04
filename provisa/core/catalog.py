@@ -17,9 +17,13 @@ import os
 import re
 import time
 
-import trino
-
 from provisa.core.models import Source
+from provisa.federation.trino_lifecycle import (
+    TrinoConnection,
+    TrinoConnectionError,
+    TrinoError,
+    TrinoQueryError,
+)
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ _STARTING_UP = "SERVER_STARTING_UP"
 _READY_TIMEOUT_SECS = float(os.environ.get("PROVISA_TRINO_READY_TIMEOUT", "120"))
 
 
-def wait_until_ready(conn: trino.dbapi.Connection, timeout: float = _READY_TIMEOUT_SECS) -> None:
+def wait_until_ready(conn: TrinoConnection, timeout: float = _READY_TIMEOUT_SECS) -> None:
     """Block until the coordinator answers a trivial query (past SERVER_STARTING_UP).
 
     Raises the last error if the coordinator is still initializing at the deadline —
@@ -44,11 +48,11 @@ def wait_until_ready(conn: trino.dbapi.Connection, timeout: float = _READY_TIMEO
             cur.execute("SELECT 1")
             cur.fetchone()
             return
-        except trino.exceptions.TrinoQueryError as e:
+        except TrinoQueryError as e:
             if e.error_name != _STARTING_UP or time.monotonic() >= deadline:
                 raise
             time.sleep(2)
-        except trino.exceptions.TrinoConnectionError:
+        except TrinoConnectionError:
             # A coordinator restarting/under load drops the socket ("connection
             # reset/refused") — the same "not ready yet" signal as SERVER_STARTING_UP,
             # not a permanent failure. Keep waiting until the deadline; a genuinely
@@ -91,7 +95,7 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
 
 
 def create_catalog(
-    conn: trino.dbapi.Connection,
+    conn: TrinoConnection,
     source: Source,
     resolved_password: str,
     catalog_name: str | None = None,
@@ -141,7 +145,7 @@ def create_catalog(
     try:
         cur.execute(f"DROP CATALOG IF EXISTS {catalog_name}")
         cur.fetchall()
-    except trino.exceptions.TrinoQueryError as exc:
+    except TrinoQueryError as exc:
         raise RuntimeError(
             f"Trino catalog {catalog_name!r} cannot be dropped ({exc}) — it is loaded from a "
             f"static /etc/trino/catalog/{catalog_name}.properties file, which shadows the runtime "
@@ -152,7 +156,7 @@ def create_catalog(
     cur.fetchall()
 
 
-def create_kafka_catalog(conn: trino.dbapi.Connection, kafka_source: dict) -> None:  # REQ-147
+def create_kafka_catalog(conn: TrinoConnection, kafka_source: dict) -> None:  # REQ-147
     """Register a ``kafka_sources[]`` entry as a Trino dynamic catalog.
 
     Kafka is the one source type whose connector props are not built from a
@@ -177,12 +181,12 @@ def create_kafka_catalog(conn: trino.dbapi.Connection, kafka_source: dict) -> No
         cur = conn.cursor()
         cur.execute(sql)
         cur.fetchall()
-    except trino.exceptions.Error as e:
+    except TrinoError as e:
         log.warning("Kafka catalog creation failed for %s: %s", catalog_name, e)
 
 
 def analyze_source_tables(  # REQ-636, REQ-1266
-    conn: trino.dbapi.Connection,
+    conn: TrinoConnection,
     source: "Source",
     tables: list,
     catalog_name: str | None = None,
@@ -206,14 +210,14 @@ def analyze_source_tables(  # REQ-636, REQ-1266
             cur.execute(sql)
             cur.fetchall()
             log.info("ANALYZE %s.%s.%s ok", catalog_name, schema, table)
-        except trino.exceptions.Error as e:
+        except TrinoError as e:
             # Best-effort: the connector may not support ANALYZE, or the table may
             # be transiently unavailable. Any Trino-side error is non-fatal here.
             log.debug("ANALYZE %s.%s.%s skipped: %s", catalog_name, schema, table, e)
 
 
 def drop_catalog(
-    conn: trino.dbapi.Connection, source_id: str, catalog_name: str | None = None
+    conn: TrinoConnection, source_id: str, catalog_name: str | None = None
 ) -> None:  # REQ-012, REQ-1266
     """Drop a Trino dynamic catalog. ``catalog_name`` (REQ-1266): org-prefixed physical
     catalog; bare name when omitted."""
@@ -224,7 +228,7 @@ def drop_catalog(
     cur.fetchall()
 
 
-def catalog_exists(conn: trino.dbapi.Connection, source_id: str) -> bool:  # REQ-636
+def catalog_exists(conn: TrinoConnection, source_id: str) -> bool:  # REQ-636
     """Check if a Trino catalog exists."""
     catalog_name = _to_catalog_name(source_id)
     cur = conn.cursor()

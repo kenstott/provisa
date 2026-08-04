@@ -1,0 +1,20 @@
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+domains:
+- description: Pet store domain for e2e Trino tests
+  id: pet-store
+- description: Shelter domain for e2e Trino tests
+  id: shelter
+federation_engine: trino
+roles: []
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 300
+sources: []
+tables: []

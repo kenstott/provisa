@@ -13,6 +13,9 @@ import { test, expect, BACKEND_URL } from "./coverage";
  * integer ids (registered via node_ids table), causing canvas lookup failures.
  */
 test("auto-impute fires and returns integer-id edges for meta node query", async ({ page }) => {
+  // Graph UI + role change + editor interaction + Meta query + impute API.
+  // Under full-suite load the Meta query alone can take 15-20s; 120s total budget.
+  test.setTimeout(120000);
   await page.goto("/graph");
 
   // The Meta domain is admin-only (config/provisa.yaml grants it to org_admin, not the
@@ -24,7 +27,7 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
   const imputeResponsePromise = page.waitForResponse(
     (resp) =>
       resp.url().includes("/data/impute-relationships") && resp.status() === 200,
-    { timeout: 30000 }
+    { timeout: 90000 }
   );
 
   // Enable auto-impute if not already active (button title changes based on state)
@@ -49,9 +52,10 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
   // Run the query (⌘↵)
   await page.keyboard.press("Meta+Enter");
 
-  // Wait for the frame to finish loading and show nodes
+  // Wait for the frame to finish loading and show nodes. Meta query can be slow
+  // under full-suite load; 60s matches the DuckDB warm-up budget.
   await expect(page.locator(".gf-meta-text")).toContainText(/\d+ nodes/, {
-    timeout: 15000,
+    timeout: 60000,
   });
 
   // Wait for the impute API to fire and respond

@@ -448,6 +448,7 @@ export function SourcesPage() {
               : undefined;
       const sourcePayload = {
         ...coreForm,
+        offPeakWindow: coreForm.offPeakWindow?.trim() || null,
         path: FILE_SOURCES.has(form.type) || form.type === "files"
           ? form.type === "files" && form.path
             ? filesTransport === "file://" ? form.path : filesTransport + form.path

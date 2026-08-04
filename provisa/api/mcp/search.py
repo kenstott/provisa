@@ -148,7 +148,7 @@ class CatalogSearchIndex:
         self, catalog: list[CatalogTable], schema_descriptions: dict[str, str] | None = None
     ) -> int:
         """Embed every chunk and load it into a fresh HNSW index. Returns chunk count."""
-        import duckdb
+        from provisa.federation.duckdb_runtime import build_vss_index_connection
 
         addresses = iter_entities(catalog)
         texts = [get_chunk(a, catalog, schema_descriptions) for a in addresses]
@@ -160,24 +160,11 @@ class CatalogSearchIndex:
         if len(vectors) != len(addresses):
             raise RuntimeError(f"embedding count {len(vectors)} != chunk count {len(addresses)}")
 
-        con = duckdb.connect()
-        con.execute("INSTALL vss; LOAD vss;")
-        con.execute(
-            f"CREATE TABLE chunks (level VARCHAR, schema VARCHAR, tbl VARCHAR, "
-            f"col VARCHAR, embedding FLOAT[{self._dim}])"
-        )
-        con.executemany(
-            "INSERT INTO chunks VALUES (?, ?, ?, ?, ?)",
-            [
-                [level, schema, table, column, vec]
-                for (level, schema, table, column), vec in zip(addresses, vectors, strict=True)
-            ],
-        )
-        # Cosine HNSW: query with array_cosine_distance; smaller = more similar.
-        con.execute(
-            "CREATE INDEX chunk_hnsw ON chunks USING HNSW (embedding) WITH (metric = 'cosine')"
-        )
-        self._con = con
+        rows = [
+            (level, schema, table, column, vec)
+            for (level, schema, table, column), vec in zip(addresses, vectors, strict=True)
+        ]
+        self._con = build_vss_index_connection(self._dim, rows)
         self._built = True
         return len(addresses)
 

@@ -30,8 +30,8 @@ from typing import TYPE_CHECKING, Protocol
 
 from provisa.pgwire.copy_binary import (
     _arrow_binary_tag,
-    _duckdb_binary_tag,
     _rows_to_copy_binary,
+    _sql_binary_tag,
 )
 
 if TYPE_CHECKING:
@@ -161,7 +161,7 @@ def _queryresult_to_copy_bytes(result: QueryResult, fmt: str) -> bytes:
     col_count = len(result.column_names)
     if fmt == "binary":
         types = result.column_types or []
-        tags = [_duckdb_binary_tag(types[i] if i < len(types) else None) for i in range(col_count)]
+        tags = [_sql_binary_tag(types[i] if i < len(types) else None) for i in range(col_count)]
         return _rows_to_copy_binary(result.rows, tags)
     if fmt == "csv":
         return _rows_to_copy_csv(result.rows, col_count)

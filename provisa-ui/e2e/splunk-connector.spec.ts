@@ -7,10 +7,12 @@
 
 import https from "https";
 import { spawnSync } from "child_process";
-import { test, expect, BACKEND_URL } from "./coverage";
+import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
 
 const SOURCE_ID = "e2e-splunk";
-const ADMIN_GQL = `${BACKEND_URL}/admin/graphql`;
+// Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
+// DuckDB backend's register_source() is a no-op — the schema dropdown would stay empty.
+const ADMIN_GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
 
 // Splunk management port — mapped to host from Docker container.
 // Must match the -p flag in beforeAll's docker run command.
@@ -32,18 +34,22 @@ const CONTAINER_NAME = "e2e-splunk-connector";
 // the splunk container by its alias for federation queries to work.
 const DOCKER_NETWORK = process.env.PROVISA_E2E_DOCKER_NETWORK ?? "provisa_default";
 
+// visibleTo must be non-empty — empty list means "visible to no role" in Provisa's governance model
 const INTERNAL_SERVER_COLUMNS = [
-  { name: "time", visibleTo: [], writableBy: [] },
-  { name: "host", visibleTo: [], writableBy: [] },
-  { name: "source", visibleTo: [], writableBy: [] },
-  { name: "sourcetype", visibleTo: [], writableBy: [] },
+  { name: "time", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "host", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "source", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "sourcetype", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
 ];
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {
+  // 120s: backend may be processing a Trino catalog init; fail explicitly rather than hanging
+  // indefinitely and consuming the entire test timeout with no diagnostic error.
   const res = await fetch(ADMIN_GQL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(120000),
   });
   return res.json();
 }
@@ -69,6 +75,9 @@ async function getSplunkSessionKey(): Promise<string> {
       },
     );
     req.on("error", reject);
+    // Per-request timeout: if Splunk TCP connects but hangs on HTTP, destroy after 5s
+    // so waitForSplunk()'s poll loop can advance rather than blocking indefinitely.
+    req.setTimeout(5000, () => req.destroy(new Error("getSplunkSessionKey: request timeout")));
     req.write(body);
     req.end();
   });
@@ -150,19 +159,30 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   const sessionKey = await getSplunkSessionKey();
 
   // Trino begins connecting to Splunk immediately after the container is up,
-  // causing transient backend errors. Wait for the backend to stabilise before
+  // causing transient backend errors. Wait for the Trino backend to stabilise before
   // navigating — poll /health until stable or 60s elapsed.
   {
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
       try {
-        const r = await fetch(`${BACKEND_URL}/health`);
+        const r = await fetch(`${TRINO_BACKEND_URL}/health`);
         if (r.ok) break;
       } catch {
         // backend not yet reachable
       }
       await new Promise((res) => setTimeout(res, 3000));
     }
+  }
+
+  // Redirect the UI's API calls from the default DuckDB backend to the Trino backend so
+  // that register_source() creates a real Trino catalog and schema enumeration succeeds.
+  // The Apollo client uses relative URLs (/admin/graphql) so the browser sends requests
+  // to the UI origin (http://localhost:3901); Vite proxies them server-side. Intercepting
+  // at the UI origin redirects them to the Trino backend before Vite's proxy fires.
+  for (const prefix of ["/admin", "/data", "/query", "/health"]) {
+    await page.route(`${UI_URL}${prefix}*`, (route) => {
+      route.continue({ url: route.request().url().replace(UI_URL, TRINO_BACKEND_URL) });
+    });
   }
 
   // ── 1. Add Splunk source via UI ───────────────────────────────────────────
@@ -198,6 +218,16 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   await page.getByRole("button", { name: "+ Table" }).first().click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
 
+  // Wait for source to appear in dropdown — Apollo cache-and-network may serve stale
+  // data initially; the network fetch updates the cache within a few seconds.
+  await page.waitForFunction(
+    (id: string) => {
+      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-source-select"]');
+      return Array.from(sel?.options ?? []).some((o) => o.value === id);
+    },
+    SOURCE_ID,
+    { timeout: 15000 },
+  );
   await page.locator('[data-testid="register-table-source-select"]').selectOption(SOURCE_ID);
 
   // Wait for Domain dropdown to have options
@@ -212,13 +242,14 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   const firstDomain = await domainSelect.locator("option").nth(1).getAttribute("value");
   await domainSelect.selectOption(firstDomain!);
 
-  // Wait for 'splunk' schema to appear
+  // Wait for 'splunk' schema to appear — Trino Splunk catalog loads asynchronously after the source
+  // is registered; allow 180s for Splunk cold-start + Trino catalog initialisation + schema query.
   await page.waitForFunction(
     () => {
       const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');
       return Array.from(sel?.options ?? []).some((o) => o.value === "splunk");
     },
-    { timeout: 60000 },
+    { timeout: 180000 },
   );
 
   await page.locator('[data-testid="register-table-schema-select"]').selectOption("splunk");
@@ -262,10 +293,12 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 15000 });
 
   // ── 4. Query internal_server via GQL data endpoint ───────────────────────
-  const introRes = await fetch(`${BACKEND_URL}/data/graphql`, {
+  // 60s: schema introspect should be fast; if backend hangs, fail with a clear error.
+  const introRes = await fetch(`${TRINO_BACKEND_URL}/data/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: `{ __schema { queryType { fields { name } } } }` }),
+    signal: AbortSignal.timeout(60000),
   });
   const introData = await introRes.json();
   const allFields: string[] = introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
@@ -274,10 +307,13 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   );
   expect(tableField, `internal_server field not found. Available: ${allFields.join(", ")}`).toBeDefined();
 
-  const dataRes = await fetch(`${BACKEND_URL}/data/graphql`, {
+  // 180s: Trino→Splunk JDBC query; Splunk data is indexed so allow extra time for the
+  // connector to execute the search and stream results back through Trino.
+  const dataRes = await fetch(`${TRINO_BACKEND_URL}/data/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query: `{ ${tableField} { host source } }` }),
+    signal: AbortSignal.timeout(180000),
   });
   const queryResult = await dataRes.json();
   expect(queryResult.errors, `query errors: ${JSON.stringify(queryResult.errors)}`).toBeUndefined();

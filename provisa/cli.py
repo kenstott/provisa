@@ -113,7 +113,7 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     return notes
 
 
-def _control_plane_drift(data_dir: Path) -> str | None:
+async def _control_plane_drift(data_dir: Path) -> str | None:
     """Return a ``file:table.column`` description of the FIRST schema drift in the embedded control-
     plane DBs, else None.
 
@@ -123,28 +123,33 @@ def _control_plane_drift(data_dir: Path) -> str | None:
     just dies with no useful message. This detects it BEFORE serving so ``run`` can fail loud with a
     ``--reset`` hint. Only MISSING columns are drift; extra DB columns (newer DB on older code) are
     not this failure mode and are ignored."""
-    import sqlite3
+    import sqlalchemy as sa
 
     from provisa.core import schema_admin, schema_org
+    from provisa.core.database import create_engine_from_url
 
     for fname, meta in (("platform.db", schema_admin.metadata), ("tenant.db", schema_org.metadata)):
         db = data_dir / fname
         if not db.exists():
             continue  # fresh install — create_all builds it current
-        con = sqlite3.connect(str(db))
+        engine = create_engine_from_url(f"sqlite+aiosqlite:///{db}")
         try:
-            present = {
-                r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            }
-            for table in meta.tables.values():
-                if table.name not in present:
-                    continue  # a table the ORM will create on start — not drift
-                have = {r[1] for r in con.execute(f'PRAGMA table_info("{table.name}")')}
-                for col in table.columns:
-                    if col.name not in have:
-                        return f"{fname}:{table.name}.{col.name}"
+            async with engine.connect() as conn:
+                present = set(await conn.run_sync(lambda c: sa.inspect(c).get_table_names()))
+                for table in meta.tables.values():
+                    if table.name not in present:
+                        continue  # a table the ORM will create on start — not drift
+                    have = {
+                        c["name"]
+                        for c in await conn.run_sync(
+                            lambda c, _t=table.name: sa.inspect(c).get_columns(_t)
+                        )
+                    }
+                    for col in table.columns:
+                        if col.name not in have:
+                            return f"{fname}:{table.name}.{col.name}"
         finally:
-            con.close()
+            await engine.dispose()
     return None
 
 
@@ -274,7 +279,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         removed = _reset_control_plane(data_dir)
         if removed:
             print(f"  · reset control plane: removed {', '.join(removed)} (rebuilt on start)")
-    drift = _control_plane_drift(data_dir)
+    drift = asyncio.run(_control_plane_drift(data_dir))
     if drift:
         print(
             f"Control-plane store at {data_dir} is from an older Provisa (missing {drift}) and V1 "

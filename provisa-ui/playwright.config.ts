@@ -39,6 +39,17 @@ const E2E_FLIGHT_PORT = Number(process.env.PROVISA_E2E_FLIGHT_PORT ?? 8903);
 const E2E_BOLT_PORT = Number(process.env.PROVISA_E2E_BOLT_PORT ?? 8904);
 const E2E_MCP_PORT = Number(process.env.PROVISA_E2E_MCP_PORT ?? 8905);
 const E2E_PGWIRE_PORT = Number(process.env.PROVISA_E2E_PGWIRE_PORT ?? 8906);
+// Trino-backed E2E backend — a second isolated backend instance for sharepoint/splunk
+// tests that require Trino catalog creation (TrinoBackend.register_source creates the
+// catalog; NativeBackend.register_source is a no-op so the schema dropdown never
+// populates). Uses a minimal config (domains only, no pre-registered sources) to
+// avoid the TrinoPgBackedConnector PG-host networking complexity at startup.
+const E2E_TRINO_API_PORT = Number(process.env.PROVISA_E2E_TRINO_API_PORT ?? 8910);
+const E2E_TRINO_GRPC_PORT = Number(process.env.PROVISA_E2E_TRINO_GRPC_PORT ?? 8911);
+const E2E_TRINO_FLIGHT_PORT = Number(process.env.PROVISA_E2E_TRINO_FLIGHT_PORT ?? 8912);
+const E2E_TRINO_BOLT_PORT = Number(process.env.PROVISA_E2E_TRINO_BOLT_PORT ?? 8913);
+const E2E_TRINO_MCP_PORT = Number(process.env.PROVISA_E2E_TRINO_MCP_PORT ?? 8914);
+const E2E_TRINO_PGWIRE_PORT = Number(process.env.PROVISA_E2E_TRINO_PGWIRE_PORT ?? 8915);
 // provisa-install.yaml (the config this harness boots from) statically registers a
 // graphql-demo and a petstore-mock source. Both default to compose-network hostnames
 // (graphql-demo:4000, petstore-mock:8080) that don't resolve outside docker-compose, so
@@ -55,6 +66,9 @@ const E2E_DATA_DIR = process.env.PROVISA_E2E_DATA_DIR ?? path.resolve(__dirname,
 // differing `pets` table sources collide as a duplicate domain+table registration. A distinct
 // ORG_ID isolates the e2e run to its own schema with zero new infrastructure.
 const E2E_ORG_ID = process.env.PROVISA_E2E_ORG_ID ?? "e2e";
+// Trino backend uses a separate data dir and org to avoid any state collision with the DuckDB backend.
+const E2E_TRINO_DATA_DIR = process.env.PROVISA_E2E_TRINO_DATA_DIR ?? path.resolve(__dirname, "../.playwright-trino-data");
+const E2E_TRINO_ORG_ID = process.env.PROVISA_E2E_TRINO_ORG_ID ?? "e2e_trino";
 
 // The e2e backend must also boot from its own config file, not config/provisa.yaml (the
 // shared dev config, auth.provider: basic — booting against it makes every admin call,
@@ -68,11 +82,25 @@ fs.copyFileSync(
   path.resolve(__dirname, "../config/provisa-install.yaml"),
   E2E_CONFIG_PATH,
 );
+// Trino backend uses a minimal config (domains only, no pre-registered sources) so the
+// TrinoPgBackedConnector PG-host networking requirement is not triggered at startup.
+const E2E_TRINO_CONFIG_PATH =
+  process.env.PROVISA_E2E_TRINO_CONFIG ?? path.resolve(E2E_TRINO_DATA_DIR, "provisa-trino.yaml");
+fs.mkdirSync(path.dirname(E2E_TRINO_CONFIG_PATH), { recursive: true });
+fs.copyFileSync(
+  path.resolve(__dirname, "../config/provisa-trino-e2e.yaml"),
+  E2E_TRINO_CONFIG_PATH,
+);
 
 // global-setup.ts/global-teardown.ts run in this same process — exporting these lets
 // them derive the backend URL from the single source of truth above instead of
 // hardcoding it a second time.
 process.env.PROVISA_E2E_API_PORT = String(E2E_API_PORT);
+// Exported so global-setup can pre-warm the Vite dev server before workers start.
+process.env.PROVISA_E2E_UI_PORT = String(E2E_UI_PORT);
+// Exported so global-setup can bootstrap the Trino backend.
+process.env.PROVISA_E2E_TRINO_API_PORT = String(E2E_TRINO_API_PORT);
+process.env.PROVISA_E2E_TRINO_CONFIG = E2E_TRINO_CONFIG_PATH;
 
 // The control-plane postgres (see E2E_ORG_ID comment above) is the shared `provisa`
 // compose project's `postgres` service. Its host port is docker-assigned (`${PG_PORT:-5432}`
@@ -81,16 +109,30 @@ process.env.PROVISA_E2E_API_PORT = String(E2E_API_PORT);
 // asking the running container is the single source of truth, so the e2e backend's env
 // always overrides both URLs with it rather than duplicating a port number that can go stale.
 function resolveControlPlanePort(): string {
-  const output = execFileSync(
-    "docker",
-    ["compose", "-f", path.resolve(__dirname, "../docker-compose.core.yml"), "port", "postgres", "5432"],
-    { cwd: path.resolve(__dirname, ".."), encoding: "utf8" },
-  ).trim();
-  const port = output.split(":").pop();
-  if (!port) {
-    throw new Error(`Could not resolve control-plane postgres port from docker output: ${output}`);
+  // Cache file: written on success so retry workers can load config even if the postgres
+  // container is evicted by Docker VM memory pressure mid-run. The port is immutable for
+  // the lifetime of a run (container binding is set at compose startup and never changes).
+  const portCacheFile = path.resolve(E2E_DATA_DIR, "pg-port");
+  try {
+    const output = execFileSync(
+      "docker",
+      ["compose", "-f", path.resolve(__dirname, "../docker-compose.core.yml"), "port", "postgres", "5432"],
+      { cwd: path.resolve(__dirname, ".."), encoding: "utf8" },
+    ).trim();
+    const port = output.split(":").pop();
+    if (!port) {
+      throw new Error(`Could not resolve control-plane postgres port from docker output: ${output}`);
+    }
+    fs.writeFileSync(portCacheFile, port, "utf8");
+    return port;
+  } catch (err) {
+    // Postgres container may have been evicted by Docker VM memory pressure mid-run.
+    // Fall back to the cached port written at run start — the binding is immutable.
+    if (fs.existsSync(portCacheFile)) {
+      return fs.readFileSync(portCacheFile, "utf8").trim();
+    }
+    throw err;
   }
-  return port;
 }
 
 const pgPort = resolveControlPlanePort();
@@ -119,9 +161,13 @@ export default defineConfig({
       env: {
         PROVISA_UI_PORT: String(E2E_UI_PORT),
         PROVISA_API_PORT: String(E2E_API_PORT),
+        // Increase Vite's Node.js heap: 6 concurrent workers loading the full React app
+        // bundle (Monaco, Cytoscape, Istanbul-instrumented sources) can OOM the default
+        // 1.5 GB heap, crashing the dev server mid-run.
+        NODE_OPTIONS: "--max-old-space-size=4096",
       },
       reuseExistingServer: !process.env.CI,
-      timeout: 15000,
+      timeout: 30000,
     },
     {
       command: `bash -c 'cd .. && .venv/bin/uvicorn server:app --app-dir demo/graphql_server --host 0.0.0.0 --port ${E2E_GRAPHQL_DEMO_PORT}'`,
@@ -153,6 +199,41 @@ export default defineConfig({
       },
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
+    },
+    // Trino-backed backend for sharepoint/splunk tests.  sharepoint/splunk require
+    // TrinoBackend.register_source() to create a Trino catalog; NativeBackend (DuckDB) is a
+    // no-op so the schema dropdown never populates.  A minimal config (domains only, no
+    // pre-registered sources) avoids TrinoPgBackedConnector startup failures (that connector
+    // requires PG_HOST resolvable from inside the Trino Docker container).
+    {
+      command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${E2E_TRINO_API_PORT}'`,
+      url: `http://localhost:${E2E_TRINO_API_PORT}/health`,
+      env: {
+        GRPC_PORT: String(E2E_TRINO_GRPC_PORT),
+        FLIGHT_PORT: String(E2E_TRINO_FLIGHT_PORT),
+        PROVISA_BOLT_PORT: String(E2E_TRINO_BOLT_PORT),
+        PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
+        PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
+        PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
+        PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,
+        ORG_ID: E2E_TRINO_ORG_ID,
+        GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
+        PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
+        PROVISA_ENGINE: "trino",
+        // Trino runs inside Docker; "localhost" in the app's control-plane URL
+        // resolves to the Trino container itself, not the host.  These vars
+        // make engine_visible_address() (trino_system_catalogs.py) substitute
+        // the Docker host address so Trino's JDBC catalog specs reach Postgres.
+        PROVISA_ENGINE_CONTROL_PLANE_HOST: "host.docker.internal",
+        PROVISA_ENGINE_CONTROL_PLANE_PORT: String(pgPort),
+        ...controlPlaneEnv,
+      },
+      reuseExistingServer: !process.env.CI,
+      // Trino backend startup includes register_system_catalogs() which executes
+      // DROP + CREATE CATALOG for each system catalog via Trino JDBC — each round
+      // trip can take 10-30 s on a cold Trino JVM. 300 s gives headroom for 3 catalogs
+      // × 2 ops × 30 s plus seed_ops_trino() Iceberg DDL on a cold JIT.
+      timeout: 300000,
     },
   ],
 });

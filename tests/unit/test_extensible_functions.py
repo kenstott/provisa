@@ -214,10 +214,7 @@ async def test_grpc_bridge_serializes_json_and_decodes_response(monkeypatch):
         async def close(self):
             captured["closed"] = True
 
-    fake_grpc_mod = types.SimpleNamespace(
-        aio=types.SimpleNamespace(insecure_channel=lambda t: _FakeChannel()),
-    )
-    monkeypatch.setitem(sys.modules, "grpc", fake_grpc_mod)
+    monkeypatch.setattr(fd, "open_channel", lambda target, tls: _FakeChannel())
     out = await fd._grpc_call("svc:50051", "Pkg.Svc.Fn", {"args": {"n": 3}}, timeout=5.0)
     assert out == [{"g": 7}]
     assert captured["path"] == "/Pkg.Svc/Fn"

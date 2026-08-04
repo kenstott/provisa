@@ -10,10 +10,12 @@
 
 """The Trino engine's lifecycle/admin/error implementation (REQ-825, REQ-840).
 
-This is the ONE module (alongside catalog.py / ops_trino.py / trino_setup.py / executor.trino*)
-that may import ``trino``. Generic code never provisions, watchdogs, reloads, or classifies
-Trino errors directly — it reaches these through ``EngineRuntime`` seam terminals, which delegate
-here only when the bound engine is Trino. A native engine (duckdb/pg/…) skips all of this.
+This is the ONE module (alongside trino_setup.py / executor.trino*) that may import ``trino``.
+Generic code never provisions, watchdogs, reloads, or classifies Trino errors directly — it
+reaches these through ``EngineRuntime`` seam terminals, which delegate here only when the bound
+engine is Trino. A native engine (duckdb/pg/…) skips all of this. Callers that only need the
+connection type hint or exception classes (catalog.py, trino_system_catalogs.py, ops_trino.py,
+introspect.py) import the ``Trino*`` re-exports below instead of ``trino`` directly.
 """
 
 # complexity-gate: allow-ble=7 reason="Trino lifecycle ops (watchdog ping/restart/reconnect, infra bucket+schema setup, catalog reload) are best-effort: failures are logged and the phase degrades, never crashing boot/serve"
@@ -29,10 +31,34 @@ import trino
 
 log = logging.getLogger(__name__)
 
+# Re-exports so callers that only need the connection type / exception classes (never
+# `trino.dbapi.connect()` itself) don't have to import `trino` directly.
+TrinoConnection = trino.dbapi.Connection
+TrinoConnectionError = trino.exceptions.TrinoConnectionError
+TrinoQueryError = trino.exceptions.TrinoQueryError
+TrinoUserError = trino.exceptions.TrinoUserError
+TrinoError = trino.exceptions.Error
+
 
 def connect(conn_kwargs: dict) -> trino.dbapi.Connection:
     """Open a fresh Trino dbapi connection from the stored kwargs."""
     return trino.dbapi.connect(**conn_kwargs)
+
+
+def connect_as_tenant(
+    conn_kwargs: dict, tenant_id: str | None = None
+) -> trino.dbapi.Connection:  # REQ-054, REQ-461
+    """Return a Trino connection scoped to tenant_id as the Trino user.
+
+    In multi-tenant mode callers pass tenant_id; Trino resource groups use
+    ${USER} to assign the query to the correct per-tenant group.
+    When tenant_id is None the connection is made with the kwargs as-is
+    (single-tenant / system pass-through).
+    """
+    kwargs = dict(conn_kwargs)
+    if tenant_id is not None:
+        kwargs["user"] = tenant_id
+    return trino.dbapi.connect(**kwargs)
 
 
 def write_config(config_path: str) -> None:

@@ -65,7 +65,7 @@ def _rows_to_copy_binary(rows: Sequence[Sequence[object]], tags: list[str]) -> b
     return b"".join(out)
 
 
-_DUCKDB_BINARY_TAG = {
+_BINARY_TAG = {
     # DuckDB / engine type names
     "SMALLINT": "int2",
     "TINYINT": "int2",
@@ -88,8 +88,8 @@ _DUCKDB_BINARY_TAG = {
 }
 
 
-def _duckdb_binary_tag(type_str: str | None) -> str:
-    return _DUCKDB_BINARY_TAG.get((type_str or "").upper(), "text")
+def _sql_binary_tag(type_str: str | None) -> str:
+    return _BINARY_TAG.get((type_str or "").upper(), "text")
 
 
 def _arrow_binary_tag(arrow_type) -> str:

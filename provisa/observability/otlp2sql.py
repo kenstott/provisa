@@ -49,6 +49,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceResponse,
 )
 
+from provisa.core.database import sync_engine_from_url
 from provisa.observability.ops_schema import (
     TRACE_ATTR_COLS,
     ensure_tables,
@@ -311,16 +312,13 @@ def build_app(db_url: str | None = None) -> Starlette:
         _BATCH_MAX_ROWS = int(os.environ.get("OTLP2SQL_BATCH_MAX_ROWS", "1000"))
         _BATCH_MAX_SECS = float(os.environ.get("OTLP2SQL_BATCH_MAX_SECS", "2"))
         url = db_url or ops_db_url()
-        kwargs: dict = {"future": True}
         # DuckDB/SQLite are single-writer file stores with only a SYNC driver.
         # We never touch an async driver — inserts run in a threadpool (see
-        # _insert). A one-connection pool serializes those writes so concurrent
-        # threads can't corrupt the single writable handle.
-        if url.startswith(("duckdb", "sqlite")):
-            kwargs.update(poolclass=sa.pool.QueuePool, pool_size=1, max_overflow=0)
-        else:
-            kwargs["pool_pre_ping"] = True
-        _engine = sa.create_engine(url, **kwargs)
+        # _insert). sync_engine_from_url pools accordingly (see
+        # core/database.py::_pool_kwargs_for): a one-connection pool for
+        # duckdb/sqlite so concurrent threads can't corrupt the single
+        # writable handle, pool_pre_ping for server backends.
+        _engine = sync_engine_from_url(url)
         _tables = ensure_tables(_engine)
         log.info("otlp2sql: ready -> %s", _engine.url.render_as_string(hide_password=True))
         flusher = asyncio.create_task(_flush_loop())

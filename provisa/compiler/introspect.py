@@ -17,7 +17,7 @@ import re
 import time
 from dataclasses import dataclass
 
-import trino
+from provisa.federation.trino_lifecycle import TrinoConnection, TrinoQueryError, TrinoUserError
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -48,7 +48,7 @@ class ColumnMetadata:
 
 
 def introspect_table_columns(  # REQ-008, REQ-393
-    conn: trino.dbapi.Connection,
+    conn: TrinoConnection,
     catalog: str,
     schema: str,
     table: str,
@@ -76,7 +76,7 @@ def introspect_table_columns(  # REQ-008, REQ-393
 
 
 def introspect_tables(  # REQ-008, REQ-393, REQ-421
-    conn: trino.dbapi.Connection | None,
+    conn: TrinoConnection | None,
     registered_tables: list[dict],
     sources: dict[str, dict],
     physical_table_map: dict[str, str] | None = None,
@@ -163,7 +163,7 @@ def introspect_tables(  # REQ-008, REQ-393, REQ-421
 
 
 def introspect_column_types(  # REQ-636
-    conn: trino.dbapi.Connection,
+    conn: TrinoConnection,
     catalog: str,
     schema: str,
     table: str,
@@ -188,7 +188,7 @@ def introspect_column_types(  # REQ-636
     return {row[0]: row[1] for row in rows}
 
 
-def _fetch_with_startup_retry(conn: trino.dbapi.Connection, sql: str) -> list:
+def _fetch_with_startup_retry(conn: TrinoConnection, sql: str) -> list:
     """Execute sql, retrying only while the coordinator reports SERVER_STARTING_UP.
 
     REQ-923: transient boot state is retried with backoff up to the ready timeout;
@@ -200,14 +200,14 @@ def _fetch_with_startup_retry(conn: trino.dbapi.Connection, sql: str) -> list:
         try:
             cur.execute(sql)
             return cur.fetchall()
-        except trino.exceptions.TrinoQueryError as e:
+        except TrinoQueryError as e:
             if getattr(e, "error_name", None) != _STARTING_UP or time.monotonic() >= deadline:
                 raise
             time.sleep(_STARTUP_BACKOFF_SECS)
 
 
 def introspect_pk_columns(  # REQ-393, REQ-394
-    conn: trino.dbapi.Connection,
+    conn: TrinoConnection,
     catalog: str,
     schema: str,
     table: str,
@@ -233,12 +233,12 @@ def introspect_pk_columns(  # REQ-393, REQ-394
             f"  AND tc.constraint_type = 'PRIMARY KEY'"
         )
         return {row[0] for row in cur.fetchall()}
-    except trino.exceptions.TrinoUserError:
+    except TrinoUserError:
         return set()
 
 
 def introspect_fk_candidates(  # REQ-018, REQ-413, REQ-415
-    conn: trino.dbapi.Connection,
+    conn: TrinoConnection,
     catalog: str,
     schema: str,
     table: str,
@@ -274,6 +274,6 @@ def introspect_fk_candidates(  # REQ-018, REQ-413, REQ-415
             }
             for row in cur.fetchall()
         ]
-    except trino.exceptions.TrinoUserError:
+    except TrinoUserError:
         # Some connectors don't expose constraint metadata — return empty
         return []

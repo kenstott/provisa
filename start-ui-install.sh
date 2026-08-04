@@ -177,6 +177,7 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   set +a
 fi
 
+export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
@@ -363,9 +364,9 @@ fi
 # uvicorn --reload spawns a reloader parent + a multiprocessing-forked worker child.
 # The worker has a different cmdline so pattern-kill on "uvicorn main:app" misses it.
 # If the reloader is already dead the worker is re-parented to PID 1 — must kill by port.
-echo -n "Stopping any previous UI/backend processes (ports 3000/8000)"
+echo -n "Stopping any previous UI/backend processes (ports 3000/$PROVISA_API_PORT)"
 # A prior run suspended with Ctrl-Z leaves its backend + reload worker STOPPED
-# (T state) but still bound to port 8000. SIGCONT first so they can actually
+# (T state) but still bound to port $PROVISA_API_PORT. SIGCONT first so they can actually
 # die, then kill every reloader AND its worker children (there may be several).
 pkill -CONT -f "uvicorn main:app" 2>/dev/null || true
 for _pid in $(pgrep -f "uvicorn main:app" 2>/dev/null); do
@@ -378,11 +379,11 @@ done
 pkill -CONT -f "node.*vite" 2>/dev/null || true
 pkill -9 -f "node.*vite" 2>/dev/null || true
 port_in_use 3000 && lsof_pids 3000 | xargs kill -9 2>/dev/null || true
-# Same for port 8000: the uvicorn pattern-kill above handles the common case; only
-# probe-then-lsof if a straggler (e.g. a reload worker re-parented to PID 1) lingers.
-port_in_use 8000 && lsof_pids 8000 | xargs kill -9 2>/dev/null || true
+# Same for the backend port: the uvicorn pattern-kill above handles the common case;
+# only probe-then-lsof if a straggler (e.g. a reload worker re-parented to PID 1) lingers.
+port_in_use "$PROVISA_API_PORT" && lsof_pids "$PROVISA_API_PORT" | xargs kill -9 2>/dev/null || true
 for _i in $(seq 1 10); do
-  port_in_use 8000 || break
+  port_in_use "$PROVISA_API_PORT" || break
   echo -n "."
   sleep 1
 done
@@ -499,7 +500,7 @@ start_backend() {
   env "${_BACKEND_ENV[@]}" \
     "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
       --reload --reload-dir provisa --reload-dir config \
-      --host 0.0.0.0 --port 8000 \
+      --host 0.0.0.0 --port "$PROVISA_API_PORT" \
       >> "$LOG_DIR/backend.log" 2>&1 &
   BACKEND_PID=$!
 }
@@ -511,16 +512,16 @@ restart_backend() {
   kill -9 "$BACKEND_PID" 2>/dev/null || true
   wait "$BACKEND_PID" 2>/dev/null || true
   # We just killed BACKEND_PID and its workers by PID above; only reach for the
-  # fd-scanning lsof lookup if port 8000 is somehow still held (orphan re-parented
-  # to PID 1). Probe with /dev/tcp first so the common path never scans SMB.
-  port_in_use 8000 && lsof_pids 8000 | xargs kill -9 2>/dev/null || true
-  wait_port_free 8000 10 || true
+  # fd-scanning lsof lookup if the backend port is somehow still held (orphan
+  # re-parented to PID 1). Probe with /dev/tcp first so the common path never scans SMB.
+  port_in_use "$PROVISA_API_PORT" && lsof_pids "$PROVISA_API_PORT" | xargs kill -9 2>/dev/null || true
+  wait_port_free "$PROVISA_API_PORT" 10 || true
   start_backend
   echo "Backend restarted (PID $BACKEND_PID)."
 }
 trap restart_backend USR1
 
-echo "Starting Provisa backend on port 8000..."
+echo "Starting Provisa backend on port $PROVISA_API_PORT..."
 start_backend
 
 # Stream the backend's startup-phase log lines to the console so the wait isn't a
@@ -539,7 +540,7 @@ pkill -f "tail -n0 -f ${LOG_DIR}/backend.log" 2>/dev/null || true
 BACKEND_TAIL_PID=$!
 _backend_ok=false
 for i in $(seq 1 90); do
-  if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+  if curl -sf "http://localhost:$PROVISA_API_PORT/health" > /dev/null 2>&1; then
     _backend_ok=true
     break
   fi
@@ -630,7 +631,7 @@ wait_for_ui || _ui_rc=$?
 echo ""
 if [ "$DEMO" = true ]; then
   echo "Provisa running (demo mode):"
-  echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
+  echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
@@ -644,7 +645,7 @@ if [ "$DEMO" = true ]; then
   echo "  - graphql-demo       (GraphQL remote, http://localhost:4000/graphql)"
 else
   echo "Provisa running (install mode):"
-  echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
+  echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"

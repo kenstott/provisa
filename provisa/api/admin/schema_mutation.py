@@ -370,6 +370,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
 
+        # Populate the org-scoped catalog name so catalog_for() resolves this source
+        # after dynamic creation (mirrors _populate_source_catalog_names in app_loaders.py).
+        from provisa.api.org_runtime import current_org
+        from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
+        _pg_cat = (
+            source_to_catalog(input.id)
+            if input.type == "postgresql"
+            else (input.database or source_to_catalog(input.id))
+        )
+        _building_org = current_org.get() or state.org_id
+        state.source_catalogs[input.id] = org_prefixed_catalog(
+            _building_org, _pg_cat, default_org=state.org_id
+        )
+
         # Provision on the bound engine (the engine makes a catalog; native engines no-op / attach lazily).
         _register_source_on_engine(state, model, input)
         await _analyze_source_on_engine(state, pool, model, input)
@@ -457,6 +471,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         state.source_dialects[input.id] = ""
         if input.allowed_domains is not None:
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
+
+        # Keep catalog name in sync with the (possibly renamed) source config.
+        from provisa.api.org_runtime import current_org
+        from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
+        _pg_cat = (
+            source_to_catalog(input.id)
+            if input.type == "postgresql"
+            else (input.database or source_to_catalog(input.id))
+        )
+        _building_org = current_org.get() or state.org_id
+        state.source_catalogs[input.id] = org_prefixed_catalog(
+            _building_org, _pg_cat, default_org=state.org_id
+        )
 
         # Invalidate and re-index catalog cache (REQ-464)
         import asyncio as _asyncio

@@ -13,20 +13,26 @@ import { test, expect } from "./coverage";
 // Uses the pre-seeded `dim_pet` view (source_id: __derived__, materialize: true) which has viewSql
 // set — source tables without viewSql do not expose the MV snapshot schedule panel.
 test("create a calendar and configure an MV snapshot schedule", async ({ page }) => {
+  // Apollo resetStore() fires when concurrent schema-version advances are detected
+  // (file-connector / sharepoint tests register tables), briefly clearing the cache
+  // and showing "Loading tables..." for up to 15s. All per-step timeouts are increased.
+  test.setTimeout(120000);
   await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
+  await page.waitForSelector(".page-header", { timeout: 30000 });
   await page.waitForFunction(() => document.querySelectorAll("tr").length > 2, {
-    timeout: 15000,
+    timeout: 30000,
   });
 
   const openEdit = async () => {
     const row = page.locator("tr").filter({ hasText: "dim_pet" }).first();
-    await row.waitFor({ timeout: 10000 });
+    await row.waitFor({ timeout: 15000 });
     await row.click();
     const editBtn = page.getByTestId("table-read-view-edit").first();
-    await editBtn.waitFor({ timeout: 5000 });
+    await editBtn.waitFor({ timeout: 15000 });
     await editBtn.click();
-    await page.waitForSelector("input[type='checkbox']", { timeout: 5000 });
+    // After editBtn.click(), Apollo resetStore may briefly clear the table list;
+    // wait 30s for the edit form (and its checkbox) to render after the reset.
+    await page.waitForSelector("input[type='checkbox']", { timeout: 30000 });
   };
 
   await openEdit();
@@ -66,13 +72,13 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   await page.getByTestId("mv-allowed-lateness").fill("3600");
 
   await page.getByRole("button", { name: /save/i }).first().click();
-  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 10000 });
+  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 30000 });
 
   // Re-open: navigate away first so the row starts collapsed; clicking an already-expanded row
   // toggles it closed, hiding the edit button.
   await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
-  await page.waitForFunction(() => document.querySelectorAll("tr").length > 2, { timeout: 15000 });
+  await page.waitForSelector(".page-header", { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll("tr").length > 2, { timeout: 30000 });
 
   // Re-open and assert the snapshot schedule round-tripped. The panel auto-opens when
   // mvCalendar is persisted — only click the toggle if the panel is still closed.
@@ -94,5 +100,5 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   await page.locator('[data-testid="mv-calendar"]').locator("xpath=..").locator("button").first().click({ force: true });
   await page.getByRole("button", { name: /save/i }).first().click();
   // Wait for save chain to complete before the test ends (avoids uncaught-browser-error on teardown).
-  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 10000 });
+  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 30000 });
 });

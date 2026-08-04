@@ -22,20 +22,10 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from provisa.federation import connector_mssql, connector_mysql, connector_postgres
+
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/source-meta", tags=["admin", "source-meta"])
-
-_PG_COMMENT_SQL = """
-SELECT pg_catalog.shobj_description(d.oid, 'pg_database')
-FROM pg_catalog.pg_database d
-WHERE d.datname = current_database()
-"""
-
-_MYSQL_COMMENT_SQL = """
-SELECT SCHEMA_COMMENT
-FROM information_schema.SCHEMATA
-WHERE SCHEMA_NAME = DATABASE()
-"""
 
 
 class DbDescriptionRequest(BaseModel):
@@ -55,43 +45,25 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
 
     if body.type == "postgresql":
         try:
-            import asyncpg
-
-            conn = await asyncpg.connect(
+            description = await connector_postgres.fetch_database_comment(
                 host=body.host,
                 port=body.port,
                 database=body.database,
-                user=body.username,
+                username=body.username,
                 password=body.password,
-                timeout=5,
             )
-            try:
-                row = await conn.fetchrow(_PG_COMMENT_SQL)
-                description = (row[0] or "") if row else ""
-            finally:
-                await conn.close()
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Connection failed: {exc}") from exc
 
     elif body.type in ("mysql", "mariadb"):
         try:
-            import aiomysql  # pyright: ignore[reportMissingImports]
-
-            conn = await aiomysql.connect(
+            description = await connector_mysql.fetch_database_comment(
                 host=body.host,
                 port=body.port,
-                db=body.database,
-                user=body.username,
+                database=body.database,
+                username=body.username,
                 password=body.password,
-                connect_timeout=5,
             )
-            try:
-                async with conn.cursor() as cur:
-                    await cur.execute(_MYSQL_COMMENT_SQL)
-                    row = await cur.fetchone()
-                    description = (row[0] or "") if row else ""
-            finally:
-                conn.close()
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Connection failed: {exc}") from exc
 
@@ -101,25 +73,13 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
 
     elif body.type in ("mssql", "sqlserver"):
         try:
-            import aioodbc  # pyright: ignore[reportMissingImports]
-
-            dsn = (
-                f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                f"SERVER={body.host},{body.port};"
-                f"DATABASE={body.database};"
-                f"UID={body.username};PWD={body.password}"
+            description = await connector_mssql.fetch_database_comment(
+                host=body.host,
+                port=body.port,
+                database=body.database,
+                username=body.username,
+                password=body.password,
             )
-            conn = await aioodbc.connect(dsn=dsn, timeout=5)
-            try:
-                async with conn.cursor() as cur:
-                    await cur.execute(
-                        "SELECT CAST(value AS NVARCHAR(MAX)) FROM sys.extended_properties "
-                        "WHERE class = 0 AND name = 'MS_Description'"
-                    )
-                    row = await cur.fetchone()
-                    description = (row[0] or "") if row else ""
-            finally:
-                await conn.close()
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"Connection failed: {exc}") from exc
 

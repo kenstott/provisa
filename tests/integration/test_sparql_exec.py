@@ -283,6 +283,12 @@ class TestLiveSparqlExecution:
         f"http://localhost:{os.environ.get('FUSEKI_PORT', '3030')}/provisa"  # isolated Fuseki
     )
 
+    # The full integration suite runs Fuseki alongside a dozen other Docker-backed
+    # services for its entire duration; the 10s production default (provisa.sparql.source
+    # .probe_endpoint) is tuned for a lightly-loaded host and is too tight under that
+    # contention (isolation-only failure, not a defect in probe_endpoint itself).
+    _LIVE_TIMEOUT = 30.0
+
     @pytest.fixture
     def cfg(self):
         return SparqlSourceConfig(
@@ -298,7 +304,7 @@ class TestLiveSparqlExecution:
         PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         SELECT ?n WHERE { VALUES ?n { "Alice"^^xsd:string "Bob"^^xsd:string "Carol"^^xsd:string } }
         """
-        rows = await probe_endpoint(cfg, q)
+        rows = await probe_endpoint(cfg, q, timeout=self._LIVE_TIMEOUT)
         assert len(rows) <= 5
         assert all("n" in row for row in rows)
 
@@ -316,7 +322,7 @@ class TestLiveSparqlExecution:
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Accept": "application/sparql-results+json",
                 },
-                timeout=10.0,
+                timeout=self._LIVE_TIMEOUT,
             )
             resp.raise_for_status()
 
@@ -329,7 +335,7 @@ class TestLiveSparqlExecution:
         from provisa.sparql.source import probe_endpoint
 
         q = "SELECT ?subject ?predicate WHERE { ?subject ?predicate [] } LIMIT 3"
-        rows = await probe_endpoint(cfg, q)
+        rows = await probe_endpoint(cfg, q, timeout=self._LIVE_TIMEOUT)
         if rows:
             cols = infer_columns(rows)
             names = [c.name for c in cols]

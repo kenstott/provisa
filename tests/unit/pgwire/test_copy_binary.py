@@ -17,7 +17,7 @@ import struct
 from provisa.executor.result import QueryResult
 from provisa.pgwire.copy_binary import (
     _COPY_BINARY_SIGNATURE,
-    _duckdb_binary_tag,
+    _sql_binary_tag,
     _encode_binary_field,
     _rows_to_copy_binary,
 )
@@ -95,12 +95,12 @@ def test_null_field_in_row():
 
 
 def test_duckdb_type_tags():
-    assert _duckdb_binary_tag("INTEGER") == "int4"
-    assert _duckdb_binary_tag("BIGINT") == "int8"
-    assert _duckdb_binary_tag("DOUBLE") == "float8"
-    assert _duckdb_binary_tag("BOOLEAN") == "bool"
-    assert _duckdb_binary_tag("VARCHAR") == "text"
-    assert _duckdb_binary_tag(None) == "text"  # unknown → text
+    assert _sql_binary_tag("INTEGER") == "int4"
+    assert _sql_binary_tag("BIGINT") == "int8"
+    assert _sql_binary_tag("DOUBLE") == "float8"
+    assert _sql_binary_tag("BOOLEAN") == "bool"
+    assert _sql_binary_tag("VARCHAR") == "text"
+    assert _sql_binary_tag(None) == "text"  # unknown → text
 
 
 # ---- QueryResult dispatch ---------------------------------------------------

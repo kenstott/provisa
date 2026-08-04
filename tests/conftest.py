@@ -514,18 +514,28 @@ def _heavy_db_service(request):  # pyright: ignore
     if not services:
         yield
         return
-    subprocess.run(
-        ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(services)],
-        cwd=_REPO_ROOT,
-        check=True,
-    )
     try:
+        subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(services)],
+            cwd=_REPO_ROOT,
+            check=True,
+        )
         yield
     finally:
         # Reclaim memory immediately (-s stop, -f force, -v drop anon volumes) so the next
-        # heavy-DB test starts with the VM clear.
+        # heavy-DB test starts with the VM clear. Runs even when setup failed (e.g. OOM
+        # exit 137) to stop crash-looping containers that would otherwise starve core services.
         subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "rm", "-fsv", *sorted(services)],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
+        # After removing heavy services, ensure core services recover from any OOM pressure
+        # (e.g. Druid/Cassandra OOM-killing Trino/Postgres). restart: unless-stopped restarts
+        # them automatically; --wait blocks until healthy so the next test never races a
+        # not-yet-ready core service.
+        subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *_CORE_SERVICES],
             cwd=_REPO_ROOT,
             check=False,
         )

@@ -13,18 +13,19 @@ const GQL = `${BACKEND_URL}/admin/graphql`;
 const GLOB = "demo/files/northwind/**";
 
 // LINQ4J maps camelCase CSV headers to snake_case column names
+// visibleTo must be non-empty — empty list means "visible to no role" in Provisa's governance model
 const CUSTOMERS_COLUMNS = [
-  { name: "customer_id", visibleTo: [], writableBy: [] },
-  { name: "company_name", visibleTo: [], writableBy: [] },
-  { name: "contact_name", visibleTo: [], writableBy: [] },
-  { name: "contact_title", visibleTo: [], writableBy: [] },
-  { name: "address", visibleTo: [], writableBy: [] },
-  { name: "city", visibleTo: [], writableBy: [] },
-  { name: "region", visibleTo: [], writableBy: [] },
-  { name: "postal_code", visibleTo: [], writableBy: [] },
-  { name: "country", visibleTo: [], writableBy: [] },
-  { name: "phone", visibleTo: [], writableBy: [] },
-  { name: "fax", visibleTo: [], writableBy: [] },
+  { name: "customer_id", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "company_name", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "contact_name", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "contact_title", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "address", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "city", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "region", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "postal_code", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "country", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "phone", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
+  { name: "fax", visibleTo: ["developer", "org_admin", "analyst"], writableBy: [] },
 ];
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {

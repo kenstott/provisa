@@ -101,6 +101,11 @@ class OrgRuntime:
     # Governance / masking. (table_id, role_id) → {col: (rule, dtype)}.
     masking_rules: dict[Any, Any] = field(default_factory=dict)
 
+    # Full source-row map from the DB, published by _rebuild_schemas so NativeEngineBackend can
+    # attach dynamically registered sources that are not in state.config (YAML-only). Keyed by
+    # source_id; values are raw dicts from the DB sources table.
+    runtime_sources: dict[str, dict] = field(default_factory=dict)
+
     # Raw-SQL governance inputs (published once per org at schema-load time).
     tables: list[dict] = field(default_factory=list)
     relationships: list[dict] = field(default_factory=list)

@@ -133,17 +133,14 @@ async def test_setup_installs_triggers():
 
 @pytest.mark.asyncio
 async def test_dispatch_fires_webhook():
-    """Notification payload triggers HTTP POST to webhook URL."""
+    """Notification payload triggers HTTP POST to webhook URL via execute_webhook."""
     trigger = _make_trigger()
     mgr = EventTriggerManager([trigger])
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=mock_response)
-    mgr._http_client = mock_client
     mgr._running = True
+
+    from provisa.webhooks.executor import WebhookResult
+
+    mock_execute = AsyncMock(return_value=WebhookResult(status_code=200, data={}, headers={}))
 
     payload = json.dumps(
         {
@@ -155,14 +152,15 @@ async def test_dispatch_fires_webhook():
     )
 
     channel = _channel_name("public.orders")
-    await mgr._dispatch(channel, payload)
+    with patch("provisa.events.triggers.execute_webhook", mock_execute):
+        await mgr._dispatch(channel, payload)
 
-    mock_client.post.assert_called_once()
-    call_args = mock_client.post.call_args
-    assert call_args[0][0] == "https://example.com/hook"
-    posted_data = call_args[1]["json"]
-    assert posted_data["operation"] == "INSERT"
-    assert posted_data["row"]["id"] == 1
+    mock_execute.assert_called_once()
+    call_args = mock_execute.call_args
+    webhook_arg, data_arg = call_args[0]
+    assert webhook_arg.url == "https://example.com/hook"
+    assert data_arg["operation"] == "INSERT"
+    assert data_arg["row"]["id"] == 1
 
 
 @pytest.mark.asyncio
@@ -170,10 +168,9 @@ async def test_dispatch_filters_operations():
     """Operations not in the trigger config are ignored."""
     trigger = _make_trigger(operations=["insert"])
     mgr = EventTriggerManager([trigger])
-
-    mock_client = AsyncMock()
-    mgr._http_client = mock_client
     mgr._running = True
+
+    mock_execute = AsyncMock()
 
     payload = json.dumps(
         {
@@ -185,35 +182,43 @@ async def test_dispatch_filters_operations():
     )
 
     channel = _channel_name("public.orders")
-    await mgr._dispatch(channel, payload)
+    with patch("provisa.events.triggers.execute_webhook", mock_execute):
+        await mgr._dispatch(channel, payload)
 
-    assert mock_client.post.call_count == 0
+    assert mock_execute.call_count == 0
 
 
 # --- Retry with exponential backoff ---
 
 
+def _status_error(code: int):
+    """Build a real httpx.HTTPStatusError, as execute_webhook's raise_for_status() would."""
+    import httpx as _httpx
+
+    request = _httpx.Request("POST", "https://example.com/hook")
+    response = _httpx.Response(code, request=request)
+    return _httpx.HTTPStatusError(f"status {code}", request=request, response=response)
+
+
 @pytest.mark.asyncio
 async def test_retry_on_webhook_failure():
     """Failed webhooks are retried with exponential backoff."""
+    from provisa.webhooks.executor import WebhookResult
+
     trigger = _make_trigger(retry_max=2, retry_delay=0.01)
     mgr = EventTriggerManager([trigger])
-
-    fail_response = MagicMock()
-    fail_response.status_code = 500
-
-    success_response = MagicMock()
-    success_response.status_code = 200
-
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(side_effect=[fail_response, fail_response, success_response])
-    mgr._http_client = mock_client
     mgr._running = True
 
-    data = {"operation": "insert", "table": "orders", "schema": "public", "row": {"id": 1}}
-    await mgr._post_webhook(trigger, data)
+    success_result = WebhookResult(status_code=200, data={}, headers={})
+    mock_execute = AsyncMock(
+        side_effect=[_status_error(500), _status_error(500), success_result]
+    )
 
-    assert mock_client.post.call_count == 3
+    data = {"operation": "insert", "table": "orders", "schema": "public", "row": {"id": 1}}
+    with patch("provisa.events.triggers.execute_webhook", mock_execute):
+        await mgr._post_webhook(trigger, data)
+
+    assert mock_execute.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -221,20 +226,16 @@ async def test_retry_exhaustion():
     """All retries exhausted still completes without raising."""
     trigger = _make_trigger(retry_max=1, retry_delay=0.01)
     mgr = EventTriggerManager([trigger])
-
-    fail_response = MagicMock()
-    fail_response.status_code = 502
-
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(return_value=fail_response)
-    mgr._http_client = mock_client
     mgr._running = True
 
+    mock_execute = AsyncMock(side_effect=_status_error(502))
+
     data = {"operation": "insert", "table": "orders", "schema": "public", "row": {"id": 1}}
-    await mgr._post_webhook(trigger, data)
+    with patch("provisa.events.triggers.execute_webhook", mock_execute):
+        await mgr._post_webhook(trigger, data)
 
     # retry_max=1 means 1 initial + 1 retry = 2 calls
-    assert mock_client.post.call_count == 2
+    assert mock_execute.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -242,23 +243,22 @@ async def test_retry_on_http_exception():
     """httpx.HTTPError triggers retry."""
     import httpx as _httpx
 
+    from provisa.webhooks.executor import WebhookResult
+
     trigger = _make_trigger(retry_max=1, retry_delay=0.01)
     mgr = EventTriggerManager([trigger])
-
-    success_response = MagicMock()
-    success_response.status_code = 200
-
-    mock_client = AsyncMock()
-    mock_client.post = AsyncMock(
-        side_effect=[_httpx.ConnectError("connection refused"), success_response],
-    )
-    mgr._http_client = mock_client
     mgr._running = True
 
-    data = {"operation": "insert", "table": "orders", "schema": "public", "row": {"id": 1}}
-    await mgr._post_webhook(trigger, data)
+    success_result = WebhookResult(status_code=200, data={}, headers={})
+    mock_execute = AsyncMock(
+        side_effect=[_httpx.ConnectError("connection refused"), success_result],
+    )
 
-    assert mock_client.post.call_count == 2
+    data = {"operation": "insert", "table": "orders", "schema": "public", "row": {"id": 1}}
+    with patch("provisa.events.triggers.execute_webhook", mock_execute):
+        await mgr._post_webhook(trigger, data)
+
+    assert mock_execute.call_count == 2
 
 
 # --- on_notify callback ---

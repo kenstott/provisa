@@ -24,12 +24,11 @@ from __future__ import annotations
 
 import logging
 
-import grpc.aio
-
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
+from provisa.grpc_remote.executor import open_channel
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/grpc-remote", tags=["admin", "grpc-remote"])
@@ -111,11 +110,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
 
     # Open gRPC channel
-    if tls:
-        credentials = grpc.ssl_channel_credentials()
-        channel = grpc.aio.secure_channel(server_address, credentials)
-    else:
-        channel = grpc.aio.insecure_channel(server_address)
+    channel = open_channel(server_address, tls)
 
     if not hasattr(state, "grpc_remote_sources"):
         state.grpc_remote_sources = {}

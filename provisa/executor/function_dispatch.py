@@ -29,9 +29,11 @@ import importlib
 import json
 from typing import TYPE_CHECKING
 
+import grpc
 from fastapi import HTTPException
 
 from provisa.api.errors import ApiError
+from provisa.grpc_remote.executor import open_channel
 from provisa.otel_compat import (
     TRANSPORT_BY_KIND,
     MintedSession,
@@ -129,15 +131,9 @@ async def _grpc_call(
     unary response body is decoded as JSON. The remote service must expose a method whose
     request/response are opaque bytes carrying JSON (the Provisa hosted-function contract).
     """
-    import grpc
-
     path = _grpc_method_path(method)
     request = json.dumps(payload).encode()
-    channel = (
-        grpc.aio.secure_channel(target, grpc.ssl_channel_credentials())
-        if tls
-        else grpc.aio.insecure_channel(target)
-    )
+    channel = open_channel(target, tls)
     try:
         rpc = channel.unary_unary(
             path, request_serializer=_grpc_identity, response_deserializer=_grpc_identity

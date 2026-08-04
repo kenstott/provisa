@@ -50,7 +50,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator
 
+import sqlalchemy as sa
 from sqlalchemy import Table, event, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
@@ -817,6 +819,35 @@ def _normalize_admin_url(url: str) -> str:
             f"{backend}+{async_driver}, got {backend}+{driver} in URI {url!r}"
         )
     return url
+
+
+def _pool_kwargs_for(url: str) -> dict[str, Any]:
+    """SQLAlchemy pool kwargs for a single-writer file store (DuckDB/SQLite) vs a server
+    backend — the policy a **sync** engine (only a sync driver, no async pool) must apply
+    itself. DuckDB/SQLite are single-writer file stores: a one-connection pool serializes
+    writes so concurrent callers can't corrupt the single writable handle. Server backends
+    get ``pool_pre_ping`` instead, to guard against stale/dropped connections.
+
+    Used by :func:`sync_engine_from_url` (e.g. ``observability/otlp2sql.py``, which
+    threadpool-wraps sync inserts). The async control-plane engine
+    (:func:`create_engine_from_url`) has its own pool_size/max_overflow policy — DuckDB/
+    SQLite there go through the async driver (``aioduckdb``/``aiosqlite``), which does not
+    accept a sync ``QueuePool``, so that policy is not reused here."""
+    from sqlalchemy import make_url
+
+    if make_url(url).get_backend_name() in ("duckdb", "sqlite"):
+        return {"poolclass": QueuePool, "pool_size": 1, "max_overflow": 0}
+    return {"pool_pre_ping": True}
+
+
+def sync_engine_from_url(url: str, *, pool_pre_ping: bool = True) -> Engine:
+    """A **sync** SQLAlchemy engine for single-writer sync callers (e.g. otlp2sql, whose
+    inserts run via ``starlette.concurrency.run_in_threadpool``) — applies
+    :func:`_pool_kwargs_for`'s single-writer guard."""
+    kwargs: dict[str, Any] = {"future": True, **_pool_kwargs_for(url)}
+    if "pool_pre_ping" in kwargs:
+        kwargs["pool_pre_ping"] = pool_pre_ping
+    return sa.create_engine(url, **kwargs)
 
 
 def create_engine_from_url(

@@ -14,7 +14,6 @@ import logging
 import os
 from typing import Any
 
-import trino.dbapi
 import yaml
 
 _log = logging.getLogger(__name__)
@@ -170,23 +169,6 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
         os.path.join(trino_etc, "resource-groups.properties"),
         _RESOURCE_GROUPS_PROPERTIES_TEMPLATE,
     )
-
-
-def get_trino_connection(
-    trino_conn_kwargs: dict[str, Any],
-    tenant_id: str | None = None,
-) -> trino.dbapi.Connection:  # REQ-054, REQ-461
-    """Return a Trino connection scoped to tenant_id as the Trino user.
-
-    In multi-tenant mode callers pass tenant_id; Trino resource groups use
-    ${USER} to assign the query to the correct per-tenant group.
-    When tenant_id is None the connection is made with the kwargs as-is
-    (single-tenant / system pass-through).
-    """
-    kwargs = dict(trino_conn_kwargs)
-    if tenant_id is not None:
-        kwargs["user"] = tenant_id
-    return trino.dbapi.connect(**kwargs)
 
 
 def _write(path: str, content: str) -> None:

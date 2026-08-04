@@ -242,7 +242,7 @@ def resolve_refresh_policy(source: Source, table: Table) -> RefreshPolicy:
 
     window_spec = table.off_peak_window or source.off_peak_window
     window: OffPeakWindow | None = None
-    if window_spec is not None:
+    if window_spec:  # None and "" both mean "not configured" — skip parse for both
         tz = table.off_peak_tz or source.off_peak_tz
         window = parse_off_peak_window(window_spec, tz)
 

@@ -13,11 +13,11 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, cast
 
-import asyncpg
-
 if TYPE_CHECKING:
     from inflect import Word as InflectWord
     from inflect import engine as _Engine
+
+    from provisa.core.database import Connection
 
 # inflect (~0.8s import) lazy-loaded — paid once on first singularization, never at cold start.
 _inflect: "_Engine | None" = None
@@ -111,7 +111,7 @@ def _as_list(v: Any) -> list:
     return list(v or [])
 
 
-async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-393, REQ-399
+async def fetch_tables(conn: "Connection") -> list[dict]:  # REQ-155, REQ-393, REQ-399
     """Fetch registered tables with columns."""
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
@@ -152,7 +152,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:  # REQ-155, REQ-
 
 
 async def fetch_relationships(
-    conn: asyncpg.Connection,
+    conn: "Connection",
 ) -> list[dict]:  # REQ-155, REQ-194, REQ-351, REQ-399
     """Fetch relationships, computing graphql_alias when not persisted."""
     rows = await conn.fetch(

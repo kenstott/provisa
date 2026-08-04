@@ -362,9 +362,8 @@ async def _native_tables_sqlite(
     schema_name: str,
     config_conn: "Connection",
 ) -> "list[AvailableTableType] | None":
-    import sqlite3 as _sqlite3
-
     from provisa.api.admin.types import AvailableTableType
+    from provisa.federation import connector_sqlite
 
     if schema_name != "main":
         return []
@@ -372,16 +371,7 @@ async def _native_tables_sqlite(
     row = result.fetchone()
     if not row or not row[0]:
         return None
-    sq = _sqlite3.connect(row[0])
-    try:
-        names = [
-            r[0]
-            for r in sq.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            ).fetchall()
-        ]
-    finally:
-        sq.close()
+    names = connector_sqlite.table_names(row[0])
     return [AvailableTableType(name=n, comment=None) for n in names]
 
 

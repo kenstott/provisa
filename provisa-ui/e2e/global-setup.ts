@@ -13,6 +13,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
 const SNAPSHOT_PATH = CONFIG_PATH + ".snapshot";
 const BACKEND_URL = `http://localhost:${process.env.PROVISA_E2E_API_PORT ?? "8901"}`;
+// Use 127.0.0.1 explicitly — Node.js resolves `localhost` to ::1 on this platform
+// but the Vite dev server binds to 127.0.0.1 (IPv4) only.
+const UI_URL = `http://127.0.0.1:${process.env.PROVISA_E2E_UI_PORT ?? "3901"}`;
+// Trino backend (sharepoint/splunk tests) — PROVISA_E2E_TRINO_CONFIG is set by playwright.config.ts.
+const TRINO_BACKEND_URL = `http://localhost:${process.env.PROVISA_E2E_TRINO_API_PORT ?? "8910"}`;
+const TRINO_CONFIG_PATH = process.env.PROVISA_E2E_TRINO_CONFIG ?? path.resolve(__dirname, "../../.playwright-trino-data/provisa-trino.yaml");
 
 /** PUT /admin/config with connection-level retry.
  *
@@ -84,12 +90,14 @@ export default async function globalSetup() {
   }
 
   // Warm up DuckDB before tests run.  graph-show-children and graph-query-panel-height both
-  // run a Cypher query against PetStore:Inquiries on page load.  DuckDB's first query against
-  // a cold SQLite-backed source takes 30-90 s (file scan + materialisation).  When two workers
-  // run these specs concurrently that cold query blocks the Python event loop, starving the
-  // auth GraphQL calls the other test needs, causing it to time-out.  Running one warm-up
-  // query here — before any test clock starts — ensures the DuckDB page cache is hot for
+  // run Cypher queries against PetStore tables on page load.  DuckDB's first query against
+  // a cold SQLite-backed source takes 30-90 s (file scan + materialisation).  When multiple
+  // workers run these specs concurrently that cold query blocks the Python event loop, starving
+  // auth GraphQL calls the other tests need, causing timeouts.  Running sequential warm-up
+  // queries here — before any test clock starts — ensures the DuckDB page cache is hot for
   // all subsequent specs.
+  //
+  // Inquiries: used by graph-show-children and graph-query-panel-height queries on page load.
   const warmRes = await fetch(`${BACKEND_URL}/data/cypher`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,5 +105,54 @@ export default async function globalSetup() {
   });
   if (!warmRes.ok) {
     throw new Error(`DuckDB warm-up query failed: ${warmRes.status} ${await warmRes.text()}`);
+  }
+
+  // Pets: used by graph-show-children "Show children" operation which fetches HAS_PETS relations,
+  // and by graph-query-panel-height which runs OPTIONAL MATCH (a:Inquiries)-[:HAS_PETS]->(b:Pets).
+  // Pets and Inquiries are different materialisations even though they share the same SQLite source.
+  const petsWarmRes = await fetch(`${BACKEND_URL}/data/cypher`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: "MATCH (n:PetStore:Pets) RETURN n LIMIT 5", params: {} }),
+  });
+  if (!petsWarmRes.ok) {
+    throw new Error(`Pets DuckDB warm-up query failed: ${petsWarmRes.status} ${await petsWarmRes.text()}`);
+  }
+
+  // Warm up the Shelter domain too — cypher-variable-length-path and cypher-impute-edges
+  // run cross-source queries early in the test suite. Without this warm-up, the first
+  // query against a cold Shelter source can take 30-90 s, triggering the 30 s Playwright
+  // test timeout.
+  const shelterWarmRes = await fetch(`${BACKEND_URL}/data/cypher`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: "MATCH (n:Shelter:Employees) RETURN n LIMIT 5", params: {} }),
+  });
+  if (!shelterWarmRes.ok) {
+    throw new Error(`Shelter DuckDB warm-up query failed: ${shelterWarmRes.status} ${await shelterWarmRes.text()}`);
+  }
+
+  // Bootstrap the Trino-backed backend (sharepoint/splunk tests).  It uses a minimal
+  // config (domains only, no pre-registered sources) so TrinoPgBackedConnector is never
+  // invoked at startup.  No DuckDB warm-up needed — the Trino backend has no sqlite tables.
+  // The minimal config was already written to TRINO_CONFIG_PATH by playwright.config.ts.
+  const trinoYaml = fs.readFileSync(TRINO_CONFIG_PATH, "utf8");
+  const trinoRes = await putAdminConfig(`${TRINO_BACKEND_URL}/admin/config`, trinoYaml);
+  if (!trinoRes.ok) {
+    throw new Error(`Trino backend config reload failed: ${trinoRes.status} ${await trinoRes.text()}`);
+  }
+
+  // Pre-warm the Vite dev server: fetch the root so Node compiles the full React bundle once
+  // before 6 workers all navigate concurrently. Without this, all 6 parallel worker processes
+  // trigger simultaneous heavy compilation of Monaco + Cytoscape + Istanbul-instrumented sources,
+  // spiking memory and potentially OOM-crashing the dev server even with the 4 GB heap cap.
+  // global-setup runs serially before any worker starts, so this single fetch amortises the
+  // compile cost across the whole suite rather than concentrating it at suite start.
+  try {
+    await fetch(UI_URL, { signal: AbortSignal.timeout(60000) });
+  } catch (err) {
+    // A connection error here means the Vite server is not up yet — Playwright's webServer
+    // waits for the port before calling globalSetup, so this should not happen.
+    throw new Error(`Vite dev server pre-warm fetch to ${UI_URL} failed: ${err}`);
   }
 }

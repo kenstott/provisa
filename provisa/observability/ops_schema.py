@@ -146,15 +146,34 @@ def telemetry_parquet_dir() -> str:
     return d
 
 
+def _ops_config() -> dict:
+    """The persisted platform config, for the ops-store URL fallback. Empty if unreadable
+    (e.g. very early boot before a config file exists) — mirrors
+    ``federation.engine._engine_config``."""
+    try:
+        from provisa.api.admin._config_io import read_config
+    except ImportError:  # api layer not importable at very early boot (module-load ordering)
+        return {}
+    return read_config() or {}
+
+
+def configured_ops_store_url() -> str | None:
+    """The telemetry-store DSN: ``$PROVISA_OPS_DB_URL`` then the persisted
+    ``ops_store_url`` config field. Mirrors
+    ``federation.engine.configured_materialize_url``'s env-then-config precedence."""
+    return os.environ.get("PROVISA_OPS_DB_URL") or _ops_config().get("ops_store_url")
+
+
 def ops_db_url() -> str:
     """SQLAlchemy URL for the telemetry store — the single value shared by
     otlp2sql, the ops-domain source, and (via views) otlp2parquet output.
 
-    Telemetry gets its OWN store, never the control-plane DB: a dedicated DuckDB
-    under :func:`telemetry_dir`. Override with ``PROVISA_OPS_DB_URL`` (e.g. a
-    warehouse) when volume warrants.
+    Telemetry gets its OWN store, never the control-plane DB. Resolution order:
+    ``$PROVISA_OPS_DB_URL`` / the persisted ``ops_store_url`` config field
+    (:func:`configured_ops_store_url`), else the embedded default — a dedicated
+    DuckDB under :func:`telemetry_dir`.
     """
-    url = os.environ.get("PROVISA_OPS_DB_URL")
+    url = configured_ops_store_url()
     if url:
         return url
     return f"duckdb:///{os.path.join(telemetry_dir(), 'telemetry.duckdb')}"

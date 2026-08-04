@@ -16,9 +16,8 @@ from __future__ import annotations
 
 import logging as _logging
 import os
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-import asyncpg
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -29,6 +28,9 @@ from provisa.discovery.analyzer import analyze
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
 from provisa.otel_compat import get_tracer as _get_tracer
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 _tracer = _get_tracer(__name__)
 
@@ -77,7 +79,7 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
         engine = state.federation_engine
         assert engine is not None
         async with pool.acquire() as _conn:
-            conn = cast(asyncpg.Connection, _conn)
+            conn = cast("Connection", _conn)
             fk_candidates = await collect_fk_candidates(
                 engine,
                 conn,
@@ -117,7 +119,7 @@ async def list_candidates():  # REQ-612
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        return await candidates_repo.list_pending(cast(asyncpg.Connection, _conn))
+        return await candidates_repo.list_pending(cast("Connection", _conn))
 
 
 @router.post("/candidates/{candidate_id}/accept")
@@ -127,7 +129,7 @@ async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None)
     assert pool is not None
     async with pool.acquire() as _conn:
         return await candidates_repo.accept(
-            cast(asyncpg.Connection, _conn), candidate_id, body.name if body else None
+            cast("Connection", _conn), candidate_id, body.name if body else None
         )
 
 
@@ -137,7 +139,7 @@ async def reject_candidate(candidate_id: int, body: RejectRequest):  # REQ-612
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        await candidates_repo.reject(cast(asyncpg.Connection, _conn), candidate_id, body.reason)
+        await candidates_repo.reject(cast("Connection", _conn), candidate_id, body.reason)
     return {"status": "rejected"}
 
 
@@ -159,5 +161,5 @@ async def clear_rejections():
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        count = await candidates_repo.clear_rejections(cast(asyncpg.Connection, _conn))
+        count = await candidates_repo.clear_rejections(cast("Connection", _conn))
     return {"deleted": count}

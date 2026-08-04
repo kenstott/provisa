@@ -251,6 +251,12 @@ markers = [
     "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",
     "cluster: helm/minikube deployment test; own run lane (pytest -m cluster) against a live minikube, deselected by default",
     "isolated: needs its own pytest process (shared module-singleton state or a non-restartable JVM); own lane in scripts/test-all, deselected by default",
+    "group_sources: tests/integration split — federated source connectors (auto-assigned, see tests/integration/conftest.py)",
+    "group_engines: tests/integration split — federation/native query engines (auto-assigned, see tests/integration/conftest.py)",
+    "group_protocols: tests/integration split — served protocols: bolt/pgwire/grpc/graphql/cypher/etc (auto-assigned, see tests/integration/conftest.py)",
+    "group_auth_org: tests/integration split — auth, org lifecycle, invites, bootstrap (auto-assigned, see tests/integration/conftest.py)",
+    "group_governance: tests/integration split — governance, RLS, security, rate limiting, schema/mutation admin (auto-assigned, see tests/integration/conftest.py)",
+    "group_pipeline: tests/integration split — materialization, execution pipeline, and everything not in the other groups (auto-assigned, see tests/integration/conftest.py)",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
