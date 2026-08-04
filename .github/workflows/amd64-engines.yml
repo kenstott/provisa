@@ -1,0 +1,91 @@
+name: amd64-only engines
+
+# The engines whose images are published linux/amd64 ONLY and that do not boot under QEMU on an
+# arm64 (Apple Silicon) dev box. Today that is Exasol: exasol/docker-db comes up far enough for
+# cored to start, then EXAStorage never finishes — /exa/data/storage stays empty, the DB instance
+# is never launched, port 8563 never listens, and the container can never turn healthy. The tests
+# therefore carry an arch skipif (tests/integration/test_exasol_source_e2e.py `_AMD64`), which
+# keeps the arm64 lanes green but means NOTHING runs them. This runner is amd64, so here they run
+# for real — a skip on the dev box is only acceptable while some lane still executes the test.
+#
+# Nothing is pre-provisioned: the isolated-stack harness (tests/conftest.py::_DockerServiceManager)
+# downloads the Trino plugin jars, brings up its own compose project on ephemeral ports, and
+# _heavy_db_service starts/stops exasol around the single test that needs it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/integration/test_exasol_*.py"
+      - "tests/integration/connector_source_harness.py"
+      - "tests/conftest.py"
+      - "tests/itest_stack.py"
+      - "docker-compose.core.yml"
+      - "docker-compose.test.yml"
+      - "provisa/federation/**"
+      - ".github/workflows/amd64-engines.yml"
+  pull_request:
+    paths:
+      - "tests/integration/test_exasol_*.py"
+      - "tests/integration/connector_source_harness.py"
+      - "tests/conftest.py"
+      - "tests/itest_stack.py"
+      - "docker-compose.core.yml"
+      - "docker-compose.test.yml"
+      - "provisa/federation/**"
+      - ".github/workflows/amd64-engines.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amd64-engines-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exasol:
+    name: Exasol (source + pipeline e2e)
+    runs-on: ubuntu-latest   # amd64 — the whole point of this workflow
+    # Exasol's own boot is minutes even natively, and it runs after the core stack (Trino's
+    # start_period alone is 120s) plus a zaychik image build.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install deps
+        run: uv sync --frozen --extra dev
+
+      # docker-compose.core.yml bind-mounts ./sharepoint.pfx into Trino. The file is a real
+      # certificate on a developer box and is gitignored, so it is absent here — and Docker
+      # silently creates a DIRECTORY in place of a missing bind-mount source, leaving an
+      # untracked directory named like a cert in the checkout. Create the empty file instead;
+      # no catalog in this lane reads it.
+      - name: Placeholder for the gitignored SharePoint cert mount
+        run: touch sharepoint.pfx
+
+      - name: Assert the runner is amd64
+        run: |
+          arch="$(uname -m)"
+          echo "runner arch: $arch"
+          # A silent arch change here would turn every test in this lane into a skip, i.e. a
+          # green run that executed nothing — exactly what this workflow exists to prevent.
+          [ "$arch" = "x86_64" ] || { echo "::error::amd64 lane running on $arch"; exit 1; }
+
+      # -o addopts="": the ini addopts carry the default-lane marker filter and
+      # --ignore=tests/e2e; the modules are named explicitly here instead.
+      # -rA prints a reason for every outcome, so a skip is visible in the log rather than
+      # hiding inside a pass count.
+      - name: Exasol tests
+        run: |
+          uv run pytest \
+            tests/integration/test_exasol_source_e2e.py \
+            tests/integration/test_exasol_pipeline_e2e.py \
+            -o addopts="" -p no:randomly -v -rA
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker ps -a && docker compose ls
