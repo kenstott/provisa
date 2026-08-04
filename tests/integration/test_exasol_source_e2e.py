@@ -60,6 +60,8 @@ import pytest
 import trino.dbapi
 import trino.exceptions
 
+from tests.itest_stack import ITEST_PROJECT as _ITEST_PROJECT
+
 # exasol/docker-db is published linux/amd64 only; under QEMU on arm64 (Apple Silicon) its
 # EXAStorage boot never completes, so the container can't become healthy. Runs for real on an
 # amd64 host/CI. Gate on the machine arch — a documented platform gap, not a dodge.
@@ -73,7 +75,6 @@ pytestmark = [
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
-_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", "provisa-itest")
 
 _EXASOL_USER = "sys"
 _EXASOL_PASSWORD = "exasol"  # image default (verified: exasol/docker-db, github.com/exasol/docker-db)

@@ -22,9 +22,7 @@ default in docker-compose.core.yml) up to 1 for the module, then back to 0.
 
 from __future__ import annotations
 
-import hashlib
 import os
-import re
 import shutil
 import subprocess
 import time
@@ -33,21 +31,13 @@ from pathlib import Path
 import pytest
 import trino.dbapi
 
+from tests.itest_stack import ITEST_PROJECT as _ITEST_PROJECT
+
 pytestmark = [pytest.mark.integration]
 
 _REPO_ROOT = Path(__file__).parents[2]
 
 
-def _default_itest_project() -> str:
-    root = os.path.abspath(str(_REPO_ROOT))
-    slug = re.sub(r"[^a-z0-9]+", "-", os.path.basename(root).lower()).strip("-") or "repo"
-    return f"provisa-itest-{slug}-{hashlib.sha1(root.encode()).hexdigest()[:6]}"
-
-
-# Operate on the SAME isolated stack the integration lane provisions (conftest's
-# provisa-itest project on core+test compose) — TRINO_PORT points at THAT
-# coordinator, so the worker must be scaled within THAT project to register.
-_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", _default_itest_project())
 _COMPOSE_FILES = [
     _REPO_ROOT / "docker-compose.core.yml",
     _REPO_ROOT / "docker-compose.test.yml",

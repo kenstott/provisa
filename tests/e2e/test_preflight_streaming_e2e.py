@@ -44,10 +44,26 @@ MV_NODE = "mat.summary"
 _INPUT = "orders"
 
 
-class _DuckEngine:
+class _StoreWriteFace:
+    """The engine's own write face (``EngineRuntime.land_source_table``/``persist_mv_table``) — the
+    one writer for a fire's rows. Mirrors ``EngineBackend``'s base default exactly: write through
+    ``store_writer`` against the engine's materialization store."""
+
+    def __init__(self, store_dsn: str):
+        self.store_dsn = store_dsn
+
+    async def land_source_table(self, **kw) -> str:
+        return await store_writer.land(self.store_dsn, **kw)
+
+    async def persist_mv_table(self, **kw) -> str:
+        return await store_writer.persist_land(self.store_dsn, **kw)
+
+
+class _DuckEngine(_StoreWriteFace):
     dialect = "duckdb"
 
-    def __init__(self, con, caps=frozenset({EngineCapability.ARROW_STREAM})):
+    def __init__(self, con, store_dsn, caps=frozenset({EngineCapability.ARROW_STREAM})):
+        super().__init__(store_dsn)
         self.con = con
         self._caps = caps
 
@@ -98,9 +114,9 @@ async def _run_query():
     return [{"id": 1, "region": "east"}, {"id": 2, "region": "west"}]
 
 
-def _processor(db, engine, store_dsn):
+def _processor(db, engine):
     generate = make_mv_generate(
-        store_dsn,
+        engine,
         schema="",
         table="summary",
         columns=_COLS,
@@ -137,7 +153,7 @@ async def test_continue_lands_output_when_input_is_clean(tmp_path):
     con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,5)) AS v(id, amount)")
     async with _cp(tmp_path) as db:
         await _fire(db, MV_NODE)
-        proc = _processor(db, _DuckEngine(con), store_dsn)
+        proc = _processor(db, _DuckEngine(con, store_dsn))
         async with db.acquire() as conn:
             assert await proc.process_pending(conn) is not None
         async with store_writer.store_connection(store_dsn) as sc:
@@ -151,7 +167,7 @@ async def test_abort_blocks_land_when_input_has_negative(tmp_path):
     con.execute("CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,-4)) AS v(id, amount)")
     async with _cp(tmp_path) as db:
         await _fire(db, MV_NODE)
-        proc = _processor(db, _DuckEngine(con), store_dsn)
+        proc = _processor(db, _DuckEngine(con, store_dsn))
         async with db.acquire() as conn:
             ev = await proc.process_pending(conn)
             assert ev is not None  # the error event id
@@ -178,9 +194,9 @@ async def test_abort_blocks_land_when_input_has_negative(tmp_path):
 
 
 def _mv_proc(db, con, store_dsn, *, gate_src):
-    engine = _DuckEngine(con)
+    engine = _DuckEngine(con, store_dsn)
     generate = make_mv_generate(
-        store_dsn,
+        engine,
         schema="",
         table="summary",
         columns=_COLS,
@@ -289,7 +305,7 @@ def _source_proc(db, store_dsn, *, rows, gate_src, node="s.orders"):
         return [dict(r) for r in rows]
 
     land = make_source_land(
-        store_dsn,
+        _StoreWriteFace(store_dsn),
         schema="",
         table="orders_src",
         columns=[("id", "bigint"), ("amount", "bigint")],

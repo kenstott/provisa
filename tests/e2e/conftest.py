@@ -16,6 +16,7 @@ import time
 import pytest
 
 from tests._noauth_config import pin_no_auth_config
+from tests.itest_stack import E2E_PROJECT, reap_orphaned_projects
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # MinIO (S3) lives in observability.yml, not core.yml, but Trino's `otel` Iceberg
@@ -70,7 +71,11 @@ os.environ.setdefault("PROVISA_CONFIG_REPLACE", "1")
 # and conversely a dev-side restart would tear down the e2e stack mid-run — they
 # would share containers, network, and lifecycle. A distinct project gives the
 # e2e stack its own containers and network so its lifecycle is self-contained.
-_PROJECT = os.environ.get("PROVISA_E2E_PROJECT", "provisa-e2e")
+#
+# The name is also per-SESSION (PID-suffixed, see tests/itest_stack.py): a fixed name has the
+# same defect one level down — two concurrent e2e sessions would share one project, and the
+# second one's `down` would SIGTERM the first one's containers mid-run.
+_PROJECT = E2E_PROJECT
 
 __all__ = ["docker_stack", "_disable_auth_for_e2e"]
 
@@ -165,6 +170,11 @@ def docker_stack():
     if os.environ.get("PROVISA_E2E_EXTERNAL_STACK"):
         yield
         return
+
+    # Sessions killed before their own teardown leave a PID-named project behind; clear those
+    # (and only those) so containers/volumes are not leaked forever. A live sibling session's
+    # project is never touched — that is the whole point of the per-session name.
+    reap_orphaned_projects()
 
     # Remove any volumes left by a crashed prior run before bringing the stack up:
     # a lingering pg_data would freeze the schema (see teardown note) since `up`

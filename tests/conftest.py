@@ -21,6 +21,7 @@ import trino
 
 from provisa.compiler import naming as _naming
 from tests.env_creds import load_provider_creds
+from tests.itest_stack import COMPOSE_ARGS, reap_orphaned_projects
 
 # Before ANY test module is imported: the cloud-DW e2es gate on os.environ inside module-level
 # skipif conditions evaluated at collection time, so live .env creds must be present now or those
@@ -42,8 +43,6 @@ os.environ.setdefault(
 )
 
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
-_CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
-_TEST_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.test.yml")
 
 def _ensure_odbcsysini() -> None:
     """Make the installed SQL Server ODBC driver discoverable by pyodbc for requires_sqlserver tests.
@@ -106,11 +105,11 @@ def _server_coverage_env() -> dict:
 # dev stack (the `provisa` project on default ports 5432/8080/9000/…). Core and
 # marker services share this one project's default network, so Trino reaches
 # kafka/mongo/etc. by service name without any external (dev) network.
-# Cross-worktree isolation: the compose project owns containers/networks/volumes, and every run
-# tears its project down before `up`. A NAME shared across checkouts makes concurrent sessions in
-# different worktrees kill each other's stacks mid-run (observed: `down` from one worktree
-# SIGTERMs the other's Trino, failing its `--wait` with exit 143). Ports are already per-run
-# ephemeral; the project name must be per-checkout too.
+# Session isolation: the compose project owns containers/networks/volumes, and every run tears
+# its project down before `up` — so any SHARED name makes concurrent sessions kill each other's
+# stacks mid-run (observed: `down` from one session SIGTERMs the other's Trino, failing its
+# `--wait` with exit 143). Ports are per-run ephemeral and the project name is per-SESSION; see
+# tests/itest_stack.py, which owns the name and reaps projects orphaned by killed sessions.
 def _needs_shared_stack(items) -> bool:
     """True when this session has any item that talks to the shared compose stack.
 
@@ -129,17 +128,7 @@ def _needs_shared_stack(items) -> bool:
     return not all(str(item.path).startswith(self_provisioned) for item in items)
 
 
-def _default_itest_project() -> str:
-    import hashlib
-    import re
-
-    root = os.path.abspath(_REPO_ROOT)
-    slug = re.sub(r"[^a-z0-9]+", "-", os.path.basename(root).lower()).strip("-") or "repo"
-    return f"provisa-itest-{slug}-{hashlib.sha1(root.encode()).hexdigest()[:6]}"
-
-
-_ITEST_PROJECT = os.environ.get("PROVISA_ITEST_PROJECT", _default_itest_project())
-_ITEST_COMPOSE_ARGS = ["-p", _ITEST_PROJECT, "-f", _CORE_COMPOSE, "-f", _TEST_COMPOSE]
+_ITEST_COMPOSE_ARGS = list(COMPOSE_ARGS)
 
 _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_kafka": ["kafka", "schema-registry"],
@@ -450,12 +439,18 @@ class _DockerServiceManager:
         # worktree-agnostically via the git common dir.
         _populate_trino_plugins()
 
-        # Every run reserves FRESH ephemeral host ports (_export_isolated_ports), so a stack
-        # left over from an earlier run publishes the wrong ports and is useless. `up` would
-        # then RECREATE each container in place, and compose's --wait races the recreate: it
-        # watches the container it saw at plan time, sees the SIGTERM exit of the old one, and
-        # fails the whole bring-up ("dependency failed to start: ... exited (143)"). Tear the
-        # stale project down first so `up` always starts from nothing.
+        # Sessions killed before their own teardown leave a PID-named project behind; clear
+        # those (and only those) so containers/memory are not leaked forever. A live sibling
+        # session's project is never touched — that is the whole point of the per-session name.
+        reap_orphaned_projects()
+
+        # The project name carries this session's PID, so nothing under it can predate this
+        # session — except a PID the OS recycled onto a pytest run. Every run reserves FRESH
+        # ephemeral host ports, so such a leftover publishes the wrong ports and is useless:
+        # `up` would RECREATE each container in place, and compose's --wait races the recreate
+        # (it watches the container it saw at plan time, sees the SIGTERM exit of the old one,
+        # and fails the bring-up with "dependency failed to start: ... exited (143)"). Tear our
+        # own project down first so `up` always starts from nothing.
         subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes", "--remove-orphans"],
             cwd=_REPO_ROOT,

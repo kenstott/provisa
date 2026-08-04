@@ -66,6 +66,7 @@ async def drop_org_schema(org_id: str) -> None:
         user=os.environ.get("PG_USER", "provisa"),
         password=os.environ.get("PG_PASSWORD", "provisa"),
         database=os.environ.get("PG_DATABASE", "provisa"),
+        timeout=15,
     )
     try:
         # Drop every schema the server derives from the org (org_<id>, plus _mv_cache /
@@ -75,8 +76,32 @@ async def drop_org_schema(org_id: str) -> None:
             f"org_{org_id}",
             f"org_{org_id}_%",
         )
-        for row in rows:
-            await conn.execute(f'DROP SCHEMA IF EXISTS "{row["nspname"]}" CASCADE')
+        names = [row["nspname"] for row in rows]
+        if not names:
+            return
+
+        # Callers reach here only after ``IsolatedServer.stop_process()``, so the server that owned
+        # these schemas is gone. Anything still holding a lock on them is a backend that outlived
+        # its client — pgbouncer keeps server-side connections in its pool after the client
+        # disconnects, and DROP SCHEMA ... CASCADE waits on their locks with NO timeout, hanging the
+        # whole pytest session at teardown (observed: 58 minutes, released only by SIGINT).
+        # Terminate exactly those backends. The stack is per-session (see tests/itest_stack.py), so
+        # every other backend on this PG belongs to this same session's already-stopped server.
+        await conn.execute(
+            """
+            SELECT pg_terminate_backend(l.pid)
+            FROM pg_locks l
+            JOIN pg_class c ON c.oid = l.relation
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = ANY($1::text[]) AND l.pid <> pg_backend_pid()
+            """,
+            names,
+        )
+        # A blocker that reappears after the terminate must fail loudly rather than wait forever;
+        # an unbounded lock wait here is what turned a passing run into a hung session.
+        await conn.execute("SET lock_timeout = '30s'")
+        for name in names:
+            await conn.execute(f'DROP SCHEMA IF EXISTS "{name}" CASCADE')
     finally:
         await conn.close()
 

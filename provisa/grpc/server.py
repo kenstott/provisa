@@ -29,6 +29,46 @@ import grpc.aio
 log = logging.getLogger(__name__)
 
 
+def _proto_value(field, value):
+    """Adapt a driver row value to the proto field's wire type.
+
+    Protobuf assignment is exact-typed: a ``datetime`` into a ``string`` field, or into a
+    ``google.protobuf.Timestamp`` field, raises ``TypeError: bad argument type for built-in
+    operation`` — the whole RPC dies with StatusCode.UNKNOWN. The driver's Python type is decided by
+    the PHYSICAL column (asyncpg hands back ``datetime`` for TIMESTAMP, ``Decimal`` for NUMERIC)
+    while the proto field type comes from the REGISTERED column type, so the two disagree by design
+    on any column whose registration widens or narrows the physical type. Every other transport
+    normalizes at its own serialization boundary (serialize_rows / Arrow / the pgwire encoders);
+    this is gRPC's.
+    """
+    from datetime import date, datetime
+
+    from google.protobuf.descriptor import FieldDescriptor
+
+    if field.type == FieldDescriptor.TYPE_MESSAGE:
+        if field.message_type.full_name == "google.protobuf.Timestamp":
+            ts = field.message_type._concrete_class()
+            ts.FromDatetime(value if isinstance(value, datetime) else datetime.fromisoformat(value))
+            return ts
+        return value
+    if field.type == FieldDescriptor.TYPE_STRING:
+        return value if isinstance(value, str) else str(value)
+    if field.type in (FieldDescriptor.TYPE_DOUBLE, FieldDescriptor.TYPE_FLOAT):
+        return float(value)
+    if field.type in (
+        FieldDescriptor.TYPE_INT32,
+        FieldDescriptor.TYPE_INT64,
+        FieldDescriptor.TYPE_UINT32,
+        FieldDescriptor.TYPE_UINT64,
+    ):
+        return int(value.toordinal()) if isinstance(value, (date, datetime)) else int(value)
+    if field.type == FieldDescriptor.TYPE_BOOL:
+        return bool(value)
+    if field.type == FieldDescriptor.TYPE_BYTES:
+        return value if isinstance(value, bytes) else str(value).encode()
+    return value
+
+
 def _pascal_to_snake(name: str) -> str:
     """Convert PascalCase to snake_case: CustomerSegments -> customer_segments."""
     return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", name).lower()
@@ -351,7 +391,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             kwargs = {}
             for i, col in enumerate(out_cols):
                 if i < len(row) and row[i] is not None:
-                    kwargs[col] = row[i]
+                    field = descriptor.fields_by_name.get(col)
+                    # No field => let msg_cls(**kwargs) raise on the unknown name rather than
+                    # dropping the column silently.
+                    kwargs[col] = _proto_value(field, row[i]) if field is not None else row[i]
             return kwargs
 
         # ENGINE route streams lazily off a worker thread — the full user result set never

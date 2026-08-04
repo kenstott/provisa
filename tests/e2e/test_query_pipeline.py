@@ -47,7 +47,7 @@ class TestFieldSelection:
     async def test_select_orders(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders { id amount } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -61,7 +61,7 @@ class TestFieldSelection:
     async def test_select_customers(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__customers { id name email } }", "role": "admin"},
+            json={"query": "{ sa__customers { id name email } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__customers"]
@@ -75,7 +75,7 @@ class TestWhereFilter:
             "/data/graphql",
             json={
                 "query": '{ sa__orders(where: { region: { eq: "us-east" } }) { id region } }',
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp.status_code == 200
@@ -86,7 +86,7 @@ class TestWhereFilter:
     async def test_filter_limit(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders(limit: 2) { id } }", "role": "admin"},
+            json={"query": "{ sa__orders(limit: 2) { id } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         assert len(resp.json()["data"]["sa__orders"]) <= 2
@@ -98,7 +98,7 @@ class TestNestedRelationship:
             "/data/graphql",
             json={
                 "query": "{ sa__orders { id amount customer { name email } } }",
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp.status_code == 200
@@ -117,7 +117,7 @@ class TestValidationErrors:
     async def test_unknown_field(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id bogus_field } }", "role": "admin"},
+            json={"query": "{ sa__orders { id bogus_field } }", "role": "org_admin"},
         )
         assert resp.status_code == 400
 
@@ -134,7 +134,7 @@ class TestValidationErrors:
     async def test_syntax_error(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id", "role": "admin"},
+            json={"query": "{ sa__orders { id", "role": "org_admin"},
         )
         assert resp.status_code in (400, 422, 500)
 
@@ -144,6 +144,6 @@ class TestRoleHeader:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__orders { id } }"},
-            headers={"X-Provisa-Role": "admin"},
+            headers={"X-Provisa-Role": "org_admin"},
         )
         assert resp.status_code == 200

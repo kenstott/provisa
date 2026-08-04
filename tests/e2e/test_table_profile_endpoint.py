@@ -71,7 +71,7 @@ class TestTableProfileEndpoint:
         # Semantic view SQL must resolve through the governed pipeline (regression).
         resp = await client.post(
             f"/admin/tables/{view_id}/profile",
-            headers={"X-Provisa-Role": "admin"},
+            headers={"X-Provisa-Role": "org_admin"},
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -82,11 +82,11 @@ class TestTableProfileEndpoint:
         # The profile of a view equals running its SQL through /data/sql.
         prof = await client.post(
             f"/admin/tables/{view_id}/profile",
-            headers={"X-Provisa-Role": "admin"},
+            headers={"X-Provisa-Role": "org_admin"},
         )
         direct = await client.post(
             "/data/sql",
-            json={"sql": "SELECT id, amount FROM orders", "role": "admin"},
+            json={"sql": "SELECT id, amount FROM orders", "role": "org_admin"},
         )
         assert prof.status_code == 200
         assert direct.status_code == 200
@@ -97,7 +97,7 @@ class TestTableProfileEndpoint:
     async def test_profile_missing_table_404(self, client):
         resp = await client.post(
             "/admin/tables/999999/profile",
-            headers={"X-Provisa-Role": "admin"},
+            headers={"X-Provisa-Role": "org_admin"},
         )
         assert resp.status_code == 404
 
@@ -111,7 +111,7 @@ class TestGovernedPipeline:
         from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
         assert client is not None  # fixture drives app lifespan → populates `state`
-        plan = await _govern_and_route("SELECT id, amount FROM orders", "admin")
+        plan = await _govern_and_route("SELECT id, amount FROM orders", "org_admin")
         result = await _execute_plan(plan, state)
         assert result.column_names == ["id", "amount"]
 

@@ -358,7 +358,12 @@ async def _sse_generator(  # REQ-219, REQ-258
     ) -> None:
         queue.put_nowait(payload)
 
-    conn = await pool.acquire()
+    # LISTEN needs ONE connection held open for the whole stream, so the acquire context manager is
+    # entered/exited by hand rather than wrapped around the yields (same shape as
+    # EventTriggerManager's dedicated listen connection). ``Database.acquire()`` is an
+    # @asynccontextmanager — there is no bare acquire/release pair to call.
+    acq = pool.acquire()
+    conn = await acq.__aenter__()
     try:
         await conn.add_listener(channel, _on_notify)
         log.info("SSE: listening on channel %s (role=%s)", channel, role_id)
@@ -401,7 +406,7 @@ async def _sse_generator(  # REQ-219, REQ-258
             await conn.remove_listener(channel, _on_notify)
         except Exception:
             log.debug("Failed to remove listener on %s", channel, exc_info=True)
-        await pool.release(conn)
+        await acq.__aexit__(None, None, None)
         log.info("SSE: disconnected from channel %s", channel)
 
 
