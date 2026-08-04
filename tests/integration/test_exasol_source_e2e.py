@@ -168,15 +168,19 @@ def tls_fingerprint(container_id: str) -> str:
     return match.group(1)
 
 
-def _exaplus(container_id: str, statement: str, fingerprint: str) -> None:
+def _exaplus(container_id: str, statement: str, fingerprint: str) -> str:
     """Run one SQL statement inside the exasol container via exaplus (no python driver installed;
-    the container already ships exaplus — see module docstring)."""
+    the container already ships exaplus — see module docstring). Returns exaplus's stdout.
+
+    ``-x`` is what makes a failed statement a failed process: without it exaplus reports the SQL
+    error on stdout and still exits 0, so a rejected CREATE SCHEMA looked like a successful seed and
+    the failure only surfaced later as an empty catalog."""
     proc = subprocess.run(
         [
             "docker", "exec", container_id,
             "exaplus", "-c", f"localhost/{fingerprint}:8563",
             "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
-            "-sql", statement,
+            "-x", "-sql", statement,
         ],  # fmt: skip
         capture_output=True,
         text=True,
@@ -188,6 +192,7 @@ def _exaplus(container_id: str, statement: str, fingerprint: str) -> None:
             f"exaplus failed (rc={proc.returncode}) for {statement!r}:\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
+    return proc.stdout
 
 
 def _seed_exasol() -> str:
@@ -221,6 +226,14 @@ def _seed_exasol() -> str:
             container_id,
             f"INSERT INTO {_SCHEMA}.{_TABLE} (ID, NAME) VALUES ({wid}, '{name}')",
             fingerprint,
+        )
+    # Read the seeded rows back through exasol itself. The engine reaching an empty catalog is the
+    # symptom of a seed that never landed, and the two are indistinguishable from the Trino side —
+    # so the seed asserts its own result here, at the source.
+    count = _exaplus(container_id, f"SELECT COUNT(*) FROM {_SCHEMA}.{_TABLE};", fingerprint)
+    if str(len(_WIDGETS)) not in count:
+        raise RuntimeError(
+            f"exasol seed did not land: SELECT COUNT(*) FROM {_SCHEMA}.{_TABLE} returned:\n{count}"
         )
     return fingerprint
 
