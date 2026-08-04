@@ -525,10 +525,14 @@ def _simulate_first_query_execution(
 ) -> list[dict]:
     """Simulate first query: call remote endpoint, materialise rows into Iceberg cache."""
     from provisa.api_source.engine_cache import ensure_cache_schema, create_and_insert
+    from provisa.executor.session import EngineSession
 
     conn.record_remote_call()
-    ensure_cache_schema(conn, loc)
-    create_and_insert(conn, loc, table_name, remote_rows, columns)
+    # engine_cache takes the isolated_sync() session surface, not a raw dbapi connection — the
+    # real EngineSession is what opens the cursor this fake records SQL through.
+    session = EngineSession(conn)
+    ensure_cache_schema(session, loc)
+    create_and_insert(session, loc, table_name, remote_rows, columns)
 
     fqn = f'{loc.catalog}.{loc.schema}."{table_name}"'
     conn._tables[fqn] = remote_rows
@@ -544,8 +548,9 @@ def _simulate_second_query_from_cache(
 ) -> tuple[list[dict], bool]:
     """Simulate second query: check cache, serve from Iceberg — no remote hop."""
     from provisa.api_source.engine_cache import table_exists
+    from provisa.executor.session import EngineSession
 
-    cache_hit = table_exists(conn, loc, table_name, ttl=ttl)
+    cache_hit = table_exists(EngineSession(conn), loc, table_name, ttl=ttl)
     if not cache_hit:
         return [], False
 

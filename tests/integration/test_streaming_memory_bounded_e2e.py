@@ -119,7 +119,49 @@ def _cap_address_space() -> None:
     import resource
 
     limit = _vm_bytes() + _HEADROOM
+    _trace(f"cap baseline={_vm_bytes()} limit={limit}")
     resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+
+
+# ---- worker address-space trace ---------------------------------------------
+# A capped worker can die in ways that carry no diagnosis: SIGSEGV when the exhausted address space
+# denies a stack expansion, or a bare non-zero exit. The parent then knows only an exit code. So the
+# worker appends address-space checkpoints to a plain file the parent reads after the join — the last
+# line written says how much VM the read had consumed and where it was, which distinguishes "the read
+# buffered the result" from "a post-cap library load / arena reservation ate the headroom".
+
+_TRACE_FD: int | None = None
+
+
+def _trace_open(path: str) -> None:
+    global _TRACE_FD
+    _TRACE_FD = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+
+
+def _trace(tag: str) -> None:
+    if _TRACE_FD is None:
+        return
+    os.write(_TRACE_FD, f"{tag} vm={_vm_bytes() // (1024 * 1024)}MiB\n".encode())
+
+
+def _count_rows(rows: Any, tag: str) -> int:
+    """Count a row iterator WITHOUT holding it, tracing address space every million rows."""
+    n = 0
+    for _ in rows:
+        n += 1
+        if n % 1_000_000 == 0:
+            _trace(f"{tag} rows={n}")
+    return n
+
+
+def _count_batch_rows(batches: Any, tag: str) -> int:
+    """Count an Arrow record-batch iterator WITHOUT holding the batches, tracing every 16 batches."""
+    n = 0
+    for i, batch in enumerate(batches):
+        n += batch.num_rows
+        if i % 16 == 0:
+            _trace(f"{tag} batch={i} rows={n}")
+    return n
 
 
 def _peak_rss_bytes() -> int:
@@ -131,7 +173,7 @@ def _peak_rss_bytes() -> int:
     return peak if sys.platform == "darwin" else peak * 1024
 
 
-def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool = True) -> None:
+def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool, trace_path: str) -> None:
     """Run one read VARIANT; report ('ok', n, peak_rss_bytes) | ('mem',) | ('err', repr).
 
     Streaming variants count rows WITHOUT accumulating (peak = one batch). Materializing variants build
@@ -139,15 +181,12 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool = True) -> None
     Linux-only) and a materializing read busts it; without ``cap`` every variant runs to completion and
     the reported peak RSS is the metric that proves streaming stays bounded (cross-platform, REQ-1220)."""
     try:
-        # pyarrow's default (jemalloc/mimalloc) pool and OpenBLAS reserve large VIRTUAL arenas up front
-        # that would bust RLIMIT_AS regardless of whether the read streams. Force plain malloc + single
-        # thread so the address-space cap tracks ACTUAL usage — otherwise the arrow path aborts on the
-        # arena reservation, a false negative unrelated to result buffering (REQ-1220).
-        os.environ["ARROW_DEFAULT_MEMORY_POOL"] = "system"
-        os.environ["OPENBLAS_NUM_THREADS"] = "1"
-        os.environ["OMP_NUM_THREADS"] = "1"
-        os.environ["MALLOC_ARENA_MAX"] = "2"
-
+        _trace_open(trace_path)
+        _trace(f"worker-start variant={variant} cap={cap}")
+        # The allocator/thread knobs this worker runs under (MALLOC_ARENA_MAX, ARROW_DEFAULT_MEMORY_POOL,
+        # OPENBLAS/OMP thread caps) are exported by _run_variant in the PARENT and inherited at exec —
+        # see the comment there. They cannot be set here: glibc has already read MALLOC_ARENA_MAX by the
+        # time any worker code runs.
         import asyncio
 
         # DIRECT route (REQ-1190): the single-reachable-source driver's server-side cursor, exercised
@@ -227,12 +266,16 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool = True) -> None
         if cap:
             _cap_address_space()
 
+        _trace(f"runtime-ready variant={variant}")
+
         if variant == "pg_row_stream":
             res = rt.run_sync(_SQL)  # named server-side cursor
-            n = sum(1 for _ in res.iter_rows())
+            _trace("portal-open")
+            n = _count_rows(res.iter_rows(), "pg_row_stream")
         elif variant == "pg_arrow_stream":
-            _schema, gen = rt.run_arrow_stream(_SQL)  # ADBC record-batch reader
-            n = sum(b.num_rows for b in gen)
+            gen = rt.run_arrow_stream(_SQL)[1]  # ADBC record-batch reader; [0] is the schema
+            _trace("adbc-reader-open")
+            n = _count_batch_rows(gen, "pg_arrow_stream")
         elif variant == "pg_materialized":
             res = asyncio.run(rt.run(_SQL))  # fetchall → full Python list (control)
             n = len(res.rows)
@@ -295,14 +338,27 @@ def big_pg():
 
 
 def _run_variant(dsn: str, variant: str, cap: bool = True) -> tuple:
+    # Allocator knobs MUST be exported HERE, in the parent, before the spawn — a "spawn" child execs a
+    # fresh interpreter and inherits this environment at exec, which is the only moment glibc reads
+    # MALLOC_ARENA_MAX. Setting it inside the worker is far too late: glibc has already initialized
+    # malloc, so every thread build_pg_engine starts claims its own 64 MiB arena and a plain
+    # fetchmany(1000) reserves ~726 MiB of address space instead of ~86 MiB — a cap bust with nothing
+    # to do with result buffering, and nondeterministic (arena count varies with thread scheduling).
+    # ARROW_DEFAULT_MEMORY_POOL/thread caps ride along for the same reason: keep the capped address
+    # space tracking ACTUAL usage, so the cap measures streaming and not allocator reservations.
+    os.environ["MALLOC_ARENA_MAX"] = "2"
+    os.environ["ARROW_DEFAULT_MEMORY_POOL"] = "system"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["OMP_NUM_THREADS"] = "1"
     ctx = mp.get_context("spawn")
     q: mp.Queue = ctx.Queue()
-    proc = ctx.Process(target=_mem_worker, args=(dsn, variant, q, cap))
+    trace = os.path.join(tempfile.mkdtemp(prefix="provisa_mem_trace_"), f"{variant}.trace")
+    proc = ctx.Process(target=_mem_worker, args=(dsn, variant, q, cap, trace))
     proc.start()
     proc.join(timeout=300)
     if proc.is_alive():
         proc.terminate()
-        pytest.fail(f"variant {variant!r} did not finish within 300s")
+        pytest.fail(f"variant {variant!r} did not finish within 300s\n{_read_trace(trace)}")
     # A cap bust exits with _MEM_EXIT_CODE and puts nothing on the queue (the feeder thread can't start
     # under the exhausted address space) — read the outcome from the exit code, not the queue.
     if proc.exitcode == _MEM_EXIT_CODE:
@@ -310,7 +366,18 @@ def _run_variant(dsn: str, variant: str, cap: bool = True) -> tuple:
     try:
         return q.get(timeout=10)
     except queue.Empty:
-        pytest.fail(f"variant {variant!r} produced no result (worker exitcode={proc.exitcode})")
+        pytest.fail(
+            f"variant {variant!r} produced no result (worker exitcode={proc.exitcode})\n"
+            f"{_read_trace(trace)}"
+        )
+
+
+def _read_trace(path: str) -> str:
+    """The worker's address-space checkpoints, for a failure message. Missing means the worker died
+    before it opened the file — itself the diagnosis, so report that rather than an empty string."""
+    if not os.path.exists(path):
+        return "[worker address-space trace: file never created]"
+    return "[worker address-space trace]\n" + open(path).read()
 
 
 # Peak-RSS ceiling for a streaming read of ~1 GiB of rows: a bounded scan holds a handful of fetch

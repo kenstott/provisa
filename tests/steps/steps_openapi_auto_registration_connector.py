@@ -59,6 +59,7 @@ from provisa.api_source.engine_cache import (
     table_known_live,
     _TABLE_EXISTS_CACHE,
 )
+from provisa.executor.session import EngineSession
 
 scenarios("../features/REQ-601.feature")
 scenarios("../features/REQ-316.feature")
@@ -306,7 +307,11 @@ def _build_req318_cache_key(source_id: str, operation_path: str, native_args: di
 
 
 def _make_fake_trino_conn(table_name: str, loc: CacheLocation, ttl: int) -> mock.MagicMock:
-    """Return a mock Trino connection that simulates a live cache table."""
+    """Return a mock RAW Trino dbapi connection that simulates a live cache table.
+
+    engine_cache takes the ``isolated_sync()`` session surface, not a raw dbapi connection, so
+    steps wrap this in a real ``EngineSession`` — that way the probe assertions below observe the
+    cursor calls the production wrapper actually makes, instead of restating its contract."""
     conn = mock.MagicMock()
     cur = mock.MagicMock()
     conn.cursor.return_value = cur
@@ -1130,7 +1135,7 @@ def given_get_result_cached_in_trino(shared_data):
     # in-process TTL cache (matching real table_exists behaviour on cache miss).
     conn = _make_fake_trino_conn(table_name, loc, _REQ318_TTL)
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
-    assert table_exists(conn, loc, table_name, ttl=_REQ318_TTL) is True
+    assert table_exists(EngineSession(conn), loc, table_name, ttl=_REQ318_TTL) is True
     assert conn.cursor.called, "first access must probe Trino (cache miss)"
 
     shared_data["loc"] = loc
@@ -1164,7 +1169,7 @@ def then_served_from_trino_zero_rest(shared_data):
     assert table_known_live(loc, table_name) is True
 
     # table_exists returns True from cache without touching the connection.
-    assert table_exists(second_conn, loc, table_name, ttl=_REQ318_TTL) is True
+    assert table_exists(EngineSession(second_conn), loc, table_name, ttl=_REQ318_TTL) is True
     assert not second_conn.cursor.called, (
         "cache hit must not issue any Trino probe (zero upstream calls)"
     )
