@@ -26,15 +26,24 @@ subprocesses, compose shell-outs) resolves the SAME project as its parent, and a
 A PID-suffixed name cannot be reclaimed by the next run the way a fixed one was, so
 :func:`reap_orphaned_projects` removes the projects of sessions that died before their own
 teardown ran.
+
+Isolation is necessary but not sufficient: independent stacks still share ONE Docker VM's
+memory, and two full stacks do not fit in the 11.7 GiB VM this suite runs against — the second
+session's containers are OOM-killed (exit 137) rather than merely slowed. :func:`acquire_stack_slot`
+is the admission gate that turns that into serialization: a session waits for a free slot before
+provisioning, and the slot count is derived from the VM's actual memory, so a larger host still
+runs sessions concurrently.
 """
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import re
 import subprocess
+import time
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CORE_COMPOSE = os.path.join(_REPO_ROOT, "docker-compose.core.yml")
@@ -111,3 +120,95 @@ def reap_orphaned_projects() -> None:
             cwd=_REPO_ROOT,
             check=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# Cross-session admission control
+# ---------------------------------------------------------------------------
+
+# Peak resident memory one pytest session's stack occupies in the Docker VM: the core services
+# (postgres, trino, redis, pgbouncer, minio, zaychik) plus the non-heavy marker services
+# (kafka/schema-registry/debezium, elasticsearch, neo4j, mongodb, fuseki, …) plus the single
+# heavy engine _heavy_db_service keeps live during a heavy-marked test. Measured against the
+# 11.7 GiB Docker VM this suite runs on, where a second concurrent session's containers were
+# OOM-killed (exit 137) rather than merely slowed — so on that host this budget deliberately
+# yields ONE slot and sessions serialize. A 32 GiB CI host gets 5 and stays concurrent.
+_SESSION_MEMORY_BUDGET = 6 * 1024**3
+
+# NOT under /tmp: that is cleared on restart, and a slot directory that vanishes mid-run would
+# silently un-gate every session holding a slot.
+_SLOT_DIR = os.path.join(os.path.expanduser("~"), ".provisa", "test-stack-slots")
+
+_slot_fd: int | None = None
+
+
+def _docker_vm_memory() -> int:
+    """Total memory the Docker VM can hand to containers, in bytes."""
+    out = subprocess.run(
+        ["docker", "info", "--format", "{{.MemTotal}}"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return int(out)
+
+
+def concurrent_session_limit() -> int:
+    """How many pytest sessions this host's Docker VM can hold stacks for at once."""
+    return max(1, _docker_vm_memory() // _SESSION_MEMORY_BUDGET)
+
+
+def acquire_stack_slot(timeout: float = 7200.0) -> None:
+    """Block until this session may provision a Docker stack, then hold the slot until exit.
+
+    Per-session projects and ephemeral ports make concurrent sessions independent of each
+    OTHER, but they all draw on the same Docker VM memory. Where that memory cannot hold two
+    stacks the sessions must serialize, not merely isolate — otherwise the second bring-up
+    OOM-kills containers in both.
+
+    The slots are ``flock``-held files, so a session that dies by SIGKILL — or a machine that
+    loses power — releases its slot through the kernel rather than leaving a stale marker for
+    the next run to reason about. Idempotent: the itest and e2e stacks both call this, and a
+    session that provisions both must not deadlock against its own slot.
+    """
+    global _slot_fd
+    if _slot_fd is not None:
+        return
+    limit = concurrent_session_limit()
+    os.makedirs(_SLOT_DIR, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    announced = False
+    while True:
+        for slot in range(limit):
+            fd = os.open(os.path.join(_SLOT_DIR, f"slot-{slot}"), os.O_RDWR | os.O_CREAT, 0o644)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                os.close(fd)
+                continue
+            os.ftruncate(fd, 0)
+            os.write(fd, f"{os.getpid()}\n".encode())
+            _slot_fd = fd
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"waited {timeout:.0f}s for one of {limit} Docker stack slot(s) in {_SLOT_DIR}; "
+                "another pytest session is still holding every slot"
+            )
+        if not announced:
+            print(
+                f"[conftest] {limit} Docker stack slot(s) for this VM's memory are taken; "
+                "waiting for a concurrent pytest session to finish"
+            )
+            announced = True
+        time.sleep(5)
+
+
+def release_stack_slot() -> None:
+    """Hand this session's slot to whoever is waiting."""
+    global _slot_fd
+    if _slot_fd is None:
+        return
+    fcntl.flock(_slot_fd, fcntl.LOCK_UN)
+    os.close(_slot_fd)
+    _slot_fd = None

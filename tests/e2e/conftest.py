@@ -16,7 +16,7 @@ import time
 import pytest
 
 from tests._noauth_config import pin_no_auth_config
-from tests.itest_stack import E2E_PROJECT, reap_orphaned_projects
+from tests.itest_stack import E2E_PROJECT, acquire_stack_slot, reap_orphaned_projects
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # MinIO (S3) lives in observability.yml, not core.yml, but Trino's `otel` Iceberg
@@ -175,6 +175,12 @@ def docker_stack():
     # (and only those) so containers/volumes are not leaked forever. A live sibling session's
     # project is never touched — that is the whole point of the per-session name.
     reap_orphaned_projects()
+
+    # This stack draws on the same Docker VM memory as every other session's; where the VM holds
+    # only one, this blocks until the other session finishes rather than provisioning into memory
+    # that is not there. No-op when tests/conftest.py already took this session's slot — a session
+    # that provisions both stacks must not wait on itself.
+    acquire_stack_slot()
 
     # Remove any volumes left by a crashed prior run before bringing the stack up:
     # a lingering pg_data would freeze the schema (see teardown note) since `up`

@@ -21,7 +21,12 @@ import trino
 
 from provisa.compiler import naming as _naming
 from tests.env_creds import load_provider_creds
-from tests.itest_stack import COMPOSE_ARGS, reap_orphaned_projects
+from tests.itest_stack import (
+    COMPOSE_ARGS,
+    acquire_stack_slot,
+    reap_orphaned_projects,
+    release_stack_slot,
+)
 
 # Before ANY test module is imported: the cloud-DW e2es gate on os.environ inside module-level
 # skipif conditions evaluated at collection time, so live .env creds must be present now or those
@@ -43,6 +48,7 @@ os.environ.setdefault(
 )
 
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
+
 
 def _ensure_odbcsysini() -> None:
     """Make the installed SQL Server ODBC driver discoverable by pyodbc for requires_sqlserver tests.
@@ -319,14 +325,11 @@ if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EX
     _allocate_itest_ports()
 
 
-
 # The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the release
 # they come from. Kept in step with .github/workflows/build-dmg.yml's download-plugins job —
 # CI and the test harness must fetch the same build, or a connector behaves differently here
 # than in the shipped image.
-_TRINO_PLUGIN_RELEASE = (
-    "https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
-)
+_TRINO_PLUGIN_RELEASE = "https://github.com/kenstott/calcite/releases/download/engine-v0.32.0"
 _TRINO_PLUGINS = ("trino-sharepoint", "trino-splunk", "trino-file")
 
 
@@ -412,6 +415,37 @@ def _link_trino_plugins_from_primary(plugins: str) -> None:
             os.symlink(src, dst)
 
 
+def _marker_batches(items) -> list[list[str]]:
+    """The bring-up batches for this run: core services first, then one batch per marker.
+
+    Which marker services this run needs (kafka/mongo/neo4j/…). schema-registry and debezium
+    ride along with kafka in the SAME isolated project, so they reach it on the project network
+    by service name — no external dev network. Heavy engines (_HEAVY_MARKERS) are deliberately
+    excluded here and provisioned per-test by _heavy_db_service, so only one is ever live at a
+    time.
+
+    Batching, rather than one `up --wait` over the whole set, bounds how many containers are
+    STARTING at once. Boot is where the marker services cost the most memory — several JVMs
+    (kafka, elasticsearch, neo4j, debezium) sizing their heaps simultaneously peaks far above
+    their steady state, and on the 11.7 GiB VM that peak is what OOM-kills them. Each batch
+    reaches its healthcheck and settles before the next one starts; the steady-state set is
+    unchanged, so nothing a later test needs has gone away.
+    """
+    batches = [list(_CORE_SERVICES)]
+    started = set(_CORE_SERVICES)
+    for marker, services in _MARKER_SERVICES.items():
+        if marker in _HEAVY_MARKERS:
+            continue
+        if not any(item.get_closest_marker(marker) for item in items):
+            continue
+        batch = sorted(set(services) - started)
+        if not batch:
+            continue
+        started.update(batch)
+        batches.append(batch)
+    return batches
+
+
 class _DockerServiceManager:
     def pytest_collection_finish(self, session):
         if os.environ.get("PYTEST_NO_DOCKER"):
@@ -419,18 +453,7 @@ class _DockerServiceManager:
         if not _needs_shared_stack(session.items):
             return
 
-        # Which marker services this run needs (kafka/mongo/neo4j/…). schema-registry
-        # and debezium ride along with kafka in the SAME isolated project, so they
-        # reach it on the project network by service name — no external dev network.
-        # Heavy engines (_HEAVY_MARKERS) are deliberately excluded here and provisioned
-        # per-test by _heavy_db_service, so only one is ever live at a time.
-        needed: set[str] = set(_CORE_SERVICES)
-        for item in session.items:
-            for marker, services in _MARKER_SERVICES.items():
-                if marker in _HEAVY_MARKERS:
-                    continue
-                if item.get_closest_marker(marker):
-                    needed.update(services)
+        batches = _marker_batches(session.items)
 
         # Trino's custom plugin jars (trino/plugins/*) are gitignored build artifacts:
         # present only where they were built (the primary checkout). A fresh worktree
@@ -443,6 +466,12 @@ class _DockerServiceManager:
         # those (and only those) so containers/memory are not leaked forever. A live sibling
         # session's project is never touched — that is the whole point of the per-session name.
         reap_orphaned_projects()
+
+        # Per-session projects and ports make concurrent sessions independent of each other, but
+        # they still share one Docker VM's memory. Where that memory holds only one stack this
+        # blocks until the other session finishes, i.e. serializes; where it holds several,
+        # sessions stay concurrent. Held until sessionfinish.
+        acquire_stack_slot()
 
         # The project name carries this session's PID, so nothing under it can predate this
         # session — except a PID the OS recycled onto a pytest run. Every run reserves FRESH
@@ -458,12 +487,15 @@ class _DockerServiceManager:
         )
 
         # Provision an ISOLATED stack: dedicated project + the ephemeral ports already
-        # exported at import time, its own network — the dev stack is never touched.
-        subprocess.run(
-            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(needed)],
-            cwd=_REPO_ROOT,
-            check=True,
-        )
+        # exported at import time, its own network — the dev stack is never touched. One
+        # `up --wait` per batch, so each set is healthy before the next one starts booting
+        # (see _marker_batches).
+        for batch in batches:
+            subprocess.run(
+                ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *batch],
+                cwd=_REPO_ROOT,
+                check=True,
+            )
 
     def pytest_sessionfinish(self, session, exitstatus):  # pyright: ignore
         # Tests own the services they provision — including reaping them. Tear the
@@ -475,12 +507,21 @@ class _DockerServiceManager:
         # runs this suite INSIDE a container with only pgserver — so skip teardown too,
         # else sessionfinish raises FileNotFoundError('docker') and masks the results.
         if os.environ.get("PYTEST_DOCKER_KEEP") or os.environ.get("PYTEST_NO_DOCKER"):
+            # PYTEST_DOCKER_KEEP leaves the stack up, so its memory is still spoken for and the
+            # slot must stay held; PYTEST_NO_DOCKER never took one. Either way, nothing to
+            # release here.
             return
-        subprocess.run(
-            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],
-            cwd=_REPO_ROOT,
-            check=False,
-        )
+        try:
+            subprocess.run(
+                ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],
+                cwd=_REPO_ROOT,
+                check=False,
+            )
+        finally:
+            # Only after the containers are gone is the VM memory actually free for the next
+            # session — releasing before teardown would let it start provisioning into memory
+            # this session has not given back yet.
+            release_stack_slot()
 
 
 def pytest_configure(config):
