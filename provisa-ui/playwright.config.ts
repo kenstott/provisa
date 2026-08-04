@@ -59,6 +59,14 @@ const E2E_TRINO_PGWIRE_PORT = Number(process.env.PROVISA_E2E_TRINO_PGWIRE_PORT ?
 const E2E_GRAPHQL_DEMO_PORT = Number(process.env.PROVISA_E2E_GRAPHQL_DEMO_PORT ?? 8907);
 const E2E_PETSTORE_PORT = Number(process.env.PROVISA_E2E_PETSTORE_PORT ?? 8908);
 const E2E_DATA_DIR = process.env.PROVISA_E2E_DATA_DIR ?? path.resolve(__dirname, "../.playwright-data");
+// This config module is evaluated in EVERY process Playwright starts: the runner once, and then each
+// worker (and each replacement worker a retry spawns). Only the runner starts the webServers, so only
+// the runner may touch on-disk run state — a worker re-running the seed steps below would delete the
+// control-plane files and overwrite the config out from under the already-running backend. That is
+// exactly what produced mid-run "no such table: roles / node_ids / rel_ids": the SQLite files were
+// unlinked while the backend held them, and its next connection opened a fresh empty database.
+// Workers get TEST_WORKER_INDEX in their env; the runner process never has it.
+const IS_RUNNER = process.env.TEST_WORKER_INDEX === undefined;
 // Lane selection. `core` is every spec that runs on the DuckDB (NativeBackend) backend — 37 of the
 // 39 specs — and needs no container at all: the control plane runs on SQLite (see
 // E2E_CONTROL_PLANE below) and the cache is embedded fakeredis (neither config sets
@@ -117,16 +125,18 @@ const E2E_TRINO_ORG_ID = process.env.PROVISA_E2E_TRINO_ORG_ID ?? "e2e_trino";
 // none) so PUT /admin/config below can run unauthenticated, matching a fresh install.
 const E2E_CONFIG_PATH =
   process.env.PROVISA_E2E_CONFIG ?? path.resolve(E2E_DATA_DIR, "provisa.yaml");
-fs.mkdirSync(path.dirname(E2E_CONFIG_PATH), { recursive: true });
-fs.copyFileSync(
-  path.resolve(__dirname, "../config/provisa-install.yaml"),
-  E2E_CONFIG_PATH,
-);
+if (IS_RUNNER) {
+  fs.mkdirSync(path.dirname(E2E_CONFIG_PATH), { recursive: true });
+  fs.copyFileSync(
+    path.resolve(__dirname, "../config/provisa-install.yaml"),
+    E2E_CONFIG_PATH,
+  );
+}
 // Trino backend uses a minimal config (domains only, no pre-registered sources) so the
 // TrinoPgBackedConnector PG-host networking requirement is not triggered at startup.
 const E2E_TRINO_CONFIG_PATH =
   process.env.PROVISA_E2E_TRINO_CONFIG ?? path.resolve(E2E_TRINO_DATA_DIR, "provisa-trino.yaml");
-if (RUNS_TRINO) {
+if (RUNS_TRINO && IS_RUNNER) {
   fs.mkdirSync(path.dirname(E2E_TRINO_CONFIG_PATH), { recursive: true });
   fs.copyFileSync(
     path.resolve(__dirname, "../config/provisa-trino-e2e.yaml"),
@@ -191,8 +201,10 @@ function resolveControlPlanePort(): string {
 // global-setup's PUT /admin/config, so nothing is lost by starting empty.
 function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
   fs.mkdirSync(dataDir, { recursive: true });
-  for (const f of fs.readdirSync(dataDir)) {
-    if (/\.db(-wal|-shm)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
+  if (IS_RUNNER) {
+    for (const f of fs.readdirSync(dataDir)) {
+      if (/\.db(-wal|-shm)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
+    }
   }
   return {
     TENANT_DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, "tenant.db")}`,

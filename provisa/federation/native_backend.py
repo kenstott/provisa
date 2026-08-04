@@ -42,6 +42,18 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
+# Seeded system sources that name no attachable remote, so attach_source must never see them.
+#
+# - provisa-admin is the control plane itself; on the native tier its catalog comes from
+#   attach_control_plane (below), which owns the whole `provisa_admin` catalog for both the SQLite
+#   and Postgres backends. The seeded row carries the control plane's dialect and address but no
+#   `path`, so a SQLite deployment attached the literal string "None" as a database file — DuckDB
+#   created that file, and every later information_schema scan (which reads every attached catalog)
+#   failed with "file is not a database".
+# - __derived__ is the virtual-view sentinel: "the sentinel has no address of its own"
+#   (api/startup_seed.py). Its rows are compiler-emitted views, never a remote database.
+_NO_REMOTE_SOURCE_IDS = frozenset({"provisa-admin", "__derived__"})
+
 
 class NativeEngineBackend(EngineBackend):
     """In-process execution terminal shared by all native engines. ``is_connected`` is inherited True
@@ -134,6 +146,8 @@ class NativeEngineBackend(EngineBackend):
             """Attach one table into the runtime; skip if already attached or attach fails."""
             key = f"{schema_name}.{table_name}"
             if key in self._attached:
+                return
+            if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
                 return
             merged = SimpleNamespace(
                 id=getattr(src, "id", None),
