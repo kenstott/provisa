@@ -252,11 +252,15 @@ services:
     volumes:
       - exasol_test_data:/exa
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8563' || exit 1"]
+      # A TCP probe on 8563 is NOT readiness: the listener opens while EXAStorage is still
+      # loading the database, and every login in that window fails with "no-8563". The probe
+      # therefore executes a statement — the same exaplus the tests use — so "healthy" means
+      # the engine accepts SQL.
+      test: ["CMD-SHELL", "exaplus -c localhost:8563 -u sys -p exasol -sql 'SELECT 1;' -q >/dev/null 2>&1 || exit 1"]
       interval: 10s
-      timeout: 10s
-      retries: 30
-      start_period: 120s
+      timeout: 15s
+      retries: 60
+      start_period: 180s
 
   singlestore:
     restart: unless-stopped
@@ -296,6 +300,19 @@ services:
       SPLUNK_PASSWORD: Provisa_2026!
     volumes:
       - splunk_test_data:/opt/splunk/var
+      # The Common Information Model add-on, vendored by scripts/fetch-splunk-cim.sh (Splunkbase
+      # app 1621, credentials in .env). It is what makes this fixture resemble a real Splunk
+      # deployment: CIM's 23 normalized data models — Authentication, Web, Network_Traffic, … —
+      # each surface as one Calcite/Trino table, whereas a stock container offers only its two
+      # sample models. Read-write because Splunk writes local/ and metadata/local.meta at load.
+      # Absent (script never run) the directory mounts empty; the splunk tests fail loudly on the
+      # missing models rather than skipping.
+      - ./.splunk-cim/Splunk_SA_CIM:/opt/splunk/etc/apps/Splunk_SA_CIM
+      # The technology add-on that maps the fixture's events onto CIM's Authentication model.
+      # Splunk_SA_CIM ships the models only; selecting events into one (tag=authentication) and
+      # scoping it to an index (the cim_*_indexes macro) is always a separate add-on, in the
+      # fixture exactly as in production. See tests/fixtures/splunk_ta_provisa/README.md.
+      - ./tests/fixtures/splunk_ta_provisa:/opt/splunk/etc/apps/provisa_cim_ta
     healthcheck:
       test: ["CMD", "/sbin/checkstate.sh"]
       interval: 15s

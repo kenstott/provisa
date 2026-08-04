@@ -140,7 +140,7 @@ def _exasol_container_id() -> str:
 def _exaplus(container_id: str, statement: str) -> None:
     """Run one SQL statement inside the exasol container via exaplus (no python driver installed;
     the container already ships exaplus — see module docstring)."""
-    subprocess.run(
+    proc = subprocess.run(
         [
             "docker", "exec", container_id,
             "exaplus", "-c", "localhost:8563", "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
@@ -148,25 +148,31 @@ def _exaplus(container_id: str, statement: str) -> None:
         ],  # fmt: skip
         capture_output=True,
         text=True,
-        check=True,
     )
+    if proc.returncode != 0:
+        # exaplus writes the actual reason (login refused, "no-8563", syntax error) to stdout;
+        # CalledProcessError's repr shows neither stream, which made a CI failure undiagnosable.
+        raise RuntimeError(
+            f"exaplus failed (rc={proc.returncode}) for {statement!r}:\n"
+            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
 
 
 def _seed_exasol() -> None:
     """Create the PROVISA.WIDGETS schema/table and insert 3 rows, retrying while the engine
     finishes booting right after the healthcheck first passes."""
     container_id = _exasol_container_id()
-    deadline = time.monotonic() + 90
-    last_err: subprocess.CalledProcessError | None = None
+    deadline = time.monotonic() + 300
+    last_err: RuntimeError | None = None
     while time.monotonic() < deadline:
         try:
             _exaplus(container_id, f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
             break
-        except subprocess.CalledProcessError as e:
+        except RuntimeError as e:
             last_err = e
             time.sleep(3)
     else:
-        raise RuntimeError(f"exasol schema creation never succeeded: {last_err!r}")
+        raise RuntimeError(f"exasol schema creation never succeeded: {last_err}")
 
     _exaplus(
         container_id,
