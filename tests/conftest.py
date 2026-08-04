@@ -536,6 +536,40 @@ def pytest_configure(config):
     )
 
 
+def _dump_service_diagnostics(services: list[str]) -> None:
+    """Print each service's healthcheck output and log tail to the captured test output.
+
+    A failed ``up --wait`` says only that a container is unhealthy. The reason lives in two places
+    the caller never sees: the last healthcheck invocation's own stdout (``.State.Health.Log``) and
+    the engine's log. Both are printed here because the caller's cleanup removes the container
+    immediately afterwards.
+    """
+    for service in services:
+        ids = subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "ps", "-aq", service],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.split()
+        for container in ids:
+            health = subprocess.run(
+                ["docker", "inspect", "--format", "{{json .State}}", container],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            print(f"[conftest] {service} state: {health.stdout.strip()}")
+        logs = subprocess.run(
+            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "logs", "--tail=200", service],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        print(f"[conftest] {service} logs:\n{logs.stdout}{logs.stderr}")
+
+
 @pytest.fixture
 def _heavy_db_service(request):  # pyright: ignore
     """Bring up ONLY this test's heavy engine, then tear it down when the test ends.
@@ -557,11 +591,18 @@ def _heavy_db_service(request):  # pyright: ignore
         yield
         return
     try:
-        subprocess.run(
-            ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(services)],
-            cwd=_REPO_ROOT,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(services)],
+                cwd=_REPO_ROOT,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv` below then
+            # destroys the evidence — on CI that left an exasol boot failure with no engine log and
+            # no healthcheck output at all. Dump both before the container goes away.
+            _dump_service_diagnostics(sorted(services))
+            raise
         yield
     finally:
         # Reclaim memory immediately (-s stop, -f force, -v drop anon volumes) so the next
