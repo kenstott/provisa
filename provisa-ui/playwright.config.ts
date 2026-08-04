@@ -181,12 +181,19 @@ function resolveControlPlanePort(): string {
 
 // SQLite control plane: two files under the lane's own data dir. ORG_ID isolation is by FILE here,
 // not by schema — Capabilities.schemas is false on SQLite, so OrgRouter (core/database.py) puts each
-// org in a sibling org_<id>.db. The connect listener there sets journal_mode=WAL, which is what lets
-// the DuckDB federation engine ATTACH the tenant file READ_ONLY while SQLAlchemy writes config.
+// org in a sibling org_<id>.db.
 // resolveControlPlanePort() is deliberately NOT called on this path: it shells out to
 // `docker compose port` and throws when no daemon is running, which is the whole point of the lane.
+//
+// The files are recreated per run, exactly as E2E_CONFIG_PATH is re-copied above: this is V1, there
+// are no migrations, so a control plane left over from a run that predates a schema_org column
+// fails every write with "no such column". The lane bootstraps all of its state through
+// global-setup's PUT /admin/config, so nothing is lost by starting empty.
 function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
   fs.mkdirSync(dataDir, { recursive: true });
+  for (const f of fs.readdirSync(dataDir)) {
+    if (/\.db(-wal|-shm)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
+  }
   return {
     TENANT_DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, "tenant.db")}`,
     PLATFORM_DATABASE_URL: `sqlite+aiosqlite:///${path.join(dataDir, "platform.db")}`,

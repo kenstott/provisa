@@ -900,13 +900,16 @@ def _on_pg_connect(dbapi_conn: Any, connection_record: Any) -> None:
 def _on_sqlite_connect(dbapi_conn: Any, connection_record: Any) -> None:
     """SQLAlchemy ``connect`` listener: put the control-plane SQLite file in WAL mode.
 
-    WAL is the design guarantee that makes concurrent access safe: on the native tier the DuckDB
-    federation engine ATTACHes this same tenant DB file READ_ONLY (``provisa_admin`` catalog) and
-    reads it while SQLAlchemy/aiosqlite writes config changes. Rollback-journal mode (the SQLite
-    default) blocks readers during a write commit and yields transient ``database is locked``; WAL
-    lets one writer proceed alongside concurrent readers. ``busy_timeout`` absorbs the brief
-    checkpoint/commit windows. journal_mode=WAL persists in the file; the pragma is idempotent.
-    A no-op on an in-memory DB (which cannot be WAL)."""
+    WAL is what lets the app's own readers run alongside its writer: rollback-journal mode (the
+    SQLite default) blocks readers during a write commit and yields transient ``database is
+    locked``; WAL lets one writer proceed alongside concurrent readers. ``busy_timeout`` absorbs
+    the brief checkpoint/commit windows. journal_mode=WAL persists in the file; the pragma is
+    idempotent. A no-op on an in-memory DB (which cannot be WAL).
+
+    WAL does NOT extend that guarantee to the DuckDB federation engine: DuckDB's sqlite extension
+    corrupts a file another connection is writing and dies with SIGBUS regardless of journal mode,
+    so the engine attaches a snapshot copy of this file rather than the file itself (see
+    federation.duckdb_runtime.DuckDBFederationRuntime._refresh_control_plane_snapshot)."""
     del connection_record
     cur = dbapi_conn.cursor()
     try:

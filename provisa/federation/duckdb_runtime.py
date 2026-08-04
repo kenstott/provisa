@@ -28,6 +28,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
+import sqlite3
+import tempfile
 from typing import Any
 
 import duckdb
@@ -101,6 +104,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
         self._control_plane_attached = False  # provisa_admin catalog (native path only)
+        # SQLite control plane only: the engine attaches a private snapshot of the tenant DB, never
+        # the live file (see _refresh_control_plane_snapshot). These track that snapshot.
+        self._cp_probe: sqlite3.Connection | None = None  # read-only handle on the LIVE file
+        self._cp_snapshot_dir = ""  # created with the probe, on the first SQLite control plane
+        self._cp_snapshot_path = ""
+        self._cp_data_version: int | None = None  # PRAGMA data_version at the last snapshot
 
     # -- source exposure -------------------------------------------------------
 
@@ -155,27 +164,26 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         such catalog, so this method provides it by ATTACHing the tenant control-plane DB itself.
 
         Two dialects:
-        - sqlite: ATTACH the local file READ_ONLY, then wrap every table under the schema the
+        - sqlite: ATTACH a private SNAPSHOT of the tenant file READ_ONLY (never the live file —
+          see _refresh_control_plane_snapshot), then wrap every table under the schema the
           compiler emits (``org_<id>``), since a SQLite ATTACH flattens everything into ``main``
-          with no real multi-schema support. READ_ONLY prevents DuckDB from acquiring a write
-          lock on the file while aiosqlite (SQLAlchemy) concurrently writes it. Safe concurrency
-          depends on the control-plane engine opening this file in WAL mode (set by
-          core.database._on_sqlite_connect) — WAL lets this READ_ONLY reader run alongside the
-          writer; without it, a write commit would transiently lock out the reader.
+          with no real multi-schema support. Re-entrant: each call re-snapshots and rebuilds the
+          views if the control plane has committed anything since the last one, so a table
+          registered after startup is visible to the very next query.
         - postgresql: ATTACH the connection DSN directly (READ_ONLY). DuckDB's postgres extension
           maps every real Postgres schema (including ``schema_name``, and the meta views it
           already holds per api._meta_views) 1:1 under the catalog, so no per-table view-wrapping
           is needed.
 
         All tables/schemas found are exposed — not a hardcoded subset — so future control-plane
-        schema additions are automatically visible without touching this method. Called once from
+        schema additions are automatically visible without touching this method. Called from
         NativeEngineBackend._attach_registered."""
-        if self._control_plane_attached:
-            return
         if not db_path or db_path == ":memory:":
             return  # in-memory tenant DB (tests/CI without a file): no-op, not an error
         catalog = "provisa_admin"
         if dialect == "postgresql":
+            if self._control_plane_attached:
+                return
             if not self._pg_ext_loaded:
                 self._con.execute("INSTALL postgres")
                 self._con.execute("LOAD postgres")
@@ -185,25 +193,72 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._phys_catalogs.add(catalog)
             self._control_plane_attached = True
             return
+        scratch = self._refresh_control_plane_snapshot(db_path)
+        if scratch is None:
+            return  # nothing committed since the last snapshot; the attached views are current
         if not self._sqlite_loaded:
             self._con.execute("INSTALL sqlite")
             self._con.execute("LOAD sqlite")
             self._sqlite_loaded = True
         raw_alias = "_raw_provisa_admin"
-        if raw_alias not in self._raw_attached:
-            self._con.execute(f"ATTACH '{db_path}' AS \"{raw_alias}\" (TYPE sqlite, READ_ONLY)")
-            self._raw_attached.add(raw_alias)
         if catalog not in self._phys_catalogs:
             self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
             self._phys_catalogs.add(catalog)
+        else:
+            # Rebuild from scratch: the refreshed snapshot may have gained or dropped tables, and
+            # the views must be unbound before the stale snapshot file can be detached.
+            self._con.execute(f'DROP SCHEMA IF EXISTS "{catalog}"."{schema_name}" CASCADE')
+        if raw_alias in self._raw_attached:
+            self._con.execute(f'DETACH "{raw_alias}"')
+            self._raw_attached.discard(raw_alias)
+        # Only now that DuckDB has released the previous snapshot can the fresh copy take its place.
+        os.replace(scratch, self._cp_snapshot_path)
+        self._con.execute(
+            f"ATTACH '{self._cp_snapshot_path}' AS \"{raw_alias}\" (TYPE sqlite, READ_ONLY)"
+        )
+        self._raw_attached.add(raw_alias)
         self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema_name}"')
         # Enumerate every table from the SQLite file via SHOW TABLES (sqlite_master is not
         # accessible at the 3-part name DuckDB expects after a TYPE sqlite ATTACH).
         for (tbl,) in self._con.execute(f'SHOW TABLES FROM "{raw_alias}"').fetchall():
             view = f'"{catalog}"."{schema_name}"."{tbl}"'
             remote = f'"{raw_alias}"."main"."{tbl}"'
-            self._con.execute(f"CREATE VIEW IF NOT EXISTS {view} AS SELECT * FROM {remote}")
+            self._con.execute(f"CREATE OR REPLACE VIEW {view} AS SELECT * FROM {remote}")
         self._control_plane_attached = True
+
+    def _refresh_control_plane_snapshot(self, db_path: str) -> str | None:
+        """Copy the live control-plane SQLite file into a private snapshot; return the path of the
+        fresh copy, or None if the control plane has committed nothing since the last one.
+
+        DuckDB's sqlite extension cannot read a SQLite file that another connection is writing:
+        doing so corrupts the database and kills the process with SIGBUS. Verified against both
+        READ_ONLY and read-write ATTACH, and both with and without explicit WAL checkpoints — a
+        plain sqlite3 read-only reader survives the identical workload, so this is specific to the
+        extension and not something WAL mode can make safe. The control-plane file is written
+        continuously by aiosqlite (SQLAlchemy), so the engine attaches a copy and never the
+        original.
+
+        ``sqlite3.Connection.backup`` is SQLite's supported online-backup API: it yields a
+        consistent point-in-time copy while a writer is active. ``PRAGMA data_version`` on the
+        long-lived reader changes exactly when another connection commits, so an unchanged value
+        means the existing snapshot is still current and no copy is needed."""
+        if self._cp_probe is None:
+            self._cp_probe = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            self._cp_snapshot_dir = tempfile.mkdtemp(prefix="provisa-control-plane-snapshot-")
+            self._cp_snapshot_path = os.path.join(self._cp_snapshot_dir, "control_plane.sqlite")
+        version = self._cp_probe.execute("PRAGMA data_version").fetchone()[0]
+        if version == self._cp_data_version:
+            return None
+        # The caller detaches the previous snapshot only after this returns, so write the new copy
+        # to a scratch path for it to move into place — never overwrite a file DuckDB has open.
+        scratch = f"{self._cp_snapshot_dir}/control_plane.sqlite.new"
+        dst = sqlite3.connect(scratch)
+        try:
+            self._cp_probe.backup(dst)
+        finally:
+            dst.close()
+        self._cp_data_version = version
+        return scratch
 
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.
@@ -554,3 +609,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     def close(self) -> None:
         self._con.close()
+        if self._cp_probe is not None:
+            self._cp_probe.close()
+            self._cp_probe = None
+        if self._cp_snapshot_dir:
+            shutil.rmtree(self._cp_snapshot_dir)
+            self._cp_snapshot_dir = ""
+            self._cp_snapshot_path = ""

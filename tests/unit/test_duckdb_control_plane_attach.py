@@ -16,6 +16,8 @@ compiler emits (``org_<id>``), providing exact Trino parity without hardcoding a
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -131,6 +133,80 @@ def test_attach_control_plane_noop_for_memory_db():
             ).fetchall()
     finally:
         rt.close()
+
+
+def test_attach_control_plane_sees_writes_committed_after_the_first_attach(sqlite_cp_db: Path):
+    """The attach is re-entrant: a row committed by the control plane after the first attach is
+    visible to the next call. The engine reads a snapshot, so a stale snapshot would silently
+    serve pre-registration metadata forever."""
+    rt = DuckDBFederationRuntime()
+    try:
+        rt.attach_control_plane(str(sqlite_cp_db), "org_default")
+        writer = sqlite3.connect(str(sqlite_cp_db))
+        writer.execute(
+            "INSERT INTO registered_tables VALUES (3, 'my-source', 'org_default', 'pets')"
+        )
+        writer.commit()
+        writer.close()
+        rt.attach_control_plane(str(sqlite_cp_db), "org_default")
+        rows = rt._con.execute(
+            'SELECT table_name FROM "provisa_admin"."org_default"."registered_tables"'
+        ).fetchall()
+        assert "pets" in {r[0] for r in rows}
+    finally:
+        rt.close()
+
+
+def test_attach_control_plane_survives_a_concurrent_control_plane_writer(sqlite_cp_db: Path):
+    """Regression: DuckDB's sqlite extension corrupts a WAL-mode SQLite file that another
+    connection is writing and kills the process with SIGBUS. The control-plane file is written
+    continuously by SQLAlchemy, so the engine must attach a snapshot, never the live file. Before
+    the fix this test crashed the interpreter rather than failing."""
+    wal = sqlite3.connect(str(sqlite_cp_db))
+    wal.execute("PRAGMA journal_mode=WAL")
+    wal.close()
+
+    stop = threading.Event()
+    writer_errors: list[str] = []
+
+    def writer() -> None:
+        con = sqlite3.connect(str(sqlite_cp_db))
+        con.execute("PRAGMA busy_timeout=5000")
+        i = 100
+        try:
+            while not stop.is_set():
+                con.execute(
+                    "INSERT INTO registered_tables VALUES (?, ?, 'org_default', ?)",
+                    (i, "my-source", "x" * 400),
+                )
+                con.commit()
+                i += 1
+                # Commit steadily rather than as fast as the disk allows: the engine re-snapshots
+                # on every commit it observes, so an unthrottled writer makes this test copy a
+                # runaway database instead of exercising the concurrent-read hazard.
+                time.sleep(0.005)
+        except Exception as exc:  # surfaced below: corruption shows up as a writer failure too
+            writer_errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            con.close()
+
+    thread = threading.Thread(target=writer, daemon=True)
+    thread.start()
+    rt = DuckDBFederationRuntime()
+    try:
+        for _ in range(50):
+            rt.attach_control_plane(str(sqlite_cp_db), "org_default")
+            # information_schema.columns enumerates every attached catalog, so it re-reads the
+            # attached SQLite database — this is the query that crashed against the live file.
+            rt._con.execute("SELECT count(*) FROM information_schema.columns").fetchone()
+            rt._con.execute(
+                'SELECT id FROM "provisa_admin"."org_default"."registered_tables" LIMIT 1'
+            ).fetchone()
+    finally:
+        stop.set()
+        thread.join(timeout=10)
+        rt.close()
+    assert writer_errors == []
 
 
 def test_attach_control_plane_is_read_only(sqlite_cp_db: Path):
