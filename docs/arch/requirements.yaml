@@ -41404,3 +41404,118 @@
     governance context.
   related_reqs:
   - REQ-1364
+- id: REQ-1366
+  status: proposed
+  target: "2026-Q4"
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Federation Engine Abstraction
+  priority: SHOULD
+  type: structural
+  description: >-
+    Spike: generalize time-travel (as_of) from a hardcoded Iceberg/Delta source-type special case
+    to a first-class connector capability, enabling synthesized time-travel over non-versioned sources
+    (REST APIs, MongoDB, etc.) via materialization snapshots.
+  use_case: >-
+    Time-travel as an engine-profile capability rather than a hardcoded source list decouples the
+    feature from Trino and enables synthesized time-travel over non-versioned sources — a semantic-layer
+    differentiator no single engine natively offers, concentrating IP per REQ-825.
+  code:
+  - provisa/core/source_registry.py
+  - provisa/compiler/sql_gen.py
+  - provisa/federation/connector_base.py
+  - provisa/federation/store_writer.py
+  design_notes: >-
+    Spike investigates three escalating degrees:
+    (1) GATE — add time_travel to Capability; since capability is per (engine, source_type) and
+    the compiler is engine-blind, the gate moves from compile to the PLAN stage (aligned with REQ-825).
+    (2) CONNECTOR-OWNED RENDERING — as_of becomes a neutral IR attribute; stage-4 codegen asks the
+    connector to render it. Mechanisms differ structurally per engine: Trino = table-suffix clause
+    (FOR TIMESTAMP/VERSION AS OF); DuckDB Iceberg = scan-function argument (iceberg_scan snapshot_from_timestamp),
+    which lands in view DDL, so per-query as_of requires an inline table-ref substitution, not a clause append.
+    Rides the REQ-825 REMAINING codegen-to-stage-4 refactor.
+    (3) SYNTHESIZED TT — for MATERIALIZED sources (REQ-826) the copy destroys native TT; retain N snapshots
+    in the materialization store instead of replace-style lands and resolve as_of to a retained snapshot in
+    the PLAN prep phase. Capability becomes three-valued: native | synthesized | none. Scope degree 3 to the
+    Iceberg-backed store only, where Iceberg snapshot history makes it nearly free.
+    Cross-cutting: governance-parity conformance (REQ-827) must cover as_of — RLS/masking on historical
+    rows must diff identically per engine; synthesized snapshots are governed at read time (stage 3 governs
+    whatever relation is read), never at capture time.
+    Deliverable: a decision on degrees 1+2 landing with the REQ-825 pipeline work and a scoped design for
+    degree 3 on the Iceberg store backend.
+    Full analysis: docs/arch/spikes/0001-time-travel-as-connector-capability.md.
+  related_reqs:
+  - REQ-467
+  - REQ-825
+  - REQ-826
+  - REQ-827
+  - REQ-841
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Synthesized time-travel over non-versioned sources (REST APIs, MongoDB, NoSQL) is not offered by
+      Trino, Snowflake, or BigQuery, which expose time-travel only on natively versioned tables. Provisa's
+      ability to retain materialization snapshots and surface as_of across all source types creates a
+      differentiating capability.
+- id: REQ-1367
+  status: accepted
+  target: "2026-Q4"
+  group: "0. Architecture & Design Principles"
+  category: Platform Thesis & Operational Proof
+  priority: MUST
+  type: constraint
+  description: >-
+    Provisa's thesis: with sufficient rigor, every aspect of a data environment EXCEPT the systems of origin
+    can be described declaratively, and then PROVEN compliant to policy and to operate as declared. Systems
+    of origin are excluded by design — Provisa proves properties of its projection of a source, never of the
+    external system itself. "Proven" means operational proof, not formal verification: (1) compliance-by-construction
+    where a single enforcement choke point exists (governance defined in the semantic layer, enforced once at
+    the governed-IR stage — REQ-825 stage 3, one pipeline); (2) certification where realizations vary
+    (governance-parity conformance diffing per engine — REQ-827); (3) drift-impossibility where state is derived
+    (engine catalog is rebuildable projection of the declaration, never hand-maintained — REQ-843); (4)
+    self-description where operation is observable (the estate's operational metadata as governed MVs over its
+    own event streams — REQ-964 reflexivity, freshness contracts REQ-961). Every subsystem admitted to the
+    platform must fit one of these proof modes; a feature that can only be trusted, not proven, is a defect
+    in its design.
+  use_case: >-
+    The thesis is the platform's admission rule — it explains why capabilities are declared profiles
+    (REQ-825/840/841), why governance is IR-injected rather than engine-delegated, why derived state must be
+    rebuildable, and why the config surface is a queryable ledger (REQ-966). Recording it top-level gives
+    future requirements a fixed test: declarative description + a stated proof mode, or redesign.
+  design_notes: >-
+    The SOO (system-of-origin) carve-out is a DEFINITION, not an enumerated exception. An origin is any
+    point where new information enters the estate by ASSERTION rather than DERIVATION — external systems,
+    arbitrary business-rule transforms, human input, ML inference — regardless of whether it runs inside or
+    outside the platform. Every node in the estate is exactly one of two kinds: DERIVED (declaratively lowered
+    — SQL/IR, MVs, entity/fact lowering, governance transforms — provable in one of the four proof modes) or
+    ORIGIN (semantics attested, not proven; governed at its boundary — schema-validated both ends, vintage-labeled,
+    lineage-tracked, policy-enforced on output; the external-processor pure contract of REQ-957/REQ-976-era
+    adapters is the origin boundary mechanism). Arbitrary computation is therefore not EXCLUDED from the estate
+    but RECLASSIFIED: any code may run, provided it is named as an origin and passes through the attested boundary
+    contract. A derived node that embeds an arbitrary UDF is an origin misclassified as derived — a design defect.
+    Consequence: origin-ness must be an explicit classification on every estate node, and the ratio of origin to
+    derived nodes is a measurable estate-maturity metric (the "unprovable residue"). The thesis in closed form:
+    the estate is theorems over declared axioms; the method makes the axiom set explicit, minimal, and boundary-governed.
+    Every origin is a DECLARED BLACK BOX — a first-class registered entity with its own governance regime: named
+    owner, explicit contract (schema in/out, purity, vintage), an attestation discipline in place of proof (boundary
+    gates/validation, change control), and its own policy scope. Two operational rules follow: (1) MINIMIZATION PRESSURE
+    — any logic expressible declaratively must be migrated from origin to derived (rewriting an imperative transform
+    as SQL/lowered spec shrinks the axiom set); an origin is admitted only when its semantics genuinely cannot be
+    derived. (2) NO ANONYMOUS ORIGINS — an unnamed origin (a UDF or business rule embedded in a derived node) is a
+    design defect; the named-origin registry IS the estate's axiom registry and is itself queryable/auditable. Analogy:
+    Rust's `unsafe` blocks — named, minimized, individually justified, with safety proven by construction around them.
+  related_reqs:
+  - REQ-825
+  - REQ-827
+  - REQ-843
+  - REQ-957
+  - REQ-961
+  - REQ-964
+  - REQ-966
+  - REQ-976
+  - REQ-1366
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Peers offer declarative modeling (dbt, Cube) or policy translation (Immuta) or reconciliation
+      (Kubernetes-style controllers) separately; none unify description, enforcement, and operational proof
+      over one declared artifact.
