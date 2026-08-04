@@ -45,12 +45,24 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
   }
   const editor = page.locator(".cm-content").first();
   await editor.waitFor({ timeout: 5000 });
-  await editor.click();
-  await page.keyboard.press("Meta+a");
-  await page.keyboard.type("MATCH (n:Meta) RETURN n LIMIT 50");
 
-  // Run the query (⌘↵)
-  await page.keyboard.press("Meta+Enter");
+  // Type, then confirm the text is actually in the editor before running — and retype if it is
+  // not. The role switch above refetches the graph schema, and GraphFrame resets editQuery from
+  // the frame when that lands; keystrokes delivered in the window before the reset are wiped,
+  // leaving an empty editor and a query that never runs (the failure this guards: the frame
+  // stayed on "Run a Cypher query to explore the graph" and .gf-meta-text never rendered).
+  // ControlOrMeta is the select-all modifier CodeMirror's Mod- bindings resolve to per platform —
+  // Meta alone is a no-op on the Linux CI runners.
+  const QUERY = "MATCH (n:Meta) RETURN n LIMIT 50";
+  await expect(async () => {
+    await editor.click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.type(QUERY);
+    expect((await editor.innerText()).replace(/\s+/g, " ").trim()).toBe(QUERY);
+  }).toPass({ timeout: 30000 });
+
+  // Run the query. GraphFrame binds bare Enter at Prec.highest (GraphFrame.tsx:493-503).
+  await page.keyboard.press("Enter");
 
   // Wait for the frame to finish loading and show nodes. Meta query can be slow
   // under full-suite load; 60s matches the DuckDB warm-up budget.

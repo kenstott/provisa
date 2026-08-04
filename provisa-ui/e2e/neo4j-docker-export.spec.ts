@@ -8,13 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { execSync, spawnSync } from "child_process";
 import { test, expect, BACKEND_URL } from "./coverage";
+import { NEO4J_BOLT_PORT, NEO4J_URL } from "./neo4j-container";
 
-const NEO4J_HTTP_PORT = 17474;
-const NEO4J_BOLT_PORT = 17687;
-const NEO4J_URL = `http://localhost:${NEO4J_HTTP_PORT}`;
-const CONTAINER_NAME = "e2e-neo4j-community-export";
 const EXPORT_BATCH = 200;
 
 type ApiNode = { id: number; tableLabel: string; properties: Record<string, unknown> };
@@ -104,25 +100,10 @@ function extractNodesAndEdges(
   }
 }
 
-test.beforeAll(() => {
-  spawnSync("docker", ["rm", "-f", CONTAINER_NAME], { stdio: "pipe" });
-  execSync(
-    [
-      "docker", "run", "-d",
-      "--name", CONTAINER_NAME,
-      "-p", `${NEO4J_HTTP_PORT}:7474`,
-      "-p", `${NEO4J_BOLT_PORT}:7687`,
-      "-e", "NEO4J_AUTH=none",
-      "neo4j:5.19-community",
-    ].join(" "),
-    { stdio: "pipe" },
-  );
-});
-
-test.afterAll(() => {
-  spawnSync("docker", ["rm", "-f", CONTAINER_NAME], { stdio: "pipe" });
-});
-
+// The container is started by globalSetup and removed by globalTeardown (see neo4j-container.ts):
+// starting or stopping it here would move veth churn into the window where other workers are
+// driving browsers, and Chromium answers that with net::ERR_NETWORK_CHANGED on everything in
+// flight. waitForNeo4j below is what makes this spec safe to run at any point in the suite.
 test("neo4j export: exports all queryable graph nodes and relationships to a community docker instance", async ({
   request,
 }) => {

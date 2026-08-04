@@ -36,7 +36,13 @@ test("tour does not show a step's popover over a page still loading its data", a
   // `highlight()` has actually run, so waiting on the label (not just "a popover is visible")
   // guarantees each click lands on the step it's meant to.
   for (let n = 1; n <= 4; n++) {
-    await expect(nextBtn).toHaveText(`Next (${n}/25)`);
+    // The first label has a different budget from the rest: reaching it means the app bundle has
+    // booted, TourAutoStart has fired, and the tour has navigated /tables -> /sources and paid
+    // that route's first-visit chunk fetch — all on a runner where five other workers are
+    // compiling and querying at the same time. The default 5s expect timeout covers none of that
+    // reliably. Once step0's popover is up, every later step is an in-app transition and 5s is
+    // ample, so the extra budget is spent only where the work actually is.
+    await expect(nextBtn).toHaveText(`Next (${n}/25)`, { timeout: n === 1 ? 60000 : 5000 });
     if (n < 4) await nextBtn.click();
   }
   await nextBtn.click(); // enters step4: navigates to /tables, highlights nav-tables

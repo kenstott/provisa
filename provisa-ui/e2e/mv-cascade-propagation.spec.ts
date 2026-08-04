@@ -47,9 +47,20 @@ async function refreshMv(page: import("@playwright/test").Page, tableName: strin
 async function typeSql(page: import("@playwright/test").Page, sql: string) {
   const editor = page.locator(".cm-content").first();
   await editor.click();
-  await page.keyboard.press("Meta+a");
+  // ControlOrMeta, not Meta: CodeMirror's select-all is bound to Mod-a, which is Cmd on macOS and
+  // Ctrl everywhere else. Pressing Meta on the Linux CI runners selects nothing, so the Backspace
+  // below deletes a single character and the new statement is typed onto the tail of the old one —
+  // which is how `SELECT id, name, price FROM views.e2e_mv_a` reached the backend appended to the
+  // previous query and came back as a 400 parse error. Harmless on the first call (empty editor),
+  // so only the second createView in a test ever showed it.
+  await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.press("Backspace");
   await page.keyboard.type(sql);
+  // Typing a table name opens CodeMirror's completion popup; leaving it open lets a subsequent
+  // Enter/click accept a completion and rewrite the statement. Escape closes it, and the editor
+  // must hold exactly what was asked for before anything runs it.
+  await page.keyboard.press("Escape");
+  await expect(editor).toHaveText(sql.replace(/\s+/g, " ").trim(), { useInnerText: true });
 }
 
 async function createView(page: import("@playwright/test").Page, sql: string, alias: string) {

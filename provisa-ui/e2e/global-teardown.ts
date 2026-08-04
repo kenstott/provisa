@@ -9,12 +9,19 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
+import { removeNeo4jContainer } from "./neo4j-container";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
 const BACKUP_PATH = CONFIG_PATH.replace(".yaml", ".yaml.bak");
 const SNAPSHOT_PATH = CONFIG_PATH + ".snapshot";
 
 export default async function globalTeardown() {
+  // Counterpart to the start in globalSetup — removing it here keeps the veth teardown out of
+  // the window where browsers are running. Unconditional: a lane that never started one just
+  // removes nothing.
+  removeNeo4jContainer();
+
   if (fs.existsSync(SNAPSHOT_PATH)) {
     fs.copyFileSync(SNAPSHOT_PATH, CONFIG_PATH);
     fs.rmSync(SNAPSHOT_PATH);

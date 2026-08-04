@@ -9,6 +9,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
+import { startNeo4jContainer } from "./neo4j-container";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
 const SNAPSHOT_PATH = CONFIG_PATH + ".snapshot";
@@ -138,6 +140,12 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
 }
 
 export default async function globalSetup() {
+  // Start the Neo4j export target now, before any browser exists — see neo4j-container.ts for why
+  // it cannot start mid-run. `docker run -d` returns immediately; the spec still waits for the
+  // engine to accept queries, and by then the container has had the whole bootstrap to boot.
+  // The trino lane does not carry neo4j-docker-export.spec.ts, so it starts nothing.
+  if (process.env.PROVISA_E2E_LANE !== "trino") startNeo4jContainer();
+
   const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
   fs.writeFileSync(SNAPSHOT_PATH, yaml);
   // In parallel: the bootstrap is dominated by each backend's cold DuckDB warm-up queries

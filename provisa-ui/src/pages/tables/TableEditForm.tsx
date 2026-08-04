@@ -172,6 +172,12 @@ export function TableEditForm({
           // would surface as a spurious uncaught-browser-error in e2e coverage checks.
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes("Store reset while query was in flight")) return;
+          // Apollo aborts the underlying fetch when the last observer of a one-off query goes
+          // away, which is exactly what closing the editor or navigating off /tables does to a
+          // preview still in flight.  The AbortError is our own teardown coming back to us, so
+          // reporting it is reporting an event we caused deliberately; `cancelled` says the same
+          // thing for the case where the cleanup ran before the rejection landed.
+          if (cancelled || (err instanceof Error && err.name === "AbortError")) return;
           console.error("refreshPolicyPreview failed:", err);
         });
     }, 300);
