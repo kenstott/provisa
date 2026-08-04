@@ -11,8 +11,8 @@ name: UI e2e (Trino lane)
 # and Vite here: the UI these specs drive is served by the same app.
 #
 # Runner is amd64 ubuntu-latest: the Trino coordinator alone takes mem_limit 7g, so the job
-# brings up only postgres + trino (no worker — replicas: 0 — and no zaychik, which nothing in
-# this lane queries). Redis is not started either: neither provisa-install.yaml nor
+# brings up postgres + trino + minio + zaychik and no worker (replicas: 0). Redis is not
+# started: neither provisa-install.yaml nor
 # provisa-trino-e2e.yaml sets cache.redis_url and the harness sets no REDIS_URL, so app.py
 # resolves state.redis_url to None and both the response cache and the rate limiter (REQ-371)
 # run on embedded fakeredis.
@@ -130,13 +130,24 @@ jobs:
       # Pull before `up` so the compose wait below spends its budget on Trino's JVM boot rather
       # than on a 1 GB image download racing the healthcheck's start_period.
       - name: Pre-pull service images
-        run: docker compose -f docker-compose.core.yml pull postgres trino
+        run: docker compose -f docker-compose.core.yml pull postgres trino minio minio-init
 
-      # Only the services this lane queries. trino-worker stays at replicas: 0 and zaychik is
-      # never started — both would compete for RAM with Trino's 7g limit, the Vite dev server's
-      # 4 GB heap, and two uvicorn backends on a 16 GB runner.
+      # zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest).
+      - name: Build the Zaychik Flight SQL image
+        run: docker compose -f docker-compose.core.yml build zaychik
+
+      # trino-worker stays at replicas: 0 — the coordinator alone answers this lane's queries and
+      # a second JVM would compete for RAM with Trino's 7g limit, the Vite dev server's 4 GB heap
+      # and two uvicorn backends on a 16 GB runner. minio and zaychik are NOT optional here:
+      # TrinoBackend.provision_infra -> trino_lifecycle.connect_infra dials Arrow Flight
+      # (zaychik, 8480) and ensure_results_bucket (minio) with no fallback, so without them the
+      # app's lifespan aborts with "dial tcp [::1]:8480: connect: connection refused" and
+      # Playwright reports "Process from config.webServer was not able to start".
       - name: Start core services
-        run: docker compose -f docker-compose.core.yml up -d --wait postgres trino
+        run: |
+          docker compose -f docker-compose.core.yml up -d --wait \
+            postgres trino minio zaychik
+          docker compose -f docker-compose.core.yml up minio-init
 
       - name: Run Playwright Trino lane
         working-directory: provisa-ui
