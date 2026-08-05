@@ -372,6 +372,44 @@ def _governance_document(
     return json.dumps(body)
 
 
+def rebind_to_live_identities(
+    entities: list[AtlasEntity], live: dict[str, tuple[str, str]]
+) -> int:  # REQ-1389
+    """Canonicalize by the Provisa URN: if an entity with the same ``provisaUri`` already
+    exists in the catalog under a DIFFERENT qualifiedName (the table re-platformed or was
+    physically renamed), the outgoing entity takes the live guid so the publish UPDATES it
+    in place — same catalog entity, new binding, human enrichment and lineage intact —
+    instead of creating a duplicate and orphaning the enriched one.
+
+    ``live`` maps provisaUri → (guid, qualifiedName) from the catalog. Returns how many
+    entities were rebound. References to rebound placeholder guids (containments, lineage
+    inputs/outputs) are remapped in the same pass.
+    """
+    guid_map: dict[str, str] = {}
+    for entity in entities:
+        uri = entity.attributes.get("provisaUri")
+        if not uri:
+            continue
+        hit = live.get(uri)
+        if hit is None:
+            continue
+        live_guid, live_qn = hit
+        if live_qn != entity.attributes.get("qualifiedName"):
+            guid_map[entity.guid] = live_guid
+            entity.guid = live_guid
+    if not guid_map:
+        return 0
+    for entity in entities:
+        for ref in entity.relationships.values():
+            if isinstance(ref, dict) and ref.get("guid") in guid_map:
+                ref["guid"] = guid_map[ref["guid"]]
+        for key in ("inputs", "outputs"):
+            for ref in entity.attributes.get(key) or []:
+                if isinstance(ref, dict) and ref.get("guid") in guid_map:
+                    ref["guid"] = guid_map[ref["guid"]]
+    return len(guid_map)
+
+
 def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-1388/1389
     """The snapshot as Provisa-native Atlas entities: source → table → column.
 
@@ -861,6 +899,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
+            await self._canonicalize_identity(client, headers, entities)
             if defs:
                 try:
                     await self._register_classifications(client, defs, headers)
@@ -910,6 +949,75 @@ class AtlasExport(MetadataExport):  # REQ-1069
         """Register the provisa_* entity/relationship typedefs (REQ-1388). Atlan overrides
         to a no-op: it publishes through its own built-in types."""
         await self._register_native_typedefs(client, headers)
+
+    async def _live_identity_index(
+        self, client: httpx.AsyncClient, headers: dict[str, str]
+    ) -> dict[str, tuple[str, str]]:
+        """provisaUri → (guid, qualifiedName) for every live provisa_* entity (REQ-1389).
+
+        One paged search per type rather than one lookup per entity; the URN is the
+        canonical identity the rebind keys on.
+        """
+        index: dict[str, tuple[str, str]] = {}
+        for type_name in (PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE):
+            offset = 0
+            while True:
+                response = await client.post(
+                    self._url("/api/atlas/v2/search/basic"),
+                    json={
+                        "typeName": type_name,
+                        "excludeDeletedEntities": True,
+                        "attributes": ["provisaUri"],
+                        "limit": 500,
+                        "offset": offset,
+                    },
+                    headers=headers,
+                )
+                if response.status_code == 400 and offset == 0:
+                    # The typedef did not exist before this publish — nothing live to index.
+                    break
+                response.raise_for_status()
+                page = response.json().get("entities") or []
+                for e in page:
+                    attrs = e.get("attributes") or {}
+                    if attrs.get("provisaUri"):
+                        index[attrs["provisaUri"]] = (e["guid"], attrs.get("qualifiedName"))
+                if len(page) < 500:
+                    break
+                offset += 500
+        return index
+
+    async def _canonicalize_identity(
+        self, client: httpx.AsyncClient, headers: dict[str, str], entities: list[AtlasEntity]
+    ) -> None:
+        """URN-canonical upsert (REQ-1389). Two duties, both keyed on the Provisa URN:
+
+        1. An entity Provisa published before under a different physical qualifiedName
+           (re-platformed) takes the live guid, so the publish UPDATES it in place.
+        2. UPDATES MERGE: Atlas's bulk createOrUpdate replaces the full attribute map
+           (empirically verified — a steward's userDescription was wiped by an update),
+           so every outgoing update starts from the LIVE attributes and overlays only
+           what Provisa authors. Fields Provisa never populates survive verbatim.
+
+        Atlan overrides to a no-op until its search route is verified."""
+        live = await self._live_identity_index(client, headers)
+        if not live:
+            return
+        rebind_to_live_identities(entities, live)
+        for entity in entities:
+            uri = entity.attributes.get("provisaUri")
+            if not uri or uri not in live:
+                continue
+            guid = live[uri][0]
+            fetch = await client.get(
+                self._url(f"/api/atlas/v2/entity/guid/{guid}"),
+                params={"ignoreRelationships": "true"},
+                headers=headers,
+            )
+            if fetch.status_code >= 400:
+                continue  # a create will happen instead; nothing live to preserve
+            live_attributes = fetch.json().get("entity", {}).get("attributes") or {}
+            entity.attributes = {**live_attributes, **entity.attributes}
 
     async def health(self) -> None:
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:

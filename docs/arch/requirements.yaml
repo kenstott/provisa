@@ -42256,7 +42256,14 @@
     classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. The sync
     is NOT optional: the classification read-merge and attribute drift-correction ride the single publish
     path, so all three triggers get them — Publish now, the event drain, and the scheduled reconcile
-    (reconcile_cron, default hourly).'
+    (reconcile_cron, default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the
+    provisaUri attribute) is the canonical identity, not the physical qualifiedName. Before publishing,
+    the exporter indexes live entities by URN; an entity Provisa published before whose physical address
+    changed (re-platform, physical rename) takes the live guid and is UPDATED in place — same catalog
+    entity, new binding, enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE:
+    Atlas bulk createOrUpdate replaces the full attribute map (empirically verified — an update wiped a
+    steward-written userDescription), so every update starts from the LIVE attributes and overlays only
+    the fields Provisa authors; fields Provisa never populates survive verbatim.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.

@@ -141,6 +141,34 @@ def test_typedefs_cover_the_types_and_containments():
     assert rels["provisa_table_columns"]["endDef2"]["type"] == PROVISA_COLUMN_TYPE
 
 
+def test_urn_rebind_updates_in_place_when_the_physical_address_moved():
+    from provisa.api.metadata_export.atlas import rebind_to_live_identities
+
+    entities = to_native_entities(_snapshot())
+    table = next(e for e in entities if e.type_name == PROVISA_TABLE_TYPE)
+    column = next(e for e in entities if e.type_name == PROVISA_COLUMN_TYPE)
+    old_placeholder = table.guid
+    # The catalog holds the same URN under a DIFFERENT physical address (re-platformed).
+    live = {table.attributes["provisaUri"]: ("live-guid-1", "old-source.old_schema.old_name@provisa")}
+    rebound = rebind_to_live_identities(entities, live)
+    assert rebound == 1
+    assert table.guid == "live-guid-1"  # update in place, no duplicate
+    # Containment references follow the rebind.
+    assert column.relationships["table"]["guid"] == "live-guid-1"
+    assert old_placeholder != "live-guid-1"
+
+
+def test_urn_rebind_leaves_unmoved_entities_alone():
+    from provisa.api.metadata_export.atlas import rebind_to_live_identities
+
+    entities = to_native_entities(_snapshot())
+    table = next(e for e in entities if e.type_name == PROVISA_TABLE_TYPE)
+    placeholder = table.guid
+    live = {table.attributes["provisaUri"]: ("live-guid-1", table.attributes["qualifiedName"])}
+    assert rebind_to_live_identities(entities, live) == 0
+    assert table.guid == placeholder
+
+
 def test_atlan_keeps_builtin_types_and_no_classification_sync():
     # REQ-1388 caveat: Atlan's layered type system gives custom types reduced UI treatment,
     # so its adapter maps to built-ins; the per-guid classification sync stays off there

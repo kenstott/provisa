@@ -70,6 +70,9 @@ class AtlanExport(AtlasExport):  # REQ-1069
         """Atlan publishes through its own built-in types (REQ-1388's documented caveat:
         custom types get reduced native UI treatment there), so no provisa_* typedefs."""
 
+    async def _canonicalize_identity(self, client, headers, entities) -> None:
+        """Atlan's search route for the URN-canonical rebind is unverified; off until then."""
+
     def _connection_qn(self, snapshot: MetadataSnapshot) -> str:
         """Atlan's root address for everything this org publishes.
 
