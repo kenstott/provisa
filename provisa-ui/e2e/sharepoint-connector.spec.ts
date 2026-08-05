@@ -69,8 +69,14 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // The Apollo client uses relative URLs (/admin/graphql) so the browser sends requests
   // to the UI origin (http://localhost:3901); Vite proxies them server-side. Intercepting
   // at the UI origin redirects them to the Trino backend before Vite's proxy fires.
+  // `**`, not `*`: Playwright compiles a single star to `([^/]*)`, which stops at the first slash,
+  // so `/admin*` matched nothing the app actually calls — every request, /admin/graphql included,
+  // fell through to Vite and reached the default DuckDB backend instead. The source was then
+  // registered against a backend whose register_source() is a no-op for this connector, so the
+  // schema dropdown this test waits on could never populate. `**` compiles to `(.*)` and matches
+  // the full path.
   for (const prefix of ["/admin", "/data", "/query", "/health"]) {
-    await page.route(`${UI_URL}${prefix}*`, (route) => {
+    await page.route(`${UI_URL}${prefix}**`, (route) => {
       route.continue({ url: route.request().url().replace(UI_URL, TRINO_BACKEND_URL) });
     });
   }
