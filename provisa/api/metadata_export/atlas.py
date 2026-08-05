@@ -123,6 +123,89 @@ def _column_qn(table: TableAsset, column_name: str) -> str:
     return _qualified(*table.ref.parts, column_name)
 
 
+# REQ-1388: Provisa-native Atlas entity types. The rdbms_* transport misrepresents every
+# non-database source as an RDBMS and cannot carry typed Provisa attributes; these types
+# state what the model actually holds. provisa_table/provisa_column extend DataSet so the
+# built-in Process lineage keeps working; provisa_source extends Asset.
+PROVISA_SOURCE_TYPE = "provisa_source"
+PROVISA_TABLE_TYPE = "provisa_table"
+PROVISA_COLUMN_TYPE = "provisa_column"
+
+
+def _attr_def(name: str, type_name: str = "string") -> dict[str, Any]:
+    return {
+        "name": name,
+        "typeName": type_name,
+        "isOptional": True,
+        "cardinality": "SINGLE",
+        "isUnique": False,
+        "isIndexable": False,
+    }
+
+
+def entity_type_defs() -> list[dict[str, Any]]:  # REQ-1388
+    return [
+        {
+            "name": PROVISA_SOURCE_TYPE,
+            "description": "A federated source governed by Provisa.",
+            "serviceType": "provisa",
+            "superTypes": ["Asset"],
+            "attributeDefs": [_attr_def("sourceType"), _attr_def("provisaUri")],
+        },
+        {
+            "name": PROVISA_TABLE_TYPE,
+            "description": "A governed Provisa table.",
+            "serviceType": "provisa",
+            "superTypes": ["DataSet"],
+            "attributeDefs": [
+                _attr_def("provisaUri"),
+                _attr_def("provisaDomain"),
+                # REQ-1389: the governance document lives in a Provisa-OWNED typed
+                # attribute, never in userDescription — that field belongs to humans.
+                _attr_def("provisaGovernance"),
+            ],
+        },
+        {
+            "name": PROVISA_COLUMN_TYPE,
+            "description": "A governed Provisa column.",
+            "serviceType": "provisa",
+            "superTypes": ["DataSet"],
+            "attributeDefs": [_attr_def("dataType"), _attr_def("provisaUri")],
+        },
+    ]
+
+
+def relationship_type_defs() -> list[dict[str, Any]]:  # REQ-1388
+    def _composition(name: str, container: str, contained: str, plural: str, singular: str):
+        return {
+            "name": name,
+            "serviceType": "provisa",
+            "relationshipCategory": "COMPOSITION",
+            "propagateTags": "NONE",
+            "endDef1": {
+                "type": container,
+                "name": plural,
+                "isContainer": True,
+                "cardinality": "SET",
+            },
+            "endDef2": {
+                "type": contained,
+                "name": singular,
+                "isContainer": False,
+                "cardinality": "SINGLE",
+            },
+        }
+
+    return [
+        _composition(
+            "provisa_source_tables", PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, "tables", "source"
+        ),
+        _composition(
+            "provisa_table_columns", PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE, "columns", "table"
+        ),
+    ]
+
+
 def _classification_name(signal: str) -> str:
     return f"{CLASSIFICATION_PREFIX}{signal}"
 
@@ -287,6 +370,92 @@ def _governance_document(
     if not body:
         return None
     return json.dumps(body)
+
+
+def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-1388/1389
+    """The snapshot as Provisa-native Atlas entities: source → table → column.
+
+    One level per model concept (no rdbms instance/db split — Provisa has sources, not
+    database servers). Business names present; the physical address stays in qualifiedName.
+    The governance document rides the typed ``provisaGovernance`` attribute — NEVER
+    ``userDescription``, which belongs to humans in the catalog (REQ-1389).
+    """
+    entities: list[AtlasEntity] = []
+    guid = _GuidCounter()
+    source_guids: dict[str, str] = {}
+    table_guids: dict[str, str] = {}
+    domain_by_id = {domain.id: domain for domain in snapshot.domains}
+
+    for source in snapshot.sources:
+        source_guid = guid.next()
+        source_guids[source.id] = source_guid
+        entities.append(
+            AtlasEntity(
+                asset=source.ref,
+                kind="source",
+                type_name=PROVISA_SOURCE_TYPE,
+                guid=source_guid,
+                attributes={
+                    "qualifiedName": _instance_qn(source.id),
+                    "name": source.id,
+                    "description": source.description,
+                    "sourceType": source.source_type,
+                    "provisaUri": source.semantic_uri,
+                },
+                classifications=_classifications(snapshot, source.ref.fqn()),
+            )
+        )
+
+    for table in snapshot.tables:
+        table_guid = guid.next()
+        table_guids[table.ref.fqn()] = table_guid
+        attributes: dict[str, Any] = {
+            "qualifiedName": _table_qn(table),
+            "name": table.aliases[0] if table.aliases else table.name,
+            "description": table.description,
+            "provisaUri": table.semantic_uri,
+        }
+        domain = domain_by_id[table.domain_id] if table.domain_id else None
+        if table.domain_id:
+            attributes["provisaDomain"] = table.domain_id
+        if domain is not None and domain.steward is not None:
+            # REQ-609: the steward is a Provisa-owned accountability fact.
+            attributes["owner"] = domain.steward.id
+        governance_doc = _governance_document(snapshot, table, domain)
+        if governance_doc is not None:
+            attributes["provisaGovernance"] = governance_doc
+        entities.append(
+            AtlasEntity(
+                asset=table.ref,
+                kind="table",
+                type_name=PROVISA_TABLE_TYPE,
+                guid=table_guid,
+                attributes=attributes,
+                classifications=_classifications(snapshot, table.ref.fqn()),
+                relationships={"source": {"guid": source_guids[table.ref.parts[0]]}},
+            )
+        )
+        for column in table.columns:
+            entities.append(
+                AtlasEntity(
+                    asset=column.ref,
+                    kind="column",
+                    type_name=PROVISA_COLUMN_TYPE,
+                    guid=guid.next(),
+                    attributes={
+                        "qualifiedName": _column_qn(table, column.name),
+                        "name": column.aliases[0] if column.aliases else column.name,
+                        "description": column.description,
+                        "dataType": column.data_type,
+                        "provisaUri": column.semantic_uri,
+                    },
+                    classifications=_classifications(snapshot, column.ref.fqn()),
+                    relationships={"table": {"guid": table_guid}},
+                )
+            )
+
+    entities.extend(_lineage_entities(snapshot, guid, table_guids))
+    return entities
 
 
 def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
@@ -478,7 +647,15 @@ class AtlasExport(MetadataExport):  # REQ-1069
     entity_bulk_path = "/api/atlas/v2/entity/bulk"
     typedefs_path = "/api/atlas/v2/types/typedefs"
     classificationdef_path = "/api/atlas/v2/types/classificationdef/name"
+    entitydef_path = "/api/atlas/v2/types/entitydef/name"
+    relationshipdef_path = "/api/atlas/v2/types/relationshipdef/name"
+    unique_attr_path = "/api/atlas/v2/entity/uniqueAttribute/type"
     health_path = "/api/atlas/v2/types/typedefs/headers"
+    # REQ-1389: reconcile provisa_* classifications after the bulk upsert — Atlas applies
+    # classifications only on CREATE, so updates need the read-merge pass. Atlan's
+    # Atlas-shaped API has not been verified for the per-guid classification routes, so the
+    # subclass keeps this off until it is.
+    classification_sync = True
 
     def _url(self, path: str) -> str:
         return f"{self._config.endpoint.rstrip('/')}{path}"
@@ -549,8 +726,121 @@ class AtlasExport(MetadataExport):  # REQ-1069
         )
         response.raise_for_status()
 
+    async def _register_native_typedefs(
+        self, client: httpx.AsyncClient, headers: dict[str, str]
+    ) -> None:
+        """Ensure the provisa_* entity and relationship typedefs exist (REQ-1388).
+
+        Same contract as classification defs: an existing typedef is left alone — an update
+        would overwrite whatever a catalog admin has since added to it.
+        """
+        missing_entities = []
+        for definition in entity_type_defs():
+            probe = await client.get(
+                self._url(f"{self.entitydef_path}/{definition['name']}"), headers=headers
+            )
+            if probe.status_code == 404:
+                missing_entities.append(definition)
+            elif probe.status_code >= 400:
+                probe.raise_for_status()
+        missing_rels = []
+        for definition in relationship_type_defs():
+            probe = await client.get(
+                self._url(f"{self.relationshipdef_path}/{definition['name']}"), headers=headers
+            )
+            if probe.status_code == 404:
+                missing_rels.append(definition)
+            elif probe.status_code >= 400:
+                probe.raise_for_status()
+        if not missing_entities and not missing_rels:
+            return
+        response = await client.post(
+            self._url(self.typedefs_path),
+            json={"entityDefs": missing_entities, "relationshipDefs": missing_rels},
+            headers=headers,
+        )
+        response.raise_for_status()
+
+    async def _sync_classifications(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        entities: list[AtlasEntity],
+        result: PublishResult,
+    ) -> None:
+        """Read-merge provisa_* classifications per entity (REQ-1389).
+
+        A bulk UPDATE ignores classifications, so each entity is fetched by its stable key
+        (typeName + qualifiedName) and only the provisa_-prefixed classifications are
+        reconciled: ours are added/updated/removed to match the snapshot; classifications a
+        steward attached in the catalog are never touched.
+        """
+        for entity in entities:
+            if entity.kind == "lineage":
+                continue
+            qn = entity.attributes["qualifiedName"]
+            fetch = await client.get(
+                self._url(f"{self.unique_attr_path}/{entity.type_name}"),
+                params={"attr:qualifiedName": qn, "ignoreRelationships": "true"},
+                headers=headers,
+            )
+            if fetch.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=entity.asset,
+                        message=f"classification sync fetch failed: HTTP {fetch.status_code}",
+                    )
+                )
+                continue
+            live = fetch.json().get("entity", {})
+            guid = live.get("guid")
+            existing = {
+                c["typeName"]: c
+                for c in live.get("classifications") or []
+                if str(c.get("typeName", "")).startswith(CLASSIFICATION_PREFIX)
+            }
+            desired = {c["typeName"]: c for c in entity.classifications}
+            to_add = [
+                {**c, "entityGuid": guid} for name, c in desired.items() if name not in existing
+            ]
+            to_update = [
+                {**c, "entityGuid": guid}
+                for name, c in desired.items()
+                if name in existing
+                and (existing[name].get("attributes") or {}) != (c.get("attributes") or {})
+            ]
+            to_delete = [name for name in existing if name not in desired]
+            try:
+                if to_add:
+                    (
+                        await client.post(
+                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classifications"),
+                            json=to_add,
+                            headers=headers,
+                        )
+                    ).raise_for_status()
+                if to_update:
+                    (
+                        await client.put(
+                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classifications"),
+                            json=to_update,
+                            headers=headers,
+                        )
+                    ).raise_for_status()
+                for name in to_delete:
+                    (
+                        await client.delete(
+                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classification/{name}"),
+                            headers=headers,
+                        )
+                    ).raise_for_status()
+            except httpx.HTTPError as exc:
+                result.errors.append(
+                    AssetError(asset=entity.asset, message=f"classification sync: {exc}")
+                )
+
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
-        return await self._publish_entities(to_entities(snapshot), snapshot)
+        return await self._publish_entities(to_native_entities(snapshot), snapshot)
 
     async def _publish_entities(
         self, entities: list[AtlasEntity], snapshot: MetadataSnapshot
@@ -570,6 +860,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
         defs = classification_defs(snapshot)
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)
+            await self._ensure_type_system(client, headers)
             if defs:
                 try:
                     await self._register_classifications(client, defs, headers)
@@ -605,9 +896,20 @@ class AtlasExport(MetadataExport):  # REQ-1069
                     )
                 )
                 return result
+            if self.classification_sync:
+                # REQ-1389: bulk UPDATE ignores classifications — reconcile the provisa_*
+                # ones by read-merge, leaving steward-attached classifications alone.
+                await self._sync_classifications(client, headers, entities, result)
         for entity in entities:
             result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
         return result
+
+    async def _ensure_type_system(
+        self, client: httpx.AsyncClient, headers: dict[str, str]
+    ) -> None:
+        """Register the provisa_* entity/relationship typedefs (REQ-1388). Atlan overrides
+        to a no-op: it publishes through its own built-in types."""
+        await self._register_native_typedefs(client, headers)
 
     async def health(self) -> None:
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:

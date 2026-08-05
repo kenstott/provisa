@@ -48,6 +48,7 @@ _TABLE_KEYS = frozenset(
         "description",
         "columns",
         "view_sql",
+        "data_product",  # REQ-1074/1372: the export filter — dropping it unmarks every product
         "materialize",
         "enable_aggregates",
         "enable_group_by",
