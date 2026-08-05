@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-"""Step definitions for REQ-1363 — the published metadata-egress documentation page.
+"""Step definitions for REQ-1368 — the published metadata-egress documentation page.
 
 The page is checked against the code it describes rather than against a copy of itself: the
 provider list comes from the registry, the settings list from ``MetadataEgressConfig``. A
@@ -23,7 +23,7 @@ from pytest_bdd import given, scenarios, then, when
 from provisa.api.metadata_egress import registered_providers
 from provisa.core.models import MetadataEgressConfig
 
-scenarios("../features/REQ-1363.feature")
+scenarios("../features/REQ-1368.feature")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DOC_PATH = _REPO_ROOT / "docs" / "metadata-egress.md"
@@ -56,7 +56,7 @@ def _nav_entries(node, section: str) -> list[dict]:
 def _docs(shared_data):
     # mkdocs.yml uses tags PyYAML's safe loader rejects (e.g. !!python/name: for extensions);
     # the nav itself is plain, so an unknown-tag-tolerant loader reads it without executing
-    # anything. REQ-1363 asserts on the nav only.
+    # anything. REQ-1368 asserts on the nav only.
     class _NavLoader(yaml.SafeLoader):
         pass
 
@@ -109,7 +109,7 @@ def _sync_model_matches_the_scheduler(shared_data):
     assert "not yet running" not in text
     startup = (_REPO_ROOT / "provisa" / "api" / "app_startup.py").read_text()
     assert "register_all_orgs" in startup, (
-        "the sync jobs are no longer armed at startup — REQ-1363's docs page describes a sync "
+        "the sync jobs are no longer armed at startup — REQ-1368's docs page describes a sync "
         "the scheduler does not run"
     )
     for claim in ("Change-driven", "Scheduled reconcile", "On demand"):

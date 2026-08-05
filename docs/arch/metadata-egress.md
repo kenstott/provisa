@@ -1,6 +1,6 @@
 # Metadata Egress — Phased Implementation Plan
 
-Covers REQ-1068 … REQ-1074 and REQ-1363. Outbound only: Provisa publishes its governance
+Covers REQ-1068 … REQ-1074 and REQ-1368. Outbound only: Provisa publishes its governance
 metadata to external catalogs and never reads one back as source of truth.
 
 **Status: all phases shipped.** What was built diverged from the plan in four places, each
@@ -8,7 +8,7 @@ noted inline below: the vendor adapters are mapping-tested rather than fixture-t
 needed an HTTP-basic auth mode the plan did not anticipate, the sync jobs live in
 `provisa/api/metadata_egress/sync.py` rather than in `provisa/scheduler/jobs.py`, and the
 event path publishes the full snapshot rather than a delta. The user-facing page is
-`docs/metadata-egress.md` (REQ-1363).
+`docs/metadata-egress.md` (REQ-1368).
 
 ## Grounding (verified in this tree)
 

@@ -1,8 +1,8 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
-Feature: REQ-1363 — Data Catalog Integration
+Feature: REQ-1368 — Data Catalog Integration
   # Metadata egress user documentation: a published docs page (docs/metadata-egress.md, navigated under Security & Governanc…
 
-  Scenario: REQ-1363 default behaviour
+  Scenario: REQ-1368 default behaviour
     Given the published documentation set
     When a reader looks for how to publish metadata to an external catalog
     Then the metadata egress page is reachable from the Security and Governance navigation

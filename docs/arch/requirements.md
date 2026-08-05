@@ -620,7 +620,7 @@ Cross-source relationships defined manually by steward with cardinality (many-to
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_metadata_snapshot_builder.py`
 
 ### REQ-020 · Registration & Governance {#REQ-020}
 
@@ -632,7 +632,7 @@ Relationships owned by defining steward, versioned, flagged for re-review on sch
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_relationship_metadata.py`
+**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_relationship_metadata.py`, `tests/unit/test_metadata_snapshot_builder.py`
 
 ### REQ-021 · Registration & Governance {#REQ-021}
 
@@ -1124,7 +1124,7 @@ Every domain must have a designated steward before it can serve governed data. A
 
 **Code:** `provisa/core/domain_policy.py`
 
-**Tests:** `tests/unit/test_domain_policy.py`
+**Tests:** `tests/unit/test_domain_policy.py`, `tests/unit/test_metadata_snapshot_builder.py`
 
 ### REQ-610 · Domain Model {#REQ-610}
 
@@ -10360,7 +10360,7 @@ Pricing page reflects tier entitlements: the public pricing table renders the fr
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_entitlements.py`
 
 ### REQ-1054 · Multi-Tenancy & Routing {#REQ-1054}
 
@@ -10520,7 +10520,7 @@ Premium feature gates beyond compute: SSO/SAML + fine-grained access control (AB
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_entitlements.py`
 
 ### REQ-1067 · Pricing & Tiering {#REQ-1067}
 
@@ -10536,7 +10536,7 @@ Bring-your-own compute / dedicated cluster as premium gate: premium tenants may 
 
 ### REQ-1068 · Data Catalog Integration {#REQ-1068}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
 Pluggable metadata egress provider pattern: an abstract MetadataEgress interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
 
@@ -10548,63 +10548,91 @@ Pluggable metadata egress provider pattern: an abstract MetadataEgress interface
 
 ### REQ-1069 · Data Catalog Integration {#REQ-1069}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
 Standards-first metadata core: the MetadataEgress provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataEgress using the same internal metadata model.
 
 **Use case:** Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend to enterprises already on Atlan or Collibra.
 
-**Code:** —
+**Code:** `provisa/api/metadata_egress/openlineage.py`, `provisa/api/metadata_egress/openmetadata.py`, `provisa/api/metadata_egress/registry.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_egress_standards.py`, `tests/integration/test_metadata_egress_openlineage_e2e.py`, `tests/integration/test_metadata_egress_openmetadata_e2e.py`
 
 ### REQ-1070 · Data Catalog Integration {#REQ-1070}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
 Published metadata payload includes datasets/tables/columns, domains, stewards and ownership ([REQ-609](#REQ-609)/020), approved relationships, and descriptions/aliases. Lineage is derived from actually-compiled queries and the MV DAG (provisa/lineage/, [REQ-939](#REQ-939)/942), providing column-level + MV-DAG lineage more accurate than scanner/agent-based ingestion.
 
 **Use case:** Provisa's query-compilation and DAG-based lineage is derived from actual execution, making it more authoritative than external scanners or agent-based metadata collection. Publishing this accuracy to external catalogs elevates DG team's source-of-truth quality.
 
-**Code:** —
+**Code:** `provisa/api/metadata_egress/model.py`, `provisa/api/metadata_egress/builder.py`
 
 **Tests:** —
 
 ### REQ-1071 · Data Catalog Integration {#REQ-1071}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
 Governance-signal projection: enforcement facts Provisa already computes (which columns/tables are masked, RLS-restricted, or visibility-restricted per [REQ-039](#REQ-039)/040) are projected outward as tags, classifications, or metadata properties on the corresponding assets in the target external catalog.
 
 **Use case:** Data-governance teams see Provisa's enforced governance policies reflected in their catalog of record, enabling data consumers to understand which data is restricted or transformed without context-switching to Provisa's UI. Strengthens audit and compliance narrative.
 
-**Code:** —
+**Code:** `provisa/api/metadata_egress/governance.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_egress_governance.py`
 
 ### REQ-1072 · Data Catalog Integration {#REQ-1072}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
 Sync mechanism: metadata changes push to the external catalog event-driven via the [REQ-942](#REQ-942) event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py) periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped to that org only.
 
 **Use case:** Event-driven sync ensures near-real-time metadata propagation for operational responsiveness; scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant isolation and per-customer credential management.
 
-**Code:** —
+**Code:** `provisa/api/metadata_egress/sync.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_egress_sync.py`, `tests/steps/steps_metadata_egress_docs.py`
 
 ### REQ-1073 · Data Catalog Integration {#REQ-1073}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
 
 Premium-gated metadata egress: the metadata egress connector is an enterprise/premium tier entitlement, extending [REQ-1066](#REQ-1066). Targeting regulated-industry data-governance teams with existing external catalog investments.
 
 **Use case:** Metadata egress to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
 
-**Code:** —
+**Code:** `provisa/control_plane/entitlements.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_entitlements.py`, `tests/unit/test_metadata_egress_admin_surface.py`, `tests/unit/test_metadata_egress_gate.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1074 · Admin Configuration {#REQ-1074}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** ui
+
+Metadata egress admin surface: an Admin tab that configures the per-org egress target (provider, endpoint, credentials, reconcile schedule), runs a connection health check against the live catalog, triggers an on-demand full reconcile, and shows the last publish outcome including the per-asset errors a partial publish returns. Credentials are write-only in the UI — an existing secret renders as set/not-set, never as its value. The tab is hidden for orgs without the [REQ-1073](#REQ-1073) entitlement.
+
+**Use case:** A data-governance admin configures and operates the catalog connection without editing YAML, and diagnoses a partial publish from the assets the target rejected rather than from server logs.
+
+**Code:** `provisa/api/admin/metadata_egress_router.py`, `provisa-ui/src/components/admin/MetadataEgressTab.tsx`, `provisa-ui/src/api/metadataEgress.ts`
+
+**Tests:** `tests/unit/test_metadata_egress_admin_surface.py`, `provisa-ui/src/__tests__/MetadataEgressTab.test.tsx`, `provisa-ui/e2e/metadata-egress-admin.spec.ts`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1368 · Data Catalog Integration {#REQ-1368}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+Metadata egress user documentation: a published docs page (docs/metadata-egress.md, navigated under Security & Governance) covering the supported targets, the YAML configuration, what the payload contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.
+
+**Use case:** An admin evaluating or configuring catalog integration finds the supported targets and the exact configuration in the product docs instead of in the architecture notes.
+
+**Code:** `docs/metadata-egress.md`, `mkdocs.yml`
+
+**Tests:** `tests/steps/steps_metadata_egress_docs.py`
 
 ## 10. UI & Admin Surfaces
 

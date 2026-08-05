@@ -31088,7 +31088,7 @@
   - REQ-1069
   - REQ-1072
   - REQ-1073
-- id: REQ-1363
+- id: REQ-1368
   status: accepted
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
