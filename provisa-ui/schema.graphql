@@ -144,6 +144,46 @@ input DomainInput {
   graphqlAlias: String = null
 }
 
+input TagInput {
+  id: String!
+  description: String! = ""
+  appliesTo: [String!]! = []
+  reasonPolicy: String! = "optional"
+  expiresPolicy: String! = "optional"
+}
+
+input TagAssignmentInput {
+  tagId: String!
+  objectType: String!
+  sourceId: String = null
+  tableId: Int = null
+  columnName: String = null
+  relationshipId: String = null
+  reason: String = null
+  expiresOn: String = null
+}
+
+type TagType {
+  id: String!
+  description: String!
+  appliesTo: [String!]!
+  isSystem: Boolean!
+  reasonPolicy: String!
+  expiresPolicy: String!
+}
+
+type TagAssignmentType {
+  tagId: String!
+  objectType: String!
+  sourceId: String
+  tableId: Int
+  columnName: String
+  relationshipId: String
+  tableRef: String
+  reason: String
+  expiresOn: String
+}
+
 type DomainType {
   id: String!
   description: String!
@@ -270,6 +310,10 @@ type Mutation {
   deleteSource(id: String!): MutationResult!
   createDomain(input: DomainInput!): MutationResult!
   deleteDomain(id: String!): MutationResult!
+  upsertTag(input: TagInput!): MutationResult!
+  deleteTag(id: String!): MutationResult!
+  assignTag(input: TagAssignmentInput!): MutationResult!
+  unassignTag(input: TagAssignmentInput!): MutationResult!
   createRole(input: RoleInput!): MutationResult!
   registerTable(input: TableInput!): MutationResult!
   registerEntity(input: EntityInput!): MutationResult!
@@ -326,6 +370,8 @@ type Query {
   sources: [SourceType!]!
   source(id: String!): SourceType
   domains: [DomainType!]!
+  tags: [TagType!]!
+  tagAssignments: [TagAssignmentType!]!
   tables: [RegisteredTableType!]!
   metrics: [MetricType!]!
   relationships: [RelationshipType!]!

@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{start}}–{{end}} מתוך {{total}}",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{count}} מתוך {{total}}",
-    "downloadSpecAria": "הורדת מפרט OpenAPI"
+    "downloadSpecAria": "הורדת מפרט OpenAPI",
+    "aggregateSectionTitle": "צבירה",
+    "groupByColumns": "קיבוץ לפי עמודות",
+    "aggregateFunctions": "פונקציות צבירה",
+    "selectAtLeastOneFunc": "יש לבחור לפחות פונקציית צבירה אחת"
   }
 }

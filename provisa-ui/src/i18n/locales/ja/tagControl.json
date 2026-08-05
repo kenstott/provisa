@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "タグを編集",
+    "noTags": "このオブジェクトタイプに適用できるタグはありません",
+    "reasonLabel": "理由",
+    "reasonRequired": "このタグには理由が必要です",
+    "expiresLabel": "削除予定日",
+    "apply": "適用",
+    "cancel": "キャンセル",
+    "editAssignment": "割り当てを編集",
+    "plannedRemoval": "削除予定: {{date}}"
+  }
+}

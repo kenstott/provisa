@@ -58,7 +58,7 @@
       },
       "step12": {
         "title": "MCP (7 de 7 interfaces)",
-        "description": "🤖 A sétima interface permite que um agente <strong>raciocine com seus dados</strong>. Ele aciona as mesmas ferramentas governadas — pesquisar o catálogo, descrever tabelas, executar SQL, seguir relacionamentos — e as <em>encadeia</em> para responder a perguntas que nenhuma consulta isolada conseguiria, cada chamada limitada pela governança do papel da <strong>sua</strong> função.<p>🔌 O mesmo <strong>servidor MCP</strong> se conecta ao Claude Desktop, Claude Code ou qualquer cliente MCP, para que agentes explorem e raciocinem sobre seu modelo de forma governada.</p><p>🔑 Usa sua própria chave de LLM; esta troca é um exemplo pré-preparado.</p><p>Falta uma interface — a que escreve todas as outras sete para você. →</p>"
+        "description": "🤖 A sétima interface permite que um agente <strong>raciocine com seus dados</strong>. Ele aciona as mesmas ferramentas governadas — pesquisar o catálogo, descrever tabelas, executar SQL, seguir relacionamentos — e as <em>encadeia</em> para responder a perguntas que nenhuma consulta isolada conseguiria, cada chamada limitada pela governança da <strong>sua</strong> função.<p>🔌 O mesmo <strong>servidor MCP</strong> se conecta ao Claude Desktop, Claude Code ou qualquer cliente MCP, para que agentes explorem e raciocinem sobre seu modelo de forma governada.</p><p>🔑 Usa sua própria chave de LLM; esta troca é um exemplo pré-preparado.</p><p>Falta uma interface — a que escreve todas as outras sete para você. →</p>"
       },
       "step13": {
         "title": "Basta perguntar — a interface que escreve as outras sete",

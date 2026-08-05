@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "fato",
       "dimension": "dimensão",
-      "impliedFactTitle": "Fato implícito — \"Habilitar agregações\" está ativado para esta tabela",
-      "impliedDimensionTitle": "Dimensão implícita — \"Habilitar Group By\" está ativado para esta tabela"
+      "impliedFactTitle": "Fato implícito — «Habilitar agregações» está ativado para esta tabela",
+      "impliedDimensionTitle": "Dimensão implícita — «Habilitar Group By» está ativado para esta tabela"
     },
-    "derived": "derivada"
+    "derived": "derivada",
+    "dataProduct": "produto",
+    "dataProductTitle": "Produto de dados — incluído em provisa metadata export"
   }
 }

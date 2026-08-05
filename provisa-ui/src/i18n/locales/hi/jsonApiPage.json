@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{total}} में से {{start}}–{{end}}",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{total}} में से {{count}}",
-    "downloadSpecAria": "OpenAPI स्पेक डाउनलोड करें"
+    "downloadSpecAria": "OpenAPI स्पेक डाउनलोड करें",
+    "aggregateSectionTitle": "एग्रीगेट",
+    "groupByColumns": "ग्रुप बाय कॉलम",
+    "aggregateFunctions": "एग्रीगेट फ़ंक्शन",
+    "selectAtLeastOneFunc": "कम से कम एक एग्रीगेट फ़ंक्शन चुनें"
   }
 }

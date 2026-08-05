@@ -69,6 +69,9 @@ class DomainAsset:  # REQ-609, REQ-1070
     description: str
     steward: OwnerRef | None
     pending: bool
+    # REQ-1385: stable business-identity address (provisa:// scheme); the physical ref
+    # exports alongside as the binding, so re-platforming preserves catalog identity.
+    semantic_uri: str = ""
 
 
 @dataclass
@@ -78,6 +81,7 @@ class ColumnAsset:  # REQ-1070
     data_type: str
     description: str
     aliases: tuple[str, ...] = ()
+    semantic_uri: str = ""  # REQ-1385: <table uri>#field:<business name>
 
 
 @dataclass
@@ -89,6 +93,7 @@ class TableAsset:  # REQ-1070
     description: str
     aliases: tuple[str, ...] = ()
     columns: list[ColumnAsset] = field(default_factory=list)
+    semantic_uri: str = ""  # REQ-1385: provisa://<org>/<domain path>/tables/<business name>
 
 
 @dataclass
@@ -97,6 +102,7 @@ class SourceAsset:  # REQ-1070
     id: str
     source_type: str
     description: str
+    semantic_uri: str = ""  # REQ-1385: provisa://<org>/sources/<source id>
 
 
 @dataclass
@@ -113,6 +119,9 @@ class RelationshipEdge:  # REQ-019, REQ-020, REQ-1070
     owner: OwnerRef | None
     version: int
     needs_review: bool
+    # REQ-1385: a relationship is a navigational field of its source concept —
+    # <source table uri>#rel:<alias> (registry id when the edge has no alias).
+    semantic_uri: str = ""
 
 
 @dataclass
@@ -157,6 +166,23 @@ class GovernanceTag:  # REQ-039, REQ-040, REQ-1071
 
 
 @dataclass
+class ModelTag:  # REQ-1375, REQ-1377, REQ-1378
+    """A steward-assigned registry tag on one asset or relationship edge.
+
+    Exactly one of ``asset`` / ``relationship_id`` is set: assets (source/table/column)
+    become vendor classifications, while relationship edges cannot carry classifications
+    on Atlas and ride the governance document instead (REQ-1378 asymmetry).
+    """
+
+    tag_id: str
+    is_system: bool
+    asset: AssetRef | None = None
+    relationship_id: str | None = None
+    reason: str | None = None  # required for 'deprecated' at the mutation layer
+    expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
+
+
+@dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
 
@@ -171,6 +197,7 @@ class MetadataSnapshot:  # REQ-1070
     relationships: list[RelationshipEdge] = field(default_factory=list)
     lineage: list[LineageEdge] = field(default_factory=list)
     governance_tags: list[GovernanceTag] = field(default_factory=list)
+    model_tags: list[ModelTag] = field(default_factory=list)  # REQ-1377/1378
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]

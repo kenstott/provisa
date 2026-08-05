@@ -40,6 +40,7 @@ import {
   useDomains,
 } from "../hooks/useAdminQueries";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
+import { TagControl } from "../components/TagControl";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 import { TableMappingBuilder } from "../components/TableMappingBuilder";
 import type { TableMapping } from "../components/TableMappingBuilder";
@@ -910,6 +911,7 @@ export function SourcesPage() {
                       </Table.Td>
                       <Table.Td onClick={(e) => e.stopPropagation()}>
                         <Group gap="xs" wrap="wrap">
+                          <TagControl objectType="source" sourceId={s.id} />
                           {DISCOVERABLE_TYPES.has(s.type) && (
                             <Button
                               size="compact-xs"

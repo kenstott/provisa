@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{start}}–{{end}} di {{total}}",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{count}} di {{total}}",
-    "downloadSpecAria": "Scarica la specifica OpenAPI"
+    "downloadSpecAria": "Scarica la specifica OpenAPI",
+    "aggregateSectionTitle": "Aggregazione",
+    "groupByColumns": "Colonne di raggruppamento",
+    "aggregateFunctions": "Funzioni di aggregazione",
+    "selectAtLeastOneFunc": "Selezionare almeno una funzione di aggregazione"
   }
 }

@@ -294,6 +294,88 @@ class Domain(BaseModel):  # REQ-471, REQ-609
     ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
 
 
+TAG_OBJECT_TYPES = ("source", "table", "column", "relationship")
+
+
+TAG_FIELD_POLICIES = ("hidden", "optional", "required")
+
+
+class Tag(BaseModel):  # REQ-1373, REQ-1375
+    id: str
+    description: str = ""
+    # Which object types this tag may attach to; subset of TAG_OBJECT_TYPES.
+    applies_to: list[str] = Field(default_factory=list)
+    is_system: bool = False
+    # Per-tag assignment-field policy (hidden | optional | required): whether the picker
+    # shows reason/expires_on and whether the assign mutation demands them.
+    reason_policy: str = "optional"
+    expires_policy: str = "optional"
+
+
+# REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never
+# stored, seeded, edited, or deleted. Only user tags live in the tags table.
+SYSTEM_TAGS: tuple[Tag, ...] = (
+    Tag(
+        id="technical",
+        # No semicolons in these descriptions: they are inlined into view DDL that the
+        # SQLite execute path splits on ';'.
+        description=(
+            "Technical plumbing with no business meaning — "
+            "excluded from the Data Product metadata export"
+        ),
+        applies_to=["column", "table"],
+        is_system=True,
+        reason_policy="hidden",  # technical is self-explanatory
+        expires_policy="hidden",  # technical is a state, not a countdown
+    ),
+    Tag(
+        id="pii",
+        description="Personally identifiable information",
+        applies_to=["column"],
+        is_system=True,
+        expires_policy="hidden",  # pii does not lapse
+    ),
+    Tag(
+        id="deprecated",
+        description="Scheduled for removal — consumers should migrate off",
+        applies_to=["source", "table", "column", "relationship"],
+        is_system=True,
+        reason_policy="required",  # a deprecation must say why
+        expires_policy="optional",  # planned removal date, when known
+    ),
+)
+
+SYSTEM_TAG_IDS = tuple(tag.id for tag in SYSTEM_TAGS)
+
+
+class TagAssignment(BaseModel):  # REQ-1377
+    tag_id: str
+    object_type: str  # one of TAG_OBJECT_TYPES
+    source_id: str | None = None
+    table_id: int | None = None
+    column_name: str | None = None
+    relationship_id: str | None = None
+    # Why this tag is on this object; required for 'deprecated' (system semantic).
+    reason: str | None = None
+    # ISO date the assignment stops being intended — for 'deprecated', the planned removal
+    # date. Typed (not prose) so management reporting can query it.
+    expires_on: str | None = None
+    # Qualified table address "source.schema.table" — the config-vocabulary identity used by
+    # the export builder (TableIndex resolves names, not DB serials). Filled from a DB join on
+    # hydration; a YAML config may provide it instead of table_id and the loader resolves it.
+    table_ref: str | None = None
+
+    def object_key(self) -> str:
+        """Canonical dedup identity for the tagged object."""
+        if self.object_type == "source":
+            return f"source:{self.source_id}"
+        if self.object_type == "table":
+            return f"table:{self.table_id}"
+        if self.object_type == "column":
+            return f"column:{self.table_id}:{self.column_name}"
+        return f"relationship:{self.relationship_id}"
+
+
 class NamingRule(BaseModel):
     pattern: str
     replace: str
@@ -1279,6 +1361,8 @@ class ProvisaConfig(BaseModel):
     default_org_id: str | None = None
     sources: list[Source]
     domains: list[Domain]
+    tags: list[Tag] = Field(default_factory=list)  # REQ-1373
+    tag_assignments: list[TagAssignment] = Field(default_factory=list)  # REQ-1377
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]
     relationships: list[Relationship] = Field(default_factory=list)

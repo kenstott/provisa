@@ -52,6 +52,7 @@
     "s3EndpointMinio": "Конечная точка S3 (MinIO)",
     "storageAccount": "Учётная запись хранилища",
     "accessKey": "Ключ доступа",
-    "sasToken": "Токен SAS"
+    "sasToken": "Токен SAS",
+    "filesGlob": "Glob-шаблон каталога"
   }
 }

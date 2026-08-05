@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "Sélectionnez une méthode pour modifier le corps de la requête.",
     "loading": "Chargement…",
     "waiting": "En attente de la réponse…",
-    "sendPrompt": "Envoyez une requête pour voir la réponse."
+    "sendPrompt": "Envoyez une requête pour voir la réponse.",
+    "groupByColumns": "Colonnes de regroupement",
+    "aggregateFunctions": "Fonctions d'agrégation",
+    "selectAtLeastOneFunc": "Sélectionnez au moins une fonction d'agrégation"
   }
 }

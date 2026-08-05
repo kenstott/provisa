@@ -48,6 +48,7 @@ import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
 import { TableReadView } from "./tables/TableReadView";
+import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
 
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
@@ -781,7 +782,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
                       title={t.description || undefined}
                     >
-                      <Group gap="0.35rem" wrap="nowrap">
+                      <Group gap="0.35rem">
                         {t.alias || t.tableName}
                         {/* REQ-1320: star-schema role is metadata on the registration itself —
                             the badge derives live from it, so it can never drift from the def. */}
@@ -822,6 +823,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             )}
                           </>
                         )}
+                        {t.dataProduct && (
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color="indigo"
+                            title={translate("tablesPage.dataProductTitle")}
+                            data-testid={`tables-data-product-${t.tableName}`}
+                          >
+                            {translate("tablesPage.dataProduct")}
+                          </Badge>
+                        )}
+                        <TagControl objectType="table" tableId={t.id} />
                       </Group>
                     </Table.Td>
                     <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>

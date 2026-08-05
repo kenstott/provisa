@@ -55,6 +55,8 @@ from provisa.api.admin.types import (
     ScheduledTaskType,
     SourceType,
     SystemHealthType,
+    TagAssignmentType,
+    TagType,
 )
 
 from provisa.api.admin.schema_helpers import (
@@ -256,6 +258,49 @@ class Query:  # REQ-021, REQ-042
                 select(domains).where(domains.c.id != "").order_by(domains.c.id)
             )
             return [_domain_from_row(dict(r._mapping)) for r in _res.fetchall()]
+
+    @strawberry.field
+    async def tags(self, info: StrawberryInfo) -> list[TagType]:  # REQ-1373
+        from provisa.core.repositories import tag as tag_repo
+
+        _resolve_admin_context(info)
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await tag_repo.list_all(cast("Connection", conn))
+        return [
+            TagType(
+                id=r["id"],
+                description=r["description"],
+                applies_to=list(r["applies_to"] or []),
+                is_system=bool(r["is_system"]),
+                reason_policy=r["reason_policy"],
+                expires_policy=r["expires_policy"],
+            )
+            for r in rows
+        ]
+
+    @strawberry.field
+    async def tag_assignments(self, info: StrawberryInfo) -> list[TagAssignmentType]:  # REQ-1377
+        from provisa.core.repositories import tag as tag_repo
+
+        _resolve_admin_context(info)
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await tag_repo.list_assignments(cast("Connection", conn))
+        return [
+            TagAssignmentType(
+                tag_id=r["tag_id"],
+                object_type=r["object_type"],
+                source_id=r["source_id"],
+                table_id=r["table_id"],
+                column_name=r["column_name"],
+                relationship_id=r["relationship_id"],
+                table_ref=r["table_ref"],
+                reason=r["reason"],
+                expires_on=r["expires_on"],
+            )
+            for r in rows
+        ]
 
     @strawberry.field
     async def tables(

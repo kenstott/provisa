@@ -36,6 +36,7 @@
     "itemSecurity": "Segurança",
     "itemAuthentication": "Autenticação",
     "itemAiModels": "Modelos de IA",
+    "itemMetadataExport": "Exportação de metadados",
     "itemHealth": "Integridade",
     "itemObservability": "Observabilidade",
     "itemMcpServer": "Servidor MCP",
@@ -50,6 +51,7 @@
     "profile": "Perfil",
     "settings": "Configurações",
     "logout": "Sair",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemTags": "Tags"
   }
 }

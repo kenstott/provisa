@@ -131,6 +131,7 @@ def _relationships_facet(edges: list[RelationshipEdge]) -> dict[str, Any]:
         relationships=[
             {
                 "id": edge.id,
+                "uri": edge.semantic_uri,  # REQ-1385
                 "target": edge.target.fqn() if edge.target is not None else None,
                 "sourceColumn": edge.source_column,
                 "targetColumn": edge.target_column,
@@ -151,6 +152,9 @@ def _dataset_facets(
     domain_owner: dict[str, str],
 ) -> dict[str, Any]:
     facets: dict[str, Any] = {"schema": _schema_facet(table)}
+    # REQ-1385: the stable business-identity address — the cross-catalog join key a lineage
+    # consumer stitches runs with.
+    facets["provisa_uri"] = _custom_facet(uri=table.semantic_uri)
     if table.description:
         facets["documentation"] = {
             "_producer": PRODUCER,

@@ -25,6 +25,7 @@ import { Trash2, Pencil, Check, X, ArrowLeftRight } from "lucide-react";
 import type { Relationship, RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelForm } from "./relationship-types";
+import { TagControl } from "../TagControl";
 
 interface RelationshipRowProps {
   rel: Relationship;
@@ -110,6 +111,7 @@ export function RelationshipRow({
               </Badge>
             )}
             <span>{`${r.sourceTableName}.${r.sourceColumn}`}</span>
+            <TagControl objectType="relationship" relationshipId={String(r.id)} />
           </Group>
         </td>
         <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>{targetLabel}</td>

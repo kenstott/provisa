@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{start}}–{{end}} из {{total}}",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{count}} из {{total}}",
-    "downloadSpecAria": "Скачать спецификацию OpenAPI"
+    "downloadSpecAria": "Скачать спецификацию OpenAPI",
+    "aggregateSectionTitle": "Агрегация",
+    "groupByColumns": "Столбцы группировки",
+    "aggregateFunctions": "Агрегатные функции",
+    "selectAtLeastOneFunc": "Выберите хотя бы одну агрегатную функцию"
   }
 }

@@ -257,6 +257,54 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-1373/REQ-1375: org-level tag registry — USER tags only. The three system tags
+-- (technical/pii/deprecated) are code-defined intrinsics (provisa.core.models.SYSTEM_TAGS),
+-- present in every install and never stored, so no rows are seeded here.
+CREATE TABLE IF NOT EXISTS tags (
+    id             TEXT PRIMARY KEY,
+    description    TEXT NOT NULL DEFAULT '',
+    applies_to     JSONB NOT NULL DEFAULT '[]',
+    is_system      BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Per-tag field policy for assignments: whether the picker shows the field and
+    -- whether the mutation demands it.
+    reason_policy  TEXT NOT NULL DEFAULT 'optional' CHECK (reason_policy IN ('hidden', 'optional', 'required')),
+    expires_policy TEXT NOT NULL DEFAULT 'optional' CHECK (expires_policy IN ('hidden', 'optional', 'required'))
+);
+
+DO $$ BEGIN
+    ALTER TABLE tags ADD COLUMN IF NOT EXISTS reason_policy TEXT NOT NULL DEFAULT 'optional';
+    ALTER TABLE tags ADD COLUMN IF NOT EXISTS expires_policy TEXT NOT NULL DEFAULT 'optional';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- REQ-1377: tag assignments. Exactly the typed columns implied by object_type are set;
+-- their FKs cascade cleanup when the tagged object is deleted. tag_id deliberately has NO
+-- FK: system tags have no row to reference (user-tag assignment cleanup happens in the
+-- delete mutation). object_key is the canonical dedup identity ('<type>:<id...>') because
+-- a UNIQUE over nullable typed columns does not deduplicate under SQL NULL semantics.
+CREATE TABLE IF NOT EXISTS tag_assignments (
+    id              SERIAL PRIMARY KEY,
+    tag_id          TEXT NOT NULL,
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship')),
+    source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
+    table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    column_name     TEXT,
+    relationship_id TEXT REFERENCES relationships(id) ON DELETE CASCADE,
+    object_key      TEXT NOT NULL,
+    -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
+    reason          TEXT,
+    -- ISO date the assignment stops being intended: for 'deprecated' the planned removal
+    -- date, queryable for management reporting (typed on purpose — never buried in prose).
+    expires_on      TEXT,
+    UNIQUE (tag_id, object_key)
+);
+
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS expires_on TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- Materialized Views (Phase P)
 CREATE TABLE IF NOT EXISTS materialized_views (
     id              TEXT PRIMARY KEY,
@@ -625,6 +673,8 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS tenant_id UUID;
     ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tenant_id UUID;
     ALTER TABLE roles ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE tags ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS tenant_id UUID;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

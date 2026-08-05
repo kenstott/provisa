@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "事實",
       "dimension": "維度",
-      "impliedFactTitle": "隱含事實 — 此表已啟用「啟用彙總」",
-      "impliedDimensionTitle": "隱含維度 — 此表已啟用「啟用分組」"
+      "impliedFactTitle": "隱含事實 — 此表已開啟「啟用彙總」",
+      "impliedDimensionTitle": "隱含維度 — 此表已開啟「啟用分組」"
     },
-    "derived": "衍生"
+    "derived": "衍生",
+    "dataProduct": "產品",
+    "dataProductTitle": "數據產品 — 包含在 provisa metadata export 中"
   }
 }

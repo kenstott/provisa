@@ -52,6 +52,7 @@
     "s3EndpointMinio": "S3 端點 (MinIO)",
     "storageAccount": "儲存體帳戶",
     "accessKey": "存取金鑰",
-    "sasToken": "SAS 權杖"
+    "sasToken": "SAS 權杖",
+    "filesGlob": "目錄 Glob"
   }
 }

@@ -213,6 +213,9 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
         "databaseSchema": _schema_fqn(table),
         "description": table.description,
         "columns": [_column_body(snapshot, table, column) for column in table.columns],
+        # REQ-1385: OpenMetadata renders sourceUrl as the asset's outbound link — the
+        # dereference path back to the governed definition.
+        "sourceUrl": table.semantic_uri,
     }
     if table.aliases:
         body["displayName"] = table.aliases[0]
@@ -228,6 +231,7 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
                 [
                     {
                         "id": edge.id,
+                        "uri": edge.semantic_uri,  # REQ-1385
                         "target": edge.target.fqn() if edge.target is not None else None,
                         "sourceColumn": edge.source_column,
                         "targetColumn": edge.target_column,

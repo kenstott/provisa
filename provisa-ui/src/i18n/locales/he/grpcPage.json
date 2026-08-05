@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "יש לבחור מתודה כדי לערוך את גוף הבקשה.",
     "loading": "טוען…",
     "waiting": "ממתין לתגובה…",
-    "sendPrompt": "יש לשלוח בקשה כדי לראות את התגובה."
+    "sendPrompt": "יש לשלוח בקשה כדי לראות את התגובה.",
+    "groupByColumns": "קיבוץ לפי עמודות",
+    "aggregateFunctions": "פונקציות צבירה",
+    "selectAtLeastOneFunc": "יש לבחור לפחות פונקציית צבירה אחת"
   }
 }

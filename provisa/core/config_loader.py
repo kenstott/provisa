@@ -52,6 +52,7 @@ from provisa.core.repositories import (
     role as role_repo,
     rls as rls_repo,
     function as function_repo,
+    tag as tag_repo,
 )
 
 if TYPE_CHECKING:
@@ -796,6 +797,33 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
 
     # 6.5 Metrics (REQ-1317/REQ-1320): governed metric definitions; fact-derived ones preserved.
     await _upsert_metrics(conn, config)
+
+    # 6.6 Tags (REQ-1373/REQ-1377): registry rows then assignments — tables and relationships
+    # must exist first so assignment FKs resolve. System tags are code-defined intrinsics
+    # (models.SYSTEM_TAGS) and never stored, so a config naming one upserts nothing.
+    from provisa.core.models import SYSTEM_TAG_IDS
+
+    for tg in config.tags:
+        if tg.id in SYSTEM_TAG_IDS:
+            continue
+        await tag_repo.upsert(conn, tg)
+    for ta in config.tag_assignments:
+        if ta.table_id is None and ta.table_ref is not None:
+            # YAML configs address tables by qualified name; the DB row needs the serial id.
+            parts = ta.table_ref.split(".")
+            if len(parts) != 3:
+                raise ValueError(
+                    f"tag assignment {ta.tag_id!r}: table_ref {ta.table_ref!r} "
+                    "must be 'source.schema.table'"
+                )
+            resolved = await tag_repo.resolve_table_id(conn, *parts)
+            if resolved is None:
+                raise ValueError(
+                    f"tag assignment {ta.tag_id!r}: table_ref {ta.table_ref!r} "
+                    "names a table that is not registered"
+                )
+            ta = ta.model_copy(update={"table_id": resolved})
+        await tag_repo.assign(conn, ta)
 
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:

@@ -50,6 +50,8 @@
     "profile": "个人资料",
     "settings": "设置",
     "logout": "退出登录",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemMetadataExport": "元数据导出",
+    "itemTags": "标签"
   }
 }

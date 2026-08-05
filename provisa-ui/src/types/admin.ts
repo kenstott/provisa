@@ -54,6 +54,36 @@ export interface Domain {
   graphqlAlias?: string | null;
 }
 
+// REQ-1373: one org-level tag registry; appliesTo scopes which object types a tag may attach to.
+export type TagObjectType = "source" | "table" | "column" | "relationship";
+
+export type TagFieldPolicy = "hidden" | "optional" | "required";
+
+export interface Tag {
+  id: string;
+  description: string;
+  appliesTo: TagObjectType[];
+  isSystem: boolean;
+  // Whether the picker shows reason/expiresOn for this tag, and whether they're demanded.
+  reasonPolicy: TagFieldPolicy;
+  expiresPolicy: TagFieldPolicy;
+}
+
+// REQ-1377: one tag on one object; exactly the fields implied by objectType are set.
+export interface TagAssignment {
+  tagId: string;
+  objectType: TagObjectType;
+  sourceId?: string | null;
+  tableId?: number | null;
+  columnName?: string | null;
+  relationshipId?: string | null;
+  tableRef?: string | null;
+  // Why this tag is on this object; required for 'deprecated'.
+  reason?: string | null;
+  // ISO date; for 'deprecated' the planned removal date (typed for reporting).
+  expiresOn?: string | null;
+}
+
 export function domainGqlAlias(domain: Domain): string {
   if (domain.graphqlAlias) return domain.graphqlAlias.toLowerCase();
   if (!domain.id) return "";

@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "Editar etiquetas",
+    "noTags": "Ninguna etiqueta se aplica a este tipo de objeto",
+    "reasonLabel": "Motivo",
+    "reasonRequired": "Esta etiqueta requiere un motivo",
+    "expiresLabel": "Fecha prevista de eliminación",
+    "apply": "Aplicar",
+    "cancel": "Cancelar",
+    "editAssignment": "Editar asignación",
+    "plannedRemoval": "Eliminación prevista: {{date}}"
+  }
+}

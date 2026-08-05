@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{start}}–{{end}} van {{total}}",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{count}} van {{total}}",
-    "downloadSpecAria": "OpenAPI-specificatie downloaden"
+    "downloadSpecAria": "OpenAPI-specificatie downloaden",
+    "aggregateSectionTitle": "Aggregatie",
+    "groupByColumns": "Groeperen op kolommen",
+    "aggregateFunctions": "Aggregatiefuncties",
+    "selectAtLeastOneFunc": "Selecteer minstens één aggregatiefunctie"
   }
 }

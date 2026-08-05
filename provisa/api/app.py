@@ -1006,6 +1006,71 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 await conn.execute_core(select(_domains_t.c.id, _domains_t.c.description))
             ).fetchall()
         ]
+        # REQ-1373/1377: the DB is the source of truth for tags; refresh them into state.config
+        # so consumers (metadata export builder) see admin-created tags, not just YAML-boot ones.
+        from provisa.core.repositories import tag as _tag_repo
+
+        _assignment_rows = await _tag_repo.list_assignments(_pg)
+        if state.config is not None:
+            from provisa.core.models import Tag as _Tag, TagAssignment as _TagAssignment
+
+            state.config.tags = [
+                _Tag(
+                    id=r["id"],
+                    description=r["description"],
+                    applies_to=list(r["applies_to"] or []),
+                    is_system=bool(r["is_system"]),
+                    reason_policy=r["reason_policy"],
+                    expires_policy=r["expires_policy"],
+                )
+                for r in await _tag_repo.list_all(_pg)
+            ]
+            state.config.tag_assignments = [
+                _TagAssignment(
+                    tag_id=r["tag_id"],
+                    object_type=r["object_type"],
+                    source_id=r["source_id"],
+                    table_id=r["table_id"],
+                    column_name=r["column_name"],
+                    relationship_id=r["relationship_id"],
+                    table_ref=r["table_ref"],
+                    reason=r["reason"],
+                    expires_on=r["expires_on"],
+                )
+                for r in _assignment_rows
+            ]
+        # REQ-1375: annotate table/column/relationship rows with the deprecation text the
+        # GraphQL schema emits as the standard @deprecated(reason:) directive. "No longer
+        # supported" is the GraphQL spec's own directive default, used only for legacy
+        # assignments that predate the required-reason rule.
+        def _deprecation_text(row: dict) -> str:
+            text = row["reason"] or "No longer supported"
+            return f"{text} (removal: {row['expires_on']})" if row["expires_on"] else text
+
+        _dep_rows = [r for r in _assignment_rows if r["tag_id"] == "deprecated"]
+        _dep_tables = {
+            r["table_id"]: _deprecation_text(r) for r in _dep_rows if r["object_type"] == "table"
+        }
+        _dep_columns = {
+            (r["table_id"], r["column_name"]): _deprecation_text(r)
+            for r in _dep_rows
+            if r["object_type"] == "column"
+        }
+        _dep_rels = {
+            r["relationship_id"]: _deprecation_text(r)
+            for r in _dep_rows
+            if r["object_type"] == "relationship"
+        }
+        for _tbl in tables:
+            if _tbl["id"] in _dep_tables:
+                _tbl["deprecation_reason"] = _dep_tables[_tbl["id"]]
+            for _col in _tbl.get("columns") or []:
+                _dep = _dep_columns.get((_tbl["id"], _col.get("column_name")))
+                if _dep is not None:
+                    _col["deprecation_reason"] = _dep
+        for _rel in relationships:
+            if _rel.get("id") in _dep_rels:
+                _rel["deprecation_reason"] = _dep_rels[_rel["id"]]
         sources = {
             r._mapping["id"]: dict(r._mapping)
             for r in (await conn.execute_core(select(_sources_t))).fetchall()

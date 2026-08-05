@@ -133,7 +133,7 @@ def _classifications(snapshot: MetadataSnapshot, asset_fqn: str) -> list[dict[st
     The attributes name the rule and the roles it applies to. They never carry the rule body:
     a mask pattern published beside the masked column is the bypass instruction (REQ-1071).
     """
-    return [
+    governance = [
         {
             "typeName": _classification_name(tag.signal.value),
             "attributes": {
@@ -145,6 +145,22 @@ def _classifications(snapshot: MetadataSnapshot, asset_fqn: str) -> list[dict[st
         for tag in snapshot.governance_tags
         if tag.asset.fqn() == asset_fqn
     ]
+    # REQ-1378: registry tags (system and user) on this asset publish as classifications
+    # through the same prefixed namespace; relationship tags never reach here (edges cannot
+    # carry classifications on Atlas — they ride the governance document instead).
+    registry = [
+        {
+            "typeName": _classification_name(tag.tag_id),
+            "attributes": {
+                "system": tag.is_system,
+                **({"reason": tag.reason} if tag.reason else {}),
+                **({"expiresOn": tag.expires_on} if tag.expires_on else {}),
+            },
+        }
+        for tag in snapshot.model_tags
+        if tag.asset is not None and tag.asset.fqn() == asset_fqn
+    ]
+    return governance + registry
 
 
 def classification_defs(snapshot: MetadataSnapshot) -> list[dict[str, Any]]:
@@ -186,6 +202,43 @@ def classification_defs(snapshot: MetadataSnapshot) -> list[dict[str, Any]]:
             ],
         }
         for signal in sorted({tag.signal.value for tag in snapshot.governance_tags})
+    ] + [
+        # REQ-1378: a typedef per registry tag the snapshot carries — Atlas rejects a
+        # classification whose typedef is unregistered, exactly as with the signals above.
+        {
+            "name": _classification_name(tag_id),
+            "description": f"Provisa registry tag {tag_id!r}.",
+            "superTypes": [],
+            "attributeDefs": [
+                {
+                    "name": "system",
+                    "typeName": "boolean",
+                    "isOptional": True,
+                    "cardinality": "SINGLE",
+                    "isUnique": False,
+                    "isIndexable": False,
+                },
+                {
+                    "name": "reason",
+                    "typeName": "string",
+                    "isOptional": True,
+                    "cardinality": "SINGLE",
+                    "isUnique": False,
+                    "isIndexable": False,
+                },
+                {
+                    "name": "expiresOn",
+                    "typeName": "string",
+                    "isOptional": True,
+                    "cardinality": "SINGLE",
+                    "isUnique": False,
+                    "isIndexable": False,
+                },
+            ],
+        }
+        for tag_id in sorted(
+            {tag.tag_id for tag in snapshot.model_tags if tag.asset is not None}
+        )
     ]
 
 
@@ -209,9 +262,16 @@ def _governance_document(
         }
     edges = [edge for edge in snapshot.relationships if edge.source.fqn() == table.ref.fqn()]
     if edges:
+        # REQ-1378 asymmetry: Atlas classifications attach to entities, not relationship
+        # edges, so a relationship's registry tags ride its governance-document entry.
+        edge_tags: dict[str, list[str]] = {}
+        for tag in snapshot.model_tags:
+            if tag.relationship_id is not None:
+                edge_tags.setdefault(tag.relationship_id, []).append(tag.tag_id)
         body["approvedRelationships"] = [
             {
                 "id": edge.id,
+                "uri": edge.semantic_uri,  # REQ-1385
                 "target": edge.target.fqn() if edge.target is not None else None,
                 "sourceColumn": edge.source_column,
                 "targetColumn": edge.target_column,
@@ -220,6 +280,7 @@ def _governance_document(
                 "owner": edge.owner.id if edge.owner is not None else None,
                 "version": edge.version,
                 "needsReview": edge.needs_review,
+                **({"tags": sorted(edge_tags[edge.id])} if edge.id in edge_tags else {}),
             }
             for edge in edges
         ]
@@ -257,7 +318,12 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
                     "rdbms_type": source.source_type,
                     "platform": "provisa",
                     "protocol": "provisa",
+                    # REQ-1385: business-identity address; qualifiedName stays physical.
+                    "provisaUri": source.semantic_uri,
                 },
+                # REQ-1377: source-level registry tags land on the instance entity — the
+                # asset a catalog reader identifies as "the source".
+                classifications=_classifications(snapshot, source.ref.fqn()),
             )
         )
         db_guid = guid.next()
@@ -286,6 +352,7 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
             "qualifiedName": _table_qn(table),
             "name": table.name,
             "description": table.description,
+            "provisaUri": table.semantic_uri,  # REQ-1385
         }
         if table.aliases:
             attributes["displayName"] = table.aliases[0]
@@ -317,6 +384,7 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
                 "name": column.name,
                 "description": column.description,
                 "data_type": column.data_type,
+                "provisaUri": column.semantic_uri,  # REQ-1385
             }
             if column.aliases:
                 column_attributes["displayName"] = column.aliases[0]

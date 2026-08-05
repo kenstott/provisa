@@ -50,6 +50,8 @@
     "profile": "Профиль",
     "settings": "Настройки",
     "logout": "Выйти",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemMetadataExport": "Экспорт метаданных",
+    "itemTags": "Теги"
   }
 }

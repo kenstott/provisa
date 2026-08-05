@@ -84,6 +84,39 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
 )
 
 
+def _add_missing_columns(sync_conn) -> None:
+    """Additive column reconciliation for the portable (non-PG) bootstrap."""
+    from sqlalchemy import inspect as _inspect
+
+    from provisa.core import schema_org
+
+    inspector = _inspect(sync_conn)
+    existing_tables = set(inspector.get_table_names())
+    for table in schema_org.metadata.sorted_tables:
+        if table.name not in existing_tables:
+            continue
+        live = {c["name"] for c in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in live:
+                continue
+            ddl_type = column.type.compile(sync_conn.dialect)
+            default = ""
+            if column.server_default is not None:
+                arg = getattr(column.server_default, "arg", None)
+                literal = str(getattr(arg, "text", arg))
+                # Quote unless it is already a SQL literal (number, quoted string, bool).
+                bare = literal.strip()
+                is_sql_literal = (
+                    bare.startswith("'")
+                    or bare.replace(".", "", 1).isdigit()
+                    or bare.lower() in ("true", "false", "null")
+                )
+                default = f" DEFAULT {bare}" if is_sql_literal else f" DEFAULT '{bare}'"
+            sync_conn.exec_driver_sql(
+                f'ALTER TABLE {table.name} ADD COLUMN "{column.name}" {ddl_type}{default}'
+            )
+
+
 async def _init_schema_portable(pool: "Database") -> None:
     """Bootstrap the tenant plane from portable SQLAlchemy metadata.
 
@@ -96,6 +129,13 @@ async def _init_schema_portable(pool: "Database") -> None:
 
     async with pool.engine.begin() as conn:
         await conn.run_sync(schema_org.metadata.create_all)
+        # V1 no-migrations means the metadata is the schema's source of truth — but
+        # ``create_all`` skips tables that already exist, so a column added to the metadata
+        # never reaches an existing SQLite/MySQL file. Reconcile additively: any metadata
+        # column missing from the live table is ADD COLUMNed (the portable equivalent of
+        # schema.sql's ALTER ... ADD COLUMN IF NOT EXISTS blocks). Additive only — drops
+        # and type changes stay out of scope, as they do on the PG path.
+        await conn.run_sync(_add_missing_columns)
     async with pool.acquire() as conn:
         for domain_id, description in _SEED_DOMAINS:
             result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))

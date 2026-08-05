@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{start}}–{{end}} / {{total}} 件",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{count}} / {{total}} 件",
-    "downloadSpecAria": "OpenAPI 仕様をダウンロード"
+    "downloadSpecAria": "OpenAPI 仕様をダウンロード",
+    "aggregateSectionTitle": "集計",
+    "groupByColumns": "グループ化するカラム",
+    "aggregateFunctions": "集計関数",
+    "selectAtLeastOneFunc": "集計関数を少なくとも1つ選択してください"
   }
 }

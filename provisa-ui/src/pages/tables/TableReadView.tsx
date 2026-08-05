@@ -15,6 +15,7 @@ import { ActionIcon, Badge, Box, Button, Group, Table, Text } from "@mantine/cor
 import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable } from "../../types/admin";
 import { computeProfile } from "./helpers";
+import { TagControl } from "../../components/TagControl";
 
 interface TableProfileResult {
   columns: string[];
@@ -127,7 +128,12 @@ export function TableReadView({
                       >
                         {t("tableReadView.akBadge")}
                       </Badge>
-                    )}
+                    )}{" "}
+                    <TagControl
+                      objectType="column"
+                      tableId={table.id}
+                      columnName={c.columnName}
+                    />
                   </Table.Td>
                   <Table.Td ta="center">
                     {c.isPrimaryKey && (

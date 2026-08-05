@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "Wählen Sie eine Methode, um den Anfrage-Body zu bearbeiten.",
     "loading": "Wird geladen…",
     "waiting": "Warten auf Antwort…",
-    "sendPrompt": "Senden Sie eine Anfrage, um die Antwort zu sehen."
+    "sendPrompt": "Senden Sie eine Anfrage, um die Antwort zu sehen.",
+    "groupByColumns": "Gruppierungsspalten",
+    "aggregateFunctions": "Aggregatfunktionen",
+    "selectAtLeastOneFunc": "Wählen Sie mindestens eine Aggregatfunktion aus"
   }
 }

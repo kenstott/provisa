@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "Selecteer een methode om de aanvraagbody te bewerken.",
     "loading": "Laden…",
     "waiting": "Wachten op antwoord…",
-    "sendPrompt": "Verzend een aanvraag om het antwoord te zien."
+    "sendPrompt": "Verzend een aanvraag om het antwoord te zien.",
+    "groupByColumns": "Groeperen op kolommen",
+    "aggregateFunctions": "Aggregatiefuncties",
+    "selectAtLeastOneFunc": "Selecteer minstens één aggregatiefunctie"
   }
 }

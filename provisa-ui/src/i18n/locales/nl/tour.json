@@ -29,7 +29,7 @@
         "description": "Wat de bron ook is — een Mongo-collectie, een Kafka-topic, een REST-endpoint, een graaf — Provisa ontleedt het tot een 2D-<strong>tabel</strong>: één uniforme vorm om over elke bron te bevragen.<p>📁 Groepeer tabellen in <strong>domeinen</strong>, elk beheerd door een data steward die de kwaliteit van het model bewaakt terwijl het evolueert.</p>"
       },
       "step5": {
-        "title": "Kies kolommen &amp; beleid",
+        "title": "Kies kolommen & beleid",
         "description": "Kies een bron, schema en tabel, en selecteer vervolgens kolommen — elk met eigen beleid:<ul><li>🎭 <strong>Maskering</strong> — waarden per rol verbergen</li><li>👁️ <strong>Zichtbaarheid</strong> — kolom tonen of verbergen</li><li>🏷️ <strong>Aliassen</strong> — hernoemen voor het model</li></ul><p>Dat is de hele setup — een bron en een paar tabellen. 🚀 Nu gaan we hem bevragen. →</p>"
       },
       "step6": {
@@ -66,7 +66,7 @@
       },
       "step14": {
         "title": "Dat was de kern van vijf minuten",
-        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, op zeven manieren bevraagd — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Druk op <kbd>Esc</kbd> wanneer je wilt; 🧭 het kompas bovenaan speelt deze rondleiding altijd opnieuw af.</p><p>👉 Alles wat volgt is <strong>hoe Provisa met je meegroeit</strong> — optionele diepgang, geen verplichte stappen:</p><ul><li>🔗 Koppel tabellen over bronnen heen tot één <strong>graaf</strong></li><li>🔐 <strong>Beheer</strong> het — rollen, row-level security, kolommaskering</li><li>🏗️ Bouw een <strong>opleveringspipeline</strong> — views, een gematerialiseerd warehouse, lineage</li><li>⚙️ <strong>Beheer</strong> de werking — kies een engine, ga naar productie</li></ul><p>Doorgaan? →</p>"
+        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, op zeven manieren bevraagd — of gewoon in gewoon Nederlands gevraagd.</strong> Dat is de hele belofte — en je zou hier kunnen stoppen.<p>Druk op <kbd>Esc</kbd> wanneer je wilt; 🧭 het kompas bovenaan speelt deze rondleiding altijd opnieuw af.</p><p>👉 Alles wat volgt is <strong>hoe Provisa met je meegroeit</strong> — optionele diepgang, geen verplichte stappen:</p><ul><li>🔗 Koppel tabellen over bronnen heen tot één <strong>graaf</strong></li><li>🔐 <strong>Beheer</strong> het — rollen, beveiliging op rijniveau, kolommaskering</li><li>🏗️ Bouw een <strong>opleveringspipeline</strong> — views, een gematerialiseerd warehouse, lineage</li><li>⚙️ <strong>Beheer</strong> de werking — kies een engine, ga naar productie</li></ul><p>Doorgaan? →</p>"
       },
       "step15": {
         "title": "Verbind de graaf",
@@ -85,7 +85,7 @@
         "description": "🔐 Het registreren van een tabel stelt toegang per kolom in, rechtstreeks gekoppeld aan rollen:<div class='tour-tags'><span>👁️ Lezen</span><span>✏️ Schrijven</span></div><p>Dat is <strong>role-based access control</strong> — en de rollen zelf worden hier op de Beveiliging-pagina gedefinieerd.</p>"
       },
       "step19": {
-        "title": "Row-level security",
+        "title": "Beveiliging op rijniveau",
         "description": "🔎 Zodra rollen bestaan, ga je fijnmaziger — beperk welke <strong>rijen</strong> elke rol ziet met attribuutgebaseerde predicaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datagedreven en per rij afgedwongen — over elke bron en elk protocol.</p>"
       },
       "step20": {

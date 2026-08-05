@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "עריכת תגיות",
+    "noTags": "אף תגית אינה חלה על סוג אובייקט זה",
+    "reasonLabel": "סיבה",
+    "reasonRequired": "תגית זו מחייבת סיבה",
+    "expiresLabel": "תאריך הסרה מתוכנן",
+    "apply": "החלה",
+    "cancel": "ביטול",
+    "editAssignment": "עריכת שיוך",
+    "plannedRemoval": "הסרה מתוכננת: {{date}}"
+  }
+}

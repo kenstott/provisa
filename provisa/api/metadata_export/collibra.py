@@ -60,6 +60,7 @@ TABLE_TO_DATABASE_RELATION = "Table is part of Database"
 # types the target must have, and a target that lacks one refuses the rows carrying it — which
 # the publish reports rather than dropping.
 DESCRIPTION_ATTRIBUTE = "Description"
+URI_ATTRIBUTE = "Provisa URI"  # REQ-1385: business-identity address
 GOVERNANCE_ATTRIBUTE = "Provisa Governance"
 RELATIONSHIP_ATTRIBUTE = "Provisa Approved Relationships"
 LINEAGE_ATTRIBUTE = "Provisa Lineage"
@@ -129,7 +130,10 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
         lineage_by_downstream.setdefault(edge.downstream.fqn(), []).append(edge)
 
     for table in snapshot.tables:
-        attributes: dict[str, Any] = {DESCRIPTION_ATTRIBUTE: [{"value": table.description}]}
+        attributes: dict[str, Any] = {
+            DESCRIPTION_ATTRIBUTE: [{"value": table.description}],
+            URI_ATTRIBUTE: [{"value": table.semantic_uri}],  # REQ-1385
+        }
         # A domain id the snapshot did not carry is a builder fault. Publishing the table
         # without its steward would report it as unowned.
         if table.domain_id:

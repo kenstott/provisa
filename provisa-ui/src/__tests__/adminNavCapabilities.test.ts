@@ -48,6 +48,7 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/observability": "observability",
   "/admin/ai-models": "org_settings",
   "/admin/metadata-export": "org_settings",
+  "/admin/tags": "org_settings",
   "/admin/domains": "org_settings",
   "/admin/scheduled-tasks": "org_settings",
   "/admin/requests": "org_settings",

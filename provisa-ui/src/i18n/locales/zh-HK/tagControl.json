@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "編輯標籤",
+    "noTags": "沒有適用於此物件類型的標籤",
+    "reasonLabel": "原因",
+    "reasonRequired": "此標籤需要填寫原因",
+    "expiresLabel": "計劃移除日期",
+    "apply": "套用",
+    "cancel": "取消",
+    "editAssignment": "編輯指派",
+    "plannedRemoval": "計劃移除：{{date}}"
+  }
+}

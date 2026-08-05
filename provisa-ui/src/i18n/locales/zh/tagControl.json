@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "编辑标签",
+    "noTags": "没有适用于此对象类型的标签",
+    "reasonLabel": "原因",
+    "reasonRequired": "此标签需要填写原因",
+    "expiresLabel": "计划移除日期",
+    "apply": "应用",
+    "cancel": "取消",
+    "editAssignment": "编辑分配",
+    "plannedRemoval": "计划移除：{{date}}"
+  }
+}

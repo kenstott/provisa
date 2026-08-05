@@ -292,6 +292,53 @@ rls_rules = Table(
     UniqueConstraint("domain_id", "role_id", name="rls_rules_domain_role_key"),
 )
 
+# REQ-1373/REQ-1375: org-level tag registry — one registry, per-tag applies_to scopes;
+# system tags seeded/immutable, user tags annotation-only. V1: schema-defined, no migration.
+tags = Table(
+    "tags",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("description", Text, nullable=False, server_default=""),
+    Column("applies_to", JSON, nullable=False, default=list, server_default="[]"),
+    Column("is_system", Boolean, nullable=False, server_default=false()),
+    # Per-tag assignment-field policy: hidden | optional | required.
+    Column("reason_policy", Text, nullable=False, server_default="optional"),
+    Column("expires_policy", Text, nullable=False, server_default="optional"),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "reason_policy IN ('hidden', 'optional', 'required')",
+        name="tags_reason_policy_check",
+    ),
+    CheckConstraint(
+        "expires_policy IN ('hidden', 'optional', 'required')",
+        name="tags_expires_policy_check",
+    ),
+)
+
+# REQ-1377: tag assignments to sources/tables/columns/relationships. object_key is the
+# canonical dedup identity; typed FK columns cascade cleanup with the tagged object.
+tag_assignments = Table(
+    "tag_assignments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    # No FK: system tags are code-defined (models.SYSTEM_TAGS) with no row to reference.
+    Column("tag_id", Text, nullable=False),
+    Column("object_type", Text, nullable=False),
+    Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE")),
+    Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
+    Column("column_name", Text),
+    Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
+    Column("object_key", Text, nullable=False),
+    Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
+    Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
+    Column("tenant_id", Uuid),
+    UniqueConstraint("tag_id", "object_key"),
+    CheckConstraint(
+        "object_type IN ('source', 'table', 'column', 'relationship')",
+        name="tag_assignments_object_type_check",
+    ),
+)
+
 materialized_views = Table(
     "materialized_views",
     metadata,

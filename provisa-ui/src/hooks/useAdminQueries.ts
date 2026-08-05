@@ -20,6 +20,8 @@ import type {
   Relationship,
   RLSRule,
   MutationResult,
+  Tag,
+  TagAssignment,
 } from "../types/admin";
 import type {
   MVInfo,
@@ -37,6 +39,12 @@ import {
   RolesQuery as ROLES_QUERY,
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
+  TagsQuery as TAGS_QUERY,
+  TagAssignmentsQuery as TAG_ASSIGNMENTS_QUERY,
+  UpsertTag as UPSERT_TAG_MUTATION,
+  DeleteTag as DELETE_TAG_MUTATION,
+  AssignTag as ASSIGN_TAG_MUTATION,
+  UnassignTag as UNASSIGN_TAG_MUTATION,
   TablesQuery as TABLES_QUERY,
   Calendars as CALENDARS_QUERY,
   CreateCalendar as CREATE_CALENDAR_MUTATION,
@@ -292,6 +300,109 @@ export function useRLSRules() {
     loading,
     error,
     refetch,
+  };
+}
+
+const NO_TAGS: Tag[] = [];
+const NO_TAG_ASSIGNMENTS: TagAssignment[] = [];
+
+export function useTags() {
+  const { data, loading, error, refetch } = useQuery<{ tags: Tag[] }>(TAGS_QUERY, {
+    fetchPolicy: "cache-and-network",
+  });
+  return {
+    tags: data?.tags ?? NO_TAGS,
+    loading,
+    error,
+    refetch,
+  };
+}
+
+export function useTagAssignments() {
+  const { data, loading, error, refetch } = useQuery<{ tagAssignments: TagAssignment[] }>(
+    TAG_ASSIGNMENTS_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return {
+    tagAssignments: data?.tagAssignments ?? NO_TAG_ASSIGNMENTS,
+    loading,
+    error,
+    refetch,
+  };
+}
+
+export function useUpsertTag() {
+  const [upsertTag, { loading }] = useMutation<{ upsertTag: MutationResult }>(UPSERT_TAG_MUTATION, {
+    refetchQueries: [{ query: TAGS_QUERY }],
+  });
+  return {
+    upsertTag: async (
+      id: string,
+      description: string,
+      appliesTo: string[],
+      reasonPolicy: string = "optional",
+      expiresPolicy: string = "optional",
+    ) => {
+      const result = await upsertTag({
+        variables: { input: { id, description, appliesTo, reasonPolicy, expiresPolicy } },
+      });
+      return (result.data?.upsertTag ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useDeleteTag() {
+  const [deleteTag, { loading }] = useMutation<{ deleteTag: MutationResult }>(DELETE_TAG_MUTATION, {
+    refetchQueries: [{ query: TAGS_QUERY }, { query: TAG_ASSIGNMENTS_QUERY }],
+  });
+  return {
+    deleteTag: async (id: string) => {
+      const result = await deleteTag({ variables: { id } });
+      return (result.data?.deleteTag ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useAssignTag() {
+  const [assignTag, { loading }] = useMutation<{ assignTag: MutationResult }>(ASSIGN_TAG_MUTATION, {
+    refetchQueries: [{ query: TAG_ASSIGNMENTS_QUERY }],
+  });
+  return {
+    assignTag: async (input: TagAssignment) => {
+      const result = await assignTag({ variables: { input: toAssignmentInput(input) } });
+      return (result.data?.assignTag ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useUnassignTag() {
+  const [unassignTag, { loading }] = useMutation<{ unassignTag: MutationResult }>(
+    UNASSIGN_TAG_MUTATION,
+    { refetchQueries: [{ query: TAG_ASSIGNMENTS_QUERY }] },
+  );
+  return {
+    unassignTag: async (input: TagAssignment) => {
+      const result = await unassignTag({ variables: { input: toAssignmentInput(input) } });
+      return (result.data?.unassignTag ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+// The GraphQL input has no tableRef — it is a server-derived read-only field.
+function toAssignmentInput(input: TagAssignment) {
+  return {
+    tagId: input.tagId,
+    objectType: input.objectType,
+    sourceId: input.sourceId ?? null,
+    tableId: input.tableId ?? null,
+    columnName: input.columnName ?? null,
+    relationshipId: input.relationshipId ?? null,
+    reason: input.reason ?? null,
+    expiresOn: input.expiresOn ?? null,
   };
 }
 

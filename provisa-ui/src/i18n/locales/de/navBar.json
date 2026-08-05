@@ -36,6 +36,7 @@
     "itemSecurity": "Sicherheit",
     "itemAuthentication": "Authentifizierung",
     "itemAiModels": "KI-Modelle",
+    "itemMetadataExport": "Metadatenexport",
     "itemHealth": "Zustand",
     "itemObservability": "Observability",
     "itemMcpServer": "MCP-Server",
@@ -50,6 +51,7 @@
     "profile": "Profil",
     "settings": "Einstellungen",
     "logout": "Abmelden",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemTags": "Tags"
   }
 }

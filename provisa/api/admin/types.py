@@ -88,6 +88,29 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
+class TagType:  # REQ-1373, REQ-1375
+    id: str
+    description: str
+    applies_to: list[str]
+    is_system: bool
+    reason_policy: str = "optional"  # hidden | optional | required
+    expires_policy: str = "optional"
+
+
+@strawberry.type
+class TagAssignmentType:  # REQ-1377
+    tag_id: str
+    object_type: str  # source | table | column | relationship
+    source_id: str | None = None
+    table_id: int | None = None
+    column_name: str | None = None
+    relationship_id: str | None = None
+    table_ref: str | None = None  # qualified "source.schema.table" for table/column targets
+    reason: str | None = None  # required for 'deprecated'
+    expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
+
+
+@strawberry.type
 class ColumnPresetType:
     column: str
     source: str
@@ -352,6 +375,27 @@ class DomainInput:  # REQ-533, REQ-609
     description: str = ""
     steward: str | None = None  # REQ-609
     graphql_alias: str | None = None
+
+
+@strawberry.input
+class TagInput:  # REQ-1373
+    id: str
+    description: str = ""
+    applies_to: list[str] = strawberry.field(default_factory=list)
+    reason_policy: str = "optional"  # hidden | optional | required
+    expires_policy: str = "optional"
+
+
+@strawberry.input
+class TagAssignmentInput:  # REQ-1377
+    tag_id: str
+    object_type: str  # source | table | column | relationship
+    source_id: str | None = None
+    table_id: int | None = None
+    column_name: str | None = None
+    relationship_id: str | None = None
+    reason: str | None = None
+    expires_on: str | None = None  # ISO date
 
 
 @strawberry.input

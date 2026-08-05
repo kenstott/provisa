@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "選取方法以編輯請求內文。",
     "loading": "載入中…",
     "waiting": "正在等候回應…",
-    "sendPrompt": "傳送請求以檢視回應。"
+    "sendPrompt": "傳送請求以檢視回應。",
+    "groupByColumns": "分組欄位",
+    "aggregateFunctions": "彙總函數",
+    "selectAtLeastOneFunc": "請至少選取一個彙總函數"
   }
 }

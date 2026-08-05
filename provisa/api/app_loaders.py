@@ -59,6 +59,8 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "roles": "roles_meta",
     "tracked_webhooks": "tracked_webhooks_meta",
     "tracked_functions": "tracked_functions_meta",
+    "tags": "tags_meta",  # REQ-1373
+    "tag_assignments": "tag_assignments_meta",  # REQ-1377
 }
 
 
@@ -1072,6 +1074,9 @@ _META_TABLES = [
     "roles_domain_access",
     "tracked_webhooks",
     "tracked_functions",
+    "tags",  # REQ-1373: the tag registry (system tags unioned in by the view)
+    "tag_assignments",  # REQ-1377
+    "tag_expiry",  # REQ-1375: expiring/expired assignments report (view-only, like roles_domain_access)
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped
@@ -1087,6 +1092,8 @@ _RLS_TENANT_TABLES = [
     "relationships",
     "rls_rules",
     "roles",
+    "tags",  # carries tenant_id (schema.sql tenant block)
+    "tag_assignments",
 ]
 
 

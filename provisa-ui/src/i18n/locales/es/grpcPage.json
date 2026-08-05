@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "Seleccione un método para editar el cuerpo de la solicitud.",
     "loading": "Cargando…",
     "waiting": "Esperando respuesta…",
-    "sendPrompt": "Envíe una solicitud para ver la respuesta."
+    "sendPrompt": "Envíe una solicitud para ver la respuesta.",
+    "groupByColumns": "Columnas de agrupación",
+    "aggregateFunctions": "Funciones de agregación",
+    "selectAtLeastOneFunc": "Seleccione al menos una función de agregación"
   }
 }

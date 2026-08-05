@@ -8,6 +8,7 @@
     "password": "סיסמה",
     "database": "מסד נתונים",
     "filePath": "נתיב קובץ",
+    "filesGlob": "תבנית Glob לספרייה",
     "filePathPlaceholder": "/path/to/db.duckdb",
     "sqliteFilePath": "נתיב קובץ SQLite",
     "csvFilePath": "נתיב קובץ CSV או URL",

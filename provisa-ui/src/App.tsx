@@ -400,6 +400,7 @@ function App() {
                       ["/admin/orgs", "cross_org"],
                       ["/admin/ai-models", "org_settings"],
                       ["/admin/metadata-export", "org_settings"],
+                      ["/admin/tags", "org_settings"],
                       ["/admin/security", "platform_settings"],
                     ] as const
                   ).map(([path, capability]) => (

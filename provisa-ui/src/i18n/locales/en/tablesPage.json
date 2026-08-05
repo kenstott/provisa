@@ -43,6 +43,8 @@
       "impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
       "impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table"
     },
-    "derived": "derived"
+    "derived": "derived",
+    "dataProduct": "product",
+    "dataProductTitle": "Data Product — included in provisa metadata export"
   }
 }

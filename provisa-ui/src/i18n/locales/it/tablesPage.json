@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "fatto",
       "dimension": "dimensione",
-      "impliedFactTitle": "Fatto implicito — \"Abilita aggregati\" è attivo per questa tabella",
-      "impliedDimensionTitle": "Dimensione implicita — \"Abilita Group By\" è attivo per questa tabella"
+      "impliedFactTitle": "Fatto implicito — «Abilita aggregati» è attivo per questa tabella",
+      "impliedDimensionTitle": "Dimensione implicita — «Abilita Group By» è attivo per questa tabella"
     },
-    "derived": "derivata"
+    "derived": "derivata",
+    "dataProduct": "prodotto",
+    "dataProductTitle": "Data product — incluso in provisa metadata export"
   }
 }

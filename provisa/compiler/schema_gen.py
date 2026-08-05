@@ -214,6 +214,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
                 metrics=metrics_by_table.get(table["table_name"], []),  # REQ-1319
+                deprecation_reason=table.get("deprecation_reason"),  # REQ-1375
             )
         )
 
@@ -442,7 +443,10 @@ def _add_standard_relationship_field(
     cardinality = rel["cardinality"]
     field_name = rel.get("graphql_alias") or rel_field_name(target.field_name, cardinality)
     if cardinality == "many-to-one":
-        fields[field_name] = GraphQLField(target_type)
+        fields[field_name] = GraphQLField(
+            target_type,
+            deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
+        )
     elif cardinality == "one-to-many":
         fields[field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(target_type)),
@@ -451,6 +455,7 @@ def _add_standard_relationship_field(
                 order_by_types.get(target.table_id),
                 distinct_enums.get(target.table_id),
             ),
+            deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
         )
 
 
@@ -833,7 +838,13 @@ def generate_schema(
             distinct_enums.get(t.table_id),
         )
         _build_native_filter_args(t, args)
-        query_fields[t.field_name] = GraphQLField(GraphQLList(GraphQLNonNull(gql_type)), args=args)
+        query_fields[t.field_name] = GraphQLField(
+            GraphQLList(GraphQLNonNull(gql_type)),
+            args=args,
+            # REQ-1375: table-level deprecation surfaces on the root query field — the
+            # GraphQL construct @deprecated is valid on (objects themselves cannot carry it).
+            deprecation_reason=t.deprecation_reason,
+        )
 
         # Build agg_fields_type once to avoid duplicate GraphQL type names when both flags on.
         shared_agg_fields_type = None

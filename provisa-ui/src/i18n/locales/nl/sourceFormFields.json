@@ -52,6 +52,7 @@
     "s3EndpointMinio": "S3-endpoint (MinIO)",
     "storageAccount": "Opslagaccount",
     "accessKey": "Toegangssleutel",
-    "sasToken": "SAS-token"
+    "sasToken": "SAS-token",
+    "filesGlob": "Directory-glob"
   }
 }

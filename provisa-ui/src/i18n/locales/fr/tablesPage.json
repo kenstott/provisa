@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "fait",
       "dimension": "dimension",
-      "impliedFactTitle": "Fait implicite : « Activer les agrégats » est actif pour cette table",
-      "impliedDimensionTitle": "Dimension implicite : « Activer le Group By » est actif pour cette table"
+      "impliedFactTitle": "Fait implicite — « Activer les agrégats » est activé pour cette table",
+      "impliedDimensionTitle": "Dimension implicite — « Activer le Group By » est activé pour cette table"
     },
-    "derived": "dérivée"
+    "derived": "dérivée",
+    "dataProduct": "produit",
+    "dataProductTitle": "Produit de données — inclus dans provisa metadata export"
   }
 }

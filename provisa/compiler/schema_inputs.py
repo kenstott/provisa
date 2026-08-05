@@ -139,7 +139,13 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
             conv_alias = apply_gql_name(col_name, override)
             field_name = conv_alias if conv_alias else col_name
         description = col.get("description")
-        fields[field_name] = GraphQLField(gql_type, description=description)
+        fields[field_name] = GraphQLField(
+            gql_type,
+            description=description,
+            # REQ-1375: the 'deprecated' tag's reason (+ removal date) as the standard
+            # @deprecated directive, which Apollo and every SDL consumer honors natively.
+            deprecation_reason=col.get("deprecation_reason"),
+        )
     return fields
 
 

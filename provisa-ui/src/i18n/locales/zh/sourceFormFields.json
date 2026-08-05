@@ -52,6 +52,7 @@
     "s3EndpointMinio": "S3 终结点（MinIO）",
     "storageAccount": "存储账户",
     "accessKey": "访问密钥",
-    "sasToken": "SAS 令牌"
+    "sasToken": "SAS 令牌",
+    "filesGlob": "目录 Glob"
   }
 }

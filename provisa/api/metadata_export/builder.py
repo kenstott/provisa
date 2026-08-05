@@ -21,7 +21,7 @@ config. An unresolvable or ambiguous name raises — publishing a snapshot with 
 dropped edge would tell the external catalog that a governed derivation does not exist.
 """
 
-# Requirements: REQ-609, REQ-862, REQ-939, REQ-1070
+# Requirements: REQ-609, REQ-862, REQ-939, REQ-1070, REQ-1375, REQ-1377, REQ-1378
 
 from __future__ import annotations
 
@@ -31,35 +31,43 @@ from provisa.api.metadata_export.model import (
     DomainAsset,
     LineageEdge,
     MetadataSnapshot,
+    ModelTag,
     OwnerRef,
     RelationshipEdge,
     SourceAsset,
     TableAsset,
 )
 from provisa.api.metadata_export.refs import (
+    SnapshotBuildError,
     TableIndex,
     UnqualifiedLineageError,
     column_ref,
+    column_uri,
+    domain_uri,
+    relationship_uri,
     source_ref,
+    source_uri,
     table_ref,
+    table_uri,
 )
-from provisa.core.models import ProvisaConfig, Table
+from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignment
 from provisa.lineage.graph import Edge, LineageGraph, Node, build_column_graph
 
 
-def _source_assets(config: ProvisaConfig) -> list[SourceAsset]:
+def _source_assets(config: ProvisaConfig, org_id: str) -> list[SourceAsset]:
     return [
         SourceAsset(
             ref=source_ref(source),
             id=source.id,
             source_type=source.type.value,
             description=source.description,
+            semantic_uri=source_uri(org_id, source.id),
         )
         for source in config.sources
     ]
 
 
-def _domain_assets(config: ProvisaConfig) -> list[DomainAsset]:  # REQ-609
+def _domain_assets(config: ProvisaConfig, org_id: str) -> list[DomainAsset]:  # REQ-609
     assets: list[DomainAsset] = []
     for domain in config.domains:
         steward = (
@@ -73,22 +81,28 @@ def _domain_assets(config: ProvisaConfig) -> list[DomainAsset]:  # REQ-609
                 description=domain.description,
                 steward=steward,
                 pending=steward is None,
+                semantic_uri=domain_uri(org_id, domain.id),
             )
         )
     return assets
 
 
-def _column_asset(table: Table, column) -> ColumnAsset:
+def _column_asset(table: Table, column, org_id: str) -> ColumnAsset:
     return ColumnAsset(
         ref=column_ref(table, column.name),
         name=column.name,
         data_type=column.data_type or "",
         description=column.description or "",
         aliases=(column.alias,) if column.alias else (),
+        semantic_uri=column_uri(org_id, table, column.name, column.alias),
     )
 
 
-def _table_assets(tables: list[Table]) -> list[TableAsset]:
+def _table_assets(
+    tables: list[Table],
+    org_id: str,
+    technical_columns: frozenset[tuple[tuple[str, ...], str]] = frozenset(),
+) -> list[TableAsset]:
     return [
         TableAsset(
             ref=table_ref(table),
@@ -97,13 +111,21 @@ def _table_assets(tables: list[Table]) -> list[TableAsset]:
             domain_id=table.domain_id,
             description=table.description or "",
             aliases=(table.alias,) if table.alias else (),
-            columns=[_column_asset(table, column) for column in table.columns],
+            columns=[
+                _column_asset(table, column, org_id)
+                for column in table.columns
+                # REQ-1375: a column tagged 'technical' is classified out of the Data Product.
+                if (table_ref(table).parts, column.name) not in technical_columns
+            ],
+            semantic_uri=table_uri(org_id, table),
         )
         for table in tables
     ]
 
 
-def _relationship_edges(config: ProvisaConfig, index: TableIndex) -> list[RelationshipEdge]:
+def _relationship_edges(
+    config: ProvisaConfig, index: TableIndex, org_id: str
+) -> list[RelationshipEdge]:
     edges: list[RelationshipEdge] = []
     for rel in config.relationships:
         context = f"relationship {rel.id!r}"
@@ -123,6 +145,7 @@ def _relationship_edges(config: ProvisaConfig, index: TableIndex) -> list[Relati
                 owner=OwnerRef(id=rel.owner, kind="relationship_owner") if rel.owner else None,
                 version=rel.version,
                 needs_review=rel.needs_review,
+                semantic_uri=relationship_uri(org_id, source, rel.alias, rel.id),
             )
         )
     return edges
@@ -194,6 +217,78 @@ def _lineage_edges(
     return edges
 
 
+def _resolve_assignment_table(
+    assignment: TagAssignment, index: TableIndex
+) -> Table | None:
+    """Resolve a table/column assignment's qualified address; None if unresolvable.
+
+    A tag assignment can outlive its target only transiently (the DB cascades deletes);
+    an unresolvable address here means the config snapshot predates the cascade, so the
+    assignment is withheld rather than published against a phantom asset.
+    """
+    if assignment.table_ref is None:
+        return None
+    try:
+        return index.resolve(assignment.table_ref, f"tag {assignment.tag_id!r}")
+    except SnapshotBuildError:
+        return None
+
+
+def _technical_exclusions(
+    config: ProvisaConfig, index: TableIndex
+) -> tuple[set[tuple[str, ...]], frozenset[tuple[tuple[str, ...], str]]]:
+    """The table addresses and (table, column) pairs tagged 'technical' (REQ-1375)."""
+    tables: set[tuple[str, ...]] = set()
+    columns: set[tuple[tuple[str, ...], str]] = set()
+    for assignment in config.tag_assignments:
+        if assignment.tag_id != "technical":
+            continue
+        target = _resolve_assignment_table(assignment, index)
+        if target is None:
+            continue
+        if assignment.object_type == "table":
+            tables.add(table_ref(target).parts)
+        elif assignment.object_type == "column" and assignment.column_name:
+            columns.add((table_ref(target).parts, assignment.column_name))
+    return tables, frozenset(columns)
+
+
+def _model_tags(
+    config: ProvisaConfig,
+    index: TableIndex,
+    keep: set[tuple[str, ...]],
+    published_columns: set[tuple[str, ...]],
+    published_relationships: set[str],
+) -> list[ModelTag]:  # REQ-1377, REQ-1378
+    """Registry tags on published assets. Tags on withheld assets are withheld with them."""
+    tags: list[ModelTag] = []
+    for assignment in config.tag_assignments:
+        common = {
+            "tag_id": assignment.tag_id,
+            "is_system": assignment.tag_id in SYSTEM_TAG_IDS,
+            "reason": assignment.reason,
+            "expires_on": assignment.expires_on,
+        }
+        if assignment.object_type == "source":
+            source = next((s for s in config.sources if s.id == assignment.source_id), None)
+            if source is not None:
+                tags.append(ModelTag(asset=source_ref(source), **common))
+        elif assignment.object_type == "table":
+            target = _resolve_assignment_table(assignment, index)
+            if target is not None and table_ref(target).parts in keep:
+                tags.append(ModelTag(asset=table_ref(target), **common))
+        elif assignment.object_type == "column":
+            target = _resolve_assignment_table(assignment, index)
+            if target is not None and assignment.column_name:
+                ref = column_ref(target, assignment.column_name)
+                if ref.parts in published_columns:
+                    tags.append(ModelTag(asset=ref, **common))
+        elif assignment.object_type == "relationship":
+            if assignment.relationship_id in published_relationships:
+                tags.append(ModelTag(relationship_id=assignment.relationship_id, **common))
+    return tags
+
+
 def build_snapshot(
     config: ProvisaConfig, *, org_id: str, dialect: str
 ) -> MetadataSnapshot:  # REQ-1070
@@ -209,19 +304,28 @@ def build_snapshot(
     # The Data Product checkbox is the export filter: only marked tables publish, and every
     # edge or tag touching an unmarked table is withheld with it — a dangling edge would hand
     # the catalog a reference to an asset it was never sent, and name the table the admin
-    # chose not to publish.
-    exported = [table for table in config.tables if table.data_product]
+    # chose not to publish. REQ-1375: the 'technical' system tag classifies tables and
+    # columns out of the Data Product the same way.
+    technical_tables, technical_columns = _technical_exclusions(config, index)
+    exported = [
+        table
+        for table in config.tables
+        if table.data_product and table_ref(table).parts not in technical_tables
+    ]
     keep = {table_ref(table).parts for table in exported}
+    tables = _table_assets(exported, org_id, technical_columns)
+    relationships = [
+        edge
+        for edge in _relationship_edges(config, index, org_id)
+        if edge.source.parts in keep and (edge.target is None or edge.target.parts in keep)
+    ]
+    published_columns = {column.ref.parts for table in tables for column in table.columns}
     return MetadataSnapshot(
         org_id=org_id,
-        sources=_source_assets(config),
-        domains=_domain_assets(config),
-        tables=_table_assets(exported),
-        relationships=[
-            edge
-            for edge in _relationship_edges(config, index)
-            if edge.source.parts in keep and (edge.target is None or edge.target.parts in keep)
-        ],
+        sources=_source_assets(config, org_id),
+        domains=_domain_assets(config, org_id),
+        tables=tables,
+        relationships=relationships,
         lineage=[
             edge
             for edge in _lineage_edges(config, index, dialect)
@@ -233,4 +337,11 @@ def build_snapshot(
         governance_tags=[
             tag for tag in build_governance_tags(config) if tag.asset.parts[:3] in keep
         ],
+        model_tags=_model_tags(
+            config,
+            index,
+            keep,
+            published_columns,
+            {edge.id for edge in relationships},
+        ),
     )

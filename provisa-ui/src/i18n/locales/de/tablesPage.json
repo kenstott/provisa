@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "Fakt",
       "dimension": "Dimension",
-      "impliedFactTitle": "Impliziter Fakt – „Aggregate aktivieren“ ist für diese Tabelle aktiviert",
-      "impliedDimensionTitle": "Implizierte Dimension – „Group By aktivieren“ ist für diese Tabelle aktiviert"
+      "impliedFactTitle": "Impliziter Fakt — „Aggregate aktivieren“ ist für diese Tabelle aktiviert",
+      "impliedDimensionTitle": "Implizite Dimension — „Group By aktivieren“ ist für diese Tabelle aktiviert"
     },
-    "derived": "abgeleitet"
+    "derived": "abgeleitet",
+    "dataProduct": "Produkt",
+    "dataProductTitle": "Datenprodukt — enthalten in provisa metadata export"
   }
 }

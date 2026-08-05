@@ -85,3 +85,6 @@ class _TableInfo:
     metrics: list[dict] = field(
         default_factory=list
     )  # REQ-1319: role-visible metrics whose expression references (only) this table
+    # REQ-1375: 'deprecated' tag text (reason + removal date) emitted as the standard
+    # @deprecated(reason:) directive on this table's root query fields.
+    deprecation_reason: str | None = None

@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "Tags bewerken",
+    "noTags": "Geen tags van toepassing op dit objecttype",
+    "reasonLabel": "Reden",
+    "reasonRequired": "Voor deze tag is een reden verplicht",
+    "expiresLabel": "Geplande verwijderdatum",
+    "apply": "Toepassen",
+    "cancel": "Annuleren",
+    "editAssignment": "Toewijzing bewerken",
+    "plannedRemoval": "Geplande verwijdering: {{date}}"
+  }
+}

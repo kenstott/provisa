@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "选择一个方法以编辑请求正文。",
     "loading": "加载中…",
     "waiting": "等待响应…",
-    "sendPrompt": "发送请求以查看响应。"
+    "sendPrompt": "发送请求以查看响应。",
+    "groupByColumns": "分组列",
+    "aggregateFunctions": "聚合函数",
+    "selectAtLeastOneFunc": "请至少选择一个聚合函数"
   }
 }

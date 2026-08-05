@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{start}}–{{end}} / 共 {{total}}",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{count}} / 共 {{total}}",
-    "downloadSpecAria": "下载 OpenAPI 规范"
+    "downloadSpecAria": "下载 OpenAPI 规范",
+    "aggregateSectionTitle": "聚合",
+    "groupByColumns": "分组列",
+    "aggregateFunctions": "聚合函数",
+    "selectAtLeastOneFunc": "请至少选择一个聚合函数"
   }
 }

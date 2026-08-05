@@ -90,6 +90,31 @@ query DomainsQuery {
   }
 }
 
+query TagsQuery {
+  tags {
+    id
+    description
+    appliesTo
+    isSystem
+    reasonPolicy
+    expiresPolicy
+  }
+}
+
+query TagAssignmentsQuery {
+  tagAssignments {
+    tagId
+    objectType
+    sourceId
+    tableId
+    columnName
+    relationshipId
+    tableRef
+    reason
+    expiresOn
+  }
+}
+
 query TablesQuery {
   tables {
     id
@@ -450,6 +475,30 @@ mutation CreateDomain($id: String!, $description: String!, $graphqlAlias: String
 
 mutation DeleteDomain($id: String!) {
   deleteDomain(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation UpsertTag($input: TagInput!) {
+  upsertTag(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteTag($id: String!) {
+  deleteTag(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation AssignTag($input: TagAssignmentInput!) {
+  assignTag(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation UnassignTag($input: TagAssignmentInput!) {
+  unassignTag(input: $input) {
     ...MutationResult
   }
 }

@@ -44,6 +44,10 @@
     "resultRangeOfTotal": "{{start}}–{{end}}，共 {{total}}",
     "resultCount": "{{count}}",
     "resultCountOfTotal": "{{count}}，共 {{total}}",
-    "downloadSpecAria": "下載 OpenAPI 規格"
+    "downloadSpecAria": "下載 OpenAPI 規格",
+    "aggregateSectionTitle": "彙總",
+    "groupByColumns": "分組欄位",
+    "aggregateFunctions": "彙總函數",
+    "selectAtLeastOneFunc": "請至少選取一個彙總函數"
   }
 }

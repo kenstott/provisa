@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -105,11 +106,18 @@ class AspectProposal:  # REQ-1069
 
 
 def _tags_for(snapshot: MetadataSnapshot, asset_fqn: str) -> list[dict[str, str]]:
-    return [
+    governance = [
         {"tag": _tag_urn(tag.signal.value)}
         for tag in snapshot.governance_tags
         if tag.asset.fqn() == asset_fqn
     ]
+    # REQ-1378: registry tags publish through the same prefixed tag namespace.
+    registry = [
+        {"tag": _tag_urn(tag.tag_id)}
+        for tag in snapshot.model_tags
+        if tag.asset is not None and tag.asset.fqn() == asset_fqn
+    ]
+    return governance + registry
 
 
 def _tag_definitions(snapshot: MetadataSnapshot) -> list[AspectProposal]:
@@ -136,6 +144,22 @@ def _tag_definitions(snapshot: MetadataSnapshot) -> list[AspectProposal]:
             },
         )
         for signal, rule_ids in sorted(by_signal.items())
+    ] + [
+        # REQ-1378: a tag entity per registry tag, so dataset/field references resolve.
+        AspectProposal(
+            asset=AssetRefStub(_tag_urn(tag_id)),
+            kind="tag",
+            entity_type="tag",
+            urn=_tag_urn(tag_id),
+            aspect_name="tagProperties",
+            aspect={
+                "name": f"{TAG_PREFIX}{tag_id}",
+                "description": f"Provisa registry tag {tag_id!r}.",
+            },
+        )
+        for tag_id in sorted(
+            {tag.tag_id for tag in snapshot.model_tags if tag.asset is not None}
+        )
     ]
 
 
@@ -244,6 +268,17 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     relationships_by_source: dict[str, list[Any]] = {}
     for edge in snapshot.relationships:
         relationships_by_source.setdefault(edge.source.fqn(), []).append(edge)
+    edge_tags: dict[str, list[str]] = {}
+    for tag in snapshot.model_tags:
+        if tag.relationship_id is not None:
+            edge_tags.setdefault(tag.relationship_id, []).append(tag.tag_id)
+    # REQ-1375: 'deprecated' maps to DataHub's native deprecation aspect, not just a tag —
+    # that is the construct DataHub consumers already surface in their UI.
+    deprecated_tables = {
+        tag.asset.fqn(): tag
+        for tag in snapshot.model_tags
+        if tag.tag_id == "deprecated" and tag.asset is not None and len(tag.asset.parts) == 3
+    }
 
     for table in snapshot.tables:
         urn = dataset_urn(table.ref)
@@ -257,6 +292,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                     "approved": [
                         {
                             "id": edge.id,
+                            "uri": edge.semantic_uri,  # REQ-1385
                             "target": edge.target.fqn() if edge.target is not None else None,
                             "sourceColumn": edge.source_column,
                             "targetColumn": edge.target_column,
@@ -265,16 +301,27 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                             "owner": edge.owner.id if edge.owner is not None else None,
                             "version": edge.version,
                             "needsReview": edge.needs_review,
+                            # REQ-1378: relationship registry tags ride the relationship
+                            # record — DataHub has no edge entity to tag natively here.
+                            **(
+                                {"tags": sorted(edge_tags[edge.id])}
+                                if edge.id in edge_tags
+                                else {}
+                            ),
                         }
                         for edge in edges
                     ]
                 }
             )
+        custom["provisaUri"] = table.semantic_uri  # REQ-1385: also the clickable externalUrl
         properties: dict[str, Any] = {
             "name": table.name,
             "qualifiedName": table.ref.fqn(),
             "description": table.description,
             "customProperties": custom,
+            # REQ-1385: DataHub renders externalUrl as the asset's outbound link — the
+            # dereference path back to the governed definition.
+            "externalUrl": table.semantic_uri,
         }
         if table.aliases:
             custom["provisaAliases"] = ", ".join(table.aliases)
@@ -298,6 +345,27 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                 aspect=_schema_metadata(table, snapshot),
             )
         )
+        if table.ref.fqn() in deprecated_tables:
+            _dep = deprecated_tables[table.ref.fqn()]
+            _aspect: dict[str, Any] = {
+                "deprecated": True,
+                # The steward's stated reason (required at assignment) — never boilerplate.
+                "note": _dep.reason or "Tagged 'deprecated' in the Provisa registry.",
+            }
+            if _dep.expires_on:
+                # decommissionTime is DataHub's native removal date (epoch millis).
+                _epoch = datetime.fromisoformat(_dep.expires_on).replace(tzinfo=timezone.utc)
+                _aspect["decommissionTime"] = int(_epoch.timestamp() * 1000)
+            proposals.append(
+                AspectProposal(
+                    asset=table.ref,
+                    kind="deprecation",
+                    entity_type="dataset",
+                    urn=urn,
+                    aspect_name="deprecation",
+                    aspect=_aspect,
+                )
+            )
         table_tags = _tags_for(snapshot, table.ref.fqn())
         if table_tags:
             proposals.append(

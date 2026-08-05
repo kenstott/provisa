@@ -36,6 +36,7 @@
     "itemSecurity": "אבטחה",
     "itemAuthentication": "אימות",
     "itemAiModels": "מודלי AI",
+    "itemMetadataExport": "ייצוא מטא-נתונים",
     "itemHealth": "תקינות",
     "itemObservability": "Observability",
     "itemMcpServer": "שרת MCP",
@@ -50,6 +51,7 @@
     "profile": "פרופיל",
     "settings": "הגדרות",
     "logout": "התנתקות",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemTags": "תגיות"
   }
 }

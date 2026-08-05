@@ -15,6 +15,9 @@
     "selectMethodPlaceholder": "メソッドを選択してリクエストボディを編集してください。",
     "loading": "読み込み中…",
     "waiting": "レスポンスを待っています…",
-    "sendPrompt": "リクエストを送信するとレスポンスが表示されます。"
+    "sendPrompt": "リクエストを送信するとレスポンスが表示されます。",
+    "groupByColumns": "グループ化するカラム",
+    "aggregateFunctions": "集計関数",
+    "selectAtLeastOneFunc": "集計関数を少なくとも1つ選択してください"
   }
 }

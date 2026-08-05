@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "Tags bearbeiten",
+    "noTags": "Keine Tags gelten für diesen Objekttyp",
+    "reasonLabel": "Begründung",
+    "reasonRequired": "Für dieses Tag ist eine Begründung erforderlich",
+    "expiresLabel": "Geplantes Entfernungsdatum",
+    "apply": "Übernehmen",
+    "cancel": "Abbrechen",
+    "editAssignment": "Zuweisung bearbeiten",
+    "plannedRemoval": "Geplante Entfernung: {{date}}"
+  }
+}

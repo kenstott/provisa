@@ -51,6 +51,8 @@ from provisa.api.admin.types import (
     RoleInput,
     SourceInput,
     TableInput,
+    TagAssignmentInput,
+    TagInput,
 )
 
 from provisa.api.admin.schema_helpers import (
@@ -173,6 +175,73 @@ async def _upsert_relationship_impl(
         code="schema.relationship_saved",
         params={"relationship": input.id},
     )
+
+
+def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
+    """Reject an assignment whose typed target fields don't match its object_type."""
+    from provisa.core.models import TAG_OBJECT_TYPES
+
+    required = {
+        "source": model.source_id,
+        "table": model.table_id,
+        "column": model.table_id is not None and model.column_name,
+        "relationship": model.relationship_id,
+    }
+    if model.object_type not in TAG_OBJECT_TYPES:
+        return MutationResult(
+            success=False,
+            message=f"object_type must be one of {list(TAG_OBJECT_TYPES)}",
+            code="schema.tag_bad_object_type",
+            params={"objectType": model.object_type},
+        )
+    if not required[model.object_type]:
+        return MutationResult(
+            success=False,
+            message=f"Missing target identifier for a {model.object_type!r} tag assignment",
+            code="schema.tag_bad_target",
+            params={"objectType": model.object_type},
+        )
+    return None
+
+
+async def _refresh_config_tags() -> None:  # REQ-1373/1377
+    """The DB is the source of truth for tags; mirror it into state.config for consumers
+    (metadata export builder) that read the in-memory config."""
+    from provisa.api.app import state
+    from provisa.core.models import Tag as TagModel, TagAssignment as TagAssignmentModel
+    from provisa.core.repositories import tag as tag_repo
+
+    if state.config is None:
+        return
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        tag_rows = await tag_repo.list_all(cast("Connection", conn))
+        assignment_rows = await tag_repo.list_assignments(cast("Connection", conn))
+    state.config.tags = [
+        TagModel(
+            id=r["id"],
+            description=r["description"],
+            applies_to=list(r["applies_to"] or []),
+            is_system=bool(r["is_system"]),
+            reason_policy=r["reason_policy"],
+            expires_policy=r["expires_policy"],
+        )
+        for r in tag_rows
+    ]
+    state.config.tag_assignments = [
+        TagAssignmentModel(
+            tag_id=r["tag_id"],
+            object_type=r["object_type"],
+            source_id=r["source_id"],
+            table_id=r["table_id"],
+            column_name=r["column_name"],
+            relationship_id=r["relationship_id"],
+            table_ref=r["table_ref"],
+            reason=r["reason"],
+            expires_on=r["expires_on"],
+        )
+        for r in assignment_rows
+    ]
 
 
 def _validate_load_protection(
@@ -546,9 +615,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def create_domain(self, input: DomainInput) -> MutationResult:  # REQ-021
+        from provisa.api.metadata_export.refs import RESERVED_KIND_KEYWORDS
         from provisa.core.models import Domain as DomainModel
         from provisa.core.repositories import domain as domain_repo
 
+        # REQ-1385: kind keywords are reserved URI path segments; a domain with one of these
+        # names would make its semantic URIs unparseable.
+        if input.id in RESERVED_KIND_KEYWORDS:
+            return MutationResult(
+                success=False,
+                message=f"Domain id {input.id!r} is a reserved word",
+                code="schema.domain_reserved_word",
+                params={"domain": input.id},
+            )
         pool = await _get_pool()
         model = DomainModel(
             id=input.id,
@@ -570,6 +649,203 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if deleted:
             return MutationResult(success=True, message=f"Domain {id!r} deleted", code="schema.domain_deleted", params={"domain": id})
         return MutationResult(success=False, message=f"Domain {id!r} not found", code="schema.domain_not_found", params={"domain": id})
+
+    @strawberry.mutation
+    async def upsert_tag(self, input: TagInput) -> MutationResult:  # REQ-1373, REQ-1375
+        from provisa.core.models import (
+            SYSTEM_TAG_IDS,
+            TAG_FIELD_POLICIES,
+            TAG_OBJECT_TYPES,
+            Tag as TagModel,
+        )
+        from provisa.core.repositories import tag as tag_repo
+
+        if input.id in SYSTEM_TAG_IDS:
+            return MutationResult(
+                success=False,
+                message=f"Tag {input.id!r} is a system tag and cannot be redefined",
+                code="schema.tag_system_immutable",
+                params={"tag": input.id},
+            )
+        bad_scopes = [s for s in input.applies_to if s not in TAG_OBJECT_TYPES]
+        if bad_scopes or not input.applies_to:
+            return MutationResult(
+                success=False,
+                message=f"applies_to must be a non-empty subset of {list(TAG_OBJECT_TYPES)}",
+                code="schema.tag_bad_scope",
+                params={"tag": input.id, "scopes": ",".join(bad_scopes)},
+            )
+        for policy in (input.reason_policy, input.expires_policy):
+            if policy not in TAG_FIELD_POLICIES:
+                return MutationResult(
+                    success=False,
+                    message=f"Field policy must be one of {list(TAG_FIELD_POLICIES)}",
+                    code="schema.tag_bad_policy",
+                    params={"tag": input.id, "policy": policy},
+                )
+        model = TagModel(
+            id=input.id,
+            description=input.description,
+            applies_to=list(input.applies_to),
+            reason_policy=input.reason_policy,
+            expires_policy=input.expires_policy,
+        )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            await tag_repo.upsert(cast("Connection", conn), model)
+        await _refresh_config_tags()
+        return MutationResult(
+            success=True,
+            message=f"Tag {input.id!r} saved",
+            code="schema.tag_saved",
+            params={"tag": input.id},
+        )
+
+    @strawberry.mutation
+    async def delete_tag(self, id: str) -> MutationResult:  # REQ-1373, REQ-1375
+        from provisa.core.models import SYSTEM_TAG_IDS
+        from provisa.core.repositories import tag as tag_repo
+
+        if id in SYSTEM_TAG_IDS:
+            return MutationResult(
+                success=False,
+                message=f"Tag {id!r} is a system tag and cannot be deleted",
+                code="schema.tag_system_immutable",
+                params={"tag": id},
+            )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            deleted = await tag_repo.delete(cast("Connection", conn), id)
+        if not deleted:
+            return MutationResult(
+                success=False,
+                message=f"Tag {id!r} not found",
+                code="schema.tag_not_found",
+                params={"tag": id},
+            )
+        await _refresh_config_tags()
+        return MutationResult(
+            success=True,
+            message=f"Tag {id!r} deleted",
+            code="schema.tag_deleted",
+            params={"tag": id},
+        )
+
+    @strawberry.mutation
+    async def assign_tag(self, input: TagAssignmentInput) -> MutationResult:  # REQ-1376/1377
+        from provisa.core.models import TagAssignment as TagAssignmentModel
+        from provisa.core.repositories import tag as tag_repo
+
+        model = TagAssignmentModel(
+            tag_id=input.tag_id,
+            object_type=input.object_type,
+            source_id=input.source_id,
+            table_id=input.table_id,
+            column_name=input.column_name,
+            relationship_id=input.relationship_id,
+            reason=(input.reason or "").strip() or None,
+            expires_on=(input.expires_on or "").strip() or None,
+        )
+        problem = _assignment_target_problem(model)
+        if problem is not None:
+            return problem
+        if model.expires_on is not None:
+            import datetime as _dt
+
+            try:
+                _dt.date.fromisoformat(model.expires_on)
+            except ValueError:
+                return MutationResult(
+                    success=False,
+                    message=f"expires_on must be an ISO date, got {model.expires_on!r}",
+                    code="schema.tag_bad_expires_on",
+                    params={"expiresOn": model.expires_on},
+                )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            tag_row = await tag_repo.get(cast("Connection", conn), input.tag_id)
+            if tag_row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Tag {input.tag_id!r} not found",
+                    code="schema.tag_not_found",
+                    params={"tag": input.tag_id},
+                )
+            # REQ-1375: the registry's per-tag field policy governs the assignment fields —
+            # a required field refuses absence, a hidden field refuses presence.
+            for field_name, value, policy in (
+                ("reason", model.reason, tag_row["reason_policy"]),
+                ("expires_on", model.expires_on, tag_row["expires_policy"]),
+            ):
+                if policy == "required" and value is None:
+                    return MutationResult(
+                        success=False,
+                        message=f"Tag {input.tag_id!r} requires {field_name}",
+                        code="schema.tag_reason_required"
+                        if field_name == "reason"
+                        else "schema.tag_expires_required",
+                        params={"tag": input.tag_id, "field": field_name},
+                    )
+                if policy == "hidden" and value is not None:
+                    return MutationResult(
+                        success=False,
+                        message=f"Tag {input.tag_id!r} does not take {field_name}",
+                        code="schema.tag_field_hidden",
+                        params={"tag": input.tag_id, "field": field_name},
+                    )
+            if input.object_type not in list(tag_row["applies_to"] or []):
+                return MutationResult(
+                    success=False,
+                    message=(
+                        f"Tag {input.tag_id!r} does not apply to {input.object_type!r} objects"
+                    ),
+                    code="schema.tag_scope_mismatch",
+                    params={"tag": input.tag_id, "objectType": input.object_type},
+                )
+            await tag_repo.assign(cast("Connection", conn), model)
+        await _refresh_config_tags()
+        return MutationResult(
+            success=True,
+            message=f"Tag {input.tag_id!r} assigned",
+            code="schema.tag_assigned",
+            params={"tag": input.tag_id, "objectKey": model.object_key()},
+        )
+
+    @strawberry.mutation
+    async def unassign_tag(self, input: TagAssignmentInput) -> MutationResult:  # REQ-1377
+        from provisa.core.models import TagAssignment as TagAssignmentModel
+        from provisa.core.repositories import tag as tag_repo
+
+        model = TagAssignmentModel(
+            tag_id=input.tag_id,
+            object_type=input.object_type,
+            source_id=input.source_id,
+            table_id=input.table_id,
+            column_name=input.column_name,
+            relationship_id=input.relationship_id,
+        )
+        problem = _assignment_target_problem(model)
+        if problem is not None:
+            return problem
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            removed = await tag_repo.unassign(
+                cast("Connection", conn), input.tag_id, model.object_key()
+            )
+        if not removed:
+            return MutationResult(
+                success=False,
+                message=f"Tag {input.tag_id!r} is not assigned to that object",
+                code="schema.tag_assignment_not_found",
+                params={"tag": input.tag_id, "objectKey": model.object_key()},
+            )
+        await _refresh_config_tags()
+        return MutationResult(
+            success=True,
+            message=f"Tag {input.tag_id!r} unassigned",
+            code="schema.tag_unassigned",
+            params={"tag": input.tag_id, "objectKey": model.object_key()},
+        )
 
     @strawberry.mutation
     async def create_role(

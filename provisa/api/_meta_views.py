@@ -22,8 +22,57 @@ from __future__ import annotations
 # source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
 # for callers near the view definitions.
 from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
+from provisa.core.models import SYSTEM_TAGS
+
+# REQ-1375: system tags are code-defined intrinsics with no rows in the tags table, so the
+# meta view unions them in from the constant — the registry a query surface sees is complete.
+# Built from SYSTEM_TAGS at import time; never hand-edit the literals.
+import json as _json
+
+
+def _system_tag_rows_sql() -> str:
+    rows = []
+    for tag in SYSTEM_TAGS:
+        desc = tag.description.replace("'", "''")
+        applies = _json.dumps(tag.applies_to).replace(" ", "")
+        rows.append(
+            f"SELECT '{tag.id}' AS id, '{desc}' AS description, "
+            f"'{applies}' AS applies_to, TRUE AS is_system, "
+            f"'{tag.reason_policy}' AS reason_policy, "
+            f"'{tag.expires_policy}' AS expires_policy, NULL AS tenant_id"
+        )
+    return "\n        UNION ALL\n        ".join(rows)
+
 
 _META_TABLE_VIEWS: dict[str, str] = {
+    # REQ-1373/1377: the tag registry and its assignments as queryable metadata, so
+    # governance reporting (e.g. expiring deprecations) runs through the governed pipeline.
+    "tags": f"""
+        CREATE OR REPLACE VIEW tags_meta AS
+        {_system_tag_rows_sql()}
+        UNION ALL
+        SELECT id, description, applies_to, is_system, reason_policy, expires_policy, tenant_id
+        FROM tags
+    """,
+    "tag_assignments": """
+        CREATE OR REPLACE VIEW tag_assignments_meta AS
+        SELECT id, tag_id, object_type, source_id, table_id, column_name,
+               relationship_id, object_key, reason, expires_on, tenant_id
+        FROM tag_assignments
+    """,
+    # REQ-1375: the management report — every assignment with a planned end date, with its
+    # state derived at query time. expires_on is an ISO date string, so lexicographic
+    # comparison with CURRENT_DATE (cast to text) is correct on every dialect.
+    "tag_expiry": """
+        CREATE OR REPLACE VIEW tag_expiry AS
+        SELECT id, tag_id, object_type, source_id, table_id, column_name,
+               relationship_id, object_key, reason, expires_on,
+               CASE WHEN expires_on < CAST(CURRENT_DATE AS TEXT)
+                    THEN 'expired' ELSE 'expiring' END AS status,
+               tenant_id
+        FROM tag_assignments
+        WHERE expires_on IS NOT NULL
+    """,
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT id, source_id, domain_id, schema_name, table_name,

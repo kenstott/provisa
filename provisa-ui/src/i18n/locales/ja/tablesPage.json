@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "ファクト",
       "dimension": "ディメンション",
-      "impliedFactTitle": "暗黙のファクト — このテーブルで「集計を有効化」がオンになっています",
-      "impliedDimensionTitle": "暗黙のディメンション — このテーブルで「Group Byを有効化」がオンになっています"
+      "impliedFactTitle": "暗黙のファクト — このテーブルで「集計を有効化」がオンです",
+      "impliedDimensionTitle": "暗黙のディメンション — このテーブルで「Group Byを有効化」がオンです"
     },
-    "derived": "派生"
+    "derived": "派生",
+    "dataProduct": "プロダクト",
+    "dataProductTitle": "データプロダクト — provisa metadata export に含まれます"
   }
 }

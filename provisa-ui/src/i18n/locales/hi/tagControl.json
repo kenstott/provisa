@@ -1,0 +1,13 @@
+{
+  "tagControl": {
+    "editTags": "टैग संपादित करें",
+    "noTags": "इस ऑब्जेक्ट प्रकार पर कोई टैग लागू नहीं होता",
+    "reasonLabel": "कारण",
+    "reasonRequired": "इस टैग के लिए कारण आवश्यक है",
+    "expiresLabel": "नियोजित हटाने की तिथि",
+    "apply": "लागू करें",
+    "cancel": "रद्द करें",
+    "editAssignment": "असाइनमेंट संपादित करें",
+    "plannedRemoval": "नियोजित हटाना: {{date}}"
+  }
+}

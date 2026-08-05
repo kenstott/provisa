@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "עובדה",
       "dimension": "ממד",
-      "impliedFactTitle": "עובדה משתמעת — האפשרות \"הפעלת צבירות\" מופעלת עבור טבלה זו",
-      "impliedDimensionTitle": "ממד משתמע — האפשרות \"הפעלת Group By\" מופעלת עבור טבלה זו"
+      "impliedFactTitle": "עובדה משתמעת — האפשרות 'הפעלת צבירות' מופעלת לטבלה זו",
+      "impliedDimensionTitle": "ממד משתמע — האפשרות 'הפעלת Group By' מופעלת לטבלה זו"
     },
-    "derived": "נגזר"
+    "derived": "נגזר",
+    "dataProduct": "מוצר",
+    "dataProductTitle": "מוצר נתונים — נכלל בייצוא provisa metadata export"
   }
 }

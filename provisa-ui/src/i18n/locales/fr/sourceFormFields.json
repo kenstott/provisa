@@ -52,6 +52,7 @@
     "s3EndpointMinio": "Endpoint S3 (MinIO)",
     "storageAccount": "Compte de stockage",
     "accessKey": "Clé d'accès",
-    "sasToken": "Jeton SAS"
+    "sasToken": "Jeton SAS",
+    "filesGlob": "Glob de répertoire"
   }
 }

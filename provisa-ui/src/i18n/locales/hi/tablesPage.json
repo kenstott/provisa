@@ -40,9 +40,11 @@
     "modelingRole": {
       "fact": "फ़ैक्ट",
       "dimension": "डाइमेंशन",
-      "impliedFactTitle": "अंतर्निहित फ़ैक्ट — इस टेबल के लिए \"एग्रीगेट सक्षम करें\" चालू है",
-      "impliedDimensionTitle": "अंतर्निहित डाइमेंशन — इस टेबल के लिए \"Group By सक्षम करें\" चालू है"
+      "impliedFactTitle": "अंतर्निहित फ़ैक्ट — इस टेबल के लिए 'एग्रीगेट सक्षम करें' चालू है",
+      "impliedDimensionTitle": "अंतर्निहित डाइमेंशन — इस टेबल के लिए 'Group By सक्षम करें' चालू है"
     },
-    "derived": "व्युत्पन्न"
+    "derived": "व्युत्पन्न",
+    "dataProduct": "प्रोडक्ट",
+    "dataProductTitle": "डेटा प्रोडक्ट — provisa metadata export में शामिल"
   }
 }

@@ -20,12 +20,62 @@ identically — an external catalog matches assets by that address alone.
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from provisa.api.metadata_export.model import AssetKind, AssetRef
 from provisa.core.models import Source, Table
 
 
 def source_ref(source: Source) -> AssetRef:  # REQ-1070
     return AssetRef(kind=AssetKind.SOURCE, parts=(source.id,))
+
+
+# REQ-1385: kind keywords are reserved path segments; a domain with one of these names
+# would make its URIs unparseable, so domain creation refuses them.
+RESERVED_KIND_KEYWORDS = ("tables", "sources", "tags", "roles")
+
+_URI_SCHEME = "provisa"
+
+
+def _segment(name: str) -> str:
+    return quote(name, safe="")
+
+
+def _domain_segments(domain_id: str | None) -> str:
+    """The domain path portion of a URI. Hierarchical domains arrive as slash-separated ids;
+    the unassigned ('') bucket contributes no segments."""
+    if not domain_id:
+        return ""
+    return "/".join(_segment(part) for part in domain_id.split("/")) + "/"
+
+
+def domain_uri(org_id: str, domain_id: str) -> str:  # REQ-1385
+    return f"{_URI_SCHEME}://{_segment(org_id)}/{_domain_segments(domain_id)}".rstrip("/")
+
+
+def source_uri(org_id: str, source_id: str) -> str:  # REQ-1385
+    return f"{_URI_SCHEME}://{_segment(org_id)}/sources/{_segment(source_id)}"
+
+
+def table_uri(org_id: str, table: Table) -> str:  # REQ-1385
+    """Business-identity address: alias when present, else table name — never the physical
+    (source, schema) coordinates, which export separately as the binding."""
+    business_name = table.alias or table.table_name
+    return (
+        f"{_URI_SCHEME}://{_segment(org_id)}/"
+        f"{_domain_segments(table.domain_id)}tables/{_segment(business_name)}"
+    )
+
+
+def column_uri(org_id: str, table: Table, column_name: str, column_alias: str | None) -> str:
+    # REQ-1385: #field:<business name> — a column is an attribute of the concept.
+    return f"{table_uri(org_id, table)}#field:{_segment(column_alias or column_name)}"
+
+
+def relationship_uri(org_id: str, source_table: Table, alias: str | None, rel_id: str) -> str:
+    # REQ-1385: a relationship is a navigational field anchored at its source concept.
+    # Its business name is the alias when the edge is named; the registry id otherwise.
+    return f"{table_uri(org_id, source_table)}#rel:{_segment(alias or rel_id)}"
 
 
 class SnapshotBuildError(RuntimeError):

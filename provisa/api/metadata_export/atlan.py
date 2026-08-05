@@ -75,6 +75,13 @@ class AtlanExport(AtlasExport):  # REQ-1069
     def _atlan_entities(self, snapshot: MetadataSnapshot) -> list[AtlasEntity]:
         connection_qn = self._connection_qn(snapshot)
         entities = to_entities(snapshot)
+        # REQ-1375: 'deprecated' maps to Atlan's native certificate status — the construct
+        # Atlan consumers already surface — in addition to the inherited classification.
+        deprecated_fqns = {
+            tag.asset.fqn(): tag
+            for tag in snapshot.model_tags
+            if tag.tag_id == "deprecated" and tag.asset is not None
+        }
         for entity in entities:
             # A type Atlan has no equivalent for would be published under a name its API
             # rejects. Mapping is total, so an unmapped type is a wiring fault and raises here
@@ -83,6 +90,15 @@ class AtlanExport(AtlasExport):  # REQ-1069
             entity.attributes["connectorName"] = CONNECTOR_NAME
             if entity.kind != "instance":
                 entity.attributes["connectionQualifiedName"] = connection_qn
+            if entity.asset is not None and entity.asset.fqn() in deprecated_fqns:
+                _dep = deprecated_fqns[entity.asset.fqn()]
+                entity.attributes["certificateStatus"] = "DEPRECATED"
+                # The steward's stated reason (required at assignment) plus the planned
+                # removal date, in the message Atlan renders beside the status.
+                _msg = _dep.reason or "Tagged 'deprecated' in the Provisa registry."
+                if _dep.expires_on:
+                    _msg = f"{_msg} (removal: {_dep.expires_on})"
+                entity.attributes["certificateStatusMessage"] = _msg
         return entities
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
