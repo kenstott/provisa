@@ -11828,7 +11828,7 @@ DIRECT routes must stream for user-data scans via the source's own server-side c
 
 **Code:** `provisa/executor/`, `provisa/graphql/`
 
-**Tests:** `tests/integration/test_catalog_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`
+**Tests:** `tests/integration/test_catalog_integration.py`, `tests/integration/test_governance_integration.py`, `provisa-ui/e2e/governance-core.spec.ts`, `tests/unit/test_airport_streaming_terminal.py`
 
 ## 7. Result Delivery
 
@@ -12178,7 +12178,7 @@ Airport Flight transport drains the single streaming terminal identically to Fli
 
 **Code:** `provisa/api/airport/query.py`, `provisa/api/airport/server.py`
 
-**Tests:** `tests/integration/test_airport_source_e2e.py`, `tests/integration/test_airport_service_e2e.py`
+**Tests:** `tests/integration/test_airport_source_e2e.py`, `tests/integration/test_airport_service_e2e.py`, `tests/unit/test_airport_streaming_terminal.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -12330,7 +12330,7 @@ Airport Flight do_get routes through the governed_table_scan_stream() terminal, 
 
 **Code:** `provisa/api/airport/query.py`, `provisa/api/airport/server.py`, `provisa/executor/result.py`, `provisa/federation/runtime.py`
 
-**Tests:** `tests/integration/test_airport_service_e2e.py`, `tests/integration/test_streaming_memory_bounded_e2e.py`
+**Tests:** `tests/integration/test_airport_service_e2e.py`, `tests/integration/test_streaming_memory_bounded_e2e.py`, `tests/unit/test_airport_streaming_terminal.py`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -12830,7 +12830,7 @@ Any authenticated (non-anonymous) user may POST /admin/orgs and becomes org_admi
 
 **Code:** `provisa/api/admin/orgs_router.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_org_create_provisioning.py`
 
 ### REQ-1272 · Async Org Provisioning {#REQ-1272}
 
@@ -12842,7 +12842,7 @@ POST /admin/orgs returns immediately with provisioning_state="provisioning"; a b
 
 **Code:** `provisa/api/admin/orgs_router.py`, `provisa/multitenancy/org_provisioning.py`
 
-**Tests:** `tests/integration/test_create_org_onboarding.py`
+**Tests:** `tests/integration/test_create_org_onboarding.py`, `tests/unit/test_org_create_provisioning.py`
 
 ### REQ-1273 · Org Readiness Notification Seam {#REQ-1273}
 
@@ -13696,7 +13696,7 @@ Org provisioning must seed every system source (including __derived__) into the 
 
 **Code:** `provisa/core/models.py`, `provisa/api/startup_seed.py`
 
-**Tests:** `tests/integration/test_org_demo_seed_visible.py`
+**Tests:** `tests/integration/test_org_demo_seed_visible.py`, `tests/unit/test_org_system_source_seeding.py`
 
 ## 1. Access Governance & Security
 

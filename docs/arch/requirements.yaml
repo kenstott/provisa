@@ -34515,6 +34515,7 @@
   - tests/integration/test_catalog_integration.py
   - tests/integration/test_governance_integration.py
   - provisa-ui/e2e/governance-core.spec.ts
+  - tests/unit/test_airport_streaming_terminal.py
   related_reqs:
   - REQ-1185
   - REQ-1186
@@ -35240,6 +35241,7 @@
   tests:
   - tests/integration/test_airport_source_e2e.py
   - tests/integration/test_airport_service_e2e.py
+  - tests/unit/test_airport_streaming_terminal.py
   since: 2026-07
   scenario: 'Given an airport metadata request for a table schema
 
@@ -35749,6 +35751,7 @@
   tests:
   - tests/integration/test_airport_service_e2e.py
   - tests/integration/test_streaming_memory_bounded_e2e.py
+  - tests/unit/test_airport_streaming_terminal.py
   since: 2026-07
   e2e: true
   e2e_reason: Airport Flight streaming behavior (schema stability, rowid derivation, memory bounds) is
@@ -37256,6 +37259,8 @@
     role assignment in the tenant plane granted asynchronously after schema provisioning.
   use_case: Enables users to self-provision new orgs without platform admin intervention, supporting multi-org
     SaaS workflows.
+  tests:
+  - tests/unit/test_org_create_provisioning.py
   code:
   - provisa/api/admin/orgs_router.py
   scenario: 'Given an authenticated user
@@ -37293,6 +37298,7 @@
   - provisa/multitenancy/org_provisioning.py
   tests:
   - tests/integration/test_create_org_onboarding.py
+  - tests/unit/test_org_create_provisioning.py
   scenario: 'Given a user creates a new org
 
     When the POST /admin/orgs response is sent with provisioning_state: "provisioning"
@@ -40686,6 +40692,7 @@
   - provisa/api/startup_seed.py
   tests:
   - tests/integration/test_org_demo_seed_visible.py
+  - tests/unit/test_org_system_source_seeding.py
   description: Org provisioning must seed every system source (including __derived__) into the new org's
     schema before the config load registers tables. Any config tables:row with source_id pointing to a
     system source has a guaranteed FK target; silent table drops from missing source_id references are
