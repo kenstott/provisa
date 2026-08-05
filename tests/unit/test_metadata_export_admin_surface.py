@@ -250,6 +250,20 @@ async def test_health_reports_the_refusal_text_rather_than_a_bare_failure(surfac
 
 
 @pytest.mark.asyncio
+async def test_health_on_an_unsaved_or_disabled_config_answers_instead_of_500ing(surface):
+    """Pressing Test connection before Save must say WHY, not fail with a bare 500 —
+    adapter construction raises MetadataExportNotConfiguredError and that text is the answer."""
+    from provisa.api.admin.metadata_export_router import check_metadata_export
+
+    surface.stored.update({"enabled": False, "provider": "atlas", "endpoint": "http://a"})
+
+    body = await check_metadata_export(_request())
+
+    assert body["ok"] is False
+    assert "disabled" in body["error"]
+
+
+@pytest.mark.asyncio
 async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypatch):
     """A partial publish is the case the tab exists to diagnose."""
     from provisa.api.admin.metadata_export_router import (

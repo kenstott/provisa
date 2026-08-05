@@ -197,8 +197,11 @@ async def check_metadata_export(request: Request) -> dict:  # REQ-1074
     org_id = require_active_org_id(request)
     _require_entitled(org_id)
     config = _export_config(await _stored())
-    export = metadata_export(config)
     try:
+        # Adapter construction is inside the try on purpose: a not-yet-saved or disabled
+        # config raises MetadataExportNotConfiguredError here, and the admin pressing
+        # "Test connection" needs that text ("save/enable first"), not a bare 500.
+        export = metadata_export(config)
         await export.health()
     except Exception as exc:  # noqa: BLE001 - allow-blind-except: the message IS the answer
         # The adapter raises whatever the transport raised; the admin needs that text to tell a
