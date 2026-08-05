@@ -13046,7 +13046,7 @@ Before any superadmin exists (bootstrap_superadmin enabled and no superadmin_boo
 
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/middleware.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/i18n/locales/en/loginPage.json`
 
-**Tests:** `tests/integration/test_bootstrap_status.py`, `tests/unit/test_auth_middleware.py`, `provisa-ui/src/__tests__/LoginPage.test.tsx`
+**Tests:** `tests/integration/test_bootstrap_status.py`, `tests/unit/test_auth_middleware.py`, `provisa-ui/src/__tests__/LoginPage.test.tsx`, `tests/unit/test_auth_middleware_multitenancy.py`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -13074,7 +13074,7 @@ Claiming the sole platform-administrator slot is an explicit act via POST /auth/
 
 **Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
 
-**Tests:** `tests/integration/test_redeem_invite.py`
+**Tests:** `tests/integration/test_redeem_invite.py`, `tests/unit/test_auth_middleware_multitenancy.py`
 
 ### REQ-1291 · Authentication {#REQ-1291}
 
@@ -13530,7 +13530,7 @@ platform_admin is a purely control-plane role with ZERO data capabilities anywhe
 
 **Code:** `provisa/security/rights.py`, `provisa/api/admin/orgs_router.py`, `provisa/api/admin/roles_router.py`, `provisa/core/org_membership.py`
 
-**Tests:** `tests/integration/test_org_lifecycle.py`, `tests/integration/test_invite_role_authz.py`
+**Tests:** `tests/integration/test_org_lifecycle.py`, `tests/integration/test_invite_role_authz.py`, `tests/unit/test_auth_middleware_multitenancy.py`, `tests/unit/test_client_role.py`, `tests/unit/test_auth_middleware.py`
 
 ## 5. Query Languages, Compilation & Operations
 
@@ -13814,7 +13814,7 @@ Interactive sign-in runs only on the control-plane host (`cloud.<base>`). An org
 
 **Code:** `provisa-ui/src/lib/authHost.ts`, `provisa-ui/src/lib/crossSubdomainAuth.ts`, `provisa-ui/src/authRelay.ts`, `provisa-ui/auth-relay.html`, `provisa-ui/src/main.tsx`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/vite.config.ts`
 
-**Tests:** `provisa-ui/src/__tests__/crossSubdomainAuth.test.ts`
+**Tests:** `provisa-ui/src/__tests__/crossSubdomainAuth.test.ts`, `tests/unit/test_ui_server_routing.py`
 
 ### REQ-1349 · Administration & Roles {#REQ-1349}
 
@@ -13840,7 +13840,7 @@ Server-side error i18n emits stable machine codes and JSON parameters alongside 
 
 **Code:** `provisa/api/errors.py`, `provisa/api/app.py`, `provisa-ui/src/i18n/serverMessage.ts`
 
-**Tests:** `tests/unit/test_error_handling.py`
+**Tests:** `tests/unit/test_error_handling.py`, `tests/unit/test_client_access.py`
 
 ### REQ-1351 · Navigation & Admin Menu {#REQ-1351}
 
@@ -13960,7 +13960,7 @@ gRPC, JSON:API, and OpenAPI query surfaces expose aggregate and group-by capabil
 
 **Code:** `provisa/grpc/query_ir.py`, `provisa/nl/executor.py`, `provisa/compiler/aggregates.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_jsonapi_aggregates.py`, `tests/unit/test_rest_aggregates.py`, `tests/unit/test_nl_aggregation_routing.py`
 
 ## 3. Source Registration & Data Modeling
 

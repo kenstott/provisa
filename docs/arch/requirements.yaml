@@ -37919,6 +37919,7 @@
   - tests/integration/test_bootstrap_status.py
   - tests/unit/test_auth_middleware.py
   - provisa-ui/src/__tests__/LoginPage.test.tsx
+  - tests/unit/test_auth_middleware_multitenancy.py
   scenario: 'Given bootstrap_superadmin is enabled and no superadmin_bootstrap row exists
 
     When a client calls GET /auth/bootstrap-status
@@ -38064,6 +38065,7 @@
   - provisa/core/schema_admin.py
   tests:
   - tests/integration/test_redeem_invite.py
+  - tests/unit/test_auth_middleware_multitenancy.py
   scenario: 'Given bootstrap mode is on and the admin slot is unclaimed
 
     When an authenticated user POSTs /auth/claim-bootstrap after reading the first-login disclosure
@@ -40169,6 +40171,9 @@
   tests:
   - tests/integration/test_org_lifecycle.py
   - tests/integration/test_invite_role_authz.py
+  - tests/unit/test_auth_middleware_multitenancy.py
+  - tests/unit/test_client_role.py
+  - tests/unit/test_auth_middleware.py
   scenario: 'Given a platform_admin and a tenant org they do not hold org_admin in
 
 
@@ -40971,6 +40976,7 @@
   - provisa-ui/vite.config.ts
   tests:
   - provisa-ui/src/__tests__/crossSubdomainAuth.test.ts
+  - tests/unit/test_ui_server_routing.py
   scenario: 'Given an org subdomain requests authentication without an existing session
 
     When the subdomain initiates sign-in
@@ -41058,6 +41064,7 @@
   - provisa-ui/src/i18n/serverMessage.ts
   tests:
   - tests/unit/test_error_handling.py
+  - tests/unit/test_client_access.py
   scenario: 'Given a mutation or query that results in an error with code auth.not_authorized
 
     When the error is caught by the registered ApiError handler
@@ -41319,6 +41326,10 @@
     LIMIT n`, leaving three protocols without aggregate capability. Protocol parity ensures all surfaces
     can answer the same analytical questions (e.g., "inquiry count by user") without reimplementing aggregation
     logic per-protocol.
+  tests:
+  - tests/unit/test_jsonapi_aggregates.py
+  - tests/unit/test_rest_aggregates.py
+  - tests/unit/test_nl_aggregation_routing.py
   code:
   - provisa/grpc/query_ir.py
   - provisa/nl/executor.py

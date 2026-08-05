@@ -68,7 +68,16 @@ def main() -> int:
             tests = req.tests or []
             unit = [t for t in tests if t.startswith("tests/unit/")]
             integration = [t for t in tests if t.startswith("tests/integration/")]
-            e2e = [t for t in tests if t.startswith("provisa-ui/e2e/")]
+            # `e2e: true` means the behavior is only verifiable through a full live-stack
+            # round-trip — "UI interaction OR API transport" (see the requirements-tracker
+            # format). A browser spec is therefore one of two valid artifacts: a backend
+            # round-trip under tests/e2e/, or an integration test named *_e2e.py, satisfies an
+            # API-transport requirement that has no UI surface at all.
+            e2e = [
+                t
+                for t in tests
+                if t.startswith(("provisa-ui/e2e/", "tests/e2e/")) or t.endswith("_e2e.py")
+            ]
             if not unit and req.unit_test is not False:
                 errors.append(f"{req.id}: MUST complete {req.type.value} has no unit test")
             if (
@@ -78,7 +87,10 @@ def main() -> int:
             ):
                 errors.append(f"{req.id}: integration_test=required but no tests/integration/ path")
             if req.e2e and not e2e:
-                errors.append(f"{req.id}: e2e=true but no provisa-ui/e2e/ path")
+                errors.append(
+                    f"{req.id}: e2e=true but no live round-trip test "
+                    "(provisa-ui/e2e/, tests/e2e/, or *_e2e.py)"
+                )
 
     if args.orphan_check:
         referenced: set[str] = set()
