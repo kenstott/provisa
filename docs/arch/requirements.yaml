@@ -41810,3 +41810,408 @@
   - REQ-1070
   - REQ-1071
   - REQ-1369
+- id: REQ-1373
+  status: complete
+  since: "2026-08"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: structural
+  description: >-
+    Unified org-level tag registry: single source of truth for all tags, with multi-scope applicability.
+    Each tag declares appliesTo (multi-select over object types: source, table/view, column, relationship).
+    No per-type registries — a tag is a single identity with fixed semantics even when multi-scoped.
+  use_case: >-
+    Centralized tag management reduces cognitive load, prevents scope drift, and enables consistent governance
+    across all taggable objects (sources, tables, columns, relationships).
+  code:
+  - provisa/core/schema.sql
+  - provisa/core/schema_org.py
+  - provisa/core/models.py
+  - provisa/core/repositories/tag.py
+  tests:
+  - tests/unit/test_schema_metadata_parity.py
+- id: REQ-1374
+  status: complete
+  since: "2026-08"
+  group: "10. UI & Admin Surfaces"
+  category: Admin Console
+  priority: MUST
+  type: ui
+  description: >-
+    Admin / Tags editor UI with segmented button bar [source | table | column | relationship] filtering
+    the single tag registry into four apparent lists. Multi-scope tags appear in each applicable list;
+    editing anywhere edits the one tag; scope is shown on row.
+  use_case: >-
+    Segmented UI reduces cognitive load by presenting only relevant tags per object type, while maintaining
+    unified identity and single-edit-location semantics.
+  scenario: |
+    Given a tag "technical" with appliesTo=[column, table]
+    When viewing the Table segment
+    Then the tag appears in the list with scope indicator
+    When editing that tag in the Column segment
+    Then the same tag is updated
+  code:
+  - provisa-ui/src/components/admin/TagsTab.tsx
+  tests:
+  - provisa-ui/src/__tests__/TagsTab.test.tsx
+- id: REQ-1375
+  status: complete
+  since: "2026-08"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: constraint
+  description: >-
+    System tags are predefined and immutable: exactly three system tags with fixed semantics and scopes,
+    never deletable or redefinable. `technical` (scope: column, table; excluded/classified-out of Data
+    Product metadata export), `pii` (scope: column; exported as provisa_pii classification; future
+    masking-policy hook), `deprecated` (scope: source, table/view, column, relationship; UI warning;
+    exports to each catalog's NATIVE deprecation construct — DataHub deprecation aspect, Atlan DEPRECATED
+    certificate status, Atlas provisa_deprecated classification). User-created tags are annotation-only
+    and never acquire behavior or system semantics. Future system tags require behavior-driving justification;
+    vocabulary-only tags belong in user registry. Tag assignments carry optional `reason` (why the tag is on
+    the object) and `expires_on` (ISO date when assignment stops being intended) as TYPED columns, enabling
+    management reporting queries (e.g. overdue removals: expires_on < today). For the `deprecated` system tag,
+    `reason` is REQUIRED at assignment time (mutation refuses without it, schema.tag_reason_required) and
+    `expires_on` is the planned removal date. Deprecation projects outward through every consumer: GraphQL SDL
+    emits @deprecated(reason: "<reason> (removal: <date>)") directive (column deprecation on object field, table
+    deprecation on root query field, relationship deprecation on navigational field); DataHub gets reason as
+    deprecation aspect note and date as native decommissionTime (epoch millis); Atlan gets both in
+    certificateStatusMessage; Atlas carries reason/expiresOn as typed classification attributes. UI: assigning
+    a tag opens inline reason/date form (check-then-apply); pill tooltips show tag description + reason + planned
+    removal; deprecated pills with past expires_on render visually louder (overdue). Per-tag field policies:
+    every registry tag declares reason_policy and expires_policy, each one of hidden|optional|required (default
+    optional). The assign mutation enforces them — required refuses absence, hidden refuses presence — and the
+    picker UI shows/demands the fields accordingly. System-tag policies are fixed in code: deprecated = reason
+    required + expiry optional; technical = reason hidden + expiry hidden; pii = expiry hidden. The former hardcoded "deprecated requires reason"
+    rule is now just the deprecated tag's policy. Management reporting: tags and tag_assignments are exposed as
+    meta-domain tables (tags_meta unions the code-defined system tags in so the visible registry is complete;
+    tag_assignments_meta), and a tag_expiry meta view lists every assignment with an expires_on, deriving status
+    expired|expiring at query time — queryable through every governed surface (SQL/pgwire for BI, GraphQL, Cypher)
+    under role + domain access. Portable-bootstrap parity: the non-PG (SQLite/MySQL) schema path additively
+    reconciles missing columns from the SQLAlchemy metadata (equivalent of schema.sql's ALTER ADD COLUMN IF NOT
+    EXISTS blocks), so metadata-declared columns reach existing database files.
+  use_case: >-
+    System tags drive governed behavior (metadata filtering, classification, deprecation warnings);
+    user tags remain advisory, preventing accidental behavior acquisition and maintaining governance integrity.
+    Settled tag set provides clear governance surface across all metadata exporters. Typed reason/expiration metadata
+    supports audit trails, lifecycle management, and integration with downstream catalog decommissioning workflows.
+    Per-tag policies enable fine-grained governance while reducing hardcoded rules. Management reporting through
+    meta views makes tag lifecycle queryable by all consumers (BI, exporters, auditing). Cross-database schema
+    compatibility ensures bootstrap consistency across deployments.
+  code:
+  - provisa/core/schema.sql
+  - provisa/api/metadata_export/builder.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/_meta_views.py
+  - provisa/core/db.py
+  tests:
+  - tests/unit/test_metadata_export_model_tags.py
+  - tests/unit/test_sdl_deprecation.py
+- id: REQ-1376
+  status: accepted
+  target: "2026-Q4"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: constraint
+  description: >-
+    Tag assignment is human-only, never automatic. UI may suggest likely-technical columns, but suggestion
+    requires explicit steward acceptance before recorded. No silent behavior.
+  use_case: >-
+    Keeps governance decisions explicit and auditable; prevents silent mis-tagging that could incorrectly
+    exclude data or mis-classify sensitive information.
+- id: REQ-1377
+  status: complete
+  since: "2026-08"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: structural
+  description: >-
+    Taggable objects: sources, tables/views, columns, and relationships. UI tag-picker icon on each object
+    row filters to tags whose appliesTo includes that object type; assigned tags render as pills using existing
+    Badge pattern (wrapping enabled).
+  use_case: >-
+    Supports rich governance across all data model abstractions; wrapping enables dense lists with many tags
+    while maintaining readability.
+  code:
+  - provisa/api/admin/schema_mutation.py
+  - provisa-ui/src/components/TagControl.tsx
+  tests:
+  - provisa-ui/src/__tests__/TagControl.test.tsx
+  - tests/unit/test_metadata_export_model_tags.py
+- id: REQ-1378
+  status: complete
+  since: "2026-08"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: SHOULD
+  type: structural
+  description: >-
+    Tags export as metadata: Atlas exporter maps tags to classifications prefixed `provisa_`
+    (REQ-1069 mechanism); annotation-only user tags map to Atlas labels. DataHub/Atlan use native tag
+    equivalents. Asymmetry: Atlas cannot tag relationship edges; relationship tags export as relationship
+    attributes on Atlas, native tags on DataHub/Atlan.
+  use_case: >-
+    Enables downstream metadata systems to consume Provisa governance; documents platform capability limits
+    (Atlas relationships) and maps to downstream native semantics for adoption by data stewards.
+  code:
+  - provisa/api/metadata_export/atlas.py
+  - provisa/api/metadata_export/datahub.py
+  - provisa/api/metadata_export/atlan.py
+  tests:
+  - tests/unit/test_metadata_export_model_tags.py
+  relates_to:
+  - REQ-1069
+- id: REQ-1379
+  status: complete
+  since: "2026-08"
+  group: "0. Architecture & Design Principles"
+  category: Data Governance
+  priority: MUST
+  type: constraint
+  description: >-
+    "technical" tag replaces earlier column-level columnRole: business|technical enum. Consolidates governance
+    model: single tag system instead of parallel enum-and-tag approaches.
+  use_case: >-
+    Unified tagging model reduces code duplication, simplifies UI, and allows future expansion to multi-scoped
+    tags (tables can also be technical) without architectural change.
+  tests:
+  - tests/unit/test_metadata_export_model_tags.py
+- id: REQ-1380
+  status: complete
+  since: "2026-08"
+  group: "10. UI & Admin Surfaces"
+  category: Admin Console
+  priority: SHOULD
+  type: ui
+  description: >-
+    Tables list shows PRODUCT pill (indigo Badge) on rows whose registration has dataProduct=true;
+    name-cell pill group wraps (enabling multiple pills per row: PRODUCT, plus any assigned user tags).
+  use_case: >-
+    Distinguishes publishable data products in dense table lists; wrapping accommodates future pill expansions
+    (e.g., lineage confidence, certification badges) without layout breakage.
+  code:
+  - provisa-ui/src/pages/TablesPage.tsx
+  relates_to:
+  - REQ-1372
+- id: REQ-1381
+  status: accepted
+  target: "2026-Q4"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: structural
+  description: >-
+    User attributes for ABAC are a SEPARATE concept from the object-tag registry (REQ-1373): object tags
+    are exported governance metadata on sources/tables/columns/relationships; user attributes are
+    authorization inputs feeding the `user.<attr>` namespace in RLS filter expressions. `user` is NOT an
+    appliesTo scope of the tag registry, and user attributes are never included in metadata export.
+  use_case: >-
+    Keeps access-control-bearing data out of a registry whose contract is annotation-and-export; a steward's
+    tag edit can never silently change row visibility, and user attributes never ship to external catalogs.
+  relates_to:
+  - REQ-1373
+- id: REQ-1382
+  status: accepted
+  target: "2026-Q4"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: structural
+  description: >-
+    User attribute sources: the IdP is the system of record for attributes it provides (OIDC claims —
+    groups, department, region); locally-administered user attributes supplement what the IdP does not
+    carry. On name collision, the IdP value wins and the local value is marked shadowed — never silently
+    merged or overridden.
+  use_case: >-
+    Lets thin IdPs be supplemented without forking identity truth; explicit precedence with a visible
+    shadowed state keeps attribute provenance auditable.
+- id: REQ-1383
+  status: accepted
+  target: "2026-Q4"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: structural
+  description: >-
+    Both IdP-sourced and local attributes resolve into the same `user.*` namespace consumed by RLS
+    predicates; predicates are source-agnostic. The Security page shows per-attribute provenance (IdP vs
+    local, and shadowed state) so admins can see why an attribute has its value.
+  use_case: >-
+    RLS authors write one predicate vocabulary regardless of attribute origin; admins can diagnose
+    unexpected row visibility from the provenance display.
+- id: REQ-1384
+  status: accepted
+  target: "2026-Q4"
+  group: "1. Access Governance & Security"
+  category: Data Governance
+  priority: MUST
+  type: structural
+  description: >-
+    Tag-scoped RLS rules (follow-on to REQ-1373..1379 and existing table/domain-scoped RLS REQ-040/041/402):
+    an RLS rule may attach to a tag; at compile time it resolves to all tables carrying that tag and its
+    predicate is AND-ed with any table- and domain-scoped predicates (most-restrictive-wins, no precedence
+    tiers; multiple matching tags each contribute AND-ed predicates). Tagging an object may only expand
+    restriction reach, never loosen access. Additionally, since the metadata catalog is part of the queryable
+    model, RLS filter expressions may reference tag-assignment metadata directly (e.g. EXISTS subquery) as
+    the fully general path.
+  use_case: >-
+    Write a predicate once, attach it to a tag, and every table a steward tags picks it up now and in the
+    future — the tag-based-policy pattern inside Provisa's one SQL pipeline.
+  relates_to:
+  - REQ-040
+  - REQ-041
+  - REQ-402
+  - REQ-1373
+- id: REQ-1385
+  status: in-progress
+  target: "2026-Q4"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: MUST
+  type: structural
+  description: >-
+    Semantic URIs (provisa:// scheme) on metadata-exported assets, addressed by business identity,
+    self-describing to the point practical: kind is stated in the URI path at the leaf transition and
+    domain nesting is unmarked (homogeneous). Grammar: provisa://<org>/<domain>[/<subdomain>...] is a
+    domain (no kind keyword — still in the domain tree, unambiguous at any depth, no trailing-slash
+    convention needed); provisa://<org>/<domain-path>/tables/<table> is a table (the tables/ keyword
+    marks the kind transition); provisa://<org>/sources/<source-id> is a source, provisa://<org>/tags/<tag-id>
+    a tag, provisa://<org>/roles/<role-id> a role — reserved plural kind keywords extend to future
+    registries. Fragments carry attribute kinds: #field:<column> for a column; #rel:<alias> for a
+    relationship (a navigational field anchored at its source table; registry id when the edge has no
+    alias). Instance (row) addressing: ?<key>=<value>[&...] query-string predicate — composite keys
+    compose; a primary-key predicate denotes exactly one instance; requires a declared row identity
+    (mvPrimaryKey, unique constraint REQ-1093, or introspected pk), no declared key = no instance form.
+    Composition: instance + fragment — ?id=123#field:amount is a cell, ?id=123#rel:customer the governed
+    traversal from one instance. Dereferencing any instance/traversal URI is a GOVERNED query: RLS and
+    masking apply to the resolver's role. Reserved words: kind keywords (tables, sources, tags, roles,
+    and future registry keywords) are illegal as domain names — refused at domain creation
+    (schema.domain_reserved_word). Correspondence: the URI is the compressed form of the semantic-model
+    JSON Pointer grammar (domain nesting implied, kind stated at the leaf):
+    provisa://acme/sales/emea/tables/orders maps to #/children/sales/children/emea/definitions/orders;
+    conversion is mechanical. Metadata export emits concept/attribute/relationship URIs only; the
+    instance grammar serves citations, audit trails, data-quality findings, agent provenance. Resolution
+    convention: provisa://<org>/<path> resolves via the org's Provisa instance (https mapping), keeping
+    URIs dereferenceable by convention. The physical triple (source.schema.table) exports alongside as a
+    binding attribute, so re-platforming a table to a different source preserves catalog identity,
+    history, and lineage continuity; identity events (alias/domain rename, moving a table between
+    domains) export the previous URI as an alias for continuity. Uniqueness precondition: (full domain
+    path, table) via _assert_domain_table_unique generalized to hierarchical domains. Exporters carry the
+    URI per vendor: Atlas as a provisaUri entity attribute alongside qualifiedName; DataHub in
+    externalUrl + customProperties; OpenLineage as a provisa_uri dataset facet (the cross-catalog
+    stitching join key); OpenMetadata in sourceUrl + relationship extension entries; Collibra as a
+    "Provisa URI" attribute; relationship and lineage edges reference endpoints by semantic URI enabling
+    cross-catalog lineage stitching.
+  use_case: >-
+    Enables lineage stitching across external catalogs by using business identity rather than physical
+    location; preserves catalog continuity when tables are re-platformed to different sources; allows
+    lineage and history to follow the business entity through infrastructure changes; supports
+    multi-catalog federation by providing stable URIs as cross-catalog join keys.
+  code:
+  - provisa/api/metadata_export/refs.py
+  - provisa/api/metadata_export/builder.py
+  - provisa/api/metadata_export/atlas.py
+  - provisa/api/metadata_export/datahub.py
+  - provisa/api/metadata_export/openlineage.py
+  - provisa/api/metadata_export/openmetadata.py
+  - provisa/api/metadata_export/collibra.py
+  tests:
+  - tests/unit/test_metadata_export_semantic_uri.py
+  relates_to:
+  - REQ-1069
+  - REQ-1070
+  - REQ-1372
+- id: REQ-1386
+  status: proposed
+  group: "5. Query Languages, Compilation & Operations"
+  category: Operational Views
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Management/operations reporting is delivered as defined views in the built-in ops domain, extending
+    the REQ-884 registry mechanism (_OPS_LOG_TABLE_VIEWS + _seed_ops_domain): each report is a view
+    joining query_audit_log to catalog metadata, registered as a first-class ops-domain table so it is
+    queryable through every governed surface (SQL/pgwire, GraphQL, Cypher) under role + domain access
+    control. Report views: (1) usage_ranking — query count and distinct consumers per table, including
+    never-queried tables (deprecation candidates); (2) deprecated_usage — consumption of deprecated
+    tables/elements over time, per consumer, to establish a safe-removal date; (3) pii_access — accesses
+    touching PII-classified elements: who, role, masked vs unmasked; (4) policy_denials — access
+    attempts blocked by governance rules: who, what, which rule; (5) surface_mix — traffic by protocol
+    via the audit-log source column; (6) query_health — latency percentiles and error rate by source and
+    table (duration_ms/status_code); (7) stale_metadata — tables/elements missing owner, description, or
+    classification, with coverage percentage per domain; (8) join_hotspots — most-frequent table_ids
+    co-occurrence, informing materialization/caching. Decision: the org_admin role is the designated
+    steward of the ops domain, seeded at ops-domain creation, so it never surfaces as a PENDING
+    stewardship gap (REQ-609). Rollup views: because query_audit_log is append-only and grows unbounded,
+    trend-oriented reports (usage_ranking, deprecated_usage, query_health, surface_mix) read from
+    scheduled daily rollup tables (per-day, per-table, per-role aggregates) rather than scanning the raw
+    log; point-in-time reports (pii_access, policy_denials, stale_metadata, join_hotspots) remain live
+    views.
+  use_case: >-
+    Provides self-service management/operations reporting through the governed pipeline without custom
+    code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
+    and capacity/caching signals — all consumable from any BI tool over pgwire.
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/startup_seed.py
+  relates_to:
+  - REQ-884
+  - REQ-609
+- id: REQ-1387
+  status: proposed
+  target: "2026-Q4"
+  group: "3. Source Registration & Data Modeling"
+  category: Business Glossary & Ontology
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Dictionary/ontology of business terms over the semantic layer. Every physical field name in the
+    semantic layer normalizes deterministically into a term via rules based on common enterprise DB
+    naming conventions (case folding, separator tokenization, standard abbreviation expansion). Terms
+    are deduplicated; each term holds a list of physical refs (catalog-identity resolved: table_id +
+    column name). The term unit is the phrase — the full normalized field name — never decomposed into
+    tokens; users resolve homonyms and granularity by revising terms or creating abstract terms. Users
+    can rename a term, move a physical ref between terms to consolidate, and attach a definition. Terms
+    carry relationships to users designated as experts — people who can answer questions about the term
+    or who authored its definition. Users can create abstract terms with no physical refs, connected to
+    rooted terms through a closed, enum-typed relationship set (KIND_OF, RELATED_TO, PART_OF,
+    SYNONYM_OF); free-form edge types are not permitted. Lifecycle is derived from semantic-layer
+    membership — adding an object creates/links terms; deleting a schema element removes its ref, and
+    removal of a term's last physical ref deprecates the term rather than silently dropping it. The term
+    graph is included in metadata export (REQ-1068 family) and exposed via an MCP tool for term
+    search/lookup. v1 scope is documentation and discovery only — term membership does not drive policy
+    (masking/RLS by term is a possible follow-on). Boundary vs tags (REQ-1373): tags remain flat
+    operator-assigned labels; terms are the normalized vocabulary derived from and linked to schema.
+  use_case: >-
+    Bottom-up bootstrap means the glossary is never empty — every column name seeds the vocabulary,
+    avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every
+    physical field that means order date"), expert routing for data questions, grounded vocabulary for
+    NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external
+    catalogs through metadata export.
+  scenario: |
+    Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic layer
+    When deterministic normalization runs
+    Then the fields resolve to deduplicated terms each listing its physical refs
+    And a user can move a physical ref to another term, rename the term, and record a definition and experts
+    And a user can create an abstract term linked to a rooted term via KIND_OF
+    When the last physical ref of a term is deleted from the semantic layer
+    Then the term is marked deprecated rather than removed
+  integration_test: required
+  integration_test_reason: Term derivation, ref lifecycle, and deprecation are only verifiable against a
+    real catalog registration/deletion flow.
+  e2e: true
+  e2e_reason: Glossary curation (rename, ref move, definitions, experts, abstract terms) is an admin UI
+    workflow; MCP term lookup is a client-facing surface.
+  bdd: true
+  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  stakeholders:
+  - data-steward
+  - app-developer
+  relates_to:
+  - REQ-1068
+  - REQ-1373
+  - REQ-1377

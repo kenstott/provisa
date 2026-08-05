@@ -69,6 +69,7 @@ class Stakeholder(str, Enum):
     app_developer = "app-developer"
     ops = "ops"
     executive = "executive"
+    data_steward = "data-steward"
 
 
 _NEEDS_SCENARIO = {Status.accepted, Status.in_progress, Status.complete}
