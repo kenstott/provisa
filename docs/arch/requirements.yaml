@@ -42217,3 +42217,31 @@
   - REQ-1068
   - REQ-1373
   - REQ-1377
+- id: REQ-1388
+  status: accepted
+  target: "2026-Q4"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: structural
+  description: >-
+    Provisa-native Atlas entity typedefs. The Atlas exporter currently transports every source
+    through the out-of-the-box rdbms_* entity types (rdbms_instance/rdbms_db/rdbms_table/
+    rdbms_column), recording the real source type only as an attribute — an API or GraphQL
+    source renders as an RDBMS in the catalog. Atlas supports registering custom ENTITY
+    typedefs through the same /api/atlas/v2/types/typedefs endpoint the exporter already uses
+    for classification typedefs, so Provisa registers its own kinds (e.g. provisa_source with
+    a sourceType attribute, provisa_table, provisa_column, provisa_api_endpoint) with the
+    attributes the model actually carries (provisaUri, governance document, modeling role),
+    and publishes entities under them. Typedefs are registered idempotently before entities,
+    exactly like classification defs. Atlan caveat: its layered type system gives custom types
+    reduced native UI treatment, so the Atlan adapter may keep the mapped built-in types while
+    plain Apache Atlas gets the native ones — a per-provider mapping decision, not a shared
+    constraint.
+  use_case: >-
+    Catalog readers see what a source actually is (API, GraphQL, warehouse) instead of every
+    source masquerading as an RDBMS; Provisa attributes become first-class typed fields Atlas
+    can search and facet on, rather than opaque strings on borrowed types.
+  relates_to:
+  - REQ-1069
+  - REQ-1385
