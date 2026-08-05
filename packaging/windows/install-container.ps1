@@ -93,6 +93,22 @@ function Resolve-ImagesDir {
   }
   Write-Info 'Extracting core images...'
   Expand-Archive -Path $localZip -DestinationPath $dl -Force
+  # The Trino engine ships as its own release asset - bundled it pushed the zip past
+  # GitHub's 2 GiB per-asset limit. Outer tar.gz wraps the docker-save tarball; tar.exe
+  # (Windows 10+) drops trino-481.tar.gz into the same dir the load loop reads.
+  if (-not (Test-Path (Join-Path $dl 'trino-481.tar.gz'))) {
+    $trinoName = "provisa-trino-image-amd64-$Version.tar.gz"
+    $localTrino = Get-ChildItem -Path $ScriptDir -Filter 'provisa-trino-image-amd64-*.tar.gz' -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object { $_.FullName }
+    if (-not $localTrino) {
+      $trinoUrl = "https://github.com/kenstott/provisa/releases/download/$Version/$trinoName"
+      $localTrino = Join-Path $dl $trinoName
+      Write-Info "Downloading Trino engine image: $trinoUrl"
+      Invoke-WebRequest -Uri $trinoUrl -OutFile $localTrino -UseBasicParsing
+    }
+    Write-Info 'Extracting Trino engine image...'
+    & tar.exe -xzf $localTrino -C $dl
+    if ($LASTEXITCODE -ne 0) { Write-Err "Failed to extract $localTrino."; exit 1 }
+  }
   return $dl
 }
 

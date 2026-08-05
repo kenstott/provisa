@@ -266,6 +266,28 @@ load_images() {
     info "Extracting core images..."
     rm -f "${staged}"/*.tar.gz
     ( cd "$staged" && unzip -o -q "$src" )
+    # The Trino engine ships as its own release asset — bundled it pushed the zip past
+    # GitHub's 2 GiB per-asset limit. It is an outer tar.gz wrapping the docker-save
+    # tarball; extracting drops trino-481.tar.gz into the same staging dir the image
+    # loop below already loads from.
+    local trino="provisa-trino-image-amd64-${PROVISA_VERSION}.tar.gz"
+    local trino_src=""
+    for cand in "${appdir_parent}/${trino}" "${HOME}/Downloads/${trino}" "${PWD}/${trino}"; do
+      [ -f "$cand" ] && { trino_src="$cand"; break; }
+    done
+    if [ -z "$trino_src" ] && [ -n "$PROVISA_VERSION" ]; then
+      info "Downloading Trino engine image (${trino})..."
+      if curl -fL --retry 3 --retry-delay 5 -o "${PROVISA_HOME}/${trino}" \
+           "https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/${trino}"; then
+        trino_src="${PROVISA_HOME}/${trino}"
+      fi
+    fi
+    if [ -z "$trino_src" ]; then
+      err "Trino engine image not found. Place ${trino} beside the AppImage (airgap) or connect to the network, then re-run."
+      exit 1
+    fi
+    tar -xzf "$trino_src" -C "$staged"
+    [ "$trino_src" = "${PROVISA_HOME}/${trino}" ] && rm -f "$trino_src"
     printf '%s' "$PROVISA_VERSION" > "$marker"
     [ "$src" = "${PROVISA_HOME}/${zip}" ] && rm -f "$src"
   fi

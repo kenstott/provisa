@@ -76,8 +76,12 @@ stage_images() {
       version="$(provisa version 2>/dev/null | head -1 | awk '{print $NF}')" || version=""
     fi
     acquire_addon "Core images" "provisa-core-images-${version}.tar.gz" "$staged" "y"
+    # The Trino engine ships as its own release asset — bundled it pushed the core-images
+    # tarball past GitHub's 2 GiB per-asset limit. Same staging dir; the loader takes
+    # every tarball it finds there.
+    acquire_addon "Trino engine image" "provisa-trino-image-${version}.tar.gz" "$staged" "y"
     if [ ! "$(ls -A "$staged" 2>/dev/null)" ]; then
-      err "Core images unavailable. Place provisa-core-images-*.tar.gz beside the installer and re-run."
+      err "Core images unavailable. Place provisa-core-images-*.tar.gz and provisa-trino-image-*.tar.gz beside the installer and re-run."
       exit 1
     fi
     return 0
