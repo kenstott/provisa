@@ -40,6 +40,8 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
+        # Marked so the table publishes: only Data Product tables enter the snapshot.
+        data_product=True,
     )
 
 

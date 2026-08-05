@@ -88,7 +88,7 @@ def _column_asset(table: Table, column) -> ColumnAsset:
     )
 
 
-def _table_assets(config: ProvisaConfig) -> list[TableAsset]:
+def _table_assets(tables: list[Table]) -> list[TableAsset]:
     return [
         TableAsset(
             ref=table_ref(table),
@@ -99,7 +99,7 @@ def _table_assets(config: ProvisaConfig) -> list[TableAsset]:
             aliases=(table.alias,) if table.alias else (),
             columns=[_column_asset(table, column) for column in table.columns],
         )
-        for table in config.tables
+        for table in tables
     ]
 
 
@@ -203,16 +203,34 @@ def build_snapshot(
     for. It is required rather than defaulted: parsing a view with the wrong dialect yields
     plausible, wrong lineage.
     """
+    # Name resolution sees EVERY table: a bare relationship/lineage name that is ambiguous
+    # across the full config stays refused, whether or not both candidates publish.
     index = TableIndex(config.tables)
+    # The Data Product checkbox is the export filter: only marked tables publish, and every
+    # edge or tag touching an unmarked table is withheld with it — a dangling edge would hand
+    # the catalog a reference to an asset it was never sent, and name the table the admin
+    # chose not to publish.
+    exported = [table for table in config.tables if table.data_product]
+    keep = {table_ref(table).parts for table in exported}
     return MetadataSnapshot(
         org_id=org_id,
         sources=_source_assets(config),
         domains=_domain_assets(config),
-        tables=_table_assets(config),
-        relationships=_relationship_edges(config, index),
-        lineage=_lineage_edges(config, index, dialect),
+        tables=_table_assets(exported),
+        relationships=[
+            edge
+            for edge in _relationship_edges(config, index)
+            if edge.source.parts in keep and (edge.target is None or edge.target.parts in keep)
+        ],
+        lineage=[
+            edge
+            for edge in _lineage_edges(config, index, dialect)
+            if edge.upstream.parts[:3] in keep and edge.downstream.parts[:3] in keep
+        ],
         # REQ-1071: the restrictions ship with the assets. A snapshot carrying assets without
         # their governance tags is the dangerous half-truth — a consumer would read an
         # unannotated column as unrestricted.
-        governance_tags=build_governance_tags(config),
+        governance_tags=[
+            tag for tag in build_governance_tags(config) if tag.asset.parts[:3] in keep
+        ],
     )

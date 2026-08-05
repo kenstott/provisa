@@ -30,6 +30,7 @@ from provisa.core.models import (
     Domain,
     ProvisaConfig,
     Relationship,
+    Role,
     Source,
     SourceType,
     Table,
@@ -46,13 +47,17 @@ def _table(
     table_name: str,
     domain_id: str = "sales",
     columns: list[Column] | None = None,
+    data_product: bool = True,
     **kwargs,
 ) -> Table:
+    # data_product defaults True here: these tests exercise what a PUBLISHED table carries,
+    # and only tables marked Data Product publish at all (the export filter).
     return Table(
         source_id=source_id,
         domain_id=domain_id,
         schema_name="public",
         table_name=table_name,
+        data_product=data_product,
         columns=columns
         if columns is not None
         else [Column(name="id", data_type="integer", visible_to=["admin"])],
@@ -109,6 +114,59 @@ def test_sources_domains_tables_and_columns_are_published():
     assert amount.ref.fqn() == "wh.public.orders.amount"
     assert amount.data_type == "numeric"
     assert amount.aliases == ("total",)
+
+
+def test_only_data_product_tables_are_published():
+    # The Data Product checkbox is the export filter: an unmarked table is not sent.
+    config = _config(
+        tables=[
+            _table(table_name="orders"),
+            _table(table_name="staging_orders", data_product=False),
+        ]
+    )
+
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+
+    assert [t.ref.fqn() for t in snapshot.tables] == ["wh.public.orders"]
+
+
+def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
+    # A relationship, lineage edge, or governance tag naming an unpublished table would give
+    # the catalog a dangling reference — and leak the table it was told not to send.
+    config = _config(
+        tables=[
+            _table(table_name="orders"),
+            _table(table_name="customers", data_product=False),
+            _table(
+                table_name="order_totals",
+                view_sql="SELECT id FROM customers",
+                columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
+            ),
+        ],
+        relationships=[
+            Relationship(
+                id="orders-to-customers",
+                source_table_id="orders",
+                target_table_id="customers",
+                source_column="customer_id",
+                target_column="id",
+                cardinality=Cardinality.many_to_one,
+            )
+        ],
+        # A role outside visible_to=["admin"], so every column carries a visibility tag.
+        roles=[
+            Role(id="analyst", capabilities=[], domain_access=["*"]),
+            Role(id="admin", capabilities=[], domain_access=["*"]),
+        ],
+    )
+
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+
+    assert snapshot.relationships == []
+    assert snapshot.lineage == []
+    tagged = {tag.asset.parts[:3] for tag in snapshot.governance_tags}
+    assert ("wh", "public", "customers") not in tagged
+    assert ("wh", "public", "orders") in tagged
 
 
 def test_domain_without_steward_publishes_as_pending_not_dropped():

@@ -44,6 +44,8 @@ RLS_FILTER = "region_id = current_setting('provisa.region')"
 
 
 def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Table:
+    # data_product marks every fixture table: only Data Product tables publish, and this
+    # fixture exists to exercise what published assets carry end-to-end.
     return Table(
         source_id="wh",
         domain_id="sales",
@@ -52,6 +54,7 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
+        data_product=True,
     )
 
 
