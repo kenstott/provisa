@@ -269,6 +269,47 @@ def _cmd_license_status(args: argparse.Namespace) -> int:  # noqa: ARG001
     return 0
 
 
+def _cmd_metadata_export(args: argparse.Namespace) -> int:
+    """`provisa metadata export` — trigger the running server's on-demand metadata publish.
+
+    A thin client for POST /admin/metadata-export/publish (REQ-1072/REQ-1074): the server owns
+    the single publish path (entitlement gate, org runtime, snapshot build), so a cron-driven
+    export sends exactly what the admin tab's Publish now sends. Under multitenancy the org is
+    named by the API host (acme.provisa.org), the same way every other client names it.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    api = args.api or os.environ.get("PROVISA_API_URL", "http://127.0.0.1:8000")
+    token = args.token or os.environ.get("PROVISA_API_TOKEN", "")
+    req = urllib.request.Request(
+        f"{api.rstrip('/')}/admin/metadata-export/publish", method="POST", data=b""
+    )
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+            payload = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        print(
+            f"publish failed: HTTP {exc.code} — {exc.read().decode(errors='replace')}",
+            file=sys.stderr,
+        )
+        return 1
+    except urllib.error.URLError as exc:
+        print(f"cannot reach the Provisa API at {api}: {exc.reason}", file=sys.stderr)
+        return 1
+    ok = payload["ok"]
+    print(
+        f"{'ok' if ok else 'PARTIAL'}: published {payload['total_published']} assets "
+        f"via {payload['provider']}"
+    )
+    for err in payload["errors"]:
+        print(f"  ! {err['asset']}: {err['message']}", file=sys.stderr)
+    return 0 if ok else 1
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     data_dir = Path(args.data_dir).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -361,6 +402,30 @@ def main(argv: list[str] | None = None) -> int:
     lic_apply.set_defaults(func=_cmd_license_apply)
     lic_status = lic_sub.add_parser("status", help="Show machine id, trial state, and license status")
     lic_status.set_defaults(func=_cmd_license_status)
+
+    meta = sub.add_parser("metadata", help="Governed-metadata operations")
+    meta_sub = meta.add_subparsers(dest="metadata_command", required=True)
+    meta_export = meta_sub.add_parser(
+        "export",
+        help="Publish the full metadata snapshot to the org's configured catalog "
+        "(the on-demand REQ-1072 reconcile, runnable from cron)",
+    )
+    meta_export.add_argument(
+        "--api",
+        default=None,
+        help="Provisa API base URL (default: $PROVISA_API_URL or http://127.0.0.1:8000). "
+        "Under multitenancy the host names the org (acme.provisa.org)",
+    )
+    meta_export.add_argument(
+        "--token",
+        default=None,
+        help="Bearer token for an identity holding org_settings (default: $PROVISA_API_TOKEN; "
+        "unauthenticated deployments need none)",
+    )
+    meta_export.add_argument(
+        "--timeout", type=int, default=300, help="Publish timeout in seconds (default: 300)"
+    )
+    meta_export.set_defaults(func=_cmd_metadata_export)
 
     args = parser.parse_args(argv)
     return args.func(args)

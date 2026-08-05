@@ -207,3 +207,22 @@ Every invocation emits a trace regardless of outcome. The trace includes the com
 transport kind, identity model (DEFINER or INVOKER), input relation references, role id, and
 output cardinality. The dispatcher emits the trace — no `impl_kind` can bypass it.
 [tool-verified: `udf_invocation_trace` context in dispatch_function:475-492]
+
+## CLI: provisa metadata export
+
+`provisa metadata export` is a shell-tier job, not a governed RPC. It triggers the running
+server's on-demand metadata publish (REQ-1072/REQ-1074) by posting to
+`/admin/metadata-export/publish` — the same endpoint the Admin tab's **Publish now** button
+calls. [tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
+
+Use it to drive timed exports from cron or CI when the configured `reconcile_cron` schedule is
+not granular enough:
+
+```bash
+provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOKEN"
+```
+
+Exit 0 = full publish. Exit 1 = partial publish or connection failure.
+
+For the full flag reference, auth options, multitenancy host naming, and a cron example, see
+[Metadata Export — From the command line](metadata-export.md#from-the-command-line).
