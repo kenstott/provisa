@@ -105,6 +105,25 @@ def test_technical_column_is_dropped_from_its_published_table():
     assert snapshot.model_tags == []
 
 
+def test_sources_publish_only_when_one_of_their_tables_does():
+    # The Data Product filter gates sources too — internal stores and sources with nothing
+    # published must not appear in the catalog at all, tags included.
+    config = _config(
+        sources=[
+            Source(id="wh", type=SourceType.postgresql, description="warehouse"),
+            Source(id="internal-admin", type=SourceType.postgresql, description="plumbing"),
+        ],
+        tables=[_table("orders"), _table("drafts", data_product=False)],
+        tag_assignments=[
+            TagAssignment(tag_id="deprecated", object_type="source", source_id="internal-admin",
+                          reason="internal"),
+        ],
+    )
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    assert [s.id for s in snapshot.sources] == ["wh"]
+    assert snapshot.model_tags == []
+
+
 def test_tags_on_published_assets_ship_and_withheld_assets_keep_theirs_back():
     config = _config(
         tables=[_table("orders"), _table("drafts", data_product=False)],

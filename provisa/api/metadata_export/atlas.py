@@ -336,7 +336,9 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
                 guid=db_guid,
                 attributes={
                     "qualifiedName": _db_qn(source.id),
-                    "name": "default",
+                    # The source id, not a literal "default": six sources otherwise render
+                    # as six indistinguishable "default" databases in the catalog list.
+                    "name": source.id,
                     "description": source.description,
                 },
                 relationships={"instance": {"guid": instance_guid}},
@@ -561,6 +563,11 @@ class AtlasExport(MetadataExport):  # REQ-1069
         registration or the error reporting.
         """
         result = PublishResult(provider_name=self.provider_name)
+        if not entities:
+            # Nothing marked Data Product yet: an honest "0 published" — Atlas rejects an
+            # empty bulk request (ATLAS-400-00-01A), which would report a transport error
+            # for what is a model state.
+            return result
         defs = classification_defs(snapshot)
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)

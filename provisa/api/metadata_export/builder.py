@@ -54,7 +54,12 @@ from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignm
 from provisa.lineage.graph import Edge, LineageGraph, Node, build_column_graph
 
 
-def _source_assets(config: ProvisaConfig, org_id: str) -> list[SourceAsset]:
+def _source_assets(
+    config: ProvisaConfig, org_id: str, published_source_ids: set[str]
+) -> list[SourceAsset]:
+    # The Data Product filter gates sources too: a source publishes only when at least one
+    # of its tables does. Publishing the whole source inventory would hand the catalog
+    # internal plumbing (admin store, telemetry) and sources the admin chose not to expose.
     return [
         SourceAsset(
             ref=source_ref(source),
@@ -64,6 +69,7 @@ def _source_assets(config: ProvisaConfig, org_id: str) -> list[SourceAsset]:
             semantic_uri=source_uri(org_id, source.id),
         )
         for source in config.sources
+        if source.id in published_source_ids
     ]
 
 
@@ -258,6 +264,7 @@ def _model_tags(
     keep: set[tuple[str, ...]],
     published_columns: set[tuple[str, ...]],
     published_relationships: set[str],
+    published_source_ids: set[str],
 ) -> list[ModelTag]:  # REQ-1377, REQ-1378
     """Registry tags on published assets. Tags on withheld assets are withheld with them."""
     tags: list[ModelTag] = []
@@ -269,7 +276,14 @@ def _model_tags(
             "expires_on": assignment.expires_on,
         }
         if assignment.object_type == "source":
-            source = next((s for s in config.sources if s.id == assignment.source_id), None)
+            source = next(
+                (
+                    s
+                    for s in config.sources
+                    if s.id == assignment.source_id and s.id in published_source_ids
+                ),
+                None,
+            )
             if source is not None:
                 tags.append(ModelTag(asset=source_ref(source), **common))
         elif assignment.object_type == "table":
@@ -308,6 +322,7 @@ def build_snapshot(
     technical_columns = _technical_columns(config, index)
     exported = [table for table in config.tables if table.data_product]
     keep = {table_ref(table).parts for table in exported}
+    published_source_ids = {table.source_id for table in exported}
     tables = _table_assets(exported, org_id, technical_columns)
     relationships = [
         edge
@@ -317,7 +332,7 @@ def build_snapshot(
     published_columns = {column.ref.parts for table in tables for column in table.columns}
     return MetadataSnapshot(
         org_id=org_id,
-        sources=_source_assets(config, org_id),
+        sources=_source_assets(config, org_id, published_source_ids),
         domains=_domain_assets(config, org_id),
         tables=tables,
         relationships=relationships,
@@ -338,5 +353,6 @@ def build_snapshot(
             keep,
             published_columns,
             {edge.id for edge in relationships},
+            published_source_ids,
         ),
     )
