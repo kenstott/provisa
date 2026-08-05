@@ -74,14 +74,30 @@ export async function expectNoA11yViolations(page: Page, context?: string) {
   ).toEqual([]);
 }
 
-export const test = base.extend<{ expectNoA11yViolations: typeof expectNoA11yViolations }>({
+export const test = base.extend<{
+  expectNoA11yViolations: typeof expectNoA11yViolations;
+  /**
+   * Console-error substrings this spec EXPECTS the browser to log.
+   *
+   * The default is none, and that is the point: an uncaught error is a failure even when the
+   * assertions pass. The exception is a spec whose subject IS a refused response — an expired
+   * credential, an unreachable server — where the browser logs the failed fetch no matter how
+   * correctly the app handles it. Such a spec declares exactly what it expects:
+   *
+   *     test.use({ allowedBrowserErrors: ["status of 401"] });
+   *
+   * Anything not matching a declared substring still fails, so the guard keeps its teeth.
+   */
+  allowedBrowserErrors: string[];
+}>({
+  allowedBrowserErrors: [[], { option: true }],
   // Names this worker's backend on every request the browser makes to the Vite dev server,
   // which routes the proxied API paths accordingly (vite.config.ts). One Vite server serves all
   // workers — the alternative, one dev server per worker, costs a 4 GB Node heap each.
   // Overriding the built-in option this way rather than calling test.use(): test.use() is
   // illegal outside a spec/describe body, and this module is imported by every spec.
   extraHTTPHeaders: [{ "x-e2e-worker": String(PARALLEL_INDEX) }, { option: true }],
-  page: async ({ page }, use) => {
+  page: async ({ page, allowedBrowserErrors }, use) => {
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
     page.on("console", (msg) => {
@@ -89,7 +105,10 @@ export const test = base.extend<{ expectNoA11yViolations: typeof expectNoA11yVio
     });
     // eslint-disable-next-line react-hooks/rules-of-hooks -- `use` here is the Playwright fixture callback, not a React hook
     await use(page);
-    expect(errors, `Uncaught browser errors: ${errors.join("; ")}`).toHaveLength(0);
+    const unexpected = errors.filter(
+      (e) => !allowedBrowserErrors.some((allowed) => e.includes(allowed)),
+    );
+    expect(unexpected, `Uncaught browser errors: ${unexpected.join("; ")}`).toHaveLength(0);
   },
   // Exposed as a fixture so specs can call `await expectNoA11yViolations(page)`
   // without importing it separately; the standalone export remains available.

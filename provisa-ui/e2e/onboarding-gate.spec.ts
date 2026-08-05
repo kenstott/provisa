@@ -87,6 +87,20 @@ async function stubDeployment(
 const stored = (page: Page, key: string) =>
   page.evaluate((k) => localStorage.getItem(k), key);
 
+/** The sign-in screen, whichever provider the deployment renders it with. */
+const signIn = (page: Page) => page.getByRole("heading", { name: "Login" });
+
+// Each test below deliberately drives a refused or failing identity response, so the browser
+// logs the failed fetch however correctly the app handles it. Anything else still fails.
+test.use({
+  allowedBrowserErrors: [
+    "status of 401",
+    "status of 403",
+    "status of 500",
+    "Failed to load resource",
+  ],
+});
+
 test("a credential the deployment rejects returns the visitor to sign-in", async ({ page }) => {
   // REQ-1289: 401 means the token is stale — expired, or from before this deployment knew this
   // identity. Nothing on a "no access" panel fixes that, and on a deployment with no administrator
@@ -95,7 +109,7 @@ test("a credential the deployment rejects returns the visitor to sign-in", async
 
   await page.goto("/");
 
-  await expect(page.getByTestId("firebase-signin-button")).toBeVisible();
+  await expect(signIn(page)).toBeVisible();
   expect(await stored(page, "provisa_token")).toBeNull();
 });
 
@@ -105,7 +119,7 @@ test("a rejected credential clears the whole session, not just the token", async
   await stubDeployment(page, { identityStatus: 403 });
 
   await page.goto("/");
-  await expect(page.getByTestId("firebase-signin-button")).toBeVisible();
+  await expect(signIn(page)).toBeVisible();
 
   expect(await stored(page, "provisa_token")).toBeNull();
   expect(await stored(page, "provisa_org")).toBeNull();
@@ -133,7 +147,10 @@ test("an unclaimed platform-admin slot outranks a valid session", async ({ page 
 
   await page.goto("/");
 
-  await expect(page.getByTestId("firebase-signin-button")).toBeVisible();
+  // The sign-in page renders in its claim state — REQ-1288's disclosure, which is the whole
+  // reason the credential is dropped rather than followed into the app.
+  await expect(page.getByTestId("first-login-notice")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Set up this deployment" })).toBeVisible();
   expect(await stored(page, "provisa_token")).toBeNull();
   expect(await stored(page, "provisa_org")).toBeNull();
 });
@@ -145,7 +162,7 @@ test("a member with a claimed slot is routed into the app", async ({ page }) => 
 
   await page.goto("/");
 
-  await expect(page.getByTestId("firebase-signin-button")).toHaveCount(0);
+  await expect(signIn(page)).toHaveCount(0);
   await expect(page.getByTestId("onboard-org-page")).toHaveCount(0);
   expect(await stored(page, "provisa_token")).toBe("tok-carol");
 });

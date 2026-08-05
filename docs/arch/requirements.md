@@ -13018,7 +13018,7 @@ The default org ID has a single source of truth from the control plane's resolve
 
 **Code:** `provisa/auth/wiring.py`, `provisa/core/models.py`, `provisa/core/schema_admin.py`, `provisa/core/control_plane.py`, `provisa/api/startup_seed.py`, `provisa/api/auth_router.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/i18n/locales/en/onboardGate.json`
 
-**Tests:** `tests/unit/test_default_org_id_resolution.py`, `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+**Tests:** `tests/unit/test_default_org_id_resolution.py`, `provisa-ui/src/__tests__/OnboardGate.test.tsx`, `provisa-ui/e2e/onboarding-gate.spec.ts`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -13046,7 +13046,7 @@ Before any superadmin exists (bootstrap_superadmin enabled and no superadmin_boo
 
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/middleware.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/i18n/locales/en/loginPage.json`
 
-**Tests:** `tests/integration/test_bootstrap_status.py`, `tests/unit/test_auth_middleware.py`, `provisa-ui/src/__tests__/LoginPage.test.tsx`, `tests/unit/test_auth_middleware_multitenancy.py`
+**Tests:** `tests/integration/test_bootstrap_status.py`, `tests/unit/test_auth_middleware.py`, `provisa-ui/src/__tests__/LoginPage.test.tsx`, `tests/unit/test_auth_middleware_multitenancy.py`, `provisa-ui/e2e/onboarding-gate.spec.ts`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -13060,7 +13060,7 @@ Onboarding never dead-ends: a stored credential that the deployment rejects (/au
 
 **Code:** `provisa-ui/src/components/OnboardGate.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`, `provisa-ui/e2e/onboarding-gate.spec.ts`
 
 ## 1. Access Governance & Security
 
@@ -13086,7 +13086,7 @@ AuthProvider takes an authVersion prop that is bumped by App whenever a token is
 
 **Code:** `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/App.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`, `provisa-ui/e2e/onboarding-gate.spec.ts`
 
 ### REQ-1292 · Authentication {#REQ-1292}
 
@@ -13098,7 +13098,7 @@ An unclaimed platform-admin slot outranks org onboarding in the routing gate. A 
 
 **Code:** `provisa-ui/src/components/OnboardGate.tsx`, `provisa/auth/middleware.py`
 
-**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`
+**Tests:** `provisa-ui/src/__tests__/OnboardGate.test.tsx`, `provisa-ui/e2e/onboarding-gate.spec.ts`
 
 ### REQ-1293 · Data Isolation {#REQ-1293}
 
@@ -13516,7 +13516,7 @@ Client state scoped to one signed-in session (localStorage keys provisa_token, p
 
 **Code:** `provisa-ui/src/lib/session.ts`, `provisa-ui/src/apolloClient.ts`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/context/AuthContext.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/SessionIsolation.test.tsx`
+**Tests:** `provisa-ui/src/__tests__/SessionIsolation.test.tsx`, `provisa-ui/e2e/onboarding-gate.spec.ts`
 
 ## 1. Access Governance & Security
 
@@ -14097,3 +14097,29 @@ Demo mode exemption for tier entitlement gating: when PROVISA_DEMO=1 (set via `p
 **Code:** `provisa/core/demo.py`, `provisa/control_plane/entitlements.py`, `provisa/cli/setup_router.py`
 
 **Tests:** —
+
+### REQ-1371 · Data Catalog Integration {#REQ-1371}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+CLI job `provisa metadata export` (provisa/cli.py::_cmd_metadata_export) triggers an on-demand metadata publish by POSTing to the running server's /admin/metadata-export/publish endpoint. Thin client of the [REQ-1072](#REQ-1072) publish path, suitable for cron. Flags: --api ($PROVISA_API_URL default http://127.0.0.1:8000; host names the org under multitenancy), --token ($PROVISA_API_TOKEN), --timeout (300s). Exit 0 on full publish, 1 on partial/failed/unreachable.
+
+**Use case:** Cron-friendly CLI command enables automated, scheduled metadata exports without polling the admin UI or manually triggering, and integrates with standard deployment pipelines and observability tools.
+
+**Code:** `provisa/cli.py`
+
+**Tests:** `tests/unit/test_cli_metadata_export.py`
+
+## 1. Access Governance & Security
+
+### REQ-1372 · Data Catalog Integration {#REQ-1372}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+Per-table data_product flag (Table.data_product in provisa/core/models.py) filters metadata exports. build_snapshot in provisa/api/metadata_export/builder.py publishes only tables marked data_product=true. Withholds relationship edges, lineage edges, and governance tags that touch unmarked tables. Sources and domains are always published. Name resolution for relationships and lineage still sees every table, so bare-name ambiguity rejection remains unchanged.
+
+**Use case:** Allows organizations to designate certain tables as publishable data products in the catalog, withholding internal/staging tables and their downstream governance metadata from export while maintaining name resolution for query execution.
+
+**Code:** `provisa/core/models.py`, `provisa/api/metadata_export/builder.py`
+
+**Tests:** `tests/unit/test_metadata_snapshot_builder.py`
