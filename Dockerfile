@@ -9,7 +9,11 @@ COPY vendor/ ./vendor/
 # every authenticated request 500s. The desktop wheel keeps firebase optional; the image bakes it in.
 # [vector] pulls sentence-transformers — the demo config (provisa-install.yaml) registers a
 # huggingface vector_models entry so MCP catalog search (REQ-1008) works out of the box.
-RUN pip install --no-cache-dir '.[firebase,vector]'
+# torch is pre-installed from the CPU wheel index: the default amd64 torch is the CUDA build,
+# ~2.5 GiB of GPU libraries this CPU-only container never loads — it pushed the core-images
+# release tarballs past GitHub's 2 GiB per-asset limit (alpha.308/309 publish failures).
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir '.[firebase,vector]'
 
 # Stage 2: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
