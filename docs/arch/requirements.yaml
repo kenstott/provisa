@@ -42245,3 +42245,35 @@
   relates_to:
   - REQ-1069
   - REQ-1385
+- id: REQ-1389
+  status: accepted
+  target: "2026-Q4"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: MUST
+  type: constraint
+  description: >-
+    Catalog upsert preserves human enrichment: an attribute-ownership contract for every
+    exporter. Publishing is an UPSERT on the vendor's stable key (Atlas/Atlan: typeName +
+    qualifiedName via /entity/bulk, which merges at attribute level; DataHub: per-aspect URN
+    upsert; OpenMetadata: fqn PUT) — never a delete-and-recreate, and entities absent from a
+    later snapshot are never pruned by publish. Every attribute is classified as either
+    PROVISA-OWNED (identity, physical binding, technical facts, governance projections,
+    provisa_* classifications — written on every publish and drift-corrected by the REQ-1072
+    reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, glossary
+    term assignments, labels, hand-drawn lineage — NEVER written by the exporter, so steward
+    enrichment in the catalog survives every publish and reconcile). Consequence: the Atlas
+    governance document moves OFF userDescription — the exact field the Atlas UI edits for
+    human descriptions, clobbered today on every publish — onto a Provisa-owned typed
+    attribute (REQ-1388 native typedefs). The reconcile's drift correction applies to
+    Provisa-owned attributes only.
+  use_case: >-
+    Stewards enrich published assets inside the catalog (descriptions, terms, extra
+    classifications); a publish or scheduled reconcile that overwrote that work would make
+    the catalog write-once and untrustworthy. The ownership split lets Provisa keep its
+    facts current while human curation accumulates safely.
+  relates_to:
+  - REQ-1069
+  - REQ-1072
+  - REQ-1385
+  - REQ-1388
