@@ -380,14 +380,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # after dynamic creation (mirrors _populate_source_catalog_names in app_loaders.py).
         from provisa.api.org_runtime import current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
-        _pg_cat = (
-            source_to_catalog(input.id)
-            if input.type == "postgresql"
-            else (input.database or source_to_catalog(input.id))
-        )
+        # The physical catalog is derived from the source id and nothing else — create_catalog
+        # (provisa/core/catalog.py:116) names it `_to_catalog_name(source.id)`, and native engines
+        # attach by source id too. `input.database` is the *remote* database/tenant the connector
+        # talks to, never a catalog name: a SharePoint source puts its Azure tenant GUID there, so
+        # deriving the catalog from it recorded `"5d2609cc-…"` for a catalog physically created as
+        # `e2e_sharepoint`, and every engine query for the source died on CATALOG_NOT_FOUND.
         _building_org = current_org.get() or state.org_id
         state.source_catalogs[input.id] = org_prefixed_catalog(
-            _building_org, _pg_cat, default_org=state.org_id
+            _building_org, source_to_catalog(input.id), default_org=state.org_id
         )
 
         # Provision on the bound engine (the engine makes a catalog; native engines no-op / attach lazily).
@@ -482,14 +483,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # Keep catalog name in sync with the (possibly renamed) source config.
         from provisa.api.org_runtime import current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
-        _pg_cat = (
-            source_to_catalog(input.id)
-            if input.type == "postgresql"
-            else (input.database or source_to_catalog(input.id))
-        )
+        # Source id only — see the same derivation in create_source above for why `input.database`
+        # (the remote database/tenant) is not a catalog name.
         _building_org = current_org.get() or state.org_id
         state.source_catalogs[input.id] = org_prefixed_catalog(
-            _building_org, _pg_cat, default_org=state.org_id
+            _building_org, source_to_catalog(input.id), default_org=state.org_id
         )
 
         # Invalidate and re-index catalog cache (REQ-464)

@@ -219,15 +219,13 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
 
     for src in config.sources:
         state.source_types[src.id] = src.type.value
-        _pg_cat = (
-            source_to_catalog(src.id)
-            if src.type.value == "postgresql"
-            else (src.database or source_to_catalog(src.id))
-        )
         # Fixed-warehouse catalogs pin every source to one physical catalog (not org-scoped);
-        # otherwise namespace the org-scoped catalog for non-default orgs.
+        # otherwise namespace the org-scoped catalog for non-default orgs. The base name comes
+        # from the source id alone — that is what create_catalog physically names the catalog
+        # (provisa/core/catalog.py:116) and what native engines attach by. `src.database` is the
+        # remote database/tenant the connector talks to, not a catalog.
         state.source_catalogs[src.id] = _fixed_catalog or org_prefixed_catalog(
-            _building_org, _pg_cat, default_org=_default_org
+            _building_org, source_to_catalog(src.id), default_org=_default_org
         )
         state.source_dialects[src.id] = src.dialect or ""
         state.source_cache[src.id] = {

@@ -9,78 +9,78 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the executable file in the root directory of this source tree.
 
-"""Bug regression: create_source must populate state.source_catalogs.
+"""Catalog-name agreement: what a source is recorded under must be what it is created as.
 
-Before the fix, dynamically creating a source via create_source() left
-state.source_catalogs empty for that source. Any subsequent call that
-used catalog_for() (e.g. resolve_available_columns_metadata when no dataType
-is supplied) raised KeyError and failed the registerTable mutation.
+``state.source_catalogs[id]`` is what ``catalog_for()`` returns and what every compiled engine
+query names; ``create_catalog`` is what physically makes the catalog. When those two disagree the
+source registers cleanly and every query for it then dies on CATALOG_NOT_FOUND — which is exactly
+what a SharePoint source did, because its Azure tenant GUID lives in ``database`` and the recorded
+name was derived from that field.
+
+These tests drive the real population path rather than restating its arithmetic; a formula copied
+into the test cannot detect the formula changing.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
+from provisa.core.catalog import _to_catalog_name
+from provisa.core.models import ProvisaConfig, Source, SourceType
 
 
-def test_catalog_name_formula_files_source():
-    """The catalog name for a files source derives from source_to_catalog(id) unless
-    a database name is set. This mirrors _populate_source_catalog_names logic."""
-    source_id = "e2e-northwind"
-    database = None  # no database field on files source
-    pg_cat = database or source_to_catalog(source_id)
-    assert pg_cat == "e2e_northwind"
-    # Default org keeps bare names
-    catalog = org_prefixed_catalog("e2e", pg_cat, default_org="e2e")
-    assert catalog == "e2e_northwind"
+def _config(*sources: Source) -> ProvisaConfig:
+    return ProvisaConfig(sources=list(sources), domains=[], tables=[], roles=[])
 
 
-def test_catalog_name_formula_postgresql_source():
-    """PostgreSQL sources always use source_to_catalog(id) regardless of database field."""
-    source_id = "my-pg-source"
-    database = "mydb"  # postgresql has a database field but catalog comes from id
-    pg_cat = source_to_catalog(source_id) if True else (database or source_to_catalog(source_id))
-    assert pg_cat == "my_pg_source"
+@pytest.fixture()
+def state(monkeypatch):
+    from provisa.api.app import state as app_state
+
+    monkeypatch.setattr(app_state, "source_catalogs", {}, raising=False)
+    monkeypatch.setattr(app_state, "source_types", {}, raising=False)
+    monkeypatch.setattr(app_state, "source_dialects", {}, raising=False)
+    monkeypatch.setattr(app_state, "source_cache", {}, raising=False)
+    monkeypatch.setattr(app_state, "source_federation_hints", {}, raising=False)
+    monkeypatch.setattr(app_state, "federation_engine", None, raising=False)
+    monkeypatch.setattr(app_state, "org_id", "default", raising=False)
+    return app_state
 
 
-def test_catalog_name_formula_non_default_org():
-    """Non-default orgs get an org-prefixed catalog name."""
-    source_id = "e2e-northwind"
-    pg_cat = source_to_catalog(source_id)
-    catalog = org_prefixed_catalog("tenant-a", pg_cat, default_org="default")
-    assert catalog == "org_tenant-a__e2e_northwind"
+@pytest.mark.parametrize(
+    "source",
+    [
+        # The SharePoint case: `database` carries the Azure tenant GUID.
+        Source(
+            id="e2e-sharepoint",
+            type=SourceType.sharepoint,
+            database="5d2609cc-7eff-4b82-8f83-f0b28c71fafc",
+        ),
+        # A remote database name is equally not a catalog name.
+        Source(id="pet-store-pg", type=SourceType.postgresql, database="provisa"),
+        # No `database` at all — the case that always worked.
+        Source(id="inquiries-sqlite", type=SourceType.sqlite, path="./x.sqlite"),
+    ],
+    ids=["sharepoint-tenant-guid", "postgres-db-name", "no-database"],
+)
+def test_recorded_catalog_is_the_one_create_catalog_makes(state, source):
+    from provisa.api.app_loaders import _populate_source_catalog_names
+
+    _populate_source_catalog_names(_config(source))
+
+    assert state.source_catalogs[source.id] == _to_catalog_name(source.id)
 
 
-def test_source_catalogs_populated_by_create_source(monkeypatch):
-    """After create_source runs, state.source_catalogs[source_id] must be set.
+def test_non_default_org_prefixes_the_source_id_derived_name(state):
+    from provisa.api.app_loaders import _populate_source_catalog_names
+    from provisa.api.org_runtime import current_org
 
-    This is the regression test for the bug where catalog_for() raised KeyError
-    when registerTable was called with columns lacking dataType, triggering
-    resolve_available_columns_metadata → catalog_for → KeyError.
-    """
-    from types import SimpleNamespace
+    token = current_org.set("tenant-a")
+    try:
+        _populate_source_catalog_names(
+            _config(Source(id="e2e-sharepoint", type=SourceType.sharepoint, database="tenant-guid"))
+        )
+    finally:
+        current_org.reset(token)
 
-    # Simulate the relevant portion of create_source logic
-    source_id = "e2e-northwind"
-    source_type = "files"
-    database = None
-
-    # Simulate state
-    source_catalogs: dict[str, str] = {}
-    org_id = "e2e"
-
-    # Simulate current_org.get() returning None (no ContextVar set at mutation time)
-    current_org_value = None
-
-    # This is exactly the logic we added to create_source
-    pg_cat = (
-        source_to_catalog(source_id)
-        if source_type == "postgresql"
-        else (database or source_to_catalog(source_id))
-    )
-    building_org = current_org_value or org_id
-    source_catalogs[source_id] = org_prefixed_catalog(building_org, pg_cat, default_org=org_id)
-
-    assert source_id in source_catalogs, "source_catalogs must contain source after create_source"
-    assert source_catalogs[source_id] == "e2e_northwind"
+    assert state.source_catalogs["e2e-sharepoint"] == "org_tenant-a__e2e_sharepoint"
