@@ -132,7 +132,9 @@ class TableIndex:
     """Resolve the names configs use for tables (bare ``table``, or ``schema.table``) to a Table.
 
     Relationship ``source_table_id``/``target_table_id`` and lineage relation names are both
-    written as bare table names. When one bare name matches tables in two sources it addresses
+    written as bare table names. The config vocabulary is the VIRTUAL name — alias when set,
+    else the physical table name (the loader's resolver and config_export's id_to_name agree
+    on this) — so both index. When one bare name matches tables in two sources it addresses
     neither, and the build refuses rather than picking one.
     """
 
@@ -140,8 +142,10 @@ class TableIndex:
         self._by_bare: dict[str, list[Table]] = {}
         self._by_qualified: dict[str, Table] = {}
         for table in tables:
-            self._by_bare.setdefault(table.table_name, []).append(table)
-            self._by_qualified[f"{table.schema_name}.{table.table_name}"] = table
+            names = {table.table_name} | ({table.alias} if table.alias else set())
+            for name in names:
+                self._by_bare.setdefault(name, []).append(table)
+                self._by_qualified[f"{table.schema_name}.{name}"] = table
             self._by_qualified[".".join(table_ref(table).parts)] = table
 
     def resolve(self, name: str, context: str) -> Table:

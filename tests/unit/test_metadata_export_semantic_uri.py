@@ -78,6 +78,22 @@ def test_uri_grammar_addresses_business_identity():
     assert snapshot.domains[0].semantic_uri == "provisa://acme/sales"
 
 
+def test_relationships_resolve_tables_by_alias_the_config_vocabulary():
+    # The config vocabulary is the VIRTUAL name — alias when set (config_export id_to_name,
+    # loader resolver). A relationship naming the alias must resolve, not refuse (#97).
+    rel = Relationship(
+        id="rel-a",
+        source_table_id="Order",  # the alias, not table_name "orders"
+        target_table_id="",
+        source_column="customer_id",
+        target_column="",
+        cardinality=Cardinality.many_to_one,
+        target_function_name="lookup",
+    )
+    snapshot = build_snapshot(_config(relationships=[rel]), org_id="acme", dialect="postgres")
+    assert snapshot.relationships[0].source.fqn() == "wh.public.orders"
+
+
 def test_relationship_uri_anchors_at_source_table():
     rel = Relationship(
         id="rel-1",

@@ -55,6 +55,8 @@ from provisa.events import queue
 if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+    from provisa.core.models import ProvisaConfig
+
 logger = logging.getLogger(__name__)
 
 # The dependent-table name metadata-change work items are fanned out to, and the lease owner
@@ -148,19 +150,57 @@ async def _export_config(org_id: str) -> MetadataExportConfig:
     return config
 
 
+async def _model_for_export() -> "ProvisaConfig":
+    """The model the snapshot builds from — the REGISTRATION tables, not the boot YAML.
+
+    Table registration is the source of truth: a dynamically-registered table (openapi
+    endpoint, graphql_remote) is a governed asset like any other, and it exists only in the
+    DB. ``build_live_config`` is the settled DB→config assembly (name-resolved relationship
+    refs, internal meta/ops excluded); sources likewise come from the DB, which holds the
+    union of file-declared and runtime-registered ones. Tags ride over from the hydrated
+    runtime config — the DB is their source of truth too (REQ-1373/1377).
+    """
+    from provisa.api.admin.config_export import build_live_config
+    from provisa.api.admin.schema_helpers import _get_pool
+    from provisa.api.app import state
+    from provisa.core.config_loader import parse_config_dict
+    from provisa.core.repositories import source as source_repo
+
+    raw = await build_live_config()
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        source_rows = await source_repo.list_all(conn)
+    # The snapshot needs each source's identity, type and description — never credentials —
+    # so the DB rows project onto minimal Source models rather than the credentialed file ones.
+    # The __derived__ sentinel is not a source: a derived relation's provenance is the lineage
+    # of its definition (REQ-1157), and the sentinel id fails Source validation by design.
+    from provisa.core.models import DERIVED_SOURCE_ID
+
+    raw["sources"] = [
+        {"id": r["id"], "type": r["type"], "description": r.get("description") or ""}
+        for r in source_rows
+        if r["id"] != DERIVED_SOURCE_ID
+    ]
+    config = parse_config_dict(raw)
+    if state.config is not None:
+        config.tags = state.config.tags
+        config.tag_assignments = state.config.tag_assignments
+    return config
+
+
 async def publish_snapshot(org_id: str) -> PublishResult:
     """Publish the org's full metadata snapshot to its configured catalog.
 
     The single publish path: the admin's **Publish now**, the event drain and the scheduled
     reconcile all arrive here, so what a reconcile sends is what the admin saw it send.
     """
-    from provisa.api.app import state
     from provisa.api.org_runtime import reset_current_org, set_current_org
 
     token = set_current_org(org_id)
     try:
         config = await _export_config(org_id)
-        snapshot = build_snapshot(state.config, org_id=org_id, dialect=GOVERNED_DIALECT)
+        model = await _model_for_export()
+        snapshot = build_snapshot(model, org_id=org_id, dialect=GOVERNED_DIALECT)
         return await metadata_export(config).publish(snapshot)
     finally:
         reset_current_org(token)

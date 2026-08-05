@@ -295,6 +295,13 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
 
     monkeypatch.setattr(sync_mod, "metadata_export", lambda config: _Partial())
     monkeypatch.setattr(sync_mod, "build_snapshot", lambda config, *, org_id, dialect: object())
+
+    async def _stub_model():
+        return object()
+
+    # The model now assembles from the registration tables (DB truth, #97); stub the
+    # assembly the same way the builder is stubbed — this test is about the publish report.
+    monkeypatch.setattr(sync_mod, "_model_for_export", _stub_model)
     body = await publish_metadata_export(_request())
 
     assert body["ok"] is False
