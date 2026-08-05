@@ -104,7 +104,9 @@ const schemaVersionLink = new ApolloLink((operation, forward) =>
       // replace each list wholesale, so the refetched result cannot merge with stale entries.
       // A navigation away mid-refetch aborts them and rejects this promise; nothing awaits it,
       // so an unhandled rejection would otherwise surface as an uncaught page error.
-      Promise.all(client.refetchQueries({ include: "active" }))
+      // refetchQueries already returns a promise over all the refetches (RefetchQueriesResult
+      // extends Promise); wrapping it in Promise.all treats that promise as an iterable.
+      client.refetchQueries({ include: "active" })
         .catch(() => {})
         .finally(() => { _resetting = false; });
     } else if (stored === null) {
