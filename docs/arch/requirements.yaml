@@ -34152,6 +34152,11 @@
   - scripts/build_mongo_fdw.sh
   - provisa/federation/custom_connectors.py
   - provisa/federation/pg_runtime.py
+  unit_test: false
+  unit_test_reason: The requirement is that a BUILT mongo_fdw binary reaches a live MongoDB through
+    embedded PG's SQL/MED layer. Every part of that — the build script's linkage against embedded PG
+    16.2, the extension loading, the federated round trip — exists only in a running stack, so a unit
+    test could assert nothing beyond the descriptor text the e2e already renders and executes.
   tests:
   - tests/integration/test_custom_connectors_mongo_e2e.py
   related_reqs:
@@ -34237,6 +34242,8 @@
   use_case: Cloud deployments require identity providers to be configured at boot time. Environment-based
     auto-configuration enables one-shot, reproducible deployments without post-launch manual setup or
     Terraform output re-entry.
+  tests:
+  - tests/unit/test_idp_auto_configuration.py
   code:
   - terraform/gcp/variables.tf
   - terraform/gcp/main.tf
@@ -34992,6 +34999,8 @@
   use_case: Gating gRPC service availability on proto registration ensures the protocol cannot serve partial
     or incomplete schema state; failure to register a proto keeps the protocol unhealthy as designed,
     signaling to operators that configuration is needed.
+  tests:
+  - tests/unit/test_grpc_listener_gate.py
   code:
   - provisa/grpc
   - terraform/gcp
@@ -37901,6 +37910,7 @@
   - provisa-ui/src/pages/OnboardOrgPage.tsx
   tests:
   - tests/integration/test_redeem_invite.py
+  - tests/unit/test_onboarding_invites.py
   since: 2026-07
   scenario: 'Given an invited user arrives at the onboarding page without an invite token
 

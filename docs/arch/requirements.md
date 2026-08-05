@@ -11730,7 +11730,7 @@ Cloud deployments support automated identity-provider selection via an auth_prov
 
 **Code:** `terraform/gcp/variables.tf`, `terraform/gcp/main.tf`, `provisa/api/setup_router.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_idp_auto_configuration.py`
 
 ### REQ-1183 · Linux Installation & Systemd Integration {#REQ-1183}
 
@@ -12076,7 +12076,7 @@ gRPC wire protocol listener only serves once a proto schema has been registered 
 
 **Code:** `provisa/grpc`, `terraform/gcp`
 
-**Tests:** —
+**Tests:** `tests/unit/test_grpc_listener_gate.py`
 
 ### REQ-1211 · Linux AppImage Deployment {#REQ-1211}
 
@@ -13032,7 +13032,7 @@ Onboarding independently answers three questions: whether the user has a Provisa
 
 **Code:** `provisa/core/schema_admin.py`, `provisa/api/auth_router.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
 
-**Tests:** `tests/integration/test_redeem_invite.py`
+**Tests:** `tests/integration/test_redeem_invite.py`, `tests/unit/test_onboarding_invites.py`
 
 ## 2. Authentication & Identity
 
