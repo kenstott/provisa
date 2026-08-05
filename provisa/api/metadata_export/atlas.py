@@ -352,12 +352,12 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
         table_guids[table.ref.fqn()] = table_guid
         attributes: dict[str, Any] = {
             "qualifiedName": _table_qn(table),
-            "name": table.name,
+            # REQ-1385: the presented name is the BUSINESS name (alias when set); the
+            # physical identity stays in qualifiedName — the binding, not the identity.
+            "name": table.aliases[0] if table.aliases else table.name,
             "description": table.description,
-            "provisaUri": table.semantic_uri,  # REQ-1385
+            "provisaUri": table.semantic_uri,
         }
-        if table.aliases:
-            attributes["displayName"] = table.aliases[0]
         # A domain Provisa governs but the snapshot did not carry is a builder fault, not a
         # condition to paper over: publishing the table with no domain would report it as
         # ungoverned, so the lookup is direct and raises.
@@ -383,13 +383,12 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
         for column in table.columns:
             column_attributes: dict[str, Any] = {
                 "qualifiedName": _column_qn(table, column.name),
-                "name": column.name,
+                # REQ-1385: business name presented, physical in qualifiedName.
+                "name": column.aliases[0] if column.aliases else column.name,
                 "description": column.description,
                 "data_type": column.data_type,
-                "provisaUri": column.semantic_uri,  # REQ-1385
+                "provisaUri": column.semantic_uri,
             }
-            if column.aliases:
-                column_attributes["displayName"] = column.aliases[0]
             entities.append(
                 AtlasEntity(
                     asset=column.ref,

@@ -315,7 +315,8 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
             )
         custom["provisaUri"] = table.semantic_uri  # REQ-1385: also the clickable externalUrl
         properties: dict[str, Any] = {
-            "name": table.name,
+            # REQ-1385: the presented name is the business name; qualifiedName is the binding.
+            "name": table.aliases[0] if table.aliases else table.name,
             "qualifiedName": table.ref.fqn(),
             "description": table.description,
             "customProperties": custom,
