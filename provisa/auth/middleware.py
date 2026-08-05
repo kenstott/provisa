@@ -344,19 +344,22 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     request.state.active_org_id = self._default_org_id
                     return None
 
-        scheme = getattr(self._provider, "auth_scheme", "bearer")
-        if scheme == "basic":
-            expected_prefix = "Basic "
-        else:
-            expected_prefix = "Bearer "
+        # A provider may accept more than one credential presentation (REQ-124: the basic
+        # provider takes HTTP Basic from API clients and a session JWT from the browser).
+        # The scheme in the header selects exactly one validator — never a try-one-then-the-
+        # other chain, which would turn a rejected credential into a second guess.
+        validators = getattr(self._provider, "token_validators", None) or {
+            getattr(self._provider, "auth_scheme", "bearer"): self._provider.validate_token
+        }
 
         auth_header = request.headers.get("authorization")
-        if not auth_header or not auth_header.startswith(expected_prefix):
+        scheme, _, token = (auth_header or "").partition(" ")
+        validator = validators.get(scheme.lower())
+        if not token or validator is None:
             return _deny(request, 401, "Missing or invalid Authorization header")
 
-        token = auth_header[len(expected_prefix) :]
         try:
-            identity = await self._provider.validate_token(token)
+            identity = await validator(token)
         except (ValueError, jwt.PyJWTError) as exc:
             # Only genuine token-validation failures map to 401; infra/unexpected
             # errors (DB down, JWKS fetch failure, misconfig) must propagate.

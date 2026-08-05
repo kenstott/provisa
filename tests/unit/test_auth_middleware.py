@@ -316,3 +316,62 @@ def test_check_superuser_blank_config_never_matches():
     # A resolved-but-empty password cannot authenticate, even with empty input.
     assert check_superuser("root", "", {"username": "root", "password": ""}) is None
     assert check_superuser("", "", {"username": "", "password": ""}) is None
+
+
+class _TwoSchemeProvider(AuthProvider):
+    """REQ-124: the shape the basic provider presents — one validator per credential form."""
+
+    @property
+    def auth_scheme(self) -> str:
+        return "basic"
+
+    @property
+    def token_validators(self):
+        return {"basic": self.validate_token, "bearer": self.validate_session_token}
+
+    async def validate_token(self, token: str) -> AuthIdentity:
+        if token != base64.b64encode(b"alice:pw").decode():
+            raise ValueError("Invalid credentials")
+        return AuthIdentity(user_id="alice-basic", email=None, display_name=None, roles=[])
+
+    async def validate_session_token(self, token: str) -> AuthIdentity:
+        if token != "session-jwt":
+            raise ValueError("Invalid credentials")
+        return AuthIdentity(user_id="alice-session", email=None, display_name=None, roles=[])
+
+
+def _two_scheme_client():
+    return TestClient(_make_app(provider=_TwoSchemeProvider(), default_role="analyst"))
+
+
+def test_basic_credential_still_accepted():
+    creds = base64.b64encode(b"alice:pw").decode()
+    resp = _two_scheme_client().get("/test", headers={"Authorization": f"Basic {creds}"})
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == "alice-basic"
+
+
+def test_session_jwt_accepted_under_bearer():
+    resp = _two_scheme_client().get("/test", headers={"Authorization": "Bearer session-jwt"})
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == "alice-session"
+
+
+def test_scheme_selects_exactly_one_validator():
+    """A Basic credential presented as Bearer is rejected outright — a failed validation is
+    never retried under the other scheme, which would make the header a second guess."""
+    creds = base64.b64encode(b"alice:pw").decode()
+    resp = _two_scheme_client().get("/test", headers={"Authorization": f"Bearer {creds}"})
+    assert resp.status_code == 401
+
+
+def test_unoffered_scheme_rejected():
+    resp = _two_scheme_client().get("/test", headers={"Authorization": "Digest whatever"})
+    assert resp.status_code == 401
+
+
+def test_single_scheme_provider_unchanged():
+    """A provider without token_validators still enforces its one declared scheme."""
+    client = TestClient(_make_app(provider=MockProvider()))
+    assert client.get("/test", headers={"Authorization": "Bearer valid-token"}).status_code == 200
+    assert client.get("/test", headers={"Authorization": "Basic valid-token"}).status_code == 401

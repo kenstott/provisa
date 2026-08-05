@@ -439,6 +439,90 @@ class TestBasicProvider:
             await provider.validate_token("not-base64-without-colon")
 
 
+class TestBasicProviderSessionToken:
+    """REQ-124: the browser trades its password for a signed session JWT at /auth/login.
+
+    The SPA keeps its credential in localStorage, where a stored b64(user:pass) is a stored
+    password. HTTP Basic stays available for API and CLI clients, which resend the credential
+    per call and never persist it.
+    """
+
+    def _provider(self, rows: list[dict | None], session_secret: str | None = "x" * 48):
+        """`rows` is a one-element list so a test can deactivate the account mid-flight."""
+        from provisa.auth.providers.basic import BasicAuthProvider
+
+        class _Conn:
+            async def execute_core(self, statement):
+                result = MagicMock()
+                row = rows[0]
+                result.fetchone.return_value = None if row is None else MagicMock(_mapping=row)
+                return result
+
+        class _Ctx:
+            async def __aenter__(self):
+                return _Conn()
+
+            async def __aexit__(self, *a):
+                return False
+
+        class _Pool:
+            def acquire(self):
+                return _Ctx()
+
+        return BasicAuthProvider(db_pool=_Pool(), session_secret=session_secret)
+
+    def _row(self):
+        return {
+            "id": "user-1",
+            "username": "alice",
+            "password_hash": _hash_pw("pw"),
+            "email": "alice@x.io",
+            "display_name": "Alice",
+            "attributes": {"team": "data"},
+        }
+
+    async def test_session_token_round_trips_to_the_same_identity(self):
+        provider = self._provider([self._row()])
+        token = await provider.issue_session_token("alice", "pw")
+        identity = await provider.validate_session_token(token)
+        assert identity.user_id == "user-1"
+        assert identity.raw_claims["username"] == "alice"
+
+    async def test_bearer_and_basic_are_both_offered(self):
+        provider = self._provider([self._row()])
+        assert set(provider.token_validators) == {"basic", "bearer"}
+
+    async def test_wrong_password_issues_no_token(self):
+        provider = self._provider([self._row()])
+        with pytest.raises(ValueError, match="Invalid credentials"):
+            await provider.issue_session_token("alice", "wrong")
+
+    async def test_deactivated_user_loses_access_before_the_token_expires(self):
+        rows: list[dict | None] = [self._row()]
+        provider = self._provider(rows)
+        token = await provider.issue_session_token("alice", "pw")
+        rows[0] = None  # account deactivated — the lookup no longer matches
+        with pytest.raises(ValueError, match="Invalid credentials"):
+            await provider.validate_session_token(token)
+
+    async def test_token_signed_with_another_key_is_rejected(self):
+        import jwt as jwt_lib
+
+        issuer = self._provider([self._row()], session_secret="a" * 48)
+        token = await issuer.issue_session_token("alice", "pw")
+        verifier = self._provider([self._row()], session_secret="b" * 48)
+        with pytest.raises(jwt_lib.PyJWTError):
+            await verifier.validate_session_token(token)
+
+    async def test_missing_secret_fails_loudly_rather_than_signing_with_a_default(self):
+        from provisa.api.errors import ApiError
+
+        provider = self._provider([self._row()], session_secret=None)
+        with pytest.raises(ApiError) as exc:
+            await provider.issue_session_token("alice", "pw")
+        assert exc.value.status_code == 503
+
+
 class TestRoleMappingFromJWT:
     async def test_role_from_claims_contains_rule(self, provider):
         token = provider.login("bob", "bob-pass")

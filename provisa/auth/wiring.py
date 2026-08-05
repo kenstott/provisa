@@ -32,7 +32,12 @@ def build_auth_provider(
     if provider_name == "basic":
         from provisa.auth.providers.basic import BasicAuthProvider
 
-        return BasicAuthProvider(db_pool=admin_pool)
+        # Session-token signing key for the browser login route. Absent means API clients
+        # still work over HTTP Basic and /auth/login answers 503 — never a default key.
+        session_secret = auth_config.get("jwt_secret")
+        if session_secret and session_secret.startswith("${env:"):
+            session_secret = os.environ[session_secret[6:-1]]
+        return BasicAuthProvider(db_pool=admin_pool, session_secret=session_secret)
     if provider_name == "simple":
         # REQ-124: simple username/password auth is for testing only and must be
         # explicitly opted into. Refuse to build it in the absence of the flag.
@@ -220,3 +225,11 @@ def wire_auth(
 
         simple_mod._provider_instance = provider
         app.include_router(simple_mod.router)
+
+    # REQ-124: the browser signs in against the basic provider through the same /auth/login
+    # exchange; without this route the SPA's login POST 404s and no one can reach the UI.
+    if auth_config["provider"] == "basic":
+        from provisa.auth.providers import basic as basic_mod
+
+        basic_mod._provider_instance = provider
+        app.include_router(basic_mod.router)

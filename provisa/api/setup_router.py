@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 
 import bcrypt
 from fastapi import APIRouter
@@ -237,6 +238,10 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
                     is_active=True,
                 )
             )
+        # REQ-124: the browser exchanges its password for a signed session token at
+        # /auth/login, so the basic provider needs a signing key from the moment setup
+        # writes the config — otherwise the first sign-in from the UI answers 503.
+        auth_section["jwt_secret"] = secrets.token_urlsafe(48)
 
     elif body.provider == "firebase":
         project_id = body.firebase_project_id or os.environ.get("FIREBASE_PROJECT_ID", "")
