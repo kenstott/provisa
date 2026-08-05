@@ -42252,7 +42252,13 @@
     every publish and reconcile). Consequence: the Atlas governance document moves OFF userDescription
     — the exact field the Atlas UI edits for human descriptions, clobbered today on every publish — onto
     a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift correction applies
-    to Provisa-owned attributes only.'
+    to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides — if Provisa authored
+    a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
+    overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
+    classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. The sync
+    is NOT optional: the classification read-merge and attribute drift-correction ride the single publish
+    path, so all three triggers get them — Publish now, the event drain, and the scheduled reconcile
+    (reconcile_cron, default hourly).'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.

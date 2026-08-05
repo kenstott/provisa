@@ -1124,7 +1124,7 @@ Every domain must have a designated steward before it can serve governed data. A
 
 **Code:** `provisa/core/domain_policy.py`
 
-**Tests:** `tests/unit/test_domain_policy.py`, `tests/unit/test_metadata_snapshot_builder.py`
+**Tests:** `tests/unit/test_domain_policy.py`, `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_metadata_export_atlas_native.py`
 
 ### REQ-610 · Domain Model {#REQ-610}
 
@@ -14319,3 +14319,29 @@ Dictionary/ontology of business terms over the semantic layer. Every physical fi
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1388 · Data Catalog Integration {#REQ-1388}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+Provisa-native Atlas entity typedefs. The Atlas exporter currently transports every source through the out-of-the-box rdbms_* entity types (rdbms_instance/rdbms_db/rdbms_table/ rdbms_column), recording the real source type only as an attribute — an API or GraphQL source renders as an RDBMS in the catalog. Atlas supports registering custom ENTITY typedefs through the same /api/atlas/v2/types/typedefs endpoint the exporter already uses for classification typedefs, so Provisa registers its own kinds (e.g. provisa_source with a sourceType attribute, provisa_table, provisa_column, provisa_api_endpoint) with the attributes the model actually carries (provisaUri, governance document, modeling role), and publishes entities under them. Typedefs are registered idempotently before entities, exactly like classification defs. Atlan caveat: its layered type system gives custom types reduced native UI treatment, so the Atlan adapter may keep the mapped built-in types while plain Apache Atlas gets the native ones — a per-provider mapping decision, not a shared constraint.
+
+**Use case:** Catalog readers see what a source actually is (API, GraphQL, warehouse) instead of every source masquerading as an RDBMS; Provisa attributes become first-class typed fields Atlas can search and facet on, rather than opaque strings on borrowed types.
+
+**Code:** `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`
+
+**Tests:** `tests/unit/test_metadata_export_atlas_native.py`
+
+### REQ-1389 · Data Catalog Integration {#REQ-1389}
+
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** constraint
+
+Catalog upsert preserves human enrichment: an attribute-ownership contract for every exporter. Publishing is an UPSERT on the vendor's stable key (Atlas/Atlan: typeName + qualifiedName via /entity/bulk, which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT) — never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish. Every attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts, governance projections, provisa_* classifications — written on every publish and drift-corrected by the [REQ-1072](#REQ-1072) reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, glossary term assignments, labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment in the catalog survives every publish and reconcile). Consequence: the Atlas governance document moves OFF userDescription — the exact field the Atlas UI edits for human descriptions, clobbered today on every publish — onto a Provisa-owned typed attribute ([REQ-1388](#REQ-1388) native typedefs). The reconcile's drift correction applies to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides — if Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa overwrites it on every publish; if the value originated in the catalog (userDescription, human-added classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. The sync is NOT optional: the classification read-merge and attribute drift-correction ride the single publish path, so all three triggers get them — Publish now, the event drain, and the scheduled reconcile (reconcile_cron, default hourly).
+
+**Use case:** Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications); a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy. The ownership split lets Provisa keep its facts current while human curation accumulates safely.
+
+**Code:** `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`
+
+**Tests:** `tests/unit/test_metadata_export_atlas_native.py`
