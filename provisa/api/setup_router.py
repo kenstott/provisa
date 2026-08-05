@@ -25,11 +25,9 @@ from sqlalchemy import func, insert, select
 from provisa.api.errors import ApiError
 from provisa.core.schema_admin import local_users
 
+from provisa.core.demo import is_demo as _is_demo
+
 router = APIRouter(prefix="/setup", tags=["setup"])
-
-
-def _is_demo() -> bool:
-    return os.environ.get("PROVISA_DEMO", "").lower() in ("1", "true", "yes")
 
 
 def _idp_override() -> str | None:
@@ -75,6 +73,11 @@ async def _auto_configure_idp(provider: str, pool) -> None:
     else:
         # basic and every other IdP: the configured principal is the admin.
         auth_section["default_assignments"] = [{"role_id": "admin", "domain_id": "*"}]
+
+    if provider == "basic":
+        # REQ-124: same signing key the wizard writes — PROVISA_IDP=basic skips the wizard
+        # entirely, and without a secret the browser's /auth/login answers 503.
+        auth_section["jwt_secret"] = secrets.token_urlsafe(48)
 
     if provider == "basic" and pool:
         async with pool.acquire() as conn:
