@@ -42227,8 +42227,6 @@
   relates_to:
   - REQ-1069
   - REQ-1385
-  tests:
-  - tests/unit/test_metadata_export_atlas_native.py
   code:
   - provisa/api/metadata_export/atlas.py
   - provisa/api/metadata_export/atlan.py
@@ -42267,8 +42265,6 @@
   - REQ-1072
   - REQ-1385
   - REQ-1388
-  tests:
-  - tests/unit/test_metadata_export_atlas_native.py
   code:
   - provisa/api/metadata_export/atlas.py
   - provisa/api/metadata_export/atlan.py
