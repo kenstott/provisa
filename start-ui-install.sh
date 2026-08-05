@@ -200,6 +200,15 @@ if [ "$DEMO" = true ]; then
   docker compose $COMPOSE_FILES down -v 2>/dev/null || true
   # The demo control plane is file-based SQLite — wipe it so every start is pristine (session-created
   # sources/tables/views are cleared and rebuilt from the config). Data files are regenerated below.
+  # Org-level ADMIN SETTINGS (org_settings: metadata-export target, AI keys, …) are the exception:
+  # they are operator configuration, not demo model state, so they are retained across the wipe and
+  # restored once the backend has recreated the schema.
+  _DEMO_SETTINGS_BAK="${PROVISA_HOME:-$HOME/.provisa}/demo/org_settings.restore.sql"
+  if [ -f "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" ] && command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" \
+      ".mode insert org_settings" "SELECT * FROM org_settings;" 2>/dev/null \
+      | sed 's/^INSERT INTO/INSERT OR REPLACE INTO/' > "$_DEMO_SETTINGS_BAK" || true
+  fi
   rm -f "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" "${PROVISA_HOME:-$HOME/.provisa}/demo/platform.db"
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
@@ -557,6 +566,16 @@ pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true   # reap the tail+grep inside t
 kill "$BACKEND_TAIL_PID" 2>/dev/null || true
 wait "$BACKEND_TAIL_PID" 2>/dev/null || true
 BACKEND_TAIL_PID=""
+# Restore retained org settings into the freshly-initialized demo control plane (see the
+# demo-wipe block): the backend has created the schema by the time /health answers.
+if [ "$DEMO" = true ] && [ "$_backend_ok" = true ] && [ -s "${_DEMO_SETTINGS_BAK:-}" ] \
+   && command -v sqlite3 >/dev/null 2>&1; then
+  if sqlite3 "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" < "$_DEMO_SETTINGS_BAK" 2>/dev/null; then
+    echo "Restored retained org settings (metadata export, admin config) into the demo control plane."
+  else
+    echo "WARNING: could not restore retained org settings from $_DEMO_SETTINGS_BAK — re-enter them in Admin."
+  fi
+fi
 if [ "$_backend_ok" = true ]; then
   echo "Backend healthy (PID $BACKEND_PID)"
 else
