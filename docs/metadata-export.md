@@ -105,11 +105,46 @@ clearing it removes it. [tool-verified: metadata_export_router.py:131-187]
 The tab is available to holders of the `org_settings` right, and only for organizations whose
 plan includes metadata export. Both the tab and every endpoint behind it enforce that.
 
+### From the command line
+
+`provisa metadata export` posts to the same `/admin/metadata-export/publish` endpoint that
+**Publish now** uses — the single publish path (REQ-1072). Run it from cron or CI when you need
+a timed export outside the `reconcile_cron` schedule. [tool-verified: `_cmd_metadata_export` in
+provisa/cli.py:272-310; `publish_metadata_export` in
+provisa/api/admin/metadata_export_router.py:210-234]
+
+```bash
+provisa metadata export \
+  --api  https://acme.provisa.org \
+  --token "$PROVISA_API_TOKEN" \
+  --timeout 300
+```
+
+| Flag | Default | Notes |
+| --- | --- | --- |
+| `--api` | `$PROVISA_API_URL`, then `http://127.0.0.1:8000` | Under multitenancy, the host names the org (`acme.provisa.org`). [tool-verified: cli.py:284, 413-416] |
+| `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments — no `Authorization` header is sent when the token is empty. [tool-verified: cli.py:285, 289-290] |
+| `--timeout` | `300` | Seconds before the HTTP call is abandoned. [tool-verified: cli.py:425] |
+
+Exit code 0 means every asset published. Exit code 1 means partial publish or a connection
+failure. Per-asset errors print to stderr alongside the summary line, so a cron job records them
+in the mail log without obscuring the exit code. [tool-verified: cli.py:303-310]
+
+A daily export at 06:00:
+
+```cron
+0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
+```
+
 ## What is published
 
 [tool-verified: `MetadataSnapshot`, provisa/api/metadata_export/model.py:160-176]
 
-- **Sources, tables and columns** — names, data types, descriptions and aliases.
+- **Sources, tables and columns** — names, data types, descriptions and aliases. Only tables
+  marked **Data Product** in their registration are published; a relationship, lineage edge or
+  governance tag that touches an unmarked table is withheld with it, so the catalog never
+  receives a reference to a table that was not sent.
+  [tool-verified: `build_snapshot`, provisa/api/metadata_export/builder.py]
 - **Domains** — each domain's description and its steward. A domain with no steward publishes
   without one rather than with an invented owner.
 - **Approved relationships** — the modeled joins, with cardinality, alias, owner and version.
@@ -143,8 +178,8 @@ Three paths publish, and all three send the same full snapshot (REQ-1072).
   publish the same change to the same catalog.
 - **Scheduled reconcile.** The org's `reconcile_cron` republishes the whole snapshot, correcting
   drift from an event that never arrived or a catalog restored from a backup.
-- **On demand.** **Publish now** in the Admin tab, for when you want the change there this
-  second rather than at the next drain.
+- **On demand.** **Publish now** in the Admin tab, or `provisa metadata export` from the
+  command line — both call the same endpoint and return the same result.
 [tool-verified: provisa/api/metadata_export/sync.py:76-200]
 
 They send the same snapshot because a delta on the change path would need its own builder and
