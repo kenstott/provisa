@@ -11,7 +11,7 @@
 """REQ-1069: the four vendor adapters map the same snapshot into four native shapes.
 
 These assert the mapping, not the transport — the Atlas adapter's transport is exercised
-against a live server in ``tests/integration/test_metadata_egress_atlas_e2e.py``. The snapshot
+against a live server in ``tests/integration/test_metadata_export_atlas_e2e.py``. The snapshot
 is the shared governed fixture the e2e tests publish, so a mapping proven here is a mapping of
 the same config that reaches a real catalog.
 """
@@ -25,28 +25,28 @@ import json
 import httpx
 import pytest
 
-from provisa.api.metadata_egress import metadata_egress
-from provisa.api.metadata_egress.atlan import CONNECTOR_NAME, TYPE_MAP, AtlanEgress
-from provisa.api.metadata_egress.atlas import (
+from provisa.api.metadata_export import metadata_export
+from provisa.api.metadata_export.atlan import CONNECTOR_NAME, TYPE_MAP, AtlanExport
+from provisa.api.metadata_export.atlas import (
     CLUSTER,
     GOVERNANCE_ATTRIBUTE,
-    AtlasEgress,
+    AtlasExport,
     classification_defs,
     to_entities,
 )
-from provisa.api.metadata_egress.collibra import (
+from provisa.api.metadata_export.collibra import (
     COLUMN_TO_TABLE_RELATION,
     GOVERNANCE_ATTRIBUTE as COLLIBRA_GOVERNANCE,
     LINEAGE_ATTRIBUTE,
     RELATIONSHIP_ATTRIBUTE,
     STEWARD_ATTRIBUTE,
     TABLE_TO_DATABASE_RELATION,
-    CollibraEgress,
+    CollibraExport,
     to_rows,
 )
-from provisa.api.metadata_egress.datahub import DataHubEgress, to_proposals
-from provisa.core.models import MetadataEgressConfig
-from tests.integration.metadata_egress_fixture import (
+from provisa.api.metadata_export.datahub import DataHubExport, to_proposals
+from provisa.core.models import MetadataExportConfig
+from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     RLS_FILTER,
     governed_snapshot,
@@ -168,8 +168,8 @@ def test_atlas_payload_carries_no_rule_body(snapshot):
 
 async def test_atlas_basic_mode_sends_the_credential_as_the_http_pair_atlas_requires():
     """Stock Apache Atlas answers a bearer token with 401; ``basic`` is its own default."""
-    egress = metadata_egress(
-        MetadataEgressConfig(
+    export = metadata_export(
+        MetadataExportConfig(
             enabled=True,
             provider="atlas",
             endpoint="http://atlas:21000",
@@ -179,7 +179,7 @@ async def test_atlas_basic_mode_sends_the_credential_as_the_http_pair_atlas_requ
         )
     )
     async with httpx.AsyncClient() as client:
-        headers = await egress._headers(client)
+        headers = await export._headers(client)
     assert headers["Authorization"] == "Basic YWRtaW46c2VjcmV0"
 
 
@@ -187,12 +187,12 @@ async def test_atlas_basic_mode_sends_the_credential_as_the_http_pair_atlas_requ
 
 
 def test_atlan_retypes_every_entity_into_atlans_own_type_set(snapshot):
-    egress = metadata_egress(
-        MetadataEgressConfig(
+    export = metadata_export(
+        MetadataExportConfig(
             enabled=True, provider="atlan", endpoint="https://tenant.atlan.com", token="t"
         )
     )
-    entities = egress._atlan_entities(snapshot)
+    entities = export._atlan_entities(snapshot)
     assert {entity.type_name for entity in entities} <= set(TYPE_MAP.values())
     by_kind = {entity.kind: entity for entity in entities}
     assert by_kind["instance"].type_name == "Connection"
@@ -202,12 +202,12 @@ def test_atlan_retypes_every_entity_into_atlans_own_type_set(snapshot):
 
 
 def test_atlan_roots_every_asset_at_the_orgs_own_connection(snapshot):
-    egress = metadata_egress(
-        MetadataEgressConfig(
+    export = metadata_export(
+        MetadataExportConfig(
             enabled=True, provider="atlan", endpoint="https://tenant.atlan.com", token="t"
         )
     )
-    entities = egress._atlan_entities(snapshot)
+    entities = export._atlan_entities(snapshot)
     expected = f"default/{CONNECTOR_NAME}/{snapshot.org_id}"
     for entity in entities:
         assert entity.attributes["connectorName"] == CONNECTOR_NAME
@@ -350,15 +350,15 @@ def test_collibra_payload_carries_no_rule_body(rows):
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("atlas", AtlasEgress),
-        ("atlan", AtlanEgress),
-        ("datahub", DataHubEgress),
-        ("collibra", CollibraEgress),
+        ("atlas", AtlasExport),
+        ("atlan", AtlanExport),
+        ("datahub", DataHubExport),
+        ("collibra", CollibraExport),
     ],
 )
 def test_each_vendor_name_resolves_to_its_adapter(name, expected):
-    egress = metadata_egress(
-        MetadataEgressConfig(enabled=True, provider=name, endpoint="https://catalog.example")
+    export = metadata_export(
+        MetadataExportConfig(enabled=True, provider=name, endpoint="https://catalog.example")
     )
-    assert isinstance(egress, expected)
-    assert egress.provider_name == name
+    assert isinstance(export, expected)
+    assert export.provider_name == name

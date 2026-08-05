@@ -10536,11 +10536,11 @@ Bring-your-own compute / dedicated cluster as premium gate: premium tenants may 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
 
-Pluggable metadata egress provider pattern: an abstract MetadataEgress interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
+Pluggable metadata export provider pattern: an abstract MetadataExport interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
 
 **Use case:** Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them. Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of record.
 
-**Code:** `provisa/api/metadata_egress/provider.py`
+**Code:** `provisa/api/metadata_export/provider.py`
 
 **Tests:** —
 
@@ -10548,7 +10548,7 @@ Pluggable metadata egress provider pattern: an abstract MetadataEgress interface
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
 
-Standards-first metadata core: the MetadataEgress provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataEgress using the same internal metadata model.
+Standards-first metadata core: the MetadataExport provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataExport using the same internal metadata model.
 
 **Use case:** Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend to enterprises already on Atlan or Collibra.
 
@@ -10596,9 +10596,9 @@ Sync mechanism: metadata changes push to the external catalog event-driven via t
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
 
-Premium-gated metadata egress: the metadata egress connector is an enterprise/premium tier entitlement, extending [REQ-1066](#REQ-1066). Targeting regulated-industry data-governance teams with existing external catalog investments.
+Premium-gated metadata export: the metadata export connector is an enterprise/premium tier entitlement, extending [REQ-1066](#REQ-1066). Targeting regulated-industry data-governance teams with existing external catalog investments.
 
-**Use case:** Metadata egress to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
+**Use case:** Metadata export to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
 
 **Code:** —
 

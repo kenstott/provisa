@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Provider resolution for metadata egress (REQ-1068, REQ-1069).
+"""Provider resolution for metadata export (REQ-1068, REQ-1069).
 
 Same shape as ``provisa/core/mail.py`` ``email_sender``: the configured name resolves to an
 adapter here, at construction, where the error can name the setting that is wrong.
@@ -20,18 +20,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from provisa.api.metadata_egress.provider import (
-    MetadataEgress,
-    MetadataEgressNotConfiguredError,
+from provisa.api.metadata_export.provider import (
+    MetadataExport,
+    MetadataExportNotConfiguredError,
 )
 
 if TYPE_CHECKING:
-    from provisa.core.models import MetadataEgressConfig
+    from provisa.core.models import MetadataExportConfig
 
-_PROVIDERS: dict[str, type[MetadataEgress]] = {}
+_PROVIDERS: dict[str, type[MetadataExport]] = {}
 
 
-def register_provider(cls: type[MetadataEgress]) -> type[MetadataEgress]:
+def register_provider(cls: type[MetadataExport]) -> type[MetadataExport]:
     """Class decorator registering an adapter under its ``provider_name``.
 
     A provider that does not set ``provider_name``, or that collides with one already
@@ -43,7 +43,7 @@ def register_provider(cls: type[MetadataEgress]) -> type[MetadataEgress]:
         raise ValueError(f"{cls.__name__} does not set provider_name")
     if name in _PROVIDERS and _PROVIDERS[name] is not cls:
         raise ValueError(
-            f"metadata egress provider {name!r} is already registered to "
+            f"metadata export provider {name!r} is already registered to "
             f"{_PROVIDERS[name].__name__}"
         )
     _PROVIDERS[name] = cls
@@ -55,29 +55,29 @@ def registered_providers() -> list[str]:
     return sorted(_PROVIDERS)
 
 
-def metadata_egress(config: MetadataEgressConfig) -> MetadataEgress:
+def metadata_export(config: MetadataExportConfig) -> MetadataExport:
     """The configured adapter behind the port.
 
-    Raises when egress is disabled rather than returning nothing: a caller that reaches this
+    Raises when export is disabled rather than returning nothing: a caller that reaches this
     function has already decided to publish, and handing it a no-op would turn a
     misconfiguration into silently unpublished metadata.
     """
     if not config.enabled:
-        raise MetadataEgressNotConfiguredError(
-            "Metadata egress is disabled (metadata_egress.enabled). Enable it and set a "
+        raise MetadataExportNotConfiguredError(
+            "Metadata export is disabled (metadata_export.enabled). Enable it and set a "
             "provider and endpoint to publish to an external catalog."
         )
     if not config.provider:
-        raise MetadataEgressNotConfiguredError(
-            "No metadata egress provider is configured (metadata_egress.provider); "
+        raise MetadataExportNotConfiguredError(
+            "No metadata export provider is configured (metadata_export.provider); "
             f"expected one of: {', '.join(registered_providers())}"
         )
     try:
         provider = _PROVIDERS[config.provider]
     except KeyError:
-        raise MetadataEgressNotConfiguredError(
-            f"Unknown metadata egress provider {config.provider!r} "
-            f"(metadata_egress.provider); expected one of: "
+        raise MetadataExportNotConfiguredError(
+            f"Unknown metadata export provider {config.provider!r} "
+            f"(metadata_export.provider); expected one of: "
             f"{', '.join(registered_providers())}"
         ) from None
     return provider(config)

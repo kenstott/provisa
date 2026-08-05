@@ -43,16 +43,16 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from provisa.api.metadata_egress.provider import (
+from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
-    MetadataEgress,
+    MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_egress.registry import register_provider
+from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_egress.model import DomainAsset, MetadataSnapshot, TableAsset
+    from provisa.api.metadata_export.model import DomainAsset, MetadataSnapshot, TableAsset
 
 # Every Provisa-projected classification is prefixed, so a catalog admin can tell governance
 # Provisa enforces from a classification curated inside Atlas.
@@ -399,7 +399,7 @@ def _lineage_entities(
 
 
 @register_provider
-class AtlasEgress(MetadataEgress):  # REQ-1069
+class AtlasExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to Apache Atlas, or to Microsoft Purview's Atlas-compatible API."""
 
     provider_name = "atlas"

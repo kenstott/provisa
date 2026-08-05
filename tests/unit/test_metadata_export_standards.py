@@ -21,27 +21,27 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from provisa.api.metadata_egress import build_snapshot, metadata_egress
-from provisa.api.metadata_egress.openlineage import (
+from provisa.api.metadata_export import build_snapshot, metadata_export
+from provisa.api.metadata_export.openlineage import (
     DATASET_EVENT_URL,
     PRODUCER,
     RUN_EVENT_URL,
-    OpenLineageEgress,
+    OpenLineageExport,
     to_events,
 )
-from provisa.api.metadata_egress.openmetadata import (
+from provisa.api.metadata_export.openmetadata import (
     CLASSIFICATION,
     RELATIONSHIP_PROPERTY,
-    OpenMetadataEgress,
+    OpenMetadataExport,
     to_entities,
     to_lineage_requests,
 )
-from provisa.api.metadata_egress.registry import registered_providers
+from provisa.api.metadata_export.registry import registered_providers
 from provisa.core.models import (
     Cardinality,
     Column,
     Domain,
-    MetadataEgressConfig,
+    MetadataExportConfig,
     ProvisaConfig,
     Relationship,
     RLSRule,
@@ -136,8 +136,8 @@ def snapshot():
     return build_snapshot(config, org_id="acme", dialect="postgres")
 
 
-def _egress_config(provider: str) -> MetadataEgressConfig:
-    return MetadataEgressConfig(
+def _export_config(provider: str) -> MetadataExportConfig:
+    return MetadataExportConfig(
         enabled=True, provider=provider, endpoint="https://catalog.example/", timeout_seconds=5
     )
 
@@ -147,8 +147,8 @@ def _egress_config(provider: str) -> MetadataEgressConfig:
 
 def test_both_standards_targets_are_resolvable_by_name():
     assert {"openlineage", "openmetadata"} <= set(registered_providers())
-    assert isinstance(metadata_egress(_egress_config("openlineage")), OpenLineageEgress)
-    assert isinstance(metadata_egress(_egress_config("openmetadata")), OpenMetadataEgress)
+    assert isinstance(metadata_export(_export_config("openlineage")), OpenLineageExport)
+    assert isinstance(metadata_export(_export_config("openmetadata")), OpenMetadataExport)
 
 
 # --- OpenLineage ----------------------------------------------------------------------
@@ -279,7 +279,7 @@ async def test_openlineage_publish_posts_every_event_and_counts_by_kind(snapshot
         return httpx.Response(200, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
-    result = await OpenLineageEgress(_egress_config("openlineage")).publish(snapshot)
+    result = await OpenLineageExport(_export_config("openlineage")).publish(snapshot)
     assert result.ok
     assert result.published == {"dataset": 3, "lineage": 1}
     assert {url for url, _ in posted} == {"https://catalog.example/api/v1/lineage"}
@@ -296,7 +296,7 @@ async def test_openlineage_publish_reports_the_rejected_asset_and_continues(snap
         return httpx.Response(200, request=request)
 
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
-    result = await OpenLineageEgress(_egress_config("openlineage")).publish(snapshot)
+    result = await OpenLineageExport(_export_config("openlineage")).publish(snapshot)
     assert not result.ok
     assert [e.asset.fqn() for e in result.errors] == ["wh.public.customers"]
     assert "422" in result.errors[0].message
@@ -419,7 +419,7 @@ async def test_openmetadata_publish_upserts_every_entity(snapshot, monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
     monkeypatch.setattr(httpx.AsyncClient, "get", _type_get)
-    result = await OpenMetadataEgress(_egress_config("openmetadata")).publish(snapshot)
+    result = await OpenMetadataExport(_export_config("openmetadata")).publish(snapshot)
     assert result.ok
     assert result.published["table"] == 3
     assert result.published["lineage"] == 1
@@ -441,7 +441,7 @@ async def test_openmetadata_publish_reports_the_rejected_entity(snapshot, monkey
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
     monkeypatch.setattr(httpx.AsyncClient, "get", _type_get)
-    result = await OpenMetadataEgress(_egress_config("openmetadata")).publish(snapshot)
+    result = await OpenMetadataExport(_export_config("openmetadata")).publish(snapshot)
     # Two failures, not one: the rejected table, and the lineage edge into it — which is
     # reported rather than sent, because an edge whose endpoint the catalog never accepted has
     # no id to address and would come back as a confusing second table-level error.
@@ -468,7 +468,7 @@ async def test_openmetadata_publish_reports_a_steward_whose_user_the_catalog_ref
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
     monkeypatch.setattr(httpx.AsyncClient, "get", _type_get)
-    result = await OpenMetadataEgress(_egress_config("openmetadata")).publish(snapshot)
+    result = await OpenMetadataExport(_export_config("openmetadata")).publish(snapshot)
     assert [e.asset.fqn() for e in result.errors] == ["data-steward", "sales"]
     assert "ownership cannot be published" in result.errors[1].message
     # The unstewarded domain is unaffected — it has no owner to lose.
@@ -492,7 +492,7 @@ async def test_openmetadata_publish_reports_relationships_it_could_not_declare(
 
     monkeypatch.setattr(httpx.AsyncClient, "put", _put)
     monkeypatch.setattr(httpx.AsyncClient, "get", _type_get)
-    result = await OpenMetadataEgress(_egress_config("openmetadata")).publish(snapshot)
+    result = await OpenMetadataExport(_export_config("openmetadata")).publish(snapshot)
     assert [e.asset.fqn() for e in result.errors] == [RELATIONSHIP_PROPERTY]
     assert "were not published" in result.errors[0].message
     assert result.published["table"] == 3

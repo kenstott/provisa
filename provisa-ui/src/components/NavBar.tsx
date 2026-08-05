@@ -108,8 +108,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {
-        to: "/admin/metadata-egress",
-        labelKey: "navBar.itemMetadataEgress",
+        to: "/admin/metadata-export",
+        labelKey: "navBar.itemMetadataExport",
         capability: "org_settings",
       },
       { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "observability" },

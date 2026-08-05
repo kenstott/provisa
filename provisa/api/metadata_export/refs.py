@@ -20,7 +20,7 @@ identically — an external catalog matches assets by that address alone.
 
 from __future__ import annotations
 
-from provisa.api.metadata_egress.model import AssetKind, AssetRef
+from provisa.api.metadata_export.model import AssetKind, AssetRef
 from provisa.core.models import Source, Table
 
 

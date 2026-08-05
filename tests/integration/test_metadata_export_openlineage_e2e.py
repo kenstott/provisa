@@ -25,10 +25,10 @@ from urllib.parse import quote
 import httpx
 import pytest
 
-from provisa.api.metadata_egress import metadata_egress
-from provisa.api.metadata_egress.openlineage import PRODUCER
-from provisa.core.models import MetadataEgressConfig
-from tests.integration.metadata_egress_fixture import (
+from provisa.api.metadata_export import metadata_export
+from provisa.api.metadata_export.openlineage import PRODUCER
+from provisa.core.models import MetadataExportConfig
+from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     ORG_ID,
     RLS_FILTER,
@@ -48,8 +48,8 @@ def _base_url() -> str:
     return f"http://localhost:{os.environ['MARQUEZ_PORT']}"
 
 
-def _egress_config() -> MetadataEgressConfig:
-    return MetadataEgressConfig(
+def _export_config() -> MetadataExportConfig:
+    return MetadataExportConfig(
         enabled=True, provider="openlineage", endpoint=_base_url(), timeout_seconds=30
     )
 
@@ -57,9 +57,9 @@ def _egress_config() -> MetadataEgressConfig:
 @pytest.fixture(scope="module")
 async def published() -> dict:
     """Publish once, then let every assertion read the same server state back."""
-    egress = metadata_egress(_egress_config())
-    await egress.health()
-    result = await egress.publish(governed_snapshot())
+    export = metadata_export(_export_config())
+    await export.health()
+    result = await export.publish(governed_snapshot())
     assert result.ok, [e.message for e in result.errors]
     return {"result": result}
 

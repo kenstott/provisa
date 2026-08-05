@@ -26,8 +26,8 @@ from pytest_bdd import given, scenarios, then, when
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from provisa.api.metadata_egress import sync
-from provisa.api.metadata_egress.provider import AssetError, AssetRefStub, PublishResult
+from provisa.api.metadata_export import sync
+from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events
 
@@ -62,7 +62,7 @@ def _publishes_ok(published: list[str]):
     return _publish
 
 
-@given("an org whose metadata egress target is configured and entitled")
+@given("an org whose metadata export target is configured and entitled")
 def _configured_org(shared_data, tmp_path, monkeypatch):
     published: list[str] = []
     monkeypatch.setattr(sync, "publish_snapshot", _publishes_ok(published))

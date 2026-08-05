@@ -655,12 +655,12 @@ async def _load_and_build(
     # canonical — the demo scenario (config built from installer choices), NOT a hand-authored file
     # with comments/ordering a normalized patch could not stay faithful to. Off unless opted in — EXCEPT
     # demo mode, where the generated config is always canonical so the flag MUST be on (REQ-1096).
-    from provisa.api.setup_router import _is_demo
+    from provisa.core.demo import is_demo
 
     state.config_live_export = bool(
         raw_config.get("live_config_export", False)
         or os.environ.get("PROVISA_LIVE_CONFIG_EXPORT", "").lower() in ("1", "true", "yes")
-        or _is_demo()
+        or is_demo()
     )
 
     # REQ-885: hosted-UDF egress allow-list (deny-by-default). Source: server.udf_egress_allowlist
@@ -1167,7 +1167,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
     # the one chokepoint every model mutation passes through, which is why the event is posted
     # here rather than at each mutation — a new mutation cannot forget to publish.
-    from provisa.api.metadata_egress.sync import notify_model_changed
+    from provisa.api.metadata_export.sync import notify_model_changed
 
     await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
@@ -1554,11 +1554,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.ai_models_router import router as ai_models_router
 
     app.include_router(ai_models_router)
-    from provisa.api.admin.metadata_egress_router import (  # REQ-1074
-        router as metadata_egress_router,
+    from provisa.api.admin.metadata_export_router import (  # REQ-1074
+        router as metadata_export_router,
     )
 
-    app.include_router(metadata_egress_router)
+    app.include_router(metadata_export_router)
     from provisa.api.admin.source_meta_router import router as source_meta_router
 
     app.include_router(source_meta_router)

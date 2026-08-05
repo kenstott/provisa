@@ -117,9 +117,9 @@ class TestOrgScopedGates:
 
 def test_overridable_keys_exclude_every_deployment_wide_concern():
     # The allow-list is the boundary: a key absent from it has no per-org representation at all.
-    # metadata_egress joined the set with REQ-1074: the catalog an org publishes to, and the
+    # metadata_export joined the set with REQ-1074: the catalog an org publishes to, and the
     # credentials it publishes with, are that org's, not the deployment's.
-    assert ORG_OVERRIDABLE_KEYS == {"ai_models", "vector_models", "nl", "metadata_egress"}
+    assert ORG_OVERRIDABLE_KEYS == {"ai_models", "vector_models", "nl", "metadata_export"}
     for deployment_wide in (
         "federation",
         "cache",

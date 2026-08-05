@@ -18,18 +18,18 @@ What is published is THAT an asset is governed, which rule governs it, and who i
 subject to it. What is never published is the rule body — a mask pattern or an RLS predicate is
 the policy itself, and putting it in an external catalog next to the restricted asset hands a
 reader the shape of the data the policy exists to withhold. ``tests/unit/
-test_metadata_egress_governance.py`` asserts the bodies never appear in a snapshot.
+test_metadata_export_governance.py`` asserts the bodies never appear in a snapshot.
 """
 
 # Requirements: REQ-039, REQ-040, REQ-041, REQ-1071
 
 from __future__ import annotations
 
-from provisa.api.metadata_egress.model import (
+from provisa.api.metadata_export.model import (
     GovernanceSignal,
     GovernanceTag,
 )
-from provisa.api.metadata_egress.refs import TableIndex, column_ref, table_ref
+from provisa.api.metadata_export.refs import TableIndex, column_ref, table_ref
 from provisa.core.models import Column, ProvisaConfig, Table
 
 

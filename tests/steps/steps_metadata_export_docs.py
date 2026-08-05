@@ -3,10 +3,10 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-"""Step definitions for REQ-1368 — the published metadata-egress documentation page.
+"""Step definitions for REQ-1368 — the published metadata-export documentation page.
 
 The page is checked against the code it describes rather than against a copy of itself: the
-provider list comes from the registry, the settings list from ``MetadataEgressConfig``. A
+provider list comes from the registry, the settings list from ``MetadataExportConfig``. A
 provider or a setting added later fails this test until the page mentions it, which is the only
 thing that keeps a docs page from drifting into fiction.
 """
@@ -20,13 +20,13 @@ import yaml
 
 from pytest_bdd import given, scenarios, then, when
 
-from provisa.api.metadata_egress import registered_providers
-from provisa.core.models import MetadataEgressConfig
+from provisa.api.metadata_export import registered_providers
+from provisa.core.models import MetadataExportConfig
 
 scenarios("../features/REQ-1368.feature")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-DOC_PATH = _REPO_ROOT / "docs" / "metadata-egress.md"
+DOC_PATH = _REPO_ROOT / "docs" / "metadata-export.md"
 MKDOCS_PATH = _REPO_ROOT / "mkdocs.yml"
 
 # The nav section the page must sit in, and the doc it must sit beside.
@@ -72,12 +72,12 @@ def _read(shared_data):
     shared_data["nav"] = _nav_entries(shared_data["mkdocs"].get("nav", []), NAV_SECTION)
 
 
-@then("the metadata egress page is reachable from the Security and Governance navigation")
+@then("the metadata export page is reachable from the Security and Governance navigation")
 def _navigable(shared_data):
     targets = [value for entry in shared_data["nav"] for value in entry.values()]
-    assert "metadata-egress.md" in targets, targets
+    assert "metadata-export.md" in targets, targets
     excluded = shared_data["mkdocs"].get("exclude_docs", "") or ""
-    assert "metadata-egress.md" not in excluded
+    assert "metadata-export.md" not in excluded
 
 
 @then("the page states that publication is outbound only")
@@ -88,15 +88,15 @@ def _outbound_only(shared_data):
     assert "reads an external catalog back" in text
 
 
-@then("the page names every registered egress provider")
+@then("the page names every registered export provider")
 def _providers(shared_data):
     for name in registered_providers():
         assert f"`{name}`" in shared_data["text"], name
 
 
-@then("the page documents each configuration setting the egress config accepts")
+@then("the page documents each configuration setting the export config accepts")
 def _settings(shared_data):
-    for field in MetadataEgressConfig.model_fields:
+    for field in MetadataExportConfig.model_fields:
         assert f"`{field}`" in shared_data["text"], field
 
 

@@ -28,8 +28,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from provisa.api.metadata_egress import sync
-from provisa.api.metadata_egress.provider import AssetError, AssetRefStub, PublishResult
+from provisa.api.metadata_export import sync
+from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events
 from provisa.events import queue
@@ -68,7 +68,7 @@ async def _claim_status(conn) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_a_metadata_change_queues_work_for_the_egress_target(tmp_path):
+async def test_a_metadata_change_queues_work_for_the_export_target(tmp_path):
     async with _conn(tmp_path) as conn:
         event_id = await sync.notify_metadata_change(
             conn, table="wh.public.orders", reason="column description edited"
@@ -76,7 +76,7 @@ async def test_a_metadata_change_queues_work_for_the_egress_target(tmp_path):
         rows = await queue.get_events(conn, [event_id])
         assert rows[0]["payload"]["metadata_change"] is True
         assert rows[0]["payload"]["reason"] == "column description edited"
-        # Fanned to the egress target only — a metadata change is not a data change, so it must
+        # Fanned to the export target only — a metadata change is not a data change, so it must
         # not enqueue recompute work for the MVs that read the table.
         result = await conn.execute_core(select(event_status.c.dependent_table))
         assert [row[0] for row in result.fetchall()] == [sync.EGRESS_TARGET]

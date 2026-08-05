@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1074: the metadata-egress admin tab.
+// REQ-1074: the metadata-export admin tab.
 //
 // What is asserted is what a wrong tab gets wrong silently: showing the form to an org the plan
 // does not cover, sending back a credential the user never typed (which would overwrite the
@@ -17,29 +17,29 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '../test-utils/render';
-import { MetadataEgressTab } from '../components/admin/MetadataEgressTab';
-import type { MetadataEgressState } from '../api/metadataEgress';
+import { MetadataExportTab } from '../components/admin/MetadataExportTab';
+import type { MetadataExportState } from '../api/metadataExport';
 
-vi.mock('../api/metadataEgress', () => ({
-  fetchMetadataEgress: vi.fn(),
-  setMetadataEgress: vi.fn(),
-  checkMetadataEgress: vi.fn(),
-  publishMetadataEgress: vi.fn(),
+vi.mock('../api/metadataExport', () => ({
+  fetchMetadataExport: vi.fn(),
+  setMetadataExport: vi.fn(),
+  checkMetadataExport: vi.fn(),
+  publishMetadataExport: vi.fn(),
 }));
 
 import {
-  fetchMetadataEgress,
-  setMetadataEgress,
-  checkMetadataEgress,
-  publishMetadataEgress,
-} from '../api/metadataEgress';
+  fetchMetadataExport,
+  setMetadataExport,
+  checkMetadataExport,
+  publishMetadataExport,
+} from '../api/metadataExport';
 
-const mockFetch = vi.mocked(fetchMetadataEgress);
-const mockSet = vi.mocked(setMetadataEgress);
-const mockHealth = vi.mocked(checkMetadataEgress);
-const mockPublish = vi.mocked(publishMetadataEgress);
+const mockFetch = vi.mocked(fetchMetadataExport);
+const mockSet = vi.mocked(setMetadataExport);
+const mockHealth = vi.mocked(checkMetadataExport);
+const mockPublish = vi.mocked(publishMetadataExport);
 
-function state(overrides: Partial<MetadataEgressState> = {}): MetadataEgressState {
+function state(overrides: Partial<MetadataExportState> = {}): MetadataExportState {
   return {
     entitled: true,
     required_tier: 'premium',
@@ -63,7 +63,7 @@ function state(overrides: Partial<MetadataEgressState> = {}): MetadataEgressStat
   };
 }
 
-describe('MetadataEgressTab', () => {
+describe('MetadataExportTab', () => {
   beforeEach(() => {
     mockFetch.mockReset();
     mockSet.mockReset();
@@ -73,26 +73,26 @@ describe('MetadataEgressTab', () => {
 
   it('renders the configured target', async () => {
     mockFetch.mockResolvedValue(state());
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-endpoint')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-endpoint')).toBeInTheDocument(),
     );
-    expect(screen.getByTestId('metadata-egress-endpoint')).toHaveValue('http://marquez:5000');
-    expect(screen.getByTestId('metadata-egress-reconcile-cron')).toHaveValue('0 * * * *');
+    expect(screen.getByTestId('metadata-export-endpoint')).toHaveValue('http://marquez:5000');
+    expect(screen.getByTestId('metadata-export-reconcile-cron')).toHaveValue('0 * * * *');
   });
 
   it('shows the plan gate instead of the form for an unentitled org', async () => {
     // REQ-1073: an org below the tier gets told which plan opens the feature, not an empty form
     // whose save would be refused by the server anyway.
     mockFetch.mockResolvedValue(state({ entitled: false, required_tier: 'premium' }));
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-not-entitled')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-not-entitled')).toBeInTheDocument(),
     );
-    expect(screen.getByTestId('metadata-egress-not-entitled')).toHaveTextContent('premium');
-    expect(screen.queryByTestId('metadata-egress-endpoint')).toBeNull();
+    expect(screen.getByTestId('metadata-export-not-entitled')).toHaveTextContent('premium');
+    expect(screen.queryByTestId('metadata-export-endpoint')).toBeNull();
   });
 
   it('never renders a stored credential and does not send one the user did not type', async () => {
@@ -100,17 +100,17 @@ describe('MetadataEgressTab', () => {
     // the failure would surface at the next publish rather than at this save.
     mockFetch.mockResolvedValue(state());
     mockSet.mockResolvedValue({ success: true, provider: 'openlineage', enabled: true });
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-api-key')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-api-key')).toBeInTheDocument(),
     );
-    expect(screen.getByTestId('metadata-egress-api-key')).toHaveValue('');
+    expect(screen.getByTestId('metadata-export-api-key')).toHaveValue('');
 
-    fireEvent.change(screen.getByTestId('metadata-egress-endpoint'), {
+    fireEvent.change(screen.getByTestId('metadata-export-endpoint'), {
       target: { value: 'http://marquez:5001' },
     });
-    fireEvent.click(screen.getByTestId('metadata-egress-save'));
+    fireEvent.click(screen.getByTestId('metadata-export-save'));
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     const body = mockSet.mock.calls[0][0];
@@ -121,15 +121,15 @@ describe('MetadataEgressTab', () => {
   it('sends a credential the user did type', async () => {
     mockFetch.mockResolvedValue(state());
     mockSet.mockResolvedValue({ success: true, provider: 'openlineage', enabled: true });
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-api-key')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-api-key')).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByTestId('metadata-egress-api-key'), {
+    fireEvent.change(screen.getByTestId('metadata-export-api-key'), {
       target: { value: 'new-key' },
     });
-    fireEvent.click(screen.getByTestId('metadata-egress-save'));
+    fireEvent.click(screen.getByTestId('metadata-export-save'));
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0].api_key).toBe('new-key');
@@ -145,19 +145,19 @@ describe('MetadataEgressTab', () => {
       }),
     );
     mockSet.mockResolvedValue({ success: true, provider: 'atlas', enabled: true });
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-username')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-username')).toBeInTheDocument(),
     );
-    expect(screen.queryByTestId('metadata-egress-api-key')).toBeNull();
-    fireEvent.change(screen.getByTestId('metadata-egress-username'), {
+    expect(screen.queryByTestId('metadata-export-api-key')).toBeNull();
+    fireEvent.change(screen.getByTestId('metadata-export-username'), {
       target: { value: 'admin' },
     });
-    fireEvent.change(screen.getByTestId('metadata-egress-token'), {
+    fireEvent.change(screen.getByTestId('metadata-export-token'), {
       target: { value: 'secret' },
     });
-    fireEvent.click(screen.getByTestId('metadata-egress-save'));
+    fireEvent.click(screen.getByTestId('metadata-export-save'));
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0].username).toBe('admin');
@@ -171,15 +171,15 @@ describe('MetadataEgressTab', () => {
       provider: 'openlineage',
       error: 'ConnectError: Name or service not known',
     });
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-health')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-health')).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByTestId('metadata-egress-health'));
+    fireEvent.click(screen.getByTestId('metadata-export-health'));
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-health-result')).toHaveTextContent(
+      expect(screen.getByTestId('metadata-export-health-result')).toHaveTextContent(
         'Name or service not known',
       ),
     );
@@ -194,17 +194,17 @@ describe('MetadataEgressTab', () => {
       total_published: 2,
       errors: [{ asset: 'wh.public.orders', message: '422 unknown field type' }],
     });
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-publish')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-publish')).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByTestId('metadata-egress-publish'));
+    fireEvent.click(screen.getByTestId('metadata-export-publish'));
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-publish-errors')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-publish-errors')).toBeInTheDocument(),
     );
-    const errors = screen.getByTestId('metadata-egress-publish-errors');
+    const errors = screen.getByTestId('metadata-export-publish-errors');
     expect(errors).toHaveTextContent('wh.public.orders');
     expect(errors).toHaveTextContent('422 unknown field type');
   });
@@ -223,11 +223,11 @@ describe('MetadataEgressTab', () => {
         },
       }),
     );
-    render(<MetadataEgressTab />);
+    render(<MetadataExportTab />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('metadata-egress-last-publish')).toBeInTheDocument(),
+      expect(screen.getByTestId('metadata-export-last-publish')).toBeInTheDocument(),
     );
-    expect(screen.getByTestId('metadata-egress-last-publish')).toHaveTextContent('4');
+    expect(screen.getByTestId('metadata-export-last-publish')).toHaveTextContent('4');
   });
 });

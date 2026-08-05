@@ -12,9 +12,9 @@ import { test, expect } from "./coverage";
 import type { Page, Route } from "@playwright/test";
 
 /**
- * REQ-1074: the metadata-egress admin page, driven end to end in a browser.
+ * REQ-1074: the metadata-export admin page, driven end to end in a browser.
  *
- * The egress endpoints are stubbed so the run does not depend on the e2e org holding the
+ * The export endpoints are stubbed so the run does not depend on the e2e org holding the
  * premium entitlement (REQ-1073) or on a catalog being reachable from the test host. What the
  * page does with those responses — which fields it renders, and exactly which fields it sends
  * back — is the real thing under test, and is what a stub cannot fake.
@@ -44,13 +44,13 @@ const PREMIUM_STATE = {
 /** Capture of the PUT body, so the assertion is on what left the browser. */
 type Sent = { body: Record<string, unknown> | null };
 
-async function stubEgress(
+async function stubExport(
   page: Page,
   state: unknown,
   sent: Sent,
   extra: { publish?: unknown; health?: unknown } = {},
 ) {
-  await page.route("**/admin/metadata-egress", async (route: Route) => {
+  await page.route("**/admin/metadata-export", async (route: Route) => {
     const request = route.request();
     // The API path and the SPA route are the same URL; only the Accept header tells them apart
     // (vite.config.ts serves index.html for the navigation and proxies everything else). A stub
@@ -66,12 +66,12 @@ async function stubEgress(
     }
     return route.fulfill({ json: state });
   });
-  await page.route("**/admin/metadata-egress/health", (route: Route) =>
+  await page.route("**/admin/metadata-export/health", (route: Route) =>
     route.fulfill({
       json: extra.health ?? { ok: true, provider: "openlineage" },
     }),
   );
-  await page.route("**/admin/metadata-egress/publish", (route: Route) =>
+  await page.route("**/admin/metadata-export/publish", (route: Route) =>
     route.fulfill({
       json:
         extra.publish ?? {
@@ -94,74 +94,74 @@ async function stubEgress(
  * its two shapes, so nothing about the assertions that follow is relaxed.
  */
 async function openTab(page: Page) {
-  await page.goto("/admin/metadata-egress");
+  await page.goto("/admin/metadata-export");
   await expect(
     page
-      .getByTestId("metadata-egress-endpoint")
-      .or(page.getByTestId("metadata-egress-not-entitled")),
+      .getByTestId("metadata-export-endpoint")
+      .or(page.getByTestId("metadata-export-not-entitled")),
   ).toBeVisible({ timeout: 60000 });
 }
 
 test("the nav reaches the tab and the tab shows the configured target", async ({ page }) => {
-  await stubEgress(page, PREMIUM_STATE, { body: null });
+  await stubExport(page, PREMIUM_STATE, { body: null });
   await openTab(page);
 
-  await expect(page.getByTestId("metadata-egress-endpoint")).toHaveValue("http://marquez:5000");
-  await expect(page.getByTestId("metadata-egress-reconcile-cron")).toHaveValue("0 * * * *");
+  await expect(page.getByTestId("metadata-export-endpoint")).toHaveValue("http://marquez:5000");
+  await expect(page.getByTestId("metadata-export-reconcile-cron")).toHaveValue("0 * * * *");
 });
 
 test("editing the endpoint does not send back the stored credential", async ({ page }) => {
   // The stored key is reported only as set, so the password field is empty. Sending that empty
   // field would clear the credential, and the loss would only surface at the next publish.
   const sent: Sent = { body: null };
-  await stubEgress(page, PREMIUM_STATE, sent);
+  await stubExport(page, PREMIUM_STATE, sent);
   await openTab(page);
 
-  await expect(page.getByTestId("metadata-egress-api-key")).toHaveValue("");
-  await page.getByTestId("metadata-egress-endpoint").fill("http://marquez:5001");
-  await page.getByTestId("metadata-egress-save").click();
+  await expect(page.getByTestId("metadata-export-api-key")).toHaveValue("");
+  await page.getByTestId("metadata-export-endpoint").fill("http://marquez:5001");
+  await page.getByTestId("metadata-export-save").click();
 
-  await expect(page.getByTestId("metadata-egress-saved")).toBeVisible();
+  await expect(page.getByTestId("metadata-export-saved")).toBeVisible();
   expect(sent.body?.endpoint).toBe("http://marquez:5001");
   expect(sent.body && "api_key" in sent.body).toBe(false);
 });
 
 test("a credential the administrator types is sent", async ({ page }) => {
   const sent: Sent = { body: null };
-  await stubEgress(page, PREMIUM_STATE, sent);
+  await stubExport(page, PREMIUM_STATE, sent);
   await openTab(page);
 
-  await page.getByTestId("metadata-egress-api-key").fill("typed-key");
-  await page.getByTestId("metadata-egress-save").click();
+  await page.getByTestId("metadata-export-api-key").fill("typed-key");
+  await page.getByTestId("metadata-export-save").click();
 
-  await expect(page.getByTestId("metadata-egress-saved")).toBeVisible();
+  await expect(page.getByTestId("metadata-export-saved")).toBeVisible();
   expect(sent.body?.api_key).toBe("typed-key");
 });
 
 test("an org below the tier is told which plan opens the feature", async ({ page }) => {
   // REQ-1073: the gate is enforced server-side on every operating endpoint; the page explains it
   // rather than offering a form whose save would be refused.
-  await stubEgress(page, { ...PREMIUM_STATE, entitled: false }, { body: null });
+  await stubExport(page, { ...PREMIUM_STATE, entitled: false }, { body: null });
   await openTab(page);
 
-  await expect(page.getByTestId("metadata-egress-not-entitled")).toContainText("premium");
-  await expect(page.getByTestId("metadata-egress-endpoint")).toHaveCount(0);
+  await expect(page.getByTestId("metadata-export-not-entitled")).toContainText("premium");
+  await expect(page.getByTestId("metadata-export-endpoint")).toHaveCount(0);
 });
 
 test("a refused connection reports the reason the target gave", async ({ page }) => {
-  await stubEgress(page, PREMIUM_STATE, { body: null }, {
+  await stubExport(page, PREMIUM_STATE, { body: null }, {
     health: { ok: false, provider: "openlineage", error: "ConnectError: Name or service not known" },
   });
   await openTab(page);
 
-  await page.getByTestId("metadata-egress-health").click();
-  await expect(page.getByTestId("metadata-egress-health-result")).toContainText(
+  await page.getByTestId("metadata-export-health").click();
+  await expect(page.getByTestId("metadata-export-health-result")).toContainText(
     "Name or service not known",
   );
 });
 
 test("a partial publish lists the assets the catalog rejected", async ({ page }) => {
-  await stubEgress(page, PREMIUM_STATE, { body: null }, {
+  await stubExport(page, PREMIUM_STATE, { body: null }, {
     publish: {
       provider: "openlineage",
       ok: false,
@@ -172,8 +172,8 @@ test("a partial publish lists the assets the catalog rejected", async ({ page })
   });
   await openTab(page);
 
-  await page.getByTestId("metadata-egress-publish").click();
-  const errors = page.getByTestId("metadata-egress-publish-errors");
+  await page.getByTestId("metadata-export-publish").click();
+  const errors = page.getByTestId("metadata-export-publish-errors");
   await expect(errors).toContainText("wh.public.orders");
   await expect(errors).toContainText("422 unknown field type");
 });

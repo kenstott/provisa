@@ -30,10 +30,10 @@ import os
 import httpx
 import pytest
 
-from provisa.api.metadata_egress import metadata_egress
-from provisa.api.metadata_egress.atlas import CLUSTER, GOVERNANCE_ATTRIBUTE
-from provisa.core.models import MetadataEgressConfig
-from tests.integration.metadata_egress_fixture import (
+from provisa.api.metadata_export import metadata_export
+from provisa.api.metadata_export.atlas import CLUSTER, GOVERNANCE_ATTRIBUTE
+from provisa.core.models import MetadataExportConfig
+from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     RLS_FILTER,
     governed_snapshot,
@@ -60,9 +60,9 @@ def _base_url() -> str:
     return f"http://localhost:{os.environ['ATLAS_PORT']}"
 
 
-def _egress():
-    return metadata_egress(
-        MetadataEgressConfig(
+def _export():
+    return metadata_export(
+        MetadataExportConfig(
             enabled=True,
             provider="atlas",
             endpoint=_base_url(),
@@ -80,9 +80,9 @@ def _egress():
 # and lands the same state each time.
 @pytest.fixture
 async def published():
-    egress = _egress()
-    await egress.health()
-    result = await egress.publish(governed_snapshot())
+    export = _export()
+    await export.health()
+    result = await export.publish(governed_snapshot())
     assert result.ok, [e.message for e in result.errors]
     return result
 
@@ -162,7 +162,7 @@ async def test_column_lineage_of_the_derived_view_is_a_process_between_the_two_t
 async def test_republishing_lands_the_same_catalog_state(published):
     """REQ-1072's reconcile republishes the whole snapshot on a schedule, so a second publish
     has to be an upsert rather than a duplicate."""
-    again = await _egress().publish(governed_snapshot())
+    again = await _export().publish(governed_snapshot())
     assert again.ok, [e.message for e in again.errors]
     assert again.published == published.published
     orders = await _entity("rdbms_table", ORDERS)

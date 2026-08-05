@@ -30,13 +30,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from provisa.api.metadata_egress.atlas import AtlasEgress, to_entities
-from provisa.api.metadata_egress.registry import register_provider
+from provisa.api.metadata_export.atlas import AtlasExport, to_entities
+from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_egress.atlas import AtlasEntity
-    from provisa.api.metadata_egress.model import MetadataSnapshot
-    from provisa.api.metadata_egress.provider import PublishResult
+    from provisa.api.metadata_export.atlas import AtlasEntity
+    from provisa.api.metadata_export.model import MetadataSnapshot
+    from provisa.api.metadata_export.provider import PublishResult
 
 # Atlas type name -> Atlan type name. Atlan rejects an entity whose typeName is not in its own
 # type set, and it does not ship the Atlas RDBMS types.
@@ -54,7 +54,7 @@ CONNECTOR_NAME = "provisa"
 
 
 @register_provider
-class AtlanEgress(AtlasEgress):  # REQ-1069
+class AtlanExport(AtlasExport):  # REQ-1069
     """Publish a snapshot to Atlan over its Atlas-shaped ingestion API."""
 
     provider_name = "atlan"

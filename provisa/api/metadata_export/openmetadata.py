@@ -40,16 +40,16 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from provisa.api.metadata_egress.provider import (
+from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
-    MetadataEgress,
+    MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_egress.registry import register_provider
+from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_egress.model import (
+    from provisa.api.metadata_export.model import (
         AssetRef,
         ColumnAsset,
         MetadataSnapshot,
@@ -268,7 +268,7 @@ def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
                     "connection": {
                         "config": {
                             "type": "CustomDatabase",
-                            "sourcePythonClass": "provisa.metadata_egress",
+                            "sourcePythonClass": "provisa.metadata_export",
                         }
                     },
                 },
@@ -389,7 +389,7 @@ def to_lineage_requests(snapshot: MetadataSnapshot) -> list[Entity]:
 
 
 @register_provider
-class OpenMetadataEgress(MetadataEgress):  # REQ-1069
+class OpenMetadataExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to an OpenMetadata server's ingestion API."""
 
     provider_name = "openmetadata"

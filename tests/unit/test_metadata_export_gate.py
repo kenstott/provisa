@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1073: metadata egress is a premium entitlement, on every path into it.
+"""REQ-1073: metadata export is a premium entitlement, on every path into it.
 
-The admin endpoints are gated in ``tests/unit/test_metadata_egress_admin_surface.py``. What is
+The admin endpoints are gated in ``tests/unit/test_metadata_export_admin_surface.py``. What is
 pinned here is the path with no request behind it — the REQ-1072 scheduled sync — because a gate
 that holds on the API but not on the cron lets an org stage a config while entitled and keep
 publishing after the plan lapses.
@@ -24,14 +24,14 @@ import types
 
 import pytest
 
-from provisa.api.metadata_egress import sync
+from provisa.api.metadata_export import sync
 from provisa.control_plane.models import Org
 from provisa.control_plane.store import control_plane_store
 
 ORG_ID = "acme"
 
 _CONFIGURED = {
-    "metadata_egress": {
+    "metadata_export": {
         "enabled": True,
         "provider": "atlas",
         "endpoint": "http://atlas:21000",
@@ -42,7 +42,7 @@ _CONFIGURED = {
 
 @pytest.fixture
 def org(monkeypatch):
-    """An org with a complete egress config, whose tier the test sets."""
+    """An org with a complete export config, whose tier the test sets."""
     import provisa.core.org_settings as org_settings_mod
 
     async def _resolve(_db):
@@ -103,7 +103,7 @@ async def test_an_unentitled_org_has_its_sync_jobs_disarmed(org):
 @pytest.mark.asyncio
 async def test_an_unentitled_org_cannot_publish_even_on_the_scheduled_path(org):
     org("standard")
-    with pytest.raises(sync.EgressNotAllowed, match="not entitled"):
+    with pytest.raises(sync.ExportNotAllowed, match="not entitled"):
         await sync.publish_snapshot(ORG_ID)
 
 

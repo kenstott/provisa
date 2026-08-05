@@ -24,10 +24,10 @@ import os
 import httpx
 import pytest
 
-from provisa.api.metadata_egress import metadata_egress
-from provisa.api.metadata_egress.openmetadata import CLASSIFICATION
-from provisa.core.models import MetadataEgressConfig
-from tests.integration.metadata_egress_fixture import (
+from provisa.api.metadata_export import metadata_export
+from provisa.api.metadata_export.openmetadata import CLASSIFICATION
+from provisa.core.models import MetadataExportConfig
+from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     RLS_FILTER,
     governed_snapshot,
@@ -77,8 +77,8 @@ async def token() -> str:
 # and lands the same state each time.
 @pytest.fixture
 async def published(token) -> dict:
-    egress = metadata_egress(
-        MetadataEgressConfig(
+    export = metadata_export(
+        MetadataExportConfig(
             enabled=True,
             provider="openmetadata",
             endpoint=_base_url(),
@@ -86,8 +86,8 @@ async def published(token) -> dict:
             timeout_seconds=60,
         )
     )
-    await egress.health()
-    result = await egress.publish(governed_snapshot())
+    await export.health()
+    result = await export.publish(governed_snapshot())
     assert result.ok, [e.message for e in result.errors]
     return {"result": result}
 

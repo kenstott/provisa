@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.api.metadata_egress.builder import build_snapshot
-from provisa.api.metadata_egress.model import AssetKind
-from provisa.api.metadata_egress.refs import UnknownTableError, UnqualifiedLineageError
+from provisa.api.metadata_export.builder import build_snapshot
+from provisa.api.metadata_export.model import AssetKind
+from provisa.api.metadata_export.refs import UnknownTableError, UnqualifiedLineageError
 from provisa.core.models import Column, Domain, ProvisaConfig, Source, SourceType, Table
 
 

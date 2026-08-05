@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Admin surface for metadata egress (REQ-1074).
+"""Admin surface for metadata export (REQ-1074).
 
-Four operations back the admin tab: read the org's egress settings, write them, check the
+Four operations back the admin tab: read the org's export settings, write them, check the
 target is reachable, and publish a full snapshot on demand. Every one of them is gated twice —
 on the ``org_settings`` right, and on the org's REQ-1073 entitlement — because a premium
 feature reachable through an un-entitled org's admin API is not gated at all.
@@ -33,9 +33,9 @@ from pydantic import ValidationError
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
-from provisa.api.metadata_egress import metadata_egress
-from provisa.api.metadata_egress.provider import PublishResult
-from provisa.api.metadata_egress.registry import registered_providers
+from provisa.api.metadata_export import metadata_export
+from provisa.api.metadata_export.provider import PublishResult
+from provisa.api.metadata_export.registry import registered_providers
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
@@ -43,11 +43,11 @@ from provisa.control_plane.entitlements import (
     min_tier,
 )
 from provisa.control_plane.store import control_plane_store
-from provisa.core.models import MetadataEgressConfig
+from provisa.core.models import MetadataExportConfig
 
 router = APIRouter()
 
-CONFIG_KEY = "metadata_egress"
+CONFIG_KEY = "metadata_export"
 
 # Credential fields, which the read side reports as set/not-set and never returns.
 _SECRET_FIELDS = ("api_key", "token", "entra_client_secret")
@@ -76,13 +76,13 @@ def _require_entitled(org_id: str) -> None:
     from provisa.control_plane.entitlements import require_feature
 
     try:
-        require_feature(control_plane_store(), org_id, Feature.METADATA_EGRESS)
+        require_feature(control_plane_store(), org_id, Feature.METADATA_EXPORT)
     except EntitlementError as exc:
-        raise ApiError(403, "metadata_egress.not_entitled", str(exc)) from exc
+        raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
     except (KeyError, UnknownTierError) as exc:
         raise ApiError(
             403,
-            "metadata_egress.tier_unknown",
+            "metadata_export.tier_unknown",
             f"org {org_id!r} has no resolvable tier, so the feature cannot be entitled",
         ) from exc
 
@@ -92,14 +92,14 @@ def _is_entitled(org_id: str) -> bool:
     from provisa.control_plane.entitlements import require_feature
 
     try:
-        require_feature(control_plane_store(), org_id, Feature.METADATA_EGRESS)
+        require_feature(control_plane_store(), org_id, Feature.METADATA_EXPORT)
     except (EntitlementError, KeyError, UnknownTierError):
         return False
     return True
 
 
 async def _stored() -> dict[str, Any]:
-    """The org's egress settings as stored, with the deployment's beneath them."""
+    """The org's export settings as stored, with the deployment's beneath them."""
     from provisa.api.app import state
     from provisa.core.org_settings import resolve_org_config
 
@@ -107,11 +107,11 @@ async def _stored() -> dict[str, Any]:
     return dict(cfg.get(CONFIG_KEY) or {})
 
 
-def _egress_config(stored: dict[str, Any]) -> MetadataEgressConfig:
+def _export_config(stored: dict[str, Any]) -> MetadataExportConfig:
     try:
-        return MetadataEgressConfig(**stored)
+        return MetadataExportConfig(**stored)
     except ValidationError as exc:
-        raise ApiError(400, "metadata_egress.invalid_config", str(exc)) from exc
+        raise ApiError(400, "metadata_export.invalid_config", str(exc)) from exc
 
 
 def _publish_payload(result: PublishResult) -> dict[str, Any]:
@@ -124,16 +124,16 @@ def _publish_payload(result: PublishResult) -> dict[str, Any]:
     }
 
 
-@router.get("/admin/metadata-egress")
-async def get_metadata_egress(request: Request) -> dict:  # REQ-1074
-    """The org's egress settings, with credentials reported as set/not-set."""
+@router.get("/admin/metadata-export")
+async def get_metadata_export(request: Request) -> dict:  # REQ-1074
+    """The org's export settings, with credentials reported as set/not-set."""
     require_org_settings(request)
     org_id = require_active_org_id(request)
     stored = await _stored()
-    config = _egress_config(stored)
+    config = _export_config(stored)
     return {
         "entitled": _is_entitled(org_id),
-        "required_tier": min_tier(Feature.METADATA_EGRESS).value,
+        "required_tier": min_tier(Feature.METADATA_EXPORT).value,
         "providers": sorted(registered_providers()),
         "config": {
             **{name: getattr(config, name) for name in _PLAIN_FIELDS},
@@ -146,9 +146,9 @@ async def get_metadata_egress(request: Request) -> dict:  # REQ-1074
     }
 
 
-@router.put("/admin/metadata-egress")
-async def set_metadata_egress(request: Request) -> dict:  # REQ-1074
-    """Persist the org's egress settings.
+@router.put("/admin/metadata-export")
+async def set_metadata_export(request: Request) -> dict:  # REQ-1074
+    """Persist the org's export settings.
 
     A credential absent from the body keeps the stored one; a credential sent empty CLEARS it.
     Both are explicit acts — the tab cannot send back a value it was never given, so "absent"
@@ -171,9 +171,9 @@ async def set_metadata_egress(request: Request) -> dict:  # REQ-1074
         if name in body:
             updated[name] = body[name]
 
-    # Validate before persisting: an enabled egress with no provider or endpoint is refused
+    # Validate before persisting: an enabled export with no provider or endpoint is refused
     # here, naming the setting, rather than at the next publish, naming a connection.
-    config = _egress_config(updated)
+    config = _export_config(updated)
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
         state.tenant_db,
@@ -184,22 +184,22 @@ async def set_metadata_egress(request: Request) -> dict:  # REQ-1074
     # or a newly-configured target takes effect now rather than at the next restart.
     scheduler = getattr(state, "_scheduler", None)
     if scheduler is not None:
-        from provisa.api.metadata_egress.sync import register_org_jobs
+        from provisa.api.metadata_export.sync import register_org_jobs
 
         await register_org_jobs(scheduler, org_id)
     return {"success": True, "provider": config.provider, "enabled": config.enabled}
 
 
-@router.post("/admin/metadata-egress/health")
-async def check_metadata_egress(request: Request) -> dict:  # REQ-1074
+@router.post("/admin/metadata-export/health")
+async def check_metadata_export(request: Request) -> dict:  # REQ-1074
     """Ask the configured adapter whether the target accepts it, and report what it said."""
     require_org_settings(request)
     org_id = require_active_org_id(request)
     _require_entitled(org_id)
-    config = _egress_config(await _stored())
-    egress = metadata_egress(config)
+    config = _export_config(await _stored())
+    export = metadata_export(config)
     try:
-        await egress.health()
+        await export.health()
     except Exception as exc:  # noqa: BLE001 - allow-blind-except: the message IS the answer
         # The adapter raises whatever the transport raised; the admin needs that text to tell a
         # wrong URL from a rejected credential, so it is reported rather than classified.
@@ -207,28 +207,28 @@ async def check_metadata_egress(request: Request) -> dict:  # REQ-1074
     return {"ok": True, "provider": config.provider}
 
 
-@router.post("/admin/metadata-egress/publish")
-async def publish_metadata_egress(request: Request) -> dict:  # REQ-1072, REQ-1074
+@router.post("/admin/metadata-export/publish")
+async def publish_metadata_export(request: Request) -> dict:  # REQ-1072, REQ-1074
     """Publish a full snapshot now — the on-demand form of the REQ-1072 reconcile."""
     require_org_settings(request)
     org_id = require_active_org_id(request)
     _require_entitled(org_id)
 
-    from provisa.api.metadata_egress.sync import EgressNotAllowed, publish_snapshot
+    from provisa.api.metadata_export.sync import ExportNotAllowed, publish_snapshot
 
-    config = _egress_config(await _stored())
+    config = _export_config(await _stored())
     if not config.enabled:
         raise ApiError(
             400,
-            "metadata_egress.disabled",
-            "metadata egress is disabled for this org; enable it before publishing",
+            "metadata_export.disabled",
+            "metadata export is disabled for this org; enable it before publishing",
         )
     # The same publish the drain and the reconcile run (REQ-1072), so what an admin sees here is
     # what the scheduled paths send — not a second assembly of the same snapshot.
     try:
         result = await publish_snapshot(org_id)
-    except EgressNotAllowed as exc:
-        raise ApiError(403, "metadata_egress.not_entitled", str(exc)) from exc
+    except ExportNotAllowed as exc:
+        raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
     payload = _publish_payload(result)
     _LAST_PUBLISH[org_id] = payload
     return payload

@@ -39,15 +39,15 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from provisa.api.metadata_egress.provider import (
+from provisa.api.metadata_export.provider import (
     AssetError,
-    MetadataEgress,
+    MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_egress.registry import register_provider
+from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_egress.model import (
+    from provisa.api.metadata_export.model import (
         AssetRef,
         GovernanceTag,
         MetadataSnapshot,
@@ -218,7 +218,7 @@ def _column_lineage_facet(
 
 
 @dataclass(frozen=True)
-class EgressEvent:  # REQ-1069
+class ExportEvent:  # REQ-1069
     """One OpenLineage event and the asset it is about.
 
     The asset travels WITH the payload rather than being recovered by re-walking the snapshot:
@@ -235,7 +235,7 @@ def _run_id(job_name: str) -> str:
     return str(uuid.uuid5(_RUN_NAMESPACE, job_name))
 
 
-def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[EgressEvent]:
+def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[ExportEvent]:
     """The full snapshot as OpenLineage events, in the order they must be sent.
 
     Dataset events come first so a lineage event never references a dataset the target has not
@@ -253,10 +253,10 @@ def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[Egres
         for table in snapshot.tables
     }
 
-    events: list[EgressEvent] = []
+    events: list[ExportEvent] = []
     for table in snapshot.tables:
         events.append(
-            EgressEvent(
+            ExportEvent(
                 asset=table.ref,
                 kind="dataset",
                 payload={
@@ -285,7 +285,7 @@ def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[Egres
         )
         job_name = _dataset_name(table)
         events.append(
-            EgressEvent(
+            ExportEvent(
                 asset=table.ref,
                 kind="lineage",
                 payload={
@@ -327,7 +327,7 @@ def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[Egres
 
 
 @register_provider
-class OpenLineageEgress(MetadataEgress):  # REQ-1069
+class OpenLineageExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to any OpenLineage-compatible endpoint (Marquez, and others)."""
 
     provider_name = "openlineage"

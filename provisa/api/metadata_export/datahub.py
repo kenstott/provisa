@@ -41,16 +41,16 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from provisa.api.metadata_egress.provider import (
+from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
-    MetadataEgress,
+    MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_egress.registry import register_provider
+from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_egress.model import AssetRef, MetadataSnapshot, TableAsset
+    from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot, TableAsset
 
 # The data platform every published dataset is attributed to. Provisa is the governed access
 # path, and a consumer resolving one of these URNs has to arrive back at Provisa rather than at
@@ -332,7 +332,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
 
 
 @register_provider
-class DataHubEgress(MetadataEgress):  # REQ-1069
+class DataHubExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to DataHub as aspect proposals."""
 
     provider_name = "datahub"

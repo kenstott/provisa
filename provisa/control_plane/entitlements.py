@@ -25,6 +25,7 @@ from __future__ import annotations
 from enum import Enum
 
 from provisa.control_plane.store import ControlPlaneStore
+from provisa.core.demo import is_demo
 
 
 class Tier(str, Enum):  # REQ-1053
@@ -41,12 +42,12 @@ _TIER_RANK: dict[Tier, int] = {Tier.FREE: 0, Tier.STANDARD: 1, Tier.PREMIUM: 2}
 class Feature(str, Enum):  # REQ-1066
     """Tier-gated feature keys. Call sites reference these, never bare strings."""
 
-    METADATA_EGRESS = "metadata_egress"
+    METADATA_EXPORT = "metadata_export"
 
 
-# REQ-1073: metadata egress is an enterprise/premium entitlement, extending REQ-1066.
+# REQ-1073: metadata export is an enterprise/premium entitlement, extending REQ-1066.
 _MIN_TIER: dict[Feature, Tier] = {
-    Feature.METADATA_EGRESS: Tier.PREMIUM,
+    Feature.METADATA_EXPORT: Tier.PREMIUM,
 }
 
 
@@ -102,7 +103,12 @@ def require_feature(
     Propagates ``KeyError`` for an unregistered org: an org that the control plane does not
     know about has no tier to check, and inventing one would be the silent-pass this gate
     exists to prevent.
+
+    Demo mode (``--demo`` → PROVISA_DEMO) is exempt by design: the demo showcases every
+    feature, so tier gates are not enforced there.
     """
+    if is_demo():
+        return
     org = store.get_org(org_id)
     tier = parse_tier(org_id, org.tier)
     if not tier_allows(tier, feature):

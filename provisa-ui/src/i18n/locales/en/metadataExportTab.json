@@ -1,10 +1,10 @@
 {
-  "metadataEgressTab": {
-    "loading": "Loading metadata egress settings…",
-    "heading": "Metadata Egress",
+  "metadataExportTab": {
+    "loading": "Loading metadata export settings…",
+    "heading": "Metadata Export",
     "intro": "Publish this organization's governed metadata — tables, columns, domains, stewards, approved relationships and column-level lineage — to an external data catalog. Publication is outbound only: Provisa never reads the target catalog back as a source of truth.",
     "notEntitledTitle": "Not included in this plan",
-    "notEntitled": "Metadata egress requires the {{tier}} plan. Upgrade to configure a catalog target.",
+    "notEntitled": "Metadata export requires the {{tier}} plan. Upgrade to configure a catalog target.",
     "enabled": "Publish metadata to an external catalog",
     "provider": "Target catalog",
     "endpoint": "Endpoint URL",

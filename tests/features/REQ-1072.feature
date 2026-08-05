@@ -3,7 +3,7 @@ Feature: REQ-1072 — Data Catalog Integration
   # Sync mechanism: metadata changes push to the external catalog event-driven via the REQ-942 event substrate. A scheduled…
 
   Scenario: REQ-1072 default behaviour
-    Given an org whose metadata egress target is configured and entitled
+    Given an org whose metadata export target is configured and entitled
     When the governed model changes
     Then a publish is queued for that org and no other
     And one drain publishes the whole pending change set as a single snapshot

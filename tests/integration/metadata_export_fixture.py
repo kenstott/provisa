@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The governed config both metadata-egress e2e tests publish (REQ-1069).
+"""The governed config both metadata-export e2e tests publish (REQ-1069).
 
 One fixture, two targets: what the suite is checking is that the SAME snapshot lands correctly
 in a real OpenLineage server and a real OpenMetadata server, so the two tests must not each
@@ -23,8 +23,8 @@ whose column lineage is resolved from compiled SQL rather than inferred.
 
 from __future__ import annotations
 
-from provisa.api.metadata_egress import build_snapshot
-from provisa.api.metadata_egress.model import MetadataSnapshot
+from provisa.api.metadata_export import build_snapshot
+from provisa.api.metadata_export.model import MetadataSnapshot
 from provisa.core.models import (
     Cardinality,
     Column,

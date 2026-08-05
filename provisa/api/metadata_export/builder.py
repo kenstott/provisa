@@ -25,8 +25,8 @@ dropped edge would tell the external catalog that a governed derivation does not
 
 from __future__ import annotations
 
-from provisa.api.metadata_egress.governance import build_governance_tags
-from provisa.api.metadata_egress.model import (
+from provisa.api.metadata_export.governance import build_governance_tags
+from provisa.api.metadata_export.model import (
     ColumnAsset,
     DomainAsset,
     LineageEdge,
@@ -36,7 +36,7 @@ from provisa.api.metadata_egress.model import (
     SourceAsset,
     TableAsset,
 )
-from provisa.api.metadata_egress.refs import (
+from provisa.api.metadata_export.refs import (
     TableIndex,
     UnqualifiedLineageError,
     column_ref,

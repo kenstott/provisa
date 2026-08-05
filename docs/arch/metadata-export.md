@@ -1,4 +1,4 @@
-# Metadata Egress — Phased Implementation Plan
+# Metadata Export — Phased Implementation Plan
 
 Covers REQ-1068 … REQ-1074 and REQ-1368. Outbound only: Provisa publishes its governance
 metadata to external catalogs and never reads one back as source of truth.
@@ -6,9 +6,9 @@ metadata to external catalogs and never reads one back as source of truth.
 **Status: all phases shipped.** What was built diverged from the plan in four places, each
 noted inline below: the vendor adapters are mapping-tested rather than fixture-tested, Atlas
 needed an HTTP-basic auth mode the plan did not anticipate, the sync jobs live in
-`provisa/api/metadata_egress/sync.py` rather than in `provisa/scheduler/jobs.py`, and the
+`provisa/api/metadata_export/sync.py` rather than in `provisa/scheduler/jobs.py`, and the
 event path publishes the full snapshot rather than a delta. The user-facing page is
-`docs/metadata-egress.md` (REQ-1368).
+`docs/metadata-export.md` (REQ-1368).
 
 ## Grounding (verified in this tree)
 
@@ -27,7 +27,7 @@ event path publishes the full snapshot rather than a delta. The user-facing page
 | Scheduler | `provisa/scheduler/jobs.py` (APScheduler, cron jobs from config) | exists |
 | Org record | `provisa/control_plane/models.py:30` `Org` — `id`, `name`, `data_plane_id`, `created_at` | exists |
 | Tier / entitlement | nothing. No `tier`, no `entitlement` anywhere in `provisa/` | **missing** |
-| `provisa/api/metadata_egress/provider.py` (cited by REQ-1068) | — | **missing** |
+| `provisa/api/metadata_export/provider.py` (cited by REQ-1068) | — | **missing** |
 
 Two consequences: REQ-1073 needs an entitlement primitive built first (Phase 0), because
 `Org` carries no tier today; and every requirement here is still `proposed`, so each phase
@@ -49,25 +49,25 @@ unknown tier raises; the error names the feature and the org.
 
 ## Phase 1 — REQ-1068: provider interface + per-org config
 
-- `provisa/api/metadata_egress/provider.py`
-  - `MetadataEgress` ABC: `provider_name: str`, `async publish(snapshot: MetadataSnapshot) -> PublishResult`,
+- `provisa/api/metadata_export/provider.py`
+  - `MetadataExport` ABC: `provider_name: str`, `async publish(snapshot: MetadataSnapshot) -> PublishResult`,
     `async health() -> None`.
   - `PublishResult`: counts per asset kind + per-asset errors. Errors are returned and
     surfaced, not swallowed.
-- `provisa/api/metadata_egress/config.py`: `MetadataEgressConfig` pydantic model
+- `provisa/api/metadata_export/config.py`: `MetadataExportConfig` pydantic model
   (`enabled`, `provider`, `endpoint`, credential fields, `reconcile_cron`), mounted on
-  `ProvisaConfig` as `metadata_egress` — same shape as `MailConfig`.
-- `provisa/api/metadata_egress/registry.py`: `metadata_egress(config)` factory mirroring
+  `ProvisaConfig` as `metadata_export` — same shape as `MailConfig`.
+- `provisa/api/metadata_export/registry.py`: `metadata_export(config)` factory mirroring
   `provisa/core/mail.py:130 email_sender()`. Unknown provider name → raise.
 - Directionality is a structural invariant: the module exposes no read/ingest entry point.
 
 Tests
-- `tests/unit/test_metadata_egress_provider.py` — factory resolves each registered name;
+- `tests/unit/test_metadata_export_provider.py` — factory resolves each registered name;
   unknown name raises; disabled config yields no provider; credentials never appear in
   `repr()` or logs.
-- `tests/unit/test_metadata_egress_config.py` — config parses from YAML, validation
+- `tests/unit/test_metadata_export_config.py` — config parses from YAML, validation
   rejects `enabled: true` with no provider/endpoint.
-- Import-boundary test: `provisa/api/metadata_egress/` defines no function whose name
+- Import-boundary test: `provisa/api/metadata_export/` defines no function whose name
   starts with `ingest`/`import_`/`pull` (guards the outbound-only constraint).
 
 ## Phase 2 — REQ-1070: the internal metadata model + snapshot builder
@@ -75,9 +75,9 @@ Tests
 Vendor-neutral model first; every adapter later maps *from* this, never from `ProvisaConfig`
 directly.
 
-- `provisa/api/metadata_egress/model.py`: `MetadataSnapshot` with `datasets`, `tables`,
+- `provisa/api/metadata_export/model.py`: `MetadataSnapshot` with `datasets`, `tables`,
   `columns`, `domains`, `owners`, `relationships`, `lineage_edges`, `governance_tags`.
-- `provisa/api/metadata_egress/builder.py`: `build_snapshot(config, lineage_source) -> MetadataSnapshot`.
+- `provisa/api/metadata_export/builder.py`: `build_snapshot(config, lineage_source) -> MetadataSnapshot`.
   - Assets/columns/descriptions/aliases from `ProvisaConfig`.
   - Domains + stewards via `provisa/core/domain_policy.py` (REQ-609). A domain with no
     steward cannot serve governed data, so it is published as `pending`, not omitted.
@@ -96,7 +96,7 @@ Tests
 
 ## Phase 3 — REQ-1071: governance-signal projection
 
-- `provisa/api/metadata_egress/governance.py`: `governance_tags(config, security_view) -> list[GovernanceTag]`.
+- `provisa/api/metadata_export/governance.py`: `governance_tags(config, security_view) -> list[GovernanceTag]`.
   - Masked columns from the `Column.mask_*` fields and `unmasked_to`.
   - RLS-restricted tables from `ProvisaConfig.rls_rules` / `RLSRule`.
   - Visibility-restricted assets from `provisa/security/` (REQ-039/040).
@@ -104,20 +104,20 @@ Tests
   mask pattern itself, which is a policy secret.
 
 Tests
-- `tests/unit/test_metadata_egress_governance.py` — each of the three signal kinds
+- `tests/unit/test_metadata_export_governance.py` — each of the three signal kinds
   produces a tag; a role in `unmasked_to` does not suppress the tag; mask patterns and
   RLS predicate bodies are absent from the emitted payload (this is the leak test).
 - `tests/features/REQ-1071.feature`.
 
 ## Phase 4 — REQ-1069a: OpenLineage + OpenMetadata adapters
 
-The two standards-first targets. Both are subclasses of `MetadataEgress` over the Phase 2
+The two standards-first targets. Both are subclasses of `MetadataExport` over the Phase 2
 model.
 
-- `provisa/api/metadata_egress/openlineage.py` — emits OpenLineage `RunEvent`s with the
+- `provisa/api/metadata_export/openlineage.py` — emits OpenLineage `RunEvent`s with the
   `columnLineage`, `schema`, `ownership`, and `dataQuality` facets. Lineage edges come from
   compiled queries and the MV DAG, so runs are real executions, not synthetic scans.
-- `provisa/api/metadata_egress/openmetadata.py` — maps assets to the OpenMetadata ingestion
+- `provisa/api/metadata_export/openmetadata.py` — maps assets to the OpenMetadata ingestion
   API (`createOrUpdate` for database/schema/table/column entities); governance tags become
   OpenMetadata tags/glossary terms.
 
@@ -126,10 +126,10 @@ Tests
   OpenLineage JSON Schema (vendored under `tests/fixtures/`); column-lineage facet matches
   the Phase 2 graph.
 - `tests/unit/test_openmetadata_map.py` — entity FQNs, hierarchy, and tag mapping.
-- `tests/integration/test_metadata_egress_openlineage_e2e.py` — publish against a Marquez
+- `tests/integration/test_metadata_export_openlineage_e2e.py` — publish against a Marquez
   container (OpenLineage reference server) on a per-worktree compose project; assert the
   dataset + column lineage is readable back out of Marquez.
-- `tests/integration/test_metadata_egress_openmetadata_e2e.py` — same shape against an
+- `tests/integration/test_metadata_export_openmetadata_e2e.py` — same shape against an
   OpenMetadata container.
 - `tests/features/REQ-1069.feature`.
 
@@ -145,12 +145,12 @@ Each is a thin subclass; no new metadata model.
 - `atlan.py`, `collibra.py` — REST asset upsert.
 
 Tests
-- `tests/unit/test_metadata_egress_vendors.py` — one file rather than one per vendor: all
+- `tests/unit/test_metadata_export_vendors.py` — one file rather than one per vendor: all
   four map the SAME governed fixture the e2e publishes, so the four mappings are compared
   against each other rather than each against its own recorded payload. Recorded HTTP
   fixtures were dropped — a fixture recorded from our own client proves only that the client
   did not change.
-- `tests/integration/test_metadata_egress_atlas_e2e.py` — real Apache Atlas container
+- `tests/integration/test_metadata_export_atlas_e2e.py` — real Apache Atlas container
   (`requires_atlas`), publish then read every assertion back out of Atlas's own API. This is
   also the Purview contract test, since the wire format is the same.
 - Atlan, Collibra, DataHub and Purview are *not executed against a live service*. Atlas
@@ -160,10 +160,10 @@ Tests
 
 ## Phase 6 — REQ-1072: sync
 
-Shipped as `provisa/api/metadata_egress/sync.py`.
+Shipped as `provisa/api/metadata_export/sync.py`.
 
 - Event-driven: metadata changes post through `provisa/events/queue.py:37 post_event` and
-  fan one work item to the org's egress target; `drain` claims that target, publishes, and
+  fan one work item to the org's export target; `drain` claims that target, publishes, and
   completes. Claim (not fanout) — duplicate publishes across the fleet are wrong, which is
   exactly the dispatch rule REQ-942 states. The injector sits at `_rebuild_schemas`, the one
   chokepoint every model mutation already passes through, so a new mutation cannot forget to
@@ -181,28 +181,28 @@ Shipped as `provisa/api/metadata_egress/sync.py`.
   around every publish — a publish for org A can never read org B's config.
 
 Tests
-- `tests/unit/test_metadata_egress_sync.py` — claim/complete lifecycle against a real
+- `tests/unit/test_metadata_export_sync.py` — claim/complete lifecycle against a real
   SQLite control plane; a failed or raising publish leaves the work item reclaimable, never
   silently completed; two drains publish once; one org's queue is invisible to another
   (which absorbed the planned separate tenant-isolation file, since isolation IS the
   queue's own boundary).
-- `tests/unit/test_metadata_egress_gate.py` — the REQ-1073 gate on the path with no request
+- `tests/unit/test_metadata_export_gate.py` — the REQ-1073 gate on the path with no request
   behind it: jobs armed for an entitled org, disarmed when the tier lapses.
-- `tests/features/REQ-1072.feature` + `tests/steps/steps_metadata_egress_sync.py`.
+- `tests/features/REQ-1072.feature` + `tests/steps/steps_metadata_export_sync.py`.
 
 ## Phase 7 — REQ-1073: premium gate + admin surface
 
-- `require_tier(org_id, Feature.METADATA_EGRESS)` at the publish entry point and at the
+- `require_tier(org_id, Feature.METADATA_EXPORT)` at the publish entry point and at the
   config-write endpoint — both, so a non-premium org cannot stage a config that a later
   reconcile would honour.
 - Admin UI tab: provider selection, credential entry, `health()` check, last-publish
   status and per-asset error list.
 
 Tests
-- `tests/unit/test_metadata_egress_admin_surface.py` — the four endpoints driven directly,
+- `tests/unit/test_metadata_export_admin_surface.py` — the four endpoints driven directly,
   which is what the planned admin e2e would have covered; premium publishes, non-premium is
   refused at read, write, health and publish.
-- `provisa-ui/src/__tests__/MetadataEgressTab.test.tsx` and `provisa-ui/e2e/metadata-egress-admin.spec.ts`.
+- `provisa-ui/src/__tests__/MetadataExportTab.test.tsx` and `provisa-ui/e2e/metadata-export-admin.spec.ts`.
 - No `REQ-1073.feature`: REQ-1073 is a constraint, and the generator writes features only
   for behavioral requirements.
 
@@ -225,12 +225,12 @@ Phases 5 and 6 are independent of each other.
    second builder and a second correctness argument; the full snapshot already has one, and
    one snapshot shape is what makes the event path and the reconcile converge on the same
    catalog state rather than race into different ones.
-2. **Purview auth** — settled as a widened `MetadataEgressConfig` (`auth_mode` plus the
+2. **Purview auth** — settled as a widened `MetadataExportConfig` (`auth_mode` plus the
    Entra fields), not a pluggable strategy object. Atlas then forced a third mode anyway:
    stock Apache Atlas rejects a bearer token, so `basic` joined `api_key`, `bearer` and
    `entra`. Four flat modes on one config beat four strategy classes for a branch this
    small, and the admin form renders the modes directly.
-3. **Tier names** — settled as `free` / `standard` / `premium`, with metadata egress
+3. **Tier names** — settled as `free` / `standard` / `premium`, with metadata export
    requiring `premium`. An unrecognised tier is refused, never defaulted.
 
 ## Not executed against a live service

@@ -27,16 +27,16 @@ import {
 } from "@mantine/core";
 import { Check, TriangleAlert } from "lucide-react";
 import {
-  checkMetadataEgress,
-  fetchMetadataEgress,
-  publishMetadataEgress,
-  setMetadataEgress,
-  type MetadataEgressState,
-  type MetadataEgressUpdate,
+  checkMetadataExport,
+  fetchMetadataExport,
+  publishMetadataExport,
+  setMetadataExport,
+  type MetadataExportState,
+  type MetadataExportUpdate,
   type PublishOutcome,
-} from "../../api/metadataEgress";
+} from "../../api/metadataExport";
 
-// REQ-1074: configure and operate the per-org metadata egress target.
+// REQ-1074: configure and operate the per-org metadata export target.
 //
 // Credentials are entered here and never read back (REQ-1074): the server reports each as
 // set/not-set, so an empty field means "leave the stored one alone" rather than "no secret". A
@@ -56,9 +56,9 @@ const AUTH_MODES = [
 
 type SecretField = "api_key" | "token" | "entra_client_secret";
 
-export function MetadataEgressTab() {
+export function MetadataExportTab() {
   const { t } = useTranslation();
-  const [s, setS] = useState<MetadataEgressState | null>(null);
+  const [s, setS] = useState<MetadataExportState | null>(null);
   // Typed credentials, kept apart from `s.config` because the config carries only set/not-set.
   const [secrets, setSecrets] = useState<Partial<Record<SecretField, string>>>({});
   const [busy, setBusy] = useState("");
@@ -68,7 +68,7 @@ export function MetadataEgressTab() {
   const [publish, setPublish] = useState<PublishOutcome | null>(null);
 
   useEffect(() => {
-    fetchMetadataEgress()
+    fetchMetadataExport()
       .then((state) => {
         setS(state);
         setPublish(state.last_publish);
@@ -76,7 +76,7 @@ export function MetadataEgressTab() {
       .catch((e) => setError(String(e)));
   }, []);
 
-  const patch = (p: Partial<MetadataEgressState["config"]>) =>
+  const patch = (p: Partial<MetadataExportState["config"]>) =>
     setS((prev) => (prev ? { ...prev, config: { ...prev.config, ...p } } : prev));
 
   const save = async () => {
@@ -85,7 +85,7 @@ export function MetadataEgressTab() {
     setMsg("");
     setError("");
     try {
-      const body: MetadataEgressUpdate = {
+      const body: MetadataExportUpdate = {
         enabled: s.config.enabled,
         provider: s.config.provider,
         endpoint: s.config.endpoint,
@@ -97,13 +97,13 @@ export function MetadataEgressTab() {
         timeout_seconds: s.config.timeout_seconds,
         ...secrets,
       };
-      await setMetadataEgress(body);
+      await setMetadataExport(body);
       // Re-read rather than assume: the set/not-set flags now reflect what was persisted, and a
       // typed secret is dropped from local state so it is not re-sent on the next save.
-      const fresh = await fetchMetadataEgress();
+      const fresh = await fetchMetadataExport();
       setS(fresh);
       setSecrets({});
-      setMsg(t("metadataEgressTab.saved"));
+      setMsg(t("metadataExportTab.saved"));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -116,7 +116,7 @@ export function MetadataEgressTab() {
     setError("");
     setHealth(null);
     try {
-      setHealth(await checkMetadataEgress());
+      setHealth(await checkMetadataExport());
     } catch (e) {
       setError(String(e));
     } finally {
@@ -128,7 +128,7 @@ export function MetadataEgressTab() {
     setBusy("publish");
     setError("");
     try {
-      setPublish(await publishMetadataEgress());
+      setPublish(await publishMetadataExport());
     } catch (e) {
       setError(String(e));
     } finally {
@@ -138,7 +138,7 @@ export function MetadataEgressTab() {
 
   if (error && !s)
     return (
-      <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="metadata-egress-error">
+      <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="metadata-export-error">
         {error}
       </Alert>
     );
@@ -147,7 +147,7 @@ export function MetadataEgressTab() {
     return (
       <Group gap="xs">
         <Loader size="sm" />
-        <Text>{t("metadataEgressTab.loading")}</Text>
+        <Text>{t("metadataExportTab.loading")}</Text>
       </Group>
     );
 
@@ -156,10 +156,10 @@ export function MetadataEgressTab() {
       <Alert
         color="yellow"
         icon={<TriangleAlert size={16} />}
-        data-testid="metadata-egress-not-entitled"
-        title={t("metadataEgressTab.notEntitledTitle")}
+        data-testid="metadata-export-not-entitled"
+        title={t("metadataExportTab.notEntitledTitle")}
       >
-        {t("metadataEgressTab.notEntitled", { tier: s.required_tier })}
+        {t("metadataExportTab.notEntitled", { tier: s.required_tier })}
       </Alert>
     );
 
@@ -168,9 +168,9 @@ export function MetadataEgressTab() {
     <TextInput
       label={label}
       type="password"
-      data-testid={`metadata-egress-${field.replace(/_/g, "-")}`}
-      placeholder={isSet ? t("metadataEgressTab.secretSet") : t("metadataEgressTab.secretUnset")}
-      description={t("metadataEgressTab.secretHelp")}
+      data-testid={`metadata-export-${field.replace(/_/g, "-")}`}
+      placeholder={isSet ? t("metadataExportTab.secretSet") : t("metadataExportTab.secretUnset")}
+      description={t("metadataExportTab.secretHelp")}
       value={secrets[field] ?? ""}
       onChange={(e) => setSecrets({ ...secrets, [field]: e.currentTarget.value })}
     />
@@ -178,33 +178,33 @@ export function MetadataEgressTab() {
 
   return (
     <Stack maw={860} gap="md">
-      <Title order={4}>{t("metadataEgressTab.heading")}</Title>
+      <Title order={4}>{t("metadataExportTab.heading")}</Title>
       <Text c="dimmed" size="sm">
-        {t("metadataEgressTab.intro")}
+        {t("metadataExportTab.intro")}
       </Text>
 
       <Checkbox
-        label={t("metadataEgressTab.enabled")}
-        data-testid="metadata-egress-enabled"
+        label={t("metadataExportTab.enabled")}
+        data-testid="metadata-export-enabled"
         checked={c.enabled}
         onChange={(e) => patch({ enabled: e.currentTarget.checked })}
       />
       <Select
-        label={t("metadataEgressTab.provider")}
-        data-testid="metadata-egress-provider"
+        label={t("metadataExportTab.provider")}
+        data-testid="metadata-export-provider"
         data={s.providers.map((p) => ({ value: p, label: p }))}
         value={c.provider || null}
         onChange={(v) => patch({ provider: v ?? "" })}
       />
       <TextInput
-        label={t("metadataEgressTab.endpoint")}
-        data-testid="metadata-egress-endpoint"
+        label={t("metadataExportTab.endpoint")}
+        data-testid="metadata-export-endpoint"
         value={c.endpoint}
         onChange={(e) => patch({ endpoint: e.currentTarget.value })}
       />
       <Select
-        label={t("metadataEgressTab.authMode")}
-        data-testid="metadata-egress-auth-mode"
+        label={t("metadataExportTab.authMode")}
+        data-testid="metadata-export-auth-mode"
         data={AUTH_MODES}
         value={c.auth_mode}
         onChange={(v) => patch({ auth_mode: v ?? "api_key" })}
@@ -213,86 +213,86 @@ export function MetadataEgressTab() {
       {c.auth_mode === ENTRA_MODE ? (
         <>
           <TextInput
-            label={t("metadataEgressTab.entraTenantId")}
-            data-testid="metadata-egress-entra-tenant-id"
+            label={t("metadataExportTab.entraTenantId")}
+            data-testid="metadata-export-entra-tenant-id"
             value={c.entra_tenant_id}
             onChange={(e) => patch({ entra_tenant_id: e.currentTarget.value })}
           />
           <TextInput
-            label={t("metadataEgressTab.entraClientId")}
-            data-testid="metadata-egress-entra-client-id"
+            label={t("metadataExportTab.entraClientId")}
+            data-testid="metadata-export-entra-client-id"
             value={c.entra_client_id}
             onChange={(e) => patch({ entra_client_id: e.currentTarget.value })}
           />
           {secretField(
             "entra_client_secret",
-            t("metadataEgressTab.entraClientSecret"),
+            t("metadataExportTab.entraClientSecret"),
             c.entra_client_secret_set,
           )}
         </>
       ) : c.auth_mode === BASIC_MODE ? (
         <>
           <TextInput
-            label={t("metadataEgressTab.username")}
-            data-testid="metadata-egress-username"
+            label={t("metadataExportTab.username")}
+            data-testid="metadata-export-username"
             value={c.username}
             onChange={(e) => patch({ username: e.currentTarget.value })}
           />
           {/* The password rides in the same `token` field the bearer mode uses — one stored
               secret per config, read by whichever mode is selected. */}
-          {secretField("token", t("metadataEgressTab.password"), c.token_set)}
+          {secretField("token", t("metadataExportTab.password"), c.token_set)}
         </>
       ) : (
         secretField(
           c.auth_mode === "bearer" ? "token" : "api_key",
-          c.auth_mode === "bearer" ? t("metadataEgressTab.token") : t("metadataEgressTab.apiKey"),
+          c.auth_mode === "bearer" ? t("metadataExportTab.token") : t("metadataExportTab.apiKey"),
           c.auth_mode === "bearer" ? c.token_set : c.api_key_set,
         )
       )}
 
       <TextInput
-        label={t("metadataEgressTab.reconcileCron")}
-        description={t("metadataEgressTab.reconcileCronHelp")}
-        data-testid="metadata-egress-reconcile-cron"
+        label={t("metadataExportTab.reconcileCron")}
+        description={t("metadataExportTab.reconcileCronHelp")}
+        data-testid="metadata-export-reconcile-cron"
         value={c.reconcile_cron}
         onChange={(e) => patch({ reconcile_cron: e.currentTarget.value })}
       />
       <NumberInput
-        label={t("metadataEgressTab.timeout")}
-        data-testid="metadata-egress-timeout"
+        label={t("metadataExportTab.timeout")}
+        data-testid="metadata-export-timeout"
         value={c.timeout_seconds}
         onChange={(v) => patch({ timeout_seconds: Number(v) || 0 })}
       />
 
       <Group>
-        <Button onClick={save} loading={busy === "save"} data-testid="metadata-egress-save">
-          {t("metadataEgressTab.save")}
+        <Button onClick={save} loading={busy === "save"} data-testid="metadata-export-save">
+          {t("metadataExportTab.save")}
         </Button>
         <Button
           variant="default"
           onClick={runHealth}
           loading={busy === "health"}
-          data-testid="metadata-egress-health"
+          data-testid="metadata-export-health"
         >
-          {t("metadataEgressTab.testConnection")}
+          {t("metadataExportTab.testConnection")}
         </Button>
         <Button
           variant="default"
           onClick={runPublish}
           loading={busy === "publish"}
-          data-testid="metadata-egress-publish"
+          data-testid="metadata-export-publish"
         >
-          {t("metadataEgressTab.publishNow")}
+          {t("metadataExportTab.publishNow")}
         </Button>
       </Group>
 
       {msg && (
-        <Alert color="green" icon={<Check size={16} />} data-testid="metadata-egress-saved">
+        <Alert color="green" icon={<Check size={16} />} data-testid="metadata-export-saved">
           {msg}
         </Alert>
       )}
       {error && (
-        <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="metadata-egress-error">
+        <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="metadata-export-error">
           {error}
         </Alert>
       )}
@@ -300,31 +300,31 @@ export function MetadataEgressTab() {
         <Alert
           color={health.ok ? "green" : "red"}
           icon={health.ok ? <Check size={16} /> : <TriangleAlert size={16} />}
-          data-testid="metadata-egress-health-result"
+          data-testid="metadata-export-health-result"
         >
-          {health.ok ? t("metadataEgressTab.healthOk") : health.error}
+          {health.ok ? t("metadataExportTab.healthOk") : health.error}
         </Alert>
       )}
 
       {publish && (
-        <Stack gap="xs" data-testid="metadata-egress-last-publish">
+        <Stack gap="xs" data-testid="metadata-export-last-publish">
           <Group gap="xs">
-            <Title order={5}>{t("metadataEgressTab.lastPublishHeading")}</Title>
+            <Title order={5}>{t("metadataExportTab.lastPublishHeading")}</Title>
             <Badge color={publish.ok ? "green" : "red"}>
               {publish.ok
-                ? t("metadataEgressTab.publishComplete", { count: publish.total_published })
-                : t("metadataEgressTab.publishPartial", {
+                ? t("metadataExportTab.publishComplete", { count: publish.total_published })
+                : t("metadataExportTab.publishPartial", {
                     count: publish.total_published,
                     failed: publish.errors.length,
                   })}
             </Badge>
           </Group>
           {publish.errors.length > 0 && (
-            <Table data-testid="metadata-egress-publish-errors">
+            <Table data-testid="metadata-export-publish-errors">
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>{t("metadataEgressTab.errorAsset")}</Table.Th>
-                  <Table.Th>{t("metadataEgressTab.errorMessage")}</Table.Th>
+                  <Table.Th>{t("metadataExportTab.errorAsset")}</Table.Th>
+                  <Table.Th>{t("metadataExportTab.errorMessage")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>

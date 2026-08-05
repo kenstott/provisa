@@ -1,4 +1,4 @@
-# REQ-1069 — Marquez server config for the metadata-egress e2e stack.
+# REQ-1069 — Marquez server config for the metadata-export e2e stack.
 #
 # The image's bundled marquez.dev.yml hardcodes the database host as `postgres`, which on the
 # shared test network is Provisa's own core Postgres, not Marquez's. This config names the

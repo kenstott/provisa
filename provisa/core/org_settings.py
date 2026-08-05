@@ -33,10 +33,10 @@ if TYPE_CHECKING:
 # per LLM operation (this is what "change the LLM provider for NL" edits — sql_generation);
 # `vector_models` is the embedding registry the org's own semantic search uses; `nl` carries the
 # NL rate limit. Any key not listed here is deployment-wide by definition and is rejected.
-# REQ-1074: metadata_egress is org-scoped — the catalog an org publishes to, and the credentials
+# REQ-1074: metadata_export is org-scoped — the catalog an org publishes to, and the credentials
 # it publishes with, belong to that org, not to the deployment.
 ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
-    {"ai_models", "vector_models", "nl", "metadata_egress"}
+    {"ai_models", "vector_models", "nl", "metadata_export"}
 )
 
 

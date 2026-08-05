@@ -12,8 +12,8 @@ import dataclasses
 import pytest
 from pytest_bdd import given, scenarios, then, when
 
-from provisa.api.metadata_egress import build_snapshot
-from provisa.api.metadata_egress.model import GovernanceSignal
+from provisa.api.metadata_export import build_snapshot
+from provisa.api.metadata_export.model import GovernanceSignal
 from provisa.core.models import (
     Column,
     Domain,

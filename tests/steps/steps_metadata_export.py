@@ -11,7 +11,7 @@ import pytest
 
 from pytest_bdd import given, scenarios, then, when
 
-from provisa.api.metadata_egress import build_snapshot
+from provisa.api.metadata_export import build_snapshot
 from provisa.core.models import (
     Cardinality,
     Column,

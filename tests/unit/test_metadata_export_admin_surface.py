@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1074: the admin surface that configures and operates metadata egress.
+"""REQ-1074: the admin surface that configures and operates metadata export.
 
 The four things worth pinning here are the ones a wrong implementation gets wrong quietly:
 credentials must never travel back out on the read, an edit that omits a credential must not
@@ -62,7 +62,7 @@ def surface(monkeypatch):
     written: dict = {}
 
     async def _resolve(_db):
-        return {"metadata_egress": dict(stored)}
+        return {"metadata_export": dict(stored)}
 
     async def _write(_db, updates, *, updated_by):
         written.clear()
@@ -88,11 +88,11 @@ def surface(monkeypatch):
 
 
 async def _put(body: dict):
-    from provisa.api.admin.metadata_egress_router import set_metadata_egress
+    from provisa.api.admin.metadata_export_router import set_metadata_export
 
     request = _request()
     request.json = _json_body(body)
-    return await set_metadata_egress(request)
+    return await set_metadata_export(request)
 
 
 # --- reading ---------------------------------------------------------------------------------
@@ -101,12 +101,12 @@ async def _put(body: dict):
 @pytest.mark.asyncio
 async def test_the_read_reports_credentials_as_set_and_never_returns_them(surface):
     """A token readable through the tab is a token any org admin can exfiltrate."""
-    from provisa.api.admin.metadata_egress_router import get_metadata_egress
+    from provisa.api.admin.metadata_export_router import get_metadata_export
 
     surface.stored.update(
         {"enabled": True, "provider": "openlineage", "endpoint": "http://mz", "api_key": "s3cr3t"}
     )
-    body = await get_metadata_egress(_request())
+    body = await get_metadata_export(_request())
 
     config = body["config"]
     assert config["api_key_set"] is True
@@ -118,11 +118,11 @@ async def test_the_read_reports_credentials_as_set_and_never_returns_them(surfac
 
 @pytest.mark.asyncio
 async def test_the_read_carries_the_entitlement_flag_the_tab_gates_on(surface):
-    from provisa.api.admin.metadata_egress_router import get_metadata_egress
+    from provisa.api.admin.metadata_export_router import get_metadata_export
 
-    assert (await get_metadata_egress(_request()))["entitled"] is True
+    assert (await get_metadata_export(_request()))["entitled"] is True
     surface.org(tier="standard")
-    body = await get_metadata_egress(_request())
+    body = await get_metadata_export(_request())
     assert body["entitled"] is False
     # The tab tells the admin what tier would open it, so the gate is explicable, not just shut.
     assert body["required_tier"] == "premium"
@@ -130,9 +130,9 @@ async def test_the_read_carries_the_entitlement_flag_the_tab_gates_on(surface):
 
 @pytest.mark.asyncio
 async def test_the_read_lists_the_providers_the_registry_actually_has(surface):
-    from provisa.api.admin.metadata_egress_router import get_metadata_egress
+    from provisa.api.admin.metadata_export_router import get_metadata_export
 
-    providers = (await get_metadata_egress(_request()))["providers"]
+    providers = (await get_metadata_export(_request()))["providers"]
     assert {"openlineage", "openmetadata"} <= set(providers)
 
 
@@ -151,8 +151,8 @@ async def test_editing_the_endpoint_does_not_erase_the_stored_credential(surface
     )
     await _put({"endpoint": "http://new"})
 
-    assert surface.written["metadata_egress"]["endpoint"] == "http://new"
-    assert surface.written["metadata_egress"]["api_key"] == "keep-me"
+    assert surface.written["metadata_export"]["endpoint"] == "http://new"
+    assert surface.written["metadata_export"]["api_key"] == "keep-me"
 
 
 @pytest.mark.asyncio
@@ -162,16 +162,16 @@ async def test_an_empty_credential_clears_it(surface):
     )
     await _put({"api_key": ""})
 
-    assert surface.written["metadata_egress"]["api_key"] == ""
+    assert surface.written["metadata_export"]["api_key"] == ""
 
 
 @pytest.mark.asyncio
-async def test_a_key_outside_the_egress_settings_is_not_written(surface):
+async def test_a_key_outside_the_export_settings_is_not_written(surface):
     # The body is an untrusted dict; only the enumerated settings may reach storage, or an admin
-    # writes arbitrary config through the egress door.
+    # writes arbitrary config through the export door.
     await _put({"endpoint": "http://mz", "provider": "openlineage", "enabled": True, "tier": "x"})
 
-    assert "tier" not in surface.written["metadata_egress"]
+    assert "tier" not in surface.written["metadata_export"]
 
 
 @pytest.mark.asyncio
@@ -194,11 +194,11 @@ async def test_the_write_is_attributed_to_the_caller(surface):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("handler_name", ["set_metadata_egress", "check_metadata_egress",
-                                          "publish_metadata_egress"])
+@pytest.mark.parametrize("handler_name", ["set_metadata_export", "check_metadata_export",
+                                          "publish_metadata_export"])
 async def test_every_operating_handler_refuses_an_unentitled_org(surface, handler_name):
     """REQ-1073: hiding the tab is not the gate — the endpoints are."""
-    import provisa.api.admin.metadata_egress_router as mod
+    import provisa.api.admin.metadata_export_router as mod
 
     surface.org(tier="standard")
     surface.stored.update({"enabled": True, "provider": "openlineage", "endpoint": "http://mz"})
@@ -221,9 +221,9 @@ async def test_an_org_the_control_plane_never_registered_is_refused(surface):
 
 
 async def _unregistered(request):
-    from provisa.api.admin.metadata_egress_router import set_metadata_egress
+    from provisa.api.admin.metadata_export_router import set_metadata_export
 
-    return await set_metadata_egress(request)
+    return await set_metadata_export(request)
 
 
 # --- health and publish ----------------------------------------------------------------------
@@ -232,8 +232,8 @@ async def _unregistered(request):
 @pytest.mark.asyncio
 async def test_health_reports_the_refusal_text_rather_than_a_bare_failure(surface, monkeypatch):
     """A wrong URL and a rejected credential look identical without the message."""
-    import provisa.api.admin.metadata_egress_router as mod
-    from provisa.api.admin.metadata_egress_router import check_metadata_egress
+    import provisa.api.admin.metadata_export_router as mod
+    from provisa.api.admin.metadata_export_router import check_metadata_export
 
     surface.stored.update({"enabled": True, "provider": "openlineage", "endpoint": "http://mz"})
 
@@ -241,8 +241,8 @@ async def test_health_reports_the_refusal_text_rather_than_a_bare_failure(surfac
         async def health(self):
             raise ConnectionError("Name or service not known")
 
-    monkeypatch.setattr(mod, "metadata_egress", lambda config: _Failing())
-    body = await check_metadata_egress(_request())
+    monkeypatch.setattr(mod, "metadata_export", lambda config: _Failing())
+    body = await check_metadata_export(_request())
 
     assert body["ok"] is False
     assert "Name or service not known" in body["error"]
@@ -252,12 +252,12 @@ async def test_health_reports_the_refusal_text_rather_than_a_bare_failure(surfac
 @pytest.mark.asyncio
 async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypatch):
     """A partial publish is the case the tab exists to diagnose."""
-    from provisa.api.admin.metadata_egress_router import (
-        get_metadata_egress,
-        publish_metadata_egress,
+    from provisa.api.admin.metadata_export_router import (
+        get_metadata_export,
+        publish_metadata_export,
     )
-    from provisa.api.metadata_egress.model import AssetRef
-    from provisa.api.metadata_egress.provider import AssetError, PublishResult
+    from provisa.api.metadata_export.model import AssetRef
+    from provisa.api.metadata_export.provider import AssetError, PublishResult
 
     surface.stored.update({"enabled": True, "provider": "openlineage", "endpoint": "http://mz"})
     result = PublishResult(
@@ -277,11 +277,11 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
 
     # The endpoint publishes through the REQ-1072 sync path, so the adapter and the builder are
     # stubbed where that path resolves them.
-    import provisa.api.metadata_egress.sync as sync_mod
+    import provisa.api.metadata_export.sync as sync_mod
 
-    monkeypatch.setattr(sync_mod, "metadata_egress", lambda config: _Partial())
+    monkeypatch.setattr(sync_mod, "metadata_export", lambda config: _Partial())
     monkeypatch.setattr(sync_mod, "build_snapshot", lambda config, *, org_id, dialect: object())
-    body = await publish_metadata_egress(_request())
+    body = await publish_metadata_export(_request())
 
     assert body["ok"] is False
     assert body["total_published"] == 2
@@ -289,15 +289,15 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
         {"asset": "wh.public.orders", "message": "422 unknown field type"}
     ]
     # The tab shows the last outcome without re-publishing to find out what it was.
-    assert (await get_metadata_egress(_request()))["last_publish"]["errors"] == body["errors"]
+    assert (await get_metadata_export(_request()))["last_publish"]["errors"] == body["errors"]
 
 
 @pytest.mark.asyncio
 async def test_publishing_a_disabled_target_is_refused_before_a_snapshot_is_built(surface):
-    from provisa.api.admin.metadata_egress_router import publish_metadata_egress
+    from provisa.api.admin.metadata_export_router import publish_metadata_export
 
     surface.stored.update({"enabled": False, "provider": "openlineage", "endpoint": "http://mz"})
 
     with pytest.raises(ApiError) as exc:
-        await publish_metadata_egress(_request())
+        await publish_metadata_export(_request())
     assert exc.value.status_code == 400

@@ -33,16 +33,16 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from provisa.api.metadata_egress.provider import (
+from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
-    MetadataEgress,
+    MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_egress.registry import register_provider
+from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_egress.model import MetadataSnapshot
+    from provisa.api.metadata_export.model import MetadataSnapshot
 
 # Collibra ships these operating-model types out of the box, and its own JDBC ingestion uses
 # them — so a Provisa-published table lands beside a Collibra-ingested one instead of in a
@@ -221,7 +221,7 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
 
 
 @register_provider
-class CollibraEgress(MetadataEgress):  # REQ-1069
+class CollibraExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to Collibra through its JSON import job."""
 
     provider_name = "collibra"

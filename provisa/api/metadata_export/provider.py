@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The MetadataEgress port (REQ-1068).
+"""The MetadataExport port (REQ-1068).
 
 Mirrors the provider pattern already in the tree: an abstract base with a stable
 ``provider_name`` (``provisa/auth/models.py`` ``AuthProvider``) resolved by a factory that
@@ -26,12 +26,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_egress.model import AssetRef, MetadataSnapshot
-    from provisa.core.models import MetadataEgressConfig
+    from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
+    from provisa.core.models import MetadataExportConfig
 
 
-class MetadataEgressNotConfiguredError(RuntimeError):  # REQ-1068
-    """Raised when egress is asked for but no usable provider is configured."""
+class MetadataExportNotConfiguredError(RuntimeError):  # REQ-1068
+    """Raised when export is asked for but no usable provider is configured."""
 
 
 @dataclass(frozen=True)
@@ -79,15 +79,15 @@ class PublishResult:  # REQ-1068
         return sum(self.published.values())
 
 
-class MetadataEgress(ABC):  # REQ-1068
+class MetadataExport(ABC):  # REQ-1068
     """Abstract base for outbound metadata publication to an external catalog."""
 
     # Stable provider identifier ("openlineage", "openmetadata", "atlas", …). Set by each
-    # concrete provider and matched against ``metadata_egress.provider`` in config; a
+    # concrete provider and matched against ``metadata_export.provider`` in config; a
     # provider that leaves it unset is a wiring fault, caught by the registry.
     provider_name: str
 
-    def __init__(self, config: MetadataEgressConfig) -> None:
+    def __init__(self, config: MetadataExportConfig) -> None:
         self._config = config
 
     @abstractmethod

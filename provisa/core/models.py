@@ -950,14 +950,14 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330
     base_url: str = "http://localhost:5173"
 
 
-class MetadataEgressConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
+class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
     """Outbound publication of governance metadata to an external catalog.
 
     Per-org, premium-gated (REQ-1073). Outbound only — there is no ingest counterpart, by
     design (REQ-1068): Provisa is the upstream, and an external catalog is never read back
     as the source of truth.
 
-    provider: which MetadataEgress adapter backs the port — "openlineage", "openmetadata",
+    provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
         "datahub", "atlan" or "collibra". An unknown name is refused at construction.
     endpoint: base URL of the target catalog.
@@ -987,8 +987,8 @@ class MetadataEgressConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
     timeout_seconds: int = 30
 
     @model_validator(mode="after")
-    def _validate_enabled(self) -> "MetadataEgressConfig":
-        # REQ-1068: an enabled egress with no provider or no endpoint cannot publish. Failing
+    def _validate_enabled(self) -> "MetadataExportConfig":
+        # REQ-1068: an enabled export with no provider or no endpoint cannot publish. Failing
         # here names the setting; failing at publish time names a connection.
         if not self.enabled:
             return self
@@ -999,7 +999,7 @@ class MetadataEgressConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
         ]
         if missing:
             raise ValueError(
-                f"metadata_egress.enabled is true but {', '.join(missing)} "
+                f"metadata_export.enabled is true but {', '.join(missing)} "
                 f"{'is' if len(missing) == 1 else 'are'} unset"
             )
         return self
@@ -1303,8 +1303,8 @@ class ProvisaConfig(BaseModel):
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
-    metadata_egress: MetadataEgressConfig = Field(
-        default_factory=MetadataEgressConfig
+    metadata_export: MetadataExportConfig = Field(
+        default_factory=MetadataExportConfig
     )  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)

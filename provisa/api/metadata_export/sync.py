@@ -13,7 +13,7 @@
 Two paths, one publish:
 
 * **Event-driven.** A metadata change posts an event onto the REQ-942 substrate and fans one
-  work item out to this org's egress target. ``drain`` claims that target's pending work,
+  work item out to this org's export target. ``drain`` claims that target's pending work,
   publishes, and completes it. A *claim* rather than a repeater read, because two processes
   publishing the same change to the same catalog is the failure this substrate exists to
   prevent.
@@ -40,16 +40,16 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from provisa.api.metadata_egress.builder import build_snapshot
-from provisa.api.metadata_egress.provider import PublishResult
-from provisa.api.metadata_egress.registry import metadata_egress
+from provisa.api.metadata_export.builder import build_snapshot
+from provisa.api.metadata_export.provider import PublishResult
+from provisa.api.metadata_export.registry import metadata_export
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
     UnknownTierError,
     require_feature,
 )
-from provisa.core.models import MetadataEgressConfig
+from provisa.core.models import MetadataExportConfig
 from provisa.events import queue
 
 if TYPE_CHECKING:
@@ -59,8 +59,8 @@ logger = logging.getLogger(__name__)
 
 # The dependent-table name metadata-change work items are fanned out to, and the lease owner
 # that claims them. The queue lives in the org's own schema, so the name needs no org qualifier.
-EGRESS_TARGET = "__metadata_egress__"
-PROCESSOR_NAME = "metadata_egress"
+EGRESS_TARGET = "__metadata_export__"
+PROCESSOR_NAME = "metadata_export"
 
 # What a model-wide change is posted about. The governed model is one publish unit — a domain
 # rename or a relationship edit is not attributable to a single table — so the event names the
@@ -76,12 +76,12 @@ DRAIN_SECONDS = 15
 GOVERNED_DIALECT = "postgres"
 
 
-class EgressNotAllowed(RuntimeError):  # REQ-1072, REQ-1073
+class ExportNotAllowed(RuntimeError):  # REQ-1072, REQ-1073
     """The org may not publish right now — disabled, or below the entitled tier."""
 
 
 async def notify_metadata_change(conn: Any, *, table: str, reason: str) -> int:
-    """Post a metadata change for ``table`` and fan one work item to the egress target.
+    """Post a metadata change for ``table`` and fan one work item to the export target.
 
     Called in the same transaction as the change itself, which is what the REQ-942 outbox is
     for: a committed model change with no queued publish is exactly the drift the reconcile
@@ -109,19 +109,19 @@ async def notify_model_changed(org_id: str, *, reason: str) -> int | None:
     token = set_current_org(org_id)
     try:
         try:
-            await _egress_config(org_id)
-        except EgressNotAllowed:
+            await _export_config(org_id)
+        except ExportNotAllowed:
             return None
         tenant_db = state.tenant_db
-        assert tenant_db is not None  # _egress_config refuses without one
+        assert tenant_db is not None  # _export_config refuses without one
         async with tenant_db.acquire() as conn:
             return await notify_metadata_change(conn, table=MODEL_NODE, reason=reason)
     finally:
         reset_current_org(token)
 
 
-async def _egress_config(org_id: str) -> MetadataEgressConfig:
-    """The org's egress settings, refused unless it may publish.
+async def _export_config(org_id: str) -> MetadataExportConfig:
+    """The org's export settings, refused unless it may publish.
 
     Entitlement is checked here rather than only at the admin endpoint (REQ-1073): a scheduled
     reconcile has no request behind it, so a config staged while the org was entitled would
@@ -132,19 +132,19 @@ async def _egress_config(org_id: str) -> MetadataEgressConfig:
     from provisa.core.org_settings import resolve_org_config
 
     try:
-        require_feature(control_plane_store(), org_id, Feature.METADATA_EGRESS)
+        require_feature(control_plane_store(), org_id, Feature.METADATA_EXPORT)
     except (EntitlementError, KeyError, UnknownTierError) as exc:
-        raise EgressNotAllowed(f"org {org_id!r} is not entitled to metadata egress: {exc}") from exc
+        raise ExportNotAllowed(f"org {org_id!r} is not entitled to metadata export: {exc}") from exc
     tenant_db = state.tenant_db
     if tenant_db is None:
         # The org's settings live in its tenant database; without one there is no config to
         # publish from. Reaching here means the runtime was never built, which is a wiring
         # fault to surface rather than a state to publish an empty catalog from.
-        raise EgressNotAllowed(f"org {org_id!r} has no tenant database bound")
+        raise ExportNotAllowed(f"org {org_id!r} has no tenant database bound")
     resolved = await resolve_org_config(tenant_db)
-    config = MetadataEgressConfig(**dict(resolved.get("metadata_egress") or {}))
+    config = MetadataExportConfig(**dict(resolved.get("metadata_export") or {}))
     if not config.enabled:
-        raise EgressNotAllowed(f"org {org_id!r} has metadata egress disabled")
+        raise ExportNotAllowed(f"org {org_id!r} has metadata export disabled")
     return config
 
 
@@ -159,9 +159,9 @@ async def publish_snapshot(org_id: str) -> PublishResult:
 
     token = set_current_org(org_id)
     try:
-        config = await _egress_config(org_id)
+        config = await _export_config(org_id)
         snapshot = build_snapshot(state.config, org_id=org_id, dialect=GOVERNED_DIALECT)
-        return await metadata_egress(config).publish(snapshot)
+        return await metadata_export(config).publish(snapshot)
     finally:
         reset_current_org(token)
 
@@ -176,15 +176,15 @@ async def reconcile_org(org_id: str) -> PublishResult | None:
     """
     try:
         result = await publish_snapshot(org_id)
-    except EgressNotAllowed as exc:
-        logger.debug("metadata egress reconcile skipped: %s", exc)
+    except ExportNotAllowed as exc:
+        logger.debug("metadata export reconcile skipped: %s", exc)
         return None
     except Exception:
-        logger.exception("metadata egress reconcile failed for org %s", org_id)
+        logger.exception("metadata export reconcile failed for org %s", org_id)
         raise
     if not result.ok:
         logger.warning(
-            "metadata egress reconcile for org %s published %d assets with %d rejected: %s",
+            "metadata export reconcile for org %s published %d assets with %d rejected: %s",
             org_id,
             result.total_published(),
             len(result.errors),
@@ -213,7 +213,7 @@ async def drain(conn: Any, org_id: str, *, now: datetime | None = None) -> Publi
     result = await publish_snapshot(org_id)
     if not result.ok:
         logger.warning(
-            "metadata egress publish for org %s rejected %d assets; %d work items stay claimed "
+            "metadata export publish for org %s rejected %d assets; %d work items stay claimed "
             "for the reaper",
             org_id,
             len(result.errors),
@@ -243,21 +243,21 @@ async def drain_org(org_id: str) -> PublishResult | None:
             return None
         async with tenant_db.acquire() as conn:
             return await drain(conn, org_id)
-    except EgressNotAllowed as exc:
+    except ExportNotAllowed as exc:
         # The org stopped publishing between the job being armed and this fire. Its work items
         # stay unclaimed until the config comes back or the job is disarmed.
-        logger.debug("metadata egress drain skipped: %s", exc)
+        logger.debug("metadata export drain skipped: %s", exc)
         return None
     finally:
         reset_current_org(token)
 
 
 def reconcile_job_id(org_id: str) -> str:
-    return f"metadata_egress:reconcile:{org_id}"
+    return f"metadata_export:reconcile:{org_id}"
 
 
 def drain_job_id(org_id: str) -> str:
-    return f"metadata_egress:drain:{org_id}"
+    return f"metadata_export:drain:{org_id}"
 
 
 async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
@@ -272,8 +272,8 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
 
     token = set_current_org(org_id)
     try:
-        config = await _egress_config(org_id)
-    except EgressNotAllowed:
+        config = await _export_config(org_id)
+    except ExportNotAllowed:
         for job_id in (drain_job_id(org_id), reconcile_job_id(org_id)):
             if scheduler.get_job(job_id) is not None:
                 scheduler.remove_job(job_id)
@@ -289,7 +289,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
         trigger=IntervalTrigger(seconds=DRAIN_SECONDS),
         args=[org_id],
         id=drain_job_id(org_id),
-        name=f"metadata_egress:drain:{org_id}",
+        name=f"metadata_export:drain:{org_id}",
         replace_existing=True,
         # One publish at a time per org: overlapping drains would send two snapshots of
         # different vintages to the same catalog with no ordering between them.
@@ -301,13 +301,13 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
         trigger=CronTrigger.from_crontab(config.reconcile_cron),
         args=[org_id],
         id=reconcile_job_id(org_id),
-        name=f"metadata_egress:reconcile:{org_id}",
+        name=f"metadata_export:reconcile:{org_id}",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     logger.info(
-        "metadata egress sync armed for org %s: drain every %ds, reconcile %s -> %s",
+        "metadata export sync armed for org %s: drain every %ds, reconcile %s -> %s",
         org_id,
         DRAIN_SECONDS,
         config.reconcile_cron,

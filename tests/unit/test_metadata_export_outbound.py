@@ -25,9 +25,9 @@ from pathlib import Path
 
 import pytest
 
-import provisa.api.metadata_egress as egress_package
+import provisa.api.metadata_export as export_package
 
-_PACKAGE_DIR = Path(str(egress_package.__file__)).parent
+_PACKAGE_DIR = Path(str(export_package.__file__)).parent
 
 # Verbs that would mean "read the external catalog into Provisa". ``publish``, ``emit``,
 # ``push``, ``send`` and ``health`` are the outbound vocabulary and stay allowed.
@@ -57,11 +57,11 @@ def test_no_inbound_entry_points(path: Path):
 
 
 def test_port_declares_no_read_method():
-    from provisa.api.metadata_egress.provider import MetadataEgress
+    from provisa.api.metadata_export.provider import MetadataExport
 
     declared = {
-        name for name in vars(MetadataEgress) if not name.startswith("_") and callable(
-            vars(MetadataEgress)[name]
+        name for name in vars(MetadataExport) if not name.startswith("_") and callable(
+            vars(MetadataExport)[name]
         )
     }
     assert declared == {"publish", "health"}

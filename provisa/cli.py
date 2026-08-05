@@ -72,6 +72,7 @@ def _apply_demo_config() -> Path:
     if not cfg.exists():
         raise FileNotFoundError(f"demo config not found (looked for {cfg})")
     os.environ.setdefault("PROVISA_CONFIG", str(cfg))
+    os.environ.setdefault("PROVISA_DEMO", "1")
     os.environ.setdefault("PROVISA_DEMO_DIR", str(data_dir))
     os.environ.setdefault("PROVISA_CONFIG_REPLACE", "true")
     return cfg

@@ -42,31 +42,42 @@ def _store_with(tier: str) -> ControlPlaneStore:
     return store
 
 
-def test_premium_org_is_entitled_to_metadata_egress():  # REQ-1073
-    require_feature(_store_with("premium"), "o1", Feature.METADATA_EGRESS)
+def test_premium_org_is_entitled_to_metadata_export():  # REQ-1073
+    require_feature(_store_with("premium"), "o1", Feature.METADATA_EXPORT)
 
 
 @pytest.mark.parametrize("tier", ["free", "standard"])
-def test_below_premium_is_denied_metadata_egress(tier):  # REQ-1073
+def test_below_premium_is_denied_metadata_export(tier):  # REQ-1073
     with pytest.raises(EntitlementError) as exc:
-        require_feature(_store_with(tier), "o1", Feature.METADATA_EGRESS)
+        require_feature(_store_with(tier), "o1", Feature.METADATA_EXPORT)
     assert exc.value.org_id == "o1"
-    assert exc.value.feature is Feature.METADATA_EGRESS
+    assert exc.value.feature is Feature.METADATA_EXPORT
     assert exc.value.required is Tier.PREMIUM
     assert "o1" in str(exc.value)
-    assert "metadata_egress" in str(exc.value)
+    assert "metadata_export" in str(exc.value)
+
+
+@pytest.mark.parametrize("tier", ["free", "standard", "premium"])
+def test_demo_mode_exempts_every_tier(tier, monkeypatch):  # REQ-1073
+    monkeypatch.setenv("PROVISA_DEMO", "1")
+    require_feature(_store_with(tier), "o1", Feature.METADATA_EXPORT)
+
+
+def test_demo_mode_exempts_even_unregistered_orgs(monkeypatch):  # REQ-1073
+    monkeypatch.setenv("PROVISA_DEMO", "1")
+    require_feature(ControlPlaneStore(), "ghost", Feature.METADATA_EXPORT)
 
 
 def test_unknown_tier_is_denied_not_defaulted():  # REQ-1073
     with pytest.raises(UnknownTierError) as exc:
-        require_feature(_store_with("platinum"), "o1", Feature.METADATA_EGRESS)
+        require_feature(_store_with("platinum"), "o1", Feature.METADATA_EXPORT)
     assert exc.value.tier == "platinum"
     assert "free" in str(exc.value)
 
 
 def test_unregistered_org_raises_keyerror():  # REQ-1073
     with pytest.raises(KeyError):
-        require_feature(ControlPlaneStore(), "nonexistent", Feature.METADATA_EGRESS)
+        require_feature(ControlPlaneStore(), "nonexistent", Feature.METADATA_EXPORT)
 
 
 def test_parse_tier_round_trips_every_tier():  # REQ-1053
@@ -75,14 +86,14 @@ def test_parse_tier_round_trips_every_tier():  # REQ-1053
 
 
 def test_tier_allows_is_ordered():  # REQ-1066
-    assert not tier_allows(Tier.FREE, Feature.METADATA_EGRESS)
-    assert not tier_allows(Tier.STANDARD, Feature.METADATA_EGRESS)
-    assert tier_allows(Tier.PREMIUM, Feature.METADATA_EGRESS)
+    assert not tier_allows(Tier.FREE, Feature.METADATA_EXPORT)
+    assert not tier_allows(Tier.STANDARD, Feature.METADATA_EXPORT)
+    assert tier_allows(Tier.PREMIUM, Feature.METADATA_EXPORT)
 
 
 def test_min_tier_is_the_single_definition():  # REQ-1053
     # The pricing page (REQ-1053) and the runtime gate (REQ-1073) read this one mapping.
-    assert min_tier(Feature.METADATA_EGRESS) is Tier.PREMIUM
+    assert min_tier(Feature.METADATA_EXPORT) is Tier.PREMIUM
 
 
 def test_every_feature_declares_a_minimum_tier():  # REQ-1066

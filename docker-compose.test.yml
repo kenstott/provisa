@@ -669,7 +669,7 @@ services:
       retries: 36
       start_period: 90s
 
-  # REQ-1069 — the OpenLineage reference server. The metadata-egress e2e publishes a snapshot
+  # REQ-1069 — the OpenLineage reference server. The metadata-export e2e publishes a snapshot
   # through the real adapter and reads the datasets and column lineage back out of Marquez, so
   # what the suite proves is that a standards-compliant consumer accepts the payload, not that
   # our own mapping agrees with itself.

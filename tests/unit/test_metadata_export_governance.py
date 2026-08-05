@@ -18,10 +18,10 @@ import dataclasses
 
 import pytest
 
-from provisa.api.metadata_egress.builder import build_snapshot
-from provisa.api.metadata_egress.governance import build_governance_tags
-from provisa.api.metadata_egress.model import GovernanceSignal, MetadataSnapshot
-from provisa.api.metadata_egress.refs import UnknownTableError
+from provisa.api.metadata_export.builder import build_snapshot
+from provisa.api.metadata_export.governance import build_governance_tags
+from provisa.api.metadata_export.model import GovernanceSignal, MetadataSnapshot
+from provisa.api.metadata_export.refs import UnknownTableError
 from provisa.core.models import (
     Column,
     Domain,

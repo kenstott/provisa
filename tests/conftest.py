@@ -172,7 +172,7 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_hive": ["hive-metastore"],
     # S3-backed Hive: the metastore plus the core MinIO (reused) hold the table data on s3a://.
     "requires_hive_s3": ["hive-s3-metastore"],
-    # REQ-1069 metadata-egress targets. Marquez brings its own Postgres; OpenMetadata brings its
+    # REQ-1069 metadata-export targets. Marquez brings its own Postgres; OpenMetadata brings its
     # own MySQL and reuses the core-stack Elasticsearch for search.
     "requires_marquez": ["marquez-db", "marquez"],
     "requires_openmetadata": ["openmetadata-db", "elasticsearch", "openmetadata"],

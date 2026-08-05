@@ -36,7 +36,7 @@
     "itemSecurity": "Security",
     "itemAuthentication": "Authentication",
     "itemAiModels": "AI Models",
-    "itemMetadataEgress": "Metadata Egress",
+    "itemMetadataExport": "Metadata Export",
     "itemHealth": "Health",
     "itemObservability": "Observability",
     "itemMcpServer": "MCP Server",

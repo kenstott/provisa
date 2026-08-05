@@ -30887,7 +30887,7 @@
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: 'Pluggable metadata egress provider pattern: an abstract MetadataEgress interface (mirroring
+  description: 'Pluggable metadata export provider pattern: an abstract MetadataExport interface (mirroring
     AuthProvider/EmailProvider pattern) enables organizations to publish Provisa''s governance metadata
     OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound
     only — Provisa never ingests an external catalog as source of truth.'
@@ -30896,7 +30896,7 @@
     Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of
     record.
   code:
-  - provisa/api/metadata_egress/provider.py
+  - provisa/api/metadata_export/provider.py
   relates_to:
   - REQ-120
   - REQ-1330
@@ -30908,21 +30908,21 @@
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: 'Standards-first metadata core: the MetadataEgress provider emits OpenLineage for lineage
+  description: 'Standards-first metadata core: the MetadataExport provider emits OpenLineage for lineage
     and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters
-    (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataEgress
+    (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataExport
     using the same internal metadata model.'
   use_case: Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor
     lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend
     to enterprises already on Atlan or Collibra.
   code:
-  - provisa/api/metadata_egress/openlineage.py
-  - provisa/api/metadata_egress/openmetadata.py
-  - provisa/api/metadata_egress/registry.py
+  - provisa/api/metadata_export/openlineage.py
+  - provisa/api/metadata_export/openmetadata.py
+  - provisa/api/metadata_export/registry.py
   tests:
-  - tests/unit/test_metadata_egress_standards.py
-  - tests/integration/test_metadata_egress_openlineage_e2e.py
-  - tests/integration/test_metadata_egress_openmetadata_e2e.py
+  - tests/unit/test_metadata_export_standards.py
+  - tests/integration/test_metadata_export_openlineage_e2e.py
+  - tests/integration/test_metadata_export_openmetadata_e2e.py
   relates_to:
   - REQ-1068
 - id: REQ-1070
@@ -30949,8 +30949,8 @@
   - REQ-1068
   - REQ-1069
   code:
-  - provisa/api/metadata_egress/model.py
-  - provisa/api/metadata_egress/builder.py
+  - provisa/api/metadata_export/model.py
+  - provisa/api/metadata_export/builder.py
   scenario: 'Given a governed config with a stewarded domain, a table with described columns, an approved
 
     relationship, and a view derived from that table
@@ -30985,9 +30985,9 @@
   - REQ-1068
   - REQ-1070
   code:
-  - provisa/api/metadata_egress/governance.py
+  - provisa/api/metadata_export/governance.py
   tests:
-  - tests/unit/test_metadata_egress_governance.py
+  - tests/unit/test_metadata_export_governance.py
   scenario: 'Given a governed config with a masked column, a column hidden from one role, and an RLS rule
 
     When a metadata snapshot is built for the org
@@ -31018,11 +31018,11 @@
   - REQ-1068
   - REQ-1070
   code:
-  - provisa/api/metadata_egress/sync.py
+  - provisa/api/metadata_export/sync.py
   tests:
-  - tests/unit/test_metadata_egress_sync.py
-  - tests/steps/steps_metadata_egress_docs.py
-  scenario: 'Given an org whose metadata egress target is configured and entitled
+  - tests/unit/test_metadata_export_sync.py
+  - tests/steps/steps_metadata_export_docs.py
+  scenario: 'Given an org whose metadata export target is configured and entitled
 
     When the governed model changes
 
@@ -31042,10 +31042,10 @@
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: 'Premium-gated metadata egress: the metadata egress connector is an enterprise/premium
+  description: 'Premium-gated metadata export: the metadata export connector is an enterprise/premium
     tier entitlement, extending REQ-1066. Targeting regulated-industry data-governance teams with existing
     external catalog investments.'
-  use_case: Metadata egress to external catalogs is a high-touch enterprise feature. Restricted to premium
+  use_case: Metadata export to external catalogs is a high-touch enterprise feature. Restricted to premium
     tiers to simplify support and monetize integration value to enterprises already operating external
     DG systems.
   relates_to:
@@ -31059,8 +31059,8 @@
   - provisa/control_plane/entitlements.py
   tests:
   - tests/unit/test_entitlements.py
-  - tests/unit/test_metadata_egress_admin_surface.py
-  - tests/unit/test_metadata_egress_gate.py
+  - tests/unit/test_metadata_export_admin_surface.py
+  - tests/unit/test_metadata_export_gate.py
 - id: REQ-1074
   status: accepted
   group: 10. UI & Admin Surfaces
@@ -31068,7 +31068,7 @@
   priority: MUST
   type: ui
   target: 2026-Q4
-  description: 'Metadata egress admin surface: an Admin tab that configures the per-org egress target
+  description: 'Metadata export admin surface: an Admin tab that configures the per-org export target
     (provider, endpoint, credentials, reconcile schedule), runs a connection health check against the
     live catalog, triggers an on-demand full reconcile, and shows the last publish outcome including the
     per-asset errors a partial publish returns. Credentials are write-only in the UI — an existing secret
@@ -31076,13 +31076,13 @@
   use_case: A data-governance admin configures and operates the catalog connection without editing YAML,
     and diagnoses a partial publish from the assets the target rejected rather than from server logs.
   code:
-  - provisa/api/admin/metadata_egress_router.py
-  - provisa-ui/src/components/admin/MetadataEgressTab.tsx
-  - provisa-ui/src/api/metadataEgress.ts
+  - provisa/api/admin/metadata_export_router.py
+  - provisa-ui/src/components/admin/MetadataExportTab.tsx
+  - provisa-ui/src/api/metadataExport.ts
   tests:
-  - tests/unit/test_metadata_egress_admin_surface.py
-  - provisa-ui/src/__tests__/MetadataEgressTab.test.tsx
-  - provisa-ui/e2e/metadata-egress-admin.spec.ts
+  - tests/unit/test_metadata_export_admin_surface.py
+  - provisa-ui/src/__tests__/MetadataExportTab.test.tsx
+  - provisa-ui/e2e/metadata-export-admin.spec.ts
   relates_to:
   - REQ-1068
   - REQ-1069
@@ -31095,28 +31095,28 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: 'Metadata egress user documentation: a published docs page (docs/metadata-egress.md, navigated
+  description: 'Metadata export user documentation: a published docs page (docs/metadata-export.md, navigated
     under Security & Governance) covering the supported targets, the YAML configuration, what the payload
     contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile
     sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.'
   use_case: An admin evaluating or configuring catalog integration finds the supported targets and the
     exact configuration in the product docs instead of in the architecture notes.
   code:
-  - docs/metadata-egress.md
+  - docs/metadata-export.md
   - mkdocs.yml
   tests:
-  - tests/steps/steps_metadata_egress_docs.py
+  - tests/steps/steps_metadata_export_docs.py
   scenario: 'Given the published documentation set
 
     When a reader looks for how to publish metadata to an external catalog
 
-    Then the metadata egress page is reachable from the Security and Governance navigation
+    Then the metadata export page is reachable from the Security and Governance navigation
 
     And the page states that publication is outbound only
 
-    And the page names every registered egress provider
+    And the page names every registered export provider
 
-    And the page documents each configuration setting the egress config accepts
+    And the page documents each configuration setting the export config accepts
 
     And the page describes the sync model the scheduler actually runs
 
@@ -41703,3 +41703,51 @@
       Peers offer declarative modeling (dbt, Cube) or policy translation (Immuta) or reconciliation
       (Kubernetes-style controllers) separately; none unify description, enforcement, and operational proof
       over one declared artifact.
+- id: REQ-1369
+  status: complete
+  since: "2026-08"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: structural
+  description: >-
+    Standardize "metadata export" terminology: module path provisa/api/metadata_export/, router
+    provisa/api/admin/metadata_export_router.py, entitlement Feature.METADATA_EXPORT, UI component
+    MetadataExportTab, API paths /admin/metadata-export, and documentation docs/metadata-export.md.
+    Replaces prior "metadata egress" naming across all interfaces.
+  use_case: Consistent naming across code, config, API, and UI reduces cognitive load and improves
+    discoverability for users and maintainers.
+  code:
+  - provisa/api/metadata_export/
+  - provisa/api/admin/metadata_export_router.py
+  - provisa-ui/src/tabs/MetadataExportTab.tsx
+  - docs/metadata-export.md
+  relates_to:
+  - REQ-1066
+  - REQ-1068
+  - REQ-1069
+  - REQ-1072
+  - REQ-1073
+  - REQ-1368
+- id: REQ-1370
+  status: complete
+  since: "2026-08"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Demo & Testing
+  priority: MAY
+  type: behavioral
+  description: >-
+    Demo mode exemption for tier entitlement gating: when PROVISA_DEMO=1 (set via `provisa run --demo`),
+    require_feature in provisa/control_plane/entitlements.py returns immediately without checking tier
+    entitlements, allowing all features to be used in demo environments. setup_router._is_demo relocated
+    to provisa/core/demo.py::is_demo for reuse across the codebase.
+  use_case: Demo mode needs to showcase all features without enterprise license checks, enabling quick
+    product evaluation and internal testing without mock entitlement infrastructure.
+  scenario: |
+    Given Provisa running with PROVISA_DEMO=1
+    When a metadata export request is made (requires METADATA_EXPORT entitlement normally)
+    Then the request succeeds without checking tier entitlements
+  code:
+  - provisa/core/demo.py
+  - provisa/control_plane/entitlements.py
+  - provisa/cli/setup_router.py

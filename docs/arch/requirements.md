@@ -10538,11 +10538,11 @@ Bring-your-own compute / dedicated cluster as premium gate: premium tenants may 
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
-Pluggable metadata egress provider pattern: an abstract MetadataEgress interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
+Pluggable metadata export provider pattern: an abstract MetadataExport interface (mirroring AuthProvider/EmailProvider pattern) enables organizations to publish Provisa's governance metadata OUTBOUND to external data catalogs. Configured per org in YAML with vendor-specific credentials. Outbound only — Provisa never ingests an external catalog as source of truth.
 
 **Use case:** Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them. Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of record.
 
-**Code:** `provisa/api/metadata_egress/provider.py`
+**Code:** `provisa/api/metadata_export/provider.py`
 
 **Tests:** —
 
@@ -10550,13 +10550,13 @@ Pluggable metadata egress provider pattern: an abstract MetadataEgress interface
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
 
-Standards-first metadata core: the MetadataEgress provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataEgress using the same internal metadata model.
+Standards-first metadata core: the MetadataExport provider emits OpenLineage for lineage and maps assets to the OpenMetadata ingestion API as first-class targets. Vendor-specific adapters (Atlan, Collibra, DataHub, Apache Atlas) are implemented as concrete subclasses of MetadataExport using the same internal metadata model.
 
 **Use case:** Standards-based approach (OpenLineage, OpenMetadata) ensures portability and reduces vendor lock-in. First-class support for OpenMetadata reduces friction for OSS adopters; vendor adapters extend to enterprises already on Atlan or Collibra.
 
-**Code:** `provisa/api/metadata_egress/openlineage.py`, `provisa/api/metadata_egress/openmetadata.py`, `provisa/api/metadata_egress/registry.py`
+**Code:** `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/registry.py`
 
-**Tests:** `tests/unit/test_metadata_egress_standards.py`, `tests/integration/test_metadata_egress_openlineage_e2e.py`, `tests/integration/test_metadata_egress_openmetadata_e2e.py`
+**Tests:** `tests/unit/test_metadata_export_standards.py`, `tests/integration/test_metadata_export_openlineage_e2e.py`, `tests/integration/test_metadata_export_openmetadata_e2e.py`
 
 ### REQ-1070 · Data Catalog Integration {#REQ-1070}
 
@@ -10566,7 +10566,7 @@ Published metadata payload includes datasets/tables/columns, domains, stewards a
 
 **Use case:** Provisa's query-compilation and DAG-based lineage is derived from actual execution, making it more authoritative than external scanners or agent-based metadata collection. Publishing this accuracy to external catalogs elevates DG team's source-of-truth quality.
 
-**Code:** `provisa/api/metadata_egress/model.py`, `provisa/api/metadata_egress/builder.py`
+**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`
 
 **Tests:** —
 
@@ -10578,9 +10578,9 @@ Governance-signal projection: enforcement facts Provisa already computes (which 
 
 **Use case:** Data-governance teams see Provisa's enforced governance policies reflected in their catalog of record, enabling data consumers to understand which data is restricted or transformed without context-switching to Provisa's UI. Strengthens audit and compliance narrative.
 
-**Code:** `provisa/api/metadata_egress/governance.py`
+**Code:** `provisa/api/metadata_export/governance.py`
 
-**Tests:** `tests/unit/test_metadata_egress_governance.py`
+**Tests:** `tests/unit/test_metadata_export_governance.py`
 
 ### REQ-1072 · Data Catalog Integration {#REQ-1072}
 
@@ -10590,21 +10590,21 @@ Sync mechanism: metadata changes push to the external catalog event-driven via t
 
 **Use case:** Event-driven sync ensures near-real-time metadata propagation for operational responsiveness; scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant isolation and per-customer credential management.
 
-**Code:** `provisa/api/metadata_egress/sync.py`
+**Code:** `provisa/api/metadata_export/sync.py`
 
-**Tests:** `tests/unit/test_metadata_egress_sync.py`, `tests/steps/steps_metadata_egress_docs.py`
+**Tests:** `tests/unit/test_metadata_export_sync.py`, `tests/steps/steps_metadata_export_docs.py`
 
 ### REQ-1073 · Data Catalog Integration {#REQ-1073}
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** constraint
 
-Premium-gated metadata egress: the metadata egress connector is an enterprise/premium tier entitlement, extending [REQ-1066](#REQ-1066). Targeting regulated-industry data-governance teams with existing external catalog investments.
+Premium-gated metadata export: the metadata export connector is an enterprise/premium tier entitlement, extending [REQ-1066](#REQ-1066). Targeting regulated-industry data-governance teams with existing external catalog investments.
 
-**Use case:** Metadata egress to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
+**Use case:** Metadata export to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
 
 **Code:** `provisa/control_plane/entitlements.py`
 
-**Tests:** `tests/unit/test_entitlements.py`, `tests/unit/test_metadata_egress_admin_surface.py`, `tests/unit/test_metadata_egress_gate.py`
+**Tests:** `tests/unit/test_entitlements.py`, `tests/unit/test_metadata_export_admin_surface.py`, `tests/unit/test_metadata_export_gate.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -10612,13 +10612,13 @@ Premium-gated metadata egress: the metadata egress connector is an enterprise/pr
 
 **Status:** ✓ accepted · **Priority:** MUST · **Type:** ui
 
-Metadata egress admin surface: an Admin tab that configures the per-org egress target (provider, endpoint, credentials, reconcile schedule), runs a connection health check against the live catalog, triggers an on-demand full reconcile, and shows the last publish outcome including the per-asset errors a partial publish returns. Credentials are write-only in the UI — an existing secret renders as set/not-set, never as its value. The tab is hidden for orgs without the [REQ-1073](#REQ-1073) entitlement.
+Metadata export admin surface: an Admin tab that configures the per-org export target (provider, endpoint, credentials, reconcile schedule), runs a connection health check against the live catalog, triggers an on-demand full reconcile, and shows the last publish outcome including the per-asset errors a partial publish returns. Credentials are write-only in the UI — an existing secret renders as set/not-set, never as its value. The tab is hidden for orgs without the [REQ-1073](#REQ-1073) entitlement.
 
 **Use case:** A data-governance admin configures and operates the catalog connection without editing YAML, and diagnoses a partial publish from the assets the target rejected rather than from server logs.
 
-**Code:** `provisa/api/admin/metadata_egress_router.py`, `provisa-ui/src/components/admin/MetadataEgressTab.tsx`, `provisa-ui/src/api/metadataEgress.ts`
+**Code:** `provisa/api/admin/metadata_export_router.py`, `provisa-ui/src/components/admin/MetadataExportTab.tsx`, `provisa-ui/src/api/metadataExport.ts`
 
-**Tests:** `tests/unit/test_metadata_egress_admin_surface.py`, `provisa-ui/src/__tests__/MetadataEgressTab.test.tsx`, `provisa-ui/e2e/metadata-egress-admin.spec.ts`
+**Tests:** `tests/unit/test_metadata_export_admin_surface.py`, `provisa-ui/src/__tests__/MetadataExportTab.test.tsx`, `provisa-ui/e2e/metadata-export-admin.spec.ts`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -10626,13 +10626,13 @@ Metadata egress admin surface: an Admin tab that configures the per-org egress t
 
 **Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-Metadata egress user documentation: a published docs page (docs/metadata-egress.md, navigated under Security & Governance) covering the supported targets, the YAML configuration, what the payload contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.
+Metadata export user documentation: a published docs page (docs/metadata-export.md, navigated under Security & Governance) covering the supported targets, the YAML configuration, what the payload contains, how governance signals appear in the target catalog, and the event-driven vs scheduled-reconcile sync model. Outbound-only is stated explicitly so no reader expects a catalog-to-Provisa ingest path.
 
 **Use case:** An admin evaluating or configuring catalog integration finds the supported targets and the exact configuration in the product docs instead of in the architecture notes.
 
-**Code:** `docs/metadata-egress.md`, `mkdocs.yml`
+**Code:** `docs/metadata-export.md`, `mkdocs.yml`
 
-**Tests:** `tests/steps/steps_metadata_egress_docs.py`
+**Tests:** `tests/steps/steps_metadata_export_docs.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -14069,5 +14069,31 @@ Provisa's thesis: with sufficient rigor, every aspect of a data environment EXCE
 **Use case:** The thesis is the platform's admission rule — it explains why capabilities are declared profiles ([REQ-825](#REQ-825)/840/841), why governance is IR-injected rather than engine-delegated, why derived state must be rebuildable, and why the config surface is a queryable ledger ([REQ-966](#REQ-966)). Recording it top-level gives future requirements a fixed test: declarative description + a stated proof mode, or redesign.
 
 **Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1369 · Data Catalog Integration {#REQ-1369}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+Standardize "metadata export" terminology: module path provisa/api/metadata_export/, router provisa/api/admin/metadata_export_router.py, entitlement Feature.METADATA_EXPORT, UI component MetadataExportTab, API paths /admin/metadata-export, and documentation docs/metadata-export.md. Replaces prior "metadata egress" naming across all interfaces.
+
+**Use case:** Consistent naming across code, config, API, and UI reduces cognitive load and improves discoverability for users and maintainers.
+
+**Code:** `provisa/api/metadata_export/`, `provisa/api/admin/metadata_export_router.py`, `provisa-ui/src/tabs/MetadataExportTab.tsx`, `docs/metadata-export.md`
+
+**Tests:** —
+
+### REQ-1370 · Demo & Testing {#REQ-1370}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
+
+Demo mode exemption for tier entitlement gating: when PROVISA_DEMO=1 (set via `provisa run --demo`), require_feature in provisa/control_plane/entitlements.py returns immediately without checking tier entitlements, allowing all features to be used in demo environments. setup_router._is_demo relocated to provisa/core/demo.py::is_demo for reuse across the codebase.
+
+**Use case:** Demo mode needs to showcase all features without enterprise license checks, enabling quick product evaluation and internal testing without mock entitlement infrastructure.
+
+**Code:** `provisa/core/demo.py`, `provisa/control_plane/entitlements.py`, `provisa/cli/setup_router.py`
 
 **Tests:** —

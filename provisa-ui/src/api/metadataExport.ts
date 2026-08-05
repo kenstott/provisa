@@ -12,14 +12,14 @@ import { requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-// --- Metadata egress admin surface (REQ-1068, REQ-1072, REQ-1073, REQ-1074) ---
+// --- Metadata export admin surface (REQ-1068, REQ-1072, REQ-1073, REQ-1074) ---
 
-/** The org's egress settings as the server reports them.
+/** The org's export settings as the server reports them.
  *
  *  Credentials appear only as `*_set` booleans: the server never returns a stored secret, so
  *  the form has nothing to render into a password field and nothing to send back unchanged.
  */
-export interface MetadataEgressConfig {
+export interface MetadataExportConfig {
   enabled: boolean;
   provider: string;
   endpoint: string;
@@ -42,16 +42,16 @@ export interface PublishOutcome {
   errors: { asset: string; message: string }[];
 }
 
-export interface MetadataEgressState {
+export interface MetadataExportState {
   entitled: boolean;
   required_tier: string;
   providers: string[];
-  config: MetadataEgressConfig;
+  config: MetadataExportConfig;
   last_publish: PublishOutcome | null;
 }
 
 /** A credential omitted from the update keeps its stored value; sent empty, it is cleared. */
-export interface MetadataEgressUpdate {
+export interface MetadataExportUpdate {
   enabled?: boolean;
   provider?: string;
   endpoint?: string;
@@ -66,36 +66,36 @@ export interface MetadataEgressUpdate {
   entra_client_secret?: string;
 }
 
-export async function fetchMetadataEgress(): Promise<MetadataEgressState> {
-  const resp = await fetch(`${API_BASE}/admin/metadata-egress`);
-  if (!resp.ok) throw new Error(requestFailed("Metadata egress fetch", resp.status));
+export async function fetchMetadataExport(): Promise<MetadataExportState> {
+  const resp = await fetch(`${API_BASE}/admin/metadata-export`);
+  if (!resp.ok) throw new Error(requestFailed("Metadata export fetch", resp.status));
   return resp.json();
 }
 
-export async function setMetadataEgress(
-  body: MetadataEgressUpdate,
+export async function setMetadataExport(
+  body: MetadataExportUpdate,
 ): Promise<{ success: boolean; provider: string; enabled: boolean }> {
-  const resp = await fetch(`${API_BASE}/admin/metadata-egress`, {
+  const resp = await fetch(`${API_BASE}/admin/metadata-export`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(requestFailed("Metadata egress update", resp.status));
+  if (!resp.ok) throw new Error(requestFailed("Metadata export update", resp.status));
   return resp.json();
 }
 
-export async function checkMetadataEgress(): Promise<{
+export async function checkMetadataExport(): Promise<{
   ok: boolean;
   provider: string;
   error?: string;
 }> {
-  const resp = await fetch(`${API_BASE}/admin/metadata-egress/health`, { method: "POST" });
-  if (!resp.ok) throw new Error(requestFailed("Metadata egress health check", resp.status));
+  const resp = await fetch(`${API_BASE}/admin/metadata-export/health`, { method: "POST" });
+  if (!resp.ok) throw new Error(requestFailed("Metadata export health check", resp.status));
   return resp.json();
 }
 
-export async function publishMetadataEgress(): Promise<PublishOutcome> {
-  const resp = await fetch(`${API_BASE}/admin/metadata-egress/publish`, { method: "POST" });
-  if (!resp.ok) throw new Error(requestFailed("Metadata egress publish", resp.status));
+export async function publishMetadataExport(): Promise<PublishOutcome> {
+  const resp = await fetch(`${API_BASE}/admin/metadata-export/publish`, { method: "POST" });
+  if (!resp.ok) throw new Error(requestFailed("Metadata export publish", resp.status));
   return resp.json();
 }
