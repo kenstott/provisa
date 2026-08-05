@@ -56,7 +56,7 @@ def _config(**kwargs) -> ProvisaConfig:
         "tables": [_table("orders")],
         "roles": [],
         "tags": [
-            Tag(id="technical", applies_to=["column", "table"], is_system=True),
+            Tag(id="technical", applies_to=["column"], is_system=True),
             Tag(id="deprecated", applies_to=["source", "table", "column", "relationship"], is_system=True),
             Tag(id="gold", applies_to=["table"], description="Curated"),
         ],
@@ -65,7 +65,9 @@ def _config(**kwargs) -> ProvisaConfig:
     return ProvisaConfig(**base)
 
 
-def test_technical_table_is_classified_out_of_the_export():
+def test_technical_is_column_only_a_table_assignment_never_excludes():
+    # At table level the Data Product flag IS the export control — a (stale/invalid)
+    # technical@table assignment must not silently exclude a table the flag publishes.
     config = _config(
         tables=[_table("orders"), _table("etl_audit")],
         tag_assignments=[
@@ -75,9 +77,7 @@ def test_technical_table_is_classified_out_of_the_export():
         ],
     )
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
-    assert [t.name for t in snapshot.tables] == ["orders"]
-    # The exclusion is total: no tag for the withheld table survives either.
-    assert snapshot.model_tags == []
+    assert sorted(t.name for t in snapshot.tables) == ["etl_audit", "orders"]
 
 
 def test_technical_column_is_dropped_from_its_published_table():

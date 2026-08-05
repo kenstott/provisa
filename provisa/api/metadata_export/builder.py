@@ -234,23 +234,22 @@ def _resolve_assignment_table(
         return None
 
 
-def _technical_exclusions(
+def _technical_columns(
     config: ProvisaConfig, index: TableIndex
-) -> tuple[set[tuple[str, ...]], frozenset[tuple[tuple[str, ...], str]]]:
-    """The table addresses and (table, column) pairs tagged 'technical' (REQ-1375)."""
-    tables: set[tuple[str, ...]] = set()
+) -> frozenset[tuple[tuple[str, ...], str]]:
+    """The (table, column) pairs tagged 'technical' (REQ-1375).
+
+    Column-only by design: the table-level export control is the Data Product flag itself,
+    so 'technical' never applies to tables.
+    """
     columns: set[tuple[tuple[str, ...], str]] = set()
     for assignment in config.tag_assignments:
-        if assignment.tag_id != "technical":
+        if assignment.tag_id != "technical" or assignment.object_type != "column":
             continue
         target = _resolve_assignment_table(assignment, index)
-        if target is None:
-            continue
-        if assignment.object_type == "table":
-            tables.add(table_ref(target).parts)
-        elif assignment.object_type == "column" and assignment.column_name:
+        if target is not None and assignment.column_name:
             columns.add((table_ref(target).parts, assignment.column_name))
-    return tables, frozenset(columns)
+    return frozenset(columns)
 
 
 def _model_tags(
@@ -304,14 +303,10 @@ def build_snapshot(
     # The Data Product checkbox is the export filter: only marked tables publish, and every
     # edge or tag touching an unmarked table is withheld with it — a dangling edge would hand
     # the catalog a reference to an asset it was never sent, and name the table the admin
-    # chose not to publish. REQ-1375: the 'technical' system tag classifies tables and
-    # columns out of the Data Product the same way.
-    technical_tables, technical_columns = _technical_exclusions(config, index)
-    exported = [
-        table
-        for table in config.tables
-        if table.data_product and table_ref(table).parts not in technical_tables
-    ]
+    # chose not to publish. REQ-1375: the 'technical' system tag prunes COLUMNS from a
+    # published table the same way; at table level the flag itself is the control.
+    technical_columns = _technical_columns(config, index)
+    exported = [table for table in config.tables if table.data_product]
     keep = {table_ref(table).parts for table in exported}
     tables = _table_assets(exported, org_id, technical_columns)
     relationships = [

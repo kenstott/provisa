@@ -323,7 +323,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
             "Technical plumbing with no business meaning — "
             "excluded from the Data Product metadata export"
         ),
-        applies_to=["column", "table"],
+        # Column-only: at table level the Data Product flag IS the export control, and a
+        # second, inverted switch for the same outcome would be a contradictory state.
+        applies_to=["column"],
         is_system=True,
         reason_policy="hidden",  # technical is self-explanatory
         expires_policy="hidden",  # technical is a state, not a countdown

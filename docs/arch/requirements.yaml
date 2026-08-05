@@ -41864,8 +41864,10 @@
   type: constraint
   description: >-
     System tags are predefined and immutable: exactly three system tags with fixed semantics and scopes,
-    never deletable or redefinable. `technical` (scope: column, table; excluded/classified-out of Data
-    Product metadata export), `pii` (scope: column; exported as provisa_pii classification; future
+    never deletable or redefinable. `technical` (scope: column ONLY — prunes columns from a published
+    table's export; at table level the Data Product flag itself is the export control, and a second
+    inverted switch for the same outcome would be a contradictory state), `pii` (scope: column; exported
+    as provisa_pii classification; future
     masking-policy hook), `deprecated` (scope: source, table/view, column, relationship; UI warning;
     exports to each catalog's NATIVE deprecation construct — DataHub deprecation aspect, Atlan DEPRECATED
     certificate status, Atlas provisa_deprecated classification). User-created tags are annotation-only
