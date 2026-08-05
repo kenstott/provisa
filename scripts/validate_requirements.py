@@ -66,7 +66,15 @@ def main() -> int:
             if req.type not in {ReqType.behavioral, ReqType.constraint}:
                 continue
             tests = req.tests or []
-            unit = [t for t in tests if t.startswith("tests/unit/")]
+            # The UI's unit tests are vitest files beside the code they cover
+            # (provisa-ui/src/**/__tests__/*.test.tsx), not pytest files under tests/unit/. A
+            # requirement whose whole surface is a React component has no Python unit test to
+            # give, so both locations count as unit coverage.
+            unit = [
+                t
+                for t in tests
+                if t.startswith("tests/unit/") or (t.startswith("provisa-ui/src/") and ".test." in t)
+            ]
             integration = [t for t in tests if t.startswith("tests/integration/")]
             # `e2e: true` means the behavior is only verifiable through a full live-stack
             # round-trip — "UI interaction OR API transport" (see the requirements-tracker

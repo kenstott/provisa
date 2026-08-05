@@ -11780,7 +11780,7 @@ pgwire ENGINE route streams the engine's result set lazily instead of materializ
 
 **Code:** `provisa/pgwire/session.py`, `provisa/executor/`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`, `tests/unit/test_pgwire_lazy_result.py`
 
 ### REQ-1187 · Result Handling & Streaming {#REQ-1187}
 
@@ -11804,7 +11804,7 @@ execute_engine_sync and backend execute_sync implementations accept a session_hi
 
 **Code:** `provisa/backends/`, `provisa/executor/`
 
-**Tests:** —
+**Tests:** `tests/unit/test_trino_session_hints.py`
 
 ### REQ-1189 · Result Handling & Streaming {#REQ-1189}
 
@@ -11816,7 +11816,7 @@ ProvisaQueryResult adapts a ResultStream (streaming or materialized) to the buen
 
 **Code:** `provisa/pgwire/`, `provisa/executor/result.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`, `tests/unit/test_pgwire_lazy_result.py`
 
 ### REQ-1190 · Result Handling & Streaming {#REQ-1190}
 
@@ -12230,7 +12230,7 @@ PgFederationRuntime gains run_arrow(sql, params) and run_arrow_stream(sql, param
 
 **Code:** `provisa/federation/pg_backend.py`
 
-**Tests:** `tests/integration/test_streaming_memory_bounded_e2e.py`
+**Tests:** `tests/integration/test_streaming_memory_bounded_e2e.py`, `tests/unit/test_pg_arrow_transport.py`
 
 ### REQ-1223 · Engine Streaming Terminals {#REQ-1223}
 
@@ -12242,7 +12242,7 @@ SqlAlchemyFederationRuntime.run_sync classifies SQL statements by leading keywor
 
 **Code:** `provisa/federation/sqlalchemy_backend.py`
 
-**Tests:** `tests/integration/test_streaming_memory_bounded_e2e.py`
+**Tests:** `tests/integration/test_streaming_memory_bounded_e2e.py`, `tests/unit/test_sqlalchemy_statement_classification.py`
 
 ### REQ-1224 · Large Result Redirect & CTAS {#REQ-1224}
 

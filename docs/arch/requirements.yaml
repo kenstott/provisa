@@ -34362,6 +34362,7 @@
   - tests/integration/test_pgwire_integration.py
   - tests/integration/test_preflight_streaming.py
   - tests/e2e/test_preflight_streaming_e2e.py
+  - tests/unit/test_pgwire_lazy_result.py
   related_reqs:
   - REQ-028
   - REQ-1176
@@ -34425,6 +34426,8 @@
   use_case: Trino session properties control engine behavior per query (e.g., retry_policy for Kafka sources).
     Without session_hints on the sync path, properties set at plan-governance time are silently dropped,
     causing non-deterministic behavior between async and sync execution paths.
+  tests:
+  - tests/unit/test_trino_session_hints.py
   code:
   - provisa/backends/
   - provisa/executor/
@@ -34466,6 +34469,7 @@
   - tests/integration/test_pgwire_integration.py
   - tests/integration/test_preflight_streaming.py
   - tests/e2e/test_preflight_streaming_e2e.py
+  - tests/unit/test_pgwire_lazy_result.py
   related_reqs:
   - REQ-1185
   - REQ-1186
@@ -35380,6 +35384,7 @@
   - provisa/federation/pg_backend.py
   tests:
   - tests/integration/test_streaming_memory_bounded_e2e.py
+  - tests/unit/test_pg_arrow_transport.py
   since: 2026-07
   scenario: 'Given a PgFederationRuntime instance with a PostgreSQL connection
 
@@ -35419,6 +35424,7 @@
   - provisa/federation/sqlalchemy_backend.py
   tests:
   - tests/integration/test_streaming_memory_bounded_e2e.py
+  - tests/unit/test_sqlalchemy_statement_classification.py
   since: 2026-07
   scenario: 'Given a SqlAlchemyFederationRuntime instance with a SQLAlchemy engine connection
 
