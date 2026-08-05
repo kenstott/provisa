@@ -328,22 +328,36 @@ def _listen(port: int) -> None:
         threading.Thread(target=_handle, args=(client, port), daemon=True).start()
 
 
+def idle_stop_due() -> float | None:
+    """Seconds idle when the coordinator should be stopped now, else None.
+
+    Split out of the reaper loop so the decision — the part that costs a live cluster when it
+    is wrong — is observable without waiting 60 seconds per tick. Four things veto a stop: a
+    connection in flight, too little idle time, a coordinator that is not running, and the boot
+    grace after a wake we triggered.
+    """
+    with _state_lock:
+        busy = _active_conns > 0
+        idle_for = time.monotonic() - _last_activity
+    if busy or idle_for < IDLE_STOP_SECONDS:
+        return None
+    if coordinator_status(fresh=True) != "RUNNING":
+        return None
+    # Grace: never stop a box that just booted (its own start counts from
+    # the wake we triggered, which reset _last_activity via the splice).
+    with _state_lock:
+        if time.monotonic() - _last_start_call < BOOT_GRACE_SECONDS:
+            return None
+    return idle_for
+
+
 def _idle_reaper() -> None:
     while True:
         time.sleep(60)
-        with _state_lock:
-            busy = _active_conns > 0
-            idle_for = time.monotonic() - _last_activity
-        if busy or idle_for < IDLE_STOP_SECONDS:
-            continue
         try:
-            if coordinator_status(fresh=True) != "RUNNING":
+            idle_for = idle_stop_due()
+            if idle_for is None:
                 continue
-            # Grace: never stop a box that just booted (its own start counts from
-            # the wake we triggered, which reset _last_activity via the splice).
-            with _state_lock:
-                if time.monotonic() - _last_start_call < BOOT_GRACE_SECONDS:
-                    continue
             log.info("idle %.0fs >= %ss; stopping %s", idle_for, IDLE_STOP_SECONDS, INSTANCE)
             _compute_api("POST", f"instances/{INSTANCE}/stop")
         except urllib.error.URLError as exc:

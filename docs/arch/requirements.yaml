@@ -34789,6 +34789,9 @@
   use_case: Centralizing redirect through the one pipeline ensures uniform sink selection and result handling
     across all transports (HTTP /data, GraphQL, pgwire, Arrow Flight), eliminating per-transport CTAS
     branches while maintaining engine-native materialization when available.
+  tests:
+  - tests/unit/test_materialize_route.py
+  - tests/unit/test_buffered_auto_threshold.py
   code:
   - provisa/pgwire/_pipeline.py
   - provisa/executor/redirect.py
@@ -37677,6 +37680,7 @@
   - provisa/core/schema_admin.py
   tests:
   - tests/integration/test_redeem_invite.py
+  - tests/unit/test_org_join_policy.py
   since: 2026-07
   scenario: 'Given an organization with an email rule "@acme\\.com$"
 
@@ -40311,6 +40315,7 @@
   - provisa/api/admin/invites_router.py
   tests:
   - tests/integration/test_invite_delivery.py
+  - tests/unit/test_mail_port.py
   description: 'Transactional email delivery (org invites today; any future outbound transactional mail)
     exists only in SaaS deployment mode and is sent exclusively through an internal EmailSender abstraction
     (port/adapter). Application code never imports or configures a concrete provider; it depends only
@@ -40437,6 +40442,8 @@
   category: SaaS Infrastructure
   priority: SHOULD
   type: behavioral
+  tests:
+  - tests/unit/test_front_door_wake_idle.py
   code:
   - terraform/gcp-saas/front-door/proxy.py
   - terraform/gcp-saas/variables.tf
@@ -40481,6 +40488,8 @@
   category: SaaS Infrastructure
   priority: SHOULD
   type: behavioral
+  tests:
+  - tests/unit/test_front_door_wake_idle.py
   code:
   - terraform/gcp-saas/front-door/proxy.py
   - terraform/gcp-saas/variables.tf
@@ -40709,6 +40718,7 @@
   tests:
   - tests/integration/test_governance_integration.py
   - tests/integration/test_org_demo_seed_visible.py
+  - tests/unit/test_platform_admin_no_data_rights.py
   description: Control-plane role resolution (the set of roles holding cross_org) must not depend on in-memory
     app state. _ungrant_control_plane resolves cross_org-holding roles from the org's own roles table
     on the caller's connection, never from state.roles. Platform-wide seed guarantees the roles table
@@ -40783,6 +40793,7 @@
   - provisa-ui/src/i18n/index.ts
   tests:
   - provisa-ui/e2e/i18n.spec.ts
+  - provisa-ui/src/__tests__/i18nLanguageSelection.test.ts
   scenario: 'Given a browser with navigator.language set to es-MX
 
     When the Provisa UI loads
@@ -41445,6 +41456,7 @@
   - provisa-ui/src/tour/tourSteps.ts
   tests:
   - provisa-ui/e2e/tour-page-preload.spec.ts
+  - provisa-ui/src/__tests__/tourPreload.test.ts
   scenario: 'Given a user initiates the guided product tour in demo mode
 
     When startTour() is called

@@ -11990,7 +11990,7 @@ Design decision — large-result redirect/materialize is an IR-level directive o
 
 **Code:** `provisa/pgwire/_pipeline.py`, `provisa/executor/redirect.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_materialize_route.py`, `tests/unit/test_buffered_auto_threshold.py`
 
 ### REQ-1204 · Large Result Redirect & CTAS {#REQ-1204}
 
@@ -12994,7 +12994,7 @@ Organizations can define an optional email-address rule (regex pattern) for memb
 
 **Code:** `provisa/api/auth_router.py`, `provisa/core/schema_admin.py`
 
-**Tests:** `tests/integration/test_redeem_invite.py`
+**Tests:** `tests/integration/test_redeem_invite.py`, `tests/unit/test_org_join_policy.py`
 
 ### REQ-1285 · Organization Access Control {#REQ-1285}
 
@@ -13584,7 +13584,7 @@ Transactional email delivery (org invites today; any future outbound transaction
 
 **Code:** `provisa/core/mail.py`, `provisa/core/models.py`, `provisa/api/admin/invites_router.py`
 
-**Tests:** `tests/integration/test_invite_delivery.py`
+**Tests:** `tests/integration/test_invite_delivery.py`, `tests/unit/test_mail_port.py`
 
 ### REQ-1331 · SaaS Infrastructure {#REQ-1331}
 
@@ -13620,7 +13620,7 @@ After idle_stop_minutes (default 60) of zero traffic across all protocol ports, 
 
 **Code:** `terraform/gcp-saas/front-door/proxy.py`, `terraform/gcp-saas/variables.tf`
 
-**Tests:** —
+**Tests:** `tests/unit/test_front_door_wake_idle.py`
 
 ### REQ-1334 · SaaS Infrastructure {#REQ-1334}
 
@@ -13632,7 +13632,7 @@ The front door serves an authenticated wake/verify API on front_door_status_port
 
 **Code:** `terraform/gcp-saas/front-door/proxy.py`, `terraform/gcp-saas/variables.tf`, `terraform/gcp-saas/main.tf`
 
-**Tests:** —
+**Tests:** `tests/unit/test_front_door_wake_idle.py`
 
 ### REQ-1335 · SaaS Infrastructure {#REQ-1335}
 
@@ -13710,7 +13710,7 @@ Control-plane role resolution (the set of roles holding cross_org) must not depe
 
 **Code:** `provisa/core/repositories/table.py`, `provisa/core/schema.sql`, `provisa/core/db.py`
 
-**Tests:** `tests/integration/test_governance_integration.py`, `tests/integration/test_org_demo_seed_visible.py`
+**Tests:** `tests/integration/test_governance_integration.py`, `tests/integration/test_org_demo_seed_visible.py`, `tests/unit/test_platform_admin_no_data_rights.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -13736,7 +13736,7 @@ UI language is selected solely from the browser's navigator.language setting (re
 
 **Code:** `provisa-ui/src/i18n/index.ts`
 
-**Tests:** `provisa-ui/e2e/i18n.spec.ts`
+**Tests:** `provisa-ui/e2e/i18n.spec.ts`, `provisa-ui/src/__tests__/i18nLanguageSelection.test.ts`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -14000,7 +14000,7 @@ In demo mode, all application page chunks must be preloaded and compiled before 
 
 **Code:** `provisa-ui/src/pageChunks.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`
 
-**Tests:** `provisa-ui/e2e/tour-page-preload.spec.ts`
+**Tests:** `provisa-ui/e2e/tour-page-preload.spec.ts`, `provisa-ui/src/__tests__/tourPreload.test.ts`
 
 ## 3. Source Registration & Data Modeling
 
