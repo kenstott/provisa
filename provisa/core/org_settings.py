@@ -88,21 +88,33 @@ async def write_org_overrides(
     if unknown:
         raise ValueError(f"not org-overridable: {', '.join(sorted(unknown))}")
 
-    import json
+    from datetime import datetime, timezone
+
+    from sqlalchemy import delete as _delete
+
+    from provisa.core.schema_org import org_settings as _org_settings_t
 
     written: list[str] = []
     async with tenant_db.acquire() as conn:
         for key, value in updates.items():
             if value is None:
-                await conn.execute("DELETE FROM org_settings WHERE key = $1", key)
+                await conn.execute_core(
+                    _delete(_org_settings_t).where(_org_settings_t.c.key == key)
+                )
             else:
-                await conn.execute(
-                    "INSERT INTO org_settings (key, value, updated_by) VALUES ($1, $2::jsonb, $3)"
-                    " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value,"
-                    " updated_at = NOW(), updated_by = EXCLUDED.updated_by",
-                    key,
-                    json.dumps(value),
-                    updated_by,
+                # SQLAlchemy Core upsert, not raw PG SQL: NOW()/::jsonb/$n only exist on
+                # PostgreSQL, and the demo/dev control plane is SQLite (REQ-1074 settings
+                # must save on every dialect the control plane supports).
+                await conn.upsert(
+                    _org_settings_t,
+                    {
+                        "key": key,
+                        "value": value,
+                        "updated_at": datetime.now(timezone.utc),
+                        "updated_by": updated_by,
+                    },
+                    index_elements=["key"],
+                    update_columns=["value", "updated_at", "updated_by"],
                 )
             written.append(key)
     return written
