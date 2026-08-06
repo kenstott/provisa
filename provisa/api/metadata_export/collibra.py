@@ -21,9 +21,44 @@ which takes the whole payload and upserts by each asset's full name. That is one
 publish rather than one per asset, which is what makes the scheduled reconcile (REQ-1072)
 affordable against a catalog of any size — and it is also why a rejection is reported against
 the batch: the job result names the rows it refused, and those are mapped back to their assets.
+
+REQ-1389 — import-job merge semantics (verified against Collibra's own documentation, not
+assumed):
+
+* Attributes the payload does NOT mention are untouched. "If the resource exists with
+  properties different from the ones defined in the input, the Import API replaces or creates
+  the properties that are provided in the input and performs no action on the other existing
+  properties." (https://developer.collibra.com/api/guides/import-api/import-commands.md)
+  Steward-added attributes, tags, terms and comments Provisa never sends therefore survive
+  every publish and reconcile.
+* Attributes the payload DOES mention are set-replaced, including multi-value ones: "If the
+  resource exists with properties that have multiple values, for example multi-value
+  attributes or tags, the values provided in the input file are updated and the rest of the
+  existing values are deleted." (same page). Every attribute type this adapter sends —
+  ``Description`` and the ``Provisa *`` custom types — is Provisa-authored, so full
+  replacement of those types IS the REQ-1389 drift correction, not a violation of it. No
+  human-owned attribute type may ever be added to a row here: mentioning one would delete the
+  steward-entered values of that type.
+* Relations follow the same scoping. With the job default ``relationsAction=REPLACE``, the
+  related-asset list is the complete final set per anchor asset and relation type — existing
+  relations of a *mentioned* type not in the list are deleted — while relation types the
+  payload never names (glossary assignments, hand-drawn relations) are untouched.
+  (https://developer.collibra.com/api/guides/import-api.md, ``relationsAction`` /
+  ``attributesAction``: REPLACE | ADD_OR_IGNORE, both defaulting to REPLACE.) This adapter
+  only names the physical hierarchy relations (column→table, table→database), which are
+  Provisa-owned, so REPLACE is correct there too. Both actions are pinned explicitly in the
+  job form so the contract does not ride on a remote default.
+
+URN-rebind limitation (REQ-1385/REQ-1389): the import job's only identity is the asset full
+name inside its domain — the physical FQN — and the job has no rename operation. A physical
+re-address (re-platform, physical rename) therefore lands as a NEW asset; the previous one is
+never pruned by publish (nothing here deletes), but its enrichment does not follow. The
+canonical business identity is still published on every table as the ``Provisa URI``
+attribute, so consumers and any out-of-band remediation can correlate the two; this adapter
+does not fake a rebind through the import job.
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071
+# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1385, REQ-1389
 
 from __future__ import annotations
 
@@ -258,7 +293,18 @@ class CollibraExport(MetadataExport):  # REQ-1069
                 # Collibra's import endpoint takes multipart with the payload as a file part,
                 # not a JSON body — a JSON body is answered with 415.
                 files={"file": ("provisa.json", json.dumps(rows), "application/json")},
-                data={"batchSize": "0", "deleteFileAfterImport": "true"},
+                # REQ-1389: REPLACE is pinned rather than inherited from the job default.
+                # Its scope is only what the payload mentions — Provisa-authored attribute
+                # types and the physical hierarchy relations — so it is the drift
+                # correction; everything unmentioned (steward attributes, tags, terms,
+                # other relation types) is untouched by the job. See the module docstring
+                # for the cited semantics.
+                data={
+                    "batchSize": "0",
+                    "deleteFileAfterImport": "true",
+                    "attributesAction": "REPLACE",
+                    "relationsAction": "REPLACE",
+                },
                 headers=self._headers(),
             )
             if response.status_code >= 400:

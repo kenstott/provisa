@@ -65,7 +65,7 @@ def _config(*, tables: list[Table], rls: list[RLSRule] | None = None) -> Provisa
 
 
 def _tags(config: ProvisaConfig, signal: GovernanceSignal):
-    return [t for t in build_governance_tags(config) if t.signal is signal]
+    return [t for t in build_governance_tags(config, "acme") if t.signal is signal]
 
 
 def test_masked_column_tagged_with_kind_and_exempt_roles():
@@ -91,7 +91,7 @@ def test_masked_column_tagged_with_kind_and_exempt_roles():
     assert len(tags) == 1
     tag = tags[0]
     assert tag.asset.fqn() == "wh.public.customers.ssn"
-    assert tag.rule_id == "mask:wh.public.customers.ssn:regex"
+    assert tag.rule_id == "mask:provisa://acme/sales/tables/customers#field:ssn:regex"
     assert tag.exempt_roles == ("admin",)
     assert tag.restricted_roles == ("analyst",)
 
@@ -149,7 +149,7 @@ def test_table_scoped_rls_rule_tags_only_that_table():
     )
     tags = _tags(config, GovernanceSignal.RLS_RESTRICTED)
     assert [t.asset.fqn() for t in tags] == ["wh.public.orders"]
-    assert tags[0].rule_id == "rls:orders:analyst"
+    assert tags[0].rule_id == "rls:provisa://acme/sales/tables/orders:analyst"
     assert tags[0].restricted_roles == ("analyst",)
     assert tags[0].exempt_roles == ("admin",)
 
@@ -171,7 +171,7 @@ def test_domain_scoped_rls_rule_tags_every_table_in_the_domain():
     )
     tags = _tags(config, GovernanceSignal.RLS_RESTRICTED)
     assert {t.asset.fqn() for t in tags} == {"wh.public.orders", "wh.public.regions"}
-    assert all(t.rule_id == "rls:sales:analyst" for t in tags)
+    assert all(t.rule_id == "rls:provisa://acme/sales:analyst" for t in tags)
 
 
 def test_rls_rule_naming_an_unknown_table_is_refused():
@@ -182,7 +182,7 @@ def test_rls_rule_naming_an_unknown_table_is_refused():
         rls=[RLSRule(table_id="ghost", role_id="analyst", filter=RLS_FILTER)],
     )
     with pytest.raises(UnknownTableError):
-        build_governance_tags(config)
+        build_governance_tags(config, "acme")
 
 
 def test_rls_rule_with_no_scope_is_refused():
@@ -193,7 +193,7 @@ def test_rls_rule_with_no_scope_is_refused():
         rls=[RLSRule(role_id="analyst", filter=RLS_FILTER)],
     )
     with pytest.raises(ValueError, match="neither a table nor a domain"):
-        build_governance_tags(config)
+        build_governance_tags(config, "acme")
 
 
 def _snapshot_text(snapshot: MetadataSnapshot) -> str:

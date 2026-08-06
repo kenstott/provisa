@@ -53,6 +53,8 @@ def _ungrant_control_plane(role_ids: list[str] | None, control_plane: set[str]) 
 _COLUMN_PROJECTION = [
     table_columns.c.column_name,
     table_columns.c.data_type,
+    table_columns.c.alias,
+    table_columns.c.description,
     table_columns.c.visible_to,
     table_columns.c.writable_by,
     table_columns.c.unmasked_to,

@@ -36,11 +36,13 @@ from provisa.api.metadata_export.atlas import (
 )
 from provisa.api.metadata_export.collibra import (
     COLUMN_TO_TABLE_RELATION,
+    DESCRIPTION_ATTRIBUTE,
     GOVERNANCE_ATTRIBUTE as COLLIBRA_GOVERNANCE,
     LINEAGE_ATTRIBUTE,
     RELATIONSHIP_ATTRIBUTE,
     STEWARD_ATTRIBUTE,
     TABLE_TO_DATABASE_RELATION,
+    URI_ATTRIBUTE,
     CollibraExport,
     to_rows,
 )
@@ -291,6 +293,126 @@ def test_datahub_payload_carries_no_rule_body(snapshot):
     _no_rule_body(json.dumps([p.payload() for p in to_proposals(snapshot)]))
 
 
+# REQ-1389: the globalTags read-merge — the one aspect where human and Provisa authorship
+# collide. Transport is monkeypatched at the httpx.AsyncClient method level, the same approach
+# as the OpenLineage publish tests in test_metadata_export_standards.py.
+
+_HUMAN_TAG = "urn:li:tag:pii"
+_STALE_TAG = "urn:li:tag:provisa_stale_signal"
+
+
+def _datahub_export() -> DataHubExport:
+    return DataHubExport(
+        MetadataExportConfig(
+            enabled=True, provider="datahub", endpoint="https://gms.example", timeout_seconds=5
+        )
+    )
+
+
+def _posted_global_tags(posted: list[dict], urn: str) -> list[dict]:
+    proposals = [
+        p["proposal"]
+        for p in posted
+        if p["proposal"]["aspectName"] == "globalTags" and p["proposal"]["entityUrn"] == urn
+    ]
+    assert len(proposals) == 1
+    return json.loads(proposals[0]["aspect"]["value"])["tags"]
+
+
+async def test_datahub_tag_merge_preserves_human_tags_and_reconciles_provisa_ones(
+    snapshot, monkeypatch
+):
+    """A steward-attached tag survives; ours is asserted; a stale provisa_ tag drops out."""
+    from urllib.parse import quote
+
+    posted: list[dict] = []
+    fetched: list[str] = []
+    orders_route = f"/aspects/{quote(_urn(ORDERS), safe='')}?aspect=globalTags&version=0"
+
+    async def _get(self, url, headers=None):
+        fetched.append(url)
+        request = httpx.Request("GET", url)
+        if url.endswith(orders_route):
+            return httpx.Response(
+                200,
+                json={
+                    "aspect": {
+                        "com.linkedin.common.GlobalTags": {
+                            "tags": [{"tag": _HUMAN_TAG}, {"tag": _STALE_TAG}]
+                        }
+                    }
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    async def _post(self, url, json=None, headers=None):
+        posted.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    result = await _datahub_export().publish(snapshot)
+    assert result.ok
+    assert any(url.endswith(orders_route) for url in fetched)
+    assert _posted_global_tags(posted, _urn(ORDERS)) == [
+        {"tag": _HUMAN_TAG},
+        {"tag": "urn:li:tag:provisa_rls_restricted"},
+    ]
+
+
+async def test_datahub_tag_merge_fetch_failure_reports_but_still_publishes_our_tags(
+    snapshot, monkeypatch
+):
+    """A dead read path must not abort the publish and must not fail silently (REQ-1389)."""
+    posted: list[dict] = []
+
+    async def _get(self, url, headers=None):
+        return httpx.Response(500, request=httpx.Request("GET", url))
+
+    async def _post(self, url, json=None, headers=None):
+        posted.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    result = await _datahub_export().publish(snapshot)
+    assert not result.ok
+    merge_errors = [e for e in result.errors if "globalTags merge" in e.message]
+    assert merge_errors and merge_errors[0].asset.fqn() == ORDERS
+    assert "HTTP 500" in merge_errors[0].message
+    # The publish itself still went out, carrying exactly Provisa's tags.
+    assert result.published["tags"] == 1
+    assert _posted_global_tags(posted, _urn(ORDERS)) == [
+        {"tag": "urn:li:tag:provisa_rls_restricted"}
+    ]
+
+
+async def test_datahub_tag_merge_flag_off_never_reads_the_live_aspect(snapshot, monkeypatch):
+    """The plain replace path stays exercisable, analogous to Atlas's classification_merge."""
+    posted: list[dict] = []
+    fetched: list[str] = []
+
+    async def _get(self, url, headers=None):
+        fetched.append(url)
+        return httpx.Response(500, request=httpx.Request("GET", url))
+
+    async def _post(self, url, json=None, headers=None):
+        posted.append(json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    export = _datahub_export()
+    monkeypatch.setattr(type(export), "tag_merge", False)
+    result = await export.publish(snapshot)
+    assert result.ok
+    assert fetched == []
+    assert _posted_global_tags(posted, _urn(ORDERS)) == [
+        {"tag": "urn:li:tag:provisa_rls_restricted"}
+    ]
+
+
 # --- Collibra -------------------------------------------------------------------------------
 
 
@@ -342,6 +464,53 @@ def test_collibra_lineage_names_the_upstream_columns_and_the_transform(rows):
 
 def test_collibra_payload_carries_no_rule_body(rows):
     _no_rule_body(json.dumps(rows))
+
+
+# REQ-1389: Collibra's import job scopes REPLACE to what the payload mentions — unmentioned
+# attribute types and relation types survive — but a mentioned type is set-replaced, existing
+# values deleted. Single-writer therefore holds only while every mentioned type is
+# Provisa-authored, and while the actions are pinned rather than left to the remote default.
+
+_PROVISA_OWNED_ATTRIBUTES = {
+    DESCRIPTION_ATTRIBUTE,
+    URI_ATTRIBUTE,
+    COLLIBRA_GOVERNANCE,
+    RELATIONSHIP_ATTRIBUTE,
+    LINEAGE_ATTRIBUTE,
+    STEWARD_ATTRIBUTE,
+}
+
+
+def test_collibra_mentions_only_provisa_authored_attribute_and_relation_types(rows):
+    """A human-owned type in a row would delete the steward-entered values of that type."""
+    for row in rows:
+        assert set(row["attributes"]) <= _PROVISA_OWNED_ATTRIBUTES
+        assert set(row.get("relations", {})) <= {
+            f"{COLUMN_TO_TABLE_RELATION}:TARGET",
+            f"{TABLE_TO_DATABASE_RELATION}:TARGET",
+        }
+
+
+async def test_collibra_publish_pins_replace_actions_on_the_import_job(snapshot, monkeypatch):
+    """attributesAction/relationsAction ride the form explicitly, not the job default."""
+    captured: list[dict] = []
+
+    async def _post(self, url, files=None, data=None, headers=None):
+        captured.append({"url": url, "data": data})
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    export = CollibraExport(
+        MetadataExportConfig(
+            enabled=True, provider="collibra", endpoint="https://collibra.example"
+        )
+    )
+    result = await export.publish(snapshot)
+    assert result.ok
+    assert len(captured) == 1
+    assert captured[0]["url"].endswith("/rest/2.0/import/json-job")
+    assert captured[0]["data"]["attributesAction"] == "REPLACE"
+    assert captured[0]["data"]["relationsAction"] == "REPLACE"
 
 
 # --- Registration ---------------------------------------------------------------------------

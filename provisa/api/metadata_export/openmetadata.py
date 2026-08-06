@@ -29,7 +29,16 @@ Column lineage goes to ``/api/v1/lineage`` in OpenMetadata's own ``columnsLineag
 the same edges the OpenLineage adapter emits, addressed by FQN instead of namespace+name.
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071
+# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1389
+
+# REQ-1389 LIMITATION — identity is the physical FQN, not the Provisa URN. OpenMetadata's
+# upsert is keyed on ``fullyQualifiedName`` (service.database.schema.table) and the API has
+# no rename/rebind pathway that could adopt an existing entity under a new physical address.
+# A re-platformed or physically renamed table therefore publishes as a NEW entity; the old
+# one is never pruned (publish never deletes) but its steward enrichment does not follow.
+# The Provisa URN travels as ``sourceUrl`` for dereference only — it cannot serve as the
+# upsert key here, so the URN-canonical rebind the Atlas exporter performs has no
+# OpenMetadata equivalent.
 
 from __future__ import annotations
 
@@ -76,6 +85,20 @@ _STEWARD_EMAIL_DOMAIN = "provisa.invalid"
 # table at three columns — an approved relationship carries eight fields, so a table-cp form
 # would have to drop five of them.
 RELATIONSHIP_PROPERTY = "provisaRelationships"
+
+# REQ-1389: PUT-body fields of a table the exporter never authors. A PUT replaces the fields
+# sent — and clears the ones it does not send — so anything live under these keys would be
+# destroyed by a publish that stayed silent about them. They are carried through verbatim
+# from the live entity; Provisa never writes them of its own accord.
+_CARRIED_TABLE_FIELDS = (
+    "owners",
+    "tableType",
+    "tableConstraints",
+    "tablePartition",
+    "retentionPeriod",
+    "certification",
+    "lifeCycle",
+)
 
 
 @dataclass(frozen=True)
@@ -398,6 +421,13 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
 
     provider_name = "openmetadata"
 
+    # REQ-1389: read-merge the live table before every table PUT. A PUT replaces the fields
+    # sent, and stewards tag and enrich the SAME entity inside OpenMetadata — without the
+    # merge, every publish clobbers their work. Same gate shape as Atlas's
+    # ``classification_merge``: a class attribute, so a test (or an Atlas-shaped subclass)
+    # can switch the pass off without touching config.
+    tag_merge = True
+
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         token = self._config.token.get_secret_value() or self._config.api_key.get_secret_value()
@@ -447,6 +477,90 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
             headers=self._headers(),
         )
         response.raise_for_status()
+
+    @staticmethod
+    def _merged_tags(
+        live_tags: list[dict[str, Any]] | None, our_tags: list[dict[str, Any]] | None
+    ) -> list[dict[str, Any]]:
+        """Provisa's tags to match the snapshot, everyone else's preserved (REQ-1389).
+
+        Ownership is the classification namespace: a label under ``Provisa.`` was authored
+        here and is added/removed to track the snapshot; any other label was applied by a
+        steward inside OpenMetadata and is carried through untouched.
+        """
+        steward = [
+            tag
+            for tag in live_tags or []
+            if not str(tag.get("tagFQN", "")).startswith(f"{CLASSIFICATION}.")
+        ]
+        return [*(our_tags or []), *steward]
+
+    async def _merge_live_table(
+        self, client: httpx.AsyncClient, entity: Entity, result: PublishResult
+    ) -> None:
+        """Overlay the live table's human-owned state onto the outgoing PUT body (REQ-1389).
+
+        Preserved: steward tag labels at table and column level, extension keys other than
+        Provisa's relationship property, and the PUT-body fields the exporter never authors
+        (``_CARRIED_TABLE_FIELDS``). Overwritten: everything Provisa authored — description,
+        columns, ``Provisa.*`` tags, the relationship extension. A failed read must not
+        abort the publish: the PUT proceeds with Provisa's own body and the merge failure is
+        reported against the asset.
+        """
+        fqn = f"{entity.body['databaseSchema']}.{entity.body['name']}"
+        try:
+            response = await client.get(
+                self._url(f"/api/v1/tables/name/{fqn}"),
+                params={"fields": "tags,columns,extension,owners"},
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: live read for the tag merge failed "
+                        f"({exc}); published Provisa-authored fields only, which may drop "
+                        "steward tags on this table"
+                    ),
+                )
+            )
+            return
+        if response.status_code == 404:
+            # First publish of this table: nothing live, nothing human to preserve.
+            return
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: live read for the tag merge failed "
+                        f"(HTTP {response.status_code}); published Provisa-authored fields "
+                        "only, which may drop steward tags on this table"
+                    ),
+                )
+            )
+            return
+        live = response.json()
+        entity.body["tags"] = self._merged_tags(live.get("tags"), entity.body.get("tags"))
+        live_columns = {c.get("name"): c for c in live.get("columns") or []}
+        for column in entity.body["columns"]:
+            live_column = live_columns.get(column["name"])
+            if live_column is None:
+                continue
+            column["tags"] = self._merged_tags(live_column.get("tags"), column.get("tags"))
+        # Extension keys Provisa does not own are somebody's custom properties; only the
+        # relationship property tracks the snapshot (including its removal).
+        live_extension = {
+            k: v
+            for k, v in (live.get("extension") or {}).items()
+            if k != RELATIONSHIP_PROPERTY
+        }
+        if live_extension:
+            entity.body["extension"] = {**live_extension, **entity.body.get("extension", {})}
+        for field in _CARRIED_TABLE_FIELDS:
+            if field not in entity.body and live.get(field) is not None:
+                entity.body[field] = live[field]
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
@@ -513,6 +627,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                             )
                         )
                         continue
+                if entity.kind == "table" and self.tag_merge:
+                    # REQ-1389: a PUT replaces the fields sent, so the live entity's
+                    # human-owned state is read and carried through first.
+                    await self._merge_live_table(client, entity, result)
                 response = await client.put(
                     self._url(entity.path), json=entity.body, headers=self._headers()
                 )

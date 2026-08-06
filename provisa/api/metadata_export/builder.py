@@ -345,7 +345,7 @@ def build_snapshot(
         # their governance tags is the dangerous half-truth — a consumer would read an
         # unannotated column as unrestricted.
         governance_tags=[
-            tag for tag in build_governance_tags(config) if tag.asset.parts[:3] in keep
+            tag for tag in build_governance_tags(config, org_id) if tag.asset.parts[:3] in keep
         ],
         model_tags=_model_tags(
             config,

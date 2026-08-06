@@ -57,7 +57,10 @@ _TABLE_KEYS = frozenset(
         "modeling_history",  # REQ-1320
     }
 )
-_COLUMN_KEYS = frozenset({"name", "description", "visible_to"})
+# data_type and alias included on purpose: the DB-truth publish path (REQ-1389) builds its
+# snapshot through this projection, and dropping them published columns with empty types,
+# descriptions, and physical-only names.
+_COLUMN_KEYS = frozenset({"name", "description", "visible_to", "data_type", "alias"})
 _METRIC_KEYS = frozenset(  # REQ-1317, REQ-1319, REQ-1320
     {"name", "expression", "datatype", "description", "ai_context", "visible_to", "from_fact"}
 )

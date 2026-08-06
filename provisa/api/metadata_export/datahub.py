@@ -28,15 +28,31 @@ The mapping:
   with its own ``tagProperties`` (REQ-1071);
 * column lineage is an ``upstreamLineage`` aspect carrying both the table-level upstreams and
   the ``fineGrainedLineages`` DataHub uses for column-level edges (REQ-1070).
+
+Single-writer merge (REQ-1389): human edits made in the DataHub UI land in the editable*
+aspects — ``editableDatasetProperties``, ``editableSchemaMetadata`` — which this adapter never
+writes, so descriptions and per-field documentation curated in DataHub already survive every
+publish. The one aspect where human and Provisa authorship collide is ``globalTags``: a tag a
+steward attaches in the UI lands in the same aspect this adapter UPSERTs (an aspect UPSERT is a
+whole-document replace). ``_merge_global_tags`` closes that gap by reading the live aspect and
+carrying every non-``provisa_``-prefixed tag through unchanged, while the ``provisa_`` tags are
+set to exactly what the snapshot says (stale ones drop out).
+
+URN-canonical rebind (REQ-1389) is NOT implementable on DataHub: a dataset URN is an immutable
+identifier derived from the physical fqn — GMS has no rename/re-key API — so a re-platformed
+table necessarily mints a new dataset URN and the old one lingers. The canonical Provisa URN is
+still published as the ``provisaUri`` customProperty (and ``externalUrl``), which is what a
+consumer or cleanup job keys on; this adapter does not fake a rebind it cannot perform.
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071
+# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1389
 
 from __future__ import annotations
 
 import json
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from urllib.parse import quote
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -407,7 +423,12 @@ class DataHubExport(MetadataExport):  # REQ-1069
     provider_name = "datahub"
 
     ingest_path = "/aspects?action=ingestProposal"
+    aspects_path = "/aspects"
     health_path = "/config"
+    # REQ-1389: read-merge the live globalTags aspect before proposing ours, so tags a steward
+    # attached in the DataHub UI survive the whole-document aspect UPSERT. Analogous to Atlas's
+    # classification_merge; off in tests that exercise the plain replace path.
+    tag_merge = True
 
     def _url(self, path: str) -> str:
         return f"{self._config.endpoint.rstrip('/')}{path}"
@@ -419,11 +440,77 @@ class DataHubExport(MetadataExport):  # REQ-1069
             headers["Authorization"] = f"Bearer {token}"
         return headers
 
+    async def _merge_global_tags(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        proposal: AspectProposal,
+        result: PublishResult,
+    ) -> AspectProposal:
+        """Read-merge the dataset's live ``globalTags`` into the proposal (REQ-1389).
+
+        The live aspect is read from the same GMS endpoint the ingest posts to
+        (``GET /aspects/<urlencoded urn>?aspect=globalTags&version=0``, same auth headers).
+        Every live tag whose urn is NOT ``provisa_``-prefixed was attached by a human and is
+        carried through verbatim; the ``provisa_`` tags become exactly the snapshot's, so a
+        stale one drops out. A read failure never aborts the publish: the proposal goes out
+        with only Provisa's tags and the merge failure is reported as an AssetError — the
+        clobber is surfaced, never silent.
+        """
+        route = f"{self.aspects_path}/{quote(proposal.urn, safe='')}?aspect=globalTags&version=0"
+        try:
+            response = await client.get(self._url(route), headers=headers)
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(
+                    asset=proposal.asset,
+                    message=(
+                        f"globalTags merge: live aspect read failed ({exc}); published "
+                        "Provisa tags only — human-attached tags may be overwritten"
+                    ),
+                )
+            )
+            return proposal
+        if response.status_code == 404:
+            # No live aspect: nothing human-attached to preserve.
+            return proposal
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=proposal.asset,
+                    message=(
+                        f"globalTags merge: live aspect read failed (HTTP "
+                        f"{response.status_code}); published Provisa tags only — "
+                        "human-attached tags may be overwritten"
+                    ),
+                )
+            )
+            return proposal
+        # GMS wraps the aspect value in its record-class key
+        # ({"aspect": {"com.linkedin.common.GlobalTags": {"tags": [...]}}}).
+        live_tags: list[dict[str, Any]] = []
+        for value in (response.json().get("aspect") or {}).values():
+            if isinstance(value, dict) and isinstance(value.get("tags"), list):
+                live_tags = value["tags"]
+                break
+        human = [
+            entry
+            for entry in live_tags
+            if not str(entry.get("tag", "")).startswith(f"urn:li:tag:{TAG_PREFIX}")
+        ]
+        return replace(proposal, aspect={"tags": human + proposal.aspect["tags"]})
+
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
         headers = self._headers()
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             for proposal in to_proposals(snapshot):
+                if (
+                    self.tag_merge
+                    and proposal.aspect_name == "globalTags"
+                    and proposal.entity_type == "dataset"
+                ):
+                    proposal = await self._merge_global_tags(client, headers, proposal, result)
                 # One request per aspect, because that is DataHub's unit of ingestion. A
                 # rejected aspect is reported against its asset and the rest still publish —
                 # a table whose lineage aspect is refused is still a published table.

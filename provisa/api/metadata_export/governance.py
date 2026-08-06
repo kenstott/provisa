@@ -29,11 +29,20 @@ from provisa.api.metadata_export.model import (
     GovernanceSignal,
     GovernanceTag,
 )
-from provisa.api.metadata_export.refs import TableIndex, column_ref, table_ref
+from provisa.api.metadata_export.refs import (
+    TableIndex,
+    column_ref,
+    column_uri,
+    domain_uri,
+    table_ref,
+    table_uri,
+)
 from provisa.core.models import Column, ProvisaConfig, Table
 
 
-def _mask_tags(table: Table, column: Column, all_roles: tuple[str, ...]) -> list[GovernanceTag]:
+def _mask_tags(
+    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str
+) -> list[GovernanceTag]:
     if column.mask_type is None:
         return []
     exempt = tuple(sorted(column.unmasked_to))
@@ -43,7 +52,8 @@ def _mask_tags(table: Table, column: Column, all_roles: tuple[str, ...]) -> list
             signal=GovernanceSignal.MASKED,
             # Identifies the rule without carrying it: the masked asset and the mask KIND.
             # mask_pattern / mask_replace / mask_value are the policy body and stay in Provisa.
-            rule_id=f"mask:{'.'.join(column_ref(table, column.name).parts)}:{column.mask_type}",
+            # REQ-1385: the governed element is addressed by its URN, not physical coordinates.
+            rule_id=f"mask:{column_uri(org_id, table, column.name, column.alias)}:{column.mask_type}",
             restricted_roles=tuple(r for r in all_roles if r not in column.unmasked_to),
             exempt_roles=exempt,
         )
@@ -51,7 +61,7 @@ def _mask_tags(table: Table, column: Column, all_roles: tuple[str, ...]) -> list
 
 
 def _visibility_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...]
+    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str
 ) -> list[GovernanceTag]:
     # Membership is literal — provisa/security/visibility.py enforces ``role_id in visible_to``
     # with no wildcard for columns. The tag says exactly what the engine does.
@@ -63,7 +73,7 @@ def _visibility_tags(
         GovernanceTag(
             asset=column_ref(table, column.name),
             signal=GovernanceSignal.VISIBILITY_RESTRICTED,
-            rule_id=f"visibility:{'.'.join(column_ref(table, column.name).parts)}",
+            rule_id=f"visibility:{column_uri(org_id, table, column.name, column.alias)}",  # REQ-1385
             restricted_roles=restricted,
             exempt_roles=tuple(sorted(visible)),
         )
@@ -71,7 +81,7 @@ def _visibility_tags(
 
 
 def _rls_tags(
-    config: ProvisaConfig, index: TableIndex, all_roles: tuple[str, ...]
+    config: ProvisaConfig, index: TableIndex, all_roles: tuple[str, ...], org_id: str
 ) -> list[GovernanceTag]:
     """One tag per (rule, restricted table). A domain-scoped rule tags every table in the domain.
 
@@ -82,10 +92,11 @@ def _rls_tags(
     for rule in config.rls_rules:
         if rule.table_id is not None:
             targets = [index.resolve(rule.table_id, f"RLS rule for role {rule.role_id!r}")]
-            scope = rule.table_id
+            # REQ-1385: scope is the governed element's URN, not its config-vocabulary name.
+            scope = table_uri(org_id, targets[0])
         elif rule.domain_id is not None:
             targets = [t for t in config.tables if t.domain_id == rule.domain_id]
-            scope = rule.domain_id
+            scope = domain_uri(org_id, rule.domain_id)
         else:
             raise ValueError(
                 f"RLS rule for role {rule.role_id!r} names neither a table nor a domain; "
@@ -106,14 +117,14 @@ def _rls_tags(
     return tags
 
 
-def build_governance_tags(config: ProvisaConfig) -> list[GovernanceTag]:  # REQ-1071
+def build_governance_tags(config: ProvisaConfig, org_id: str) -> list[GovernanceTag]:  # REQ-1071
     """Every enforcement fact in the config, as catalog tags."""
     all_roles = tuple(sorted(role.id for role in config.roles))
     index = TableIndex(config.tables)
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:
-            tags.extend(_mask_tags(table, column, all_roles))
-            tags.extend(_visibility_tags(table, column, all_roles))
-    tags.extend(_rls_tags(config, index, all_roles))
+            tags.extend(_mask_tags(table, column, all_roles, org_id))
+            tags.extend(_visibility_tags(table, column, all_roles, org_id))
+    tags.extend(_rls_tags(config, index, all_roles, org_id))
     return tags
