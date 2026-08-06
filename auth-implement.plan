@@ -1,0 +1,175 @@
+# Auth Implementation Plan — close the cross-surface authentication gaps
+
+Goals:
+1. Every client-facing surface supports every auth method, where the protocol allows it.
+2. High-security mode (REQ-693) is actually enforced, with tests that prove it.
+
+## Current state
+
+Provider support per surface (the 5 providers are basic, simple, firebase, keycloak, oauth/oidc —
+built by `build_auth_provider`, provisa/auth/wiring.py:27):
+
+| Surface                        | Password | Bearer/OIDC | PAT | mTLS | Gap                                              |
+|--------------------------------|----------|-------------|-----|------|--------------------------------------------------|
+| HTTP (REST, JSON:API, GraphQL) | yes      | yes         | no  | no   | PAT, mTLS                                         |
+| MCP                            | degraded | yes         | no  | no   | ignores token_validators; basic only as b64 pair  |
+| pgwire                         | yes      | yes         | no  | no   | no `basic` provider, no SCRAM, no cert auth       |
+| Bolt                           | simple   | no          | no  | no   | 4 of 5 providers unreachable; no bearer           |
+| Flight, gRPC                   | no       | no          | no  | no   | no authentication of any kind                     |
+
+Key facts behind the plan:
+- Only Bolt (provisa/bolt/session.py:117) and pgwire (provisa/pgwire/server.py:553) hardcode a
+  provider-name allowlist. HTTP and MCP go through the provider abstraction.
+- Flight's handshake (provisa/api/flight/server.py:184-199) echoes back the client's requested role
+  and validates no credential. The ADBC client sends a token in the ticket
+  (provisa-client/provisa_client/adbc.py:145) that the server never reads.
+- gRPC's `_get_role` (provisa/grpc/server.py:99-109) aborts UNAUTHENTICATED only when the
+  `x-provisa-role` header is absent — a presence check, not a credential check.
+- High-security mode gates only pgwire startup (app_startup.py:407) and HTTP /data/sql|graphql|
+  rest|jsonapi (high_security.py:41). Bolt, Flight, gRPC, MCP, /data/ingest and /data/subscribe
+  all serve row data unimpeded.
+- No authentication throttling, lockout, or failed-attempt accounting exists anywhere.
+- No surface implements mTLS.
+
+## Schema constraint (V1, no migrations)
+
+`create_all` creates missing TABLES but never ALTERs an existing one, and cli.py:115-135 fails
+startup loudly on a missing column. Therefore both PAT and SCRAM credentials must land as NEW
+tables in provisa/core/schema_admin.py plus REGISTRY_TABLES (line 217) — never as columns on
+`local_users`, which would strand every existing deployment on a `--reset`.
+
+## Phase 0 — Unblock and fix what is simply wrong
+
+1. Amend REQ-529. It mandates that any provider other than `none`/`simple` returns FATAL, which
+   forbids the OIDC support REQ-890 already shipped, and its rationale (OIDC needs redirect flows)
+   is false for token-as-password. Rewrite it to describe the pluggable provider contract. Edit
+   docs/arch/requirements.yaml directly and verify entry counts afterward — the tracker agent has
+   corrupted this file before.
+2. Correct REQ-890's status. Marked `complete`, but only clause (b) shipped; the SCRAM-SHA-256
+   local-accounts provider and CLI of clause (a) do not exist. Split (a) out or reopen it.
+3. Fix the client token key. adbc.py:34 and dbapi.py:100 read `body.get("token")` from a response
+   whose key is `access_token` (basic.py:70, simple.py:51). Change both. Leave the REQ-AK5 role
+   expression untouched — it is intended design for unauthenticated access, and this fix is what
+   stops it firing unconditionally. Verify: integration test asserting a DBAPI connection against a
+   secured server carries an Authorization header.
+4. Make the superuser compare constant-time. superuser.py:52 uses `==` on the password; switch to
+   hmac.compare_digest.
+
+## Phase 1 — Build the shared credential spine (REQ-1263)
+
+The step everything downstream depends on: one validation path instead of five.
+
+5. Add the PAT table. New Table in schema_admin.py alongside local_users, added to REGISTRY_TABLES
+   (line 217). Columns per REQ-1263: token hash, owner, org, scopes/role, expiry, last-used,
+   created. Store a hash, never the token.
+6. Add PAT issuance and revocation — routes for create/list/revoke plus the UI surface. Wire
+   revocation into org_membership.py:226, where a comment already marks the spot as blocked on this
+   table existing.
+7. Add a PAT validator to the provider contract. A PAT must resolve to an AuthIdentity through
+   `validate_token` so every surface accepts one without knowing what a PAT is. This is the single
+   interface REQ-1263 specifies and what makes steps 9-13 small.
+8. Fix MCP to use `token_validators`. It calls validate_token directly, so under provider: basic a
+   Bearer token routes to the Basic validator and only works as `Bearer <b64 user:pass>`. Switch to
+   the scheme-dispatch map HTTP uses (middleware.py:351).
+
+## Phase 2 — Give every surface the full method set
+
+9.  Authenticate Arrow Flight. Replace the echo handshake (flight/server.py:184-199) with credential
+    validation, and read the token the ADBC client already sends and the server drops. Derive the
+    role from the validated identity via resolve_role instead of trusting the client's `role`
+    string. Switch the client off its hard-coded `grpc://` (adbc.py:76) so it can reach the TLS
+    listener.
+10. Authenticate gRPC. Add a server interceptor validating a bearer token or PAT from metadata.
+    Keep `x-provisa-role` as a REQUESTED role validated against the identity's permitted set, never
+    as the identity itself. Reconsider unconditional reflection (grpc/server.py:666-672).
+11. Widen Bolt. Remove the `if provider != "simple": return None` allowlist (session.py:129-130) and
+    route through the provider contract. Read the auth `scheme` field from HELLO/LOGON — Bolt has no
+    handling of it today — so drivers can send `bearer` alongside `basic`. Add an Origin check to
+    the unauthenticated WebSocket upgrade (bolt/websocket.py:56).
+12. Add `basic` and PAT to pgwire (server.py:555-573). Trap: `basic` touches a loop-bound DB pool,
+    so it must go through run_coroutine_threadsafe like the org resolution below it, NOT the
+    asyncio.run the stateless OIDC path uses.
+13. Add PAT support to HTTP. Mostly free once step 7 lands — the middleware already dispatches on
+    scheme.
+
+## Phase 3 — Make high-security mode real, with tests that prove it
+
+14. Gate the four ungated servers. Bolt, Flight, gRPC and MCP all start unconditionally
+    (app_startup.py:333-469). Decide per surface between refusing to start and requiring
+    per-connection proof of client-side decrypt. Flight and gRPC are the paths encrypting clients
+    actually use, so a blanket shutdown would leave high-security deployments with HTTP only — they
+    need the KMS-header equivalent, not the pgwire treatment.
+15. Close the two HTTP holes. Add /data/ingest and /data/subscribe to _GATED_PREFIXES
+    (high_security.py:41), and audit the cypher, neo4j and sparql routers for the same omission.
+16. Write the cross-surface high-security integration test: boot a deployment in high mode, attempt
+    a plaintext read on every surface, assert refusal on each. Its absence let six bypasses
+    accumulate silently; it should fail the day a seventh surface is added. Today's coverage is 13
+    pure-unit tests (tests/unit/test_high_security_mode.py) whose only protocol assertion calls a
+    boolean helper.
+17. Replace the REQ-890 BDD steps. tests/steps/steps_pgwire_pluggable_auth.py re-implements
+    jwt.decode inline and never touches the handler — it would pass with the server deleted. Drive
+    the real wire path.
+18. Add a per-surface auth conformance suite: one parameterized suite asserting each surface accepts
+    each configured provider and rejects bad credentials. This is what turns "all surfaces support
+    all methods" from an intention into a gate.
+
+## Phase 4 — Hardening
+
+19. Add login throttling and lockout. Nothing exists: no attempt counter, no backoff, and
+    /auth/login sits on the middleware skip list so the per-role limiter never applies. Must cover
+    HTTP, pgwire and Bolt — which argues for the credential-validation layer from step 7 rather than
+    per surface.
+20. Add mTLS: verify_mode + CA loading + peer-cert inspection on pgwire and Bolt; root_certificates
+    and require_client_auth on gRPC; the equivalent on Flight. Amend REQ-1228 first — it mandates
+    TLS everywhere but speaks only of encryption, so client-cert verification is absent from the
+    spec, not just the code.
+21. SCRAM-SHA-256 for pgwire. Advertise auth code 10, add the SASL state machine to the forked
+    pre-auth loop (vendor/buenavista/buenavista/postgres.py:440-444), store RFC 5802 verifiers in a
+    NEW table. Last because it is the only item with a user-visible cost: bcrypt hashes cannot be
+    converted, so every local user re-sets their password.
+22. Add SNI callbacks on the wire servers per REQ-1234, so per-connection host routing works
+    alongside cert auth.
+
+## Phase 5 — Documentation
+
+Auth is documented across eight user-facing files (docs/security.md, configuration.md, admin.md,
+api-reference.md, pgwire.md, python-client.md, integrations.md, quickstart.md). All eight are in
+docs/i18n/manifest.json, so every English edit owes 10 translations. Use the doc-writer agent for
+the prose and the docs-translate skill for the locale sync; both read .claude/refs/prose-quality.md,
+and the PostToolUse prose hook blocks .md writes containing banned phrasing.
+
+23. Rewrite the per-surface auth matrix. docs/security.md and docs/integrations.md describe auth as
+    though the provider set is uniform; after Phase 2 it will be. Publish one table — surface ×
+    method — as the single reference, and stop restating it per surface doc. Land this at the end of
+    Phase 2, not incrementally, or the table is wrong between steps.
+24. Document PATs (from Phase 1): issuance, scoping, expiry, revocation, and the per-surface
+    presentation (header for HTTP/gRPC/MCP, password field for pgwire, auth token for Bolt and
+    Flight). New section in docs/security.md, plus admin.md for the issuance and revocation UI.
+25. Document high-security mode. No file under docs/*.md mentions it today — REQ-693 ships a mode
+    with no user-facing documentation at all. Needs: what it guarantees, which surfaces it disables
+    or gates, the KMS-key header contract, and how to verify a deployment is in the mode.
+26. Update the client docs. docs/python-client.md and provisa-client/README.md cover connecting with
+    a username and role; after step 3 and step 9 both the token path and Flight authentication
+    change what a working connection looks like.
+27. Update docs/configuration.md for every new config key introduced (PAT settings, mTLS cert/CA
+    paths, throttling thresholds, SNI). Keep it in step with the code — a config key that ships
+    undocumented is unusable.
+28. Update docs/pgwire.md for the new methods: `basic`, PAT-as-password, SCRAM once step 21 lands,
+    and client cert auth from step 20. It currently documents the cleartext-plus-OIDC set only.
+29. Run the docs-translate skill across the 10 locales after the English edits settle, and confirm
+    docs/index.md's Documentation table still resolves.
+
+## Sequencing
+
+Phase 0 is independent and can start immediately. Step 7 gates Phases 2 and 3 — build it first and
+steps 9-13 are each small; skip it and you write five separate auth implementations you later merge.
+Phase 3 can run in parallel with Phase 2 provided step 16's test is written against the intended end
+state and allowed to fail until Phase 2 lands. Phase 4 is deferrable except step 19, which should be
+pulled forward if any deployment is internet-facing, since unbounded password guessing applies to all
+three credentialed surfaces today.
+
+Phase 5 trails the phase it documents rather than running last as a block: step 24 after Phase 1,
+steps 23/26 after Phase 2, step 25 after Phase 3, step 28 after Phase 4. Step 27 tracks each config
+key as it lands. Step 29 runs once at the end — translating docs that are still moving wastes the
+pass. Step 25 is the exception: high-security mode is undocumented today, so it can be written
+against the intended end state at any point.
