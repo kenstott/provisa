@@ -81,8 +81,16 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
 
     @property
     def token_validators(self):
-        """Credential presentation → the validator that accepts it. Read by AuthMiddleware."""
-        return {"basic": self.validate_token, "bearer": self.validate_session_token}
+        """Credential presentation → the validator that accepts it. Read by AuthMiddleware.
+
+        A personal access token arrives as a bearer credential, so the bearer slot resolves
+        either a PAT or a session JWT (REQ-1263). The basic slot stays username:password.
+        """
+        return {"basic": self.validate_token, "bearer": self.validate_bearer}
+
+    async def validate_bearer(self, token: str) -> AuthIdentity:  # REQ-1263
+        """A bearer credential: a personal access token, else this provider's session JWT."""
+        return await self._with_pat(token, self.validate_session_token)
 
     def __init__(self, db_pool, session_secret: str | None = None) -> None:
         self._pool = db_pool

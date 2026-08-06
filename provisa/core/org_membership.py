@@ -223,9 +223,15 @@ async def remove_from_org(  # REQ-1305
     the person silently restores every privilege they previously held. ``tenant_db`` must be scoped
     to ``org_<org_id>``.
 
-    REQ-1263 personal access tokens are not revoked here because no PAT table exists yet; when one
-    lands, its org-scoped rows for this user are deleted in this function.
+    REQ-1263: the user's personal access tokens for this org are revoked with the membership. A PAT
+    outlives any session, so leaving one alive would let a removed member keep reading the org until
+    the token's own expiry.
     """
+    from provisa.auth.pat import PersonalAccessTokenStore
+
+    await PersonalAccessTokenStore(admin_db).revoke_all_for_user_in_org(
+        user_id=user_id, org_id=org_id
+    )
     async with tenant_db.acquire() as conn:
         await conn.execute_core(
             delete(user_role_assignments).where(user_role_assignments.c.user_id == user_id)

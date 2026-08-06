@@ -45,6 +45,31 @@ log = logging.getLogger(__name__)
 _request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", default=None)
 
 
+async def _validate_mcp_token(token: str, state: Any):
+    """Validate a remote MCP client's credential and return its identity (REQ-1105, REQ-1263).
+
+    MCP carries exactly one credential presentation — an HTTP bearer token — so the bearer
+    validator is selected by name rather than calling ``validate_token``, whose meaning differs
+    per provider. The platform pool is passed through so a personal access token resolves here
+    the same way it does on every other surface.
+    """
+    from provisa.auth.models import validator_for_scheme
+    from provisa.auth.wiring import build_auth_provider
+
+    auth_config = getattr(state, "auth_config", None)
+    if not auth_config:
+        raise PermissionError("MCP OAuth requested but no auth config is loaded")
+
+    provider = build_auth_provider(auth_config, admin_pool=getattr(state, "admin_db", None))
+    validator = validator_for_scheme(provider, "bearer")
+    if validator is None:
+        raise PermissionError(
+            f"auth provider {provider.provider_name!r} accepts no bearer credential, "
+            "so it cannot authenticate an MCP client"
+        )
+    return await validator(token)
+
+
 async def _resolve_token_role_async(token: str, state: Any) -> str:
     """Async core of :func:`resolve_token_role` — safe to await inside a running event loop.
 
@@ -52,14 +77,9 @@ async def _resolve_token_role_async(token: str, state: Any) -> str:
     configured or the token yields no role, this raises so the MCP call fails rather than escalating.
     """
     from provisa.auth.role_mapping import resolve_role
-    from provisa.auth.wiring import build_auth_provider
 
-    auth_config = getattr(state, "auth_config", None)
-    if not auth_config:
-        raise PermissionError("MCP OAuth requested but no auth config is loaded")
-
-    provider = build_auth_provider(auth_config)
-    identity = await provider.validate_token(token)
+    identity = await _validate_mcp_token(token, state)
+    auth_config = state.auth_config
     default_role = auth_config.get("default_role")
     if not default_role:
         # No admin fallback: a token that matches no mapping rule and has no
@@ -78,13 +98,8 @@ async def _resolve_token_org_async(token: str, state: Any) -> str | None:
     if not getattr(state, "multitenancy", False):
         return None
     from provisa.api.org_resolve import resolve_session_org
-    from provisa.auth.wiring import build_auth_provider
 
-    auth_config = getattr(state, "auth_config", None)
-    if not auth_config:
-        raise PermissionError("MCP OAuth requested but no auth config is loaded")
-    provider = build_auth_provider(auth_config)
-    identity = await provider.validate_token(token)
+    identity = await _validate_mcp_token(token, state)
     # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
     caps = capabilities_for_claims(
         getattr(identity, "roles", []) or [], getattr(state, "roles", {})

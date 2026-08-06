@@ -27,7 +27,22 @@ from provisa.auth.superuser import resolve_superuser_config
 def build_auth_provider(
     auth_config: dict, admin_pool=None
 ) -> AuthProvider:  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124
-    """Instantiate the configured auth provider from the auth config section."""
+    """Instantiate the configured auth provider from the auth config section.
+
+    REQ-1263: the personal-access-token store is attached to whichever provider is built, so a
+    PAT is accepted under every provider and on every surface. It needs the platform control
+    plane; without one there is nowhere to read tokens from and the attribute stays None,
+    leaving a PAT-shaped credential to fail as an unknown provider token.
+    """
+    provider = _construct_provider(auth_config, admin_pool)
+    if admin_pool is not None:
+        from provisa.auth.pat import PersonalAccessTokenStore
+
+        provider.pat_store = PersonalAccessTokenStore(admin_pool)
+    return provider
+
+
+def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
     provider_name = auth_config["provider"]
     if provider_name == "basic":
         from provisa.auth.providers.basic import BasicAuthProvider

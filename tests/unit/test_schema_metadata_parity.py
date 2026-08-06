@@ -54,6 +54,9 @@ REGISTRY_ONLY_TABLES = {
     # metadata.create_all — no raw SQL DDL to mirror. REQ-1355: the billing subject is ``orgs``
     # itself (already listed above); only the per-org encrypted config, ``org_config``, is separate.
     "org_config",
+    # REQ-1263: personal access tokens, the cross-surface credential. Platform plane, so
+    # portable metadata only.
+    "personal_access_tokens",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

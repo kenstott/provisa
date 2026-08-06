@@ -194,6 +194,34 @@ org_invites = Table(
     Column("used_by", Text),
 )
 
+# REQ-1263: personal access tokens — the long-lived credential every non-browser protocol
+# accepts. A token is shown once at issuance and stored only as a SHA-256 hash, so a registry
+# read cannot recover a working credential; ``token_hash`` is the primary key because lookup is
+# always by presented secret. ``prefix`` is the token's leading public characters, kept solely so
+# the owner can tell their tokens apart in the UI — it is not a credential.
+#
+# The row carries its own org and role rather than deriving them from the owner at validation
+# time: a token is a scoped grant, so narrowing or revoking it must not require touching the
+# user, and a user's later membership changes must not silently widen a token already issued.
+personal_access_tokens = Table(
+    "personal_access_tokens",
+    metadata,
+    Column("token_hash", Text, primary_key=True),
+    Column("prefix", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("user_id", Text, nullable=False),
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
+    Column("role_id", Text),  # cross-model ref -> org.roles; null means the owner's resolved role
+    Column("scopes", JSON, nullable=False, default=list),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # Null expiry is a non-expiring token — an explicit choice at issuance, not an absent value.
+    Column("expires_at", DateTime(timezone=True)),
+    Column("last_used_at", DateTime(timezone=True)),
+    # Revocation is a tombstone rather than a DELETE so an audit of a compromised token still
+    # resolves its owner and issuance time after the credential stops working.
+    Column("revoked_at", DateTime(timezone=True)),
+)
+
 # Per-org encrypted configuration — formerly ``tenant_config``, keyed by the ``tenants`` UUID.
 # REQ-1355: org == tenant, so the key is the org slug and the billing columns it used to carry
 # live on ``orgs`` itself.
@@ -222,6 +250,7 @@ REGISTRY_TABLES = [
     local_users,
     org_invites,
     superadmin_bootstrap,
+    personal_access_tokens,
 ]
 
 
