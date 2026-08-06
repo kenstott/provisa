@@ -52,6 +52,7 @@
     "logout": "Esci",
     "dev": "DEV",
     "itemMetadataExport": "Esportazione metadati",
-    "itemTags": "Tag"
+    "itemTags": "Tag",
+    "itemReports": "Report"
   }
 }

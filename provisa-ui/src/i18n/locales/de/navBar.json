@@ -52,6 +52,7 @@
     "settings": "Einstellungen",
     "logout": "Abmelden",
     "dev": "DEV",
-    "itemTags": "Tags"
+    "itemTags": "Tags",
+    "itemReports": "Berichte"
   }
 }

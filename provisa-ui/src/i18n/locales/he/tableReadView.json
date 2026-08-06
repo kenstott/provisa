@@ -52,6 +52,8 @@
     "colMean": "ממוצע",
     "colTopValues": "ערכים נפוצים",
     "editDefinitionButton": "עריכת הגדרה",
-    "editDefinitionTitle": "עריכת הגדרת ה-View (SQL או בחירת מדד/ממד)"
+    "editDefinitionTitle": "עריכת הגדרת ה-View (SQL או בחירת מדד/ממד)",
+    "previewButton": "תצוגה מקדימה",
+    "previewTitle": "תצוגה מקדימה של שורות הטבלה (SELECT * מנוהל)"
   }
 }

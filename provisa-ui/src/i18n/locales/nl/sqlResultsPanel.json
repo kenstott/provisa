@@ -59,6 +59,9 @@
     "statsElapsed": "verstreken:",
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "rijen:",
-    "statsCacheHit": "cachetreffer"
+    "statsCacheHit": "cachetreffer",
+    "groupByCol": "Groeperen op {{label}}",
+    "ungroupLevel": "Groepering niveau {{level}} opheffen",
+    "pageNumber": "Pagina {{page}}"
   }
 }

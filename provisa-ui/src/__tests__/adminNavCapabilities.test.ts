@@ -49,6 +49,7 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/ai-models": "org_settings",
   "/admin/metadata-export": "org_settings",
   "/admin/tags": "org_settings",
+  "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   "/admin/domains": "org_settings",
   "/admin/scheduled-tasks": "org_settings",
   "/admin/requests": "org_settings",

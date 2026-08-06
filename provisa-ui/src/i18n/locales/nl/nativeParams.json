@@ -1,0 +1,8 @@
+{
+  "nativeParams": {
+    "title": "Parameters voor {{name}}",
+    "hint": "Deze tabel is gebaseerd op een API met verplichte parameters. Vul ze in om een steekproef op te halen.",
+    "cancel": "Annuleren",
+    "run": "Uitvoeren"
+  }
+}

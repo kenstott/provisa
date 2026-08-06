@@ -52,6 +52,7 @@
     "logout": "Cerrar sesión",
     "dev": "DEV",
     "itemMetadataExport": "Exportación de metadatos",
-    "itemTags": "Etiquetas"
+    "itemTags": "Etiquetas",
+    "itemReports": "Informes"
   }
 }

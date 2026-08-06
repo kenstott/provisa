@@ -52,6 +52,8 @@
     "colMean": "Moyenne",
     "colTopValues": "Valeurs principales",
     "editDefinitionButton": "Modifier la définition",
-    "editDefinitionTitle": "Modifier la définition de la vue (SQL ou sélecteur de métriques/dimensions)"
+    "editDefinitionTitle": "Modifier la définition de la vue (SQL ou sélecteur de métriques/dimensions)",
+    "previewButton": "Aperçu",
+    "previewTitle": "Aperçu des lignes de cette table (SELECT * gouverné)"
   }
 }

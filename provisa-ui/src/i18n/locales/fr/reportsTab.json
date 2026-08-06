@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "Rapports",
+    "add": "Ajouter",
+    "addTitle": "Ajouter un rapport",
+    "addHint": "Un rapport est une vue gouvernée dans le domaine ops. Son SQL s'exécute via le pipeline de requêtes sous contrôle d'accès par rôle et domaine.",
+    "nameLabel": "Nom",
+    "descriptionLabel": "Description",
+    "sqlLabel": "SQL",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "added": "Rapport {{name}} créé.",
+    "delete": "Supprimer le rapport",
+    "deleteConfirm": "Supprimer le rapport {{name}} ?",
+    "deleted": "Rapport {{name}} supprimé.",
+    "empty": "Aucun rapport enregistré dans le domaine ops."
+  }
+}

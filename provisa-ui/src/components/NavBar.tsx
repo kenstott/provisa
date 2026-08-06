@@ -114,6 +114,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
       { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
+      { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
       { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "observability" },
       { to: "/admin/observability", labelKey: "navBar.itemObservability", capability: "observability" },
       { to: "/admin/mcp-server", labelKey: "navBar.itemMcpServer", capability: "admin" },

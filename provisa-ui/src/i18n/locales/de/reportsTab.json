@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "Berichte",
+    "add": "Hinzufügen",
+    "addTitle": "Bericht hinzufügen",
+    "addHint": "Ein Bericht ist eine Governance-kontrollierte Sicht in der Ops-Domäne. Sein SQL läuft durch die Abfrage-Pipeline unter Rollen- und Domänenzugriffskontrolle.",
+    "nameLabel": "Name",
+    "descriptionLabel": "Beschreibung",
+    "sqlLabel": "SQL",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "added": "Bericht {{name}} erstellt.",
+    "delete": "Bericht löschen",
+    "deleteConfirm": "Bericht {{name}} löschen?",
+    "deleted": "Bericht {{name}} gelöscht.",
+    "empty": "Keine Berichte in der Ops-Domäne registriert."
+  }
+}

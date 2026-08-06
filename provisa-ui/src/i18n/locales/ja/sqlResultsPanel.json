@@ -59,6 +59,9 @@
     "statsElapsed": "経過:",
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "行数:",
-    "statsCacheHit": "キャッシュヒット"
+    "statsCacheHit": "キャッシュヒット",
+    "groupByCol": "{{label}} でグループ化",
+    "ungroupLevel": "レベル {{level}} のグループ化を解除",
+    "pageNumber": "ページ {{page}}"
   }
 }

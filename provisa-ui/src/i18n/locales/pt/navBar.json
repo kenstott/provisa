@@ -52,6 +52,7 @@
     "settings": "Configurações",
     "logout": "Sair",
     "dev": "DEV",
-    "itemTags": "Tags"
+    "itemTags": "Tags",
+    "itemReports": "Relatórios"
   }
 }

@@ -59,6 +59,9 @@
     "statsElapsed": "trascorso:",
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "righe:",
-    "statsCacheHit": "hit di cache"
+    "statsCacheHit": "hit di cache",
+    "groupByCol": "Raggruppa per {{label}}",
+    "ungroupLevel": "Rimuovi raggruppamento livello {{level}}",
+    "pageNumber": "Pagina {{page}}"
   }
 }

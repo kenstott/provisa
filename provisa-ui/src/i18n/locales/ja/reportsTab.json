@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "レポート",
+    "add": "追加",
+    "addTitle": "レポートを追加",
+    "addHint": "レポートは ops ドメインのガバナンス管理されたビューです。その SQL はロールとドメインのアクセス制御の下でクエリパイプラインを通じて実行されます。",
+    "nameLabel": "名前",
+    "descriptionLabel": "説明",
+    "sqlLabel": "SQL",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "added": "レポート {{name}} を作成しました。",
+    "delete": "レポートを削除",
+    "deleteConfirm": "レポート {{name}} を削除しますか?",
+    "deleted": "レポート {{name}} を削除しました。",
+    "empty": "ops ドメインに登録されたレポートはありません。"
+  }
+}

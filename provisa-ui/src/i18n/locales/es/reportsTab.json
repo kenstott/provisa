@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "Informes",
+    "add": "Añadir",
+    "addTitle": "Añadir informe",
+    "addHint": "Un informe es una vista gobernada en el dominio ops. Su SQL se ejecuta a través de la canalización de consultas bajo control de acceso por rol y dominio.",
+    "nameLabel": "Nombre",
+    "descriptionLabel": "Descripción",
+    "sqlLabel": "SQL",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "added": "Informe {{name}} creado.",
+    "delete": "Eliminar informe",
+    "deleteConfirm": "¿Eliminar el informe {{name}}?",
+    "deleted": "Informe {{name}} eliminado.",
+    "empty": "No hay informes registrados en el dominio ops."
+  }
+}

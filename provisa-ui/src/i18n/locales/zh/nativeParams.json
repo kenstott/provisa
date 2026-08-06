@@ -1,0 +1,8 @@
+{
+  "nativeParams": {
+    "title": "{{name}} 的参数",
+    "hint": "此表基于带必需参数的 API。请提供参数以进行采样。",
+    "cancel": "取消",
+    "run": "运行"
+  }
+}

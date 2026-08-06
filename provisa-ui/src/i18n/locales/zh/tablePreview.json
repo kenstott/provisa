@@ -1,0 +1,8 @@
+{
+  "tablePreview": {
+    "noRows": "没有行。",
+    "run": "运行",
+    "paramsRequired": "此表需要参数。请填写必填字段并点击运行。",
+    "refresh": "刷新"
+  }
+}

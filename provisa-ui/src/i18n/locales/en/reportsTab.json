@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "Reports",
+    "add": "Add",
+    "addTitle": "Add report",
+    "addHint": "A report is a governed view in the ops domain. Its SQL runs through the query pipeline under role and domain access control.",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description",
+    "sqlLabel": "SQL",
+    "cancel": "Cancel",
+    "save": "Save",
+    "added": "Report {{name}} created.",
+    "delete": "Delete report",
+    "deleteConfirm": "Delete report {{name}}?",
+    "deleted": "Report {{name}} deleted.",
+    "empty": "No reports registered in the ops domain."
+  }
+}

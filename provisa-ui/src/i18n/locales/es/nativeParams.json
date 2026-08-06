@@ -1,0 +1,8 @@
+{
+  "nativeParams": {
+    "title": "Parámetros para {{name}}",
+    "hint": "Esta tabla está respaldada por una API con parámetros obligatorios. Proporciónelos para obtener una muestra.",
+    "cancel": "Cancelar",
+    "run": "Ejecutar"
+  }
+}

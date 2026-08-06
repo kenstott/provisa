@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "Report",
+    "add": "Aggiungi",
+    "addTitle": "Aggiungi report",
+    "addHint": "Un report è una vista governata nel dominio ops. Il suo SQL viene eseguito tramite la pipeline di query sotto controllo di accesso per ruolo e dominio.",
+    "nameLabel": "Nome",
+    "descriptionLabel": "Descrizione",
+    "sqlLabel": "SQL",
+    "cancel": "Annulla",
+    "save": "Salva",
+    "added": "Report {{name}} creato.",
+    "delete": "Elimina report",
+    "deleteConfirm": "Eliminare il report {{name}}?",
+    "deleted": "Report {{name}} eliminato.",
+    "empty": "Nessun report registrato nel dominio ops."
+  }
+}

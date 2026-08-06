@@ -59,6 +59,9 @@
     "statsElapsed": "זמן שחלף:",
     "statsElapsedMs": "{{ms}} מ\"ש",
     "statsRows": "שורות:",
-    "statsCacheHit": "פגיעת מטמון"
+    "statsCacheHit": "פגיעת מטמון",
+    "groupByCol": "קיבוץ לפי {{label}}",
+    "ungroupLevel": "ביטול קיבוץ רמה {{level}}",
+    "pageNumber": "עמוד {{page}}"
   }
 }

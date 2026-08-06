@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "報表",
+    "add": "新增",
+    "addTitle": "新增報表",
+    "addHint": "報表是 ops 網域中受治理的檢視。其 SQL 在角色與網域存取控制下透過查詢管線執行。",
+    "nameLabel": "名稱",
+    "descriptionLabel": "描述",
+    "sqlLabel": "SQL",
+    "cancel": "取消",
+    "save": "儲存",
+    "added": "已建立報表 {{name}}。",
+    "delete": "刪除報表",
+    "deleteConfirm": "確定刪除報表 {{name}} 嗎？",
+    "deleted": "已刪除報表 {{name}}。",
+    "empty": "ops 網域中未註冊任何報表。"
+  }
+}

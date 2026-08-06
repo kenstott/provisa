@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "报表",
+    "add": "添加",
+    "addTitle": "添加报表",
+    "addHint": "报表是 ops 域中受治理的视图。其 SQL 在角色和域访问控制下通过查询管道执行。",
+    "nameLabel": "名称",
+    "descriptionLabel": "描述",
+    "sqlLabel": "SQL",
+    "cancel": "取消",
+    "save": "保存",
+    "added": "已创建报表 {{name}}。",
+    "delete": "删除报表",
+    "deleteConfirm": "确定删除报表 {{name}} 吗？",
+    "deleted": "已删除报表 {{name}}。",
+    "empty": "ops 域中未注册任何报表。"
+  }
+}

@@ -39,6 +39,8 @@ interface TableReadViewProps {
   startEditing: (t: RegisteredTable) => void;
   handleDelete: (id: number) => void;
   handleProfile: (id: number) => void;
+  // REQ-1386: opens the governed SELECT * preview modal.
+  onPreview: (t: RegisteredTable) => void;
   // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
   onEditDefinition?: (t: RegisteredTable) => void;
 }
@@ -57,6 +59,7 @@ export function TableReadView({
   startEditing,
   handleDelete,
   handleProfile,
+  onPreview,
   onEditDefinition,
 }: TableReadViewProps) {
   const { t } = useTranslation();
@@ -271,6 +274,18 @@ export function TableReadView({
         <Button
           size="compact-sm"
           variant="default"
+          data-testid="table-read-view-preview"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPreview(table);
+          }}
+          title={t("tableReadView.previewTitle")}
+        >
+          {t("tableReadView.previewButton")}
+        </Button>
+        <Button
+          size="compact-sm"
+          variant="default"
           data-testid="table-read-view-profile"
           onClick={(e) => {
             e.stopPropagation();
@@ -285,7 +300,7 @@ export function TableReadView({
         </Button>
         <Button
           size="compact-sm"
-          variant="subtle"
+          variant="default"
           data-testid="table-read-view-policies"
           title={t("tableReadView.policiesTitle")}
           onClick={(e) => {

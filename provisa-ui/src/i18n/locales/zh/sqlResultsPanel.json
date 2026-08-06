@@ -59,6 +59,9 @@
     "statsElapsed": "耗时：",
     "statsElapsedMs": "{{ms}} 毫秒",
     "statsRows": "行数：",
-    "statsCacheHit": "缓存命中"
+    "statsCacheHit": "缓存命中",
+    "groupByCol": "按 {{label}} 分组",
+    "ungroupLevel": "取消第 {{level}} 级分组",
+    "pageNumber": "第 {{page}} 页"
   }
 }

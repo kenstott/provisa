@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "Relatórios",
+    "add": "Adicionar",
+    "addTitle": "Adicionar relatório",
+    "addHint": "Um relatório é uma visão governada no domínio ops. Seu SQL é executado pelo pipeline de consultas sob controle de acesso por papel e domínio.",
+    "nameLabel": "Nome",
+    "descriptionLabel": "Descrição",
+    "sqlLabel": "SQL",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "added": "Relatório {{name}} criado.",
+    "delete": "Excluir relatório",
+    "deleteConfirm": "Excluir o relatório {{name}}?",
+    "deleted": "Relatório {{name}} excluído.",
+    "empty": "Nenhum relatório registrado no domínio ops."
+  }
+}

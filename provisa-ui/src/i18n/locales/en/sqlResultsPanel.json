@@ -21,6 +21,8 @@
     "lastPage": "Last page",
     "pageIndicator": "Page {{page}} / {{total}}",
     "filterPlaceholder": "Filter rows…",
+    "groupByCol": "Group by {{label}}",
+    "ungroupLevel": "Ungroup level {{level}}",
     "resizeColumn": "Resize column",
     "nullValue": "null",
     "profileEmpty": "Sample a query to profile the result columns.",
@@ -59,6 +61,7 @@
     "statsElapsed": "elapsed:",
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "rows:",
-    "statsCacheHit": "cache hit"
+    "statsCacheHit": "cache hit",
+    "pageNumber": "Page {{page}}"
   }
 }

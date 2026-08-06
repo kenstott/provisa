@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "Rapporten",
+    "add": "Toevoegen",
+    "addTitle": "Rapport toevoegen",
+    "addHint": "Een rapport is een governed view in het ops-domein. De SQL loopt via de querypijplijn onder toegangscontrole per rol en domein.",
+    "nameLabel": "Naam",
+    "descriptionLabel": "Beschrijving",
+    "sqlLabel": "SQL",
+    "cancel": "Annuleren",
+    "save": "Opslaan",
+    "added": "Rapport {{name}} aangemaakt.",
+    "delete": "Rapport verwijderen",
+    "deleteConfirm": "Rapport {{name}} verwijderen?",
+    "deleted": "Rapport {{name}} verwijderd.",
+    "empty": "Geen rapporten geregistreerd in het ops-domein."
+  }
+}

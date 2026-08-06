@@ -52,6 +52,8 @@
     "colMean": "माध्य",
     "colTopValues": "शीर्ष मान",
     "editDefinitionButton": "परिभाषा संपादित करें",
-    "editDefinitionTitle": "व्यू परिभाषा संपादित करें (SQL या मेट्रिक/डाइमेंशन चयनकर्ता)"
+    "editDefinitionTitle": "व्यू परिभाषा संपादित करें (SQL या मेट्रिक/डाइमेंशन चयनकर्ता)",
+    "previewButton": "पूर्वावलोकन",
+    "previewTitle": "इस तालिका की पंक्तियों का पूर्वावलोकन (शासित SELECT *)"
   }
 }

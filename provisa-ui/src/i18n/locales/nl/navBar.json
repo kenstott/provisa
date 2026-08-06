@@ -52,6 +52,7 @@
     "logout": "Afmelden",
     "dev": "DEV",
     "itemMetadataExport": "Metadata-export",
-    "itemTags": "Tags"
+    "itemTags": "Tags",
+    "itemReports": "Rapporten"
   }
 }

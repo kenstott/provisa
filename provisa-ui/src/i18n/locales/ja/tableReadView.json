@@ -52,6 +52,8 @@
     "colMean": "平均",
     "colTopValues": "上位の値",
     "editDefinitionButton": "定義を編集",
-    "editDefinitionTitle": "ビュー定義を編集します（SQLまたはメトリクス/ディメンション選択）"
+    "editDefinitionTitle": "ビュー定義を編集します（SQLまたはメトリクス/ディメンション選択）",
+    "previewButton": "プレビュー",
+    "previewTitle": "このテーブルの行をプレビュー (ガバナンス管理された SELECT *)"
   }
 }

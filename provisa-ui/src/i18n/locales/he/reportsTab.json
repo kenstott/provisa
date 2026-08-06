@@ -1,0 +1,18 @@
+{
+  "reportsTab": {
+    "title": "דוחות",
+    "add": "הוספה",
+    "addTitle": "הוספת דוח",
+    "addHint": "דוח הוא תצוגה מנוהלת בדומיין ops. ה-SQL שלו רץ דרך צינור השאילתות תחת בקרת גישה לפי תפקיד ודומיין.",
+    "nameLabel": "שם",
+    "descriptionLabel": "תיאור",
+    "sqlLabel": "SQL",
+    "cancel": "ביטול",
+    "save": "שמירה",
+    "added": "הדוח {{name}} נוצר.",
+    "delete": "מחיקת דוח",
+    "deleteConfirm": "למחוק את הדוח {{name}}?",
+    "deleted": "הדוח {{name}} נמחק.",
+    "empty": "אין דוחות רשומים בדומיין ops."
+  }
+}

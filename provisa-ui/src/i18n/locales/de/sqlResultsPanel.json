@@ -59,6 +59,9 @@
     "statsElapsed": "verstrichen:",
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "Zeilen:",
-    "statsCacheHit": "Cache-Treffer"
+    "statsCacheHit": "Cache-Treffer",
+    "groupByCol": "Nach {{label}} gruppieren",
+    "ungroupLevel": "Gruppierungsebene {{level}} aufheben",
+    "pageNumber": "Seite {{page}}"
   }
 }

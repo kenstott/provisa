@@ -59,6 +59,9 @@
     "statsElapsed": "затрачено:",
     "statsElapsedMs": "{{ms}} мс",
     "statsRows": "строки:",
-    "statsCacheHit": "попадание в кеш"
+    "statsCacheHit": "попадание в кеш",
+    "groupByCol": "Группировать по {{label}}",
+    "ungroupLevel": "Убрать группировку уровня {{level}}",
+    "pageNumber": "Страница {{page}}"
   }
 }

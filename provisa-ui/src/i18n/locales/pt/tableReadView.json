@@ -52,6 +52,8 @@
     "colMean": "Média",
     "colTopValues": "Valores mais frequentes",
     "editDefinitionButton": "Editar definição",
-    "editDefinitionTitle": "Editar a definição da exibição (SQL ou seletor de métrica/dimensão)"
+    "editDefinitionTitle": "Editar a definição da exibição (SQL ou seletor de métrica/dimensão)",
+    "previewButton": "Pré-visualização",
+    "previewTitle": "Pré-visualização das linhas desta tabela (SELECT * governado)"
   }
 }

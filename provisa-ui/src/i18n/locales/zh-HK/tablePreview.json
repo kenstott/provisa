@@ -1,0 +1,8 @@
+{
+  "tablePreview": {
+    "noRows": "沒有資料列。",
+    "run": "執行",
+    "paramsRequired": "此資料表需要參數。請填寫必填欄位並按下執行。",
+    "refresh": "重新整理"
+  }
+}

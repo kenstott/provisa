@@ -1,0 +1,8 @@
+{
+  "tablePreview": {
+    "noRows": "Nessuna riga.",
+    "run": "Esegui",
+    "paramsRequired": "Questa tabella richiede parametri. Compila i campi obbligatori e premi Esegui.",
+    "refresh": "Aggiorna"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "tablePreview": {
+    "noRows": "Keine Zeilen.",
+    "run": "Ausführen",
+    "paramsRequired": "Diese Tabelle erfordert Parameter. Füllen Sie die Pflichtfelder aus und klicken Sie auf Ausführen.",
+    "refresh": "Aktualisieren"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "nativeParams": {
+    "title": "Parameter für {{name}}",
+    "hint": "Diese Tabelle basiert auf einer API mit erforderlichen Parametern. Geben Sie sie an, um Daten abzurufen.",
+    "cancel": "Abbrechen",
+    "run": "Ausführen"
+  }
+}

@@ -59,6 +59,9 @@
     "statsElapsed": "耗時：",
     "statsElapsedMs": "{{ms}} 毫秒",
     "statsRows": "行數：",
-    "statsCacheHit": "快取命中"
+    "statsCacheHit": "快取命中",
+    "groupByCol": "依 {{label}} 分組",
+    "ungroupLevel": "取消第 {{level}} 層分組",
+    "pageNumber": "第 {{page}} 頁"
   }
 }

@@ -52,6 +52,8 @@
     "colMean": "平均值",
     "colTopValues": "最常見值",
     "editDefinitionButton": "編輯定義",
-    "editDefinitionTitle": "編輯檢視定義（SQL 或指標／維度選擇器）"
+    "editDefinitionTitle": "編輯檢視定義（SQL 或指標／維度選擇器）",
+    "previewButton": "預覽",
+    "previewTitle": "預覽此資料表的資料列（受治理的 SELECT *）"
   }
 }

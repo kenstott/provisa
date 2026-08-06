@@ -1,0 +1,8 @@
+{
+  "tablePreview": {
+    "noRows": "Geen rijen.",
+    "run": "Uitvoeren",
+    "paramsRequired": "Deze tabel vereist parameters. Vul de verplichte velden in en klik op Uitvoeren.",
+    "refresh": "Vernieuwen"
+  }
+}

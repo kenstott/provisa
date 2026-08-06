@@ -59,6 +59,9 @@
     "statsElapsed": "बीता समय:",
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "पंक्तियाँ:",
-    "statsCacheHit": "कैश हिट"
+    "statsCacheHit": "कैश हिट",
+    "groupByCol": "{{label}} के अनुसार समूहित करें",
+    "ungroupLevel": "स्तर {{level}} का समूहन हटाएँ",
+    "pageNumber": "पृष्ठ {{page}}"
   }
 }

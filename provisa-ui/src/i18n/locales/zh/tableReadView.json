@@ -52,6 +52,8 @@
     "colMean": "平均值",
     "colTopValues": "最常见值",
     "editDefinitionButton": "编辑定义",
-    "editDefinitionTitle": "编辑视图定义（SQL 或指标/维度选择器）"
+    "editDefinitionTitle": "编辑视图定义（SQL 或指标/维度选择器）",
+    "previewButton": "预览",
+    "previewTitle": "预览此表的行（受治理的 SELECT *）"
   }
 }

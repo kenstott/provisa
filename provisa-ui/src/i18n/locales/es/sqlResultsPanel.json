@@ -59,6 +59,9 @@
     "statsElapsed": "transcurrido:",
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "filas:",
-    "statsCacheHit": "acierto de caché"
+    "statsCacheHit": "acierto de caché",
+    "groupByCol": "Agrupar por {{label}}",
+    "ungroupLevel": "Desagrupar nivel {{level}}",
+    "pageNumber": "Página {{page}}"
   }
 }

@@ -52,6 +52,8 @@
     "colMean": "Media",
     "colTopValues": "Valores principales",
     "editDefinitionButton": "Editar definición",
-    "editDefinitionTitle": "Editar la definición de la vista (SQL o selector de métricas/dimensiones)"
+    "editDefinitionTitle": "Editar la definición de la vista (SQL o selector de métricas/dimensiones)",
+    "previewButton": "Vista previa",
+    "previewTitle": "Vista previa de las filas de esta tabla (SELECT * gobernado)"
   }
 }

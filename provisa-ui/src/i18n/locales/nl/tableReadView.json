@@ -52,6 +52,8 @@
     "colMean": "Gemiddelde",
     "colTopValues": "Meest voorkomende waarden",
     "editDefinitionButton": "Definitie bewerken",
-    "editDefinitionTitle": "De viewdefinitie bewerken (SQL of metriek-/dimensiekiezer)"
+    "editDefinitionTitle": "De viewdefinitie bewerken (SQL of metriek-/dimensiekiezer)",
+    "previewButton": "Voorbeeld",
+    "previewTitle": "Voorbeeld van de rijen van deze tabel (governed SELECT *)"
   }
 }

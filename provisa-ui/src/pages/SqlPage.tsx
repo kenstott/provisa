@@ -9,7 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
@@ -31,16 +31,9 @@ import {
 import type { RegisteredTable } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
-import {
-  PAGE_SIZE,
-  COL_MAX,
-  COL_MIN,
-  CHAR_PX,
-  tabResultsKey,
-  tabSqlKey,
-  tabNlKey,
-} from "./sql/types";
-import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig, ColumnProfile } from "./sql/types";
+import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
+import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
+import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
 import { autoAliasConflicts, normalizeDomain, parseSemanticMetricQuery } from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
@@ -129,12 +122,7 @@ export function SqlPage() {
   const [domainPages, setDomainPages] = useState<Record<string, number>>({});
   const [history, setHistory] = useState<ReturnType<typeof loadHistory>>(loadHistory);
   const [copied, setCopied] = useState(false);
-  const [copiedResults, setCopiedResults] = useState(false);
-  const [sorts, setSorts] = useState<{ col: string; dir: "asc" | "desc" }[]>([]);
-  const [filters, setFilters] = useState<Record<string, string>>({});
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const pendingAutoRunRef = useRef(
     (location.state as { autoRun?: boolean } | null)?.autoRun === true,
@@ -352,38 +340,9 @@ export function SqlPage() {
     });
   }, [sqlText]);
 
-  const handleSort = useCallback((col: string) => {
-    setSorts((prev) => {
-      const idx = prev.findIndex((s) => s.col === col);
-      if (idx === -1) return [...prev, { col, dir: "asc" }];
-      if (prev[idx].dir === "asc")
-        return prev.map((s, i) => (i === idx ? { ...s, dir: "desc" } : s));
-      return prev.filter((_, i) => i !== idx);
-    });
-  }, []);
-
-  const handleResizeStart = useCallback((col: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const th = (e.currentTarget as HTMLElement).closest("th") as HTMLElement;
-    const startW = th.offsetWidth;
-    resizingRef.current = { col, startX: e.clientX, startW };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizingRef.current) return;
-      const delta = ev.clientX - resizingRef.current.startX;
-      const newW = Math.max(60, resizingRef.current.startW + delta);
-      setColWidths((prev) => ({ ...prev, [resizingRef.current!.col]: newW }));
-    };
-    const onUp = () => {
-      resizingRef.current = null;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
-
-  const [page, setPage] = useState(0);
+  // Client-side grid state (sort/filter/group/page/widths/export) — shared hook.
+  const grid = useResultsGrid(resultRows, resultColumns);
+  const { resetGrid } = grid;
 
   // ----- Query tab actions -----
   const mergeActive = useCallback(
@@ -405,12 +364,9 @@ export function SqlPage() {
     setExecMs(t.execMs);
     setQueryStats(null);
     setNlError("");
-    setSorts([]);
-    setFilters({});
-    setColWidths({});
-    setPage(0);
+    resetGrid();
     setResultTab("results");
-  }, []);
+  }, [resetGrid]);
 
   const switchTab = useCallback(
     (id: string) => {
@@ -463,144 +419,6 @@ export function SqlPage() {
   const renameTab = useCallback((id: string, title: string) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
   }, []);
-
-  const autoWidths = useMemo(() => {
-    const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
-    const widths: Record<string, number> = {};
-    for (const col of cols) {
-      const headerLen = col.length;
-      const maxDataLen = resultRows.slice(0, 50).reduce((m, r) => {
-        const v = r[col];
-        return Math.max(m, v == null ? 4 : String(v).length);
-      }, 0);
-      widths[col] = Math.min(
-        COL_MAX,
-        Math.max(COL_MIN, Math.max(headerLen, maxDataLen) * CHAR_PX + 24),
-      );
-    }
-    return widths;
-  }, [resultRows, resultColumns]);
-
-  const displayRows = useMemo(() => {
-    const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
-    let rows = [...resultRows];
-    for (const col of cols) {
-      const f = filters[col];
-      if (!f) continue;
-      const lower = f.toLowerCase();
-      rows = rows.filter((r) => {
-        const v = r[col];
-        return v != null && String(v).toLowerCase().includes(lower);
-      });
-    }
-    if (sorts.length > 0) {
-      rows.sort((a, b) => {
-        for (const { col, dir } of sorts) {
-          const av = a[col],
-            bv = b[col];
-          let cmp: number;
-          if (av == null && bv == null) continue;
-          if (av == null) {
-            cmp = 1;
-          } else if (bv == null) {
-            cmp = -1;
-          } else if (typeof av === "number" && typeof bv === "number") {
-            cmp = av - bv;
-          } else {
-            cmp = String(av).localeCompare(String(bv));
-          }
-          if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
-        }
-        return 0;
-      });
-    }
-    return rows;
-  }, [resultRows, resultColumns, filters, sorts]);
-
-  const pagedRows = useMemo(
-    () => displayRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [displayRows, page],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE));
-
-  const handleDownloadCsv = useCallback(() => {
-    const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
-    const escape = (v: unknown) => {
-      const s = v == null ? "" : String(v);
-      return s.includes(",") || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"`
-        : s;
-    };
-    const lines = [cols.map(escape).join(",")];
-    for (const row of displayRows) lines.push(cols.map((c) => escape(row[c])).join(","));
-    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "results.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [displayRows, resultColumns, resultRows]);
-
-  const handleCopyResults = useCallback(() => {
-    const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
-    const lines = [cols.join("\t")];
-    for (const row of displayRows)
-      lines.push(cols.map((c) => (row[c] == null ? "" : String(row[c]))).join("\t"));
-    navigator.clipboard.writeText(lines.join("\n")).then(() => {
-      setCopiedResults(true);
-      setTimeout(() => setCopiedResults(false), 1500);
-    });
-  }, [displayRows, resultColumns, resultRows]);
-
-  const profile = useMemo((): ColumnProfile[] => {
-    if (resultRows.length === 0) return [];
-    const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
-    return cols.map((col) => {
-      const vals = resultRows.map((r) => r[col]);
-      const nullCount = vals.filter((v) => v === null || v === undefined).length;
-      const blankCount = vals.filter((v) => typeof v === "string" && v.trim() === "").length;
-      const nonNull = vals.filter((v) => v !== null && v !== undefined);
-      const freq: Map<string, number> = new Map();
-      for (const v of vals) {
-        const k = v === null || v === undefined ? "NULL" : String(v);
-        freq.set(k, (freq.get(k) ?? 0) + 1);
-      }
-      const distinctCount = freq.size;
-      const constantValue = distinctCount === 1 ? vals[0] : undefined;
-      const numbers = nonNull.filter((v) => typeof v === "number") as number[];
-      const mean = numbers.length > 0 ? numbers.reduce((a, b) => a + b, 0) / numbers.length : null;
-      const sorted = [...nonNull].sort((a, b) => (a! < b! ? -1 : a! > b! ? 1 : 0));
-      const min = sorted.length > 0 ? (sorted[0] as string | number) : null;
-      const max = sorted.length > 0 ? (sorted[sorted.length - 1] as string | number) : null;
-      const topValues = [...freq.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([value, count]) => ({ value, count }));
-      return {
-        col,
-        nullCount,
-        blankCount,
-        distinctCount,
-        constantValue,
-        min,
-        max,
-        mean,
-        topValues,
-      };
-    });
-  }, [resultRows, resultColumns]);
-
-  const handleDownloadProfile = useCallback(() => {
-    const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "profile.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [profile]);
 
   const handleSaveView = useCallback(async () => {
     if (!viewId.trim() || !viewDomainId.trim()) return;
@@ -701,10 +519,7 @@ export function SqlPage() {
       setResultRows(result.rows);
       idbSet(tabResultsKey(activeTabId), { columns: result.columns, rows: result.rows, error: "" });
     }
-    setSorts([]);
-    setFilters({});
-    setColWidths({});
-    setPage(0);
+    resetGrid();
     setResultTab("results");
     setRunning(false);
     const entry = {
@@ -720,7 +535,7 @@ export function SqlPage() {
       saveHistory(next);
       return next;
     });
-  }, [sqlText, role, sampleMode, sampleSize, activeTabId, statsEnabled]);
+  }, [sqlText, role, sampleMode, sampleSize, activeTabId, statsEnabled, resetGrid]);
 
   useEffect(() => {
     if (pendingAutoRunRef.current && sqlText.trim()) {
@@ -961,29 +776,13 @@ export function SqlPage() {
               resultError={resultError}
               resultRows={resultRows}
               resultColumns={resultColumns}
-              sorts={sorts}
-              filters={filters}
-              setFilters={setFilters}
-              page={page}
-              setPage={setPage}
-              displayRows={displayRows}
-              pagedRows={pagedRows}
-              totalPages={totalPages}
-              colWidths={colWidths}
-              autoWidths={autoWidths}
-              copiedResults={copiedResults}
-              profile={profile}
+              grid={grid}
               errors={errors}
               history={history}
               queryStats={queryStats}
               sqlText={sqlText}
               setSqlText={setSqlText}
               setRole={setRole}
-              handleDownloadCsv={handleDownloadCsv}
-              handleCopyResults={handleCopyResults}
-              handleSort={handleSort}
-              handleResizeStart={handleResizeStart}
-              handleDownloadProfile={handleDownloadProfile}
             />
           </div>
         </div>

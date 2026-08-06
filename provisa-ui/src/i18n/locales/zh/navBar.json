@@ -52,6 +52,7 @@
     "logout": "退出登录",
     "dev": "DEV",
     "itemMetadataExport": "元数据导出",
-    "itemTags": "标签"
+    "itemTags": "标签",
+    "itemReports": "报表"
   }
 }

@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Network, ArrowUp, ArrowDown, ArrowUpDown, Layers, X } from "lucide-react";
 import { ActionIcon, Alert, Badge, Button, Group, Modal, Table, Text, Title } from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
-import { fetchSettings, profileTable } from "../api/admin";
+import { fetchSettings, profileTable, runSql } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import {
   useTables,
@@ -48,6 +48,9 @@ import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
 import { TableReadView } from "./tables/TableReadView";
+import { TablePreviewModal } from "../components/TablePreviewModal";
+import { NativeParamsModal } from "../components/NativeParamsModal";
+import { previewSql, requiredParamColumns } from "../components/nativeParams";
 import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
 
@@ -83,6 +86,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
+  // REQ-1386: table whose governed SELECT * preview modal is open.
+  const [previewTable, setPreviewTable] = useState<RegisteredTable | null>(null);
+  // Table awaiting native-param entry before its profile sample can run.
+  const [profileParamsTable, setProfileParamsTable] = useState<RegisteredTable | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showModeling, setShowModeling] = useState(false); // REQ-1164: entity/fact modeling modal
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
@@ -272,7 +279,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
-  const handleProfile = async (tableId: number) => {
+  const handleProfile = async (tableId: number, paramValues?: Record<string, string>) => {
     const existing = tableProfiles[tableId];
     if (existing !== undefined && existing !== "loading") {
       setTableProfiles((prev) => {
@@ -286,10 +293,27 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setTableProfiles((prev) => ({ ...prev, [tableId]: "No active role" }));
       return;
     }
+    // A table with required native params (path_param) cannot be sampled bare:
+    // collect the params first, then profile through the governed SQL pipeline
+    // with the params as WHERE predicates.
+    const table = tables.find((tbl) => tbl.id === tableId);
+    if (table && requiredParamColumns(table).length > 0 && paramValues === undefined) {
+      setProfileParamsTable(table);
+      return;
+    }
     setTableProfiles((prev) => ({ ...prev, [tableId]: "loading" }));
     try {
-      const result = await profileTable(tableId, activeRole.id);
-      setTableProfiles((prev) => ({ ...prev, [tableId]: result }));
+      if (table && paramValues !== undefined) {
+        const result = await runSql(previewSql(table, paramValues), activeRole.id);
+        if (result.error) throw new Error(result.error);
+        setTableProfiles((prev) => ({
+          ...prev,
+          [tableId]: { columns: result.columns, rows: result.rows, rowCount: result.rows.length },
+        }));
+      } else {
+        const result = await profileTable(tableId, activeRole.id);
+        setTableProfiles((prev) => ({ ...prev, [tableId]: result }));
+      }
     } catch (e) {
       setTableProfiles((prev) => ({
         ...prev,
@@ -933,6 +957,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             startEditing={startEditing}
                             handleDelete={handleDelete}
                             handleProfile={handleProfile}
+                            onPreview={setPreviewTable}
                           />
                         ) : (
                           editingTable && (
@@ -1072,6 +1097,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           onClose={() => setShowErd(false)}
         />
       )}
+      <TablePreviewModal table={previewTable} onClose={() => setPreviewTable(null)} />
+      <NativeParamsModal
+        key={profileParamsTable?.id ?? "none"}
+        table={profileParamsTable}
+        onClose={() => setProfileParamsTable(null)}
+        onSubmit={(values) => {
+          const tbl = profileParamsTable;
+          setProfileParamsTable(null);
+          if (tbl) void handleProfile(tbl.id, values);
+        }}
+      />
     </div>
   );
 }

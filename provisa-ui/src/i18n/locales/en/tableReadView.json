@@ -35,6 +35,8 @@
     "deployToDbTitle": "Promote this virtual view to a real database view",
     "profileButton": "Profile",
     "profilingButton": "Profiling…",
+    "previewButton": "Preview",
+    "previewTitle": "Preview this table's rows (governed SELECT *)",
     "profileTitle": "Sample and profile this table's columns",
     "policiesButton": "Policies",
     "policiesTitle": "View RLS policies for this table",

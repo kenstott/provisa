@@ -401,6 +401,7 @@ function App() {
                       ["/admin/ai-models", "org_settings"],
                       ["/admin/metadata-export", "org_settings"],
                       ["/admin/tags", "org_settings"],
+                      ["/admin/reports", "observability"], // REQ-1386
                       ["/admin/security", "platform_settings"],
                     ] as const
                   ).map(([path, capability]) => (

@@ -52,6 +52,7 @@
     "logout": "Выйти",
     "dev": "DEV",
     "itemMetadataExport": "Экспорт метаданных",
-    "itemTags": "Теги"
+    "itemTags": "Теги",
+    "itemReports": "Отчёты"
   }
 }

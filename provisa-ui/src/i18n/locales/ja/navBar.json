@@ -52,6 +52,7 @@
     "logout": "ログアウト",
     "dev": "DEV",
     "itemMetadataExport": "メタデータエクスポート",
-    "itemTags": "タグ"
+    "itemTags": "タグ",
+    "itemReports": "レポート"
   }
 }

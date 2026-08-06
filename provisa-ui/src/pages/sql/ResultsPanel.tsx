@@ -10,10 +10,11 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Badge, Box, Button, Table, Tabs, Text, TextInput } from "@mantine/core";
-import { History, BarChart2, Copy, Check, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Filter } from "lucide-react";
-import { COL_MIN, PAGE_SIZE } from "./types";
-import type { ResultTab, HistoryEntry, ColumnProfile } from "./types";
+import { Badge, Box, Button, Table, Tabs } from "@mantine/core";
+import { History, BarChart2 } from "lucide-react";
+import { ResultsGrid } from "./ResultsGrid";
+import type { ResultsGridState } from "./useResultsGrid";
+import type { ResultTab, HistoryEntry } from "./types";
 
 interface ResultsPanelProps {
   resultTab: ResultTab;
@@ -22,29 +23,13 @@ interface ResultsPanelProps {
   resultError: string;
   resultRows: Record<string, unknown>[];
   resultColumns: string[];
-  sorts: { col: string; dir: "asc" | "desc" }[];
-  filters: Record<string, string>;
-  setFilters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  page: number;
-  setPage: React.Dispatch<React.SetStateAction<number>>;
-  displayRows: Record<string, unknown>[];
-  pagedRows: Record<string, unknown>[];
-  totalPages: number;
-  colWidths: Record<string, number>;
-  autoWidths: Record<string, number>;
-  copiedResults: boolean;
-  profile: ColumnProfile[];
+  grid: ResultsGridState;
   errors: string[];
   history: HistoryEntry[];
   queryStats: unknown;
   sqlText: string;
   setSqlText: React.Dispatch<React.SetStateAction<string>>;
   setRole: React.Dispatch<React.SetStateAction<string>>;
-  handleDownloadCsv: () => void;
-  handleCopyResults: () => void;
-  handleSort: (col: string) => void;
-  handleResizeStart: (col: string, e: React.MouseEvent) => void;
-  handleDownloadProfile: () => void;
 }
 
 export function ResultsPanel({
@@ -53,32 +38,16 @@ export function ResultsPanel({
   running,
   resultError,
   resultRows,
-  resultColumns,
-  sorts,
-  filters,
-  setFilters,
-  page,
-  setPage,
-  displayRows,
-  pagedRows,
-  totalPages,
-  colWidths,
-  autoWidths,
-  copiedResults,
-  profile,
+  grid,
   errors,
   history,
   queryStats,
   sqlText,
   setSqlText,
   setRole,
-  handleDownloadCsv,
-  handleCopyResults,
-  handleSort,
-  handleResizeStart,
-  handleDownloadProfile,
 }: ResultsPanelProps) {
   const { t } = useTranslation();
+  const { profile, handleDownloadProfile } = grid;
 
   const tabLabels: Record<ResultTab, string> = {
     results: t("sqlResultsPanel.tabResults"),
@@ -182,236 +151,7 @@ export function ResultsPanel({
               {sqlText.trim() ? t("sqlResultsPanel.noResults") : t("sqlResultsPanel.writeSqlPrompt")}
             </div>
           ) : (
-            (() => {
-              const displayCols =
-                resultColumns.length > 0
-                  ? resultColumns
-                  : resultRows[0] != null
-                    ? Object.keys(resultRows[0] as object)
-                    : [];
-              return (
-                <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      padding: "0.25rem 0.75rem",
-                      borderBottom: "1px solid var(--border)",
-                      flexShrink: 0,
-                      background: "var(--surface)",
-                      fontSize: "0.72rem",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    <Button
-                      variant="default"
-                      size="compact-xs"
-                      onClick={handleDownloadCsv}
-                      data-testid="download-csv-btn"
-                    >
-                      {t("sqlResultsPanel.downloadCsv")}
-                    </Button>
-                    <Button
-                      variant="default"
-                      size="compact-xs"
-                      onClick={handleCopyResults}
-                      title={t("sqlResultsPanel.copyResultsTitle")}
-                      data-testid="copy-results-btn"
-                      leftSection={
-                        copiedResults ? (
-                          <Check size={11} style={{ color: "var(--approve)" }} />
-                        ) : (
-                          <Copy size={11} />
-                        )
-                      }
-                    >
-                      {copiedResults ? t("sqlResultsPanel.copied") : t("sqlResultsPanel.copy")}
-                    </Button>
-                    <Text component="span" size="xs" c="dimmed">
-                      {t("sqlResultsPanel.rowCount", { count: displayRows.length })}
-                      {displayRows.length < resultRows.length
-                        ? t("sqlResultsPanel.filteredFrom", { count: resultRows.length })
-                        : ""}
-                    </Text>
-                    <div style={{ flex: 1 }} />
-                    {totalPages > 1 && (
-                      <>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label={t("sqlResultsPanel.firstPage")}
-                          onClick={() => setPage(0)}
-                          disabled={page === 0}
-                        >
-                          <ChevronsLeft size={13} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label={t("sqlResultsPanel.previousPage")}
-                          onClick={() => setPage((p) => Math.max(0, p - 1))}
-                          disabled={page === 0}
-                        >
-                          <ChevronLeft size={13} />
-                        </ActionIcon>
-                        <Text component="span" size="xs">
-                          {t("sqlResultsPanel.pageIndicator", { page: page + 1, total: totalPages })}
-                        </Text>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label={t("sqlResultsPanel.nextPage")}
-                          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                          disabled={page >= totalPages - 1}
-                        >
-                          <ChevronRight size={13} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label={t("sqlResultsPanel.lastPage")}
-                          onClick={() => setPage(totalPages - 1)}
-                          disabled={page >= totalPages - 1}
-                        >
-                          <ChevronsRight size={13} />
-                        </ActionIcon>
-                      </>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, overflow: "auto" }}>
-                    <table
-                      className="data-table sql-results-table"
-                      style={{
-                        fontSize: "0.78rem",
-                        tableLayout: "fixed",
-                        width: "max-content",
-                        minWidth: "100%",
-                      }}
-                    >
-                      <thead>
-                        <tr>
-                          {displayCols.map((c) => {
-                            const sortIdx = sorts.findIndex((s) => s.col === c);
-                            const sortEntry = sortIdx !== -1 ? sorts[sortIdx] : null;
-                            return (
-                              <th
-                                key={c}
-                                className={sortEntry ? "col-sorted" : undefined}
-                                style={{
-                                  width: colWidths[c] ?? autoWidths[c] ?? 140,
-                                  minWidth: COL_MIN,
-                                  position: "relative",
-                                }}
-                              >
-                                <div className="th-label" onClick={() => handleSort(c)}>
-                                  <span
-                                    style={{
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      flex: 1,
-                                    }}
-                                  >
-                                    {c}
-                                  </span>
-                                  {sortEntry ? (
-                                    <span
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "0.1rem",
-                                        flexShrink: 0,
-                                        fontSize: "0.62rem",
-                                        color: "var(--primary)",
-                                      }}
-                                    >
-                                      {sorts.length > 1 && (
-                                        <span style={{ opacity: 0.7 }}>
-                                          {sortIdx + 1}
-                                        </span>
-                                      )}
-                                      <span>{sortEntry.dir === "asc" ? "▲" : "▼"}</span>
-                                    </span>
-                                  ) : (
-                                    <span
-                                      style={{
-                                        fontSize: "0.6rem",
-                                        color: "var(--text-muted)",
-                                        opacity: 0.3,
-                                      }}
-                                    >
-                                      ⇅
-                                    </span>
-                                  )}
-                                </div>
-                                <TextInput
-                                  size="xs"
-                                  variant="unstyled"
-                                  className="th-filter"
-                                  leftSection={<Filter size={11} />}
-                                  leftSectionPointerEvents="none"
-                                  aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
-                                  value={filters[c] ?? ""}
-                                  onChange={(e) => {
-                                    setFilters((prev) => ({
-                                      ...prev,
-                                      [c]: e.currentTarget.value,
-                                    }));
-                                    setPage(0);
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  placeholder={t("sqlResultsPanel.filterPlaceholder")}
-                                />
-                                <div
-                                  role="separator"
-                                  aria-label={t("sqlResultsPanel.resizeColumn")}
-                                  onMouseDown={(e) => handleResizeStart(c, e)}
-                                  style={{
-                                    position: "absolute",
-                                    insetInlineEnd: 0,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: "5px",
-                                    cursor: "col-resize",
-                                  }}
-                                />
-                              </th>
-                            );
-                          })}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedRows.map((row, i) => (
-                          <tr key={i}>
-                            {displayCols.map((c) => {
-                              const v = row[c];
-                              const isNum = typeof v === "number";
-                              return (
-                                <td
-                                  key={c}
-                                  className={isNum ? "col-num" : undefined}
-                                  style={{
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {v != null ? (
-                                    String(v)
-                                  ) : (
-                                    <span className="null-val">{t("sqlResultsPanel.nullValue")}</span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })()
+            <ResultsGrid grid={grid} totalRowCount={resultRows.length} />
           ))}
 
         {resultTab === "profile" &&
@@ -871,5 +611,4 @@ export function ResultsPanel({
   );
 }
 
-// PAGE_SIZE is re-exported for consumers that need it (unused here but kept for tree-shaking)
-export { PAGE_SIZE };
+export { PAGE_SIZE } from "./types";

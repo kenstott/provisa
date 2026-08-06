@@ -14345,3 +14345,41 @@ Catalog upsert preserves human enrichment: an attribute-ownership contract for e
 **Code:** `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/collibra.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/publishing.py`, `provisa/api/metadata_export/provider.py`, `provisa/core/repositories/catalog_binding.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`
 
 **Tests:** `tests/unit/test_metadata_export_atlas_native.py`, `tests/unit/test_metadata_export_bindings.py`, `tests/unit/test_catalog_binding_repository.py`, `tests/unit/test_metadata_export_openmetadata_merge.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1390 · Admin Management UI {#REQ-1390}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Admin Reports viewer lists ops-domain registered tables as management reports. Selecting a report opens the server-paged governed viewer — one page (100 rows + lookahead row) per SELECT * with LIMIT/OFFSET through the SQL pipeline; the full dataset is never loaded. "Add report" registers a governed Provisa view as a DERIVED source in the ops domain; delete is allowed only for custom DERIVED-source reports (system seeded reports are not deletable).
+
+**Use case:** Operations team can view and manage registered tables as reports via the admin console without requiring SQL knowledge; auto-registration of governed views simplifies report creation.
+
+**Code:** `provisa-ui/src/components/admin/ReportsTab.tsx`, `provisa-ui/src/components/GovernedTableViewer.tsx`, `provisa-ui/src/pages/AdminPage.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/components/NavBar.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
+
+### REQ-1391 · Results Grid {#REQ-1391}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Shared results grid provides sort, per-column filter, and multi-level group-by toggled via a per-column Layers icon; grouping renders collapsible group-header rows (presentation only, never aggregates); filter/group/sort choices persist per table in localStorage and restore on next visit. Two modes: client mode (SQL workbench — choices apply to the fetched sample in the browser) and server-paged mode (governed viewer — choices are pushed into the query as WHERE/ORDER BY and the pager advances on a hasMore lookahead, total unknown).
+
+**Use case:** SQL workbench, admin Reports viewer, and Tables-page preview modal share a consistent, reusable grid component with interactive exploration without aggregation overhead.
+
+**Code:** `provisa-ui/src/pages/sql/useResultsGrid.ts`, `provisa-ui/src/pages/sql/ResultsGrid.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/useResultsGrid.test.tsx`
+
+### REQ-1392 · Table Preview & Governance {#REQ-1392}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Table preview modal is the server-paged governed viewer: each page is its own SELECT * with LIMIT pageSize+1/OFFSET, filters and sorts pushed into the query, group columns leading the ORDER BY (contiguous groups across pages) and primary-key columns appended as a stable-paging tiebreaker — arbitrarily large tables cost one page per view. Tables backed by APIs with native params require path_param values (and accept optional query_param values) as WHERE predicates before Preview or Profile may run; profile then samples via the governed SQL pipeline (row-capped) instead of the bare admin endpoint.
+
+**Use case:** Users can preview large tables safely within governance limits; native-param tables (APIs with path/query parameters) cannot be profiled without parameter binding, preventing catalog errors and ensuring governed access.
+
+**Code:** `provisa-ui/src/components/TablePreviewModal.tsx`, `provisa-ui/src/components/GovernedTableViewer.tsx`, `provisa-ui/src/components/nativeParams.ts`, `provisa-ui/src/components/NativeParamsModal.tsx`, `provisa-ui/src/pages/tables/TableReadView.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
+
+**Tests:** `provisa-ui/src/components/__tests__/nativeParams.test.ts`
