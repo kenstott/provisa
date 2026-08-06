@@ -291,7 +291,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
 
     # The endpoint publishes through the REQ-1072 sync path, so the adapter and the builder are
     # stubbed where that path resolves them.
-    import provisa.api.metadata_export.sync as sync_mod
+    import provisa.api.metadata_export.publishing as sync_mod
 
     monkeypatch.setattr(sync_mod, "metadata_export", lambda config: _Partial())
     monkeypatch.setattr(sync_mod, "build_snapshot", lambda config, *, org_id, dialect: object())

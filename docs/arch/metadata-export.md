@@ -5,8 +5,8 @@ metadata to external catalogs and never reads one back as source of truth.
 
 **Status: all phases shipped.** What was built diverged from the plan in four places, each
 noted inline below: the vendor adapters are mapping-tested rather than fixture-tested, Atlas
-needed an HTTP-basic auth mode the plan did not anticipate, the sync jobs live in
-`provisa/api/metadata_export/sync.py` rather than in `provisa/scheduler/jobs.py`, and the
+needed an HTTP-basic auth mode the plan did not anticipate, the publish jobs live in
+`provisa/api/metadata_export/publishing.py` rather than in `provisa/scheduler/jobs.py`, and the
 event path publishes the full snapshot rather than a delta. The user-facing page is
 `docs/metadata-export.md` (REQ-1368).
 
@@ -160,7 +160,7 @@ Tests
 
 ## Phase 6 — REQ-1072: sync
 
-Shipped as `provisa/api/metadata_export/sync.py`.
+Shipped as `provisa/api/metadata_export/publishing.py`.
 
 - Event-driven: metadata changes post through `provisa/events/queue.py:37 post_event` and
   fan one work item to the org's export target; `drain` claims that target, publishes, and

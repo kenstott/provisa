@@ -693,7 +693,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
     # classifications only on CREATE, so updates need the read-merge pass. Atlan's
     # Atlas-shaped API has not been verified for the per-guid classification routes, so the
     # subclass keeps this off until it is.
-    classification_sync = True
+    classification_merge = True
 
     def _url(self, path: str) -> str:
         return f"{self._config.endpoint.rstrip('/')}{path}"
@@ -799,7 +799,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
         )
         response.raise_for_status()
 
-    async def _sync_classifications(
+    async def _merge_classifications(
         self,
         client: httpx.AsyncClient,
         headers: dict[str, str],
@@ -826,7 +826,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=entity.asset,
-                        message=f"classification sync fetch failed: HTTP {fetch.status_code}",
+                        message=f"classification merge fetch failed: HTTP {fetch.status_code}",
                     )
                 )
                 continue
@@ -874,7 +874,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                     ).raise_for_status()
             except httpx.HTTPError as exc:
                 result.errors.append(
-                    AssetError(asset=entity.asset, message=f"classification sync: {exc}")
+                    AssetError(asset=entity.asset, message=f"classification merge: {exc}")
                 )
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
@@ -935,10 +935,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
                     )
                 )
                 return result
-            if self.classification_sync:
+            if self.classification_merge:
                 # REQ-1389: bulk UPDATE ignores classifications — reconcile the provisa_*
                 # ones by read-merge, leaving steward-attached classifications alone.
-                await self._sync_classifications(client, headers, entities, result)
+                await self._merge_classifications(client, headers, entities, result)
         for entity in entities:
             result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
         return result

@@ -63,8 +63,8 @@ class AtlanExport(AtlasExport):  # REQ-1069
     typedefs_path = "/api/meta/types/typedefs"
     classificationdef_path = "/api/meta/types/classificationdef/name"
     health_path = "/api/meta/types/typedefs/headers"
-    # Atlan's per-guid classification routes are unverified; REQ-1389 sync stays off here.
-    classification_sync = False
+    # Atlan's per-guid classification routes are unverified; REQ-1389 merge stays off here.
+    classification_merge = False
 
     async def _ensure_type_system(self, client, headers) -> None:
         """Atlan publishes through its own built-in types (REQ-1388's documented caveat:

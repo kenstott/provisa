@@ -577,7 +577,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
         try:
             import asyncio
 
-            from provisa.api.metadata_export.sync import register_all_orgs
+            from provisa.api.metadata_export.publishing import register_all_orgs
 
             asyncio.ensure_future(register_all_orgs(scheduler))
         except (ImportError, RuntimeError):

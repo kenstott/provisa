@@ -306,7 +306,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
     Called at startup for every built org and again whenever an admin saves the settings, so a
     changed schedule or a newly-configured target takes effect without a restart. An org that
     may not publish has both jobs removed rather than left armed: a job that fires only to skip
-    reports a sync cadence the org does not have.
+    reports a reconcile cadence the org does not have.
     """
     from provisa.api.org_runtime import reset_current_org, set_current_org
 
@@ -347,7 +347,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
         coalesce=True,
     )
     logger.info(
-        "metadata export sync armed for org %s: drain every %ds, reconcile %s -> %s",
+        "metadata export publishing armed for org %s: drain every %ds, reconcile %s -> %s",
         org_id,
         DRAIN_SECONDS,
         config.reconcile_cron,
@@ -356,7 +356,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
 
 
 async def register_all_orgs(scheduler: AsyncIOScheduler) -> None:
-    """Arm the sync jobs for every org this process has a runtime for."""
+    """Arm the publish jobs for every org this process has a runtime for."""
     from provisa.api.app import state
 
     for org_id in state.org_registry.all_org_ids():

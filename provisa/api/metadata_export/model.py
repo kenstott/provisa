@@ -186,7 +186,7 @@ class ModelTag:  # REQ-1375, REQ-1377, REQ-1378
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
 
-    The same structure serves both sync paths (REQ-1072): a full snapshot for the scheduled
+    The same structure serves both publish paths (REQ-1072): a full snapshot for the scheduled
     reconcile, and a snapshot narrowed to the changed assets for the event path.
     """
 

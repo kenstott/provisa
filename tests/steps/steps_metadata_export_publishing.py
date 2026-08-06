@@ -26,7 +26,7 @@ from pytest_bdd import given, scenarios, then, when
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from provisa.api.metadata_export import sync
+from provisa.api.metadata_export import publishing
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.core.database import Database
 from provisa.core.schema_org import event_status, events
@@ -85,7 +85,7 @@ def _model_changes(shared_data):
     async def _post() -> None:
         async with shared_data["dbs"][ORG].acquire() as conn:
             for table in ("wh.public.orders", "wh.public.customers"):
-                await sync.notify_metadata_change(conn, table=table, reason="schema rebuild")
+                await publishing.notify_metadata_change(conn, table=table, reason="schema rebuild")
 
     _run(shared_data, _post())
 
@@ -98,7 +98,7 @@ def _queued_for_one_org(shared_data):
             async with shared_data["dbs"][org].acquire() as conn:
                 result = await conn.execute_core(select(event_status.c.dependent_table))
                 rows = result.fetchall()
-            assert all(row[0] == sync.EGRESS_TARGET for row in rows)
+            assert all(row[0] == publishing.EGRESS_TARGET for row in rows)
             out.append(len(rows))
         return out
 
@@ -113,12 +113,12 @@ def _queued_for_one_org(shared_data):
 def _one_publish(shared_data):
     async def _drain() -> None:
         async with shared_data["dbs"][ORG].acquire() as conn:
-            result = await sync.drain(conn, ORG, now=_T0)
+            result = await publishing.drain(conn, ORG, now=_T0)
             assert result is not None and result.ok
             statuses = await conn.execute_core(select(event_status.c.claim_status))
             assert [row[0] for row in statuses.fetchall()] == ["completed", "completed"]
             # Nothing left to claim, so a second drain publishes nothing.
-            assert await sync.drain(conn, ORG, now=_T0) is None
+            assert await publishing.drain(conn, ORG, now=_T0) is None
 
     _run(shared_data, _drain())
     assert shared_data["published"] == [ORG]
@@ -135,8 +135,8 @@ def _rejected_stays_claimable(shared_data, monkeypatch):
 
     async def _drain() -> None:
         async with shared_data["dbs"][ORG].acquire() as conn:
-            await sync.notify_metadata_change(conn, table="wh.public.orders", reason="edit")
-            result = await sync.drain(conn, ORG, now=_T0)
+            await publishing.notify_metadata_change(conn, table="wh.public.orders", reason="edit")
+            result = await publishing.drain(conn, ORG, now=_T0)
             assert result is not None and not result.ok
             statuses = await conn.execute_core(
                 select(event_status.c.claim_status).where(
@@ -156,14 +156,14 @@ def _reconcile_is_scheduled(shared_data):
     # The reconcile is the same publish on a cron the org owns, so what is asserted is that the
     # armed job carries that org's id and calls that publish.
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(sync.reconcile_org, trigger="cron", args=[ORG], id=sync.reconcile_job_id(ORG))
-    job = scheduler.get_job(sync.reconcile_job_id(ORG))
+    scheduler.add_job(publishing.reconcile_org, trigger="cron", args=[ORG], id=publishing.reconcile_job_id(ORG))
+    job = scheduler.get_job(publishing.reconcile_job_id(ORG))
     assert job is not None
     assert list(job.args) == [ORG]
-    assert job.func is sync.reconcile_org
+    assert job.func is publishing.reconcile_org
 
     async def _reconcile() -> None:
-        result = await sync.reconcile_org(ORG)
+        result = await publishing.reconcile_org(ORG)
         assert result is not None and result.ok
 
     _run(shared_data, _reconcile())

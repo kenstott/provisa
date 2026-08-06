@@ -31019,9 +31019,9 @@
   - REQ-1068
   - REQ-1070
   code:
-  - provisa/api/metadata_export/sync.py
+  - provisa/api/metadata_export/publishing.py
   tests:
-  - tests/unit/test_metadata_export_sync.py
+  - tests/unit/test_metadata_export_publishing.py
   - tests/steps/steps_metadata_export_docs.py
   scenario: 'Given an org whose metadata export target is configured and entitled
 

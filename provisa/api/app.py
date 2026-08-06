@@ -1232,7 +1232,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
     # the one chokepoint every model mutation passes through, which is why the event is posted
     # here rather than at each mutation — a new mutation cannot forget to publish.
-    from provisa.api.metadata_export.sync import notify_model_changed
+    from provisa.api.metadata_export.publishing import notify_model_changed
 
     await notify_model_changed(state.active_org_id, reason="schema rebuild")
 

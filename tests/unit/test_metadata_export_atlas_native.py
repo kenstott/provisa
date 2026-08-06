@@ -169,11 +169,11 @@ def test_urn_rebind_leaves_unmoved_entities_alone():
     assert table.guid == placeholder
 
 
-def test_atlan_keeps_builtin_types_and_no_classification_sync():
+def test_atlan_keeps_builtin_types_and_no_classification_merge():
     # REQ-1388 caveat: Atlan's layered type system gives custom types reduced UI treatment,
     # so its adapter maps to built-ins; the per-guid classification sync stays off there
     # until those routes are verified.
-    assert AtlanExport.classification_sync is False
+    assert AtlanExport.classification_merge is False
     exporter = AtlanExport.__new__(AtlanExport)
     entities = exporter._atlan_entities(_snapshot())
     assert {e.type_name for e in entities} <= {"Connection", "Database", "Table", "Column", "Process"}

@@ -184,7 +184,7 @@ async def set_metadata_export(request: Request) -> dict:  # REQ-1074
     # or a newly-configured target takes effect now rather than at the next restart.
     scheduler = getattr(state, "_scheduler", None)
     if scheduler is not None:
-        from provisa.api.metadata_export.sync import register_org_jobs
+        from provisa.api.metadata_export.publishing import register_org_jobs
 
         await register_org_jobs(scheduler, org_id)
     return {"success": True, "provider": config.provider, "enabled": config.enabled}
@@ -217,7 +217,7 @@ async def publish_metadata_export(request: Request) -> dict:  # REQ-1072, REQ-10
     org_id = require_active_org_id(request)
     _require_entitled(org_id)
 
-    from provisa.api.metadata_export.sync import ExportNotAllowed, publish_snapshot
+    from provisa.api.metadata_export.publishing import ExportNotAllowed, publish_snapshot
 
     config = _export_config(await _stored())
     if not config.enabled:
