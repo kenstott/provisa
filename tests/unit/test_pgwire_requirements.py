@@ -24,6 +24,33 @@ def _make_role(caps: list[str]) -> dict:
     return {"capabilities": caps, "domain_access": ["domain1"]}
 
 
+@pytest.fixture()
+def pgwire_loop():
+    """A running main loop for the auth path to submit validators to.
+
+    pgwire authenticates on a socketserver worker thread and drives every validator on the main
+    event loop (the PAT store and DB-backed providers hold loop-bound handles), so a test that
+    exercises the handler needs a real loop running somewhere other than this thread.
+    """
+    import asyncio
+    import threading
+
+    import provisa.pgwire.server as pg_server
+
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    previous = pg_server._loop
+    pg_server._loop = loop
+    try:
+        yield loop
+    finally:
+        pg_server._loop = previous
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
 # ---------------------------------------------------------------------------
 # REQ-527 — pgwire disabled by default; starts only when PROVISA_PGWIRE_PORT is set
 # ---------------------------------------------------------------------------
@@ -167,7 +194,7 @@ class TestReq529AuthType3:
         assert ctx.session.role_id == "analyst"
         handler.send_authentication_ok.assert_called_once()
 
-    def test_unsupported_provider_returns_fatal_error(self):
+    def test_unsupported_provider_returns_fatal_error(self, pgwire_loop):
         # REQ-529/REQ-890: A provider that is neither trust, simple, nor an OIDC-family
         # provider returns FATAL.
         from provisa.pgwire.server import ProvisaHandler
@@ -235,7 +262,7 @@ class TestReq890OidcAuth:
         fake_state.multitenancy = False
         return fake_state
 
-    def test_valid_token_accepted_and_mapped_to_role(self):
+    def test_valid_token_accepted_and_mapped_to_role(self, pgwire_loop):
         # REQ-890: a valid bearer token is validated and mapped to a role via resolve_role.
         from provisa.auth.models import AuthIdentity
 
@@ -266,7 +293,7 @@ class TestReq890OidcAuth:
         handler.handle_post_auth.assert_called_once()
         handler._send_pg_error.assert_not_called()
 
-    def test_invalid_token_rejected_with_fatal(self):
+    def test_invalid_token_rejected_with_fatal(self, pgwire_loop):
         # REQ-890: an invalid token yields a FATAL 28P01 and no authentication.
         ctx = MagicMock()
         ctx.params = {"user": "alice"}
@@ -287,6 +314,140 @@ class TestReq890OidcAuth:
         handler._send_pg_error.assert_called_once()
         assert handler._send_pg_error.call_args[0][0] == "FATAL"
         assert handler._send_pg_error.call_args[0][1] == "28P01"
+
+
+# ---------------------------------------------------------------------------
+# REQ-124 / REQ-1263 — pgwire accepts a password (basic) and a personal access token
+# ---------------------------------------------------------------------------
+
+
+class TestPgwireBasicAndPat:
+    """pgwire carries one cleartext secret, and what that secret is decides the presentation.
+
+    A password goes to the provider's ``basic`` validator, a personal access token is a bearer
+    credential like it is on every other surface, and the admitted role comes from the validated
+    identity through resolve_role — not from the username the client typed.
+    """
+
+    def _handler(self):
+        from provisa.pgwire.server import ProvisaHandler
+
+        handler = object.__new__(ProvisaHandler)
+        handler.wfile = MagicMock()
+        handler.send_authentication_ok = MagicMock()
+        handler.handle_post_auth = MagicMock()
+        handler._send_pg_error = MagicMock()
+        return handler
+
+    def _ctx(self, user: str = "alice"):
+        ctx = MagicMock()
+        ctx.params = {"user": user}
+        ctx.session = MagicMock()
+        return ctx
+
+    def _state(self, auth_config):
+        fake_state = MagicMock()
+        fake_state.auth_config = auth_config
+        fake_state.auth_middleware_active = True
+        fake_state.multitenancy = False
+        fake_state.admin_db = None
+        return fake_state
+
+    def _simple_config(self):
+        import bcrypt
+
+        return {
+            "provider": "simple",
+            "allow_simple_auth": True,
+            "jwt_secret": "unit-test-secret",
+            "simple": {
+                "users": [
+                    {
+                        "username": "alice",
+                        "password_hash": bcrypt.hashpw(b"s3cret", bcrypt.gensalt()).decode(),
+                        "roles": ["steward"],
+                    }
+                ]
+            },
+            "role_mapping": [],
+            "default_role": "analyst",
+        }
+
+    def test_a_password_authenticates_under_a_non_oidc_provider(self, pgwire_loop):
+        handler, ctx = self._handler(), self._ctx()
+        with patch("provisa.pgwire.server.state", self._state(self._simple_config())):
+            handler.handle_md5_password(ctx, b"s3cret\x00")
+
+        assert ctx.session.role_id == "analyst"
+        handler.send_authentication_ok.assert_called_once()
+        handler._send_pg_error.assert_not_called()
+
+    def test_a_wrong_password_is_refused(self, pgwire_loop):
+        handler, ctx = self._handler(), self._ctx()
+        with patch("provisa.pgwire.server.state", self._state(self._simple_config())):
+            handler.handle_md5_password(ctx, b"wrong\x00")
+
+        handler.send_authentication_ok.assert_not_called()
+        assert handler._send_pg_error.call_args[0][1] == "28P01"
+
+    def test_the_role_comes_from_the_identity_not_the_username(self, pgwire_loop):
+        """The client names a user, never a role — a mapping rule decides what it runs as."""
+        config = self._simple_config()
+        config["role_mapping"] = [
+            {"type": "contains", "claim": "roles", "value": "steward", "role": "steward"}
+        ]
+        handler, ctx = self._handler(), self._ctx()
+        with patch("provisa.pgwire.server.state", self._state(config)):
+            handler.handle_md5_password(ctx, b"s3cret\x00")
+
+        assert ctx.session.role_id == "steward"
+
+    def test_a_personal_access_token_is_accepted_as_a_bearer_credential(self, pgwire_loop):
+        # REQ-1263: the PAT store hangs off the provider, so pgwire needs no notion of a PAT.
+        from provisa.auth.models import AuthIdentity
+
+        seen = {}
+
+        class _FakeProvider:
+            auth_scheme = "basic"
+
+            @property
+            def token_validators(self):
+                return {"basic": self._basic, "bearer": self._bearer}
+
+            async def _basic(self, token):
+                raise AssertionError("a PAT must not be presented as basic")
+
+            async def _bearer(self, token):
+                seen["token"] = token
+                return AuthIdentity(
+                    user_id="u-1",
+                    email=None,
+                    display_name="Alice",
+                    roles=["steward"],
+                    raw_claims={"sub": "u-1"},
+                )
+
+        config = self._simple_config()
+        handler, ctx = self._handler(), self._ctx()
+        with (
+            patch("provisa.pgwire.server.state", self._state(config)),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=_FakeProvider()),
+        ):
+            handler.handle_md5_password(ctx, b"provisa_pat_abc\x00")
+
+        assert seen["token"] == "provisa_pat_abc"
+        assert ctx.session.role_id == "analyst"
+        handler.send_authentication_ok.assert_called_once()
+
+    def test_a_provider_that_cannot_be_built_refuses_on_the_wire(self, pgwire_loop):
+        """An unknown provider name authenticates nobody, and the client is told so."""
+        handler, ctx = self._handler(), self._ctx()
+        with patch("provisa.pgwire.server.state", self._state({"provider": "ldap"})):
+            handler.handle_md5_password(ctx, b"whatever\x00")
+
+        handler.send_authentication_ok.assert_not_called()
+        assert handler._send_pg_error.call_args[0][0] == "FATAL"
 
 
 # ---------------------------------------------------------------------------

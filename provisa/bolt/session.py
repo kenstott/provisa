@@ -21,6 +21,7 @@ from typing import Any
 from sqlalchemy import select
 
 import provisa.bolt.messages as msg
+from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
@@ -33,6 +34,20 @@ _SERVER_AGENT = f"Neo4j/{_BOLT_VERSION} (Provisa)"
 # giving up. Federated reads (multi-source, cold Kafka/Iceberg) can be slow, so
 # this is generous and configurable via PROVISA_BOLT_RECV_TIMEOUT (seconds).
 _BOLT_RECV_TIMEOUT = int(os.environ.get("PROVISA_BOLT_RECV_TIMEOUT", "120"))
+# REQ-1393: Neo4j's own code for a rejected-because-throttled login, so a driver reports the
+# lockout as a lockout rather than as one more wrong password.
+_RATE_LIMIT_CODE = "Neo.ClientError.Security.AuthenticationRateLimit"
+
+
+def _scheme_of(meta: dict) -> str:
+    """The credential presentation the driver declared in HELLO/LOGON.
+
+    Bolt drivers send ``scheme`` alongside the credential — ``basic`` for principal+password,
+    ``bearer`` for a token. Neo4j's own default when the field is absent is ``basic``, and every
+    driver that omits it is sending a username and password.
+    """
+    scheme = meta.get("scheme")
+    return scheme.lower() if isinstance(scheme, str) and scheme else "basic"
 
 
 class State(Enum):
@@ -97,11 +112,39 @@ class BoltSession:
 
     # ── Auth ───────────────────────────────────────────────────────────────────
 
-    def _resolve_user(self, principal: str, credentials: str) -> tuple[str, list[str]] | None:
-        """Return (user_id, role_ids) on success, None on failure.
+    def _assert_peer_binding(self, principal: str) -> None:  # REQ-1228
+        """Bind the TLS client certificate to the principal HELLO/LOGON declares, when configured.
+
+        The certificate is on the asyncio transport underneath the writer. A plaintext or WebSocket
+        connection exposes no ``ssl_object``, and the check is then a no-op — mTLS is only wired
+        onto the listener when a CA is configured, so there is nothing to bind against.
+        """
+        from provisa.security.mtls import assert_principal_binding, resolve_client_auth
+
+        auth = resolve_client_auth(
+            "PROVISA_BOLT_CLIENT_CA",
+            "PROVISA_BOLT_MTLS_MODE",
+            "PROVISA_BOLT_MTLS_BIND_PRINCIPAL",
+        )
+        if auth is None or not auth.bind_principal:
+            return
+        get_extra_info = getattr(self.writer, "get_extra_info", None)
+        ssl_object = get_extra_info("ssl_object") if get_extra_info is not None else None
+        peer_cert = ssl_object.getpeercert() if ssl_object is not None else None
+        assert_principal_binding(auth, peer_cert, principal)
+
+    async def _resolve_user(
+        self, scheme: str, principal: str, credentials: str
+    ) -> tuple[str, list[str]] | None:
+        """Return (user_id, role_ids) on success, None on failure (REQ-124, REQ-1263).
 
         The role set becomes the user's selectable databases (provisa_<role>). Selecting
         a role narrows to that role's domain rights; the user can never exceed this set.
+
+        Bolt used to authenticate under the ``simple`` provider alone and refuse every other
+        deployment outright. The credential now goes to whichever provider is configured, chosen
+        by the ``scheme`` the driver declared — ``basic`` presents principal+credentials, ``bearer``
+        presents a token, and a personal access token is just a bearer credential like any other.
         """
         # An import failure is a server fault, not an auth failure — propagate it.
         from provisa.api.app import state as app_state
@@ -126,23 +169,70 @@ class BoltSession:
             )
             return (principal or "anonymous", ordered) if ordered else None
 
-        if provider != "simple":
+        identity = await self._authenticate(app_state, scheme, principal, credentials)
+        if identity is None:
             return None
+        roles = self._selectable_roles(app_state, identity)
+        if not roles:
+            return None
+        return identity.user_id, roles
 
+    @staticmethod
+    async def _authenticate(app_state, scheme: str, principal: str, credentials: str):
+        """Validate the presented credential against the configured provider, or None.
+
+        ``scheme`` names the presentation, so it selects the validator rather than being trusted:
+        a provider that accepts no such presentation refuses the connection instead of having the
+        credential retried against a different validator, which would turn one rejection into a
+        second guess.
+        """
+        import base64
+
+        import jwt
+
+        from provisa.auth.models import validator_for_scheme
+        from provisa.auth.throttle import throttled
+        from provisa.auth.wiring import build_auth_provider
+
+        auth_provider = build_auth_provider(
+            app_state.auth_config, admin_pool=getattr(app_state, "admin_db", None)
+        )
+        validator = validator_for_scheme(auth_provider, scheme)
+        if validator is None:
+            return None
+        if scheme == "basic":
+            token = base64.b64encode(f"{principal}:{credentials}".encode()).decode()
+        else:
+            token = credentials
         try:
-            from provisa.auth.providers.simple import _provider_instance as auth_provider
-
-            if auth_provider is None:
-                return None
-            auth_provider.login(principal, credentials)
-            user = getattr(auth_provider, "_users", {}).get(principal, {})
-            # Only roles that actually exist as compiled contexts are selectable.
-            roles = [r for r in user.get("roles", []) if r in app_state.contexts]
-            if not roles:
-                return None
-            return principal, roles
-        except ValueError:
+            # REQ-1393: counted against the same subject HTTP and pgwire count against, so an
+            # account cannot be guessed at by moving between protocols. LockedOut is a
+            # PermissionError, so it propagates rather than reading as one more bad password.
+            return await throttled(
+                validator, token, principal=principal if scheme == "basic" else None
+            )
+        except (ValueError, jwt.PyJWTError):
             return None
+
+    @staticmethod
+    def _selectable_roles(app_state, identity) -> list[str]:
+        """The roles this identity may select, mapped role first (REQ-273, REQ-551).
+
+        The server derives them from the validated identity — the claim-mapped role plus whatever
+        the identity's own assignments carry — and keeps only those that exist as compiled
+        contexts. A role the identity does not hold is not selectable, whatever database the
+        client names.
+        """
+        from provisa.auth.role_mapping import resolve_assignments, resolve_role
+
+        default_role = app_state.auth_config.get("default_role")
+        if not default_role:
+            # No admin default: an identity matching no mapping rule is refused, not escalated.
+            raise RuntimeError("bolt auth requires auth.default_role to be configured")
+        mapped = resolve_role(identity, app_state.auth_config.get("role_mapping", []), default_role)
+        held = [a.role_id for a in resolve_assignments(identity)]
+        ordered = [mapped, *[r for r in held if r != mapped]]
+        return [r for r in ordered if r in app_state.contexts]
 
     def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
@@ -168,7 +258,7 @@ class BoltSession:
 
     # ── Message handlers ───────────────────────────────────────────────────────
 
-    def handle_hello(self, fields: list[Any]) -> None:
+    async def handle_hello(self, fields: list[Any]) -> None:
         # Bolt 4.x: HELLO carries credentials; Bolt 5.x: HELLO has no credentials (LOGON follows)
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
         major, _ = self.bolt_version
@@ -176,7 +266,18 @@ class BoltSession:
             # Auth inline with HELLO
             principal = meta.get("principal", "")
             credentials = meta.get("credentials", "")
-            resolved = self._resolve_user(principal, credentials)
+            try:
+                # REQ-1228: a mismatched client certificate is not a credential question, so it is
+                # answered before the password is examined and without counting against the throttle.
+                self._assert_peer_binding(principal)
+            except PermissionError as exc:
+                self.send_failure("Neo.ClientError.Security.Unauthorized", str(exc))
+                return
+            try:
+                resolved = await self._resolve_user(_scheme_of(meta), principal, credentials)
+            except LockedOut as locked:
+                self.send_failure(_RATE_LIMIT_CODE, str(locked))
+                return
             if resolved is None:
                 self.send_failure(
                     "Neo.ClientError.Security.Unauthorized",
@@ -198,11 +299,21 @@ class BoltSession:
             }
         )
 
-    def handle_logon(self, fields: list[Any]) -> None:
+    async def handle_logon(self, fields: list[Any]) -> None:
         meta: dict = fields[0] if fields and isinstance(fields[0], dict) else {}
         principal = meta.get("principal", "")
         credentials = meta.get("credentials", "")
-        resolved = self._resolve_user(principal, credentials)
+        try:
+            # REQ-1228: same certificate-to-principal binding HELLO applies on Bolt 4.x.
+            self._assert_peer_binding(principal)
+        except PermissionError as exc:
+            self.send_failure("Neo.ClientError.Security.Unauthorized", str(exc))
+            return
+        try:
+            resolved = await self._resolve_user(_scheme_of(meta), principal, credentials)
+        except LockedOut as locked:
+            self.send_failure(_RATE_LIMIT_CODE, str(locked))
+            return
         if resolved is None:
             self.send_failure(
                 "Neo.ClientError.Security.Unauthorized",
@@ -255,13 +366,29 @@ class BoltSession:
         self.state = State.READY
         self.send_success({})
 
+    def _requested_org(self) -> str | None:  # REQ-1234
+        """The org this connection's TLS SNI hostname named, or None.
+
+        The SSLObject is under the writer's transport, the same place the client certificate is. A
+        plaintext or WebSocket connection exposes none, and a driver that dialed an IP address sent
+        no servername — both mean no org was requested, which is every connection on a single-org
+        deployment.
+        """
+        from provisa.security.sni import indicated_host, org_from_host
+
+        get_extra_info = getattr(self.writer, "get_extra_info", None)
+        ssl_object = get_extra_info("ssl_object") if get_extra_info is not None else None
+        return org_from_host(indicated_host(ssl_object))
+
     async def _ensure_org(self) -> None:
         """Resolve+build this session's org runtime once (REQ-1266).
 
-        Bolt has no org-request channel, so the org is derived purely from the authenticated
-        principal's membership (single membership auto-selects; platform admin → default runtime;
-        ambiguity raises — no silent cross-tenant default). Runs on the event loop, so a plain
-        set/reset around handle_run's execution binds it (no thread hop, unlike pgwire)."""
+        Bolt's org request is the hostname the driver dialed, carried in TLS SNI (REQ-1234) — the
+        same string an HTTP client puts in ``Host``. It names an org without granting one: an org
+        the principal is not a member of is refused below, so the org is still derived from
+        membership (single membership auto-selects; platform admin → default runtime; ambiguity
+        raises — no silent cross-tenant default). Runs on the event loop, so a plain set/reset
+        around handle_run's execution binds it (no thread hop, unlike pgwire)."""
         if self._org_resolved:
             return
         from provisa.api.app import ensure_org_runtime, state as app_state
@@ -273,7 +400,7 @@ class BoltSession:
             app_state,
             user_id=self.user_id,
             can_act_any_org=can_act_cross_org(caps),
-            requested_org=None,
+            requested_org=self._requested_org(),
         )
         if org_id is not None:
             await ensure_org_runtime(org_id)
@@ -843,7 +970,9 @@ def _list_commands(app_state, role_id: str | None) -> list[dict]:
 
 def _command_signature(cmd: dict) -> str:
     """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1156)."""
-    args = ", ".join(f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"])
+    args = ", ".join(
+        f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"]
+    )
     ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
     return f"{cmd['name']}({args}) :: ({ret})"
 
@@ -945,9 +1074,7 @@ async def _maybe_invoke_metric_call(
         return None
     args = _split_top_level_args(m.group(1))
     if not args or len(args) > 2:
-        raise ValueError(
-            "provisa.metric expects (name :: STRING, dimensions :: LIST OF STRING)"
-        )
+        raise ValueError("provisa.metric expects (name :: STRING, dimensions :: LIST OF STRING)")
     name = _parse_call_arg(args[0])
     if not isinstance(name, str):
         raise ValueError(f"provisa.metric: name must be a string, got {name!r}")
@@ -1038,7 +1165,10 @@ async def _execute_cypher(
     # Browser auto-complete-relationships probe — impute edges among visible nodes (REQ-345).
     #   MATCH (a)-[r]->(b) WHERE id(a) IN $existingNodeIds AND id(b) IN $newNodeIds RETURN r
     if "$existingNodeIds" in cypher and "$newNodeIds" in cypher:
-        return (*await _impute_relationships(parameters, ctx, role_id, include_ops, app_state), None)
+        return (
+            *await _impute_relationships(parameters, ctx, role_id, include_ops, app_state),
+            None,
+        )
 
     # Try write path first; fall through to read path if it doesn't parse as a write.
     from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write

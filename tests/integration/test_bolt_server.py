@@ -200,15 +200,18 @@ class TestBoltSession:
         assert len(raw) > 0
 
     async def test_handle_hello_unauthenticated_sends_failure(self):
-        from unittest.mock import patch
+        from unittest.mock import AsyncMock, patch
 
         from provisa.bolt.session import BoltSession
 
         writer = self._make_writer()
-        session = BoltSession(writer, (5, 4))  # type: ignore[arg-type]
+        session = BoltSession(writer, (4, 4))  # type: ignore[arg-type]
 
-        with patch("provisa.bolt.session.BoltSession._resolve_user", return_value=None):
-            session.handle_hello([{"principal": "nobody", "credentials": "wrong"}])
+        with patch(
+            "provisa.bolt.session.BoltSession._resolve_user",
+            new=AsyncMock(return_value=None),
+        ):
+            await session.handle_hello([{"principal": "nobody", "credentials": "wrong"}])
 
         raw = writer.buf.getvalue()
         assert len(raw) > 0

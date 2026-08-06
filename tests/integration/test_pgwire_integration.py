@@ -75,15 +75,35 @@ def _make_server(port: int, ssl_ctx=None) -> ProvisaServer:
 
 
 def _stub_auth_provider(valid_user: str, valid_password: str):
-    provider = MagicMock()
+    """A provider accepting one username/password pair through the ``basic`` presentation.
 
-    def _login(username, password):
-        if username == valid_user and password == valid_password:
-            return username
-        raise ValueError("Invalid credentials")
+    pgwire hands the startup credential to the provider's scheme validator, so a stub has to
+    offer one — the username and password arrive base64-encoded as ``user:password``.
+    """
+    import base64
 
-    provider.login.side_effect = _login
-    return provider
+    from provisa.auth.models import AuthIdentity
+
+    class _Stub:
+        auth_scheme = "basic"
+
+        @property
+        def token_validators(self):
+            return {"basic": self._validate_basic}
+
+        async def _validate_basic(self, token: str) -> AuthIdentity:
+            username, password = base64.b64decode(token).decode().split(":", 1)
+            if username != valid_user or password != valid_password:
+                raise ValueError("Invalid credentials")
+            return AuthIdentity(
+                user_id=username,
+                email=None,
+                display_name=username,
+                roles=[username],
+                raw_claims={"sub": username},
+            )
+
+    return _Stub()
 
 
 def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock:
@@ -102,8 +122,9 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     state.rls_contexts = {role: RLSContext.empty()}
     state.roles = {role: {"id": role, "capabilities": [], "domain_access": ["*"]}}
     state.schema_build_cache = {"column_types": {}}
-    state.auth_config = {"provider": provider}
+    state.auth_config = {"provider": provider, "default_role": role, "role_mapping": []}
     state.auth_middleware_active = provider != "none"
+    state.multitenancy = False
     state.masking_rules = {}
     state.source_types = {}
     state.source_dialects = {}
@@ -128,13 +149,14 @@ async def pgwire_srv():
 
     loop = asyncio.get_running_loop()
     with _srv._loop_lock:
+        previous_loop = _srv._loop
         _srv._loop = loop
     port = _free_port()
     server = _make_server(port)
     yield port, server
     server.shutdown()
     with _srv._loop_lock:
-        _srv._loop = None
+        _srv._loop = previous_loop
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +177,7 @@ class TestPgwireAuth:
             return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _noop),
         ):
@@ -177,7 +199,7 @@ class TestPgwireAuth:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             with pytest.raises(asyncpg.InvalidPasswordError):
@@ -227,7 +249,7 @@ class TestPgwireServerVersion:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -249,7 +271,7 @@ class TestPgwireServerVersion:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -280,7 +302,7 @@ class TestPgwireCatalogIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -303,7 +325,7 @@ class TestPgwireCatalogIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -325,7 +347,7 @@ class TestPgwireCatalogIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -347,7 +369,7 @@ class TestPgwireCatalogIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -368,7 +390,7 @@ class TestPgwireCatalogIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -401,7 +423,7 @@ class TestPgwireMultiStatement:
             return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _noop),
         ):
@@ -424,7 +446,7 @@ class TestPgwireMultiStatement:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -460,7 +482,7 @@ class TestPgwireParameterizedQueries:
             return EngineResult(rows=[("hello",)], column_names=["v"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
@@ -490,7 +512,7 @@ class TestPgwireParameterizedQueries:
             return EngineResult(rows=[(42,)], column_names=["v"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
@@ -520,7 +542,7 @@ class TestPgwireParameterizedQueries:
             return EngineResult(rows=[(None,)], column_names=["v"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
@@ -548,7 +570,7 @@ class TestPgwireParameterizedQueries:
             return EngineResult(rows=[("a", 7)], column_names=["s", "n"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
@@ -585,7 +607,7 @@ class TestPgwireParameterizedQueries:
             return EngineResult(rows=[(99,)], column_names=["v"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _capture),
         ):
@@ -621,7 +643,7 @@ class TestPgwireTransactionIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -647,7 +669,7 @@ class TestPgwireTransactionIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -670,7 +692,7 @@ class TestPgwireTransactionIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -702,7 +724,7 @@ class TestPgwireScalarIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -723,7 +745,7 @@ class TestPgwireScalarIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -744,7 +766,7 @@ class TestPgwireScalarIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -765,7 +787,7 @@ class TestPgwireScalarIntercept:
         state = _make_mock_state("admin", "simple")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -798,7 +820,7 @@ class TestPgwireTLS:
             return EngineResult(rows=[(1,)], column_names=["v"])
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.govern_pgwire_plan", _one),
         ):
@@ -867,6 +889,7 @@ class TestPgwireTLS:
 
         loop = asyncio.get_running_loop()
         with _srv._loop_lock:
+            previous_loop = _srv._loop
             _srv._loop = loop
 
         port = _free_port()
@@ -888,7 +911,7 @@ class TestPgwireTLS:
                 return EngineResult(rows=[(1,)], column_names=["v"])
 
             with (
-                patch("provisa.auth.providers.simple._provider_instance", provider),
+                patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
                 patch("provisa.api.app.state", state),
                 patch("provisa.pgwire._pipeline.govern_pgwire_plan", _one),
             ):
@@ -906,7 +929,7 @@ class TestPgwireTLS:
         finally:
             server.shutdown()
             with _srv._loop_lock:
-                _srv._loop = None
+                _srv._loop = previous_loop
 
 
 # ---------------------------------------------------------------------------
@@ -927,7 +950,7 @@ class TestPgwireSQLOnlyRestrictions:
             raise PermissionError("DML not supported over pgwire")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _raise_on_insert),
         ):
@@ -952,7 +975,7 @@ class TestPgwireSQLOnlyRestrictions:
             raise PermissionError("DML not supported over pgwire")
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
             patch("provisa.pgwire._pipeline.execute_pgwire_sql", _raise_on_update),
         ):
@@ -985,7 +1008,7 @@ class TestPgwireDDLCapability:
         state.roles["admin"]["capabilities"] = []
 
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", state),
         ):
             conn = await asyncpg.connect(
@@ -1015,6 +1038,10 @@ class TestPgwireStartupGating:
         port = _free_port()
         state = _make_mock_state("admin", "simple")
         loop = asyncio.new_event_loop()
+        import provisa.pgwire.server as _srv
+
+        with _srv._loop_lock:
+            previous_loop = _srv._loop
         try:
             with patch("provisa.api.app.state", state):
                 start_pgwire_server("127.0.0.1", port, ssl_ctx=None, loop=loop)
@@ -1028,4 +1055,8 @@ class TestPgwireStartupGating:
                 bound = False
             assert bound, "pgwire server did not bind after start_pgwire_server()"
         finally:
+            # start_pgwire_server installs its loop module-wide; leaving this dead loop in
+            # place would strand every later connection's auth validator.
+            with _srv._loop_lock:
+                _srv._loop = previous_loop
             loop.close()

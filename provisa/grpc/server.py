@@ -21,7 +21,6 @@ import importlib.util
 import logging
 import re
 import sys
-from typing import Any
 
 import grpc
 import grpc.aio
@@ -96,17 +95,21 @@ def _load_module(path: str, name: str):
     return mod
 
 
-def _get_role(context: grpc.aio.ServicerContext) -> str:
-    """Extract role from gRPC metadata."""
-    metadata = context.invocation_metadata()
-    meta_dict: dict[str, Any] = dict(metadata)  # type: ignore[arg-type]
-    raw = meta_dict.get("x-provisa-role")
-    role = raw.decode() if isinstance(raw, bytes) else raw
-    if not role:
-        raise grpc.aio.AbortError(
-            grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata"
-        )
-    return role
+def _rpc_role(metadata: dict) -> str | None:
+    """The role this RPC runs as (REQ-273).
+
+    On a secured deployment the auth interceptor has already validated the caller's credential and
+    derived the role from that identity; it is published on the task and is the only value a handler
+    may use, so ``x-provisa-role`` here is the client's request and has no authority. On an
+    unsecured deployment there is no identity to derive from and the metadata role stands.
+    """
+    from provisa.grpc.auth import authorized_role
+
+    authorized = authorized_role()
+    if authorized is not None:
+        return authorized
+    raw = metadata.get("x-provisa-role")
+    return raw.decode() if isinstance(raw, bytes) else raw
 
 
 class ProvisaServicer:  # REQ-045, REQ-143
@@ -117,18 +120,43 @@ class ProvisaServicer:  # REQ-045, REQ-143
         self._pb2 = pb2_module
         self._pb2_grpc = pb2_grpc_module
 
-    async def _bind_org(self, metadata: dict):
-        """Resolve+build the RPC's org from ``x-provisa-org`` metadata and bind it (REQ-1266).
+    async def _resolve_org(self, requested: str | None) -> str | None:
+        """The org this RPC binds: the principal's membership decides, not the metadata (REQ-1337).
 
-        gRPC authenticates no user principal (only a role in metadata), so the org is taken from
-        ``x-provisa-org``. Under multitenancy it is REQUIRED — a missing org raises ``ValueError``
-        (the caller aborts) rather than silently binding the default. Returns the reset token, or
-        None for single-org deployments (ContextVar left unset → default runtime). Handlers run on
-        the grpc.aio loop in a per-RPC task, so a plain set/reset isolates the binding."""
+        With no validated principal (unsecured deployment) the requested org is all there is, and
+        the caller's own check rejects a missing one."""
+        from provisa.grpc.auth import authenticated_identity
+
+        identity = authenticated_identity()
+        if identity is None:
+            return requested
+        from provisa.api.org_resolve import resolve_session_org
+        from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+
+        caps = capabilities_for_claims(identity.roles or [], getattr(self._state, "roles", {}))
+        return await resolve_session_org(
+            self._state,
+            user_id=identity.user_id,
+            can_act_any_org=can_act_cross_org(caps),
+            requested_org=requested or identity.active_org_id,
+        )
+
+    async def _bind_org(self, metadata: dict):
+        """Resolve+build the RPC's org and bind it (REQ-1266, REQ-1337).
+
+        On a secured deployment the org comes from the validated principal's memberships — the same
+        rule MCP, pgwire and Flight use — so ``x-provisa-org`` is a REQUEST honored only for a
+        principal holding the cross-org right, and a caller cannot name someone else's org. An
+        unsecured deployment has no principal to resolve, so the metadata org stands; under
+        multitenancy it is REQUIRED — a missing org raises ``ValueError`` (the caller aborts) rather
+        than silently binding the default. Returns the reset token, or None for single-org
+        deployments (ContextVar left unset → default runtime). Handlers run on the grpc.aio loop in
+        a per-RPC task, so a plain set/reset isolates the binding."""
         if not getattr(self._state, "multitenancy", False):
             return None
         raw = metadata.get("x-provisa-org")
-        org_id = raw.decode() if isinstance(raw, bytes) else raw
+        requested = raw.decode() if isinstance(raw, bytes) else raw
+        org_id = await self._resolve_org(requested)
         if not org_id:
             raise ValueError("Missing x-provisa-org metadata")
         from provisa.api.app import ensure_org_runtime
@@ -231,7 +259,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         from provisa.api.data.action_exec import invoke_tracked_function
 
         metadata = dict(context.invocation_metadata())
-        role_id = metadata.get("x-provisa-role")
+        role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return
@@ -281,7 +309,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         from provisa.api.data.action_exec import invoke_tracked_function
 
         metadata = dict(context.invocation_metadata())
-        role_id = metadata.get("x-provisa-role")
+        role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return
@@ -328,7 +356,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # Use await context.abort() directly rather than raising AbortError, which
         # can cause "Abort error has been replaced!" in gRPC aio async generators.
         metadata = dict(context.invocation_metadata())
-        role_id = metadata.get("x-provisa-role")
+        role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return
@@ -474,7 +502,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         """Query{Type}Aggregate (REQ-1359, unary): resolve+bind org, then run the bound aggregate
         query and map its single result row into the generated {Type}AggregateResult message."""
         metadata = dict(context.invocation_metadata())
-        role_id = metadata.get("x-provisa-role")
+        role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return None
@@ -542,7 +570,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         """Query{Type}GroupBy (REQ-1359, streaming): resolve+bind org, then stream the bound
         group-by query's rows as {Type}GroupByRow messages, mirroring _handle_query's org lifecycle."""
         metadata = dict(context.invocation_metadata())
-        role_id = metadata.get("x-provisa-role")
+        role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
             return
@@ -654,8 +682,12 @@ async def start_grpc_server(
 
     servicer = ProvisaServicer(state, pb2, pb2_grpc)
 
-    # Register handlers dynamically from the generated stub
-    server = grpc.aio.server()
+    # Register handlers dynamically from the generated stub. REQ-273/REQ-1263: the auth
+    # interceptor sits in front of every service on this server — the generated one and
+    # reflection — so no RPC reaches a handler without a validated credential.
+    from provisa.grpc.auth import AuthInterceptor
+
+    server = grpc.aio.server(interceptors=[AuthInterceptor(state)])
 
     # Find the add_*Servicer_to_server function
     add_fn_name = None
@@ -679,12 +711,20 @@ async def start_grpc_server(
     enable_reflection(server, service_names)
 
     if tls is not None:
+        # REQ-1228: client-certificate verification, when the deployment configures a CA. grpc
+        # expects (private_key, certificate_chain) pairs.
+        from provisa.security.mtls import grpc_server_credentials, resolve_client_auth
+
         _cert_path, _key_path = tls
         with open(_cert_path, "rb") as _cf, open(_key_path, "rb") as _kf:
-            # grpc expects (private_key, certificate_chain) pairs; the stub's element type is a
-            # named tuple alias a plain tuple satisfies at runtime.
-            _creds = grpc.ssl_server_credentials(
-                [(_kf.read(), _cf.read())]  # pyright: ignore[reportArgumentType]
+            _creds = grpc_server_credentials(
+                _cf.read(),
+                _kf.read(),
+                resolve_client_auth(
+                    "PROVISA_GRPC_CLIENT_CA",
+                    "PROVISA_GRPC_MTLS_MODE",
+                    "PROVISA_GRPC_MTLS_BIND_PRINCIPAL",
+                ),
             )
         server.add_secure_port(f"[::]:{port}", _creds)
     else:

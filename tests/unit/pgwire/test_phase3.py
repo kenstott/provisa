@@ -54,15 +54,35 @@ def _make_server(port: int, ssl_ctx=None) -> ProvisaServer:
 
 
 def _stub_auth_provider(valid_user: str, valid_password: str):
-    provider = MagicMock()
+    """A provider accepting one username/password pair through the ``basic`` presentation.
 
-    def _login(username, password):
-        if username == valid_user and password == valid_password:
-            return username
-        raise ValueError("Invalid credentials")
+    pgwire hands the startup credential to the provider's scheme validator, so a stub has to
+    offer one — the username and password arrive base64-encoded as ``user:password``.
+    """
+    import base64
 
-    provider.login.side_effect = _login
-    return provider
+    from provisa.auth.models import AuthIdentity
+
+    class _Stub:
+        auth_scheme = "basic"
+
+        @property
+        def token_validators(self):
+            return {"basic": self._validate_basic}
+
+        async def _validate_basic(self, token: str) -> AuthIdentity:
+            username, password = base64.b64decode(token).decode().split(":", 1)
+            if username != valid_user or password != valid_password:
+                raise ValueError("Invalid credentials")
+            return AuthIdentity(
+                user_id=username,
+                email=None,
+                display_name=username,
+                roles=[username],
+                raw_claims={"sub": username},
+            )
+
+    return _Stub()
 
 
 def _make_ctx_with_fk():
@@ -133,8 +153,9 @@ def _make_state(ctx=None):
             ],
         }
     }
-    state.auth_config = {"provider": "simple"}
+    state.auth_config = {"provider": "simple", "default_role": "alice", "role_mapping": []}
     state.auth_middleware_active = True
+    state.multitenancy = False
     return state
 
 
@@ -266,13 +287,14 @@ async def pgwire_server_p3():
 
     loop = asyncio.get_running_loop()
     with _srv._loop_lock:
+        previous_loop = _srv._loop
         _srv._loop = loop
     port = _free_port()
     server = _make_server(port)
     yield port
     server.shutdown()
     with _srv._loop_lock:
-        _srv._loop = None
+        _srv._loop = previous_loop
 
 
 @pytest.fixture(scope="module")
@@ -282,8 +304,9 @@ def mock_state_p3():
     state = MagicMock()
     state.contexts = {"alice": ctx}
     state.schema_build_cache = {"column_types": {}}
-    state.auth_config = {"provider": "simple"}
+    state.auth_config = {"provider": "simple", "default_role": "alice", "role_mapping": []}
     state.auth_middleware_active = True
+    state.multitenancy = False
     return state
 
 
@@ -292,7 +315,7 @@ async def test_copy_rejected(pgwire_server_p3, mock_state_p3):
     port = pgwire_server_p3
     provider = _stub_auth_provider("alice", "secret")
     with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", mock_state_p3),
     ):
         conn = await asyncpg.connect(
@@ -312,7 +335,7 @@ async def test_new_catalog_tables_queryable(pgwire_server_p3, mock_state_p3):
     port = pgwire_server_p3
     provider = _stub_auth_provider("alice", "secret")
     with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", mock_state_p3),
     ):
         conn = await asyncpg.connect(
@@ -380,6 +403,7 @@ async def test_tls_connection():
 
     loop = asyncio.get_running_loop()
     with _srv._loop_lock:
+        previous_loop = _srv._loop
         _srv._loop = loop
 
     with tempfile.NamedTemporaryFile(suffix=".pem", delete=False) as cf:
@@ -405,12 +429,13 @@ async def test_tls_connection():
     mc.tables = {}
     mock_state.contexts = {"alice": mc}
     mock_state.schema_build_cache = {"column_types": {}}
-    mock_state.auth_config = {"provider": "simple"}
+    mock_state.auth_config = {"provider": "simple", "default_role": "alice", "role_mapping": []}
     mock_state.auth_middleware_active = True
+    mock_state.multitenancy = False
 
     try:
         with (
-            patch("provisa.auth.providers.simple._provider_instance", provider),
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
             patch("provisa.api.app.state", mock_state),
         ):
             conn = await asyncpg.connect(
@@ -428,30 +453,40 @@ async def test_tls_connection():
     finally:
         server.shutdown()
         with _srv._loop_lock:
-            _srv._loop = None
+            _srv._loop = previous_loop
 
 
 # ── SQLAlchemy psycopg2 compatibility ─────────────────────────────────────────
 
 
-def test_sqlalchemy_reflect(pgwire_server_p3, mock_state_p3):
-    """SQLAlchemy table reflection must not raise against the catalog."""
+@pytest.mark.asyncio
+async def test_sqlalchemy_reflect(pgwire_server_p3, mock_state_p3):
+    """SQLAlchemy table reflection must not raise against the catalog.
+
+    Authentication submits its validator to the pgwire event loop, so that loop has to be running
+    while the client connects. SQLAlchemy's psycopg2 driver is synchronous and would block it, so
+    the whole reflection runs in a worker thread and the test body stays async.
+    """
     pytest.importorskip("sqlalchemy")
     pytest.importorskip("psycopg2")
     import sqlalchemy as sa
 
     port = pgwire_server_p3
     provider = _stub_auth_provider("alice", "secret")
-    with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
-        patch("provisa.api.app.state", mock_state_p3),
-    ):
+
+    def _reflect():
         url = f"postgresql+psycopg2://alice:secret@127.0.0.1:{port}/provisa"
         engine = sa.create_engine(url)
         with engine.connect():
-            insp = sa.inspect(engine)
-            table_names = insp.get_table_names()
+            names = sa.inspect(engine).get_table_names()
         engine.dispose()
+        return names
+
+    with (
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
+        patch("provisa.api.app.state", mock_state_p3),
+    ):
+        table_names = await asyncio.to_thread(_reflect)
     assert isinstance(table_names, list)
 
 
@@ -516,8 +551,9 @@ def _make_state_er():
         },
         "tables": [],
     }
-    state.auth_config = {"provider": "simple"}
+    state.auth_config = {"provider": "simple", "default_role": "alice", "role_mapping": []}
     state.auth_middleware_active = True
+    state.multitenancy = False
     return state
 
 
@@ -527,13 +563,14 @@ async def pgwire_server_er():
 
     loop = asyncio.get_running_loop()
     with _srv._loop_lock:
+        previous_loop = _srv._loop
         _srv._loop = loop
     port = _free_port()
     server = _make_server(port)
     yield port
     server.shutdown()
     with _srv._loop_lock:
-        _srv._loop = None
+        _srv._loop = previous_loop
 
 
 @pytest.mark.asyncio
@@ -543,7 +580,7 @@ async def test_er_meta_schema_visible(pgwire_server_er):
     provider = _stub_auth_provider("alice", "secret")
     state = _make_state_er()
     with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", state),
     ):
         conn = await asyncpg.connect(
@@ -562,7 +599,7 @@ async def test_er_pg_class_snake_case(pgwire_server_er):
     provider = _stub_auth_provider("alice", "secret")
     state = _make_state_er()
     with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", state),
     ):
         conn = await asyncpg.connect(
@@ -583,7 +620,7 @@ async def test_er_bulk_attribute_query(pgwire_server_er):
     provider = _stub_auth_provider("alice", "secret")
     state = _make_state_er()
     with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", state),
     ):
         conn = await asyncpg.connect(
@@ -623,7 +660,7 @@ async def test_er_fk_constraint_deserialized(pgwire_server_er):
     provider = _stub_auth_provider("alice", "secret")
     state = _make_state_er()
     with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", state),
     ):
         conn = await asyncpg.connect(
@@ -673,7 +710,7 @@ async def test_er_mermaid_diagram(pgwire_server_er):
     provider = _stub_auth_provider("alice", "secret")
     state = _make_state_er()
     with (
-        patch("provisa.auth.providers.simple._provider_instance", provider),
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
         patch("provisa.api.app.state", state),
     ):
         conn = await asyncpg.connect(

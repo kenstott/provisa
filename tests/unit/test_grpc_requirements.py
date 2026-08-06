@@ -18,7 +18,7 @@ import pytest
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput
 from provisa.grpc.proto_gen import generate_proto
-from provisa.grpc.server import ProvisaServicer, _get_role
+from provisa.grpc.server import ProvisaServicer, _rpc_role
 
 
 def _col(name, data_type="varchar(100)", nullable=False):
@@ -269,19 +269,25 @@ class TestREQ617RoleSelectionViaMetadata:
     @pytest.mark.asyncio
     async def test_missing_role_metadata_raises_unauthenticated(self):
         # REQ-617: Missing x-provisa-role causes UNAUTHENTICATED rejection.
+        pb2, _ = _make_pb2_module("Orders", ["id"])
+        servicer = ProvisaServicer(
+            SimpleNamespace(schemas={}, contexts={}), pb2, MagicMock()
+        )
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = []
-        with pytest.raises(grpc.aio.AbortError) as exc_info:
-            _get_role(context)
-        assert exc_info.value.args[0] == grpc.StatusCode.UNAUTHENTICATED
 
-    @pytest.mark.asyncio
-    async def test_valid_role_metadata_is_extracted(self):
-        # REQ-617: x-provisa-role metadata key is used for role selection.
-        context = AsyncMock(spec=grpc.aio.ServicerContext)
-        context.invocation_metadata.return_value = [("x-provisa-role", "analyst")]
-        role = _get_role(context)
-        assert role == "analyst"
+        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders", "orders")]
+
+        assert rows == []
+        context.abort.assert_awaited_once_with(
+            grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata"
+        )
+
+    def test_valid_role_metadata_is_extracted(self):
+        # REQ-617: x-provisa-role metadata key is used for role selection. On a secured deployment
+        # it selects among the roles the validated identity holds (tests/unit/test_grpc_auth.py);
+        # unsecured, it stands on its own.
+        assert _rpc_role({"x-provisa-role": "analyst"}) == "analyst"
 
     @pytest.mark.asyncio
     async def test_unrecognised_role_aborts_with_not_found(self):

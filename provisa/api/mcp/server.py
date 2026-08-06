@@ -54,6 +54,7 @@ async def _validate_mcp_token(token: str, state: Any):
     the same way it does on every other surface.
     """
     from provisa.auth.models import validator_for_scheme
+    from provisa.auth.throttle import throttled
     from provisa.auth.wiring import build_auth_provider
 
     auth_config = getattr(state, "auth_config", None)
@@ -67,7 +68,8 @@ async def _validate_mcp_token(token: str, state: Any):
             f"auth provider {provider.provider_name!r} accepts no bearer credential, "
             "so it cannot authenticate an MCP client"
         )
-    return await validator(token)
+    # REQ-1393: MCP names no principal, so the throttle keys on the credential digest.
+    return await throttled(validator, token, principal=None)
 
 
 async def _resolve_token_role_async(token: str, state: Any) -> str:
@@ -338,10 +340,17 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     pattern in app_startup). Returns the FastMCP instance, or None when disabled.
     Isolated here so app startup wiring stays a one-line call.
     """
+    from provisa.security.high_security import mcp_start_allowed
+
     _log = log_ or log
     port_raw = os.environ.get("PROVISA_MCP_PORT", "0")
     port = int(port_raw)
     if not port:
+        return None
+    if not mcp_start_allowed(state, port):
+        # REQ-693: high-security mode never starts the MCP server — a tool call hands query
+        # results to a model as text, and nothing on that path can decrypt client-side.
+        _log.warning("MCP server not started: security.mode=high (REQ-693)")
         return None
 
     import threading

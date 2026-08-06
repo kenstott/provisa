@@ -120,7 +120,7 @@ def _make_app_state_with_orders():
     state.roles = {
         "admin": {
             "id": "admin",
-            "capabilities": ["full_results", "ad_hoc_query", "query_development"],
+            "capabilities": ["full_results", "query_development"],
             "domain_access": ["*"],
         }
     }

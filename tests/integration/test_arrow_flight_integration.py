@@ -68,6 +68,10 @@ def _make_minimal_state():
     # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
     # server behind the multitenancy org gate. Name the deployment shape explicitly.
     state.multitenancy = False
+    # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which would put
+    # this server behind the credential gate. Name it unsecured; the secured path has its own fixture.
+    state.auth_config = None
+    state.auth_middleware_active = False
     state.schemas = {}
     state.contexts = {}
     state.rls_contexts = {}
@@ -295,10 +299,14 @@ class TestFlightDoGetWithRealData:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1263: likewise, an unnamed auth_config reads as a configured provider and would put
+        # this server behind the credential gate. This fixture exercises the data path, not auth.
+        state.auth_config = None
+        state.auth_middleware_active = False
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
-        state.roles = {"admin": {"id": "admin", "capabilities": ["full_results", "ad_hoc_query"]}}
+        state.roles = {"admin": {"id": "admin", "capabilities": ["full_results"]}}
         state.source_pools = source_pool
         state.source_types = {"test-pg": "postgresql"}
         state.source_dialects = {"test-pg": "postgres"}
@@ -409,3 +417,119 @@ class TestFlightDoGetWithRealData:
         with pytest.raises(flight.FlightServerError):
             reader = client.do_get(bad_ticket)
             reader.read_all()
+
+
+# ---------------------------------------------------------------------------
+# Secured deployment — the credential gate over the real wire (REQ-273, REQ-1263)
+# ---------------------------------------------------------------------------
+
+_SECURED_FLIGHT_PORT = int(os.environ.get("PROVISA_TEST_FLIGHT_AUTH_PORT", "8918"))
+_SECURED_LOCATION = f"grpc://localhost:{_SECURED_FLIGHT_PORT}"
+
+
+@pytest.fixture(scope="module")
+def secured_flight_server():
+    """A Flight server with auth configured, reached over a real gRPC connection.
+
+    The unit suite drives the auth methods directly; this proves the gate holds where it matters —
+    a client that opens the port and sends a ticket, exactly as any Flight tool would.
+    """
+    from unittest.mock import MagicMock
+
+    from provisa.auth.models import AuthIdentity
+
+    state = _make_minimal_state()
+    state.auth_config = {
+        "provider": "oidc",
+        "default_role": "analyst",
+        "role_mapping": [],
+    }
+    state.auth_middleware_active = True
+    state.admin_db = None
+    state.roles = {}
+
+    loop = asyncio.new_event_loop()
+    loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+    loop_thread.start()
+
+    server = ProvisaFlightServer(state, location=_SECURED_LOCATION, main_loop=loop)
+
+    # The credential check is what is under test; which provider issued the token is not, so the
+    # validator is stubbed to a known-good identity rather than standing up an OIDC issuer.
+    async def _validate(_state, token):
+        if token != "good-token":
+            raise ValueError("no such credential")
+        return AuthIdentity(
+            user_id="u-1",
+            email="alice@acme.test",
+            display_name="Alice",
+            roles=[],
+            raw_claims={},
+            active_org_id=None,
+        )
+
+    import provisa.api.flight.server as flight_server_module
+
+    original = flight_server_module._validate_flight_credential
+    flight_server_module._validate_flight_credential = _validate
+
+    thread = threading.Thread(target=server.serve, daemon=True)
+    thread.start()
+
+    import time
+
+    for _ in range(20):
+        if _port_in_use(_SECURED_FLIGHT_PORT):
+            break
+        time.sleep(0.1)
+    else:
+        raise RuntimeError("secured Flight server did not start in time")
+
+    client = flight.connect(_SECURED_LOCATION)
+    yield client, state, MagicMock()
+
+    client.close()
+    server.shutdown()
+    flight_server_module._validate_flight_credential = original
+    loop.call_soon_threadsafe(loop.stop)
+    loop_thread.join(timeout=5)
+
+
+class TestSecuredFlightRequiresACredential:
+    async def test_a_ticket_without_a_token_is_refused(self, secured_flight_server):
+        client, _, _ = secured_flight_server
+        ticket = flight.Ticket(json.dumps({"query": "{ orders { id } }", "role": "admin"}).encode())
+        with pytest.raises(flight.FlightUnauthenticatedError):
+            client.do_get(ticket).read_all()
+
+    async def test_a_bad_token_is_refused(self, secured_flight_server):
+        client, _, _ = secured_flight_server
+        ticket = flight.Ticket(
+            json.dumps({"query": "{ orders { id } }", "role": "admin", "token": "nope"}).encode()
+        )
+        with pytest.raises(flight.FlightUnauthenticatedError):
+            client.do_get(ticket).read_all()
+
+    async def test_a_valid_token_cannot_claim_an_unassigned_role(self, secured_flight_server):
+        """The credential is good; `role: admin` is not the client's to assert."""
+        client, _, _ = secured_flight_server
+        ticket = flight.Ticket(
+            json.dumps(
+                {"query": "{ orders { id } }", "role": "admin", "token": "good-token"}
+            ).encode()
+        )
+        with pytest.raises(flight.FlightUnauthenticatedError):
+            client.do_get(ticket).read_all()
+
+    async def test_a_valid_token_runs_as_its_own_role(self, secured_flight_server):
+        """No role requested: the identity maps to the configured default and execution proceeds.
+
+        The state has no schema for `analyst`, so reaching "No schema for role" is the proof that
+        authentication passed and the role came from the identity rather than the ticket.
+        """
+        client, _, _ = secured_flight_server
+        ticket = flight.Ticket(
+            json.dumps({"query": "{ orders { id } }", "token": "good-token"}).encode()
+        )
+        with pytest.raises(flight.FlightServerError, match="analyst"):
+            client.do_get(ticket).read_all()

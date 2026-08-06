@@ -290,8 +290,12 @@ async def test_run_sql_routes_through_govern_and_route(state, monkeypatch):
     result = await tools.run_sql(state, "analyst", "SELECT * FROM sales.orders")
 
     govern.assert_awaited_once_with(
-        "SELECT * FROM sales.orders", "analyst",
-        session_vars=None, discovery_mode=False, as_of=None, deliver=None, buffered=False,
+        "SELECT * FROM sales.orders",
+        "analyst",
+        session_vars=None,
+        as_of=None,
+        deliver=None,
+        buffered=False,
     )
     assert result["columns"] == ["id", "name"]
     assert result["rows"] == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
@@ -343,13 +347,16 @@ async def test_run_sql_composed_command_routes_to_pipeline(state, monkeypatch):
     )
 
     composed = (
-        "SELECT o.id, e.score FROM orders o "
-        "JOIN enrich_orders('sales.orders') e ON o.id = e.id"
+        "SELECT o.id, e.score FROM orders o JOIN enrich_orders('sales.orders') e ON o.id = e.id"
     )
     await tools.run_sql(state, "analyst", composed)
 
     govern.assert_awaited_once_with(
-        composed, "analyst", session_vars=None, discovery_mode=False, as_of=None, deliver=None,
+        composed,
+        "analyst",
+        session_vars=None,
+        as_of=None,
+        deliver=None,
         buffered=False,
     )
 
@@ -458,3 +465,11 @@ async def test_pinned_stdio_role_requires_env(monkeypatch):
     monkeypatch.delenv("PROVISA_MCP_ROLE", raising=False)
     with pytest.raises(ValueError):
         server._pinned_stdio_role()
+
+
+async def test_mcp_server_not_started_in_high_security_mode(monkeypatch):
+    """REQ-693: a tool call hands rows to a model as text, so the port never opens."""
+    from provisa.api.mcp import server
+
+    monkeypatch.setenv("PROVISA_MCP_PORT", "8100")
+    assert server.start_mcp_server(SimpleNamespace(security_high=True)) is None

@@ -28,6 +28,7 @@ import re
 from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, cast
 
+import jwt
 import pyarrow as pa
 import pyarrow.flight as flight
 
@@ -43,6 +44,7 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor.formats.arrow import rows_to_arrow_table
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.security.high_security import high_security_wire_reject
 from provisa.transpiler.router import Route, decide_route
 
 _tracer = _get_tracer(__name__)
@@ -76,6 +78,49 @@ async def _run_with_org(org_id: str | None, coro):
         return await coro
     finally:
         reset_current_org(token)
+
+
+async def _validate_flight_credential(state, token: str):
+    """Validate a Flight client's credential and return its identity (REQ-1263).
+
+    Flight carries exactly one credential presentation — a bearer token in the handshake or the
+    ticket — so the bearer validator is selected by name rather than calling ``validate_token``,
+    whose meaning differs per provider (under ``basic`` it expects base64 ``user:password``, and
+    every bearer credential, personal access token included, would fail there). The platform pool
+    is passed through so a PAT resolves here exactly as it does on every other surface.
+    """
+    from provisa.auth.models import validator_for_scheme
+    from provisa.auth.throttle import throttled
+    from provisa.auth.wiring import build_auth_provider
+
+    provider = build_auth_provider(state.auth_config, admin_pool=getattr(state, "admin_db", None))
+    validator = validator_for_scheme(provider, "bearer")
+    if validator is None:
+        raise PermissionError(
+            f"auth provider {provider.provider_name!r} accepts no bearer credential, "
+            "so it cannot authenticate a Flight client"
+        )
+    # REQ-1393: Flight names no principal, so the throttle keys on the credential digest.
+    return await throttled(validator, token, principal=None)
+
+
+async def _resolve_identity_org(state, identity, request: dict[str, object]) -> str | None:
+    """The org an authenticated Flight session binds (REQ-1266, REQ-1337).
+
+    The same membership rule MCP and pgwire use: the principal's own memberships decide, and a
+    ticket's ``org`` is a REQUEST honored only for a principal holding the cross-org right.
+    """
+    from provisa.api.org_resolve import resolve_session_org
+    from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+
+    caps = capabilities_for_claims(identity.roles or [], getattr(state, "roles", {}))
+    requested = request.get("org")
+    return await resolve_session_org(
+        state,
+        user_id=identity.user_id,
+        can_act_any_org=can_act_cross_org(caps),
+        requested_org=requested if isinstance(requested, str) else identity.active_org_id,
+    )
 
 
 def _is_sql(query: str) -> bool:
@@ -156,26 +201,96 @@ class ProvisaFlightServer(
         fut = asyncio.run_coroutine_threadsafe(_run_with_org(org_id, coro), self._main_loop)
         return fut.result(timeout=timeout) if timeout is not None else fut.result()
 
-    def _resolve_and_bind_org(self, request: dict[str, object]):
-        """Resolve the org from the ticket and bind it on this worker thread; return the reset token.
+    def _resolve_and_bind_org(self, request: dict[str, object], identity=None):
+        """Resolve the org for this ticket and bind it on this worker thread; return the reset token.
 
-        Flight authenticates no user principal (the handshake carries only a role), so the org is
-        taken from an explicit ``org`` in the ticket. Under multitenancy it is REQUIRED — a missing
-        org raises rather than silently binding the default (no cross-tenant default). Single-org
-        deployments return ``None`` and leave the ContextVar unset (default runtime)."""
+        When the connection is authenticated the org comes from the validated principal's
+        membership (the same rule MCP and pgwire use), so a ticket cannot name someone else's org.
+        Unsecured deployments have no principal to resolve, so the org is taken from an explicit
+        ``org`` in the ticket; under multitenancy it is REQUIRED — a missing org raises rather than
+        silently binding the default (no cross-tenant default). Single-org deployments return
+        ``None`` and leave the ContextVar unset (default runtime)."""
         if not getattr(self._state, "multitenancy", False):
             return None
-        org_id = request.get("org")
-        if not org_id or not isinstance(org_id, str):
-            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                "org is required under multitenancy"
-            )
+        if identity is not None:
+            org_id = self._run_on_loop(_resolve_identity_org(self._state, identity, request))
+        else:
+            org_id = request.get("org")
+            if not org_id or not isinstance(org_id, str):
+                raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    "org is required under multitenancy"
+                )
         from provisa.api.app import ensure_org_runtime
         from provisa.api.org_runtime import set_current_org
 
         # Build the org runtime (idempotent) on the main loop, then bind it on this thread.
         asyncio.run_coroutine_threadsafe(ensure_org_runtime(org_id), self._main_loop).result()
         return set_current_org(org_id)
+
+    # ------------------------------------------------------------------
+    # Authentication (REQ-1263)
+    # ------------------------------------------------------------------
+
+    def _auth_active(self) -> bool:
+        """Whether this deployment authenticates Flight clients.
+
+        Mirrors pgwire's fail-closed reading of the same state: a live auth middleware with no
+        resolved ``auth_config`` is a misconfiguration, and a secured server must never degrade
+        to trust mode because its config went missing."""
+        if getattr(self._state, "auth_config", None) is not None:
+            return True
+        if getattr(self._state, "auth_middleware_active", False):
+            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                "flight auth_config not configured"
+            )
+        return False
+
+    def _authenticate(self, credential: str | None):
+        """Validate a bearer credential and return its identity, or None when auth is off.
+
+        The credential is a provider token or a personal access token; both resolve through the
+        one bearer validator, so Flight needs no knowledge of which was presented."""
+        if not self._auth_active():
+            return None
+        if not credential:
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                "a bearer credential is required"
+            )
+        try:
+            return self._run_on_loop(_validate_flight_credential(self._state, credential))
+        except (ValueError, jwt.PyJWTError) as e:
+            # Every rejection reads the same on the wire: a caller must not learn from the
+            # response whether the credential was unknown, expired or revoked.
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                "credential rejected"
+            ) from e
+
+    def _authorize_role(self, identity, request: dict[str, object]) -> str:
+        """The role this ticket executes as — derived from the validated identity, never asserted.
+
+        A ticket may REQUEST a role, and it is honored only when the identity's own assignments
+        carry it; anything else is a privilege claim by the client and is refused. With no request,
+        the identity's claims map to a role through the same rules every other surface uses."""
+        from provisa.auth.role_mapping import resolve_assignments, resolve_role
+
+        auth_config = self._state.auth_config
+        assert auth_config is not None  # an identity exists ⇒ auth is active ⇒ config is resolved
+        default_role = auth_config.get("default_role")
+        if not default_role:
+            # No admin default: an identity matching no mapping rule is refused, not escalated.
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                "identity matched no role and no default_role is configured"
+            )
+        mapped = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
+        requested = request.get("role")
+        if not requested:
+            return mapped
+        permitted = {a.role_id for a in resolve_assignments(identity)} | {mapped}
+        if str(requested) not in permitted:
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                f"role {str(requested)!r} is not assigned to this identity"
+            )
+        return str(requested)
 
     # ------------------------------------------------------------------
     # Flight SQL handshake
@@ -186,7 +301,14 @@ class ProvisaFlightServer(
         context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage, reportUnusedParameter]  # lib omits __all__
         payload: Iterable[bytes],
     ) -> tuple[bytes, list[object]]:
-        """Parse role from handshake properties and return a session token."""
+        """Validate the handshake credential and return the session's authenticated role (REQ-1263).
+
+        The handshake carries a bearer token — a provider token or a personal access token. The
+        role it comes back with is derived from the validated identity, so a client learns what it
+        is allowed to be rather than declaring it; a ``role`` in the payload is a request, honored
+        only when the identity's assignments carry it. On an unsecured deployment there is no
+        credential to validate and the requested role passes through, matching the ticket path.
+        """
         buf = b""
         for chunk in payload:
             buf += chunk
@@ -194,7 +316,9 @@ class ProvisaFlightServer(
             data = json.loads(buf.decode("utf-8")) if buf else {}
         except (json.JSONDecodeError, UnicodeDecodeError):
             data = {}
-        role_id = data.get("role", "")
+        credential = data.get("token")
+        identity = self._authenticate(credential if isinstance(credential, str) else None)
+        role_id = data.get("role", "") if identity is None else self._authorize_role(identity, data)
         token = json.dumps({"role": role_id}).encode("utf-8")
         return token, []
 
@@ -316,10 +440,19 @@ class ProvisaFlightServer(
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+        # REQ-1263: authenticate before anything reads the ticket. The role the rest of this call
+        # runs under is the one the validated identity permits — the client's `role` string is a
+        # request, never the identity — so it is substituted into the request here and every
+        # downstream reader sees the authorized value.
+        credential = request.get("token")
+        identity = self._authenticate(credential if isinstance(credential, str) else None)
+        if identity is not None:
+            request["role"] = self._authorize_role(identity, request)
+
         # REQ-1266: bind the ticket's org on this worker thread so every self._state.X read (here and
         # in the nested helpers) resolves the org's runtime; _run_on_loop re-binds it inside each
         # dispatched loop coroutine. reset in finally below.
-        _org_token = self._resolve_and_bind_org(request)
+        _org_token = self._resolve_and_bind_org(request, identity)
         try:
             return self._do_get_inner(request, ticket)
         finally:
@@ -334,6 +467,17 @@ class ProvisaFlightServer(
         ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         query_text = request.get("query", "")
+        # REQ-693: Flight stays open in high-security mode — it is one of the two transports an
+        # encrypting client actually uses — but a ticket that returns row data must carry the same
+        # client-side decryption key the HTTP data endpoints demand. The catalog branch below
+        # returns table/column names only, so it stays reachable exactly as /data/sdl does.
+        if query_text:
+            kms_key = request.get("kms_key")
+            refusal = high_security_wire_reject(
+                self._state, str(kms_key) if isinstance(kms_key, str) else None
+            )
+            if refusal is not None:
+                raise flight.FlightServerError(refusal)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         ticket_type = "sql" if _is_sql(str(query_text)) else "graphql"
         with _tracer.start_as_current_span("flight.do_get") as span:
             span.set_attribute("flight.ticket_type", ticket_type)

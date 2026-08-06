@@ -26,12 +26,13 @@ import asyncio
 import datetime
 import decimal
 import logging
+import os
 import re
 import socketserver
 import ssl
 import struct
 import threading
-from typing import Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple
 
 import jwt
 
@@ -70,11 +71,15 @@ async def _run_with_org(org_id: str | None, coro):  # REQ-1266
         reset_current_org(token)
 
 
-async def _resolve_and_build_org(state_, identity) -> str | None:  # REQ-1266
-    """Resolve the org for an authenticated pgwire identity and materialize its runtime.
+async def _resolve_and_build_org(state_, identity, requested_org: str | None) -> str | None:
+    """Resolve the org for an authenticated pgwire identity and materialize its runtime (REQ-1266).
 
     Runs on the main event loop (membership lookup + build touch loop-bound DB handles). Returns the
-    org id to bind on the session, or None for a single-org deployment / default-org principal."""
+    org id to bind on the session, or None for a single-org deployment / default-org principal.
+
+    REQ-1234: ``requested_org`` is the org the TLS SNI hostname named, when the client dialed one.
+    It is a request and nothing more — ``resolve_session_org`` refuses an org the principal is not
+    a member of, so dialing acme.provisa.dev does not put anyone inside acme."""
     from provisa.api.app import ensure_org_runtime
     from provisa.api.org_resolve import resolve_session_org
 
@@ -86,11 +91,12 @@ async def _resolve_and_build_org(state_, identity) -> str | None:  # REQ-1266
         state_,
         user_id=getattr(identity, "user_id", None),
         can_act_any_org=can_act_cross_org(caps),
-        requested_org=getattr(identity, "active_org_id", None),
+        requested_org=requested_org or getattr(identity, "active_org_id", None),
     )
     if org_id is not None:
         await ensure_org_runtime(org_id)
     return org_id
+
 
 _TXN_TAG_RE = re.compile(
     r"^\s*(SET|BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
@@ -120,8 +126,22 @@ _SSL_REQUEST_CODE = 80877103  # SSLRequest (1234 << 16 | 5679)
 _CANCEL_REQUEST_CODE = 80877102  # CancelRequest (1234 << 16 | 5678)
 _PROTOCOL_VERSION_3 = 196608  # StartupMessage protocol 3.0 (3 << 16)
 
+if TYPE_CHECKING:  # REQ-1394 — the exchange is imported lazily at runtime, named here for typing.
+    from provisa.auth.scram import ScramExchange
+
 # REQ-890: bearer/JWT provider names whose cleartext password payload is an OIDC access token.
 _OIDC_PROVIDERS = frozenset({"oidc", "oauth", "keycloak", "firebase"})
+
+# REQ-1394: the authentication-request subcodes the SASL exchange uses. 3 is the cleartext request
+# this server sent before SCRAM existed and still sends when SCRAM is off.
+_AUTH_SASL = 10
+_AUTH_SASL_CONTINUE = 11
+_AUTH_SASL_FINAL = 12
+
+# REQ-1394: the seed behind mock authentication. Per process and never persisted, so a username
+# with no verifier gets a stable-looking salt within a connection and an unguessable one across
+# deployments — the point being that an unknown user is answered exactly like a known one.
+_MOCK_SEED = os.urandom(32)
 
 
 def _pg_literal(v) -> str:
@@ -444,6 +464,12 @@ class ProvisaConnection(Connection):  # REQ-529
 class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     """Extends BuenaVistaHandler with TLS, cleartext auth, and catalog intercept."""
 
+    # REQ-1394: what was advertised in the authentication request, and the exchange in flight.
+    # Class-level so the state exists from the first byte — a connection that never reached
+    # send_auth_request has been offered nothing and must not be read as mid-SASL.
+    _sasl_offered: bool = False
+    _sasl: "ScramExchange | None" = None
+
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
         buf = BVBuffer()
         for field, value in (
@@ -528,18 +554,62 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
     def send_auth_request(self, ctx: BVContext) -> None:
         del ctx
-        self.wfile.write(struct.pack("!cii", ServerResponse.AUTHENTICATION_REQUEST, 8, 3))
+        # REQ-1394: SCRAM when the deployment asked for it, cleartext-over-TLS otherwise. The
+        # choice is made once, here, and the state machine below follows what was advertised.
+        self._sasl_offered = self._scram_offered()
+        self._sasl = None
+        if self._sasl_offered:
+            from provisa.auth.scram import MECHANISM
+
+            # AuthenticationSASL carries the mechanism list as NUL-terminated names ended by an
+            # empty one. Only SCRAM-SHA-256 is offered; -PLUS would promise channel binding that
+            # the exchange does not implement.
+            body = MECHANISM.encode("ascii") + b"\x00\x00"
+            self.wfile.write(
+                struct.pack(
+                    "!cii", ServerResponse.AUTHENTICATION_REQUEST, 8 + len(body), _AUTH_SASL
+                )
+            )
+            self.wfile.write(body)
+        else:
+            self.wfile.write(struct.pack("!cii", ServerResponse.AUTHENTICATION_REQUEST, 8, 3))
         self.wfile.flush()
 
-    def handle_md5_password(self, ctx: BVContext, payload: bytes) -> None:
-        password = payload.decode("utf-8").rstrip("\x00")
-        username = ctx.params.get("user", "")
-
+    def _app_state(self):
+        """The running application state, whichever module holds it."""
         import provisa.pgwire.server as _m
 
         _state = _m.state
         if _state is None:
             from provisa.api.app import state as _state  # type: ignore[assignment]
+        return _state
+
+    def _scram_offered(self) -> bool:  # REQ-1394
+        """Whether this connection is offered SASL rather than a cleartext password.
+
+        SCRAM authenticates a local password and nothing else: it proves knowledge of a verifier
+        this deployment derived, so it is offered only under the basic provider. A bearer provider
+        or a personal access token arrives as an opaque secret in the password field, which SCRAM
+        has no way to carry — those deployments keep the cleartext request, protected by TLS.
+        """
+        _state = self._app_state()
+        auth_config = _state.auth_config
+        if auth_config is None or not getattr(_state, "auth_middleware_active", False):
+            return False
+        if auth_config["provider"] != "basic":
+            return False
+        return bool(auth_config.get("scram"))
+
+    def handle_md5_password(self, ctx: BVContext, payload: bytes) -> None:
+        if self._sasl_offered:
+            # REQ-1394: every SASL message arrives as a PASSWORD_MESSAGE, so the negotiation is
+            # dispatched from here rather than from the vendored pre-auth loop.
+            self._handle_sasl(ctx, payload)
+            return
+        password = payload.decode("utf-8").rstrip("\x00")
+        username = ctx.params.get("user", "")
+
+        _state = self._app_state()
 
         auth_config = _state.auth_config
         if auth_config is None:
@@ -559,63 +629,270 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self.handle_post_auth(ctx)
             return
 
-        if provider in _OIDC_PROVIDERS:
-            assert auth_config is not None  # provider != "none" ⇒ auth_config is present
-            self._authenticate_oidc(ctx, username, password, auth_config)
+        assert auth_config is not None  # provider != "none" ⇒ auth_config is present
+        with _loop_lock:
+            loop = _loop
+        if loop is None:
+            self._send_pg_error("FATAL", "08004", "pgwire event loop not available")
             return
 
-        if provider != "simple":
+        from provisa.auth.throttle import LockedOut
+
+        try:
+            # REQ-1228: under PROVISA_MTLS_BIND_PRINCIPAL the client certificate's common name and
+            # the startup packet's user must be the same person. Checked before the password is
+            # examined — a mismatched certificate is not a credential question.
+            self._assert_peer_binding(username)
+        except PermissionError as exc:
+            self._send_pg_error("FATAL", "28000", str(exc))
+            return
+
+        auth_provider = self._build_provider(_state, auth_config)
+        if auth_provider is None:
+            return
+        try:
+            identity = self._validate_credential(loop, auth_provider, provider, username, password)
+        except LockedOut as locked:
+            # REQ-1393: a distinct answer from a wrong password. 28000 is invalid_authorization_
+            # specification — the attempt was refused before the credential was examined at all.
+            self._send_pg_error("FATAL", "28000", str(locked))
+            return
+        if identity is None:
             self._send_pg_error(
-                "FATAL",
-                "28P01",
-                f"pgwire auth provider not supported: {provider!r}",
+                "FATAL", "28P01", f'password authentication failed for user "{username}"'
             )
             return
+        self._complete_auth(ctx, identity, auth_config)
 
-        from provisa.auth.providers.simple import _provider_instance as auth_provider
+    def _send_auth_message(self, code: int, body: bytes) -> None:  # REQ-1394
+        """One AuthenticationRequest message carrying a SASL payload."""
+        self.wfile.write(
+            struct.pack("!cii", ServerResponse.AUTHENTICATION_REQUEST, 8 + len(body), code)
+        )
+        self.wfile.write(body)
+        self.wfile.flush()
 
-        if auth_provider is None:
-            self._send_pg_error("FATAL", "28P01", "Auth provider not initialized")
+    def _handle_sasl(self, ctx: BVContext, payload: bytes) -> None:  # REQ-1394
+        """One step of the SCRAM exchange, driven by whichever message just arrived.
+
+        Two round trips, and which one this is follows from whether an exchange already exists.
+        The first message names the mechanism and carries client-first; the second carries the
+        proof. A protocol error ends the connection with FATAL rather than being retried — SCRAM
+        has no resynchronisation point, and a client that sent the wrong thing will send it again.
+        """
+        from provisa.auth.scram import MECHANISM, ScramError
+
+        username = ctx.params.get("user", "")
+        if self._sasl is None:
+            mechanism, sep, rest = payload.partition(b"\x00")
+            if not sep or mechanism.decode("utf-8") != MECHANISM:
+                self._send_pg_error(
+                    "FATAL", "28000", f"unsupported SASL mechanism: {mechanism.decode('utf-8')!r}"
+                )
+                return
+            (length,) = struct.unpack("!i", rest[:4])
+            if length < 0:
+                # -1 means "no initial response". SCRAM's first message is not optional, so there
+                # is nothing to answer with.
+                self._send_pg_error("FATAL", "28000", "SASL initial response is required")
+                return
+            self._sasl_start(username, rest[4 : 4 + length].decode("utf-8"))
             return
 
         try:
-            auth_provider.login(username, password)
-        except ValueError:
+            final = self._sasl.server_final(payload.decode("utf-8").rstrip("\x00"))
+        except ScramError as exc:
+            # REQ-1393: a failed proof is a failed password and counts against the account exactly
+            # as a wrong one over any other surface.
+            from provisa.auth.throttle import login_throttle, subject_key
+
+            login_throttle().record_failure(subject_key(username, ""))
+            log.info("[PGWIRE] SCRAM authentication failed for %r: %s", username, exc)
             self._send_pg_error(
                 "FATAL", "28P01", f'password authentication failed for user "{username}"'
             )
             return
 
-        ctx.session.role_id = username  # type: ignore[attr-defined]
-        self.send_authentication_ok()
-        self.handle_post_auth(ctx)
+        self._send_auth_message(_AUTH_SASL_FINAL, final.encode("utf-8"))
+        self._sasl_complete(ctx, username)
 
-    def _authenticate_oidc(  # REQ-890
-        self, ctx: BVContext, username: str, token: str, auth_config: dict
-    ) -> None:
-        """Validate an OIDC bearer token (sent as the cleartext password) and map it to a role.
+    def _sasl_start(self, username: str, client_first: str) -> None:  # REQ-1394
+        """Answer client-first with the account's salt, or a mock account's when it has none."""
+        from provisa.auth.scram import ScramError, ScramExchange, mock_verifier
+        from provisa.auth.scram_store import read_verifier
+        from provisa.auth.throttle import LockedOut, login_throttle, subject_key
 
-        Reuses the same AuthProvider the REST/GraphQL path uses (built via build_auth_provider)
-        and the same claim→role mapping (resolve_role). validate_token bodies are synchronous, so
-        asyncio.run drives them from this socketserver thread.
-        """
-        from provisa.auth.role_mapping import resolve_role
-        from provisa.auth.wiring import build_auth_provider
-
-        provider = build_auth_provider(auth_config)
+        loop = self._sasl_loop()
+        if loop is None:
+            return
         try:
-            identity = asyncio.run(provider.validate_token(token))
-        except (ValueError, jwt.PyJWTError):
-            self._send_pg_error(
-                "FATAL", "28P01", f'token authentication failed for user "{username}"'
-            )
+            # REQ-1393: the lockout is checked before any work is done on the account's behalf,
+            # so a locked-out name cannot be used to make the server derive verifiers all day.
+            login_throttle().check(subject_key(username, ""))
+        except LockedOut as locked:
+            self._send_pg_error("FATAL", "28000", str(locked))
             return
 
-        role = resolve_role(
-            identity,
-            auth_config.get("role_mapping", []),
-            auth_config.get("default_role", "analyst"),
+        _state = self._app_state()
+        admin_db = _state.admin_db
+        assert admin_db is not None  # the basic provider is DB-backed; _scram_offered required it
+        verifier = asyncio.run_coroutine_threadsafe(
+            read_verifier(admin_db, username), loop
+        ).result(timeout=60)
+        if verifier is None:
+            # PostgreSQL's mock authentication. A user who has never set a password under SCRAM —
+            # and a user who does not exist — gets a well-formed exchange that no proof satisfies,
+            # so the handshake never becomes a name oracle.
+            verifier = mock_verifier(username, _MOCK_SEED)
+
+        exchange = ScramExchange(verifier)
+        try:
+            first = exchange.server_first(client_first)
+        except ScramError as exc:
+            self._send_pg_error("FATAL", "28000", str(exc))
+            return
+        self._sasl = exchange
+        self._send_auth_message(_AUTH_SASL_CONTINUE, first.encode("utf-8"))
+
+    def _sasl_loop(self):
+        """The API event loop, or None after telling the client why authentication cannot run."""
+        with _loop_lock:
+            loop = _loop
+        if loop is None:
+            self._send_pg_error("FATAL", "08004", "pgwire event loop not available")
+        return loop
+
+    def _sasl_complete(self, ctx: BVContext, username: str) -> None:  # REQ-1394
+        """Turn a verified proof into a session.
+
+        The proof says the password was right; it says nothing about whether the account is still
+        active or what it may do. Both of those come from reading the account, which is why this
+        goes through the provider rather than trusting the exchange.
+        """
+        from provisa.auth.throttle import login_throttle, subject_key
+
+        loop = self._sasl_loop()
+        if loop is None:
+            return
+        _state = self._app_state()
+        auth_config = _state.auth_config
+        assert auth_config is not None  # _scram_offered required it
+        auth_provider = self._build_provider(_state, auth_config)
+        if auth_provider is None:
+            return
+        try:
+            identity = asyncio.run_coroutine_threadsafe(
+                auth_provider.identity_for(username), loop
+            ).result(timeout=60)
+        except ValueError:
+            # The verifier matched but the account is gone or deactivated. Answered as a failed
+            # password: a deactivated account must not be able to tell that its password is right.
+            login_throttle().record_failure(subject_key(username, ""))
+            self._send_pg_error(
+                "FATAL", "28P01", f'password authentication failed for user "{username}"'
+            )
+            return
+        login_throttle().record_success(subject_key(username, ""))
+        self._complete_auth(ctx, identity, auth_config)
+
+    def _requested_org(self) -> str | None:  # REQ-1234
+        """The org this connection's TLS SNI hostname named, or None.
+
+        None on a plaintext connection and on one dialed by IP address, which is every connection
+        on a single-org deployment — those resolve their org from the principal alone, unchanged.
+        The socket is the wrapped one; ``handle_startup`` replaced ``self.request`` during the
+        SSLRequest exchange, and the servername callback stashed the name on it during the
+        handshake.
+        """
+        from provisa.security.sni import indicated_host, org_from_host
+
+        return org_from_host(indicated_host(self.request))
+
+    def _assert_peer_binding(self, username: str) -> None:  # REQ-1228
+        """Bind the TLS client certificate to the startup packet's user, when configured.
+
+        A plaintext connection has no peer certificate to inspect; ``resolve_client_auth`` returns
+        None there because mTLS is only wired onto the context when a CA is configured, and the
+        binding check is then a no-op. The socket is the wrapped one — ``handle_startup`` replaced
+        ``self.request`` during the SSLRequest exchange.
+        """
+        from provisa.security.mtls import assert_principal_binding, resolve_client_auth
+
+        auth = resolve_client_auth(
+            "PROVISA_PGWIRE_CLIENT_CA",
+            "PROVISA_PGWIRE_MTLS_MODE",
+            "PROVISA_PGWIRE_MTLS_BIND_PRINCIPAL",
         )
+        if auth is None or not auth.bind_principal:
+            return
+        peer_cert = self.request.getpeercert() if isinstance(self.request, ssl.SSLSocket) else None
+        assert_principal_binding(auth, peer_cert, username)
+
+    def _build_provider(self, _state, auth_config: dict):  # REQ-124
+        """The configured AuthProvider, or None after answering the client with FATAL.
+
+        A provider that cannot be constructed — an unknown name, a missing signing key — can
+        authenticate nobody. The client is told so on the wire; dropping the connection with an
+        unhandled exception would leave it guessing.
+        """
+        from provisa.auth.wiring import build_auth_provider
+
+        try:
+            return build_auth_provider(auth_config, admin_pool=getattr(_state, "admin_db", None))
+        except ValueError as exc:
+            self._send_pg_error("FATAL", "28P01", f"pgwire auth provider unavailable: {exc}")
+            return None
+
+    def _validate_credential(  # REQ-124, REQ-890, REQ-1263
+        self, loop, auth_provider, provider_name: str, username: str, password: str
+    ):
+        """Validate the startup credential against the provider, or None.
+
+        pgwire carries no scheme field — the startup packet holds a username and one cleartext
+        secret — so the presentation is decided once, from what the secret is. A personal access
+        token names itself by prefix and is a bearer credential (REQ-1263); a bearer/JWT provider
+        is told to expect a token in the password field (REQ-890); everything else is a password,
+        presented as ``basic``. One decision, one validator: a credential the chosen validator
+        refuses is not retried against another, which would turn one rejection into a second guess.
+
+        Validators run on the main loop, never a private ``asyncio.run`` — the PAT store and any
+        DB-backed provider hold loop-bound handles.
+        """
+        import base64
+
+        from provisa.auth.models import validator_for_scheme
+        from provisa.auth.pat import is_personal_access_token
+        from provisa.auth.throttle import throttled
+
+        if is_personal_access_token(password) or provider_name in _OIDC_PROVIDERS:
+            scheme, token = "bearer", password
+        else:
+            scheme = "basic"
+            token = base64.b64encode(f"{username}:{password}".encode()).decode()
+
+        validator = validator_for_scheme(auth_provider, scheme)
+        if validator is None:
+            return None
+        # REQ-1393: the startup packet names the account, so failed guesses count against it here
+        # and on every other surface alike. LockedOut propagates — the caller answers 28000.
+        attempt = throttled(validator, token, principal=username if scheme == "basic" else None)
+        try:
+            return asyncio.run_coroutine_threadsafe(attempt, loop).result(timeout=60)
+        except (ValueError, jwt.PyJWTError):
+            return None
+
+    def _complete_auth(  # REQ-273, REQ-551, REQ-890, REQ-1266
+        self, ctx: BVContext, identity, auth_config: dict
+    ) -> None:
+        """Map the validated identity to a role, bind its org, and admit the connection."""
+        from provisa.auth.role_mapping import resolve_role
+
+        default_role = auth_config.get("default_role")
+        if not default_role:
+            # No admin default: an identity matching no mapping rule is refused, not escalated
+            # onto whatever role the deployment happens to have named first.
+            raise RuntimeError("pgwire auth requires auth.default_role to be configured")
+        role = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
         # REQ-1266: bind the session to the identity's org (multitenant) so its queries route to that
         # org's data-plane runtime. Resolution + build run on the main loop (loop-bound DB handles);
         # an unresolvable principal fails the connection rather than silently landing on the default.
@@ -634,7 +911,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 return
             try:
                 ctx.session.org_id = asyncio.run_coroutine_threadsafe(  # type: ignore[attr-defined]
-                    _resolve_and_build_org(_state, identity), loop
+                    _resolve_and_build_org(_state, identity, self._requested_org()), loop
                 ).result(timeout=60)
             except OrgResolutionError as exc:
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")

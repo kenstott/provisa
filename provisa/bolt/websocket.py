@@ -74,6 +74,32 @@ async def detect_and_upgrade(
     raise ValueError(f"Unknown protocol, first bytes: {first4!r}")
 
 
+def _check_origin(origin: str | None, writer: asyncio.StreamWriter) -> None:
+    """Refuse a browser-originated upgrade from an unlisted site.
+
+    A page on any origin can open a WebSocket to a Bolt port and speak the protocol; the browser
+    sends it without asking, and the same-origin policy does not stop the connection. Only a
+    browser sends ``Origin``, so a header-less upgrade is a driver and this check does not apply
+    to it — the allowlist governs which sites may drive the port, not whether callers authenticate.
+
+    ``PROVISA_BOLT_ALLOWED_ORIGINS`` is a comma-separated list. Unset means no site is listed, and
+    a browser upgrade is refused rather than admitted by default.
+    """
+    if origin is None:
+        return
+    import os
+
+    allowed = {
+        o.strip()
+        for o in os.environ.get("PROVISA_BOLT_ALLOWED_ORIGINS", "").split(",")
+        if o.strip()
+    }
+    if origin in allowed:
+        return
+    writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    raise ConnectionError(f"WebSocket upgrade refused: origin {origin!r} is not allowed")
+
+
 async def _do_ws_upgrade(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
@@ -95,6 +121,8 @@ async def _do_ws_upgrade(
         if ": " in line:
             k, v = line.split(": ", 1)
             headers[k.lower()] = v
+
+    _check_origin(headers.get("origin"), writer)
 
     key = headers.get("sec-websocket-key", "")
     # RFC 6455 mandates SHA-1 for the Sec-WebSocket-Accept handshake — a protocol digest, not a

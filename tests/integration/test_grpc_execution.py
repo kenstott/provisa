@@ -135,6 +135,11 @@ class TestGrpcServerStarts:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
+        # would put this server behind the credential gate. Name it unsecured; the secured path
+        # has its own fixture.
+        state.auth_config = None
+        state.auth_middleware_active = False
         state.schemas = {}
         state.contexts = {}
         state.rls_contexts = {}
@@ -172,6 +177,11 @@ class TestGrpcServerStarts:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
+        # would put this server behind the credential gate. Name it unsecured; the secured path
+        # has its own fixture.
+        state.auth_config = None
+        state.auth_middleware_active = False
         state.schemas = {}
         state.contexts = {}
         state.rls_contexts = {}
@@ -315,6 +325,11 @@ class TestGrpcQueryExecution:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
+        # would put this server behind the credential gate. Name it unsecured; the secured path
+        # has its own fixture.
+        state.auth_config = None
+        state.auth_middleware_active = False
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
@@ -430,6 +445,11 @@ class TestGrpcQueryExecution:
         # REQ-1266: a bare MagicMock attribute is truthy, which would put this single-org
         # server behind the multitenancy org gate. Name the deployment shape explicitly.
         state.multitenancy = False
+        # REQ-1263: same reason — a bare MagicMock reads as a configured auth provider, which
+        # would put this server behind the credential gate. Name it unsecured; the secured path
+        # has its own fixture.
+        state.auth_config = None
+        state.auth_middleware_active = False
         state.schemas = {}  # empty — will cause NOT_FOUND
 
         servicer = ProvisaServicer(state, pb2_mock, pb2_grpc_mock)
@@ -446,3 +466,134 @@ class TestGrpcQueryExecution:
         ctx.abort.assert_called_once()
         call_args = ctx.abort.call_args[0]
         assert call_args[0] == grpc.StatusCode.NOT_FOUND
+
+
+# ---------------------------------------------------------------------------
+# Secured deployment: the credential gate on the wire (REQ-273, REQ-617, REQ-1263)
+# ---------------------------------------------------------------------------
+
+_SECURED_GRPC_PORT = int(os.environ.get("PROVISA_TEST_GRPC_AUTH_PORT", "50161"))
+
+_SECURED_AUTH_CONFIG = {
+    "provider": "oidc",
+    "default_role": "analyst",
+    "role_mapping": [
+        {"claim": "groups", "type": "contains", "value": "data-eng", "role": "admin"}
+    ],
+}
+
+
+class TestSecuredGrpcRequiresACredential:
+    """A server with an auth provider refuses every RPC that does not present a valid credential.
+
+    These run against a real listener over a real channel: the interceptor, the metadata parsing and
+    the status codes are the ones a client sees, not a servicer called in-process.
+    """
+
+    @pytest.fixture(scope="class")
+    async def secured_stub(self, compiled_proto_paths):
+        from provisa.auth.models import AuthIdentity
+        from provisa.grpc import auth as grpc_auth
+        from provisa.grpc.server import _load_module
+
+        pb2_path, pb2_grpc_path = compiled_proto_paths
+        # protoc's generated _pb2_grpc imports its _pb2 by bare module name, so the messages module
+        # has to be in sys.modules under that name before the service module is executed.
+        pb2 = _load_module(pb2_path, Path(pb2_path).stem)
+        pb2_grpc = _load_module(pb2_grpc_path, Path(pb2_grpc_path).stem)
+
+        async def _validate(state, token):  # noqa: ARG001  # mirrors the real validator
+            if token == "good-token":
+                return AuthIdentity(
+                    user_id="u-1",
+                    email="alice@acme.test",
+                    display_name="Alice",
+                    roles=[],
+                    raw_claims={"groups": ["data-eng"]},
+                    active_org_id=None,
+                )
+            raise ValueError("no such credential")
+
+        original = grpc_auth.validate_grpc_credential
+        grpc_auth.validate_grpc_credential = _validate
+
+        # integration: mock-justified — AppState is not a docker-compose service. The auth path
+        # under test (interceptor → role derivation → handler) is entirely live.
+        state = MagicMock()
+        state.multitenancy = False
+        state.auth_config = _SECURED_AUTH_CONFIG
+        state.auth_middleware_active = True
+        state.schemas = {}
+        state.contexts = {}
+        state.rls_contexts = {}
+        state.roles = {}
+        state.source_pools = MagicMock()
+        state.source_types = {}
+        state.source_dialects = {}
+        state.masking_rules = {}
+        state.mv_registry = MagicMock()
+        state.mv_registry.get_fresh.return_value = []
+        state.engine_conn = None
+        from provisa.federation.engine import build_trino_engine
+        from provisa.federation.runtime import EngineRuntime
+
+        state.federation_engine = EngineRuntime(build_trino_engine(), state)
+
+        server = await start_grpc_server(
+            port=_SECURED_GRPC_PORT,
+            state=state,
+            pb2_path=pb2_path,
+            pb2_grpc_path=pb2_grpc_path,
+        )
+        channel = grpc.aio.insecure_channel(f"localhost:{_SECURED_GRPC_PORT}")
+        stub_cls = next(
+            (getattr(pb2_grpc, attr) for attr in dir(pb2_grpc) if attr.endswith("Stub")), None
+        )
+        assert stub_cls is not None
+
+        yield stub_cls(channel), pb2
+
+        await channel.close()
+        await server.stop(grace=0)
+        grpc_auth.validate_grpc_credential = original
+
+    async def test_an_rpc_without_a_credential_is_refused(self, secured_stub):
+        stub, pb2 = secured_stub
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            async for _ in stub.QueryOrder(
+                pb2.OrderRequest(limit=1), metadata=[("x-provisa-role", "admin")]
+            ):
+                pass
+        assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
+
+    async def test_a_rejected_credential_is_refused(self, secured_stub):
+        stub, pb2 = secured_stub
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            async for _ in stub.QueryOrder(
+                pb2.OrderRequest(limit=1), metadata=[("authorization", "Bearer bogus")]
+            ):
+                pass
+        assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
+        assert exc_info.value.details() == "credential rejected"
+
+    async def test_a_valid_credential_cannot_claim_a_role_it_lacks(self, secured_stub):
+        stub, pb2 = secured_stub
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            async for _ in stub.QueryOrder(
+                pb2.OrderRequest(limit=1),
+                metadata=[("authorization", "Bearer good-token"), ("x-provisa-role", "root")],
+            ):
+                pass
+        assert exc_info.value.code() == grpc.StatusCode.PERMISSION_DENIED
+
+    async def test_a_valid_credential_runs_as_its_mapped_role(self, secured_stub):
+        """Reaching the schema lookup for 'admin' proves auth passed and the role came from the
+        identity's claims — this state registers no schemas, so the handler aborts NOT_FOUND."""
+        stub, pb2 = secured_stub
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            async for _ in stub.QueryOrder(
+                pb2.OrderRequest(limit=1), metadata=[("authorization", "Bearer good-token")]
+            ):
+                pass
+        assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
+        assert "admin" in (exc_info.value.details() or "")

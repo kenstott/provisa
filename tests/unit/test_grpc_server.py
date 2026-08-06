@@ -19,7 +19,7 @@ import grpc
 import grpc.aio
 import pytest
 
-from provisa.grpc.server import ProvisaServicer, _pascal_to_snake, _get_role
+from provisa.grpc.server import ProvisaServicer, _pascal_to_snake, _rpc_role
 
 
 class TestPascalToSnake:
@@ -37,20 +37,20 @@ class TestPascalToSnake:
         assert _pascal_to_snake("APIUsers") == "apiusers"
 
 
-class TestGetRole:
-    @pytest.mark.asyncio
-    async def test_extracts_role_from_metadata(self):
-        context = AsyncMock(spec=grpc.aio.ServicerContext)
-        context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
-        role = _get_role(context)
-        assert role == "admin"
+class TestRpcRole:
+    """On an unsecured deployment the metadata role is all there is (REQ-617).
 
-    @pytest.mark.asyncio
-    async def test_missing_role_raises(self):
-        context = AsyncMock(spec=grpc.aio.ServicerContext)
-        context.invocation_metadata.return_value = []
-        with pytest.raises(grpc.aio.AbortError):
-            _get_role(context)
+    The secured path — where the interceptor's validated identity overrides the metadata — is
+    covered in tests/unit/test_grpc_auth.py."""
+
+    def test_extracts_role_from_metadata(self):
+        assert _rpc_role({"x-provisa-role": "admin"}) == "admin"
+
+    def test_decodes_binary_metadata(self):
+        assert _rpc_role({"x-provisa-role": b"admin"}) == "admin"
+
+    def test_missing_role_is_absent(self):
+        assert _rpc_role({}) is None
 
 
 def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None):
@@ -240,11 +240,18 @@ class TestHandleInsert:
 class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_missing_role_metadata(self):
-        """Requests without x-provisa-role header should fail."""
-        with pytest.raises(grpc.aio.AbortError):
-            context = AsyncMock(spec=grpc.aio.ServicerContext)
-            context.invocation_metadata.return_value = []
-            _get_role(context)
+        """An RPC that names no role has none to run as, so the handler aborts UNAUTHENTICATED."""
+        pb2, _ = _make_pb2_module("Orders", ["id"])
+        servicer = ProvisaServicer(_make_state(), pb2, MagicMock())
+        context = AsyncMock(spec=grpc.aio.ServicerContext)
+        context.invocation_metadata.return_value = []
+
+        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders", "orders")]
+
+        assert rows == []
+        context.abort.assert_awaited_once_with(
+            grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata"
+        )
 
     @pytest.mark.asyncio
     async def test_unknown_message_type_aborts(self):

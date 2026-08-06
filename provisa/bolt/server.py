@@ -164,9 +164,9 @@ async def _dispatch(session: BoltSession, message: BoltMessage) -> None:
     if tag == msg.GOODBYE:
         return  # client is done; no response expected
     elif tag == msg.HELLO:
-        session.handle_hello(fields)
+        await session.handle_hello(fields)
     elif tag == msg.LOGON:
-        session.handle_logon(fields)
+        await session.handle_logon(fields)
     elif tag == msg.LOGOFF:
         session.handle_logoff()
     elif tag == msg.RESET:

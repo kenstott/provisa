@@ -372,11 +372,22 @@ async def _start_servers(_log: logging.Logger) -> None:
             with open(_fk, "rb") as _f:
                 _flight_key_bytes = _f.read()
             # grpc+tls scheme + tls_certificates make FlightServerBase bind a TLS listener (REQ-1226).
+            # REQ-1228 adds verify_client + root_certificates when a client CA is configured.
+            from provisa.security.mtls import flight_tls_kwargs
+            from provisa.security.mtls import resolve_client_auth as _resolve_client_auth
+
             flight_server = ProvisaFlightServer(
                 state,
                 location=f"grpc+tls://0.0.0.0:{flight_port}",
                 main_loop=asyncio.get_running_loop(),
                 tls_certificates=[(_flight_cert_bytes, _flight_key_bytes)],
+                **flight_tls_kwargs(
+                    _resolve_client_auth(
+                        "PROVISA_FLIGHT_CLIENT_CA",
+                        "PROVISA_FLIGHT_MTLS_MODE",
+                        "PROVISA_FLIGHT_MTLS_BIND_PRINCIPAL",
+                    )
+                ),
             )
         else:
             flight_server = ProvisaFlightServer(
@@ -401,7 +412,9 @@ async def _start_servers(_log: logging.Logger) -> None:
     except Exception:
         _log.exception("Arrow Flight server startup failed")
 
-    from provisa.security.high_security import pgwire_start_allowed
+    from provisa.security.high_security import bolt_start_allowed, pgwire_start_allowed
+    from provisa.security.mtls import apply_to_context, resolve_client_auth
+    from provisa.security.sni import install as install_sni_capture
 
     pgwire_port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
     if pgwire_port and not pgwire_start_allowed(state, pgwire_port):
@@ -420,9 +433,20 @@ async def _start_servers(_log: logging.Logger) -> None:
 
             _ssl_ctx: _ssl.SSLContext | None = None
             _pgwire_tls = _resolve_tls("PROVISA_PGWIRE_CERT", "PROVISA_PGWIRE_KEY")
+            _pgwire_mtls = None
             if _pgwire_tls is not None:
                 _ssl_ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
                 _ssl_ctx.load_cert_chain(*_pgwire_tls)
+                # REQ-1228: client-certificate verification, when the deployment configures a CA.
+                _pgwire_mtls = resolve_client_auth(
+                    "PROVISA_PGWIRE_CLIENT_CA",
+                    "PROVISA_PGWIRE_MTLS_MODE",
+                    "PROVISA_PGWIRE_MTLS_BIND_PRINCIPAL",
+                )
+                apply_to_context(_ssl_ctx, _pgwire_mtls)
+                # REQ-1234: record the hostname the client dialed, so a pgwire connection to
+                # acme.provisa.dev requests org 'acme' the way an HTTP Host header does.
+                install_sni_capture(_ssl_ctx)
 
             start_pgwire_server(
                 host="0.0.0.0",  # nosec B104 - pgwire server intentionally binds all interfaces
@@ -437,6 +461,12 @@ async def _start_servers(_log: logging.Logger) -> None:
             _log.exception("pgwire server startup failed")
 
     bolt_port = int(os.environ.get("PROVISA_BOLT_PORT", "0"))
+    if bolt_port and not bolt_start_allowed(state, bolt_port):
+        # REQ-693: high-security mode never starts the Bolt server — Bolt's HELLO/LOGON exchange
+        # negotiates a credential, not a decryption context, so a Cypher result would cross the
+        # wire as plaintext rows the backend had already seen.
+        _log.warning("bolt server not started: security.mode=high (REQ-693)")
+        bolt_port = 0
     if bolt_port:
         try:
             import ssl as _ssl_bolt
@@ -447,6 +477,17 @@ async def _start_servers(_log: logging.Logger) -> None:
             if _bolt_tls is not None:
                 _bolt_ssl_ctx = _ssl_bolt.SSLContext(_ssl_bolt.PROTOCOL_TLS_SERVER)
                 _bolt_ssl_ctx.load_cert_chain(*_bolt_tls)
+                # REQ-1228: same client-certificate policy pgwire applies, on Bolt's listener.
+                apply_to_context(
+                    _bolt_ssl_ctx,
+                    resolve_client_auth(
+                        "PROVISA_BOLT_CLIENT_CA",
+                        "PROVISA_BOLT_MTLS_MODE",
+                        "PROVISA_BOLT_MTLS_BIND_PRINCIPAL",
+                    ),
+                )
+                # REQ-1234: the same hostname capture pgwire installs, on Bolt's listener.
+                install_sni_capture(_bolt_ssl_ctx)
 
             start_bolt_server(
                 host="0.0.0.0",  # nosec B104 - bolt server intentionally binds all interfaces
