@@ -131,9 +131,15 @@ export const client = new ApolloClient({
 });
 
 if (typeof window !== "undefined") {
-  setInterval(() => {
+  const persist = () => {
     const cacheData = cache.extract();
     localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
     localStorage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
-  }, 5000);
+  };
+  setInterval(persist, 5000);
+  // The interval alone loses up to 5s of writes: a mutation's refetch lands, the user
+  // navigates (full document load), and the restored snapshot resurrects PRE-save values
+  // (#98 — the edit form then initializes from them). pagehide is the last synchronous
+  // moment before the document is torn down, so the restored snapshot is always current.
+  window.addEventListener("pagehide", persist);
 }

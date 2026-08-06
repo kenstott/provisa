@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, Fragment, useCallback } from "react";
+import { useState, useEffect, Fragment, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Network, ArrowUp, ArrowDown, ArrowUpDown, Layers, X } from "lucide-react";
@@ -111,6 +111,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   // Inline edit state for expanded table
   const [editingTable, setEditingTable] = useState<RegisteredTable | null>(null);
+  // #98: the row copied into the edit form can come from a stale cache snapshot (the
+  // localStorage-restored Apollo cache, before the post-navigation refetch lands). The
+  // JSON of the row as copied; while the form still matches it (user hasn't typed),
+  // a fresher tables result replaces the form state. First keystroke ends the follow.
+  const pristineEdit = useRef<string | null>(null);
   const [editingColumnTypes, setEditingColumnTypes] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [generatingDesc, setGeneratingDesc] = useState(false);
@@ -165,6 +170,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               };
       }
       return next;
+    });
+  }, [tables]);
+
+  // #98: while the edit form is pristine (form state still equals the row as copied),
+  // follow the tables query — a fresher result for the same table replaces the copy.
+  // The first user edit diverges the form from the pristine JSON and ends the follow,
+  // so an in-progress edit is never clobbered (same contract as cacheTtlEdits above).
+  useEffect(() => {
+    setEditingTable((current) => {
+      if (current === null || pristineEdit.current === null) return current;
+      if (JSON.stringify(current) !== pristineEdit.current) return current;
+      const fresh = tables.find((tbl) => tbl.id === current.id);
+      if (!fresh) return current;
+      const freshJson = JSON.stringify(fresh);
+      if (freshJson === pristineEdit.current) return current;
+      pristineEdit.current = freshJson;
+      return JSON.parse(freshJson);
     });
   }, [tables]);
 
@@ -278,6 +300,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   const startEditing = (t: RegisteredTable) => {
     setEditingTable(JSON.parse(JSON.stringify(t)));
+    pristineEdit.current = JSON.stringify(t);
     setEditingColumnTypes({});
     getAvailableColumnsMetadata(t.sourceId, t.schemaName, t.tableName)
       .then((meta) => {

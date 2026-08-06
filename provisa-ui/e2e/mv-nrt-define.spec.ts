@@ -16,7 +16,8 @@ test("define a materialized view with NRT debounce config", async ({ page }) => 
   // Apollo resetStore() fires when concurrent schema-version advances are detected
   // (file-connector / sharepoint tests register tables), briefly clearing the cache
   // and showing "Loading tables..." for up to 15s. All per-step timeouts are increased.
-  test.setTimeout(120000);
+  // Budget: two save chains at up to 60s each (see the waits below) plus form interaction.
+  test.setTimeout(180000);
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 30000 });
   await page.waitForFunction(() => document.querySelectorAll("tr").length > 2, {
@@ -54,7 +55,10 @@ test("define a materialized view with NRT debounce config", async ({ page }) => 
   // once handleSaveEdit completes the full sequential mutation chain (cascade comment, REQ-966).
   const saveBtn = page.getByRole("button", { name: /save/i }).first();
   await saveBtn.click();
-  await editBtn.waitFor({ timeout: 30000 });
+  // 60s: this waits out the FULL chain — four sequential mutations, each of whose responses
+  // triggers a schema-version refetch of every active query, then the awaited reload() — on a
+  // 2-core CI runner sharing the box with another backend. 30s was measured too tight there.
+  await editBtn.waitFor({ timeout: 60000 });
 
   // Re-open the edit form and assert the debounce values round-tripped (persisted).
   // Navigate to /tables first so the row starts collapsed; clicking an already-expanded row
@@ -80,6 +84,7 @@ test("define a materialized view with NRT debounce config", async ({ page }) => 
   await page.getByTestId("mv-debounce-quiet").fill("0");
   await page.getByTestId("mv-debounce-max-delay").fill("0");
   await page.getByRole("button", { name: /save/i }).first().click();
-  // Wait for save chain to complete before the test ends (avoids uncaught-browser-error on teardown).
-  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 30000 });
+  // Wait for save chain to complete before the test ends (avoids uncaught-browser-error on
+  // teardown). 60s for the same chain-latency reason as the first save above.
+  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 60000 });
 });
