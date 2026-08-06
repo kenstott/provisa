@@ -240,7 +240,7 @@ def _fake_pipeline_state(*, tables: list[dict]) -> SimpleNamespace:
         roles={
             "analyst": {
                 "id": "analyst",
-                "capabilities": ["ad_hoc_query"],
+                "capabilities": ["usage"],
                 "domain_access": ["*"],
             }
         },

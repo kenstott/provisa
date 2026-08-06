@@ -74,21 +74,34 @@ async def _system_roles(db: Database) -> dict[str, list[str]]:
     return out
 
 
-async def test_the_four_system_roles_and_nothing_else_are_seeded(tenant_db):
+async def test_the_five_system_roles_and_nothing_else_are_seeded(tenant_db):
     seeded = await _system_roles(tenant_db)
 
-    assert set(seeded) == {"platform_admin", "org_admin", "developer", "analyst"}
+    assert set(seeded) == {"platform_admin", "org_admin", "developer", "analyst", "modeler"}
 
 
 async def test_only_platform_admin_carries_the_bypass_capabilities(tenant_db):
     seeded = await _system_roles(tenant_db)
 
     assert {"admin", "superadmin"} <= set(seeded["platform_admin"])
-    for role_id in ("org_admin", "developer", "analyst"):
+    for role_id in ("org_admin", "developer", "analyst", "modeler"):
         assert not ({"admin", "superadmin"} & set(seeded[role_id])), role_id
 
 
-async def test_the_three_tenant_roles_hold_the_authority_the_requirement_names(tenant_db):
+async def test_modeler_is_the_only_system_role_that_may_join_outside_the_catalog(tenant_db):
+    """ignore_relationships is the discovery knob and belongs to exactly one seeded role.
+
+    A role holding it can join relations the approved relationship catalog does not cover — that is
+    how a model is determined. Enforcing the model means querying as a role WITHOUT it, so every
+    other default (analyst included) must not carry it.
+    """
+    seeded = await _system_roles(tenant_db)
+
+    holders = {rid for rid, caps in seeded.items() if "ignore_relationships" in caps}
+    assert holders == {"modeler"}
+
+
+async def test_the_tenant_roles_hold_the_authority_the_requirement_names(tenant_db):
     seeded = await _system_roles(tenant_db)
 
     # org_admin administers one org: members, invites, sources, governance.
@@ -100,7 +113,7 @@ async def test_the_three_tenant_roles_hold_the_authority_the_requirement_names(t
         set(seeded["developer"])
     )
     # analyst reads: no authoring, no governance, no member management.
-    assert set(seeded["analyst"]) == {"usage", "ad_hoc_query", "query_development"}
+    assert set(seeded["analyst"]) == {"usage", "query_development"}
     assert not ({"create_view", "user_management", "write"} & set(seeded["analyst"]))
 
 

@@ -703,7 +703,6 @@ def when_compiler_validates_query(shared_data):
         gov_ctx_registered,
         role,
         raw_tables,
-        discovery_mode=False,
         bypass_relationship_guard=False,
     )
     shared_data["approved_violations"] = approved_violations
@@ -716,7 +715,6 @@ def when_compiler_validates_query(shared_data):
         gov_ctx_empty,
         role,
         raw_tables,
-        discovery_mode=False,
         bypass_relationship_guard=False,
     )
     shared_data["unapproved_violations"] = unapproved_violations
@@ -727,7 +725,6 @@ def when_compiler_validates_query(shared_data):
         gov_ctx_empty,
         role,
         raw_tables,
-        discovery_mode=False,
         bypass_relationship_guard=False,
     )
     shared_data["approved_against_empty_violations"] = approved_against_empty_violations
@@ -738,7 +735,6 @@ def when_compiler_validates_query(shared_data):
         gov_ctx_empty,
         role,
         raw_tables,
-        discovery_mode=False,
         bypass_relationship_guard=True,
     )
     shared_data["bypassed_v002_violations"] = [v for v in bypassed_violations if v.code == "V002"]

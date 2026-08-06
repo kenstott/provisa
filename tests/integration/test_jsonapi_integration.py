@@ -138,7 +138,7 @@ def _make_app_state(schema=None):
     state.roles = {
         "admin": {
             "id": "admin",
-            "capabilities": ["full_results", "ad_hoc_query"],
+            "capabilities": ["full_results"],
             "domain_access": ["*"],
         }
     }

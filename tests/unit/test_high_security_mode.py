@@ -23,8 +23,12 @@ from provisa.api.data.encrypted_directive import (
 from provisa.core.models import SecurityConfig
 from provisa.security.high_security import (
     HighSecurityMiddleware,
+    bolt_start_allowed,
     high_security_reject,
+    high_security_wire_reject,
     is_high_security,
+    kms_key_in_pairs,
+    mcp_start_allowed,
     pgwire_start_allowed,
 )
 
@@ -49,6 +53,42 @@ def test_pgwire_not_started_in_high_mode():
     assert pgwire_start_allowed(std, 0) is False  # no port configured
 
 
+def test_bolt_and_mcp_not_started_in_high_mode():
+    """REQ-693: neither surface can prove client-side decrypt, so neither port opens."""
+    high = SimpleNamespace(security_high=True)
+    std = SimpleNamespace(security_high=False)
+    assert bolt_start_allowed(std, 7687) is True
+    assert bolt_start_allowed(high, 7687) is False
+    assert mcp_start_allowed(std, 8100) is True
+    assert mcp_start_allowed(high, 8100) is False
+
+
+# -- gRPC / Flight KMS gate (REQ-693) ---------------------------------------------------------
+
+
+def test_wire_data_call_refused_without_a_kms_key_in_high_mode():
+    high = SimpleNamespace(security_high=True)
+    refusal = high_security_wire_reject(high, None)
+    assert refusal is not None
+    assert "x-provisa-kms-key" in refusal
+
+
+def test_wire_data_call_allowed_with_a_kms_key_in_high_mode():
+    high = SimpleNamespace(security_high=True)
+    assert high_security_wire_reject(high, "arn:aws:kms:us-east-1:1:key/abc") is None
+
+
+def test_wire_data_call_ungated_in_standard_mode():
+    assert high_security_wire_reject(SimpleNamespace(security_high=False), None) is None
+
+
+def test_kms_key_read_from_metadata_pairs():
+    """gRPC delivers metadata as pairs, and some transports hand the value over as bytes."""
+    assert kms_key_in_pairs([("authorization", "Bearer t")]) is None
+    assert kms_key_in_pairs([("X-Provisa-KMS-Key", "k1")]) == "k1"
+    assert kms_key_in_pairs([("x-provisa-kms-key", b"k2")]) == "k2"
+
+
 def test_is_high_security_reads_state():
     assert is_high_security(SimpleNamespace(security_high=True)) is True
     assert is_high_security(SimpleNamespace()) is False
@@ -71,6 +111,25 @@ def test_reject_data_endpoint_without_kms():
     assert high_security_reject("/data/rest/pets", _Headers({})) is not None
 
 
+def test_every_data_route_is_gated_by_default():
+    """REQ-693: the /data tree is refused wholesale, so a new endpoint cannot arrive un-gated.
+
+    Each path below returns or accepts row data and was reachable under the old allow-list.
+    """
+    for path in (
+        "/data/ingest/pg/orders",
+        "/data/subscribe/orders",
+        "/data/grpc/Orders",
+        "/data/grpc-command/analyst",
+        "/data/query",
+        "/data/nl-to-sql",
+        "/data/touch/orders",
+        "/data/redirect/unwrap",
+        "/data/anything-added-tomorrow",
+    ):
+        assert high_security_reject(path, _Headers({})) is not None, path
+
+
 def test_allow_data_endpoint_with_kms_key():
     assert high_security_reject("/data/sql", _Headers({"X-Provisa-KMS-Key": "arn"})) is None
 
@@ -79,7 +138,13 @@ def test_metadata_endpoints_reachable():
     # Clients must fetch the SDL to learn @encrypted fields before connecting.
     assert high_security_reject("/data/sdl", _Headers({})) is None
     assert high_security_reject("/data/introspection", _Headers({})) is None
+    assert high_security_reject("/data/schema-version", _Headers({})) is None
+    assert high_security_reject("/data/domains", _Headers({})) is None
+    assert high_security_reject("/data/proto/analyst", _Headers({})) is None
+    # /data/compile returns the generated SQL for a query, never its results.
+    assert high_security_reject("/data/compile", _Headers({})) is None
     assert high_security_reject("/health", _Headers({})) is None
+    assert high_security_reject("/admin/sources", _Headers({})) is None
 
 
 def _build_app(security_high: bool) -> TestClient:

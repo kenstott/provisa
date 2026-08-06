@@ -279,7 +279,6 @@ async def _govern_and_route(
     role_id: str,
     *,
     session_vars: dict[str, str] | None = None,
-    discovery_mode: bool = False,
     as_of: str | None = None,
     deliver: Delivery | None = None,
     buffered: bool = False,
@@ -365,35 +364,30 @@ async def _govern_and_route(
         engine=getattr(state, "federation_engine", None),
     )
 
-    # Discovery mode (SQL Explorer): the caller may reference any registered table across all
-    # contexts, so augment the role's table_map with every context's tables before validation.
-    if discovery_mode:
-        for _all_ctx in state.contexts.values():
-            for _meta in _all_ctx.tables.values():
-                gov_ctx.table_map.setdefault(_meta.table_name, _meta.table_id)
-                gov_ctx.table_map.setdefault(
-                    f"{_meta.schema_name}.{_meta.table_name}", _meta.table_id
-                )
-
     from provisa.security.rights import Capability, has_capability
 
     _role_guard = (role or {}).get("relationship_guard", True)
     _bypass_guard = has_capability(role or {}, Capability.IGNORE_RELATIONSHIPS) or (
         (not _role_guard) and sql_opts_out
     )
+    # REQ-693: high-security mode is belts and suspenders — the relationship guard is not
+    # bypassable there at all. A deployment that improperly granted ignore_relationships (or
+    # cleared relationship_guard) to a production role does not get a break-out; the grant is
+    # ignored and every join must exist in the approved relationship catalog.
+    if getattr(state, "security_high", False):
+        _bypass_guard = False
     violations = validate_sql(
         normalized_sql,
         ctx,
         gov_ctx,
         role or {},
         getattr(state, "tables", []),
-        discovery_mode=discovery_mode,
         bypass_relationship_guard=_bypass_guard,
         bypass_uncovered_relationships=True,
     )
 
     _role_domain_access = (role or {}).get("domain_access") or []
-    if not discovery_mode and "*" not in _role_domain_access:
+    if "*" not in _role_domain_access:
         try:
             parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
             for tbl in parsed_tree.find_all(exp.Table):
@@ -708,7 +702,6 @@ async def execute_sql_batch(
     state: Any | None = None,
     *,
     session_vars: dict[str, str] | None = None,
-    discovery_mode: bool = False,
     as_of: str | None = None,
     deliver: Delivery | None = None,
     buffered: bool = False,
@@ -743,7 +736,6 @@ async def execute_sql_batch(
             stmt,
             role_id,
             session_vars=session_vars,
-            discovery_mode=discovery_mode,
             as_of=as_of,
             deliver=_deliver,
             buffered=buffered and _i == len(statements) - 1,
@@ -791,7 +783,8 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     """Governance + routing for already-physical SQL.
 
     Used by GQL and Cypher transport paths after language-specific compilation.
-    No AD_HOC_QUERY capability check, no SQL validation.
+    No SQL validation: the compiler produced this SQL from a governed AST, so there is no
+    caller-authored text to validate.
     """
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]

@@ -348,7 +348,7 @@ class TestGovernanceAsOnlyGate:
         # REQ-001: governance is expressed through rights, not capability gates on querying.
         role = {"id": ROLE_VIEWER, "capabilities": ["usage"]}
         assert not has_capability(role, Capability.FULL_RESULTS)
-        assert not has_capability(role, Capability.AD_HOC_QUERY)
+        assert not has_capability(role, Capability.CREATE_VIEW)
 
     async def test_has_capability_returns_true_when_present(self):
         # REQ-042: independently configured rights — present capability is respected.

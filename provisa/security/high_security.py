@@ -37,14 +37,20 @@ from starlette.responses import JSONResponse
 
 KMS_KEY_HEADER = "x-provisa-kms-key"
 
-# Data endpoints that return row data — gated in high mode.
-_GATED_PREFIXES = ("/data/sql", "/data/graphql", "/data/rest", "/data/jsonapi")
-# Schema-metadata endpoints — always reachable (no row data).
+# The whole /data tree is gated in high mode, and the exemptions below are enumerated rather than
+# the gated paths. An allow-list of row-returning prefixes silently un-gates every route added
+# after it was written — /data/ingest, /data/subscribe and the /data/grpc* proxies were all left
+# open that way — so the default is refusal and a new endpoint has to argue its way out.
+_GATED_ROOT = "/data/"
+# Schema-metadata endpoints — always reachable, because a client has to read the schema (and the
+# @encrypted markings on it) before it can connect at all. None of these return row data.
 _METADATA_PREFIXES = (
     "/data/sdl",
     "/data/introspection",
     "/data/schema-version",
     "/data/domains",
+    "/data/proto",  # protobuf descriptors for a role's schema
+    "/data/compile",  # returns the generated SQL for a query, never its results
 )
 
 
@@ -63,10 +69,61 @@ def pgwire_start_allowed(state: Any, pgwire_port: int) -> bool:
     return bool(pgwire_port) and not is_high_security(state)
 
 
+def bolt_start_allowed(state: Any, bolt_port: int) -> bool:
+    """Whether the Bolt server may start (REQ-693).
+
+    Bolt gets the pgwire treatment for the same reason: the protocol's HELLO/LOGON exchange
+    negotiates a credential, not a decryption context, and a Cypher result is plaintext rows on
+    the wire. There is no per-connection proof a client can present, so the port stays closed.
+    """
+    return bool(bolt_port) and not is_high_security(state)
+
+
+def mcp_start_allowed(state: Any, mcp_port: int) -> bool:
+    """Whether the MCP server may start (REQ-693).
+
+    An MCP tool call hands query results to a model as text. Nothing in that path can decrypt
+    client-side, so high-security mode does not serve it at all.
+    """
+    return bool(mcp_port) and not is_high_security(state)
+
+
+def kms_key_in_pairs(pairs: Any) -> str | None:
+    """The KMS key from gRPC-style ``(name, value)`` metadata pairs, if present.
+
+    gRPC and Arrow Flight carry call metadata as a sequence of pairs rather than a mapping, and
+    values arrive as ``bytes`` on some transports.
+    """
+    for key, value in pairs or ():
+        if str(key).lower() != KMS_KEY_HEADER:
+            continue
+        return value.decode() if isinstance(value, bytes) else str(value)
+    return None
+
+
+def high_security_wire_reject(state: Any, kms_key: str | None) -> str | None:
+    """The refusal reason for a data call carrying ``kms_key``, or None to let it through (REQ-693).
+
+    gRPC and Arrow Flight are the transports encrypting clients actually use, so high-security
+    mode keeps them serving and requires the same proof the HTTP data endpoints require: a
+    client-side decryption key on the call. Closing these ports instead would leave a
+    high-security deployment with no wire protocol at all.
+    """
+    if not is_high_security(state):
+        return None
+    if kms_key:
+        return None
+    return (
+        "high-security mode: data calls require a client-side decryption key. Connect with a "
+        "KMS-configured client (kms_provider + kms_key_arn) so the "
+        f"{KMS_KEY_HEADER} call header is sent. (REQ-693)"
+    )
+
+
 def _is_gated_data_path(path: str) -> bool:
     if any(path.startswith(p) for p in _METADATA_PREFIXES):
         return False
-    return any(path.startswith(p) for p in _GATED_PREFIXES)
+    return path.startswith(_GATED_ROOT)
 
 
 def high_security_reject(path: str, headers: Any) -> JSONResponse | None:

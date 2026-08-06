@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -46,7 +47,6 @@ router = APIRouter(prefix="/data", tags=["data"])
 class SQLRequest(BaseModel):
     sql: str
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
-    discovery_mode: bool = False
 
 
 def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_role: str) -> str:
@@ -282,11 +282,11 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # multi-statement batch statement-aware and governs+executes EACH (last result returned) — so the
     # tail is never silently dropped, and a per-statement registered command still routes through the
     # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
-    # (REQ-1163) + discovery_mode are query-shaping params threaded in.
+    # (REQ-1163) is a query-shaping param threaded in.
     if role_id not in state.schemas:
         raise ApiError(400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id)
     role = state.roles.get(role_id)
-    _check_sql_capabilities(role, request.discovery_mode)
+    _check_sql_capabilities(role)
     from provisa.pgwire._pipeline import execute_sql_batch
 
     # Request-boundary error handling (mirrors the pgwire handle_query handler): a governance denial
@@ -297,7 +297,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # documented boundary contract, not silent error handling.
     try:
         result = await execute_sql_batch(
-            request.sql, role_id, state, discovery_mode=request.discovery_mode, as_of=_as_of
+            request.sql, role_id, state, as_of=_as_of
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
@@ -308,8 +308,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     return _finalize(result, source="engine", strategy="batch", physical_sql=request.sql)
 
 
-def _check_sql_capabilities(role, discovery_mode: bool) -> None:
-    if role and not discovery_mode:
+def _check_sql_capabilities(role) -> None:
+    if role:
         try:
             check_capability(role, Capability.QUERY_DEVELOPMENT)
         except InsufficientRightsError as e:
@@ -509,8 +509,6 @@ def _build_schema_block(
         )
     return schema_block
 
-
-import re
 
 # REQ-1362: phrase -> aggregate function(s) it implies, checked against the generated SQL after
 # parsing so a plain SELECT that drops the implied aggregate (observed for AVG) triggers a retry

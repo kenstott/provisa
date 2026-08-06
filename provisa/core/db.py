@@ -57,7 +57,7 @@ _SEED_DOMAINS: tuple[tuple[str, str, str | None], ...] = (
     ("shelter", "Animal shelter staff and breed management", None),
 )
 
-# REQ-1266/REQ-1297: the four system template roles, mirrored from schema.sql's seed (lines
+# REQ-1266/REQ-1297: the five system template roles, mirrored from schema.sql's seed (lines
 # 623-712) so non-PostgreSQL (SQLite/portable) deployments reach parity with PostgreSQL/SaaS
 # deployments on role seeding. schema.sql is PG-only DDL and cannot be shared verbatim, so this is
 # a second literal by necessity, not by choice; keep the two in sync on any capability change.
@@ -73,12 +73,21 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "full_results", "write", "usage", "org_settings", "observability",
         ],
     ),
-    ("analyst", ["usage", "ad_hoc_query", "query_development"]),
+    ("analyst", ["usage", "query_development"]),
     (
         "developer",
         [
             "query_development", "create_view", "create_relationship", "full_results", "write",
-            "usage", "ad_hoc_query",
+            "usage",
+        ],
+    ),
+    # REQ-1297: modeler is the only system role holding ignore_relationships — the discovery role
+    # that determines the model by joining across relations the catalog does not yet cover.
+    (
+        "modeler",
+        [
+            "query_development", "create_relationship", "create_view", "ignore_relationships",
+            "full_results", "usage",
         ],
     ),
     ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),

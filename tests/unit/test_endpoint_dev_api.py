@@ -86,7 +86,7 @@ async def sql_client():
     app_mod.state.schemas = {"org_admin": MagicMock()}
     app_mod.state.contexts = {"org_admin": ctx}
     app_mod.state.rls_contexts = {"org_admin": rls}
-    app_mod.state.roles = {"org_admin": {"id": "org_admin", "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"]}}
+    app_mod.state.roles = {"org_admin": {"id": "org_admin", "capabilities": ["query_development", "full_results", "usage", "write"]}}
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {"pg": "postgresql"}
     app_mod.state.source_dialects = {"pg": "postgres"}
@@ -139,29 +139,25 @@ class TestSqlEndpointCapability:
         )
         assert resp.status_code == 403
 
-    async def test_discovery_mode_bypasses_capability_check(self, sql_client):
+    async def test_no_request_field_can_waive_the_capability_check(self, sql_client):
+        """A request body cannot grant itself rights the role does not hold.
+
+        ``discovery_mode`` used to be a body flag that skipped this capability check, the domain
+        check and the relationship guard at once — a break-out chosen by the caller rather than by
+        a grant. It is gone; the field is now ignored and the gate holds.
+        """
         import provisa.api.app as app_mod
 
         app_mod.state.roles["org_admin"] = {"id": "org_admin", "capabilities": []}
-        fallback_result = _make_query_result(rows=[(1,)], column_names=["id"])
-        with (
-            patch(
-                "provisa.executor.direct.execute_direct",
-                new=AsyncMock(return_value=fallback_result),
-            ),
-            patch(
-                "provisa.executor.trino.execute_trino", new=AsyncMock(return_value=fallback_result)
-            ),
-        ):
-            resp = await sql_client.post(
-                "/data/sql",
-                json={
-                    "sql": "SELECT id FROM orders",
-                    "role": "org_admin",
-                    "discovery_mode": True,
-                },
-            )
-        assert resp.status_code != 403
+        resp = await sql_client.post(
+            "/data/sql",
+            json={
+                "sql": "SELECT id FROM orders",
+                "role": "org_admin",
+                "discovery_mode": True,
+            },
+        )
+        assert resp.status_code == 403
 
 
 class TestSqlEndpointNoSchema:
@@ -172,7 +168,7 @@ class TestSqlEndpointNoSchema:
         # state.roles (passes the middleware) but absent from state.schemas.
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["schemaless"] = {"id": "schemaless", "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"]}
+        app_mod.state.roles["schemaless"] = {"id": "schemaless", "capabilities": ["query_development", "full_results", "usage", "write"]}
         try:
             resp = await sql_client.post(
                 "/data/sql",
@@ -297,7 +293,7 @@ class TestProtoEndpoint:
 
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
-            "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"],
+            "capabilities": ["query_development", "full_results", "usage", "write"],
             "domain_access": [],
         }
         app_mod.state.schema_build_cache = {
@@ -330,7 +326,7 @@ class TestProtoEndpoint:
 
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
-            "capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"],
+            "capabilities": ["query_development", "full_results", "usage", "write"],
             "domain_access": [],
         }
         app_mod.state.schema_build_cache = {
@@ -386,12 +382,7 @@ class TestCheckSqlCapabilities:
     def test_no_role_noop(self):
         from provisa.api.data.endpoint_dev import _check_sql_capabilities
 
-        _check_sql_capabilities(None, discovery_mode=False)  # must not raise
-
-    def test_discovery_mode_bypasses(self):
-        from provisa.api.data.endpoint_dev import _check_sql_capabilities
-
-        _check_sql_capabilities({"capabilities": []}, discovery_mode=True)  # must not raise
+        _check_sql_capabilities(None)  # must not raise
 
     def test_missing_capability_raises_403(self):
         from fastapi import HTTPException
@@ -399,13 +390,13 @@ class TestCheckSqlCapabilities:
         from provisa.api.data.endpoint_dev import _check_sql_capabilities
 
         with pytest.raises(HTTPException) as exc_info:
-            _check_sql_capabilities({"id": "admin", "capabilities": []}, discovery_mode=False)
+            _check_sql_capabilities({"id": "admin", "capabilities": []})
         assert exc_info.value.status_code == 403
 
     def test_admin_capability_passes(self):
         from provisa.api.data.endpoint_dev import _check_sql_capabilities
 
-        _check_sql_capabilities({"capabilities": ["query_development", "ad_hoc_query", "full_results", "usage", "write"]}, discovery_mode=False)  # no raise
+        _check_sql_capabilities({"capabilities": ["query_development", "full_results", "usage", "write"]})  # no raise
 
 
 class TestCheckQualifierBinding:

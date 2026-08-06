@@ -53,7 +53,6 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     FULL_RESULTS = "full_results"  # bypass sampling mode
     ADMIN = "admin"
     USAGE = "usage"
-    AD_HOC_QUERY = "ad_hoc_query"
     READ_RESTRICTED = "read_restricted"
     APPROVE_RELATIONSHIP = "approve_relationship"
     CREATE_VIEW = "create_view"

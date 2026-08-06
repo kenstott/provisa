@@ -61,7 +61,6 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     gov_ctx: GovernanceContext,
     role: dict,
     _raw_tables: list[dict],  # pyright: ignore[reportUnusedParameter]
-    discovery_mode: bool = False,
     *,
     bypass_relationship_guard: bool = False,
     bypass_uncovered_relationships: bool = False,
@@ -95,19 +94,18 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
 
     domain_access: list[str] = role.get("domain_access") or []
 
-    if not discovery_mode:
-        violations += _check_domain_access(
-            tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
+    violations += _check_domain_access(
+        tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
+    )
+    if not bypass_relationship_guard:
+        violations += _check_join_relationships(
+            tree,
+            gov_ctx,
+            valid_joins,
+            table_id_to_meta,
+            cte_names_set,
+            bypass_uncovered=bypass_uncovered_relationships,
         )
-        if not bypass_relationship_guard:
-            violations += _check_join_relationships(
-                tree,
-                gov_ctx,
-                valid_joins,
-                table_id_to_meta,
-                cte_names_set,
-                bypass_uncovered=bypass_uncovered_relationships,
-            )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
     violations += _check_dag(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
