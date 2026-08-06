@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import types
 
+from contextlib import asynccontextmanager
+
 import pytest
 
 from provisa.api.errors import ApiError
@@ -46,8 +48,38 @@ def _json_body(body: dict):
     return _json
 
 
+class _TenantDb:
+    """A real SQLite tenant DB with the catalog_bindings table (REQ-1389).
+
+    The publish path loads and persists vendor bindings around every publish, so the state
+    stub has to hand it a working connection rather than a bare object.
+    """
+
+    def __init__(self, tmp_path):
+        self._tmp_path = tmp_path
+        self._engine = None
+
+    @asynccontextmanager
+    async def acquire(self):
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        from provisa.core.database import Database
+        from provisa.core.schema_org import catalog_bindings
+
+        if self._engine is None:
+            self._engine = create_async_engine(
+                f"sqlite+aiosqlite:///{self._tmp_path / 'tenant.db'}"
+            )
+            async with self._engine.begin() as c:
+                await c.run_sync(
+                    lambda s: catalog_bindings.metadata.create_all(s, tables=[catalog_bindings])
+                )
+        async with Database(self._engine, name="tenant").acquire() as conn:
+            yield conn
+
+
 @pytest.fixture
-def surface(monkeypatch):
+def surface(monkeypatch, tmp_path):
     """Drive the handlers against recorded org settings and a registered premium org.
 
     Returns a namespace with ``stored`` (what the org has saved — mutate it to set up a case),
@@ -74,7 +106,7 @@ def surface(monkeypatch):
     monkeypatch.setattr(org_settings_mod, "write_org_overrides", _write)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(tenant_db=object(), config=object()),
+        types.SimpleNamespace(tenant_db=_TenantDb(tmp_path), config=object()),
         raising=False,
     )
 

@@ -49,13 +49,14 @@ assumed):
   Provisa-owned, so REPLACE is correct there too. Both actions are pinned explicitly in the
   job form so the contract does not ride on a remote default.
 
-URN-rebind limitation (REQ-1385/REQ-1389): the import job's only identity is the asset full
-name inside its domain — the physical FQN — and the job has no rename operation. A physical
-re-address (re-platform, physical rename) therefore lands as a NEW asset; the previous one is
-never pruned by publish (nothing here deletes), but its enrichment does not follow. The
-canonical business identity is still published on every table as the ``Provisa URI``
-attribute, so consumers and any out-of-band remediation can correlate the two; this adapter
-does not fake a rebind through the import job.
+URN rebind (REQ-1385/REQ-1389): the import job's only identity is the asset full name inside
+its domain — the physical FQN — and the job itself has no rename operation. The rebind
+therefore happens BEFORE the job: the exporter captures each table's asset UUID at publish
+time (``catalog_bindings``), and when the stored binding shows the name changed it renames
+the live asset first — ``PATCH /rest/2.0/assets/{id}`` with the new name — so the name-keyed
+import that follows matches the SAME asset, enrichment intact, instead of creating a
+duplicate. The canonical business identity is still published on every table as the
+``Provisa URI`` attribute.
 """
 
 # Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1385, REQ-1389
@@ -284,10 +285,111 @@ class CollibraExport(MetadataExport):  # REQ-1069
             headers["Authorization"] = f"Bearer {token}"
         return headers
 
+    @staticmethod
+    def _row_uri(row: dict[str, Any]) -> str | None:
+        """The Provisa URN a row carries, when it carries one (tables do)."""
+        values = row.get("attributes", {}).get(URI_ATTRIBUTE)
+        return values[0]["value"] if values else None
+
+    async def _rename_rebound_assets(
+        self,
+        client: httpx.AsyncClient,
+        rows: list[dict[str, Any]],
+        result: PublishResult,
+    ) -> None:
+        """Rename physically re-addressed assets BEFORE the import job (REQ-1389).
+
+        The import upserts by full name; a stored binding whose name differs from the
+        outgoing row means the same Provisa asset re-addressed. Renaming the live asset by
+        its stored UUID first makes the name-keyed import match the SAME asset — enrichment
+        intact — instead of minting a duplicate. A failed rename is reported and the import
+        proceeds: it then creates a new asset, which the error names.
+        """
+        for row in rows:
+            uri = self._row_uri(row)
+            if uri is None:
+                continue
+            stored = self._bindings.get(uri)
+            if stored is None or stored[1] == row["name"]:
+                continue
+            asset_id, old_name = stored
+            response = await client.patch(
+                self._url(f"/rest/2.0/assets/{asset_id}"),
+                json={"name": row["name"], "displayName": row["displayName"]},
+                headers=self._headers(),
+            )
+            if response.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(row["name"]),
+                        message=(
+                            f"rebind rename of {old_name!r} (asset {asset_id}) to "
+                            f"{row['name']!r} failed (HTTP {response.status_code}: "
+                            f"{response.text[:300]}); the import will create a new asset "
+                            "and the old one keeps its enrichment"
+                        ),
+                    )
+                )
+
+    async def _capture_bindings(
+        self,
+        client: httpx.AsyncClient,
+        rows: list[dict[str, Any]],
+        result: PublishResult,
+    ) -> None:
+        """Record each URI-carrying asset's Collibra UUID after a successful import (REQ-1389).
+
+        Only assets with no stored binding — or whose name changed — are looked up, so a
+        steady-state reconcile costs zero extra requests. The lookup is by exact full name;
+        an asset the import just accepted but the lookup cannot find is reported, not
+        skipped silently.
+        """
+        for row in rows:
+            uri = self._row_uri(row)
+            if uri is None:
+                continue
+            stored = self._bindings.get(uri)
+            if stored is not None and stored[1] == row["name"]:
+                result.bindings[uri] = stored
+                continue
+            response = await client.get(
+                self._url("/rest/2.0/assets"),
+                params={"name": row["name"], "nameMatchMode": "EXACT"},
+                headers=self._headers(),
+            )
+            if response.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(row["name"]),
+                        message=(
+                            f"binding capture lookup failed (HTTP {response.status_code}); "
+                            "the vendor id for this asset was not recorded"
+                        ),
+                    )
+                )
+                continue
+            matches = [
+                r for r in response.json().get("results", []) if r.get("name") == row["name"]
+            ]
+            if not matches:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(row["name"]),
+                        message=(
+                            "binding capture found no asset by this name after a successful "
+                            "import; the vendor id was not recorded"
+                        ),
+                    )
+                )
+                continue
+            result.bindings[uri] = (matches[0]["id"], row["name"])
+
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
         rows = to_rows(snapshot, self.community, self.domain)
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            # REQ-1389: rebind by stored UUID happens BEFORE the name-keyed import.
+            await self._rename_rebound_assets(client, rows, result)
             response = await client.post(
                 self._url(self.import_path),
                 # Collibra's import endpoint takes multipart with the payload as a file part,
@@ -315,6 +417,8 @@ class CollibraExport(MetadataExport):  # REQ-1069
                     )
                 )
                 return result
+            # REQ-1389: capture the vendor's own asset UUIDs for the assets just imported.
+            await self._capture_bindings(client, rows, result)
         for row in rows:
             kind = row["type"]["name"].lower()
             result.published[kind] = result.published.get(kind, 0) + 1

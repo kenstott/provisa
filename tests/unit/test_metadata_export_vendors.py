@@ -499,7 +499,13 @@ async def test_collibra_publish_pins_replace_actions_on_the_import_job(snapshot,
         captured.append({"url": url, "data": data})
         return httpx.Response(200, request=httpx.Request("POST", url))
 
+    async def _get(self, url, params=None, headers=None):
+        # REQ-1389: the binding-capture lookup after the import, answered by name.
+        body = {"results": [{"id": f"uuid-{params['name']}", "name": params["name"]}]}
+        return httpx.Response(200, json=body, request=httpx.Request("GET", url))
+
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
     export = CollibraExport(
         MetadataExportConfig(
             enabled=True, provider="collibra", endpoint="https://collibra.example"

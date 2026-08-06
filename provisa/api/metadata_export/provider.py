@@ -70,6 +70,13 @@ class PublishResult:  # REQ-1068
     provider_name: str
     published: dict[str, int] = field(default_factory=dict)
     errors: list[AssetError] = field(default_factory=list)
+    # REQ-1389: vendor-side identities captured from this publish —
+    # ``{semantic_uri: (vendor_ref, physical_key)}``, where ``vendor_ref`` is the catalog's
+    # own id for the asset (guid / entity UUID / asset UUID / dataset URN) and
+    # ``physical_key`` is the vendor-side name-key it was published under. The publish path
+    # persists these so the NEXT publish can rebind a physically re-addressed asset to the
+    # same catalog entity instead of trusting the vendor's name-keyed upsert.
+    bindings: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -89,6 +96,24 @@ class MetadataExport(ABC):  # REQ-1068
 
     def __init__(self, config: MetadataExportConfig) -> None:
         self._config = config
+        # REQ-1389: bindings captured by prior publishes, keyed by the canonical Provisa URN.
+        # Loaded by the publish path before ``publish``; a provider that can rebind reads
+        # them to re-address the SAME catalog entity when the vendor-side name-key changed.
+        self._bindings: dict[str, tuple[str, str]] = {}
+
+    @property
+    def stored_bindings(self) -> dict[str, tuple[str, str]]:
+        """The vendor bindings captured by earlier publishes (REQ-1389).
+
+        A property rather than a method: the port stays outbound-only — ``publish`` and
+        ``health`` are its whole callable surface — and this is state the publish path
+        loads in, not an operation on the catalog.
+        """
+        return self._bindings
+
+    @stored_bindings.setter
+    def stored_bindings(self, bindings: dict[str, tuple[str, str]]) -> None:
+        self._bindings = bindings
 
     @abstractmethod
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:

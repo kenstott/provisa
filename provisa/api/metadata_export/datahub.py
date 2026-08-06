@@ -40,9 +40,12 @@ set to exactly what the snapshot says (stale ones drop out).
 
 URN-canonical rebind (REQ-1389) is NOT implementable on DataHub: a dataset URN is an immutable
 identifier derived from the physical fqn — GMS has no rename/re-key API — so a re-platformed
-table necessarily mints a new dataset URN and the old one lingers. The canonical Provisa URN is
-still published as the ``provisaUri`` customProperty (and ``externalUrl``), which is what a
-consumer or cleanup job keys on; this adapter does not fake a rebind it cannot perform.
+table necessarily mints a new dataset URN. What the stored binding buys instead: the exporter
+captures each table's dataset URN at publish time, and when the binding shows the URN changed
+(physical re-address) it publishes the new URN as usual AND sets the ``deprecation`` aspect on
+the OLD bound URN — a note naming the successor URN and the canonical Provisa URN — so the
+lingering entity is visibly superseded rather than a silent duplicate. The Provisa URN is
+still published as the ``provisaUri`` customProperty (and ``externalUrl``).
 """
 
 # Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1389
@@ -500,11 +503,49 @@ class DataHubExport(MetadataExport):  # REQ-1069
         ]
         return replace(proposal, aspect={"tags": human + proposal.aspect["tags"]})
 
+    def _rebind_deprecations(self, proposals: list[AspectProposal]) -> list[AspectProposal]:
+        """Deprecation aspects for the OLD URNs of physically re-addressed tables (REQ-1389).
+
+        A dataset URN is immutable identity, so a re-address mints a new URN; the stored
+        binding names the old one, which is marked deprecated with a pointer to its
+        successor and the canonical Provisa URN — visibly superseded, never a silent
+        duplicate.
+        """
+        deprecations: list[AspectProposal] = []
+        for proposal in proposals:
+            if proposal.aspect_name != "datasetProperties":
+                continue
+            uri = proposal.aspect["customProperties"]["provisaUri"]
+            stored = self._bindings.get(uri)
+            if stored is None or stored[0] == proposal.urn:
+                continue
+            old_urn = stored[0]
+            deprecations.append(
+                AspectProposal(
+                    asset=proposal.asset,
+                    kind="rebind_deprecation",
+                    entity_type="dataset",
+                    urn=old_urn,
+                    aspect_name="deprecation",
+                    aspect={
+                        "deprecated": True,
+                        "note": (
+                            f"Physically re-addressed by Provisa; superseded by "
+                            f"{proposal.urn}. Provisa URI: {uri}."
+                        ),
+                        "actor": "urn:li:corpuser:provisa",
+                    },
+                )
+            )
+        return deprecations
+
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
         headers = self._headers()
+        proposals = to_proposals(snapshot)
+        proposals.extend(self._rebind_deprecations(proposals))
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-            for proposal in to_proposals(snapshot):
+            for proposal in proposals:
                 if (
                     self.tag_merge
                     and proposal.aspect_name == "globalTags"
@@ -529,6 +570,13 @@ class DataHubExport(MetadataExport):  # REQ-1069
                     )
                     continue
                 result.published[proposal.kind] = result.published.get(proposal.kind, 0) + 1
+                if proposal.aspect_name == "datasetProperties" and proposal.kind == "table":
+                    # REQ-1389: the URN IS the vendor id — capture it keyed by the Provisa
+                    # URN so a later publish detects a physical re-address.
+                    result.bindings[proposal.aspect["customProperties"]["provisaUri"]] = (
+                        proposal.urn,
+                        proposal.aspect["qualifiedName"],
+                    )
         return result
 
     async def health(self) -> None:

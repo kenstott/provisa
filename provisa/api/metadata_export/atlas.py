@@ -935,6 +935,20 @@ class AtlasExport(MetadataExport):  # REQ-1069
                     )
                 )
                 return result
+            # REQ-1389: capture each entity's vendor-side guid so the NEXT publish can
+            # rebind by stored identity instead of the laggy search index. A create resolves
+            # the negative placeholder through ``guidAssignments``; a rebound update already
+            # carries the live guid. A placeholder the server did not assign has no vendor
+            # identity to record, so nothing is captured for it.
+            assignments = response.json().get("guidAssignments") or {}
+            for entity in entities:
+                uri = entity.attributes.get("provisaUri")
+                if not uri:
+                    continue
+                guid = assignments.get(entity.guid, entity.guid)
+                if guid.startswith("-"):
+                    continue
+                result.bindings[uri] = (guid, entity.attributes["qualifiedName"])
             if self.classification_merge:
                 # REQ-1389: bulk UPDATE ignores classifications — reconcile the provisa_*
                 # ones by read-merge, leaving steward-attached classifications alone.
@@ -981,7 +995,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 for e in page:
                     attrs = e.get("attributes") or {}
                     if attrs.get("provisaUri"):
-                        index[attrs["provisaUri"]] = (e["guid"], attrs.get("qualifiedName"))
+                        index[attrs["provisaUri"]] = (e["guid"], attrs["qualifiedName"])
                 if len(page) < 500:
                     break
                 offset += 500
@@ -1001,6 +1015,12 @@ class AtlasExport(MetadataExport):  # REQ-1069
 
         Atlan overrides to a no-op until its search route is verified."""
         live = await self._live_identity_index(client, headers)
+        # REQ-1389: the STORED binding (captured from the bulk response of the publish that
+        # created the entity) is preferred over the basic-search index, which lags behind
+        # commits — an entity created moments ago may not be indexed yet, and trusting the
+        # index alone would duplicate it. The search index only covers URIs with no binding.
+        for uri, (vendor_ref, physical_key) in self._bindings.items():
+            live[uri] = (vendor_ref, physical_key)
         if not live:
             return
         rebind_to_live_identities(entities, live)

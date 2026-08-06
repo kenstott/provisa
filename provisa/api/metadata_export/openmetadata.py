@@ -31,14 +31,22 @@ the same edges the OpenLineage adapter emits, addressed by FQN instead of namesp
 
 # Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1389
 
-# REQ-1389 LIMITATION — identity is the physical FQN, not the Provisa URN. OpenMetadata's
-# upsert is keyed on ``fullyQualifiedName`` (service.database.schema.table) and the API has
-# no rename/rebind pathway that could adopt an existing entity under a new physical address.
-# A re-platformed or physically renamed table therefore publishes as a NEW entity; the old
-# one is never pruned (publish never deletes) but its steward enrichment does not follow.
-# The Provisa URN travels as ``sourceUrl`` for dereference only — it cannot serve as the
-# upsert key here, so the URN-canonical rebind the Atlas exporter performs has no
-# OpenMetadata equivalent.
+# REQ-1389 — vendor-id tracking and succession on physical re-address. OpenMetadata's
+# upsert is keyed on ``fullyQualifiedName`` (service.database.schema.table), and PATCH
+# cannot rename or re-parent a table: the documented PATCH-updatable fields are
+# "description, displayName, owners, tags, retentionPeriod, columns, domain, and extension"
+# — ``name`` and ``databaseSchema`` are not among them
+# (https://docs.open-metadata.org/v1.12.x/api-reference/data-assets/tables/update), and the
+# server's ``EntityRepository.restorePatchAttributes`` silently restores ``name`` unless the
+# entity type opts into ``renameAllowed`` — which ``TableRepository`` does not
+# (https://github.com/open-metadata/OpenMetadata/blob/main/openmetadata-service/src/main/
+# java/org/openmetadata/service/jdbi3/EntityRepository.java). A PATCH-by-id rebind is
+# therefore impossible; the fallback is SUCCESSION: the exporter captures each table's
+# entity UUID at publish time, and when the stored binding shows the FQN changed it reads
+# the OLD entity by that UUID, carries its human enrichment (steward tags, extension,
+# owners and the carried PUT-body fields) onto the NEW entity's first publish, and marks
+# the old entity's description as superseded — pointing at the new FQN and the Provisa URN.
+# Publish still never deletes.
 
 from __future__ import annotations
 
@@ -541,7 +549,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 )
             )
             return
-        live = response.json()
+        self._overlay_live_table(entity, response.json())
+
+    def _overlay_live_table(self, entity: Entity, live: dict[str, Any]) -> None:
+        """Carry one live table's human-owned state onto the outgoing PUT body (REQ-1389)."""
         entity.body["tags"] = self._merged_tags(live.get("tags"), entity.body.get("tags"))
         live_columns = {c.get("name"): c for c in live.get("columns") or []}
         for column in entity.body["columns"]:
@@ -561,6 +572,100 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         for field in _CARRIED_TABLE_FIELDS:
             if field not in entity.body and live.get(field) is not None:
                 entity.body[field] = live[field]
+
+    async def _succeed_rebound_table(
+        self,
+        client: httpx.AsyncClient,
+        entity: Entity,
+        stored: tuple[str, str],
+        new_fqn: str,
+        result: PublishResult,
+    ) -> None:
+        """Succession for a physically re-addressed table (REQ-1389).
+
+        The stored binding says this Provisa asset was last published under a different FQN.
+        PATCH-by-id cannot rename or re-parent a table (see the module docstring for the
+        cited OpenMetadata docs and server source), so the old entity — read by its stored
+        UUID, immune to the name change — donates its human enrichment to the new entity's
+        first publish, and its own description is marked superseded with a pointer to the
+        new FQN and the Provisa URN. Any failure here is reported and the publish proceeds
+        with Provisa's own body: a lost carry-forward must never block the asset itself.
+        """
+        old_id, old_fqn = stored
+        uri = entity.body["sourceUrl"]
+        try:
+            response = await client.get(
+                self._url(f"/api/v1/tables/{old_id}"),
+                params={"fields": "tags,columns,extension,owners"},
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: rebind read of predecessor "
+                        f"{old_fqn!r} (id {old_id}) failed ({exc}); published without its "
+                        "steward enrichment"
+                    ),
+                )
+            )
+            return
+        if response.status_code == 404:
+            # The predecessor is gone from the catalog: nothing to carry, nothing to mark.
+            return
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: rebind read of predecessor "
+                        f"{old_fqn!r} (id {old_id}) failed (HTTP {response.status_code}); "
+                        "published without its steward enrichment"
+                    ),
+                )
+            )
+            return
+        live = response.json()
+        self._overlay_live_table(entity, live)
+        note = (
+            f"[Superseded by Provisa] This table was physically re-addressed and is now "
+            f"published as {new_fqn}. Provisa URI: {uri}."
+        )
+        patch = [
+            {
+                "op": "replace" if live.get("description") is not None else "add",
+                "path": "/description",
+                "value": note,
+            }
+        ]
+        try:
+            deprecate = await client.patch(
+                self._url(f"/api/v1/tables/{old_id}"),
+                content=json.dumps(patch),
+                headers={**self._headers(), "Content-Type": "application/json-patch+json"},
+            )
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: superseded note on predecessor "
+                        f"{old_fqn!r} failed ({exc})"
+                    ),
+                )
+            )
+            return
+        if deprecate.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: superseded note on predecessor "
+                        f"{old_fqn!r} failed (HTTP {deprecate.status_code})"
+                    ),
+                )
+            )
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
@@ -627,16 +732,29 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                             )
                         )
                         continue
-                if entity.kind == "table" and self.tag_merge:
-                    # REQ-1389: a PUT replaces the fields sent, so the live entity's
-                    # human-owned state is read and carried through first.
-                    await self._merge_live_table(client, entity, result)
+                if entity.kind == "table":
+                    fqn = f"{entity.body['databaseSchema']}.{entity.body['name']}"
+                    stored = self._bindings.get(entity.body["sourceUrl"])
+                    if stored is not None and stored[1] != fqn:
+                        # REQ-1389: the stored binding says the physical FQN changed —
+                        # succession by stored UUID, since PATCH cannot rename a table.
+                        await self._succeed_rebound_table(client, entity, stored, fqn, result)
+                    if self.tag_merge:
+                        # REQ-1389: a PUT replaces the fields sent, so the live entity's
+                        # human-owned state is read and carried through first.
+                        await self._merge_live_table(client, entity, result)
                 response = await client.put(
                     self._url(entity.path), json=entity.body, headers=self._headers()
                 )
                 if entity.kind == "table" and response.status_code < 400:
                     body = response.json()
                     table_ids[body["fullyQualifiedName"]] = body["id"]
+                    # REQ-1389: capture the vendor's own id for this asset, keyed by the
+                    # canonical Provisa URN, so the next publish can rebind by identity.
+                    result.bindings[entity.body["sourceUrl"]] = (
+                        body["id"],
+                        body["fullyQualifiedName"],
+                    )
                 if entity.kind == "user" and response.status_code < 400:
                     user_ids[entity.body["name"]] = response.json()["id"]
                 if response.status_code >= 400:

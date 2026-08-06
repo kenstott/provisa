@@ -340,6 +340,23 @@ tag_assignments = Table(
     ),
 )
 
+# REQ-1385/REQ-1389: vendor-side identity bindings captured at publish time — the catalog's
+# own id (Atlas guid, OpenMetadata UUID, Collibra asset UUID, DataHub URN) per published
+# asset, keyed by the canonical Provisa URN, so a physical re-address rebinds the SAME
+# catalog entity instead of trusting the vendor's name-keyed upsert to find it.
+catalog_bindings = Table(
+    "catalog_bindings",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("provider", Text, nullable=False),
+    Column("semantic_uri", Text, nullable=False),
+    Column("vendor_ref", Text, nullable=False),
+    Column("physical_key", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("provider", "semantic_uri"),
+)
+
 materialized_views = Table(
     "materialized_views",
     metadata,

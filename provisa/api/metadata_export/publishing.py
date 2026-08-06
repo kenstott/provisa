@@ -188,20 +188,51 @@ async def _model_for_export() -> "ProvisaConfig":
     return config
 
 
+def _snapshot_uris(snapshot: Any) -> set[str]:
+    """Every Provisa URN the snapshot publishes — the bindings worth keeping (REQ-1389)."""
+    uris = {source.semantic_uri for source in snapshot.sources}
+    for table in snapshot.tables:
+        uris.add(table.semantic_uri)
+        uris.update(column.semantic_uri for column in table.columns)
+    uris.discard("")
+    return uris
+
+
 async def publish_snapshot(org_id: str) -> PublishResult:
     """Publish the org's full metadata snapshot to its configured catalog.
 
     The single publish path: the admin's **Publish now**, the event drain and the scheduled
-    reconcile all arrive here, so what a reconcile sends is what the admin saw it send.
+    reconcile all arrive here, so what a reconcile sends is what the admin saw it send —
+    and the REQ-1389 binding lifecycle (load stored vendor ids before, persist captured
+    ones after) rides every trigger for the same reason.
     """
+    from provisa.api.app import state
     from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.repositories import catalog_binding
 
     token = set_current_org(org_id)
     try:
         config = await _export_config(org_id)
         model = await _model_for_export()
         snapshot = build_snapshot(model, org_id=org_id, dialect=GOVERNED_DIALECT)
-        return await metadata_export(config).publish(snapshot)
+        exporter = metadata_export(config)
+        tenant_db = state.tenant_db
+        assert tenant_db is not None  # _export_config refuses without one
+        async with tenant_db.acquire() as conn:
+            # REQ-1389: hand the provider the vendor ids captured by earlier publishes, so
+            # a physically re-addressed asset rebinds the SAME catalog entity instead of
+            # trusting the vendor's name-keyed upsert.
+            exporter.stored_bindings = await catalog_binding.load_bindings(
+                conn, config.provider
+            )
+        result = await exporter.publish(snapshot)
+        if result.bindings:
+            async with tenant_db.acquire() as conn:
+                await catalog_binding.upsert_bindings(conn, config.provider, result.bindings)
+                await catalog_binding.remove_stale_bindings(
+                    conn, config.provider, keep_uris=_snapshot_uris(snapshot)
+                )
+        return result
     finally:
         reset_current_org(token)
 
