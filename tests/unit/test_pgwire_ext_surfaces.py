@@ -143,6 +143,21 @@ def test_ann_access_methods_not_advertised() -> None:
     assert "hnsw" not in ams and "ivfflat" not in ams
 
 
+def test_pg_am_amhandler_is_numeric_oid() -> None:
+    # amhandler is regproc (an oid) in PG; DataGrip casts it numerically
+    # (`amhandler::oid` → CAST AS BIGINT), so a VARCHAR handler name breaks
+    # introspection with "Could not convert string ... to INT64".
+    from provisa.pgwire import catalog_populate
+
+    db = duckdb.connect(":memory:")
+    catalog_populate._populate_pg_tables_and_am(db, catalog_populate.CatalogIndex())
+    rows = db.execute("SELECT amname, CAST(amhandler AS BIGINT) FROM _pg_am").fetchall()
+    db.close()
+    handlers = dict(rows)
+    assert handlers["heap"] == 3
+    assert all(isinstance(v, int) for v in handlers.values())
+
+
 # --- json-ops: -> ->> #> #>> → JSON_QUERY / JSON_VALUE -----------------------
 
 

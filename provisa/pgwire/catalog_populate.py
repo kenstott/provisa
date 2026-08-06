@@ -834,18 +834,20 @@ def _populate_pg_tables_and_am(db, idx: CatalogIndex) -> None:
             "INSERT INTO _pg_tables VALUES (?,?,'provisa',NULL,FALSE,FALSE,FALSE,FALSE)",
             [(row[1], row[2]) for row in idx.tables],
         )
+    # amhandler is regproc (an oid) in PG; clients cast/join it numerically,
+    # so it must be stored as the builtin proc oid, never the handler name.
     db.execute("""CREATE TABLE _pg_am (
-        oid INTEGER, amname VARCHAR, amhandler VARCHAR, amtype VARCHAR)""")
+        oid INTEGER, amname VARCHAR, amhandler INTEGER, amtype VARCHAR)""")
     db.executemany(
         "INSERT INTO _pg_am VALUES (?,?,?,?)",
         [
-            (2, "heap", "heap_tableam_handler", "t"),
-            (403, "btree", "bthandler", "i"),
-            (405, "hash", "hashhandler", "i"),
-            (783, "gist", "gisthandler", "i"),
-            (2742, "gin", "ginhandler", "i"),
-            (4000, "spgist", "spghandler", "i"),
-            (3580, "brin", "brinhandler", "i"),
+            (2, "heap", 3, "t"),
+            (403, "btree", 330, "i"),
+            (405, "hash", 331, "i"),
+            (783, "gist", 332, "i"),
+            (2742, "gin", 333, "i"),
+            (4000, "spgist", 334, "i"),
+            (3580, "brin", 335, "i"),
         ],
     )
 
