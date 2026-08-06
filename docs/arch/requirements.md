@@ -4174,11 +4174,11 @@ pgwire server is disabled by default and starts only when `PROVISA_PGWIRE_PORT` 
 
 ### REQ-529 · pgwire Server {#REQ-529}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
-pgwire authentication uses PG auth type 3 (cleartext password) for both trust and simple modes. Trust mode: username becomes role_id, password ignored. Simple mode: password verified via bcrypt through SimpleAuthProvider. Any `provider` value other than `none` or `simple` returns a FATAL login error.
+pgwire authentication routes through the same pluggable AuthProvider contract as every other surface — no provider-name allowlist. PG auth type 3 (cleartext password) carries the credential; what the password field holds depends on the configured provider. Trust mode (`provider: none`): username becomes role_id, password ignored. `simple` and `basic`: password verified against the provider's credential store. OIDC-family providers (`oidc`, `oauth`, `keycloak`, `firebase`): the password is a bearer token verified through `AuthProvider.validate_token`. A personal access token is accepted as the password under any provider. An unconfigured or failing provider returns a FATAL 28P01; it never falls through to trust.
 
-**Use case:** Restricting pgwire auth to trust or simple providers prevents misconfiguration with OIDC or Firebase providers that require HTTP redirect flows incompatible with the wire protocol.
+**Use case:** A DBA connecting over psql or DBeaver authenticates against the same identity source as the REST and GraphQL surfaces, so credentials, revocation, and audit have one home rather than a pgwire-specific exception. The wire protocol carries a credential, not a redirect flow, so no provider is structurally incompatible with it.
 
 **Code:** `provisa/pgwire/server.py`
 
@@ -8416,7 +8416,7 @@ The metadata/config/roles store MUST be the embedded single source of truth in e
 
 ### REQ-890 · Federation Engine Abstraction {#REQ-890}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Pgwire auth must be a pluggable provider interface selected at launch (trust | local | oidc), superseding today's fixed MD5/cleartext wiring while keeping trust/cleartext as the baseline. (a) A local-accounts provider stores SCRAM-SHA-256 verifiers at rest (RFC 5802 — random salt, iterations, StoredKey/ServerKey; no cleartext stored or required on the wire, secure without TLS) with a CLI to add/remove/list users, and offers SCRAM-SHA-256 as a wire auth mechanism. (b) An external-token provider accepts an OIDC ID token (JWT) presented as the password and verifies it against the issuer's JWKS (signature, exp, aud, iss); issuer-generic (Firebase/Auth0/Google/Entra) via configured issuer URL + audience.
 

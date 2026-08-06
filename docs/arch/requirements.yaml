@@ -12948,17 +12948,23 @@
       This lets any PostgreSQL-compatible tool (psql, DBeaver, Tableau) connect to Provisa without a special
       driver.
 - id: REQ-529
-  status: complete
+  status: in-progress
   group: 8. Client Access & Protocols
   category: pgwire Server
   priority: MUST
   type: behavioral
-  description: 'pgwire authentication uses PG auth type 3 (cleartext password) for both trust and simple
-    modes. Trust mode: username becomes role_id, password ignored. Simple mode: password verified via
-    bcrypt through SimpleAuthProvider. Any `provider` value other than `none` or `simple` returns a FATAL
-    login error.'
-  use_case: Restricting pgwire auth to trust or simple providers prevents misconfiguration with OIDC or
-    Firebase providers that require HTTP redirect flows incompatible with the wire protocol.
+  description: 'pgwire authentication routes through the same pluggable AuthProvider contract as every
+    other surface — no provider-name allowlist. PG auth type 3 (cleartext password) carries the credential;
+    what the password field holds depends on the configured provider. Trust mode (`provider: none`):
+    username becomes role_id, password ignored. `simple` and `basic`: password verified against the
+    provider''s credential store. OIDC-family providers (`oidc`, `oauth`, `keycloak`, `firebase`): the
+    password is a bearer token verified through `AuthProvider.validate_token`. A personal access token
+    is accepted as the password under any provider. An unconfigured or failing provider returns a FATAL
+    28P01; it never falls through to trust.'
+  use_case: A DBA connecting over psql or DBeaver authenticates against the same identity source as the
+    REST and GraphQL surfaces, so credentials, revocation, and audit have one home rather than a
+    pgwire-specific exception. The wire protocol carries a credential, not a redirect flow, so no provider
+    is structurally incompatible with it.
   code:
   - provisa/pgwire/server.py
   tests:
@@ -12966,11 +12972,32 @@
   - tests/unit/pgwire/test_wire_protocol.py
   - tests/unit/test_pgwire_requirements.py
   since: 2026-01
-  scenario: 'Given a pgwire connection with a provider other than none or simple
+  scenario: 'Given pgwire is launched with provider `none`
+
+    When a client connects with any password
+
+    Then the username becomes the role_id and the session is established
+
+
+    Given pgwire is launched with a credential provider (`simple` or `basic`)
+
+    When a client presents a valid password for a known user
+
+    Then the credential is verified through the provider and a role is resolved
+
+
+    Given pgwire is launched with an OIDC-family provider
+
+    When a client presents a bearer token as the password
+
+    Then the token is validated through AuthProvider.validate_token and a role is resolved
+
+
+    Given any configured provider and an invalid credential
 
     When authentication is attempted
 
-    Then a FATAL login error is returned
+    Then a FATAL 28P01 is returned and no session is established
 
     '
   integration_test: required
@@ -25439,7 +25466,7 @@
   - REQ-840
   - REQ-888
 - id: REQ-890
-  status: complete
+  status: in-progress
   since: 2026-07
   scenario: 'Given pgwire launched with the ''oidc'' auth provider (issuer URL + audience configured)
 

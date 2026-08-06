@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import hmac
+
 from provisa.auth.models import AuthIdentity
 from provisa.security.rights import PLATFORM_ADMIN_ROLE
 from provisa.core.secrets import resolve_secrets
@@ -44,12 +46,17 @@ def check_superuser(  # REQ-125
     ``config`` is expected to already be resolved via :func:`resolve_superuser_config`.
     A blank configured username or password never matches, so an empty secret cannot
     authenticate.
+
+    Both comparisons are constant-time: the superuser is the platform break-glass account, so
+    a timing side channel on its password is a remote credential-recovery oracle.
     """
     su_user = config.get("username")
     su_pass = config.get("password")
     if not su_user or not su_pass:
         return None
-    if username == su_user and password == su_pass:
+    user_ok = hmac.compare_digest(username.encode("utf-8"), su_user.encode("utf-8"))
+    pass_ok = hmac.compare_digest(password.encode("utf-8"), su_pass.encode("utf-8"))
+    if user_ok and pass_ok:
         return AuthIdentity(
             user_id=su_user,
             email=None,

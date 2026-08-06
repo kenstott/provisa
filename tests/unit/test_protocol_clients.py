@@ -202,7 +202,7 @@ class TestConnect:
     def test_successful_auth_returns_connection_with_token(self):
         from provisa_client import dbapi
 
-        login_resp = _make_httpx_response(200, {"token": "tok-abc"})
+        login_resp = _make_httpx_response(200, {"access_token": "tok-abc"})
         with patch("provisa_client.dbapi.httpx.post", return_value=login_resp):
             conn = dbapi.connect(
                 "http://localhost:8001",
@@ -244,7 +244,7 @@ class TestConnect:
     def test_trailing_slash_stripped_from_base_url(self):
         from provisa_client import dbapi
 
-        login_resp = _make_httpx_response(200, {"token": "t"})
+        login_resp = _make_httpx_response(200, {"access_token": "t"})
         with patch("provisa_client.dbapi.httpx.post", return_value=login_resp):
             conn = dbapi.connect(
                 "http://localhost:8001/",
@@ -256,7 +256,7 @@ class TestConnect:
     def test_requested_role_propagated(self):
         from provisa_client import dbapi
 
-        login_resp = _make_httpx_response(200, {"token": "t"})
+        login_resp = _make_httpx_response(200, {"access_token": "t"})
         with patch("provisa_client.dbapi.httpx.post", return_value=login_resp):
             conn = dbapi.connect(
                 "http://localhost:8001",
@@ -1148,7 +1148,7 @@ class TestAdbcConnect:
     def test_successful_auth_leaves_role_unset(self):
         from provisa_client.adbc import adbc_connect
 
-        login_resp = _make_httpx_response(200, {"token": "flight-tok"})
+        login_resp = _make_httpx_response(200, {"access_token": "flight-tok"})
         mock_flight_client = MagicMock()
         with (
             patch("provisa_client.adbc.httpx.post", return_value=login_resp),
@@ -1162,7 +1162,7 @@ class TestAdbcConnect:
     def test_requested_role_propagated(self):
         from provisa_client.adbc import adbc_connect
 
-        login_resp = _make_httpx_response(200, {"token": "flight-tok"})
+        login_resp = _make_httpx_response(200, {"access_token": "flight-tok"})
         mock_flight_client = MagicMock()
         with (
             patch("provisa_client.adbc.httpx.post", return_value=login_resp),
@@ -1190,7 +1190,7 @@ class TestAdbcConnect:
     def test_flight_client_connected_to_grpc_endpoint(self):
         from provisa_client.adbc import adbc_connect
 
-        login_resp = _make_httpx_response(200, {"token": "t"})
+        login_resp = _make_httpx_response(200, {"access_token": "t"})
         mock_flight_client = MagicMock()
         with (
             patch("provisa_client.adbc.httpx.post", return_value=login_resp),

@@ -98,7 +98,10 @@ def _auth_login(base_url: str, username: str, password: str) -> tuple[str | None
         )
         if r.status_code == 200:
             body = r.json()
-            return body.get("token"), body.get("role")
+            # The key is ``access_token`` — both the basic and simple providers' /auth/login
+            # answer with the OAuth2 field name. Reading ``token`` here always yielded None,
+            # so every authenticated connection silently fell through to the unauthed path.
+            return body.get("access_token"), body.get("role")
     except (httpx.HTTPError, httpx.TimeoutException):
         pass
     return None, None
