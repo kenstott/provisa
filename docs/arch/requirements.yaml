@@ -34698,6 +34698,7 @@
   tests:
   - tests/integration/test_jsonapi_integration.py
   - tests/unit/test_jsonapi.py
+  - tests/e2e/test_jsonapi_meta_total.py
   since: 2026-07
   scenario: 'Given a registered table with RLS rules applied
 
@@ -37697,6 +37698,7 @@
   tests:
   - tests/integration/test_redeem_invite.py
   - tests/unit/test_org_join_policy.py
+  - tests/e2e/test_platform_auth_flow.py
   since: 2026-07
   scenario: 'Given an organization with an email rule "@acme\\.com$"
 
@@ -38096,6 +38098,8 @@
   tests:
   - tests/integration/test_redeem_invite.py
   - tests/unit/test_auth_middleware_multitenancy.py
+  - tests/e2e/test_platform_auth_flow.py
+  - tests/e2e/test_error_code_contract.py
   scenario: 'Given bootstrap mode is on and the admin slot is unclaimed
 
     When an authenticated user POSTs /auth/claim-bootstrap after reading the first-login disclosure
@@ -38246,6 +38250,7 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - provisa-ui/src/__tests__/TablesPageLoadError.test.tsx
+  - tests/e2e/test_platform_auth_flow.py
   scenario: 'Given a tenant-plane query in an org_<id> schema
 
     When the query executes
@@ -38316,6 +38321,7 @@
   tests:
   - provisa-ui/src/context/__tests__/AuthContext.roles.test.tsx
   - tests/integration/test_org_creator_role_request.py
+  - tests/e2e/test_platform_auth_flow.py
   scenario: 'Given an authenticated user with assigned roles
 
     When AuthContext resolves roles
@@ -40207,6 +40213,7 @@
   - tests/unit/test_auth_middleware_multitenancy.py
   - tests/unit/test_client_role.py
   - tests/unit/test_auth_middleware.py
+  - tests/e2e/test_platform_auth_flow.py
   scenario: 'Given a platform_admin and a tenant org they do not hold org_admin in
 
 
@@ -41106,6 +41113,7 @@
   tests:
   - tests/unit/test_error_handling.py
   - tests/unit/test_client_access.py
+  - tests/e2e/test_error_code_contract.py
   scenario: 'Given a mutation or query that results in an error with code auth.not_authorized
 
     When the error is caught by the registered ApiError handler
@@ -42205,7 +42213,7 @@
   - REQ-1377
 - id: REQ-1388
   status: complete
-  since: "2026-08"
+  since: 2026-08
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: SHOULD
@@ -42234,7 +42242,7 @@
   - tests/unit/test_metadata_export_atlas_native.py
 - id: REQ-1389
   status: in-progress
-  target: "2026-Q4"
+  target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Data Catalog Integration
   priority: MUST
@@ -42255,15 +42263,15 @@
     overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
     classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. The sync
     is NOT optional: the classification read-merge and attribute drift-correction ride the single publish
-    path, so all three triggers get them — Publish now, the event drain, and the scheduled reconcile
-    (reconcile_cron, default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the
-    provisaUri attribute) is the canonical identity, not the physical qualifiedName. Before publishing,
-    the exporter indexes live entities by URN; an entity Provisa published before whose physical address
-    changed (re-platform, physical rename) takes the live guid and is UPDATED in place — same catalog
-    entity, new binding, enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE:
-    Atlas bulk createOrUpdate replaces the full attribute map (empirically verified — an update wiped a
-    steward-written userDescription), so every update starts from the LIVE attributes and overlays only
-    the fields Provisa authors; fields Provisa never populates survive verbatim.'
+    path, so all three triggers get them — Publish now, the event drain, and the scheduled reconcile (reconcile_cron,
+    default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the provisaUri attribute)
+    is the canonical identity, not the physical qualifiedName. Before publishing, the exporter indexes
+    live entities by URN; an entity Provisa published before whose physical address changed (re-platform,
+    physical rename) takes the live guid and is UPDATED in place — same catalog entity, new binding, enrichment
+    and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk createOrUpdate replaces
+    the full attribute map (empirically verified — an update wiped a steward-written userDescription),
+    so every update starts from the LIVE attributes and overlays only the fields Provisa authors; fields
+    Provisa never populates survive verbatim.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.

@@ -47,11 +47,16 @@ def _system_tag_rows_sql() -> str:
 _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-1373/1377: the tag registry and its assignments as queryable metadata, so
     # governance reporting (e.g. expiring deprecations) runs through the governed pipeline.
+    # applies_to and tenant_id are CAST to TEXT: the system-tag branches supply applies_to
+    # as a string literal and tenant_id as a bare NULL, and PG's pairwise UNION resolution
+    # types those as text — refusing to match the table's JSONB/UUID columns. The casts
+    # make every branch text, the same shape SQLite (JSON/UUID-as-TEXT) already returns.
     "tags": f"""
         CREATE OR REPLACE VIEW tags_meta AS
         {_system_tag_rows_sql()}
         UNION ALL
-        SELECT id, description, applies_to, is_system, reason_policy, expires_policy, tenant_id
+        SELECT id, description, CAST(applies_to AS TEXT) AS applies_to, is_system,
+               reason_policy, expires_policy, CAST(tenant_id AS TEXT) AS tenant_id
         FROM tags
     """,
     "tag_assignments": """
