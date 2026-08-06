@@ -72,7 +72,7 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   await page.getByTestId("mv-allowed-lateness").fill("3600");
 
   await page.getByRole("button", { name: /save/i }).first().click();
-  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 30000 });
+  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 60000 });
 
   // Re-open: navigate away first so the row starts collapsed; clicking an already-expanded row
   // toggles it closed, hiding the edit button.
@@ -100,5 +100,5 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   await page.locator('[data-testid="mv-calendar"]').locator("xpath=..").locator("button").first().click({ force: true });
   await page.getByRole("button", { name: /save/i }).first().click();
   // Wait for save chain to complete before the test ends (avoids uncaught-browser-error on teardown).
-  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 30000 });
+  await page.getByTestId("table-read-view-edit").first().waitFor({ timeout: 60000 });
 });

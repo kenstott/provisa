@@ -178,6 +178,11 @@ export function TableEditForm({
           // reporting it is reporting an event we caused deliberately; `cancelled` says the same
           // thing for the case where the cleanup ran before the rejection landed.
           if (cancelled || (err instanceof Error && err.name === "AbortError")) return;
+          // A full-document navigation (page.goto in a test helper, a real link click)
+          // destroys the page without unmounting React, so no cleanup sets `cancelled`;
+          // Chromium severs the in-flight fetch with TypeError: Failed to fetch rather
+          // than an AbortError. Same teardown-of-our-own-request case as above.
+          if (msg.includes("Failed to fetch")) return;
           console.error("refreshPolicyPreview failed:", err);
         });
     }, 300);

@@ -126,7 +126,8 @@ async function materialize(page: import("@playwright/test").Page, tableName: str
   // timeout races them against the next helper's page.goto (which aborts them mid-flight and trips
   // the uncaught-browser-error check). Wait for the read view's edit button to reappear instead —
   // it only renders once editingTable is cleared, i.e. after the whole save chain has resolved.
-  await editBtn.waitFor({ timeout: 30000 });
+  // 60s: the chain's mutations + refetches were measured too tight at 30s on the 2-core CI runner.
+  await editBtn.waitFor({ timeout: 60000 });
 }
 
 async function deleteTable(page: import("@playwright/test").Page, tableName: string) {

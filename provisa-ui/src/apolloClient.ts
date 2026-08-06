@@ -82,33 +82,53 @@ if (typeof window !== "undefined") {
 // Afterware: read X-Schema-Version from every /admin/graphql response.
 // When the server-side version advances (schema rebuilt after table mutations),
 // re-fetch every active query so no view keeps rendering pre-rebuild data.
-let _resetting = false;
+//
+// The refetch is DEBOUNCED (trailing 300ms) and single-flight. A save flow like the
+// tables page fires four sequential mutations, each of whose responses advances the
+// version; refetching every active query per response quadruples the load for no
+// fresher end state — TablesQuery alone is ~200 KB and takes seconds under a loaded
+// backend, and the storm-per-mutation pattern is what pushed e2e save chains past
+// their wait budgets on 2-core CI runners. Bumps that land while a storm is in
+// flight schedule exactly one follow-up storm, so the final state is always fetched.
+let _refetchTimer: ReturnType<typeof setTimeout> | null = null;
+let _refetchInFlight = false;
+function _scheduleActiveRefetch() {
+  if (_refetchTimer !== null) return;
+  _refetchTimer = setTimeout(() => {
+    _refetchTimer = null;
+    if (_refetchInFlight) {
+      // A storm is running; run one more after it so the newest version's data lands.
+      _scheduleActiveRefetch();
+      return;
+    }
+    _refetchInFlight = true;
+    // refetchQueries, NOT resetStore. This runs off a response interceptor, so a sibling
+    // query issued by the same page mount may still be in flight; resetStore() clears the
+    // store out from under it and terminates it with "Store reset while query was in
+    // flight". Its useQuery then holds error set and data undefined permanently —
+    // cache-and-network never retries — which is how MetricsPage ended up rendering a
+    // forever-disabled fact picker (factTables derives from useTables(), and an errored
+    // TablesQuery yields zero tables). refetchQueries re-runs the same active queries
+    // without touching the store, so nothing in flight is disturbed; the Query.tables/
+    // domains/relationships/roles merge policies above replace each list wholesale, so
+    // the refetched result cannot merge with stale entries. A navigation away mid-refetch
+    // aborts them and rejects this promise; nothing awaits it, so an unhandled rejection
+    // would otherwise surface as an uncaught page error.
+    client.refetchQueries({ include: "active" })
+      .catch(() => {})
+      .finally(() => { _refetchInFlight = false; });
+  }, 300);
+}
 const schemaVersionLink = new ApolloLink((operation, forward) =>
   forward(operation).pipe(map((response) => {
-    if (typeof window === "undefined" || _resetting) return response;
+    if (typeof window === "undefined") return response;
     const ctx = operation.getContext();
     const version = ctx.response?.headers?.get("x-schema-version");
     if (version === null || version === undefined) return response;
     const stored = localStorage.getItem(SCHEMA_VERSION_KEY);
     if (stored !== null && stored !== version) {
       localStorage.setItem(SCHEMA_VERSION_KEY, version);
-      _resetting = true;
-      // refetchQueries, NOT resetStore. This runs inside a response interceptor, so a sibling
-      // query issued by the same page mount is still in flight; resetStore() clears the store
-      // out from under it and terminates it with "Store reset while query was in flight". Its
-      // useQuery then holds error set and data undefined permanently — cache-and-network never
-      // retries — which is how MetricsPage ended up rendering a forever-disabled fact picker
-      // (factTables derives from useTables(), and an errored TablesQuery yields zero tables).
-      // refetchQueries re-runs the same active queries without touching the store, so nothing
-      // in flight is disturbed; the Query.tables/domains/relationships/roles merge policies above
-      // replace each list wholesale, so the refetched result cannot merge with stale entries.
-      // A navigation away mid-refetch aborts them and rejects this promise; nothing awaits it,
-      // so an unhandled rejection would otherwise surface as an uncaught page error.
-      // refetchQueries already returns a promise over all the refetches (RefetchQueriesResult
-      // extends Promise); wrapping it in Promise.all treats that promise as an iterable.
-      client.refetchQueries({ include: "active" })
-        .catch(() => {})
-        .finally(() => { _resetting = false; });
+      _scheduleActiveRefetch();
     } else if (stored === null) {
       localStorage.setItem(SCHEMA_VERSION_KEY, version);
     }
