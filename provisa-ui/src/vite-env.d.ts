@@ -17,6 +17,12 @@ declare module '*.graphql' {
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
+  export const TagsQuery: DocumentNode;
+  export const TagAssignmentsQuery: DocumentNode;
+  export const UpsertTag: DocumentNode;
+  export const DeleteTag: DocumentNode;
+  export const AssignTag: DocumentNode;
+  export const UnassignTag: DocumentNode;
   export const RefreshPolicyPreview: DocumentNode;
   export const MetricsQuery: DocumentNode;
   export const UpsertMetric: DocumentNode;
@@ -88,6 +94,12 @@ declare module '*.gql' {
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
+  export const TagsQuery: DocumentNode;
+  export const TagAssignmentsQuery: DocumentNode;
+  export const UpsertTag: DocumentNode;
+  export const DeleteTag: DocumentNode;
+  export const AssignTag: DocumentNode;
+  export const UnassignTag: DocumentNode;
   export const RefreshPolicyPreview: DocumentNode;
   export const MetricsQuery: DocumentNode;
   export const UpsertMetric: DocumentNode;
