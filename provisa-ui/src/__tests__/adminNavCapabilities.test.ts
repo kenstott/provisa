@@ -24,7 +24,7 @@ import { resolve } from "path";
 const SRC = resolve(__dirname, "..");
 
 function navBarAdminCapabilities(): Record<string, string> {
-  const source = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
+  const source = readFileSync(resolve(SRC, "components/navGroups.ts"), "utf-8");
   const out: Record<string, string> = {};
   const entry = /to:\s*"(\/admin\/[^"]+)"[\s\S]*?capability:\s*"([a-z_]+)"/g;
   for (const m of source.matchAll(entry)) out[m[1]] = m[2];

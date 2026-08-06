@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { NAV_GROUPS, entryItem } from "../components/NavBar";
+import { NAV_GROUPS, entryItem } from "../components/navGroups";
 import { LAST_SUBNAV_KEY, SESSION_KEYS } from "../lib/session";
 
 const admin = NAV_GROUPS.find((g) => g.id === "admin")!;
