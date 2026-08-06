@@ -4020,13 +4020,13 @@ JDBC driver runs arbitrary SQL against registered tables and views with full Sta
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-All clients (DB-API, SQLAlchemy, ADBC, JDBC) authenticate via username/password. Server assigns role from configured auth provider. No client-supplied role parameter accepted or required.
+All clients (DB-API, SQLAlchemy, ADBC, JDBC) authenticate via username/password. Server assigns role from configured auth provider. No client-supplied role parameter accepted or required. This binds the wire protocols as well as the HTTP surface — on Arrow Flight the handshake and the ticket both carry a bearer credential, the executing role is derived from the validated identity, and a role named by the client is a REQUEST honored only when that identity's own assignments carry it; on gRPC the same holds for `x-provisa-role`. A surface that echoes back the role it was handed, or that treats the presence of a role name as proof of identity, does not satisfy this requirement.
 
 **Use case:** Server-assigned roles prevent clients from escalating privileges by supplying their own role parameter.
 
-**Code:** `provisa-client/`, `provisa/api/`
+**Code:** `provisa-client/`, `provisa/api/`, `provisa/api/flight/server.py`, `provisa/grpc/auth.py`
 
-**Tests:** `tests/integration/test_adbc.py`, `tests/integration/test_sqlalchemy_dialect.py`, `tests/unit/test_client_access.py`, `tests/unit/test_client_role.py`, `tests/unit/test_proto_gen.py`, `tests/unit/test_protocol_clients.py`
+**Tests:** `tests/integration/test_adbc.py`, `tests/unit/test_flight_auth.py`, `tests/unit/test_grpc_auth.py`, `tests/integration/test_sqlalchemy_dialect.py`, `tests/unit/test_client_access.py`, `tests/unit/test_client_role.py`, `tests/unit/test_proto_gen.py`, `tests/unit/test_protocol_clients.py`
 
 ### REQ-274 · SQL & Multi-Protocol Client Access {#REQ-274}
 
@@ -4174,7 +4174,7 @@ pgwire server is disabled by default and starts only when `PROVISA_PGWIRE_PORT` 
 
 ### REQ-529 · pgwire Server {#REQ-529}
 
-**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 pgwire authentication routes through the same pluggable AuthProvider contract as every other surface — no provider-name allowlist. PG auth type 3 (cleartext password) carries the credential; what the password field holds depends on the configured provider. Trust mode (`provider: none`): username becomes role_id, password ignored. `simple` and `basic`: password verified against the provider's credential store. OIDC-family providers (`oidc`, `oauth`, `keycloak`, `firebase`): the password is a bearer token verified through `AuthProvider.validate_token`. A personal access token is accepted as the password under any provider. An unconfigured or failing provider returns a FATAL 28P01; it never falls through to trust.
 
@@ -4440,13 +4440,13 @@ COPY and DDL statements submitted over pgwire require the `ddl` role capability.
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Role selection on every Provisa gRPC RPC is via the `x-provisa-role` metadata key. Missing or unrecognised role metadata causes the call to be rejected with UNAUTHENTICATED. Streaming query RPCs emit one response message per result row; mutation RPCs are unary.
+Role selection on every Provisa gRPC RPC is via the `x-provisa-role` metadata key. Missing or unrecognised role metadata causes the call to be rejected with UNAUTHENTICATED. Streaming query RPCs emit one response message per result row; mutation RPCs are unary. On a secured deployment the key selects among the roles the caller's validated identity already holds, and nothing more — a server interceptor validates the bearer credential in `authorization` (a provider token or a personal access token) ahead of every RPC on the server, reflection included, and derives the executing role from that identity per [REQ-273](#REQ-273). A key naming a role the identity does not hold is rejected with PERMISSION_DENIED rather than granted.
 
 **Use case:** Metadata-based role selection lets a single gRPC channel serve multiple roles by setting the key per-call without reconnecting.
 
-**Code:** `provisa/grpc/server.py`
+**Code:** `provisa/grpc/server.py`, `provisa/grpc/auth.py`
 
-**Tests:** `tests/e2e/test_grpc_query.py`, `tests/unit/test_grpc_requirements.py`, `tests/integration/test_client_access_integration.py`
+**Tests:** `tests/e2e/test_grpc_query.py`, `tests/unit/test_grpc_requirements.py`, `tests/unit/test_grpc_auth.py`, `tests/integration/test_client_access_integration.py`
 
 ## 9. Live Data & Events
 
@@ -6130,13 +6130,13 @@ Client-side decryption for GraphQL clients via a thin wrapper. Provisa GraphQL s
 
 **Status:** ✅ complete · **Priority:** MAY · **Type:** constraint
 
-High-security mode (security.mode=high in provisa.yaml). When enabled — pgwire server is not started; REST and GraphQL data API endpoints return 403; JDBC and Python client connections without kms_key_arn are rejected at auth. Only JDBC and Python clients with client-side decrypt configured may connect. Provisa backend handles only encrypted blobs and query planning metadata.
+High-security mode (security.mode=high in provisa.yaml). When enabled — pgwire server is not started; the HTTP data plane returns 403; JDBC and Python client connections without kms_key_arn are rejected at auth. Only JDBC and Python clients with client-side decrypt configured may connect. Provisa backend handles only encrypted blobs and query planning metadata. Every non-HTTP surface is decided the same way, by whether the protocol can carry proof that the client decrypts for itself. Bolt and MCP cannot, so neither port opens — Bolt''s HELLO/LOGON exchange negotiates a credential rather than a decryption context, and an MCP tool call hands result rows to a model as text. gRPC and Arrow Flight are the transports encrypting clients actually use, so they keep serving and instead demand the same client-side decryption key the HTTP data endpoints demand, per call. Closing them too would leave a high-security deployment with no wire protocol at all. On gRPC the key arrives as the x-provisa-kms-key call header and the check runs ahead of the credential check on every RPC, reflection included. On Flight it arrives as the ticket''s kms_key field and gates only tickets carrying a query — the catalog branch returns table and column names only, so it stays reachable exactly as /data/sdl does. The HTTP gate is deny-by-default over the whole /data tree, with the schema-metadata endpoints (sdl, introspection, schema-version, domains, proto and compile) enumerated as the exemptions. An allow-list of row-returning prefixes had silently left /data/ingest, /data/subscribe and the /data/grpc proxies open, so a route added later must now argue its way out of the gate rather than default into it. High-security mode additionally pins the [REQ-603](#REQ-603) relationship guard ON — ignore_relationships and a cleared relationship_guard flag are both IGNORED there, so no query may join outside the approved relationship catalog regardless of grant. This is belts and suspenders — a production deployment that improperly granted the discovery capability to a role does not thereby get a break-out from the model.
 
-**Use case:** Regulated or airgapped environments where the Provisa backend must not handle plaintext data under any circumstances.
+**Use case:** Regulated or airgapped environments where the Provisa backend must not handle plaintext data under any circumstances. Pinning the relationship guard means an operator misconfiguration (granting ignore_relationships in prod) cannot widen what a query may read.
 
-**Code:** `provisa/security/high_security.py`, `provisa/api/app.py`, `provisa/api/app_startup.py`, `provisa/api/app_loaders.py`, `provisa/core/models.py`
+**Code:** `provisa/security/high_security.py`, `provisa/api/app.py`, `provisa/api/app_startup.py`, `provisa/api/app_loaders.py`, `provisa/core/models.py`, `provisa/grpc/auth.py`, `provisa/api/flight/server.py`, `provisa/api/mcp/server.py`
 
-**Tests:** `tests/unit/test_high_security_mode.py`
+**Tests:** `tests/unit/test_high_security_mode.py`, `tests/unit/test_grpc_auth.py`, `tests/unit/test_flight_auth.py`, `tests/unit/test_mcp_server.py`, `tests/integration/test_high_security_surfaces.py`
 
 ### REQ-694 · Encryption {#REQ-694}
 
@@ -7314,13 +7314,13 @@ Browser-based OpenAPI Explorer UI page at /openapi embeds Swagger UI iframe serv
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Bolt protocol (Neo4j binary protocol) TCP server at port 5251 accepts Cypher queries and mutations, transpiles through Provisa query pipeline (compile, govern, route, execute). PackStream codec encodes/decodes scalars, lists, dicts, nodes, relationships, and messages. Framing layer chunks messages for TCP transport.
+Bolt protocol (Neo4j binary protocol) TCP server at port 5251 accepts Cypher queries and mutations, transpiles through Provisa query pipeline (compile, govern, route, execute). PackStream codec encodes/decodes scalars, lists, dicts, nodes, relationships, and messages. Framing layer chunks messages for TCP transport. Bolt authenticates under every configured auth provider. The driver's HELLO/LOGON `scheme` field selects the provider validator (`basic` presents principal+credentials, `bearer` presents a token), an unaccepted presentation is refused outright rather than retried against another validator, and a personal access token is accepted as an ordinary bearer credential ([REQ-124](#REQ-124), [REQ-1263](#REQ-1263)). Selectable roles derive from the validated identity — the claim-mapped role plus the identity's own assignments, intersected with compiled contexts ([REQ-273](#REQ-273), [REQ-551](#REQ-551)) — never from a user record read behind the provider. Auth state is read fail-closed, so active auth middleware with no auth_config raises rather than degrading to trust mode. The WebSocket upgrade enforces a browser Origin allowlist from PROVISA_BOLT_ALLOWED_ORIGINS; an upgrade carrying an unlisted Origin gets 403, and with nothing listed every browser origin is refused (a header-less driver upgrade is unaffected).
 
-**Use case:** Neo4j-compatible clients (DBeaver, Cypher shells, drivers) can execute Cypher queries against Provisa schema with full governance applied, expanding query language surface beyond GraphQL/SQL/gRPC/REST.
+**Use case:** Neo4j-compatible clients (DBeaver, Cypher shells, drivers) can execute Cypher queries against Provisa schema with full governance applied, expanding query language surface beyond GraphQL/SQL/gRPC/REST. An OIDC- or basic-secured deployment is reachable from a Neo4j driver instead of getting a blanket refusal.
 
 **Code:** `provisa/bolt/server.py`, `provisa/bolt/packstream.py`, `provisa/bolt/session.py`, `provisa/bolt/messages.py`, `provisa/bolt/framing.py`, `provisa/bolt/websocket.py`
 
-**Tests:** `tests/unit/test_bolt_packstream.py`, `tests/integration/test_bolt_server.py`, `tests/e2e/test_bolt_cypher.py`
+**Tests:** `tests/unit/test_bolt_packstream.py`, `tests/unit/test_bolt_auth.py`, `tests/unit/test_bolt_websocket_origin.py`, `tests/integration/test_bolt_server.py`, `tests/e2e/test_bolt_cypher.py`
 
 ### REQ-803 · Protocol Support {#REQ-803}
 
@@ -8418,13 +8418,13 @@ The metadata/config/roles store MUST be the embedded single source of truth in e
 
 **Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
-Pgwire auth must be a pluggable provider interface selected at launch (trust | local | oidc), superseding today's fixed MD5/cleartext wiring while keeping trust/cleartext as the baseline. (a) A local-accounts provider stores SCRAM-SHA-256 verifiers at rest (RFC 5802 — random salt, iterations, StoredKey/ServerKey; no cleartext stored or required on the wire, secure without TLS) with a CLI to add/remove/list users, and offers SCRAM-SHA-256 as a wire auth mechanism. (b) An external-token provider accepts an OIDC ID token (JWT) presented as the password and verifies it against the issuer's JWKS (signature, exp, aud, iss); issuer-generic (Firebase/Auth0/Google/Entra) via configured issuer URL + audience.
+Pgwire auth must be a pluggable provider interface selected at launch (trust | local | oidc), superseding today's fixed MD5/cleartext wiring while keeping trust/cleartext as the baseline. (a) A local-accounts provider stores SCRAM-SHA-256 verifiers at rest (RFC 5802 — random salt, iterations, StoredKey/ServerKey; no cleartext stored or required on the wire, secure without TLS) with a CLI to add/remove/list users, and offers SCRAM-SHA-256 as a wire auth mechanism. (b) An external-token provider accepts an OIDC ID token (JWT) presented as the password and verifies it against the issuer's JWKS (signature, exp, aud, iss); issuer-generic (Firebase/Auth0/Google/Entra) via configured issuer URL + audience. (c) Every configured provider authenticates pgwire, not only oidc and simple. The startup packet carries a username and one cleartext secret and no scheme field, so the presentation is decided once from what the secret is — a personal access token by its prefix and a bearer/JWT provider''s secret are presented as `bearer` ([REQ-1263](#REQ-1263)), everything else as `basic` — and a credential the chosen validator refuses is never retried against another. Validators are submitted to the pgwire event loop rather than a private one, because the token store and DB-backed providers hold loop-bound handles. The session role is resolved from the validated identity via resolve_role against auth.default_role, which is required configuration; a provider that cannot be constructed answers FATAL 28P01 on the wire instead of dropping the connection.
 
 **Use case:** Pgwire connections to Provisa today use MD5 or cleartext auth, neither of which meet enterprise security standards. SCRAM-SHA-256 (salted, iterated, server-side verification) secures local accounts without requiring TLS. OIDC integration allows enterprises to reuse their identity provider, eliminating separate credential management for database access.
 
 **Code:** `provisa/pgwire/server.py`
 
-**Tests:** `tests/unit/test_pgwire_requirements.py`, `tests/unit/test_auth_providers.py`
+**Tests:** `tests/unit/test_pgwire_requirements.py`, `tests/unit/test_auth_providers.py`, `tests/integration/test_pgwire_integration.py`
 
 ### REQ-891 · Federation Engine Abstraction {#REQ-891}
 
@@ -11424,7 +11424,7 @@ The `provisa run` console command signals startup completion by polling the API 
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Registered commands (tracked functions) MUST be composable INLINE within a larger SQL statement — e.g. `SELECT o.id, e.embedding FROM orders o JOIN enrich_cmd('main.public.orders') e ON o.id = e.id` — not only as a standalone top-level `SELECT * FROM fn(args)` / `SELECT fn(args)`, and this MUST work across ALL client-facing surfaces (GraphQL, pgwire SQL, REST, MCP run_sql, Arrow Flight, Provisa gRPC, Bolt/Cypher), routed through the one shared invoke_tracked_function executor and the shared _govern_and_route / _govern_and_route_compiled pipeline. Implemented as a command-localization rewrite pass (_localize_inline_commands in provisa/pgwire/_pipeline.py → provisa/executor/command_localize.py localize_commands / find_command_calls) inside the shared _govern_and_route pipeline. The standalone hook (provisa/pgwire/function_call.py maybe_invoke_registered_function) now returns None for any composed statement (joined/sub-queried), so it never mis-runs one command as the whole result; the localizer owns composition. Every raw-SQL surface gets it for free by routing through the one pipeline: pgwire, MCP run_sql, Arrow Flight SQL, and REST /data/sql. The drifted second pipeline (provisa/api/data/endpoint_dev.py::_compile_govern_execute) has been DELETED; REST /data/sql, airport writes, and table-profile now route through _govern_and_route/_execute_plan, with as_of ([REQ-1163](#REQ-1163)), discovery_mode, __provisa__ view expansion, and govdata folded into the one pipeline. The single chokepoint is enforced: _govern_and_route mints an unforgeable provenance stamp on every plan and _execute_plan refuses any plan lacking one (tests/unit/test_governed_chokepoint.py). gRPC (typed proto → _govern_and_route_compiled, no raw-SQL entry), Bolt/Cypher (command invoked standalone via CALL, [REQ-1156](#REQ-1156) — no inline-SQL syntax) and GraphQL (commands are generated fields, not raw SQL) have no raw-SQL inline-composition surface, so REQ-1159 is N/A there. The pass (a) detects every command call in the parsed tree, (b) executes each to a local relation typed by the command's declared output dataset contract, substituting the call site via a size-adaptive mechanism (VALUES CTE below a row threshold, registered Arrow table above), (c) forces local federation execution (Route.ENGINE — a command cannot be pushed to a remote source), (d) applies governance at the correct DEFINER/INVOKER identity for the command's input plus the caller's governance for the outer SQL, and (e) validates rows in/out against the command's declared input/output dataset schema (fail-loud). Prerequisite: a canonical per-dataset contract — one or more scalar (column_value) args plus one or more TYPED input datasets (result_set/table_ref args, each carrying an ordered relational field-list) and exactly one TYPED output dataset; canonical field-list is the source of truth (single GraphQL-scalar vocabulary), with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth.
+Registered commands (tracked functions) MUST be composable INLINE within a larger SQL statement — e.g. `SELECT o.id, e.embedding FROM orders o JOIN enrich_cmd('main.public.orders') e ON o.id = e.id` — not only as a standalone top-level `SELECT * FROM fn(args)` / `SELECT fn(args)`, and this MUST work across ALL client-facing surfaces (GraphQL, pgwire SQL, REST, MCP run_sql, Arrow Flight, Provisa gRPC, Bolt/Cypher), routed through the one shared invoke_tracked_function executor and the shared _govern_and_route / _govern_and_route_compiled pipeline. Implemented as a command-localization rewrite pass (_localize_inline_commands in provisa/pgwire/_pipeline.py → provisa/executor/command_localize.py localize_commands / find_command_calls) inside the shared _govern_and_route pipeline. The standalone hook (provisa/pgwire/function_call.py maybe_invoke_registered_function) now returns None for any composed statement (joined/sub-queried), so it never mis-runs one command as the whole result; the localizer owns composition. Every raw-SQL surface gets it for free by routing through the one pipeline: pgwire, MCP run_sql, Arrow Flight SQL, and REST /data/sql. The drifted second pipeline (provisa/api/data/endpoint_dev.py::_compile_govern_execute) has been DELETED; REST /data/sql, airport writes, and table-profile now route through _govern_and_route/_execute_plan, with as_of ([REQ-1163](#REQ-1163)), __provisa__ view expansion, and govdata folded into the one pipeline. The single chokepoint is enforced: _govern_and_route mints an unforgeable provenance stamp on every plan and _execute_plan refuses any plan lacking one (tests/unit/test_governed_chokepoint.py). gRPC (typed proto → _govern_and_route_compiled, no raw-SQL entry), Bolt/Cypher (command invoked standalone via CALL, [REQ-1156](#REQ-1156) — no inline-SQL syntax) and GraphQL (commands are generated fields, not raw SQL) have no raw-SQL inline-composition surface, so REQ-1159 is N/A there. The pass (a) detects every command call in the parsed tree, (b) executes each to a local relation typed by the command's declared output dataset contract, substituting the call site via a size-adaptive mechanism (VALUES CTE below a row threshold, registered Arrow table above), (c) forces local federation execution (Route.ENGINE — a command cannot be pushed to a remote source), (d) applies governance at the correct DEFINER/INVOKER identity for the command's input plus the caller's governance for the outer SQL, and (e) validates rows in/out against the command's declared input/output dataset schema (fail-loud). Prerequisite: a canonical per-dataset contract — one or more scalar (column_value) args plus one or more TYPED input datasets (result_set/table_ref args, each carrying an ordered relational field-list) and exactly one TYPED output dataset; canonical field-list is the source of truth (single GraphQL-scalar vocabulary), with JSON Schema and GraphQL SDL as edge projections (seed-in / render-out), not stored truth.
 
 **Use case:** A steward composes a governed external transform directly in ordinary SQL joined against federated tables, on any surface, and — because the command declares and validates its input/output dataset columns — column-level lineage can close across the opaque RPC boundary via taint-closure splicing at the function node.
 
@@ -12286,13 +12286,13 @@ GCP/Docker cluster deployment must serve all endpoints over HTTPS with TLS encry
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
-HTTPS/TLS encryption ([REQ-1226](#REQ-1226)) applies to ALL protocol endpoints in a cluster deployment — not just the web API and UI, but also pgwire, Bolt, Arrow Flight, gRPC, and MCP endpoints. TLS terminates at each protocol server inside the container. The cluster's L4 load balancers pass TCP through without termination, allowing each protocol server to handle its own encryption. Self-signed certificates are auto-generated when none are supplied. In production SaaS deployments, [REQ-1239](#REQ-1239) supplies a real wildcard `*.provisa.dev` certificate via ACME DNS-01, written to PROVISA_TLS_CERT/PROVISA_TLS_KEY paths that all protocol servers read.
+HTTPS/TLS encryption ([REQ-1226](#REQ-1226)) applies to ALL protocol endpoints in a cluster deployment — not just the web API and UI, but also pgwire, Bolt, Arrow Flight, gRPC, and MCP endpoints. TLS terminates at each protocol server inside the container. The cluster's L4 load balancers pass TCP through without termination, allowing each protocol server to handle its own encryption. Self-signed certificates are auto-generated when none are supplied. In production SaaS deployments, [REQ-1239](#REQ-1239) supplies a real wildcard `*.provisa.dev` certificate via ACME DNS-01, written to PROVISA_TLS_CERT/PROVISA_TLS_KEY paths that all protocol servers read. TLS alone authenticates only the server, so each protocol endpoint also supports client-certificate verification (mutual TLS). One policy is resolved in provisa/security/mtls.py and translated into each transport's spelling — ssl.SSLContext.verify_mode plus load_verify_locations for pgwire and Bolt, root_certificates/require_client_auth for gRPC, verify_client/root_certificates for Flight. Configuration mirrors the TLS certificate resolution — a per-protocol variable (PROVISA_PGWIRE_CLIENT_CA, PROVISA_BOLT_CLIENT_CA, PROVISA_GRPC_CLIENT_CA, PROVISA_FLIGHT_CLIENT_CA), else the node-wide PROVISA_MTLS_CLIENT_CA. PROVISA_MTLS_MODE selects `required` or `optional`; naming a CA with no mode means required. PROVISA_MTLS_BIND_PRINCIPAL additionally requires the certificate's common name to equal the username the connection then authenticates as, checked on pgwire before the password is examined and on Bolt before HELLO or LOGON resolves the principal. Misconfiguration fails startup rather than degrading — a mode with no CA, a CA path that does not exist, and an unrecognized mode each raise.
 
-**Use case:** Encrypting all protocol endpoints (not just HTTP) ensures security across every client access path — database drivers (pgwire), graph traversal (Bolt), columnar streaming (Arrow Flight), service meshes (gRPC), and model context protocols (MCP) — without requiring separate external TLS termination per protocol. Self-signed dev stand-in allows local testing; production uses a real trusted cert.
+**Use case:** Encrypting all protocol endpoints (not just HTTP) ensures security across every client access path — database drivers (pgwire), graph traversal (Bolt), columnar streaming (Arrow Flight), service meshes (gRPC), and model context protocols (MCP) — without requiring separate external TLS termination per protocol. Self-signed dev stand-in allows local testing; production uses a real trusted cert. Client-certificate verification moves the first check to the handshake, so a caller without a certificate the deployment's CA signed never reaches the credential layer to start guessing; principal binding makes a stolen password useless without that user's certificate.
 
-**Code:** —
+**Code:** `provisa/security/mtls.py`, `provisa/api/app_startup.py`, `provisa/grpc/server.py`, `provisa/pgwire/server.py`, `provisa/bolt/session.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_mtls.py`
 
 ### REQ-1229 · Clustered Deployment Configuration {#REQ-1229}
 
@@ -12360,15 +12360,15 @@ The subdomain `{org}.provisa.dev` is the org identity. `cloud.provisa.dev` is th
 
 ### REQ-1234 · Org Identity & Subdomain Addressing {#REQ-1234}
 
-**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-The subdomain selector is delivered in two transports: (1) HTTP `Host` header for web/REST/GraphQL, (2) TLS SNI on wire protocols (pgwire, bolt, Arrow Flight, gRPC, MCP). One string, one job. Wire protocol servers currently do `wrap_socket(server_side=True)` with NO sni_callback; an sni_callback must stash the indicated host per-connection so downstream auth/routing can read it.
+The subdomain org selector is delivered in two transports: the HTTP `Host` header for web/REST/GraphQL, and TLS SNI on the wire protocols that terminate TLS through a stdlib ssl.SSLContext (pgwire, Bolt). One string, one rule: `provisa.security.sni.org_from_host` reads the labels, and the HTTP middleware calls the same function, so the two transports cannot drift. An sni_callback installed on each listener stashes the indicated hostname on the connection object the handshake produced — the wrapped socket for pgwire, the transport ssl_object for Bolt — because that object is the only one that outlives the callback and is reachable from the protocol handler. The name is a request and not a grant: it reaches resolve_session_org as requested_org, which refuses any org the authenticated principal is neither a member of nor holds the cross-org right for, exactly as Host and x-provisa-org do. The leftmost label is read as an org only when it could have been created as one ([REQ-1309](#REQ-1309)), so 127.0.0.1 names no org named "127"; the control-plane host `cloud.*` names no org by its hostname ([REQ-1276](#REQ-1276)) and continues to take an explicit header. gRPC, Arrow Flight and MCP are out of scope: they hand their certificates to grpc.ssl_server_credentials, pyarrow and uvicorn respectively, none of which exposes a servername callback, and they keep their existing x-provisa-org metadata channel.
 
-**Use case:** SNI extraction on wire protocols allows the same org-routing logic to apply to pgwire/bolt/Arrow Flight connections without protocol-specific header mechanisms. All clients resolve the org name via DNS; TLS SNI carries it transparently.
+**Use case:** SNI extraction on wire protocols applies the same org routing to pgwire and Bolt connections without a protocol-specific header mechanism. A driver that resolves acme.provisa.dev through DNS already sends the name in the ClientHello; nothing about the client changes.
 
-**Code:** `provisa/pgwire/server.py:442`, `provisa/bolt/server.py:213`, `provisa/auth/middleware.py`
+**Code:** `provisa/security/sni.py`, `provisa/core/org_ids.py`, `provisa/api/app_startup.py`, `provisa/pgwire/server.py`, `provisa/bolt/session.py`, `provisa/auth/middleware.py`, `provisa/api/admin/orgs_router.py`
 
-**Tests:** `tests/integration/test_wire_sni_extraction.py`
+**Tests:** `tests/unit/test_wire_sni.py`
 
 ### REQ-1235 · Org Identity & Subdomain Addressing {#REQ-1235}
 
@@ -12724,15 +12724,15 @@ Login page surfaces multiple simultaneous authentication providers (Google, GitH
 
 ### REQ-1263 · API Token Management {#REQ-1263}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing per-org scope.
+Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing per-org scope. A validated token resolves to its OWNER'S account — user id, email and display name from the user profile — so audit and usage reporting attribute the act to the person, identically to an interactive session; the token's own label is carried as a separate claim recording WHICH of that person's credentials was used. Token management is self-service on the user's own profile, where the secret is displayed exactly once at issuance and the listing shows only a display prefix and lifecycle timestamps.
 
 **Use case:** Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate against all Provisa protocols using the same role/scope model as browser auth, eliminating the need for separate credential management per client type.
 
-**Code:** —
+**Code:** `provisa/auth/pat.py`, `provisa/auth/models.py`, `provisa/auth/wiring.py`, `provisa/api/pat_router.py`, `provisa/api/auth_router.py`, `provisa/api/flight/server.py`, `provisa/api/mcp/server.py`, `provisa/grpc/auth.py`, `provisa/pgwire/server.py`, `provisa/bolt/session.py`, `provisa/core/org_membership.py`, `provisa/core/schema_admin.py`, `provisa-client/provisa_client/client.py`, `provisa-ui/src/components/PersonalAccessTokens.tsx`
 
-**Tests:** —
+**Tests:** `tests/integration/test_personal_access_tokens.py`, `tests/unit/test_auth_surface_conformance.py`, `tests/unit/test_bolt_auth.py`, `tests/unit/test_flight_auth.py`, `tests/unit/test_grpc_auth.py`, `provisa-ui/src/__tests__/PersonalAccessTokens.test.tsx`, `provisa-client/tests/test_client.py`
 
 ### REQ-1264 · Platform Admin Break-Glass Access {#REQ-1264}
 
@@ -13152,13 +13152,13 @@ A claimed platform-admin slot lands the administrator in a populated deployment,
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Every org schema is seeded with exactly four default roles: platform_admin, org_admin, analyst, developer. These four ids are the whole vocabulary — there are no aliases. The role ids 'admin' and 'superadmin' are retired: they exist today as both seeded role rows and as the platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by platform_admin. Existing assignments naming the retired ids are rewritten to platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide control-plane administrator (the role the bootstrap claim grants), responsible for org lifecycle, infra/engine settings, and recovery operations. The platform-bypass (has_platform_bypass in provisa/security/rights.py) is scoped to control-plane surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds no standing data capabilities anywhere. org_admin administers data-plane operations in a single org — members, invites, sources, governance, querying — in every org including root. developer builds against the data: query development, view and relationship authoring, full results, write. analyst reads: usage, ad-hoc query, query development, no authoring or governance. All four are system roles (org_id NULL, identical capability sets in every org) and are not editable through the roles admin surface.
+Every org schema is seeded with exactly five default roles: platform_admin, org_admin, analyst, developer, modeler. These five ids are the whole vocabulary — there are no aliases. The role ids 'admin' and 'superadmin' are retired: they exist today as both seeded role rows and as the platform-bypass keywords in provisa/api/auth_router.py and the UI capability gates, and both uses are replaced by platform_admin. Existing assignments naming the retired ids are rewritten to platform_admin at seed time; nothing resolves them afterward. platform_admin is the deployment-wide control-plane administrator (the role the bootstrap claim grants), responsible for org lifecycle, infra/engine settings, and recovery operations. The platform-bypass (has_platform_bypass in provisa/security/rights.py) is scoped to control-plane surfaces only and does not bypass any data-plane capability check, even in root; platform_admin holds no standing data capabilities anywhere. org_admin administers data-plane operations in a single org — members, invites, sources, governance, querying — in every org including root. developer builds against the data — query development, view and relationship authoring, full results, write. analyst reads — usage and query development, no authoring or governance. modeler is the discovery role and the ONLY seeded role holding ignore_relationships, so it may join across relations the approved relationship catalog does not yet cover; that is how a model is DETERMINED. Every other governance check (column visibility, RLS, masking, domain access) still applies to it, and testing the result of a modelling change is done by querying as a role WITHOUT ignore_relationships, which ENFORCES the model. analyst deliberately does not hold it — the least-privileged default never breaks out of the model. The retired discovery_mode request flag on POST /data/sql, which let ANY caller waive the capability check, the domain check and the relationship guard at once from the request body, is DELETED — a break-out is a grant on a role, never a field a client sets on itself. All five are system roles (org_id NULL, identical capability sets in every org) and are not editable through the roles admin surface.
 
 **Use case:** The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds views and relationships but must not administer anything. A fixed four-role catalog gives every fresh org and every fresh deployment the same starting vocabulary. Separating platform_admin (control-plane, no data access) from org_admin (all data-plane administration, including in root) makes the platform/org administration split explicit in the role id and capability set, enabling auditable recovery and preventing silent data access.
 
 **Code:** `provisa/core/schema.sql`, `provisa/security/rights.py`, `provisa/auth/middleware.py`
 
-**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_invite_role_authz.py`
+**Tests:** `tests/integration/test_first_login_bootstrap_admin.py`, `tests/integration/test_invite_role_authz.py`, `tests/integration/test_system_roles_seed.py`
 
 ### REQ-1298 · Authorization {#REQ-1298}
 
@@ -14383,3 +14383,29 @@ Table preview modal is the server-paged governed viewer: each page is its own SE
 **Code:** `provisa-ui/src/components/TablePreviewModal.tsx`, `provisa-ui/src/components/GovernedTableViewer.tsx`, `provisa-ui/src/components/nativeParams.ts`, `provisa-ui/src/components/NativeParamsModal.tsx`, `provisa-ui/src/pages/tables/TableReadView.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
 **Tests:** `provisa-ui/src/components/__tests__/nativeParams.test.ts`
+
+## 1. Access Governance & Security
+
+### REQ-1393 · Authentication {#REQ-1393}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+Failed authentication attempts are counted and locked out at the credential-validation layer (provisa/auth/throttle.py), not per surface. Every surface that validates a credential — HTTP, pgwire, Bolt, gRPC, Arrow Flight, MCP, and the POST /auth/login routes — counts into one process-wide store, so attempts spread across protocols accumulate against the same subject. The lockout key is the principal the protocol names (HTTP Basic user, pgwire startup user, Bolt principal) and, where a protocol names none, the SHA-256 digest of the credential. Defaults are 5 failures within a 300-second window, then a 900-second lockout; auth.login_throttle overrides them. A lockout raises LockedOut, a PermissionError rather than a ValueError, so no surface can report it as an ordinary wrong password — HTTP answers 429 with Retry-After, pgwire answers FATAL 28000, Bolt answers Neo.ClientError.Security.AuthenticationRateLimit. A successful validation clears the subject's history; a non-credential failure (identity-provider outage, database fault) is neither counted nor swallowed.
+
+**Use case:** Without a shared counter an attacker guesses a password on whichever surface is unmetered, or resets their allowance by switching protocol. Placing the counter where credentials are validated makes the brake protocol-independent, and refusing to distinguish a lockout from a bad password would leave clients retrying into a wall.
+
+**Code:** `provisa/auth/throttle.py`, `provisa/auth/wiring.py`, `provisa/auth/middleware.py`, `provisa/auth/providers/simple.py`, `provisa/auth/providers/basic.py`, `provisa/pgwire/server.py`, `provisa/bolt/session.py`, `provisa/grpc/auth.py`, `provisa/api/flight/server.py`, `provisa/api/mcp/server.py`, `provisa/core/models.py`
+
+**Tests:** `tests/unit/test_login_throttle.py`
+
+### REQ-1394 · Authentication {#REQ-1394}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+pgwire negotiates SCRAM-SHA-256 (RFC 5802) when auth.scram is enabled under the basic provider, so a local password is proven to the server without ever crossing the wire. The server advertises AuthenticationSASL (code 10) listing only SCRAM-SHA-256 — never -PLUS, because channel binding is not implemented — and drives the two round trips from provisa/pgwire/server.py. The verifier lives in its own scram_credentials table, one row per user, holding PostgreSQL's pg_authid spelling "SCRAM-SHA-256$<iterations>:<salt>$<storedkey>:<serverkey>" at 4096 iterations. Verifiers are written at the only four moments a plaintext password exists — admin user creation, admin password change, setup bootstrap and wizard, and self-service registration — and deleted with the account. A username with no verifier is answered with PostgreSQL's mock authentication, a well-formed exchange derived from the name and a per-process seed that no proof satisfies, so the handshake is not a name oracle. A verified proof is turned into a session by re-reading the account through BasicAuthProvider.identity_for, so a deactivated user is refused after a correct proof exactly as after a correct password. Failed proofs and lockouts run through the [REQ-1393](#REQ-1393) throttle, checked before any verifier is read. SCRAM is offered only under the basic provider — a bearer token or personal access token is an opaque secret in the password field that SCRAM cannot carry — and those deployments keep the cleartext request protected by TLS. Existing bcrypt hashes cannot be converted to verifiers, so a deployment turning auth.scram on requires every local user to set their password again.
+
+**Use case:** A cleartext password over pgwire is safe only for as long as the transport is, and it is replayable by anything that terminates TLS. SCRAM leaves the server holding a verifier rather than anything that can be presented as a credential, gives the client mutual authentication through the server signature, and is what every modern libpq-based driver already negotiates by default.
+
+**Code:** `provisa/auth/scram.py`, `provisa/auth/scram_store.py`, `provisa/auth/providers/basic.py`, `provisa/pgwire/server.py`, `provisa/core/schema_admin.py`, `provisa/api/setup_router.py`, `provisa/api/auth_router.py`, `provisa/api/admin/local_users_router.py`
+
+**Tests:** `tests/unit/test_scram.py`, `tests/unit/test_scram_pgwire.py`

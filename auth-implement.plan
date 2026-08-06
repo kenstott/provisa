@@ -64,7 +64,14 @@ The step everything downstream depends on: one validation path instead of five.
    created. Store a hash, never the token.
 6. Add PAT issuance and revocation — routes for create/list/revoke plus the UI surface. Wire
    revocation into org_membership.py:226, where a comment already marks the spot as blocked on this
-   table existing.
+   table existing. The UI is self-service: a section on the user's own profile modal, beside leaving
+   an org and deleting the account, since minting and revoking a token is the token holder's act.
+   The minted secret is shown exactly once — the store holds only its SHA-256 — and the listing
+   carries the display prefix and lifecycle timestamps, never a working credential.
+   A validated PAT resolves to its OWNER'S account — user id, email and display name off
+   user_profiles — so an audit row or usage report written under a PAT names the person, not the
+   credential. The token's own label rides in raw_claims["token_name"], which is what says which of
+   that person's credentials acted.
 7. Add a PAT validator to the provider contract. A PAT must resolve to an AuthIdentity through
    `validate_token` so every surface accepts one without knowing what a PAT is. This is the single
    interface REQ-1263 specifies and what makes steps 9-13 small.
