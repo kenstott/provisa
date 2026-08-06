@@ -42261,9 +42261,11 @@
     to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides — if Provisa authored
     a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
     overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
-    classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. The sync
-    is NOT optional: the classification read-merge and attribute drift-correction ride the single publish
-    path, so all three triggers get them — Publish now, the event drain, and the scheduled reconcile (reconcile_cron,
+    classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. This is a single-writer MERGE, not a sync: nothing flows back into Provisa (publication is
+    outbound-only), each data element has exactly ONE owning system, and the read step exists only
+    because replace-style catalog APIs force carrying the catalog-owned fields through unchanged.
+    The merge is NOT optional: the classification read-merge and attribute drift-correction ride the
+    single publish path, so all three triggers get them — Publish now, the event drain, and the scheduled reconcile (reconcile_cron,
     default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the provisaUri attribute)
     is the canonical identity, not the physical qualifiedName. Before publishing, the exporter indexes
     live entities by URN; an entity Provisa published before whose physical address changed (re-platform,
