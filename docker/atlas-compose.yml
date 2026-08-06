@@ -1,0 +1,32 @@
+# Standalone Apache Atlas — the metadata-export target for interactive use.
+#
+# Mirrors the `atlas` service in docker-compose.test.yml (REQ-1069): the sburn image bundles
+# its own embedded HBase and Solr, so it needs no companion services; that is also why it is
+# slow to become healthy and carries a long start_period.
+#
+#   docker compose -f docker/atlas-compose.yml up -d
+#   UI: http://localhost:21000  (admin / admin)
+
+services:
+  atlas:
+    restart: unless-stopped
+    image: sburn/apache-atlas:latest
+    # No `command`: the image's own CMD starts Atlas and then tails its log to keep PID 1 alive.
+    # Naming the start script explicitly gets the path wrong for whatever version is tagged.
+    # No data volume ON PURPOSE: the image's embedded HBase/ZooKeeper/Kafka leave broken state
+    # behind when a boot dies mid-init, and a persisted volume carries that corruption into
+    # every later boot (Solr then refuses to start silently). Pristine boots match the tested
+    # e2e definition; the catalog is re-publishable from Provisa at any time.
+    ports:
+      - "${ATLAS_PORT:-21000}:21000"
+    healthcheck:
+      # wget, not curl: the image ships no curl. Every Atlas API route requires auth, so the
+      # probe carries the image's built-in admin credentials.
+      test:
+        - "CMD-SHELL"
+        - "wget -q -O /dev/null --user=admin --password=admin http://localhost:21000/api/atlas/admin/status || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
