@@ -878,8 +878,53 @@ auth:
 | `firebase` | Firebase Authentication (alle Methoden). | `firebase-admin`-SDK `verify_id_token()` |
 | `keycloak` | Keycloak-OIDC. Mandant + Client-Rollen zugeordnet. | JWKS-basierte JWT-Validierung |
 | `oauth` | Generisches OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS von der Discovery-URL |
+| `basic` | Eigenständige Deployments. Konten liegen in Provisas eigenem Speicher. | bcrypt-Passwort oder SCRAM-SHA-256 auf pgwire |
 
 Superuser-Anmeldedaten (Block `superuser`) funktionieren mit jedem Provider und lösen immer zur Admin-Rolle mit allen Capabilities auf. (REQ-125) Wird für die Ersteinrichtung verwendet, bevor externe Auth konfiguriert ist.
+
+### SCRAM-SHA-256 (`auth.scram`)
+
+```yaml
+auth:
+  provider: basic
+  scram: true
+```
+
+Lässt pgwire SASL mit `SCRAM-SHA-256` ankündigen, sodass ein Passwort bewiesen statt im Klartext gesendet wird. (REQ-1394) Es gilt nur für den Provider `basic` — kein anderer Provider hält die von SCRAM benötigten RFC-5802-Verifier — und Channel Binding wird nicht angeboten.
+
+Verifier lassen sich nicht aus vorhandenen bcrypt-Hashes ableiten. Einer wird immer dann geschrieben, wenn ein Passwort im Klartext durchläuft, sodass die erste SCRAM-Verbindung jedes Nutzers auf dessen nächste Registrierung, Anmeldung, Passwortänderung oder Admin-Zurücksetzung folgt. Bis dahin fallen die Verbindungen dieses Nutzers auf den Klartext-Austausch über TLS zurück; die Leitung verrät nicht, wer bereits migriert ist.
+
+### Anmelde-Drosselung (`auth.login_throttle`)
+
+```yaml
+auth:
+  login_throttle:
+    max_attempts: 5      # failures within the window before lockout
+    window_seconds: 300  # how far back failures are counted
+    lockout_seconds: 900 # how long a locked-out subject is refused
+```
+
+Standardmäßig aktiv mit den gezeigten Werten; der Block justiert sie lediglich. (REQ-1393) Der Zähler sitzt auf der Ebene der Anmeldedatenprüfung, sodass Fehlversuche über HTTP, pgwire und Bolt sich auf dasselbe Subjekt summieren und eine Sperre auf jeder Schnittstelle greift. Er gilt pro Prozess: mehrere API-Worker erlauben jeweils bis zu `max_attempts`.
+
+### Persönliche Zugriffstoken
+
+PATs benötigen keinen Konfigurationsblock — sie werden stets akzeptiert, und der Speicher wird mit dem übrigen Control-Plane-Schema angelegt. (REQ-1263) Konfigurierbar ist die Gültigkeitsdauer, die ein Nutzer bei der Ausstellung anfordern darf: 1 bis 366 Tage oder keine für ein Token ohne Ablauf. Siehe [Sicherheitsmodell](security.md#personal-access-tokens).
+
+### Gegenseitiges TLS
+
+Die Client-Zertifikatsprüfung wird über Umgebungsvariablen konfiguriert statt in `provisa.yaml`, neben den TLS-Zertifikatseinstellungen, die sie erweitert. (REQ-1228)
+
+| Variable | Standard | Bedeutung |
+| ---------- | --------- | --------- |
+| `PROVISA_MTLS_CLIENT_CA` | nicht gesetzt | PEM-Bundle der CA(s), die Client-Zertifikate signieren dürfen. Setzen aktiviert die Client-Zertifikatsprüfung |
+| `PROVISA_MTLS_MODE` | `required`, sobald eine CA gesetzt ist | `required` oder `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Verlangt, dass der Common Name des Zertifikats dem Benutzernamen entspricht, mit dem sich die Verbindung authentifiziert |
+
+Jede besitzt eine Pro-Protokoll-Überschreibung unter derselben Namensgebung wie die TLS-Einstellungen. Ein Modus ohne CA oder ein Modus, der keiner der beiden Werte ist, verweigert den Start, statt Verbindungen zu bedienen, die der Betreiber für geprüft hält.
+
+### Eine Org über TLS adressieren
+
+Nichts zu konfigurieren. In einem Multi-Org-Deployment lesen pgwire und Bolt die Org aus dem Hostnamen, den der Client gewählt hat, übertragen im TLS ClientHello — genau so, wie HTTP sie aus dem `Host`-Header liest. (REQ-1234) Ein Client, der sich mit `acme.provisa.dev` verbindet, fordert die Org `acme` an; die Anfrage wird abgelehnt, sofern das authentifizierte Principal kein Mitglied ist. Eine Verbindung über die IP-Adresse fordert keine Org an — das ist jede Verbindung in einem Single-Org-Deployment.
 
 ### Vollständiges Auth-Konfigurationsbeispiel (auskommentiert)
 
@@ -1324,6 +1369,10 @@ Setzen Sie für Google-Cloud-Quellen `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | S3-Zugriffsschlüssel |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | S3-Geheimschlüssel |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL der Presigned-URL (Sekunden) |
+| `PROVISA_MTLS_CLIENT_CA` | — | PEM-Bundle der CA(s), die Client-Zertifikate signieren dürfen; Setzen aktiviert die Client-Zertifikatsprüfung auf pgwire, Bolt, gRPC und Flight (REQ-1228) |
+| `PROVISA_MTLS_MODE` | `required`, sobald eine CA gesetzt ist | `required` oder `optional`; jeder andere Wert verweigert den Start (REQ-1228) |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Verlangt, dass der Common Name des Zertifikats dem authentifizierenden Benutzernamen entspricht (REQ-1228) |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Kommagetrennte Sites, die einen Bolt-WebSocket aus einem Browser öffnen dürfen; nicht gesetzt weist jede Browser-Origin ab (REQ-802) |
 | `ANTHROPIC_API_KEY` | — | Claude-API-Schlüssel (Discovery) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Überschreibt `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Überschreibt `observability.service_name` |

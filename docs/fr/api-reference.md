@@ -167,12 +167,9 @@ Exécute du SQL brut à travers le pipeline de gouvernance de l'étape 2. (REQ-2
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-L'indicateur `discovery_mode` élargit la vérification de visibilité des tables à toutes les tables de tous les contextes. Réservé aux outils internes. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **Capacités requises :** `QUERY_DEVELOPMENT`.
 

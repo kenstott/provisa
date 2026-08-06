@@ -613,7 +613,7 @@ L'UI d'administration (`provisa-ui/src/pages/SchemaExplorer.tsx`) intègre Graph
 Il n'existe aucune porte de capacité sur la requête — la gouvernance s'exprime entièrement via des contrôles de la couche de données. (REQ-001) Une requête SQL brute rejette (HTTP 403) toute table hors du périmètre d'objets du rôle avant même que la gouvernance ne s'exécute. (REQ-267)
 
 1. **Visibilité des objets** : le schéma par rôle masque les tables/colonnes non autorisées ; les tables hors périmètre en SQL brut sont rejetées (REQ-039, REQ-267)
-2. **Application des relations** : les traversées doivent exister dans le catalogue de relations approuvé, sauf si le rôle possède `ignore_relationships` (REQ-001)
+2. **Application des relations** : les traversées doivent exister dans le catalogue de relations approuvé, sauf si le rôle possède `ignore_relationships` — parmi les rôles système préinstallés, seul `modeler` le possède (REQ-001, REQ-1297). En mode haute sécurité, la capacité est ignorée et aucune traversée n'échappe au catalogue (REQ-693)
 3. **RLS** : injection de clause WHERE par table et par rôle (REQ-040, REQ-041, REQ-263)
 4. **Masquage des colonnes** : transformation de données par colonne et par rôle (REQ-263)
 5. **Plafond de lignes (LIMIT)** : plafond du nombre de lignes pour les rôles sans `full_results` ; l'échantillonnage statistique aléatoire est une fonctionnalité de requête utilisateur distincte (REQ-263, REQ-478)

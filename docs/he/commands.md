@@ -203,3 +203,22 @@ commands מסוג `http` ו-`grpc` קוראים לנקודות קצה חיצונ
 התעבורה, מודל הזהות (DEFINER או INVOKER), הפניות relation קלט, מזהה תפקיד, ו-
 עוצמת פלט (cardinality). ה-dispatcher פולט את ה-trace — אף `impl_kind` אינו יכול לעקוף אותו.
 [tool-verified: `udf_invocation_trace` context in dispatch_function:475-492]
+
+## CLI: provisa metadata export
+
+`provisa metadata export` היא משימה בשכבת ה-shell, לא RPC מנוהל. היא מפעילה את פרסום המטא-דאטה
+לפי דרישה של השרת הפעיל (REQ-1072/REQ-1074) באמצעות POST אל
+`/admin/metadata-export/publish` — אותה נקודת קצה שבה משתמש הכפתור **פרסם עכשיו** בלשונית הניהול.
+[tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
+
+השתמשו בה כדי להריץ ייצוא מתוזמן מ-cron או מ-CI כאשר התזמון המוגדר ב-`reconcile_cron` אינו מדויק
+מספיק:
+
+```bash
+provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOKEN"
+```
+
+קוד יציאה 0 = פרסום מלא. קוד יציאה 1 = פרסום חלקי או כשל בחיבור.
+
+לעיון מלא בדגלים, באפשרויות האימות, במתן שמות למארחים בריבוי-דיירים ובדוגמת cron, ראו
+[ייצוא מטא-דאטה — משורת הפקודה](metadata-export.md#from-the-command-line).

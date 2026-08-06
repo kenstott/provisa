@@ -140,6 +140,8 @@ Quellen, Dateien und Remote-Endpunkte werden über die UI als regierte Tabellen 
 ### Administration & Integration
 
 - **Admin-API** — GraphQL unter `/admin/graphql`; Konfigurations-Upload/-Download, Beziehungsbearbeitung, Abfragefreigabe
+- **Berichts-Viewer** — `/admin/reports` listet die eingebauten Verwaltungsansichten der Ops-Domäne sowie alle registrierten benutzerdefinierten Berichte auf; erfordert die Capability `observability`
+- **Tabellenvorschau** — jede registrierte Tabelle besitzt einen servergeblätterten, governten Datenbetrachter mit heruntergedrückten Filtern, mehrstufiger Gruppierung und CSV-Export
 - **GraphQL Voyager** — Interaktive rollenspezifische Schemavisualisierung als Entity-Relationship-Diagramm
 - **LLM-Beziehungserkennung** — Claude-gestützte Vorschläge für Fremdschlüssel-Kandidaten
 - **Python-Client** — `pip install provisa-client`; GraphQL/SQL → DataFrames, Arrow Flight → pyarrow Tables, SQLAlchemy-Dialekt, ADBC-Unterstützung

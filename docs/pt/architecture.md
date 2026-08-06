@@ -613,7 +613,7 @@ A UI de administração (`provisa-ui/src/pages/SchemaExplorer.tsx`) embute o Gra
 Não há gate de capacidade sobre a consulta — a governança é expressa inteiramente através de controles da camada de dados. (REQ-001) Uma requisição de SQL bruto rejeita (HTTP 403) qualquer tabela fora do escopo de objeto da função antes que a governança execute. (REQ-267)
 
 1. **Visibilidade de Objeto**: O esquema por função oculta tabelas/colunas não autorizadas; tabelas fora de escopo em SQL bruto são rejeitadas (REQ-039, REQ-267)
-2. **Aplicação de relacionamento**: Travessias devem existir no catálogo de relacionamentos aprovado, a menos que a função possua `ignore_relationships` (REQ-001)
+2. **Aplicação de relacionamento**: Travessias devem existir no catálogo de relacionamentos aprovado, a menos que a função possua `ignore_relationships` — entre as funções de sistema pré-carregadas, apenas `modeler` a possui (REQ-001, REQ-1297). No modo de alta segurança a capacidade é ignorada e nenhuma travessia escapa do catálogo (REQ-693)
 3. **RLS**: Injeção de cláusula WHERE por tabela por função (REQ-040, REQ-041, REQ-263)
 4. **Mascaramento de Coluna**: Transformação de dados por coluna por função (REQ-263)
 5. **Limite de linhas (LIMIT)**: Limite de contagem de linhas para funções sem `full_results`; amostragem estatística aleatória é um recurso de consulta de usuário separado (REQ-263, REQ-478)

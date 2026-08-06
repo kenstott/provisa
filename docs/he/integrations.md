@@ -56,7 +56,9 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 ### אימות
 
-pgwire משתמשת באימות סיסמה בטקסט-גלוי המגושר לספק האימות המוגדר של Provisa (`none` או `simple`). במצב אמון (`none`), שם המשתמש ממופה ישירות לתפקיד — הסיסמה מתעלמת. MD5 אינו נתמך; הפעילו TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) בעת הרצה על רשת לא-מהימנה.
+שדה ה-`password` של חבילת האתחול נושא את האישור, ו*מהו* האישור הוא שקובע את השיטה: אסימון גישה אישי, אסימון bearer של OIDC, או סיסמה מול הספק המוגדר. תחת הספק `basic` עם `auth.scram: true` הסיסמה מוכחת באמצעות SCRAM-SHA-256 במקום להישלח. תעודות לקוח נתמכות. במצב אמון (`none`) שם המשתמש ממופה ישירות לתפקיד והסיסמה מתעלמת.
+
+טבלת הממשק × השיטה המלאה נמצאת ב[מודל האבטחה](security.md#surfaces-and-credentials). MD5 אינו נתמך; הפעילו TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) בעת הרצה על רשת לא-מהימנה.
 
 ### מגבלות
 
@@ -142,7 +144,15 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-הכרטיס אינו נושא תפקיד. השרת מקצה את התפקיד מספק האימות המוגדר. במקומות שבהם בחירת תפקיד מותרת, העבירו אותה במטא-דאטה של קריאת ה-gRPC תחת המפתח `x-provisa-role` (לדוגמה `flight.FlightCallOptions(headers=[(b"x-provisa-role", b"analyst")])`), לא ב-JSON של הכרטיס.
+Flight נושא את האישור שלו במטען ה-JSON, כשדה `token` — אסימון bearer של הספק או אסימון גישה אישי. גם לחיצת היד וגם כל כרטיס מקבלים אותו, ושניהם מאמתים אותו באותו אופן, כך שלקוח שהזדהה בלחיצת היד עדיין מציג את האסימון בכל `do_get`. שדה `role` לצידו *מבקש* תפקיד; השרת גוזר את התפקידים המותרים לזהות ומציב את הערך המורשה, כך שמחרוזת תפקיד בכרטיס אינה לעולם הזהות. (REQ-1263) ראו [מודל אבטחה](security.md#surfaces-and-credentials).
+
+```python
+ticket = flight.Ticket(json.dumps({
+    "query": "SELECT id, amount FROM sales.orders",
+    "token": "provisa_pat_...",
+    "role": "analyst",
+}).encode())
+```
 
 ### ADBC
 
@@ -193,7 +203,9 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 השתמשו ב-`grpc_server_reflection` כדי לגלות את הסכמה באופן פרוגרמטי.
 
-התפקיד מועבר דרך מפתח המטא-דאטה `x-provisa-role` בכל RPC. שאילתות סטרימינג פולטות הודעה אחת לכל שורה; מוטציות הן unary.
+כל RPC חייב לשאת אישור במפתח המטא-דאטה `authorization` — אסימון ספק או אסימון גישה אישי. `x-provisa-role` מבקש תפקיד מתוך הקבוצה המותרת לזהות; הוא אינו אישור ומעולם לא היה. תעודות לקוח נתמכות. ראו [מודל אבטחה](security.md#surfaces-and-credentials).
+
+שאילתות סטרימינג פולטות הודעה אחת לכל שורה; מוטציות הן unary.
 
 ---
 

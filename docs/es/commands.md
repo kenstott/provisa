@@ -222,3 +222,22 @@ el tipo de transporte, el modelo de identidad (DEFINER o INVOKER), las referenci
 entrada, el id de rol y la cardinalidad de salida. El dispatcher emite la traza — ningún
 `impl_kind` puede omitirla. [tool-verified: `udf_invocation_trace` context in
 dispatch_function:475-492]
+
+## CLI: provisa metadata export
+
+`provisa metadata export` es un trabajo de nivel shell, no un RPC gobernado. Dispara la publicación
+de metadatos bajo demanda del servidor en ejecución (REQ-1072/REQ-1074) enviando un POST a
+`/admin/metadata-export/publish` — el mismo endpoint que invoca el botón **Publicar ahora** de la
+pestaña de administración. [tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
+
+Úsalo para lanzar exportaciones programadas desde cron o CI cuando la planificación configurada en
+`reconcile_cron` no tenga suficiente granularidad:
+
+```bash
+provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOKEN"
+```
+
+Salida 0 = publicación completa. Salida 1 = publicación parcial o fallo de conexión.
+
+Para la referencia completa de flags, las opciones de autenticación, el nombrado de hosts en
+multiinquilino y un ejemplo de cron, consulta [Exportación de metadatos — Desde la línea de comandos](metadata-export.md#from-the-command-line).

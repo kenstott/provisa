@@ -878,8 +878,53 @@ auth:
 | `firebase` | Firebase Authentication（所有方式）。 | `firebase-admin` SDK 的 `verify_id_token()` |
 | `keycloak` | Keycloak OIDC。租用戶及客戶端角色皆有對應。 | 以 JWKS 為基礎的 JWT 驗證 |
 | `oauth` | 通用 OIDC（Okta、Azure AD、Auth0、PingFederate）。 | 來自 discovery URL 的 JWKS |
+| `basic` | 自給自足的部署。帳戶存放於 Provisa 自有的儲存之中。 | bcrypt 密碼，或 pgwire 上的 SCRAM-SHA-256 |
 
 超級使用者憑證（`superuser` 區塊）適用於任何提供者，並恆解析為擁有所有功能的 admin 角色。(REQ-125) 用於設定外部驗證前的初始設置。
+
+### SCRAM-SHA-256（`auth.scram`）
+
+```yaml
+auth:
+  provider: basic
+  scram: true
+```
+
+令 pgwire 以 `SCRAM-SHA-256` 通告 SASL，從而以證明密碼取代明文傳送密碼。(REQ-1394) 它只適用於 `basic` 提供者——沒有其他提供者持有 SCRAM 所需的 RFC 5802 驗證器——且不提供通道繫結。
+
+驗證器無法從既有的 bcrypt 雜湊推導得出。只要密碼以明文經過就會寫入一個驗證器，因此每位使用者的首次 SCRAM 連線緊接在其下一次註冊、登入、更改密碼或管理員重設之後。在此之前，該使用者的連線回退至基於 TLS 的明文交換；線路上不會顯示誰已完成遷移。
+
+### 登入節流（`auth.login_throttle`）
+
+```yaml
+auth:
+  login_throttle:
+    max_attempts: 5      # failures within the window before lockout
+    window_seconds: 300  # how far back failures are counted
+    lockout_seconds: 900 # how long a locked-out subject is refused
+```
+
+預設開啟並採用所示取值；該區塊只用於調整它們。(REQ-1393) 計數器位於憑證驗證層，因此經由 HTTP、pgwire 與 Bolt 的失敗都累加到同一主體之上，鎖定在每個介面上均生效。它按行程劃分：多個 API worker 各自最多允許 `max_attempts` 次。
+
+### 個人存取權杖
+
+PAT 毋須設定區塊——它們一律獲接受，其儲存隨控制平面結構描述的其餘部分一併建立。(REQ-1263) 可設定的是使用者在簽發時可要求的有效期：1 至 366 日，或者不設有效期以取得永不逾期的權杖。參見[安全模型](security.md#personal-access-tokens)。
+
+### 雙向 TLS
+
+用戶端憑證驗證經環境變數設定，而非於 `provisa.yaml` 之中，與它所擴充的 TLS 憑證設定並列。(REQ-1228)
+
+| 變數 | 預設值 | 含義 |
+| ---------- | --------- | --------- |
+| `PROVISA_MTLS_CLIENT_CA` | 未設定 | 允許簽發用戶端憑證的 CA 的 PEM 套件。設定它即開啟用戶端憑證驗證 |
+| `PROVISA_MTLS_MODE` | 設定 CA 後為 `required` | `required` 或 `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求憑證的 common name 與該連線認證所用的使用者名稱相同 |
+
+每一項都有沿用與 TLS 設定相同命名的按協定覆寫設定。設定了模式卻未設定 CA，或模式不是這兩個取值之一，都會拒絕啟動，而非去服務營運人員以為已經過驗證的連線。
+
+### 在 TLS 上指定組織
+
+毋須設定。在多組織部署之中，pgwire 與 Bolt 從用戶端所撥的主機名稱讀取組織，該主機名稱承載於 TLS ClientHello 之中，正如 HTTP 從 `Host` 標頭讀取它一樣。(REQ-1234) 連線至 `acme.provisa.dev` 的用戶端要求組織 `acme`；除非認證 principal 是其成員，否則要求遭拒。以 IP 位址連線不要求任何組織——在單組織部署之中每條連線都是如此。
 
 ### 完整驗證設定範例（已註解）
 
@@ -1324,6 +1369,10 @@ sources:
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | S3 存取金鑰 |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | S3 密鑰 |
 | `PROVISA_REDIRECT_TTL` | `3600` | 預先簽署 URL 的 TTL（秒） |
+| `PROVISA_MTLS_CLIENT_CA` | — | 允許簽發用戶端憑證的 CA 的 PEM 套件；設定它即在 pgwire、Bolt、gRPC 與 Flight 上開啟用戶端憑證驗證 (REQ-1228) |
+| `PROVISA_MTLS_MODE` | 設定 CA 後為 `required` | `required` 或 `optional`；任何其他取值都會拒絕啟動 (REQ-1228) |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求憑證的 common name 與進行認證的使用者名稱相同 (REQ-1228) |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | 以逗號分隔的網站清單，允許其從瀏覽器開啟 Bolt WebSocket；未設定則拒絕所有瀏覽器 origin (REQ-802) |
 | `ANTHROPIC_API_KEY` | — | Claude API 金鑰（探索用） |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | 覆寫 `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | 覆寫 `observability.service_name` |

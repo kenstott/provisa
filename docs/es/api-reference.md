@@ -167,12 +167,9 @@ Ejecuta SQL sin procesar a través del pipeline de gobierno de la Etapa 2. (REQ-
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-El indicador `discovery_mode` amplía la verificación de visibilidad de tablas para incluir todas las tablas de todos los contextos. Solo para herramientas internas. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **Capacidades requeridas:** `QUERY_DEVELOPMENT`.
 

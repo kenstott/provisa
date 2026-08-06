@@ -56,7 +56,9 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 ### 身份驗證
 
-pgwire 使用明文密碼驗證，並連接至 Provisa 設定的身份驗證提供者（`none` 或 `simple`）。在信任模式（`none`）下，用戶名會直接對應至角色 —— 密碼會被忽略。不支援 MD5；在不受信任的網絡上運作時，請啟用 TLS（`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`）。
+啟動封包的 `password` 欄位承載憑證，而憑證*是甚麼*決定了採用哪種方法：個人存取權杖、OIDC bearer 權杖，或是針對已設定提供者的密碼。在 `basic` 提供者且 `auth.scram: true` 之下，密碼經 SCRAM-SHA-256 加以證明，而非傳送。支援用戶端憑證。在信任模式（`none`）下，用戶名直接對應至角色，密碼會被忽略。
+
+完整的介面 × 方法對照表見[安全模型](security.md#surfaces-and-credentials)。不支援 MD5；在不受信任的網絡上運作時，請啟用 TLS（`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`）。
 
 ### 限制
 
@@ -142,7 +144,15 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-票證不會攜帶任何角色。伺服器會依據已設定的身份驗證提供者指派角色。若容許選擇角色，請於 gRPC 呼叫的元數據中，以 `x-provisa-role` 鍵傳遞（例如 `flight.FlightCallOptions(headers=[(b"x-provisa-role", b"analyst")])`），而非置於票證 JSON 內。
+Flight 在 JSON 酬載之中以 `token` 欄位承載憑證——可以是提供者 bearer 權杖或個人存取權杖。交握與每個票證都接受它，且兩者的驗證方式相同，因此在交握時已完成認證的用戶端在每次 `do_get` 時仍須出示該權杖。與之並列的 `role` 欄位是*要求*一個角色；伺服器會推導該身分獲准的角色集合並替換為已授權的取值，因此票證中的角色字串絕非身分本身。(REQ-1263) 參見[安全模型](security.md#surfaces-and-credentials)。
+
+```python
+ticket = flight.Ticket(json.dumps({
+    "query": "SELECT id, amount FROM sales.orders",
+    "token": "provisa_pat_...",
+    "role": "analyst",
+}).encode())
+```
 
 ### ADBC
 
@@ -193,7 +203,9 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 使用 `grpc_server_reflection` 以程式方式探索結構描述。
 
-角色會透過每次 RPC 的 `x-provisa-role` 元數據鍵傳遞。串流查詢會逐列發出訊息；變異則為單元操作。
+每次 RPC 都必須在 `authorization` 元數據鍵之中攜帶憑證——提供者權杖或個人存取權杖。`x-provisa-role` 是從該身分獲准的集合之中要求一個角色；它並非憑證，而且從來都不是。支援用戶端憑證。參見[安全模型](security.md#surfaces-and-credentials)。
+
+串流查詢會逐列發出訊息；變異則為單元操作。
 
 ---
 

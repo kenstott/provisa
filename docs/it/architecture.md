@@ -613,7 +613,7 @@ L'Admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) integra GraphQL Voyager c
 Non esiste un capability gate sulla query — la governance è espressa esclusivamente tramite controlli a livello del data layer. (REQ-001) Una richiesta SQL grezza rifiuta (HTTP 403) qualsiasi tabella fuori dall'ambito degli oggetti del ruolo prima che venga eseguita la governance. (REQ-267)
 
 1. **Visibilità degli oggetti**: lo schema specifico per ruolo nasconde tabelle/colonne non autorizzate; le tabelle fuori ambito in SQL grezzo vengono rifiutate (REQ-039, REQ-267)
-2. **Applicazione delle relazioni**: gli attraversamenti devono esistere nel catalogo delle relazioni approvate, a meno che il ruolo non abbia `ignore_relationships` (REQ-001)
+2. **Applicazione delle relazioni**: gli attraversamenti devono esistere nel catalogo delle relazioni approvate, a meno che il ruolo non abbia `ignore_relationships` — fra i ruoli di sistema precaricati solo `modeler` la possiede (REQ-001, REQ-1297). In modalità alta sicurezza la capacità viene ignorata e nessun attraversamento sfugge al catalogo (REQ-693)
 3. **RLS**: iniezione di clausole WHERE per tabella e ruolo (REQ-040, REQ-041, REQ-263)
 4. **Mascheramento delle colonne**: trasformazione dei dati per colonna e ruolo (REQ-263)
 5. **Limite di righe (LIMIT)**: tetto sul numero di righe per i ruoli senza `full_results`; il sampling statistico casuale è una funzione separata di query utente (REQ-263, REQ-478)

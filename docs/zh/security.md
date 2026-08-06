@@ -42,12 +42,16 @@ Provisa在所有查询语言（GraphQL、SQL、Cypher）及所有传输方式（
 
 SQL中的JOIN条件，必须匹配数据表之间已登记并获批准的关系。（REQ-001）未经批准的join会被拒绝。每个关系均附有人类可读的原因及描述——为用户及自主代理提供指引，说明某遍历路径存在的原因。这属于治理策略，而非硬性的安全边界：无论join结构如何，第2至5层依然有效，因此刻意的规避行为，并不会使角色接触到其原本无法通过两次独立查询获取的数据。规避尝试会被记录并可供审计。
 
-**绕过机制**——只有在以下两项独立条件同时成立时，才可绕过V002：
+**绕过机制**——V002 有两种绕过方式。第一种是一项功能：持有 `ignore_relationships` 的角色可以跨目录未涵盖的关系进行联接。在预置的系统角色中只有 `modeler` 持有它——这是负责确定模型而非强制执行模型的探索角色。（REQ-1297）`analyst` 并不持有。[tool-verified: `provisa/core/db.py:84`]
+
+第二种是需同时成立两项条件的退出机制：
 
 1. **角色标志**——角色定义中的`relationship_guard: false`（默认值：`true`）。[tool-verified: `provisa/core/models.py:349`]
 2. **按查询退出**——SQL中包含`--relationship-guard=false`注释。[tool-verified: `provisa/compiler/params.py:80`]
 
-两者必须同时具备。仅靠角色标志无法绕过V002；仅靠注释也无法绕过V002。
+仅靠角色标志无法绕过V002；仅靠注释也无法绕过V002。
+
+**高安全模式将该防护固定。**在 `security.mode: high` 下两种绕过均不适用：`ignore_relationships` 被忽略，`relationship_guard: false` 被忽略，且每个联接都必须存在于已批准的关系目录中。（REQ-693）这是刻意的冗余——即便某个生产角色被误授予该功能，它仍然无法突破模型。[tool-verified: `provisa/pgwire/_pipeline.py:377`]
 
 **GraphQL路径**——对于GraphQL查询，V002会被无条件跳过。SDL中定义的关系，按设计已预先获批准；该项检查属于多余，因此不会执行。[tool-verified: `provisa/api/data/endpoint.py:468`]
 
@@ -74,7 +78,7 @@ SQL中的JOIN条件，必须匹配数据表之间已登记并获批准的关系�
 | `query_development` | 执行查询 |
 | `write` | 调用已注册的变更操作（粗粒度控制；参阅“变更操作授权”） |
 | `full_results` | 绕过采样限制 |
-| `ignore_relationships` | 绕过关系治理（V002） |
+| `ignore_relationships` | 绕过关系治理（V002）。在系统角色中仅由 `modeler` 持有，且在高安全模式下被完全忽略 |
 | `admin` | 超级用户——授予全部能力 |
 
 ### 角色继承
@@ -208,6 +212,7 @@ rls_rules:
 | 提供程序 | 令牌类型 | 使用场景 |
 | ---------- | ----------- | ---------- |
 | `none` | X-Provisa-Role标头 | 开发 |
+| `basic` | bcrypt 本地账户 + JWT | 自包含部署 |
 | `firebase` | Firebase ID令牌 | 生产环境 |
 | `keycloak` | Keycloak JWT | 企业版 |
 | `oauth` | OIDC JWT | PingFed、Okta、Azure AD、Auth0 |
@@ -216,6 +221,82 @@ rls_rules:
 角色映射：通过可配置的规则，将身份声明映射至Provisa角色。（REQ-120）`assignments_source`字段控制角色分配的来源：`claims`会从JWT令牌的声明中读取（默认值）；`provisa`则会从Provisa内部的分配存储中读取。（REQ-551）
 
 在`provisa.yaml`中配置的超级用户（用户名加上来自环境密钥的密码），无论配置何种提供程序，均一律获授予admin角色及全部能力——这是用于初始配置的引导路径。（REQ-125）
+
+### 接口与凭据
+
+每个接口都通过同一套提供程序契约进行认证，因此在一个接口上可用的凭据，只要协议能够承载，就在所有接口上可用。（REQ-124、REQ-1263）本表是唯一参考；各接口文档不再重复。
+
+| 接口 | 密码 | 提供程序令牌 | 个人访问令牌 | 客户端证书（mTLS） |
+| --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
+| HTTP（REST、JSON:API、GraphQL） | `Authorization: Basic` | `Authorization: Bearer` | `Authorization: Bearer` | 经由终止代理 |
+| pgwire | 密码字段（明文或 SCRAM） | 密码字段，OIDC 部署 | 密码字段 | 是 |
+| Bolt | `basic` 方案 | `bearer` 方案 | `bearer` 方案 | 是 |
+| Arrow Flight | — | 握手或票据负载中的 `token` | 同上 | 是 |
+| gRPC | — | `authorization` 元数据 | `authorization` 元数据 | 是 |
+| MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | 经由终止代理 |
+
+单元格为 `—` 之处，表示该协议没有可与密码配对的用户名字段；这些情形由令牌形式覆盖。pgwire 则是镜像情形：启动包只有一个密钥字段且没有方案，因此密钥*是什么*决定了采用哪种方法——PAT 由其前缀识别，当配置的提供程序为令牌提供程序时该密钥按 bearer 令牌读取，其余一律视为密码。选择只做一次——被选定校验器拒绝的凭据不会再拿去试另一个。
+
+该矩阵由 `tests/unit/test_auth_surface_conformance.py` 强制执行，它驱动每个接口真实的校验入口，并在新增接口而未添加对应行时失败。
+
+### 个人访问令牌
+
+PAT 是用户为无法完成交互式登录的客户端——脚本、BI 工具、驱动程序——铸造的长期 bearer 密钥。（REQ-1263）它自带组织与角色，且每个接口都通过同一个校验器解析它，因此任何接口都无需知道 PAT 为何物。
+
+其传输形式为 `provisa_pat_` 后跟 43 个 URL 安全的 base64 字符。正是这个前缀把呈交的密钥路由到令牌存储而非身份提供程序，也使泄漏的令牌可在日志与代码库中被 grep 检出。
+
+- **存储**——仅保留密钥的 SHA-256。密钥本身仅在创建时显示一次，且无法找回。列表中携带显示前缀与生命周期时间戳，绝不会是可用凭据。
+- **签发与吊销**——`POST /auth/tokens`、`GET /auth/tokens`、`DELETE /auth/tokens/{token_hash}`，以及管理界面中用户自身资料页上的自助区域。铸造与吊销凭据是令牌持有者本人的行为。
+- **归属**——通过校验的 PAT 解析为其所有者的账户：用户 id、电子邮件与显示名称。因此在 PAT 之下写入的审计行或使用报表指向的是人，而非凭据。该人的哪一个令牌参与了操作则单独记录于 `raw_claims["token_name"]`。
+- **过期**——令牌可携带过期时间；已过期的令牌在校验时被拒。删除用户的成员资格会连同吊销其令牌。
+
+### pgwire 上的 SCRAM-SHA-256
+
+在 `basic` 提供程序下，设置 `auth.scram: true` 会让 pgwire 通告 SASL（认证码 10）并使用 `SCRAM-SHA-256` 机制，从而以证明密码取代发送密码。（REQ-1394）不提供通道绑定（`SCRAM-SHA-256-PLUS`）。
+
+SCRAM 需要一个 RFC 5802 验证器，而它无法从 bcrypt 哈希推导得出。只要密码以明文经过——注册、登录、修改密码、管理员重置——就会写入一个验证器，因此开启 SCRAM 的部署会随着用户下一次认证逐步收集验证器，而每位用户的首次 SCRAM 连接紧随其下一次输入密码之后。对尚无验证器的用户，会以与真实交换无法区分的模拟交换作答，因此线路上不会泄露谁已完成迁移。
+
+### 双向 TLS
+
+客户端证书验证把第一道检查移到 TLS 握手：没有部署方 CA 签名证书的调用方永远到不了凭据层。（REQ-1228）它可用于 pgwire、Bolt、gRPC 与 Arrow Flight——这四种自行终止 TLS 的传输。
+
+| 变量 | 含义 |
+| ---------- | --------- |
+| `PROVISA_MTLS_CLIENT_CA` | 允许签发客户端证书的 CA 的 PEM 包 |
+| `PROVISA_MTLS_MODE` | `required`（设置 CA 后的默认值）或 `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | 为真时，证书的 common name 必须与该连接随后认证所用的用户名相同 |
+
+各协议的覆盖设置沿用与 TLS 设置相同的命名。没有任何东西靠推断：设置了模式却未设置 CA 会拒绝启动，无法识别的模式也会拒绝启动，而不会被读作最接近的安全取值——一个自以为要求客户端证书而实际并未要求的部署，处境比启动失败的部署更糟。
+
+### 登录限流
+
+猜测密码与协议无关：同一个账户可以经由 HTTP、pgwire 与 Bolt 被反复轰击。因此计数器位于凭据校验层，而非任何单一接口，这样在任何地方触发的锁定都会处处生效。（REQ-1393）
+
+它默认开启——五分钟内五次失败会将该主体锁定十五分钟——并在 `auth.login_throttle` 下调整。被锁定的主体在凭据被检查之前就已遭拒，而一次成功认证会清空该主体的历史。
+
+键是协议所携带的 principal。仅支持 bearer 的接口不携带 principal，因此键是凭据自身的摘要；这样阻止的是同一个坏令牌被无限重放。该存储按进程划分，因此运行多个 API worker 的部署每个 worker 最多允许 `max_attempts` 次——限流是对猜测的刹车，不是分布式配额。
+
+### 在传输协议上指定组织
+
+在多租户下，组织通过主机名寻址：`acme.provisa.dev` 即组织 `acme`。在 HTTP 上该名称随 `Host` 标头到达。pgwire 或 Bolt 客户端不发送此类标头，但它确实会在 TLS ClientHello 中发送所拨的主机名，Provisa 便从中读取组织。（REQ-1234）客户端无需任何改动——连接到 `acme.provisa.dev` 即可。
+
+主机名是一项请求，而非授予。它抵达的是与 `Host` 标头相同的解析器，该解析器会拒绝任何认证 principal 既非成员、也不持有跨组织权限的组织。拨向你并无成员资格的主机名，触及不到任何数据。以 IP 地址连接的客户端不发送主机名，仅从 principal 解析其组织——在单组织部署中，每条连接都是如此。
+
+gRPC、Arrow Flight 与 MCP 把证书交给不暴露主机名回调的库；这些传输改用 `x-provisa-org` 元数据标头来指定组织。
+
+## 高安全模式
+
+`provisa.yaml` 中的 `security.mode: high` 主张一项保证：Provisa 后端绝不处理明文数据。（REQ-693）每个重要的列都在源端加密，只有持有解密密钥的客户端才能读取。这项保证带来的后果，部署方必须提前规划。
+
+**该模式的作用：**
+
+- **数据端点要求出示客户端解密的凭证。**`/data/` 之下的一切都返回 403，除非调用方带上 `X-Provisa-KMS-Key` 标头——这是配置为本地解密的 JDBC 或 Python 客户端的标记。浏览器或明文 REST 消费方不带此类密钥，会被拒绝。该关卡是对整棵树的默认拒绝：明天新增的路由在其发布当天即受管控，豁免则必须逐一论证。
+- **模式元数据端点保持开放。**`/data/sdl`、`/data/introspection`、`/data/schema-version`、`/data/domains`、`/data/proto` 与 `/data/compile` 不返回行数据，而客户端在能够连接之前必须先读取模式——包括哪些字段带 `@encrypted`。
+- **gRPC 与 Arrow Flight 在同一凭证要求下继续服务。**它们正是执行加密的客户端实际使用的传输；关闭它们会让高安全部署失去所有传输协议。在其中任一上的数据调用都必须以调用元数据携带同样的 KMS 密钥。
+- **pgwire、Bolt 与 MCP 不会启动。**三者都没有能够承载解密上下文的逐连接握手：pgwire 行集与 Cypher 结果在线路上都是明文，而 MCP 工具调用会把结果以文本交给模型。为其中任一配置的端口在启动时会被拒绝而非提供服务。
+- **关系防护无法绕过。**`ignore_relationships` 与 `relationship_guard: false` 均被忽略；参见[关系治理](#relationship-governance-v002)。
+
+**如何确认部署处于该模式：**启动日志会指明它；不带 KMS 密钥的 `/data/sql` 请求会以 403 应答并给出提及 REQ-693 的消息；pgwire、Bolt 与 MCP 端口未在监听。
 
 ## ABAC批准钩子 (Hook)
 

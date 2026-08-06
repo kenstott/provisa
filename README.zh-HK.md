@@ -140,6 +140,8 @@ Data Vault 同樣適用此模式，只是提早一層。其 hub 是去重複的�
 ### 管理與整合
 
 - **管理 API**——位於 `/admin/graphql` 的 GraphQL；設定上傳/下載、關係編輯、查詢核准
+- **報表檢視器**——`/admin/reports` 列出內建的 ops 域管理檢視以及所有已註冊的自訂報表；需要 `observability` 功能
+- **表格預覽**——每張已註冊的表格都配有伺服器端分頁的受治理資料檢視器，支援下推篩選、多層分組與 CSV 匯出
 - **GraphQL Voyager**——依角色劃分、以實體關係圖形式呈現的互動式結構描述視覺化
 - **LLM 關係探索**——由 Claude 驅動的外部索引鍵候選建議
 - **Python 客戶端**——`pip install provisa-client`；GraphQL/SQL → DataFrame、Arrow Flight → pyarrow Table、SQLAlchemy 方言、ADBC 支援

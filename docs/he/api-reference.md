@@ -167,12 +167,9 @@ X-Provisa-Redirect-Threshold: 1000
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-הדגל `discovery_mode` מרחיב את בדיקת נראות הטבלה כדי לכלול את כל הטבלאות מכל ההקשרים. לכלי פנימיים בלבד. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **יכולות נדרשות:** `QUERY_DEVELOPMENT`.
 

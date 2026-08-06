@@ -29,10 +29,26 @@ from provisa_client import ProvisaClient
 
 client = ProvisaClient(
     "http://localhost:8001",
-    username="alice",
-    password="secret",
+    token="provisa_pat_...",   # personal access token, or a provider bearer token
+    role="analyst",
 )
 ```
+
+`ProvisaClient` מקבל אישור, ולא שם משתמש וסיסמה: אין בו שלב התחברות משלו. אסימון גישה אישי הוא האישור המתאים כששריפט אמור לרוץ ללא השגחה — הוא מונפק מהפרופיל של המשתמש עצמו, נושא תפוגה, וניתן לביטול בלי לגעת בחשבון. (REQ-1263) אסימון bearer של הספק פועל באותו אופן. כל אחד מהם נמסר ב-`token`, והלקוח מציג אותו גם בנתיב ה-HTTP וגם בנתיב Arrow Flight.
+
+כדי להמיר סיסמה לאסימון, שלחו POST אל `/auth/login` וקראו את `access_token`:
+
+```python
+import httpx
+
+body = httpx.post(
+    "http://localhost:8001/auth/login",
+    json={"username": "alice", "password": "secret"},
+).json()
+client = ProvisaClient("http://localhost:8001", token=body["access_token"])
+```
+
+נקודות הכניסה של DB-API ושל ADBC מבצעות עבורכם את ההמרה הזו — ראו להלן.
 
 ### שאילתות GraphQL
 
@@ -84,7 +100,7 @@ tables_df = client.list_tables()
 | פרמטר | ברירת מחדל | תיאור |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | URL בסיס של שרת Provisa |
-| `token` | `None` | טוקן Bearer; השמיטו עבור אימות סיסמה (REQ-606) |
+| `token` | `None` | אישור bearer — אסימון של הספק או אסימון גישה אישי; השמיטו עבור אימות סיסמה (REQ-606, REQ-1263) |
 | `role` | `"admin"` | תפקיד הנשלח עם כל בקשה (REQ-273) |
 | `flight_port` | `8815` | פורט gRPC של Arrow Flight (REQ-143) |
 
@@ -106,9 +122,11 @@ conn = connect(
     "http://localhost:8001",
     username="alice",
     password="secret",
-    role="admin",       # optional, default "admin"
+    role="analyst",     # optional; omit to run as the role the login returns
 )
 ```
+
+`connect` שולח את שם המשתמש והסיסמה ב-POST אל `/auth/login` ושומר את ה-`access_token` שחוזר, כך שהחיבור נושא אישור אמיתי ולא רק שם. `role` *מבקש* תפקיד, והשרת נעתר רק אם התפקיד מוקצה לזהות (REQ-273); בהשמטה, החיבור רץ בתפקיד שההתחברות פתרה.
 
 ### ביצוע שאילתות
 
@@ -188,7 +206,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | פרמטר | תיאור | ברירת מחדל |
 | ----------- | ------------- | --------- |
-| `role` | תפקיד Provisa | `admin` |
+| `role` | התפקיד המבוקש; מאומת בצד השרת (REQ-273) | התפקיד שההתחברות פותרת |
 
 ```python
 engine = create_engine(
@@ -221,6 +239,8 @@ conn = adbc_connect(
     port=8815,        # Arrow Flight port (REQ-711)
 )
 ```
+
+`adbc_connect` מתחבר תחילה מעל HTTP ומשבץ את האסימון שהתקבל בכל כרטיס Flight, כך ששרת ה-Flight מאמת את החיבור בדיוק כפי שממשק ה-REST עושה זאת. (REQ-1263) הארגומנט `role` הוא בקשה, המאומתת בצד השרת מול ההקצאות של הזהות — הוא לעולם אינו הופך לזהות. (REQ-273)
 
 ### שליפה כטבלת Arrow
 

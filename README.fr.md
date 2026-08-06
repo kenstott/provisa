@@ -140,6 +140,8 @@ Les sources, fichiers et points de terminaison distants sont enregistrés comme 
 ### Administration et intégration
 
 - **API d'administration** — GraphQL à `/admin/graphql` ; téléversement/téléchargement de configuration, édition des relations, approbation des requêtes
+- **Visionneuse de rapports** — `/admin/reports` liste les vues de gestion intégrées du domaine ops ainsi que tout rapport personnalisé enregistré ; nécessite la capacité `observability`
+- **Aperçu de table** — chaque table enregistrée dispose d'une visionneuse de données gouvernée paginée côté serveur, avec filtres poussés vers la source, regroupement multiniveau et export CSV
 - **GraphQL Voyager** — Visualisation interactive du schéma par rôle sous forme de diagramme entité-relation
 - **Découverte de relations par LLM** — Suggestions de candidats à clé étrangère propulsées par Claude
 - **Client Python** — `pip install provisa-client` ; GraphQL/SQL → DataFrames, Arrow Flight → Tables pyarrow, dialecte SQLAlchemy, prise en charge ADBC

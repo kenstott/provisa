@@ -56,7 +56,9 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 ### Authentification
 
-pgwire utilise une authentification par mot de passe en clair reliée au fournisseur d'authentification configuré de Provisa (`none` ou `simple`). En mode de confiance (`none`), le nom d'utilisateur est directement mappé à un rôle — le mot de passe est ignoré. MD5 n'est pas pris en charge ; activez TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) lors d'une utilisation sur un réseau non fiable.
+Le champ `password` du paquet de démarrage transporte l'identifiant, et *ce qu'est* l'identifiant détermine la méthode : un jeton d'accès personnel, un jeton bearer OIDC ou un mot de passe auprès du fournisseur configuré. Avec le fournisseur `basic` et `auth.scram: true`, le mot de passe est prouvé par SCRAM-SHA-256 au lieu d'être envoyé. Les certificats client sont pris en charge. En mode de confiance (`none`), le nom d'utilisateur est directement mappé à un rôle et le mot de passe est ignoré.
+
+Le tableau complet interface × méthode figure dans le [Modèle de sécurité](security.md#surfaces-and-credentials). MD5 n'est pas pris en charge ; activez TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) lors d'une utilisation sur un réseau non fiable.
 
 ### Limitations
 
@@ -142,7 +144,15 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Le ticket ne transporte aucun rôle. Le serveur attribue le rôle à partir du fournisseur d'authentification configuré. Lorsque la sélection de rôle est autorisée, transmettez-la dans les métadonnées de l'appel gRPC sous la clé `x-provisa-role` (par exemple `flight.FlightCallOptions(headers=[(b"x-provisa-role", b"analyst")])`), et non dans le JSON du ticket.
+Flight transporte son identifiant dans la charge utile JSON, sous forme d'un champ `token` — un jeton bearer du fournisseur ou un jeton d'accès personnel. Le handshake comme chaque ticket l'acceptent, et tous deux le valident de la même façon, si bien qu'un client authentifié au handshake présente tout de même le jeton à chaque `do_get`. Un champ `role` à côté *demande* un rôle ; le serveur dérive les rôles autorisés de l'identité et substitue la valeur autorisée, de sorte qu'une chaîne de rôle dans un ticket n'est jamais l'identité. (REQ-1263) Voir le [Modèle de sécurité](security.md#surfaces-and-credentials).
+
+```python
+ticket = flight.Ticket(json.dumps({
+    "query": "SELECT id, amount FROM sales.orders",
+    "token": "provisa_pat_...",
+    "role": "analyst",
+}).encode())
+```
 
 ### ADBC
 
@@ -193,7 +203,9 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 Utilisez `grpc_server_reflection` pour découvrir le schéma par programmation.
 
-Le rôle est transmis via la clé de métadonnées `x-provisa-role` sur chaque RPC. Les requêtes en streaming émettent un message par ligne ; les mutations sont unaires.
+Chaque RPC doit porter un identifiant dans la clé de métadonnées `authorization` — un jeton du fournisseur ou un jeton d'accès personnel. `x-provisa-role` demande un rôle parmi ceux autorisés pour l'identité ; ce n'est pas un identifiant et ne l'a jamais été. Les certificats client sont pris en charge. Voir le [Modèle de sécurité](security.md#surfaces-and-credentials).
+
+Les requêtes en streaming émettent un message par ligne ; les mutations sont unaires.
 
 ---
 

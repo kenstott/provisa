@@ -167,12 +167,9 @@ X-Provisa-Redirect-Threshold: 1000
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-`discovery_mode` 旗標會擴大資料表可見性檢查的範圍，納入所有情境下的所有資料表。僅供內部工具使用。[tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **必要功能：**`QUERY_DEVELOPMENT`。
 

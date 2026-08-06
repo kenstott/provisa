@@ -29,10 +29,26 @@ from provisa_client import ProvisaClient
 
 client = ProvisaClient(
     "http://localhost:8001",
-    username="alice",
-    password="secret",
+    token="provisa_pat_...",   # personal access token, or a provider bearer token
+    role="analyst",
 )
 ```
+
+`ProvisaClient` 接受的是一份憑證，而不是用戶名加密碼：它本身沒有登入步驟。當指令碼需要無人看管地執行時，個人存取權杖是首選憑證——它由用戶自己的個人資料頁簽發，帶有有效期，並且可以在不動帳戶的情況下撤銷。(REQ-1263) 提供者簽發的 bearer 權杖用法完全相同。兩者都放在 `token` 中，客戶端會在 HTTP 和 Arrow Flight 兩條路徑上都出示它。
+
+若要用密碼換取權杖，向 `/auth/login` 發送 POST 並讀取 `access_token`：
+
+```python
+import httpx
+
+body = httpx.post(
+    "http://localhost:8001/auth/login",
+    json={"username": "alice", "password": "secret"},
+).json()
+client = ProvisaClient("http://localhost:8001", token=body["access_token"])
+```
+
+DB-API 和 ADBC 入口會代您完成這項交換——見下文。
 
 ### GraphQL 查詢
 
@@ -84,7 +100,7 @@ tables_df = client.list_tables()
 | 參數 | 預設值 | 描述 |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa 伺服器基礎 URL |
-| `token` | `None` | 持有者權杖；若採密碼驗證則留空 (REQ-606) |
+| `token` | `None` | Bearer 憑證——提供者權杖或個人存取權杖；若採密碼驗證則留空 (REQ-606、REQ-1263) |
 | `role` | `"admin"` | 隨每個要求傳送的角色 (REQ-273) |
 | `flight_port` | `8815` | Arrow Flight gRPC 連接埠 (REQ-143) |
 
@@ -106,9 +122,11 @@ conn = connect(
     "http://localhost:8001",
     username="alice",
     password="secret",
-    role="admin",       # optional, default "admin"
+    role="analyst",     # optional; omit to run as the role the login returns
 )
 ```
+
+`connect` 會把用戶名和密碼 POST 至 `/auth/login`，並保留回傳的 `access_token`，因此該連線攜帶的是一份真正的憑證，而不只是一個名字。`role` 是在*請求*某個角色，只有該身分確實獲配該角色時伺服器才會予以滿足 (REQ-273)；若省略，連線就以登入所解析出的角色執行。
 
 ### 執行查詢
 
@@ -188,7 +206,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | 參數 | 描述 | 預設值 |
 | ----------- | ------------- | --------- |
-| `role` | Provisa 角色 | `admin` |
+| `role` | 要請求的角色；由伺服器端驗證 (REQ-273) | 登入所解析出的角色 |
 
 ```python
 engine = create_engine(
@@ -221,6 +239,8 @@ conn = adbc_connect(
     port=8815,        # Arrow Flight port (REQ-711)
 )
 ```
+
+`adbc_connect` 會先透過 HTTP 登入，並把取得的權杖放入每一張 Flight ticket，因此 Flight 伺服器對連線的驗證方式與 REST 介面完全一致。(REQ-1263) `role` 參數是一項請求，由伺服器對照該身分的角色指派進行驗證——它絕不會成為身分本身。(REQ-273)
 
 ### 擷取為 Arrow Table
 

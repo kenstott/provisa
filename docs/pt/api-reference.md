@@ -167,12 +167,9 @@ Executa SQL bruto através do pipeline de governança de Estágio 2. (REQ-267) [
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-A flag `discovery_mode` amplia a verificação de visibilidade de tabela para incluir todas as tabelas de todos os contextos. Apenas para ferramentas internas. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **Capacidades exigidas:** `QUERY_DEVELOPMENT`.
 

@@ -613,7 +613,7 @@ La UI de administración (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora G
 No hay una compuerta de capacidad sobre la consulta: el gobierno se expresa enteramente mediante controles de la capa de datos. (REQ-001) Una solicitud de SQL sin procesar rechaza (HTTP 403) cualquier tabla fuera del alcance de objetos del rol antes de que se ejecute el gobierno. (REQ-267)
 
 1. **Visibilidad de objetos**: el esquema por rol oculta las tablas/columnas no autorizadas; las tablas fuera de alcance en SQL sin procesar se rechazan (REQ-039, REQ-267)
-2. **Aplicación de relaciones**: los recorridos deben existir en el catálogo de relaciones aprobado, a menos que el rol tenga `ignore_relationships` (REQ-001)
+2. **Aplicación de relaciones**: los recorridos deben existir en el catálogo de relaciones aprobado, a menos que el rol tenga `ignore_relationships`: entre los roles de sistema precargados, solo `modeler` lo tiene (REQ-001, REQ-1297). En el modo de alta seguridad la capacidad se ignora y ningún recorrido escapa del catálogo (REQ-693)
 3. **RLS**: inyección de cláusula WHERE por tabla y por rol (REQ-040, REQ-041, REQ-263)
 4. **Enmascaramiento de columnas**: transformación de datos por columna y por rol (REQ-263)
 5. **Límite de filas (LIMIT)**: tope de recuento de filas para roles sin `full_results`; el muestreo estadístico aleatorio es una función de consulta de usuario independiente (REQ-263, REQ-478)

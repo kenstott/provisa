@@ -23,14 +23,25 @@ Port: $PROVISA_PGWIRE_PORT
 
 ## Autenticazione
 
-Due modalità, controllate dalla chiave `provider` in `auth_config`:
+Il pacchetto di startup porta un nome utente e un solo campo segreto, senza alcuno schema che dica cosa sia quel segreto. Provisa decide dal segreto stesso, così un client non ha bisogno di configurazione oltre a `user` e `password`:
 
-| Modalità | Valore di `provider` | Comportamento |
-| ------ | ----------------- | ----------- |
-| Trust | `none` (o middleware di autenticazione inattivo) | Il nome utente inviato dal client viene usato direttamente come `role_id`. La password viene ignorata. |
-| Simple | `simple` | La password viene verificata rispetto al provider di autenticazione `simple` (bcrypt). Il nome utente diventa `role_id` in caso di successo. (REQ-124) |
+| Il segreto è | Riconosciuto da | Si risolve in |
+| --------------- | --------------- | ------------- |
+| Un token di accesso personale | il suo prefisso `provisa_pat_` | il proprietario e il ruolo del token (REQ-1263) |
+| Un token bearer OIDC / del provider | il fatto che il provider configurato sia un provider di token | l'identità che il token afferma (REQ-890) |
+| Una password | qualsiasi altra cosa | l'account nel provider configurato (`basic` o `simple`) |
 
-Qualsiasi altro valore di `provider` restituisce un errore FATAL al login. (REQ-529) Il protocollo utilizza sempre il tipo di autenticazione PG 3 (password in chiaro). (REQ-529) Non utilizzare la modalità trust su una connessione non cifrata. [tool-verified: `server.py:282-311`]
+La decisione viene presa una sola volta. Una credenziale rifiutata dal validatore scelto non viene ritentata con un altro, quindi un rifiuto non diventa un secondo tentativo.
+
+La modalità trust (`provider: none`, o middleware di autenticazione inattivo) è l'eccezione: il nome utente viene usato direttamente come `role_id` e il segreto viene ignorato. Non usarla su una connessione non cifrata.
+
+**SCRAM-SHA-256.** Con `provider: basic` e `auth.scram: true`, il server annuncia SASL (codice di autenticazione 10) con `SCRAM-SHA-256` e la password viene dimostrata anziché inviata. (REQ-1394) `SCRAM-SHA-256-PLUS` non viene offerto. A un utente il cui verifier non è ancora stato scritto — i verifier non possono essere derivati dagli hash bcrypt — viene risposto con uno scambio fittizio, così la rete non rivela chi ha migrato; quell'utente si autentica con password in chiaro su TLS finché l'immissione successiva della password non ne scrive uno. Con `auth.scram` disattivato, il server usa il tipo di autenticazione PG 3 (password in chiaro). MD5 non è supportato in nessuno dei due casi.
+
+**Certificati client.** Imposta `PROVISA_MTLS_CLIENT_CA` e il server verifica un certificato client durante l'handshake, prima di esaminare qualsiasi credenziale. (REQ-1228) Con `PROVISA_MTLS_BIND_PRINCIPAL` il common name del certificato deve coincidere con lo `user` con cui la connessione si autentica subito dopo. Vedi [Configurazione](configuration.md#mutual-tls).
+
+**I tentativi falliti vengono contati.** Cinque fallimenti in cinque minuti bloccano l'account per quindici minuti, e il contatore è condiviso con HTTP e Bolt: un blocco ottenuto su una superficie vale su tutte. (REQ-1393)
+
+**Scegliere un'organizzazione.** In un deployment multi-organizzazione, connettiti a `<org>.<il-tuo-dominio>` e pgwire legge l'organizzazione dall'hostname nel ClientHello TLS, allo stesso modo in cui HTTP la legge dall'header `Host`. (REQ-1234) L'hostname richiede un'organizzazione; non la concede, e un principal che non ne è membro viene rifiutato. Connettersi tramite indirizzo IP non richiede alcuna organizzazione.
 
 ---
 

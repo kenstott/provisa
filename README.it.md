@@ -140,6 +140,8 @@ Origini, file ed endpoint remoti vengono registrati come tabelle governate dalla
 ### Amministrazione e integrazione
 
 - **Admin API** — GraphQL su `/admin/graphql`; upload/download della configurazione, editing delle relazioni, approvazione delle query
+- **Visualizzatore di report** — `/admin/reports` elenca le viste di gestione integrate del dominio ops e qualsiasi report personalizzato registrato; richiede la capability `observability`
+- **Anteprima tabella** — ogni tabella registrata dispone di un visualizzatore di dati governato con paginazione lato server, filtri spinti alla sorgente, raggruppamento multilivello ed esportazione CSV
 - **GraphQL Voyager** — Visualizzazione interattiva dello schema per ruolo come diagramma entità-relazione
 - **Scoperta delle relazioni con LLM** — Suggerimenti di chiave esterna candidata potenziati da Claude
 - **Client Python** — `pip install provisa-client`; GraphQL/SQL → DataFrame, Arrow Flight → tabelle pyarrow, dialetto SQLAlchemy, supporto ADBC

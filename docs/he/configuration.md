@@ -878,8 +878,53 @@ auth:
 | `firebase` | Firebase Authentication (כל השיטות). | `verify_id_token()` של SDK‏ `firebase-admin` |
 | `keycloak` | Keycloak OIDC. תפקידי דייר + לקוח ממופים. | אימות JWT מבוסס JWKS |
 | `oauth` | OIDC גנרי (Okta, Azure AD, Auth0, PingFederate). | JWKS מ-URL גילוי |
+| `basic` | פריסות עצמאיות. החשבונות שוכנים במאגר של Provisa עצמה. | סיסמת bcrypt, או SCRAM-SHA-256 ב-pgwire |
 
 אישורי superuser (בלוק `superuser`) עובדים עם כל ספק ותמיד נפתרים לתפקיד admin עם כל היכולות. (REQ-125) משמש להגדרה ראשונית לפני שאימות חיצוני מוגדר.
+
+### SCRAM-SHA-256 (`auth.scram`)
+
+```yaml
+auth:
+  provider: basic
+  scram: true
+```
+
+גורם ל-pgwire להכריז על SASL עם `SCRAM-SHA-256`, כך שסיסמה מוכחת במקום להישלח כטקסט גלוי. (REQ-1394) הדבר חל על הספק `basic` בלבד — אף ספק אחר אינו מחזיק את מאמתי RFC 5802 ש-SCRAM זקוק להם — וקשירת ערוץ אינה מוצעת.
+
+לא ניתן לגזור מאמתים מגיבובי bcrypt קיימים. מאמת נכתב בכל פעם שסיסמה עוברת כטקסט גלוי, ולכן החיבור הראשון ב-SCRAM של כל משתמש בא לאחר ההרשמה, ההתחברות, שינוי הסיסמה או איפוס המנהל הבאים שלו. עד אז חיבוריו של אותו משתמש נסוגים לחילופין בטקסט גלוי מעל TLS; הקו אינו חושף מי כבר עבר.
+
+### ויסות התחברות (`auth.login_throttle`)
+
+```yaml
+auth:
+  login_throttle:
+    max_attempts: 5      # failures within the window before lockout
+    window_seconds: 300  # how far back failures are counted
+    lockout_seconds: 900 # how long a locked-out subject is refused
+```
+
+פעיל כברירת מחדל עם הערכים המוצגים; הבלוק רק מכוונן אותם. (REQ-1393) המונה יושב בשכבת אימות האישורים, ולכן כשלים מעל HTTP, pgwire ו-Bolt מצטברים כנגד אותו נושא, ונעילה תופסת בכל ממשק. הוא לכל תהליך: כמה עובדי API מאפשרים כל אחד עד `max_attempts`.
+
+### אסימוני גישה אישיים
+
+PAT אינם דורשים בלוק תצורה — הם מתקבלים תמיד, והמאגר נוצר יחד עם שאר סכמת מישור הבקרה. (REQ-1263) מה שניתן להגדרה הוא תוקף התפוגה שמשתמש רשאי לבקש בעת ההנפקה: 1 עד 366 ימים, או ללא תפוגה עבור אסימון שאינו פג. ראו [מודל אבטחה](security.md#personal-access-tokens).
+
+### TLS הדדי
+
+אימות תעודת לקוח מוגדר באמצעות משתני סביבה ולא ב-`provisa.yaml`, לצד הגדרות תעודת ה-TLS שהוא מרחיב. (REQ-1228)
+
+| משתנה | ברירת מחדל | משמעות |
+| ---------- | --------- | --------- |
+| `PROVISA_MTLS_CLIENT_CA` | לא מוגדר | חבילת PEM של רשות/רשויות האישורים המורשות לחתום על תעודות לקוח. הגדרתו מפעילה את אימות תעודות הלקוח |
+| `PROVISA_MTLS_MODE` | `required` לאחר שהוגדרה רשות אישורים | `required` או `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | דורש שה-common name של התעודה יהיה זהה לשם המשתמש שאיתו החיבור מאמת |
+
+לכל אחד יש דריסה לפי פרוטוקול תחת אותה מוסכמת שמות כמו הגדרות ה-TLS. מצב שהוגדר ללא רשות אישורים, או מצב שאינו אף אחד משני הערכים, מסרב לעלות במקום לשרת חיבורים שהמפעיל מאמין שנבדקו.
+
+### מיעון ארגון מעל TLS
+
+אין מה להגדיר. בפריסה מרובת ארגונים, pgwire ו-Bolt קוראים את הארגון משם המארח שהלקוח חייג אליו, הנישא ב-ClientHello של TLS, בדיוק כפי ש-HTTP קורא אותו מכותרת `Host`. (REQ-1234) לקוח המתחבר ל-`acme.provisa.dev` מבקש את הארגון `acme`; הבקשה נדחית אלא אם כן ה-principal המאומת חבר בו. התחברות לפי כתובת IP אינה מבקשת ארגון כלל, וזהו כל חיבור בפריסה חד-ארגונית.
 
 ### דוגמת תצורת אימות מלאה (מוערת)
 
@@ -1324,6 +1369,10 @@ sources:
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | מפתח גישה S3 |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | מפתח סודי S3 |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL של Presigned URL (שניות) |
+| `PROVISA_MTLS_CLIENT_CA` | — | חבילת PEM של רשות/רשויות האישורים המורשות לחתום על תעודות לקוח; הגדרתו מפעילה אימות תעודות לקוח ב-pgwire, Bolt, gRPC ו-Flight (REQ-1228) |
+| `PROVISA_MTLS_MODE` | `required` לאחר שהוגדרה רשות אישורים | `required` או `optional`; כל ערך אחר מסרב לעלות (REQ-1228) |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | דורש שה-common name של התעודה יהיה זהה לשם המשתמש המאמת (REQ-1228) |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | אתרים מופרדים בפסיקים המורשים לפתוח WebSocket של Bolt מדפדפן; ללא הגדרה נדחה כל מקור דפדפן (REQ-802) |
 | `ANTHROPIC_API_KEY` | — | מפתח API של Claude (גילוי) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | דורס את `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | דורס את `observability.service_name` |

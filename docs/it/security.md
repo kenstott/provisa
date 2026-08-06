@@ -42,12 +42,16 @@ Le colonne mascherate vengono rifiutate nelle clausole `WHERE` e `HAVING`. (REQ-
 
 Le condizioni JOIN in SQL devono corrispondere a una relazione registrata e approvata tra le tabelle. (REQ-001) I join non approvati vengono rifiutati. Ogni relazione porta un motivo e una descrizione leggibili da un essere umano — un orientamento sia per gli utenti sia per gli agenti autonomi sul perché esiste un percorso di attraversamento. Questa è una politica di governance, non un confine di sicurezza rigido: i livelli 2–5 restano validi indipendentemente dalla struttura del join, quindi un'elusione deliberata non espone dati che il ruolo non potrebbe comunque raggiungere tramite due query separate. I tentativi di elusione vengono registrati e sono verificabili tramite audit.
 
-**Meccanismi di bypass** — V002 può essere aggirato solo quando entrambe le seguenti condizioni indipendenti sono vere:
+**Meccanismi di bypass** — V002 può essere aggirato in due modi. Il primo è una capacità: un ruolo che possiede `ignore_relationships` esegue join su relazioni che il catalogo non copre. Tra i ruoli di sistema predefiniti solo `modeler` la possiede — il ruolo di scoperta, il cui compito è determinare il modello anziché applicarlo. (REQ-1297) `analyst` non la possiede. [tool-verified: `provisa/core/db.py:84`]
+
+Il secondo è una rinuncia a due condizioni, entrambe necessarie:
 
 1. **Flag del ruolo** — `relationship_guard: false` nella definizione del ruolo (predefinito: `true`). [tool-verified: `provisa/core/models.py:349`]
 2. **Esclusione per query** — l'SQL contiene il commento `--relationship-guard=false`. [tool-verified: `provisa/compiler/params.py:80`]
 
-Entrambe devono essere presenti. Il flag del ruolo da solo non aggira V002; il commento da solo non aggira V002.
+Il flag del ruolo da solo non aggira V002; il commento da solo non aggira V002.
+
+**La modalità ad alta sicurezza blocca la protezione.** Sotto `security.mode: high` non si applica nessuno dei due bypass: `ignore_relationships` viene ignorato, `relationship_guard: false` viene ignorato, e ogni join deve esistere nel catalogo delle relazioni approvate. (REQ-693) È una ridondanza deliberata — un ruolo di produzione a cui la capacità è stata concessa per errore continua a non poter uscire dal modello. [tool-verified: `provisa/pgwire/_pipeline.py:377`]
 
 **Percorso GraphQL** — V002 viene saltato incondizionatamente per le query GraphQL. Le relazioni definite in SDL sono preapprovate per progettazione; il controllo è ridondante e non viene applicato. [tool-verified: `provisa/api/data/endpoint.py:468`]
 
@@ -74,7 +78,7 @@ Capacità assegnate in modo indipendente, con gerarchia di ruoli opzionale trami
 | `query_development` | Eseguire query |
 | `write` | Invocare le mutazioni registrate (controllo a grana grossa; vedere Autorizzazione delle mutazioni) |
 | `full_results` | Bypassare i limiti di campionamento |
-| `ignore_relationships` | Bypassare la governance delle relazioni (V002) |
+| `ignore_relationships` | Bypassare la governance delle relazioni (V002). Posseduta solo da `modeler` tra i ruoli di sistema, e ignorata del tutto in modalità ad alta sicurezza |
 | `admin` | Superuser — concede tutte le capacità |
 
 ### Ereditarietà dei ruoli
@@ -208,6 +212,7 @@ Provider di autenticazione collegabili: (REQ-120)
 | Provider | Tipo di token | Caso d'uso |
 | ---------- | ----------- | ---------- |
 | `none` | Header X-Provisa-Role | Sviluppo |
+| `basic` | Account locali bcrypt + JWT | Deployment autonomi |
 | `firebase` | Token ID Firebase | Produzione |
 | `keycloak` | JWT Keycloak | Enterprise |
 | `oauth` | JWT OIDC | PingFed, Okta, Azure AD, Auth0 |
@@ -216,6 +221,82 @@ Provider di autenticazione collegabili: (REQ-120)
 Mappatura dei ruoli: claim di identità → ruolo Provisa tramite regole configurabili. (REQ-120) Il campo `assignments_source` controlla da dove provengono le assegnazioni dei ruoli: `claims` le legge dai claim del token JWT (predefinito), `provisa` le legge dallo store interno delle assegnazioni di Provisa. (REQ-551)
 
 Un superuser configurato in `provisa.yaml` (nome utente più una password proveniente da un secret d'ambiente) riceve sempre il ruolo admin e tutte le capacità, indipendentemente dal provider configurato — un percorso di bootstrap per la configurazione iniziale. (REQ-125)
+
+### Superfici e credenziali
+
+Ogni superficie si autentica attraverso lo stesso contratto di provider, quindi una credenziale che funziona su una funziona su tutte, ovunque il protocollo possa trasportarla. (REQ-124, REQ-1263) Questa tabella è il riferimento unico; i documenti delle singole superfici non la ripetono.
+
+| Superficie | Password | Token del provider | Token di accesso personale | Certificato client (mTLS) |
+| --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
+| HTTP (REST, JSON:API, GraphQL) | `Authorization: Basic` | `Authorization: Bearer` | `Authorization: Bearer` | tramite proxy di terminazione |
+| pgwire | campo password (in chiaro o SCRAM) | campo password, deployment OIDC | campo password | sì |
+| Bolt | schema `basic` | schema `bearer` | schema `bearer` | sì |
+| Arrow Flight | — | `token` nell'handshake o nel payload del ticket | idem | sì |
+| gRPC | — | metadati `authorization` | metadati `authorization` | sì |
+| MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | tramite proxy di terminazione |
+
+Dove una cella riporta `—`, il protocollo non trasporta alcun campo nome utente da abbinare a una password; le forme a token lo coprono. pgwire è il caso speculare: il pacchetto di avvio ha un unico campo segreto e nessuno schema, quindi è *ciò che* il segreto è a scegliere il metodo — un PAT si riconosce dal prefisso, il segreto viene letto come token bearer quando il provider configurato è un provider di token, e qualsiasi altra cosa è una password. La scelta si fa una volta sola — una credenziale che il validatore selezionato rifiuta non viene ritentata su un altro.
+
+La matrice è imposta da `tests/unit/test_auth_surface_conformance.py`, che sollecita il vero punto di ingresso di validazione di ogni superficie e fallisce quando viene aggiunta una nuova superficie senza riga.
+
+### Token di accesso personali
+
+Un PAT è un segreto bearer di lunga durata che un utente conia per un client che non può completare un accesso interattivo — uno script, uno strumento di BI, un driver. (REQ-1263) Porta con sé la propria organizzazione e il proprio ruolo, e ogni superficie lo risolve tramite lo stesso validatore, quindi nessuna superficie deve sapere cosa sia un PAT.
+
+La forma sul filo è `provisa_pat_` seguito da 43 caratteri base64 sicuri per URL. Il prefisso è ciò che instrada un segreto presentato verso l'archivio dei token invece che verso il provider di identità, e rende un token trapelato individuabile con grep in log e repository.
+
+- **Archiviazione** — viene conservato solo lo SHA-256 del segreto. Il segreto stesso viene mostrato esattamente una volta, alla creazione, e non è recuperabile. L'elenco riporta il prefisso di visualizzazione e le marche temporali del ciclo di vita, mai una credenziale utilizzabile.
+- **Emissione e revoca** — `POST /auth/tokens`, `GET /auth/tokens`, `DELETE /auth/tokens/{token_hash}`, più la sezione self-service nel profilo dell'utente stesso nella UI di amministrazione. Coniare e revocare una credenziale è atto di chi la detiene.
+- **Attribuzione** — un PAT validato si risolve nell'account del proprietario: id utente, email e nome visualizzato. Una riga di audit o un report d'uso scritto sotto un PAT nomina quindi la persona, non la credenziale. Quale dei token di quella persona abbia agito è riportato separatamente, in `raw_claims["token_name"]`.
+- **Scadenza** — un token può portare una scadenza; un token scaduto viene rifiutato in validazione. Eliminare l'appartenenza di un utente ne revoca i token insieme.
+
+### SCRAM-SHA-256 su pgwire
+
+Con il provider `basic`, impostare `auth.scram: true` fa sì che pgwire annunci SASL (codice di autenticazione 10) con il meccanismo `SCRAM-SHA-256`, così una password viene dimostrata anziché inviata. (REQ-1394) Il channel binding (`SCRAM-SHA-256-PLUS`) non viene offerto.
+
+SCRAM richiede un verifier RFC 5802, che non può essere derivato da un hash bcrypt. Un verifier viene scritto ogni volta che una password transita in chiaro — registrazione, accesso, cambio password, reimpostazione da amministratore — quindi un deployment che attiva SCRAM raccoglie i verifier man mano che i suoi utenti si autenticano la volta successiva, e la prima connessione SCRAM di ciascun utente segue il suo successivo inserimento della password. A un utente ancora privo di verifier si risponde con uno scambio simulato indistinguibile da uno reale, così il filo non rivela chi ha migrato.
+
+### TLS reciproco
+
+La verifica del certificato client sposta il primo controllo nell'handshake TLS: un chiamante privo di un certificato firmato dalla CA del deployment non raggiunge mai il livello delle credenziali. (REQ-1228) È disponibile su pgwire, Bolt, gRPC e Arrow Flight — i quattro trasporti che terminano il proprio TLS.
+
+| Variabile | Significato |
+| ---------- | --------- |
+| `PROVISA_MTLS_CLIENT_CA` | Bundle PEM della/e CA autorizzate a firmare i certificati client |
+| `PROVISA_MTLS_MODE` | `required` (il valore predefinito una volta impostata una CA) oppure `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | Quando è vero, il common name del certificato deve coincidere con il nome utente con cui la connessione si autentica poi |
+
+Gli override per protocollo seguono la stessa denominazione delle impostazioni TLS. Nulla viene dedotto: una modalità impostata senza CA rifiuta di avviarsi, e una modalità non riconosciuta rifiuta di avviarsi anziché essere letta come il vicino più sicuro — un deployment che crede di richiedere certificati client e non lo fa sta peggio di uno che non si avvia.
+
+### Limitazione dei tentativi di accesso
+
+Indovinare password è indipendente dal protocollo: lo stesso account può essere martellato via HTTP, pgwire e Bolt. Il contatore vive perciò al livello di validazione delle credenziali, non su una singola superficie, così che un blocco guadagnato ovunque venga applicato ovunque. (REQ-1393)
+
+È attiva per impostazione predefinita — cinque fallimenti in cinque minuti bloccano il soggetto per quindici minuti — e si regola sotto `auth.login_throttle`. Un soggetto bloccato viene rifiutato prima ancora che la credenziale venga esaminata, e un'autenticazione riuscita azzera la cronologia di quel soggetto.
+
+La chiave è il principal che il protocollo trasporta. Una superficie solo-bearer non trasporta alcun principal, quindi la chiave è un digest della credenziale stessa; ciò che questo ferma è un singolo token compromesso riprodotto senza limiti. L'archivio è per processo, quindi un deployment con più worker API consente fino a `max_attempts` per worker — la limitazione è un freno all'indovinare, non una quota distribuita.
+
+### Indirizzare un'organizzazione su un protocollo di trasporto
+
+In multitenancy un'organizzazione si indirizza per nome host: `acme.provisa.dev` è l'organizzazione `acme`. Su HTTP quel nome arriva nell'header `Host`. Un client pgwire o Bolt non invia un header simile, ma invia il nome host che ha composto nel ClientHello TLS, e Provisa legge di lì l'organizzazione. (REQ-1234) Nulla cambia lato client — connettersi a `acme.provisa.dev` è tutto ciò che serve.
+
+Il nome host è una richiesta, non una concessione. Raggiunge lo stesso resolver dell'header `Host`, che rifiuta qualsiasi organizzazione di cui il principal autenticato non sia membro né detenga il diritto cross-organizzazione. Comporre un nome host in cui non si ha appartenenza non raggiunge alcun dato. Un client connesso per indirizzo IP non invia alcun nome host e risolve la propria organizzazione dal solo principal, che è ogni connessione in un deployment a organizzazione singola.
+
+gRPC, Arrow Flight e MCP consegnano i propri certificati a librerie che non espongono alcun callback sul nome host; quei trasporti nominano un'organizzazione con l'header di metadati `x-provisa-org`.
+
+## Modalità ad alta sicurezza
+
+`security.mode: high` in `provisa.yaml` afferma una garanzia: il backend di Provisa non tratta mai dati in chiaro. (REQ-693) Ogni colonna che conta è cifrata all'origine, e solo un client in possesso della chiave di decifratura può leggerla. Questa garanzia ha conseguenze che un deployment deve pianificare.
+
+**Che cosa fa la modalità:**
+
+- **Gli endpoint dati richiedono la prova della decifratura lato client.** Tutto ciò che sta sotto `/data/` restituisce 403 a meno che il chiamante non presenti l'header `X-Provisa-KMS-Key` — il marcatore di un client JDBC o Python configurato per decifrare localmente. Un browser o un consumatore REST in chiaro non porta alcuna chiave del genere e viene rifiutato. Il varco è un deny-by-default sull'intero albero: una rotta aggiunta domani è protetta il giorno stesso in cui viene rilasciata, e un'esenzione va argomentata.
+- **Gli endpoint di metadati dello schema restano aperti.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` e `/data/compile` non restituiscono dati di riga, e un client deve leggere lo schema — compreso quali campi siano `@encrypted` — prima ancora di potersi connettere.
+- **gRPC e Arrow Flight continuano a servire, sotto la stessa prova.** Sono i trasporti che i client che cifrano usano davvero; chiuderli lascerebbe un deployment ad alta sicurezza senza protocollo di trasporto. Una chiamata dati su entrambi deve portare la stessa chiave KMS come metadato della chiamata.
+- **pgwire, Bolt e MCP non si avviano.** Nessuno dei tre ha un handshake per connessione capace di trasportare un contesto di decifratura: un result set pgwire e un risultato Cypher viaggiano in chiaro, e una chiamata a strumento MCP consegna i risultati a un modello come testo. Una porta configurata per uno qualsiasi di essi viene rifiutata all'avvio anziché servita.
+- **La protezione delle relazioni non può essere aggirata.** `ignore_relationships` e `relationship_guard: false` vengono entrambi ignorati; vedi [Governance delle relazioni](#relationship-governance-v002).
+
+**Verificare che un deployment sia in questa modalità:** il log di avvio la nomina, una richiesta `/data/sql` senza chiave KMS risponde 403 con un messaggio che cita REQ-693, e le porte pgwire, Bolt e MCP non sono in ascolto.
 
 ## Hook di approvazione ABAC
 

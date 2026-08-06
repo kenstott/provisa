@@ -29,10 +29,26 @@ from provisa_client import ProvisaClient
 
 client = ProvisaClient(
     "http://localhost:8001",
-    username="alice",
-    password="secret",
+    token="provisa_pat_...",   # personal access token, or a provider bearer token
+    role="analyst",
 )
 ```
+
+`ProvisaClient` 接受的是一份凭据，而不是用户名加密码：它自身没有登录步骤。当脚本需要无人值守运行时，个人访问令牌是首选凭据——它由用户自己的个人资料页签发，带有有效期，并且可以在不动账户的情况下吊销。（REQ-1263）提供程序颁发的 bearer 令牌用法完全相同。两者都放在 `token` 中，客户端会在 HTTP 和 Arrow Flight 两条路径上都出示它。
+
+要用密码换取令牌，向 `/auth/login` 发送 POST 并读取 `access_token`：
+
+```python
+import httpx
+
+body = httpx.post(
+    "http://localhost:8001/auth/login",
+    json={"username": "alice", "password": "secret"},
+).json()
+client = ProvisaClient("http://localhost:8001", token=body["access_token"])
+```
+
+DB-API 和 ADBC 入口会替您完成这一交换——见下文。
 
 ### GraphQL 查询
 
@@ -84,7 +100,7 @@ tables_df = client.list_tables()
 | 参数 | 默认值 | 说明 |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa 服务端基础 URL |
-| `token` | `None` | Bearer 令牌；使用密码认证时省略（REQ-606） |
+| `token` | `None` | Bearer 凭据——提供程序令牌或个人访问令牌；使用密码认证时省略（REQ-606、REQ-1263） |
 | `role` | `"admin"` | 随每个请求发送的角色（REQ-273） |
 | `flight_port` | `8815` | Arrow Flight gRPC 端口（REQ-143） |
 
@@ -106,9 +122,11 @@ conn = connect(
     "http://localhost:8001",
     username="alice",
     password="secret",
-    role="admin",       # optional, default "admin"
+    role="analyst",     # optional; omit to run as the role the login returns
 )
 ```
+
+`connect` 会把用户名和密码 POST 到 `/auth/login`，并保存返回的 `access_token`，因此该连接携带的是一份真实凭据，而不只是一个名字。`role` 是在*请求*某个角色，只有该身份确实被分配了该角色时服务器才会予以满足（REQ-273）；若省略，连接就以登录所解析出的角色运行。
 
 ### 执行查询
 
@@ -188,7 +206,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | 参数 | 说明 | 默认值 |
 | ----------- | ------------- | --------- |
-| `role` | Provisa 角色 | `admin` |
+| `role` | 要请求的角色；由服务端校验（REQ-273） | 登录所解析出的角色 |
 
 ```python
 engine = create_engine(
@@ -221,6 +239,8 @@ conn = adbc_connect(
     port=8815,        # Arrow Flight port (REQ-711)
 )
 ```
+
+`adbc_connect` 会先通过 HTTP 登录，并把得到的令牌放入每一张 Flight ticket，因此 Flight 服务器对连接的身份验证方式与 REST 接口完全一致。（REQ-1263）`role` 参数是一项请求，由服务器对照该身份的角色分配进行校验——它绝不会变成身份本身。（REQ-273）
 
 ### 以 Arrow Table 形式获取
 

@@ -56,7 +56,9 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 ### Autenticação
 
-O pgwire usa autenticação por senha em texto claro conectada ao provedor de autenticação configurado do Provisa (`none` ou `simple`). No modo trust (`none`), o nome de usuário mapeia diretamente para uma função — a senha é ignorada. MD5 não é suportado; habilite TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) ao rodar sobre uma rede não confiável.
+O campo `password` do pacote de inicialização carrega a credencial, e *o que* a credencial é determina o método: um token de acesso pessoal, um token bearer OIDC ou uma senha contra o provedor configurado. Sob o provedor `basic` com `auth.scram: true`, a senha é provada por SCRAM-SHA-256 em vez de enviada. Certificados de cliente são suportados. No modo trust (`none`), o nome de usuário mapeia diretamente para uma função e a senha é ignorada.
+
+A tabela completa de interface × método está no [Modelo de segurança](security.md#surfaces-and-credentials). MD5 não é suportado; habilite TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) ao rodar sobre uma rede não confiável.
 
 ### Limitações
 
@@ -142,7 +144,15 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-O ticket não carrega função. O servidor atribui a função a partir do provedor de autenticação configurado. Quando a seleção de função é permitida, passe-a nos metadados da chamada gRPC sob a chave `x-provisa-role` (por exemplo `flight.FlightCallOptions(headers=[(b"x-provisa-role", b"analyst")])`), não no JSON do ticket.
+O Flight carrega sua credencial no payload JSON, como um campo `token` — um token bearer do provedor ou um token de acesso pessoal. Tanto o handshake quanto cada ticket o aceitam, e ambos o validam do mesmo modo, então um cliente que se autenticou no handshake ainda apresenta o token em cada `do_get`. Um campo `role` ao lado *solicita* uma função; o servidor deriva as funções permitidas da identidade e substitui pelo valor autorizado, de modo que uma string de função em um ticket nunca é a identidade. (REQ-1263) Veja [Modelo de segurança](security.md#surfaces-and-credentials).
+
+```python
+ticket = flight.Ticket(json.dumps({
+    "query": "SELECT id, amount FROM sales.orders",
+    "token": "provisa_pat_...",
+    "role": "analyst",
+}).encode())
+```
 
 ### ADBC
 
@@ -193,7 +203,9 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 Use `grpc_server_reflection` para descobrir o esquema programaticamente.
 
-A função é passada via a chave de metadados `x-provisa-role` em cada RPC. Consultas em streaming emitem uma mensagem por linha; mutações são unárias.
+Todo RPC deve carregar uma credencial na chave de metadados `authorization` — um token do provedor ou um token de acesso pessoal. `x-provisa-role` solicita uma função do conjunto permitido da identidade; não é uma credencial e nunca foi. Certificados de cliente são suportados. Veja [Modelo de segurança](security.md#surfaces-and-credentials).
+
+Consultas em streaming emitem uma mensagem por linha; mutações são unárias.
 
 ---
 

@@ -207,3 +207,22 @@ _splice_commands behavior in graph.py and _materialize_relation narrow-projectio
 вид транспорта, модель идентичности (DEFINER или INVOKER), ссылки на входные отношения, id роли и
 выходную мощность (cardinality). Диспетчер выдаёт трассировку — никакой `impl_kind` не может её обойти.
 [tool-verified: `udf_invocation_trace` context in dispatch_function:475-492]
+
+## CLI: provisa metadata export
+
+`provisa metadata export` — это задача уровня оболочки, а не управляемый RPC. Она запускает
+публикацию метаданных по требованию на работающем сервере (REQ-1072/REQ-1074), отправляя POST на
+`/admin/metadata-export/publish` — тот же эндпоинт, который вызывает кнопка **Опубликовать сейчас**
+на вкладке администрирования. [tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
+
+Используйте её для запуска экспорта по расписанию из cron или CI, когда настроенное расписание
+`reconcile_cron` недостаточно детально:
+
+```bash
+provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOKEN"
+```
+
+Код выхода 0 = полная публикация. Код 1 = частичная публикация или сбой соединения.
+
+Полный перечень флагов, варианты аутентификации, именование хостов при мультиарендности и пример
+cron см. в разделе [Экспорт метаданных — Из командной строки](metadata-export.md#from-the-command-line).

@@ -29,10 +29,26 @@ from provisa_client import ProvisaClient
 
 client = ProvisaClient(
     "http://localhost:8001",
-    username="alice",
-    password="secret",
+    token="provisa_pat_...",   # personal access token, or a provider bearer token
+    role="analyst",
 )
 ```
+
+`ProvisaClient` recibe una credencial, no un nombre de usuario y una contraseña: no tiene ningún paso de inicio de sesión propio. Un token de acceso personal es la credencial a la que recurrir cuando un script debe ejecutarse sin supervisión — se emite desde el perfil del propio usuario, lleva una caducidad y es revocable sin tocar la cuenta. (REQ-1263) Un token bearer del proveedor funciona igual. Cualquiera de los dos va en `token`, y el cliente lo presenta tanto en la ruta HTTP como en la de Arrow Flight.
+
+Para canjear una contraseña por un token, haga POST a `/auth/login` y lea `access_token`:
+
+```python
+import httpx
+
+body = httpx.post(
+    "http://localhost:8001/auth/login",
+    json={"username": "alice", "password": "secret"},
+).json()
+client = ProvisaClient("http://localhost:8001", token=body["access_token"])
+```
+
+Los puntos de entrada de DB-API y ADBC hacen este canje por usted — véase más abajo.
 
 ### Consultas de GraphQL
 
@@ -84,7 +100,7 @@ tables_df = client.list_tables()
 | Parámetro | Valor predeterminado | Descripción |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | URL base del servidor Provisa |
-| `token` | `None` | Token Bearer; omítalo para autenticación con contraseña (REQ-606) |
+| `token` | `None` | Credencial bearer — un token del proveedor o un token de acceso personal; omítalo para autenticación con contraseña (REQ-606, REQ-1263) |
 | `role` | `"admin"` | Rol enviado con cada solicitud (REQ-273) |
 | `flight_port` | `8815` | Puerto gRPC de Arrow Flight (REQ-143) |
 
@@ -106,9 +122,11 @@ conn = connect(
     "http://localhost:8001",
     username="alice",
     password="secret",
-    role="admin",       # optional, default "admin"
+    role="analyst",     # optional; omit to run as the role the login returns
 )
 ```
+
+`connect` envía el nombre de usuario y la contraseña por POST a `/auth/login` y conserva el `access_token` que recibe, de modo que la conexión lleva una credencial real en vez de un nombre. `role` *solicita* un rol y el servidor lo concede solo si la identidad lo tiene asignado (REQ-273); si se omite, la conexión se ejecuta con el rol que resolvió el inicio de sesión.
 
 ### Ejecución de consultas
 
@@ -188,7 +206,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | Parámetro | Descripción | Valor predeterminado |
 | ----------- | ------------- | --------- |
-| `role` | Rol de Provisa | `admin` |
+| `role` | Rol a solicitar; validado en el servidor (REQ-273) | el rol que resuelve el inicio de sesión |
 
 ```python
 engine = create_engine(
@@ -221,6 +239,8 @@ conn = adbc_connect(
     port=8815,        # Arrow Flight port (REQ-711)
 )
 ```
+
+`adbc_connect` inicia sesión por HTTP primero y coloca el token resultante en cada ticket de Flight, de modo que el servidor Flight autentica la conexión igual que lo hace la superficie REST. (REQ-1263) El argumento `role` es una solicitud, validada en el servidor contra las asignaciones de la identidad: nunca se convierte en la identidad. (REQ-273)
 
 ### Obtención como tabla Arrow
 

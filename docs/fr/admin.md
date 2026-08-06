@@ -12,6 +12,18 @@ Authorization: Bearer <token>
 
 L'accès admin est régi par la capacité `admin` attribuée à un rôle (REQ-060, REQ-042).
 
+### Jetons d'accès personnels
+
+Un jeton d'accès personnel est accepté partout où un jeton bearer l'est, y compris sur ce point d'entrée. L'émission et la révocation se font en libre-service&nbsp;: c'est la credential propre du porteur, elle se trouve donc sur le profil de l'utilisateur dans l'interface d'administration plutôt que sous une page d'administrateur, aux côtés du départ d'une organisation et de la suppression du compte. Un administrateur ne crée pas de jetons pour le compte d'autrui. (REQ-1263)
+
+| Route | Effet |
+| ------- | -------- |
+| `POST /auth/tokens` | Crée un jeton pour l'appelant. Corps&nbsp;: `name`, et en option `role_id`, `scopes`, `expires_in_days` (1–366). La réponse est le seul endroit où le secret apparaît jamais |
+| `GET /auth/tokens` | Les jetons actifs de l'appelant dans cette organisation&nbsp;: préfixe d'affichage, nom, horodatages du cycle de vie et le hachage qui identifie un jeton pour la révocation. Jamais une credential utilisable |
+| `DELETE /auth/tokens/{token_hash}` | Révoque l'un des jetons de l'appelant. 404 s'il ne lui appartient pas ou s'il est déjà révoqué |
+
+Omettre `role_id` laisse le jeton se résoudre au rôle que détient son propriétaire&nbsp;; en nommer un restreint le jeton en deçà de son propriétaire. La révocation survient aussi implicitement&nbsp;: retirer l'appartenance d'un utilisateur à une organisation révoque ses jetons pour cette organisation. Pour la credential elle-même, voir [Modèle de sécurité](security.md#personal-access-tokens).
+
 ## Capacités
 
 ### Gestion de la configuration
@@ -198,3 +210,74 @@ Une fois enregistrées, les tables apparaissent dans le schéma GraphQL et sont 
 ## GraphiQL
 
 L'Admin API inclut GraphiQL sur `GET /admin/graphql` dans le navigateur (REQ-622). Utilisez-le pour explorer l'ensemble du schéma admin de façon interactive.
+
+## Vues de gestion du domaine ops (REQ-1386)
+
+Huit vues SQL sont installées dans le domaine intégré `ops` à chaque installation. [tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] Elles exposent le journal d'audit des requêtes sous forme de tables gouvernées — interrogeables en SQL (pgwire), GraphQL et Cypher, sous les mêmes règles d'accès au domaine, de RLS et de masquage que n'importe quelle table métier.
+
+`org_admin` est désigné intendant du domaine ops au moment de l'amorçage, si bien que le domaine n'apparaît jamais comme une lacune de gouvernance dans `stale_metadata`. [tool-verified: `startup_seed.py:326-331`]
+
+| Vue | Ce qu'elle répond |
+| --- | --- |
+| `usage_ranking` | Nombre de requêtes et utilisateurs distincts par table enregistrée&nbsp;; les tables sans aucun accès ressortent comme candidates à l'abandon |
+| `deprecated_usage` | Chaque accès à une table ou une colonne portant l'étiquette `deprecated` — les consommateurs actifs qui empêchent un retrait sans risque |
+| `pii_access` | Chaque accès à une table ou une colonne portant l'étiquette `pii`&nbsp;: qui a interrogé, sous quel rôle, via quelle surface |
+| `policy_denials` | Toutes les tentatives d'accès rejetées par la gouvernance (HTTP 401/403) |
+| `surface_mix` | Nombre quotidien de requêtes et utilisateurs distincts par surface de protocole (SQL, GraphQL, Cypher, gRPC, etc.) |
+| `query_health` | Nombre quotidien d'erreurs et latence moyenne/maximale par surface |
+| `stale_metadata` | Tables et colonnes sans description&nbsp;; domaines sans intendant |
+| `join_hotspots` | Paires de tables les plus souvent interrogées ensemble — candidates à la matérialisation ou à la mise en cache |
+
+Deux limites s'appliquent aujourd'hui. La granularité est celle de la table — le journal d'audit enregistre `table_ids`, pas les colonnes précises consultées. Le texte des requêtes est chiffré (REQ-689) et exclu de toutes ces vues&nbsp;; il n'est accessible que par le chemin de déchiffrement administrateur autorisé. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+
+Un rôle doit avoir accès au domaine `ops` pour que ces vues soient visibles. Accordez-le comme vous accordez l'accès à tout autre domaine.
+
+```sql
+-- Which tables have never been queried?
+SELECT table_name, domain_id
+FROM ops.usage_ranking
+WHERE query_count = 0;
+
+-- Who accessed PII-tagged data in the last 7 days?
+SELECT user_id, role_id, source, pii_column, logged_at
+FROM ops.pii_access
+WHERE logged_at >= CURRENT_DATE - INTERVAL '7 days'
+ORDER BY logged_at DESC;
+
+-- Where does traffic originate by protocol?
+SELECT source, day, query_count, distinct_users
+FROM ops.surface_mix
+ORDER BY day DESC, query_count DESC;
+```
+
+Les mêmes requêtes s'exécutent en GraphQL ou en Cypher sur n'importe quel transport gouverné — pgwire, Arrow Flight ou Bolt. [inferred from governed-surface design]
+
+## Visionneuse de rapports (REQ-1390)
+
+La visionneuse de rapports se trouve à `/admin/reports`. Les rôles dépourvus de la capacité `observability` ne peuvent pas y accéder.
+
+Le panneau de gauche liste chaque table enregistrée du domaine `ops`, triée par alias. [tool-verified: `ReportsTab.tsx:46-52` — filters `tables` to `domainId === "ops"`] Les huit vues de gestion installées y apparaissent automatiquement. Cliquez sur un rapport pour le charger dans la visionneuse de données gouvernée à droite.
+
+**Ajouter un rapport personnalisé.** Le bouton «&nbsp;Ajouter un rapport&nbsp;» ouvre une boîte de dialogue. Fournissez un nom, une description facultative et une instruction SELECT. À l'enregistrement, la vue est déclarée comme table dérivée gouvernée dans le domaine `ops` — cataloguée, soumise au contrôle d'accès et interrogeable via toutes les surfaces, aux côtés des vues installées. [tool-verified: `ReportsTab.tsx:70-96` — `registerTable` called with `sourceId: DERIVED_SOURCE_ID, domainId: "ops"`]
+
+**Suppression.** L'icône de corbeille n'apparaît que pour les rapports personnalisés. Les vues de gestion installées ne peuvent pas être supprimées depuis cette interface. [tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
+
+## Aperçu de table (REQ-1392)
+
+Dépliez n'importe quelle ligne de table sur la page Tables. Le bouton **Aperçu** ouvre une fenêtre modale occupant 90&nbsp;% de la largeur, avec les données gouvernées en direct de la table. [tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
+
+Les tables adossées à des API comportant des paramètres de chemin obligatoires bloquent l'aperçu tant que ces valeurs ne sont pas fournies. Un formulaire en ligne recueille chaque paramètre obligatoire avant la première requête&nbsp;; les paramètres de requête facultatifs figurent dans le même formulaire. [tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
+
+## Visionneuse de données gouvernée (REQ-1391)
+
+Le même composant de visionneuse alimente la fenêtre d'aperçu et la visionneuse de rapports. Son comportement est identique dans les deux contextes.
+
+**Pagination côté serveur.** Chaque page est son propre `SELECT *` gouverné avec `LIMIT 101 OFFSET n`. 100 lignes apparaissent par page&nbsp;; la 101e indique s'il en existe d'autres. Le jeu de données complet n'est jamais chargé dans le navigateur. [tool-verified: `nativeParams.ts:72` — `LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`; `types.ts:74` — `PAGE_SIZE = 100`]
+
+**Filtres et tris poussés vers la source.** Chaque en-tête de colonne comporte un champ de filtre. Les termes de filtre deviennent des prédicats `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`&nbsp;; les clics de tri produisent des clauses `ORDER BY`. Les deux partent vers la base de données — un filtre sur une table d'un milliard de lignes parcourt la source, pas les 100 lignes affichées devant vous. [tool-verified: `nativeParams.ts:53-70`]
+
+**Regroupement multi-niveaux.** L'icône Calques d'un en-tête de colonne ajoute cette colonne au regroupement. Les colonnes de groupe ouvrent l'`ORDER BY`, de sorte que les membres d'un groupe se retrouvent sur la même page que leur en-tête d'une page à l'autre. Les colonnes de clé primaire sont ajoutées en fin de liste comme départage stable. [tool-verified: `nativeParams.ts:61-70` — group columns first, then explicit sorts, then PKs] Les lignes d'en-tête de groupe sont repliables&nbsp;; les replier masque les membres sans émettre de nouvelle requête. [tool-verified: `useResultsGrid.ts:150-171` — `collapsedGroups` set gates the `build()` recursion]
+
+**Choix persistants.** Les réglages de filtre, de tri et de regroupement sont conservés dans `localStorage` sous `provisa.grid.table:<domain>.<table>` et restaurés à la visite suivante. [tool-verified: `useResultsGrid.ts:95-98`, `GovernedTableViewer.tsx:66`]
+
+**Export.** Téléchargez la page courante en CSV, ou copiez-la dans le presse-papiers sous forme de texte séparé par des tabulations. L'export ne couvre que la page visible. [tool-verified: `useResultsGrid.ts:247-274` — both handlers iterate `displayRows`, which in server-paged mode is the current page]

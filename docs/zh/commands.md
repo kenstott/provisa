@@ -155,3 +155,20 @@ WHERE  e.score > 0.8;
 ## 调用追踪（REQ-886）
 
 无论结果如何，每次调用都会产生一条追踪记录。该追踪记录包含命令名称、传输类型、身份模型（DEFINER 或 INVOKER）、输入关系引用、角色 ID 和输出基数。调度器负责发出该追踪记录——没有任何 `impl_kind` 能够绕过它。[tool-verified: `udf_invocation_trace` context in dispatch_function:475-492]
+
+## CLI：provisa metadata export
+
+`provisa metadata export` 是 shell 层的作业，而非受治理的 RPC。它通过向
+`/admin/metadata-export/publish` 发送 POST 请求，触发运行中服务器的按需元数据发布（REQ-1072/REQ-1074）——
+与管理页签中**立即发布**按钮调用的是同一个端点。[tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
+
+当配置的 `reconcile_cron` 调度粒度不够时，可用它从 cron 或 CI 驱动定时导出：
+
+```bash
+provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOKEN"
+```
+
+退出码 0 = 完整发布。退出码 1 = 部分发布或连接失败。
+
+完整的参数说明、认证选项、多租户主机命名以及 cron 示例，参见
+[元数据导出——从命令行](metadata-export.md#from-the-command-line)。

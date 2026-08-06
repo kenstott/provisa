@@ -167,12 +167,9 @@ Führt rohes SQL über die Governance-Pipeline von Stufe 2 aus. (REQ-267) [tool-
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-Das Flag `discovery_mode` erweitert die Sichtbarkeitsprüfung für Tabellen auf alle Tabellen aus allen Kontexten. Nur für interne Werkzeuge. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **Erforderliche Capabilities:** `QUERY_DEVELOPMENT`.
 

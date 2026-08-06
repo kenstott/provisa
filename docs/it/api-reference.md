@@ -167,12 +167,9 @@ Esegue SQL grezzo attraverso la pipeline di governance Stage 2. (REQ-267) [tool-
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-Il flag `discovery_mode` amplia il controllo di visibilità delle tabelle per includere tutte le tabelle da tutti i contesti. Solo per tooling interno. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **Capability richieste:** `QUERY_DEVELOPMENT`.
 

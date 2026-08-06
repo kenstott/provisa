@@ -613,7 +613,7 @@ Admin UI（`provisa-ui/src/pages/SchemaExplorer.tsx`）内嵌了 GraphQL Voyager
 查询本身没有能力门——治理完全通过数据层的控制来表达。(REQ-001) 未经处理的原始 SQL 请求，会在治理执行之前，先拒绝（HTTP 403）任何超出角色对象范围的表。(REQ-267)
 
 1. **对象可见性**：按角色区分的模式会隐藏未授权的表/列；原始 SQL 中超出范围的表会被拒绝 (REQ-039, REQ-267)
-2. **关系强制**：遍历（traversal）必须存在于已批准的关系目录中，除非该角色具有 `ignore_relationships` (REQ-001)
+2. **关系强制**：遍历（traversal）必须存在于已批准的关系目录中，除非该角色具有 `ignore_relationships`——在预置的系统角色中只有 `modeler` 具有它 (REQ-001, REQ-1297)。在高安全模式下该能力被忽略，任何遍历都无法逃出目录 (REQ-693)
 3. **行级安全**：按表和角色注入 WHERE 子句 (REQ-040, REQ-041, REQ-263)
 4. **列脱敏**：按列和角色进行数据转换 (REQ-263)
 5. **行数上限（LIMIT）**：对没有 `full_results` 的角色设有行数上限；随机统计抽样是另一项独立的用户查询功能 (REQ-263, REQ-478)

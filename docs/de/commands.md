@@ -207,3 +207,22 @@ Jeder Aufruf erzeugt einen Trace, unabhängig vom Ergebnis. Der Trace enthält d
 die Transportart, das Identitätsmodell (DEFINER oder INVOKER), Eingabe-Relationsreferenzen, die Rollen-ID und
 die Ausgabe-Kardinalität. Der Dispatcher erzeugt den Trace — kein `impl_kind` kann ihn umgehen.
 [tool-verified: `udf_invocation_trace`-Kontext in dispatch_function:475-492]
+
+## CLI: provisa metadata export
+
+`provisa metadata export` ist ein Job der Shell-Ebene, kein governter RPC. Der Befehl stößt die
+bedarfsgesteuerte Metadatenveröffentlichung des laufenden Servers an (REQ-1072/REQ-1074), indem er
+an `/admin/metadata-export/publish` postet — denselben Endpunkt, den die Schaltfläche **Jetzt
+veröffentlichen** im Admin-Tab aufruft. [tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
+
+Nutze ihn für zeitgesteuerte Exporte aus cron oder CI, wenn der konfigurierte Zeitplan
+`reconcile_cron` nicht feingranular genug ist:
+
+```bash
+provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOKEN"
+```
+
+Exit 0 = vollständige Veröffentlichung. Exit 1 = teilweise Veröffentlichung oder Verbindungsfehler.
+
+Die vollständige Flag-Referenz, Auth-Optionen, Hostbenennung bei Mandantenfähigkeit und ein
+cron-Beispiel finden sich unter [Metadatenexport — Von der Kommandozeile](metadata-export.md#from-the-command-line).
