@@ -42795,3 +42795,16 @@
     - REQ-693
     - REQ-1393
     - REQ-1228
+- id: REQ-1395
+  status: proposed
+  group: "13. Multi-Tenancy & Organizations"
+  category: "Org AI Model Configuration"
+  priority: SHOULD
+  type: structural
+  description: >-
+    In a multi-tenant SaaS deployment, org admins can select the AI model their org uses via an API-driven
+    configuration (provider + model + API key per org), rather than using a shared platform-wide model.
+  use_case: >-
+    Organizations with distinct governance or compliance needs can use different LLM providers or models,
+    enabling flexible multi-tenant deployments where each org controls its own AI surface.
+  target: "2026-Q4"
