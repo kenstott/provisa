@@ -285,11 +285,14 @@ END $$;
 CREATE TABLE IF NOT EXISTS tag_assignments (
     id              SERIAL PRIMARY KEY,
     tag_id          TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
     relationship_id TEXT REFERENCES relationships(id) ON DELETE CASCADE,
+    -- Commands (tracked functions/webhooks) are named, not serial-keyed; no FK — their
+    -- registries split across two tables and deletion cleanup is the mutation's job.
+    command_name    TEXT,
     object_key      TEXT NOT NULL,
     -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
     reason          TEXT,
@@ -301,6 +304,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
 
 DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS command_name TEXT;
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS expires_on TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;

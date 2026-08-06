@@ -109,6 +109,7 @@ query TagAssignmentsQuery {
     tableId
     columnName
     relationshipId
+    commandName
     tableRef
     reason
     expiresOn

@@ -401,6 +401,7 @@ function toAssignmentInput(input: TagAssignment) {
     tableId: input.tableId ?? null,
     columnName: input.columnName ?? null,
     relationshipId: input.relationshipId ?? null,
+    commandName: input.commandName ?? null,
     reason: input.reason ?? null,
     expiresOn: input.expiresOn ?? null,
   };

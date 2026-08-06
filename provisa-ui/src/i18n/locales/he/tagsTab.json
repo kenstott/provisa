@@ -36,6 +36,7 @@
     "policy_optional": "אופציונלי",
     "policy_required": "חובה",
     "reasonPolicyBadge": "סיבה: {{policy}}",
-    "expiresPolicyBadge": "תפוגה: {{policy}}"
+    "expiresPolicyBadge": "תפוגה: {{policy}}",
+    "scope_command": "פקודה"
   }
 }

@@ -186,6 +186,7 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         "table": model.table_id,
         "column": model.table_id is not None and model.column_name,
         "relationship": model.relationship_id,
+        "command": model.command_name,
     }
     if model.object_type not in TAG_OBJECT_TYPES:
         return MutationResult(
@@ -236,6 +237,7 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             table_id=r["table_id"],
             column_name=r["column_name"],
             relationship_id=r["relationship_id"],
+            command_name=r["command_name"],
             table_ref=r["table_ref"],
             reason=r["reason"],
             expires_on=r["expires_on"],
@@ -743,6 +745,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             table_id=input.table_id,
             column_name=input.column_name,
             relationship_id=input.relationship_id,
+            command_name=input.command_name,
             reason=(input.reason or "").strip() or None,
             expires_on=(input.expires_on or "").strip() or None,
         )
@@ -823,6 +826,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             table_id=input.table_id,
             column_name=input.column_name,
             relationship_id=input.relationship_id,
+            command_name=input.command_name,
         )
         problem = _assignment_target_problem(model)
         if problem is not None:

@@ -36,6 +36,7 @@
     "policy_optional": "Optioneel",
     "policy_required": "Verplicht",
     "reasonPolicyBadge": "Reden: {{policy}}",
-    "expiresPolicyBadge": "Verval: {{policy}}"
+    "expiresPolicyBadge": "Verval: {{policy}}",
+    "scope_command": "Opdracht"
   }
 }

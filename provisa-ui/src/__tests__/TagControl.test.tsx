@@ -37,12 +37,14 @@ describe("TagControl", () => {
       { id: "deprecated", description: "Marked for removal", appliesTo: ["source", "table", "column", "relationship"], isSystem: true, reasonPolicy: "required", expiresPolicy: "optional" },
       { id: "pii", description: "Personally identifiable", appliesTo: ["column"], isSystem: true, reasonPolicy: "optional", expiresPolicy: "hidden" },
       { id: "finance", description: "Finance domain", appliesTo: ["table"], isSystem: false, reasonPolicy: "hidden", expiresPolicy: "required" },
+      { id: "beta", description: "Beta command", appliesTo: ["command"], isSystem: false, reasonPolicy: "optional", expiresPolicy: "optional" },
     ];
     mockAssignments = [
       { tagId: "deprecated", objectType: "table", tableId: 7, reason: "Replaced by orders_v2", expiresOn: "2020-01-01" },
       { tagId: "finance", objectType: "table", tableId: 8 },
       { tagId: "pii", objectType: "column", tableId: 7, columnName: "email" },
       { tagId: "deprecated", objectType: "source", sourceId: "pg", reason: "Legacy source" },
+      { tagId: "beta", objectType: "command", commandName: "send_email" },
     ];
   });
 
@@ -202,6 +204,36 @@ describe("TagControl", () => {
       reason: "Retiring Q3",
       expiresOn: null,
     });
+  });
+
+  it("command objectType: pills match by commandName, picker filters to command-scoped tags, assign carries commandName", async () => {
+    render(<TagControl objectType="command" commandName="refund_order" />);
+    // "send_email" holds the beta assignment; this command has none.
+    expect(screen.queryByTestId("tag-pill-beta")).toBeNull();
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    const option = await screen.findByTestId("tag-option-beta");
+    expect(screen.queryByTestId("tag-option-deprecated")).toBeNull();
+    expect(screen.queryByTestId("tag-option-finance")).toBeNull();
+    expect(screen.queryByTestId("tag-option-pii")).toBeNull();
+    expect(option).not.toBeChecked();
+    fireEvent.click(option);
+    fireEvent.click(screen.getByTestId("tag-apply-beta"));
+    expect(assignSpy).toHaveBeenCalledWith({
+      tagId: "beta",
+      objectType: "command",
+      sourceId: undefined,
+      tableId: undefined,
+      columnName: undefined,
+      relationshipId: undefined,
+      commandName: "refund_order",
+      reason: null,
+      expiresOn: null,
+    });
+  });
+
+  it("command objectType: renders the pill for its own assignment", () => {
+    render(<TagControl objectType="command" commandName="send_email" />);
+    expect(screen.getByTestId("tag-pill-beta")).toBeInTheDocument();
   });
 
   it("readOnly renders pills without a picker icon", () => {

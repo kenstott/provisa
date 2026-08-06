@@ -1033,6 +1033,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                     table_id=r["table_id"],
                     column_name=r["column_name"],
                     relationship_id=r["relationship_id"],
+            command_name=r["command_name"],
                     table_ref=r["table_ref"],
                     reason=r["reason"],
                     expires_on=r["expires_on"],

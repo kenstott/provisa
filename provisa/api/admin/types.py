@@ -105,6 +105,7 @@ class TagAssignmentType:  # REQ-1377
     table_id: int | None = None
     column_name: str | None = None
     relationship_id: str | None = None
+    command_name: str | None = None  # tracked function/webhook name
     table_ref: str | None = None  # qualified "source.schema.table" for table/column targets
     reason: str | None = None  # required for 'deprecated'
     expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
@@ -394,6 +395,7 @@ class TagAssignmentInput:  # REQ-1377
     table_id: int | None = None
     column_name: str | None = None
     relationship_id: str | None = None
+    command_name: str | None = None
     reason: str | None = None
     expires_on: str | None = None  # ISO date
 

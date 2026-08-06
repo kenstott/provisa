@@ -49,6 +49,7 @@ import type { TableMetadata } from "../api/admin";
 import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
 import { EMPTY_FORM, deriveReturnSchema, columnsFromReturnSchema } from "./commands/types";
 import { CommandFormFields } from "./commands/CommandFormFields";
@@ -413,7 +414,12 @@ export function CommandsPage() {
                       background: isExpanded ? "var(--surface)" : undefined,
                     }}
                   >
-                    <Table.Td>{fn.name}</Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" wrap="wrap">
+                        {fn.name}
+                        <TagControl objectType="command" commandName={fn.name} />
+                      </Group>
+                    </Table.Td>
                     <Table.Td>{fn.sourceId}</Table.Td>
                     <Table.Td>{fn.domainId || t("commandsPage.dash")}</Table.Td>
                     <Table.Td>
@@ -641,7 +647,12 @@ export function CommandsPage() {
                       background: isExpanded ? "var(--surface)" : undefined,
                     }}
                   >
-                    <Table.Td>{wh.name}</Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" wrap="wrap">
+                        {wh.name}
+                        <TagControl objectType="command" commandName={wh.name} />
+                      </Group>
+                    </Table.Td>
                     <Table.Td>
                       <Badge
                         size="sm"

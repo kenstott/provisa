@@ -36,6 +36,7 @@
     "policy_optional": "वैकल्पिक",
     "policy_required": "आवश्यक",
     "reasonPolicyBadge": "कारण: {{policy}}",
-    "expiresPolicyBadge": "समाप्ति: {{policy}}"
+    "expiresPolicyBadge": "समाप्ति: {{policy}}",
+    "scope_command": "कमांड"
   }
 }

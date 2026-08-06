@@ -159,6 +159,7 @@ input TagAssignmentInput {
   tableId: Int = null
   columnName: String = null
   relationshipId: String = null
+  commandName: String = null
   reason: String = null
   expiresOn: String = null
 }
@@ -179,6 +180,7 @@ type TagAssignmentType {
   tableId: Int
   columnName: String
   relationshipId: String
+  commandName: String
   tableRef: String
   reason: String
   expiresOn: String

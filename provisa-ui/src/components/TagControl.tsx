@@ -32,8 +32,8 @@ import {
   useUnassignTag,
 } from "../hooks/useAdminQueries";
 
-// REQ-1377: one reusable tag-pill + tag-picker control shared by the four
-// taggable object surfaces (source, table, column, relationship).
+// REQ-1377: one reusable tag-pill + tag-picker control shared by the five
+// taggable object surfaces (source, table, column, relationship, command).
 // REQ-1375: each assignment may carry a reason and a planned-removal date;
 // the tag's reasonPolicy/expiresPolicy drive whether each field is shown
 // (not "hidden") and demanded ("required").
@@ -43,6 +43,7 @@ interface TagControlProps {
   tableId?: number;
   columnName?: string;
   relationshipId?: string;
+  commandName?: string;
   readOnly?: boolean;
 }
 
@@ -64,6 +65,7 @@ export function TagControl({
   tableId,
   columnName,
   relationshipId,
+  commandName,
   readOnly,
 }: TagControlProps) {
   const { t } = useTranslation();
@@ -88,6 +90,8 @@ export function TagControl({
         return a.tableId === tableId && a.columnName === columnName;
       case "relationship":
         return a.relationshipId === relationshipId;
+      case "command":
+        return a.commandName === commandName;
     }
   };
 
@@ -98,7 +102,9 @@ export function TagControl({
         ? tableId
         : objectType === "column"
           ? `${tableId}-${columnName}`
-          : relationshipId;
+          : objectType === "relationship"
+            ? relationshipId
+            : commandName;
 
   const objectAssignments = tagAssignments.filter(matches);
   const assignmentByTagId = new Map(objectAssignments.map((a) => [a.tagId, a]));
@@ -112,6 +118,7 @@ export function TagControl({
     tableId: objectType === "table" || objectType === "column" ? tableId : undefined,
     columnName: objectType === "column" ? columnName : undefined,
     relationshipId: objectType === "relationship" ? relationshipId : undefined,
+    commandName: objectType === "command" ? commandName : undefined,
   });
 
   const closeForm = () => {

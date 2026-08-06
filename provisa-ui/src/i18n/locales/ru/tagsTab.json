@@ -36,6 +36,7 @@
     "policy_optional": "Необязательно",
     "policy_required": "Обязательно",
     "reasonPolicyBadge": "Причина: {{policy}}",
-    "expiresPolicyBadge": "Истечение: {{policy}}"
+    "expiresPolicyBadge": "Истечение: {{policy}}",
+    "scope_command": "Команда"
   }
 }

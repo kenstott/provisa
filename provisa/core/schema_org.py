@@ -328,13 +328,14 @@ tag_assignments = Table(
     Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
     Column("column_name", Text),
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
+    Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
     Column("tenant_id", Uuid),
     UniqueConstraint("tag_id", "object_key"),
     CheckConstraint(
-        "object_type IN ('source', 'table', 'column', 'relationship')",
+        "object_type IN ('source', 'table', 'column', 'relationship', 'command')",
         name="tag_assignments_object_type_check",
     ),
 )

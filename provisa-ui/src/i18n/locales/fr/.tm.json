@@ -2816,6 +2816,7 @@
   "fr/tagsTab.json::tagsTab.saveButton": "Save tag",
   "fr/tagsTab.json::tagsTab.saved": "Tag {{id}} saved",
   "fr/tagsTab.json::tagsTab.scope_column": "Column",
+  "fr/tagsTab.json::tagsTab.scope_command": "Command",
   "fr/tagsTab.json::tagsTab.scope_relationship": "Relationship",
   "fr/tagsTab.json::tagsTab.scope_source": "Source",
   "fr/tagsTab.json::tagsTab.scope_table": "Table",

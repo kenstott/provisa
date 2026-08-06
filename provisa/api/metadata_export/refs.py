@@ -32,7 +32,7 @@ def source_ref(source: Source) -> AssetRef:  # REQ-1070
 
 # REQ-1385: kind keywords are reserved path segments; a domain with one of these names
 # would make its URIs unparseable, so domain creation refuses them.
-RESERVED_KIND_KEYWORDS = ("tables", "sources", "tags", "roles")
+RESERVED_KIND_KEYWORDS = ("tables", "sources", "tags", "roles", "commands")
 
 _URI_SCHEME = "provisa"
 
@@ -55,6 +55,11 @@ def domain_uri(org_id: str, domain_id: str) -> str:  # REQ-1385
 
 def source_uri(org_id: str, source_id: str) -> str:  # REQ-1385
     return f"{_URI_SCHEME}://{_segment(org_id)}/sources/{_segment(source_id)}"
+
+
+def command_uri(org_id: str, command_name: str) -> str:  # REQ-1385
+    """A governed command (tracked function/webhook) by its registered name."""
+    return f"{_URI_SCHEME}://{_segment(org_id)}/commands/{_segment(command_name)}"
 
 
 def table_uri(org_id: str, table: Table) -> str:  # REQ-1385

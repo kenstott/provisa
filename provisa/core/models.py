@@ -294,7 +294,7 @@ class Domain(BaseModel):  # REQ-471, REQ-609
     ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship")
+TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command")
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -340,7 +340,7 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="deprecated",
         description="Scheduled for removal — consumers should migrate off",
-        applies_to=["source", "table", "column", "relationship"],
+        applies_to=["source", "table", "column", "relationship", "command"],
         is_system=True,
         reason_policy="required",  # a deprecation must say why
         expires_policy="optional",  # planned removal date, when known
@@ -357,6 +357,8 @@ class TagAssignment(BaseModel):  # REQ-1377
     table_id: int | None = None
     column_name: str | None = None
     relationship_id: str | None = None
+    # Commands (tracked functions/webhooks) are identified by their registered name.
+    command_name: str | None = None
     # Why this tag is on this object; required for 'deprecated' (system semantic).
     reason: str | None = None
     # ISO date the assignment stops being intended — for 'deprecated', the planned removal
@@ -375,6 +377,8 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"table:{self.table_id}"
         if self.object_type == "column":
             return f"column:{self.table_id}:{self.column_name}"
+        if self.object_type == "command":
+            return f"command:{self.command_name}"
         return f"relationship:{self.relationship_id}"
 
 

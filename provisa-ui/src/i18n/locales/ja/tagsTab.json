@@ -36,6 +36,7 @@
     "policy_optional": "任意",
     "policy_required": "必須",
     "reasonPolicyBadge": "理由: {{policy}}",
-    "expiresPolicyBadge": "期限: {{policy}}"
+    "expiresPolicyBadge": "期限: {{policy}}",
+    "scope_command": "コマンド"
   }
 }

@@ -38,7 +38,7 @@ import { FilterInput } from "./FilterInput";
 
 const PAGE_SIZE = 50;
 
-const SCOPES: TagObjectType[] = ["source", "table", "column", "relationship"];
+const SCOPES: TagObjectType[] = ["source", "table", "column", "relationship", "command"];
 
 const POLICIES: TagFieldPolicy[] = ["hidden", "optional", "required"];
 

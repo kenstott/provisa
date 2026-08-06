@@ -2818,6 +2818,7 @@
   "zh-HK/tagsTab.json::tagsTab.saveButton": "Save tag",
   "zh-HK/tagsTab.json::tagsTab.saved": "Tag {{id}} saved",
   "zh-HK/tagsTab.json::tagsTab.scope_column": "Column",
+  "zh-HK/tagsTab.json::tagsTab.scope_command": "Command",
   "zh-HK/tagsTab.json::tagsTab.scope_relationship": "Relationship",
   "zh-HK/tagsTab.json::tagsTab.scope_source": "Source",
   "zh-HK/tagsTab.json::tagsTab.scope_table": "Table",

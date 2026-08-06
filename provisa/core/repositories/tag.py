@@ -100,6 +100,7 @@ async def assign(conn: "Connection", assignment: TagAssignment) -> None:
             "table_id": assignment.table_id,
             "column_name": assignment.column_name,
             "relationship_id": assignment.relationship_id,
+            "command_name": assignment.command_name,
             "object_key": assignment.object_key(),
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,

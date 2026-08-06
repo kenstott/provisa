@@ -42076,7 +42076,8 @@
     domain (no kind keyword — still in the domain tree, unambiguous at any depth, no trailing-slash convention
     needed); provisa://<org>/<domain-path>/tables/<table> is a table (the tables/ keyword marks the kind
     transition); provisa://<org>/sources/<source-id> is a source, provisa://<org>/tags/<tag-id> a tag,
-    provisa://<org>/roles/<role-id> a role — reserved plural kind keywords extend to future registries.
+    provisa://<org>/roles/<role-id> a role, provisa://<org>/commands/<name> a command (a tracked
+    function/webhook, by its registered name) — reserved plural kind keywords extend to future registries.
     Fragments carry attribute kinds: #field:<column> for a column; #rel:<alias> for a relationship (a
     navigational field anchored at its source table; registry id when the edge has no alias). Instance
     (row) addressing: ?<key>=<value>[&...] query-string predicate — composite keys compose; a primary-key

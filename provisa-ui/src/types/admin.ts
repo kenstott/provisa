@@ -55,7 +55,7 @@ export interface Domain {
 }
 
 // REQ-1373: one org-level tag registry; appliesTo scopes which object types a tag may attach to.
-export type TagObjectType = "source" | "table" | "column" | "relationship";
+export type TagObjectType = "source" | "table" | "column" | "relationship" | "command";
 
 export type TagFieldPolicy = "hidden" | "optional" | "required";
 
@@ -77,6 +77,8 @@ export interface TagAssignment {
   tableId?: number | null;
   columnName?: string | null;
   relationshipId?: string | null;
+  // Tracked function/webhook name (commands are named, not serial-keyed).
+  commandName?: string | null;
   tableRef?: string | null;
   // Why this tag is on this object; required for 'deprecated'.
   reason?: string | null;

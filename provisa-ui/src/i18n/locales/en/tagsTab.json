@@ -8,6 +8,7 @@
     "scope_table": "Table",
     "scope_column": "Column",
     "scope_relationship": "Relationship",
+    "scope_command": "Command",
     "idLabel": "Tag ID",
     "idDesc": "Unique identifier for the tag",
     "idPlaceholder": "e.g. pii",

@@ -36,6 +36,7 @@
     "policy_optional": "Optional",
     "policy_required": "Erforderlich",
     "reasonPolicyBadge": "Begründung: {{policy}}",
-    "expiresPolicyBadge": "Ablauf: {{policy}}"
+    "expiresPolicyBadge": "Ablauf: {{policy}}",
+    "scope_command": "Befehl"
   }
 }

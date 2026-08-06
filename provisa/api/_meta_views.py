@@ -62,7 +62,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
         SELECT id, tag_id, object_type, source_id, table_id, column_name,
-               relationship_id, object_key, reason, expires_on, tenant_id
+               relationship_id, command_name, object_key, reason, expires_on, tenant_id
         FROM tag_assignments
     """,
     # REQ-1375: the management report — every assignment with a planned end date, with its
@@ -71,7 +71,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "tag_expiry": """
         CREATE OR REPLACE VIEW tag_expiry AS
         SELECT id, tag_id, object_type, source_id, table_id, column_name,
-               relationship_id, object_key, reason, expires_on,
+               relationship_id, command_name, object_key, reason, expires_on,
                CASE WHEN expires_on < CAST(CURRENT_DATE AS TEXT)
                     THEN 'expired' ELSE 'expiring' END AS status,
                tenant_id

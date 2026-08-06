@@ -48,6 +48,14 @@ const USER_TAG: Tag = {
   reasonPolicy: "required",
   expiresPolicy: "hidden",
 };
+const COMMAND_TAG: Tag = {
+  id: "audit",
+  description: "Audited command",
+  appliesTo: ["command"],
+  isSystem: false,
+  reasonPolicy: "optional",
+  expiresPolicy: "optional",
+};
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
 // so visible-only role queries miss the options. Scope by the input's aria-controls
@@ -68,7 +76,7 @@ describe("TagsTab", () => {
   beforeEach(() => {
     upsertSpy.mockClear();
     deleteSpy.mockClear();
-    mockTags = [USER_TAG, SYSTEM_TAG];
+    mockTags = [USER_TAG, SYSTEM_TAG, COMMAND_TAG];
     mockAssignments = [
       { tagId: "pii", objectType: "column", tableId: 1, columnName: "ssn" },
       { tagId: "pii", objectType: "column", tableId: 1, columnName: "email" },
@@ -97,6 +105,11 @@ describe("TagsTab", () => {
     fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_relationship")));
     expect(screen.queryAllByTestId(/^tags-row-/)).toHaveLength(0);
     expect(screen.getByText(t("tagsTab.empty"))).toBeTruthy();
+
+    // "command" segment exists; only the command-scoped tag applies.
+    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_command")));
+    const cmdRows = screen.getAllByTestId(/^tags-row-/);
+    expect(cmdRows.map((r) => r.getAttribute("data-testid"))).toEqual(["tags-row-audit"]);
   });
 
   it("shows a lock instead of edit/delete actions for a system tag", () => {
