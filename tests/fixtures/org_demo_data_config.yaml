@@ -59,7 +59,6 @@ roles:
       - view_governance
       - full_results
       - usage
-      - ad_hoc_query
       - write
     domain_access: ["*"]
   - id: analyst

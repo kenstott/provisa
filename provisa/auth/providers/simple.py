@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import base64
 import datetime
 
 import bcrypt
@@ -36,14 +37,19 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(request: LoginRequest):  # REQ-124
+async def login(request: LoginRequest):  # REQ-124, REQ-1393
     """Authenticate with username/password and receive a JWT."""
     if _provider_instance is None:
         raise ApiError(
             503, "auth.simple_provider_not_configured", "Simple auth provider not configured"
         )
+    from provisa.auth.throttle import LockedOut, login_attempt
+
     try:
-        token = _provider_instance.login(request.username, request.password)
+        with login_attempt(request.username, request.password):
+            token = _provider_instance.login(request.username, request.password)
+    except LockedOut as locked:
+        raise ApiError(429, "auth.too_many_attempts", str(locked))
     except ValueError as e:
         from fastapi import HTTPException
 
@@ -84,4 +90,33 @@ class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
             display_name=decoded["sub"],
             roles=decoded.get("roles", []),
             raw_claims=decoded,
+        )
+
+    @property
+    def token_validators(self):
+        """Credential presentation → the validator that accepts it (REQ-124).
+
+        This provider already verifies passwords to mint its JWT, so a surface that carries a
+        username and password directly — Bolt's ``basic`` scheme, pgwire's startup — can be
+        authenticated here without the caller first exchanging them for a token over HTTP.
+        """
+        return {"bearer": self.validate_credential, "basic": self.validate_basic}
+
+    async def validate_basic(self, token: str) -> AuthIdentity:  # REQ-124
+        """Validate a ``Basic`` credential — b64(username:password)."""
+        try:
+            username, password = base64.b64decode(token).decode("utf-8").split(":", 1)
+        except Exception:
+            raise ValueError("Invalid credentials")
+        user = self._users.get(username)
+        if user is None or not bcrypt.checkpw(
+            password.encode("utf-8"), user["password_hash"].encode("utf-8")
+        ):
+            raise ValueError("Invalid credentials")
+        return AuthIdentity(
+            user_id=username,
+            email=None,
+            display_name=username,
+            roles=user.get("roles", []),
+            raw_claims={"sub": username, "roles": user.get("roles", [])},
         )

@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, insert, select
 
 from provisa.api.errors import ApiError
+from provisa.auth.scram_store import write_verifier
 from provisa.core.schema_admin import local_users
 
 from provisa.core.demo import is_demo as _is_demo
@@ -85,10 +86,11 @@ async def _auto_configure_idp(provider: str, pool) -> None:
             count = count_result.scalar()
             if count == 0:
                 pw_hash = bcrypt.hashpw(b"admin", bcrypt.gensalt()).decode("utf-8")
+                admin_id = str(uuid.uuid4())
                 await conn.upsert(
                     local_users,
                     {
-                        "id": str(uuid.uuid4()),
+                        "id": admin_id,
                         "username": "admin",
                         "password_hash": pw_hash,
                         "display_name": "Admin",
@@ -97,6 +99,10 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                     index_elements=["username"],
                     update_columns=[],
                 )
+                # REQ-1394: the bootstrap password exists in plaintext only here, so the SCRAM
+                # verifier is derived alongside the bcrypt hash. Without it the seeded admin could
+                # not negotiate SASL over pgwire until the password was changed.
+                await write_verifier(pool, admin_id, "admin", "admin")
 
     cfg["auth"] = auth_section
     # multitenancy is a top-level config field (models.py), not part of the auth section.
@@ -226,6 +232,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         )
         admin_db = state.admin_db
         assert admin_db is not None
+        admin_id = str(uuid.uuid4())
         async with admin_db.acquire() as conn:
             existing_result = await conn.execute_core(
                 select(local_users.c.id).where(local_users.c.username == body.admin_username)
@@ -234,13 +241,16 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
                 raise ApiError(409, "auth.username_exists", "Username already exists")
             await conn.execute_core(
                 insert(local_users).values(
-                    id=str(uuid.uuid4()),
+                    id=admin_id,
                     username=body.admin_username,
                     password_hash=pw_hash,
                     display_name="Admin",
                     is_active=True,
                 )
             )
+        # REQ-1394: the wizard is one of the moments a plaintext password exists, so the account
+        # setup creates can negotiate SCRAM over pgwire without first changing its password.
+        await write_verifier(admin_db, admin_id, body.admin_username, body.admin_password)
         # REQ-124: the browser exchanges its password for a signed session token at
         # /auth/login, so the basic provider needs a signing key from the moment setup
         # writes the config — otherwise the first sign-in from the UI answers 503.

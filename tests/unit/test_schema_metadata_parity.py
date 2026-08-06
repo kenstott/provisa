@@ -57,6 +57,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1263: personal access tokens, the cross-surface credential. Platform plane, so
     # portable metadata only.
     "personal_access_tokens",
+    # REQ-1394: the SCRAM verifier pgwire's SASL exchange reads. Keyed to the platform user
+    # registry it sits beside, so portable metadata only.
+    "scram_credentials",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

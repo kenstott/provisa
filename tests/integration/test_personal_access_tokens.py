@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 4e22a77e-02db-46b8-9be0-90bad110b8cc
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -32,7 +33,7 @@ from provisa.auth.pat import PersonalAccessTokenStore, hash_token, is_personal_a
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
-from provisa.core.schema_admin import orgs, user_org_memberships
+from provisa.core.schema_admin import orgs, user_org_memberships, user_profiles
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
@@ -66,6 +67,14 @@ def _prepare_sync():
         conn.execute(insert(orgs).values(id=_ORG, name="Acme", created_by="super"))
         for user in (_ALICE, _BOB):
             conn.execute(insert(user_org_memberships).values(user_id=user, org_id=_ORG))
+            conn.execute(
+                insert(user_profiles).values(
+                    user_id=user,
+                    email=f"{user}@acme.test",
+                    display_name=user.capitalize(),
+                    provider="firebase",
+                )
+            )
     return engine
 
 
@@ -131,6 +140,20 @@ async def test_an_issued_token_resolves_to_its_owners_identity(store):
     assert identity.user_id == _ALICE
     assert identity.active_org_id == _ORG
     assert identity.raw_claims["pat"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_identity_names_the_account_not_the_token(store):
+    """REQ-1263: an audit row written under a PAT must name the person, not the credential."""
+    secret, _ = await store.issue(user_id=_ALICE, org_id=_ORG, name="ci-runner")
+
+    identity = await store.validate(secret)
+
+    assert identity.email == "alice@acme.test"
+    assert identity.display_name == "Alice", "the token's label must not stand in for the account"
+    assert identity.raw_claims["token_name"] == "ci-runner", (
+        "which of the account's credentials acted is still recorded"
+    )
 
 
 @pytest.mark.asyncio

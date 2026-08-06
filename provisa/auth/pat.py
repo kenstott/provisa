@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 8e788d30-2239-4eb5-8c8b-89c6973b7a99
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -31,7 +32,7 @@ import secrets
 from sqlalchemy import delete, select, update
 
 from provisa.auth.models import AuthIdentity
-from provisa.core.schema_admin import personal_access_tokens
+from provisa.core.schema_admin import personal_access_tokens, user_profiles
 
 # Requirements: REQ-1263
 
@@ -119,6 +120,12 @@ class PersonalAccessTokenStore:  # REQ-1263
 
         Revoked and expired tokens raise the same error as an unknown one: a caller must not
         learn from the response whether a token ever existed.
+
+        The identity carries the owner's account — user id, email and display name off
+        ``user_profiles`` — not the token's own label, so an audit row or usage report written
+        under a PAT names the person who acts, the same as any interactive session. The token's
+        label rides in ``raw_claims["token_name"]``, which is what distinguishes *which*
+        credential of theirs was used.
         """
         token_hash = hash_token(token)
         async with self._pool.acquire() as conn:
@@ -131,7 +138,16 @@ class PersonalAccessTokenStore:  # REQ-1263
                     personal_access_tokens.c.expires_at,
                     personal_access_tokens.c.revoked_at,
                     personal_access_tokens.c.name,
-                ).where(personal_access_tokens.c.token_hash == token_hash)
+                    user_profiles.c.email,
+                    user_profiles.c.display_name,
+                )
+                .select_from(
+                    personal_access_tokens.outerjoin(
+                        user_profiles,
+                        user_profiles.c.user_id == personal_access_tokens.c.user_id,
+                    )
+                )
+                .where(personal_access_tokens.c.token_hash == token_hash)
             )
             fetched = result.fetchone()
             if fetched is None:
@@ -149,8 +165,8 @@ class PersonalAccessTokenStore:  # REQ-1263
 
         return AuthIdentity(
             user_id=row["user_id"],
-            email=None,
-            display_name=row["name"],
+            email=row["email"],
+            display_name=row["display_name"],
             # A token with no role_id grants whatever its owner resolves to; one with a role_id
             # is narrowed to it. The role claim carries no domain, so it applies org-wide.
             roles=[row["role_id"]] if row["role_id"] else [],

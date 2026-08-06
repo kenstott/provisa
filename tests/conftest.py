@@ -666,6 +666,20 @@ def _reset_naming_convention():  # pyright: ignore
     _naming.configure(gql="apollo_graphql", sql="snake")
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_throttle():  # pyright: ignore
+    """REQ-1393: the login throttle is process-wide, so its counts must not cross tests.
+
+    Suites that deliberately present bad credentials (the auth conformance matrix) would otherwise
+    lock out the account they share and the next test would see a 429 instead of the 401 it asserts.
+    """
+    from provisa.auth.throttle import reset_login_throttle
+
+    reset_login_throttle()
+    yield
+    reset_login_throttle()
+
+
 def _server_reachable(url: str) -> bool:
     """True if the server answers liveness within a short retry budget.
 

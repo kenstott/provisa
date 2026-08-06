@@ -60,7 +60,7 @@ _ROOT_ORG = "root"
 # the row is named — so the capabilities schema.sql seeds are mirrored here.
 _SEEDED_ROLE_CAPS: dict[str, list[str]] = {
     "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
-    "analyst": ["usage", "ad_hoc_query", "query_development"],
+    "analyst": ["usage", "query_development"],
     "developer": ["query_development", "create_view", "create_relationship", "write"],
     "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
 }

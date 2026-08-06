@@ -62,7 +62,7 @@ _TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log
 _SEEDED_ROLE_CAPS: dict[str, list[str]] = {
     "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
     "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
-    "analyst": ["usage", "ad_hoc_query", "query_development"],
+    "analyst": ["usage", "query_development"],
 }
 
 # alice administers acme. carol is the invitee — she has no account, no membership, and no way to

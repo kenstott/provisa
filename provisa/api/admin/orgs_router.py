@@ -24,6 +24,7 @@ from sqlalchemy import delete as _delete, func, select, update
 
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
+from provisa.core.org_ids import is_org_id
 from provisa.core.schema_admin import orgs, user_org_memberships, user_profiles
 from provisa.security.rights import has_platform_bypass
 
@@ -131,15 +132,8 @@ def _validate_org_policy(email_rule: str | None, auto_join: bool, auto_join_role
         )
 
 
-# REQ-1309: the org id becomes the PostgreSQL schema name ``org_<id>`` and the Host subdomain
-# (REQ-1276), so it must be a legal *unquoted* SQL identifier and a legal DNS label at once. That
-# intersection is a leading lowercase letter followed by lowercase letters and digits. The
-# requirement names hyphens as well; they are excluded deliberately, because every org-schema DDL
-# site interpolates the name unquoted (``SET search_path TO org_<id>``, ``CREATE ROLE role_<id>``,
-# ``org_<id>_mv_cache``, the compiler's ``org_<id>__<catalog>`` catalog names) and a hyphen there is
-# a syntax error surfacing during background provisioning — the exact failure mode REQ-1309 exists to
-# prevent. 40 chars keeps ``org_<id>_mv_cache`` inside PostgreSQL's 63-byte identifier limit.
-_ORG_ID_PATTERN = re.compile(r"[a-z][a-z0-9]{1,39}")
+# REQ-1309: the pattern lives in provisa.core.org_ids, because the hostname readers (REQ-1234,
+# REQ-1276) must refuse to see an org in a label this validator would refuse to create.
 
 # REQ-1309: each collides with the deployment's own org or with a reserved subdomain. Schema
 # names beginning "pg_" and "information_schema" need no entry — the id pattern forbids the
@@ -156,7 +150,7 @@ def _validate_new_org_id(org_id: str) -> None:  # REQ-1309
     Creation-time only: the id is immutable afterward (rename_org changes the display name alone),
     so this is the single point at which the value is ever chosen.
     """
-    if not _ORG_ID_PATTERN.fullmatch(org_id):
+    if not is_org_id(org_id):
         raise ApiError(
             400,
             "orgs.invalid_org_id",

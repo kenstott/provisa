@@ -84,7 +84,7 @@ _ROOT_EXTRA_TABLES = [sources, domains, registered_tables, table_columns]
 _SEEDED_ROLE_CAPS: dict[str, list[str]] = {
     "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
     "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
-    "analyst": ["usage", "ad_hoc_query", "query_development"],
+    "analyst": ["usage", "query_development"],
 }
 
 # alice administers acme; bob is an ordinary member of it; pat is the platform administrator,

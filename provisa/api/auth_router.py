@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, update
 
 from provisa.api.errors import ApiError
+from provisa.auth.scram_store import delete_verifier, write_verifier
 from provisa.core.schema_admin import (
     local_users,
     org_invites,
@@ -436,6 +437,9 @@ async def register(body: RegisterRequest):
             rt = await ensure_org_runtime(invite["org_id"])
             assert rt.tenant_db is not None
             await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
+    # REQ-1394: registration is the third moment a plaintext password exists, so the account can
+    # negotiate SCRAM over pgwire from the start rather than after a password change.
+    await write_verifier(admin_db, user_id, body.username, body.password)
     return {"user_id": user_id, "username": body.username}
 
 
@@ -693,6 +697,9 @@ async def delete_account(request: Request, confirm: str | None = None):
         )
         await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
         await conn.execute_core(delete(local_users).where(local_users.c.id == user_id))
+    # REQ-1394: the verifier outlives no user. Left behind it would keep a deleted name negotiable
+    # over pgwire and would collide with the next user given that username.
+    await delete_verifier(admin_db, user_id)
     # Audit attributions carry the tombstone too. Audit entries are NEVER deleted (REQ-1312) — a
     # trail that erases on request is not a trail.
     for org_id in member_org_ids:

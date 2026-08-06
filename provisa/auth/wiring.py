@@ -34,6 +34,13 @@ def build_auth_provider(
     plane; without one there is nowhere to read tokens from and the attribute stays None,
     leaving a PAT-shaped credential to fail as an unknown provider token.
     """
+    # REQ-1393: every surface reaches its provider through here, so this is where the shared
+    # login throttle learns the deployment's settings. Identical settings keep the existing
+    # counters — the wire surfaces build a provider per connection.
+    from provisa.auth.throttle import configure_login_throttle
+
+    configure_login_throttle(auth_config)
+
     provider = _construct_provider(auth_config, admin_pool)
     if admin_pool is not None:
         from provisa.auth.pat import PersonalAccessTokenStore

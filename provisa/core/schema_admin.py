@@ -222,6 +222,29 @@ personal_access_tokens = Table(
     Column("revoked_at", DateTime(timezone=True)),
 )
 
+# REQ-1394: SCRAM-SHA-256 verifiers, the credential PostgreSQL clients negotiate over pgwire.
+#
+# A separate table from ``local_users`` rather than another column on it, because the two are
+# derived at the same moment but answer different questions and have different lifetimes: the
+# bcrypt hash proves a password to the HTTP surface, the verifier lets pgwire prove knowledge
+# without either side transmitting one. A user has a verifier only from the first time they set a
+# password after SCRAM is turned on — a bcrypt hash cannot be converted — so its absence is normal
+# and must not make the user row look incomplete.
+#
+# The verifier is stored in PostgreSQL's own pg_authid spelling,
+# ``SCRAM-SHA-256$<iterations>:<b64 salt>$<b64 StoredKey>:<b64 ServerKey>``. It is not a password
+# equivalent: a reader of this table cannot authenticate with what it holds.
+scram_credentials = Table(
+    "scram_credentials",
+    metadata,
+    Column("user_id", Text, primary_key=True),
+    # pgwire's startup packet names the user and nothing else, so lookup is by username.
+    Column("username", Text, nullable=False, unique=True),
+    Column("verifier", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # Per-org encrypted configuration — formerly ``tenant_config``, keyed by the ``tenants`` UUID.
 # REQ-1355: org == tenant, so the key is the org slug and the billing columns it used to carry
 # live on ``orgs`` itself.
@@ -251,6 +274,7 @@ REGISTRY_TABLES = [
     org_invites,
     superadmin_bootstrap,
     personal_access_tokens,
+    scram_credentials,
 ]
 
 

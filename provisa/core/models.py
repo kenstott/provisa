@@ -984,9 +984,23 @@ class ScheduledTrigger(BaseModel):
     enabled: bool = True
 
 
+class LoginThrottleConfig(BaseModel):  # REQ-1393
+    """Failed-authentication brake, shared by every credential-validating surface.
+
+    The counter lives at the credential-validation layer (provisa/auth/throttle.py), so attempts
+    made over HTTP, pgwire and Bolt accumulate against the same subject and a lockout earned on one
+    surface holds on all of them. These defaults mirror the ones the throttle applies when the
+    ``login_throttle`` block is absent — REQ-1393 requires the brake to be on without configuration.
+    """
+
+    max_attempts: int = 5  # failures within the window before the subject is locked out
+    window_seconds: int = 300  # how far back failures are counted
+    lockout_seconds: int = 900  # how long a locked-out subject is refused before it may retry
+
+
 class AuthConfig(
     BaseModel
-):  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-203, REQ-247
+):  # REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-203, REQ-247, REQ-1393
     provider: str = "none"  # none, firebase, keycloak, oauth, oidc, simple
     firebase: dict | None = None
     keycloak: dict | None = None
@@ -996,6 +1010,9 @@ class AuthConfig(
     )
     simple: dict | None = None
     allow_simple_auth: bool = False  # REQ-124: production guard — simple auth refused unless true
+    # REQ-1394: pgwire advertises SASL/SCRAM-SHA-256 instead of cleartext. Only the basic provider
+    # holds the verifiers SCRAM needs, so the flag has no effect under any other provider.
+    scram: bool = False
     superuser: dict | None = None
     role_mapping: list[dict] = Field(default_factory=list)
     default_role: str = "analyst"
@@ -1003,6 +1020,7 @@ class AuthConfig(
     default_assignments: list[dict] = Field(default_factory=list)
     trust_upstream: bool = False
     approval_hook: dict | None = None  # REQ-247: ABAC approval hook config block
+    login_throttle: LoginThrottleConfig = Field(default_factory=LoginThrottleConfig)  # REQ-1393
 
 
 class MailConfig(BaseModel):  # REQ-1310, REQ-1330

@@ -57,14 +57,19 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(body: LoginRequest):  # REQ-124
+async def login(body: LoginRequest):  # REQ-124, REQ-1393
     """Exchange username+password for a session JWT."""
     if _provider_instance is None:
         raise ApiError(
             503, "auth.basic_provider_not_configured", "Basic auth provider not configured"
         )
+    from provisa.auth.throttle import LockedOut, login_attempt
+
     try:
-        token = await _provider_instance.issue_session_token(body.username, body.password)
+        with login_attempt(body.username, body.password):
+            token = await _provider_instance.issue_session_token(body.username, body.password)
+    except LockedOut as locked:
+        raise ApiError(429, "auth.too_many_attempts", str(locked))
     except ValueError as exc:
         raise ApiError(401, "auth.invalid_credentials", str(exc))
     return {"access_token": token, "token_type": "bearer"}
@@ -162,6 +167,15 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
         decoded = jwt.decode(token, self._session_secret, algorithms=["HS256"])
         row = await self._lookup(decoded["username"])
         return self._identity(row)
+
+    async def identity_for(self, username: str) -> AuthIdentity:  # REQ-1394
+        """The identity of an account whose password was proven without being transmitted.
+
+        SCRAM leaves the server holding a proof rather than a credential, so pgwire's SASL path has
+        nothing to hand :meth:`validate_token`. The account is still re-read here, which is what
+        makes a deactivated user refused after a valid proof exactly as after a valid password.
+        """
+        return self._identity(await self._lookup(username))
 
     async def validate_token(self, token: str) -> AuthIdentity:  # REQ-124
         """Validate an ``Authorization: Basic`` credential — b64(username:password)."""

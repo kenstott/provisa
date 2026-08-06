@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, insert, select, update
 
 from provisa.api.errors import ApiError
+from provisa.auth.scram_store import delete_verifier, write_verifier
 from provisa.core.database import Database
 from provisa.core.schema_admin import local_users
 from provisa.core.org_membership import SELF_ROLE_CHANGE_MESSAGE, is_self_role_change
@@ -87,6 +88,7 @@ async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-1
     import uuid
 
     pool = _admin_pool(request)
+    user_id = str(uuid.uuid4())
     async with pool.acquire() as conn:
         # id is generated app-side (portable) rather than via a PG-specific
         # server-side UUID default — the platform control plane may be
@@ -94,7 +96,7 @@ async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-1
         result = await conn.execute_core(
             insert(local_users)
             .values(
-                id=str(uuid.uuid4()),
+                id=user_id,
                 username=body.username,
                 password_hash=_hash(body.password),
                 email=body.email,
@@ -106,6 +108,10 @@ async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-1
             .returning(local_users)
         )
         row = result.fetchone()
+    # REQ-1394: the SCRAM verifier is derived here because this is one of only two moments the
+    # plaintext password exists. A user created before SCRAM was configured has none until they
+    # change their password, which is why pgwire must tolerate its absence.
+    await write_verifier(pool, user_id, body.username, body.password)
     return _strip_hash(row)
 
 
@@ -181,11 +187,15 @@ async def change_password(user_id: str, body: ChangePasswordBody, request: Reque
             update(local_users)
             .where(local_users.c.id == user_id)
             .values(password_hash=_hash(body.password), updated_at=func.now())
-            .returning(local_users.c.id)
+            .returning(local_users.c.id, local_users.c.username)
         )
         row = result.fetchone()
     if row is None:
         raise ApiError(404, "users.user_not_found", "User not found")
+    # REQ-1394: the other moment a plaintext password exists. A user who sets a password after
+    # SCRAM is turned on gains a verifier here; that is the whole migration path, since bcrypt
+    # hashes cannot be converted into one.
+    await write_verifier(pool, row[0], row[1], body.password)
     return {"id": row[0]}
 
 
@@ -199,6 +209,9 @@ async def delete_user(user_id: str, request: Request):
         row = result.fetchone()
     if row is None:
         raise ApiError(404, "users.user_not_found", "User not found")
+    # REQ-1394: the verifier outlives no user. Left behind, it would keep a deleted name
+    # negotiable over pgwire and would collide with the next user given that username.
+    await delete_verifier(pool, user_id)
     return {"deleted": row[0]}
 
 

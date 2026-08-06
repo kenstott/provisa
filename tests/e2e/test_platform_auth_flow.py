@@ -77,7 +77,6 @@ _DATA_PLANE_CAPS = {
     "full_results",
     "write",
     "usage",
-    "ad_hoc_query",
 }
 
 

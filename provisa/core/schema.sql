@@ -723,23 +723,37 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- REQ-1297: analyst and developer are the other two system template roles, seeded on the same
+-- REQ-1297: analyst, developer and modeler are the other system template roles, seeded on the same
 -- terms as org_admin (org_id = NULL, identical caps in every org). analyst is the least-privileged
 -- of the defaults and is what an invitation confers when it names no role (REQ-1314), so it must
 -- exist in every org schema before invite validation (REQ-1313) can resolve it. developer authors
--- queries, views and relationships and may write; neither holds user_management, so neither can
--- confer roles.
+-- queries, views and relationships and may write; none of the three holds user_management, so none
+-- can confer roles.
+--
+-- modeler is the discovery role: it is the ONLY system role holding ignore_relationships, so it can
+-- join across relations the approved relationship catalog does not yet cover — that is how a model
+-- gets DETERMINED. Every other governance check (column visibility, RLS, masking, domain access)
+-- still applies to it. Testing the result of a modelling change is done by switching BACK to a role
+-- without ignore_relationships, which is what enforces the model. analyst deliberately does not
+-- hold it: the least-privileged default never breaks out of the model.
 INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'analyst',
-    '["usage","ad_hoc_query","query_development"]'::jsonb,
+    '["usage","query_development"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 ),
 (
     'developer',
-    '["query_development","create_view","create_relationship","full_results","write","usage",
-      "ad_hoc_query"]'::jsonb,
+    '["query_development","create_view","create_relationship","full_results","write",
+      "usage"]'::jsonb,
+    '["*"]'::jsonb,
+    NULL
+),
+(
+    'modeler',
+    '["query_development","create_relationship","create_view","ignore_relationships",
+      "full_results","usage"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )

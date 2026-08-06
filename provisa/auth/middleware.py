@@ -26,6 +26,7 @@ from starlette.responses import JSONResponse
 from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser
+from provisa.auth.throttle import LockedOut, throttled
 from provisa.core.schema_admin import (
     superadmin_bootstrap,
     user_org_memberships,
@@ -40,6 +41,7 @@ from provisa.security.rights import (
     is_control_plane_role as _is_control_plane_role,
     is_tenant_org as _is_tenant_org,
 )
+from provisa.security.sni import is_control_plane_host, org_from_host
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
 
@@ -67,19 +69,34 @@ def _deny(
     return JSONResponse(status_code=status, content={"detail": detail})
 
 
+def _basic_username(scheme: str, token: str) -> str | None:
+    """The account a Basic credential names, for the REQ-1393 lockout key.
+
+    None for any other presentation: a bearer credential names no account, and the throttle keys
+    those on the credential digest instead. A malformed Basic header also yields None rather than a
+    guessed username — it still counts, under its own digest.
+    """
+    if scheme.lower() != "basic":
+        return None
+    try:
+        return base64.b64decode(token).decode("utf-8").split(":", 1)[0]
+    except (ValueError, binascii.Error, UnicodeDecodeError):
+        return None
+
+
 def _requested_org_from_host(request: Request) -> str | None:
     """REQ-1276: derive the active org from the request Host subdomain. `acme.provisa.org` → org
     `acme`. The control-plane host `cloud.provisa.*` (leftmost label ``cloud``) carries no org
     subdomain — its org comes only from an explicit ``x-org-provisa`` header. Apex/bare hosts
     (``provisa.org``, ``localhost``, an IP) have no org subdomain → None. This is the sole org
-    source under multitenancy; there is no token-claim / ``x-org-id`` fallback (no-fallback rule)."""
-    host = request.headers.get("host", "").split(":")[0].strip().lower()
-    labels = host.split(".") if host else []
-    if labels[:1] == ["cloud"]:
+    source under multitenancy; there is no token-claim / ``x-org-id`` fallback (no-fallback rule).
+
+    REQ-1234: the label rule itself lives in :mod:`provisa.security.sni`, because the wire protocols
+    apply it to the hostname TLS SNI carries. One string, one rule, two transports."""
+    host = request.headers.get("host", "")
+    if is_control_plane_host(host):
         return request.headers.get("x-org-provisa")
-    if len(labels) >= 3:
-        return labels[0]
-    return None
+    return org_from_host(host)
 
 # Liveness/readiness probes (/live, /ready) return a static status with no data and must be
 # reachable by unauthenticated orchestrators (k8s, load balancers) — same as /health.
@@ -359,7 +376,13 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             return _deny(request, 401, "Missing or invalid Authorization header")
 
         try:
-            identity = await validator(token)
+            # REQ-1393: the same brake pgwire and Bolt apply. A Basic credential names its user, so
+            # attempts here count against the account an attacker is actually guessing at.
+            identity = await throttled(validator, token, principal=_basic_username(scheme, token))
+        except LockedOut as locked:
+            response = _deny(request, 429, str(locked))
+            response.headers["Retry-After"] = str(locked.retry_after)
+            return response
         except (ValueError, jwt.PyJWTError) as exc:
             # Only genuine token-validation failures map to 401; infra/unexpected
             # errors (DB down, JWKS fetch failure, misconfig) must propagate.
