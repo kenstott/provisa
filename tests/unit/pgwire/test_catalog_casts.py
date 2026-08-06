@@ -98,3 +98,37 @@ def test_qualified_regclass_literal_shortened(con):
 
 def test_unqualified_regclass_literal_unchanged(con):
     assert _scalar(con, "SELECT 'pg_class'::regclass AS c") == "pg_class"
+
+
+def test_regclass_oid_chain_maps_to_class_oid(con):
+    # DataGrip's RetrieveExtensionMembers filters
+    # `refclassid = 'pg_extension'::regclass::oid` against INTEGER refclassid.
+    # The chained cast previously crashed sqlglot's cast builder, the rewriter
+    # fell back to the raw SQL, and DuckDB failed with "Table with name
+    # pg_extension does not exist".
+    assert _scalar(con, "SELECT 'pg_extension'::regclass::oid AS c") == 3079
+    assert _scalar(con, "SELECT 'pg_catalog.pg_class'::regclass::oid AS c") == 1259
+
+
+def test_regclass_oid_chain_rewrites_table_refs():
+    out = _rewrite_for_duckdb(
+        "select E.oid as extension_id, D.objid as member_id\n"
+        "from pg_extension E\n"
+        "     join pg_depend D on E.oid = D.refobjid and\n"
+        "                         D.refclassid = 'pg_extension'::regclass::oid\n"
+        "where D.deptype = 'e'\n"
+        "order by extension_id"
+    )
+    assert "_pg_extension" in out
+    assert "_pg_depend" in out
+    assert "3079" in out
+
+
+def test_pg_available_extension_versions_maps_to_pg_extension():
+    # DataGrip's RetrieveExtensions joins pg_available_extension_versions() for
+    # (name, version); DuckDB has no such TVF, so it maps to _pg_extension.
+    out = _rewrite_for_duckdb(
+        "select name, array_agg(version) from pg_available_extension_versions() group by name"
+    )
+    assert "pg_available_extension_versions()" not in out
+    assert "_pg_extension" in out

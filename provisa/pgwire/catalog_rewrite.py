@@ -40,6 +40,41 @@ def next_txid() -> int:
     return next(_TXID_COUNTER)
 
 
+# Real PG relation oids for catalog classes. `'pg_extension'::regclass::oid`
+# must land as a number — _pg_depend.refclassid is INTEGER — so the reg-cast
+# name literal is mapped through this table instead of CAST('name' AS BIGINT).
+_CATALOG_CLASS_OIDS: dict[str, int] = {
+    "pg_default_acl": 826,
+    "pg_tablespace": 1213,
+    "pg_type": 1247,
+    "pg_proc": 1255,
+    "pg_class": 1259,
+    "pg_authid": 1260,
+    "pg_database": 1262,
+    "pg_foreign_server": 1417,
+    "pg_user_mapping": 1418,
+    "pg_foreign_data_wrapper": 2328,
+    "pg_am": 2601,
+    "pg_attrdef": 2604,
+    "pg_constraint": 2606,
+    "pg_conversion": 2607,
+    "pg_language": 2612,
+    "pg_largeobject": 2613,
+    "pg_namespace": 2615,
+    "pg_opclass": 2616,
+    "pg_operator": 2617,
+    "pg_rewrite": 2618,
+    "pg_trigger": 2620,
+    "pg_opfamily": 2753,
+    "pg_extension": 3079,
+    "pg_policy": 3256,
+    "pg_statistic_ext": 3381,
+    "pg_collation": 3456,
+    "pg_event_trigger": 3466,
+    "pg_ts_dict": 3600,
+    "pg_ts_config": 3602,
+}
+
 _REG_CAST_TYPES = frozenset(
     {
         "regclass",
@@ -83,7 +118,18 @@ def _rewrite_pg_cast(node):
         # break the predicate. UBIGINT would match PG's unsigned oid domain, but
         # BIGINT covers every real catalog oid (< 2^31) and interops with signed
         # columns.
-        return exp.cast(node.this, "BIGINT")
+        inner = node.this
+        if isinstance(inner, exp.Cast):
+            # Chained cast (e.g. 'pg_extension'::regclass::oid): the transform
+            # visits this outer cast before the inner one, and sqlglot's
+            # exp.cast() builder raises on the not-yet-rewritten reg type.
+            # Rewrite the inner cast first.
+            inner = _rewrite_pg_cast(inner) or inner
+        if isinstance(inner, exp.Literal) and inner.is_string:
+            class_oid = _CATALOG_CLASS_OIDS.get(inner.this.rsplit(".", 1)[-1])
+            if class_oid is not None:
+                return exp.Literal.number(class_oid)
+        return exp.cast(inner, "BIGINT")
     if dtype_str == "name":
         return exp.cast(node.this, "VARCHAR")
     return None
@@ -116,6 +162,23 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
             # Schema-qualified scalar function used as a TVF (e.g. pg_catalog.pg_indexam_has_property(...) amcanorder).
             # Rewrite to a lateral subquery so DuckDB can parse it.
             if isinstance(node.this, exp.Anonymous):
+                if node.this.name.lower() == "pg_available_extension_versions":
+                    # No DuckDB counterpart. DataGrip's RetrieveExtensions joins
+                    # it for (name, version) rows; serve the installed surface
+                    # versions from _pg_extension.
+                    inner = exp.select(
+                        exp.alias_(exp.column("extname"), "name"),
+                        exp.alias_(exp.column("extversion"), "version"),
+                    ).from_("_pg_extension")
+                    return exp.Subquery(
+                        this=inner,
+                        alias=exp.TableAlias(
+                            this=exp.Identifier(
+                                this=node.alias or "pg_available_extension_versions",
+                                quoted=False,
+                            )
+                        ),
+                    )
                 fn_result = _transform(node.this)
                 col_name = node.alias if node.alias else node.this.name.lower()
                 if fn_result is node.this:
