@@ -23,14 +23,25 @@ Port: $PROVISA_PGWIRE_PORT
 
 ## Authentication
 
-Two modes, controlled by the `provider` key in `auth_config`:
+The startup packet carries a username and one secret field, and no scheme to say what the secret is. Provisa decides from the secret itself, so a client needs no configuration beyond `user` and `password`:
 
-| Mode | `provider` value | Behaviour |
-| ------ | ----------------- | ----------- |
-| Trust | `none` (or auth middleware inactive) | Username sent by the client is used directly as the `role_id`. Password is ignored. |
-| Simple | `simple` | Password verified against the `simple` auth provider (bcrypt). Username becomes `role_id` on success. (REQ-124) |
+| The secret is | Recognized by | Resolves to |
+| --------------- | --------------- | ------------- |
+| A personal access token | its `provisa_pat_` prefix | the token's owner and role (REQ-1263) |
+| An OIDC / provider bearer token | the configured provider being a token provider | the identity the token asserts (REQ-890) |
+| A password | anything else | the account in the configured provider (`basic` or `simple`) |
 
-Any other provider value returns a FATAL error at login. (REQ-529) The protocol always uses PG auth type 3 (cleartext password). (REQ-529) Do not use trust mode over an unencrypted connection. [tool-verified: `server.py:282-311`]
+The decision is made once. A credential the chosen validator refuses is not retried against another, so one rejection does not become a second guess.
+
+Trust mode (`provider: none`, or auth middleware inactive) is the exception: the username is used directly as the `role_id` and the secret is ignored. Do not use it over an unencrypted connection.
+
+**SCRAM-SHA-256.** Under `provider: basic` with `auth.scram: true`, the server advertises SASL (authentication code 10) with `SCRAM-SHA-256` and the password is proved rather than sent. (REQ-1394) `SCRAM-SHA-256-PLUS` is not offered. A user whose verifier has not been written yet — verifiers cannot be derived from bcrypt hashes — is answered with a mock exchange, so the wire does not reveal who has migrated; that user authenticates by cleartext password over TLS until their next password entry writes one. With `auth.scram` off, the server uses PG auth type 3 (cleartext password). MD5 is not supported in either case.
+
+**Client certificates.** Set `PROVISA_MTLS_CLIENT_CA` and the server verifies a client certificate during the handshake, before any credential is examined. (REQ-1228) With `PROVISA_MTLS_BIND_PRINCIPAL` the certificate's common name must equal the `user` the connection then authenticates as. See [Configuration](configuration.md#mutual-tls).
+
+**Failed attempts are counted.** Five failures in five minutes locks the account out for fifteen minutes, and the counter is shared with HTTP and Bolt — a lockout earned on any surface holds on all of them. (REQ-1393)
+
+**Choosing an org.** On a multi-org deployment, connect to `<org>.<your-domain>` and pgwire reads the org from the hostname in the TLS ClientHello, the same way HTTP reads it from the `Host` header. (REQ-1234) The hostname requests an org; it does not grant one, and a principal with no membership there is refused. Connecting by IP address requests no org.
 
 ---
 

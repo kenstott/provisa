@@ -613,7 +613,7 @@ The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager 
 There is no capability gate on querying — governance is expressed entirely through data-layer controls. (REQ-001) A raw-SQL request rejects (HTTP 403) any table outside the role's object scope before governance runs. (REQ-267)
 
 1. **Object Visibility**: Per-role schema hides unauthorized tables/columns; out-of-scope tables in raw SQL are rejected (REQ-039, REQ-267)
-2. **Relationship enforcement**: Traversals must exist in the approved relationship catalog, unless the role holds `ignore_relationships` (REQ-001)
+2. **Relationship enforcement**: Traversals must exist in the approved relationship catalog, unless the role holds `ignore_relationships` — among the seeded system roles, only `modeler` does (REQ-001, REQ-1297). In high-security mode the capability is ignored and no traversal escapes the catalog (REQ-693)
 3. **RLS**: Per-table per-role WHERE clause injection (REQ-040, REQ-041, REQ-263)
 4. **Column Masking**: Per-column per-role data transformation (REQ-263)
 5. **Row cap (LIMIT)**: Row-count cap for roles without `full_results`; random statistical sampling is a separate user query feature (REQ-263, REQ-478)

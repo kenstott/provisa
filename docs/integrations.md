@@ -56,7 +56,9 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 ### Authentication
 
-pgwire uses cleartext password auth bridged to Provisa's configured auth provider (`none` or `simple`). In trust mode (`none`), the username maps directly to a role — password is ignored. MD5 is not supported; enable TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) when running over an untrusted network.
+The `password` field of the startup packet carries the credential, and what the credential *is* picks the method: a personal access token, an OIDC bearer token, or a password against the configured provider. Under the `basic` provider with `auth.scram: true` the password is proved through SCRAM-SHA-256 instead of sent. Client certificates are supported. In trust mode (`none`) the username maps directly to a role and the password is ignored.
+
+The full surface × method table is in [Security Model](security.md#surfaces-and-credentials). MD5 is not supported; enable TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) when running over an untrusted network.
 
 ### Limitations
 
@@ -142,7 +144,15 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-The ticket carries no role. The server assigns the role from the configured auth provider. Where role selection is allowed, pass it in the gRPC call metadata under the `x-provisa-role` key (for example `flight.FlightCallOptions(headers=[(b"x-provisa-role", b"analyst")])`), not in the ticket JSON.
+Flight carries its credential in the JSON payload, as a `token` field — a provider bearer token or a personal access token. Both the handshake and every ticket accept it, and both validate it the same way, so a client that authenticated at handshake still presents the token on each `do_get`. A `role` field alongside it *requests* a role; the server derives the identity's permitted roles and substitutes the authorized value, so a role string in a ticket is never the identity. (REQ-1263) See [Security Model](security.md#surfaces-and-credentials).
+
+```python
+ticket = flight.Ticket(json.dumps({
+    "query": "SELECT id, amount FROM sales.orders",
+    "token": "provisa_pat_...",
+    "role": "analyst",
+}).encode())
+```
 
 ### ADBC
 
@@ -193,7 +203,9 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 Use `grpc_server_reflection` to discover the schema programmatically.
 
-Role is passed via the `x-provisa-role` metadata key on every RPC. Streaming queries emit one message per row; mutations are unary.
+Every RPC must carry a credential in the `authorization` metadata key — a provider token or a personal access token. `x-provisa-role` requests a role from the identity's permitted set; it is not a credential and never was. Client certificates are supported. See [Security Model](security.md#surfaces-and-credentials).
+
+Streaming queries emit one message per row; mutations are unary.
 
 ---
 

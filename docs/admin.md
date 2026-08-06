@@ -12,6 +12,18 @@ Authorization: Bearer <token>
 
 Admin access is governed by the `admin` capability assigned to a role (REQ-060, REQ-042).
 
+### Personal access tokens
+
+A personal access token is accepted anywhere a bearer token is, including this endpoint. Issuing and revoking one is self-service — it is the token holder's own credential, so it lives on the user's profile in the admin UI rather than under an admin page, beside leaving an org and deleting the account. An administrator does not mint tokens on someone else's behalf. (REQ-1263)
+
+| Route | Effect |
+| ------- | -------- |
+| `POST /auth/tokens` | Mint a token for the caller. Body: `name`, optional `role_id`, `scopes`, `expires_in_days` (1–366). The response is the only place the secret ever appears |
+| `GET /auth/tokens` | The caller's active tokens in this org — display prefix, name, lifecycle timestamps, and the hash that identifies a token for revocation. Never a working credential |
+| `DELETE /auth/tokens/{token_hash}` | Revoke one of the caller's tokens. 404 when it is not theirs or already revoked |
+
+Omitting `role_id` leaves the token resolving to whatever role its owner holds; naming one narrows the token below its owner. Revocation also happens implicitly: removing a user's org membership revokes their tokens for that org. See [Security Model](security.md#personal-access-tokens) for the credential itself.
+
 ## Capabilities
 
 ### Config Management

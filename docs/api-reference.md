@@ -167,12 +167,9 @@ Execute raw SQL through the Stage 2 governance pipeline. (REQ-267) [tool-verifie
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-The `discovery_mode` flag widens the table visibility check to include all tables from all contexts. Only for internal tooling. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **Required capabilities:** `QUERY_DEVELOPMENT`.
 

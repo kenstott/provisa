@@ -878,8 +878,53 @@ auth:
 | `firebase` | Firebase Authentication (all methods). | `firebase-admin` SDK `verify_id_token()` |
 | `keycloak` | Keycloak OIDC. Tenant + client roles mapped. | JWKS-based JWT validation |
 | `oauth` | Generic OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS from discovery URL |
+| `basic` | Self-contained deployments. Accounts live in Provisa's own store. | bcrypt password, or SCRAM-SHA-256 on pgwire |
 
 Superuser credentials (`superuser` block) work with any provider and always resolve to admin role with all capabilities. (REQ-125) Used for initial setup before external auth is configured.
+
+### SCRAM-SHA-256 (`auth.scram`)
+
+```yaml
+auth:
+  provider: basic
+  scram: true
+```
+
+Makes pgwire advertise SASL with `SCRAM-SHA-256`, so a password is proved rather than sent in cleartext. (REQ-1394) It applies to the `basic` provider only — no other provider holds the RFC 5802 verifiers SCRAM needs — and channel binding is not offered.
+
+Verifiers cannot be derived from existing bcrypt hashes. One is written whenever a password passes through in plaintext, so each user's first SCRAM connection follows their next signup, login, password change or admin reset. Until then that user's connections fall back to the cleartext exchange over TLS; the wire does not reveal who has migrated.
+
+### Login throttling (`auth.login_throttle`)
+
+```yaml
+auth:
+  login_throttle:
+    max_attempts: 5      # failures within the window before lockout
+    window_seconds: 300  # how far back failures are counted
+    lockout_seconds: 900 # how long a locked-out subject is refused
+```
+
+On by default with the values shown; the block only tunes them. (REQ-1393) The counter sits at the credential-validation layer, so failures over HTTP, pgwire and Bolt accumulate against the same subject and a lockout holds on every surface. It is per process: several API workers each allow up to `max_attempts`.
+
+### Personal access tokens
+
+PATs need no configuration block — they are always accepted, and the store is created with the rest of the control-plane schema. (REQ-1263) What is configurable is the expiry a user may request at issuance: 1 to 366 days, or none for a token that does not expire. See [Security Model](security.md#personal-access-tokens).
+
+### Mutual TLS
+
+Client-certificate verification is configured by environment variable rather than in `provisa.yaml`, alongside the TLS certificate settings it extends. (REQ-1228)
+
+| Variable | Default | Meaning |
+| ---------- | --------- | --------- |
+| `PROVISA_MTLS_CLIENT_CA` | unset | PEM bundle of the CA(s) permitted to sign client certificates. Setting it turns client-certificate verification on |
+| `PROVISA_MTLS_MODE` | `required` once a CA is set | `required` or `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the username the connection authenticates as |
+
+Each takes a per-protocol override under the same naming as the TLS settings. A mode set without a CA, or a mode that is neither value, refuses to start rather than serving connections the operator believes are verified.
+
+### Addressing an org over TLS
+
+Nothing to configure. On a multi-org deployment, pgwire and Bolt read the org from the hostname the client dialed, carried in the TLS ClientHello, exactly as HTTP reads it from the `Host` header. (REQ-1234) A client connecting to `acme.provisa.dev` requests org `acme`; the request is refused unless the authenticated principal is a member. Connecting by IP address requests no org, which is every connection on a single-org deployment.
 
 ### Full Auth Config Example (commented out)
 
@@ -1324,6 +1369,10 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | S3 access key |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | S3 secret key |
 | `PROVISA_REDIRECT_TTL` | `3600` | Presigned URL TTL (seconds) |
+| `PROVISA_MTLS_CLIENT_CA` | — | PEM bundle of the CA(s) permitted to sign client certificates; setting it turns on client-certificate verification on pgwire, Bolt, gRPC and Flight (REQ-1228) |
+| `PROVISA_MTLS_MODE` | `required` once a CA is set | `required` or `optional`; any other value refuses to start (REQ-1228) |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the authenticating username (REQ-1228) |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Comma-separated sites permitted to open a Bolt WebSocket from a browser; unset refuses every browser origin (REQ-802) |
 | `ANTHROPIC_API_KEY` | — | Claude API key (discovery) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Overrides `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Overrides `observability.service_name` |

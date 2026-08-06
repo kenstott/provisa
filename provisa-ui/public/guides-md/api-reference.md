@@ -160,12 +160,9 @@ Execute raw SQL through the Stage 2 governance pipeline. (REQ-267) [tool-verifie
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin",
-  "discovery_mode": false
+  "role": "admin"
 }
 ```
-
-The `discovery_mode` flag widens the table visibility check to include all tables from all contexts. Only for internal tooling. [tool-verified: `provisa/api/data/endpoint_dev.py:148-152`]
 
 **Required capabilities:** `QUERY_DEVELOPMENT`.
 
@@ -822,9 +819,13 @@ Each table produces a `Query{TypeName}` streaming RPC. `Insert{TypeName}` RPCs e
 
 ```bash
 grpcurl -plaintext localhost:50051 list
-grpcurl -plaintext -H 'x-provisa-role: analyst' \
+grpcurl -plaintext \
+  -H 'authorization: Bearer provisa_pat_...' \
+  -H 'x-provisa-role: analyst' \
   -d '{}' localhost:50051 ProvisaService/QueryOrders
 ```
+
+Every RPC carries its credential in `authorization` — a provider bearer token or a personal access token. (REQ-1263) `x-provisa-role` requests a role from the identity's permitted set; it is not a credential and never identified the caller. [tool-verified: `provisa/grpc/auth.py`]
 
 The gRPC server starts only when a valid proto can be compiled at startup. If schema build fails, the gRPC server does not start. (REQ-529)
 
