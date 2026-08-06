@@ -48,6 +48,7 @@ def adbc_connect(
     password: str = "",
     role: str | None = None,
     port: int = 8815,
+    flight_tls: bool | None = None,
     kms_provider: str | None = None,
     kms_key_arn: str | None = None,
     dek_cache_ttl: float = 300.0,
@@ -63,6 +64,11 @@ def adbc_connect(
 
     REQ-691: ``kms_provider`` + ``kms_key_arn`` enable client-side decryption of Arrow
     columns whose schema field metadata carries ``provisa_encrypted=true``.
+
+    REQ-1228: ``flight_tls`` selects the Flight transport. Left unset it follows ``url``'s
+    scheme — a deployment that serves its API over https serves Flight over TLS from the same
+    certificate — so reaching a TLS listener needs no extra argument. Pass it explicitly to
+    override, e.g. an https API in front of a plaintext Flight port on a private network.
     """
     base_url = url.rstrip("/")
     token, auth_role = _auth_login(base_url, user, password)
@@ -75,7 +81,9 @@ def adbc_connect(
 
     parsed = urlparse(base_url)
     host = parsed.hostname or "localhost"
-    flight_client = fl.connect(f"grpc://{host}:{port}")  # pyright: ignore[reportPrivateImportUsage]
+    use_tls = parsed.scheme == "https" if flight_tls is None else flight_tls
+    scheme = "grpc+tls" if use_tls else "grpc"
+    flight_client = fl.connect(f"{scheme}://{host}:{port}")  # pyright: ignore[reportPrivateImportUsage]
 
     return AdbcConnection(
         flight_client=flight_client,

@@ -115,6 +115,10 @@ class ProvisaClient:
         data: dict[str, Any] = {"query": query, "role": self._role}
         if variables:
             data["variables"] = variables
+        # REQ-1263: Flight authenticates every ticket. Without the credential here the HTTP path
+        # would authenticate and the Flight path would be rejected by the same server.
+        if self._token:
+            data["token"] = self._token
         return fl.Ticket(json.dumps(data).encode())  # pyright: ignore[reportPrivateImportUsage]
 
     def flight(

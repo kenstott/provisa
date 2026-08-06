@@ -60,7 +60,7 @@ def test_is_not_graphql_select_lower():
 @respx.mock
 def test_connect_authenticates_and_stores_token():
     respx.post(f"{BASE}/auth/login").mock(
-        return_value=httpx.Response(200, json={"token": "my-token"})
+        return_value=httpx.Response(200, json={"access_token": "my-token"})
     )
     conn = connect(BASE, username="alice", password="secret", role="analyst")
     assert conn._token == "my-token"
@@ -79,7 +79,7 @@ def test_connect_falls_back_to_username_as_role_when_auth_fails():
 
 @respx.mock
 def test_connect_context_manager():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     with connect(BASE, username="u", password="p") as conn:
         assert not conn._closed
     assert conn._closed
@@ -90,7 +90,7 @@ def test_connect_context_manager():
 
 @respx.mock
 def test_execute_graphql_returns_rows():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -106,7 +106,7 @@ def test_execute_graphql_returns_rows():
 
 @respx.mock
 def test_execute_graphql_sets_description():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -123,7 +123,7 @@ def test_execute_graphql_sets_description():
 
 @respx.mock
 def test_execute_graphql_raises_on_errors():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -141,7 +141,7 @@ def test_execute_graphql_raises_on_errors():
 
 @respx.mock
 def test_execute_sql_returns_rows():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/sql").mock(
         return_value=httpx.Response(
             200,
@@ -157,7 +157,7 @@ def test_execute_sql_returns_rows():
 
 @respx.mock
 def test_execute_sql_list_response():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/sql").mock(
         return_value=httpx.Response(
             200,
@@ -175,7 +175,7 @@ def test_execute_sql_list_response():
 
 @respx.mock
 def test_fetchone_returns_single_row():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -193,7 +193,7 @@ def test_fetchone_returns_single_row():
 
 @respx.mock
 def test_fetchmany_respects_size():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -211,7 +211,7 @@ def test_fetchmany_respects_size():
 
 @respx.mock
 def test_fetchmany_uses_arraysize_default():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,
@@ -230,7 +230,7 @@ def test_fetchmany_uses_arraysize_default():
 
 @respx.mock
 def test_rowcount_set_after_execute():
-    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"token": "tok"}))
+    respx.post(f"{BASE}/auth/login").mock(return_value=httpx.Response(200, json={"access_token": "tok"}))
     respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(
             200,

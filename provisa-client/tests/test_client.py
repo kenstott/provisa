@@ -146,3 +146,15 @@ def test_flight_ticket_omits_variables_when_none(client):
     ticket = client._flight_ticket("{ orders { id } }", None)
     data = json.loads(ticket.ticket.decode())
     assert "variables" not in data
+
+
+def test_flight_ticket_carries_the_credential(client):
+    # REQ-1263: the Flight server authenticates every ticket. A client whose HTTP calls are
+    # authenticated but whose tickets are not would be rejected on the Flight path alone.
+    ticket = client._flight_ticket("{ orders { id } }", None)
+    assert json.loads(ticket.ticket.decode())["token"] == "tok"
+
+
+def test_flight_ticket_omits_token_when_unauthenticated():
+    ticket = ProvisaClient(BASE, role="analyst")._flight_ticket("{ orders { id } }", None)
+    assert "token" not in json.loads(ticket.ticket.decode())
