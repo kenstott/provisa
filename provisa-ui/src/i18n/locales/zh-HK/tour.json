@@ -107,6 +107,14 @@
       "step24": {
         "title": "導覽結束——現在輪到你了",
         "description": "🎉 你已回到起點。現在讓它成為屬於你的一套：<ul><li>1️⃣ 登記你其中一個真實的<strong>數據來源</strong></li><li>2️⃣ 公開幾個<strong>表格</strong>，畫出一兩個<strong>關係</strong></li><li>3️⃣ 在「探索」中用任何語言查詢：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>把 <kbd>pgwire</kbd> 或 <kbd>Bolt</kbd> 工具指向它——一切都能直接運作。</p><p>📚 「<strong>文件</strong>」分頁有完整指南。🧭 上方的指南針隨時可重播這個導覽。祝你使用 Provisa 愉快。</p>"
+      },
+      "stepPreview": {
+        "title": "預覽任何資料表",
+        "description": "👀 展開一列並按下<strong>預覽</strong> — 透過受治理管線取得即時資料：遮罩、存取控制、<strong>伺服器端分頁</strong>，即使十億列的資料表也能即時開啟。篩選、排序與分組都在查詢內執行；基於 API 的資料表會先要求填寫必要參數。"
+      },
+      "stepReports": {
+        "title": "內建管理報表",
+        "description": "📊 您剛才查詢過的稽核日誌也提供<strong>現成的報表</strong> — 使用排名、PII 存取、政策拒絕、查詢健康 — 每個都是 <code>ops</code> 網域中受治理的檢視。新增自己的報表只需一句 SQL，它會像任何資料表一樣成為已編目、可匯出的資料產品。"
       }
     }
   }

@@ -107,6 +107,14 @@
       "step24": {
         "title": "导览到此结束——现在轮到你了",
         "description": "🎉 你已经回到起点。现在让它成为你自己的：<ul><li>1️⃣ 注册一个你真实的<strong>数据源</strong></li><li>2️⃣ 暴露几张<strong>表</strong>，画一两条<strong>关系</strong></li><li>3️⃣ 用任意一种语言，从<strong>探索</strong>页面查询它：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>把 <kbd>pgwire</kbd> 或 <kbd>Bolt</kbd> 工具指向它——一切都可以直接使用。</p><p>📚 <strong>文档</strong>标签页有完整指南。🧭 上方的指南针可随时重播这个导览。祝你使用 Provisa 愉快。</p>"
+      },
+      "stepPreview": {
+        "title": "预览任意表",
+        "description": "👀 展开一行并点击<strong>预览</strong> — 通过受治理管道获取实时数据：脱敏、访问控制、<strong>服务端分页</strong>，即使十亿行的表也能瞬间打开。过滤、排序和分组都在查询内部执行；基于 API 的表会先要求填写必需参数。"
+      },
+      "stepReports": {
+        "title": "内置管理报表",
+        "description": "📊 您刚才查询过的审计日志还提供<strong>现成的报表</strong> — 使用排名、PII 访问、策略拒绝、查询健康 — 每个都是 <code>ops</code> 域中受治理的视图。添加自己的报表只需一条 SQL 语句，它会像任何表一样成为已编目、可导出的数据产品。"
       }
     }
   }

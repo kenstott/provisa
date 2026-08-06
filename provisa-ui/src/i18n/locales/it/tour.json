@@ -107,6 +107,14 @@
       "step24": {
         "title": "Il tour finisce qui — ora rendilo tuo",
         "description": "🎉 Sei tornato al punto di partenza. Ora rendilo tuo:<ul><li>1️⃣ Registra una delle tue <strong>sorgenti</strong> reali</li><li>2️⃣ Esponi alcune <strong>tabelle</strong>, traccia una o due <strong>relazioni</strong></li><li>3️⃣ Interrogala da <strong>Esplora</strong> in qualsiasi linguaggio:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Punta strumenti <kbd>pgwire</kbd> o <kbd>Bolt</kbd> verso di essa — tutto funziona semplicemente.</p><p>📚 La scheda <strong>Documentazione</strong> contiene le guide complete. 🧭 La bussola in alto riavvia questo tour in qualsiasi momento. Buon lavoro con Provisa.</p>"
+      },
+      "stepPreview": {
+        "title": "Anteprima di qualsiasi tabella",
+        "description": "👀 Espandi una riga e fai clic su <strong>Anteprima</strong>: dati live attraverso la pipeline governata — mascherati, con controllo di accesso e <strong>paginati lato server</strong>, così anche una tabella da un miliardo di righe si apre all'istante. Filtri, ordinamenti e raggruppamenti girano dentro la query; le tabelle basate su API chiedono prima i parametri obbligatori."
+      },
+      "stepReports": {
+        "title": "Report di gestione integrati",
+        "description": "📊 Il log di audit interrogato prima alimenta anche <strong>report pronti</strong> — ranking d'uso, accessi PII, dinieghi di policy, salute delle query — ognuno una vista governata nel dominio <code>ops</code>. Aggiungerne uno tuo è una singola istruzione SQL, e diventa un data product catalogato ed esportabile come ogni altra tabella."
       }
     }
   }

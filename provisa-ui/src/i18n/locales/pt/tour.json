@@ -107,6 +107,14 @@
       "step24": {
         "title": "Esse foi o tour — agora faça dele o seu",
         "description": "🎉 Você voltou ao início. Agora faça dele o seu:<ul><li>1️⃣ Registre uma de suas <strong>fontes</strong> reais</li><li>2️⃣ Exponha algumas <strong>tabelas</strong>, desenhe um ou dois <strong>relacionamentos</strong></li><li>3️⃣ Consulte-a a partir de <strong>Explorar</strong> em qualquer linguagem:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Aponte ferramentas <kbd>pgwire</kbd> ou <kbd>Bolt</kbd> para ele — tudo simplesmente funciona.</p><p>📚 A aba <strong>Documentação</strong> tem os guias completos. 🧭 A bússola no topo reproduz este tour a qualquer momento. Aproveite o Provisa.</p>"
+      },
+      "stepPreview": {
+        "title": "Pré-visualize qualquer tabela",
+        "description": "👀 Expanda uma linha e clique em <strong>Pré-visualização</strong> — dados ao vivo pelo pipeline governado: mascarados, com controle de acesso e <strong>paginados no servidor</strong>, de modo que até uma tabela de um bilhão de linhas abre na hora. Filtros, ordenação e agrupamento rodam dentro da consulta; tabelas baseadas em API pedem antes seus parâmetros obrigatórios."
+      },
+      "stepReports": {
+        "title": "Relatórios de gestão incorporados",
+        "description": "📊 O log de auditoria que você consultou antes também alimenta <strong>relatórios prontos</strong> — ranking de uso, acessos a PII, negações de política, saúde das consultas — cada um uma visão governada no domínio <code>ops</code>. Adicionar o seu é uma única instrução SQL, e ele vira um produto de dados catalogado e exportável como qualquer outra tabela."
       }
     }
   }

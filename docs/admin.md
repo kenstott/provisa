@@ -198,3 +198,74 @@ Once registered, tables appear in the GraphQL schema and are queryable like any 
 ## GraphiQL
 
 The admin API ships with GraphiQL at `GET /admin/graphql` in the browser (REQ-622). Use it to explore the full admin schema interactively.
+
+## Ops-domain management views (REQ-1386)
+
+Eight SQL views are seeded into the built-in `ops` domain on every install. [tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] They expose the query audit log as governed tables — queryable through SQL (pgwire), GraphQL, and Cypher under the same domain access, RLS, and masking rules as any business table.
+
+`org_admin` is designated as the ops-domain steward at seed time, so the domain never appears as a governance gap in `stale_metadata`. [tool-verified: `startup_seed.py:326-331`]
+
+| View | What it answers |
+| --- | --- |
+| `usage_ranking` | Query count and distinct users per registered table; zero-hit tables surface as deprecation candidates |
+| `deprecated_usage` | Every access to a table or column carrying the `deprecated` tag — the active consumers blocking safe removal |
+| `pii_access` | Every access to a table or column carrying the `pii` tag: who queried it, under which role, over which surface |
+| `policy_denials` | All access attempts that governance rejected (HTTP 401/403) |
+| `surface_mix` | Daily query count and distinct users per protocol surface (SQL, GraphQL, Cypher, gRPC, etc.) |
+| `query_health` | Daily error count and average/max latency per surface |
+| `stale_metadata` | Tables and columns missing descriptions; domains missing a steward |
+| `join_hotspots` | Table pairs co-queried most often — candidates for materialization or caching |
+
+Two limits apply today. Granularity is at the table level — the audit log records `table_ids`, not individual columns accessed. Query text is encrypted (REQ-689) and excluded from every view here; it is accessible only through the authorised admin decrypt path. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+
+A role needs `ops` domain access before these views are visible. Grant it the same way you grant access to any other domain.
+
+```sql
+-- Which tables have never been queried?
+SELECT table_name, domain_id
+FROM ops.usage_ranking
+WHERE query_count = 0;
+
+-- Who accessed PII-tagged data in the last 7 days?
+SELECT user_id, role_id, source, pii_column, logged_at
+FROM ops.pii_access
+WHERE logged_at >= CURRENT_DATE - INTERVAL '7 days'
+ORDER BY logged_at DESC;
+
+-- Where does traffic originate by protocol?
+SELECT source, day, query_count, distinct_users
+FROM ops.surface_mix
+ORDER BY day DESC, query_count DESC;
+```
+
+The same queries run as GraphQL or Cypher over any governed transport — pgwire, Arrow Flight, or Bolt. [inferred from governed-surface design]
+
+## Reports viewer (REQ-1390)
+
+The Reports viewer is at `/admin/reports`. Roles without the `observability` capability cannot reach it.
+
+The left panel lists every registered table in the `ops` domain, sorted by alias. [tool-verified: `ReportsTab.tsx:46-52` — filters `tables` to `domainId === "ops"`] The eight seeded management views appear there automatically. Click any report to load it in the governed data viewer on the right.
+
+**Adding a custom report.** The "Add report" button opens a dialog. Provide a name, an optional description, and a SELECT statement. Saving registers the view as a governed derived table in the `ops` domain — cataloged, access-controlled, and queryable through every surface alongside the seeded views. [tool-verified: `ReportsTab.tsx:70-96` — `registerTable` called with `sourceId: DERIVED_SOURCE_ID, domainId: "ops"`]
+
+**Deleting.** The trash icon appears only for custom reports. Seeded management views cannot be deleted from this interface. [tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
+
+## Table preview (REQ-1392)
+
+Expand any table row on the Tables page. The **Preview** button opens a 90%-width modal with the table's live governed data. [tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
+
+Tables backed by APIs with required path parameters block preview until those values are supplied. An inline form collects each required parameter before the first query runs; optional query parameters appear in the same form. [tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
+
+## Governed data viewer (REQ-1391)
+
+The same viewer component powers the preview modal and the Reports viewer. Its behavior is identical in both contexts.
+
+**Server-side paging.** Each page is its own governed `SELECT *` with `LIMIT 101 OFFSET n`. 100 rows appear per page; the 101st signals whether more exist. The full dataset is never loaded into the browser. [tool-verified: `nativeParams.ts:72` — `LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`; `types.ts:74` — `PAGE_SIZE = 100`]
+
+**Pushed-down filters and sorts.** Each column header has a filter input. Filter terms become `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')` predicates; sort clicks produce `ORDER BY` clauses. Both go to the database — a filter on a billion-row table scans the source, not the 100-row page in front of you. [tool-verified: `nativeParams.ts:53-70`]
+
+**Multi-level group-by.** The Layers icon in any column header toggles that column into the grouping. Group columns lead the `ORDER BY` so group members land on the same page as their header across page boundaries. Primary-key columns are appended as a stable tiebreaker. [tool-verified: `nativeParams.ts:61-70` — group columns first, then explicit sorts, then PKs] Group-header rows are collapsible; collapsing hides members without issuing a new query. [tool-verified: `useResultsGrid.ts:150-171` — `collapsedGroups` set gates the `build()` recursion]
+
+**Persistent choices.** Filter, sort, and group-by settings persist to `localStorage` under `provisa.grid.table:<domain>.<table>` and restore on the next visit. [tool-verified: `useResultsGrid.ts:95-98`, `GovernedTableViewer.tsx:66`]
+
+**Export.** Download the current page as CSV, or copy it to the clipboard as tab-separated text. Export covers the visible page only. [tool-verified: `useResultsGrid.ts:247-274` — both handlers iterate `displayRows`, which in server-paged mode is the current page]

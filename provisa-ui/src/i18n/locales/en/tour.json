@@ -107,6 +107,14 @@
       "step24": {
         "title": "That's the tour — now make it yours",
         "description": "🎉 You're back where you started. Now make it yours:<ul><li>1️⃣ Register one of your real <strong>sources</strong></li><li>2️⃣ Expose a few <strong>tables</strong>, draw a <strong>relationship</strong> or two</li><li>3️⃣ Query it from <strong>Explore</strong> in any language:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Point <kbd>pgwire</kbd> or <kbd>Bolt</kbd> tools at it — everything just works.</p><p>📚 The <strong>Docs</strong> tab has the full guides. 🧭 The compass up top replays this tour anytime. Enjoy Provisa.</p>"
+      },
+      "stepPreview": {
+        "title": "Preview any table",
+        "description": "👀 Expand a row and click <strong>Preview</strong> — live data through the governed pipeline: masked, access-controlled, and <strong>server-paged</strong>, so even a billion-row table opens instantly. Filters, sorts, and grouping run inside the query, and API-backed tables prompt for their required parameters first."
+      },
+      "stepReports": {
+        "title": "Management reports, built in",
+        "description": "📊 The audit log you queried earlier also feeds <strong>ready-made reports</strong> — usage ranking, PII access, policy denials, query health — each a governed view in the <code>ops</code> domain. Adding your own takes one SQL statement, and it becomes a cataloged, exportable data product like any other table."
       }
     }
   }

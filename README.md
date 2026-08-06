@@ -140,6 +140,8 @@ Sources, files, and remote endpoints are registered as governed tables from the 
 ### Administration & Integration
 
 - **Admin API** — GraphQL at `/admin/graphql`; config upload/download, relationship editing, query approval
+- **Reports viewer** — `/admin/reports` lists the built-in ops-domain management views and any registered custom reports; requires the `observability` capability
+- **Table preview** — every registered table has a server-paged governed data viewer with pushed-down filters, multi-level group-by, and CSV export
 - **GraphQL Voyager** — Interactive role-scoped schema visualization as an entity-relationship diagram
 - **LLM relationship discovery** — Claude-powered foreign key candidate suggestions
 - **Python client** — `pip install provisa-client`; GraphQL/SQL → DataFrames, Arrow Flight → pyarrow Tables, SQLAlchemy dialect, ADBC support

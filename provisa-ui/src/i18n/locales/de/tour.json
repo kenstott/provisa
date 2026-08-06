@@ -107,6 +107,14 @@
       "step24": {
         "title": "Das war die Tour — jetzt machen Sie sie zu Ihrer eigenen",
         "description": "🎉 Sie sind wieder dort, wo Sie angefangen haben. Jetzt machen Sie es zu Ihrem eigenen:<ul><li>1️⃣ Eine Ihrer echten <strong>Quellen</strong> registrieren</li><li>2️⃣ Ein paar <strong>Tabellen</strong> freigeben, eine oder zwei <strong>Beziehungen</strong> ziehen</li><li>3️⃣ Sie von <strong>Erkunden</strong> aus in jeder Sprache abfragen:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p><kbd>pgwire</kbd>- oder <kbd>Bolt</kbd>-Tools darauf richten — alles funktioniert einfach.</p><p>📚 Der Tab <strong>Doku</strong> enthält die vollständigen Anleitungen. 🧭 Der Kompass oben spielt diese Tour jederzeit erneut ab. Viel Freude mit Provisa.</p>"
+      },
+      "stepPreview": {
+        "title": "Vorschau für jede Tabelle",
+        "description": "👀 Zeile aufklappen und auf <strong>Vorschau</strong> klicken — Live-Daten durch die Governance-Pipeline: maskiert, zugriffskontrolliert und <strong>serverseitig paginiert</strong>, sodass selbst eine Tabelle mit einer Milliarde Zeilen sofort öffnet. Filter, Sortierung und Gruppierung laufen in der Abfrage selbst; API-basierte Tabellen fragen zuerst ihre Pflichtparameter ab."
+      },
+      "stepReports": {
+        "title": "Management-Berichte, eingebaut",
+        "description": "📊 Das Audit-Log, das Sie eben abgefragt haben, speist auch <strong>fertige Berichte</strong> — Nutzungsranking, PII-Zugriffe, Richtlinien-Ablehnungen, Query-Health — jeweils eine Governance-Sicht in der <code>ops</code>-Domäne. Ein eigener Bericht ist eine einzige SQL-Anweisung und wird zum katalogisierten, exportierbaren Datenprodukt wie jede andere Tabelle."
       }
     }
   }

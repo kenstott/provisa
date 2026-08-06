@@ -107,6 +107,14 @@
       "step24": {
         "title": "Fin de la visita guiada — ahora hazla tuya",
         "description": "🎉 Estás de vuelta donde empezaste. Ahora hazla tuya:<ul><li>1️⃣ Registra uno de tus <strong>orígenes</strong> reales</li><li>2️⃣ Expón algunas <strong>tablas</strong>, traza una o dos <strong>relaciones</strong></li><li>3️⃣ Consúltalo desde <strong>Explorar</strong> en cualquier lenguaje:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Apunta herramientas <kbd>pgwire</kbd> o <kbd>Bolt</kbd> hacia él — todo funciona sin más.</p><p>📚 La pestaña de <strong>Documentación</strong> tiene las guías completas. 🧭 La brújula de arriba repite esta visita guiada cuando quieras. Disfruta Provisa.</p>"
+      },
+      "stepPreview": {
+        "title": "Vista previa de cualquier tabla",
+        "description": "👀 Expanda una fila y haga clic en <strong>Vista previa</strong>: datos en vivo a través de la canalización gobernada — enmascarados, con control de acceso y <strong>paginados en el servidor</strong>, de modo que hasta una tabla de mil millones de filas se abre al instante. Filtros, ordenación y agrupación se ejecutan dentro de la consulta; las tablas respaldadas por API piden primero sus parámetros obligatorios."
+      },
+      "stepReports": {
+        "title": "Informes de gestión incorporados",
+        "description": "📊 El registro de auditoría que consultó antes también alimenta <strong>informes listos</strong> — ranking de uso, accesos a PII, denegaciones de políticas, salud de consultas — cada uno una vista gobernada en el dominio <code>ops</code>. Añadir el suyo es una sola sentencia SQL, y se convierte en un producto de datos catalogado y exportable como cualquier otra tabla."
       }
     }
   }

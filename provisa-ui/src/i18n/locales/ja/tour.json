@@ -107,6 +107,14 @@
       "step24": {
         "title": "ツアーは以上です — 次はあなたの番です",
         "description": "🎉 最初の場所に戻ってきました。ここからはあなたの番です：<ul><li>1️⃣ 実際の<strong>ソース</strong>を1つ登録する</li><li>2️⃣ いくつかの<strong>テーブル</strong>を公開し、<strong>リレーションシップ</strong>を1つか2つ描く</li><li>3️⃣ <strong>Explore</strong> から、任意の言語でクエリする：</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p><kbd>pgwire</kbd> や <kbd>Bolt</kbd> のツールを向けるだけで — すべてがそのまま動きます。</p><p>📚 <strong>Docs</strong> タブに完全なガイドがあります。🧭 上部のコンパスがいつでもこのツアーを再生します。Provisa をお楽しみください。</p>"
+      },
+      "stepPreview": {
+        "title": "どのテーブルもプレビュー",
+        "description": "👀 行を展開して<strong>プレビュー</strong>をクリック — ガバナンス管理されたパイプライン経由のライブデータです。マスキングとアクセス制御が適用され、<strong>サーバー側ページング</strong>なので 10 億行のテーブルでも即座に開きます。フィルター・ソート・グループ化はクエリ内で実行され、API ベースのテーブルは先に必須パラメーターを求めます。"
+      },
+      "stepReports": {
+        "title": "組み込みの管理レポート",
+        "description": "📊 先ほどクエリした監査ログは<strong>すぐ使えるレポート</strong>にもなります — 利用ランキング、PII アクセス、ポリシー拒否、クエリ健全性 — いずれも <code>ops</code> ドメインのガバナンス管理されたビューです。独自レポートの追加は SQL 一文で、他のテーブルと同じくカタログ化・エクスポート可能なデータプロダクトになります。"
       }
     }
   }

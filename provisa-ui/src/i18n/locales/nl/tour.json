@@ -107,6 +107,14 @@
       "step24": {
         "title": "Dat was de rondleiding — maak het nu van jezelf",
         "description": "🎉 Je bent terug waar je begon. Maak het nu van jezelf:<ul><li>1️⃣ Registreer een van je echte <strong>bronnen</strong></li><li>2️⃣ Stel een paar <strong>tabellen</strong> beschikbaar, teken een of twee <strong>relaties</strong></li><li>3️⃣ Bevraag het vanuit <strong>Verkennen</strong> in elke taal:</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Richt <kbd>pgwire</kbd>- of <kbd>Bolt</kbd>-tools erop — alles werkt gewoon.</p><p>📚 Het tabblad <strong>Documentatie</strong> bevat de volledige handleidingen. 🧭 Het kompas bovenaan speelt deze rondleiding altijd opnieuw af. Veel plezier met Provisa.</p>"
+      },
+      "stepPreview": {
+        "title": "Voorbeeld van elke tabel",
+        "description": "👀 Klap een rij uit en klik op <strong>Voorbeeld</strong> — live data via de governed pijplijn: gemaskeerd, met toegangscontrole en <strong>server-gepagineerd</strong>, zodat zelfs een tabel met een miljard rijen direct opent. Filters, sortering en groepering draaien binnen de query; API-gebaseerde tabellen vragen eerst hun verplichte parameters."
+      },
+      "stepReports": {
+        "title": "Ingebouwde managementrapporten",
+        "description": "📊 Het auditlog dat u eerder bevroeg voedt ook <strong>kant-en-klare rapporten</strong> — gebruiksranking, PII-toegang, beleidsweigeringen, querygezondheid — elk een governed view in het <code>ops</code>-domein. Een eigen rapport toevoegen is één SQL-statement, en het wordt een gecatalogiseerd, exporteerbaar dataproduct als elke andere tabel."
       }
     }
   }

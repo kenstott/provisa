@@ -107,6 +107,14 @@
       "step24": {
         "title": "Fin de la visite — à vous de jouer",
         "description": "🎉 Vous voilà de retour au point de départ. Maintenant, faites-en votre propre usage :<ul><li>1️⃣ Enregistrez l'une de vos <strong>sources</strong> réelles</li><li>2️⃣ Exposez quelques <strong>tables</strong>, tracez une <strong>relation</strong> ou deux</li><li>3️⃣ Interrogez-les depuis <strong>Explorer</strong> dans n'importe quel langage :</li></ul><div class='tour-tags'><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span></div><p>Pointez vos outils <kbd>pgwire</kbd> ou <kbd>Bolt</kbd> dessus — tout fonctionne simplement.</p><p>📚 L'onglet <strong>Docs</strong> contient les guides complets. 🧭 La boussole en haut relance cette visite à tout moment. Profitez bien de Provisa.</p>"
+      },
+      "stepPreview": {
+        "title": "Aperçu de n'importe quelle table",
+        "description": "👀 Dépliez une ligne et cliquez sur <strong>Aperçu</strong> : des données en direct via le pipeline gouverné — masquées, sous contrôle d'accès et <strong>paginées côté serveur</strong>, si bien qu'une table d'un milliard de lignes s'ouvre instantanément. Filtres, tris et regroupements s'exécutent dans la requête ; les tables adossées à une API demandent d'abord leurs paramètres obligatoires."
+      },
+      "stepReports": {
+        "title": "Rapports de gestion intégrés",
+        "description": "📊 Le journal d'audit interrogé plus tôt alimente aussi des <strong>rapports prêts à l'emploi</strong> — classement d'usage, accès aux PII, refus de politiques, santé des requêtes — chacun une vue gouvernée dans le domaine <code>ops</code>. Ajouter le vôtre tient en une seule instruction SQL, et il devient un produit de données catalogué et exportable comme toute autre table."
       }
     }
   }

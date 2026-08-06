@@ -127,6 +127,16 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: TABLES_ADD,
   },
   {
+    // REQ-1392: expand the first table row so the Preview button exists, then
+    // collapse it again on Next. Rows render past the loading state, so the
+    // clickBefore await also gates on page readiness.
+    route: "/tables",
+    element: '[data-testid="table-read-view-preview"]',
+    key: "stepPreview",
+    clickBefore: ".data-table tbody tr.clickable",
+    clickAfterNext: ".data-table tbody tr.clickable",
+  },
+  {
     route: "/sql",
     openBranch: "sql",
     element: '.subnav a[href="/sql"]',
@@ -229,6 +239,12 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/admin/overview",
     element: '[data-tour="nav-admin"]',
     key: "step23",
+  },
+  {
+    // REQ-1390: the seeded ops-domain management reports and the add-your-own flow.
+    route: "/admin/reports",
+    element: '[data-testid="reports-list"]',
+    key: "stepReports",
   },
   // ─── CLOSE ───
   {
