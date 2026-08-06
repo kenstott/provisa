@@ -42120,7 +42120,11 @@
   - REQ-1070
   - REQ-1372
 - id: REQ-1386
-  status: proposed
+  status: in-progress
+  scenario: |
+    Given a Provisa install with audit-log records and pii/deprecated tag assignments
+    When an ops-domain-authorized user queries a report view (e.g. usage_ranking, pii_access)
+    Then the seeded view returns the report rows through the governed pipeline under role + domain access control
   group: 5. Query Languages, Compilation & Operations
   category: Operational Views
   priority: SHOULD
@@ -42142,13 +42146,22 @@
     is append-only and grows unbounded, trend-oriented reports (usage_ranking, deprecated_usage, query_health,
     surface_mix) read from scheduled daily rollup tables (per-day, per-table, per-role aggregates) rather
     than scanning the raw log; point-in-time reports (pii_access, policy_denials, stale_metadata, join_hotspots)
-    remain live views.'
+    remain live views. Implemented so far: all eight views live (seed-time DDL via _OPS_REPORT_VIEWS +
+    ops_table_usage unnest spine, per-dialect only at the seed layer), registration under provisa-admin/ops,
+    org_admin steward seeding. Outstanding prerequisites: element_ids/masking-outcome/denying-rule-id
+    captured at log-write time (query text is encrypted per REQ-689, so these cannot be derived post-hoc
+    — until then the reports are table-level), the daily rollup job, and the deferred resource-usage
+    (metrics sampler) and source-freshness (sync timestamps) views.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals — all consumable from any BI tool over pgwire.'
   code:
   - provisa/api/_meta_views.py
   - provisa/api/startup_seed.py
+  - provisa/core/db.py
+  - provisa/core/schema.sql
+  tests:
+  - tests/unit/test_ops_domain.py
   relates_to:
   - REQ-884
   - REQ-609
@@ -42274,7 +42287,24 @@
     and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk createOrUpdate replaces
     the full attribute map (empirically verified — an update wiped a steward-written userDescription),
     so every update starts from the LIVE attributes and overlays only the fields Provisa authors; fields
-    Provisa never populates survive verbatim.'
+    Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their guids and use
+    them to sync"): every successful publish CAPTURES the vendor''s own id per published asset — Atlas
+    entity guid (from the bulk response''s guidAssignments), OpenMetadata entity UUID (from the table
+    PUT response), Collibra asset UUID (exact-name lookup after the import job, only when the binding
+    is missing or the name changed), DataHub dataset URN — into the catalog_bindings table, one row per
+    (provider, semantic_uri) with the vendor-side name-key as physical_key. The next publish USES the
+    stored id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert:
+    Atlas prefers the STORED guid over the laggy basic-search index (the index only covers URIs with no
+    binding); OpenMetadata cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and
+    TableRepository never opts into renameAllowed), so the rebind is SUCCESSION — the predecessor is
+    read by its stored UUID, its steward enrichment carried onto the successor''s first publish, and its
+    description marked superseded with a pointer to the new FQN and the Provisa URN; Collibra
+    PATCH-renames the live asset by stored UUID BEFORE the name-keyed import so the job matches the SAME
+    asset; DataHub URNs are immutable identity, so the successor publishes as a new URN and the OLD
+    bound URN gets the deprecation aspect naming the successor and the Provisa URN. The binding
+    lifecycle (load before publish, persist capture and prune departed-asset bindings after) rides the
+    single publish path, so all triggers get it — Publish now, the event drain, the scheduled reconcile
+    and the CLI publish.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -42286,5 +42316,16 @@
   code:
   - provisa/api/metadata_export/atlas.py
   - provisa/api/metadata_export/atlan.py
+  - provisa/api/metadata_export/openmetadata.py
+  - provisa/api/metadata_export/collibra.py
+  - provisa/api/metadata_export/datahub.py
+  - provisa/api/metadata_export/publishing.py
+  - provisa/api/metadata_export/provider.py
+  - provisa/core/repositories/catalog_binding.py
+  - provisa/core/schema.sql
+  - provisa/core/schema_org.py
   tests:
   - tests/unit/test_metadata_export_atlas_native.py
+  - tests/unit/test_metadata_export_bindings.py
+  - tests/unit/test_catalog_binding_repository.py
+  - tests/unit/test_metadata_export_openmetadata_merge.py

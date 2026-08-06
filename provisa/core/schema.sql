@@ -39,8 +39,8 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description) VALUES ('meta', 'System metadata')
 ON CONFLICT (id) DO NOTHING;
 
--- Seed built-in operational telemetry domain
-INSERT INTO domains (id, description) VALUES ('ops', 'Operational telemetry')
+-- Seed built-in operational telemetry domain (REQ-1386: org_admin is its steward)
+INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
 ON CONFLICT (id) DO NOTHING;
 
 
@@ -306,6 +306,27 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS reason TEXT;
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS command_name TEXT;
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS expires_on TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- REQ-1385/REQ-1389: vendor-side identity bindings captured at publish time. One row per
+-- (provider, published asset): vendor_ref is the catalog's own id for the asset (Atlas guid,
+-- OpenMetadata entity UUID, Collibra asset UUID, DataHub dataset URN) and physical_key is
+-- the vendor-side name-key the asset was published under. On a physical re-address the
+-- exporter uses the stored vendor_ref to rebind (or deprecate) the SAME catalog entity
+-- instead of relying on the vendor's name-keyed upsert to find it.
+CREATE TABLE IF NOT EXISTS catalog_bindings (
+    id            SERIAL PRIMARY KEY,
+    provider      TEXT NOT NULL,
+    semantic_uri  TEXT NOT NULL,
+    vendor_ref    TEXT NOT NULL,
+    physical_key  TEXT NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (provider, semantic_uri)
+);
+
+DO $$ BEGIN
+    ALTER TABLE catalog_bindings ADD COLUMN IF NOT EXISTS tenant_id UUID;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

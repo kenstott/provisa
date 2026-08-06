@@ -49,11 +49,12 @@ def _validate_org_id(org_id: str) -> None:
 
 # Default domain rows seeded by schema.sql; FK targets other tenant rows depend
 # on (domain_id='' must always resolve). Re-seeded on the portable path.
-_SEED_DOMAINS: tuple[tuple[str, str], ...] = (
-    ("", "No domain"),
-    ("meta", "System metadata"),
-    ("ops", "Operational telemetry"),
-    ("shelter", "Animal shelter staff and breed management"),
+# REQ-1386: ops ships with org_admin as steward (REQ-609 — never PENDING).
+_SEED_DOMAINS: tuple[tuple[str, str, str | None], ...] = (
+    ("", "No domain", None),
+    ("meta", "System metadata", None),
+    ("ops", "Operational telemetry", "org_admin"),
+    ("shelter", "Animal shelter staff and breed management", None),
 )
 
 # REQ-1266/REQ-1297: the four system template roles, mirrored from schema.sql's seed (lines
@@ -137,11 +138,11 @@ async def _init_schema_portable(pool: "Database") -> None:
         # and type changes stay out of scope, as they do on the PG path.
         await conn.run_sync(_add_missing_columns)
     async with pool.acquire() as conn:
-        for domain_id, description in _SEED_DOMAINS:
+        for domain_id, description, steward in _SEED_DOMAINS:
             result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))
             if result.fetchone() is None:
                 await conn.execute_core(
-                    insert(domains).values(id=domain_id, description=description)
+                    insert(domains).values(id=domain_id, description=description, steward=steward)
                 )
         for role_id, capabilities in _SEED_ROLES:
             result = await conn.execute_core(select(roles.c.id).where(roles.c.id == role_id))

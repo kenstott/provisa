@@ -32,11 +32,14 @@ from provisa.api._meta_views import (
     _META_TABLE_VIEWS,
     _OPS_LOG_TABLE_ALIAS,
     _OPS_LOG_TABLE_VIEWS,
+    _OPS_REPORT_VIEWS,
+    _ops_table_usage_ddl,
 )
 from provisa.core.control_plane import bring_up_platform
 from provisa.core.database import Connection, Database, create_engine_from_url
 from provisa.core.db import init_schema
 from provisa.core.schema_org import (
+    domains as _domains_t,
     registered_tables as _registered_tables_t,
     relationships as _relationships_t,
     sources as _sources_t,
@@ -227,7 +230,12 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
     ``query_text_enc`` is excluded per REQ-689) registered under source
     ``provisa-admin`` / domain ``ops``, so it routes through the same role + domain
     access control as any business table. Adding another log is a registry entry in
-    ``_OPS_LOG_TABLE_VIEWS`` — not a new subsystem."""
+    ``_OPS_LOG_TABLE_VIEWS`` — not a new subsystem.
+
+    REQ-1386: also creates and registers the management report views
+    (``_OPS_REPORT_VIEWS``) on the same path — always seeded on install, not demo
+    data — and designates ``org_admin`` as the ops-domain steward so the domain
+    never surfaces as a REQ-609 PENDING stewardship gap."""
     schema_name = f"org_{org_id}"
     for ddl in _OPS_LOG_TABLE_VIEWS.values():
         await conn.execute(_adapt_view_ddl(ddl, conn.capabilities.dialect))
@@ -272,6 +280,55 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
                 index_elements=["table_id", "column_name"],
                 update_columns=[],
             )
+
+    # REQ-1386: management report views. The unnest spine first (the report views
+    # reference it), then each report view, registered like any ops table. Every
+    # report view exposes ``id`` as its primary key.
+    await conn.execute(
+        _adapt_view_ddl(_ops_table_usage_ddl(conn.capabilities.dialect), conn.capabilities.dialect)
+    )
+    for view_name, ddl in _OPS_REPORT_VIEWS.items():
+        await conn.execute(_adapt_view_ddl(ddl, conn.capabilities.dialect))
+        table_id = await conn.upsert_returning(
+            _registered_tables_t,
+            {
+                "source_id": "provisa-admin",
+                "domain_id": "ops",
+                "schema_name": schema_name,
+                "table_name": view_name,
+            },
+            index_elements=["source_id", "schema_name", "table_name"],
+            returning="id",
+            update_columns=["domain_id"],
+        )
+        cols = await conn.reflect_columns(view_name, schema=schema_name)
+        col_names = {col["column_name"] for col in cols}
+        await conn.execute_core(
+            _delete(_table_columns_t).where(
+                _table_columns_t.c.table_id == table_id,
+                _table_columns_t.c.column_name.not_in(list(col_names)),
+            )
+        )
+        for col in cols:
+            await conn.upsert(
+                _table_columns_t,
+                {
+                    "table_id": table_id,
+                    "column_name": col["column_name"],
+                    "visible_to": [],
+                    "data_type": col["data_type"],
+                    "is_primary_key": col["column_name"] == "id",
+                },
+                index_elements=["table_id", "column_name"],
+                update_columns=[],
+            )
+
+    # REQ-1386: org_admin stewards the ops domain (REQ-609 — never PENDING).
+    await conn.execute_core(
+        update(_domains_t)
+        .where(_domains_t.c.id == "ops", _domains_t.c.steward.is_(None))
+        .values(steward="org_admin")
+    )
 
 
 async def _seed_meta_relationships(conn: "Connection") -> None:
