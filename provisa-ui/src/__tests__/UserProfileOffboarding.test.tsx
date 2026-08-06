@@ -27,6 +27,10 @@ vi.mock("../api/admin", () => ({
   updateProfile: vi.fn(async () => undefined),
   leaveOrg: (...a: unknown[]) => leaveSpy(...(a as [])),
   deleteAccount: (...a: unknown[]) => deleteAccountSpy(...(a as [])),
+  // REQ-1263: the profile also hosts the person's access tokens; this suite is about offboarding.
+  listPersonalAccessTokens: vi.fn(async () => []),
+  issuePersonalAccessToken: vi.fn(),
+  revokePersonalAccessToken: vi.fn(),
 }));
 
 vi.mock("../context/AuthContext", () => ({

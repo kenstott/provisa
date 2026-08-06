@@ -24,8 +24,8 @@ import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys"
 // it grants no capability the data surfaces gate on and names no column grant.
 //
 // REQ-1352: this list is org_admin's schema.sql seed, verbatim. It is a second copy of a definition
-// that belongs to the seed alone, so it drifts silently — it had gained `ad_hoc_query` and
-// `read_restricted`, which the seed does not grant, and never gained the REQ-1349 pair
+// that belongs to the seed alone, so it drifts silently — it had gained `read_restricted`, which
+// the seed does not grant, and never gained the REQ-1349 pair
 // `org_settings`/`observability`, so a dev-mode org administrator saw no Admin navigation group at
 // all. `authContextDefaultAdminRole.test.ts` pins it to the seed so the next divergence fails a test
 // instead of removing a tab.

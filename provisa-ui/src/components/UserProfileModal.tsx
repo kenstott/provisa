@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { deleteAccount, leaveOrg, updateProfile } from "../api/admin";
+import { PersonalAccessTokens } from "./PersonalAccessTokens";
 
 interface Props {
   onClose: () => void;
@@ -229,6 +230,13 @@ export function UserProfileModal({ onClose }: Props) {
           <Text fz="0.8rem" c="dimmed" mt="xs">
             {t("userProfileModal.leaveHelp")}
           </Text>
+        </section>
+
+        <section data-testid="profile-tokens">
+          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+            {t("userProfileModal.patHeading")}
+          </Title>
+          <PersonalAccessTokens />
         </section>
 
         <section data-testid="profile-delete-account">

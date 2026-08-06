@@ -314,7 +314,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
         : sampleMode === "last"
           ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
           : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
-    const result = await runSql(sampledSql, role, true);
+    const result = await runSql(sampledSql, role);
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);
     if (result.error) {

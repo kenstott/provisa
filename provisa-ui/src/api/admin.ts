@@ -267,6 +267,59 @@ export async function deleteAccount(confirm: string): Promise<void> {
   }
 }
 
+// REQ-1263: personal access tokens. The caller's own tokens in their active org — there is no
+// route here to read or revoke someone else's, so these take no user id.
+export interface PersonalAccessToken {
+  // The SHA-256 of the secret. It is the token's id for revocation; the secret itself is
+  // returned once, by issuePersonalAccessToken, and is unrecoverable afterwards.
+  token_hash: string;
+  prefix: string;
+  name: string;
+  role_id: string | null;
+  scopes: string[];
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export async function listPersonalAccessTokens(): Promise<PersonalAccessToken[]> {
+  const res = await fetch(`${API_BASE}/auth/tokens`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("listPersonalAccessTokens", res.status)));
+  }
+  return res.json();
+}
+
+export async function issuePersonalAccessToken(body: {
+  name: string;
+  role_id?: string | null;
+  scopes?: string[];
+  expires_in_days?: number | null;
+}): Promise<{ token: string; prefix: string; name: string; expires_at: string | null }> {
+  const res = await fetch(`${API_BASE}/auth/tokens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("issuePersonalAccessToken", res.status)));
+  }
+  return res.json();
+}
+
+export async function revokePersonalAccessToken(tokenHash: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/tokens/${encodeURIComponent(tokenHash)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("revokePersonalAccessToken", res.status)));
+  }
+}
+
 export interface OrgMember {
   user_id: string;
   email: string | null;
@@ -951,7 +1004,6 @@ export interface CompileResult {
 export async function runSql(
   sqlText: string,
   role: string = "admin",
-  discoveryMode: boolean = false,
   statsEnabled: boolean = false,
 ): Promise<{
   columns: string[];
@@ -968,7 +1020,7 @@ export async function runSql(
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ sql: sqlText, role, ...(discoveryMode && { discovery_mode: true }) }),
+      body: JSON.stringify({ sql: sqlText, role }),
     });
     if (!resp.ok) {
       const text = await resp.text();

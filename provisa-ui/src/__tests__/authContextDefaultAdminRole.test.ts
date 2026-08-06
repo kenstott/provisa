@@ -14,7 +14,7 @@
  * The role's capabilities belong to `provisa/core/schema.sql` alone (REQ-1352), but a dev/no-auth
  * deployment answers `/auth/me` before any org schema is reachable, so the client needs a literal
  * to mirror what the server grants an unsecured caller. A literal copy drifts: it had gained
- * `ad_hoc_query` and `read_restricted`, which the seed does not grant, and never gained the
+ * `read_restricted`, which the seed does not grant, and never gained the
  * REQ-1349 pair `org_settings`/`observability` — so a dev-mode org administrator's capability set
  * admitted no admin route and the Admin navigation group was not rendered at all.
  *
