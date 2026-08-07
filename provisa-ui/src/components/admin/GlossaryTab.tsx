@@ -553,10 +553,12 @@ export function GlossaryTab() {
                   gap="xs"
                   data-testid={`glossary-edge-in-${edge.term_id}-${edge.rel_type}`}
                 >
-                  <Text size="sm">{edge.name}</Text>
                   <Badge size="sm" variant="outline">
-                    {t(`glossaryTab.rel_${edge.rel_type}`)}
+                    {t(`glossaryTab.rel_${edge.rel_type}_reverse`, {
+                      defaultValue: t(`glossaryTab.rel_${edge.rel_type}`),
+                    })}
                   </Badge>
+                  <Text size="sm">{edge.name}</Text>
                   <Text size="sm" c="dimmed">
                     {t("glossaryTab.incoming")}
                   </Text>

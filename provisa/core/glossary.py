@@ -33,7 +33,18 @@ from __future__ import annotations
 
 import re
 
-TERM_EDGE_TYPES = ("KIND_OF", "RELATED_TO", "PART_OF", "SYNONYM_OF")
+TERM_EDGE_TYPES = (
+    "KIND_OF",
+    "RELATED_TO",
+    "PART_OF",
+    "SYNONYM_OF",
+    "VALID_VALUE_OF",
+    "DERIVED_FROM",
+    "REPLACES",
+    "PREFERRED_TERM_FOR",
+    "TRANSLATION_OF",
+    "ANTONYM_OF",
+)
 
 # Fixed, curated expansion table for pervasive enterprise abbreviations. Deliberately
 # conservative: an ambiguous short form (st, min, no) stays as written rather than

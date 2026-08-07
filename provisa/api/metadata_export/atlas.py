@@ -690,19 +690,43 @@ GLOSSARY_NAME = "Provisa Glossary"
 DEPRECATION_MARKER = "[DEPRECATED]"
 
 # REQ-1387: the closed Provisa term-edge set onto Atlas's native term relations.
-#   KIND_OF    → isA       (Atlas's classifies/isA taxonomy pair, seen from the child)
-#   SYNONYM_OF → synonyms
-#   RELATED_TO → seeAlso
-#   PART_OF    → seeAlso   Atlas has no compositional term relation. validValuesFor was
-#                          considered and rejected: it asserts an enumeration ("these are the
-#                          valid values of"), a semantics PART_OF does not carry. seeAlso is
-#                          the closest native relation that claims nothing PART_OF lacks; the
-#                          exact Provisa kind stays authoritative in Provisa itself.
+#   KIND_OF             → isA             (Atlas's classifies/isA taxonomy pair, seen from
+#                                          the child)
+#   SYNONYM_OF          → synonyms
+#   RELATED_TO          → seeAlso
+#   PART_OF             → seeAlso         Atlas has no compositional term relation.
+#                                          validValuesFor was considered and rejected: it
+#                                          asserts an enumeration ("these are the valid
+#                                          values of"), a semantics PART_OF does not carry.
+#                                          seeAlso is the closest native relation that claims
+#                                          nothing PART_OF lacks; the exact Provisa kind
+#                                          stays authoritative in Provisa itself.
+#   VALID_VALUE_OF      → validValuesFor  written from the value term, which is exactly
+#                                          Atlas's own end for this pair.
+#   PREFERRED_TERM_FOR  → preferredToTerms  written from the preferred term ("preferred to
+#                                          these terms") — the matching end.
+#   TRANSLATION_OF      → translatedTerms  written from the translation, listing the
+#                                          original(s) it was translated from.
+#   ANTONYM_OF          → antonyms        symmetric; either endpoint may write it.
+#   REPLACES            → seeAlso         Atlas's replacementTerms/replacedBy pair is
+#                                          directional the other way (written from the
+#                                          DEPRECATED term, not the successor this map's
+#                                          ``from`` side is), so applying it here would
+#                                          assert the reverse of what REPLACES means. seeAlso
+#                                          avoids the false claim; deprecation direction stays
+#                                          authoritative in Provisa.
+#   DERIVED_FROM        → seeAlso         Atlas has no lineage-flavored term relation.
 TERM_RELATION_MAP = {
     "KIND_OF": "isA",
     "SYNONYM_OF": "synonyms",
     "RELATED_TO": "seeAlso",
     "PART_OF": "seeAlso",
+    "VALID_VALUE_OF": "validValuesFor",
+    "PREFERRED_TERM_FOR": "preferredToTerms",
+    "TRANSLATION_OF": "translatedTerms",
+    "ANTONYM_OF": "antonyms",
+    "REPLACES": "seeAlso",
+    "DERIVED_FROM": "seeAlso",
 }
 
 

@@ -476,9 +476,13 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
       dropping no asserted edge.
     * ``SYNONYM_OF`` becomes ``synonyms`` — OpenMetadata models a synonym as an
       alternative NAME, not a term link, so the target term's name is what publishes.
-    * ``RELATED_TO`` and ``PART_OF`` become ``relatedTerms`` — OpenMetadata has no
-      partitive relation, and the untyped term link is its closest native construct.
-      They are deferred to a second pass because both endpoints must exist first.
+    * ``RELATED_TO``, ``PART_OF``, and the six newer types (``VALID_VALUE_OF``,
+      ``DERIVED_FROM``, ``REPLACES``, ``PREFERRED_TERM_FOR``, ``TRANSLATION_OF``,
+      ``ANTONYM_OF``) all become ``relatedTerms`` — OpenMetadata's glossary model has no
+      construct for enumerations, lineage, deprecation, preference, translation, or
+      antonymy at the term-relation level, so the untyped term link is deliberately the
+      closest native fit for all of them, the same choice already made for RELATED_TO and
+      PART_OF. They are deferred to a second pass because both endpoints must exist first.
 
     A ``KIND_OF`` cycle cannot be a tree: the term closing the loop publishes at the
     glossary root and the cycle is reported rather than silently rewired.
@@ -493,7 +497,8 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
             kind_of.setdefault(edge.from_term_id, []).append(edge.to_term_id)
         elif edge.rel_type == _SYNONYM_OF:
             synonym_ids.setdefault(edge.from_term_id, []).append(edge.to_term_id)
-        else:  # RELATED_TO | PART_OF — the closed enum's remaining members
+        else:  # RELATED_TO | PART_OF | VALID_VALUE_OF | DERIVED_FROM | REPLACES |
+            # PREFERRED_TERM_FOR | TRANSLATION_OF | ANTONYM_OF — all fall to relatedTerms
             related_ids.setdefault(edge.from_term_id, []).append(edge.to_term_id)
     parent: dict[int, int] = {}
     for from_id, targets in kind_of.items():

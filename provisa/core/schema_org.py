@@ -404,7 +404,9 @@ glossary_term_edges = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("from_term_id", "to_term_id", "rel_type"),
     CheckConstraint(
-        "rel_type IN ('KIND_OF', 'RELATED_TO', 'PART_OF', 'SYNONYM_OF')",
+        "rel_type IN ('KIND_OF', 'RELATED_TO', 'PART_OF', 'SYNONYM_OF', "
+        "'VALID_VALUE_OF', 'DERIVED_FROM', 'REPLACES', 'PREFERRED_TERM_FOR', "
+        "'TRANSLATION_OF', 'ANTONYM_OF')",
         name="glossary_term_edges_rel_type_check",
     ),
 )

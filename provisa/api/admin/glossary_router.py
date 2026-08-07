@@ -184,6 +184,9 @@ async def generate_definition(request: Request, term_id: int) -> dict:
     prompt = (
         f"You are a data catalog assistant. Write a concise one-to-two sentence business "
         f"definition for {kind} named '{term['name']}' in an enterprise data glossary. "
+        f"Define the business concept itself, in plain business language a non-technical "
+        f"reader would use — never describe it as 'this field', 'this column', or any other "
+        f"database-schema wording, even when physical columns are listed below for context. "
         + (f"It is bound to these physical columns: {refs}. " if refs else "")
         + (f"Related terms: {related}. " if related else "")
         + "Respond with only the definition text, no preamble."
@@ -227,7 +230,10 @@ async def generate_all_definitions(request: Request) -> dict:
             prompt = (
                 f"You are a data catalog assistant. Write a concise one-to-two sentence "
                 f"business definition for {kind} named '{term['name']}' in an enterprise "
-                f"data glossary. "
+                f"data glossary. Define the business concept itself, in plain business "
+                f"language a non-technical reader would use — never describe it as 'this "
+                f"field', 'this column', or any other database-schema wording, even when "
+                f"physical columns are listed below for context. "
                 + (f"It is bound to these physical columns: {refs}. " if refs else "")
                 + (f"Related terms: {related}. " if related else "")
                 + "Respond with only the definition text, no preamble."
@@ -271,7 +277,14 @@ async def generate_relationships(request: Request) -> dict:
             "You are a data catalog assistant. Given this business-glossary term list, "
             "propose semantic relationships between terms. Allowed relationship types: "
             "KIND_OF (from is a kind of to), PART_OF (from is a part of to), "
-            "SYNONYM_OF, RELATED_TO. Only propose relationships you are confident in; "
+            "SYNONYM_OF (interchangeable terms), RELATED_TO (loosely associated), "
+            "VALID_VALUE_OF (from is an allowed value of the to enumeration/domain), "
+            "DERIVED_FROM (from is computed or sourced from to), "
+            "REPLACES (from supersedes the deprecated to), "
+            "PREFERRED_TERM_FOR (from is the preferred term over the discouraged to), "
+            "TRANSLATION_OF (from is a language/locale translation of to), "
+            "ANTONYM_OF (from is the semantic opposite of to). "
+            "Only propose relationships you are confident in; "
             "fewer, correct edges beat many speculative ones.\n\n"
             f"Terms:\n{term_lines}\n\n"
             'Respond with only a JSON array like [{"from": "term name", "to": "term name", '

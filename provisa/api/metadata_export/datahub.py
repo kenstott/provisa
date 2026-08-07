@@ -316,7 +316,12 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
     Edge mapping (module docstring documents the reasoning): ``KIND_OF`` →
     ``isRelatedTerms`` on the subtype; ``PART_OF`` → ``hasRelatedTerms`` on the whole (edge
     inverted — DataHub's has-a points container→part); ``RELATED_TO`` → ``relatedTerms`` on
-    the source; ``SYNONYM_OF`` → ``relatedTerms`` on both endpoints.
+    the source; ``SYNONYM_OF`` → ``relatedTerms`` on both endpoints. DataHub's glossary
+    model has no typed fields beyond is/has/related-Terms, so the remaining six enum
+    members fall back to the untyped link: symmetric types (``ANTONYM_OF``) write
+    ``relatedTerms`` on both endpoints like ``SYNONYM_OF``; directional types
+    (``VALID_VALUE_OF``, ``DERIVED_FROM``, ``REPLACES``, ``PREFERRED_TERM_FOR``,
+    ``TRANSLATION_OF``) write ``relatedTerms`` on the source only, like ``RELATED_TO``.
     """
     if not snapshot.glossary_terms:
         return []
@@ -352,9 +357,17 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
             _add(edge.to_term_id, "hasRelatedTerms", edge.from_term_id)
         elif edge.rel_type == "RELATED_TO":
             _add(edge.from_term_id, "relatedTerms", edge.to_term_id)
-        elif edge.rel_type == "SYNONYM_OF":
+        elif edge.rel_type in ("SYNONYM_OF", "ANTONYM_OF"):
             _add(edge.from_term_id, "relatedTerms", edge.to_term_id)
             _add(edge.to_term_id, "relatedTerms", edge.from_term_id)
+        elif edge.rel_type in (
+            "VALID_VALUE_OF",
+            "DERIVED_FROM",
+            "REPLACES",
+            "PREFERRED_TERM_FOR",
+            "TRANSLATION_OF",
+        ):
+            _add(edge.from_term_id, "relatedTerms", edge.to_term_id)
         else:
             raise ValueError(f"unknown glossary edge type {edge.rel_type!r}")
 

@@ -145,13 +145,22 @@ DEPRECATED_STATUS = "Obsolete"
 ACTIVE_STATUS = "Accepted"
 
 # The closed Provisa edge enum mapped to Collibra's closest native term-to-term relations.
-# Only these four types are ever mentioned, and only anchored on Provisa's own terms — see the
-# module docstring's containment argument.
+# Only Provisa's own terms are ever mentioned — see the module docstring's containment
+# argument. Collibra ships no out-of-the-box relation type for VALID_VALUE_OF, DERIVED_FROM,
+# REPLACES, PREFERRED_TERM_FOR, TRANSLATION_OF, or ANTONYM_OF, so each collapses onto the
+# generic "is related to" rather than asserting a native type Collibra doesn't have (the same
+# conservative choice atlas.py makes with seeAlso for its own unmapped types).
 TERM_RELATION_TYPES = {
     "SYNONYM_OF": "Business Term is synonym of Business Term",
     "RELATED_TO": "Business Term is related to Business Term",
     "KIND_OF": "Business Term is a type of Business Term",
     "PART_OF": "Business Term is part of Business Term",
+    "VALID_VALUE_OF": "Business Term is related to Business Term",
+    "DERIVED_FROM": "Business Term is related to Business Term",
+    "REPLACES": "Business Term is related to Business Term",
+    "PREFERRED_TERM_FOR": "Business Term is related to Business Term",
+    "TRANSLATION_OF": "Business Term is related to Business Term",
+    "ANTONYM_OF": "Business Term is related to Business Term",
 }
 
 

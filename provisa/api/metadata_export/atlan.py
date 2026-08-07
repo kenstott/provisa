@@ -76,12 +76,27 @@ GLOSSARY_NAME = "Provisa Glossary"
 #   RELATED_TO -> seeAlso   Atlas's undirected related-terms relation;
 #   PART_OF    -> seeAlso   Atlas's glossary model has no meronymy relation between terms
 #                           (containment exists only toward categories), so the nearest
-#                           term-to-term relation is the related-terms one.
+#                           term-to-term relation is the related-terms one;
+#   VALID_VALUE_OF -> validValuesFor  written from the value term, matching Atlas's own end;
+#   PREFERRED_TERM_FOR -> preferredToTerms  written from the preferred term;
+#   TRANSLATION_OF -> translatedTerms  written from the translation, listing the original(s);
+#   ANTONYM_OF -> antonyms  symmetric, either endpoint may write it;
+#   REPLACES   -> seeAlso   Atlas's replacementTerms/replacedBy pair is written from the
+#                           deprecated term, the opposite of this map's `from` side, so using
+#                           it here would assert the reverse of REPLACES; seeAlso avoids the
+#                           false claim;
+#   DERIVED_FROM -> seeAlso  no lineage-flavored term relation exists in this model.
 TERM_RELATION_MAP = {
     "KIND_OF": "isA",
     "SYNONYM_OF": "synonyms",
     "RELATED_TO": "seeAlso",
     "PART_OF": "seeAlso",
+    "VALID_VALUE_OF": "validValuesFor",
+    "PREFERRED_TERM_FOR": "preferredToTerms",
+    "TRANSLATION_OF": "translatedTerms",
+    "ANTONYM_OF": "antonyms",
+    "REPLACES": "seeAlso",
+    "DERIVED_FROM": "seeAlso",
 }
 
 # REQ-1389 field ownership on glossary terms: the definition rides ``longDescription`` —

@@ -933,13 +933,16 @@ All endpoints are under `/admin/glossary`. They require `org_admin` access and a
 | `GET` | `/admin/glossary/terms` | List terms. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
 | `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, physical refs, typed edges, experts |
 | `POST` | `/admin/glossary/terms` | Create an abstract term — user vocabulary with no physical refs |
-| `PATCH` | `/admin/glossary/terms/{term_id}` | Rename and/or set definition |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | Rename, set definition, or toggle export exclusion |
 | `DELETE` | `/admin/glossary/terms/{term_id}` | Delete a term that has no physical refs |
 | `POST` | `/admin/glossary/refs/move` | Move one physical ref to a different term (consolidation) |
 | `POST` | `/admin/glossary/terms/{term_id}/edges` | Add a typed relationship edge between two terms |
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Remove an edge (query params: `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | Tag a user as an expert or author for a term |
 | `DELETE` | `/admin/glossary/terms/{term_id}/experts/{user_id}` | Remove a user's expert/author designation |
+| `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Draft a definition for one term using the org's AI model — returns text only, nothing persists until saved |
+| `POST` | `/admin/glossary/definitions/generate` | Generate and persist definitions for every term that has none — never overwrites human-authored text |
+| `POST` | `/admin/glossary/relationships/generate` | Propose and persist typed edges across the whole glossary using the org's AI model |
 
 **`POST /admin/glossary/terms` body:**
 
@@ -973,6 +976,42 @@ Moving a ref settles the losing term under the remove-or-deprecate rule. Use thi
 
 Deleting a rooted term (one with physical refs) returns `400 glossary.invalid`. Remove or move all refs first.
 
+**`PATCH /admin/glossary/terms/{term_id}` — `export_excluded` field:**
+
+```json
+{"export_excluded": true}
+```
+
+Setting `export_excluded` to `true` withholds the term from all metadata export snapshots, regardless of its physical refs or abstract status. Setting it back to `false` restores the term to the snapshot on the next publish. Curation data (definition, edges, experts) is unaffected. [tool-verified: `provisa/core/repositories/glossary.py:set_export_excluded`, `provisa/api/admin/glossary_router.py:update_term`]
+
+### AI-Assisted Curation
+
+The org's configured AI model can draft definitions and propose relationship edges across the whole glossary in one operation. Both bulk actions require `org_admin` access and a configured org.
+
+**`POST /admin/glossary/definitions/generate`**
+
+Iterates every term in the glossary, skips any that already have a definition, and calls the org's AI model to draft one for each remaining term. The draft is persisted immediately — unlike the per-term draft endpoint (`POST /admin/glossary/terms/{term_id}/definition/generate`), there is no editor step. Human-authored definitions are never overwritten: the guard is `if summary["definition"]: continue` before any model call. One publish notification covers the entire batch. [tool-verified: `provisa/api/admin/glossary_router.py:generate_all_definitions`]
+
+Response:
+
+```json
+{"generated": 12}
+```
+
+`generated` is the count of terms that received a new definition. It is zero when every term already has one.
+
+**`POST /admin/glossary/relationships/generate`**
+
+Sends the full term list to the org's AI model with a prompt that specifies the ten allowed edge types (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) and asks for only confident proposals. The model responds with a JSON array; each entry is validated before any write: unknown term names, self-edges, and edge types outside the closed enum are silently dropped. Valid proposals are upserted idempotently — re-running the action does not duplicate edges. One publish notification covers the batch. The endpoint returns `{"added": 0}` immediately when the glossary contains fewer than two non-deprecated terms. [tool-verified: `provisa/api/admin/glossary_router.py:generate_relationships`]
+
+Response:
+
+```json
+{"added": 5}
+```
+
+`added` is the count of edges written. An edge that already existed still counts — the upsert succeeds, but the edge data does not change.
+
 ### MCP `search_terms` Tool
 
 ```
@@ -989,6 +1028,7 @@ The glossary term graph is included in every `MetadataSnapshot` built by `build_
 
 The export applies the same filters as the rest of the snapshot:
 
+- A term marked `export_excluded` is withheld outright — regardless of its physical refs, abstract status, or whether the org's catalog is configured. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
 - A rooted term publishes only when at least one of its physical refs belongs to a column that passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld).
 - A rooted term whose refs are all withheld by those filters is withheld with them.
 - Abstract terms publish unconditionally — they are user vocabulary, not bound to physical columns.

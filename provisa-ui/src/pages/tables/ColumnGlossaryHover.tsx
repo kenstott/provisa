@@ -46,7 +46,12 @@ export function ColumnGlossaryHover({ tableId, columnName, children }: ColumnGlo
     });
   };
 
-  const edges = term ? [...term.edges_out, ...term.edges_in] : [];
+  const edges = term
+    ? [
+        ...term.edges_out.map((e) => ({ ...e, reverse: false })),
+        ...term.edges_in.map((e) => ({ ...e, reverse: true })),
+      ]
+    : [];
 
   return (
     <Popover
@@ -97,7 +102,16 @@ export function ColumnGlossaryHover({ tableId, columnName, children }: ColumnGlo
           {edges.length > 0 && (
             <Text fz="0.7rem" c="dimmed" mt={2}>
               {edges
-                .map((e) => `${t(`glossaryTab.rel_${e.rel_type}`)}: ${e.name}`)
+                .map(
+                  (e) =>
+                    `${
+                      e.reverse
+                        ? t(`glossaryTab.rel_${e.rel_type}_reverse`, {
+                            defaultValue: t(`glossaryTab.rel_${e.rel_type}`),
+                          })
+                        : t(`glossaryTab.rel_${e.rel_type}`)
+                    }: ${e.name}`,
+                )
                 .join(" · ")}
             </Text>
           )}

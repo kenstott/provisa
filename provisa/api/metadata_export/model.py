@@ -207,7 +207,8 @@ class GlossaryTermEdge:  # REQ-1387
 
     from_term_id: int
     to_term_id: int
-    rel_type: str  # KIND_OF | RELATED_TO | PART_OF | SYNONYM_OF
+    rel_type: str  # KIND_OF | RELATED_TO | PART_OF | SYNONYM_OF | VALID_VALUE_OF |
+    # DERIVED_FROM | REPLACES | PREFERRED_TERM_FOR | TRANSLATION_OF | ANTONYM_OF
 
 
 @dataclass

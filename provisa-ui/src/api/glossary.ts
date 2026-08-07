@@ -17,7 +17,18 @@ import { serverMessage, requestFailed } from "../i18n/serverMessage";
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 // Closed enums — the server rejects anything else.
-export const GLOSSARY_REL_TYPES = ["KIND_OF", "RELATED_TO", "PART_OF", "SYNONYM_OF"] as const;
+export const GLOSSARY_REL_TYPES = [
+  "KIND_OF",
+  "RELATED_TO",
+  "PART_OF",
+  "SYNONYM_OF",
+  "VALID_VALUE_OF",
+  "DERIVED_FROM",
+  "REPLACES",
+  "PREFERRED_TERM_FOR",
+  "TRANSLATION_OF",
+  "ANTONYM_OF",
+] as const;
 export type GlossaryRelType = (typeof GLOSSARY_REL_TYPES)[number];
 
 export const GLOSSARY_EXPERT_KINDS = ["expert", "author"] as const;
