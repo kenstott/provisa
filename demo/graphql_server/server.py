@@ -588,59 +588,107 @@ _SCHEDULES: list[dict] = [
 class AnimalBreed:
     """Catalog of species and breeds in shelter custody — used to standardize care protocols, adoption eligibility rules, and staffing assignments."""
 
-    name: str
-    species: str
-    care_level: str
-    avg_lifespan_years: int
-    typical_habitat: str
-    description: str
+    name: str = strawberry.field(
+        description="Unique breed name — the natural key referenced by assignments and adoption paperwork"
+    )
+    species: str = strawberry.field(
+        description="Species group (cat, dog, lion, rabbit) — determines which department and safety protocols apply"
+    )
+    care_level: str = strawberry.field(
+        description="Required keeper expertise: low, moderate, high, or expert — expert breeds need licensed specialist coverage"
+    )
+    avg_lifespan_years: int = strawberry.field(
+        description="Average lifespan in years — used in long-term custody cost projections and adopter counseling"
+    )
+    typical_habitat: str = strawberry.field(
+        description="Habitat classification (indoor, domestic, savanna) — drives enclosure placement and enrichment planning"
+    )
+    description: str = strawberry.field(
+        description="Operational placement notes — adoption suitability, staffing impact, and handling restrictions"
+    )
 
 
 @strawberry.type
 class ContactInfo:
     """Staff contact and identity details — restricted to authorized roles."""
 
-    phone: str
-    email: str
-    ssn: str
+    phone: str = strawberry.field(
+        description="Work phone for shift-coverage calls and emergency escalation"
+    )
+    email: str = strawberry.field(
+        description="Work email — primary channel for schedule changes and assignment notices"
+    )
+    ssn: str = strawberry.field(
+        description="Social Security number — payroll identity; restricted PII, never expose outside HR"
+    )
 
 
 @strawberry.type
 class Employee:
     """Shelter staff roster — the source of truth for who is authorized to receive breed assignments and appear on shift schedules."""
 
-    id: int
-    first_name: str
-    last_name: str
-    hire_date: str
-    department: str
-    contact: ContactInfo
+    id: int = strawberry.field(
+        description="Employee ID — stable key referenced by assignments and schedules"
+    )
+    first_name: str = strawberry.field(description="Legal first name as it appears on payroll")
+    last_name: str = strawberry.field(description="Legal last name as it appears on payroll")
+    hire_date: str = strawberry.field(
+        description="Date hired (YYYY-MM-DD) — determines seniority for shift-preference bidding"
+    )
+    department: str = strawberry.field(
+        description="Operating department (Large Carnivores, Domestic Animals, Small Animals) — bounds which breeds can be assigned"
+    )
+    contact: ContactInfo = strawberry.field(
+        description="Contact and identity details — restricted to authorized roles"
+    )
 
 
 @strawberry.type
 class Assignment:
     """Accountability record linking a staff member to a breed — drives care coverage decisions and identifies single-point-of-failure risks when a primary keeper is unavailable."""
 
-    id: int
-    employee_id: int
-    breed_name: str
-    employee: Employee
-    breed: AnimalBreed
-    role: str
-    start_date: str
-    end_date: Optional[str]
+    id: int = strawberry.field(description="Assignment record ID")
+    employee_id: int = strawberry.field(
+        description="ID of the accountable staff member — joins to the employee roster"
+    )
+    breed_name: str = strawberry.field(
+        description="Breed under this staff member's care — joins to the breed catalog"
+    )
+    employee: Employee = strawberry.field(
+        description="The accountable staff member's full roster record"
+    )
+    breed: AnimalBreed = strawberry.field(
+        description="Care requirements and placement context for the assigned breed"
+    )
+    role: str = strawberry.field(
+        description="Accountability level: primary_keeper, backup_keeper, or trainee — only primary and backup count toward coverage minimums"
+    )
+    start_date: str = strawberry.field(
+        description="Date the assignment began (YYYY-MM-DD) — start of the accountability window"
+    )
+    end_date: Optional[str] = strawberry.field(
+        description="Date the assignment ended (YYYY-MM-DD); null while the assignment is active"
+    )
 
 
 @strawberry.type
 class Schedule:
     """Weekly shift roster for all staff — used to verify that every breed has licensed keeper coverage on every day the shelter operates."""
 
-    id: int
-    employee: Employee
-    day_of_week: str
-    shift_start: str
-    shift_end: str
-    location: str
+    id: int = strawberry.field(description="Shift record ID")
+    employee: Employee = strawberry.field(description="Staff member working this shift")
+    day_of_week: str = strawberry.field(
+        description="Weekday of the recurring shift (Monday through Sunday)"
+    )
+    shift_start: str = strawberry.field(
+        description="Shift start time (24-hour HH:MM, local shelter time)"
+    )
+    shift_end: str = strawberry.field(
+        description="Shift end time (24-hour HH:MM, local shelter time)"
+    )
+    location: str = strawberry.field(
+        description="Physical duty station (e.g. Large Carnivore Block A, Dog Kennels) — used for location-level coverage checks"
+    )
 
 
 def _make_employee(e: dict) -> Employee:

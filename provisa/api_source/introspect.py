@@ -141,8 +141,10 @@ _INTROSPECTION_QUERY = """
     types {
       name
       kind
+      description
       fields {
         name
+        description
         type {
           name
           kind
@@ -195,12 +197,19 @@ async def introspect_graphql(url: str) -> list[ApiEndpointCandidate]:  # REQ-307
         columns: list[ApiColumn] = []
         for obj_field in obj_type.get("fields", []):
             fname = obj_field["name"]
+            fdesc = obj_field.get("description") or None
             ftype_name, ftype_kind = _unwrap_type(obj_field["type"])
             if ftype_name in _GRAPHQL_SCALAR_MAP:
                 col_type = _GRAPHQL_SCALAR_MAP[ftype_name]
-                columns.append(ApiColumn(name=fname, type=col_type, filterable=True))
+                columns.append(
+                    ApiColumn(name=fname, type=col_type, filterable=True, description=fdesc)
+                )
             else:
-                columns.append(ApiColumn(name=fname, type=ApiColumnType.jsonb, filterable=False))
+                columns.append(
+                    ApiColumn(
+                        name=fname, type=ApiColumnType.jsonb, filterable=False, description=fdesc
+                    )
+                )
 
         if not columns:
             continue
