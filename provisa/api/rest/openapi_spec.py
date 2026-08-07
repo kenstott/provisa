@@ -689,6 +689,10 @@ SWAGGER_UI_HTML = """\
         requestInterceptor: (req) => {
           const role = urlRole || localStorage.getItem("provisa_role");
           if (role) req.headers["x-provisa-role"] = role;
+          const token = localStorage.getItem("provisa_token");
+          if (token && !req.headers["Authorization"]) req.headers["Authorization"] = "Bearer " + token;
+          const orgId = localStorage.getItem("provisa_org");
+          if (orgId && !req.headers["X-Org-Provisa"]) req.headers["X-Org-Provisa"] = orgId;
           return req;
         },
       });
