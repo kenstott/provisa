@@ -34,6 +34,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   definition: "Money in.",
   is_abstract: false,
   deprecated: false,
+  export_excluded: false,
   ref_count: 1,
   refs: [
     {

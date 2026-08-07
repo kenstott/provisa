@@ -70,6 +70,7 @@ function makeAuthValue(overrides: {
     familyName: null,
     authEnabled: false,
     identityErrorStatus: null,
+    multitenancy: false,
   };
 }
 
