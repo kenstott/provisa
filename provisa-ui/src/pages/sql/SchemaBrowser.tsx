@@ -49,7 +49,7 @@ function ModelingTableRow({
   group: string;
 }) {
   const { t } = useTranslation();
-  const ref = `"${normalizeDomain(tbl.schemaName)}"."${tbl.alias || tbl.tableName}"`;
+  const ref = `"${normalizeDomain(tbl.domainId)}"."${tbl.alias || tbl.tableName}"`;
   return (
     <UnstyledButton
       onClick={() => insertAtCursor(ref)}
@@ -397,7 +397,7 @@ export function SchemaBrowser({
                                       topTab === "sql"
                                         ? () =>
                                             insertAtCursor(
-                                              `"${normalizeDomain(tbl.schemaName)}"."${tbl.alias || tbl.tableName}"`,
+                                              `"${normalizeDomain(tbl.domainId)}"."${tbl.alias || tbl.tableName}"`,
                                             )
                                         : undefined
                                     }
@@ -421,7 +421,7 @@ export function SchemaBrowser({
                                   <ActionIcon
                                     onClick={() =>
                                       insertAtCursor(
-                                        `"${normalizeDomain(tbl.schemaName)}"."${tbl.alias || tbl.tableName}"`,
+                                        `"${normalizeDomain(tbl.domainId)}"."${tbl.alias || tbl.tableName}"`,
                                       )
                                     }
                                     aria-label={t("schemaBrowser.insertTableReference")}

@@ -75,9 +75,22 @@ describe("nativeParams", () => {
     expect(buildParamWhere(TABLE, { petId: "7", status: "" })).toBe(` WHERE "petId" = 7`);
   });
 
-  it("previewSql targets schema-qualified relation with LIMIT", () => {
+  it("previewSql targets domain-qualified relation with LIMIT", () => {
     expect(previewSql(TABLE, { petId: "7" })).toBe(
-      `SELECT * FROM "api"."pets" WHERE "petId" = 7 LIMIT 1000`,
+      `SELECT * FROM "petstore"."pets" WHERE "petId" = 7 LIMIT 1000`,
+    );
+  });
+
+  it("previewSql uses domainId (not physical schemaName) and alias (not physical tableName)", () => {
+    const aliasedTable = {
+      domainId: "pet-store",
+      schemaName: "default",
+      tableName: "get_inventory",
+      alias: "inventory",
+      columns: [],
+    } as unknown as RegisteredTable;
+    expect(previewSql(aliasedTable, {})).toBe(
+      `SELECT * FROM "pet_store"."inventory" LIMIT 1000`,
     );
   });
 
