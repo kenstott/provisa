@@ -17,6 +17,11 @@ export function getCategory(type: string) {
 
 export const backendType = (uiValue: string) => TYPE_ALIAS[uiValue] ?? uiValue;
 
+const REVERSE_TYPE_ALIAS: Record<string, string> = Object.fromEntries(
+  Object.entries(TYPE_ALIAS).map(([uiValue, backendValue]) => [backendValue, uiValue]),
+);
+export const uiType = (backendValue: string) => REVERSE_TYPE_ALIAS[backendValue] ?? backendValue;
+
 export type ReachTag = "live" | "replica" | "unreachable";
 export interface ReachInfo {
   tag: ReachTag;

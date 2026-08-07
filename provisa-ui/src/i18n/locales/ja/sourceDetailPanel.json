@@ -6,6 +6,8 @@
       "host": "ホスト",
       "port": "ポート",
       "database": "データベース",
+      "endpoint": "エンドポイント",
+      "path": "パス",
       "username": "ユーザー名",
       "naming": "命名",
       "cache": "キャッシュ",

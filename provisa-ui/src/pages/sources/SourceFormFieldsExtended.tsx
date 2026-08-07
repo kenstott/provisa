@@ -205,7 +205,6 @@ export function SourceFormFieldsExtended({
             data-testid="graphql-endpoint-input"
           />
           <TextInput
-            required
             label={t("sourceFormFieldsExtended.namespace")}
             value={gqlNamespace}
             onChange={(e) => setGqlNamespace(e.target.value)}

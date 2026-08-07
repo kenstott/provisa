@@ -341,6 +341,9 @@ async def list_grpc_remote_sources(request: Request):  # REQ-598
                 "namespace": reg.get("namespace", ""),
                 "domain_id": reg.get("domain_id", ""),
                 "tls": reg.get("tls", False),
+                "import_paths": reg.get("import_paths", []),
+                "cache_ttl": reg.get("cache_ttl", 300),
+                "auth_config": reg.get("auth_config"),
                 "tables": len(reg.get("queries", [])),
                 "mutations": len(reg.get("mutations", [])),
             }

@@ -6,6 +6,8 @@
       "host": "Host",
       "port": "Poort",
       "database": "Database",
+      "endpoint": "Eindpunt",
+      "path": "Pad",
       "username": "Gebruikersnaam",
       "naming": "Naamgeving",
       "cache": "Cache",

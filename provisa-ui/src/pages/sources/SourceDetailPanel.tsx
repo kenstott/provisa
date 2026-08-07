@@ -15,6 +15,10 @@ import { Pencil, Trash2, ArrowRight } from "lucide-react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type { Source } from "../../types/admin";
 import { SOURCE_TYPES } from "./constants";
+import { uiType } from "./sourceHelpers";
+
+const API_TYPES = new Set(["graphql_remote", "grpc_remote", "openapi"]);
+const PATH_TYPES = new Set(["sqlite", "csv", "parquet", "files"]);
 
 interface SourceDetailPanelProps {
   s: Source;
@@ -35,13 +39,22 @@ export function SourceDetailPanel({
 }: SourceDetailPanelProps) {
   const { t } = useTranslation();
 
+  const isApiType = API_TYPES.has(s.type);
+  const isPathType = PATH_TYPES.has(s.type);
+
   const rows: [string, string | number][] = [
     ["description", s.description || "—"],
-    ["type", SOURCE_TYPES.find((ty) => ty.value === s.type)?.label ?? s.type],
-    ["host", s.host || "—"],
-    ["port", s.port || "—"],
-    ["database", s.database || "—"],
-    ["username", s.username || "—"],
+    ["type", SOURCE_TYPES.find((ty) => ty.value === uiType(s.type))?.label ?? s.type],
+    ...(isApiType
+      ? ([["endpoint", s.path || "—"]] as [string, string | number][])
+      : isPathType
+        ? ([["path", s.path || "—"]] as [string, string | number][])
+        : ([
+            ["host", s.host || "—"],
+            ["port", s.port || "—"],
+            ["database", s.database || "—"],
+            ["username", s.username || "—"],
+          ] as [string, string | number][])),
     ["naming", s.gqlNamingConvention || t("sourceDetailPanel.namingInherit")],
     ["cache", s.cacheEnabled ? t("sourceDetailPanel.cacheEnabled") : t("sourceDetailPanel.cacheDisabled")],
     ["cacheTtl", s.cacheTtl != null ? `${s.cacheTtl}s` : t("sourceDetailPanel.ttlInherit")],

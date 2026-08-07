@@ -58,10 +58,12 @@ import {
   SOURCE_TYPES,
 } from "./sources/constants";
 import {
+  backendType,
   getDefaultPort,
   parseFilesPath,
   reachInfoFor,
   reachSuffix,
+  uiType,
 } from "./sources/sourceHelpers";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { SourceFormFields } from "./sources/SourceFormFields";
@@ -278,11 +280,105 @@ export function SourcesPage() {
   };
 
   const handleEdit = (s: Source) => {
+    if (s.type === "graphql_remote") {
+      fetch("/admin/sources/graphql-remote")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((regs: { source_id: string; namespace: string; cache_ttl: number; auth: Record<string, string> | null }[]) => {
+          const reg = regs.find((r) => r.source_id === s.id);
+          setGqlNamespace(reg?.namespace ?? "");
+          setGqlCacheTtl(reg?.cache_ttl != null ? String(reg.cache_ttl) : "300");
+          if (reg?.auth?.type) {
+            setAuthType(reg.auth.type);
+            const { type: _t, ...rest } = reg.auth;
+            void _t;
+            setAuthFields(rest);
+          }
+        })
+        .catch(() => {
+          setGqlNamespace("");
+          setGqlCacheTtl("300");
+        });
+    }
+    if (s.type === "openapi") {
+      fetch("/admin/openapi/list")
+        .then((r) => (r.ok ? r.json() : []))
+        .then(
+          (
+            regs: {
+              source_id: string;
+              spec_path: string;
+              has_inline_spec: boolean;
+              base_url: string;
+              cache_ttl: number;
+              auth_config: Record<string, string> | null;
+            }[],
+          ) => {
+            const reg = regs.find((r) => r.source_id === s.id);
+            setOpenapiSpecMode(reg?.has_inline_spec ? "inline" : "path");
+            setOpenapiSpecPath(reg?.has_inline_spec ? "" : (reg?.spec_path ?? ""));
+            setOpenapiSpecInline("");
+            setOpenapiBaseUrl(reg?.base_url ?? "");
+            setOpenapiCacheTtl(reg?.cache_ttl != null ? String(reg.cache_ttl) : "300");
+            if (reg?.auth_config?.type) {
+              setAuthType(reg.auth_config.type);
+              const { type: _t, ...rest } = reg.auth_config;
+              void _t;
+              setAuthFields(rest);
+            }
+          },
+        )
+        .catch(() => {
+          setOpenapiSpecMode("path");
+          setOpenapiSpecPath("");
+          setOpenapiBaseUrl("");
+          setOpenapiCacheTtl("300");
+        });
+    }
+    if (s.type === "grpc_remote") {
+      fetch("/admin/grpc-remote/list")
+        .then((r) => (r.ok ? r.json() : []))
+        .then(
+          (
+            regs: {
+              source_id: string;
+              server_address: string;
+              proto_path: string;
+              namespace: string;
+              tls: boolean;
+              import_paths: string[];
+              cache_ttl: number;
+              auth_config: Record<string, string> | null;
+            }[],
+          ) => {
+            const reg = regs.find((r) => r.source_id === s.id);
+            setGrpcProtoPath(reg?.proto_path ?? "");
+            setGrpcServerAddress(reg?.server_address ?? "");
+            setGrpcNamespace(reg?.namespace ?? "");
+            setGrpcTls(reg?.tls ?? false);
+            setGrpcImportPaths((reg?.import_paths ?? []).join(", "));
+            setGrpcCacheTtl(reg?.cache_ttl != null ? String(reg.cache_ttl) : "300");
+            if (reg?.auth_config?.type) {
+              setAuthType(reg.auth_config.type);
+              const { type: _t, ...rest } = reg.auth_config;
+              void _t;
+              setAuthFields(rest);
+            }
+          },
+        )
+        .catch(() => {
+          setGrpcProtoPath("");
+          setGrpcServerAddress("");
+          setGrpcNamespace("");
+          setGrpcTls(false);
+          setGrpcImportPaths("");
+          setGrpcCacheTtl("300");
+        });
+    }
     setForm({
       id: s.id,
-      type: s.type,
-      host: s.host ?? "",
-      port: s.port ?? getDefaultPort(s.type),
+      type: uiType(s.type),
+      host: s.type === "graphql_remote" ? (s.path ?? "") : (s.host ?? ""),
+      port: s.port ?? getDefaultPort(uiType(s.type)),
       database: s.database ?? "",
       username: s.username ?? "",
       password: "",
@@ -449,6 +545,7 @@ export function SourcesPage() {
               : undefined;
       const sourcePayload = {
         ...coreForm,
+        type: backendType(form.type),
         offPeakWindow: coreForm.offPeakWindow?.trim() || null,
         path: FILE_SOURCES.has(form.type) || form.type === "files"
           ? form.type === "files" && form.path
@@ -689,7 +786,7 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(serverMessage(body, requestFailed("gRPC register", resp.status)));
       }
-      await createSource({
+      const genericPayload = {
         id: form.id,
         type: form.type,
         host: form.host,
@@ -698,11 +795,63 @@ export function SourcesPage() {
         username: form.username,
         password: form.password,
         path: null,
-      });
+      };
+      const genericResult = editingSourceId
+        ? await updateSource(genericPayload)
+        : await createSource(genericPayload);
+      if (!genericResult.success) throw new Error(genericResult.message);
       handleCancelForm();
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleGraphqlRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const resp = await fetch("/admin/sources/graphql-remote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_id: form.id,
+          url: form.host,
+          namespace: gqlNamespace,
+          domain_id: "",
+          auth: authType !== "none" ? { type: authType, ...authFields } : null,
+          cache_ttl: parseInt(gqlCacheTtl, 10) || 300,
+          description: form.description,
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(serverMessage(body, requestFailed("GraphQL register", resp.status)));
+      }
+      const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
+      if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
+      const cacheResult = await updateSourceCache(form.id, form.cacheEnabled, ttlValue);
+      if (!cacheResult.success) throw new Error(cacheResult.message);
+      const loadProtResult = await updateSourceLoadProtection(
+        form.id,
+        form.loadProtected,
+        form.offPeakWindow.trim() || null,
+        form.offPeakTz.trim() || "UTC",
+      );
+      if (!loadProtResult.success) throw new Error(loadProtResult.message);
+      const parsedDomains = form.allowedDomains
+        .split(",")
+        .map((d) => d.trim())
+        .filter(Boolean);
+      const domainsResult = await updateSourceAllowedDomains(form.id, parsedDomains);
+      if (!domainsResult.success) throw new Error(domainsResult.message);
+      handleCancelForm();
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -796,19 +945,19 @@ export function SourcesPage() {
               ? handleOpenapiRegister
               : form.type === "grpc"
                 ? handleGrpcRegister
-                : handleCreate
+                : form.type === "graphql"
+                  ? handleGraphqlRegister
+                  : handleCreate
           }
         >
-          <label>
-            {t("sourcesPage.idLabel")}
-            <input
-              required
-              value={form.id}
-              onChange={(e) => setForm({ ...form, id: e.target.value })}
-              placeholder={t("sourcesPage.idPlaceholder")}
-              data-testid="sources-id-input"
-            />
-          </label>
+          <TextInput
+            label={t("sourcesPage.idLabel")}
+            required
+            value={form.id}
+            onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
+            placeholder={t("sourcesPage.idPlaceholder")}
+            data-testid="sources-id-input"
+          />
           <label>
             {t("sourcesPage.typeLabel")}
             <select
@@ -967,7 +1116,19 @@ export function SourcesPage() {
                           }}
                         >
                           {isEditing ? (
-                            <form className="form-card" onSubmit={handleCreate} style={{ margin: 0 }}>
+                            <form
+                              className="form-card"
+                              onSubmit={
+                                form.type === "openapi"
+                                  ? handleOpenapiRegister
+                                  : form.type === "grpc"
+                                    ? handleGrpcRegister
+                                    : form.type === "graphql"
+                                      ? handleGraphqlRegister
+                                      : handleCreate
+                              }
+                              style={{ margin: 0 }}
+                            >
                               <TextInput
                                 label={t("sourcesPage.idLabel")}
                                 required

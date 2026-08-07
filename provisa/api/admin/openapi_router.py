@@ -14,6 +14,7 @@ Endpoints:
   POST /admin/openapi/register         — load spec + auto-register tables/functions
   POST /admin/openapi/refresh/{id}     — re-load spec and re-run registration
   POST /admin/openapi/preview          — parse spec and return discovered ops (no persist)
+  GET  /admin/openapi/list             — return registration metadata for all sources
   GET  /admin/openapi/spec/{id}        — return stored spec JSON
   PUT  /admin/openapi/spec/{id}        — store spec JSON + run auto-register
 """
@@ -269,6 +270,28 @@ async def preview_openapi_spec(body: OpenAPIPreviewRequest):  # REQ-315, REQ-407
             for m in mutations
         ],
     }
+
+
+@router.get("/list")
+async def list_openapi_sources():
+    """Return registration metadata for all OpenAPI sources (without the parsed spec)."""
+    from provisa.api.app import state
+
+    specs = getattr(state, "openapi_specs", {})
+    result = []
+    for sid, reg in specs.items():
+        result.append(
+            {
+                "source_id": sid,
+                "spec_path": reg.get("spec_path", ""),
+                "has_inline_spec": bool(reg.get("spec_content")),
+                "base_url": reg.get("base_url", ""),
+                "domain_id": reg.get("domain_id", ""),
+                "cache_ttl": reg.get("cache_ttl", 300),
+                "auth_config": reg.get("auth_config"),
+            }
+        )
+    return result
 
 
 @router.get("/spec/{source_id}")

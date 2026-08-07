@@ -6,6 +6,8 @@
       "host": "主機",
       "port": "連接埠",
       "database": "數據庫",
+      "endpoint": "端點",
+      "path": "路徑",
       "username": "使用者名稱",
       "naming": "命名",
       "cache": "快取",

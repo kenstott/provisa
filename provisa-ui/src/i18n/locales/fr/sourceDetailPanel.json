@@ -6,6 +6,8 @@
       "host": "Hôte",
       "port": "Port",
       "database": "Base de données",
+      "endpoint": "Point de terminaison",
+      "path": "Chemin",
       "username": "Nom d'utilisateur",
       "naming": "Nommage",
       "cache": "Cache",

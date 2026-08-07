@@ -69,6 +69,7 @@ query SourcesQuery {
     offPeakWindow
     offPeakTz
     gqlNamingConvention
+    path
     allowedDomains
     description
     mappingJson

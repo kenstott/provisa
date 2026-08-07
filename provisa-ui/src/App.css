@@ -425,6 +425,28 @@ main {
 /* Form-control styling removed: forms are Mantine now, and these element rules
  * overrode Mantine's input/select border, padding, and focus/error states. */
 .form-card button { grid-column: 1 / -1; }
+/* RegisterTableForm's source/domain/schema/table pickers stayed native <select>
+ * elements (e2e specs drive them via selectOption()), so they need their own
+ * styling instead of Mantine's. */
+.form-card select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  padding: 0.5rem 1.6rem 0.5rem 0.6rem;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b8fa3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+}
+.form-card select:hover:not(:disabled) { border-color: var(--primary); }
+.form-card select:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.form-card select:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Column Presets Editor */
 .cp-editor { padding: 0 1.5rem 0.75rem; }

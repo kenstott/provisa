@@ -6,6 +6,8 @@
       "host": "Host",
       "port": "Port",
       "database": "Database",
+      "endpoint": "Endpoint",
+      "path": "Path",
       "username": "Username",
       "naming": "Naming",
       "cache": "Cache",
