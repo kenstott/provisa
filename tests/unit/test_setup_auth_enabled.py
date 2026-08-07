@@ -34,7 +34,12 @@ async def test_status_demo_no_auth_is_unsecured(monkeypatch):
     monkeypatch.setattr(setup_router, "_idp_override", lambda: None)
     monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: {})
     result = await setup_status()
-    assert result == {"needs_setup": True, "demo_mode": True, "auth_enabled": False}
+    assert result == {
+        "needs_setup": True,
+        "demo_mode": True,
+        "auth_enabled": False,
+        "multitenancy": False,
+    }
 
 
 @pytest.mark.asyncio
@@ -46,7 +51,12 @@ async def test_status_demo_firebase_config_is_enforced(monkeypatch):
         lambda: {"auth": {"provider": "firebase"}},
     )
     result = await setup_status()
-    assert result == {"needs_setup": False, "demo_mode": True, "auth_enabled": True}
+    assert result == {
+        "needs_setup": False,
+        "demo_mode": True,
+        "auth_enabled": True,
+        "multitenancy": False,
+    }
 
 
 @pytest.mark.asyncio
@@ -55,4 +65,9 @@ async def test_status_non_demo_no_auth_needs_setup(monkeypatch):
     monkeypatch.setattr(setup_router, "_idp_override", lambda: None)
     monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: {})
     result = await setup_status()
-    assert result == {"needs_setup": True, "demo_mode": False, "auth_enabled": False}
+    assert result == {
+        "needs_setup": True,
+        "demo_mode": False,
+        "auth_enabled": False,
+        "multitenancy": False,
+    }

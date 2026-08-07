@@ -66,6 +66,12 @@ def _schema_to_pg_cols(schema: dict | None) -> list[tuple[str, str]]:
         schema = schema["items"]
     assert schema is not None
     props = schema.get("properties", {})
+    if not props and isinstance(schema.get("additionalProperties"), dict):
+        # Map-shaped response (e.g. {"available": 3, "sold": 12}) has no fixed property
+        # names — _normalize_rows already flattens it to {"status": k, "count": v} rows,
+        # so the table must be created with matching columns.
+        value_type = schema["additionalProperties"].get("type", "string")
+        return [("status", "TEXT"), ("count", _JSON_TO_PG.get(value_type, "TEXT"))]
     return [
         (name, _JSON_TO_PG.get(prop.get("type", "string"), "TEXT")) for name, prop in props.items()
     ]
