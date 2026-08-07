@@ -214,7 +214,7 @@ describe("GlossaryTab", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it("offers exactly the four closed rel_type values in the add-edge form", async () => {
+  it("offers exactly the ten closed rel_type values in the add-edge form", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     await screen.findByTestId("glossary-edge-rel-select");
@@ -226,6 +226,12 @@ describe("GlossaryTab", () => {
       t("glossaryTab.rel_RELATED_TO"),
       t("glossaryTab.rel_PART_OF"),
       t("glossaryTab.rel_SYNONYM_OF"),
+      t("glossaryTab.rel_VALID_VALUE_OF"),
+      t("glossaryTab.rel_DERIVED_FROM"),
+      t("glossaryTab.rel_REPLACES"),
+      t("glossaryTab.rel_PREFERRED_TERM_FOR"),
+      t("glossaryTab.rel_TRANSLATION_OF"),
+      t("glossaryTab.rel_ANTONYM_OF"),
     ]);
   });
 
