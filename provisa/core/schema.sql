@@ -338,12 +338,15 @@ END $$;
 -- last ref is REMOVED unless an abstract term is connected to the rooted graph through it,
 -- in which case it is deprecated (kept) so no abstract term is left dangling.
 CREATE TABLE IF NOT EXISTS glossary_terms (
-    id          SERIAL PRIMARY KEY,
-    name        TEXT NOT NULL,
-    definition  TEXT,
-    is_abstract BOOLEAN NOT NULL DEFAULT FALSE,
-    deprecated  BOOLEAN NOT NULL DEFAULT FALSE,
-    tenant_id   UUID,
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    definition      TEXT,
+    is_abstract     BOOLEAN NOT NULL DEFAULT FALSE,
+    deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Per-term opt-out from metadata export: the term (and any edge touching it) is
+    -- withheld from every vendor snapshot while its curation stays intact locally.
+    export_excluded BOOLEAN NOT NULL DEFAULT FALSE,
+    tenant_id       UUID,
     UNIQUE (name)
 );
 

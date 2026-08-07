@@ -52,6 +52,13 @@
     "kind_author": "מחבר",
     "hoverNoDefinition": "אין הגדרה.",
     "hoverExpertsLabel": "מומחים:",
-    "hoverRefsLabel": "הפניות:"
+    "hoverRefsLabel": "הפניות:",
+    "excludeFromExportLabel": "החרג מייצוא מטא-נתונים",
+    "bulkGenerateDefinitions": "הגדרות ✨",
+    "bulkGenerateRelationships": "קשרים ✨",
+    "definitionsGenerated": "הגדרה {{count}} נוצרה.",
+    "definitionsGenerated_other": "{{count}} הגדרות נוצרו.",
+    "relationshipsGenerated": "קשר {{count}} נוסף.",
+    "relationshipsGenerated_other": "{{count}} קשרים נוספו."
   }
 }

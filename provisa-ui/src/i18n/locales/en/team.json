@@ -1,6 +1,6 @@
 {
   "teamPage": {
-    "title": "Team",
+    "title": "Admin Dashboard - Team",
     "subtitle": "Invite people into your organization and choose the role each of them receives.",
     "inviteHeading": "Invite a teammate",
     "inviteHelp": "Generate an invite link, pick the role the invitee is granted, and share the link. Signing in with it makes them a member of your organization.",

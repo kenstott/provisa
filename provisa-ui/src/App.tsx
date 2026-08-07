@@ -120,14 +120,16 @@ function App() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [demoMode, setDemoMode] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [multitenancy, setMultitenancy] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSetupStatus()
-      .then(({ needs_setup, demo_mode, auth_enabled }) => {
+      .then(({ needs_setup, demo_mode, auth_enabled, multitenancy }) => {
         setNeedsSetup(needs_setup);
         setDemoMode(demo_mode);
         setAuthEnabled(auth_enabled);
+        setMultitenancy(multitenancy);
         setSetupChecked(true);
       })
       .catch((err: unknown) => {
@@ -150,7 +152,7 @@ function App() {
         {/* REQ-1291: authVersion also reaches AuthProvider, so a sign-in refetches /auth/me.
             Without it the identity resolved at mount (unauthenticated) stood forever, and
             OnboardGate read the freshly stored token as a rejected credential. */}
-        <AuthProvider authEnabled={authEnabled} authVersion={authVersion}>
+        <AuthProvider authEnabled={authEnabled} authVersion={authVersion} multitenancy={multitenancy}>
           {setupError ? (
             <div className="page">
               <p>Could not reach the Provisa API.</p>

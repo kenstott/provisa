@@ -369,6 +369,7 @@ glossary_terms = Table(
     Column("definition", Text),
     Column("is_abstract", Boolean, nullable=False, server_default=false()),
     Column("deprecated", Boolean, nullable=False, server_default=false()),
+    Column("export_excluded", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     UniqueConstraint("name"),
 )

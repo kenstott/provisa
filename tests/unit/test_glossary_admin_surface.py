@@ -19,9 +19,13 @@ from __future__ import annotations
 
 import types
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
+
+if TYPE_CHECKING:
+    from fastapi import Request
 
 from provisa.api.admin import glossary_router
 from provisa.api.errors import ApiError
@@ -51,20 +55,21 @@ _TABLES = [
 ]
 
 
-def _request(org_id: str = "acme"):
-    return types.SimpleNamespace(
+def _request(org_id: str = "acme") -> "Request":
+    fake = types.SimpleNamespace(
         state=types.SimpleNamespace(
             identity=types.SimpleNamespace(user_id="alice", roles=[]),
             active_org_id=org_id,
         )
     )
+    return cast("Request", fake)
 
 
-def _with_json(request, body: dict):
+def _with_json(request: "Request", body: dict) -> "Request":
     async def _json():
         return body
 
-    request.json = _json
+    cast(Any, request).json = _json
     return request
 
 
@@ -147,6 +152,22 @@ async def test_curation_mutations_notify_the_exporter(tmp_path, monkeypatch):
         ]
         assert detail["experts"] == [{"user_id": "bob", "kind": "author"}]
         assert len(notified) == 4  # every mutation queued a publish
+
+
+async def test_export_excluded_toggle_round_trips_and_notifies(tmp_path, monkeypatch):
+    async with _surface(tmp_path, monkeypatch) as (_db, notified):
+        customer = await _term_id("customer")
+        await glossary_router.update_term(
+            _with_json(_request(), {"export_excluded": True}), customer
+        )
+        detail = await glossary_router.get_term(_request(), customer)
+        assert bool(detail["export_excluded"]) is True
+        await glossary_router.update_term(
+            _with_json(_request(), {"export_excluded": False}), customer
+        )
+        detail = await glossary_router.get_term(_request(), customer)
+        assert bool(detail["export_excluded"]) is False
+        assert len(notified) == 2
 
 
 async def test_free_form_edge_type_is_refused(tmp_path, monkeypatch):

@@ -101,6 +101,9 @@ interface AuthContextValue extends AuthState {
   // Runtime auth-enforcement flag from /setup/status (REQ-1267). Drives the login gate
   // and logout affordance instead of a build-time constant.
   authEnabled: boolean;
+  // Tenancy mode from /setup/status: false hides org-lifecycle affordances (e.g. Delete
+  // Organization) that make no sense on a single-tenant deploy.
+  multitenancy: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -109,6 +112,7 @@ export function AuthProvider({
   children,
   authEnabled,
   authVersion = 0,
+  multitenancy = false,
 }: {
   children: ReactNode;
   authEnabled: boolean;
@@ -117,6 +121,7 @@ export function AuthProvider({
   // just-signed-in user stayed userId=null and OnboardGate read the fresh token as a rejected
   // credential, cleared it, and put them back on sign-in — an unbreakable loop.
   authVersion?: number;
+  multitenancy?: boolean;
 }) {
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
@@ -362,6 +367,7 @@ export function AuthProvider({
         givenName,
         familyName,
         authEnabled,
+        multitenancy,
       }}
     >
       {children}

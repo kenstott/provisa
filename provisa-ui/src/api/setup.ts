@@ -17,6 +17,9 @@ export interface SetupStatus {
   // provider configured. The SPA's login gate keys off this, not build-time VITE_AUTH_ENABLED,
   // so one image serves unsecured and firebase/basic deploys alike.
   auth_enabled: boolean;
+  // Tenancy mode chosen at setup (REQ-1387-adjacent): drives whether the SPA shows
+  // org-lifecycle affordances (e.g. Delete Organization) that make no sense single-tenant.
+  multitenancy: boolean;
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {

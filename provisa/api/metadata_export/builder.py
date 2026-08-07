@@ -316,6 +316,7 @@ def _glossary_assets(
     A ref publishes only when its column does (data_product + technical filters); a rooted
     term whose refs are all withheld is withheld with them, exactly as model tags are. An
     abstract term publishes unconditionally — it is user vocabulary, not physical binding.
+    A term the admin marked export_excluded is withheld outright regardless of refs.
     Edges publish when both endpoints do.
     """
     by_identity = {(t.source_id, t.schema_name, t.table_name): t for t in exported}
@@ -333,6 +334,8 @@ def _glossary_assets(
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
     terms = []
     for term in glossary.get("terms", []):
+        if term.get("export_excluded"):
+            continue
         refs = refs_by_term.get(term["id"], [])
         if not refs and not term["is_abstract"]:
             continue

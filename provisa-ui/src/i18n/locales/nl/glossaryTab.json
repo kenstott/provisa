@@ -52,6 +52,13 @@
     "kind_author": "Auteur",
     "hoverNoDefinition": "Geen definitie.",
     "hoverExpertsLabel": "Experts:",
-    "hoverRefsLabel": "Referenties:"
+    "hoverRefsLabel": "Referenties:",
+    "excludeFromExportLabel": "Uitsluiten van metadata-export",
+    "bulkGenerateDefinitions": "Definities ✨",
+    "bulkGenerateRelationships": "Relaties ✨",
+    "definitionsGenerated": "{{count}} definitie gegenereerd.",
+    "definitionsGenerated_other": "{{count}} definities gegenereerd.",
+    "relationshipsGenerated": "{{count}} relatie toegevoegd.",
+    "relationshipsGenerated_other": "{{count}} relaties toegevoegd."
   }
 }

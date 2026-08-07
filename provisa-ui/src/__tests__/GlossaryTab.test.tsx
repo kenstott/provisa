@@ -32,12 +32,19 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   addGlossaryExpert: vi.fn(),
   removeGlossaryExpert: vi.fn(),
   generateGlossaryDefinition: vi.fn(),
+  generateAllGlossaryDefinitions: vi.fn(),
+  generateGlossaryRelationships: vi.fn(),
 }));
 
+vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
+
+import { notifications } from "@mantine/notifications";
 import {
   deleteGlossaryTerm,
   fetchGlossaryTerm,
+  generateAllGlossaryDefinitions,
   generateGlossaryDefinition,
+  generateGlossaryRelationships,
   listGlossaryTerms,
   updateGlossaryTerm,
 } from "../api/glossary";
@@ -47,6 +54,9 @@ const mockFetchTerm = vi.mocked(fetchGlossaryTerm);
 const mockUpdate = vi.mocked(updateGlossaryTerm);
 const mockDelete = vi.mocked(deleteGlossaryTerm);
 const mockGenerate = vi.mocked(generateGlossaryDefinition);
+const mockBulkDefinitions = vi.mocked(generateAllGlossaryDefinitions);
+const mockBulkRelationships = vi.mocked(generateGlossaryRelationships);
+const mockNotify = vi.mocked(notifications.show);
 
 const REVENUE: GlossaryTermSummary = {
   id: 1,
@@ -55,6 +65,7 @@ const REVENUE: GlossaryTermSummary = {
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
+  export_excluded: false,
 };
 const CHURN: GlossaryTermSummary = {
   id: 2,
@@ -63,6 +74,7 @@ const CHURN: GlossaryTermSummary = {
   is_abstract: true,
   deprecated: false,
   ref_count: 0,
+  export_excluded: false,
 };
 const MARGIN: GlossaryTermSummary = {
   id: 3,
@@ -71,6 +83,7 @@ const MARGIN: GlossaryTermSummary = {
   is_abstract: false,
   deprecated: true,
   ref_count: 0,
+  export_excluded: false,
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
@@ -117,6 +130,9 @@ describe("GlossaryTab", () => {
     mockFetchTerm.mockReset();
     mockUpdate.mockReset();
     mockDelete.mockReset();
+    mockBulkDefinitions.mockReset();
+    mockBulkRelationships.mockReset();
+    mockNotify.mockClear();
     mockList.mockResolvedValue([REVENUE, CHURN, MARGIN]);
     mockFetchTerm.mockImplementation(async (id) => {
       if (id === 1) return REVENUE_DETAIL;
@@ -231,6 +247,48 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(2));
     expect(await screen.findByTestId("glossary-error")).toHaveTextContent(
       "term 2 still has refs",
+    );
+  });
+
+  it("toggles export exclusion through the PATCH endpoint", async () => {
+    mockUpdate.mockResolvedValue(undefined);
+    render(<GlossaryTab />);
+
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    const checkbox = await screen.findByTestId("glossary-export-excluded-checkbox");
+    expect(checkbox).not.toBeChecked();
+
+    fireEvent.click(checkbox);
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }),
+    );
+  });
+
+  it("bulk-generates definitions and shows a count notification", async () => {
+    mockBulkDefinitions.mockResolvedValue({ generated: 3 });
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+
+    fireEvent.click(screen.getByTestId("glossary-bulk-definitions-btn"));
+    await waitFor(() => expect(mockBulkDefinitions).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockNotify).toHaveBeenCalledWith(
+        expect.objectContaining({ message: t("glossaryTab.definitionsGenerated_other", { count: 3 }) }),
+      ),
+    );
+  });
+
+  it("bulk-generates relationships and shows a count notification", async () => {
+    mockBulkRelationships.mockResolvedValue({ added: 1 });
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+
+    fireEvent.click(screen.getByTestId("glossary-bulk-relationships-btn"));
+    await waitFor(() => expect(mockBulkRelationships).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockNotify).toHaveBeenCalledWith(
+        expect.objectContaining({ message: t("glossaryTab.relationshipsGenerated", { count: 1 }) }),
+      ),
     );
   });
 });

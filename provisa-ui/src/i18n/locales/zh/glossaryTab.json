@@ -52,6 +52,13 @@
     "kind_author": "作者",
     "hoverNoDefinition": "暂无定义。",
     "hoverExpertsLabel": "专家：",
-    "hoverRefsLabel": "引用："
+    "hoverRefsLabel": "引用：",
+    "excludeFromExportLabel": "从元数据导出中排除",
+    "bulkGenerateDefinitions": "定义 ✨",
+    "bulkGenerateRelationships": "关系 ✨",
+    "definitionsGenerated": "已生成 {{count}} 个定义。",
+    "definitionsGenerated_other": "已生成 {{count}} 个定义。",
+    "relationshipsGenerated": "已添加 {{count}} 个关系。",
+    "relationshipsGenerated_other": "已添加 {{count}} 个关系。"
   }
 }

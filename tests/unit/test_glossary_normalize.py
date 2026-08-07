@@ -80,8 +80,11 @@ def test_generic_phrase_qualifies_with_the_table_concept():
     # "name" term for employees.name and products.name would over-merge unrelated meanings.
     assert normalize_term("first_name", table_context="employees") == "employee first name"
     assert normalize_term("name", table_context="products") == "product name"
-    assert normalize_term("id", table_context="orders") == "order identifier"
-    assert normalize_term("guid", table_context="shipments") == "shipment identifier"
+    # A qualified proxy collapses into the concept it identifies: the PK column lands
+    # on the same term as FK references to it (order_id elsewhere → "order").
+    assert normalize_term("id", table_context="orders") == "order"
+    assert normalize_term("guid", table_context="shipments") == "shipment"
+    assert normalize_term("code", table_context="products") == "product"
     assert normalize_term("dt", table_context="orders") == "order date"
     # Audit-trail phrases sit on every table, so they qualify too ("by" drops first).
     assert normalize_term("created_by", table_context="orders") == "order created"

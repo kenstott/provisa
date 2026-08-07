@@ -45,7 +45,7 @@ import { useAuth } from "../context/AuthContext";
 // only ever surfaces the current org's invites. Roles are shaped at Security → Roles.
 export function TeamPage() {
   const { t } = useTranslation();
-  const { activeOrgId, userId } = useAuth();
+  const { activeOrgId, userId, multitenancy } = useAuth();
   const { roles } = useRoles();
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -340,60 +340,64 @@ export function TeamPage() {
         </Table>
       </Table.ScrollContainer>
 
-      <Stack gap="sm" maw={520}>
-        <Title order={4}>{t("teamPage.dangerHeading")}</Title>
-        <Text c="dimmed" size="sm">
-          {t("teamPage.dangerHelp")}
-        </Text>
-        <Button
-          color="red"
-          variant="outline"
-          style={{ alignSelf: "flex-start" }}
-          disabled={!activeOrgId}
-          onClick={() => {
-            setConfirmText("");
-            setExported(false);
-            setDeleteOpen(true);
-          }}
-          data-testid="team-delete-org"
-        >
-          {t("teamPage.deleteOrgButton")}
-        </Button>
-      </Stack>
+      {multitenancy && (
+        <>
+          <Stack gap="sm" maw={520}>
+            <Title order={4}>{t("teamPage.dangerHeading")}</Title>
+            <Text c="dimmed" size="sm">
+              {t("teamPage.dangerHelp")}
+            </Text>
+            <Button
+              color="red"
+              variant="outline"
+              style={{ alignSelf: "flex-start" }}
+              disabled={!activeOrgId}
+              onClick={() => {
+                setConfirmText("");
+                setExported(false);
+                setDeleteOpen(true);
+              }}
+              data-testid="team-delete-org"
+            >
+              {t("teamPage.deleteOrgButton")}
+            </Button>
+          </Stack>
 
-      <Modal
-        opened={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        title={t("teamPage.deleteModalTitle")}
-        transitionProps={{ duration: 0 }}
-      >
-        <Stack gap="sm" data-testid="team-delete-modal">
-          <Alert color="red">{t("teamPage.deleteWarning", { org: activeOrgId })}</Alert>
-          <Button
-            variant="default"
-            onClick={handleExport}
-            style={{ alignSelf: "flex-start" }}
-            data-testid="team-export-config"
+          <Modal
+            opened={deleteOpen}
+            onClose={() => setDeleteOpen(false)}
+            title={t("teamPage.deleteModalTitle")}
+            transitionProps={{ duration: 0 }}
           >
-            {exported ? t("teamPage.downloadedButton") : t("teamPage.downloadButton")}
-          </Button>
-          <TextInput
-            label={t("teamPage.confirmLabel", { org: activeOrgId })}
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.currentTarget.value)}
-            data-testid="team-delete-confirm"
-          />
-          <Button
-            color="red"
-            disabled={confirmText !== activeOrgId}
-            onClick={handleDeleteOrg}
-            style={{ alignSelf: "flex-start" }}
-            data-testid="team-delete-submit"
-          >
-            {t("teamPage.deleteConfirmButton")}
-          </Button>
-        </Stack>
-      </Modal>
+            <Stack gap="sm" data-testid="team-delete-modal">
+              <Alert color="red">{t("teamPage.deleteWarning", { org: activeOrgId })}</Alert>
+              <Button
+                variant="default"
+                onClick={handleExport}
+                style={{ alignSelf: "flex-start" }}
+                data-testid="team-export-config"
+              >
+                {exported ? t("teamPage.downloadedButton") : t("teamPage.downloadButton")}
+              </Button>
+              <TextInput
+                label={t("teamPage.confirmLabel", { org: activeOrgId })}
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.currentTarget.value)}
+                data-testid="team-delete-confirm"
+              />
+              <Button
+                color="red"
+                disabled={confirmText !== activeOrgId}
+                onClick={handleDeleteOrg}
+                style={{ alignSelf: "flex-start" }}
+                data-testid="team-delete-submit"
+              >
+                {t("teamPage.deleteConfirmButton")}
+              </Button>
+            </Stack>
+          </Modal>
+        </>
+      )}
     </Stack>
   );
 }

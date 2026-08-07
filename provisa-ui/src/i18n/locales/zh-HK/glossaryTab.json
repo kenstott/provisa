@@ -52,6 +52,13 @@
     "kind_author": "作者",
     "hoverNoDefinition": "沒有定義。",
     "hoverExpertsLabel": "專家：",
-    "hoverRefsLabel": "參照："
+    "hoverRefsLabel": "參照：",
+    "excludeFromExportLabel": "從中繼數據匯出中排除",
+    "bulkGenerateDefinitions": "定義 ✨",
+    "bulkGenerateRelationships": "關係 ✨",
+    "definitionsGenerated": "已產生 {{count}} 個定義。",
+    "definitionsGenerated_other": "已產生 {{count}} 個定義。",
+    "relationshipsGenerated": "已新增 {{count}} 個關係。",
+    "relationshipsGenerated_other": "已新增 {{count}} 個關係。"
   }
 }

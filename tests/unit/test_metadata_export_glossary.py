@@ -90,6 +90,20 @@ def test_terms_follow_the_data_product_filter():
     ]
 
 
+def test_export_excluded_term_is_withheld_with_its_edges():
+    config = _config([_table("orders", columns=["cust_id"])])
+    glossary = _glossary()
+    glossary["terms"][0]["export_excluded"] = True  # customer opts out
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", glossary=glossary
+    )
+    names = {t.name for t in snapshot.glossary_terms}
+    # customer is withheld by the checkbox even though its column publishes; its
+    # edge to party dies with it. party still publishes as abstract vocabulary.
+    assert names == {"party"}
+    assert snapshot.glossary_edges == []
+
+
 def test_snapshot_without_glossary_is_empty_not_absent():
     config = _config([_table("orders")])
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres")

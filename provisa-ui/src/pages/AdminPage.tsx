@@ -325,10 +325,12 @@ export function AdminPage() {
 
   return (
     <div className="page">
-      <Title order={2} mb="md">
-        {t("adminPage.title")}
-        {activeTab !== "Overview" ? ` — ${activeTab}` : ""}
-      </Title>
+      {activeTab !== "Glossary" && (
+        <Title order={2} mb="md">
+          {t("adminPage.title")}
+          {activeTab !== "Overview" ? ` — ${activeTab}` : ""}
+        </Title>
+      )}
 
       <Stack gap="lg">
         {activeTab === "Overview" && (

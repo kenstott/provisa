@@ -52,6 +52,13 @@
     "kind_author": "作成者",
     "hoverNoDefinition": "定義はありません。",
     "hoverExpertsLabel": "エキスパート:",
-    "hoverRefsLabel": "参照:"
+    "hoverRefsLabel": "参照:",
+    "excludeFromExportLabel": "メタデータエクスポートから除外",
+    "bulkGenerateDefinitions": "定義 ✨",
+    "bulkGenerateRelationships": "リレーションシップ ✨",
+    "definitionsGenerated": "{{count}} 件の定義を生成しました。",
+    "definitionsGenerated_other": "{{count}} 件の定義を生成しました。",
+    "relationshipsGenerated": "{{count}} 件のリレーションシップを追加しました。",
+    "relationshipsGenerated_other": "{{count}} 件のリレーションシップを追加しました。"
   }
 }

@@ -128,26 +128,54 @@ async def setup_status():  # REQ-539
     from provisa.api.admin._config_io import read_config
 
     idp = _idp_override()
+    # Tenancy mode chosen at setup: the SPA hides org-lifecycle affordances (e.g.
+    # Delete Organization) on single-tenant deploys.
+    multitenancy = bool(read_config().get("multitenancy"))
 
     # local_users lives in the platform control plane.
     if _is_demo():
         if idp and state.admin_db:
             await _auto_configure_idp(idp, state.admin_db)
-            return {"needs_setup": False, "demo_mode": True, "auth_enabled": True}
+            return {
+                "needs_setup": False,
+                "demo_mode": True,
+                "auth_enabled": True,
+                "multitenancy": multitenancy,
+            }
         cfg = read_config()
         auth_cfg = cfg.get("auth")
         if not auth_cfg:
-            return {"needs_setup": True, "demo_mode": True, "auth_enabled": False}
-        return {"needs_setup": False, "demo_mode": True, "auth_enabled": _auth_enabled(auth_cfg)}
+            return {
+                "needs_setup": True,
+                "demo_mode": True,
+                "auth_enabled": False,
+                "multitenancy": multitenancy,
+            }
+        return {
+            "needs_setup": False,
+            "demo_mode": True,
+            "auth_enabled": _auth_enabled(auth_cfg),
+            "multitenancy": multitenancy,
+        }
 
     if idp and state.admin_db:
         await _auto_configure_idp(idp, state.admin_db)
-        return {"needs_setup": False, "demo_mode": False, "auth_enabled": True}
+        return {
+            "needs_setup": False,
+            "demo_mode": False,
+            "auth_enabled": True,
+            "multitenancy": multitenancy,
+        }
 
     cfg = read_config()
     auth_cfg = cfg.get("auth")
     if not auth_cfg:
-        return {"needs_setup": True, "demo_mode": False, "auth_enabled": False}
+        return {
+            "needs_setup": True,
+            "demo_mode": False,
+            "auth_enabled": False,
+            "multitenancy": multitenancy,
+        }
 
     provider = auth_cfg.get("provider") if isinstance(auth_cfg, dict) else None
     if provider == "basic" and state.admin_db:
@@ -155,9 +183,19 @@ async def setup_status():  # REQ-539
             count_result = await conn.execute_core(select(func.count()).select_from(local_users))
             count = count_result.scalar()
         if count == 0:
-            return {"needs_setup": True, "demo_mode": False, "auth_enabled": True}
+            return {
+                "needs_setup": True,
+                "demo_mode": False,
+                "auth_enabled": True,
+                "multitenancy": multitenancy,
+            }
 
-    return {"needs_setup": False, "demo_mode": False, "auth_enabled": _auth_enabled(auth_cfg)}
+    return {
+        "needs_setup": False,
+        "demo_mode": False,
+        "auth_enabled": _auth_enabled(auth_cfg),
+        "multitenancy": multitenancy,
+    }
 
 
 class SetupRequest(BaseModel):

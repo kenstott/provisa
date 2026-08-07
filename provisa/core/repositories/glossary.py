@@ -388,6 +388,16 @@ async def set_definition(conn: "Connection", term_id: int, definition: str | Non
     return (result.rowcount or 0) > 0
 
 
+async def set_export_excluded(conn: "Connection", term_id: int, excluded: bool) -> bool:
+    """Opt a term out of (or back into) metadata export; curation is untouched."""
+    result = await conn.execute_core(
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(export_excluded=excluded)
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def delete_term(conn: "Connection", term_id: int) -> bool:
     """Delete a term with no physical refs (abstract or deprecated). Rooted terms are
     lifecycle-managed: their removal happens only when the schema element departs."""

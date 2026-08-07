@@ -216,11 +216,16 @@ def normalize_term(physical_name: str, *, table_context: str | None = None) -> s
 
     A phrase in the TOO-GENERIC set names an attribute of its table's concept, not a
     concept of its own; with ``table_context`` supplied it qualifies to
-    "<table concept> <phrase>" (employees.first_name → "employee first name",
-    orders.id → "order identifier") so unrelated tables' name/date/id columns never
-    over-merge into one meaningless term.
+    "<table concept> <phrase>" (employees.first_name → "employee first name") so
+    unrelated tables' name/date/id columns never over-merge into one meaningless term.
+    A qualified phrase then sheds trailing proxy tokens like any other: orders.id
+    → "order", landing the PK column on the same term as every FK that references it
+    (other tables' order_id → "order").
     """
     phrase = _phrase(physical_name)
     if table_context is not None and phrase in _GENERIC_TERMS:
-        return f"{table_concept(table_context)} {phrase}"
+        tokens = f"{table_concept(table_context)} {phrase}".split(" ")
+        while len(tokens) > 1 and tokens[-1] in _PROXY_TOKENS:
+            tokens.pop()
+        return " ".join(tokens)
     return phrase

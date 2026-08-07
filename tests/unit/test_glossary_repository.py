@@ -94,7 +94,9 @@ async def test_generic_columns_qualify_with_the_table_and_machinery_derives_noth
         )
         terms = await glossary_repo.list_terms(conn)
         names = {t["name"] for t in terms}
-    assert names == {"employee first name", "employee identifier"}
+    # employees.id collapses to the concept it identifies — same term FK columns
+    # (employee_id elsewhere) land on.
+    assert names == {"employee first name", "employee"}
 
 
 @pytest.mark.asyncio
@@ -124,6 +126,7 @@ async def test_last_ref_removal_deprecates_when_abstract_term_would_dangle(tmp_p
     async with _conn(tmp_path) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
         rooted = await _term(conn, "order date")
+        assert rooted is not None
         abstract_id = await glossary_repo.create_abstract_term(conn, "business date")
         await glossary_repo.add_edge(conn, abstract_id, rooted["id"], "KIND_OF")
         await table_repo.upsert(conn, _tbl("orders", ["placed_ts"]))
@@ -138,6 +141,7 @@ async def test_abstract_term_with_alternative_root_path_does_not_block_removal(t
         await table_repo.upsert(conn, _tbl("orders", ["order_dt", "ship_dt"]))
         order_date = await _term(conn, "order date")
         ship_date = await _term(conn, "ship date")
+        assert order_date is not None and ship_date is not None
         abstract_id = await glossary_repo.create_abstract_term(conn, "business date")
         await glossary_repo.add_edge(conn, abstract_id, order_date["id"], "KIND_OF")
         await glossary_repo.add_edge(conn, abstract_id, ship_date["id"], "KIND_OF")
@@ -153,12 +157,15 @@ async def test_relink_revives_deprecated_term(tmp_path):
     async with _conn(tmp_path) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
         rooted = await _term(conn, "order date")
+        assert rooted is not None
         abstract_id = await glossary_repo.create_abstract_term(conn, "business date")
         await glossary_repo.add_edge(conn, abstract_id, rooted["id"], "KIND_OF")
         await table_repo.upsert(conn, _tbl("orders", []))
-        assert (await _term(conn, "order date"))["deprecated"]
+        deprecated = await _term(conn, "order date")
+        assert deprecated is not None and deprecated["deprecated"]
         await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
         revived = await _term(conn, "order date")
+        assert revived is not None
         assert revived["deprecated"] is False or revived["deprecated"] == 0
         assert revived["ref_count"] == 1
         assert revived["id"] == rooted["id"]  # same term row: definition/edges survive
@@ -168,6 +175,7 @@ async def test_relink_revives_deprecated_term(tmp_path):
 async def test_table_delete_sweeps_terms(tmp_path):
     async with _conn(tmp_path) as conn:
         tid = await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
+        assert tid is not None
         assert await _term(conn, "order date") is not None
         await table_repo.delete(conn, tid)
         assert await _term(conn, "order date") is None
@@ -179,11 +187,12 @@ async def test_move_ref_settles_the_losing_term(tmp_path):
         tid = await table_repo.upsert(conn, _tbl("orders", ["cust_id", "buyer_id"]))
         customer = await _term(conn, "customer")
         buyer = await _term(conn, "buyer")
+        assert tid is not None and customer is not None and buyer is not None
         moved = await glossary_repo.move_ref(conn, tid, "buyer_id", customer["id"])
         assert moved
         assert await _term(conn, "buyer") is None  # lost its last ref, nothing dangles
-        assert (await _term(conn, "customer"))["ref_count"] == 2
-        assert buyer is not None
+        winner = await _term(conn, "customer")
+        assert winner is not None and winner["ref_count"] == 2
 
 
 @pytest.mark.asyncio
@@ -203,6 +212,7 @@ async def test_rooted_term_cannot_be_deleted_by_hand(tmp_path):
     async with _conn(tmp_path) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["cust_id"]))
         customer = await _term(conn, "customer")
+        assert customer is not None
         with pytest.raises(ValueError):
             await glossary_repo.delete_term(conn, customer["id"])
 
@@ -212,10 +222,12 @@ async def test_curation_round_trip(tmp_path):
     async with _conn(tmp_path) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["cust_id"]))
         customer = await _term(conn, "customer")
+        assert customer is not None
         assert await glossary_repo.rename_term(conn, customer["id"], "client")
         assert await glossary_repo.set_definition(conn, customer["id"], "A paying party.")
         await glossary_repo.add_expert(conn, customer["id"], "alice", kind="author")
         detail = await glossary_repo.get_term(conn, customer["id"])
+        assert detail is not None
         assert detail["name"] == "client"
         assert detail["definition"] == "A paying party."
         assert detail["experts"] == [{"user_id": "alice", "kind": "author"}]
@@ -228,6 +240,7 @@ async def test_search_terms_matches_name_and_definition(tmp_path):
     async with _conn(tmp_path) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["cust_id", "order_dt"]))
         customer = await _term(conn, "customer")
+        assert customer is not None
         await glossary_repo.set_definition(conn, customer["id"], "The buying organization.")
         by_name = await glossary_repo.search_terms(conn, "custom")
         assert [t["name"] for t in by_name] == ["customer"]
@@ -240,6 +253,7 @@ async def test_export_graph_shape(tmp_path):
     async with _conn(tmp_path) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["cust_id"]))
         customer = await _term(conn, "customer")
+        assert customer is not None
         abstract_id = await glossary_repo.create_abstract_term(conn, "party")
         await glossary_repo.add_edge(conn, customer["id"], abstract_id, "KIND_OF")
         await glossary_repo.add_expert(conn, customer["id"], "alice")

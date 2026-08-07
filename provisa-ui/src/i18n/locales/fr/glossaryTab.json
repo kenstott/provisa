@@ -52,6 +52,13 @@
     "kind_author": "Auteur",
     "hoverNoDefinition": "Aucune définition.",
     "hoverExpertsLabel": "Experts :",
-    "hoverRefsLabel": "Références :"
+    "hoverRefsLabel": "Références :",
+    "excludeFromExportLabel": "Exclure de l'export de métadonnées",
+    "bulkGenerateDefinitions": "Définitions ✨",
+    "bulkGenerateRelationships": "Relations ✨",
+    "definitionsGenerated": "{{count}} définition générée.",
+    "definitionsGenerated_other": "{{count}} définitions générées.",
+    "relationshipsGenerated": "{{count}} relation ajoutée.",
+    "relationshipsGenerated_other": "{{count}} relations ajoutées."
   }
 }

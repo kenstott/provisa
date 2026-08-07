@@ -27,6 +27,7 @@ const revokeAdminSpy = vi.fn(async () => undefined);
 const deleteOrgSpy = vi.fn(async () => undefined);
 const exportSpy = vi.fn(async () => "sources: []\n");
 let mockMembers: OrgMember[] = [];
+let mockMultitenancy = true;
 
 vi.mock("../api/admin", () => ({
   fetchInvites: () => Promise.resolve([]),
@@ -41,7 +42,7 @@ vi.mock("../api/admin", () => ({
 }));
 
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ activeOrgId: "acme", userId: "uid-me" }),
+  useAuth: () => ({ activeOrgId: "acme", userId: "uid-me", multitenancy: mockMultitenancy }),
 }));
 
 vi.mock("../hooks/useAdminQueries", () => ({
@@ -69,6 +70,7 @@ describe("TeamPage offboarding", () => {
     deleteOrgSpy.mockClear();
     exportSpy.mockClear();
     mockMembers = [];
+    mockMultitenancy = true;
   });
 
   it("lists each member and says who holds org_admin", async () => {
@@ -176,5 +178,14 @@ describe("TeamPage offboarding", () => {
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(await screen.findByText(t("teamPage.downloadedButton"))).toBeInTheDocument();
     vi.unstubAllGlobals();
+  });
+
+  it("hides the delete-organization section on a single-tenant deploy", async () => {
+    mockMultitenancy = false;
+    mockMembers = [member({ user_id: "uid-me", is_org_admin: true })];
+    render(<TeamPage />);
+
+    await screen.findByTestId("team-page");
+    expect(screen.queryByTestId("team-delete-org")).not.toBeInTheDocument();
   });
 });

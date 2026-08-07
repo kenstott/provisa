@@ -106,6 +106,10 @@ async def update_term(request: Request, term_id: int) -> dict:
                 found = await glossary_repo.rename_term(_conn, term_id, str(body["name"]))
             if "definition" in body:
                 found = await glossary_repo.set_definition(_conn, term_id, body["definition"])
+            if "export_excluded" in body:
+                found = await glossary_repo.set_export_excluded(
+                    _conn, term_id, bool(body["export_excluded"])
+                )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not found:
@@ -188,6 +192,117 @@ async def generate_definition(request: Request, term_id: int) -> dict:
 
     definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
     return {"definition": definition}
+
+
+@router.post("/definitions/generate")
+async def generate_all_definitions(request: Request) -> dict:
+    """Draft-and-save definitions for every term that has none.
+
+    Bulk generation persists directly — unlike the per-term draft there is no editor
+    holding the result — but only ever fills EMPTY definitions; human text is never
+    overwritten. One publish notification covers the batch.
+    """
+    require_org_settings(request)
+    org_id = require_active_org_id(request)
+    from provisa.api.admin.schema_helpers import _call_llm
+
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        terms = await glossary_repo.list_terms(_conn)
+        generated = 0
+        for summary in terms:
+            if summary["definition"]:
+                continue
+            term = await glossary_repo.get_term(_conn, summary["id"])
+            if term is None:
+                continue
+            refs = ", ".join(
+                f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"]
+            )
+            related = ", ".join(
+                f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
+            )
+            kind = "an abstract business concept" if term["is_abstract"] else "a business term"
+            prompt = (
+                f"You are a data catalog assistant. Write a concise one-to-two sentence "
+                f"business definition for {kind} named '{term['name']}' in an enterprise "
+                f"data glossary. "
+                + (f"It is bound to these physical columns: {refs}. " if refs else "")
+                + (f"Related terms: {related}. " if related else "")
+                + "Respond with only the definition text, no preamble."
+            )
+            definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
+            if definition.strip():
+                await glossary_repo.set_definition(_conn, term["id"], definition.strip())
+                generated += 1
+    if generated:
+        await _notify(org_id, "glossary definitions generated")
+    return {"generated": generated}
+
+
+@router.post("/relationships/generate")
+async def generate_relationships(request: Request) -> dict:
+    """Suggest-and-save typed edges (KIND_OF/PART_OF/...) across the whole glossary.
+
+    The org's AI model reads the full term list and proposes edges within the closed
+    rel-type set; anything malformed — unknown term, self-edge, free-form type — is
+    dropped, existing edges upsert idempotently, and one notification covers the batch.
+    """
+    require_org_settings(request)
+    org_id = require_active_org_id(request)
+    import json
+
+    from provisa.api.admin.schema_helpers import _call_llm
+    from provisa.core.glossary import TERM_EDGE_TYPES
+
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        terms = await glossary_repo.list_terms(_conn, include_deprecated=False)
+        if len(terms) < 2:
+            return {"added": 0}
+        by_name = {t["name"]: t["id"] for t in terms}
+        term_lines = "\n".join(
+            f"- {t['name']}" + (f": {t['definition']}" if t["definition"] else "")
+            for t in terms
+        )
+        prompt = (
+            "You are a data catalog assistant. Given this business-glossary term list, "
+            "propose semantic relationships between terms. Allowed relationship types: "
+            "KIND_OF (from is a kind of to), PART_OF (from is a part of to), "
+            "SYNONYM_OF, RELATED_TO. Only propose relationships you are confident in; "
+            "fewer, correct edges beat many speculative ones.\n\n"
+            f"Terms:\n{term_lines}\n\n"
+            'Respond with only a JSON array like [{"from": "term name", "to": "term name", '
+            '"rel_type": "KIND_OF"}] — no prose, no code fences.'
+        )
+        raw = await _call_llm(prompt, "glossary_relationships", max_tokens=2048)
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+        try:
+            proposals = json.loads(raw)
+        except ValueError as exc:
+            raise ApiError(
+                502, "glossary.generation_unparseable", f"Model response was not JSON: {exc}"
+            ) from exc
+        if not isinstance(proposals, list):
+            raise ApiError(502, "glossary.generation_unparseable", "Model response was not a list")
+        added = 0
+        for p in proposals:
+            if not isinstance(p, dict):
+                continue
+            from_id = by_name.get(p.get("from"))
+            to_id = by_name.get(p.get("to"))
+            rel_type = p.get("rel_type")
+            if from_id is None or to_id is None or from_id == to_id:
+                continue
+            if rel_type not in TERM_EDGE_TYPES:
+                continue
+            await glossary_repo.add_edge(_conn, from_id, to_id, rel_type)
+            added += 1
+    if added:
+        await _notify(org_id, "glossary relationships generated")
+    return {"added": added}
 
 
 @router.post("/refs/move")

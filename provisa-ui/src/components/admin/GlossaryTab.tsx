@@ -35,7 +35,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
 import {
   GLOSSARY_EXPERT_KINDS,
   GLOSSARY_REL_TYPES,
@@ -44,7 +44,9 @@ import {
   createGlossaryTerm,
   deleteGlossaryTerm,
   fetchGlossaryTerm,
+  generateAllGlossaryDefinitions,
   generateGlossaryDefinition,
+  generateGlossaryRelationships,
   listGlossaryTerms,
   moveGlossaryRef,
   removeGlossaryEdge,
@@ -75,7 +77,10 @@ export function GlossaryTab() {
   // Editable copies of the selected term's name/definition.
   const [name, setName] = useState("");
   const [definition, setDefinition] = useState("");
+  const [exportExcluded, setExportExcluded] = useState(false);
   const [generatingDefinition, setGeneratingDefinition] = useState(false);
+  const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
+  const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
 
   const [actionError, setActionError] = useState("");
 
@@ -118,6 +123,7 @@ export function GlossaryTab() {
       setDetail(term);
       setName(term.name);
       setDefinition(term.definition ?? "");
+      setExportExcluded(term.export_excluded);
       setEdgeTermId(null);
       setEdgeRelType(null);
       setExpertUserId("");
@@ -207,6 +213,42 @@ export function GlossaryTab() {
     }
   };
 
+  const handleBulkGenerateDefinitions = async () => {
+    setBulkGeneratingDefinitions(true);
+    setActionError("");
+    try {
+      const { generated } = await generateAllGlossaryDefinitions();
+      notifications.show({
+        color: "green",
+        message: t("glossaryTab.definitionsGenerated", { count: generated }),
+      });
+      if (selectedId !== null) await loadDetail(selectedId);
+      await refreshList();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkGeneratingDefinitions(false);
+    }
+  };
+
+  const handleBulkGenerateRelationships = async () => {
+    setBulkGeneratingRelationships(true);
+    setActionError("");
+    try {
+      const { added } = await generateGlossaryRelationships();
+      notifications.show({
+        color: "green",
+        message: t("glossaryTab.relationshipsGenerated", { count: added }),
+      });
+      if (selectedId !== null) await loadDetail(selectedId);
+      await refreshList();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkGeneratingRelationships(false);
+    }
+  };
+
   const handleMoveRef = (ref: GlossaryRef, toTermId: string | null) => {
     if (toTermId === null) return;
     void act(
@@ -256,6 +298,28 @@ export function GlossaryTab() {
             data-testid="glossary-new-btn"
           >
             {t("glossaryTab.newTerm")}
+          </Button>
+        </Group>
+        <Group gap={6} px="xs" pb={6} wrap="wrap">
+          <Button
+            size="compact-xs"
+            variant="default"
+            leftSection={<Sparkles size={12} />}
+            loading={bulkGeneratingDefinitions}
+            onClick={() => void handleBulkGenerateDefinitions()}
+            data-testid="glossary-bulk-definitions-btn"
+          >
+            {t("glossaryTab.bulkGenerateDefinitions")}
+          </Button>
+          <Button
+            size="compact-xs"
+            variant="default"
+            leftSection={<Sparkles size={12} />}
+            loading={bulkGeneratingRelationships}
+            onClick={() => void handleBulkGenerateRelationships()}
+            data-testid="glossary-bulk-relationships-btn"
+          >
+            {t("glossaryTab.bulkGenerateRelationships")}
           </Button>
         </Group>
         <Stack gap={6} px="xs" pb={6}>
@@ -370,6 +434,17 @@ export function GlossaryTab() {
                 </span>
               </Tooltip>
             </Group>
+
+            <Checkbox
+              label={t("glossaryTab.excludeFromExportLabel")}
+              checked={exportExcluded}
+              onChange={(e) => {
+                const next = e.currentTarget.checked;
+                setExportExcluded(next);
+                void act(() => updateGlossaryTerm(detail.id, { export_excluded: next }));
+              }}
+              data-testid="glossary-export-excluded-checkbox"
+            />
 
             <Group align="flex-end" gap="sm">
               <Stack gap={2} style={{ flex: 1 }} data-testid="glossary-definition-input">

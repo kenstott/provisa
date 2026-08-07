@@ -30,6 +30,7 @@ export interface GlossaryTermSummary {
   is_abstract: boolean;
   deprecated: boolean;
   ref_count: number;
+  export_excluded: boolean;
 }
 
 export interface GlossaryRef {
@@ -114,7 +115,7 @@ export async function createGlossaryTerm(body: {
 
 export async function updateGlossaryTerm(
   termId: number,
-  body: { name?: string; definition?: string | null },
+  body: { name?: string; definition?: string | null; export_excluded?: boolean },
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}`, {
     method: "PATCH",
@@ -122,6 +123,24 @@ export async function updateGlossaryTerm(
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await mutationError(res, "updateGlossaryTerm");
+}
+
+export async function generateAllGlossaryDefinitions(): Promise<{ generated: number }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/definitions/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw await mutationError(res, "generateAllGlossaryDefinitions");
+  return res.json();
+}
+
+export async function generateGlossaryRelationships(): Promise<{ added: number }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/relationships/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw await mutationError(res, "generateGlossaryRelationships");
+  return res.json();
 }
 
 export async function generateGlossaryDefinition(termId: number): Promise<string> {

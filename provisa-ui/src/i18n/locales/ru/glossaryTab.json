@@ -52,6 +52,13 @@
     "kind_author": "Автор",
     "hoverNoDefinition": "Нет определения.",
     "hoverExpertsLabel": "Эксперты:",
-    "hoverRefsLabel": "Ссылки:"
+    "hoverRefsLabel": "Ссылки:",
+    "excludeFromExportLabel": "Исключить из экспорта метаданных",
+    "bulkGenerateDefinitions": "Определения ✨",
+    "bulkGenerateRelationships": "Связи ✨",
+    "definitionsGenerated": "{{count}} определение сгенерировано.",
+    "definitionsGenerated_other": "{{count}} определений сгенерировано.",
+    "relationshipsGenerated": "{{count}} связь добавлена.",
+    "relationshipsGenerated_other": "{{count}} связей добавлено."
   }
 }
