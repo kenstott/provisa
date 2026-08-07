@@ -302,9 +302,14 @@ def _enrich_openapi_table_columns(
     tbl: Table,
     spec: dict,
 ) -> None:
-    """Update table columns with descriptions from the OpenAPI spec (in-place)."""
+    """Update table columns with descriptions and data types from the OpenAPI spec (in-place).
+
+    openapi is a FETCH-mechanism source (REQ-636/REQ-251): introspect_columns short-circuits to
+    {} for it, so the engine-introspection fallback in _fill_null_column_types never fires. The
+    spec itself is the only source of truth for these types.
+    """
     from provisa.openapi.mapper import parse_spec
-    from provisa.openapi.register import _schema_to_columns
+    from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
 
     queries, _ = parse_spec(spec)
     match = next(
@@ -318,9 +323,22 @@ def _enrich_openapi_table_columns(
     if not match:
         return
     spec_col_map = {c["name"]: c for c in _schema_to_columns(match.response_schema)}
+    # Native-filter path/query param columns have no entry in spec_col_map (not response
+    # fields) — type them from the params list instead. The demo config names these both
+    # with and without the "_nf_" prefix, so index both forms.
+    param_type_by_name = {
+        p["name"]: _openapi_to_provisa_type(p.get("type"))
+        for p in (*match.path_params, *match.query_params)
+    }
+    nf_type_map = {f"_nf_{name}": t for name, t in param_type_by_name.items()}
+    nf_type_map.update(param_type_by_name)
     for col in tbl.columns:
         if col.name in spec_col_map and not col.description:
             col.description = spec_col_map[col.name].get("description")
+        if col.name in spec_col_map and not col.data_type:
+            col.data_type = spec_col_map[col.name].get("type")
+        elif col.name in nf_type_map and not col.data_type:
+            col.data_type = nf_type_map[col.name]
 
 
 def _sqlite_lands(engine: Any, src: Source) -> bool:

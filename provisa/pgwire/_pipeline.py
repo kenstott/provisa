@@ -468,17 +468,30 @@ async def _govern_and_route(
     # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
     # parse the statement themselves, so the type must be passed through explicitly.
     _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
+
+    # REQ-301: strip _nf_* WHERE conditions (native API params, e.g. _nf_petId) before routing,
+    # same as the compiled path (_govern_and_route_compiled) — without this, an API table with a
+    # required path param never resolves it, materialization skips, and the unmaterialized table
+    # reaches the engine unchanged ("no such table").
+    from provisa.compiler.nf_extractor import extract_nf_args
+
+    _physical_sql = rewrite_semantic_to_catalog_physical(normalize_table_refs(governed_semantic, ctx), ctx)
+    _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_physical_sql, embedded_params or [])
+    exec_params = _nf_clean_params if _nf_clean_params != (embedded_params or []) else embedded_params
+    _nf_args = _extracted_nf or None
+
     _qualified, decision, _default_source, _optimized, _sources = await _optimize_and_route(
-        rewrite_semantic_to_catalog_physical(normalize_table_refs(governed_semantic, ctx), ctx),
+        _physical_sql,
         governed_semantic,
         gov_ctx,
         ctx,
         state,
         has_json_extract="->>" in governed_semantic,
         is_mutation=_is_mutation,
+        nf_args=_nf_args,
     )
 
-    exec_params = embedded_params or None
+    exec_params = exec_params or None
 
     # REQ-135/REQ-1163: a query referencing a __derived__ view MUST route through the engine, where the
     # view is inline-expanded. A view's virtual source has no native driver/catalog, so extract_sources

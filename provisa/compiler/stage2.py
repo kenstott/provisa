@@ -440,6 +440,8 @@ def _expand_star(
     gov_ctx: GovernanceContext,
 ) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Expand SELECT * to explicit columns, filtered by visibility and masked."""
+    from provisa.compiler.naming import apply_sql_name
+
     result: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for alias, tid in alias_to_tid.items():
         cols = gov_ctx.all_columns.get(tid, [])
@@ -447,8 +449,14 @@ def _expand_star(
         for col_name, _ in cols:
             if vis is not None and col_name not in vis:
                 continue
+            # REQ-301: the physical column as materialized (e.g. an API-backed table's
+            # engine-cache CTE) is canonicalized via apply_sql_name, same as the compiled
+            # (GraphQL/Cypher) path's ctx.physical_to_sql — reference it under that name here
+            # too, or an OpenAPI-sourced camelCase catalog name (photoUrls) never matches the
+            # snake_case CTE column it was materialized under (photo_urls).
+            sql_col_name = apply_sql_name(col_name)
             col_expr = exp.Column(
-                this=exp.Identifier(this=col_name, quoted=True),
+                this=exp.Identifier(this=sql_col_name, quoted=True),
                 table=exp.Identifier(this=alias, quoted=True),
             )
             entry = gov_ctx.masking_rules.get((tid, col_name))
@@ -460,7 +468,7 @@ def _expand_star(
                 result.append(
                     exp.Alias(
                         this=masked,
-                        alias=exp.Identifier(this=col_name, quoted=True),
+                        alias=exp.Identifier(this=sql_col_name, quoted=True),
                     )
                 )
             else:

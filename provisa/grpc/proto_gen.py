@@ -44,6 +44,7 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "double": "double",
     "decimal": "double",
     "numeric": "double",
+    "number": "double",  # OpenAPI JSON-Schema "number" (provisa.openapi.register._OPENAPI_TYPE_MAP)
     "timestamp": "google.protobuf.Timestamp",
     "timestamp with time zone": "google.protobuf.Timestamp",
     "datetime": "google.protobuf.Timestamp",  # SQLite / MySQL timestamp type name
@@ -53,6 +54,7 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "json": "string",
     "jsonb": "string",
     "text": "string",
+    "string": "string",  # OpenAPI JSON-Schema "string" (provisa.openapi.register._OPENAPI_TYPE_MAP)
     "float4": "float",
     "float8": "double",
 }

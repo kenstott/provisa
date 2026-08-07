@@ -184,6 +184,7 @@ async def upsert_table(  # REQ-316, REQ-320
         columns=[
             Column(
                 name=c["name"],
+                data_type=c["type"],
                 visible_to=[],
                 native_filter_type=c.get("native_filter_type"),
                 object_fields=[ObjectField(**f) for f in c.get("object_fields", [])],
