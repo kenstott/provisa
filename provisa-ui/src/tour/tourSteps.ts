@@ -246,6 +246,12 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-testid="reports-list"]',
     key: "stepReports",
   },
+  {
+    // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
+    route: "/admin/glossary",
+    element: '[data-testid="glossary-bulk-definitions-btn"]',
+    key: "stepGlossary",
+  },
   // ─── CLOSE ───
   {
     route: "/sources",

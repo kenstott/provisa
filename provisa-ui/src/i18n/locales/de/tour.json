@@ -115,6 +115,10 @@
       "stepReports": {
         "title": "Management-Berichte, eingebaut",
         "description": "📊 Das Audit-Log, das Sie eben abgefragt haben, speist auch <strong>fertige Berichte</strong> — Nutzungsranking, PII-Zugriffe, Richtlinien-Ablehnungen, Query-Health — jeweils eine Governance-Sicht in der <code>ops</code>-Domäne. Ein eigener Bericht ist eine einzige SQL-Anweisung und wird zum katalogisierten, exportierbaren Datenprodukt wie jede andere Tabelle."
+      },
+      "stepGlossary": {
+        "title": "Ein lebendiges Fachglossar",
+        "description": "📖 Jeder Begriff verweist zurück auf die Spalten, die ihn tragen — pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
       }
     }
   }

@@ -115,6 +115,10 @@
       "stepReports": {
         "title": "Report di gestione integrati",
         "description": "📊 Il log di audit interrogato prima alimenta anche <strong>report pronti</strong> — ranking d'uso, accessi PII, dinieghi di policy, salute delle query — ognuno una vista governata nel dominio <code>ops</code>. Aggiungerne uno tuo è una singola istruzione SQL, e diventa un data product catalogato ed esportabile come ogni altra tabella."
+      },
+      "stepGlossary": {
+        "title": "Un glossario aziendale vivo",
+        "description": "📖 Ogni termine rimanda alle colonne che lo portano — curate nomi, definizioni e relazioni tipizzate (tipo di, parte di, sinonimo di) a mano, oppure lasciate che l'IA colmi le lacune: <strong>✨ Definizioni</strong> redige solo i termini ancora privi di una definizione, e <strong>✨ Relazioni</strong> propone collegamenti in tutto il glossario. Contrassegnate un termine come <strong>escluso dall'esportazione</strong> per tenerlo fuori dai metadati pubblicati."
       }
     }
   }

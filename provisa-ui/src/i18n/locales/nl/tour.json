@@ -115,6 +115,10 @@
       "stepReports": {
         "title": "Ingebouwde managementrapporten",
         "description": "📊 Het auditlog dat u eerder bevroeg voedt ook <strong>kant-en-klare rapporten</strong> — gebruiksranking, PII-toegang, beleidsweigeringen, querygezondheid — elk een governed view in het <code>ops</code>-domein. Een eigen rapport toevoegen is één SQL-statement, en het wordt een gecatalogiseerd, exporteerbaar dataproduct als elke andere tabel."
+      },
+      "stepGlossary": {
+        "title": "Een levend bedrijfsglossarium",
+        "description": "📖 Elke term verwijst terug naar de kolommen die hem dragen — beheer namen, definities en getypeerde relaties (soort van, onderdeel van, synoniem van) handmatig, of laat AI de leemtes opvullen: <strong>✨ Definities</strong> stelt alleen concepten op voor termen die er nog geen hebben, en <strong>✨ Relaties</strong> stelt koppelingen voor in het hele glossarium. Markeer een term als <strong>uitgesloten van export</strong> om hem buiten de gepubliceerde metadata te houden."
       }
     }
   }

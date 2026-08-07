@@ -115,6 +115,10 @@
       "stepReports": {
         "title": "Relatórios de gestão incorporados",
         "description": "📊 O log de auditoria que você consultou antes também alimenta <strong>relatórios prontos</strong> — ranking de uso, acessos a PII, negações de política, saúde das consultas — cada um uma visão governada no domínio <code>ops</code>. Adicionar o seu é uma única instrução SQL, e ele vira um produto de dados catalogado e exportável como qualquer outra tabela."
+      },
+      "stepGlossary": {
+        "title": "Um glossário de negócio vivo",
+        "description": "📖 Cada termo remete às colunas que o carregam — cure nomes, definições e relações tipadas (tipo de, parte de, sinônimo de) manualmente, ou deixe a IA preencher as lacunas: <strong>✨ Definições</strong> rascunha apenas os termos que ainda não têm uma, e <strong>✨ Relações</strong> propõe vínculos em todo o glossário. Marque um termo como <strong>excluído da exportação</strong> para mantê-lo fora dos metadados publicados."
       }
     }
   }
