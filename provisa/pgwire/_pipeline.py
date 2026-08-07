@@ -165,16 +165,24 @@ async def _optimize_and_route(
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
-    from provisa.transpiler.router import decide_route
+    from provisa.transpiler.router import Route, decide_route
 
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
         exec_sql, state, nf_args=nf_args
     )
     if _dropped:
-        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+        from provisa.compiler.nf_extractor import drop_union_branches_for_table, find_api_table_names
 
         for _dtn in _dropped:
             exec_sql = drop_union_branches_for_table(exec_sql, _dtn)
+            if _dtn in find_api_table_names(exec_sql):
+                # drop_union_branches_for_table only removes UNION branches — a no-op here
+                # means _dtn is referenced outside a union (e.g. a plain FROM), so it cannot
+                # be silently excluded from routing without misrouting to the wrong source.
+                raise RuntimeError(
+                    f"API table {_dtn!r} could not be materialized and is not a droppable "
+                    "union branch — refusing to route around it"
+                )
     for _tn, _entry in _values_ctes.items():
         exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
     if _rewrites:
@@ -198,6 +206,20 @@ async def _optimize_and_route(
         source_dsns=getattr(state, "source_dsns", None),
         is_mutation=is_mutation,
     )
+    if _rewrites and decision.route != Route.ENGINE:
+        # A cache rewrite points the SQL at a materialized table living in the engine's
+        # attached mat_store catalog — no native pool or API caller can see it, so the
+        # query MUST route through the engine regardless of what decide_route picked
+        # (e.g. Route.API for a query whose only remaining source is the API source
+        # that got rewritten away).
+        from provisa.transpiler.router import RouteDecision
+
+        decision = RouteDecision(
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason="query rewritten to a materialized cache table",
+        )
     return exec_sql, decision, default_source, optimized, sources
 
 
