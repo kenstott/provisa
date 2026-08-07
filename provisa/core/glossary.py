@@ -115,7 +115,11 @@ _GENERIC_TERMS = frozenset(
         "minimum",
         "name",
         "number",
+        "phone",
+        "price",
+        "quantity",
         "reference",
+        "role",
         "status",
         "sum",
         "tag",
@@ -131,10 +135,14 @@ _GENERIC_TERMS = frozenset(
         *(
             f"{verb}{suffix}"
             for verb in ("created", "modified", "updated", "deleted", "submitted")
-            for suffix in ("", " at", " by", " date", " time", " timestamp")
+            for suffix in ("", " at", " date", " time", " timestamp")
         ),
     }
 )
+
+# Connective tokens carry no concept of their own — "pet by name" and "pet name" are the
+# same term, so they drop anywhere in the phrase (unless nothing else remains).
+_CONNECTIVE_TOKENS = frozenset({"by"})
 
 # Proxy tokens (post-expansion): a trailing one means the column carries a stand-in value
 # (key, code, index number) for the concept the preceding tokens name — drop it so the
@@ -159,6 +167,9 @@ def _phrase(physical_name: str) -> str:
     if not tokens:
         return physical_name.strip().lower() or physical_name
     expanded = [_ABBREVIATIONS.get(t, t) for t in tokens]
+    kept = [t for t in expanded if t not in _CONNECTIVE_TOKENS]
+    if kept:
+        expanded = kept
     while len(expanded) > 1 and expanded[-1] in _PROXY_TOKENS:
         expanded.pop()
     return " ".join(expanded)

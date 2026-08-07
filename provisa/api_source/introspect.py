@@ -188,7 +188,7 @@ async def introspect_graphql(url: str) -> list[ApiEndpointCandidate]:  # REQ-307
         if field_name.startswith("__"):
             continue
 
-        base_name, base_kind = _unwrap_type(field["type"])
+        base_name, _ = _unwrap_type(field["type"])
         if not base_name or base_name.startswith("__"):
             continue
 
@@ -198,7 +198,7 @@ async def introspect_graphql(url: str) -> list[ApiEndpointCandidate]:  # REQ-307
         for obj_field in obj_type.get("fields", []):
             fname = obj_field["name"]
             fdesc = obj_field.get("description") or None
-            ftype_name, ftype_kind = _unwrap_type(obj_field["type"])
+            ftype_name, _ = _unwrap_type(obj_field["type"])
             if ftype_name in _GRAPHQL_SCALAR_MAP:
                 col_type = _GRAPHQL_SCALAR_MAP[ftype_name]
                 columns.append(

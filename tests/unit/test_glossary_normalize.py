@@ -54,9 +54,13 @@ def test_abbreviation_expansion():
     assert normalize_term("txn_qty") == "transaction quantity"
 
 
-def test_activity_by_columns_keep_the_full_phrase():
-    assert normalize_term("created_by") == "created by"
-    assert normalize_term("approved_by") == "approved by"
+def test_connective_by_drops_anywhere_in_the_phrase():
+    # "by" carries no concept: pet_by_name and pet_name are the same term.
+    assert normalize_term("pet_by_name") == "pet name"
+    assert normalize_term("created_by") == "created"
+    assert normalize_term("approved_by") == "approved"
+    # ... unless nothing else remains.
+    assert normalize_term("by") == "by"
 
 
 def test_unknown_short_forms_stay_as_written():
@@ -79,10 +83,15 @@ def test_generic_phrase_qualifies_with_the_table_concept():
     assert normalize_term("id", table_context="orders") == "order identifier"
     assert normalize_term("guid", table_context="shipments") == "shipment identifier"
     assert normalize_term("dt", table_context="orders") == "order date"
-    # Audit-trail phrases sit on every table, so they qualify too.
-    assert normalize_term("created_by", table_context="orders") == "order created by"
+    # Audit-trail phrases sit on every table, so they qualify too ("by" drops first).
+    assert normalize_term("created_by", table_context="orders") == "order created"
     assert normalize_term("created_dt", table_context="orders") == "order created date"
     assert normalize_term("submitted_at", table_context="claims") == "claim submitted at"
+    # Generic attribute nouns shared across many tables qualify the same way.
+    assert normalize_term("price", table_context="products") == "product price"
+    assert normalize_term("qty", table_context="order_lines") == "order line quantity"
+    assert normalize_term("role", table_context="assignments") == "assignment role"
+    assert normalize_term("phone", table_context="employees") == "employee phone"
     # A phrase with its own non-generic modifier is a concept already — no qualification.
     assert normalize_term("ship_dt", table_context="orders") == "ship date"
 
