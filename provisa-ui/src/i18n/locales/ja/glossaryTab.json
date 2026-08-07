@@ -51,6 +51,7 @@
     "kind_expert": "エキスパート",
     "kind_author": "作成者",
     "hoverNoDefinition": "定義はありません。",
-    "hoverExpertsLabel": "エキスパート:"
+    "hoverExpertsLabel": "エキスパート:",
+    "hoverRefsLabel": "参照:"
   }
 }

@@ -51,6 +51,7 @@
     "kind_expert": "Esperto",
     "kind_author": "Autore",
     "hoverNoDefinition": "Nessuna definizione.",
-    "hoverExpertsLabel": "Esperti:"
+    "hoverExpertsLabel": "Esperti:",
+    "hoverRefsLabel": "Riferimenti:"
   }
 }

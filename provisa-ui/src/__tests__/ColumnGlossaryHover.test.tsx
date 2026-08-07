@@ -35,7 +35,17 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
-  refs: [],
+  refs: [
+    {
+      table_id: 10,
+      column_name: "amount",
+      source_id: "pet-store-pg",
+      schema_name: "public",
+      table_name: "orders",
+      alias: null,
+      domain_id: "pet-store",
+    },
+  ],
   edges_out: [{ term_id: 2, rel_type: "KIND_OF", name: "Income" }],
   edges_in: [],
   experts: [{ user_id: "alice", kind: "expert" }],
@@ -55,7 +65,7 @@ describe("ColumnGlossaryHover (REQ-1387)", () => {
     clearColumnGlossaryCache();
   });
 
-  it("hover shows term name, definition, experts, and related terms", async () => {
+  it("hover shows term name, definition, refs, experts, and related terms", async () => {
     mockFetchByRef.mockResolvedValue(REVENUE_DETAIL);
     renderHover(10, "amount");
 
@@ -63,6 +73,7 @@ describe("ColumnGlossaryHover (REQ-1387)", () => {
 
     expect(await screen.findByText("Revenue")).toBeInTheDocument();
     expect(screen.getByText("Money in.")).toBeInTheDocument();
+    expect(screen.getByText(/orders\.amount/)).toBeInTheDocument();
     expect(screen.getByText(/alice/)).toBeInTheDocument();
     expect(
       screen.getByText(`${t("glossaryTab.rel_KIND_OF")}: Income`),

@@ -51,6 +51,7 @@
     "kind_expert": "מומחה",
     "kind_author": "מחבר",
     "hoverNoDefinition": "אין הגדרה.",
-    "hoverExpertsLabel": "מומחים:"
+    "hoverExpertsLabel": "מומחים:",
+    "hoverRefsLabel": "הפניות:"
   }
 }

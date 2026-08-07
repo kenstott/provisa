@@ -51,6 +51,7 @@
     "kind_expert": "专家",
     "kind_author": "作者",
     "hoverNoDefinition": "暂无定义。",
-    "hoverExpertsLabel": "专家："
+    "hoverExpertsLabel": "专家：",
+    "hoverRefsLabel": "引用："
   }
 }

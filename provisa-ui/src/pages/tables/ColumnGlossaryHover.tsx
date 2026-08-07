@@ -10,7 +10,7 @@
 
 // REQ-1387: hovering a column name on the Tables surface pops a compact summary
 // card of the column's glossary term (name, deprecation, definition, experts,
-// related terms). Fetch is lazy — first hover per table_id+column_name — and
+// related refs, related terms). Fetch is lazy — first hover per table_id+column_name — and
 // both hits and misses (404 → null by API contract) are cached module-wide so
 // repeated hovers never refetch.
 
@@ -78,6 +78,14 @@ export function ColumnGlossaryHover({ tableId, columnName, children }: ColumnGlo
           ) : (
             <Text fz="0.8rem" c="dimmed">
               {t("glossaryTab.hoverNoDefinition")}
+            </Text>
+          )}
+          {term.refs.length > 0 && (
+            <Text fz="0.75rem" mt={4}>
+              {t("glossaryTab.hoverRefsLabel")}{" "}
+              {term.refs
+                .map((r) => `${r.alias ?? r.table_name}.${r.column_name}`)
+                .join(", ")}
             </Text>
           )}
           {term.experts.length > 0 && (

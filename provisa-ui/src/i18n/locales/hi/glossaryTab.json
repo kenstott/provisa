@@ -51,6 +51,7 @@
     "kind_expert": "विशेषज्ञ",
     "kind_author": "लेखक",
     "hoverNoDefinition": "कोई परिभाषा नहीं।",
-    "hoverExpertsLabel": "विशेषज्ञ:"
+    "hoverExpertsLabel": "विशेषज्ञ:",
+    "hoverRefsLabel": "संदर्भ:"
   }
 }
