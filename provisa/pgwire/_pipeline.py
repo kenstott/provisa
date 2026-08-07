@@ -170,6 +170,7 @@ async def _optimize_and_route(
     _rewrites, _values_ctes, _dropped = await _materialize_api_to_engine_cache(
         exec_sql, state, nf_args=nf_args
     )
+    _actually_dropped: set[str] = set()
     if _dropped:
         from provisa.compiler.nf_extractor import drop_union_branches_for_table, find_api_table_names
 
@@ -177,18 +178,17 @@ async def _optimize_and_route(
             exec_sql = drop_union_branches_for_table(exec_sql, _dtn)
             if _dtn in find_api_table_names(exec_sql):
                 # drop_union_branches_for_table only removes UNION branches — a no-op here
-                # means _dtn is referenced outside a union (e.g. a plain FROM), so it cannot
-                # be silently excluded from routing without misrouting to the wrong source.
-                raise RuntimeError(
-                    f"API table {_dtn!r} could not be materialized and is not a droppable "
-                    "union branch — refusing to route around it"
-                )
+                # means _dtn is referenced outside a union (e.g. a plain FROM, such as a
+                # required-path-param endpoint that can't be pre-materialized). It stays in
+                # exec_sql untouched and routes as an ordinary live API source below.
+                continue
+            _actually_dropped.add(_dtn)
     for _tn, _entry in _values_ctes.items():
         exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
     if _rewrites:
         exec_sql = rewrite_all_from_cache(exec_sql, _rewrites)
 
-    _inlined = set(_values_ctes) | set(_dropped)
+    _inlined = set(_values_ctes) | _actually_dropped
     optimized = bool(_inlined or _rewrites)
     if optimized:
         sources = reduce_sources_for_routing(governed_sql, gov_ctx, ctx, _inlined)
