@@ -71,11 +71,17 @@ def _sql_literal(val) -> str:
 
 
 def build_values_cte_sql(
-    sql: str, table_name: str, entry: "HotTableEntry"
+    sql: str, table_name: str, entry: "HotTableEntry", alias_name: str | None = None
 ) -> str:  # REQ-232, REQ-233
     """Replace the first table reference matching table_name with a VALUES CTE.
 
     Works for both FROM and JOIN targets. Merges with any existing WITH clause.
+
+    ``alias_name`` is the name column qualifiers in the surrounding query actually use
+    (e.g. the table's registered alias) when it differs from ``table_name`` — callers whose
+    upstream semantic-to-physical rewrite already dropped the alias off an unaliased ref
+    must pass it through so the fallback alias below matches, not the (now-wrong) physical
+    name.
 
     REQ-233: hot rows are injected verbatim into the CTE on purpose. Column governance
     (RLS / masking / visibility) is applied by Stage 2 (`apply_governance`) to the governed
@@ -124,7 +130,9 @@ def build_values_cte_sql(
             # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
             # still resolve after the relation is renamed to the CTE.
             if not tbl.alias:
-                tbl.set("alias", exp.TableAlias(this=exp.to_identifier(table_name)))
+                tbl.set(
+                    "alias", exp.TableAlias(this=exp.to_identifier(alias_name or table_name))
+                )
             tbl.set("catalog", None)
             tbl.set("db", None)
             tbl.set("this", exp.to_identifier(cte_name, quoted=True))

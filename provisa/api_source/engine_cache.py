@@ -292,22 +292,22 @@ def _analyze_cache_table(engine, loc: CacheLocation, table_name: str) -> None:  
         )
 
 
-async def land_api_cache(  # REQ-318, REQ-848, REQ-932
+async def land_api_cache(  # REQ-318, REQ-848, REQ-932, REQ-989
     engine, loc: CacheLocation, table_name: str, rows: list[dict], columns: list
 ) -> None:
-    """Land API-response rows into the cache table through the ONE write face (store_writer.land),
-    then ANALYZE via the engine. The engine NEVER writes the store — it only reads the landed table
-    back through its attach (``loc.catalog``). An Iceberg-backed cache is written by the pyiceberg
-    branch of the same abstraction (not yet implemented); there is no engine-write fallback."""
-    from provisa.federation import store_writer
-
+    """Land API-response rows into the cache table through the ONE write face
+    (``EngineRuntime.land_source_table``), then ANALYZE via the engine. The engine NEVER writes the
+    store directly — it only reads the landed table back through its attach (``loc.catalog``); the
+    write face itself routes through the engine's own connection for a single-writer store (DuckDB,
+    REQ-989) or the store_writer DSN path otherwise. An Iceberg-backed cache is written by the
+    pyiceberg branch of the same abstraction (not yet implemented); there is no engine-write
+    fallback."""
     if loc.backend == "iceberg":
         raise NotImplementedError(
             "Iceberg api-cache landing requires the pyiceberg write-face branch (REQ-848); "
             "the engine must not write the store"
         )
-    await store_writer.land(
-        engine.materialize_store_dsn(),
+    await engine.land_source_table(
         schema=loc.schema,
         table=table_name,
         columns=_land_columns(columns),
@@ -324,12 +324,25 @@ async def land_api_cache(  # REQ-318, REQ-848, REQ-932
 
 
 def rewrite_from_cache(
-    sql: str, loc: CacheLocation, table_name: str
+    sql: str, loc: CacheLocation, table_name: str, alias_name: str | None = None
 ) -> str:  # REQ-318, REQ-309, REQ-327
-    """Replace the root FROM table in SQL with the cache table."""
+    """Replace the root FROM table in SQL with the cache table.
+
+    ``alias_name`` is the name column qualifiers in the surrounding query actually use (e.g.
+    the table's registered semantic/display name) when it differs from the ref's current name —
+    by this point an earlier semantic-to-physical rewrite has already swapped the FROM ref's own
+    name, so falling back to the (now-physical) ``tbl.name`` would not match those qualifiers.
+    """
     try:
         tree = sqlglot.parse_one(sql, dialect="postgres")
         for tbl in tree.find_all(exp.Table):
+            # Preserve the original table name as an alias when the ref is
+            # unaliased, so column qualifiers still resolve after the relation
+            # is renamed to the cache table (mirrors rewrite_all_from_cache).
+            if not tbl.alias:
+                tbl.set(
+                    "alias", exp.TableAlias(this=exp.to_identifier(alias_name or tbl.name))
+                )
             tbl.set("catalog", exp.to_identifier(loc.catalog))
             tbl.set("db", exp.to_identifier(loc.schema))
             tbl.set("this", exp.to_identifier(table_name, quoted=True))

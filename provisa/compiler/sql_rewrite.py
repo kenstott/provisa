@@ -246,11 +246,17 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             else:
                 return node  # ambiguous or unknown — leave unchanged
 
+        # An unaliased ref's own name is what column qualifiers in the surrounding query bind
+        # to (e.g. `"inventory"."count"` with no explicit `AS`). rewrite_semantic_to_catalog_physical
+        # runs after this and renames the ref to its physical name via text substitution — without
+        # an explicit alias here, that later rename silently strands those column qualifiers,
+        # producing "missing FROM-clause entry" / "no such table" at execution.
+        alias_q = alias if alias else name
         new_tbl = exp.Table(
             this=exp.Identifier(this=table_q, quoted=True),
             db=exp.Identifier(this=schema_q, quoted=True),
             catalog=exp.Identifier(this=catalog_q, quoted=True) if catalog_q else None,
-            alias=exp.TableAlias(this=exp.Identifier(this=alias)) if alias else None,
+            alias=exp.TableAlias(this=exp.Identifier(this=alias_q)),
         )
         return new_tbl
 

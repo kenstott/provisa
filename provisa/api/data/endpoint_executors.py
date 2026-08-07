@@ -119,7 +119,12 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         entry = hot_mgr.get_entry(table_name)
         _exec_sql, _exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
         _exec_sql = rewrite_semantic_to_catalog_physical(_exec_sql, ctx)
-        hot_sql = build_values_cte_sql(_exec_sql, table_name, entry)
+        # rewrite_semantic_to_catalog_physical drops the alias off an unaliased semantic ref
+        # (e.g. "domain"."inventory" -> "catalog"."schema"."get_inventory") while the query's
+        # column qualifiers still say "inventory" (the registered alias) — pass it through so
+        # the CTE rewrite's fallback alias matches those qualifiers instead of the physical name.
+        _alias_name = table_meta.display_name if table_meta and table_meta.display_name else None
+        hot_sql = build_values_cte_sql(_exec_sql, table_name, entry, alias_name=_alias_name)
         physical_sql = state.federation_engine.transpile_physical(hot_sql)
         log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
         _loop = asyncio.get_running_loop()
@@ -196,7 +201,8 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
     exec_sql = rewrite_semantic_to_catalog_physical(exec_sql, ctx)
     assert cache_tbl is not None, "cache_tbl must be set before Phase 2"
-    rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl)
+    _alias_name = table_meta.display_name if table_meta and table_meta.display_name else None
+    rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl, alias_name=_alias_name)
     # Rewrite any joined API table refs → VALUES CTE (hot) or the engine cache
     _join_rewrites, _join_values_ctes, _join_dropped = await _materialize_api_to_engine_cache(
         rewritten_sql, state, compiled.gql_remote_extra_selections
