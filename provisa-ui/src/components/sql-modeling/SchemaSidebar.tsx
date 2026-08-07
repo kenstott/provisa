@@ -188,7 +188,7 @@ export function SchemaSidebar({
                           topTab === "sql"
                             ? () =>
                                 insertAtCursor(
-                                  `"${normalizeDomain(tbl.domainId || tbl.schemaName)}"."${tbl.tableName}"`,
+                                  `"${normalizeDomain(tbl.schemaName)}"."${tbl.tableName}"`,
                                 )
                             : undefined
                         }
@@ -224,7 +224,7 @@ export function SchemaSidebar({
                             <ActionIcon
                               onClick={() =>
                                 insertAtCursor(
-                                  `"${normalizeDomain(tbl.domainId || tbl.schemaName)}"."${tbl.tableName}"`,
+                                  `"${normalizeDomain(tbl.schemaName)}"."${tbl.tableName}"`,
                                 )
                               }
                               aria-label={t("schemaSidebar.insertTableReference")}

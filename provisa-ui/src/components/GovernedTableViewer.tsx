@@ -64,7 +64,7 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
   const grid = useResultsGrid(
     result?.rows ?? [],
     result?.columns ?? [],
-    `table:${table.domainId || table.schemaName}.${table.alias || table.tableName}`,
+    `table:${table.schemaName}.${table.alias || table.tableName}`,
     { hasMore: result?.hasMore ?? false },
   );
   const { page, sorts, filters, groupBy } = grid;

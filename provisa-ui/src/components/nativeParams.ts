@@ -19,7 +19,7 @@ import { normalizeDomain } from "../pages/sql/sqlHelpers";
 export const PREVIEW_ROW_LIMIT = 1000;
 
 function tableRef(table: RegisteredTable): string {
-  return `"${normalizeDomain(table.domainId || table.schemaName)}"."${table.alias || table.tableName}"`;
+  return `"${normalizeDomain(table.schemaName)}"."${table.alias || table.tableName}"`;
 }
 
 /** Governed row-limited SELECT * for the Profile sample, params as WHERE predicates. */

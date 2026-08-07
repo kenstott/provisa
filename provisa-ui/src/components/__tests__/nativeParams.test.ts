@@ -75,9 +75,9 @@ describe("nativeParams", () => {
     expect(buildParamWhere(TABLE, { petId: "7", status: "" })).toBe(` WHERE "petId" = 7`);
   });
 
-  it("previewSql targets domain-qualified relation with LIMIT", () => {
+  it("previewSql targets schema-qualified relation with LIMIT", () => {
     expect(previewSql(TABLE, { petId: "7" })).toBe(
-      `SELECT * FROM "petstore"."pets" WHERE "petId" = 7 LIMIT 1000`,
+      `SELECT * FROM "api"."pets" WHERE "petId" = 7 LIMIT 1000`,
     );
   });
 

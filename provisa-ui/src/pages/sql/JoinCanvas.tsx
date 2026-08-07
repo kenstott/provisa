@@ -323,8 +323,7 @@ export function JoinCanvas({ tables, existingRels, metrics, onGenerateSql }: Joi
     if (canvasTables.length === 0) return;
     const aliasOf = (name: string) => name.replace(/\W/g, "_").toLowerCase();
     const normDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
-    const schemaOf = (tbl: RegisteredTable | undefined) =>
-      tbl?.domainId ? normDomain(tbl.domainId) : (tbl?.schemaName ?? "public");
+    const schemaOf = (tbl: RegisteredTable | undefined) => normDomain(tbl?.schemaName ?? "public");
     const tbl0 = canvasTables[0];
     const tblObj0 = tableMap[tbl0.tableName];
     // Build SELECT clause: use checked columns if any, otherwise SELECT *.
