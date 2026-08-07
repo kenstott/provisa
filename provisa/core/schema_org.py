@@ -357,6 +357,70 @@ catalog_bindings = Table(
     UniqueConstraint("provider", "semantic_uri"),
 )
 
+# REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
+# field names; rooted terms hold refs, abstract terms hold none. A term losing its last
+# physical ref is removed unless an abstract term is connected to the rooted graph through
+# it, in which case it is deprecated (kept) so no abstract term is left dangling.
+glossary_terms = Table(
+    "glossary_terms",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", Text, nullable=False),
+    Column("definition", Text),
+    Column("is_abstract", Boolean, nullable=False, server_default=false()),
+    Column("deprecated", Boolean, nullable=False, server_default=false()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("name"),
+)
+
+# Physical ref = (table_id, column_name): the stable column identity — table_columns.id is
+# NOT stable across the table upsert's wholesale column replace. One term per physical field.
+glossary_term_refs = Table(
+    "glossary_term_refs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("column_name", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("table_id", "column_name"),
+)
+
+# Closed, enum-typed relationship set — free-form edge types are not permitted (REQ-1387).
+glossary_term_edges = Table(
+    "glossary_term_edges",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "from_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column(
+        "to_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("rel_type", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("from_term_id", "to_term_id", "rel_type"),
+    CheckConstraint(
+        "rel_type IN ('KIND_OF', 'RELATED_TO', 'PART_OF', 'SYNONYM_OF')",
+        name="glossary_term_edges_rel_type_check",
+    ),
+)
+
+# People who can answer questions about the term or who authored its definition.
+glossary_term_experts = Table(
+    "glossary_term_experts",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("user_id", Text, nullable=False),
+    Column("kind", Text, nullable=False, server_default="expert"),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "user_id"),
+    CheckConstraint("kind IN ('expert', 'author')", name="glossary_term_experts_kind_check"),
+)
+
 materialized_views = Table(
     "materialized_views",
     metadata,

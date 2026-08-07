@@ -29,7 +29,7 @@ Column lineage goes to ``/api/v1/lineage`` in OpenMetadata's own ``columnsLineag
 the same edges the OpenLineage adapter emits, addressed by FQN instead of namespace+name.
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1389
+# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1387, REQ-1389
 
 # REQ-1389 — vendor-id tracking and succession on physical re-address. OpenMetadata's
 # upsert is keyed on ``fullyQualifiedName`` (service.database.schema.table), and PATCH
@@ -47,6 +47,19 @@ the same edges the OpenLineage adapter emits, addressed by FQN instead of namesp
 # owners and the carried PUT-body fields) onto the NEW entity's first publish, and marks
 # the old entity's description as superseded — pointing at the new FQN and the Provisa URN.
 # Publish still never deletes.
+
+# REQ-1387 — business-glossary publishing. Terms publish ONLY into a Provisa-owned
+# glossary (name ``provisa_<org>``, created idempotently via PUT /v1/glossaries); no other
+# glossary is ever read, written, or deleted, and a term's absence from the snapshot never
+# deletes it — removal inside the catalog is a steward's call. Unlike tables,
+# ``GlossaryTermRepository`` sets ``renameAllowed = true`` and its updater moves name and
+# parent together (``updateNameAndParent`` / ``updateParent``,
+# https://github.com/open-metadata/OpenMetadata/blob/main/openmetadata-service/src/main/
+# java/org/openmetadata/service/jdbi3/GlossaryTermRepository.java), so a re-addressed term
+# is REBOUND by PATCHing the stored UUID instead of the table adapter's succession.
+# ``CreateGlossaryTerm`` carries no status field, so the deprecated flag lands as a PATCH
+# of ``/entityStatus`` after the upsert. Term-to-asset assignment is HUMAN-OWNED
+# (REQ-1389) and is never written.
 
 from __future__ import annotations
 
@@ -69,6 +82,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         AssetRef,
         ColumnAsset,
+        GlossaryTermAsset,
         MetadataSnapshot,
         TableAsset,
     )
@@ -107,6 +121,24 @@ _CARRIED_TABLE_FIELDS = (
     "certification",
     "lifeCycle",
 )
+
+# REQ-1387: how the Provisa-owned glossary presents itself in the catalog. The NAME is the
+# stable per-org key the upsert is addressed by; the display name is what a catalog user
+# sees.
+GLOSSARY_DISPLAY_NAME = "Provisa Glossary"
+
+# REQ-1387: PUT-body fields of a glossary term the exporter never authors — reviewers,
+# tags, owners, references, style and custom extensions are steward curation inside
+# OpenMetadata, carried through verbatim so the fqn-keyed upsert cannot wipe them
+# (same single-writer discipline as ``_CARRIED_TABLE_FIELDS``, REQ-1389).
+_CARRIED_TERM_FIELDS = ("tags", "reviewers", "owners", "references", "style", "extension")
+
+_KIND_OF = "KIND_OF"
+_SYNONYM_OF = "SYNONYM_OF"
+
+
+def _glossary_name(org_id: str) -> str:
+    return f"provisa_{org_id}"
 
 
 @dataclass(frozen=True)
@@ -423,6 +455,116 @@ def to_lineage_requests(snapshot: MetadataSnapshot) -> list[Entity]:
     ]
 
 
+@dataclass(frozen=True)
+class TermPlan:  # REQ-1387
+    """One glossary-term upsert: its target FQN, phase-1 body, and deferred relatedTerms."""
+
+    term: GlossaryTermAsset
+    fqn: str
+    body: dict[str, Any]
+    related: tuple[str, ...]
+
+
+def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[AssetError]]:
+    """The published term graph as OpenMetadata glossary-term upserts, parents first.
+
+    The four edge types map onto OpenMetadata's own constructs (REQ-1387):
+
+    * ``KIND_OF`` becomes the glossary's parent-child hierarchy — the native "is a kind
+      of" construct. The tree holds one parent, so a term asserting several keeps the
+      lowest-id target as its tree position and the rest publish as ``relatedTerms``,
+      dropping no asserted edge.
+    * ``SYNONYM_OF`` becomes ``synonyms`` — OpenMetadata models a synonym as an
+      alternative NAME, not a term link, so the target term's name is what publishes.
+    * ``RELATED_TO`` and ``PART_OF`` become ``relatedTerms`` — OpenMetadata has no
+      partitive relation, and the untyped term link is its closest native construct.
+      They are deferred to a second pass because both endpoints must exist first.
+
+    A ``KIND_OF`` cycle cannot be a tree: the term closing the loop publishes at the
+    glossary root and the cycle is reported rather than silently rewired.
+    """
+    by_id = {term.term_id: term for term in snapshot.glossary_terms}
+    gname = _glossary_name(snapshot.org_id)
+    kind_of: dict[int, list[int]] = {}
+    related_ids: dict[int, list[int]] = {}
+    synonym_ids: dict[int, list[int]] = {}
+    for edge in snapshot.glossary_edges:
+        if edge.rel_type == _KIND_OF:
+            kind_of.setdefault(edge.from_term_id, []).append(edge.to_term_id)
+        elif edge.rel_type == _SYNONYM_OF:
+            synonym_ids.setdefault(edge.from_term_id, []).append(edge.to_term_id)
+        else:  # RELATED_TO | PART_OF — the closed enum's remaining members
+            related_ids.setdefault(edge.from_term_id, []).append(edge.to_term_id)
+    parent: dict[int, int] = {}
+    for from_id, targets in kind_of.items():
+        ordered = sorted(targets)
+        parent[from_id] = ordered[0]
+        if ordered[1:]:
+            related_ids.setdefault(from_id, []).extend(ordered[1:])
+    errors: list[AssetError] = []
+    for term_id in sorted(parent):
+        seen: set[int] = set()
+        cursor = term_id
+        while cursor in parent:
+            if cursor in seen:
+                errors.append(
+                    AssetError(
+                        asset=AssetRefStub(by_id[cursor].name),
+                        message=(
+                            f"glossary term {by_id[cursor].name!r}: KIND_OF cycle — "
+                            "published at the glossary root instead of nested"
+                        ),
+                    )
+                )
+                del parent[cursor]
+                break
+            seen.add(cursor)
+            cursor = parent[cursor]
+
+    def _fqn(term_id: int) -> str:
+        chain = [by_id[term_id].name]
+        cursor = term_id
+        while cursor in parent:
+            cursor = parent[cursor]
+            chain.append(by_id[cursor].name)
+        return ".".join([gname, *reversed(chain)])
+
+    def _depth(term_id: int) -> int:
+        depth = 0
+        cursor = term_id
+        while cursor in parent:
+            cursor = parent[cursor]
+            depth += 1
+        return depth
+
+    plans: list[TermPlan] = []
+    for term in sorted(snapshot.glossary_terms, key=lambda t: (_depth(t.term_id), t.term_id)):
+        body: dict[str, Any] = {
+            "glossary": gname,
+            "name": term.name,
+            # OpenMetadata requires ``description`` on CreateGlossaryTerm (a schema-required
+            # field), so a term with no definition publishes an empty one rather than being
+            # withheld — REQ-1387, the vendor schema mandates the value.
+            "description": term.definition or "",
+        }
+        if term.term_id in parent:
+            body["parent"] = _fqn(parent[term.term_id])
+        synonyms = sorted(by_id[target].name for target in synonym_ids.get(term.term_id, []))
+        if synonyms:
+            body["synonyms"] = synonyms
+        plans.append(
+            TermPlan(
+                term=term,
+                fqn=_fqn(term.term_id),
+                body=body,
+                related=tuple(
+                    sorted(_fqn(target) for target in related_ids.get(term.term_id, []))
+                ),
+            )
+        )
+    return plans, errors
+
+
 @register_provider
 class OpenMetadataExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to an OpenMetadata server's ingestion API."""
@@ -667,6 +809,287 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 )
             )
 
+    async def _read_live_term(
+        self, client: httpx.AsyncClient, fqn: str, result: PublishResult
+    ) -> dict[str, Any] | None:
+        """The live term, for the enrichment merge — None when it does not exist yet.
+
+        Same single-writer discipline as the table merge (REQ-1389): a PUT replaces the
+        fields sent, and tags/reviewers on a Provisa term are steward work inside
+        OpenMetadata. A failed read is reported and the PUT proceeds with Provisa's own
+        body rather than blocking the term.
+        """
+        try:
+            response = await client.get(
+                self._url(f"/api/v1/glossaryTerms/name/{fqn}"),
+                params={"fields": "tags,reviewers,owners,references,style,relatedTerms,extension"},
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(fqn),
+                    message=(
+                        f"glossary_term {fqn}: live read for the enrichment merge failed "
+                        f"({exc}); published Provisa-authored fields only, which may drop "
+                        "steward curation on this term"
+                    ),
+                )
+            )
+            return None
+        if response.status_code == 404:
+            # First publish of this term: nothing live, nothing human to preserve.
+            return None
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(fqn),
+                    message=(
+                        f"glossary_term {fqn}: live read for the enrichment merge failed "
+                        f"(HTTP {response.status_code}); published Provisa-authored fields "
+                        "only, which may drop steward curation on this term"
+                    ),
+                )
+            )
+            return None
+        return response.json()
+
+    async def _rebind_term(
+        self,
+        client: httpx.AsyncClient,
+        plan: TermPlan,
+        stored: tuple[str, str],
+        gname: str,
+        term_ids: dict[str, str],
+        result: PublishResult,
+    ) -> None:
+        """PATCH-rebind a re-addressed term to its new name/parent (REQ-1387, REQ-1389).
+
+        The stored binding says this Provisa term was last published under a different
+        FQN. Unlike tables, glossary terms allow rename and re-parenting via PATCH
+        (``renameAllowed = true`` — see the module note), so the stored UUID is patched to
+        the new position and the fqn-keyed PUT that follows lands on the SAME entity,
+        enrichment intact — no succession. A failed rebind is reported and the PUT
+        proceeds, creating a fresh term; the predecessor is left untouched, because
+        publish never deletes.
+        """
+        old_id, old_fqn = stored
+        ops: list[dict[str, Any]] = []
+        if old_fqn.rsplit(".", 1)[-1] != plan.term.name:
+            ops.append({"op": "replace", "path": "/name", "value": plan.term.name})
+        old_parent = old_fqn.rsplit(".", 1)[0]
+        new_parent = plan.fqn.rsplit(".", 1)[0]
+        if old_parent != new_parent:
+            if new_parent == gname:
+                ops.append({"op": "remove", "path": "/parent"})
+            else:
+                parent_id = term_ids.get(new_parent)
+                if parent_id is None:
+                    result.errors.append(
+                        AssetError(
+                            asset=AssetRefStub(plan.fqn),
+                            message=(
+                                f"glossary_term {plan.fqn}: cannot re-parent — parent "
+                                f"{new_parent!r} was not upserted"
+                            ),
+                        )
+                    )
+                    return
+                ops.append(
+                    {
+                        "op": "add" if old_parent == gname else "replace",
+                        "path": "/parent",
+                        "value": {"id": parent_id, "type": "glossaryTerm"},
+                    }
+                )
+        if not ops:
+            return
+        response = await client.patch(
+            self._url(f"/api/v1/glossaryTerms/{old_id}"),
+            content=json.dumps(ops),
+            headers={**self._headers(), "Content-Type": "application/json-patch+json"},
+        )
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(plan.fqn),
+                    message=(
+                        f"glossary_term {plan.fqn}: rebind of predecessor {old_fqn!r} "
+                        f"(id {old_id}) failed (HTTP {response.status_code}); the upsert "
+                        "will create a fresh term without its steward curation"
+                    ),
+                )
+            )
+
+    async def _sync_term_status(
+        self,
+        client: httpx.AsyncClient,
+        plan: TermPlan,
+        term_id: str,
+        live_status: str | None,
+        result: PublishResult,
+    ) -> None:
+        """Project the deprecated flag onto ``entityStatus`` (REQ-1387).
+
+        ``CreateGlossaryTerm`` carries no status field, so the flag lands as a PATCH after
+        the upsert. Provisa authors only the Deprecated transition: a deprecated term is
+        marked ``Deprecated``, and a term no longer deprecated that the catalog still
+        shows as ``Deprecated`` moves to ``Approved``. Any other status is the stewards'
+        review workflow and is never touched.
+        """
+        if plan.term.deprecated:
+            if live_status == "Deprecated":
+                return
+            value = "Deprecated"
+        else:
+            if live_status != "Deprecated":
+                return
+            value = "Approved"
+        ops = [
+            {
+                "op": "replace" if live_status is not None else "add",
+                "path": "/entityStatus",
+                "value": value,
+            }
+        ]
+        response = await client.patch(
+            self._url(f"/api/v1/glossaryTerms/{term_id}"),
+            content=json.dumps(ops),
+            headers={**self._headers(), "Content-Type": "application/json-patch+json"},
+        )
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(plan.fqn),
+                    message=(
+                        f"glossary_term {plan.fqn}: entityStatus {value!r} failed "
+                        f"(HTTP {response.status_code})"
+                    ),
+                )
+            )
+
+    async def _publish_glossary(
+        self, client: httpx.AsyncClient, snapshot: MetadataSnapshot, result: PublishResult
+    ) -> None:
+        """Publish the term graph into the Provisa-owned glossary (REQ-1387).
+
+        Everything here is scoped to the ``provisa_<org>`` glossary: no other glossary is
+        read, written, or deleted, and a term's absence from the snapshot never deletes it.
+        Term-to-asset assignment (tagging tables/columns with terms) is HUMAN-OWNED
+        (REQ-1389) and is never written — ``GlossaryTermAsset.refs`` stays out of the
+        payload by design.
+        """
+        if not snapshot.glossary_terms:
+            return
+        gname = _glossary_name(snapshot.org_id)
+        response = await client.put(
+            self._url("/api/v1/glossaries"),
+            json={
+                "name": gname,
+                "displayName": GLOSSARY_DISPLAY_NAME,
+                "description": (
+                    "Business vocabulary Provisa publishes from its governed semantic layer."
+                ),
+            },
+            headers=self._headers(),
+        )
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(gname),
+                    message=(
+                        f"glossary {gname}: HTTP {response.status_code}: "
+                        f"{response.text[:500]}. No terms were published."
+                    ),
+                )
+            )
+            return
+        result.published["glossary"] = result.published.get("glossary", 0) + 1
+        plans, plan_errors = to_term_plans(snapshot)
+        result.errors.extend(plan_errors)
+        # fqn -> server-assigned UUID and live entity, harvested in the first pass and
+        # consumed by rebinds and the relatedTerms pass.
+        term_ids: dict[str, str] = {}
+        live_by_fqn: dict[str, dict[str, Any]] = {}
+        for plan in plans:
+            stored = self._bindings.get(plan.term.semantic_uri)
+            if stored is not None and stored[1] != plan.fqn:
+                await self._rebind_term(client, plan, stored, gname, term_ids, result)
+            live = await self._read_live_term(client, plan.fqn, result)
+            if live is not None:
+                live_by_fqn[plan.fqn] = live
+                for field in _CARRIED_TERM_FIELDS:
+                    if live.get(field) is not None:
+                        plan.body[field] = live[field]
+            # relatedTerms a steward linked OUTSIDE the Provisa glossary are theirs and
+            # ride through; inside it, the snapshot's edges are the source of truth and
+            # land in the second pass.
+            foreign_related = [
+                ref["fullyQualifiedName"]
+                for ref in (live or {}).get("relatedTerms") or []
+                if not str(ref["fullyQualifiedName"]).startswith(f"{gname}.")
+            ]
+            if foreign_related:
+                plan.body["relatedTerms"] = foreign_related
+            response = await client.put(
+                self._url("/api/v1/glossaryTerms"), json=plan.body, headers=self._headers()
+            )
+            if response.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(plan.fqn),
+                        message=(
+                            f"glossary_term {plan.fqn}: HTTP {response.status_code}: "
+                            f"{response.text[:500]}"
+                        ),
+                    )
+                )
+                continue
+            body = response.json()
+            term_ids[plan.fqn] = body["id"]
+            # REQ-1389: capture the vendor's own id for this term, keyed by the canonical
+            # Provisa URN, so the next publish can rebind by identity.
+            result.bindings[plan.term.semantic_uri] = (body["id"], body["fullyQualifiedName"])
+            result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
+            await self._sync_term_status(
+                client, plan, body["id"], (live or {}).get("entityStatus"), result
+            )
+        # Second pass: relatedTerms, once every endpoint exists — OpenMetadata rejects a
+        # reference it cannot resolve, and the edges can be cyclic.
+        for plan in plans:
+            if not plan.related or plan.fqn not in term_ids:
+                continue
+            targets = [fqn for fqn in plan.related if fqn in term_ids]
+            for missing in (fqn for fqn in plan.related if fqn not in term_ids):
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(plan.fqn),
+                        message=(
+                            f"glossary_term {plan.fqn}: related term {missing!r} was not "
+                            "upserted, so the edge cannot be addressed"
+                        ),
+                    )
+                )
+            if not targets:
+                continue
+            body = {
+                **plan.body,
+                "relatedTerms": [*plan.body.get("relatedTerms", []), *targets],
+            }
+            response = await client.put(
+                self._url("/api/v1/glossaryTerms"), json=body, headers=self._headers()
+            )
+            if response.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(plan.fqn),
+                        message=(
+                            f"glossary_term {plan.fqn}: relatedTerms HTTP "
+                            f"{response.status_code}: {response.text[:500]}"
+                        ),
+                    )
+                )
+
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
         requests = [*to_entities(snapshot), *to_lineage_requests(snapshot)]
@@ -769,6 +1192,8 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     )
                     continue
                 result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
+            # REQ-1387: business-glossary terms, scoped to the Provisa-owned glossary.
+            await self._publish_glossary(client, snapshot, result)
         return result
 
     async def health(self) -> None:

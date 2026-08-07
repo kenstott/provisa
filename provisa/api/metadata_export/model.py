@@ -183,6 +183,34 @@ class ModelTag:  # REQ-1375, REQ-1377, REQ-1378
 
 
 @dataclass
+class GlossaryTermAsset:  # REQ-1387
+    """One business-glossary term: the normalized vocabulary entry over the semantic layer.
+
+    ``refs`` lists the published columns that mean this concept; a rooted term whose refs
+    all point at withheld tables is withheld with them (the data_product filter rule), while
+    an abstract term publishes on the strength of its edges alone.
+    """
+
+    term_id: int
+    name: str
+    definition: str | None
+    is_abstract: bool
+    deprecated: bool
+    refs: tuple[AssetRef, ...] = ()
+    experts: tuple[str, ...] = ()
+    semantic_uri: str = ""  # REQ-1385: provisa://<org>/terms/<term name>
+
+
+@dataclass
+class GlossaryTermEdge:  # REQ-1387
+    """A typed relationship between two published terms (closed enum set)."""
+
+    from_term_id: int
+    to_term_id: int
+    rel_type: str  # KIND_OF | RELATED_TO | PART_OF | SYNONYM_OF
+
+
+@dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
 
@@ -198,6 +226,8 @@ class MetadataSnapshot:  # REQ-1070
     lineage: list[LineageEdge] = field(default_factory=list)
     governance_tags: list[GovernanceTag] = field(default_factory=list)
     model_tags: list[ModelTag] = field(default_factory=list)  # REQ-1377/1378
+    glossary_terms: list[GlossaryTermAsset] = field(default_factory=list)  # REQ-1387
+    glossary_edges: list[GlossaryTermEdge] = field(default_factory=list)  # REQ-1387
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]

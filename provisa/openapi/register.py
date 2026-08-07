@@ -318,4 +318,9 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
         await upsert_table(source_id, q, conn, domain_id, base_url, auth_config, cache_ttl)
     for m in mutations:
         await upsert_tracked_function(source_id, m, conn, domain_id)
+    # REQ-1387: the stale-row wipe cascaded glossary refs; the upserts above relinked the
+    # surviving columns, so settle only the terms whose fields truly departed.
+    from provisa.core.repositories import glossary as glossary_repo
+
+    await glossary_repo.sweep_refless_terms(conn)
     return len(queries), len(mutations)

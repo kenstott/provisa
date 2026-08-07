@@ -53,6 +53,7 @@
     "dev": "DEV",
     "itemMetadataExport": "Экспорт метаданных",
     "itemTags": "Теги",
-    "itemReports": "Отчёты"
+    "itemReports": "Отчёты",
+    "itemGlossary": "Глоссарий"
   }
 }

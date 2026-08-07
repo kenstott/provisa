@@ -848,6 +848,13 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     if domain_policy.single_domain():
         await _validate_existing_domains(conn, config.naming.default_domain)
 
+    # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
+    # before the upserts above could relink them; runs LAST so a rename that re-registers the
+    # same column names revives its terms instead of losing their definitions to an early sweep.
+    from provisa.core.repositories import glossary as glossary_repo
+
+    await glossary_repo.sweep_refless_terms(conn)
+
 
 def _validate_table_kafka_sinks(config) -> None:
     """Validate kafka_sink fields on all tables (REQ-176–180)."""

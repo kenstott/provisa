@@ -77,6 +77,11 @@ def column_uri(org_id: str, table: Table, column_name: str, column_alias: str | 
     return f"{table_uri(org_id, table)}#field:{_segment(column_alias or column_name)}"
 
 
+def term_uri(org_id: str, term_name: str) -> str:  # REQ-1385, REQ-1387
+    """A business-glossary term by its (unique) normalized name."""
+    return f"{_URI_SCHEME}://{_segment(org_id)}/terms/{_segment(term_name)}"
+
+
 def relationship_uri(org_id: str, source_table: Table, alias: str | None, rel_id: str) -> str:
     # REQ-1385: a relationship is a navigational field anchored at its source concept.
     # Its business name is the alias when the edge is named; the registry id otherwise.

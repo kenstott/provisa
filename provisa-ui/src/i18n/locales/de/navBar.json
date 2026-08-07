@@ -53,6 +53,7 @@
     "logout": "Abmelden",
     "dev": "DEV",
     "itemTags": "Tags",
-    "itemReports": "Berichte"
+    "itemReports": "Berichte",
+    "itemGlossary": "Glossar"
   }
 }

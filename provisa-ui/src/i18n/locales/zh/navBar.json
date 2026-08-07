@@ -53,6 +53,7 @@
     "dev": "DEV",
     "itemMetadataExport": "元数据导出",
     "itemTags": "标签",
-    "itemReports": "报表"
+    "itemReports": "报表",
+    "itemGlossary": "术语表"
   }
 }

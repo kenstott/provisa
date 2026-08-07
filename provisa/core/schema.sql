@@ -330,6 +330,56 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
+-- field names (the term unit is the phrase — the full normalized field name). Rooted terms
+-- hold physical refs; abstract terms hold none and connect to the rooted graph through the
+-- closed edge set. Lifecycle is derived from semantic-layer membership: the table repository
+-- creates/links terms as columns register and removes refs as they depart; a term losing its
+-- last ref is REMOVED unless an abstract term is connected to the rooted graph through it,
+-- in which case it is deprecated (kept) so no abstract term is left dangling.
+CREATE TABLE IF NOT EXISTS glossary_terms (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL,
+    definition  TEXT,
+    is_abstract BOOLEAN NOT NULL DEFAULT FALSE,
+    deprecated  BOOLEAN NOT NULL DEFAULT FALSE,
+    tenant_id   UUID,
+    UNIQUE (name)
+);
+
+-- A physical ref binds a term to (table_id, column_name) — the stable column identity
+-- (table_columns.id is NOT stable: the table upsert replaces column rows wholesale).
+-- Each physical field belongs to exactly one term. Table deletion cascades the refs;
+-- the glossary sweep then applies the remove-or-deprecate rule to newly refless terms.
+CREATE TABLE IF NOT EXISTS glossary_term_refs (
+    id          SERIAL PRIMARY KEY,
+    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    column_name TEXT NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (table_id, column_name)
+);
+
+-- Closed, enum-typed relationship set (REQ-1387) — free-form edge types are not permitted.
+CREATE TABLE IF NOT EXISTS glossary_term_edges (
+    id           SERIAL PRIMARY KEY,
+    from_term_id INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    to_term_id   INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    rel_type     TEXT NOT NULL CHECK (rel_type IN ('KIND_OF', 'RELATED_TO', 'PART_OF', 'SYNONYM_OF')),
+    tenant_id    UUID,
+    UNIQUE (from_term_id, to_term_id, rel_type)
+);
+
+-- People who can answer questions about the term or who authored its definition.
+CREATE TABLE IF NOT EXISTS glossary_term_experts (
+    id        SERIAL PRIMARY KEY,
+    term_id   INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    user_id   TEXT NOT NULL,
+    kind      TEXT NOT NULL DEFAULT 'expert' CHECK (kind IN ('expert', 'author')),
+    tenant_id UUID,
+    UNIQUE (term_id, user_id)
+);
+
 -- Materialized Views (Phase P)
 CREATE TABLE IF NOT EXISTS materialized_views (
     id              TEXT PRIMARY KEY,

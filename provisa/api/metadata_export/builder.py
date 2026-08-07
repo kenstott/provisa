@@ -29,6 +29,8 @@ from provisa.api.metadata_export.governance import build_governance_tags
 from provisa.api.metadata_export.model import (
     ColumnAsset,
     DomainAsset,
+    GlossaryTermAsset,
+    GlossaryTermEdge,
     LineageEdge,
     MetadataSnapshot,
     ModelTag,
@@ -49,6 +51,7 @@ from provisa.api.metadata_export.refs import (
     source_uri,
     table_ref,
     table_uri,
+    term_uri,
 )
 from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignment
 from provisa.lineage.graph import Edge, LineageGraph, Node, build_column_graph
@@ -302,8 +305,64 @@ def _model_tags(
     return tags
 
 
+def _glossary_assets(
+    glossary: dict,
+    exported: list[Table],
+    published_columns: set[tuple[str, ...]],
+    org_id: str,
+) -> tuple[list[GlossaryTermAsset], list[GlossaryTermEdge]]:  # REQ-1387
+    """Project the term graph onto the published assets.
+
+    A ref publishes only when its column does (data_product + technical filters); a rooted
+    term whose refs are all withheld is withheld with them, exactly as model tags are. An
+    abstract term publishes unconditionally — it is user vocabulary, not physical binding.
+    Edges publish when both endpoints do.
+    """
+    by_identity = {(t.source_id, t.schema_name, t.table_name): t for t in exported}
+    refs_by_term: dict[int, list] = {}
+    for ref in glossary.get("refs", []):
+        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
+        if table is None:
+            continue
+        asset_ref = column_ref(table, ref["column_name"])
+        if asset_ref.parts not in published_columns:
+            continue
+        refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
+    experts_by_term: dict[int, list[str]] = {}
+    for expert in glossary.get("experts", []):
+        experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
+    terms = []
+    for term in glossary.get("terms", []):
+        refs = refs_by_term.get(term["id"], [])
+        if not refs and not term["is_abstract"]:
+            continue
+        terms.append(
+            GlossaryTermAsset(
+                term_id=term["id"],
+                name=term["name"],
+                definition=term.get("definition"),
+                is_abstract=bool(term["is_abstract"]),
+                deprecated=bool(term["deprecated"]),
+                refs=tuple(refs),
+                experts=tuple(experts_by_term.get(term["id"], [])),
+                semantic_uri=term_uri(org_id, term["name"]),
+            )
+        )
+    published_ids = {t.term_id for t in terms}
+    edges = [
+        GlossaryTermEdge(
+            from_term_id=e["from_term_id"],
+            to_term_id=e["to_term_id"],
+            rel_type=e["rel_type"],
+        )
+        for e in glossary.get("edges", [])
+        if e["from_term_id"] in published_ids and e["to_term_id"] in published_ids
+    ]
+    return terms, edges
+
+
 def build_snapshot(
-    config: ProvisaConfig, *, org_id: str, dialect: str
+    config: ProvisaConfig, *, org_id: str, dialect: str, glossary: dict | None = None
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -330,6 +389,11 @@ def build_snapshot(
         if edge.source.parts in keep and (edge.target is None or edge.target.parts in keep)
     ]
     published_columns = {column.ref.parts for table in tables for column in table.columns}
+    glossary_terms, glossary_edges = (
+        _glossary_assets(glossary, exported, published_columns, org_id)
+        if glossary is not None
+        else ([], [])
+    )
     return MetadataSnapshot(
         org_id=org_id,
         sources=_source_assets(config, org_id, published_source_ids),
@@ -355,4 +419,6 @@ def build_snapshot(
             {edge.id for edge in relationships},
             published_source_ids,
         ),
+        glossary_terms=glossary_terms,
+        glossary_edges=glossary_edges,
     )

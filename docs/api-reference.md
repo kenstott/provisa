@@ -880,3 +880,128 @@ Supported directions: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_
 ## Subscriptions
 
 SSE subscriptions are available at `GET /data/subscribe/{table}`. (REQ-219, REQ-258) Notification delivery uses a pluggable provider selected per source type: PostgreSQL sources use `LISTEN/NOTIFY`, MongoDB sources use Change Streams, and Kafka sources use consumer groups. RLS filtering and schema validation apply regardless of provider. WebSocket and RSS sources are also supported via the same endpoint. (REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/subscriptions/registry.py`, `provisa/api/app.py` `_rebuild_schemas`]
+
+---
+
+## Business Glossary (REQ-1387)
+
+The business glossary maps physical field names — as they exist in source databases — onto a shared human vocabulary. Every column registered in the semantic layer gets a term automatically. No manual entry is required to populate the glossary; curators add definitions, relationships, and experts on top of what the system derives.
+
+### How Terms Are Derived
+
+When Provisa registers or updates a table's columns, `normalize_term` (`provisa/core/glossary.py`) runs on every column name and produces a canonical phrase. [tool-verified: `provisa/core/repositories/glossary.py:sync_table_refs`]
+
+Normalization applies five rules in sequence:
+
+1. Split on camelCase boundaries and separator characters (`_`, `-`, `.`, `/`, whitespace).
+2. Case-fold the result to lowercase.
+3. Expand a fixed abbreviation table (e.g. `cust` → `customer`, `amt` → `amount`, `dt` → `date`, `id` → `identifier`, `key` → `identifier`, `guid` → `identifier`).
+4. Strip a trailing **proxy token** (`identifier`, `code`, `index`, or `reference`) — a column named for its key or code is pointing at the underlying concept through a stand-in value, so the term should be the concept itself. The last remaining token is never stripped.
+5. Qualify a **too-generic phrase** with the table's concept. When the full normalized phrase is a bare attribute word (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, and similar), the term becomes `<table concept> <phrase>` — `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. One shared `name` term across unrelated tables would merge distinct meanings; qualification connects each column to its enclosing concept instead. The table concept is the table's business name, normalized with a singular head noun (`order_lines` → `order line`).
+
+Native-filter pseudo-columns (`_nf_`-prefixed, or any column carrying `native_filter_type`) are query-parameter machinery, not business fields, and derive no terms.
+
+Because `id`, `key`, `pk`, and `sk` all expand to `identifier` before the proxy check, three physically different column names land on exactly the same term:
+
+| Physical name | After normalization |
+| --- | --- |
+| `cust_id` | `customer` |
+| `customerId` | `customer` |
+| `CUSTOMER_KEY` | `customer` |
+| `txn_amt` | `transaction amount` |
+
+The first three collapse to one term. `transaction amount` keeps both tokens because `amount` is not a proxy. A bare `id` column — no preceding tokens — cannot be stripped; it normalizes to `identifier` so the term is non-empty. [tool-verified: `provisa/core/glossary.py:normalize_term`]
+
+### Lifecycle
+
+Terms are **derived from semantic-layer membership**, not created on demand by users. The table repository is the single write path: `sync_table_refs` runs inside every column-set upsert, and `sweep_refless_terms` runs after any deletion path. [tool-verified: `provisa/core/repositories/glossary.py`]
+
+**When a column is added:** Provisa looks up the normalized term by name. If it already exists, the column gets a ref to it (and if the term was deprecated, it is revived — `deprecated` is set back to `False`). If no term exists yet, one is created.
+
+**When a column departs** (schema change or table removal): its ref is deleted and the term is **settled** under a remove-or-deprecate rule. A rooted term with no remaining refs is removed outright — along with its edges and expert assignments — unless removing it would leave an abstract term disconnected from all rooted terms (no path through the term graph). In that case, the term is **deprecated** (marked `deprecated=True`) rather than deleted, so the abstract term's graph anchor survives.
+
+Abstract terms are never auto-removed; they exist outside the physical lifecycle and are only deleted explicitly via the admin API.
+
+**Revival:** if a deprecated term's normalized name reappears (a column is re-registered), the term is unmarked and its refs resume accumulating.
+
+### Curation Endpoints
+
+All endpoints are under `/admin/glossary`. They require `org_admin` access and a configured org. Every mutation triggers a metadata publish. [tool-verified: `provisa/api/admin/glossary_router.py`]
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/admin/glossary/terms` | List terms. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, physical refs, typed edges, experts |
+| `POST` | `/admin/glossary/terms` | Create an abstract term — user vocabulary with no physical refs |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | Rename and/or set definition |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | Delete a term that has no physical refs |
+| `POST` | `/admin/glossary/refs/move` | Move one physical ref to a different term (consolidation) |
+| `POST` | `/admin/glossary/terms/{term_id}/edges` | Add a typed relationship edge between two terms |
+| `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Remove an edge (query params: `to_term_id`, `rel_type`) |
+| `POST` | `/admin/glossary/terms/{term_id}/experts` | Tag a user as an expert or author for a term |
+| `DELETE` | `/admin/glossary/terms/{term_id}/experts/{user_id}` | Remove a user's expert/author designation |
+
+**`POST /admin/glossary/terms` body:**
+
+```json
+{"name": "revenue", "definition": "Recognized net revenue after returns and discounts."}
+```
+
+**`POST /admin/glossary/terms/{term_id}/edges` body:**
+
+```json
+{"to_term_id": 42, "rel_type": "KIND_OF"}
+```
+
+Valid `rel_type` values: `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`. [tool-verified: `provisa/core/glossary.py:TERM_EDGE_TYPES`]
+
+**`POST /admin/glossary/terms/{term_id}/experts` body:**
+
+```json
+{"user_id": "alice@example.com", "kind": "author"}
+```
+
+Valid `kind` values: `expert`, `author`. [tool-verified: `provisa/core/repositories/glossary.py:add_expert`]
+
+**`POST /admin/glossary/refs/move` body:**
+
+```json
+{"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
+```
+
+Moving a ref settles the losing term under the remove-or-deprecate rule. Use this to consolidate two terms that normalization kept separate — for example, after a source uses a non-standard abbreviation that fell outside the expansion table.
+
+Deleting a rooted term (one with physical refs) returns `400 glossary.invalid`. Remove or move all refs first.
+
+### MCP `search_terms` Tool
+
+```
+search_terms(query, role=None, limit=25)
+```
+
+Searches term names and definitions with a case-insensitive substring match, up to `limit` results. Each result is the full term detail: `name`, `definition`, `is_abstract`, `deprecated`, physical refs (with `source_id`, `schema_name`, `table_name`, `column_name`), typed edges, and expert assignments. [tool-verified: `provisa/api/mcp/server.py:236-244`, `provisa/core/repositories/glossary.py:search_terms`]
+
+Use `search_terms` before writing SQL to find every physical field that represents a concept by name. For example, searching `"order date"` returns the term and all `order_dt`, `orderDate`, `ORDER_DATE` columns across every registered table.
+
+### Metadata Export
+
+The glossary term graph is included in every `MetadataSnapshot` built by `build_snapshot`. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
+
+The export applies the same filters as the rest of the snapshot:
+
+- A rooted term publishes only when at least one of its physical refs belongs to a column that passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld).
+- A rooted term whose refs are all withheld by those filters is withheld with them.
+- Abstract terms publish unconditionally — they are user vocabulary, not bound to physical columns.
+- An edge between two terms publishes only when both endpoint terms publish.
+
+Every vendor adapter publishes the term graph natively, into a Provisa-owned glossary container it creates idempotently — never into an existing catalog glossary:
+
+| Provider | Container | Terms | Relations | Deprecation |
+| --- | --- | --- | --- | --- |
+| Apache Atlas | "Provisa Glossary" (glossary API) | glossary terms, definition on `longDescription` | KIND_OF → `isA`, SYNONYM_OF → `synonyms`, RELATED_TO/PART_OF → `seeAlso` | `[DEPRECATED]` shortDescription marker |
+| Atlan | Provisa glossary by stable qualifiedName | `longDescription` (never the human-edited `userDescription`) | same Atlas mapping | `certificateStatus = DEPRECATED` |
+| DataHub | `urn:li:glossaryNode:provisa.<org>` | `glossaryTermInfo` aspect per term | KIND_OF → Inherits, PART_OF → Contains (inverted), RELATED_TO/SYNONYM_OF → related terms | deprecation aspect; renames follow URN succession |
+| OpenMetadata | Provisa glossary via `/v1/glossaries` | fqn-keyed PUT, renames PATCH-rebind by stored UUID | KIND_OF → native parent hierarchy, SYNONYM_OF → `synonyms`, others → `relatedTerms` | `entityStatus` |
+| Collibra | Glossary-type domain "Provisa Glossary" | Business Term assets via the Import API | native Business Term relation types | asset status |
+
+Ownership is the binding, not the name: each published term's vendor id is captured into `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa modifies or deletes a vendor-side glossary item only when it holds that binding (or the item lives in the Provisa-owned container it created). A glossary item with no Provisa binding originated in the external system and is never touched; updates read-merge so steward-added fields on Provisa's own terms survive; nothing is deleted when a term leaves the snapshot. Steward term-to-asset assignments remain external-owned — no adapter writes term-to-asset assignments (Provisa-authored assignment publishing is an explicit follow-on). On Collibra specifically, safety under the Import API's REPLACE semantics rests on containment: the payload mentions only assets inside the Provisa glossary domain and relation instances only between Provisa terms, so steward glossaries and their relations are never reachable. [tool-verified: `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openmetadata.py`]

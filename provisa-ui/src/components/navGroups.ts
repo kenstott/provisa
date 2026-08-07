@@ -75,6 +75,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       // REQ-1337: administering orgs other than the one being acted in is `cross_org`.
       { to: "/admin/orgs", labelKey: "navBar.itemOrgs", capability: "cross_org" },
+      // Team management is org administration, so it lives in this group; its route stays /team.
+      { to: "/team", labelKey: "navBar.team", capability: "user_management" },
       // REQ-1349: the org-scoped rights. `observability` is read-only performance and health;
       // `org_settings` covers the surfaces whose subject is the acting org itself. org_admin holds
       // both in either tenancy mode, so an org administrator gets a useful Admin tab without any
@@ -104,6 +106,8 @@ export const NAV_GROUPS: NavGroup[] = [
       // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
       { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
+      // REQ-1387: the glossary route stays /admin/glossary (org_settings) but its nav entry is
+      // the top-level Glossary link in NavBar.tsx, not an item of this group.
       { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "observability" },
       { to: "/admin/observability", labelKey: "navBar.itemObservability", capability: "observability" },
       { to: "/admin/mcp-server", labelKey: "navBar.itemMcpServer", capability: "admin" },

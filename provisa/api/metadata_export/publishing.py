@@ -194,6 +194,10 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     for table in snapshot.tables:
         uris.add(table.semantic_uri)
         uris.update(column.semantic_uri for column in table.columns)
+    # REQ-1387: term bindings are the OWNERSHIP test for vendor-side glossary items — a
+    # pruned term binding would make Provisa's own published term read as external-owned
+    # (never modifiable again), so published terms keep their bindings like any asset.
+    uris.update(term.semantic_uri for term in snapshot.glossary_terms)
     uris.discard("")
     return uris
 
@@ -214,10 +218,18 @@ async def publish_snapshot(org_id: str) -> PublishResult:
     try:
         config = await _export_config(org_id)
         model = await _model_for_export()
-        snapshot = build_snapshot(model, org_id=org_id, dialect=GOVERNED_DIALECT)
-        exporter = metadata_export(config)
         tenant_db = state.tenant_db
         assert tenant_db is not None  # _export_config refuses without one
+        # REQ-1387: the term graph exports with the model; it lives only in the DB, so it
+        # hydrates here the way sources do rather than through the config file vocabulary.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        async with tenant_db.acquire() as conn:
+            glossary = await glossary_repo.export_graph(conn)
+        snapshot = build_snapshot(
+            model, org_id=org_id, dialect=GOVERNED_DIALECT, glossary=glossary
+        )
+        exporter = metadata_export(config)
         async with tenant_db.acquire() as conn:
             # REQ-1389: hand the provider the vendor ids captured by earlier publishes, so
             # a physically re-addressed asset rebinds the SAME catalog entity instead of

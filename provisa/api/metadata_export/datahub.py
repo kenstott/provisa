@@ -46,9 +46,28 @@ captures each table's dataset URN at publish time, and when the binding shows th
 the OLD bound URN — a note naming the successor URN and the canonical Provisa URN — so the
 lingering entity is visibly superseded rather than a silent duplicate. The Provisa URN is
 still published as the ``provisaUri`` customProperty (and ``externalUrl``).
+
+Business glossary (REQ-1387): terms publish as native ``glossaryTerm`` entities under one
+Provisa-owned ``glossaryNode`` per org (``urn:li:glossaryNode:provisa.<org>``), so everything
+this adapter writes in the glossary sits inside a namespace it visibly owns — a term or node
+outside that namespace is never proposed, and no delete is ever emitted. Term-to-asset
+assignment is HUMAN-OWNED (REQ-1389): this adapter never writes a ``glossaryTerms`` aspect on
+a dataset or schema field. The typed term edges map onto ``glossaryRelatedTerms``:
+
+* ``KIND_OF``   → ``isRelatedTerms`` on the subtype (DataHub's "Inherits" / is-a relation);
+* ``PART_OF``   → ``hasRelatedTerms`` on the WHOLE (DataHub's "Contains" / has-a relation,
+  which points from container to part — the edge is inverted to fit);
+* ``RELATED_TO`` → ``relatedTerms`` on the source (DataHub's "Related Terms");
+* ``SYNONYM_OF`` → ``relatedTerms`` on BOTH endpoints — DataHub has no synonym field, and
+  emitting the closest relation symmetrically is what preserves the symmetry a synonym means.
+
+A glossaryTerm URN is immutable identity like a dataset URN, and it derives from the term's
+name-based semantic URI — so a RENAME in Provisa mints a new term URN. The stored binding
+carries the stable Provisa term id, and when it shows the URN changed the old bound URN gets
+the ``deprecation`` aspect naming its successor, the same succession pattern datasets use.
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1389
+# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1387, REQ-1389
 
 from __future__ import annotations
 
@@ -91,6 +110,16 @@ def dataset_urn(ref: AssetRef) -> str:
 
 def _tag_urn(signal: str) -> str:
     return f"urn:li:tag:{TAG_PREFIX}{signal}"
+
+
+def glossary_node_urn(org_id: str) -> str:
+    """The one Provisa-owned glossary node per org — the ownership boundary (REQ-1387)."""
+    return f"urn:li:glossaryNode:{PLATFORM}.{org_id}"
+
+
+def glossary_term_urn(org_id: str, name: str) -> str:
+    """A term URN inside the org's Provisa node. Name-derived, so a rename mints a new URN."""
+    return f"urn:li:glossaryTerm:{PLATFORM}.{org_id}.{name}"
 
 
 def _field_path(ref: AssetRef) -> str:
@@ -276,6 +305,116 @@ def _lineage_aspects(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     return proposals
 
 
+def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # REQ-1387
+    """The term graph as native glossary aspects, all inside the org's Provisa node.
+
+    Every URN emitted here is minted by ``glossary_node_urn`` / ``glossary_term_urn`` — the
+    adapter never addresses a glossary entity outside its own namespace, and it emits only
+    UPSERTs, never deletes. Datasets and schema fields get NO ``glossaryTerms`` aspect from
+    this adapter: term-to-asset assignment is human-owned (REQ-1389).
+
+    Edge mapping (module docstring documents the reasoning): ``KIND_OF`` →
+    ``isRelatedTerms`` on the subtype; ``PART_OF`` → ``hasRelatedTerms`` on the whole (edge
+    inverted — DataHub's has-a points container→part); ``RELATED_TO`` → ``relatedTerms`` on
+    the source; ``SYNONYM_OF`` → ``relatedTerms`` on both endpoints.
+    """
+    if not snapshot.glossary_terms:
+        return []
+    node_urn = glossary_node_urn(snapshot.org_id)
+    proposals = [
+        AspectProposal(
+            asset=AssetRefStub(node_urn),
+            kind="glossary_node",
+            entity_type="glossaryNode",
+            urn=node_urn,
+            aspect_name="glossaryNodeInfo",
+            aspect={
+                "name": f"Provisa ({snapshot.org_id})",
+                "definition": (
+                    "Business glossary published and owned by Provisa for org "
+                    f"{snapshot.org_id!r}. Terms in this node are managed in Provisa; "
+                    "term-to-asset assignment is curated in DataHub."
+                ),
+            },
+        )
+    ]
+    term_by_id = {term.term_id: term for term in snapshot.glossary_terms}
+    related: dict[int, dict[str, list[str]]] = {}
+
+    def _add(term_id: int, field: str, other_id: int) -> None:
+        urn = glossary_term_urn(snapshot.org_id, term_by_id[other_id].name)
+        related.setdefault(term_id, {}).setdefault(field, []).append(urn)
+
+    for edge in snapshot.glossary_edges:
+        if edge.rel_type == "KIND_OF":
+            _add(edge.from_term_id, "isRelatedTerms", edge.to_term_id)
+        elif edge.rel_type == "PART_OF":
+            _add(edge.to_term_id, "hasRelatedTerms", edge.from_term_id)
+        elif edge.rel_type == "RELATED_TO":
+            _add(edge.from_term_id, "relatedTerms", edge.to_term_id)
+        elif edge.rel_type == "SYNONYM_OF":
+            _add(edge.from_term_id, "relatedTerms", edge.to_term_id)
+            _add(edge.to_term_id, "relatedTerms", edge.from_term_id)
+        else:
+            raise ValueError(f"unknown glossary edge type {edge.rel_type!r}")
+
+    for term in snapshot.glossary_terms:
+        urn = glossary_term_urn(snapshot.org_id, term.name)
+        custom = {
+            "provisaUri": term.semantic_uri,
+            # REQ-1389: the stable Provisa term id rides the binding so the NEXT publish can
+            # recognize a renamed term (new name-derived URN) and deprecate the old URN.
+            "provisaTermId": str(term.term_id),
+        }
+        if term.experts:
+            custom["provisaExperts"] = ", ".join(term.experts)
+        proposals.append(
+            AspectProposal(
+                asset=AssetRefStub(term.semantic_uri),
+                kind="glossary_term",
+                entity_type="glossaryTerm",
+                urn=urn,
+                aspect_name="glossaryTermInfo",
+                aspect={
+                    "name": term.name,
+                    # GlossaryTermInfo.definition is a required string in DataHub's model
+                    # (REQ-1387) — a Provisa term without a definition publishes it empty.
+                    "definition": term.definition or "",
+                    "parentNode": node_urn,
+                    "termSource": "INTERNAL",
+                    "customProperties": custom,
+                },
+            )
+        )
+        if term.deprecated:
+            proposals.append(
+                AspectProposal(
+                    asset=AssetRefStub(term.semantic_uri),
+                    kind="glossary_term_deprecation",
+                    entity_type="glossaryTerm",
+                    urn=urn,
+                    aspect_name="deprecation",
+                    aspect={
+                        "deprecated": True,
+                        "note": "Deprecated in the Provisa glossary.",
+                        "actor": "urn:li:corpuser:provisa",
+                    },
+                )
+            )
+        if term.term_id in related:
+            proposals.append(
+                AspectProposal(
+                    asset=AssetRefStub(term.semantic_uri),
+                    kind="glossary_edges",
+                    entity_type="glossaryTerm",
+                    urn=urn,
+                    aspect_name="glossaryRelatedTerms",
+                    aspect=related[term.term_id],
+                )
+            )
+    return proposals
+
+
 def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     """The snapshot as DataHub aspect proposals.
 
@@ -416,6 +555,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                 )
 
     proposals.extend(_lineage_aspects(snapshot))
+    proposals.extend(_glossary_proposals(snapshot))  # REQ-1387
     return proposals
 
 
@@ -539,11 +679,52 @@ class DataHubExport(MetadataExport):  # REQ-1069
             )
         return deprecations
 
+    def _term_rename_deprecations(self, snapshot: MetadataSnapshot) -> list[AspectProposal]:
+        """Deprecation aspects for the OLD URNs of renamed glossary terms (REQ-1387/1389).
+
+        A glossaryTerm URN derives from the term's name, so a rename mints a new URN; the
+        stored binding carries the stable Provisa term id (``term:<id>`` as the physical
+        key), which is how the old URN is matched to its successor. Only URNs inside the
+        org's own Provisa node are ever touched — a foreign glossary URN in a corrupted
+        binding is skipped rather than deprecated — and nothing is ever deleted.
+        """
+        term_by_id = {term.term_id: term for term in snapshot.glossary_terms}
+        namespace = f"urn:li:glossaryTerm:{PLATFORM}.{snapshot.org_id}."
+        deprecations: list[AspectProposal] = []
+        for old_uri, (old_urn, physical_key) in self._bindings.items():
+            if not physical_key.startswith("term:"):
+                continue
+            term = term_by_id.get(int(physical_key.removeprefix("term:")))
+            if term is None:
+                continue
+            successor = glossary_term_urn(snapshot.org_id, term.name)
+            if successor == old_urn or not old_urn.startswith(namespace):
+                continue
+            deprecations.append(
+                AspectProposal(
+                    asset=AssetRefStub(old_uri),
+                    kind="glossary_rename_deprecation",
+                    entity_type="glossaryTerm",
+                    urn=old_urn,
+                    aspect_name="deprecation",
+                    aspect={
+                        "deprecated": True,
+                        "note": (
+                            f"Renamed in the Provisa glossary; superseded by {successor}. "
+                            f"Provisa URI: {term.semantic_uri}."
+                        ),
+                        "actor": "urn:li:corpuser:provisa",
+                    },
+                )
+            )
+        return deprecations
+
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
         headers = self._headers()
         proposals = to_proposals(snapshot)
         proposals.extend(self._rebind_deprecations(proposals))
+        proposals.extend(self._term_rename_deprecations(snapshot))  # REQ-1387
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             for proposal in proposals:
                 if (
@@ -576,6 +757,15 @@ class DataHubExport(MetadataExport):  # REQ-1069
                     result.bindings[proposal.aspect["customProperties"]["provisaUri"]] = (
                         proposal.urn,
                         proposal.aspect["qualifiedName"],
+                    )
+                if proposal.aspect_name == "glossaryTermInfo":
+                    # REQ-1387/1389: the term URN is the vendor id — captured keyed by the
+                    # term's Provisa URI, with the stable term id as the physical key so a
+                    # later publish detects a rename (name-derived URN change).
+                    custom = proposal.aspect["customProperties"]
+                    result.bindings[custom["provisaUri"]] = (
+                        proposal.urn,
+                        f"term:{custom['provisaTermId']}",
                     )
         return result
 

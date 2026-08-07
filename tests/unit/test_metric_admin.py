@@ -135,15 +135,36 @@ async def _admin_db(tmp_path):
     """Sqlite control plane carrying the registries the metric-view compiler reads."""
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from provisa.core.schema_org import registered_tables, relationships, roles, table_columns
+    from provisa.core.schema_org import (
+        glossary_term_edges,
+        glossary_term_experts,
+        glossary_term_refs,
+        glossary_terms,
+        registered_tables,
+        relationships,
+        roles,
+        table_columns,
+    )
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'admin.db'}")
     async with engine.begin() as c:
         # roles: table_repo resolves control-plane (cross_org) roles from the DB (REQ-1337), so
         # every fixture that registers tables must carry the roles table the bootstrap guarantees.
+        # glossary_*: the table upsert derives glossary terms from columns (REQ-1387).
         await c.run_sync(
             lambda s: metrics.metadata.create_all(
-                s, tables=[metrics, registered_tables, table_columns, relationships, roles]
+                s,
+                tables=[
+                    metrics,
+                    registered_tables,
+                    table_columns,
+                    relationships,
+                    roles,
+                    glossary_terms,
+                    glossary_term_refs,
+                    glossary_term_edges,
+                    glossary_term_experts,
+                ],
             )
         )
     try:

@@ -75,6 +75,10 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014
             _delete(registered_tables).where(registered_tables.c.source_id == source_id)
         )
         result = await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
+        # REQ-1387: the table deletes cascaded the glossary refs; settle newly refless terms.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        await glossary_repo.sweep_refless_terms(conn)
     return (result.rowcount or 0) > 0
 
 

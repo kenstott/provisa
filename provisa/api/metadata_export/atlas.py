@@ -31,7 +31,7 @@ Every entity carries a stable ``qualifiedName``, which is the key Atlas upserts 
 what makes the scheduled reconcile (REQ-1072) idempotent.
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071
+# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1387
 
 from __future__ import annotations
 
@@ -52,7 +52,12 @@ from provisa.api.metadata_export.provider import (
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_export.model import DomainAsset, MetadataSnapshot, TableAsset
+    from provisa.api.metadata_export.model import (
+        DomainAsset,
+        GlossaryTermAsset,
+        MetadataSnapshot,
+        TableAsset,
+    )
 
 # Every Provisa-projected classification is prefixed, so a catalog admin can tell governance
 # Provisa enforces from a classification curated inside Atlas.
@@ -319,9 +324,7 @@ def classification_defs(snapshot: MetadataSnapshot) -> list[dict[str, Any]]:
                 },
             ],
         }
-        for tag_id in sorted(
-            {tag.tag_id for tag in snapshot.model_tags if tag.asset is not None}
-        )
+        for tag_id in sorted({tag.tag_id for tag in snapshot.model_tags if tag.asset is not None})
     ]
 
 
@@ -674,6 +677,60 @@ def _lineage_entities(
     return entities
 
 
+# --- Business glossary (REQ-1387) -----------------------------------------------------------
+
+GLOSSARY_NAME = "Provisa Glossary"
+
+# Atlas terms have no deprecated flag. The marker is a shortDescription prefix rather than a
+# classification: a classification on a term needs its typedef plus the per-guid entity
+# classification routes, which Purview's Atlas-compatible surface does not expose for
+# glossary objects — a prefix both products render in every term list is the one marker that
+# reaches every reader. Provisa owns ONLY the prefix: the merge re-derives it from the
+# snapshot and preserves whatever a steward wrote after it.
+DEPRECATION_MARKER = "[DEPRECATED]"
+
+# REQ-1387: the closed Provisa term-edge set onto Atlas's native term relations.
+#   KIND_OF    → isA       (Atlas's classifies/isA taxonomy pair, seen from the child)
+#   SYNONYM_OF → synonyms
+#   RELATED_TO → seeAlso
+#   PART_OF    → seeAlso   Atlas has no compositional term relation. validValuesFor was
+#                          considered and rejected: it asserts an enumeration ("these are the
+#                          valid values of"), a semantics PART_OF does not carry. seeAlso is
+#                          the closest native relation that claims nothing PART_OF lacks; the
+#                          exact Provisa kind stays authoritative in Provisa itself.
+TERM_RELATION_MAP = {
+    "KIND_OF": "isA",
+    "SYNONYM_OF": "synonyms",
+    "RELATED_TO": "seeAlso",
+    "PART_OF": "seeAlso",
+}
+
+
+def _glossary_qn(org_id: str) -> str:
+    """The Provisa-owned container's stable per-org qualifiedName (REQ-1387)."""
+    return f"provisa_glossary.{org_id}@{CLUSTER}"
+
+
+def _glossary_uri(org_id: str) -> str:
+    """Binding key for the container itself, beside the per-term semantic URIs (REQ-1389)."""
+    return f"provisa://{org_id}/glossary"
+
+
+def _term_qn(glossary_qn: str, name: str) -> str:
+    """Atlas's own term addressing convention: ``<term>@<glossary qualifiedName>``."""
+    return f"{name}@{glossary_qn}"
+
+
+def _term_short_description(live: str | None, deprecated: bool) -> str:
+    """Re-derive Provisa's deprecation prefix, preserving the steward's own text after it."""
+    text = (live or "").strip()
+    if text.startswith(DEPRECATION_MARKER):
+        text = text[len(DEPRECATION_MARKER) :].strip()
+    if deprecated:
+        return f"{DEPRECATION_MARKER} {text}".strip()
+    return text
+
+
 @register_provider
 class AtlasExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to Apache Atlas, or to Microsoft Purview's Atlas-compatible API."""
@@ -689,6 +746,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
     relationshipdef_path = "/api/atlas/v2/types/relationshipdef/name"
     unique_attr_path = "/api/atlas/v2/entity/uniqueAttribute/type"
     health_path = "/api/atlas/v2/types/typedefs/headers"
+    # REQ-1387: the native glossary routes. Attributes for the same reason as the entity
+    # routes above — an Atlas-shaped vendor with a different mount is a subclass, not a fork.
+    glossary_path = "/api/atlas/v2/glossary"
+    glossary_term_path = "/api/atlas/v2/glossary/term"
     # REQ-1389: reconcile provisa_* classifications after the bulk upsert — Atlas applies
     # classifications only on CREATE, so updates need the read-merge pass. Atlan's
     # Atlas-shaped API has not been verified for the per-guid classification routes, so the
@@ -878,7 +939,228 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 )
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
-        return await self._publish_entities(to_native_entities(snapshot), snapshot)
+        result = await self._publish_entities(to_native_entities(snapshot), snapshot)
+        if snapshot.glossary_terms:
+            # REQ-1387: the glossary publishes even when no entity does — an abstract term
+            # is user vocabulary, not physical binding, and exists without a data product.
+            async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+                headers = await self._headers(client)
+                await self._publish_glossary(client, headers, snapshot, result)
+        return result
+
+    async def _ensure_glossary(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        org_id: str,
+        result: PublishResult,
+    ) -> str:
+        """The guid of the Provisa-owned glossary container, created idempotently (REQ-1387).
+
+        Resolution order: the stored binding (the guid captured when a prior publish created
+        it — rename-safe and index-lag-safe), then the listing matched by the stable per-org
+        qualifiedName, then a create. Glossaries other admins own appear in the listing and
+        are never matched, written to, or deleted — the qualifiedName match is the ownership
+        test.
+        """
+        uri = _glossary_uri(org_id)
+        qn = _glossary_qn(org_id)
+        stored = self._bindings.get(uri)
+        if stored is not None:
+            result.bindings[uri] = (stored[0], qn)
+            return stored[0]
+        listing = await client.get(self._url(self.glossary_path), headers=headers)
+        listing.raise_for_status()
+        for glossary in listing.json() or []:
+            if glossary.get("qualifiedName") == qn:
+                result.bindings[uri] = (glossary["guid"], qn)
+                return glossary["guid"]
+        created = await client.post(
+            self._url(self.glossary_path),
+            json={
+                "name": GLOSSARY_NAME,
+                "qualifiedName": qn,
+                "shortDescription": "Business vocabulary governed by Provisa.",
+            },
+            headers=headers,
+        )
+        created.raise_for_status()
+        guid = created.json()["guid"]
+        result.bindings[uri] = (guid, qn)
+        return guid
+
+    async def _upsert_term(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        term: GlossaryTermAsset,
+        glossary_guid: str,
+        glossary_qn: str,
+        result: PublishResult,
+    ) -> str | None:
+        """Create or update one term inside the Provisa glossary; returns its guid.
+
+        The stored binding is preferred over any name lookup, so a term renamed in Provisa
+        UPDATES the same catalog term in place instead of duplicating it. An update is
+        read-merge (REQ-1389): it starts from the LIVE term object and overlays only the
+        fields Provisa authors — name, qualifiedName, longDescription, anchor and the
+        deprecation prefix — so steward-added enrichment (abbreviation, examples, usage,
+        assigned entities) survives verbatim. Term-to-entity assignments are HUMAN-OWNED
+        (REQ-1389) and are never authored here, ``refs`` notwithstanding.
+        """
+        term_qn = _term_qn(glossary_qn, term.name)
+        # REQ-1387: ``definition`` is Optional in the model; an undefined term publishes with
+        # an empty longDescription rather than the string "None".
+        definition = term.definition or ""
+        stored = self._bindings.get(term.semantic_uri)
+        if stored is not None:
+            guid = stored[0]
+            fetch = await client.get(
+                self._url(f"{self.glossary_term_path}/{guid}"), headers=headers
+            )
+            if fetch.status_code < 400:
+                live = fetch.json()
+                body = {
+                    **live,
+                    "name": term.name,
+                    "qualifiedName": term_qn,
+                    "longDescription": definition,
+                    "shortDescription": _term_short_description(
+                        live.get("shortDescription"), term.deprecated
+                    ),
+                    "anchor": {"glossaryGuid": glossary_guid},
+                }
+                update = await client.put(
+                    self._url(f"{self.glossary_term_path}/{guid}"),
+                    json=body,
+                    headers=headers,
+                )
+                update.raise_for_status()
+                result.bindings[term.semantic_uri] = (guid, term_qn)
+                return guid
+            # The bound term is gone from the catalog — a create happens instead, exactly
+            # as ``_canonicalize_identity`` treats a dead entity fetch.
+        body = {
+            "name": term.name,
+            "qualifiedName": term_qn,
+            "longDescription": definition,
+            "anchor": {"glossaryGuid": glossary_guid},
+        }
+        short = _term_short_description(None, term.deprecated)
+        if short:
+            body["shortDescription"] = short
+        created = await client.post(self._url(self.glossary_term_path), json=body, headers=headers)
+        created.raise_for_status()
+        guid = created.json()["guid"]
+        result.bindings[term.semantic_uri] = (guid, term_qn)
+        return guid
+
+    async def _publish_glossary(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        snapshot: MetadataSnapshot,
+        result: PublishResult,
+    ) -> None:
+        """Publish the term graph into the Provisa-owned glossary (REQ-1387).
+
+        Ownership is the binding: every write goes to the Provisa container or to a term
+        Provisa created there (its guid captured in ``bindings``). Glossary objects without a
+        Provisa binding — other glossaries, steward-created terms — are never modified, and
+        nothing is ever deleted: a term that left the snapshot stays in the catalog, exactly
+        as vendor-side assets do (bindings prune separately).
+        """
+        try:
+            glossary_guid = await self._ensure_glossary(client, headers, snapshot.org_id, result)
+        except httpx.HTTPError as exc:
+            result.errors.append(
+                AssetError(asset=AssetRefStub(GLOSSARY_NAME), message=f"glossary: {exc}")
+            )
+            return
+        result.published["glossary"] = 1
+        glossary_qn = _glossary_qn(snapshot.org_id)
+        term_guids: dict[int, str] = {}
+        for term in snapshot.glossary_terms:
+            try:
+                guid = await self._upsert_term(
+                    client, headers, term, glossary_guid, glossary_qn, result
+                )
+            except httpx.HTTPError as exc:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(term.semantic_uri),
+                        message=f"glossary term: {exc}",
+                    )
+                )
+                continue
+            if guid is not None:
+                term_guids[term.term_id] = guid
+                result.published["glossary_term"] = result.published.get("glossary_term", 0) + 1
+        await self._publish_term_relations(client, headers, snapshot, term_guids, result)
+
+    async def _publish_term_relations(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        snapshot: MetadataSnapshot,
+        term_guids: dict[int, str],
+        result: PublishResult,
+    ) -> None:
+        """Map Provisa term edges onto Atlas's native term relations (``TERM_RELATION_MAP``).
+
+        A second pass after every term exists, because a relation names its target by guid.
+        The merge is ADDITIVE: a live relation entry is never removed — a steward may
+        hand-relate Provisa terms, and a list entry carries no author, so removal is the
+        human's call (REQ-1389 authorship rule).
+        """
+        by_from: dict[int, list[Any]] = {}
+        for edge in snapshot.glossary_edges:
+            by_from.setdefault(edge.from_term_id, []).append(edge)
+        for from_id, edges in by_from.items():
+            guid = term_guids.get(from_id)
+            if guid is None:
+                continue  # the endpoint's failure was already reported by the upsert pass
+            fetch = await client.get(
+                self._url(f"{self.glossary_term_path}/{guid}"), headers=headers
+            )
+            if fetch.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(f"term:{from_id}"),
+                        message=f"term relation fetch failed: HTTP {fetch.status_code}",
+                    )
+                )
+                continue
+            body = dict(fetch.json())
+            changed = False
+            for edge in edges:
+                # A rel_type outside the closed enum is a builder fault: KeyError, not a guess.
+                relation = TERM_RELATION_MAP[edge.rel_type]
+                to_guid = term_guids.get(edge.to_term_id)
+                if to_guid is None:
+                    continue
+                entries = list(body.get(relation) or [])
+                if any(entry.get("termGuid") == to_guid for entry in entries):
+                    continue
+                entries.append({"termGuid": to_guid})
+                body[relation] = entries
+                changed = True
+            if not changed:
+                continue
+            try:
+                update = await client.put(
+                    self._url(f"{self.glossary_term_path}/{guid}"),
+                    json=body,
+                    headers=headers,
+                )
+                update.raise_for_status()
+            except httpx.HTTPError as exc:
+                result.errors.append(
+                    AssetError(
+                        asset=AssetRefStub(f"term:{from_id}"),
+                        message=f"term relations: {exc}",
+                    )
+                )
 
     async def _publish_entities(
         self, entities: list[AtlasEntity], snapshot: MetadataSnapshot
@@ -957,9 +1239,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
         return result
 
-    async def _ensure_type_system(
-        self, client: httpx.AsyncClient, headers: dict[str, str]
-    ) -> None:
+    async def _ensure_type_system(self, client: httpx.AsyncClient, headers: dict[str, str]) -> None:
         """Register the provisa_* entity/relationship typedefs (REQ-1388). Atlan overrides
         to a no-op: it publishes through its own built-in types."""
         await self._register_native_typedefs(client, headers)

@@ -53,6 +53,7 @@
     "dev": "DEV",
     "itemMetadataExport": "Esportazione metadati",
     "itemTags": "Tag",
-    "itemReports": "Report"
+    "itemReports": "Report",
+    "itemGlossary": "Glossario"
   }
 }

@@ -57,9 +57,41 @@ the live asset first — ``PATCH /rest/2.0/assets/{id}`` with the new name — s
 import that follows matches the SAME asset, enrichment intact, instead of creating a
 duplicate. The canonical business identity is still published on every table as the
 ``Provisa URI`` attribute.
+
+REQ-1387 — business glossary, and the containment argument that keeps REPLACE away from a
+steward's glossaries. The paragraphs above establish that steward glossary items survive
+because Provisa never mentions them; publishing terms natively means Provisa now DOES send
+Business Term rows and term-to-term relations, so the argument is re-derived rather than
+inherited:
+
+* CONTAINMENT: Provisa publishes terms only into its own Glossary-type domain — community
+  ``Provisa``, domain ``Provisa Glossary`` — created idempotently (find by name, create when
+  absent, domain type looked up by name from the target) before the first term row is
+  imported. Every glossary row's identifier and every term-to-term relation endpoint is an
+  asset inside that domain. REPLACE's reach is per *mentioned* asset and *mentioned* relation
+  type: the four term relation types this adapter names are set-replaced only on Provisa's
+  own terms, so a hand-drawn relation of the same type between two steward terms is anchored
+  on unmentioned assets and survives, and steward glossary assets — never mentioned — are
+  untouched entirely.
+* Every term row mentions all four term relation types, with an empty final set where the
+  snapshot carries no edge of that type. The edge set anchored on a Provisa term is
+  Provisa-authored (REQ-1387 ownership), so full replacement of it IS the drift correction,
+  exactly as it is for the ``Provisa *`` attribute types above.
+* Term-to-asset assignments are HUMAN-OWNED (REQ-1389): this adapter never writes an
+  assignment relation, so the assignment relation type is never mentioned and steward
+  assignments survive — the same never-mentioned argument the existing exclusions rest on.
+* Nothing is deleted for absence: a term missing from the snapshot is simply not mentioned,
+  and no asset lacking a stored Provisa binding is ever PATCHed.
+* Deprecation is published as the asset's status (``Obsolete`` when deprecated, ``Accepted``
+  otherwise) rather than a custom attribute: status is a property of an asset wholly inside
+  Provisa's own glossary domain, so setting it collides with no steward workflow, and it is
+  the marker Collibra's own UI badges.
+* Ownership is the binding: each term row carries the ``Provisa URI`` attribute
+  (``provisa://<org>/terms/<name>``), so terms ride the same UUID capture and
+  rename-by-stored-UUID-before-import path tables do (REQ-1385/REQ-1389 above).
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1385, REQ-1389
+# Requirements: REQ-1068, REQ-1069, REQ-1070, REQ-1071, REQ-1385, REQ-1387, REQ-1389
 
 from __future__ import annotations
 
@@ -101,6 +133,26 @@ GOVERNANCE_ATTRIBUTE = "Provisa Governance"
 RELATIONSHIP_ATTRIBUTE = "Provisa Approved Relationships"
 LINEAGE_ATTRIBUTE = "Provisa Lineage"
 STEWARD_ATTRIBUTE = "Provisa Steward"
+
+# REQ-1387: Collibra's own glossary vocabulary. Business Term and the Glossary domain type are
+# out-of-the-box, as are the term-to-term relation types below — named as Collibra names them,
+# "<head> <role> <tail>", the same convention as the physical hierarchy relations above. A
+# target lacking one refuses the rows carrying it, which the publish reports.
+GLOSSARY_TERM_TYPE = "Business Term"
+GLOSSARY_DOMAIN_TYPE = "Glossary"
+DEFINITION_ATTRIBUTE = "Definition"
+DEPRECATED_STATUS = "Obsolete"
+ACTIVE_STATUS = "Accepted"
+
+# The closed Provisa edge enum mapped to Collibra's closest native term-to-term relations.
+# Only these four types are ever mentioned, and only anchored on Provisa's own terms — see the
+# module docstring's containment argument.
+TERM_RELATION_TYPES = {
+    "SYNONYM_OF": "Business Term is synonym of Business Term",
+    "RELATED_TO": "Business Term is related to Business Term",
+    "KIND_OF": "Business Term is a type of Business Term",
+    "PART_OF": "Business Term is part of Business Term",
+}
 
 
 def _identifier(name: str, community: str, domain: str) -> dict[str, Any]:
@@ -260,6 +312,53 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
     return rows
 
 
+def glossary_rows(
+    snapshot: MetadataSnapshot, community: str, glossary_domain: str
+) -> list[dict[str, Any]]:  # REQ-1387
+    """The term graph as Collibra import rows, contained in Provisa's own glossary domain.
+
+    Every identifier and every relation endpoint is inside ``glossary_domain`` — that
+    containment is the whole safety argument for sending term relations under REPLACE (module
+    docstring). Each row mentions all four term relation types, empty where the snapshot has
+    no edge of that type: the edge set anchored on a Provisa term is Provisa-authored, so the
+    empty set is the correct final set, not a deletion of someone else's work.
+    """
+    name_by_id = {term.term_id: term.name for term in snapshot.glossary_terms}
+    relations_by_term: dict[int, dict[str, list[dict[str, Any]]]] = {}
+    for edge in snapshot.glossary_edges:
+        key = f"{TERM_RELATION_TYPES[edge.rel_type]}:TARGET"
+        relations_by_term.setdefault(edge.from_term_id, {}).setdefault(key, []).append(
+            _identifier(name_by_id[edge.to_term_id], community, glossary_domain)
+        )
+    rows: list[dict[str, Any]] = []
+    for term in snapshot.glossary_terms:
+        attributes: dict[str, Any] = {
+            URI_ATTRIBUTE: [{"value": term.semantic_uri}],  # REQ-1385: binding key
+        }
+        if term.definition is not None:
+            # Provisa-authored on Provisa's own term (REQ-1389), so set-replacement of the
+            # Definition type on THIS asset is the drift correction.
+            attributes[DEFINITION_ATTRIBUTE] = [{"value": term.definition}]
+        term_relations = relations_by_term.get(term.term_id, {})
+        rows.append(
+            {
+                "resourceType": "Asset",
+                "identifier": _identifier(term.name, community, glossary_domain),
+                "name": term.name,
+                "displayName": term.name,
+                "type": {"name": GLOSSARY_TERM_TYPE},
+                # Deprecation marker: Collibra status (module docstring).
+                "status": {"name": DEPRECATED_STATUS if term.deprecated else ACTIVE_STATUS},
+                "attributes": attributes,
+                "relations": {
+                    f"{relation}:TARGET": term_relations.get(f"{relation}:TARGET", [])
+                    for relation in TERM_RELATION_TYPES.values()
+                },
+            }
+        )
+    return rows
+
+
 @register_provider
 class CollibraExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to Collibra through its JSON import job."""
@@ -274,6 +373,10 @@ class CollibraExport(MetadataExport):  # REQ-1069
     # creates them once and Provisa addresses them by name.
     community = "Provisa"
     domain = "Provisa Governed Assets"
+    # REQ-1387: the Glossary-type domain terms land in. Unlike the asset domain above it is
+    # created idempotently by the publish itself — the containment argument requires the
+    # domain to exist and to be Provisa's own before any term row is imported.
+    glossary_domain = "Provisa Glossary"
 
     def _url(self, path: str) -> str:
         return f"{self._config.endpoint.rstrip('/')}{path}"
@@ -384,10 +487,102 @@ class CollibraExport(MetadataExport):  # REQ-1069
                 continue
             result.bindings[uri] = (matches[0]["id"], row["name"])
 
+    async def _find_by_name(
+        self, client: httpx.AsyncClient, path: str, params: dict[str, str], name: str
+    ) -> str | None:
+        """The id of the resource at ``path`` exactly named ``name``, or None if absent.
+
+        Collibra's list endpoints match by prefix, so the exact filter is applied here; a
+        failed listing raises rather than reading as absence — creating over an unreadable
+        target is exactly the blind write this adapter never performs.
+        """
+        response = await client.get(self._url(path), params=params, headers=self._headers())
+        response.raise_for_status()
+        for entry in response.json().get("results", []):
+            if entry.get("name") == name:
+                return entry["id"]
+        return None
+
+    async def _ensure_glossary_domain(
+        self, client: httpx.AsyncClient, result: PublishResult
+    ) -> bool:
+        """Idempotently create the Provisa community and Glossary-type domain (REQ-1387).
+
+        Find-by-name first, create only when absent, domain type resolved from the target by
+        name rather than a hardcoded UUID (Collibra ids are instance configuration). Returns
+        False — with the failure reported, never swallowed — when the domain cannot be
+        guaranteed, and the publish then withholds the term rows: importing into a domain
+        that may not exist would fail the whole batch, tables included.
+        """
+        try:
+            community_id = await self._find_by_name(
+                client, "/rest/2.0/communities", {"name": self.community}, self.community
+            )
+            if community_id is None:
+                response = await client.post(
+                    self._url("/rest/2.0/communities"),
+                    json={"name": self.community},
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+                community_id = response.json()["id"]
+            domain_id = await self._find_by_name(
+                client,
+                "/rest/2.0/domains",
+                {"name": self.glossary_domain, "communityId": community_id},
+                self.glossary_domain,
+            )
+            if domain_id is None:
+                type_id = await self._find_by_name(
+                    client,
+                    "/rest/2.0/domainTypes",
+                    {"name": GLOSSARY_DOMAIN_TYPE},
+                    GLOSSARY_DOMAIN_TYPE,
+                )
+                if type_id is None:
+                    result.errors.append(
+                        AssetError(
+                            asset=AssetRefStub(self.glossary_domain),
+                            message=(
+                                f"the target has no {GLOSSARY_DOMAIN_TYPE!r} domain type, so "
+                                "the Provisa glossary domain cannot be created; glossary "
+                                "terms were not published"
+                            ),
+                        )
+                    )
+                    return False
+                response = await client.post(
+                    self._url("/rest/2.0/domains"),
+                    json={
+                        "name": self.glossary_domain,
+                        "communityId": community_id,
+                        "typeId": type_id,
+                    },
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            result.errors.append(
+                AssetError(
+                    asset=AssetRefStub(self.glossary_domain),
+                    message=(
+                        f"ensuring the Provisa glossary domain failed (HTTP "
+                        f"{error.response.status_code}: {error.response.text[:300]}); "
+                        "glossary terms were not published"
+                    ),
+                )
+            )
+            return False
+        return True
+
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
         rows = to_rows(snapshot, self.community, self.domain)
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            # REQ-1387: terms ride the same import job, contained in Provisa's own glossary
+            # domain — created first, since the import rejects rows naming an absent domain.
+            if snapshot.glossary_terms and await self._ensure_glossary_domain(client, result):
+                rows = rows + glossary_rows(snapshot, self.community, self.glossary_domain)
             # REQ-1389: rebind by stored UUID happens BEFORE the name-keyed import.
             await self._rename_rebound_assets(client, rows, result)
             response = await client.post(

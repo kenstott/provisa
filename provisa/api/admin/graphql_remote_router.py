@@ -196,6 +196,12 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
             )
             await table_repo.upsert(conn, tbl)
 
+        # REQ-1387: the wipe above cascaded glossary refs; the upserts relinked surviving
+        # columns, so settle only the terms whose fields truly departed.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        await glossary_repo.sweep_refless_terms(conn)
+
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
     relationships: list[dict],

@@ -102,6 +102,8 @@ OWNERS: dict[str, set[str]] = {
         # "listening" pattern as bolt/pgwire/flight/MCP — plus its internal client.
         "provisa/grpc/reflection.py",
         "provisa/grpc/server.py",
+        "provisa/grpc/auth.py",  # auth interceptors for the served protocol, same owner family
+        "provisa/security/mtls.py",  # builds the served protocol's mTLS server credentials
         "provisa/auth/approval_pb2_grpc.py",
         "provisa/auth/approval_hook.py",
     },

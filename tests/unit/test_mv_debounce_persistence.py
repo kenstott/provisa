@@ -17,7 +17,15 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import registered_tables, roles, table_columns
+from provisa.core.schema_org import (
+    glossary_term_edges,
+    glossary_term_experts,
+    glossary_term_refs,
+    glossary_terms,
+    registered_tables,
+    roles,
+    table_columns,
+)
 
 
 @asynccontextmanager
@@ -28,7 +36,17 @@ async def _conn(tmp_path):
         # every fixture that registers tables must carry the roles table the bootstrap guarantees.
         await c.run_sync(
             lambda s: registered_tables.metadata.create_all(
-                s, tables=[registered_tables, table_columns, roles]
+                s,
+                # glossary_*: the table upsert derives glossary terms from columns (REQ-1387).
+                tables=[
+                    registered_tables,
+                    table_columns,
+                    roles,
+                    glossary_terms,
+                    glossary_term_refs,
+                    glossary_term_edges,
+                    glossary_term_experts,
+                ],
             )
         )
     try:

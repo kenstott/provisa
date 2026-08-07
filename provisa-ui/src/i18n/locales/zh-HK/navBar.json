@@ -53,6 +53,7 @@
     "logout": "登出",
     "dev": "DEV",
     "itemTags": "標籤",
-    "itemReports": "報表"
+    "itemReports": "報表",
+    "itemGlossary": "詞彙表"
   }
 }

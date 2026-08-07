@@ -53,6 +53,7 @@
     "dev": "DEV",
     "itemMetadataExport": "メタデータエクスポート",
     "itemTags": "タグ",
-    "itemReports": "レポート"
+    "itemReports": "レポート",
+    "itemGlossary": "用語集"
   }
 }

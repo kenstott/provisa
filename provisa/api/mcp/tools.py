@@ -488,6 +488,25 @@ async def search_catalog(state: Any, role: str, nl_text: str, k: int = 5) -> lis
     return results
 
 
+async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) -> list[dict]:
+    """Business-glossary term lookup (REQ-1387): grounded vocabulary for agent surfaces.
+
+    Matches term names and definitions; each hit carries its physical refs (which
+    tables/columns mean this concept), typed relationships to other terms, and the
+    experts who can answer questions about it. v1 scope is documentation and
+    discovery — term membership does not drive policy.
+    """
+    require_role(role, state)
+    if not query or not query.strip():
+        raise ValueError("search text is required")
+    from provisa.core.repositories import glossary as glossary_repo
+
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        return await glossary_repo.search_terms(conn, query.strip(), limit=limit)
+
+
 def _row_to_json(cols: list[str], row: Any) -> dict:
     """Map a result tuple to a JSON-safe {column: value} dict."""
     out: dict[str, Any] = {}

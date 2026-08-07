@@ -64,6 +64,7 @@ import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { TagsTab } from "../components/admin/TagsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
+import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { ConfigDiffView } from "../components/admin/ConfigDiffView";
 
@@ -83,6 +84,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/metadata-export": "Metadata Export",
   "/admin/tags": "Tags",
   "/admin/reports": "Reports",  // REQ-1386: ops-domain management report viewer
+  "/admin/glossary": "Glossary",  // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",
@@ -753,6 +755,7 @@ export function AdminPage() {
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Tags" && <TagsTab />}
         {activeTab === "Reports" && <ReportsTab />}
+        {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>
 
       <Modal

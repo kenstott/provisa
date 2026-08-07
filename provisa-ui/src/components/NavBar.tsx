@@ -169,8 +169,10 @@ export function NavBar() {
           <NavLink to="/relationships" data-tour="nav-relationships">
             {t("navBar.relationships")}
           </NavLink>
-          <CapabilityGate capability="user_management">
-            <NavLink to="/team" data-tour="nav-team">{t("navBar.team")}</NavLink>
+          <CapabilityGate capability="org_settings">
+            <NavLink to="/admin/glossary" data-tour="nav-glossary">
+              {t("navBar.itemGlossary")}
+            </NavLink>
           </CapabilityGate>
           {/* REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
               rendering it left a tab that swallowed the click and never navigated. */}

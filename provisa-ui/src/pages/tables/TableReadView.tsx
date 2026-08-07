@@ -16,6 +16,7 @@ import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable } from "../../types/admin";
 import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
+import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 
 interface TableProfileResult {
   columns: string[];
@@ -96,7 +97,10 @@ export function TableReadView({
               <Fragment key={c.id}>
                 <Table.Tr>
                   <Table.Td>
-                    <code>{c.columnName}</code>
+                    {/* REQ-1387: glossary term summary card on column-name hover. */}
+                    <ColumnGlossaryHover tableId={table.id} columnName={c.columnName}>
+                      <code>{c.columnName}</code>
+                    </ColumnGlossaryHover>
                     {c.nativeFilterType && (
                       <Badge
                         ml="0.4rem"

@@ -50,6 +50,7 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/metadata-export": "org_settings",
   "/admin/tags": "org_settings",
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
+  "/admin/glossary": "org_settings", // REQ-1387: the org's own business glossary
   "/admin/domains": "org_settings",
   "/admin/scheduled-tasks": "org_settings",
   "/admin/requests": "org_settings",
@@ -119,7 +120,19 @@ describe("admin surface capabilities", () => {
     // A surface an org administrator may reach but cannot see is unreachable in practice.
     const nav = navBarAdminCapabilities();
     for (const [path, capability] of Object.entries(ORG_SCOPED)) {
+      // The glossary's nav entry is the top-level NavBar link, asserted below.
+      if (path === "/admin/glossary") continue;
       expect(nav[path], path).toBe(capability);
     }
+  });
+
+  it("shows the glossary as a top-level nav entry gated on its route's right", () => {
+    // REQ-1387: Glossary is a top-level menu item, not an Admin group item — but the gate
+    // must still match the /admin/glossary route or the link 403s (or hides the surface).
+    const source = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
+    const linkAt = source.indexOf('to="/admin/glossary"');
+    expect(linkAt).toBeGreaterThan(-1);
+    const gate = source.slice(Math.max(0, linkAt - 200), linkAt);
+    expect(gate).toContain('capability="org_settings"');
   });
 });

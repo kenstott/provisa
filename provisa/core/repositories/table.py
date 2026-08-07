@@ -18,6 +18,7 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core import domain_policy
 from provisa.core.models import Table
+from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import registered_tables, roles, table_columns
 from provisa.security.rights import Capability
 
@@ -227,6 +228,21 @@ async def upsert(
                 gql_selection=getattr(col, "gql_selection", None),
             )
         )
+    # REQ-1387: this is the single write path for table_columns, so the glossary term
+    # lifecycle (create/link on add, remove-or-deprecate on departure) rides it here —
+    # every registration source gets it and none can forget it. Native-filter pseudo-columns
+    # (_nf_<arg> / native_filter_type) are query-parameter machinery, not business fields,
+    # so they derive no terms; the table's business name qualifies TOO-GENERIC phrases.
+    await glossary_repo.sync_table_refs(
+        conn,
+        table_id,
+        [
+            c.name
+            for c in table.columns
+            if getattr(c, "native_filter_type", None) is None and not c.name.startswith("_nf_")
+        ],
+        table_context=getattr(table, "alias", None) or table.table_name,
+    )
     return table_id
 
 
@@ -304,4 +320,7 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014
     result = await conn.execute_core(
         _delete(registered_tables).where(registered_tables.c.id == table_id)
     )
+    # REQ-1387: the FK cascade just removed this table's glossary refs; settle the terms
+    # that lost their last ref (remove, or deprecate when an abstract term hangs on them).
+    await glossary_repo.sweep_refless_terms(conn)
     return (result.rowcount or 0) > 0

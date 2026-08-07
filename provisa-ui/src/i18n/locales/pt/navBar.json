@@ -53,6 +53,7 @@
     "logout": "Sair",
     "dev": "DEV",
     "itemTags": "Tags",
-    "itemReports": "Relatórios"
+    "itemReports": "Relatórios",
+    "itemGlossary": "Glossário"
   }
 }

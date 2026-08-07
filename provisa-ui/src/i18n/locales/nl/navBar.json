@@ -53,6 +53,7 @@
     "dev": "DEV",
     "itemMetadataExport": "Metadata-export",
     "itemTags": "Tags",
-    "itemReports": "Rapporten"
+    "itemReports": "Rapporten",
+    "itemGlossary": "Begrippenlijst"
   }
 }

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Check, X, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -27,8 +27,7 @@ import {
 import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
-import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
-import { useRefreshPolicyPreview } from "../../hooks/useAdminQueries";
+import type { RegisteredTable, Source } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { sourceProbeTypes } from "../../liveCapability";
@@ -41,6 +40,8 @@ import { MaterializedViewPanels } from "./MaterializedViewPanels";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
 import { TimeInput } from "@mantine/dates";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
+import { useLivePolicyPreview } from "./useLivePolicyPreview";
 
 interface CacheTtlEdit {
   value: string;
@@ -104,114 +105,18 @@ export function TableEditForm({
       .catch(() => setIrTypes(IR_TYPES_FALLBACK));
   }, []);
 
-  // REQ-1143: keep the top-of-form refresh-policy summary in sync with the draft knobs. The tree is
-  // never re-derived client-side — a debounced preview query re-runs describe_refresh_policy server-
-  // side with the in-flight values, seeded from the persisted summary so it renders before the first
-  // fetch resolves.
-  const previewPolicy = useRefreshPolicyPreview();
-  const [livePolicy, setLivePolicy] = useState<RefreshPolicySummary | null>(
-    editingTable.refreshPolicySummary,
-  );
-  // Effective cache_ttl mirrors the Cache TTL input's resolution: staged edit wins, then the row.
+  // REQ-1143: live-previewed refresh-policy summary; logic extracted to useLivePolicyPreview.
   const stagedTtl = cacheTtlEdits[editingTable.id]?.value;
-  const effCacheTtl =
-    stagedTtl != null && stagedTtl !== ""
-      ? Number(stagedTtl)
-      : stagedTtl === ""
-        ? null
-        : editingTable.cacheTtl;
-  const {
-    id: tableId,
-    sourceId,
-    domainId,
-    schemaName,
-    tableName,
-    preferMaterialized,
-    loadProtected,
-    offPeakWindow,
-    offPeakTz,
-    changeSignal,
-    refreshPolicySummary,
-  } = editingTable;
-  // Keep the latest preview callback in a ref (written in an effect, never during render) so the
-  // debounce effect below can call it without listing it as a dependency.
-  const previewRef = useRef(previewPolicy);
-  useEffect(() => {
-    previewRef.current = previewPolicy;
-  });
-  useEffect(() => {
-    let cancelled = false;
-    const handle = setTimeout(() => {
-      previewRef
-        .current({
-          sourceId,
-          domainId,
-          schemaName,
-          tableName,
-          cacheTtl: effCacheTtl,
-          preferMaterialized,
-          loadProtected,
-          offPeakWindow,
-          offPeakTz,
-          changeSignal,
-        })
-        .then((summary) => {
-          // A null preview means the engine is not yet connected (startup) — keep the persisted
-          // summary rather than blanking the banner.
-          if (!cancelled && summary) setLivePolicy(summary);
-        })
-        // The debounced preview outlives the form: closing the editor (or a test unmounting it)
-        // leaves this query in flight, and a rejection with no handler becomes an unhandled
-        // rejection that kills the surrounding context. The banner keeps the persisted summary,
-        // which is the same state a null preview produces.
-        .catch((err: unknown) => {
-          // Apollo fires InvariantViolation("Store reset while query was in flight") whenever
-          // client.resetStore() (triggered by a schema-version bump on any mutation response)
-          // cancels this in-flight query.  That is expected behaviour — the next effect cycle
-          // will re-issue the preview against the refreshed store.  Logging it to console.error
-          // would surface as a spurious uncaught-browser-error in e2e coverage checks.
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes("Store reset while query was in flight")) return;
-          // Apollo aborts the underlying fetch when the last observer of a one-off query goes
-          // away, which is exactly what closing the editor or navigating off /tables does to a
-          // preview still in flight.  The AbortError is our own teardown coming back to us, so
-          // reporting it is reporting an event we caused deliberately; `cancelled` says the same
-          // thing for the case where the cleanup ran before the rejection landed.
-          if (cancelled || (err instanceof Error && err.name === "AbortError")) return;
-          // A full-document navigation (page.goto in a test helper, a real link click)
-          // destroys the page without unmounting React, so no cleanup sets `cancelled`;
-          // Chromium severs the in-flight fetch with TypeError: Failed to fetch rather
-          // than an AbortError. Same teardown-of-our-own-request case as above.
-          if (msg.includes("Failed to fetch")) return;
-          console.error("refreshPolicyPreview failed:", err);
-        });
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [
-    tableId,
-    sourceId,
-    domainId,
-    schemaName,
-    tableName,
-    effCacheTtl,
-    preferMaterialized,
-    loadProtected,
-    offPeakWindow,
-    offPeakTz,
-    changeSignal,
-    refreshPolicySummary,
-  ]);
-  const shownPolicy = livePolicy ?? refreshPolicySummary;
+  const shownPolicy = useLivePolicyPreview(editingTable, stagedTtl);
 
   // REQ-1141: the off-peak window/zone only gate the load-protected scheduled snapshot. When load
   // protection resolves off (table override, else source default) they have no effect, so they are
   // hidden — surfaced only once the table is actually load-protected.
-  const editSource = sources.find((s) => s.id === sourceId);
+  const editSource = sources.find((s) => s.id === editingTable.sourceId);
   const effLoadProtected =
-    loadProtected == null ? (editSource?.loadProtected ?? false) : loadProtected;
+    editingTable.loadProtected == null
+      ? (editSource?.loadProtected ?? false)
+      : editingTable.loadProtected;
 
   // A __derived__ virtual view has no external source, so the source-freshness controls (cache TTL,
   // prefer_materialized, load protection, off-peak) don't apply — the view/MV rebuild path reads only
@@ -797,7 +702,10 @@ export function TableEditForm({
             <Fragment key={c.id}>
               <Table.Tr data-testid={`column-row-${c.columnName}`}>
                 <Table.Td>
-                  <code>{c.columnName}</code>
+                  {/* REQ-1387: glossary term summary card on column-name hover. */}
+                  <ColumnGlossaryHover tableId={editingTable.id} columnName={c.columnName}>
+                    <code>{c.columnName}</code>
+                  </ColumnGlossaryHover>
                   {c.nativeFilterType && (
                     <Badge
                       ml={6}
