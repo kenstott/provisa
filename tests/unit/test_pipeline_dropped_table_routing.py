@@ -28,7 +28,10 @@ the "_inlined" set used to reduce the routing source set.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from provisa.api_source.engine_cache import CacheLocation
+from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import TableMeta
 from provisa.compiler.stage2 import build_governance_context
@@ -103,3 +106,110 @@ async def test_non_union_unmaterializable_api_table_routes_instead_of_raising():
     assert "pets" in exec_sql
     assert sources == {SOURCE_ID}
     assert decision.route == Route.API
+
+
+API_SOURCE_ID = "petstore-api"
+
+
+def _openapi_ctx() -> CompilationContext:
+    ctx = CompilationContext()
+    ctx.tables = {
+        "get_pet_by_id": TableMeta(
+            table_id=TABLE_ID,
+            field_name="get_pet_by_id",
+            type_name="GetPetById",
+            source_id=API_SOURCE_ID,
+            catalog_name=API_SOURCE_ID,
+            schema_name="public",
+            table_name="get_pet_by_id",
+            domain_id="petstore",
+        )
+    }
+    return ctx
+
+
+class _FakeAcquireCtx:
+    def __init__(self, conn):
+        self._conn = conn
+
+    async def __aenter__(self):
+        return self._conn
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def _openapi_state() -> SimpleNamespace:
+    ep = SimpleNamespace(
+        source_id=API_SOURCE_ID,
+        table_name="get_pet_by_id",
+        path="/pet/{petId}",
+        ttl=60,
+        columns=[
+            ApiColumn(name="id", type=ApiColumnType.string),
+            ApiColumn(name="petId", type=ApiColumnType.string, param_type=ParamType.path),
+        ],
+    )
+    # PG hydrate always misses (no pre-seeded row for this specific petId).
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(side_effect=Exception('relation "default.get_pet_by_id" does not exist'))
+    return SimpleNamespace(
+        hot_manager=None,
+        api_endpoints={"get_pet_by_id": ep},
+        graphql_remote_sources={},
+        api_sources={},
+        org_id="default",
+        source_cache={},
+        response_cache_default_ttl=300,
+        federation_engine=MagicMock(),
+        tenant_db=SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn)),
+        # A second, pooled RDBMS source alongside the API source — matches the real demo
+        # topology (pet-store-pg is always registered too); the API source alone would have
+        # no non-API default_source to fall back to once it's fully inlined.
+        source_types={API_SOURCE_ID: "openapi", "pgsrc": "postgresql"},
+        source_dialects={API_SOURCE_ID: None, "pgsrc": "postgres"},
+        source_dsns={},
+        source_pools=SimpleNamespace(
+            source_ids={API_SOURCE_ID, "pgsrc"}, has=lambda sid: sid == "pgsrc"
+        ),
+    )
+
+
+async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_db():
+    """A required-path-param openapi lookup (get_pet_by_id keyed by _nf_petId) must resolve
+    the param and land the REST result as an inlined VALUES CTE, collapsing the query to a
+    single live (pooled) source — never leave it on Route.API against the unmaterialized API
+    source (which _execute_plan has no branch for and would misroute to state.tenant_db,
+    raising "no such table")."""
+    ctx = _openapi_ctx()
+    rls = RLSContext.empty()
+    gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[])
+    state = _openapi_state()
+    loc = CacheLocation("cat", "sch", "relational")
+    rest_result = SimpleNamespace(from_cache=False, rows=[{"id": "1"}])
+
+    with (
+        patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
+        patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
+        patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+        patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+        patch("provisa.api_source.engine_cache.table_exists", return_value=False),
+        patch(
+            "provisa.api_source.router_integration.handle_api_query",
+            new=AsyncMock(return_value=rest_result),
+        ) as m_handle,
+        patch("provisa.api_source.engine_cache.create_and_insert"),
+        patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+    ):
+        exec_sql, decision, default_source, optimized, sources = await _optimize_and_route(
+            'SELECT * FROM get_pet_by_id WHERE "_nf_petId" = \'1\'',
+            'SELECT * FROM get_pet_by_id WHERE "_nf_petId" = \'1\'',
+            gov_ctx,
+            ctx,
+            state,
+            nf_args={"petId": "1"},
+        )
+
+    assert m_handle.await_args.args[1] == {"petId": "1"}
+    assert decision.route != Route.API
+    assert state.source_pools.has(decision.source_id)

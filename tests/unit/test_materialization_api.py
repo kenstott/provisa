@@ -526,6 +526,48 @@ class TestMatApiEpTable:
         assert cache_rewrites == {}
         assert values_cte_entries == {}
 
+    async def test_path_param_resolved_from_nf_args_materializes(self):
+        """A required-path-param endpoint (e.g. get_pet_by_id keyed by petId) must resolve
+        the param from nf_args and call the REST fallback with it, instead of unconditionally
+        skipping — mirrors the graphql_remote required_args resolution branch above."""
+        state = SimpleNamespace(
+            api_sources={},
+            org_id="default",
+            federation_engine=MagicMock(),
+            source_cache={},
+            response_cache_default_ttl=300,
+            tenant_db=None,
+        )
+        ep = _ep([_col("id"), _col("petId", param_type=ParamType.path)])
+        cache_rewrites: dict = {}
+        values_cte_entries: dict = {}
+        loc = CacheLocation("cat", "sch", "relational")
+        rest_result = SimpleNamespace(from_cache=False, rows=[{"id": 1}])
+        m_handle = AsyncMock(return_value=rest_result)
+        with (
+            patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
+            patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
+            patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+            patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+            patch("provisa.api_source.engine_cache.table_exists", return_value=False),
+            patch("provisa.api_source.router_integration.handle_api_query", new=m_handle),
+            patch("provisa.api_source.engine_cache.create_and_insert"),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+        ):
+            await _mat_api_ep_table(
+                "pets",
+                ep,
+                state,
+                None,
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                nf_args={"petId": "1"},
+            )
+        assert values_cte_entries["pets"].rows == [{"id": 1}]
+        assert m_handle.await_args.args[1] == {"petId": "1"}
+
     async def test_rest_already_cached_returns_without_storing(self):
         state = SimpleNamespace(
             api_sources={},

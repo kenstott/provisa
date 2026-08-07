@@ -348,6 +348,7 @@ async def _mat_fetch_rows_from_rest(
     _cache_loc,
     cache_tbl,
     cache_rewrites: dict,
+    params: dict | None = None,
 ) -> list | None:
     """Fetch rows for an API endpoint from REST fallback.
 
@@ -358,7 +359,7 @@ async def _mat_fetch_rows_from_rest(
 
     rest_result = await handle_api_query(
         ep,
-        {},
+        params or {},
         engine,
         source=api_source,
         source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
@@ -443,6 +444,7 @@ async def _mat_api_ep_table(
     _META_COLS: set,
     cache_rewrites: dict,
     values_cte_entries: dict,
+    nf_args: dict | None = None,
 ) -> None:
     """Materialize a REST API endpoint-backed table into the engine cache or VALUES CTE."""
     from provisa.api_source.engine_cache import (
@@ -524,9 +526,24 @@ async def _mat_api_ep_table(
     rows, pg_ok = await _mat_fetch_rows_from_pg(ep, col_names, _META_COLS, state)
 
     if not pg_ok or not rows:
-        if any(c.param_type == "path" for c in ep.columns):
-            log.warning("[MAT] %s requires path params — skipping", tn)
-            return
+        path_cols = [c for c in ep.columns if c.param_type == "path"]
+        rest_params: dict = {}
+        if path_cols:
+            from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
+            _nf_canon = {_apply_sql_name(k.lstrip("_")): v for k, v in (nf_args or {}).items()}
+            missing = []
+            for c in path_cols:
+                canon = _apply_sql_name(c.name)
+                if canon in _nf_canon:
+                    rest_params[c.name] = _nf_canon[canon]
+                else:
+                    missing.append(c.name)
+            if missing:
+                # Required path param(s) absent from this query — cannot call the endpoint
+                # generically (mirrors the graphql_remote required_args branch above).
+                log.warning("[MAT] %s requires path param(s) %s — skipping", tn, missing)
+                return
         try:
             rows = await _mat_fetch_rows_from_rest(
                 ep,
@@ -538,6 +555,7 @@ async def _mat_api_ep_table(
                 _cache_loc,
                 cache_tbl,
                 cache_rewrites,
+                params=rest_params,
             )
         except Exception as rest_exc:
             log.warning("[MAT] REST fallback failed for %s: %s — skipping", tn, rest_exc)
@@ -687,6 +705,7 @@ async def _materialize_api_to_engine_cache(
             _META_COLS,
             cache_rewrites,
             values_cte_entries,
+            nf_args=nf_args,
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:
             log.warning("[MAT] %s could not be materialized — dropping union branch", tn)
