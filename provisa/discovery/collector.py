@@ -30,10 +30,6 @@ log = logging.getLogger(__name__)
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
-def _escape_literal(value: str) -> str:
-    return value.replace("'", "''")
-
-
 # Requirements: REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
 
 
@@ -71,14 +67,25 @@ async def _try_engine_rows(engine: Any, sql: str) -> list | None:
         return None
 
 
+def _information_schema_ref(engine: Any, catalog: str) -> tuple[str, str]:
+    """(from-clause prefix, extra WHERE clause) addressing ``information_schema`` for the bound
+    engine's dialect. DuckDB has no per-catalog ``information_schema`` for ATTACHed catalogs (only
+    the unqualified, session-wide one, spanning every attached catalog via ``table_catalog``);
+    Trino's is a real per-catalog schema, addressed the standard way."""
+    if engine.dialect == "duckdb":
+        return "", f"table_catalog = '{catalog}' AND "
+    return f"{catalog}.", ""
+
+
 async def _fetch_column_types(engine: Any, catalog: str, schema: str, table: str) -> list[dict]:
     cat = _validate_ident(catalog)
     _validate_ident(schema)
     _validate_ident(table)
+    prefix, extra_where = _information_schema_ref(engine, cat)
     res = await engine.execute_engine(
         f"SELECT column_name, data_type "
-        f"FROM {cat}.information_schema.columns "
-        f"WHERE table_schema = '{schema}' AND table_name = '{table}' "
+        f"FROM {prefix}information_schema.columns "
+        f"WHERE {extra_where}table_schema = '{schema}' AND table_name = '{table}' "
         f"ORDER BY ordinal_position"
     )
     return [{"name": row[0], "type": row[1].lower()} for row in res.rows]
@@ -103,36 +110,6 @@ async def _fetch_samples(
     return [
         {col_names[i]: str(val) if val is not None else None for i, val in enumerate(row)}
         for row in rows
-    ]
-
-
-async def _fetch_fk_candidates(engine: Any, catalog: str, schema: str, table: str) -> list[dict]:
-    """FK candidates from TABLE_CONSTRAINTS + KEY_COLUMN_USAGE, run through the engine seam.
-    Returns {constraint_name, column_name, referenced_table, referenced_column}; empty when the
-    engine/connector doesn't expose constraint metadata."""
-    cat = _validate_ident(catalog)
-    sch = _escape_literal(schema)
-    tbl = _escape_literal(table)
-    rows = await _try_engine_rows(
-        engine,
-        f"SELECT tc.constraint_name, kcu.column_name, "
-        f"ccu.table_name AS referenced_table, ccu.column_name AS referenced_column "
-        f"FROM {cat}.information_schema.table_constraints tc "
-        f"JOIN {cat}.information_schema.key_column_usage kcu "
-        f"  ON tc.constraint_name = kcu.constraint_name "
-        f"JOIN {cat}.information_schema.constraint_column_usage ccu "
-        f"  ON tc.constraint_name = ccu.constraint_name "
-        f"WHERE tc.table_schema = '{sch}' AND tc.table_name = '{tbl}' "
-        f"  AND tc.constraint_type = 'FOREIGN KEY'",
-    )
-    return [
-        {
-            "constraint_name": row[0],
-            "column_name": row[1],
-            "referenced_table": row[2],
-            "referenced_column": row[3],
-        }
-        for row in (rows or [])  # empty when the connector doesn't expose constraint metadata
     ]
 
 
@@ -204,17 +181,20 @@ async def collect_metadata(  # REQ-018, REQ-019, REQ-167, REQ-302, REQ-413
 
 
 async def collect_fk_candidates(  # REQ-018, REQ-413
-    engine: Any,
+    source_pools: Any,
+    source_types: dict[str, str],
     pg_conn: "Connection",
     scope: str,
     scope_id: str | int | None = None,
 ) -> list:
-    """Return RelationshipCandidate objects derived from FK constraints, read through the
-    engine seam (the engine's information_schema).
+    """Return RelationshipCandidate objects derived from FK constraints, read straight from each
+    table's own source connection (never the federation engine's attached view, which is a plain
+    SELECT and carries no constraint metadata).
 
     Imported lazily to avoid circular import with analyzer.
     """
     from provisa.discovery.analyzer import RelationshipCandidate
+    from provisa.discovery.fk_introspect import introspect_fk_constraints
 
     all_tables = await pg_conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name FROM registered_tables ORDER BY id"
@@ -244,8 +224,10 @@ async def collect_fk_candidates(  # REQ-018, REQ-413
 
     candidates: list[RelationshipCandidate] = []
     for t in tables:
-        catalog = source_to_catalog(t["source_id"])
-        fks = await _fetch_fk_candidates(engine, catalog, t["schema_name"], t["table_name"])
+        source_type = source_types.get(t["source_id"], "")
+        fks = await introspect_fk_constraints(
+            source_pools, source_type, t["source_id"], t["schema_name"], t["table_name"]
+        )
         for fk in fks:
             target = table_by_name.get(fk["referenced_table"])
             if target is None:

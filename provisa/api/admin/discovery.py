@@ -81,7 +81,8 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
         async with pool.acquire() as _conn:
             conn = cast("Connection", _conn)
             fk_candidates = await collect_fk_candidates(
-                engine,
+                state.source_pools,
+                state.source_types,
                 conn,
                 body.scope,
                 scope_id,

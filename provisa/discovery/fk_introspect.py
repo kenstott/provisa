@@ -252,6 +252,49 @@ async def introspect_unique_constraints(  # REQ-1093
     return []
 
 
+async def introspect_fk_constraints(  # REQ-018, REQ-413
+    source_pools,
+    source_type: str,
+    source_id: str,
+    schema_name: str,
+    table_name: str,
+) -> list[dict]:
+    """Outbound FK constraints declared directly on one table, read straight from the source's
+    own information_schema/PRAGMA over its live driver connection — never the federation engine's
+    attached view, which is a plain SELECT and carries no constraint metadata.
+
+    Returns [{"column_name", "referenced_table", "referenced_column"}]; empty when the source
+    exposes none or does not support constraint introspection.
+    """
+    source_type_lower = source_type.lower()
+    if not source_pools.has(source_id):
+        return []
+    driver = source_pools.get(source_id)
+    try:
+        if source_type_lower in ("postgresql", "postgres", "mysql", "mariadb"):
+            rows = await driver.execute(_PG_OUTBOUND, [schema_name, table_name])
+            return [
+                {"column_name": r[0], "referenced_table": r[1], "referenced_column": r[2]}
+                for r in rows.rows
+            ]
+        if source_type_lower == "sqlite":
+            rows = await driver.execute(f'PRAGMA foreign_key_list("{table_name}")', [])
+            return [
+                # columns: id, seq, table, from, to, on_update, on_delete, match
+                {"column_name": r[3], "referenced_table": r[2], "referenced_column": r[4] or "id"}
+                for r in rows.rows
+            ]
+    except Exception:
+        _log.debug(
+            "FK introspection failed for %s.%s (%s)",
+            schema_name,
+            table_name,
+            source_type,
+            exc_info=True,
+        )
+    return []
+
+
 def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     """Object relationship alias: ref table name.
 
