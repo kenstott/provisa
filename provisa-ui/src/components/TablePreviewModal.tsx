@@ -21,22 +21,25 @@ interface TablePreviewModalProps {
 
 export function TablePreviewModal({ table, onClose }: TablePreviewModalProps) {
   return (
-    <Modal
-      opened={table != null}
-      onClose={onClose}
-      size="90%"
-      title={
-        <Text fw={600} ff="monospace">
-          {table ? (table.alias || table.tableName) : ""}
-        </Text>
-      }
-      data-testid="table-preview-modal"
-    >
-      {table && (
-        <div style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
-          <GovernedTableViewer key={table.id} table={table} />
-        </div>
-      )}
-    </Modal>
+    <Modal.Root opened={table != null} onClose={onClose} size="90%">
+      <Modal.Overlay />
+      <Modal.Content data-testid="table-preview-modal">
+        <Modal.Header>
+          <Modal.Title>
+            <Text fw={600} ff="monospace">
+              {table ? (table.alias || table.tableName) : ""}
+            </Text>
+          </Modal.Title>
+          <Modal.CloseButton />
+        </Modal.Header>
+        <Modal.Body>
+          {table && (
+            <div style={{ height: "70vh", display: "flex", flexDirection: "column" }}>
+              <GovernedTableViewer key={table.id} table={table} />
+            </div>
+          )}
+        </Modal.Body>
+      </Modal.Content>
+    </Modal.Root>
   );
 }
