@@ -90,7 +90,17 @@ def flatten_response(  # REQ-295, REQ-297, REQ-299, REQ-316
 
     root = _navigate_path(data, root_path)
 
-    if isinstance(root, dict):
+    # Map-shaped response (e.g. {"available": 3, "sold": 12}): register.py's _schema_to_columns
+    # registers a fixed {status, count} column pair for an additionalProperties schema, since the
+    # response has no fixed property names. Flatten to one row per key/value pair to match.
+    _col_names = {c.name for c in columns}
+    if (
+        isinstance(root, dict)
+        and _col_names == {"status", "count"}
+        and all(not isinstance(v, (dict, list)) for v in root.values())
+    ):
+        items = [{"status": k, "count": v} for k, v in root.items()]
+    elif isinstance(root, dict):
         items = [root]
     elif isinstance(root, list):
         items = root
