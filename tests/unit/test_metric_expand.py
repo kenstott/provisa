@@ -233,7 +233,8 @@ def test_streaming_metric_view_config_is_valid():
         materialize=True,
         kafka_sink=KafkaSinkAttachment(topic="metrics.net_revenue"),
     )
-    assert t.view_metrics is not None and t.materialize and t.kafka_sink.topic
+    assert t.view_metrics is not None and t.materialize
+    assert t.kafka_sink is not None and t.kafka_sink.topic == "metrics.net_revenue"
 
 
 # ── metric_reference_tables / inline_metric_sql (REQ-1319) ───────────────────
