@@ -93,6 +93,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "bytea": GraphQLString,  # postgres binary (REQ-686 encrypted-at-rest columns)
         "blob": GraphQLString,  # sqlite / mysql binary storage class
         "uuid": GraphQLString,
+        "string": GraphQLString,  # OpenAPI JSON-Schema "string" (provisa.openapi.register._OPENAPI_TYPE_MAP)
         # Integer types
         "tinyint": GraphQLInt,
         "smallint": GraphQLInt,
@@ -111,6 +112,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "float8": GraphQLFloat,  # postgres double precision alias
         "decimal": GraphQLFloat,
         "numeric": GraphQLFloat,
+        "number": GraphQLFloat,  # OpenAPI JSON-Schema "number" (provisa.openapi.register._OPENAPI_TYPE_MAP)
         # Boolean
         "boolean": GraphQLBoolean,
         "bool": GraphQLBoolean,  # postgres boolean alias

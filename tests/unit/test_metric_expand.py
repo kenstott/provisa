@@ -118,6 +118,21 @@ def test_expand_select_star_rejected():
         _expand("SELECT * FROM metrics.net_revenue")
 
 
+def test_expand_metric_wrapped_in_sampling_subquery():
+    # Mirrors the SQL Explorer's `_sample` wrapper (SqlPage.tsx): the metrics.<name>
+    # reference lives one level down, inside an outer SELECT * FROM (...) LIMIT n.
+    out = _expand(
+        "SELECT * FROM (SELECT region, value FROM metrics.net_revenue) _sample LIMIT 100"
+    )
+    assert out is not None
+    rows = dict(_duck().execute(out.sql(dialect="duckdb")).fetchall())
+    assert rows == {"east": 295.0, "west": 115.0}
+
+
+def test_expand_non_metric_query_in_subquery_still_returns_none():
+    assert _expand("SELECT * FROM (SELECT region FROM orders) _sample LIMIT 100") is None
+
+
 # ── generate_view_metrics_sql (REQ-1318) ─────────────────────────────────────
 
 

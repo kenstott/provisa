@@ -277,7 +277,18 @@ def expand_metric_query(  # REQ-1317
     if not isinstance(tree, exp.Select):
         return None
     from_clause = tree.args.get("from_") or tree.find(exp.From)
-    if from_clause is None or not isinstance(from_clause.this, exp.Table):
+    if from_clause is None:
+        return None
+    if isinstance(from_clause.this, exp.Subquery):
+        # UI sampling wraps the caller's query in `SELECT * FROM (<inner>) _sample LIMIT n`
+        # (see SqlPage.tsx) — the metrics.<name> reference lives one level down.
+        inner = from_clause.this.this
+        expanded_inner = expand_metric_query(inner, metrics, tables, relationships)
+        if expanded_inner is None:
+            return None
+        from_clause.this.set("this", expanded_inner)
+        return tree
+    if not isinstance(from_clause.this, exp.Table):
         return None
     src = from_clause.this
     if src.db != METRICS_SCHEMA:
