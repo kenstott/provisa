@@ -537,7 +537,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return None
 
-        gql_text = grpc_table_to_aggregate_graphql_text(ctx, type_name)
+        funcs = list(getattr(request, "funcs", [])) or None
+        gql_text = grpc_table_to_aggregate_graphql_text(ctx, type_name, funcs)
         if gql_text is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return None
@@ -609,7 +610,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
 
         by_columns = list(request.by)
-        gql_text = grpc_table_to_group_by_graphql_text(ctx, type_name, by_columns)
+        include_nodes = bool(getattr(request, "include_nodes", False))
+        include = list(getattr(request, "include", []))
+        funcs = list(getattr(request, "funcs", [])) or None
+        gql_text = grpc_table_to_group_by_graphql_text(
+            ctx, type_name, by_columns, funcs=funcs, include_nodes=include_nodes, include=include
+        )
         if gql_text is None:
             await context.abort(
                 grpc.StatusCode.INVALID_ARGUMENT,
@@ -640,15 +646,78 @@ class ProvisaServicer:  # REQ-045, REQ-143
         result = await _execute_plan(plan, state)
         self._emit_license_nag(context)  # REQ-1137
 
+        from provisa.executor.serialize import _convert_value
         from provisa.grpc.query_ir import split_group_by_columns
 
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
+
+        # REQ-1405: include_nodes routes compiled.nodes_sql through the identical
+        # govern → route → execute pipeline the primary query just used above — the same one
+        # pipeline every surface shares, just a second SQL string GraphQL's own
+        # groupKey/aggregate/nodes shape requires (JSON:API/REST take this same seam via
+        # _exec_nodes_query; gRPC just has to type it instead of dropping it into JSON).
+        nodes_by_group_key: dict[tuple, list] = {}
+        row_msg_cls = getattr(self._pb2, type_name, None)
+        nodes_columns = compiled.nodes_columns
+        if include_nodes and compiled.nodes_sql is not None and nodes_columns is not None and row_msg_cls is not None:
+            nodes_plan = await _govern_and_route_compiled(
+                compiled.nodes_sql, role_id, exec_params=compiled.nodes_params or None, state=state
+            )
+            nodes_result = await _execute_plan(nodes_plan, state)
+            join_key_idx = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
+            output_cols = [(i, c) for i, c in enumerate(nodes_columns) if c.nested_in is None]
+            for node_row in nodes_result.rows:
+                join_key = tuple(_convert_value(node_row[i]) for i in join_key_idx)
+                node_dict = {c.field_name: _convert_value(node_row[i]) for i, c in output_cols}
+                nodes_by_group_key.setdefault(join_key, []).append(
+                    self._dict_row_to_message(row_msg_cls, node_dict)
+                )
+
         for row in result.rows:
-            group_key = {c.field_name: row[i] for c, i in zip(group_key_cols, group_key_idx)}
+            group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
             agg_row = [row[i] for i in agg_idx]
             top, nested = self._split_agg_columns(agg_cols, agg_row)
             agg_msg = self._build_aggregate_result_message(type_name, top, nested)
-            yield row_cls(group_key=json.dumps(group_key, default=str), aggregate=agg_msg)
+            join_key = tuple(_convert_value(row[i]) for i in group_key_idx)
+            yield row_cls(
+                group_key=json.dumps(group_key, default=str),
+                aggregate=agg_msg,
+                nodes=nodes_by_group_key.get(join_key, []),
+            )
+
+    def _dict_row_to_message(self, msg_cls, d: dict):
+        """Build a ``{Type}`` proto message from a serialize_group_by-style nested dict row
+        (REQ-1405) — the same nested-dict shape ``nodes_sql`` produces for every other transport,
+        just typed instead of left as JSON. Relation columns (``_build_rel_json_expr``) surface as
+        a dict (many-to-one) or list-of-dicts (one-to-many) value keyed by the relation field name;
+        every other value is a scalar assigned via the shared ``_proto_value`` adapter."""
+        descriptor = msg_cls.DESCRIPTOR
+        kwargs = {}
+        nested: dict = {}
+        for key, val in d.items():
+            if val is None:
+                continue
+            field = descriptor.fields_by_name.get(key)
+            if field is None:
+                continue
+            if field.message_type is not None and field.message_type.full_name != "google.protobuf.Timestamp":
+                nested[key] = val
+            else:
+                kwargs[key] = _proto_value(field, val)
+        msg = msg_cls(**kwargs)
+        for key, val in nested.items():
+            field = descriptor.fields_by_name[key]
+            sub_cls = getattr(self._pb2, field.message_type.name, None)
+            if sub_cls is None:
+                continue
+            if field.label == field.LABEL_REPEATED:
+                items = val if isinstance(val, list) else [val]
+                getattr(msg, key).extend(
+                    self._dict_row_to_message(sub_cls, item) for item in items if isinstance(item, dict)
+                )
+            elif isinstance(val, dict):
+                getattr(msg, key).CopyFrom(self._dict_row_to_message(sub_cls, val))
+        return msg
 
 
 async def start_grpc_server(

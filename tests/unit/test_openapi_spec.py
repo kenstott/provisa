@@ -295,6 +295,24 @@ class TestAggregateGroupByParams:
         assert "aggregate" not in names
         assert "groupBy" not in names
 
+    def test_include_nodes_param_present_when_group_by_enabled(self):
+        # Regression: generator.py's raw_params lookup honors ?includeNodes=true regardless of
+        # whether the spec declares it, but Swagger UI's Try-it-out only renders an input for
+        # params the spec lists. Without this declaration, the NL page's "open in openapi" replay
+        # (provisa-ui/src/pages/OpenApiPage.tsx) finds no includeNodes input row, silently skips
+        # setting it, and Executes without the param — so the real endpoint correctly (per its own
+        # contract) omits `nodes`, even though the NL preview and the replayed URL both show it.
+        state = self._make_agg_state(enable_aggregates=False, enable_group_by=True)
+        spec = generate_rest_openapi_spec(state, "admin")
+        names = {p["name"] for p in spec["paths"]["/sales/orders"]["get"]["parameters"]}
+        assert "includeNodes" in names
+
+    def test_include_nodes_param_absent_when_group_by_disabled(self):
+        state = self._make_agg_state(enable_aggregates=True, enable_group_by=False)
+        spec = generate_rest_openapi_spec(state, "admin")
+        names = {p["name"] for p in spec["paths"]["/sales/orders"]["get"]["parameters"]}
+        assert "includeNodes" not in names
+
     def test_aggregate_result_component_registered_when_enabled(self):
         state = self._make_agg_state(enable_aggregates=True, enable_group_by=False)
         spec = generate_rest_openapi_spec(state, "admin")

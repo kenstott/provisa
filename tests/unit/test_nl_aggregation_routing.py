@@ -41,14 +41,16 @@ from provisa.nl.runner import (
 
 
 def _agg_only_compiled(root_field: str = "pets_aggregate") -> CompiledQuery:
-    columns = [ColumnRef(alias=None, column="id", field_name="count", nested_in="aggregate")]
+    # aggregates.py's count ColumnRef always hardcodes column="count" (it isn't tied to any
+    # physical column) — matches field_name so the (physical-name) output key stays "count".
+    columns = [ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate")]
     return CompiledQuery(sql="", params=[], root_field=root_field, columns=columns, sources=set())
 
 
 def _group_by_compiled(root_field: str = "pets_group_by") -> CompiledQuery:
     columns = [
         ColumnRef(alias=None, column="species", field_name="species", nested_in="groupKey"),
-        ColumnRef(alias=None, column="id", field_name="count", nested_in="aggregate"),
+        ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
     ]
     return CompiledQuery(sql="", params=[], root_field=root_field, columns=columns, sources=set())
 
@@ -71,8 +73,36 @@ def _pets_meta() -> TableMeta:
     )
 
 
+def _inquiries_meta() -> TableMeta:
+    return TableMeta(
+        table_id=2,
+        field_name="inquiries",
+        type_name="Inquiries",
+        source_id="pg1",
+        catalog_name="pg1",
+        schema_name="public",
+        table_name="inquiries",
+        domain_id="pet_store",
+    )
+
+
+def _users_meta() -> TableMeta:
+    return TableMeta(
+        table_id=3,
+        field_name="users",
+        type_name="Users",
+        source_id="pg1",
+        catalog_name="pg1",
+        schema_name="public",
+        table_name="users",
+        domain_id="pet_store",
+    )
+
+
 def _ctx():
-    return SimpleNamespace(tables={"pets": _pets_meta()})
+    return SimpleNamespace(
+        tables={"pets": _pets_meta(), "inquiries": _inquiries_meta(), "users": _users_meta()}
+    )
 
 
 def _app_state(enable_aggregates=True, enable_group_by=True):
@@ -83,7 +113,13 @@ def _app_state(enable_aggregates=True, enable_group_by=True):
                 "domain_id": "pet_store",
                 "enable_aggregates": enable_aggregates,
                 "enable_group_by": enable_group_by,
-            }
+            },
+            {
+                "table_name": "inquiries",
+                "domain_id": "pet_store",
+                "enable_aggregates": enable_aggregates,
+                "enable_group_by": enable_group_by,
+            },
         ]
     )
 
@@ -95,11 +131,12 @@ class TestResolveAggregationPlan:
         sql = "SELECT species, COUNT(*) FROM pet_store.pets GROUP BY species"
         plan = _resolve_aggregation_plan(ctx, app_state, sql)
         assert plan is not None
-        meta, group_cols, is_aggregate_only, funcs = plan
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
         assert meta.table_name == "pets"
         assert group_cols == ["species"]
         assert is_aggregate_only is False
         assert funcs == ["count"]
+        assert dim_paths == []
 
     def test_aggregate_only_query_resolves_plan(self):
         ctx = _ctx()
@@ -107,11 +144,12 @@ class TestResolveAggregationPlan:
         sql = "SELECT COUNT(*) FROM pet_store.pets"
         plan = _resolve_aggregation_plan(ctx, app_state, sql)
         assert plan is not None
-        meta, group_cols, is_aggregate_only, funcs = plan
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
         assert meta.table_name == "pets"
         assert group_cols == []
         assert is_aggregate_only is True
         assert funcs == ["count"]
+        assert dim_paths == []
 
     def test_plain_select_returns_none(self):
         ctx = _ctx()
@@ -142,37 +180,114 @@ class TestResolveAggregationPlan:
         app_state = _app_state()
         assert _resolve_aggregation_plan(ctx, app_state, "NOT VALID SQL @@@") is None
 
+    def test_group_by_on_joined_dimension_resolves_to_aggregate_table_fk(self):
+        # "count of inquiries by user": the SQL branch joins users in for a readable name while
+        # aggregating inquiries — the aggregate table is inquiries, and GROUP BY users.name must
+        # resolve back to inquiries' own FK column (user_id), not bail to a plain fetch.
+        ctx = _ctx()
+        app_state = _app_state()
+        sql = (
+            "SELECT users.name, COUNT(inquiries.id) AS inquiry_count "
+            "FROM pet_store.users JOIN pet_store.inquiries ON users.id = inquiries.user_id "
+            "GROUP BY users.name"
+        )
+        plan = _resolve_aggregation_plan(ctx, app_state, sql)
+        assert plan is not None
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
+        assert meta.table_name == "inquiries"
+        assert group_cols == ["user_id"]
+        assert is_aggregate_only is False
+        assert funcs == ["count"]
+        assert dim_paths == ["user.name"]
+
+    def test_group_by_with_json_agg_detail_excludes_detail_table_from_group_cols(self):
+        # "count of inquiries by user with pet details": pets is detail-only, not a grouping
+        # dimension, so prompt.py's SQL instructions have the model wrap it in json_agg rather
+        # than SELECT it raw (which would force it into GROUP BY too). dim_paths extraction must
+        # walk the whole json_build_object(...) subtree (find_all, not find) so both pets columns
+        # surface, not just the first.
+        ctx = SimpleNamespace(
+            tables={
+                "pets": _pets_meta(),
+                "inquiries": _inquiries_meta(),
+                "users": _users_meta(),
+            }
+        )
+        app_state = _app_state()
+        sql = (
+            "SELECT users.name, COUNT(inquiries.id) AS inquiry_count, "
+            "json_agg(json_build_object('id', pets.id, 'name', pets.name)) AS pet_details "
+            "FROM pet_store.users "
+            "JOIN pet_store.inquiries ON users.id = inquiries.user_id "
+            "JOIN pet_store.pets ON pets.id = inquiries.pet_id "
+            "GROUP BY users.name"
+        )
+        plan = _resolve_aggregation_plan(ctx, app_state, sql)
+        assert plan is not None
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
+        assert meta.table_name == "inquiries"
+        assert group_cols == ["user_id"]
+        assert is_aggregate_only is False
+        assert funcs == ["count"]
+        assert sorted(dim_paths) == ["pet.id", "pet.name", "user.name"]
+
+    def test_group_by_on_unjoined_table_returns_none(self):
+        # dimension column belongs to a table with no JOIN condition linking it to the
+        # aggregate table — nothing to resolve, must still bail to a plain fetch.
+        ctx = _ctx()
+        app_state = _app_state()
+        sql = "SELECT users.name, COUNT(inquiries.id) FROM pet_store.inquiries, pet_store.users GROUP BY users.name"
+        assert _resolve_aggregation_plan(ctx, app_state, sql) is None
+
 
 class TestGenerateGrpcQuery:
     def test_aggregate_plan_no_funcs_builds_aggregate_query_text(self):
         meta = _pets_meta()
-        plan = (meta, [], True, [])
+        plan = (meta, [], True, [], [])
         q, e = _generate_grpc_query(plan, set(), {})
         assert e is None
         assert q == "QueryPetsAggregate"
 
-    def test_aggregate_plan_with_funcs_appends_funcs_suffix(self):
-        # REQ-1361: when the SQL branch called only COUNT, restrict the synthesized request.
+    def test_aggregate_plan_with_funcs_includes_funcs_suffix(self):
+        # REQ-1359/REQ-1361: {Type}AggregateRequest.funcs restricts to a caller-chosen subset
+        # of aggregate functions, mirroring jsonapi/openapi's aggregate=... param.
         meta = _pets_meta()
-        plan = (meta, [], True, ["count"])
+        plan = (meta, [], True, ["count"], [])
         q, e = _generate_grpc_query(plan, set(), {})
         assert e is None
         assert q == "QueryPetsAggregate(funcs=[count])"
 
     def test_group_by_plan_no_funcs_builds_group_by_query_text(self):
         meta = _pets_meta()
-        plan = (meta, ["species"], False, [])
+        plan = (meta, ["species"], False, [], [])
         q, e = _generate_grpc_query(plan, set(), {})
         assert e is None
         assert q == "QueryPetsGroupBy(by=[species])"
 
-    def test_group_by_plan_with_funcs_appends_funcs_suffix(self):
-        # REQ-1361: by and funcs both present.
+    def test_group_by_plan_with_funcs_includes_funcs_suffix(self):
+        # REQ-1359/REQ-1361: {Type}GroupByRequest.funcs restricts to a caller-chosen subset
+        # of aggregate functions, same as the aggregate-only case.
         meta = _pets_meta()
-        plan = (meta, ["species"], False, ["count"])
+        plan = (meta, ["species"], False, ["count"], [])
         q, e = _generate_grpc_query(plan, set(), {})
         assert e is None
         assert q == "QueryPetsGroupBy(by=[species], funcs=[count])"
+
+    def test_group_by_plan_with_dim_paths_builds_include_nodes_call(self):
+        # REQ-1405: GroupByRequest.include is repeated string, so dim_paths' "rel.col" entries
+        # dedupe down to their relation prefix for display, and include_nodes=true is shown.
+        meta = _pets_meta()
+        plan = (meta, ["user_id"], False, ["count"], ["user.name", "user.email"])
+        q, e = _generate_grpc_query(plan, set(), {})
+        assert e is None
+        assert q == "QueryPetsGroupBy(by=[user_id], funcs=[count], include_nodes=true, include=[user])"
+
+    def test_group_by_plan_with_multiple_dim_relations_dedupes_per_relation(self):
+        meta = _pets_meta()
+        plan = (meta, ["user_id", "vet_id"], False, [], ["user.name", "vet.name"])
+        q, e = _generate_grpc_query(plan, set(), {})
+        assert e is None
+        assert q == "QueryPetsGroupBy(by=[user_id, vet_id], include_nodes=true, include=[user, vet])"
 
     def test_no_plan_falls_back_to_old_behavior(self):
         nm = SimpleNamespace(type_name="DimPet")
@@ -189,7 +304,7 @@ class TestGenerateGrpcQuery:
 class TestGenerateJsonapiQuery:
     def test_aggregate_plan_no_funcs_builds_aggregate_query_text(self):
         meta = _pets_meta()
-        plan = (meta, [], True, [])
+        plan = (meta, [], True, [], [])
         q, e = _generate_jsonapi_query(plan, set(), {})
         assert e is None
         assert q == "/data/jsonapi/pet_store/pets?aggregate=true"
@@ -197,25 +312,25 @@ class TestGenerateJsonapiQuery:
     def test_aggregate_plan_with_funcs_restricts_aggregate_param(self):
         # REQ-1361: aggregate=count,sum instead of aggregate=true.
         meta = _pets_meta()
-        plan = (meta, [], True, ["count"])
+        plan = (meta, [], True, ["count"], [])
         q, e = _generate_jsonapi_query(plan, set(), {})
         assert e is None
         assert q == "/data/jsonapi/pet_store/pets?aggregate=count"
 
     def test_group_by_plan_no_funcs_builds_group_by_query_text(self):
         meta = _pets_meta()
-        plan = (meta, ["species"], False, [])
+        plan = (meta, ["species"], False, [], [])
         q, e = _generate_jsonapi_query(plan, set(), {})
         assert e is None
-        assert q == "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=true"
+        assert q == "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=true&includeNodes=true"
 
     def test_group_by_plan_with_funcs_restricts_aggregate_param(self):
         # REQ-1361: aggregate=count in group-by query when SQL only called COUNT.
         meta = _pets_meta()
-        plan = (meta, ["species"], False, ["count"])
+        plan = (meta, ["species"], False, ["count"], [])
         q, e = _generate_jsonapi_query(plan, set(), {})
         assert e is None
-        assert q == "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=count"
+        assert q == "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=count&includeNodes=true"
 
     def test_no_plan_falls_back_to_old_behavior(self):
         nm = SimpleNamespace(type_name="DimPet", domain_id="pet_store", table_name="dim_pet")
@@ -227,7 +342,7 @@ class TestGenerateJsonapiQuery:
 class TestGenerateOpenapiQuery:
     def test_aggregate_plan_no_funcs_builds_aggregate_query_text(self):
         meta = _pets_meta()
-        plan = (meta, [], True, [])
+        plan = (meta, [], True, [], [])
         q, e = _generate_openapi_query(plan, set(), {})
         assert e is None
         assert q == "GET /data/rest/pet_store/pets?aggregate=true"
@@ -235,25 +350,25 @@ class TestGenerateOpenapiQuery:
     def test_aggregate_plan_with_funcs_restricts_aggregate_param(self):
         # REQ-1361: aggregate=count instead of aggregate=true.
         meta = _pets_meta()
-        plan = (meta, [], True, ["count"])
+        plan = (meta, [], True, ["count"], [])
         q, e = _generate_openapi_query(plan, set(), {})
         assert e is None
         assert q == "GET /data/rest/pet_store/pets?aggregate=count"
 
     def test_group_by_plan_no_funcs_builds_group_by_query_text(self):
         meta = _pets_meta()
-        plan = (meta, ["species"], False, [])
+        plan = (meta, ["species"], False, [], [])
         q, e = _generate_openapi_query(plan, set(), {})
         assert e is None
-        assert q == "GET /data/rest/pet_store/pets?groupBy=species&aggregate=true"
+        assert q == "GET /data/rest/pet_store/pets?groupBy=species&aggregate=true&includeNodes=true"
 
     def test_group_by_plan_with_funcs_restricts_aggregate_param(self):
         # REQ-1361: aggregate=count in group-by query when SQL only called COUNT.
         meta = _pets_meta()
-        plan = (meta, ["species"], False, ["count"])
+        plan = (meta, ["species"], False, ["count"], [])
         q, e = _generate_openapi_query(plan, set(), {})
         assert e is None
-        assert q == "GET /data/rest/pet_store/pets?groupBy=species&aggregate=count"
+        assert q == "GET /data/rest/pet_store/pets?groupBy=species&aggregate=count&includeNodes=true"
 
     def test_no_plan_falls_back_to_old_behavior(self):
         nm = SimpleNamespace(type_name="DimPet", domain_id="pet_store", table_name="dim_pet")
@@ -309,9 +424,12 @@ class TestExecutorRouting:
             ) as fake_exec,
         ):
             result = await executor._execute_grpc("QueryPetsGroupBy(by=[species])", "admin", app_state)
-        # _execute_grpc calls _grpc_group_by_graphql_text(ctx, "Pets", ["species"], None) —
-        # funcs is None when the query text carries no funcs= suffix.
-        fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", ["species"], None)
+        # _execute_grpc calls _grpc_group_by_graphql_text(ctx, "Pets", ["species"], None, False, None) —
+        # funcs is None and include_nodes/include are absent when the query text carries no
+        # funcs=/include_nodes= suffix.
+        fake_text.assert_called_once_with(
+            app_state.contexts["admin"], "Pets", ["species"], None, False, None
+        )
         fake_exec.assert_awaited_once()
         # split_group_by_columns: species→groupKey idx, count→agg idx.
         # split_agg_columns on agg cols: nested_in="aggregate" → len==1 → top scalar.
@@ -376,8 +494,8 @@ class TestExecutorRouting:
             result = await executor._execute_jsonapi(
                 "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=true", "admin", app_state
             )
-        # aggregate=true → _parse_aggregate_funcs("true") = None → called with (ctx, "Pets", ["species"], None)
-        fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", ["species"], None)
+        # aggregate=true, no includeNodes param → funcs=None, include_nodes=False
+        fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", ["species"], None, False)
         fake_exec.assert_awaited_once()
         # serialize_group_by → [{"groupKey": {"species": "dog"}, "aggregate": {"count": 3}}]
         # jsonapi wraps each row as typed-resourceless JSON:API object.
@@ -388,6 +506,92 @@ class TestExecutorRouting:
                     "id": "0",
                     "attributes": {"groupKey": {"species": "dog"}, "aggregate": {"count": 3}},
                 }
+            ]
+        }
+
+    async def test_execute_jsonapi_group_by_with_include_nodes_matches_trailing_param(self):
+        # Regression for the live bug (screenshots, 2026-08-08): runner.py always appends
+        # "&includeNodes=true" after "&aggregate=..." for group-by NL queries. The regex used
+        # to be anchored with $ right after aggregate=([^&]+), so it never matched a query
+        # string with a trailing &includeNodes=true and silently fell through to a plain
+        # unaggregated SELECT * LIMIT 20. Assert the RESPONSE SHAPE is grouped/aggregated and
+        # carries populated "nodes" — not just that includeNodes=true appears in the request URL.
+        from provisa.nl import executor
+
+        app_state = SimpleNamespace(contexts={"admin": _ctx()})
+        cq = _group_by_compiled()
+        nodes_columns = [
+            ColumnRef(alias=None, column="species", field_name="species", nested_in="__join_key__"),
+            ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
+        ]
+        cq.nodes_columns = nodes_columns
+        with (
+            patch.object(
+                executor,
+                "_grpc_group_by_graphql_text",
+                return_value="{ pets_group_by(by: [species]) { groupKey nodes { name } } }",
+            ) as fake_text,
+            patch.object(
+                executor,
+                "_compile_and_execute_graphql",
+                new=AsyncMock(
+                    return_value=[(cq, _FakeResult([("dog", 3)]), _FakeResult([("dog", "Rex")]))]
+                ),
+            ),
+        ):
+            result = await executor._execute_jsonapi(
+                "/data/jsonapi/pet_store/pets?groupBy=species&aggregate=true&includeNodes=true",
+                "admin",
+                app_state,
+            )
+        fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", ["species"], None, True)
+        assert result == {
+            "data": [
+                {
+                    "type": "petsGroupBy",
+                    "id": "0",
+                    "attributes": {
+                        "groupKey": {"species": "dog"},
+                        "aggregate": {"count": 3},
+                        "nodes": [{"name": "Rex"}],
+                    },
+                }
+            ]
+        }
+
+    async def test_execute_openapi_group_by_with_include_nodes_matches_trailing_param(self):
+        from provisa.nl import executor
+
+        app_state = SimpleNamespace(contexts={"admin": _ctx()})
+        cq = _group_by_compiled()
+        nodes_columns = [
+            ColumnRef(alias=None, column="species", field_name="species", nested_in="__join_key__"),
+            ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
+        ]
+        cq.nodes_columns = nodes_columns
+        with (
+            patch.object(
+                executor,
+                "_grpc_group_by_graphql_text",
+                return_value="{ pets_group_by(by: [species]) { groupKey nodes { name } } }",
+            ) as fake_text,
+            patch.object(
+                executor,
+                "_compile_and_execute_graphql",
+                new=AsyncMock(
+                    return_value=[(cq, _FakeResult([("dog", 3)]), _FakeResult([("dog", "Rex")]))]
+                ),
+            ),
+        ):
+            result = await executor._execute_openapi(
+                "GET /data/rest/pet_store/pets?groupBy=species&aggregate=true&includeNodes=true",
+                "admin",
+                app_state,
+            )
+        fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", ["species"], None, True)
+        assert result == {
+            "data": [
+                {"groupKey": {"species": "dog"}, "aggregate": {"count": 3}, "nodes": [{"name": "Rex"}]}
             ]
         }
 
@@ -447,8 +651,8 @@ class TestExecutorRouting:
             result = await executor._execute_openapi(
                 "GET /data/rest/pet_store/pets?groupBy=species&aggregate=true", "admin", app_state
             )
-        # aggregate=true → _parse_aggregate_funcs("true") = None → called with (ctx, "Pets", ["species"], None)
-        fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", ["species"], None)
+        # aggregate=true, no includeNodes param → funcs=None, include_nodes=False
+        fake_text.assert_called_once_with(app_state.contexts["admin"], "Pets", ["species"], None, False)
         fake_exec.assert_awaited_once()
         # _execute_domain_table_aggregate for openapi: {"data": group_rows}
         assert result == {"data": [{"groupKey": {"species": "dog"}, "aggregate": {"count": 3}}]}

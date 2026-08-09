@@ -14414,7 +14414,7 @@ pgwire negotiates SCRAM-SHA-256 (RFC 5802) when auth.scram is enabled under the 
 
 ### REQ-1395 · Org AI Model Configuration {#REQ-1395}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
 In a multi-tenant SaaS deployment, org admins can select the AI model their org uses via an API-driven configuration (provider + model + API key per org), rather than using a shared platform-wide model.
 
@@ -14423,3 +14423,55 @@ In a multi-tenant SaaS deployment, org admins can select the AI model their org 
 **Code:** —
 
 **Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-1402 · REST API {#REQ-1402}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The REST `?includeNodes=` parameter (introduced in REQ-1401) now accepts a field-level projection in addition to `true`/`false`—either a JSON array or comma-separated list of dot-notated paths to select specific scalar fields and relationship traversals, at arbitrary depth, from the nodes row-detail.
+
+**Use case:** Clients can request only the specific fields they need from nodes detail rows instead of requesting all available fields, reducing payload size and allowing selective field hydration in group-by aggregate responses.
+
+**Code:** `provisa/api/rest/generator.py`, `provisa/api/rest/openapi_spec.py`
+
+**Tests:** `tests/unit/test_rest_aggregates.py`, `tests/unit/test_openapi_spec.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1403 · GraphQL Schema Generation {#REQ-1403}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+GraphQL relationship field names are generated via rel_field_name() which now respects the configured naming convention (snake or apollo_graphql/camelCase), matching the behavior of apply_gql_name() for scalar fields. Previously rel_field_name() always produced camelCase regardless of the global gql naming convention setting, creating inconsistency between how relationship and scalar fields were named.
+
+**Use case:** Ensure relationship field names follow the same naming convention as scalar fields—a schema configured with gql="snake" now produces snake_case relationship field names (e.g. "home_region" instead of "homeRegion").
+
+**Code:** `provisa/compiler/naming.py`
+
+**Tests:** `tests/unit/test_rest_aggregates.py`
+
+### REQ-1404 · Cypher Compiler {#REQ-1404}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+ExprContext.resolve_property() must resolve post-WITH property references using the variable's resolved SQL alias from _var_table (the WITH-segment CTE name), not the raw Cypher variable name.
+
+**Use case:** Cypher queries that carry a node variable through a WITH clause with an aggregate and then access that node's properties in RETURN fail with "Column cannot be resolved" errors without correct SQL table qualification.
+
+**Code:** `provisa/cypher/expr_context.py`
+
+**Tests:** `tests/unit/test_cypher_translator.py`
+
+### REQ-1405 · Aggregate & Group-by Queries {#REQ-1405}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+_resolve_aggregation_plan (provisa/nl/runner.py) must derive includeNodes dot-paths (dim_paths) from SELECT-projected columns of a joined dimension table (e.g. users.name alongside COUNT(inquiries.id)), so JSON:API and OpenAPI's synthesized includeNodes= value reflects the actual relationship-detail fields the SQL/GraphQL branches resolved, instead of defaulting to includeNodes=true which only returns the base aggregate table's own scalar fields. gRPC's {Type}GroupByRequest gains include_nodes (bool) and include (repeated string) fields, and {Type}GroupByRow gains a typed repeated {Type} nodes field, so the gRPC group-by RPC can return the same joined-dimension detail rows as JSON:API/OpenAPI/GraphQL instead of only groupKey/aggregate.
+
+**Use case:** NL Explore UI queries like "show aggregate count of inquiries by user with user details" must include the joined user detail fields (name, email, etc.) in the SQL, GraphQL, JSON:API, OpenAPI, and gRPC panels' generated requests/calls alike.
+
+**Code:** `provisa/nl/runner.py`, `provisa/grpc/proto_gen.py`, `provisa/grpc/query_ir.py`, `provisa/grpc/server.py`
+
+**Tests:** `tests/unit/test_nl_aggregation_routing.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_grpc_server.py`

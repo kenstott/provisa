@@ -92,8 +92,10 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194,
         if singular:
             noun = singular
     if not verb_was_stripped and len(parts) > 1:
-        return modifiers[0] + "".join(m.capitalize() for m in modifiers[1:]) + noun.capitalize()
-    return noun + "".join(m.capitalize() for m in modifiers)
+        words = [*modifiers, noun]
+    else:
+        words = [noun, *modifiers]
+    return apply_gql_name("_".join(words))
 
 
 def _to_pascal_case(name: str) -> str:

@@ -72,6 +72,9 @@ def _make_minimal_state():
     # this server behind the credential gate. Name it unsecured; the secured path has its own fixture.
     state.auth_config = None
     state.auth_middleware_active = False
+    # REQ-693: a bare MagicMock attribute is truthy, which would put this unsecured
+    # deployment behind the high-security KMS-key gate. Name it standard mode.
+    state.security_high = False
     state.schemas = {}
     state.contexts = {}
     state.rls_contexts = {}
@@ -107,10 +110,11 @@ def flight_server_and_client():
     thread = threading.Thread(target=server.serve, daemon=True)
     thread.start()
 
-    # Give the server a moment to bind
+    # Give the server time to bind — 30 s tolerates a loaded CI lane.
     import time
 
-    for _ in range(20):
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
         if _port_in_use(_TEST_FLIGHT_PORT):
             break
         time.sleep(0.1)
@@ -303,6 +307,9 @@ class TestFlightDoGetWithRealData:
         # this server behind the credential gate. This fixture exercises the data path, not auth.
         state.auth_config = None
         state.auth_middleware_active = False
+        # REQ-693: a bare MagicMock attribute is truthy, which would put this data-path
+        # fixture behind the high-security KMS-key gate. Name it standard mode.
+        state.security_high = False
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
@@ -327,7 +334,8 @@ class TestFlightDoGetWithRealData:
 
         import time
 
-        for _ in range(20):
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
             if _port_in_use(port):
                 break
             time.sleep(0.1)
@@ -478,7 +486,8 @@ def secured_flight_server():
 
     import time
 
-    for _ in range(20):
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
         if _port_in_use(_SECURED_FLIGHT_PORT):
             break
         time.sleep(0.1)

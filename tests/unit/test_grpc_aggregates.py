@@ -32,6 +32,7 @@ from provisa.compiler.schema_gen import SchemaInput
 from provisa.compiler.sql_types import TableMeta
 from provisa.grpc.proto_gen import generate_proto
 from provisa.grpc.query_ir import (
+    grpc_relation_scalars,
     grpc_table_to_aggregate_graphql_text,
     grpc_table_to_group_by_graphql_text,
 )
@@ -86,7 +87,6 @@ class TestProtoGenAggregateGating:
         assert "GroupByRow" not in proto
         assert "QueryInquiriesAggregate" not in proto
         assert "QueryInquiriesGroupBy" not in proto
-        # No table opts in, so the Empty import must not be pulled in either.
         assert "empty.proto" not in proto
 
     def test_enable_aggregates_emits_aggregate_result_and_rpc(self):
@@ -101,11 +101,13 @@ class TestProtoGenAggregateGating:
         # id/created_at/status are comparable -> min/max sub-messages
         assert "message InquiriesMinFields {" in proto
         assert "message InquiriesMaxFields {" in proto
+        assert "message InquiriesAggregateRequest {" in proto
+        assert "repeated string funcs = 1;" in proto
         assert (
-            "rpc QueryInquiriesAggregate(google.protobuf.Empty) "
+            "rpc QueryInquiriesAggregate(InquiriesAggregateRequest) "
             "returns (InquiriesAggregateResult);" in proto
         )
-        assert 'import "google/protobuf/empty.proto";' in proto
+        assert "empty.proto" not in proto
         # group-by not enabled -> no group-by messages/RPC
         assert "GroupByRequest" not in proto
         assert "GroupByRow" not in proto
@@ -123,8 +125,7 @@ class TestProtoGenAggregateGating:
             "rpc QueryInquiriesGroupBy(InquiriesGroupByRequest) "
             "returns (stream InquiriesGroupByRow);" in proto
         )
-        # group-by alone still needs the aggregate result type, but not the Empty import
-        # (that's only pulled in for the unary Aggregate RPC).
+        # group-by alone still needs the aggregate result type
         assert "message InquiriesAggregateResult {" in proto
         assert "empty.proto" not in proto
         assert "QueryInquiriesAggregate" not in proto
@@ -134,8 +135,26 @@ class TestProtoGenAggregateGating:
         assert "message InquiriesAggregateResult {" in proto
         assert "message InquiriesGroupByRequest {" in proto
         assert "message InquiriesGroupByRow {" in proto
-        assert "rpc QueryInquiriesAggregate(google.protobuf.Empty) " in proto
+        assert "rpc QueryInquiriesAggregate(InquiriesAggregateRequest) " in proto
         assert "rpc QueryInquiriesGroupBy(InquiriesGroupByRequest) " in proto
+
+    def test_group_by_request_has_include_nodes_and_include_fields(self):
+        # REQ-1405: GroupByRequest gains include_nodes (bool) and include (repeated string) so
+        # gRPC can request relation-nested detail rows, mirroring JSON:API's ?includeNodes=/?include=.
+        proto = generate_proto(_make_si(enable_aggregates=False, enable_group_by=True))
+        assert "bool include_nodes = 5;" in proto
+        assert "repeated string include = 6;" in proto
+
+    def test_group_by_request_has_funcs_field(self):
+        # REQ-1359/REQ-1361: GroupByRequest.funcs restricts to a caller-chosen subset of
+        # aggregate functions, mirroring JSON:API/REST's aggregate=count,sum param.
+        proto = generate_proto(_make_si(enable_aggregates=False, enable_group_by=True))
+        assert "repeated string funcs = 7;" in proto
+
+    def test_group_by_row_has_nodes_field(self):
+        # REQ-1405: GroupByRow gains a typed, repeated {Type} nodes field.
+        proto = generate_proto(_make_si(enable_aggregates=False, enable_group_by=True))
+        assert "repeated Inquiries nodes = 3;" in proto
 
 
 class TestQueryIRAggregateText:
@@ -210,6 +229,106 @@ class TestQueryIRAggregateText:
     def test_group_by_text_unknown_type_returns_none(self):
         ctx = self._ctx()
         assert grpc_table_to_group_by_graphql_text(ctx, "Nonexistent", ["status"]) is None
+
+    def _ctx_with_relation(self):
+        """Same inquiries table as _ctx(), plus a many-to-one relation to a users table, so
+        grpc_relation_scalars/include= can be exercised without GraphQL schema introspection."""
+        from provisa.compiler.sql_types import JoinMeta
+
+        inquiries = TableMeta(
+            table_id=1,
+            field_name="inquiries",
+            type_name="Inquiries",
+            source_id="pg1",
+            catalog_name="pg1",
+            schema_name="public",
+            table_name="inquiries",
+        )
+        users = TableMeta(
+            table_id=2,
+            field_name="users",
+            type_name="Users",
+            source_id="pg1",
+            catalog_name="pg1",
+            schema_name="public",
+            table_name="users",
+        )
+        join_meta = JoinMeta(
+            source_column="user_id",
+            target_column="id",
+            source_column_type="integer",
+            target_column_type="integer",
+            target=users,
+            cardinality="many-to-one",
+        )
+        one_to_many = JoinMeta(
+            source_column="id",
+            target_column="inquiry_id",
+            source_column_type="integer",
+            target_column_type="integer",
+            target=users,
+            cardinality="one-to-many",
+        )
+        return SimpleNamespace(
+            tables={"inquiries": inquiries, "users": users},
+            aggregate_columns={
+                1: [
+                    ("amount", "decimal(10,2)"),
+                    ("created_at", "timestamp"),
+                    ("status", "varchar"),
+                ],
+                2: [("name", "varchar"), ("email", "varchar")],
+            },
+            joins={
+                ("Inquiries", "user"): join_meta,
+                ("Inquiries", "reviews"): one_to_many,
+            },
+        )
+
+    def test_relation_scalars_resolves_many_to_one(self):
+        ctx = self._ctx_with_relation()
+        assert grpc_relation_scalars(ctx, "Inquiries", "user") == ["name", "email"]
+
+    def test_relation_scalars_empty_for_one_to_many(self):
+        ctx = self._ctx_with_relation()
+        assert grpc_relation_scalars(ctx, "Inquiries", "reviews") == []
+
+    def test_relation_scalars_empty_for_unknown_relation(self):
+        ctx = self._ctx_with_relation()
+        assert grpc_relation_scalars(ctx, "Inquiries", "nonexistent") == []
+
+    def test_group_by_text_include_nodes_without_include_has_no_relations(self):
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(ctx, "Inquiries", ["status"], include_nodes=True)
+        assert text is not None
+        assert "nodes { amount created_at status }" in text
+
+    def test_group_by_text_include_nodes_with_include_nests_relation(self):
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(
+            ctx, "Inquiries", ["status"], include_nodes=True, include=["user"]
+        )
+        assert text is not None
+        assert "nodes { amount created_at status user { name email } }" in text
+
+    def test_group_by_text_include_ignored_without_include_nodes(self):
+        # include= only matters when include_nodes=True (mirrors JSON:API: ?include= without
+        # ?includeNodes=true is a no-op since there is no nodes selection to nest it into).
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(
+            ctx, "Inquiries", ["status"], include_nodes=False, include=["user"]
+        )
+        assert text is not None
+        assert "nodes" not in text
+
+    def test_group_by_text_include_skips_non_many_to_one_relation(self):
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(
+            ctx, "Inquiries", ["status"], include_nodes=True, include=["reviews"]
+        )
+        assert text is not None
+        assert "reviews" not in text
+        assert "nodes { amount created_at status }" in text
 
     def test_type_name_matching_is_separator_insensitive(self):
         # proto collapses the domain separator: PS__Inquiries -> PsInquiries.

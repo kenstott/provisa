@@ -187,4 +187,7 @@ async def test_compiled_pipeline_forces_engine_route_for_view_backed_query(demo_
     # the view's defining subquery over "public"."orders", not a bare, un-routable "order_totals"
     # table reference (what the DIRECT-branch fallback would hand a native driver).
     exec_sql = plan.exec_sql.lower()
-    assert 'from (select "id", "amount" from "public"."orders")' in exec_sql, exec_sql
+    # normalize_table_refs may add a self-alias ("orders" AS orders) after the physical table ref;
+    # match the open of the subquery to tolerate that without weakening the guard (a bare
+    # "order_totals" table ref would not contain this pattern).
+    assert 'from (select "id", "amount" from "public"."orders"' in exec_sql, exec_sql

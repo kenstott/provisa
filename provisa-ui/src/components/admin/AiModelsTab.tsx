@@ -13,11 +13,14 @@ import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Alert,
+  Autocomplete,
+  Badge,
   Button,
   Checkbox,
   Group,
   Loader,
   NumberInput,
+  PasswordInput,
   Select,
   Stack,
   Table,
@@ -28,6 +31,7 @@ import {
 import { Check, Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
   fetchAiModels,
+  LLM_VENDORS,
   setAiModels,
   type AiModelAssignments,
   type AiModelsState,
@@ -50,6 +54,33 @@ const PROVIDER_OPTIONS = [
   { value: "huggingface", label: "huggingface" },
 ];
 
+// REQ-1398: suggestions for the per-operation vendor field. LLM_VENDORS take an org API key;
+// ollama/lmstudio are local, keyless endpoints — both are valid `vendor` values for
+// ai_models.<op>, so the field is a free-text autocomplete, not a closed Select.
+const OPERATION_VENDOR_OPTIONS = [...LLM_VENDORS, "ollama", "lmstudio"];
+
+function roleVendor(v: string | Record<string, unknown>): string {
+  if (typeof v === "string") return "anthropic";
+  return typeof v.vendor === "string" ? v.vendor : "anthropic";
+}
+
+function roleModel(v: string | Record<string, unknown>): string {
+  if (typeof v === "string") return v;
+  return typeof v.model === "string" ? v.model : "";
+}
+
+// Roundtrips to the plain string form when nothing but vendor=anthropic/model is set, so a role
+// left at its default still saves as a string (matches the blank-clears-override behavior the
+// backend already implements for the string form).
+function serializeRole(v: string | Record<string, unknown>): string | Record<string, unknown> {
+  if (typeof v === "string") return v;
+  const { vendor, model, ...rest } = v;
+  if (Object.keys(rest).length === 0 && (vendor === "anthropic" || !vendor)) {
+    return typeof model === "string" ? model : "";
+  }
+  return v;
+}
+
 const EMPTY_VECTOR_MODEL: VectorModel = {
   id: "",
   provider: "openai",
@@ -65,6 +96,10 @@ export function AiModelsTab() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  // REQ-1395, REQ-1398: write-only per vendor — never populated from the fetched state, only
+  // sent on save.
+  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+  const [clearApiKeys, setClearApiKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchAiModels()
@@ -78,20 +113,35 @@ export function AiModelsTab() {
     setMsg("");
     setError("");
     try {
-      // Only string-form assignments are editable here; dict-form roles are left untouched.
-      const ai_models: Partial<Record<keyof AiModelAssignments, string>> = {};
+      const ai_models: Partial<Record<keyof AiModelAssignments, string | Record<string, unknown>>> =
+        {};
       for (const k of ROLE_KEYS) {
-        const v = s.ai_models[k];
-        if (typeof v === "string") ai_models[k] = v;
+        ai_models[k] = serializeRole(s.ai_models[k]);
+      }
+      const api_keys: Record<string, string> = {};
+      for (const vendor of LLM_VENDORS) {
+        const val = apiKeyInputs[vendor]?.trim();
+        if (val || clearApiKeys[vendor]) api_keys[vendor] = val ?? "";
       }
       const res = await setAiModels({
         ai_models,
         vector_models: s.vector_models,
         nl: s.nl,
+        ...(Object.keys(api_keys).length ? { api_keys } : {}),
       });
       setMsg(
         res.restart_required ? t("aiModelsTab.savedRestartRequired") : t("aiModelsTab.saved"),
       );
+      setS((prev) => {
+        if (!prev) return prev;
+        const api_keys_set = { ...prev.api_keys_set };
+        for (const vendor of Object.keys(api_keys)) {
+          api_keys_set[vendor] = !!api_keys[vendor];
+        }
+        return { ...prev, api_keys_set };
+      });
+      setApiKeyInputs({});
+      setClearApiKeys({});
     } catch (e) {
       setError(String(e));
     } finally {
@@ -99,8 +149,27 @@ export function AiModelsTab() {
     }
   };
 
-  const setRole = (k: keyof AiModelAssignments, value: string) =>
-    setS((prev) => (prev ? { ...prev, ai_models: { ...prev.ai_models, [k]: value } } : prev));
+  const setRoleVendor = (k: keyof AiModelAssignments, vendor: string) =>
+    setS((prev) => {
+      if (!prev) return prev;
+      const v = prev.ai_models[k];
+      const rest = typeof v === "string" ? {} : v;
+      return {
+        ...prev,
+        ai_models: { ...prev.ai_models, [k]: { ...rest, vendor, model: roleModel(v) } },
+      };
+    });
+
+  const setRoleModel = (k: keyof AiModelAssignments, model: string) =>
+    setS((prev) => {
+      if (!prev) return prev;
+      const v = prev.ai_models[k];
+      const rest = typeof v === "string" ? {} : v;
+      return {
+        ...prev,
+        ai_models: { ...prev.ai_models, [k]: { ...rest, vendor: roleVendor(v), model } },
+      };
+    });
 
   const setVector = (i: number, patch: Partial<VectorModel>) =>
     setS((prev) =>
@@ -135,6 +204,64 @@ export function AiModelsTab() {
 
   return (
     <Stack maw={860} gap="md">
+      <Title order={4}>{t("aiModelsTab.apiKeysHeading")}</Title>
+      <Text c="dimmed" size="sm">
+        {t("aiModelsTab.apiKeysIntro")}
+      </Text>
+      <Stack gap="sm">
+        {LLM_VENDORS.map((vendor) => {
+          const isSet = !!s.api_keys_set[vendor];
+          const clearing = !!clearApiKeys[vendor];
+          return (
+            <Stack key={vendor} gap={4}>
+              <Group gap="xs" align="center">
+                <Text size="sm" fw={500} tt="capitalize">
+                  {vendor}
+                </Text>
+                <Badge
+                  color={isSet ? "green" : "gray"}
+                  data-testid={`ai-models-${vendor}-key-status`}
+                >
+                  {isSet ? t("aiModelsTab.apiKeySet") : t("aiModelsTab.apiKeyNotSet")}
+                </Badge>
+              </Group>
+              <Group gap="sm" align="flex-end">
+                <PasswordInput
+                  aria-label={t("aiModelsTab.apiKeyLabel", { vendor })}
+                  placeholder={t("aiModelsTab.apiKeyPlaceholder")}
+                  data-testid={`ai-models-${vendor}-key-input`}
+                  value={apiKeyInputs[vendor] ?? ""}
+                  onChange={(e) => {
+                    const value = e.currentTarget.value;
+                    setApiKeyInputs((prev) => ({ ...prev, [vendor]: value }));
+                    setClearApiKeys((prev) => ({ ...prev, [vendor]: false }));
+                  }}
+                  style={{ flex: 1 }}
+                />
+                {isSet && (
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    data-testid={`ai-models-${vendor}-key-clear`}
+                    onClick={() => {
+                      setApiKeyInputs((prev) => ({ ...prev, [vendor]: "" }));
+                      setClearApiKeys((prev) => ({ ...prev, [vendor]: true }));
+                    }}
+                  >
+                    {t("aiModelsTab.apiKeyClear")}
+                  </Button>
+                )}
+              </Group>
+              {clearing && (
+                <Text c="orange" size="sm">
+                  {t("aiModelsTab.apiKeyWillClear")}
+                </Text>
+              )}
+            </Stack>
+          );
+        })}
+      </Stack>
+
       <Title order={4}>{t("aiModelsTab.modelsHeading")}</Title>
       <Text c="dimmed" size="sm">
         {t("aiModelsTab.modelsIntro")}
@@ -143,26 +270,31 @@ export function AiModelsTab() {
       <Stack gap="sm">
         {ROLE_KEYS.map((k) => {
           const v = s.ai_models[k];
-          if (typeof v !== "string") {
-            return (
-              <TextInput
-                key={k}
-                label={t(`aiModelsTab.role_${k}`)}
-                data-testid={`ai-model-${k}`}
-                value={JSON.stringify(v)}
-                disabled
-                description={t("aiModelsTab.dictNotEditable")}
-              />
-            );
-          }
+          const vendor = roleVendor(v);
+          const model = roleModel(v);
           return (
-            <TextInput
-              key={k}
-              label={t(`aiModelsTab.role_${k}`)}
-              data-testid={`ai-model-${k}`}
-              value={v}
-              onChange={(e) => setRole(k, e.currentTarget.value)}
-            />
+            <Stack key={k} gap={4}>
+              <Text size="sm" fw={500}>
+                {t(`aiModelsTab.role_${k}`)}
+              </Text>
+              <Group gap="sm" align="flex-end">
+                <Autocomplete
+                  label={t("aiModelsTab.vendorLabel")}
+                  data-testid={`ai-model-${k}-vendor`}
+                  data={OPERATION_VENDOR_OPTIONS}
+                  value={vendor}
+                  onChange={(val) => setRoleVendor(k, val)}
+                  style={{ width: 200 }}
+                />
+                <TextInput
+                  label={t("aiModelsTab.modelLabel")}
+                  data-testid={`ai-model-${k}`}
+                  value={model}
+                  onChange={(e) => setRoleModel(k, e.currentTarget.value)}
+                  style={{ flex: 1 }}
+                />
+              </Group>
+            </Stack>
           );
         })}
       </Stack>

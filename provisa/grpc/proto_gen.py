@@ -136,6 +136,11 @@ def _emit_aggregate_messages(lines: list[str], t) -> None:
             lines.append("}")
             lines.append("")
 
+    lines.append(f"message {t.type_name}AggregateRequest {{")
+    lines.append("  repeated string funcs = 1;")
+    lines.append("}")
+    lines.append("")
+
     lines.append(f"message {t.type_name}AggregateResult {{")
     agg_num = 1
     lines.append(f"  int32 count = {agg_num};")
@@ -162,12 +167,16 @@ def _emit_aggregate_messages(lines: list[str], t) -> None:
         lines.append(f"  {t.type_name}Filter filter = 2;")
         lines.append("  int32 limit = 3;")
         lines.append("  int32 offset = 4;")
+        lines.append("  bool include_nodes = 5;")
+        lines.append("  repeated string include = 6;")
+        lines.append("  repeated string funcs = 7;")
         lines.append("}")
         lines.append("")
 
         lines.append(f"message {t.type_name}GroupByRow {{")
         lines.append("  string group_key = 1;")
         lines.append(f"  {t.type_name}AggregateResult aggregate = 2;")
+        lines.append(f"  repeated {t.type_name} nodes = 3;")
         lines.append("}")
         lines.append("")
 
@@ -230,8 +239,6 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     if _needs_timestamp_import(all_columns):
         lines.append('import "google/protobuf/timestamp.proto";')
     lines.append('import "google/protobuf/field_mask.proto";')
-    if any(t.enable_aggregates for t in tables):  # REQ-1359: Query{Type}Aggregate takes Empty
-        lines.append('import "google/protobuf/empty.proto";')
     lines.append("")
 
     # --- Query message (mirrors GraphQL type Query) ---
@@ -381,7 +388,7 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
         # enable_aggregates/enable_group_by root fields.
         if t.enable_aggregates:
             lines.append(
-                f"  rpc Query{t.type_name}Aggregate(google.protobuf.Empty) "
+                f"  rpc Query{t.type_name}Aggregate({t.type_name}AggregateRequest) "
                 f"returns ({t.type_name}AggregateResult);"
             )
         if t.enable_group_by:

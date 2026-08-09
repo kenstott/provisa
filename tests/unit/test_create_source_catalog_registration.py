@@ -84,3 +84,27 @@ def test_non_default_org_prefixes_the_source_id_derived_name(state):
         current_org.reset(token)
 
     assert state.source_catalogs["e2e-sharepoint"] == "org_tenant-a__e2e_sharepoint"
+
+
+def test_fixed_catalog_warehouse_pins_every_source_to_the_warehouse_database(state, monkeypatch):
+    """A Synapse-bound source must be recorded under SYNAPSE_DATABASE, not source_to_catalog(id).
+
+    createSource hyphenates source ids (``synapse-ext`` -> ``synapse_ext``), which is not the
+    Synapse database name the fixed-catalog engine actually attaches/queries at.
+    """
+    from provisa.api.app_loaders import _populate_source_catalog_names, fixed_catalog_for_engine
+
+    class _Engine:
+        name = "synapse"
+
+    class _FederationEngine:
+        engine = _Engine()
+
+    monkeypatch.setattr(state, "federation_engine", _FederationEngine(), raising=False)
+    monkeypatch.setenv("SYNAPSE_DATABASE", "provisa_syn")
+
+    assert fixed_catalog_for_engine(state) == "provisa_syn"
+
+    _populate_source_catalog_names(_config(Source(id="synapse-ext", type=SourceType.parquet)))
+
+    assert state.source_catalogs["synapse-ext"] == "provisa_syn"

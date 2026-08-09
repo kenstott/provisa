@@ -817,7 +817,11 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         _stop_kws = {"SKIP", "LIMIT", "RETURN", "MATCH", "WITH"}
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
-            while self._peek() and self._peek_val() not in (_stop_kws | {"COMMA", "ASC", "DESC"}):
+            while (
+                (t := self._peek())
+                and t.type != "COMMA"
+                and self._peek_val() not in (_stop_kws | {"ASC", "DESC"})
+            ):
                 expr_parts.append(self._advance().value)
             expr = " ".join(expr_parts)
             direction = "ASC"

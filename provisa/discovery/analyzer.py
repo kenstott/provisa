@@ -89,15 +89,15 @@ def _validate_candidate(raw: dict, discovery_input: DiscoveryInput) -> bool:  # 
 
 def analyze(
     prompt: str,
-    api_key: str,
+    api_keys: dict[str, str],
     discovery_input: DiscoveryInput,
     min_confidence: float = 0.7,
 ) -> list[RelationshipCandidate]:  # REQ-018, REQ-167, REQ-612
     """Call LLM with prompt, parse and validate response."""
     with _tracer.start_as_current_span("discovery.analyze"):
-        from provisa.llm.client import ProviasLLMClient
+        from provisa.llm.client import ProvisaLLMClient
 
-        llm = ProviasLLMClient("relationship_inference")
+        llm = ProvisaLLMClient("relationship_inference", api_keys=api_keys)
         response_text = llm.complete_sync(prompt, "You are a data analyst.", 4096)
         log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
 

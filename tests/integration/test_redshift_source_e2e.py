@@ -131,15 +131,30 @@ def _seed_redshift() -> None:
 
 
 def _drop_redshift_table() -> None:
+    """Drop the scratch table, retrying the connect.
+
+    Same DNS/ENI/security-group propagation lag documented for ``_wait_tcp_ready`` in
+    ``redshift_cluster.py`` can still bite a one-shot connect made well after the fixture's initial
+    TCP-ready wait — observed here as a bare ``psycopg2.OperationalError: ... Operation timed out``
+    in this teardown call despite the same endpoint answering moments earlier in the test body.
+    """
     import psycopg2
 
-    conn = psycopg2.connect(
-        host=os.environ["REDSHIFT_HOST"],
-        port=int(os.environ["REDSHIFT_PORT"]),
-        dbname=os.environ["REDSHIFT_DATABASE"],
-        user=os.environ["REDSHIFT_USER"],
-        password=os.environ["REDSHIFT_PASSWORD"],
-    )
+    deadline = time.monotonic() + 60
+    conn = None
+    while conn is None:
+        try:
+            conn = psycopg2.connect(
+                host=os.environ["REDSHIFT_HOST"],
+                port=int(os.environ["REDSHIFT_PORT"]),
+                dbname=os.environ["REDSHIFT_DATABASE"],
+                user=os.environ["REDSHIFT_USER"],
+                password=os.environ["REDSHIFT_PASSWORD"],
+            )
+        except psycopg2.OperationalError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(5)
     conn.autocommit = True
     try:
         cur = conn.cursor()

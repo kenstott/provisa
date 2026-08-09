@@ -116,12 +116,24 @@ def http_base_url():
     port = _free_port()
     config = uvicorn.Config(_data_app(), host="127.0.0.1", port=port, log_level="error")
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
+    _exc: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            server.run()
+        except BaseException as exc:  # pragma: no cover — only reached on startup failure
+            _exc.append(exc)
+
+    thread = threading.Thread(target=_run, daemon=True)
     thread.start()
-    deadline = 30
-    while not server.started and deadline:
+    # 120 s — matches the established codebase pattern for Docker-stack load; thread.is_alive()
+    # exits early if the server thread died before setting started (e.g. OSError on port bind).
+    deadline = 1200
+    while not server.started and deadline and thread.is_alive():
         threading.Event().wait(0.1)
         deadline -= 1
+    if _exc:
+        raise RuntimeError("uvicorn startup raised an exception") from _exc[0]
     assert server.started, "uvicorn did not come up"
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True

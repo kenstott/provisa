@@ -48,6 +48,7 @@ def org_overrides(monkeypatch):
     """
     import types
 
+    import provisa.core.org_secrets as org_secrets_mod
     import provisa.core.org_settings as org_settings_mod
 
     store: dict = {}
@@ -63,8 +64,12 @@ def org_overrides(monkeypatch):
                 store[key] = value
         return list(updates)
 
+    async def _read_api_keys(_db):
+        return {}
+
     monkeypatch.setattr(org_settings_mod, "read_org_overrides", _read)
     monkeypatch.setattr(org_settings_mod, "write_org_overrides", _write)
+    monkeypatch.setattr(org_secrets_mod, "read_org_api_keys", _read_api_keys)
     monkeypatch.setattr(
         "provisa.api.app.state", types.SimpleNamespace(tenant_db=object()), raising=False
     )

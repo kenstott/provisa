@@ -305,9 +305,9 @@ async def test_the_surface_rejects_a_caller_without_the_right(resolve_caps):
 def test_the_llm_client_honours_a_passed_config():
     # The seam that makes an org override reach a query: the client resolves vendor/model from the
     # config it is HANDED, not from the process-global file it used to read at construction.
-    from provisa.llm.client import ProviasLLMClient
+    from provisa.llm.client import ProvisaLLMClient
 
-    client = ProviasLLMClient(
+    client = ProvisaLLMClient(
         "sql_generation",
         config={"ai_models": {"sql_generation": {"vendor": "openai", "model": "gpt-4o"}}},
     )
@@ -318,13 +318,18 @@ def test_the_llm_client_honours_a_passed_config():
 async def test_nl_builds_its_client_from_the_orgs_resolved_config(monkeypatch):
     # _get_llm runs per request, so an org administrator's provider change takes effect on the next
     # NL query — there is no cached client and no restart between the write and the read.
+    import provisa.core.org_secrets as org_secrets_mod
     import provisa.core.org_settings as org_settings_mod
     from provisa.api.rest.nl_router import _get_llm
 
     async def _resolve(_db):
         return {"ai_models": {"sql_generation": {"vendor": "openai", "model": "gpt-4o"}}}
 
+    async def _api_keys(_db):
+        return {}
+
     monkeypatch.setattr(org_settings_mod, "resolve_org_config", _resolve)
+    monkeypatch.setattr(org_secrets_mod, "read_org_api_keys", _api_keys)
     client = await _get_llm(types.SimpleNamespace(tenant_db=object()))
 
     assert (client._vendor, client._model) == ("openai", "gpt-4o")

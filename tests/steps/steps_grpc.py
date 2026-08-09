@@ -9,14 +9,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import grpc
 import grpc.aio
 import pytest
+from google.protobuf.descriptor import FieldDescriptor
 from pytest_bdd import given, scenarios, then, when
 
-from provisa.grpc.server import _get_role
+from provisa.grpc.server import ProvisaServicer
 
 scenarios("../features/REQ-617.feature")
 
@@ -27,11 +30,28 @@ def shared_data() -> dict:
     return {}
 
 
-def _make_context(metadata: tuple) -> MagicMock:
+def _make_context(metadata: tuple) -> AsyncMock:
     """Build a mock gRPC servicer context whose invocation_metadata returns `metadata`."""
-    context = MagicMock(spec=grpc.aio.ServicerContext)
+    context = AsyncMock(spec=grpc.aio.ServicerContext)
     context.invocation_metadata.return_value = metadata
+    context.abort.side_effect = grpc.aio.AbortError(
+        grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata"
+    )
     return context
+
+
+def _make_servicer() -> ProvisaServicer:
+    """A ProvisaServicer with no schemas — enough to exercise role resolution in _handle_query."""
+    field_descriptors = [
+        SimpleNamespace(name="id", message_type=None, type=FieldDescriptor.TYPE_INT64)
+    ]
+    descriptor = SimpleNamespace(
+        fields=field_descriptors, fields_by_name={fd.name: fd for fd in field_descriptors}
+    )
+    msg_cls = MagicMock()
+    msg_cls.DESCRIPTOR = descriptor
+    pb2 = SimpleNamespace(Orders=msg_cls, DESCRIPTOR=SimpleNamespace(services_by_name={}))
+    return ProvisaServicer(SimpleNamespace(schemas={}, contexts={}), pb2, MagicMock())
 
 
 def _status_code_of(exc: BaseException):
@@ -65,10 +85,16 @@ def caller_without_role(shared_data):
 @when("the RPC is received")
 def rpc_received(shared_data):
     context = shared_data["context"]
+    servicer = _make_servicer()
     shared_data["error"] = None
     shared_data["role"] = None
+
+    async def _receive():
+        async for _ in servicer._handle_query(MagicMock(), context, "Orders", "orders"):
+            pass
+
     try:
-        shared_data["role"] = _get_role(context)
+        asyncio.run(_receive())
     except grpc.aio.AbortError as exc:  # type: ignore[attr-defined]
         shared_data["error"] = exc
     except Exception as exc:  # pragma: no cover - defensive

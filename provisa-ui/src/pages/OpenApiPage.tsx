@@ -9,7 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMantineColorScheme } from "@mantine/core";
@@ -21,7 +21,7 @@ export function OpenApiPage() {
   const { t } = useTranslation();
   const location = useLocation();
   const { colorScheme } = useMantineColorScheme();
-  const { role } = useAuth();
+  const { role, loading: authLoading } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const roleId = role?.id ?? "";
   const domainsParam = checkedDomains.size > 0 ? [...checkedDomains].join(",") : "";
@@ -38,6 +38,35 @@ export function OpenApiPage() {
   const autoRun = navState?.autoRun === true;
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Loaded via fetch() + srcDoc rather than <iframe src>: a plain browser navigation to `src`
+  // can't carry the bearer token installAuthFetch attaches to fetch() calls, so the request hits
+  // the auth middleware with no Authorization header. srcDoc's content still resolves relative
+  // URLs (e.g. Swagger UI's own openapi.json fetch) against this page's origin.
+  const [html, setHtml] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    // authLoading gates re-fetch when AuthContext is mid-refresh (e.g. a token
+    // renewal in flight) so this doesn't race an about-to-change provisa_token.
+    if (authLoading) return;
+    let cancelled = false;
+    setHtml(null);
+    setLoadError(null);
+    fetch(src)
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.text();
+      })
+      .then((text) => {
+        if (!cancelled) setHtml(text);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setLoadError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src, authLoading]);
 
   // Swagger UI mounts/expands/re-renders each step asynchronously (React tree inside the
   // iframe); polling for the actual DOM state avoids racing fixed setTimeout delays that fire
@@ -143,15 +172,20 @@ export function OpenApiPage() {
 
   return (
     <div className="openapi-page page">
-      <iframe
-        ref={iframeRef}
-        key={`${roleId}:${domainsParam}:${theme}`}
-        src={src}
-        className="openapi-frame"
-        title={t("openApiPage.frameTitle")}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"
-        onLoad={handleIframeLoad}
-      />
+      {loadError && (
+        <p className="openapi-load-error">{t("openApiPage.loadError", { error: loadError })}</p>
+      )}
+      {html !== null && (
+        <iframe
+          ref={iframeRef}
+          key={`${roleId}:${domainsParam}:${theme}`}
+          srcDoc={html}
+          className="openapi-frame"
+          title={t("openApiPage.frameTitle")}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"
+          onLoad={handleIframeLoad}
+        />
+      )}
     </div>
   );
 }

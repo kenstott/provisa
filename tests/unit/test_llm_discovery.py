@@ -101,9 +101,9 @@ def _candidate_json(
 
 
 def _patch_complete_sync(return_text: str):
-    """Patch ProviasLLMClient._complete_sync to return return_text."""
+    """Patch ProvisaLLMClient._complete_sync to return return_text."""
     return patch(
-        "provisa.llm.client.ProviasLLMClient._complete_sync",
+        "provisa.llm.client.ProvisaLLMClient._complete_sync",
         return_value=return_text,
     )
 
@@ -230,7 +230,7 @@ class TestLLMUnavailableError:
     def test_api_connection_error_propagates(self):
         """ConnectionError from _complete_sync must not be silently swallowed."""
         with patch(
-            "provisa.llm.client.ProviasLLMClient._complete_sync",
+            "provisa.llm.client.ProvisaLLMClient._complete_sync",
             side_effect=ConnectionError("LLM unreachable"),
         ):
             with pytest.raises(ConnectionError):
@@ -239,7 +239,7 @@ class TestLLMUnavailableError:
     def test_api_status_error_401_propagates(self):
         """PermissionError from _complete_sync must propagate."""
         with patch(
-            "provisa.llm.client.ProviasLLMClient._complete_sync",
+            "provisa.llm.client.ProvisaLLMClient._complete_sync",
             side_effect=PermissionError("Invalid API key"),
         ):
             with pytest.raises(PermissionError):
@@ -248,7 +248,7 @@ class TestLLMUnavailableError:
     def test_api_rate_limit_error_propagates(self):
         """RuntimeError (rate limit) from _complete_sync must propagate."""
         with patch(
-            "provisa.llm.client.ProviasLLMClient._complete_sync",
+            "provisa.llm.client.ProvisaLLMClient._complete_sync",
             side_effect=RuntimeError("Rate limit exceeded"),
         ):
             with pytest.raises(RuntimeError):

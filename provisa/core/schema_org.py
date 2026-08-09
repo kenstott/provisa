@@ -773,6 +773,18 @@ org_settings = Table(
     Column("updated_by", Text),
 )
 
+# REQ-1395: per-org secrets (e.g. Anthropic API key), encrypted at rest via
+# provisa.encryption.runtime.encryption_service() — same pattern as api_sources.auth.
+# Kept out of org_settings because that table's `value` column is unencrypted JSON.
+org_secrets = Table(
+    "org_secrets",
+    metadata,
+    Column("key", Text, primary_key=True),
+    Column("value_enc", LargeBinary, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text),
+)
+
 user_role_assignments = Table(
     "user_role_assignments",
     metadata,

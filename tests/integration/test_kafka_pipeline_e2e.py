@@ -53,7 +53,7 @@ _ORDERS = [
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def kafka_client():
+async def kafka_client(trino_conn):
     """An in-process app bound to the isolated stack and to the Kafka fixture config.
 
     This is ``connector_source_harness.connector_client`` plus the ``PROVISA_CONFIG`` pin: the Kafka
@@ -87,6 +87,13 @@ async def kafka_client():
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+        # Two Kafka-connector catalogs (this one and kafka_support from test_kafka_source.py)
+        # coexisting in the same Trino coordinator cause CREATE CATALOG to fail for the second
+        # catalog — drop this catalog as soon as the test is done so at most one Kafka-connector
+        # catalog that shares kafka.table-description-dir is ever live at a time.
+        cur = trino_conn.cursor()
+        cur.execute("DROP CATALOG IF EXISTS kafka_pipeline")
+        cur.fetchall()
 
 
 async def _create_topic() -> None:

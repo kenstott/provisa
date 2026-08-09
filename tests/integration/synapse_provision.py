@@ -68,15 +68,25 @@ _BLOB_ROLE = "Storage Blob Data Contributor"
 
 _AZ_TIMEOUT_S = 1800  # workspace create is the long pole (~5 min); RG delete can reach ~15 min
 _RBAC_TIMEOUT_S = 600  # AAD role assignments are eventually consistent -- minutes, not seconds
+_AZ_TRANSIENT_MARKERS = ("read timed out", "connection aborted", "connection reset", "remote end closed connection")
+_AZ_TRANSIENT_RETRIES = 4
 
 
 def _az(*args: str, timeout: int = _AZ_TIMEOUT_S) -> str:
-    proc = subprocess.run(
-        ["az", *args], capture_output=True, text=True, timeout=timeout, check=False
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"az {' '.join(args)} failed ({proc.returncode}): {proc.stderr.strip()}")
-    return proc.stdout.strip()
+    # az CLI's own HTTP client to management.azure.com has a fixed ~300s read timeout that is
+    # shorter than our subprocess budget, so a single slow ARM control-plane response fails the
+    # call well before `timeout` is reached -- retry those transient transport failures here.
+    for attempt in range(_AZ_TRANSIENT_RETRIES + 1):
+        proc = subprocess.run(
+            ["az", *args], capture_output=True, text=True, timeout=timeout, check=False
+        )
+        if proc.returncode == 0:
+            return proc.stdout.strip()
+        stderr = proc.stderr.strip()
+        if attempt == _AZ_TRANSIENT_RETRIES or not any(m in stderr.lower() for m in _AZ_TRANSIENT_MARKERS):
+            raise RuntimeError(f"az {' '.join(args)} failed ({proc.returncode}): {stderr}")
+        time.sleep(5 * (attempt + 1))
+    raise AssertionError("unreachable")
 
 
 def cli_ready() -> str | None:

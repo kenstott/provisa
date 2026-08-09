@@ -18,6 +18,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.cypher.parser import ReturnClause, ReturnItem
+from provisa.cypher.translator_helpers import _is_bare_variable
 
 # Requirements: REQ-347
 
@@ -40,12 +41,24 @@ class GroupByMixin:  # REQ-653
     def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         raise NotImplementedError
 
+    def _group_by_expr_for_item(self, expr_text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Match `_build_with_select_items`'s shape for a bare node/rel variable: the SELECT list
+        expands it to `alias.*`, so GROUP BY must group by the same `alias.*`, not a bare column
+        named after the Cypher variable — else the two column sets disagree at the engine."""
+        var_table = getattr(self, "_var_table", {})
+        if _is_bare_variable(expr_text) and expr_text in var_table:
+            return exp.Column(
+                this=exp.Star(),
+                table=exp.Identifier(this=expr_text),
+            )
+        return self._parse_expr(expr_text)
+
     def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__  # REQ-347
         items = return_clause.items
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._parse_expr(item.expression.strip())
+            self._group_by_expr_for_item(item.expression.strip())
             for item in items
             if not _has_aggregate(item.expression)
         ]
@@ -54,7 +67,7 @@ class GroupByMixin:  # REQ-653
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [
-            self._parse_expr(item.expression.strip())
+            self._group_by_expr_for_item(item.expression.strip())
             for item in items
             if not _has_aggregate(item.expression)
         ]

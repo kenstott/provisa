@@ -22,6 +22,7 @@ from __future__ import annotations
 
 # Requirements: REQ-222, REQ-256, REQ-266, REQ-267
 
+import json
 import logging
 from typing import Any
 
@@ -33,6 +34,7 @@ from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
     get_scalar_fields as _get_scalar_fields_shared,
 )
+from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor.serialize import serialize_aggregate, serialize_group_by
@@ -145,6 +147,36 @@ def _parse_group_by_param(params: dict[str, str]) -> list[str]:
     if not raw:
         return []
     return [c.strip() for c in raw.split(",") if c.strip()]
+
+
+def _parse_include_nodes(params: dict[str, str]) -> bool | list[str]:
+    """Parse ?includeNodes= (REQ-1401/REQ-1402).
+
+    ``true``/``1`` requests every scalar field. Any other non-empty value is a field
+    projection — a JSON array of dot-notated paths (``includeNodes=["user_id","user.email"]``,
+    matching JSON:API's own path conventions) or, for hand-typed convenience, a bare
+    comma-separated equivalent (``includeNodes=user_id,user.email``). A path with no dot names
+    a scalar field on the base table directly; each further dot segment names a scalar field one
+    more relationship hop away (``a.b.c`` = two hops), with depth bounded only by how far the
+    schema's own relationships actually go. Path segments are translated via ``apply_gql_name``
+    downstream but never validated against the schema locally — an unresolvable path is left
+    for ``parse_query``'s own validation to reject with a ``GraphQLValidationError`` (mapped to
+    a 400 at the call site), same as ``by_cols``/``groupBy`` elsewhere in this module.
+    """
+    raw = (params.get("includeNodes") or "").strip()
+    if not raw:
+        return False
+    if raw.lower() in ("true", "1"):
+        return True
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return False
+        if not isinstance(parsed, list):
+            return False
+        return [p.strip() for p in parsed if isinstance(p, str) and p.strip()]
+    return [t.strip() for t in raw.split(",") if t.strip()]
 
 
 def _unwrap_type(gql_type: Any) -> Any:
@@ -278,6 +310,81 @@ def _build_aggregate_graphql_query(
     return f"{{ {field_name}{args_str} {{ aggregate {{ {selection} }} }} }}"
 
 
+def _node_item_type(schema: GraphQLSchema, table: str) -> GraphQLObjectType | None:
+    """The ``{Type}GroupByRow.nodes`` list-item type schema_gen.py already builds, or None."""
+    query_type = schema.query_type
+    if query_type is None:
+        return None
+    field_name = _resolve_agg_field_name(schema, table, group_by=True)
+    if field_name is None:
+        return None
+    field = query_type.fields.get(field_name)
+    if field is None:
+        return None
+    result_type = _unwrap_type(field.type)
+    if not isinstance(result_type, GraphQLObjectType):
+        return None
+    nodes_field = result_type.fields.get("nodes")
+    if nodes_field is None:
+        return None
+    item_type = _unwrap_type(nodes_field.type)
+    return item_type if isinstance(item_type, GraphQLObjectType) else None
+
+
+def _node_field_names(schema: GraphQLSchema, table: str) -> list[str]:
+    """Scalar field names selectable inside a ``{table}_group_by`` row's ``nodes { ... }`` (REQ-1401)."""
+    item_type = _node_item_type(schema, table)
+    if item_type is None:
+        return []
+    return [
+        name
+        for name, f in item_type.fields.items()
+        if not (name.startswith("_") and name.endswith("_"))
+        and not isinstance(_unwrap_type(f.type), GraphQLObjectType)
+    ]
+
+
+def _insert_node_path(tree: dict[str, dict], path: str) -> None:
+    node = tree
+    for seg in path.split("."):
+        node = node.setdefault(seg, {})
+
+
+def _render_node_selection(tree: dict[str, dict]) -> str:
+    """Render a dot-path tree into GraphQL selection-set text, translating each segment via
+    ``apply_gql_name``. No schema lookup here — same as ``by_cols`` elsewhere in this module, an
+    unresolvable name is left for ``parse_query``'s own validation to reject with a proper
+    ``GraphQLValidationError`` (mapped to a 400 at the call site), rather than silently vanishing
+    from the selection with no signal to the caller that their path was wrong.
+    """
+    parts = []
+    for seg, children in tree.items():
+        name = apply_gql_name(seg.strip())
+        if children:
+            parts.append(f"{name} {{ {_render_node_selection(children)} }}")
+        else:
+            parts.append(name)
+    return " ".join(parts)
+
+
+def _build_nodes_selection(paths: list[str]) -> str:
+    """Convert ``includeNodes`` dot-notated paths (REQ-1402) into a GraphQL selection set.
+
+    ``"user_id"`` selects a scalar field on the base ``nodes`` row directly; ``"user.email"``
+    selects a scalar field one relationship hop away; ``"user.company.name"`` two hops, and so
+    on — depth is bounded only by how far the schema's relationship types actually go, not by
+    this function. Path segments are API-native (physical) names, same convention as
+    ``?groupBy=``/``?fields=``, so each segment is run through ``apply_gql_name`` before matching
+    against the schema's own spelling — comparing physical names against GQL-convention field
+    names directly would fail every path whenever the two conventions diverge (e.g. ``user_id``
+    vs ``userId``).
+    """
+    tree: dict[str, dict] = {}
+    for path in paths:
+        _insert_node_path(tree, path)
+    return _render_node_selection(tree)
+
+
 def _build_group_by_graphql_query(
     schema: GraphQLSchema,
     table: str,
@@ -288,11 +395,23 @@ def _build_group_by_graphql_query(
     limit: int | None,
     offset: int | None,
     fields: list[str] | None,
+    include_nodes: bool | list[str] = False,
 ) -> str:
-    """Build `{ {table}_group_by(by: [...]) { groupKey aggregate { <selection> } } }`."""
+    """Build `{ {table}_group_by(by: [...]) { groupKey aggregate { <selection> } } }`.
+
+    ``by_cols`` are API-native (physical) column names, same as REST's ``?groupBy=`` accepts;
+    translated to the schema's GQL-convention spelling here, mirroring
+    ``grpc_table_to_group_by_graphql_text`` (REQ-1361).
+
+    ``include_nodes`` (REQ-1401) appends a ``nodes { ... }`` sub-selection of the base table's
+    scalar fields — the per-group row-level detail GraphQL's ``{table}_group_by`` already exposes.
+    ``True`` selects every scalar field; a list restricts the sub-selection to just those field
+    names (REQ-1402 projection — unknown names are dropped rather than erroring, since
+    ``?includeNodes=`` is user-typed and a typo shouldn't 400 the whole request).
+    """
     agg_map = _agg_fields_map(schema, table, group_by=True)
     selection = _build_aggregate_selection(agg_map, funcs, fields)
-    args_parts = [f"by: [{', '.join(by_cols)}]"]
+    args_parts = [f"by: [{', '.join(apply_gql_name(c) for c in by_cols)}]"]
     where_arg = _format_where_arg(where)
     if where_arg:
         args_parts.append(where_arg)
@@ -305,7 +424,16 @@ def _build_group_by_graphql_query(
         args_parts.append(f"offset: {offset}")
     args_str = f"({', '.join(args_parts)})"
     field_name = _resolve_agg_field_name(schema, table, group_by=True) or f"{table}_group_by"
-    return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {selection} }} }} }}"
+    nodes_part = ""
+    if include_nodes is True:
+        node_fields = _node_field_names(schema, table)
+        if node_fields:
+            nodes_part = f" nodes {{ {' '.join(node_fields)} }}"
+    elif include_nodes:
+        nodes_selection = _build_nodes_selection(include_nodes)
+        if nodes_selection:
+            nodes_part = f" nodes {{ {nodes_selection} }}"
+    return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {selection} }}{nodes_part} }} }}"
 
 
 def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, REQ-267
@@ -399,6 +527,24 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         is_aggregate = agg_funcs is not None and not is_group_by
 
         if is_group_by:
+            # REQ-1361: ?groupBy= takes API-native (physical) column names, same as the
+            # grpc-group-by-columns picker offers. Validate against ctx.aggregate_columns,
+            # mirroring the identical check in provisa/api/jsonapi/generator.py.
+            table_meta = ctx.tables.get(table)
+            valid_group_by_cols = (
+                {c for c, _t in ctx.aggregate_columns.get(table_meta.table_id, [])}
+                if table_meta is not None
+                else set()
+            )
+            for col in group_by_cols:
+                if col not in valid_group_by_cols:
+                    raise HTTPException(
+                        status_code=400, detail=f"Unknown group-by field {col!r}"
+                    )
+            # REQ-1401: ?includeNodes=true adds a nodes { ... } sub-selection — per-group
+            # row-level detail, mirroring GraphQL's {table}_group_by nodes field. REST has
+            # no ?include= relationship sideloading, so this is scalar fields only.
+            include_nodes = _parse_include_nodes(raw_params)
             gql_query = _build_group_by_graphql_query(
                 schema,
                 table,
@@ -409,6 +555,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 limit,
                 offset,
                 requested_fields,
+                include_nodes,
             )
         elif is_aggregate:
             gql_query = _build_aggregate_graphql_query(
@@ -463,6 +610,16 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 buffered=not (is_group_by or is_aggregate),
             )
             result = await _execute_plan(plan, state)
+
+            nodes_result = None
+            if compiled.nodes_sql is not None:
+                nodes_plan = await _govern_and_route_compiled(
+                    compiled.nodes_sql,
+                    role_id,
+                    exec_params=compiled.nodes_params or None,
+                    state=state,
+                )
+                nodes_result = await _execute_plan(nodes_plan, state)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except HTTPException:
@@ -478,10 +635,15 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
         # REQ-1359: aggregate/group-by results aren't resource rows — reuse the same
         # serializers the GraphQL/data pipeline uses for _aggregate/_group_by fields, but
-        # flatten to REST's existing flat {"data": ...} shape (no nodes requested).
+        # flatten to REST's existing flat {"data": ...} shape. REQ-1401: nodes included
+        # when ?includeNodes=true triggered a nodes_sql query above.
         if is_group_by:
             gb_response = serialize_group_by(
-                result.rows, compiled.columns, None, None, compiled.root_field
+                result.rows,
+                compiled.columns,
+                nodes_result.rows if nodes_result is not None else None,
+                compiled.nodes_columns if nodes_result is not None else None,
+                compiled.root_field,
             )
             return JSONResponse(content={"data": gb_response["data"][compiled.root_field]})
         if is_aggregate:

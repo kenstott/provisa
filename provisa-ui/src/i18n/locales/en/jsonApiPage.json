@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "Aggregate",
     "groupByColumns": "Group by columns",
     "aggregateFunctions": "Aggregate functions",
-    "selectAtLeastOneFunc": "Select at least one aggregate function"
+    "selectAtLeastOneFunc": "Select at least one aggregate function",
+    "includeNodes": "Include nodes"
   }
 }

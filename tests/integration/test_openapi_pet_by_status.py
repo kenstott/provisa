@@ -19,13 +19,18 @@ from __future__ import annotations
 
 import json
 import tempfile
+from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 import respx
 
+from provisa.core.db import init_schema
+
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
+_SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 
 MOCK_SPEC = {
     "openapi": "3.0.0",
@@ -132,7 +137,16 @@ def _make_config(spec_path: str) -> dict:
 async def pg_conn(tenant_db):
     # load_config runs against the control-plane Database shim (advisory_xact_lock,
     # execute_core), scoped to org_default — the same connection the app uses.
+    # tenant_db itself leaves search_path unset (public), per tests/conftest.py's
+    # tenant_db fixture docstring — callers that need org_default must set it
+    # per-acquire, same as test_schema_gen.py's _load_config fixture. This module
+    # is marked group_sources and is not guaranteed to run after another group's
+    # test module has bootstrapped the org_default schema (e.g. `-m group_sources`
+    # deselects the app-boot tests that would otherwise create it), so init_schema
+    # is called here too — idempotent (CREATE SCHEMA/TABLE IF NOT EXISTS).
+    await init_schema(tenant_db, _SCHEMA_SQL)
     async with tenant_db.acquire() as conn:
+        await conn.execute("SET search_path TO org_default")
         yield conn
 
 

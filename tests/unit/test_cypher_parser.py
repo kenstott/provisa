@@ -62,6 +62,17 @@ def test_order_by_parsed():
     assert ast.order_by[0].direction == "DESC"
 
 
+def test_order_by_multiple_columns_parsed():
+    ast = parse_cypher(
+        "MATCH (u:Person)-[:WROTE]->(p:Post) RETURN u.id, p.id ORDER BY u.id, p.id"
+    )
+    assert len(ast.order_by) == 2
+    assert ast.order_by[0].expression.replace(" ", "") == "u.id"
+    assert ast.order_by[1].expression.replace(" ", "") == "p.id"
+    assert ast.order_by[0].direction == "ASC"
+    assert ast.order_by[1].direction == "ASC"
+
+
 def test_return_alias():
     ast = parse_cypher("MATCH (n:Person) RETURN n.name AS fullname")
     item = ast.return_clause.items[0]

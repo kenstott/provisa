@@ -187,5 +187,13 @@ async def test_hive_s3_catalog_created_and_queryable():
         rows = cur.fetchall()
         assert sorted((r[0], r[1]) for r in rows) == _WIDGETS
     finally:
+        # DROP CATALOG only removes the Trino connector config -- the Hive metastore's schema
+        # and table (and the physical warehouse location) are shared across every catalog
+        # pointed at this metastore, so leaving them behind poisons the next Hive test to reuse
+        # _SCHEMA/_TABLE with HIVE_PATH_ALREADY_EXISTS.
+        try:
+            _exec(cur, f"DROP TABLE IF EXISTS {catalog}.{_SCHEMA}.{_TABLE}")
+        except Exception:
+            pass
         _drop(cur, catalog)
         conn.close()

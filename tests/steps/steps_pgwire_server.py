@@ -8,12 +8,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import struct
+import threading
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import bcrypt
+import jwt
 import pytest
 from pytest_bdd import given, when, then, parsers, scenarios
+
+from provisa.auth.models import AuthIdentity
+
+_SECRET = "test-signing-key-at-least-32-bytes-long"
 
 
 scenarios("../features/REQ-527.feature")
@@ -33,7 +43,27 @@ scenarios("../features/REQ-589.feature")
 
 
 @pytest.fixture
-def shared_data() -> dict:
+def pgwire_loop():
+    """Running event loop for pgwire auth; sets pg_server._loop so handle_md5_password can submit coroutines."""
+    import provisa.pgwire.server as pg_server
+
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    previous = pg_server._loop
+    pg_server._loop = loop
+    try:
+        yield loop
+    finally:
+        pg_server._loop = previous
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
+@pytest.fixture
+def shared_data(pgwire_loop) -> dict:
+    del pgwire_loop  # triggers setup; value unused
     return {}
 
 
@@ -183,156 +213,251 @@ def pgwire_listener_disabled_then_enabled(shared_data):
 
 
 # ===========================================================================
-# REQ-529 — pgwire auth type 3; trust/simple modes; other providers rejected
+# REQ-529 — pgwire auth type 3; trust/simple/OIDC modes; invalid credential → 28P01
 # ===========================================================================
 
+# ---------------------------------------------------------------------------
+# Helpers — same real-invocation pattern as steps_pgwire_pluggable_auth.py
+# ---------------------------------------------------------------------------
 
-@given("a pgwire connection with a provider other than none or simple")
-def pgwire_unsupported_provider(shared_data):
-    """Set up a mock AppState with a provider that is neither 'none' nor 'simple'."""
-    unsupported_provider = "oidc"
 
-    # Build a minimal mock AppState that mirrors what ProvisaHandler reads.
-    mock_state = MagicMock()
-    mock_state.auth_config = {"provider": unsupported_provider}
-    mock_state.auth_middleware_active = True
+class _Session529:
+    """A session with no role until the handler grants one."""
 
-    shared_data["provider"] = unsupported_provider
-    shared_data["mock_state"] = mock_state
+    org_id = None
 
-    # Confirm the provider is genuinely unsupported.
-    assert unsupported_provider not in ("none", "simple"), (
-        f"Provider {unsupported_provider!r} must not be 'none' or 'simple' for this scenario"
+
+class _Ctx529:
+    def __init__(self, user: str):
+        self.params = {"user": user}
+        self.session = _Session529()
+
+
+def _handler529(shared_data: dict):
+    """Bare ProvisaHandler with socket replaced so wire bytes land in shared_data."""
+    from provisa.pgwire.server import ProvisaHandler
+
+    handler = object.__new__(ProvisaHandler)
+    errors = shared_data.setdefault("errors", [])
+    admitted = shared_data.setdefault("admitted", [])
+
+    handler._send_pg_error = lambda severity, sqlstate, message: errors.append(
+        (severity, sqlstate, message)
     )
+    handler.send_authentication_ok = lambda: admitted.append(True)
+    handler.handle_post_auth = lambda ctx: None  # noqa: ARG005
+    handler._assert_peer_binding = lambda username: None  # noqa: ARG005 — no mTLS in tests
+    handler._sasl_offered = False
+    return handler
+
+
+def _authenticate529(shared_data: dict, *, user: str = "alice") -> None:
+    """Run handle_md5_password against the auth config recorded in shared_data."""
+    shared_data["errors"] = []
+    shared_data["admitted"] = []
+    state = SimpleNamespace(
+        auth_config=shared_data.get("auth_config"),
+        auth_middleware_active=shared_data.get("auth_middleware_active", True),
+        multitenancy=False,
+        admin_db=None,
+    )
+    handler = _handler529(shared_data)
+    ctx = cast(Any, _Ctx529(user))
+    shared_data["ctx"] = ctx
+
+    patches = [patch("provisa.pgwire.server.state", state)]
+    provider_obj = shared_data.get("provider")
+    if provider_obj is not None:
+        patches.append(
+            patch("provisa.auth.wiring.build_auth_provider", return_value=provider_obj)
+        )
+    payload = shared_data["password"].encode("utf-8") + b"\x00"
+    try:
+        with patches[0]:
+            if len(patches) > 1:
+                with patches[1]:
+                    handler.handle_md5_password(ctx, payload)
+            else:
+                handler.handle_md5_password(ctx, payload)
+        shared_data["raised"] = None
+    except RuntimeError as exc:
+        shared_data["raised"] = exc
+
+
+# ---------------------------------------------------------------------------
+# Triple 1 — provider: none (trust mode)
+# ---------------------------------------------------------------------------
+
+
+@given("pgwire is launched with provider `none`")
+def given_provider_none(shared_data):
+    """Trust mode: auth_config declares provider=none; password is irrelevant."""
+    shared_data["auth_config"] = {"provider": "none"}
+    shared_data["auth_middleware_active"] = True
+    shared_data["provider"] = None
+
+
+@when("a client connects with any password")
+def when_any_password(shared_data):
+    shared_data["password"] = "anything-at-all"
+    _authenticate529(shared_data, user="alice")
+
+
+@then("the username becomes the role_id and the session is established")
+def then_username_is_role(shared_data):
+    assert shared_data["errors"] == [], f"Unexpected errors in trust mode: {shared_data['errors']}"
+    assert shared_data.get("admitted") == [True], "send_authentication_ok must be called in trust mode"
+    assert shared_data["ctx"].session.role_id == "alice", (
+        f"role_id must equal the startup username; got {shared_data['ctx'].session.role_id!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Triple 2 — credential provider (simple / basic)
+# ---------------------------------------------------------------------------
+
+
+def _simple_auth_config_529() -> dict:
+    return {
+        "provider": "simple",
+        "allow_simple_auth": True,
+        "jwt_secret": _SECRET,
+        "simple": {
+            "users": [
+                {
+                    "username": "alice",
+                    "password_hash": bcrypt.hashpw(b"s3cret", bcrypt.gensalt()).decode(),
+                    "roles": ["steward"],
+                }
+            ]
+        },
+        "role_mapping": [
+            {"type": "contains", "claim": "roles", "value": "steward", "role": "steward"}
+        ],
+        "default_role": "analyst",
+    }
+
+
+@given("pgwire is launched with a credential provider (`simple` or `basic`)")
+def given_credential_provider(shared_data):
+    shared_data["auth_config"] = _simple_auth_config_529()
+    shared_data["auth_middleware_active"] = True
+    shared_data["provider"] = None
+
+
+@when("a client presents a valid password for a known user")
+def when_valid_password(shared_data):
+    shared_data["password"] = "s3cret"
+    _authenticate529(shared_data, user="alice")
+
+
+@then("the credential is verified through the provider and a role is resolved")
+def then_credential_verified_role_resolved(shared_data):
+    assert shared_data["errors"] == [], (
+        f"Valid credential must not produce errors; got {shared_data['errors']}"
+    )
+    role = shared_data["ctx"].session.role_id
+    assert role is not None, "A role must be set after successful credential verification"
+    assert role != "alice", (
+        "role_id must come from role_mapping/default, not the bare username"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Triple 3 — OIDC-family provider (bearer token as password)
+# ---------------------------------------------------------------------------
+
+
+class _OidcProvider529:
+    """Minimal OIDC provider stub: validates a HS256 JWT and returns an AuthIdentity."""
+
+    auth_scheme = "bearer"
+
+    def __init__(self, *, seen: dict):
+        self._seen = seen
+
+    async def validate_token(self, token: str) -> AuthIdentity:
+        self._seen["token"] = token
+        claims = jwt.decode(token, _SECRET, algorithms=["HS256"], audience="provisa")
+        return AuthIdentity(
+            user_id=claims["email"],
+            email=claims["email"],
+            display_name=None,
+            roles=[],
+            raw_claims=claims,
+        )
+
+
+@given("pgwire is launched with an OIDC-family provider")
+def given_oidc_provider(shared_data):
+    seen: dict = {}
+    shared_data["auth_config"] = {
+        "provider": "oidc",
+        "oidc": {
+            "discovery_url": "https://issuer/.well-known/openid-configuration",
+            "client_id": "provisa",
+            "audience": "provisa",
+        },
+        "role_mapping": [
+            {"type": "exact", "claim": "email", "value": "ada@x.io", "role": "analyst"}
+        ],
+        "default_role": "viewer",
+    }
+    shared_data["auth_middleware_active"] = True
+    shared_data["provider"] = _OidcProvider529(seen=seen)
+    shared_data["seen"] = seen
+
+
+@when("a client presents a bearer token as the password")
+def when_bearer_token(shared_data):
+    shared_data["password"] = jwt.encode(
+        {"email": "ada@x.io", "aud": "provisa", "iss": "https://issuer"},
+        _SECRET,
+        algorithm="HS256",
+    )
+    _authenticate529(shared_data, user="ada")
+
+
+@then("the token is validated through AuthProvider.validate_token and a role is resolved")
+def then_token_validated_role_resolved(shared_data):
+    assert shared_data["errors"] == [], (
+        f"Valid OIDC token must not produce errors; got {shared_data['errors']}"
+    )
+    assert shared_data["seen"]["token"] == shared_data["password"], (
+        "validate_token must receive the raw password payload as the bearer token"
+    )
+    role = shared_data["ctx"].session.role_id
+    assert role is not None, "A role must be set after OIDC token validation"
+
+
+# ---------------------------------------------------------------------------
+# Triple 4 — invalid credential → FATAL 28P01
+# ---------------------------------------------------------------------------
+
+
+@given("any configured provider and an invalid credential")
+def given_invalid_credential(shared_data):
+    """Use the simple provider with the WRONG password so validation fails."""
+    shared_data["auth_config"] = _simple_auth_config_529()
+    shared_data["auth_middleware_active"] = True
+    shared_data["provider"] = None
+    shared_data["password"] = "wrong-password"
 
 
 @when("authentication is attempted")
-def attempt_authentication(shared_data):
-    """Invoke the ProvisaHandler authentication path and capture the outcome."""
-    from provisa.pgwire.server import ProvisaHandler
-
-    _provider = shared_data["provider"]
-    fatal_error = None
-    error_raised = False
-
-    # Construct a bare ProvisaHandler instance without triggering __init__.
-    handler = object.__new__(ProvisaHandler)
-
-    # Wire up minimal wfile/rfile mocks so the handler can write responses.
-    wfile_buf = bytearray()
-
-    def _capture_write(data):
-        wfile_buf.extend(data)
-
-    handler.wfile = MagicMock()
-    handler.wfile.write.side_effect = _capture_write
-    handler.wfile.flush = MagicMock()
-    handler.rfile = MagicMock()
-
-    # Attach the mock AppState.
-    mock_state = shared_data["mock_state"]
-
-    # Patch the module-level `state` so the handler reads our mock.
-    with patch("provisa.pgwire.server.state", mock_state):
-        # Simulate what the handler does when it inspects the provider during auth.
-        # The contract: any provider that is not 'none' or 'simple' must result in
-        # a FATAL login error being produced.
-        auth_config = mock_state.auth_config
-        prov = auth_config.get("provider", "none")
-
-        if prov not in ("none", "simple"):
-            # This is the exact branch that produces the FATAL error.
-            fatal_error = f"FATAL: unsupported auth provider: {prov!r}; only 'none' (trust) and 'simple' are supported over pgwire"
-            error_raised = True
-
-            # Also exercise sending the error via the handler's send_error path to
-            # verify the wire path is reachable (the method must exist).
-            assert hasattr(handler, "send_error") or hasattr(handler, "handle_login"), (
-                "ProvisaHandler must expose send_error or handle_login"
-            )
-
-    shared_data["fatal_error"] = fatal_error
-    shared_data["error_raised"] = error_raised
-    shared_data["wfile_buf"] = bytes(wfile_buf)
+def authentication_attempted(shared_data):
+    _authenticate529(shared_data)
 
 
-@then("a FATAL login error is returned")
-def fatal_login_error_returned(shared_data):
-    """Assert that a FATAL login error was produced for the unsupported provider."""
-    assert shared_data["error_raised"] is True, (
-        "Expected a FATAL login error to be raised for an unsupported auth provider"
+@then("a FATAL 28P01 is returned and no session is established")
+def then_fatal_28p01(shared_data):
+    assert shared_data["errors"] == [
+        ("FATAL", "28P01", 'password authentication failed for user "alice"')
+    ], f"Expected FATAL 28P01; got {shared_data['errors']}"
+    assert shared_data.get("admitted", []) == [], "No session must be admitted on invalid credential"
+    assert not hasattr(shared_data["ctx"].session, "role_id"), (
+        "role_id must not be set when authentication fails"
     )
-
-    fatal_error = shared_data["fatal_error"]
-    assert fatal_error is not None, "Fatal error message must not be None"
-    assert "FATAL" in fatal_error, f"Error must be FATAL-level; got: {fatal_error!r}"
-
-    provider = shared_data["provider"]
-    assert provider in fatal_error, (
-        f"Error message must reference the offending provider {provider!r}; got: {fatal_error!r}"
-    )
-
-    # Also verify that 'none' and 'simple' are explicitly named as the only valid options.
-    assert "none" in fatal_error or "simple" in fatal_error, (
-        f"Error should mention the valid providers; got: {fatal_error!r}"
-    )
-
-    # Double-check the provider is not one of the accepted ones (guard against test misconfiguration).
-    assert provider not in ("none", "simple"), (
-        f"This scenario requires an unsupported provider, not {provider!r}"
-    )
-
-    # -----------------------------------------------------------------------
-    # Additional coverage: verify ALL unsupported provider strings are rejected,
-    # and that 'none' / 'simple' are explicitly accepted.
-    # -----------------------------------------------------------------------
-    unsupported_providers = ["oidc", "firebase", "saml", "ldap", "oauth2", "custom"]
-    for bad_provider in unsupported_providers:
-        assert bad_provider not in ("none", "simple"), (
-            f"Provider {bad_provider!r} must not be in the accepted set"
-        )
-        expected_msg = (
-            f"FATAL: unsupported auth provider: {bad_provider!r}; "
-            f"only 'none' (trust) and 'simple' are supported over pgwire"
-        )
-        assert "FATAL" in expected_msg, f"Error for provider {bad_provider!r} must be FATAL-level"
-        assert bad_provider in expected_msg, (
-            f"Error must reference the offending provider {bad_provider!r}"
-        )
-
-    # Verify 'none' and 'simple' are accepted (no error produced).
-    accepted_providers = ["none", "simple"]
-    for good_provider in accepted_providers:
-        assert good_provider in ("none", "simple"), (
-            f"Provider {good_provider!r} must be in the accepted set"
-        )
-
-    # -----------------------------------------------------------------------
-    # Wire-level check: verify that ProvisaHandler.handle_login raises /
-    # sends a FATAL error for unsupported providers when invoked directly.
-    # -----------------------------------------------------------------------
-    from provisa.pgwire.server import ProvisaHandler
-
-    for bad_prov in ["oidc", "firebase"]:
-        bad_state = MagicMock()
-        bad_state.auth_config = {"provider": bad_prov}
-        bad_state.auth_middleware_active = True
-
-        bad_handler = object.__new__(ProvisaHandler)
-        bad_buf = bytearray()
-
-        def _write_bad(data, _buf=bad_buf):
-            _buf.extend(data)
-
-        bad_handler.wfile = MagicMock()
-        bad_handler.wfile.write.side_effect = _write_bad
-        bad_handler.wfile.flush = MagicMock()
-        bad_handler.rfile = MagicMock()
-
-        with patch("provisa.pgwire.server.state", bad_state):
-            prov_val = bad_state.auth_config.get("provider", "none")
-            is_fatal = prov_val not in ("none", "simple")
-            assert is_fatal is True, f"Provider {bad_prov!r} must trigger a FATAL error path"
 
 
 # ===========================================================================

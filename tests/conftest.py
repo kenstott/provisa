@@ -611,18 +611,43 @@ def _heavy_db_service(request):  # pyright: ignore
         yield
         return
     try:
-        try:
-            subprocess.run(
-                ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *sorted(services)],
-                cwd=_REPO_ROOT,
-                check=True,
-            )
-        except subprocess.CalledProcessError:
-            # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv` below then
-            # destroys the evidence — on CI that left an exasol boot failure with no engine log and
-            # no healthcheck output at all. Dump both before the container goes away.
+        # `--wait-timeout` bounds each attempt so a still-booting engine fails fast and
+        # deterministically instead of hanging until an external harness timeout kills the
+        # whole pytest process — which skips this fixture's own `finally` teardown below and
+        # leaves the container running (observed: an orphaned Atlas container still
+        # "health: starting" 6 minutes after the harness had already killed the test run).
+        cmd = [
+            "docker",
+            "compose",
+            *_ITEST_COMPOSE_ARGS,
+            "up",
+            "-d",
+            "--wait",
+            "--wait-timeout",
+            "180",
+            *sorted(services),
+        ]
+        last_error: subprocess.CalledProcessError | None = None
+        # Atlas (and other JVM engines) can crash on first boot on a Spring context init
+        # race, exit, and get relaunched by `restart: unless-stopped` — a later boot is the
+        # one that passes its healthcheck. Contention with the always-on dev Atlas container
+        # (same amd64-under-QEMU image, competing for CPU/memory) has been observed to push
+        # this past a single retry, so try up to three times before treating it as a real
+        # failure.
+        for _attempt in range(3):
+            try:
+                subprocess.run(cmd, cwd=_REPO_ROOT, check=True)
+                last_error = None
+                break
+            except subprocess.CalledProcessError as exc:
+                last_error = exc
+        if last_error is not None:
+            # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv`
+            # below then destroys the evidence — on CI that left an exasol boot failure
+            # with no engine log and no healthcheck output at all. Dump both before the
+            # container goes away.
             _dump_service_diagnostics(sorted(services))
-            raise
+            raise last_error
         yield
     finally:
         # Reclaim memory immediately (-s stop, -f force, -v drop anon volumes) so the next
@@ -766,6 +791,11 @@ def _wait_for_trino(request):  # pyright: ignore
     outlive the provisioning again.
     """
     if os.environ.get("PROVISA_SKIP_TRINO_WAIT"):
+        return
+    # No Docker provisioned means no Trino to wait for — self-contained tests (e.g.
+    # test_client_auth_login.py, which spins up its own uvicorn server) run in
+    # PYTEST_NO_DOCKER=1 sessions and must not block 360s on an absent coordinator.
+    if os.environ.get("PYTEST_NO_DOCKER"):
         return
     if not _needs_shared_stack(request.session.items):
         return

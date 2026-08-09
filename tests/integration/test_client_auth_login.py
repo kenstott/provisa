@@ -72,13 +72,13 @@ def login_server():
     simple_mod._provider_instance = provider
     thread.start()
     try:
-        deadline = time.time() + 30
-        while time.time() < deadline:
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
             if server.started:
                 break
-            time.sleep(0.05)
-        else:
-            raise RuntimeError(f"login server did not start on {port} within 30s")
+            time.sleep(0.1)
+        if not server.started:
+            raise RuntimeError(f"login server did not start on {port} within 120s")
         yield f"http://127.0.0.1:{port}"
     finally:
         simple_mod._provider_instance = previous

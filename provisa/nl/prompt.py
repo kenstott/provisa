@@ -59,6 +59,13 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
         "Do not use vendor-specific syntax; write standard SQL (postgres dialect).\n"
         "SQL can express everything GraphQL and Cypher can and more (GROUP BY, aggregates, joins, "
         "window functions) — always generate a SQL query. Never respond NOT_APPLICABLE.\n"
+        "When grouping by one dimension (e.g. 'by user') while also including detail from a "
+        "DIFFERENT joined table that is not itself a grouping dimension (e.g. 'with pet details'), "
+        "do not SELECT that other table's columns raw — they would force the SQL engine to add "
+        "them to GROUP BY too, silently turning them into extra grouping keys and fragmenting the "
+        "result. Instead aggregate them with json_agg(json_build_object('col', table.col, ...)) "
+        "(or array_agg(DISTINCT table.col) for a single column) so only the intended dimension's "
+        "columns appear in GROUP BY.\n"
         "Return only the SQL statement — no explanation, no markdown fences."
     ),
 }

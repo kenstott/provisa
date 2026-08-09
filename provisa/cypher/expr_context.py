@@ -121,10 +121,10 @@ class TranslatorExprContext:
             if info and info[1] is not None:
                 sql_alias = info[1].properties.get(name)
                 if sql_alias:
-                    return _col(sql_alias, var)
+                    return _col(sql_alias, info[0])
                 if name in info[1].native_filter_columns:
-                    return _col(f"_nf_{name}", var)
-            return _col(name, var)
+                    return _col(f"_nf_{name}", info[0])
+            return _col(name, info[0] if info else var)
         # Nested/computed object: attach the property as a quoted member of the lowered object.
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)

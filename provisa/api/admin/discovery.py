@@ -90,8 +90,15 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
             _log.warning("FK introspection returned %d candidates", len(fk_candidates))
             all_candidates.extend(fk_candidates)
 
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if api_key:
+            # REQ-1395, REQ-1398: the org's own per-vendor keys, with the Anthropic key falling
+            # back to the deployment's env var — same precedence as ProvisaLLMClient's
+            # org-vs-deployment config resolution.
+            from provisa.core.org_secrets import read_org_api_keys
+
+            api_keys = await read_org_api_keys(pool)
+            anthropic_key = api_keys.get("anthropic") or os.environ.get("ANTHROPIC_API_KEY")
+            if anthropic_key:
+                api_keys = {**api_keys, "anthropic": anthropic_key}
                 discovery_input = await collect_metadata(
                     engine,
                     conn,
@@ -104,7 +111,7 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
                     {t.table_name: len(t.columns) for t in discovery_input.tables},
                 )
                 prompt = build_prompt(discovery_input)
-                llm_candidates = analyze(prompt, api_key, discovery_input)
+                llm_candidates = analyze(prompt, api_keys, discovery_input)
                 _log.warning("LLM returned %d candidates after validation", len(llm_candidates))
                 all_candidates.extend(llm_candidates)
 

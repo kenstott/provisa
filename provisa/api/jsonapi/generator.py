@@ -43,6 +43,7 @@ from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
     get_scalar_fields as _get_scalar_fields_shared,
 )
+from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.sql_gen import compile_query
 
@@ -321,14 +322,23 @@ def _build_group_by_graphql_query(  # REQ-1359
     sort: list[dict[str, str]],
     limit: int | None,
     offset: int | None,
+    node_selection: str | None = None,  # REQ-1401
 ) -> str:
     """Build GraphQL query text for a ``{field}_group_by(by: [...])`` root field.
 
     Mirrors the where/order_by/limit/offset argument formatting ``_build_graphql_query_shared``
     already does for the base table field; adds the ``by`` argument that shared builder has no
     concept of since it's specific to group-by root fields.
+
+    ``by_columns`` are API-native (physical) column names, same as JSON:API's ``?groupBy=``
+    accepts; translated to the schema's GQL-convention spelling here, mirroring
+    ``grpc_table_to_group_by_graphql_text`` (REQ-1361).
+
+    ``node_selection``, when given, is a pre-built field-selection string appended as a
+    ``nodes { ... }`` sub-selection (REQ-1401) — the per-group row-level detail GraphQL's
+    ``{table}_group_by`` already exposes.
     """
-    args_parts = [f"by: [{', '.join(by_columns)}]"]
+    args_parts = [f"by: [{', '.join(apply_gql_name(c) for c in by_columns)}]"]
     if limit is not None:
         args_parts.append(f"limit: {limit}")
     if offset:
@@ -358,7 +368,8 @@ def _build_group_by_graphql_query(  # REQ-1359
         ob_parts = [f"{o['field']}: {o['dir']}" for o in sort]
         args_parts.append("order_by: {" + ", ".join(ob_parts) + "}")
     args_str = f"({', '.join(args_parts)})"
-    return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {agg_selection} }} }} }}"
+    nodes_part = f" nodes {{ {node_selection} }}" if node_selection else ""
+    return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {agg_selection} }}{nodes_part} }} }}"
 
 
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
@@ -504,8 +515,17 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         is_aggregate_only = agg_funcs is not None and not is_group_by
 
         if is_aggregate_only or is_group_by:
+            # REQ-1361: ?groupBy= takes API-native (physical) column names, same as the
+            # jsonapi-group-by-columns picker offers — not the schema's GQL-convention field
+            # names, which all_scalars holds. Validate against ctx.aggregate_columns instead.
+            table_meta = ctx.tables.get(gql_table)
+            valid_group_by_cols = (
+                {c for c, _t in ctx.aggregate_columns.get(table_meta.table_id, [])}
+                if table_meta is not None
+                else set()
+            )
             for col in group_cols:
-                if col not in all_scalars:
+                if col not in valid_group_by_cols:
                     return _jsonapi_error_response(
                         400,
                         "Invalid Group By",
@@ -546,8 +566,42 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             agg_selection = _build_agg_selection(agg_fields_type, funcs_filter)
 
             if is_group_by:
+                # REQ-1401: ?includeNodes=true adds a nodes { ... } sub-selection — per-group
+                # row-level detail, mirroring GraphQL's {table}_group_by nodes field. Reuses
+                # the same ?include= relationship sideloading the base listing endpoint offers.
+                node_selection = None
+                if raw_params.get("includeNodes") in ("true", "1"):
+                    node_fields = list(all_scalars)
+                    rel_fields = _get_relationship_fields(schema, gql_table)
+                    valid_rel_names = set(rel_fields.values())
+                    include_param = raw_params.get("include")
+                    include_names = (
+                        [n.strip() for n in include_param.split(",") if n.strip()]
+                        if include_param
+                        else []
+                    )
+                    for inc in include_names:
+                        if inc not in valid_rel_names:
+                            return _jsonapi_error_response(
+                                400,
+                                "Invalid Include",
+                                f"Unknown relationship {inc!r}",
+                                source_parameter="include",
+                            )
+                        inc_scalars = _relationship_scalars(schema, gql_table, inc)
+                        if inc_scalars:
+                            node_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
+                    node_selection = " ".join(node_fields)
+
                 gql_query = _build_group_by_graphql_query(
-                    target_field, group_cols, agg_selection, filters, sort, limit, pg_offset
+                    target_field,
+                    group_cols,
+                    agg_selection,
+                    filters,
+                    sort,
+                    limit,
+                    pg_offset,
+                    node_selection,
                 )
             else:
                 gql_query = _build_graphql_query_shared(
@@ -575,6 +629,16 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     state=state,
                 )
                 agg_result = await _execute_plan(agg_plan, state)
+
+                nodes_result = None
+                if agg_compiled.nodes_sql is not None:
+                    nodes_plan = await _govern_and_route_compiled(
+                        agg_compiled.nodes_sql,
+                        role_id,
+                        exec_params=agg_compiled.nodes_params or None,
+                        state=state,
+                    )
+                    nodes_result = await _execute_plan(nodes_plan, state)
             except PermissionError as e:
                 return _jsonapi_error_response(403, "Forbidden", str(e))
             except HTTPException as e:
@@ -589,7 +653,11 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
             if is_group_by:
                 shaped = serialize_group_by(
-                    agg_result.rows, agg_compiled.columns, None, None, agg_compiled.root_field
+                    agg_result.rows,
+                    agg_compiled.columns,
+                    nodes_result.rows if nodes_result is not None else None,
+                    agg_compiled.nodes_columns if nodes_result is not None else None,
+                    agg_compiled.root_field,
                 )
                 group_rows = shaped.get("data", {}).get(agg_compiled.root_field, [])
                 data = [

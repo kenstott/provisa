@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import socket
 import ssl
 import string
 import time
@@ -67,6 +68,13 @@ _ADMIN_USER = "provisa"
 _BASE_CAPACITY_RPU = 8  # Serverless minimum; anything larger only raises the per-second rate.
 _AVAILABLE_TIMEOUT_S = 900
 _DELETE_TIMEOUT_S = 900
+# GetWorkgroup reporting AVAILABLE means the control plane finished creating the workgroup, not
+# that the data-plane endpoint is reachable yet — DNS + ENI attachment + security-group propagation
+# trail behind that status flip, which was surfacing as a bare `psycopg2.OperationalError: ...
+# Operation timed out` in _seed_redshift() (REQ-1097 seeding). Measured directly (an isolated run of
+# this fixture): a 180s budget was not enough — a fresh public workgroup endpoint took longer than
+# that to become internet-reachable after AVAILABLE. 480s comfortably covers the observed lag.
+_TCP_READY_TIMEOUT_S = 480
 # A run that outlives this is dead, not slow: the whole session (stack boot included) is well
 # under an hour, and anything older is debris from a killed process that is still billing.
 _ORPHAN_AGE = timedelta(hours=2)
@@ -179,6 +187,27 @@ def _wait_available(rss: Any, workgroup: str) -> dict:
     )
 
 
+def _wait_tcp_ready(host: str, port: int) -> None:
+    """Block until the endpoint accepts a raw TCP connection.
+
+    Called after GetWorkgroup reports AVAILABLE and the security-group rule is authorized — status
+    AVAILABLE only means the control plane is done, not that DNS/ENI/security-group propagation to
+    the data-plane endpoint has finished (see _TCP_READY_TIMEOUT_S above).
+    """
+    deadline = time.monotonic() + _TCP_READY_TIMEOUT_S
+    last_exc: OSError | None = None
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=5):
+                return
+        except OSError as exc:
+            last_exc = exc
+            time.sleep(5)
+    raise RuntimeError(
+        f"{host}:{port} not accepting TCP connections within {_TCP_READY_TIMEOUT_S}s"
+    ) from last_exc
+
+
 def _delete_workgroup(rss: Any, workgroup: str) -> None:
     try:
         rss.delete_workgroup(workgroupName=workgroup)
@@ -287,6 +316,9 @@ def redshift_cluster():
             except ClientError as exc:
                 if exc.response["Error"]["Code"] != "InvalidPermission.Duplicate":
                     raise
+
+        print(f"== waiting for TCP reachability at {endpoint}:{port} ==", flush=True)
+        _wait_tcp_ready(endpoint, port)
 
         os.environ["REDSHIFT_HOST"] = endpoint
         os.environ["REDSHIFT_PORT"] = str(port)

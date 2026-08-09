@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
-from provisa.compiler.naming import active_gql_convention
+from provisa.compiler.naming import active_gql_convention, apply_gql_name
 from provisa.compiler.sql_gen import _q
 from provisa.compiler.sql_rewrite import _semantic_table_ref
 
@@ -115,9 +115,9 @@ def split_agg_columns(columns: list[Any], row: tuple) -> tuple[dict, dict]:
         val = _convert_value(val)
         parts = col_ref.nested_in.split(".")
         if len(parts) == 1:
-            top[col_ref.field_name] = val
+            top[col_ref.column] = val
         else:
-            nested.setdefault(parts[-1], {})[col_ref.field_name] = val
+            nested.setdefault(parts[-1], {})[col_ref.column] = val
     return top, nested
 
 
@@ -150,19 +150,47 @@ def grpc_table_to_aggregate_graphql_text(
     return f"{{ {agg_field} {{ aggregate {selection} }} }}"
 
 
+def grpc_relation_scalars(ctx: Any, type_name: str, rel_field: str) -> list[str]:
+    """Scalar column names of the related table for a many-to-one relationship field on
+    ``type_name`` (REQ-1405), sourced from ``ctx.joins`` rather than GraphQL schema
+    introspection — query_ir has no schema, only the compiler context every transport shares."""
+    join_meta = ctx.joins.get((type_name, rel_field))
+    if join_meta is None or join_meta.cardinality != "many-to-one":
+        return []
+    return [c for c, _t in ctx.aggregate_columns.get(join_meta.target.table_id, [])]
+
+
 def grpc_table_to_group_by_graphql_text(
-    ctx: Any, type_name: str, by_columns: list[str], funcs: list[str] | None = None
+    ctx: Any,
+    type_name: str,
+    by_columns: list[str],
+    funcs: list[str] | None = None,
+    include_nodes: bool = False,
+    include: list[str] | None = None,
 ) -> str | None:
     """GraphQL query text for ``Query{Type}GroupBy`` (REQ-1359): targets the same
     ``{field}_group_by(by: [...])`` root field JSON:API/REST synthesize.
 
-    ``funcs`` restricts to a caller-chosen subset of aggregate functions (REQ-1361)."""
+    ``funcs`` restricts to a caller-chosen subset of aggregate functions (REQ-1361).
+    ``include_nodes`` (REQ-1401) appends a ``nodes { ... }`` sub-selection of the base table's
+    scalar columns, mirroring JSON:API/REST's ``?includeNodes=true`` (provisa/api/jsonapi/
+    generator.py::_build_group_by_graphql_query). ``include`` (REQ-1405) names many-to-one
+    relationship fields whose scalar columns nest inside ``nodes`` too, mirroring JSON:API's
+    ``?include=`` sideloading (generator.py::_relationship_scalars)."""
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
     if not by_columns:
         return None
     gb_field = _group_by_field_name(meta.field_name)
-    by_arg = "[" + ", ".join(by_columns) + "]"
+    by_arg = "[" + ", ".join(apply_gql_name(c) for c in by_columns) + "]"
     agg_selection = _agg_fields_selection(ctx, meta.table_id, funcs)
-    return f"{{ {gb_field}(by: {by_arg}) {{ groupKey aggregate {agg_selection} }} }}"
+    nodes_part = ""
+    if include_nodes:
+        node_fields = [apply_gql_name(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
+        for rel in include or []:
+            rel_scalars = grpc_relation_scalars(ctx, meta.type_name, rel)
+            if rel_scalars:
+                node_fields.append(f"{rel} {{ {' '.join(apply_gql_name(c) for c in rel_scalars)} }}")
+        nodes_part = f" nodes {{ {' '.join(node_fields)} }}"
+    return f"{{ {gb_field}(by: {by_arg}) {{ groupKey aggregate {agg_selection}{nodes_part} }} }}"

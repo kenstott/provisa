@@ -154,12 +154,14 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
         governed = apply_governance(cq.sql, gov_ctx)
         physical = rewrite_semantic_to_catalog_physical(governed, ctx)
         physical = _expand_views(physical, app_state)
+        physical = engine.transpile_physical(physical)
         result = await engine.execute_engine(physical, cq.params)
         nodes_result = None
         if cq.nodes_sql is not None:
             governed_nodes = apply_governance(cq.nodes_sql, gov_ctx)
             physical_nodes = rewrite_semantic_to_catalog_physical(governed_nodes, ctx)
             physical_nodes = _expand_views(physical_nodes, app_state)
+            physical_nodes = engine.transpile_physical(physical_nodes)
             nodes_result = await engine.execute_engine(physical_nodes, cq.nodes_params)
         out.append((cq, result, nodes_result))
     return out
@@ -239,22 +241,47 @@ async def _execute_grpc(query: str, role: str, app_state: Any) -> dict:
     # {Type}AggregateResult/{Type}GroupByRow messages carry (provisa/grpc/server.py), not
     # GraphQL's raw {"data": ...} envelope — the NL preview must look like what the gRPC
     # client actually receives, same as the JSON:API/OpenAPI previews below.
-    m = re.match(r"^Query(.+)GroupBy\(by=\[(.*?)\](?:, funcs=\[(.*)\])?\)$", query)
+    m = re.match(
+        r"^Query(.+)GroupBy\(by=\[(.*?)\](?:, funcs=\[(.*?)\])?"
+        r"(?:, include_nodes=true, include=\[(.*?)\])?\)$",
+        query,
+    )
     if m is not None:
         type_name = m.group(1)
         by_columns = [c.strip() for c in m.group(2).split(",") if c.strip()]
         funcs = [c.strip() for c in m.group(3).split(",") if c.strip()] if m.group(3) else None
-        graphql_text = _grpc_group_by_graphql_text(ctx, type_name, by_columns, funcs)
+        include_nodes = m.group(4) is not None
+        include = [c.strip() for c in m.group(4).split(",") if c.strip()] if m.group(4) else None
+        graphql_text = _grpc_group_by_graphql_text(
+            ctx, type_name, by_columns, funcs, include_nodes, include
+        )
         if graphql_text is None:
             raise RuntimeError(f"No table matches gRPC type: {type_name}")
-        cq, result, _ = await _run_single_compiled_graphql(graphql_text, role, app_state)
+        cq, result, nodes_result = await _run_single_compiled_graphql(graphql_text, role, app_state)
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(cq.columns)
+        nodes_by_key: dict = {}
+        if include_nodes and nodes_result is not None and cq.nodes_columns is not None:
+            join_key_indices = [
+                i for i, c in enumerate(cq.nodes_columns) if c.nested_in == "__join_key__"
+            ]
+            output_cols = [
+                (i, c) for i, c in enumerate(cq.nodes_columns) if c.nested_in is None
+            ]
+            for nrow in nodes_result.rows:
+                jkey = tuple(nrow[i] for i in join_key_indices)
+                nodes_by_key.setdefault(jkey, []).append(
+                    {c.field_name: nrow[i] for i, c in output_cols}
+                )
         rows = []
         for row in result.rows:
-            group_key = {c.field_name: row[i] for c, i in zip(group_key_cols, group_key_idx)}
+            group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
             agg_row = tuple(row[i] for i in agg_idx)
             top, nested = split_agg_columns(agg_cols, agg_row)
-            rows.append({"group_key": json.dumps(group_key, default=str), "aggregate": {**top, **nested}})
+            out_row = {"group_key": json.dumps(group_key, default=str), "aggregate": {**top, **nested}}
+            if include_nodes:
+                jkey = tuple(row[i] for i in group_key_idx)
+                out_row["nodes"] = nodes_by_key.get(jkey, [])
+            rows.append(out_row)
         return {"group_by": rows}
 
     m = re.match(r"^Query(.+)Aggregate(?:\(funcs=\[(.*)\]\))?$", query)
@@ -285,11 +312,18 @@ def _grpc_aggregate_graphql_text(
 
 
 def _grpc_group_by_graphql_text(
-    ctx: Any, type_name: str, by_columns: list[str], funcs: list[str] | None = None
+    ctx: Any,
+    type_name: str,
+    by_columns: list[str],
+    funcs: list[str] | None = None,
+    include_nodes: bool = False,
+    include: list[str] | None = None,
 ) -> str | None:
     from provisa.grpc.query_ir import grpc_table_to_group_by_graphql_text
 
-    return grpc_table_to_group_by_graphql_text(ctx, type_name, by_columns, funcs)
+    return grpc_table_to_group_by_graphql_text(
+        ctx, type_name, by_columns, funcs, include_nodes, include
+    )
 
 
 def _parse_aggregate_funcs(raw: str) -> list[str] | None:
@@ -298,8 +332,16 @@ def _parse_aggregate_funcs(raw: str) -> list[str] | None:
     return None if raw == "true" else [f.strip() for f in raw.split(",") if f.strip()]
 
 
+def _has_include_nodes(query: str) -> bool:
+    return re.search(r"[?&]includeNodes=(true|1)(&|$)", query) is not None
+
+
 async def _execute_jsonapi(query: str, role: str, app_state: Any) -> dict:
-    m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)\?groupBy=([^&]+)&aggregate=([^&]+)$", query)
+    # REQ-1361: _generate_jsonapi_query appends `&includeNodes=true` to every group-by URL, so
+    # the groupBy+aggregate match must tolerate (and act on) that trailing param instead of
+    # anchoring `$` right after `aggregate=...` — an anchored match falls through to the plain
+    # `/data/jsonapi/{domain}/{table}` case below and silently drops the aggregation.
+    m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)\?groupBy=([^&]+)&aggregate=([^&]+)", query)
     if m is not None:
         return await _execute_domain_table_aggregate(
             m.group(1),
@@ -309,6 +351,7 @@ async def _execute_jsonapi(query: str, role: str, app_state: Any) -> dict:
             app_state,
             "jsonapi",
             _parse_aggregate_funcs(m.group(4)),
+            _has_include_nodes(query),
         )
     m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)\?aggregate=([^&]+)$", query)
     if m is not None:
@@ -322,7 +365,7 @@ async def _execute_jsonapi(query: str, role: str, app_state: Any) -> dict:
 
 
 async def _execute_openapi(query: str, role: str, app_state: Any) -> dict:
-    m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)\?groupBy=([^&]+)&aggregate=([^&]+)$", query)
+    m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)\?groupBy=([^&]+)&aggregate=([^&]+)", query)
     if m is not None:
         return await _execute_domain_table_aggregate(
             m.group(1),
@@ -332,6 +375,7 @@ async def _execute_openapi(query: str, role: str, app_state: Any) -> dict:
             app_state,
             "openapi",
             _parse_aggregate_funcs(m.group(4)),
+            _has_include_nodes(query),
         )
     m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)\?aggregate=([^&]+)$", query)
     if m is not None:
@@ -370,13 +414,18 @@ async def _execute_domain_table_aggregate(
     app_state: Any,
     protocol: Literal["jsonapi", "openapi"],
     funcs: list[str] | None = None,
+    include_nodes: bool = False,
 ) -> dict:
     """REQ-1359: JSON:API/REST aggregate|groupBy params, routed through the same compile_query
     pipeline GraphQL/gRPC aggregate queries use (grpc_table_to_*_graphql_text), then shaped into
     each protocol's actual response envelope — JSON:API's ``{"data": null, "meta": {"aggregate":
     ...}}``/typed-resourceless-row shape (provisa/api/jsonapi/generator.py:588-615) or REST's flat
     ``{"data": ...}`` shape (provisa/api/rest/generator.py:479-497) — instead of returning
-    GraphQL's raw ``{"data": {root_field: ...}}`` body unmodified."""
+    GraphQL's raw ``{"data": {root_field: ...}}`` body unmodified.
+
+    ``include_nodes`` (REQ-1361/REQ-1401) mirrors ``?includeNodes=true`` — the per-group
+    row-level detail JSON:API/REST's real group-by endpoints attach via a ``nodes { ... }``
+    sub-selection."""
     from provisa.executor.serialize import serialize_aggregate, serialize_group_by
 
     ctx = _get_ctx(app_state, role)
@@ -387,16 +436,22 @@ async def _execute_domain_table_aggregate(
     if meta is None:
         raise RuntimeError(f"No table matches {domain_id}/{table_name}")
     if by_columns:
-        graphql_text = _grpc_group_by_graphql_text(ctx, meta.type_name, by_columns, funcs)
+        graphql_text = _grpc_group_by_graphql_text(ctx, meta.type_name, by_columns, funcs, include_nodes)
     else:
         graphql_text = _grpc_aggregate_graphql_text(ctx, meta.type_name, funcs)
     if graphql_text is None:
         raise RuntimeError(f"No aggregate/group-by fields for {domain_id}/{table_name}")
 
-    cq, result, _ = await _run_single_compiled_graphql(graphql_text, role, app_state)
+    cq, result, nodes_result = (await _compile_and_execute_graphql(graphql_text, role, app_state))[0]
 
     if by_columns:
-        shaped = serialize_group_by(result.rows, cq.columns, None, None, cq.root_field)
+        shaped = serialize_group_by(
+            result.rows,
+            cq.columns,
+            nodes_result.rows if nodes_result is not None else None,
+            cq.nodes_columns if nodes_result is not None else None,
+            cq.root_field,
+        )
         group_rows = shaped.get("data", {}).get(cq.root_field, [])
         if protocol == "jsonapi":
             return {

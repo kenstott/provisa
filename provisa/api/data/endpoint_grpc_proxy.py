@@ -209,7 +209,11 @@ async def grpc_group_by_columns(role_id: str, type_name: str):  # REQ-1361
     enum_type = schema.get_type(f"{meta.type_name}DistinctOnColumn")
     if not isinstance(enum_type, GraphQLEnumType):
         return []
-    return sorted(enum_type.values)
+    # REQ-1361/naming: gRPC's ``by`` argument takes proto-native column names (translated to the
+    # GraphQL enum's convention internally, see grpc_table_to_group_by_graphql_text) — the picker
+    # must offer the same names the request body actually accepts, not the enum's GQL-convention
+    # spelling.
+    return sorted(c for c, _t in ctx.aggregate_columns.get(meta.table_id, []))
 
 
 @router.get("/jsonapi-group-by-columns/{role_id}/{domain_id}/{table_name}")
@@ -243,7 +247,9 @@ async def jsonapi_group_by_columns(role_id: str, domain_id: str, table_name: str
     enum_type = schema.get_type(f"{meta.type_name}DistinctOnColumn")
     if not isinstance(enum_type, GraphQLEnumType):
         return []
-    return sorted(enum_type.values)
+    # Same rationale as grpc_group_by_columns: offer the API-native column names the
+    # ``?groupBy=`` request body actually accepts, not the enum's GQL-convention spelling.
+    return sorted(c for c, _t in ctx.aggregate_columns.get(meta.table_id, []))
 
 
 @router.post("/grpc/{type_name}")
@@ -333,7 +339,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
             out_rows = []
             for row in result.rows:
-                group_key = {c.field_name: row[i] for c, i in zip(group_key_cols, group_key_idx)}
+                group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
                 agg_row = tuple(row[i] for i in agg_idx)
                 top, nested = split_agg_columns(agg_cols, agg_row)
                 out_rows.append({"group_key": group_key, "aggregate": {**top, **nested}})

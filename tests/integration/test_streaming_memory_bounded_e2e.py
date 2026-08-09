@@ -24,6 +24,7 @@ import os
 import queue
 import sys
 import tempfile
+import traceback
 from typing import Any
 
 import pytest
@@ -105,12 +106,20 @@ class _DirectPools:
 
 
 def _vm_bytes() -> int:
-    """Current virtual-memory size of this process (Linux ``/proc/self/statm`` field 0, in pages)."""
-    with open("/proc/self/statm") as fh:
-        pages = int(fh.read().split()[0])
-    import resource
+    """Current virtual-memory size of this process (Linux ``/proc/self/statm`` field 0, in pages).
 
-    return pages * resource.getpagesize()
+    ``/proc/self/statm`` doesn't exist on macOS. The cap-bust callers of this function
+    (``_cap_address_space``) only ever run under ``@linux_only`` tests, but ``_trace()`` is also called
+    from the cross-platform peak-RSS tests (REQ-1220, run on darwin too) — so this must degrade instead
+    of raising there. ``ru_maxrss`` is a peak, not current VM size, but it's diagnostic-only on non-Linux.
+    """
+    if sys.platform.startswith("linux"):
+        with open("/proc/self/statm") as fh:
+            pages = int(fh.read().split()[0])
+        import resource
+
+        return pages * resource.getpagesize()
+    return _peak_rss_bytes()
 
 
 def _cap_address_space() -> None:
@@ -294,7 +303,7 @@ def _mem_worker(dsn: str, variant: str, q: "mp.Queue", cap: bool, trace_path: st
         # Genuine unexpected error: try to surface a precise message. If even this put fails (feeder
         # thread can't start), fall through to a non-zero exit so the parent reports the raw exitcode.
         try:
-            q.put(("err", repr(exc)))
+            q.put(("err", traceback.format_exc()))
         except BaseException:
             raise exc from None
 
@@ -457,7 +466,10 @@ def test_sqla_over_pg_row_stream_is_memory_bounded(big_pg):
     "variant", ["pg_row_stream", "pg_arrow_stream", "direct_stream", "airport_typed_stream"]
 )
 def test_streaming_peak_rss_is_bounded(big_pg, variant, capsys):
-    status, n, peak = _run_variant(big_pg, variant, cap=False)
+    result = _run_variant(big_pg, variant, cap=False)
+    if result[0] == "err":
+        pytest.fail(f"variant {variant!r} raised:\n{result[1]}")
+    status, n, peak = result
     with capsys.disabled():
         print(f"\n[mem] {variant}: rows={n} peak_rss={_mib(peak)} MiB (ceiling {_mib(_STREAM_PEAK_CEILING)})")
     assert (status, n) == ("ok", _ROWS)
@@ -467,7 +479,10 @@ def test_streaming_peak_rss_is_bounded(big_pg, variant, capsys):
 def test_materialized_peak_rss_is_large(big_pg, capsys):
     # The materializing control, measured rather than cap-busted: its peak RSS is far above the stream
     # ceiling, quantifying the gap that boundedness closes.
-    status, n, peak = _run_variant(big_pg, "direct_materialized", cap=False)
+    result = _run_variant(big_pg, "direct_materialized", cap=False)
+    if result[0] == "err":
+        pytest.fail(f"direct_materialized raised:\n{result[1]}")
+    status, n, peak = result
     with capsys.disabled():
         print(f"\n[mem] direct_materialized: rows={n} peak_rss={_mib(peak)} MiB (floor {_mib(_MATERIALIZE_PEAK_FLOOR)})")
     assert (status, n) == ("ok", _ROWS)

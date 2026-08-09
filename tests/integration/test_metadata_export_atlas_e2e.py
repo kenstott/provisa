@@ -23,21 +23,28 @@ stored — not what the adapter believed it sent.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
+import time
 
 import httpx
 import pytest
 
 from provisa.api.metadata_export import metadata_export
-from provisa.api.metadata_export.atlas import CLUSTER, GOVERNANCE_ATTRIBUTE
+from provisa.api.metadata_export.atlas import CLUSTER
 from provisa.core.models import MetadataExportConfig
 from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     RLS_FILTER,
     governed_snapshot,
 )
+
+# REQ-1388/1389: the native Atlas path (to_native_entities) rides its own typed attribute,
+# never GOVERNANCE_ATTRIBUTE ("userDescription") — that constant belongs to the legacy
+# rdbms_* path (to_entities), used by the separate Atlan provider.
+NATIVE_GOVERNANCE_ATTRIBUTE = "provisaGovernance"
 
 pytestmark = [
     pytest.mark.e2e,
@@ -88,13 +95,25 @@ async def published():
 
 
 async def _entity(type_name: str, qualified_name: str) -> dict:
+    """Read an entity back by its Atlas search index — which lags a bulk create.
+
+    ``atlas.py``'s own binding-capture path exists specifically because this index is
+    "laggy" (see ``_publish_entities``'s guidAssignments comment); a publish reporting
+    ``ok`` promises the entity was accepted, not that the search index has caught up yet.
+    Poll on a monotonic deadline rather than assume immediate consistency, matching the
+    established pattern used for the other service-readiness waits in this suite.
+    """
     pair = base64.b64encode(f"{ATLAS_USER}:{ATLAS_PASSWORD}".encode()).decode()
+    headers = {"Authorization": f"Basic {pair}"}
+    url = f"{_base_url()}/api/atlas/v2/entity/uniqueAttribute/type/{type_name}"
+    params = {"attr:qualifiedName": qualified_name}
+    deadline = time.monotonic() + 60
     async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.get(
-            f"{_base_url()}/api/atlas/v2/entity/uniqueAttribute/type/{type_name}",
-            params={"attr:qualifiedName": qualified_name},
-            headers={"Authorization": f"Basic {pair}"},
-        )
+        while True:
+            response = await client.get(url, params=params, headers=headers)
+            if response.status_code != 404 or time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(0.5)
     response.raise_for_status()
     return response.json()["entity"]
 
@@ -102,39 +121,39 @@ async def _entity(type_name: str, qualified_name: str) -> dict:
 async def test_every_governed_table_and_column_lands_in_the_catalog(published):
     assert published.published["table"] == 3
     assert published.published["column"] == 9
-    orders = await _entity("rdbms_table", ORDERS)
+    orders = await _entity("provisa_table", ORDERS)
     assert orders["attributes"]["name"] == "orders"
     for qualified_name in (ORDERS, CUSTOMERS, TOTALS):
-        assert (await _entity("rdbms_table", qualified_name))["status"] == "ACTIVE"
-    ssn = await _entity("rdbms_column", f"wh.public.orders.ssn@{CLUSTER}")
-    assert ssn["attributes"]["data_type"] == "text"
-    amount = await _entity("rdbms_column", f"wh.public.orders.amount@{CLUSTER}")
+        assert (await _entity("provisa_table", qualified_name))["status"] == "ACTIVE"
+    ssn = await _entity("provisa_column", f"wh.public.orders.ssn@{CLUSTER}")
+    assert ssn["attributes"]["dataType"] == "text"
+    amount = await _entity("provisa_column", f"wh.public.orders.amount@{CLUSTER}")
     assert amount["attributes"]["description"] == "Order total in cents"
 
 
 async def test_governance_signals_arrive_as_atlas_classifications(published):
-    ssn = await _entity("rdbms_column", f"wh.public.orders.ssn@{CLUSTER}")
+    ssn = await _entity("provisa_column", f"wh.public.orders.ssn@{CLUSTER}")
     masked = next(c for c in ssn["classifications"] if c["typeName"] == "provisa_masked")
-    assert masked["attributes"]["ruleId"] == "mask:wh.public.orders.ssn:regex"
+    assert masked["attributes"]["ruleId"] == "mask:provisa://acme/sales/tables/orders#field:ssn:regex"
     assert masked["attributes"]["exemptRoles"] == ["admin"]
     assert masked["attributes"]["restrictedRoles"] == ["analyst"]
 
-    margin = await _entity("rdbms_column", f"wh.public.orders.margin@{CLUSTER}")
+    margin = await _entity("provisa_column", f"wh.public.orders.margin@{CLUSTER}")
     assert [c["typeName"] for c in margin["classifications"]] == ["provisa_visibility_restricted"]
 
-    orders = await _entity("rdbms_table", ORDERS)
+    orders = await _entity("provisa_table", ORDERS)
     assert [c["typeName"] for c in orders["classifications"]] == ["provisa_rls_restricted"]
 
-    identifier = await _entity("rdbms_column", f"wh.public.orders.id@{CLUSTER}")
+    identifier = await _entity("provisa_column", f"wh.public.orders.id@{CLUSTER}")
     assert not identifier.get("classifications")
 
 
 async def test_the_steward_and_the_approved_relationship_are_readable_from_the_catalog(published):
-    orders = await _entity("rdbms_table", ORDERS)
+    orders = await _entity("provisa_table", ORDERS)
     # Atlas's own accountability field, so a catalog reader finds the steward where they already
     # look for an owner (REQ-609).
     assert orders["attributes"]["owner"] == "data-steward"
-    document = json.loads(orders["attributes"][GOVERNANCE_ATTRIBUTE])
+    document = json.loads(orders["attributes"][NATIVE_GOVERNANCE_ATTRIBUTE])
     assert document["domain"]["id"] == "sales"
     assert document["domain"]["steward"] == "data-steward"
     approved = document["approvedRelationships"]
@@ -146,8 +165,8 @@ async def test_the_steward_and_the_approved_relationship_are_readable_from_the_c
 async def test_column_lineage_of_the_derived_view_is_a_process_between_the_two_tables(published):
     assert published.published["lineage"] == 1
     process = await _entity("Process", DERIVATION)
-    orders = await _entity("rdbms_table", ORDERS)
-    totals = await _entity("rdbms_table", TOTALS)
+    orders = await _entity("provisa_table", ORDERS)
+    totals = await _entity("provisa_table", TOTALS)
     assert [ref["guid"] for ref in process["attributes"]["inputs"]] == [orders["guid"]]
     assert [ref["guid"] for ref in process["attributes"]["outputs"]] == [totals["guid"]]
     # Atlas has no column-level lineage type, so the column pairs and the compiled transform ride
@@ -165,25 +184,25 @@ async def test_republishing_lands_the_same_catalog_state(published):
     again = await _export().publish(governed_snapshot())
     assert again.ok, [e.message for e in again.errors]
     assert again.published == published.published
-    orders = await _entity("rdbms_table", ORDERS)
+    orders = await _entity("provisa_table", ORDERS)
     assert [c["typeName"] for c in orders["classifications"]] == ["provisa_rls_restricted"]
 
 
 async def test_the_catalog_is_never_handed_a_path_to_the_source(published):
     """Atlas must reach the data only through Provisa — a real connection config would give it
     an ungoverned route to the warehouse."""
-    instance = await _entity("rdbms_instance", f"wh@{CLUSTER}")
-    assert instance["attributes"]["platform"] == "provisa"
-    assert instance["attributes"]["protocol"] == "provisa"
+    instance = await _entity("provisa_source", f"wh@{CLUSTER}")
+    assert instance["attributes"]["sourceType"] == "postgresql"
     assert not instance["attributes"].get("hostname")
+    assert not instance["attributes"].get("connectionString")
 
 
 async def test_no_rule_body_is_stored_in_the_external_catalog(published):
     stored = json.dumps(
         [
-            await _entity("rdbms_table", ORDERS),
-            await _entity("rdbms_column", f"wh.public.orders.ssn@{CLUSTER}"),
-            await _entity("rdbms_column", f"wh.public.orders.margin@{CLUSTER}"),
+            await _entity("provisa_table", ORDERS),
+            await _entity("provisa_column", f"wh.public.orders.ssn@{CLUSTER}"),
+            await _entity("provisa_column", f"wh.public.orders.margin@{CLUSTER}"),
             await _entity("Process", DERIVATION),
         ]
     )

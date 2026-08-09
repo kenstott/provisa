@@ -72,37 +72,81 @@ def _agg_expr_types() -> dict[Any, str]:
     return _AGG_EXPR_TYPES
 
 
+def _join_fk_column(tree: Any, target_ref: str, dim_ref: str) -> str | None:
+    """Physical column on ``target_ref`` that a JOIN equates to ``dim_ref`` (e.g.
+    ``inquiries.user_id`` for ``... JOIN users ON users.id = inquiries.user_id``), so a GROUP BY
+    on a joined dimension column (e.g. ``users.name``) can be resolved back to the aggregate
+    table's own FK column — the shape a single-table gRPC/JSON:API/OpenAPI group-by can actually
+    express (REQ-1359)."""
+    from sqlglot import exp
+
+    for join in tree.args.get("joins") or []:
+        on = join.args.get("on")
+        if on is None:
+            continue
+        for eq in on.find_all(exp.EQ):
+            left, right = eq.left, eq.right
+            if not (isinstance(left, exp.Column) and isinstance(right, exp.Column)):
+                continue
+            if left.table == target_ref and right.table == dim_ref:
+                return left.name
+            if right.table == target_ref and left.table == dim_ref:
+                return right.name
+    return None
+
+
 def _resolve_aggregation_plan(
     ctx: Any, app_state: Any, semantic_sql: str
-) -> tuple[Any, list[str], bool, list[str]] | None:
+) -> tuple[Any, list[str], bool, list[str], list[str]] | None:
     """Parse the SQL branch's compiled semantic SQL to find the table and any GROUP BY the
     model settled on (REQ-1359), so gRPC/JSON:API/OpenAPI target the identical table and
     aggregation SQL/GraphQL/Cypher already resolved instead of independently guessing from the
     raw table-selection set, which can include unrelated star-schema tables (e.g. a `dim_pet`
     dimension view sorting alphabetically ahead of the `pets` table the question was about).
 
-    Returns (TableMeta, group_by_columns, is_aggregate_only, funcs), or None when the SQL can't
-    be parsed, its table isn't found, the GROUP BY isn't plain columns, or the table doesn't
-    have the corresponding enable_aggregates/enable_group_by flag on. ``funcs`` (REQ-1361) is
-    the AGG_FUNCS-ordered subset of aggregate functions the SQL actually calls, so
+    Returns (TableMeta, group_by_columns, is_aggregate_only, funcs, dim_paths), or None when the
+    SQL can't be parsed, its table isn't found, the GROUP BY isn't plain columns, or the table
+    doesn't have the corresponding enable_aggregates/enable_group_by flag on. ``funcs``
+    (REQ-1361) is the AGG_FUNCS-ordered subset of aggregate functions the SQL actually calls, so
     gRPC/JSON:API/OpenAPI can restrict their synthesized requests the same way the SQL branch
     already restricted itself — empty when no known aggregate function was found (e.g. a plain
-    GROUP BY with no aggregate column), meaning "every function".
+    GROUP BY with no aggregate column), meaning "every function". ``dim_paths`` (REQ-1405) is the
+    ``includeNodes`` dot-paths (e.g. ``["user.name", "user.email"]``) for any joined dimension
+    table's SELECT-projected columns the SQL branch pulled in (e.g. "by user with user
+    details") — empty when the SQL projects no joined-dimension columns.
     """
     import sqlglot
     from sqlglot import exp
 
-    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.naming import domain_to_sql_name, rel_field_name
     from provisa.grpc.query_ir import AGG_FUNCS
 
     try:
         tree = sqlglot.parse_one(semantic_sql, dialect="postgres")
     except Exception:
         return None
-    table_expr = tree.find(exp.Table)
-    if table_expr is None:
+
+    # The aggregate's OWN table (the one COUNT/SUM/etc. actually reads from) — not necessarily
+    # the FROM table. "count of inquiries by user" naturally joins users in for a readable name
+    # (`SELECT users.name, COUNT(inquiries.id) ... FROM users JOIN inquiries ...`), but the
+    # single-table group-by gRPC/JSON:API/OpenAPI (and GraphQL/Cypher) expose lives on inquiries.
+    from_expr = tree.find(exp.From)
+    from_table = from_expr.this if from_expr is not None else None
+    joined_tables = [j.this for j in (tree.args.get("joins") or []) if isinstance(j.this, exp.Table)]
+    all_tables = ([from_table] if isinstance(from_table, exp.Table) else []) + joined_tables
+    if not all_tables:
         return None
+
+    agg_node = next(
+        tree.find_all(exp.Count, exp.Sum, exp.Avg, exp.Max, exp.Min, exp.Stddev, exp.Variance), None
+    )
+    agg_col = agg_node.find(exp.Column) if agg_node is not None else None
+    tables_by_ref = {t.alias_or_name: t for t in all_tables}
+    table_expr = (tables_by_ref.get(agg_col.table) if agg_col is not None and agg_col.table else None) or (
+        from_table if isinstance(from_table, exp.Table) else all_tables[0]
+    )
     table_name = table_expr.name
+    table_ref = table_expr.alias_or_name
     schema_name = table_expr.db or ""
 
     meta = next(
@@ -130,12 +174,61 @@ def _resolve_aggregation_plan(
 
     group_exprs = tree.args.get("group")
     group_cols: list[str] = []
+    dim_refs: set[str] = set()
     if group_exprs is not None:
         for e in group_exprs.expressions:
             col = e if isinstance(e, exp.Column) else e.find(exp.Column)
             if col is None:
                 return None  # non-column GROUP BY (expression/ordinal) — fall back to plain fetch
-            group_cols.append(col.name)
+            if not col.table or col.table in (table_name, table_ref):
+                name = col.name
+            else:
+                # GROUP BY column belongs to a joined dimension table (e.g. users.name while
+                # aggregating inquiries) — resolve it to the aggregate table's own FK column via
+                # the JOIN condition instead of bailing to a plain fetch.
+                fk_col = _join_fk_column(tree, table_ref, col.table)
+                if fk_col is None:
+                    return None
+                name = fk_col
+                dim_refs.add(col.table)
+            if name not in group_cols:
+                group_cols.append(name)
+
+    # REQ-1405: SELECT-projected columns from a joined dimension table (e.g. "by user with user
+    # details" pulling in users.name/users.email alongside COUNT(inquiries.id)) become
+    # includeNodes dot-paths for gRPC/JSON:API/OpenAPI, the same relationship detail
+    # SQL/GraphQL already resolved — a single-table group-by has no other way to express them.
+    dim_paths: list[str] = []
+    select_exprs = tree.args.get("expressions") or []
+    dim_cols_by_ref: dict[str, list[str]] = {}
+    for e in select_exprs:
+        # A detail item may be a bare joined column (`users.name`) or, per the array_agg/json_agg
+        # convention taught in prompt.py's SQL instructions, an aggregate wrapping several joined
+        # columns (`json_agg(json_build_object('id', pets.id, 'name', pets.name, ...))`) — walk
+        # the whole subtree so every joined column surfaces, not just the first one found.
+        cols = [e] if isinstance(e, exp.Column) else list(e.find_all(exp.Column))
+        for col in cols:
+            if not col.table or col.table in (table_name, table_ref):
+                continue
+            if col.name not in dim_cols_by_ref.setdefault(col.table, []):
+                dim_cols_by_ref[col.table].append(col.name)
+            dim_refs.add(col.table)
+    if dim_refs:
+        joined_by_ref = {t.alias_or_name: t for t in all_tables if t.alias_or_name != table_ref}
+        for dim_ref in dim_refs:
+            dim_table = joined_by_ref.get(dim_ref)
+            dim_cols = dim_cols_by_ref.get(dim_ref)
+            if dim_table is None or not dim_cols:
+                continue
+            dim_meta = next(
+                (m for m in ctx.tables.values() if m.table_name == dim_table.name),
+                None,
+            )
+            if dim_meta is None:
+                continue
+            rel_field = rel_field_name(dim_meta.field_name, "many-to-one")
+            for dim_col in dim_cols:
+                dim_paths.append(f"{rel_field}.{dim_col}")
 
     is_aggregate_only = not group_cols and (
         tree.find(exp.Count, exp.Sum, exp.Avg, exp.Max, exp.Min, exp.Stddev, exp.Variance)
@@ -152,22 +245,40 @@ def _resolve_aggregation_plan(
     found = {_agg_expr_types()[type(n)] for n in tree.find_all(*_agg_expr_types()) if type(n) in _agg_expr_types()}
     funcs = [fn for fn in AGG_FUNCS if fn in found]
 
-    return meta, group_cols, is_aggregate_only, funcs
+    return meta, group_cols, is_aggregate_only, funcs, dim_paths
 
 
 def _generate_grpc_query(
-    plan: tuple[Any, list[str], bool, list[str]] | None,
+    plan: tuple[Any, list[str], bool, list[str], list[str]] | None,
     selected_type_names: set[str],
     user_nodes: dict,
 ) -> tuple[str | None, str | None]:
     if plan is not None:
-        meta, group_cols, is_aggregate_only, funcs = plan
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
+        # REQ-1359/REQ-1361: {Type}AggregateRequest.funcs and {Type}GroupByRequest.funcs
+        # (provisa/grpc/proto_gen.py) restrict to a caller-chosen subset of aggregate functions,
+        # mirroring jsonapi/openapi's aggregate=... param.
         proto_type = _to_proto_type_name(meta.type_name)
-        funcs_suffix = f"(funcs=[{', '.join(funcs)}])" if funcs else ""
+        funcs_arg = f"funcs=[{', '.join(funcs)}]" if funcs else ""
         if is_aggregate_only:
-            return f"Query{proto_type}Aggregate{funcs_suffix}", None
-        by_and_funcs = f"by=[{', '.join(group_cols)}]" + (f", funcs=[{', '.join(funcs)}]" if funcs else "")
-        return f"Query{proto_type}GroupBy({by_and_funcs})", None
+            if funcs_arg:
+                return f"Query{proto_type}Aggregate({funcs_arg})", None
+            return f"Query{proto_type}Aggregate", None
+        if dim_paths:
+            # REQ-1405: GroupByRequest.include names many-to-one relation fields (the wire type is
+            # repeated string, not a dot-path list), so dedupe dim_paths' "rel.col" entries down to
+            # their relation prefix for display.
+            rels = list(dict.fromkeys(p.split(".", 1)[0] for p in dim_paths))
+            args = [f"by=[{', '.join(group_cols)}]"]
+            if funcs_arg:
+                args.append(funcs_arg)
+            args.append("include_nodes=true")
+            args.append(f"include=[{', '.join(rels)}]")
+            return f"Query{proto_type}GroupBy({', '.join(args)})", None
+        args = [f"by=[{', '.join(group_cols)}]"]
+        if funcs_arg:
+            args.append(funcs_arg)
+        return f"Query{proto_type}GroupBy({', '.join(args)})", None
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
     type_name = next(iter(sorted(selected_type_names)))
@@ -178,17 +289,22 @@ def _generate_grpc_query(
 
 
 def _generate_jsonapi_query(
-    plan: tuple[Any, list[str], bool, list[str]] | None,
+    plan: tuple[Any, list[str], bool, list[str], list[str]] | None,
     selected_type_names: set[str],
     user_nodes: dict,
 ) -> tuple[str | None, str | None]:
     if plan is not None:
-        meta, group_cols, is_aggregate_only, funcs = plan
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
         base = f"/data/jsonapi/{meta.domain_id}/{meta.table_name}"
         aggregate_param = ",".join(funcs) if funcs else "true"
         if is_aggregate_only:
             return f"{base}?aggregate={aggregate_param}", None
-        return f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}", None
+        include_nodes = ",".join(dim_paths) if dim_paths else "true"
+        return (
+            f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}"
+            f"&includeNodes={include_nodes}",
+            None,
+        )
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
     type_name = next(iter(sorted(selected_type_names)))
@@ -199,17 +315,22 @@ def _generate_jsonapi_query(
 
 
 def _generate_openapi_query(
-    plan: tuple[Any, list[str], bool, list[str]] | None,
+    plan: tuple[Any, list[str], bool, list[str], list[str]] | None,
     selected_type_names: set[str],
     user_nodes: dict,
 ) -> tuple[str | None, str | None]:
     if plan is not None:
-        meta, group_cols, is_aggregate_only, funcs = plan
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
         base = f"GET /data/rest/{meta.domain_id}/{meta.table_name}"
         aggregate_param = ",".join(funcs) if funcs else "true"
         if is_aggregate_only:
             return f"{base}?aggregate={aggregate_param}", None
-        return f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}", None
+        include_nodes = ",".join(dim_paths) if dim_paths else "true"
+        return (
+            f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}"
+            f"&includeNodes={include_nodes}",
+            None,
+        )
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
     type_name = next(iter(sorted(selected_type_names)))
@@ -217,6 +338,24 @@ def _generate_openapi_query(
     if nm is None or nm.domain_id is None:
         return None, "NOT_APPLICABLE"
     return f"GET /data/rest/{nm.domain_id}/{nm.table_name}", None
+
+
+async def _resolve_llm_org_ctx(app_state: AppState) -> tuple[dict | None, dict[str, str]]:
+    """Org-resolved LLM config + per-vendor API keys for the org bound to this request.
+
+    REQ-1349 (config override) + REQ-1395/REQ-1398 (org's own vendor keys). ``app_state`` with
+    no bound tenant (startup/discovery paths) resolves to (None, {}) — callers fall back to the
+    deployment config / no keys, same as before this existed.
+    """
+    tenant_db = getattr(app_state, "tenant_db", None)
+    if tenant_db is None:
+        return None, {}
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_settings import resolve_org_config
+
+    config = await resolve_org_config(tenant_db)
+    api_keys = await read_org_api_keys(tenant_db)
+    return config, api_keys
 
 
 async def _generate_sql_from_nl(
@@ -259,6 +398,7 @@ async def _generate_sql_from_nl(
     raw_tables = getattr(app_state, "tables", [])
 
     all_tables, user_nodes, table_name_to_type, lm = _collect_nl_user_tables(ctx)
+    llm_config, llm_api_keys = await _resolve_llm_org_ctx(app_state)
 
     def _sql_domain(domain_id: str | None) -> str:
         return domain_to_sql_name(domain_id) if domain_id else "default"
@@ -267,7 +407,12 @@ async def _generate_sql_from_nl(
         selected_types = pre_selected_types
     else:
         selected_types = await _run_table_selection(
-            user_nodes, nl_query, _sql_domain, table_name_to_type
+            user_nodes,
+            nl_query,
+            _sql_domain,
+            table_name_to_type,
+            config=llm_config,
+            api_keys=llm_api_keys,
         )
     multihop_lines = _build_multihop_lines(selected_types, lm, _sql_domain)
     relevant_type_names = _build_relevant_type_names(selected_types, lm)
@@ -276,7 +421,14 @@ async def _generate_sql_from_nl(
     )
 
     last_sql, _, last_error = await _run_sql_generation_loop(
-        nl_query, schema_block, ctx, gov_ctx, role_obj, raw_tables
+        nl_query,
+        schema_block,
+        ctx,
+        gov_ctx,
+        role_obj,
+        raw_tables,
+        config=llm_config,
+        api_keys=llm_api_keys,
     )
 
     if last_error == "NOT_APPLICABLE":
@@ -353,9 +505,13 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         lm = CypherLabelMap.from_schema(ctx)
         cypher_schema_block = _format_cypher_schema(lm)
 
-    # Shared table selection for SQL and protocol-based branches (one LLM call).
+    # Shared table selection for SQL and protocol-based branches (one LLM call). A failure here
+    # (e.g. a missing/invalid per-org LLM API key, REQ-1395) must not crash the whole job — it is
+    # captured and surfaced as the error for each branch that depends on it, the same way
+    # _run_branch converts a branch-local exception into that branch's error string.
     shared_selected_types: set[str] = set()
     shared_user_nodes: dict = {}
+    table_selection_error: str | None = None
     if ctx is not None:
         from provisa.api.data.endpoint_dev import _collect_nl_user_tables, _run_table_selection
         from provisa.compiler.naming import domain_to_sql_name
@@ -365,9 +521,22 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         def _sql_dom(d: str | None) -> str:
             return domain_to_sql_name(d) if d else "default"
 
-        shared_selected_types = await _run_table_selection(
-            _u_nodes, nl_query, _sql_dom, _tbl_to_type
-        )
+        _shared_llm_config, _shared_llm_api_keys = await _resolve_llm_org_ctx(app_state)
+        try:
+            shared_selected_types = await _run_table_selection(
+                _u_nodes,
+                nl_query,
+                _sql_dom,
+                _tbl_to_type,
+                config=_shared_llm_config,
+                api_keys=_shared_llm_api_keys,
+            )
+        # complexity-gate: allow-ble=3 reason="[file ceiling 3] Shared table-selection LLM call has
+        # an unbounded failure taxonomy (auth, rate limit, network); a failure must become each
+        # dependent branch's error string, not abort the whole NL job."
+        except Exception as exc:
+            log.warning("NL shared table selection failed: %s", exc)
+            table_selection_error = str(exc)
         shared_user_nodes = _u_nodes
 
     _QUERY_TARGETS = {"cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"}
@@ -384,6 +553,8 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 metric_sql = matcher.resolve_metric(nl_query)
                 if metric_sql is not None:
                     return target, metric_sql, None
+                if table_selection_error is not None:
+                    return target, None, table_selection_error
                 valid_query, error = await _generate_sql_from_nl(
                     nl_query, role, app_state, pre_selected_types=shared_selected_types
                 )
@@ -392,6 +563,8 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 # REQ-1359: wait for the SQL branch's compiled semantic SQL so these three
                 # protocol surfaces target the identical table/GROUP BY it resolved to,
                 # instead of independently guessing from the raw table-selection set.
+                if table_selection_error is not None:
+                    return target, None, table_selection_error
                 _, sql_query, sql_error = await sql_task
                 plan = None
                 if sql_query is not None and sql_error is None and ctx is not None:

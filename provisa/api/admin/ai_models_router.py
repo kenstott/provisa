@@ -51,6 +51,7 @@ async def _effective_config() -> dict:
     from provisa.api.app import state
     from provisa.core.org_settings import resolve_org_config
 
+    assert state.tenant_db is not None
     return await resolve_org_config(state.tenant_db)
 
 
@@ -58,6 +59,10 @@ async def _effective_config() -> dict:
 async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349
     """Return the acting org's AI-model assignments, vector-model registry, and NL rate limit."""
     require_org_settings(request)
+    from provisa.api.app import state
+    from provisa.core.org_secrets import LLM_VENDORS, read_org_api_keys
+
+    assert state.tenant_db is not None
     cfg = await _effective_config()
     ai = cfg.get("ai_models", {}) or {}
     nl = cfg.get("nl", {}) or {}
@@ -67,10 +72,16 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         val = ai.get(key, _model_default(key))
         return val if isinstance(val, str) else dict(val)
 
+    # REQ-1395, REQ-1398: keys themselves are never echoed back — only whether each vendor has
+    # one set.
+    configured = await read_org_api_keys(state.tenant_db)
+    api_keys_set = {vendor: vendor in configured for vendor in sorted(LLM_VENDORS)}
+
     return {
         "ai_models": {k: _assignment(k) for k in _AI_MODEL_ROLES},
         "vector_models": list(cfg.get("vector_models", []) or []),
         "nl": {"rate_limit": nl.get("rate_limit")},
+        "api_keys_set": api_keys_set,
         "restart_required_note": _RESTART_NOTE,
     }
 
@@ -87,6 +98,7 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     from provisa.api.app import state
     from provisa.core.org_settings import read_org_overrides, write_org_overrides
 
+    assert state.tenant_db is not None
     body = await request.json()
     overrides = await read_org_overrides(state.tenant_db)
     updates: dict = {}
@@ -130,7 +142,26 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         updated.append("nl.rate_limit")
 
     identity = getattr(request.state, "identity", None)
-    await write_org_overrides(
-        state.tenant_db, updates, updated_by=getattr(identity, "user_id", "anonymous")
-    )
+    updated_by = getattr(identity, "user_id", "anonymous")
+
+    await write_org_overrides(state.tenant_db, updates, updated_by=updated_by)
+
+    # REQ-1395, REQ-1398: the org's own per-vendor API keys — secrets, not config overrides, so
+    # they go through org_secrets (encrypted at rest) rather than write_org_overrides. A
+    # blank/empty string clears a vendor's key, reverting that vendor's LLM calls to the
+    # deployment's env-var credential (where one exists).
+    if "api_keys" in body:
+        from provisa.core.org_secrets import LLM_VENDORS, write_org_secret
+
+        for vendor, raw_key in (body["api_keys"] or {}).items():
+            if vendor not in LLM_VENDORS:
+                continue
+            await write_org_secret(
+                state.tenant_db,
+                f"{vendor}_api_key",
+                raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else None,
+                updated_by=updated_by,
+            )
+            updated.append(f"api_keys.{vendor}")
+
     return {"success": True, "updated": updated, "restart_required": False}

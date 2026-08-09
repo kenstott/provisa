@@ -25,6 +25,7 @@ marked to skip when the required components are missing.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 from pathlib import Path
@@ -330,6 +331,9 @@ class TestGrpcQueryExecution:
         # has its own fixture.
         state.auth_config = None
         state.auth_middleware_active = False
+        # REQ-693: a bare MagicMock attribute is truthy, which would put this unsecured
+        # deployment behind the high-security KMS-key gate. Name it standard mode.
+        state.security_high = False
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
@@ -359,6 +363,8 @@ class TestGrpcQueryExecution:
         )
 
         channel = grpc.aio.insecure_channel(f"localhost:{port}")
+        # Wait for the channel to reach READY before yielding — 30 s tolerates a loaded CI lane.
+        await asyncio.wait_for(channel.channel_ready(), timeout=30.0)
         stub_cls = next(
             (getattr(pb2_grpc, attr) for attr in dir(pb2_grpc) if attr.endswith("Stub")),
             None,
@@ -523,6 +529,9 @@ class TestSecuredGrpcRequiresACredential:
         state.multitenancy = False
         state.auth_config = _SECURED_AUTH_CONFIG
         state.auth_middleware_active = True
+        # REQ-693: a bare MagicMock attribute is truthy, which would put this deployment
+        # behind the high-security KMS-key gate on top of the credential gate under test.
+        state.security_high = False
         state.schemas = {}
         state.contexts = {}
         state.rls_contexts = {}
@@ -546,6 +555,8 @@ class TestSecuredGrpcRequiresACredential:
             pb2_grpc_path=pb2_grpc_path,
         )
         channel = grpc.aio.insecure_channel(f"localhost:{_SECURED_GRPC_PORT}")
+        # Wait for the channel to reach READY before yielding — 30 s tolerates a loaded CI lane.
+        await asyncio.wait_for(channel.channel_ready(), timeout=30.0)
         stub_cls = next(
             (getattr(pb2_grpc, attr) for attr in dir(pb2_grpc) if attr.endswith("Stub")), None
         )

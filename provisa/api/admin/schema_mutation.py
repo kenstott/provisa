@@ -449,6 +449,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         # Populate the org-scoped catalog name so catalog_for() resolves this source
         # after dynamic creation (mirrors _populate_source_catalog_names in app_loaders.py).
+        from provisa.api.app_loaders import fixed_catalog_for_engine
         from provisa.api.org_runtime import current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
         # The physical catalog is derived from the source id and nothing else — create_catalog
@@ -457,8 +458,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # talks to, never a catalog name: a SharePoint source puts its Azure tenant GUID there, so
         # deriving the catalog from it recorded `"5d2609cc-…"` for a catalog physically created as
         # `e2e_sharepoint`, and every engine query for the source died on CATALOG_NOT_FOUND.
+        # Exception: a fixed-catalog warehouse engine (BigQuery/Fabric/Synapse) pins every source to
+        # the one warehouse catalog instead — see fixed_catalog_for_engine, mirrored from the
+        # config-load path in _populate_source_catalog_names.
         _building_org = current_org.get() or state.org_id
-        state.source_catalogs[input.id] = org_prefixed_catalog(
+        state.source_catalogs[input.id] = fixed_catalog_for_engine(state) or org_prefixed_catalog(
             _building_org, source_to_catalog(input.id), default_org=state.org_id
         )
 
@@ -552,12 +556,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
 
         # Keep catalog name in sync with the (possibly renamed) source config.
+        from provisa.api.app_loaders import fixed_catalog_for_engine
         from provisa.api.org_runtime import current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
         # Source id only — see the same derivation in create_source above for why `input.database`
-        # (the remote database/tenant) is not a catalog name.
+        # (the remote database/tenant) is not a catalog name, and the fixed-catalog exception.
         _building_org = current_org.get() or state.org_id
-        state.source_catalogs[input.id] = org_prefixed_catalog(
+        state.source_catalogs[input.id] = fixed_catalog_for_engine(state) or org_prefixed_catalog(
             _building_org, source_to_catalog(input.id), default_org=state.org_id
         )
 

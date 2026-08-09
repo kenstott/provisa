@@ -273,7 +273,11 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
                 {
                     "table_id": table_id,
                     "column_name": col["column_name"],
-                    "visible_to": [],
+                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
+                    # means visible to NO role there, not "unrestricted" as elsewhere.
+                    # org_admin is the ops-domain steward (below) and must retain the
+                    # explicit grant or it loses its own steward access (REQ-1386).
+                    "visible_to": ["org_admin"],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] in pk_cols,
                 },
@@ -315,7 +319,11 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
                 {
                     "table_id": table_id,
                     "column_name": col["column_name"],
-                    "visible_to": [],
+                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
+                    # means visible to NO role there, not "unrestricted" as elsewhere.
+                    # org_admin is the ops-domain steward (below) and must retain the
+                    # explicit grant or it loses its own steward access (REQ-1386).
+                    "visible_to": ["org_admin"],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] == "id",
                 },

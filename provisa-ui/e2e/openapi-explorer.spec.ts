@@ -19,17 +19,28 @@ test("REQ-801: /openapi page loads without errors", async ({ page }) => {
 
 test("REQ-801: /openapi page contains an iframe", async ({ page }) => {
   await page.goto(`/openapi?role=${ROLE}`);
-  await page.waitForLoadState("domcontentloaded");
   const iframe = page.locator("iframe");
-  await expect(iframe).toBeAttached();
+  // The iframe only mounts once fetch(src) resolves and srcDoc is set — domcontentloaded fires
+  // before that fetch completes, so wait on the element itself rather than the load event.
+  await expect(iframe).toBeAttached({ timeout: 15000 });
 });
 
-test("REQ-801: iframe src points to /data/rest/docs", async ({ page }) => {
+test("REQ-801: iframe is loaded via fetch()+srcDoc so the bearer token reaches /data/rest/docs", async ({
+  page,
+}) => {
+  const docsRequests: string[] = [];
+  page.on("request", (req) => {
+    if (req.url().includes("/data/rest/docs")) docsRequests.push(req.url());
+  });
+
   await page.goto(`/openapi?role=${ROLE}`);
-  await page.waitForLoadState("domcontentloaded");
+
   const iframe = page.locator("iframe");
-  const src = await iframe.getAttribute("src");
-  expect(src).toContain("/data/rest/docs");
+  await expect(iframe).toBeAttached({ timeout: 15000 });
+  // srcDoc, not src — a plain <iframe src> navigation can't carry the Authorization header.
+  expect(await iframe.getAttribute("src")).toBeNull();
+  expect(await iframe.getAttribute("srcdoc")).toBeTruthy();
+  expect(docsRequests.length).toBeGreaterThan(0);
 });
 
 test("REQ-801: page does not throw JS errors on load", async ({ page }) => {

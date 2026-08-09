@@ -400,13 +400,16 @@ async def _run_table_selection(
     question: str,
     sql_domain_fn,
     table_name_to_type: dict[str, str],
+    *,
+    config: dict | None = None,
+    api_keys: dict[str, str] | None = None,
 ) -> set[str]:
-    from provisa.llm.client import ProviasLLMClient
+    from provisa.llm.client import ProvisaLLMClient
 
     table_list = ", ".join(
         f"{sql_domain_fn(nm.domain_id)}.{nm.table_name}" for nm in user_nodes.values()
     )
-    _table_selector = ProviasLLMClient("table_selection")
+    _table_selector = ProvisaLLMClient("table_selection", config=config, api_keys=api_keys)
     pass1_text = await _table_selector.complete(
         prompt=f"Tables: {table_list}\n\nQuestion: {question}",
         system=(
@@ -566,9 +569,12 @@ async def _run_sql_generation_loop(
     gov_ctx,
     role_obj,
     raw_tables: list,
+    *,
+    config: dict | None = None,
+    api_keys: dict[str, str] | None = None,
 ) -> tuple[str, int, str]:
     import sqlglot
-    from provisa.llm.client import ProviasLLMClient
+    from provisa.llm.client import ProvisaLLMClient
     from provisa.compiler.sql_validator import validate_sql
 
     sql_gen_system = (
@@ -602,7 +608,7 @@ async def _run_sql_generation_loop(
         "8. Output only the SQL statement — no explanation, no markdown fences."
     )
 
-    _sql_gen = ProviasLLMClient("sql_generation")
+    _sql_gen = ProvisaLLMClient("sql_generation", config=config, api_keys=api_keys)
     last_error: str = ""
     last_sql: str = ""
     attempt: int = 0
@@ -679,6 +685,8 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     from provisa.api.app import state
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.compiler.stage2 import build_governance_context
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_settings import resolve_org_config
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
     if role_id not in state.contexts:
@@ -703,8 +711,17 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     def _sql_domain(domain_id: str | None) -> str:
         return domain_to_sql_name(domain_id) if domain_id else "default"
 
+    assert state.tenant_db is not None
+    llm_config = await resolve_org_config(state.tenant_db)
+    llm_api_keys = await read_org_api_keys(state.tenant_db)
+
     selected_types = await _run_table_selection(
-        _user_nodes, request.question, _sql_domain, _table_name_to_type
+        _user_nodes,
+        request.question,
+        _sql_domain,
+        _table_name_to_type,
+        config=llm_config,
+        api_keys=llm_api_keys,
     )
 
     multihop_lines = _build_multihop_lines(selected_types, _lm, _sql_domain)
@@ -714,7 +731,14 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     )
 
     last_sql, attempt, last_error = await _run_sql_generation_loop(
-        request.question, schema_block, ctx, gov_ctx, role_obj, raw_tables
+        request.question,
+        schema_block,
+        ctx,
+        gov_ctx,
+        role_obj,
+        raw_tables,
+        config=llm_config,
+        api_keys=llm_api_keys,
     )
 
     if last_error:

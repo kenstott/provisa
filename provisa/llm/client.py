@@ -29,7 +29,7 @@ _DEFAULTS: dict[str, dict] = {
 }
 
 
-class ProviasLLMClient:  # REQ-355, REQ-356, REQ-358
+class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     """Vendor-agnostic LLM client backed by aisuite.
 
     Reads vendor/model from config `ai_models.<operation>` section.
@@ -37,7 +37,11 @@ class ProviasLLMClient:  # REQ-355, REQ-356, REQ-358
     """
 
     def __init__(
-        self, operation: str = "column_description", *, config: dict | None = None
+        self,
+        operation: str = "column_description",
+        *,
+        config: dict | None = None,
+        api_keys: dict[str, str] | None = None,
     ) -> None:
         from provisa.api.admin._config_io import read_config
 
@@ -46,6 +50,12 @@ class ProviasLLMClient:  # REQ-355, REQ-356, REQ-358
         # by request paths that have an org bound; paths with no org (startup, discovery jobs)
         # construct with none and get the deployment config, which is the base in both cases.
         cfg = read_config() if config is None else config
+
+        # REQ-1395, REQ-1398: an org's own per-vendor API keys (provisa.core.org_secrets),
+        # keyed by vendor name, when the caller resolved them for the acting org. Vendors with
+        # no key configured here (e.g. a local ollama/lmstudio endpoint) fall through to
+        # aisuite's own env/config resolution.
+        self._api_keys = api_keys
         ai_models = cfg.get("ai_models", {})
         op_cfg = ai_models.get(operation, {})
 
@@ -93,7 +103,11 @@ class ProviasLLMClient:  # REQ-355, REQ-356, REQ-358
     ) -> str:
         import aisuite as ai
 
-        client = ai.Client()
+        key = (self._api_keys or {}).get(vendor)
+        if key:
+            client = ai.Client({vendor: {"api_key": key}})
+        else:
+            client = ai.Client()
         model_id = self._make_aisuite_model_id(vendor, model)
         messages = self._build_messages(prompt, system)
         response = client.chat.completions.create(

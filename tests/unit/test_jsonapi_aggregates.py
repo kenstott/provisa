@@ -204,6 +204,19 @@ class TestBuildGroupByGraphqlQuery:
         )
         assert "order_by: {region: asc}" in q
 
+    def test_by_columns_translated_to_gql_convention(self):
+        """REQ-1361: ?groupBy= takes API-native (physical) column names; the
+        synthesized GraphQL text must use the schema's GQL-convention spelling."""
+        _naming.configure(gql="apollo_graphql")
+        try:
+            q = _build_group_by_graphql_query(
+                "orders_group_by", ["user_id"], "count", {}, [], None, None
+            )
+        finally:
+            _naming.configure(gql="snake")
+        assert "by: [userId]" in q
+        assert "user_id" not in q
+
     def test_produced_query_parses_and_validates(self):
         schema, _ = _build_schema_and_ctx()
         q = _build_group_by_graphql_query(
@@ -211,6 +224,16 @@ class TestBuildGroupByGraphqlQuery:
         )
         doc = parse(q)
         assert validate(schema, doc) == []
+
+    def test_node_selection_adds_nodes_field(self):
+        q = _build_group_by_graphql_query(
+            "orders_group_by", ["region"], "count", {}, [], None, None, "id region amount"
+        )
+        assert "nodes { id region amount }" in q
+
+    def test_no_node_selection_omits_nodes_field(self):
+        q = _build_group_by_graphql_query("orders_group_by", ["region"], "count", {}, [], None, None)
+        assert "nodes" not in q
 
 
 class TestAggregateResponseShape:

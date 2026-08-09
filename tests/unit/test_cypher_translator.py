@@ -436,6 +436,44 @@ def test_with_where_filters_result():
     assert "30" in sql
 
 
+def test_with_node_var_and_aggregate_then_return_properties():
+    # Regression: WITH u, COUNT(i) AS c RETURN u.name (no second MATCH) must resolve u's
+    # properties against the CTE alias (_w0), not the pre-WITH match alias (u), which the
+    # outer query no longer has in scope.
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person)<-[:KNOWS]-(m:Person) "
+        "WITH n, COUNT(m) AS c "
+        "RETURN n.name AS nm, c ORDER BY c DESC"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "_w0" in sql
+    assert 'n."name"' not in sql.replace(" ", "")
+    import re
+
+    assert re.search(r'_w0\."?name"?', sql, re.IGNORECASE)
+
+
+def test_with_bare_node_var_group_by_matches_select_star():
+    # Regression: GROUP BY for a bare node var (e.g. `WITH n, COUNT(m) AS c`) must group by
+    # `n.*`, the same expansion the SELECT list uses — grouping by a bare `n` column instead
+    # produces "Column 'n' cannot be resolved" at the engine since no such column exists.
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person)<-[:KNOWS]-(m:Person) "
+        "WITH n, COUNT(m) AS c "
+        "RETURN n.name AS nm, c ORDER BY c DESC"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    import re
+
+    group_by_clause = sql.split("GROUP BY", 1)[1].split("ORDER BY", 1)[0]
+    assert re.search(r'\bn\s*\.\s*\*', group_by_clause)
+    assert not re.search(r"GROUP BY\s+n\b(?!\s*\.)", sql)
+
+
 def test_with_pipes_into_second_match():
     lm = _make_label_map()
     ast = parse_cypher(

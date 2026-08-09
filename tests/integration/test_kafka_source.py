@@ -11,18 +11,57 @@
 """Integration tests for Kafka source reads via Trino.
 
 Requires: docker-compose up (Kafka + Trino with Kafka connector)
+
+REQ-1338/1339 stopped shipping ``trino/catalog/*.properties`` as committed dev-box artifacts —
+a ``catalog.management=dynamic`` Trino writes catalogs itself via ``CREATE CATALOG``, and a stale
+checked-in file wins over correct env-derived registration. ``kafka_support`` was one of the
+files removed, so this module's ``trino_conn`` no longer finds the catalog pre-provisioned; the
+``_kafka_support_catalog`` fixture below registers it the same way ``app_loaders._process_kafka_sources``
+does for a ``kafka_sources[]`` config entry, reusing the checked-in table description at
+``trino/kafka/support_tickets.json``.
 """
 
 import os
 
 import pytest
 
+from provisa.core.trino_catalog_files import write_kafka_catalog_files
+
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
+_KAFKA_SUPPORT_SOURCE = {
+    "id": "kafka_support",
+    "bootstrap_servers": os.environ.get("KAFKA_BOOTSTRAP_INTERNAL", "kafka:29092"),
+    "topics": [
+        {
+            "id": "support_tickets",
+            "topic": "support.tickets",
+            "schema_source": "manual",
+            "value_format": "json",
+            "table_name": "support_tickets",
+            "columns": [
+                {"name": "ticket_id", "data_type": "VARCHAR"},
+                {"name": "subject", "data_type": "VARCHAR"},
+                {"name": "status", "data_type": "VARCHAR"},
+            ],
+        }
+    ],
+}
 
 
 @pytest.fixture(scope="module")
 def kafka_bootstrap():
     return os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _kafka_support_catalog(trino_conn):
+    """Register the ``kafka_support`` catalog dynamically before this module's tests run."""
+    write_kafka_catalog_files(_KAFKA_SUPPORT_SOURCE, trino_conn=trino_conn)
+    yield
+    cur = trino_conn.cursor()
+    cur.execute("DROP CATALOG IF EXISTS kafka_support")
+    cur.fetchall()
 
 
 class TestKafkaTopicRead:

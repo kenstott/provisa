@@ -33,17 +33,44 @@ export interface VectorModel {
   enabled: boolean;
 }
 
+// REQ-1398: aisuite vendors that take a plain api_key — mirrors
+// provisa.core.org_secrets.LLM_VENDORS. Any operation's ai_models.<op>.vendor may name one of
+// these (or a keyless local vendor like ollama, which needs no entry here).
+export const LLM_VENDORS = [
+  "anthropic",
+  "openai",
+  "cohere",
+  "groq",
+  "mistral",
+  "xai",
+  "deepseek",
+  "together",
+  "fireworks",
+  "nebius",
+  "sambanova",
+  "inception",
+] as const;
+export type LlmVendor = (typeof LLM_VENDORS)[number];
+
 export interface AiModelsState {
   ai_models: AiModelAssignments;
   vector_models: VectorModel[];
   nl: { rate_limit: number | null };
+  // REQ-1395, REQ-1398: which vendors the org has set its own key for. Keys themselves are
+  // never returned.
+  api_keys_set: Record<string, boolean>;
   restart_required_note: string;
 }
 
 export interface AiModelsUpdate {
-  ai_models?: Partial<Record<keyof AiModelAssignments, string>>;
+  // REQ-1398: a role may be a bare model-name string (vendor implicitly anthropic) or a full
+  // {vendor, model, fallback?} object — the same two forms AiModelsState.ai_models accepts.
+  ai_models?: Partial<Record<keyof AiModelAssignments, string | Record<string, unknown>>>;
   vector_models?: VectorModel[];
   nl?: { rate_limit: number | null };
+  // REQ-1395, REQ-1398: per-vendor keys to set/replace/clear. A non-empty string sets/replaces;
+  // an empty string clears; a vendor omitted from the map is left unchanged.
+  api_keys?: Record<string, string>;
 }
 
 export async function fetchAiModels(): Promise<AiModelsState> {

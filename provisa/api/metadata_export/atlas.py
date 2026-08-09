@@ -35,6 +35,7 @@ what makes the scheduled reconcile (REQ-1072) idempotent.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 
@@ -951,12 +952,12 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         )
                     ).raise_for_status()
                 for name in to_delete:
-                    (
-                        await client.delete(
-                            self._url(f"/api/atlas/v2/entity/guid/{guid}/classification/{name}"),
-                            headers=headers,
-                        )
-                    ).raise_for_status()
+                    resp = await client.delete(
+                        self._url(f"/api/atlas/v2/entity/guid/{guid}/classification/{name}"),
+                        headers=headers,
+                    )
+                    if resp.status_code != 404:
+                        resp.raise_for_status()
             except httpx.HTTPError as exc:
                 result.errors.append(
                     AssetError(asset=entity.asset, message=f"classification merge: {exc}")
@@ -1344,7 +1345,22 @@ class AtlasExport(MetadataExport):  # REQ-1069
             entity.attributes = {**live_attributes, **entity.attributes}
 
     async def health(self) -> None:
+        # A freshly-started Atlas can reset a connection moments after its own Docker
+        # healthcheck passes (Tomcat still settling under QEMU emulation) — retry
+        # transport-level failures a few times before treating the service as down.
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)
-            response = await client.get(self._url(self.health_path), headers=headers)
+            response = await self._get_with_retry(client, headers)
         response.raise_for_status()
+
+    async def _get_with_retry(
+        self, client: httpx.AsyncClient, headers: dict[str, str]
+    ) -> httpx.Response:
+        for attempt in range(5):
+            try:
+                return await client.get(self._url(self.health_path), headers=headers)
+            except httpx.TransportError:
+                if attempt == 4:
+                    raise
+                await asyncio.sleep(2 * (attempt + 1))
+        raise AssertionError("unreachable")

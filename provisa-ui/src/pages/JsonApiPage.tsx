@@ -273,6 +273,10 @@ export function JsonApiPage() {
       aggregate: aggregateParam !== null,
       funcs: aggregateParam && aggregateParam !== "true" ? aggregateParam.split(",").filter(Boolean) : [],
       groupBy: params.get("groupBy") ?? "",
+      // REQ-1359: NL forwards includeNodes=true for group-by queries whose plan carries a nodes
+      // array (see runner.py::_generate_jsonapi_query) — must survive the round-trip or the
+      // replicated JSON:API call silently drops the nodes.
+      includeNodes: params.get("includeNodes") === "true" || params.get("includeNodes") === "1",
     };
   }, [navUrl]);
 
@@ -296,6 +300,7 @@ export function JsonApiPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
   const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
+  const [includeNodes, setIncludeNodes] = useState(false);
   const [groupByColumnOptions, setGroupByColumnOptions] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<string>(savedSettings.pageSize ?? "20");
   const [parsedDoc, setParsedDoc] = useState<JsonApiDocument | null>(null);
@@ -470,6 +475,7 @@ export function JsonApiPage() {
       skipNextResetRef.current = true;
       setGroupByCols(parsedNav.groupBy ? parsedNav.groupBy.split(",").filter(Boolean) : []);
       setSelectedFuncs(parsedNav.funcs.length > 0 ? parsedNav.funcs : [...AGG_FUNCS]);
+      setIncludeNodes(parsedNav.includeNodes);
     }
   }, [tables, parsedNav]);
 
@@ -535,6 +541,7 @@ export function JsonApiPage() {
       if (roleId) aggParams.set("role", roleId);
       aggParams.set("aggregate", selectedFuncs.join(","));
       if (groupByCols.length > 0) aggParams.set("groupBy", groupByCols.join(","));
+      if (groupByCols.length > 0 && includeNodes) aggParams.set("includeNodes", "true");
       return `/data/jsonapi/${selectedDomainId}/${selectedTableName}?${aggParams.toString()}`;
     }
     const params = new URLSearchParams();
@@ -554,7 +561,7 @@ export function JsonApiPage() {
     if (includeParam) params.set("include", includeParam);
     const qs = params.toString();
     return `/data/jsonapi/${selectedDomainId}/${selectedTableName}${qs ? "?" + qs : ""}`;
-  }, [effectiveSelectedTable, selectedDomainId, selectedTableName, roleId, filterField, filterOp, filterValue, sortField, sortDir, pageSize, sparseFieldsParam, includeParam, selectedFuncs, groupByCols]);
+  }, [effectiveSelectedTable, selectedDomainId, selectedTableName, roleId, filterField, filterOp, filterValue, sortField, sortDir, pageSize, sparseFieldsParam, includeParam, selectedFuncs, groupByCols, includeNodes]);
 
   const specUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -853,6 +860,16 @@ export function JsonApiPage() {
                   ))}
                 </Group>
               </Checkbox.Group>
+              {groupByCols.length > 0 && (
+                <Checkbox
+                  checked={includeNodes}
+                  onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
+                  label={t("jsonApiPage.includeNodes")}
+                  size="xs"
+                  mb="sm"
+                  data-testid="jsonapi-include-nodes-checkbox"
+                />
+              )}
             </>
           )}
 

@@ -119,15 +119,28 @@ def pytest_collection_modifyitems(config, items):
         item.add_marker(getattr(pytest.mark, group))
 
 
+_PG_SERVER_MAJOR = "16"  # matches the postgres:16 image pinned across docker-compose*.yml
+
+
 def _pg_tool(name: str) -> str:
     """Resolve a PG client binary (pg_dump/pg_restore).
 
-    PATH first — Linux CI and the linux-mem Docker lane ship pg_* on PATH. Fall back
-    to the macOS EDB installer's bin dir, where the binaries are NOT on PATH by default
-    (local dev). Both are real install layouts this suite runs under; this is resolution,
-    not error-masking.
+    PATH first — Linux CI and the linux-mem Docker lane ship a pg_* on PATH that matches
+    the postgres:16 server image. On local macOS dev, Homebrew's default pg_dump/pg_restore
+    tracks Homebrew's latest major version, which drifts ahead of the pinned server image;
+    a client built against a newer major emits syntax (e.g. `SET transaction_timeout = 0`)
+    the 16 server rejects on restore. When PATH resolves to a mismatched major and the macOS
+    EDB 16 installer is present, prefer that instead — it's version-locked to the server.
     """
-    return shutil.which(name) or f"/Library/PostgreSQL/16/bin/{name}"
+    edb_tool = Path(f"/Library/PostgreSQL/{_PG_SERVER_MAJOR}/bin/{name}")
+    on_path = shutil.which(name)
+    if on_path is None:
+        return str(edb_tool)
+    version = subprocess.run([on_path, "--version"], capture_output=True, text=True, check=False)
+    match = re.search(r"\)\s+(\d+)", version.stdout)
+    if match and match.group(1) != _PG_SERVER_MAJOR and edb_tool.exists():
+        return str(edb_tool)
+    return on_path
 
 
 _SNAPSHOT_PATH = Path.home() / "provisa-test-db-snapshot.dump"
@@ -437,6 +450,7 @@ def _pgw_build_state(pool):
     ctx = build_context(si)
 
     state = MagicMock()
+    state.security_high = False  # REQ-693: MagicMock auto-creates attrs as truthy; explicit False
     state.contexts = {"admin": ctx}
     state.rls_contexts = {}
     state.roles = {"admin": {"id": "admin", "capabilities": ["ddl"], "domain_access": ["*"]}}

@@ -177,12 +177,9 @@ def create_kafka_catalog(conn: TrinoConnection, kafka_source: dict) -> None:  # 
         return
     props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
     sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING kafka WITH ({props_sql})"
-    try:
-        cur = conn.cursor()
-        cur.execute(sql)
-        cur.fetchall()
-    except TrinoError as e:
-        log.warning("Kafka catalog creation failed for %s: %s", catalog_name, e)
+    cur = conn.cursor()
+    cur.execute(sql)
+    cur.fetchall()
 
 
 def analyze_source_tables(  # REQ-636, REQ-1266

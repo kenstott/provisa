@@ -67,9 +67,59 @@ async def _load_config(tenant_db, _init_schema):
     # them either. Re-run the (idempotent, ON CONFLICT DO NOTHING) seed to restore them before
     # load_config adds the config-only roles (analyst).
     await init_schema(tenant_db, SCHEMA_SQL)
-    async with tenant_db.acquire() as conn:
-        await conn.execute("SET search_path TO org_default")
-        await load_config(config, conn)
+
+    # An engine binding is mandatory (not just fidelity to the server): schema_input
+    # introspects sales-pg's columns off the live Trino catalog, and load_config only
+    # provisions that catalog when given an engine. Without one, this module's tests
+    # depend on some other group_protocols module having registered sales_pg first —
+    # a hidden cross-file ordering dependency, and CATALOG_NOT_FOUND whenever this
+    # module happens to run before one that does the registration.
+    #
+    # A bare scaffold state is not enough: load_config's column introspection
+    # (config_loader._upsert_single_table -> engine.introspect_columns) calls
+    # state.catalog_for(source.id) (backend.py TrinoBackend.introspect_columns), which
+    # only exists on the real provisa.api.app.AppState, backed by state.source_catalogs.
+    # That map is populated by _populate_source_catalog_names(config), which must run
+    # BEFORE load_config (app.py:709-714, REQ-1266) so both steps agree on the catalog
+    # name. So this binds the engine onto the real app state singleton, exactly as
+    # connector_source_harness.py's connector_client fixture does, restoring it after.
+    import os
+
+    from provisa.api.app_loaders import _populate_source_catalog_names
+    from provisa.federation.engine import build_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    import provisa.api.app as app_mod
+
+    import trino
+
+    prior_env = os.environ.get("PROVISA_ENGINE")
+    os.environ["PROVISA_ENGINE"] = "trino"
+    os.environ.setdefault("PG_PASSWORD", "provisa")
+    prior_engine = app_mod.state.federation_engine
+    prior_conn = app_mod.state.engine_conn
+    app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
+    # bind_terminal only stores connection kwargs (wake-on-traffic, REQ-1043) — it does NOT
+    # connect. register_source/introspect_columns both no-op when state.engine_conn is None
+    # (backend.py:569, 613), so a real boot's blocking provision()/connect_infra() path is
+    # what actually populates it. Connect directly here instead of pulling in that whole path.
+    app_mod.state.engine_conn = trino.dbapi.connect(
+        host=os.environ.get("TRINO_HOST", "localhost"),
+        port=int(os.environ.get("TRINO_PORT", "8080")),
+        user="test",
+    )
+    try:
+        _populate_source_catalog_names(config)
+        async with tenant_db.acquire() as conn:
+            await conn.execute("SET search_path TO org_default")
+            await load_config(config, conn, app_mod.state.federation_engine)
+    finally:
+        app_mod.state.federation_engine = prior_engine
+        app_mod.state.engine_conn = prior_conn
+        if prior_env is None:
+            os.environ.pop("PROVISA_ENGINE", None)
+        else:
+            os.environ["PROVISA_ENGINE"] = prior_env
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")

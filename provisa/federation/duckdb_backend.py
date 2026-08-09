@@ -19,6 +19,7 @@ from typing import Any
 import duckdb
 
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+from provisa.federation.engine import UnreachableSource
 from provisa.federation.native_backend import NativeEngineBackend
 
 
@@ -28,7 +29,12 @@ class DuckDBBackend(NativeEngineBackend):
     physical SQL — already transpiled to the DuckDB dialect by transpile_physical — runs against its
     connection, whose catalog-physical views resolve the names the compiler emits."""
 
-    _attach_errors = (duckdb.Error, KeyError)
+    # UnreachableSource must stay in this tuple (base default in NativeEngineBackend) — REQ-841/REQ-947:
+    # a leftover source of an unreachable type (e.g. a connector-only source left registered after a
+    # Trino-bound test rebinds the engine back to DuckDB) must be skipped here, not raised uncaught into
+    # an unrelated later query's attach pass (observed: UnreachableSource("duckdb", "pinot") propagating
+    # out of _attach_registered() into a 400 on an unrelated /data/sql request).
+    _attach_errors = (duckdb.Error, KeyError, UnreachableSource)
 
     def _new_runtime(self) -> Any:
         return DuckDBFederationRuntime()

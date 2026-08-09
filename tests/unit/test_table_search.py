@@ -179,20 +179,20 @@ class TestSearchTablesFuzzyOnly:
             _make("sales_orders", ["id", "customer_id", "amount"]),
             _make("products", ["id", "sku", "price"]),
         ]
-        results = await search_tables("sales orders", candidates, api_key=None)
+        results = await search_tables("sales orders", candidates, api_keys=None)
         assert len(results) >= 1
         assert results[0].name == "sales_orders"
 
     @pytest.mark.asyncio
     async def test_confidence_between_zero_and_one(self):
         candidates = [_make("orders", ["id", "amount"])]
-        results = await search_tables("orders", candidates, api_key=None)
+        results = await search_tables("orders", candidates, api_keys=None)
         assert all(0.0 <= r.confidence <= 1.0 for r in results)
 
     @pytest.mark.asyncio
     async def test_no_match_empty(self):
         candidates = [_make("products", ["id", "price"])]
-        results = await search_tables("zzznonexistent", candidates, api_key=None)
+        results = await search_tables("zzznonexistent", candidates, api_keys=None)
         assert results == []
 
     @pytest.mark.asyncio
@@ -201,7 +201,7 @@ class TestSearchTablesFuzzyOnly:
             _make("sales_orders", ["order_id", "customer_id", "order_amount"]),
             _make("order_items", ["order_id", "product_id"]),
         ]
-        results = await search_tables("order amount", candidates, api_key=None)
+        results = await search_tables("order amount", candidates, api_keys=None)
         if len(results) > 1:
             for i in range(len(results) - 1):
                 assert results[i].confidence >= results[i + 1].confidence

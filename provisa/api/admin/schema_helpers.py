@@ -430,9 +430,13 @@ async def _fetch_table_with_columns(
 
 
 async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
-    from provisa.llm.client import ProviasLLMClient
+    # REQ-1395, REQ-1398: the acting org's own per-vendor keys, when set.
+    from provisa.api.app import state
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.llm.client import ProvisaLLMClient
 
-    client = ProviasLLMClient(operation)
+    api_keys = await read_org_api_keys(state.tenant_db) if state.tenant_db else None
+    client = ProvisaLLMClient(operation, api_keys=api_keys)
     return await client.complete(
         prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
     )

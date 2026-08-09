@@ -114,6 +114,7 @@ async def search_source_tables(  # REQ-464
     """
     from provisa.api.app import state
     from provisa.api.admin.schema import _get_pool
+    from provisa.core.org_secrets import read_org_api_keys
 
     pool = await _get_pool()
     candidates = await _candidates_from_cache(source_id, schema_name, pool)
@@ -122,7 +123,9 @@ async def search_source_tables(  # REQ-464
     if not cache_warm:
         candidates = await _candidates_live(source_id, schema_name, state)
 
-    ranked = await search_tables(q, candidates)
+    assert state.tenant_db is not None
+    api_keys = await read_org_api_keys(state.tenant_db)
+    ranked = await search_tables(q, candidates, api_keys=api_keys)
     return [
         {
             "schema_name": r.schema_name,

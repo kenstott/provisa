@@ -120,15 +120,15 @@ def parse_llm_response(text: str) -> list[dict]:  # REQ-464
 async def llm_rank(  # REQ-167
     query: str,
     candidates: list[TableCandidate],
-    api_key: str | None = None,
+    api_keys: dict[str, str] | None = None,
 ) -> list[RankedTable]:
     """Call LLM to semantically rank candidates. Returns empty list on failure."""
-    from provisa.llm.client import ProviasLLMClient
+    from provisa.llm.client import ProvisaLLMClient
 
     prompt = build_search_prompt(query, candidates)
     candidate_index = {(c.schema_name, c.name): c for c in candidates}
 
-    client = ProviasLLMClient("table_selection")
+    client = ProvisaLLMClient("table_selection", api_keys=api_keys)
     try:
         raw = await client.complete(
             prompt,
@@ -166,7 +166,7 @@ async def llm_rank(  # REQ-167
 async def search_tables(  # REQ-167
     query: str,
     candidates: list[TableCandidate],
-    api_key: str | None = None,
+    api_keys: dict[str, str] | None = None,
 ) -> list[RankedTable]:
     """Two-pass search: fuzzy pre-filter, then optional LLM ranking."""
     filtered = fuzzy_filter(query, candidates)
@@ -174,7 +174,7 @@ async def search_tables(  # REQ-167
     if not filtered:
         return []
 
-    ranked = await llm_rank(query, filtered)
+    ranked = await llm_rank(query, filtered, api_keys=api_keys)
     if ranked:
         return ranked
 

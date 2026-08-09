@@ -89,9 +89,16 @@ def _tags_published(shared_data):
         GovernanceSignal.VISIBILITY_RESTRICTED,
     }
     assert by_signal[GovernanceSignal.MASKED].asset.fqn() == "wh.public.customers.ssn"
-    assert by_signal[GovernanceSignal.MASKED].rule_id == "mask:wh.public.customers.ssn:regex"
+    # REQ-1385: rule_id addresses the governed element by its URN, not physical coordinates.
+    assert (
+        by_signal[GovernanceSignal.MASKED].rule_id
+        == "mask:provisa://acme/sales/tables/customers#field:ssn:regex"
+    )
     assert by_signal[GovernanceSignal.RLS_RESTRICTED].asset.fqn() == "wh.public.customers"
-    assert by_signal[GovernanceSignal.RLS_RESTRICTED].rule_id == "rls:customers:analyst"
+    assert (
+        by_signal[GovernanceSignal.RLS_RESTRICTED].rule_id
+        == "rls:provisa://acme/sales/tables/customers:analyst"
+    )
     assert (
         by_signal[GovernanceSignal.VISIBILITY_RESTRICTED].asset.fqn()
         == "wh.public.customers.salary"

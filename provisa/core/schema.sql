@@ -702,6 +702,16 @@ CREATE TABLE IF NOT EXISTS org_settings (
     updated_by  TEXT
 );
 
+-- REQ-1395: per-org secrets (e.g. the org's Anthropic API key), encrypted at rest via
+-- provisa.encryption.runtime.encryption_service() — same pattern as api_sources.auth.
+-- Never echoed back in reads; write-only from the admin API.
+CREATE TABLE IF NOT EXISTS org_secrets (
+    key         TEXT PRIMARY KEY,
+    value_enc   BYTEA NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by  TEXT
+);
+
 -- Orgs, users, memberships, invites are the PLATFORM control plane's global
 -- registry (see provisa/core/schema_admin.py). They are NOT created per-org
 -- here; they live in a separate control-plane database (init_registry_schema).

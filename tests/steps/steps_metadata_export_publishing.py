@@ -65,7 +65,7 @@ def _publishes_ok(published: list[str]):
 @given("an org whose metadata export target is configured and entitled")
 def _configured_org(shared_data, tmp_path, monkeypatch):
     published: list[str] = []
-    monkeypatch.setattr(sync, "publish_snapshot", _publishes_ok(published))
+    monkeypatch.setattr(publishing, "publish_snapshot", _publishes_ok(published))
     shared_data["published"] = published
 
     async def _open(name: str) -> Database:
@@ -131,7 +131,7 @@ def _rejected_stays_claimable(shared_data, monkeypatch):
         result.errors.append(AssetError(asset=AssetRefStub("wh.public.orders"), message="HTTP 500"))
         return result
 
-    monkeypatch.setattr(sync, "publish_snapshot", _rejecting)
+    monkeypatch.setattr(publishing, "publish_snapshot", _rejecting)
 
     async def _drain() -> None:
         async with shared_data["dbs"][ORG].acquire() as conn:
@@ -146,7 +146,7 @@ def _rejected_stays_claimable(shared_data, monkeypatch):
             assert [row[0] for row in statuses.fetchall()] == ["claimed"]
 
     _run(shared_data, _drain())
-    monkeypatch.setattr(sync, "publish_snapshot", _publishes_ok(shared_data["published"]))
+    monkeypatch.setattr(publishing, "publish_snapshot", _publishes_ok(shared_data["published"]))
 
 
 @then("the org's scheduled reconcile republishes the full snapshot on its own cron")

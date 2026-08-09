@@ -178,6 +178,25 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
             state.kafka_table_physical[gql_table_name] = physical_table
 
 
+def fixed_catalog_for_engine(state: "AppState") -> str | None:
+    """The one physical catalog every source is pinned to, for a fixed-catalog warehouse engine.
+
+    BigQuery (project.dataset.table), Fabric/Synapse (database.schema.table) attach and read at
+    exactly ``<catalog>.<schema>.<table>``, so every source on that engine — config-loaded or
+    created dynamically via ``createSource`` — must share this one catalog name rather than the
+    per-source name ``source_to_catalog`` would derive.
+    """
+    engine = getattr(state, "federation_engine", None)
+    engine_name = getattr(getattr(engine, "engine", None), "name", "")
+    if engine_name == "bigquery":
+        return os.environ.get("GOOGLE_CLOUD_PROJECT")
+    elif engine_name == "fabric":
+        return os.environ.get("FABRIC_DATABASE")
+    elif engine_name == "synapse":
+        return os.environ.get("SYNAPSE_DATABASE")
+    return None
+
+
 def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, REQ-1266
     """Populate the org-scoped engine-catalog name map (+ source types/dialects/cache/hints).
 
@@ -190,24 +209,12 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
     :func:`_build_source_pools_and_enums`.
     """
     from provisa.api.app import state
-    import os
 
     # Seed system source catalogs (never org-prefixed — one physical catalog shared across orgs).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
     state.source_catalogs["provisa-otel"] = "otel"
 
-    # A fixed-catalog warehouse (BigQuery project.dataset.table; Fabric/Synapse database.schema.table)
-    # pins EVERY source's catalog to the one warehouse catalog — the runtime lands/attaches, and the
-    # governed query reads, at exactly <catalog>.<schema>.<table>.
-    _fixed_catalog = None
-    _engine = getattr(state, "federation_engine", None)
-    _engine_name = getattr(getattr(_engine, "engine", None), "name", "")
-    if _engine_name == "bigquery":
-        _fixed_catalog = os.environ.get("GOOGLE_CLOUD_PROJECT")
-    elif _engine_name == "fabric":
-        _fixed_catalog = os.environ.get("FABRIC_DATABASE")
-    elif _engine_name == "synapse":
-        _fixed_catalog = os.environ.get("SYNAPSE_DATABASE")
+    _fixed_catalog = fixed_catalog_for_engine(state)
 
     # REQ-1266: the org currently being built (default/bootstrap org when the ContextVar is
     # unset — the startup path). Org-scoped catalogs get an org_<id>__ prefix for non-default

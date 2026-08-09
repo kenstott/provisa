@@ -150,8 +150,10 @@ async def _get_llm(state):
     administrator sets on the Admin AI Models tab — is resolved here, per request, over the
     deployment config. No restart is involved: the next NL query uses the new provider.
     """
+    from provisa.core.org_secrets import read_org_api_keys
     from provisa.core.org_settings import resolve_org_config
-    from provisa.llm.client import ProviasLLMClient
+    from provisa.llm.client import ProvisaLLMClient
 
     cfg = await resolve_org_config(state.tenant_db)
-    return ProviasLLMClient("sql_generation", config=cfg)
+    api_keys = await read_org_api_keys(state.tenant_db)
+    return ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)

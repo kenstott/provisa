@@ -398,7 +398,7 @@
         "source" : "AMNDT_IND"
       }
     },
-    "modelUri" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T/govdata-model12018054135036843310.json",
+    "modelUri" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T/govdata-model6519287835238239618.json",
     "baseDirectory" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T",
     "views" : [ {
       "name" : "active_candidates",
@@ -2772,6 +2772,6 @@
     "dataSource" : "fec"
   },
   "parentSchema" : "",
-  "generatedAt" : "2026-08-04T01:50:56.678992Z",
+  "generatedAt" : "2026-08-09T02:20:10.289879Z",
   "schemaName" : "fec"
 }

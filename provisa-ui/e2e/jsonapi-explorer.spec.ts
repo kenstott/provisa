@@ -83,3 +83,46 @@ test("REQ-800: pagination links rendered after successful query", async ({
   await page.waitForLoadState("networkidle");
   await expect(page.locator("body")).toBeVisible();
 });
+
+// REQ-1361: includeNodes must survive from the group-by picker into the fetched URL, matching
+// the ?includeNodes=true the NL "Open in JSON:API" link forwards for group-by queries whose
+// plan carries a nodes array (runner.py::_generate_jsonapi_query).
+test("REQ-1361: includeNodes checkbox forwards includeNodes=true on group-by queries", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "provisa.jsonapi.settings",
+      JSON.stringify({ selectedTable: "pet-store/pets", pageSize: "20" }),
+    );
+  });
+
+  const jsonapiRequests: string[] = [];
+  page.on("request", (req) => {
+    if (req.url().includes("/data/jsonapi")) jsonapiRequests.push(req.url());
+  });
+
+  await page.goto(`/jsonapi`);
+  await page.waitForLoadState("networkidle");
+
+  const groupByPicker = page.locator('[data-testid="jsonapi-groupby-picker"]');
+  await expect(groupByPicker).toBeVisible();
+  await groupByPicker.click();
+  const firstOption = page.locator(".mantine-MultiSelect-option").first();
+  await expect(firstOption).toBeVisible({ timeout: 10000 });
+  await firstOption.click();
+  await page.keyboard.press("Escape");
+
+  await page.locator('[data-testid="jsonapi-func-count"]').check();
+
+  const includeNodesCheckbox = page.locator('[data-testid="jsonapi-include-nodes-checkbox"]');
+  await expect(includeNodesCheckbox).toBeVisible();
+  await includeNodesCheckbox.check();
+
+  const submitBtn = page.locator('[data-testid="jsonapi-run-button"]');
+  await expect(submitBtn).toBeEnabled();
+  await submitBtn.click();
+  await page.waitForLoadState("networkidle");
+
+  expect(jsonapiRequests.some((u) => u.includes("includeNodes=true"))).toBe(true);
+});

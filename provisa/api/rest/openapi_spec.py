@@ -311,6 +311,23 @@ def generate_rest_openapi_spec(
                     "description": "Group rows by these columns, returning per-group aggregates (REQ-1359)",
                 }
             )
+            parameters.append(
+                {
+                    "name": "includeNodes",
+                    "in": "query",
+                    "schema": {"type": "string"},
+                    "description": (
+                        "Attach a nodes array of the underlying rows to each group "
+                        "(REQ-1401). `true` attaches every field; a JSON array of "
+                        "dot-notated paths (e.g. `[\"user_id\",\"user.email\"]`) projects "
+                        "to just those fields — a bare path names a scalar field on the "
+                        "row, each further dot segment names a scalar field one more "
+                        "relationship hop away (REQ-1402). Handled by generator.py's "
+                        "raw_params lookup regardless of this declaration; without it, "
+                        "Swagger UI's Try-it-out never renders an input to send it."
+                    ),
+                }
+            )
 
         row_array_schema = {
             "type": "object",

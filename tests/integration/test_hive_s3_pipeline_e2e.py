@@ -74,4 +74,9 @@ async def test_hive_s3_registers_and_serves_semantic_query(connector_client):  #
             seed_after_create_source=_seed,
         )
     finally:
+        # Two Hive-connector catalogs (this one and hive_pipeline) coexisting in the same Trino
+        # coordinator triggers a Hive-connector metastore-client cross-catalog contamination bug
+        # when both run in the same e2e-lane session — drop this catalog as soon as the test is
+        # done so at most one Hive-connector catalog is ever live at a time.
+        cur.execute(f"DROP CATALOG IF EXISTS {_SOURCE_ID}")
         conn.close()

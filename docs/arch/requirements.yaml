@@ -42893,7 +42893,8 @@
   - REQ-1393
   - REQ-1228
 - id: REQ-1395
-  status: proposed
+  status: complete
+  since: 2026-08
   group: 13. Multi-Tenancy & Organizations
   category: Org AI Model Configuration
   priority: SHOULD
@@ -42904,3 +42905,105 @@
   use_case: Organizations with distinct governance or compliance needs can use different LLM providers
     or models, enabling flexible multi-tenant deployments where each org controls its own AI surface.
   target: 2026-Q4
+- id: REQ-1402
+  status: complete
+  since: 2026-08
+  group: 8. Client Access & Protocols
+  category: REST API
+  priority: SHOULD
+  type: behavioral
+  description: The REST `?includeNodes=` parameter (introduced in REQ-1401) now accepts a field-level
+    projection in addition to `true`/`false`—either a JSON array or comma-separated list of dot-notated
+    paths to select specific scalar fields and relationship traversals, at arbitrary depth, from the
+    nodes row-detail.
+  use_case: Clients can request only the specific fields they need from nodes detail rows instead of
+    requesting all available fields, reducing payload size and allowing selective field hydration in
+    group-by aggregate responses.
+  code:
+  - provisa/api/rest/generator.py
+  - provisa/api/rest/openapi_spec.py
+  tests:
+  - tests/unit/test_rest_aggregates.py
+  - tests/unit/test_openapi_spec.py
+  scenario: |
+    Given a group-by response exposes rows with a `nodes` detail sub-selection
+    When a client submits `?includeNodes=["user_id","user.email"]` or `?includeNodes=user_id,user.email`
+    Then the nodes array includes only the user_id scalar field and the user relationship's email field
+    And each path segment is translated via apply_gql_name with no local schema-membership check
+    And an unresolvable path is left for parse_query's own GraphQL validation to reject with a 400,
+      same as by_cols/groupBy elsewhere in this module
+    And dot paths may traverse relationships to any depth the schema itself supports, not just one hop
+    And the selection is internally compiled to a nested GraphQL selection set
+  related_reqs:
+  - REQ-1401
+- id: REQ-1403
+  status: complete
+  since: 2026-08
+  group: "5. Query Languages, Compilation & Operations"
+  category: GraphQL Schema Generation
+  priority: MUST
+  type: structural
+  description: GraphQL relationship field names are generated via rel_field_name() which now respects
+    the configured naming convention (snake or apollo_graphql/camelCase), matching the behavior of
+    apply_gql_name() for scalar fields. Previously rel_field_name() always produced camelCase regardless
+    of the global gql naming convention setting, creating inconsistency between how relationship and
+    scalar fields were named.
+  use_case: Ensure relationship field names follow the same naming convention as scalar fields—a schema
+    configured with gql="snake" now produces snake_case relationship field names (e.g. "home_region"
+    instead of "homeRegion").
+  code:
+  - provisa/compiler/naming.py
+  tests:
+  - tests/unit/test_rest_aggregates.py
+- id: REQ-1404
+  status: complete
+  since: 2026-08
+  group: "5. Query Languages, Compilation & Operations"
+  category: Cypher Compiler
+  priority: MUST
+  type: behavioral
+  description: >-
+    ExprContext.resolve_property() must resolve post-WITH property references using the variable's resolved SQL alias from _var_table (the WITH-segment CTE name), not the raw Cypher variable name.
+  use_case: >-
+    Cypher queries that carry a node variable through a WITH clause with an aggregate and then access that node's properties in RETURN fail with "Column cannot be resolved" errors without correct SQL table qualification.
+  code:
+    - provisa/cypher/expr_context.py
+  tests:
+    - tests/unit/test_cypher_translator.py
+  scenario: |
+    Given a Cypher query with a node variable carried through a WITH clause with an aggregate (e.g. `WITH u, COUNT(i) AS c`)
+    When the RETURN clause accesses properties of that node variable (e.g. `u.name`)
+    Then the generated SQL correctly qualifies property references using the resolved SQL alias (e.g. `_w0.name`)
+- id: REQ-1405
+  status: complete
+  since: 2026-08
+  group: "5. Query Languages, Compilation & Operations"
+  category: Aggregate & Group-by Queries
+  priority: MUST
+  type: behavioral
+  description: >-
+    _resolve_aggregation_plan (provisa/nl/runner.py) must derive includeNodes dot-paths (dim_paths)
+    from SELECT-projected columns of a joined dimension table (e.g. users.name alongside COUNT(inquiries.id)),
+    so JSON:API and OpenAPI's synthesized includeNodes= value reflects the actual relationship-detail
+    fields the SQL/GraphQL branches resolved, instead of defaulting to includeNodes=true which only
+    returns the base aggregate table's own scalar fields. gRPC's {Type}GroupByRequest gains
+    include_nodes (bool) and include (repeated string) fields, and {Type}GroupByRow gains a typed
+    repeated {Type} nodes field, so the gRPC group-by RPC can return the same joined-dimension
+    detail rows as JSON:API/OpenAPI/GraphQL instead of only groupKey/aggregate.
+  use_case: >-
+    NL Explore UI queries like "show aggregate count of inquiries by user with user details" must
+    include the joined user detail fields (name, email, etc.) in the SQL, GraphQL, JSON:API,
+    OpenAPI, and gRPC panels' generated requests/calls alike.
+  code:
+    - provisa/nl/runner.py
+    - provisa/grpc/proto_gen.py
+    - provisa/grpc/query_ir.py
+    - provisa/grpc/server.py
+  tests:
+    - tests/unit/test_nl_aggregation_routing.py
+    - tests/unit/test_grpc_aggregates.py
+    - tests/unit/test_grpc_server.py
+  scenario: |
+    Given SQL that joins a dimension table and projects its columns alongside an aggregate on the base table (e.g. "SELECT users.name, COUNT(inquiries.id) FROM users JOIN inquiries ON users.id = inquiries.user_id GROUP BY users.name")
+    When _resolve_aggregation_plan parses this SQL
+    Then dim_paths contains the joined-table columns as includeNodes dot-paths (e.g. "user.name"), and JSON:API/OpenAPI's generated query text includes them via includeNodes=, and gRPC's QueryXGroupBy call is shown with include_nodes=true, include=[user]
