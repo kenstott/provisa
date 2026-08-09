@@ -15,24 +15,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
-import types
 from datetime import datetime, timezone
 from typing import AsyncIterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
 from provisa.subscriptions import ChangeEvent
-
-# Ensure the websockets module can be imported by the provider even when the
-# real library is unavailable in the unit test context.
-if "websockets" not in sys.modules:
-    _ws_stub = types.ModuleType("websockets")
-    _ws_stub.connect = MagicMock()
-    sys.modules["websockets"] = _ws_stub
-
 from provisa.subscriptions.websocket_provider import WebSocketNotificationProvider
 from provisa.subscriptions.rss_provider import RSSNotificationProvider, parse_feed, _parse_date
 
