@@ -727,6 +727,11 @@ def _try_lift_subquery(
     if flat_expr is None:
         flat_expr = inner_select_expr
 
+    # The subquery's own explicit JOINs (e.g. FROM inquiries JOIN pets ON ...) must carry
+    # over to the CTE — dropping them silently strips the joined table from FROM while the
+    # projection still references its columns, breaking the query at execution.
+    orig_joins = [j.copy() for j in (inner.args.get("joins") or [])]
+
     # Build ON condition: AND of all correlated pairs
     def _make_join_cond(pairs: list[tuple[exp.Expression, exp.Expression]]) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         cond: exp.Expression = exp.EQ(this=pairs[0][0].copy(), expression=pairs[0][1].copy())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -749,6 +754,8 @@ def _try_lift_subquery(
     if is_agg:
         cte_select_exprs.append(exp.Alias(this=flat_expr.copy(), alias=exp.to_identifier("_val")))
         cte_sel = exp.Select(expressions=cte_select_exprs).from_(inner_table_expr.copy())
+        for oj in orig_joins:
+            cte_sel = cte_sel.join(oj.copy(), append=True)
         for ej in extra_joins:
             cte_sel = cte_sel.join(ej.copy(), append=True)
         if local_conditions:
@@ -767,6 +774,8 @@ def _try_lift_subquery(
             arb_val = exp.Anonymous(this="ARBITRARY", expressions=[flat_expr.copy()])
             cte_select_exprs.append(exp.Alias(this=arb_val, alias=exp.to_identifier("_val")))
             cte_sel = exp.Select(expressions=cte_select_exprs).from_(inner_table_expr.copy())
+            for oj in orig_joins:
+                cte_sel = cte_sel.join(oj.copy(), append=True)
             for ej in extra_joins:
                 cte_sel = cte_sel.join(ej.copy(), append=True)
             if local_conditions:
@@ -786,6 +795,8 @@ def _try_lift_subquery(
                 exp.Alias(this=flat_expr.copy(), alias=exp.to_identifier("_val"))
             )
             cte_sel = exp.Select(expressions=cte_select_exprs).from_(inner_table_expr.copy())
+            for oj in orig_joins:
+                cte_sel = cte_sel.join(oj.copy(), append=True)
             for ej in extra_joins:
                 cte_sel = cte_sel.join(ej.copy(), append=True)
             if local_conditions:
