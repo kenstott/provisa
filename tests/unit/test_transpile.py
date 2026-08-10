@@ -30,6 +30,20 @@ class TestTranspileToTrino:
         assert "to_json" not in trino_sql
         assert "cast(" in trino_sql and "as json)" in trino_sql
 
+    def test_nested_to_json_becomes_cast_as_json(self):
+        # A map literal nested in a map literal (group-by nodes with a relationship field) emits
+        # to_json inside to_json. sqlglot's transform walks pre-order and skips a replaced node's
+        # children, so the inner call reached Trino as "Function 'to_json' not registered".
+        pg = (
+            "SELECT MAP(ARRAY['user'], ARRAY[to_json(MAP(ARRAY['id'], "
+            'ARRAY[to_json("b"."id")]))]) AS x FROM "public"."users" "b"'
+        )
+        assert "to_json" not in transpile_to_trino(pg).lower()
+
+    def test_nested_json_build_object_is_rewritten(self):
+        pg = "SELECT json_build_object('u', json_build_object('id', \"b\".\"id\")) AS x FROM \"t\" \"b\""
+        assert "json_build_object" not in transpile_to_trino(pg).lower()
+
     def test_simple_select(self):
         pg = 'SELECT "id", "amount" FROM "public"."orders"'
         trino_sql = transpile_to_trino(pg)

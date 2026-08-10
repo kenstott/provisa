@@ -81,15 +81,39 @@ def _split_top_level_commas(text: str) -> list[str]:
     return [p for p in parts if p]
 
 
+def _unwrap_collect(expr: str) -> str:
+    """Strip an outer collect(...) so the value is per-row, not an aggregate.
+
+    A relationship field compiles to `collect({...}) AS user` on its own, but here it becomes an
+    entry of an outer `collect({...}) AS nodes` — and Cypher rejects a nested aggregate. The
+    per-row map literal is what the outer collect must aggregate.
+    """
+    m = re.match(r"^collect\s*\((.*)\)$", expr.strip(), flags=re.IGNORECASE | re.DOTALL)
+    if not m:
+        return expr
+    inner = m.group(1)
+    # Guard against `collect(x) + collect(y)`, where the regex's greedy tail spans two calls.
+    if _split_top_level_commas(inner) != [inner.strip()] or inner.count("(") != inner.count(")"):
+        return expr
+    return inner.strip()
+
+
 def _return_line_to_entries(return_line: str) -> list[tuple[str, str]]:
-    """Convert 'RETURN a.x AS x, {..} AS user' into [("x", "a.x"), ("user", "{..}")]."""
+    """Convert 'RETURN a.x, collect({..}) AS user' into [("x", "a.x"), ("user", "{..}")].
+
+    The compiled nodes fragment aliases only the relationship items; scalar columns come back as
+    bare `a.col` property accesses, whose alias is the property name.
+    """
     body = re.sub(r"^\s*RETURN\s+", "", return_line.strip(), flags=re.IGNORECASE)
     entries = []
     for item in _split_top_level_commas(body):
         m = re.search(r"\sAS\s+(\w+)\s*$", item, flags=re.IGNORECASE)
-        if not m:
+        if m:
+            entries.append((m.group(1), _unwrap_collect(item[: m.start()].strip())))
             continue
-        entries.append((m.group(1), item[: m.start()].strip()))
+        prop = re.match(r"^\w+\.(\w+)$", item.strip())
+        if prop:
+            entries.append((prop.group(1), item.strip()))
     return entries
 
 

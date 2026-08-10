@@ -23,6 +23,13 @@ OPTIONAL MATCH (a)-[:HAS_USER]->(u:Users)
 OPTIONAL MATCH (a)-[:HAS_PET]->(p:Pets)
 RETURN a.id AS id, a.inquiryType AS inquiryType, {id: u.id, name: u.name} AS user, {id: p.id, name: p.name} AS pet"""
 
+# The shape semantic_sql_to_cypher actually emits: scalar columns come back as bare property
+# accesses with no AS alias, and each relationship field is wrapped in its own collect().
+REAL_NODES_CYPHER = """MATCH (a:Inquiries)
+OPTIONAL MATCH (a:Inquiries)-[:SUBMITTED_BY]->(b:Users)
+OPTIONAL MATCH (a:Inquiries)-[:HAS_PETS]->(c:Pets)
+RETURN a.id, a.inquiryType, collect({id: b.id, name: b.name}) AS user, collect({id: c.id, name: c.name}) AS pet, a.userId"""
+
 
 class TestMergeNodesCypher:
     def test_relationship_fields_become_nested_maps_not_bare_properties(self):
@@ -60,6 +67,32 @@ class TestMergeNodesCypher:
         assert merged is not None
         assert merged.count("OPTIONAL MATCH (a)-[:HAS_USER]->(u:Users)") == 1
         assert "OPTIONAL MATCH (a)-[:HAS_PET]->(p:Pets)" in merged
+
+
+class TestMergeRealCompilerOutput:
+    """Regression for the second report: 'Function to_json not registered', from a merge that
+    dropped every unaliased scalar and nested collect() inside collect()."""
+
+    def test_unaliased_scalars_are_kept(self):
+        merged = _merge_nodes_cypher(GROUP_BY_CYPHER, REAL_NODES_CYPHER)
+        assert merged is not None
+        assert "id: a.id" in merged
+        assert "inquiryType: a.inquiryType" in merged
+        assert "userId: a.userId" in merged
+
+    def test_relationship_collect_is_unwrapped_no_nested_aggregate(self):
+        merged = _merge_nodes_cypher(GROUP_BY_CYPHER, REAL_NODES_CYPHER)
+        assert merged is not None
+        assert "collect({id: b.id, name: b.name})" not in merged
+        assert "user: {id: b.id, name: b.name}" in merged
+        assert "pet: {id: c.id, name: c.name}" in merged
+        assert merged.count("collect(") == 1
+
+    def test_denormalized_variant_also_unwraps(self):
+        merged = _merge_nodes_cypher_denormalized(GROUP_BY_CYPHER, REAL_NODES_CYPHER)
+        assert merged is not None
+        assert "user: {id: b.id, name: b.name}" in merged
+        assert "id: a.id" in merged
 
 
 class TestMergeNodesCypherDenormalized:

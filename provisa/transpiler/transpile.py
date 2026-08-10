@@ -60,8 +60,12 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(node, exp.Anonymous) and node.name.upper() == "TO_JSON":
             if len(node.expressions) == 1:
+                # Recurse into the argument: sqlglot's transform walks pre-order and does not
+                # revisit a replaced node's children, so a nested to_json (map literal inside a
+                # map literal) would otherwise reach Trino unrewritten.
                 return exp.Cast(
-                    this=node.expressions[0], to=exp.DataType(this=exp.DataType.Type.JSON)
+                    this=node.expressions[0].transform(_transform),
+                    to=exp.DataType(this=exp.DataType.Type.JSON),
                 )
         return node
 
@@ -76,8 +80,13 @@ def _rewrite_json_build_object_for_trino(sql: str) -> str:
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_BUILD_OBJECT":
             exprs = node.expressions
+            # Recurse: transform is pre-order and skips a replaced node's children, so a nested
+            # json_build_object would survive unrewritten.
             pairs = [
-                exp.JSONKeyValue(this=exprs[i], expression=exprs[i + 1])
+                exp.JSONKeyValue(
+                    this=exprs[i].transform(_transform),
+                    expression=exprs[i + 1].transform(_transform),
+                )
                 for i in range(0, len(exprs) - 1, 2)
             ]
             return exp.JSONObject(expressions=pairs)
@@ -116,7 +125,11 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
                 expressions=[
                     exp.Cast(
                         this=exp.ArrayAgg(
-                            this=exp.Anonymous(this="JSON_PARSE", expressions=[inner.copy()])
+                            # Recurse: transform is pre-order and skips a replaced node's
+                            # children, so a nested json_arrayagg would survive unrewritten.
+                            this=exp.Anonymous(
+                                this="JSON_PARSE", expressions=[inner.transform(_transform)]
+                            )
                         ),
                         to=json_type.copy(),
                     )
