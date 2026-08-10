@@ -117,19 +117,25 @@ push_cfg() {
   # shipped desktop default (duckdb) and /admin/federation-engine reported a saved selection that
   # disagreed with the running engine on every page load.
   #
-  # The pin is read from the API container and applied to every container: only compose-provisa-1
-  # gets PROVISA_ENGINE from provisa.env, so reading it per container left compose-provisa-ui-1
-  # holding a config that named a different engine than its sibling. An unpinned deployment leaves
-  # the shipped value alone — there the config IS the selection.
-  local pin
-  pin="$(ssh_node "sudo docker exec $API_CONTAINER printenv PROVISA_ENGINE || true" | tr -d '\r\n')"
-  echo "== engine pin: ${pin:-<none, keeping shipped selection>}"
+  # The SaaS node runs Trino — terraform/gcp-saas/main.tf:217 pins it and nothing else is
+  # supported here, so the engine is asserted rather than discovered. Reading the pin and
+  # keeping the shipped value when it came back empty is what put duckdb on the node: a
+  # regenerated provisa.env dropped PROVISA_ENGINE, the read returned nothing, and the deploy
+  # quietly shipped the desktop default. An engine the node does not agree with is a broken
+  # node, not a deploy-time choice.
+  local pin="trino"
+  local running
+  running="$(ssh_node "sudo docker exec $API_CONTAINER printenv PROVISA_ENGINE || true" | tr -d '\r\n')"
+  if [ "$running" != "$pin" ]; then
+    echo "$API_CONTAINER runs PROVISA_ENGINE='${running:-<unset>}', expected '$pin'." >&2
+    echo "Fix the node's /root/.provisa/provisa.env and recreate the containers, then re-run." >&2
+    exit 1
+  fi
+  echo "== engine pin: $pin"
   for c in $CONTAINERS; do
     ssh_node "sudo docker cp /tmp/provisa-cfg-deploy.tgz $c:/app/config/cfg.tgz \
       && sudo docker exec $c sh -c 'cd /app/config && tar xzf cfg.tgz && rm cfg.tgz \
-        && if [ -n \"$pin\" ]; then \
-             sed -i \"s|^federation_engine:.*|federation_engine: $pin|\" provisa-install.yaml; \
-           fi \
+        && sed -i \"s|^federation_engine:.*|federation_engine: $pin|\" provisa-install.yaml \
         && echo \"$c config=\$(ls *.yaml | wc -l) \$(grep ^federation_engine: provisa-install.yaml)\"'"
   done
 }
