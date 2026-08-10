@@ -313,7 +313,8 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
     # COPY TO STDOUT
     # ------------------------------------------------------------------
 
-    def _handle_copy_to_query(self, _ctx: BVContext, query: str, fmt: str, role_id: str) -> int:  # pyright: ignore[reportUnusedParameter]
+    def _handle_copy_to_query(self, _ctx: BVContext, query: str, fmt: str, role_id: str) -> int:
+        from provisa.audit.context import with_audit_identity
         from provisa.pgwire import server as _srv
         from provisa.pgwire._pipeline import plan_pgwire_sql
         from provisa.transpiler.router import Route
@@ -323,18 +324,48 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         if loop is None:
             raise RuntimeError("Event loop not available")
 
-        future = asyncio.run_coroutine_threadsafe(plan_pgwire_sql(query, role_id), loop)
+        user_id = _ctx.session.user_id  # type: ignore[attr-defined]
+        if not user_id:
+            raise RuntimeError("Not authenticated")
+        org_id = _ctx.session.org_id  # type: ignore[attr-defined]
+        # REQ-074/REQ-1386: bind the principal inside the loop coroutine (ContextVars do not cross
+        # run_coroutine_threadsafe) so the governor's audit write attributes this COPY; REQ-1266
+        # binds the session's org there for the same reason — the row lands in its tenant schema.
+        future = asyncio.run_coroutine_threadsafe(
+            _srv._run_with_org(
+                org_id, with_audit_identity(user_id, "pgwire", plan_pgwire_sql(query, role_id))
+            ),
+            loop,
+        )
         plan = future.result(timeout=60)
 
-        if plan.route == Route.ENGINE:
-            data_bytes, nrows = self._exec_engine_flight(plan, fmt)
-        else:
-            data_bytes, nrows = self._exec_direct_plan(plan, loop, fmt)
+        try:
+            if plan.route == Route.ENGINE:
+                data_bytes, nrows = self._exec_engine_flight(plan, fmt)
+            else:
+                data_bytes, nrows = self._exec_direct_plan(plan, loop, fmt)
+        except Exception:
+            self._finalize_audit(plan, 500, loop, org_id)
+            raise
+        self._finalize_audit(plan, 200, loop, org_id)
 
         self._send_copy_out_response(fmt)
         self._send_copy_data(data_bytes)
         self._send_copy_done()
         return nrows
+
+    def _finalize_audit(self, plan: _Plan, status_code: int, loop, org_id: str | None) -> None:
+        """Write the governed plan's audit row from this worker thread (REQ-074/REQ-1386).
+
+        COPY drains the engine/source terminal here, so the plan never reaches ``_execute_plan`` on
+        the ENGINE route; ``finalize_audit`` is idempotent, so the DIRECT route stays single-write.
+        The org is re-bound on the loop side (REQ-1266) so the row lands in this session's tenant."""
+        from provisa.pgwire import server as _srv
+        from provisa.pgwire._pipeline import finalize_audit
+
+        asyncio.run_coroutine_threadsafe(
+            _srv._run_with_org(org_id, finalize_audit(plan, status_code)), loop
+        ).result(timeout=30)
 
     def _exec_engine_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.api.app import state

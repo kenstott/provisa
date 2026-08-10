@@ -366,6 +366,12 @@ class AppState:
         return rt.org_id if rt.isolated_engine else None
 
     @property
+    def active_engine_endpoint(self) -> tuple[str, int] | None:
+        """REQ-1412: the coordinator endpoint the active org OPERATES ITSELF (external engine), or
+        ``None`` when the endpoint is the deployment's to resolve (shared or SaaS-dedicated)."""
+        return self._active_runtime().engine_endpoint
+
+    @property
     def tenant_db(self) -> Database | None:
         return self._active_runtime().tenant_db
 
@@ -776,13 +782,14 @@ async def _load_and_build(
     _mark("hot_tables")
 
 
-async def _read_org_flags(org_id: str) -> tuple[bool, bool]:  # REQ-1266, REQ-1244
-    """``(seeded_demo, isolated_engine)`` for ``org_id``, read from the admin plane.
+async def _read_org_flags(org_id: str) -> tuple[bool, bool, tuple[str, int] | None]:
+    """``(seeded_demo, isolated_engine, external_endpoint)`` for ``org_id``, from the admin plane.
 
     The org registry is in-memory with no TTL, so after a process restart the per-request router
     must rebuild an org's runtime on first access. ``seeded_demo`` tells it whether to reload the
     demo sources; ``isolated_engine`` whether to bind a dedicated federation engine
-    (REQ-1043/REQ-1067) — no defaults, the row is authoritative."""
+    (REQ-1043/REQ-1067); ``external_endpoint`` is the org's own coordinator when it runs an
+    external engine (REQ-1412) — no defaults, the row is authoritative."""
     from sqlalchemy import select as _select
 
     from provisa.core.schema_admin import orgs as _orgs
@@ -790,12 +797,18 @@ async def _read_org_flags(org_id: str) -> tuple[bool, bool]:  # REQ-1266, REQ-12
     assert state.admin_db is not None
     async with state.admin_db.acquire() as conn:
         result = await conn.execute_core(
-            _select(_orgs.c.seeded_demo, _orgs.c.isolated_engine).where(_orgs.c.id == org_id)
+            _select(
+                _orgs.c.seeded_demo,
+                _orgs.c.isolated_engine,
+                _orgs.c.external_engine_host,
+                _orgs.c.external_engine_port,
+            ).where(_orgs.c.id == org_id)
         )
         row = result.fetchone()
     if row is None:
         raise KeyError(f"org {org_id!r} not found in the admin plane — cannot route a request to it")
-    return bool(row[0]), bool(row[1])
+    external = (row[2], int(row[3])) if row[2] else None
+    return bool(row[0]), bool(row[1]), external
 
 
 async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
@@ -808,16 +821,23 @@ async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
     (no default)."""
 
     async def _builder(oid: str) -> OrgRuntime:
-        include_demo, isolated_engine = await _read_org_flags(oid)
+        include_demo, isolated_engine, external = await _read_org_flags(oid)
         return await build_org_runtime(
-            oid, include_demo=include_demo, isolated_engine=isolated_engine
+            oid,
+            include_demo=include_demo,
+            isolated_engine=isolated_engine,
+            external_engine=external,
         )
 
     return await state.org_registry.get_or_build(org_id, _builder)
 
 
 async def build_org_runtime(
-    org_id: str, *, include_demo: bool = False, isolated_engine: bool = False
+    org_id: str,
+    *,
+    include_demo: bool = False,
+    isolated_engine: bool = False,
+    external_engine: tuple[str, int] | None = None,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -844,7 +864,20 @@ async def build_org_runtime(
     state.org_registry.set(org_id, rt)
     token = set_current_org(org_id)
     try:
-        if isolated_engine:
+        if external_engine is not None:
+            # REQ-1412: the org runs its OWN coordinator. Same dedicated-EngineRuntime shape as an
+            # isolated org — what changes is where the terminal points, which terminal_conn_kwargs
+            # reads back off the runtime (state.active_engine_endpoint) instead of resolving the
+            # deployment's shared or SaaS-dedicated host. Recorded BEFORE bind_terminal, which
+            # reads it.
+            from provisa.federation.engine import build_engine
+            from provisa.federation.runtime import EngineRuntime
+
+            rt.isolated_engine = True
+            rt.engine_endpoint = external_engine
+            rt.federation_engine = EngineRuntime(build_engine(), state)
+            rt.federation_engine.bind_terminal()
+        elif isolated_engine:
             # REQ-1043/REQ-1067/REQ-1244: this org runs on its OWN federation engine. Bind a
             # dedicated EngineRuntime BEFORE any source registration below, so the org's catalogs
             # land on ITS engine, never the shared one. The engine kind is the deployment's
@@ -1618,6 +1651,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
 
     app.include_router(settings_router)
+    from provisa.api.admin.org_engine_router import router as org_engine_router  # REQ-1412
+
+    app.include_router(org_engine_router)
     from provisa.api.admin.ossie_router import router as ossie_router  # REQ-1316, REQ-1321
 
     app.include_router(ossie_router)

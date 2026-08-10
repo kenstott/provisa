@@ -27,6 +27,8 @@ them, which is the thing under test.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import types
 
 import pyarrow as pa
@@ -77,13 +79,35 @@ class _Reader:
 
 
 def _plan(route, **kwargs):
+    # audit/audit_written: the governors open the audit record and the terminal finalizes it
+    # (REQ-074/REQ-1386). No identity is bound here, so the record is None and no row is written —
+    # the fields still have to exist, because the terminal finalizes on every path.
     return types.SimpleNamespace(
-        route=route, sql="SELECT id FROM orders", source_id="wh", exec_params=[], **kwargs
+        route=route,
+        sql="SELECT id FROM orders",
+        source_id="wh",
+        exec_params=[],
+        audit=None,
+        audit_written=False,
+        **kwargs,
     )
 
 
 @pytest.fixture
-def airport(monkeypatch):
+def main_loop():
+    """The app's event loop, running in its own thread — the airport calls into it from the Flight
+    worker thread (governing the scan, and writing its audit row at the terminal)."""
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    yield loop
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=2)
+    loop.close()
+
+
+@pytest.fixture
+def airport(monkeypatch, main_loop):
     """State and plan wiring for the two routes, with the governed pipeline stubbed at the seam."""
     from provisa.transpiler.router import Route
 
@@ -160,9 +184,9 @@ def test_a_direct_scan_that_reports_no_column_types_is_refused():
 # --- streaming (REQ-1190, REQ-1231) -----------------------------------------------------------
 
 
-def test_an_engine_scan_streams_the_engines_own_reader(airport):
+def test_an_engine_scan_streams_the_engines_own_reader(airport, main_loop):
     schema, batches = governed_table_scan_stream(
-        airport.state, None, "SELECT id FROM orders", "analyst"
+        airport.state, main_loop, "SELECT id FROM orders", "analyst"
     )
 
     assert schema == airport.engine_schema
@@ -170,11 +194,11 @@ def test_an_engine_scan_streams_the_engines_own_reader(airport):
     assert len(list(batches)) == 1
 
 
-def test_a_direct_scan_streams_through_the_sources_cursor(airport):
+def test_a_direct_scan_streams_through_the_sources_cursor(airport, main_loop):
     airport.plan = _plan(airport.route.DIRECT)
 
     schema, batches = governed_table_scan_stream(
-        airport.state, None, "SELECT id FROM orders", "analyst"
+        airport.state, main_loop, "SELECT id FROM orders", "analyst"
     )
 
     assert schema.names == ["id"]

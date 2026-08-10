@@ -32,6 +32,7 @@ import grpc
 import grpc.aio
 import jwt
 
+from provisa.audit.context import AuditIdentity, set_audit_identity
 from provisa.auth.models import AuthIdentity
 from provisa.security.high_security import high_security_wire_reject, kms_key_in_pairs
 
@@ -196,6 +197,9 @@ def _with_principal(
     async def streaming(request, context):
         _authorized_role.set(role)
         _identity.set(identity)
+        # REQ-074/REQ-1386: the acting principal the pipeline's audit write records. Set on the
+        # per-RPC task alongside the role, so every handler's governed statements are attributed.
+        set_audit_identity(AuditIdentity(user_id=identity.user_id, surface="grpc"))
         # The handler's declared behavior type is the union of all four RPC shapes; the branch
         # below picks the one that matches this handler's own streaming flags.
         async for message in behavior(request, context):  # pyright: ignore[reportGeneralTypeIssues]
@@ -204,6 +208,9 @@ def _with_principal(
     async def unary(request, context):
         _authorized_role.set(role)
         _identity.set(identity)
+        # REQ-074/REQ-1386: the acting principal the pipeline's audit write records. Set on the
+        # per-RPC task alongside the role, so every handler's governed statements are attributed.
+        set_audit_identity(AuditIdentity(user_id=identity.user_id, surface="grpc"))
         return await behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
 
     return _rebuild(handler, streaming if handler.response_streaming else unary)

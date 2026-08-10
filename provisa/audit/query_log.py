@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from sqlalchemy import insert, select
@@ -88,7 +89,9 @@ async def log_query(  # REQ-074, REQ-689
     user_id: str,
     role_id: str,
     query_text: str,
-    table_ids: list[str],
+    # registered_tables ids (ints) from the pipeline; the ops_table_usage view casts each
+    # element to INTEGER. Sequence keeps older str-keyed callers (tests, fixtures) type-clean.
+    table_ids: Sequence[int | str],
     source: str,
     status_code: int,
     duration_ms: int,
@@ -115,7 +118,7 @@ async def log_query(  # REQ-074, REQ-689
                 query_hash=query_hash,
                 # Binary column takes bytes directly; JSON table_ids takes the list directly.
                 query_text_enc=query_text_enc,
-                table_ids=table_ids,
+                table_ids=list(table_ids),
                 source=source,
                 status_code=status_code,
                 duration_ms=duration_ms,

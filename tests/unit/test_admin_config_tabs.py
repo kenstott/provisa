@@ -371,3 +371,92 @@ def teardown_module(_mod):
 
     for k in ("acme_hsm", "unavailable_kms"):
         reg._REGISTRY.pop(k, None)
+
+
+# --- Live vendor model listing for the model picker (REQ-1399) ------------------
+
+
+class TestVendorModelListing:
+    """The Model field's options come from the vendor's own list-models API, so a model the
+    vendor started serving after this build is selectable without a release."""
+
+    def test_lists_the_models_the_vendor_serves(self, client, org_overrides, monkeypatch):
+        import provisa.core.org_secrets as org_secrets_mod
+        import provisa.llm.vendor_models as vendor_models_mod
+
+        async def _keys(_db):
+            return {"anthropic": "sk-ant-org"}
+
+        seen: dict = {}
+
+        async def _fetch(vendor, api_key, **_kw):
+            seen["vendor"], seen["api_key"] = vendor, api_key
+            return ["claude-haiku-4-5-20251001", "claude-opus-4-6"]
+
+        monkeypatch.setattr(org_secrets_mod, "read_org_api_keys", _keys)
+        monkeypatch.setattr(vendor_models_mod, "fetch_vendor_models", _fetch)
+
+        r = client.get("/admin/ai-models/vendors/anthropic/models")
+        assert r.status_code == 200
+        assert r.json() == {
+            "vendor": "anthropic",
+            "models": ["claude-haiku-4-5-20251001", "claude-opus-4-6"],
+        }
+        # The ORG's key, not the deployment's — the picker lists what the org's queries reach.
+        assert seen == {"vendor": "anthropic", "api_key": "sk-ant-org"}
+
+    def test_vendor_without_a_listing_api_is_rejected(self, client, org_overrides):
+        r = client.get("/admin/ai-models/vendors/ollama/models")
+        assert r.status_code == 400
+        # This bare app registers no ApiError handler (provisa.api.app does), so the machine
+        # code is not in the body here — the message is.
+        assert "publishes no list-models API" in r.json()["detail"]
+
+    def test_vendor_with_no_key_anywhere_is_rejected(self, client, org_overrides, monkeypatch):
+        monkeypatch.delenv("COHERE_API_KEY", raising=False)
+        r = client.get("/admin/ai-models/vendors/cohere/models")
+        assert r.status_code == 400
+        assert "set an API key for 'cohere'" in r.json()["detail"]
+
+    def test_a_vendor_rejecting_the_key_surfaces_as_502(self, client, org_overrides, monkeypatch):
+        import httpx
+
+        import provisa.core.org_secrets as org_secrets_mod
+        import provisa.llm.vendor_models as vendor_models_mod
+
+        async def _keys(_db):
+            return {"openai": "sk-bad"}
+
+        async def _fetch(_vendor, _api_key, **_kw):
+            raise httpx.HTTPStatusError(
+                "401",
+                request=httpx.Request("GET", "https://api.openai.com/v1/models"),
+                response=httpx.Response(401),
+            )
+
+        monkeypatch.setattr(org_secrets_mod, "read_org_api_keys", _keys)
+        monkeypatch.setattr(vendor_models_mod, "fetch_vendor_models", _fetch)
+
+        r = client.get("/admin/ai-models/vendors/openai/models")
+        assert r.status_code == 502
+        assert "rejected the model listing: HTTP 401" in r.json()["detail"]
+
+    @pytest.mark.parametrize(
+        "payload,expected",
+        [
+            ({"data": [{"id": "b"}, {"id": "a"}]}, ["a", "b"]),  # OpenAI / Anthropic
+            ({"models": [{"name": "cmd-r"}]}, ["cmd-r"]),  # Cohere
+            ([{"id": "z"}, "y"], ["y", "z"]),  # Together's bare list
+        ],
+    )
+    def test_parses_every_list_models_response_shape(self, payload, expected):
+        from provisa.llm.vendor_models import parse_model_ids
+
+        assert parse_model_ids(payload) == expected
+
+    def test_an_unrecognized_shape_raises_rather_than_listing_nothing(self):
+        from provisa.llm.vendor_models import parse_model_ids
+
+        # An empty catalog would read as "this vendor serves no models"; the shape is the defect.
+        with pytest.raises(ValueError):
+            parse_model_ids({"result": []})

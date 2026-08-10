@@ -86,6 +86,65 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     }
 
 
+@router.get("/admin/ai-models/vendors/{vendor}/models")
+async def get_vendor_models(request: Request, vendor: str):  # REQ-1395, REQ-1398, REQ-1409
+    """The model names ``vendor`` currently serves, for the model picker.
+
+    Read live from the vendor's own list-models API with the org's key, so a model released after
+    this build shipped is selectable the day the vendor serves it.
+    """
+    require_org_settings(request)
+    import os
+
+    import httpx
+
+    from provisa.api.app import state
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.llm.vendor_models import (
+        VENDOR_API_KEY_ENV,
+        VENDOR_MODEL_APIS,
+        fetch_vendor_models,
+    )
+
+    if vendor not in VENDOR_MODEL_APIS:
+        raise ApiError(
+            400,
+            "ai_models.vendor_has_no_model_api",
+            f"'{vendor}' publishes no list-models API; enter the model name directly",
+        )
+
+    assert state.tenant_db is not None
+    # The org's key when it has set one; otherwise the deployment credential this vendor's calls
+    # already run on — the same resolution order the LLM client uses, so the picker lists exactly
+    # the models the org's queries would reach (REQ-1395, REQ-1398).
+    api_key = (await read_org_api_keys(state.tenant_db)).get(vendor)
+    if not api_key and vendor in VENDOR_API_KEY_ENV:
+        api_key = os.environ.get(VENDOR_API_KEY_ENV[vendor])
+    if not api_key:
+        raise ApiError(
+            400,
+            "ai_models.vendor_key_required",
+            f"set an API key for '{vendor}' to list its models",
+        )
+
+    try:
+        models = await fetch_vendor_models(vendor, api_key)
+    except httpx.HTTPStatusError as exc:
+        raise ApiError(
+            502,
+            "ai_models.vendor_list_failed",
+            f"{vendor} rejected the model listing: HTTP {exc.response.status_code}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise ApiError(
+            502,
+            "ai_models.vendor_unreachable",
+            f"{vendor} model listing is unreachable: {exc}",
+        ) from exc
+
+    return {"vendor": vendor, "models": models}
+
+
 @router.put("/admin/ai-models")
 async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349
     """Persist the acting org's AI-model, vector-model, and NL rate-limit overrides.

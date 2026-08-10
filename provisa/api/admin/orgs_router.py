@@ -229,6 +229,20 @@ async def _provision_org_task(
     from provisa.core.org_provisioning import provision_org
 
     try:
+        if isolated_engine:
+            # REQ-1416: the dedicated coordinator has to exist before build_org_runtime binds this
+            # org's terminal at its hostname. A deployment that stands its per-org clusters up out
+            # of band has no provisioner here — the endpoint template still resolves, and a
+            # coordinator that never came up surfaces as this task failing, not as an org that
+            # looks ready and answers nothing.
+            from provisa.federation.isolated_provisioner import (
+                provision_isolated_engine,
+                provisioning_available,
+            )
+
+            if provisioning_available():
+                await provision_isolated_engine(org_id)
+
         schema_sql_path = Path(__file__).parent.parent.parent / "core" / "schema.sql"
         schema_sql = schema_sql_path.read_text() if schema_sql_path.exists() else ""
         await provision_org(
@@ -293,6 +307,19 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
 
     _validate_new_org_id(body.id)
     _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
+    if body.isolated_engine:
+        # REQ-1416: accepting the request on a deployment that resolves no dedicated coordinator
+        # would create an org whose every query dies at bind time. The same gate the engine-lane
+        # tab applies (org_engine_router._isolated_available), applied at creation.
+        from provisa.api.admin.org_engine_router import _isolated_available
+
+        if not _isolated_available():
+            raise ApiError(
+                503,
+                "orgs.isolated_engine_unavailable",
+                "this deployment has no PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, so it cannot give "
+                "an org a dedicated federation engine (REQ-1043)",
+            )
 
     # Register the org immediately as "provisioning" and grant the creator membership synchronously
     # (admin plane) so they own it at once; the schema + data plane build in the background task.

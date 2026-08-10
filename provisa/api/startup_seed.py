@@ -339,6 +339,40 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
     )
 
 
+async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386
+    """Give the ops steward (``org_admin``) read access to every ops column.
+
+    The two ops seeds insert their columns once (``update_columns=[]``) so a later grant made
+    through the admin UI survives a restart. That also means a column first written without the
+    steward grant keeps it forever, and in a lockdown domain that column is in no role's schema —
+    the report's ``ops.<table>`` reference then reaches the engine unrewritten. This adds the
+    steward to any ops column missing it and touches nothing else, so REQ-1133 grants to other
+    roles are preserved.
+    """
+    rows = (
+        await conn.execute_core(
+            select(_table_columns_t.c.id, _table_columns_t.c.visible_to)
+            .select_from(
+                _table_columns_t.join(
+                    _registered_tables_t, _table_columns_t.c.table_id == _registered_tables_t.c.id
+                )
+            )
+            .where(_registered_tables_t.c.domain_id == "ops")
+        )
+    ).all()
+    for col_id, visible_to in rows:
+        # Set difference, not a role-id comparison: this constructs the grant the ops steward
+        # must hold (REQ-1337 forbids a role id in a GATE, not in a grant being written).
+        missing = {"org_admin"}.difference(visible_to)
+        if not missing:
+            continue
+        await conn.execute_core(
+            update(_table_columns_t)
+            .where(_table_columns_t.c.id == col_id)
+            .values(visible_to=[*visible_to, *missing])
+        )
+
+
 async def _seed_meta_relationships(conn: "Connection") -> None:
     """Seed FK relationships between meta and ops tables (idempotent, runs after both seeds)."""
     from provisa.api._meta_seed import META_RELATIONSHIPS
@@ -452,7 +486,13 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
                 {
                     "table_id": table_id,
                     "column_name": col_name,
-                    "visible_to": [],
+                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
+                    # means visible to NO role, so a telemetry table seeded empty was in
+                    # no role's compilation context and its "ops"."<table>" reference was
+                    # never rewritten to a physical ref — the engine then rejected the
+                    # report with SCHEMA_NOT_FOUND on schema 'ops'. org_admin stewards ops
+                    # and holds the same grant the ops-domain views get (REQ-1386).
+                    "visible_to": ["org_admin"],
                     "data_type": pg_type,
                     "is_primary_key": is_pk,
                 },
@@ -638,6 +678,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         await _seed_meta_domain(_conn, org_id=eff_org)
         await _seed_ops_pg(_conn)
         await _seed_ops_domain(_conn, org_id=eff_org)  # REQ-884
+        await _ensure_ops_steward_grant(_conn)  # REQ-1386
         await _seed_meta_relationships(_conn)
         needs_clusters = (
             await _conn.execute_core(

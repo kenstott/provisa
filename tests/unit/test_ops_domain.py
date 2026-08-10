@@ -245,6 +245,52 @@ _REPORT_VIEW_NAMES = {
 }
 
 
+class TestOpsStewardGrant:
+    """REQ-1386: ops is a lockdown domain — a column with no grant is in no role's schema."""
+
+    def test_telemetry_columns_seeded_visible_to_steward(self):
+        from provisa.api.startup_seed import _seed_ops_pg
+
+        conn = AsyncMock()
+        conn.upsert_returning = AsyncMock(return_value=7)
+
+        asyncio.run(_seed_ops_pg(conn))
+
+        assert conn.upsert.await_args_list, "no ops telemetry columns seeded"
+        for call in conn.upsert.await_args_list:
+            payload = call.args[1]
+            assert payload["visible_to"] == ["org_admin"], payload["column_name"]
+
+    def test_existing_columns_converge_on_steward_grant(self):
+        # A column seeded before the grant existed gains org_admin; grants made to other
+        # roles through the UI (REQ-1133) are kept, and an already-granted column is untouched.
+        from provisa.api.startup_seed import _ensure_ops_steward_grant
+
+        rows = [(1, []), (2, ["analyst"]), (3, ["org_admin"])]
+
+        class _Result:
+            def all(self):
+                return rows
+
+        calls: list = []
+
+        async def _execute_core(stmt):
+            calls.append(stmt)
+            return _Result()
+
+        conn = AsyncMock()
+        conn.execute_core = _execute_core
+
+        asyncio.run(_ensure_ops_steward_grant(conn))
+
+        updates = [s for s in calls[1:]]
+        assert len(updates) == 2, "expected exactly the two ungranted columns to be updated"
+        assert [u.compile().params["visible_to"] for u in updates] == [
+            ["org_admin"],
+            ["analyst", "org_admin"],
+        ]
+
+
 class TestReportViewRegistry:
     def test_all_report_views_present(self):
         assert set(_OPS_REPORT_VIEWS) == _REPORT_VIEW_NAMES

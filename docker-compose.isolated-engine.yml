@@ -1,0 +1,36 @@
+# REQ-1416: let the control plane provision a dedicated federation-engine coordinator per org.
+#
+# Overlay onto core + app:
+#   docker compose -f docker-compose.core.yml -f docker-compose.app.yml \
+#                  -f docker-compose.isolated-engine.yml up -d
+#
+# Two things the app needs that it does not have by default:
+#
+#   1. the container runtime. Creating a coordinator means talking to the Docker daemon, so the
+#      socket is bind-mounted. This is a real privilege grant — a process that can create
+#      containers on the host can do anything on the host — which is why it lives in a separate
+#      overlay a deployment opts into, not in docker-compose.app.yml.
+#   2. the names. PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE is what isolated_engine_endpoint resolves
+#      AND what the provisioner names the container and its network alias, so the org's terminal
+#      and the container it dials cannot drift apart.
+#
+# PROVISA_ISOLATED_ENGINE_NETWORK must be the compose project's network as Docker names it
+# (`docker network ls` — typically <project>_default), or the coordinator starts healthy and is
+# unreachable from the app.
+services:
+  provisa:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE: "${PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE:-provisa-trino-{org_id}}"
+      PROVISA_ISOLATED_ENGINE_PORT: "${PROVISA_ISOLATED_ENGINE_PORT:-8080}"
+      PROVISA_ISOLATED_ENGINE_IMAGE: "${PROVISA_ISOLATED_ENGINE_IMAGE:-trinodb/trino:481}"
+      PROVISA_ISOLATED_ENGINE_NETWORK: "${PROVISA_ISOLATED_ENGINE_NETWORK:?set to the compose network, e.g. compose_default}"
+      PROVISA_ISOLATED_ENGINE_MEMORY: "${PROVISA_ISOLATED_ENGINE_MEMORY:-4g}"
+
+  # The UI process serves the same image and reads the same lane settings, so the engine-lane tab
+  # reports what the API can actually do. It never creates containers — no socket here.
+  provisa-ui:
+    environment:
+      PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE: "${PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE:-provisa-trino-{org_id}}"
+      PROVISA_ISOLATED_ENGINE_PORT: "${PROVISA_ISOLATED_ENGINE_PORT:-8080}"

@@ -51,6 +51,9 @@ def _make_ctx(table_name: str = "orders", table_id: int = 1) -> CompilationConte
     return ctx
 
 
+AUDIT_ROWS: list[dict] = []  # query_audit_log appends the endpoint made, newest last
+
+
 def _make_query_result(**kwargs) -> QueryResult:
     return QueryResult(
         rows=kwargs.get("rows", [(1, "test")]),
@@ -59,10 +62,22 @@ def _make_query_result(**kwargs) -> QueryResult:
 
 
 @pytest.fixture
-async def sql_client():
+async def sql_client(monkeypatch):
     """ASGI test client with minimal state injected for /data/sql tests."""
     import provisa.api.app as app_mod
     from provisa.api.app import create_app
+
+    # REQ-074/REQ-1386: a governance refusal appends a 403 row to query_audit_log in the org's
+    # tenant database — that row is what the policy_denials report reads. Stand in for the tenant
+    # database and record the appends so a test can assert the refusal was recorded.
+    AUDIT_ROWS.clear()
+
+    async def _log_query(pool, **kwargs):
+        AUDIT_ROWS.append(kwargs)
+
+    monkeypatch.setattr("provisa.audit.query_log.log_query", _log_query)
+    _prev_tenant_db = app_mod.state.tenant_db
+    app_mod.state.tenant_db = MagicMock()
 
     # Pin unsecured auth BEFORE create_app(): wire_auth reads state.auth_config at
     # app-construction time. These governance tests post a `role` with no bearer
@@ -111,6 +126,7 @@ async def sql_client():
     from provisa.executor.pool import SourcePool
 
     app_mod.state.auth_config = _prev_auth_config
+    app_mod.state.tenant_db = _prev_tenant_db
     app_mod.state.schemas = {}
     app_mod.state.contexts = {}
     app_mod.state.rls_contexts = {}
@@ -157,6 +173,8 @@ class TestSQLForbiddenTable:
         # detail may be a string or {"violations": [...]}
         detail_str = detail if isinstance(detail, str) else str(detail)
         assert "secret_table" in detail_str
+        # REQ-074/REQ-1386: the refusal is the policy_denials fact — it has to be recorded
+        assert [r["status_code"] for r in AUDIT_ROWS] == [403]
 
     async def test_sql_accessible_table_not_forbidden(self, sql_client):
         """SQL referencing an accessible table does not get a 403."""

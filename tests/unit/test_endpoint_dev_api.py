@@ -70,13 +70,23 @@ def _make_query_result(**kwargs) -> QueryResult:
 
 
 @pytest.fixture
-async def sql_client():
+async def sql_client(monkeypatch):
     """ASGI test client with minimal state injected for /data/sql + /data/proto tests."""
     import provisa.api.app as app_mod
     from provisa.api.app import create_app
 
     _prev_auth_config = getattr(app_mod.state, "auth_config", None)
     app_mod.state.auth_config = None
+
+    # REQ-074/REQ-1386: every governed statement appends a query_audit_log row to the org's tenant
+    # database. These tests stub the executor, not the audit write, so stand in for the tenant
+    # database and capture the append instead of reaching a real pool.
+    async def _log_query(pool, **kwargs):
+        pass
+
+    monkeypatch.setattr("provisa.audit.query_log.log_query", _log_query)
+    _prev_tenant_db = app_mod.state.tenant_db
+    app_mod.state.tenant_db = MagicMock()
 
     the_app = create_app()
 
@@ -114,6 +124,7 @@ async def sql_client():
     from provisa.executor.pool import SourcePool
 
     app_mod.state.auth_config = _prev_auth_config
+    app_mod.state.tenant_db = _prev_tenant_db
     app_mod.state.schemas = {}
     app_mod.state.contexts = {}
     app_mod.state.rls_contexts = {}

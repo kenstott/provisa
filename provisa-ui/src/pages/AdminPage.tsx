@@ -58,6 +58,7 @@ import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 import { ObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
+import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import { McpServerTab } from "../components/admin/McpServerTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
@@ -76,6 +77,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/cache": "Cache",
   "/admin/scheduled-tasks": "Scheduler",
   "/admin/federation-engine": "Federation",
+  "/admin/org-engine": "Org Engine",  // REQ-1412: this org's engine lane
   "/admin/system-health": "Health",
   "/admin/observability": "Observability",
   "/admin/mcp-server": "MCP Server",
@@ -740,6 +742,7 @@ export function AdminPage() {
         {activeTab === "Cache" && <CacheManager />}
         {activeTab === "Scheduler" && <ScheduledTasks />}
         {activeTab === "Federation" && <FederationEngineTab />}
+        {activeTab === "Org Engine" && <OrgEngineTab />}
         {activeTab === "Security" && (
           <SecurityManager
             allRoles={allRoles}

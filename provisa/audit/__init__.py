@@ -8,6 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+from provisa.audit.context import (
+    AuditIdentity,
+    audit_identity_scope,
+    current_audit_identity,
+    reset_audit_identity,
+    set_audit_identity,
+    with_audit_identity,
+)
 from provisa.audit.query_log import (
     AUDIT_SCHEMA_SQL,
     init_audit_schema,
@@ -23,6 +31,12 @@ from provisa.audit.sla_monitor import (
 from provisa.audit.compliance_reporter import export_audit_log
 
 __all__ = [
+    "AuditIdentity",
+    "audit_identity_scope",
+    "current_audit_identity",
+    "reset_audit_identity",
+    "set_audit_identity",
+    "with_audit_identity",
     "AUDIT_SCHEMA_SQL",
     "init_audit_schema",
     "log_query",

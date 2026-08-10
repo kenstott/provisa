@@ -123,8 +123,14 @@ def terminal_conn_kwargs(state: Any) -> dict:
     query's lazy connect does the wake."""
     from provisa.federation.engine import configured_engine_endpoint, isolated_engine_endpoint
 
+    # REQ-1412: an EXTERNAL-engine org names its own coordinator, so nothing here resolves it —
+    # neither the deployment's shared endpoint nor the SaaS isolated-host template applies to a
+    # cluster the org operates.
+    external = state.active_engine_endpoint
     iso_org = state.active_isolated_org
-    if iso_org is not None:
+    if external is not None:
+        trino_host, trino_port = external
+    elif iso_org is not None:
         trino_host, trino_port = isolated_engine_endpoint(iso_org)
     else:
         trino_host, trino_port = configured_engine_endpoint()

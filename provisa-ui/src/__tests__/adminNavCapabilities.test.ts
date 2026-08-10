@@ -54,6 +54,9 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/domains": "org_settings",
   "/admin/scheduled-tasks": "org_settings",
   "/admin/requests": "org_settings",
+  // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external
+  // coordinator) is the org's decision. The engine KIND stays deployment-wide, below.
+  "/admin/org-engine": "org_settings",
 };
 
 // Deployment-wide surfaces. A multitenant org_admin does not hold `platform_settings`

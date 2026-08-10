@@ -9,18 +9,20 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '../test-utils/render';
+import { render, screen, waitFor, fireEvent, within } from '../test-utils/render';
 import { AiModelsTab } from '../components/admin/AiModelsTab';
 import type { AiModelsState } from '../api/aiModels';
 
 vi.mock('../api/aiModels', () => ({
   fetchAiModels: vi.fn(),
+  fetchVendorModels: vi.fn(),
   setAiModels: vi.fn(),
   LLM_VENDORS: ['anthropic', 'openai', 'cohere', 'groq', 'mistral', 'xai', 'deepseek', 'together', 'fireworks', 'nebius', 'sambanova', 'inception'],
 }));
 
-import { fetchAiModels, setAiModels } from '../api/aiModels';
+import { fetchAiModels, fetchVendorModels, setAiModels } from '../api/aiModels';
 const mockFetch = vi.mocked(fetchAiModels);
+const mockVendorModels = vi.mocked(fetchVendorModels);
 const mockSet = vi.mocked(setAiModels);
 
 function state(overrides: Partial<AiModelsState> = {}): AiModelsState {
@@ -53,6 +55,8 @@ describe('AiModelsTab', () => {
   beforeEach(() => {
     mockFetch.mockReset();
     mockSet.mockReset();
+    mockVendorModels.mockReset();
+    mockVendorModels.mockResolvedValue([]);
   });
 
   it('renders the model-role fields with loaded values', async () => {
@@ -163,5 +167,57 @@ describe('AiModelsTab', () => {
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0].api_keys?.anthropic).toBe('');
+  });
+
+  it('offers the vendor\'s live model list as the model field\'s options, once per vendor', async () => {
+    mockFetch.mockResolvedValue(state());
+    mockVendorModels.mockResolvedValue(['claude-haiku-4-5-20251001', 'claude-opus-4-6']);
+    render(<AiModelsTab />);
+
+    await waitFor(() => expect(mockVendorModels).toHaveBeenCalledWith('anthropic'));
+    // All five roles name anthropic, so its catalog is fetched once, not five times.
+    expect(mockVendorModels).toHaveBeenCalledTimes(1);
+
+    // Mantine filters the dropdown by the current input value, so clear it before opening.
+    const input = screen.getByTestId('ai-model-sql_generation');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(input);
+    // floating-ui hides the detached dropdown in jsdom (all rects are 0), so scope by the
+    // input's aria-controls listbox and query with hidden: true.
+    await waitFor(() => {
+      if (!input.getAttribute('aria-controls')) throw new Error('dropdown not open');
+    });
+    const listbox = document.getElementById(input.getAttribute('aria-controls') as string);
+    expect(
+      within(listbox as HTMLElement)
+        .getAllByRole('option', { hidden: true })
+        .map((o) => o.textContent),
+    ).toEqual(['claude-haiku-4-5-20251001', 'claude-opus-4-6']);
+  });
+
+  it('switching a role vendor loads that vendor\'s catalog', async () => {
+    mockFetch.mockResolvedValue(state());
+    mockVendorModels.mockResolvedValue([]);
+    render(<AiModelsTab />);
+
+    await waitFor(() => expect(mockVendorModels).toHaveBeenCalledWith('anthropic'));
+    fireEvent.change(screen.getByTestId('ai-model-table_selection-vendor'), {
+      target: { value: 'openai' },
+    });
+    await waitFor(() => expect(mockVendorModels).toHaveBeenCalledWith('openai'));
+  });
+
+  it('a vendor whose listing fails leaves the model field typeable and states why', async () => {
+    mockFetch.mockResolvedValue(state());
+    mockVendorModels.mockRejectedValue(new Error('set an API key for anthropic to list its models'));
+    render(<AiModelsTab />);
+
+    await waitFor(() =>
+      expect(screen.getAllByText(/set an API key for anthropic/).length).toBe(5),
+    );
+    fireEvent.change(screen.getByTestId('ai-model-sql_generation'), {
+      target: { value: 'some-custom-model' },
+    });
+    expect(screen.getByTestId('ai-model-sql_generation')).toHaveValue('some-custom-model');
   });
 });

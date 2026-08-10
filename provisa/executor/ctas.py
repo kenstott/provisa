@@ -351,10 +351,21 @@ async def run_ctas(sql: str, role_id: str) -> str | None:
         require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
         physical_select = plan.physical_sql if plan.physical_sql is not None else plan.sql
         ddl = f"CREATE TABLE {resolved.schema}.{resolved.table} AS {physical_select}"
-        if plan.physical_sql is not None:
-            await engine.execute_engine(ddl)
-        else:
-            await engine.execute_native(state.source_pools, plan.source_id, ddl, plan.exec_params)
+        # REQ-074/REQ-1386: the CTAS pushes its own DDL around the governed SELECT and never
+        # reaches _execute_plan, so the SELECT's audit row is written here.
+        from provisa.pgwire._pipeline import finalize_audit
+
+        try:
+            if plan.physical_sql is not None:
+                await engine.execute_engine(ddl)
+            else:
+                await engine.execute_native(
+                    state.source_pools, plan.source_id, ddl, plan.exec_params
+                )
+        except Exception:
+            await finalize_audit(plan, 500, state)
+            raise
+        await finalize_audit(plan, 200, state)
         return -1
 
     async def _run_select():

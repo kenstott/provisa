@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from provisa.audit.context import audit_identity_scope
 from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser
@@ -305,7 +306,17 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         if response is not None:
             await response(scope, receive, send)
             return
-        await self.app(scope, receive, send)
+        # REQ-074/REQ-1386: this is the one chokepoint every HTTP surface passes through
+        # (GraphQL, JSON:API, REST, /data/sql, Cypher, MCP-over-HTTP), so the acting principal
+        # is bound here and the pipeline writes the audit row for whichever of them runs SQL.
+        # _SKIP_PATHS (health, docs, static) return from _process without an identity — those
+        # are unauthenticated endpoints with no principal and run nothing to audit.
+        identity = getattr(request.state, "identity", None)
+        if identity is None:
+            await self.app(scope, receive, send)
+            return
+        with audit_identity_scope(identity.user_id, "http"):
+            await self.app(scope, receive, send)
 
     async def _process(self, request: Request):  # REQ-486
         if request.url.path in _SKIP_PATHS:

@@ -30,10 +30,15 @@ class _Recorder:
     def __init__(self):
         self.called = False
         self.role_seen: str | None = None
+        self.audit_seen: tuple[str, str] | None = None
 
     async def __call__(self, scope, receive, send):
+        from provisa.audit.context import current_audit_identity
+
         self.called = True
         self.role_seen = mcp_server._request_role.get()
+        ident = current_audit_identity()
+        self.audit_seen = None if ident is None else (ident.user_id, ident.surface)
         await send({"type": "http.response.start", "status": 200, "headers": []})
         await send({"type": "http.response.body", "body": b"ok"})
 
@@ -61,11 +66,15 @@ def _status(sent: list[dict]) -> int:
 
 @pytest.mark.asyncio
 async def test_valid_bearer_sets_request_role(monkeypatch):
-    async def _fake_resolve(token, state):
-        assert token == "good-token"
-        return "analyst"
+    """The middleware validates the token once, then derives role, org and audit principal from
+    that one identity — so the token's user reaches the pipeline as the acting principal."""
 
-    monkeypatch.setattr(mcp_server, "_resolve_token_role_async", _fake_resolve)
+    async def _fake_validate(token, state):
+        assert token == "good-token"
+        return SimpleNamespace(user_id="alice")
+
+    monkeypatch.setattr(mcp_server, "_validate_mcp_token", _fake_validate)
+    monkeypatch.setattr(mcp_server, "_role_for_identity", lambda identity, state: "analyst")
     downstream = _Recorder()
     app = mcp_server._wrap_role_auth(downstream, SimpleNamespace(), require_token=True)
 
@@ -73,6 +82,8 @@ async def test_valid_bearer_sets_request_role(monkeypatch):
 
     assert downstream.called
     assert downstream.role_seen == "analyst"  # role visible to the tool coroutine
+    # REQ-074/REQ-1386: the token's principal is what query_audit_log records for MCP traffic
+    assert downstream.audit_seen == ("alice", "mcp")
     assert _status(sent) == 200
     # ContextVar reset after the request — no role leaks to the next one
     assert mcp_server._request_role.get() is None
@@ -83,7 +94,7 @@ async def test_invalid_bearer_is_401_fail_closed(monkeypatch):
     async def _reject(token, state):
         raise ValueError("Invalid credentials")
 
-    monkeypatch.setattr(mcp_server, "_resolve_token_role_async", _reject)
+    monkeypatch.setattr(mcp_server, "_validate_mcp_token", _reject)
     downstream = _Recorder()
     app = mcp_server._wrap_role_auth(downstream, SimpleNamespace(), require_token=True)
 

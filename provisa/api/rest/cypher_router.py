@@ -689,17 +689,27 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
     exec_sql = plan.exec_sql or ""
     physical_sql = plan.physical_sql or ""
-    if plan.route != _Route.ENGINE and plan.source_id:
-        # Single-source direct route — cypher SQL rewritten to physical (no catalog)
-        _exec_result = await _dispatch_execution_direct(
-            exec_sql, plan.source_id, resolved_params, state
-        )
-    else:
-        _exec_result = await _dispatch_execution(
-            exec_sql, physical_sql, resolved_params, state, span_attrs
-        )
+    # REQ-074/REQ-1386: these dispatchers reach the engine/source terminal directly, never
+    # _execute_plan, so the audit row is written here.
+    from provisa.pgwire._pipeline import finalize_audit
+
+    try:
+        if plan.route != _Route.ENGINE and plan.source_id:
+            # Single-source direct route — cypher SQL rewritten to physical (no catalog)
+            _exec_result = await _dispatch_execution_direct(
+                exec_sql, plan.source_id, resolved_params, state
+            )
+        else:
+            _exec_result = await _dispatch_execution(
+                exec_sql, physical_sql, resolved_params, state, span_attrs
+            )
+    except Exception:
+        await finalize_audit(plan, 500, state)
+        raise
     if isinstance(_exec_result, Response):
+        await finalize_audit(plan, _exec_result.status_code, state)
         return _exec_result
+    await finalize_audit(plan, 200, state)
     rows = _exec_result
 
     # Assemble & serialize
@@ -862,14 +872,21 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             from provisa.pgwire._pipeline import require_governed_plan
 
             require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
-            if plan.route != _Route.ENGINE and plan.source_id:
-                rows = await _dispatch_execution_direct(
-                    plan.exec_sql or "", plan.source_id, [], state
-                )
-            else:
-                rows = await _dispatch_execution(
-                    plan.exec_sql or "", plan.physical_sql or "", [], state, {}
-                )
+            from provisa.pgwire._pipeline import finalize_audit
+
+            try:
+                if plan.route != _Route.ENGINE and plan.source_id:
+                    rows = await _dispatch_execution_direct(
+                        plan.exec_sql or "", plan.source_id, [], state
+                    )
+                else:
+                    rows = await _dispatch_execution(
+                        plan.exec_sql or "", plan.physical_sql or "", [], state, {}
+                    )
+            except Exception:
+                await finalize_audit(plan, 500, state)  # REQ-074/REQ-1386
+                raise
+            await finalize_audit(plan, 200, state)  # REQ-074/REQ-1386
             if isinstance(rows, Response):
                 return None
             return int(rows[0]["cnt"]) if rows else 0

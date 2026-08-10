@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -31,6 +31,7 @@ import {
 import { Check, Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
   fetchAiModels,
+  fetchVendorModels,
   LLM_VENDORS,
   setAiModels,
   type AiModelAssignments,
@@ -101,11 +102,38 @@ export function AiModelsTab() {
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
   const [clearApiKeys, setClearApiKeys] = useState<Record<string, boolean>>({});
 
+  // REQ-1409: the model picker's options, read live from each vendor's list-models API and kept
+  // per vendor so switching a role's vendor swaps its catalog without refetching the others.
+  const [vendorModels, setVendorModels] = useState<Record<string, string[]>>({});
+  const [vendorModelErrors, setVendorModelErrors] = useState<Record<string, string>>({});
+  const [loadingVendors, setLoadingVendors] = useState<Record<string, boolean>>({});
+  const requestedVendors = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     fetchAiModels()
       .then(setS)
       .catch((e) => setError(String(e)));
   }, []);
+
+  // Vendors named by the five roles right now. Sorted+joined so the effect re-runs only when the
+  // SET changes, not on every keystroke in a model field.
+  const activeVendors = s
+    ? [...new Set(ROLE_KEYS.map((k) => roleVendor(s.ai_models[k])))].sort().join(",")
+    : "";
+
+  useEffect(() => {
+    for (const vendor of activeVendors.split(",").filter(Boolean)) {
+      // The ref, not the state map, guards the fetch: state lands a render later, so two roles
+      // sharing a vendor would each start a request before either result arrived.
+      if (requestedVendors.current.has(vendor)) continue;
+      requestedVendors.current.add(vendor);
+      setLoadingVendors((p) => ({ ...p, [vendor]: true }));
+      fetchVendorModels(vendor)
+        .then((models) => setVendorModels((p) => ({ ...p, [vendor]: models })))
+        .catch((e: unknown) => setVendorModelErrors((p) => ({ ...p, [vendor]: String(e) })))
+        .finally(() => setLoadingVendors((p) => ({ ...p, [vendor]: false })));
+    }
+  }, [activeVendors]);
 
   const save = async () => {
     if (!s) return;
@@ -286,11 +314,17 @@ export function AiModelsTab() {
                   onChange={(val) => setRoleVendor(k, val)}
                   style={{ width: 200 }}
                 />
-                <TextInput
+                <Autocomplete
                   label={t("aiModelsTab.modelLabel")}
                   data-testid={`ai-model-${k}`}
+                  data={vendorModels[vendor] ?? []}
                   value={model}
-                  onChange={(e) => setRoleModel(k, e.currentTarget.value)}
+                  onChange={(val) => setRoleModel(k, val)}
+                  rightSection={loadingVendors[vendor] ? <Loader size="xs" /> : undefined}
+                  // A vendor that publishes no listing, or has no key yet, leaves the field a
+                  // plain typed input — the reason is stated under it rather than marking the
+                  // value invalid, since typing a model name by hand stays valid.
+                  description={vendorModelErrors[vendor]}
                   style={{ flex: 1 }}
                 />
               </Group>

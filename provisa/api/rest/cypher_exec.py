@@ -480,18 +480,29 @@ async def _execute_call_body(
     has_api = any(_lookup_api_endpoint(state, tn) is not None for tn in api_table_names)
     has_gql_remote = any(_lookup_gql_remote_table(state, tn) is not None for tn in api_table_names)
 
-    if nf_args or has_api:
-        rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state, _cb_span_attrs)
-    elif has_gql_remote:
-        rows = await _execute_with_gql_remote(
-            exec_sql, resolved_params, nf_args, state, _cb_span_attrs
-        )
-    elif physical_sql:
-        rows = await _execute(physical_sql, resolved_params, state, _cb_span_attrs)
-    else:
-        from provisa.pgwire._pipeline import _execute_plan as _exec_plan
+    # REQ-074/REQ-1386: the branches below reach engine/API terminals directly, so the audit row is
+    # written here; finalize_audit is idempotent, so the _execute_plan branch stays single-write.
+    from provisa.pgwire._pipeline import finalize_audit
 
-        qr = await _exec_plan(plan, state)
-        rows = [dict(zip(qr.column_names, row)) for row in qr.rows]
+    try:
+        if nf_args or has_api:
+            rows = await _execute_with_api(
+                clean_exec_sql, clean_params, nf_args, state, _cb_span_attrs
+            )
+        elif has_gql_remote:
+            rows = await _execute_with_gql_remote(
+                exec_sql, resolved_params, nf_args, state, _cb_span_attrs
+            )
+        elif physical_sql:
+            rows = await _execute(physical_sql, resolved_params, state, _cb_span_attrs)
+        else:
+            from provisa.pgwire._pipeline import _execute_plan as _exec_plan
+
+            qr = await _exec_plan(plan, state)
+            rows = [dict(zip(qr.column_names, row)) for row in qr.rows]
+    except Exception:
+        await finalize_audit(plan, 500, state)
+        raise
+    await finalize_audit(plan, 200, state)
 
     return rows, graph_vars

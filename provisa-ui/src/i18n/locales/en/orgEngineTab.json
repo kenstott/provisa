@@ -1,0 +1,21 @@
+{
+  "orgEngineTab": {
+    "loading": "Loading…",
+    "intro": "Choose which query engine this organization runs on. The deployment decides the engine kind ({{engine}}); this choice decides whose coordinator answers your queries.",
+    "modeLabel": "Engine",
+    "modeShared": "Shared — the pooled engine Provisa operates",
+    "modeSharedHelp": "The default. Your queries run on the multi-tenant coordinator, isolated by catalog and role.",
+    "modeIsolated": "Isolated — a dedicated engine Provisa operates for this organization",
+    "modeIsolatedHelp": "A coordinator reserved for this organization alone. No other tenant's work shares its resources.",
+    "modeIsolatedUnavailable": "This deployment cannot provision a dedicated coordinator, so an isolated engine is not available here.",
+    "modeExternal": "External — an engine you operate",
+    "modeExternalHelp": "Point Provisa at a {{engine}} coordinator you run. Data planning stays in Provisa; execution lands on your cluster.",
+    "hostLabel": "Coordinator host",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "Coordinator port",
+    "applyNote": "Saving rebuilds this organization's runtime immediately. Queries in flight finish on the previous engine.",
+    "saveButton": "Save engine",
+    "saved": "Engine updated.",
+    "currentSuffix": " (current)"
+  }
+}

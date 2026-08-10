@@ -79,6 +79,18 @@ export async function fetchAiModels(): Promise<AiModelsState> {
   return resp.json();
 }
 
+/** The model names a vendor currently serves, read live from the vendor's list-models API
+ *  (REQ-1409). Throws when the vendor publishes no such API, has no key set, or rejects the call —
+ *  the picker then stays a plain typed field rather than showing an empty list. */
+export async function fetchVendorModels(vendor: string): Promise<string[]> {
+  const resp = await fetch(
+    `${API_BASE}/admin/ai-models/vendors/${encodeURIComponent(vendor)}/models`,
+  );
+  if (!resp.ok) throw new Error(requestFailed("vendor model listing", resp.status));
+  const body: { vendor: string; models: string[] } = await resp.json();
+  return body.models;
+}
+
 export async function setAiModels(
   body: AiModelsUpdate,
 ): Promise<{ success: boolean; updated: string[]; restart_required: boolean }> {

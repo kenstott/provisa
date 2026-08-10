@@ -394,6 +394,7 @@ function App() {
                       ["/admin/cache", "platform_settings"],
                       ["/admin/scheduled-tasks", "org_settings"],
                       ["/admin/federation-engine", "platform_settings"],
+                      ["/admin/org-engine", "org_settings"], // REQ-1412
                       ["/admin/encryption", "platform_settings"],
                       ["/admin/auth", "platform_settings"],
                       ["/admin/system-health", "observability"],

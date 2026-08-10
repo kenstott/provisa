@@ -78,9 +78,13 @@ async def _resolve_token_role_async(token: str, state: Any) -> str:
     Reuses the exact provider + claim->role mapping pgwire uses. No admin default: if auth is not
     configured or the token yields no role, this raises so the MCP call fails rather than escalating.
     """
+    return _role_for_identity(await _validate_mcp_token(token, state), state)
+
+
+def _role_for_identity(identity: Any, state: Any) -> str:
+    """The provisa role a validated MCP identity acts as (REQ-1105)."""
     from provisa.auth.role_mapping import resolve_role
 
-    identity = await _validate_mcp_token(token, state)
     auth_config = state.auth_config
     default_role = auth_config.get("default_role")
     if not default_role:
@@ -99,9 +103,15 @@ async def _resolve_token_org_async(token: str, state: Any) -> str | None:
     """
     if not getattr(state, "multitenancy", False):
         return None
+    return await _org_for_identity(await _validate_mcp_token(token, state), state)
+
+
+async def _org_for_identity(identity: Any, state: Any) -> str | None:
+    """The org a validated MCP identity binds, or None on a single-org deployment (REQ-1266)."""
+    if not getattr(state, "multitenancy", False):
+        return None
     from provisa.api.org_resolve import resolve_session_org
 
-    identity = await _validate_mcp_token(token, state)
     # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
     caps = capabilities_for_claims(
         getattr(identity, "roles", []) or [], getattr(state, "roles", {})
@@ -316,8 +326,9 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             await app(scope, receive, send)  # loopback stdio-style: pinned role applies
             return
         try:
-            role = await _resolve_token_role_async(token, state)
-            org_id = await _resolve_token_org_async(token, state)
+            identity = await _validate_mcp_token(token, state)
+            role = _role_for_identity(identity, state)
+            org_id = await _org_for_identity(identity, state)
         except (PermissionError, ValueError) as exc:
             # Token present but rejected (bad/expired token, or no mapped role) — fail closed.
             await _send_401(send, str(exc))
@@ -335,8 +346,14 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
 
             await ensure_org_runtime(org_id)
             org_token = set_current_org(org_id)
+        # REQ-074/REQ-1386: attribute the tools' governed statements to the token's principal. The
+        # MCP transport runs on its own event loop in-process, so a plain scope binds it for the
+        # request; the pipeline's terminals write the audit row.
+        from provisa.audit.context import audit_identity_scope
+
         try:
-            await app(scope, receive, send)
+            with audit_identity_scope(identity.user_id, "mcp"):
+                await app(scope, receive, send)
         finally:
             _request_role.reset(reset)
             if org_token is not None:

@@ -715,6 +715,43 @@ export async function setFederationEngine(
   return resp.json();
 }
 
+// --- Per-org engine lane (REQ-1412) ---
+// Which coordinator the ACTING org's queries land on. Separate from the deployment-wide engine
+// KIND above: this one is org_settings, so an org administrator owns it in either tenancy mode.
+
+export type OrgEngineMode = "shared" | "isolated" | "external";
+
+export interface OrgEngineState {
+  org_id: string;
+  mode: OrgEngineMode;
+  external_host: string | null;
+  external_port: number | null;
+  /** False when the deployment cannot resolve a dedicated coordinator, so the option is unusable. */
+  isolated_available: boolean;
+  /** The engine kind the deployment runs — what an external coordinator has to speak. */
+  engine_name: string;
+}
+
+export async function fetchOrgEngine(): Promise<OrgEngineState> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/org-engine`);
+  if (!resp.ok) throw new Error(requestFailed("Org engine fetch", resp.status));
+  return resp.json();
+}
+
+export async function setOrgEngine(body: {
+  mode: OrgEngineMode;
+  external_host?: string | null;
+  external_port?: number | null;
+}): Promise<{ success: boolean; mode: OrgEngineMode }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/org-engine`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(requestFailed("Org engine update", resp.status));
+  return resp.json();
+}
+
 // --- MCP server status (REQ-1008) ---
 
 export interface McpTool {

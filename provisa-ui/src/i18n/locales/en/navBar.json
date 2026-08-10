@@ -31,6 +31,7 @@
     "itemCache": "Cache",
     "itemScheduler": "Scheduler",
     "itemFederation": "Federation",
+    "itemOrgEngine": "Org Engine",
     "itemExplore": "MCP",
     "itemEncryption": "Encryption",
     "itemSecurity": "Security",

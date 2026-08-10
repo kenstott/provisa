@@ -188,6 +188,7 @@ class TestWireParamBinding:
         try:
             sess = ProvisaSession()
             sess.role_id = "testuser"
+            sess.user_id = "testuser"  # REQ-074: authentication sets both; the audit row needs it
             _result = sess.execute_sql("SELECT $1::int", [99])
             assert "$1" not in captured["sql"]
             assert "99" in captured["sql"]

@@ -72,6 +72,11 @@ class OrgRuntime:
     # ``state.federation_engine`` / ``state.engine_conn`` / ``state.engine_conn_kwargs`` here
     # whenever ``federation_engine`` is bound, and to the default-org (shared) runtime otherwise.
     isolated_engine: bool = False
+    # REQ-1412: ``(host, port)`` of a coordinator the ORG operates (external engine). Set only in
+    # external mode; the terminal binds here instead of resolving the shared or SaaS-dedicated
+    # endpoint. ``isolated_engine`` is true alongside it because the org still carries its own
+    # EngineRuntime — what differs is who runs the coordinator.
+    engine_endpoint: tuple[str, int] | None = None
     federation_engine: Any = None
     engine_conn: Any = None
     engine_conn_kwargs: dict = field(default_factory=dict)

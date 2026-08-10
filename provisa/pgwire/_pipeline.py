@@ -25,6 +25,7 @@ import secrets as _secrets
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
 
 if TYPE_CHECKING:
@@ -77,6 +78,15 @@ class _Plan:
     # body below the config row threshold, land an engine-native CTAS above it — with no caller
     # side-channel. None for streaming transports and when redirect is disabled in system config.
     auto_deliver: Delivery | None = field(default=None)
+    # REQ-074/REQ-1386: the audit record opened for this statement (acting principal, surface,
+    # resolved registered_tables ids, start time). Minted alongside the stamp at the top of the
+    # pipeline and finalized with the real status/duration at the terminal — so every surface is
+    # audited by the one pipeline instead of each transport calling log_query itself. None when
+    # nothing user-initiated is running (seeding, rebuilds); see provisa.audit.context.
+    audit: PendingAudit | None = field(default=None)
+    # Guards against a second finalize for one statement: the streaming surfaces finalize at their
+    # own terminal, and a plan that also passes through _execute_plan must still write one row.
+    audit_written: bool = field(default=False)
     # Governed-provenance stamp (see below). Minted ONLY at the top of the pipeline
     # (_govern_and_route / _govern_and_route_compiled); _execute_plan refuses any plan lacking a
     # valid one, so an un-governed / side-door plan can never be executed.
@@ -316,7 +326,11 @@ async def _govern_and_route(
     from provisa.transpiler.router import Route
     from provisa.transpiler.transpile import transpile
 
+    from provisa.audit.pipeline import begin_audit, write_denial
+
     if role_id not in state.contexts:
+        # REQ-1386: a refusal is auditable evidence — policy_denials reports on it.
+        await write_denial(sql, role_id, None, None, state)
         raise PermissionError(f"No schema for role {role_id!r}")
 
     ctx = state.contexts[role_id]
@@ -426,13 +440,19 @@ async def _govern_and_route(
                     )
         except Exception as exc:
             # SECURITY: never skip the domain-access check on a parse/lookup error — fail closed.
+            await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
             raise PermissionError(
                 f"Domain-access check could not be evaluated for role {role_id!r}: {exc}"
             ) from exc
 
     if violations:
         msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
+        await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
         raise PermissionError(msgs)
+
+    # REQ-074/REQ-1386: open the audit record once governance has accepted the statement and the
+    # table references have resolved. The terminal finalizes it with the real status and duration.
+    _audit = begin_audit(sql, role_id, _parsed_input, gov_ctx)
 
     # REQ-272: apply_governance enforces full Stage-2 governance on this SQL path — RLS,
     # masking, visibility, and the role row-cap ceiling (gov_ctx carries the role, so
@@ -598,6 +618,7 @@ async def _govern_and_route(
             physical_sql=physical_sql,
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
+            audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:
@@ -627,14 +648,43 @@ async def _govern_and_route(
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
+
+
+async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None) -> None:
+    """Write ``plan``'s audit row (REQ-074/REQ-1386). Idempotent per plan.
+
+    ``_execute_plan`` calls this at its terminals. The govern-then-stream surfaces (pgwire's
+    socketserver worker, Flight SQL, airport) never reach ``_execute_plan`` — they drain the
+    engine's SYNC terminal themselves — so they call this at their own terminal instead. The
+    idempotence guard means a plan that takes either path is audited exactly once.
+    """
+    if plan.audit_written:
+        return
+    plan.audit_written = True
+    from provisa.audit.pipeline import write_audit
+
+    await write_audit(plan.audit, status_code, state)
 
 
 async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  # REQ-027, REQ-028
     require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
+    # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
+    # written here rather than in each transport, so no surface can omit it.
+    try:
+        result = await _run_plan_terminal(plan, state)
+    except Exception:
+        await finalize_audit(plan, 500, state)
+        raise
+    await finalize_audit(plan, 200, state)
+    return result
+
+
+async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028
     from provisa.transpiler.router import Route
 
     engine = state.federation_engine
@@ -832,7 +882,10 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
     from provisa.transpiler.router import Route
     from provisa.transpiler.transpile import transpile
 
+    from provisa.audit.pipeline import begin_audit, write_denial
+
     if role_id not in state.contexts:
+        await write_denial(sql, role_id, None, None, state)  # REQ-1386: policy_denials
         raise PermissionError(f"No schema for role {role_id!r}")
 
     import sqlglot as _sg
@@ -884,6 +937,10 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         source_types=state.source_types,
         engine=getattr(state, "federation_engine", None),
     )
+
+    # REQ-074/REQ-1386: the compiled surfaces (GQL, Cypher, Flight, gRPC) are audited by the same
+    # record the raw-SQL path opens — the terminal finalizes it.
+    _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx)
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     governed_sql = apply_governance(sql, gov_ctx)
@@ -1001,6 +1058,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             session_hints=_hints,
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
+            audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
     else:
@@ -1027,6 +1085,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
 

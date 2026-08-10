@@ -196,10 +196,25 @@ class ProvisaFlightServer(
         Reads ``current_org`` on THIS (flight worker) thread — where the caller has bound it — and
         re-binds it inside the loop coroutine, since ``run_coroutine_threadsafe`` won't carry it."""
         from provisa.api.org_runtime import current_org
+        from provisa.audit.context import current_audit_identity, with_audit_identity
 
         org_id = current_org.get(None)
-        fut = asyncio.run_coroutine_threadsafe(_run_with_org(org_id, coro), self._main_loop)
+        # REQ-074/REQ-1386: the acting principal crosses the same thread boundary as the org, and
+        # for the same reason — the pipeline's audit write runs inside this loop coroutine.
+        ident = current_audit_identity()
+        inner = coro if ident is None else with_audit_identity(ident.user_id, ident.surface, coro)
+        fut = asyncio.run_coroutine_threadsafe(_run_with_org(org_id, inner), self._main_loop)
         return fut.result(timeout=timeout) if timeout is not None else fut.result()
+
+    def _finalize_audit(self, plan, status_code: int) -> None:
+        """Write the governed plan's audit row (REQ-074/REQ-1386).
+
+        Flight governs on the main loop and then drains the engine's terminal on this worker
+        thread, so the plan never reaches ``_execute_plan`` and the row is written here.
+        ``finalize_audit`` is idempotent per plan, so a later failure cannot double-write."""
+        from provisa.pgwire._pipeline import finalize_audit
+
+        self._run_on_loop(finalize_audit(plan, status_code, self._state))
 
     def _resolve_and_bind_org(self, request: dict[str, object], identity=None):
         """Resolve the org for this ticket and bind it on this worker thread; return the reset token.
@@ -454,7 +469,14 @@ class ProvisaFlightServer(
         # dispatched loop coroutine. reset in finally below.
         _org_token = self._resolve_and_bind_org(request, identity)
         try:
-            return self._do_get_inner(request, ticket)
+            if identity is None:
+                # Unsecured deployment: no validated principal, so nothing to attribute the
+                # statement to. Audited surfaces are the authenticated ones (see provisa.audit.context).
+                return self._do_get_inner(request, ticket)
+            from provisa.audit.context import audit_identity_scope
+
+            with audit_identity_scope(identity.user_id, "flight"):  # REQ-074/REQ-1386
+                return self._do_get_inner(request, ticket)
         finally:
             if _org_token is not None:
                 from provisa.api.org_runtime import reset_current_org
@@ -740,8 +762,13 @@ class ProvisaFlightServer(
             res = engine.execute_engine_sync(physical_sql, resolved_params or [])
             return [dict(zip(res.column_names, row, strict=False)) for row in res.rows]
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            raw_rows = pool.submit(_run).result()
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                raw_rows = pool.submit(_run).result()
+        except Exception:
+            self._finalize_audit(plan, 500)  # REQ-074/REQ-1386
+            raise
+        self._finalize_audit(plan, 200)  # REQ-074/REQ-1386
 
         assembled = assemble_rows(raw_rows, graph_vars)
         serialized = [to_serializable(r) for r in assembled]
@@ -851,54 +878,63 @@ class ProvisaFlightServer(
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
-        if plan.route == Route.ENGINE:
-            assert plan.physical_sql is not None
-            # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145,
-            # REQ-1214): drain the engine's LAZY record-batch terminal so a large user result set
-            # never fully materializes on this transport (bounded by one batch, not total size).
-            try:
-                arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
-                    plan.physical_sql, []
-                )
-            except RuntimeError as exc:
-                raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
-        elif plan.route == Route.DIRECT:
-            if self._state.source_pools.has(plan.source_id) and self._state.source_pools.supports_stream(
-                plan.source_id
-            ):
-                # REQ-1190: a single-reachable-source scan streams via the source's server-side cursor,
-                # adapted to a lazy Arrow record-batch generator — never materialized on this transport
-                # (streaming-uniformity Defect 1). Mirrors the ENGINE streaming terminal above.
-                from provisa.federation.runtime_support import arrow_batches_from_rows
-
-                stream = self._state.federation_engine.execute_native_stream(
-                    self._state.source_pools,
-                    plan.source_id,
-                    plan.sql,
-                    plan.exec_params or [],
-                    loop=self._main_loop,
-                )
-                arrow_schema, batch_gen = arrow_batches_from_rows(stream)
+        # REQ-074/REQ-1386: this govern-then-stream terminal never reaches _execute_plan, so the
+        # audit row is written here — once the terminal is established, or on the way out.
+        try:
+            if plan.route == Route.ENGINE:
+                assert plan.physical_sql is not None
+                # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145,
+                # REQ-1214): drain the engine's LAZY record-batch terminal so a large user result set
+                # never fully materializes on this transport (bounded by one batch, not total size).
+                try:
+                    arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
+                        plan.physical_sql, []
+                    )
+                except RuntimeError as exc:
+                    raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                self._finalize_audit(plan, 200)
                 return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
-            result = self._run_on_loop(
-                self._state.federation_engine.execute_native(
-                    self._state.source_pools,
-                    plan.source_id,
-                    plan.sql,
-                    plan.exec_params or [],
+            elif plan.route == Route.DIRECT:
+                if self._state.source_pools.has(
+                    plan.source_id
+                ) and self._state.source_pools.supports_stream(plan.source_id):
+                    # REQ-1190: a single-reachable-source scan streams via the source's server-side cursor,
+                    # adapted to a lazy Arrow record-batch generator — never materialized on this transport
+                    # (streaming-uniformity Defect 1). Mirrors the ENGINE streaming terminal above.
+                    from provisa.federation.runtime_support import arrow_batches_from_rows
+
+                    stream = self._state.federation_engine.execute_native_stream(
+                        self._state.source_pools,
+                        plan.source_id,
+                        plan.sql,
+                        plan.exec_params or [],
+                        loop=self._main_loop,
+                    )
+                    arrow_schema, batch_gen = arrow_batches_from_rows(stream)
+                    self._finalize_audit(plan, 200)
+                    return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
+                result = self._run_on_loop(
+                    self._state.federation_engine.execute_native(
+                        self._state.source_pools,
+                        plan.source_id,
+                        plan.sql,
+                        plan.exec_params or [],
+                    )
                 )
-            )
-            columns = [
-                ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
-                for c in result.column_names
-            ]
-            table = rows_to_arrow_table(result.rows, columns)
-            return self._license_stream(table, role_id)  # REQ-1137
-        else:
-            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                f"Route {plan.route!r} is not supported for SQL via Flight"
-            )
+                columns = [
+                    ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
+                    for c in result.column_names
+                ]
+                table = rows_to_arrow_table(result.rows, columns)
+                self._finalize_audit(plan, 200)
+                return self._license_stream(table, role_id)  # REQ-1137
+            else:
+                raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    f"Route {plan.route!r} is not supported for SQL via Flight"
+                )
+        except Exception:
+            self._finalize_audit(plan, 500)
+            raise
 
     def _do_get_graphql(  # REQ-143, REQ-144, REQ-145, REQ-146
         self, request: dict[str, object]
@@ -920,25 +956,32 @@ class ProvisaFlightServer(
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
-        if plan.route == Route.DIRECT:
-            result = self._run_on_loop(
-                self._state.federation_engine.execute_native(
-                    self._state.source_pools,
-                    plan.source_id,
-                    plan.sql,
-                    plan.exec_params or compiled.params,
-                )
-            )
-            table = rows_to_arrow_table(result.rows, compiled.columns)
-            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-
-        assert plan.physical_sql is not None
-        # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145).
+        # REQ-074/REQ-1386: govern-then-stream terminal — the audit row is written here.
         try:
-            arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
-                plan.physical_sql,
-                compiled.params,
-            )
-        except RuntimeError as exc:
-            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        return flight.GeneratorStream(arrow_schema, batch_gen)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if plan.route == Route.DIRECT:
+                result = self._run_on_loop(
+                    self._state.federation_engine.execute_native(
+                        self._state.source_pools,
+                        plan.source_id,
+                        plan.sql,
+                        plan.exec_params or compiled.params,
+                    )
+                )
+                table = rows_to_arrow_table(result.rows, compiled.columns)
+                self._finalize_audit(plan, 200)
+                return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+            assert plan.physical_sql is not None
+            # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145).
+            try:
+                arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
+                    plan.physical_sql,
+                    compiled.params,
+                )
+            except RuntimeError as exc:
+                raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            self._finalize_audit(plan, 200)
+            return flight.GeneratorStream(arrow_schema, batch_gen)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except Exception:
+            self._finalize_audit(plan, 500)
+            raise

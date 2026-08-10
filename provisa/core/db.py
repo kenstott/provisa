@@ -94,15 +94,20 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
 )
 
 
-def _add_missing_columns(sync_conn) -> None:
-    """Additive column reconciliation for the portable (non-PG) bootstrap."""
-    from sqlalchemy import inspect as _inspect
+def add_missing_columns(sync_conn, tables) -> None:
+    """Additive column reconciliation: ADD COLUMN any metadata column absent from a live table.
 
-    from provisa.core import schema_org
+    V1 ships no migrations, so the SQLAlchemy metadata IS the schema's source of truth — but
+    ``create_all`` skips tables that already exist, so a column added to the metadata never reaches
+    a database created before it. This closes that gap for the metadata-driven planes (the portable
+    tenant bootstrap and the platform registry). Additive only: drops and type changes stay out of
+    scope, as they do on the PostgreSQL ``schema.sql`` path.
+    """
+    from sqlalchemy import inspect as _inspect
 
     inspector = _inspect(sync_conn)
     existing_tables = set(inspector.get_table_names())
-    for table in schema_org.metadata.sorted_tables:
+    for table in tables:
         if table.name not in existing_tables:
             continue
         live = {c["name"] for c in inspector.get_columns(table.name)}
@@ -139,13 +144,10 @@ async def _init_schema_portable(pool: "Database") -> None:
 
     async with pool.engine.begin() as conn:
         await conn.run_sync(schema_org.metadata.create_all)
-        # V1 no-migrations means the metadata is the schema's source of truth — but
-        # ``create_all`` skips tables that already exist, so a column added to the metadata
-        # never reaches an existing SQLite/MySQL file. Reconcile additively: any metadata
-        # column missing from the live table is ADD COLUMNed (the portable equivalent of
-        # schema.sql's ALTER ... ADD COLUMN IF NOT EXISTS blocks). Additive only — drops
-        # and type changes stay out of scope, as they do on the PG path.
-        await conn.run_sync(_add_missing_columns)
+        # ``create_all`` skips tables that already exist, so a column added to the metadata never
+        # reaches an existing SQLite/MySQL file — the portable equivalent of schema.sql's
+        # ALTER ... ADD COLUMN IF NOT EXISTS blocks.
+        await conn.run_sync(add_missing_columns, schema_org.metadata.sorted_tables)
     async with pool.acquire() as conn:
         for domain_id, description, steward in _SEED_DOMAINS:
             result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))

@@ -293,6 +293,7 @@ class TestProvisaSessionEngineStreaming:
         try:
             sess = ProvisaSession()
             sess.role_id = "alice"
+            sess.user_id = "alice"  # REQ-074: authentication sets both; the audit row needs it
             qr = sess.execute_sql("select n from t")
             # session_hints (FTE retry_policy) reach the sync terminal — not silently dropped.
             assert captured["session_hints"] == {"retry_policy": "NONE"}
@@ -341,6 +342,7 @@ class TestProvisaSessionEngineStreaming:
         try:
             sess = ProvisaSession()
             sess.role_id = "alice"
+            sess.user_id = "alice"  # REQ-074: authentication sets both; the audit row needs it
             with pytest.raises(PermissionError):
                 sess.execute_sql("select n from t")
             state.federation_engine.execute_engine_sync.assert_not_called()

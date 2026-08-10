@@ -96,6 +96,13 @@ orgs = Table(
     # engine. Chosen at org creation (pre-billing surface: the onboarding create-org checkbox);
     # the org-runtime builder reads it to bind a dedicated EngineRuntime.
     Column("isolated_engine", Boolean, nullable=False, server_default=false()),
+    # REQ-1412: an org may instead point its federation at a coordinator IT operates (bring your
+    # own engine). Set means EXTERNAL: the org's runtime binds a terminal at this host/port rather
+    # than the shared coordinator or a SaaS-dedicated one. NULL means the mode is decided by
+    # isolated_engine (true = isolated, false = shared) — the three modes are derived from these
+    # two columns, never stored twice.
+    Column("external_engine_host", Text),
+    Column("external_engine_port", Integer),
     # REQ-1355: the org IS the billing subject. These columns were the ``tenants`` table, whose
     # UUID pk duplicated the org and forced every billing call site to carry a second identifier.
     # The externally-visible billing key is now the org slug.
@@ -292,6 +299,12 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
     whose schema does not exist, and every org-runtime resolution for it then fails."""
     async with db.engine.begin() as conn:
         await conn.run_sync(lambda sc: metadata.create_all(sc, tables=REGISTRY_TABLES))
+        # V1 no-migrations: the metadata is the registry's schema, but ``create_all`` skips tables
+        # that already exist, so a column added here never reaches a deployment whose registry
+        # predates it (REQ-1412's external-engine columns are the case that surfaced it).
+        from provisa.core.db import add_missing_columns
+
+        await conn.run_sync(add_missing_columns, REGISTRY_TABLES)
     async with db.acquire() as conn:
         result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if result.scalar() is None:

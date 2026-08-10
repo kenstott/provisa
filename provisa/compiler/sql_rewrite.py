@@ -286,10 +286,16 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
         ref = f"{_q(domain_sql)}.{_q(table_part)}"
         if ref not in replacements:
             replacements[ref] = physical
-    sql = _apply_replacements(sql, replacements)
+    # normalize_table_refs FIRST — the same order the ENGINE lowering uses. It pins an unaliased
+    # ref's own name as an explicit alias, which is what the query's column qualifiers bind to
+    # ("query_audit_log"."id" against `FROM "ops"."query_audit_log"`). Substituting first renamed
+    # the ref to its physical name before that alias existed, so normalize then aliased it to the
+    # PHYSICAL name and the qualifiers were stranded — "missing FROM-clause entry for table
+    # query_audit_log" on every ops/meta table whose physical name differs from its semantic one.
+    sql = _apply_replacements(normalize_table_refs(sql, ctx), replacements)
     # DIRECT route: a native driver addresses schema.table, not catalog.schema.table — strip the
     # catalog normalize_table_refs re-attaches for already-qualified refs (REQ-641/REQ-863).
-    return strip_catalog(normalize_table_refs(sql, ctx))
+    return strip_catalog(sql)
 
 
 def _all_table_metas(ctx: CompilationContext) -> list[TableMeta]:

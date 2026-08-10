@@ -467,18 +467,28 @@ class BoltSession:
             role=role_id,
         )
 
+        from contextlib import nullcontext
+
         from provisa.api.org_runtime import reset_current_org, set_current_org
+        from provisa.audit.context import audit_identity_scope
 
         _org_token = set_current_org(self.org_id) if self.org_id is not None else None
+        # REQ-074/REQ-1386: attribute this RUN's governed statements to the authenticated principal.
+        # Bolt executes on the event loop (no thread hop), so a plain scope binds it. An unsecured
+        # deployment authenticates nobody — no principal to record, so nothing is bound.
+        _audit_scope = (
+            audit_identity_scope(self.user_id, "bolt") if self.user_id else nullcontext()
+        )
         try:
-            columns, rows, redirect = await _execute_cypher(
-                cypher,
-                parameters,
-                role_id,
-                include_ops=include_ops,
-                roles=self.roles,
-                deliver=delivery,
-            )
+            with _audit_scope:
+                columns, rows, redirect = await _execute_cypher(
+                    cypher,
+                    parameters,
+                    role_id,
+                    include_ops=include_ops,
+                    roles=self.roles,
+                    deliver=delivery,
+                )
         except PermissionError as exc:
             self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
             return

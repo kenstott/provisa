@@ -443,12 +443,21 @@ class ProvisaServicer:  # REQ-045, REQ-143
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
             batch_iter = stream.batches()
-            while True:
-                batch = await loop.run_in_executor(None, next, batch_iter, None)
-                if batch is None:
-                    break
-                for row in batch:
-                    yield msg_cls(**_kwargs_for(out_cols, row))
+            # REQ-074/REQ-1386: this streaming terminal never reaches _execute_plan, so the audit
+            # row is written here — after the last batch, or on the way out of a failed drain.
+            from provisa.pgwire._pipeline import finalize_audit
+
+            try:
+                while True:
+                    batch = await loop.run_in_executor(None, next, batch_iter, None)
+                    if batch is None:
+                        break
+                    for row in batch:
+                        yield msg_cls(**_kwargs_for(out_cols, row))
+            except Exception:
+                await finalize_audit(plan, 500, state)
+                raise
+            await finalize_audit(plan, 200, state)
             return
 
         # Bounded routes (DIRECT / metadata / registered-function) buffer via the materializing

@@ -304,6 +304,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
     def __init__(self) -> None:
         super().__init__()
         self.role_id: str | None = None
+        # REQ-074/REQ-1386: the authenticated principal this session acts as — the audit log's
+        # user_id. Set wherever role_id is set (trust mode: the startup packet's user; secured
+        # modes: the validated identity), so an authenticated session always has both.
+        self.user_id: str | None = None
         # REQ-1266: the org this session is bound to (multitenant OIDC sessions only). None → the
         # single-org default runtime (trust/simple modes, or a platform admin with no single org).
         self.org_id: str | None = None
@@ -354,6 +358,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         if self.role_id is None:
             raise RuntimeError("Not authenticated")
+        if self.user_id is None:
+            # Both are set together at authentication; a role without a principal means the
+            # session was admitted by a path that never identified its caller.
+            raise RuntimeError("Authenticated session has no principal")
 
         global _loop
         with _loop_lock:
@@ -374,8 +382,19 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # this one thread, and rows flow lazily as buenavista emits DataRow (never buffered on
         # the loop). DIRECT/admin/govdata routes are async-native and materialize via the loop.
         try:
+            # REQ-074/REQ-1386: the acting principal is bound INSIDE the loop coroutine (ContextVars
+            # do not cross run_coroutine_threadsafe), so the governor's audit/denial write records
+            # who ran the statement and that it arrived over pgwire.
+            from provisa.audit.context import with_audit_identity
+
             governed = asyncio.run_coroutine_threadsafe(
-                _run_with_org(self.org_id, govern_pgwire_plan(stripped, self.role_id)), loop
+                _run_with_org(
+                    self.org_id,
+                    with_audit_identity(
+                        self.user_id, "pgwire", govern_pgwire_plan(stripped, self.role_id)
+                    ),
+                ),
+                loop,
             ).result(timeout=120)
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
@@ -424,12 +443,27 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             else:
                 result = governed  # registered-function call: bounded, already materialized
         except PermissionError as exc:
+            self._finalize_audit(governed, 500, loop)
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
+            self._finalize_audit(governed, 500, loop)
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise RuntimeError(str(exc)) from exc
 
+        # REQ-074/REQ-1386: the ENGINE/DIRECT streaming terminals above never reach _execute_plan,
+        # so the audit row is written here. Idempotent — the _execute_plan branch already wrote it.
+        self._finalize_audit(governed, 200, loop)
         return ProvisaQueryResult(result, stripped)
+
+    def _finalize_audit(self, governed, status_code: int, loop) -> None:
+        """Write the governed plan's audit row from this worker thread, under the session's org."""
+        from provisa.pgwire._pipeline import _Plan, finalize_audit
+
+        if not isinstance(governed, _Plan):
+            return  # a registered-function call carries no plan
+        asyncio.run_coroutine_threadsafe(
+            _run_with_org(self.org_id, finalize_audit(governed, status_code)), loop
+        ).result(timeout=30)
 
 
 class ProvisaConnection(Connection):  # REQ-529
@@ -623,8 +657,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             provider = auth_config["provider"]
 
         if provider == "none" or not _state.auth_middleware_active:
-            # Trust mode: username maps directly to role_id, password ignored.
+            # Trust mode: username maps directly to role_id, password ignored. The startup
+            # packet's user is the only principal there is — it is what the audit row records.
             ctx.session.role_id = username  # type: ignore[attr-defined]
+            ctx.session.user_id = username  # type: ignore[attr-defined]
             self.send_authentication_ok()
             self.handle_post_auth(ctx)
             return
@@ -917,6 +953,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")
                 return
         ctx.session.role_id = role  # type: ignore[attr-defined]
+        ctx.session.user_id = identity.user_id  # type: ignore[attr-defined]  # REQ-074
         self.send_authentication_ok()
         self.handle_post_auth(ctx)
 
@@ -1048,9 +1085,21 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     self._send_pg_error("ERROR", "58000", "Event loop not available")
                     ctx.mark_error()
                     break
+                user = ctx.session.user_id  # type: ignore[attr-defined]
+                if not user:
+                    self._send_pg_error("ERROR", "28000", "Not authenticated")
+                    ctx.mark_error()
+                    break
+                from provisa.audit.context import with_audit_identity
+
                 try:
                     tag = asyncio.run_coroutine_threadsafe(
-                        _run_with_org(ctx.session.org_id, run_ctas(stmt, role)),  # type: ignore[attr-defined]
+                        _run_with_org(
+                            ctx.session.org_id,  # type: ignore[attr-defined]
+                            # REQ-074/REQ-1386: the CTAS SELECT runs through the governed pipeline;
+                            # bind its principal inside the loop coroutine so the row is attributed.
+                            with_audit_identity(user, "pgwire", run_ctas(stmt, role)),
+                        ),
                         _ctas_loop,
                     ).result(timeout=120)
                     self.send_command_complete(f"{tag}\x00")

@@ -95,6 +95,13 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemFederation",
         capability: "platform_settings",
       },
+      // REQ-1412: which engine lane THIS org runs on (shared / isolated / external) is the org's
+      // own setting, not the deployment's — org_settings, so a multitenant org_admin has it.
+      {
+        to: "/admin/org-engine",
+        labelKey: "navBar.itemOrgEngine",
+        capability: "org_settings",
+      },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.

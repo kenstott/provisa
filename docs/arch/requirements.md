@@ -394,13 +394,13 @@ AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /hea
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Every query is recorded in `query_audit_log` with tenant_id, user_id, role_id, SHA-256 query hash, table_ids, source, status_code, duration_ms, and logged_at. The table is append-only: PostgreSQL rules block DELETE and UPDATE at the database level. Query text is never stored verbatim — only its SHA-256 hash. Two indexes support tenant-scoped and per-user time-range queries.
+Every query is recorded in `query_audit_log` with tenant_id, user_id, role_id, SHA-256 query hash, table_ids, source, status_code, duration_ms, and logged_at. The table is append-only: PostgreSQL rules block DELETE and UPDATE at the database level. Query text is never stored verbatim — only its SHA-256 hash. Two indexes support tenant-scoped and per-user time-range queries. The write happens at the ONE governed pipeline, never per transport: the governors (_govern_and_route, _govern_and_route_compiled) open a PendingAudit carrying the acting principal, the resolved registered_tables ids (from gov_ctx.table_map), the source surface and the start time; a governance refusal writes its row immediately with status 403; a completed statement writes 200 (or 500) at the terminal. Terminals that drain the engine on a worker thread instead of _execute_plan (pgwire simple query and COPY, Flight SQL, gRPC ENGINE streaming, airport scans, Cypher REST, CTAS) finalize explicitly through the same idempotent finalize_audit, so every surface writes exactly one row. The acting principal reaches the pipeline through a single ContextVar channel (provisa/audit/context.py) bound at each surface boundary — HTTP AuthMiddleware, pgwire session, Flight, gRPC interceptor, MCP transport, Bolt session, airport role token — and re-bound inside the coroutine with with_audit_identity wherever the surface crosses a thread via run_coroutine_threadsafe (ContextVars do not propagate there). No identity bound (an unsecured deployment authenticates nobody) → no row.
 
-**Use case:** Append-only audit log with hash-only query storage satisfies data minimization requirements while providing immutable evidence of query activity for compliance and investigation.
+**Use case:** Append-only audit log with hash-only query storage satisfies data minimization requirements while providing immutable evidence of query activity for compliance and investigation, and is the fact table every ops report view ([REQ-1386](#REQ-1386)) reads.
 
-**Code:** `provisa/audit/query_log.py`
+**Code:** `provisa/audit/query_log.py`, `provisa/audit/context.py`, `provisa/audit/pipeline.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_audit_requirements.py`, `tests/integration/test_audit_auth_integration.py`
+**Tests:** `tests/unit/test_audit_requirements.py`, `tests/unit/test_audit_pipeline.py`, `tests/integration/test_audit_auth_integration.py`
 
 ### REQ-603 · Query Governance {#REQ-603}
 
@@ -14515,3 +14515,111 @@ NL group-by results support a dot-path `include` projection (`rel.col`, plus bar
 **Code:** `provisa/grpc/query_ir.py`, `provisa/nl/runner.py`, `provisa/nl/executor.py`, `provisa-ui/src/pages/NlPage.tsx`
 
 **Tests:** `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_nl_aggregation_routing.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1409 · Org AI Model Configuration {#REQ-1409}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The per-operation Model field in the org's AI Models admin surface is a picker whose options are read live from the selected vendor's own list-models API (`GET /admin/ai-models/vendors/{vendor}/models`, resolved with the org's key and falling back to the deployment credential the same calls already use), and which still accepts a typed value for a model the listing does not carry. A vendor that publishes no list-models API, or has no key set, or rejects the call leaves the field a plain typed input with the reason stated beneath it.
+
+**Use case:** An org admin picks the model a role uses from the names their vendor actually serves — including models released after this build shipped — instead of transcribing a model id by hand and discovering a typo only when the next NL query fails.
+
+**Code:** `provisa/llm/vendor_models.py`, `provisa/api/admin/ai_models_router.py`, `provisa-ui/src/api/aiModels.ts`, `provisa-ui/src/components/admin/AiModelsTab.tsx`
+
+**Tests:** `tests/unit/test_admin_config_tabs.py`, `provisa-ui/src/__tests__/AiModelsTab.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1410 · Ops Domain Governance {#REQ-1410}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Every column registered under the `ops` domain carries a read grant for the domain's steward (`org_admin`) — both seeds write it, and startup converges any column already stored without it while preserving grants held by other roles. `ops` is a lockdown domain, where an empty `visible_to` means visible to no role, so an ungranted column keeps its table out of every role's compilation context and the report's `"ops"."<table>"` reference reaches the engine unrewritten.
+
+**Use case:** An org admin opens Admin -> Reports and every report renders, instead of the telemetry-backed ones failing with SCHEMA_NOT_FOUND on schema 'ops' because their columns were seeded ungranted.
+
+**Code:** `provisa/api/startup_seed.py`, `provisa/compiler/schema_gen.py`
+
+**Tests:** `tests/unit/test_ops_domain.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1411 · SQL Rewriting {#REQ-1411}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The DIRECT lowering (`rewrite_semantic_to_physical`) normalizes table references before substituting physical names, so a table whose physical name differs from the name clients see (`ops.query_audit_log` -> `org_<id>.query_audit_log_ops`) keeps the semantic name as the reference's explicit alias. Substituting first renamed the reference before the alias was pinned, aliasing it to the physical name and stranding every column qualifier.
+
+**Use case:** A report or table read that routes DIRECT to the provisa-admin plane returns rows instead of "missing FROM-clause entry for table query_audit_log".
+
+**Code:** `provisa/compiler/sql_rewrite.py`
+
+**Tests:** `tests/unit/test_direct_route_alias_rewrite.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1412 · Federation Engine {#REQ-1412}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An org administrator moves the acting org between three federation-engine lanes from an "Org Engine" admin tab: shared (the pooled coordinator, [REQ-1243](#REQ-1243)), isolated (a coordinator SaaS operates for that org alone, [REQ-1043](#REQ-1043)), and external (a coordinator the org itself operates, named by host and port). The mode is derived from the orgs row -- external_engine_host set means external, else isolated_engine decides -- never stored twice. An external endpoint outranks both the deployment's shared endpoint and the isolated-host template. The surface is gated on org_settings, not platform_settings: the engine KIND stays deployment-wide. Isolated is refused with 503 where the deployment has no PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, since routing to the shared coordinator would void the isolation the org was promised. Changing the lane rebuilds the org runtime under the registry lock so the change reaches queries immediately.
+
+**Use case:** An org with its own Trino cluster points Provisa at it; an org needing isolation from other tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
+
+**Code:** `provisa/api/admin/org_engine_router.py`, `provisa/api/app.py`, `provisa/api/org_runtime.py`, `provisa/core/schema_admin.py`, `provisa/federation/trino_lifecycle.py`, `provisa-ui/src/components/admin/OrgEngineTab.tsx`
+
+**Tests:** `tests/unit/test_org_engine_lane.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1413 · Tag Registry {#REQ-1413}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Two semantic-content tags join the code-defined system tag set ([REQ-1375](#REQ-1375), SYSTEM_TAGS in provisa/core/models.py) rather than being seeded as rows: `entity` marks a column holding names of real-world things, and `natural_language` marks a column holding language a person wrote, whose contents are unreachable by relational predicates and require regex, ILIKE, or semantic search to extract. Both are column-only, reason_policy and expires_policy hidden — they are states, not countdowns. Being intrinsics they are present in every install with no migration and no seed path, and are immutable by construction: there is no row to edit or delete, and the existing mutation guards (schema_mutation.py SYSTEM_TAG_IDS, config_loader.py) already refuse them. `natural_language` is chosen over `prose`/`unstructured` because it is a positive, testable claim about content, which makes the exclusion definitional rather than a caveat: serialized formats (JSON, XML, log lines, base64) are parseable, not written, so they do not qualify and never enter a text corpus. Entity TYPE is not a tag — the dimension table names it (`customers.name` tagged `entity` is a customer entity); neither is the join key, which is the table's PK. Combined with the [REQ-1320](#REQ-1320) modeling role, `[dimension, entity]` on a column reads as the canonical name of a modeled entity.
+
+**Use case:** Consumers that must distinguish language from codes get it from the catalog instead of guessing: NL schema matching prefers entity columns when a question contains a proper noun, catalog search can answer "where does 'Acme' live", vector generation knows which columns are worth embedding, and masking review sees that entity columns are usually the join between pii and non-pii data. A downstream retrieval or chunking service can discover the same facts without a Provisa-specific client.
+
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/tag.py`, `provisa/api/admin/schema_mutation.py`
+
+**Tests:** —
+
+### REQ-1414 · Tag Registry {#REQ-1414}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Tag assignments are readable as a queryable relation, not only through the admin API: a `column_tags` view yields one row per (object_type, source, schema, table, column, relationship, tag_id), NULL at the levels coarser than the assignment's own grain, so table-level and source-level tags are not lost to a column-only projection. The view UNIONs the code-defined system tags in front of the tag_assignments table exactly as repository reads do ([REQ-1375](#REQ-1375) intrinsics are never stored, so a naive view over the table silently omits pii, technical, deprecated, entity and natural_language). The view carries the same visibility filter as registered_tables: a principal who cannot see a table cannot enumerate its tags, since column names and pii markings are themselves disclosure. Because it is an ordinary relation it reaches every protocol — pgwire, Flight, GraphQL — with no per-surface work.
+
+**Use case:** An external consumer (a retrieval/chunking service, a catalog crawler, a governance report) discovers which columns are entity names and which are natural language using stock SQL over pgwire, with no Provisa-specific driver. A chunking consumer's safety rule becomes `natural_language AND NOT pii`, evaluated from the catalog rather than from someone remembering.
+
+**Code:** `provisa/core/repositories/tag.py`, `provisa/pgwire/catalog_populate.py`, `provisa/compiler/schema_gen.py`
+
+**Tests:** —
+
+### REQ-1415 · Tag Registry {#REQ-1415}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+Tag IDs are emitted into the bracketed comment suffix alongside the modeling role, so a catalog surface shows `[dimension, entity, natural_language]` where it shows `[fact, scd2]` today (append_modeling_tag, provisa/core/modeling_tags.py, [REQ-1320](#REQ-1320)) — reaching pg_description, GraphQL introspection and the Flight/MCP catalog description through the one shared formatter. The comment channel is a HUMAN-FACING MIRROR and is explicitly not the machine contract: the [REQ-1414](#REQ-1414) view is authoritative, and nothing derives behavior by parsing the comment. To keep the mirror unambiguous the constraint is enforced upstream at tag creation rather than at render time — user tag IDs are restricted to a slug charset ([a-z0-9_-]), so a tag can never contain a comma or bracket and no surface needs escaping rules that would drift between the three.
+
+**Use case:** Someone reading a column in DBeaver or a GraphQL schema sees its governance and semantic tags inline, without a second lookup against the admin API.
+
+**Code:** `provisa/core/modeling_tags.py`, `provisa/pgwire/catalog_populate.py`, `provisa/compiler/schema_gen.py`, `provisa/api/flight/catalog.py`, `provisa/api/admin/schema_mutation.py`
+
+**Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1416 · Federation Engine {#REQ-1416}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The SaaS CREATES an isolated org's dedicated federation-engine coordinator, rather than only resolving where one would live. isolated_engine_endpoint ([REQ-1043](#REQ-1043)/[REQ-1244](#REQ-1244)) formats a hostname from PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE; the provisioner creates a single-node Trino coordinator container carrying exactly that name as its container name and network alias, on the container network named by PROVISA_ISOLATED_ENGINE_NETWORK, from the image named by PROVISA_ISOLATED_ENGINE_IMAGE, bounded by PROVISA_ISOLATED_ENGINE_MEMORY, over the Docker Engine API on a bind-mounted socket. One derivation names both, so the terminal an org binds and the container that answers cannot drift apart. Its config.properties and jvm.config are uploaded into the created container rather than bind-mounted, because a bind mount's source path is on the Docker host, which the app process only reaches through the socket. The coordinator runs catalog.management=dynamic and receives no catalog files -- the org's runtime issues CREATE CATALOG on its own terminal -- and its jvm.config deliberately omits the shared cluster's OpenTelemetry javaagent, whose jar exists only on a compose mount. Provisioning is idempotent (an existing container is started, a running one left alone) and happens BEFORE the org runtime binds its terminal, both at org creation with isolated_engine and when the engine-lane tab moves an org onto the isolated lane; leaving the lane removes the container, which holds no data. Creating an org with isolated_engine is refused with 503 where no host template is configured, the same gate the engine-lane tab applies. The Docker socket is granted through a separate docker-compose.isolated-engine.yml overlay a deployment opts into, never by default: a process that can create containers on the host can do anything on the host.
+
+**Use case:** An org that requires tenant isolation gets a coordinator of its own that actually exists, from the onboarding checkbox or the Org Engine tab, without an operator standing one up by hand.
+
+**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/federation/engine.py`, `provisa/api/admin/org_engine_router.py`, `provisa/api/admin/orgs_router.py`, `docker-compose.isolated-engine.yml`
+
+**Tests:** `tests/unit/test_isolated_engine_provisioner.py`, `tests/unit/test_org_engine_lane.py`
