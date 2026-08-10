@@ -87,6 +87,11 @@ class TranslatorExprContext:
         lateral = self._t._call_var_to_lateral.get(name)
         if lateral is not None:
             return _col(name, lateral)
+        # An UNWIND-of-collect variable names the UNNEST column itself (``UNNEST(a) AS _uw0(node)``),
+        # so it stays a bare identifier — resolving it to the join alias would strip the name
+        # resolve_property needs to spell the map access (element_at(node, 'prop')).
+        if name in self._t._map_unwind_vars:
+            return exp.column(name)
         alias, meta = self._t._var_table.get(name, (name, None))
         # A WITH-projected scalar (in _cte_sources, no node mapping) lives as a column named ``name``
         # inside CTE ``alias`` — resolve to that qualified column. Returning the bare CTE table alias

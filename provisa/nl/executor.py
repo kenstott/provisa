@@ -425,6 +425,22 @@ async def _execute_domain_table(
     return await _execute_sql(sql, role, app_state)
 
 
+def _physical_include_path(ctx: Any, meta: Any, entry: str) -> str:
+    """One ``?include=`` entry translated from the schema's naming to the physical one.
+
+    ``exposed_to_physical`` carries an entry only where the two names differ, so an unrenamed
+    column maps to itself. A bare relationship name (no dot) and a base-table scalar both pass
+    through — neither addresses a related column.
+    """
+    rel, _, column = entry.partition(".")
+    if not column:
+        return entry
+    join_meta = ctx.joins.get((meta.type_name, rel))
+    if join_meta is None:
+        return entry
+    return f"{rel}.{ctx.exposed_to_physical.get((join_meta.target.table_id, column), column)}"
+
+
 async def _execute_domain_table_aggregate(
     domain_id: str,
     table_name: str,
@@ -456,6 +472,13 @@ async def _execute_domain_table_aggregate(
     if meta is None:
         raise RuntimeError(f"No table matches {domain_id}/{table_name}")
     if by_columns:
+        if protocol == "jsonapi" and include:
+            # JSON:API's ?include= names related columns as the schema exposes them
+            # (jsonapi/generator.py::_build_group_by_node_selection validates against the
+            # relationship's GraphQL fields), while the group-by GraphQL synthesis takes the
+            # physical names gRPC and REST use. Translate, or every renamed column silently
+            # drops out of the nodes selection here.
+            include = [_physical_include_path(ctx, meta, entry) for entry in include]
         graphql_text = _grpc_group_by_graphql_text(
             ctx, meta.type_name, by_columns, funcs, include_nodes, include
         )

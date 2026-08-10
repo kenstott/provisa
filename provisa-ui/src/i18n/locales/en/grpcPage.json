@@ -17,6 +17,8 @@
     "waiting": "Waiting for response…",
     "sendPrompt": "Send a request to see the response.",
     "groupByColumns": "Group by columns",
+    "includeNodes": "Include nodes",
+    "includeFields": "Include fields (relationship, relationship.column, or column)",
     "aggregateFunctions": "Aggregate functions",
     "selectAtLeastOneFunc": "Select at least one aggregate function"
   }

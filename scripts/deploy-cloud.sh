@@ -57,7 +57,10 @@ build_ui() {
   # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;
   # left behind, the control plane answers an org subdomain's token request with a stale page or
   # a 502 and sign-in on that subdomain never completes.
-  tar czf "$STAGE/ui.tgz" -C "$REPO/provisa-ui/dist" assets index.html auth-relay.html
+  # voyager/ is the vendored GraphQL Voyager bundle the Schema Explorer's SDL iframe loads;
+  # it is part of the UI build output, so a patch that left it behind could serve a node whose
+  # image predates it and the SDL view would render blank.
+  tar czf "$STAGE/ui.tgz" -C "$REPO/provisa-ui/dist" assets index.html auth-relay.html voyager
 }
 
 push_ui() {

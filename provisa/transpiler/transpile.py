@@ -105,6 +105,10 @@ def _rewrite_json_build_object_for_trino(sql: str) -> str:
 def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     """Replace JSON_ARRAYAGG(x) with json_format(CAST(ARRAY_AGG(JSON_PARSE(x)) AS JSON)).
 
+    JSONB_AGG is the same aggregate over Postgres' binary JSON type — sqlglot leaves it anonymous
+    (json_agg maps to JSON_ARRAYAGG, jsonb_agg does not) and Trino registers neither, so both
+    spellings rewrite identically.
+
     Trino 480 does not register json_arrayagg. The json_format wrapper produces
     VARCHAR so the result is safe to embed as a VALUE in JSON_OBJECT (Trino cannot
     coerce a JSON-typed array to varchar, which causes INVALID_CAST_ARGUMENT when
@@ -120,7 +124,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
         inner = None
         if (
             isinstance(node, exp.Anonymous)
-            and node.name.upper() == "JSON_ARRAYAGG"
+            and node.name.upper() in ("JSON_ARRAYAGG", "JSON_AGG", "JSONB_AGG")
             and node.expressions
         ):
             inner = node.expressions[0]

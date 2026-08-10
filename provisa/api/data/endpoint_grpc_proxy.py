@@ -301,9 +301,21 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                     funcs=funcs,
                 )
 
+        # REQ-1401/REQ-1408: include_nodes/include widen the group-by result with a nodes
+        # sub-selection. The Explorer sends the same body the native RPC takes, so the proxy has
+        # to honour both here or the two surfaces answer the same request differently.
+        include_nodes = bool(body.get("include_nodes"))
+        include = list(body.get("include") or [])
         if is_group_by:
             by_columns = list(body.get("by") or [])
-            gql_text = grpc_table_to_group_by_graphql_text(ctx, base_type_name, by_columns, funcs)
+            gql_text = grpc_table_to_group_by_graphql_text(
+                ctx,
+                base_type_name,
+                by_columns,
+                funcs,
+                include_nodes=include_nodes,
+                include=include,
+            )
         else:
             gql_text = grpc_table_to_aggregate_graphql_text(ctx, base_type_name, funcs)
 
@@ -337,12 +349,49 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
         if is_group_by:
             group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
+
+            # The nodes selection compiles to a second SQL string keyed by the group-by columns;
+            # run it through the identical govern → route → execute pipeline and join on that key,
+            # exactly as the native servicer does (provisa/grpc/server.py::
+            # _handle_query_group_by_bound).
+            from provisa.executor.serialize import _convert_value
+
+            nodes_by_group_key: dict[tuple, list] = {}
+            if include_nodes and compiled.nodes_sql is not None and compiled.nodes_columns:
+                try:
+                    nodes_plan = await _govern_and_route_compiled(
+                        compiled.nodes_sql,
+                        role_id,
+                        exec_params=compiled.nodes_params or None,
+                        state=state,
+                    )
+                    nodes_result = await _execute_plan(nodes_plan, state)
+                except PermissionError as exc:
+                    raise HTTPException(status_code=403, detail=str(exc))
+                except Exception as exc:
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+                join_key_idx = [
+                    i for i, c in enumerate(compiled.nodes_columns) if c.nested_in == "__join_key__"
+                ]
+                output_cols = [
+                    (i, c) for i, c in enumerate(compiled.nodes_columns) if c.nested_in is None
+                ]
+                for node_row in nodes_result.rows:
+                    join_key = tuple(_convert_value(node_row[i]) for i in join_key_idx)
+                    nodes_by_group_key.setdefault(join_key, []).append(
+                        {c.field_name: _convert_value(node_row[i]) for i, c in output_cols}
+                    )
+
             out_rows = []
             for row in result.rows:
                 group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
                 agg_row = tuple(row[i] for i in agg_idx)
                 top, nested = split_agg_columns(agg_cols, agg_row)
-                out_rows.append({"group_key": group_key, "aggregate": {**top, **nested}})
+                out_row: dict[str, Any] = {"group_key": group_key, "aggregate": {**top, **nested}}
+                if include_nodes:
+                    join_key = tuple(_convert_value(row[i]) for i in group_key_idx)
+                    out_row["nodes"] = nodes_by_group_key.get(join_key, [])
+                out_rows.append(out_row)
             return JSONResponse(jsonable_encoder(out_rows))
 
         row = result.rows[0] if result.rows else ()

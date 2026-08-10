@@ -7,6 +7,11 @@
     "thinking": "Assistant is working…",
     "emptyState": "Ask about your data — e.g. \"which tables have customer email?\", \"top 10 orders by amount\", or \"what does the orders table look like?\"",
     "inputPlaceholder": "Ask about your catalog or data…",
-    "clear": "Clear input"
+    "clear": "Clear input",
+    "clearTooltip": "Clear the draft question without sending it. The conversation above is kept.",
+    "roleNoteTooltip": "Every catalog lookup and query the assistant runs is executed as this role, so it sees exactly the tables, columns, and rows that role is granted.",
+    "toolRunningTooltip": "{{name}} is running.",
+    "toolDoneTooltip": "{{name}} finished. Its result was handed back to the assistant.",
+    "toolErrorTooltip": "{{name}} failed. The assistant received the error and may retry with different arguments."
   }
 }

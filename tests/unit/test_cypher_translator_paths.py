@@ -425,6 +425,24 @@ def test_unwind_alias_in_return():
     assert "UNNEST" in sql.upper()
 
 
+def test_unwind_of_collect_map_property_is_map_access():
+    """RETURN node.prop over an UNWIND of collect({...}) reads the map, not a column of the
+    UNNEST alias — _uw0."prop" does not exist and the engine rejects it (COLUMN_NOT_FOUND)."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) "
+        "WITH n.age AS age, COUNT(*) AS count, collect({pid: n.id, pname: n.name}) AS _nodes "
+        "UNWIND _nodes AS node "
+        "RETURN age, count, node.pid AS pid, node.pname AS pname"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "ELEMENT_AT(node, 'pid')" in sql
+    assert "ELEMENT_AT(node, 'pname')" in sql
+    assert '_uw0."pid"' not in sql
+    assert '_uw0."pname"' not in sql
+
+
 # ---------------------------------------------------------------------------
 # Gap #11 — IN list predicate
 # ---------------------------------------------------------------------------

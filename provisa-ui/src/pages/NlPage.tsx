@@ -134,7 +134,9 @@ export function NlPage() {
   const NL_BRANCHES_KEY = "nl-branches";
   const NL_STRICT_KEY = "nl-strict";
   const [question, setQuestion] = useState(() => localStorage.getItem(NL_QUESTION_KEY) ?? "");
-  const [strict, setStrict] = useState(() => localStorage.getItem(NL_STRICT_KEY) === "1");
+  // Strict is the default: an unset key means the user has never toggled it, so only an
+  // explicit "0" turns it off. The toggle writes the key on every change (see the Switch below).
+  const [strict, setStrict] = useState(() => localStorage.getItem(NL_STRICT_KEY) !== "0");
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
@@ -254,23 +256,25 @@ export function NlPage() {
     <Stack gap="md" p="md" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
       <GuidanceBanner />
       <Group align="flex-start" gap="sm" wrap="nowrap">
-        <Textarea
-          aria-label={t("nlPage.questionLabel")}
-          placeholder={t("nlPage.questionPlaceholder")}
-          value={question}
-          rows={2}
-          autosize
-          minRows={2}
-          style={{ flex: 1 }}
-          data-testid="nl-question-input"
-          onChange={(e) => { setQuestion(e.currentTarget.value); localStorage.setItem(NL_QUESTION_KEY, e.currentTarget.value); }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void handleSubmit();
-            }
-          }}
-        />
+        <Tooltip label={t("nlPage.questionTooltip")} multiline w={280}>
+          <Textarea
+            aria-label={t("nlPage.questionLabel")}
+            placeholder={t("nlPage.questionPlaceholder")}
+            value={question}
+            rows={2}
+            autosize
+            minRows={2}
+            style={{ flex: 1 }}
+            data-testid="nl-question-input"
+            onChange={(e) => { setQuestion(e.currentTarget.value); localStorage.setItem(NL_QUESTION_KEY, e.currentTarget.value); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
+          />
+        </Tooltip>
         <Tooltip label={t("nlPage.strictModeTooltip")} multiline w={280}>
           <Switch
             label={t("nlPage.strictMode")}
@@ -283,25 +287,29 @@ export function NlPage() {
             data-testid="nl-strict-toggle"
           />
         </Tooltip>
-        <Button
-          disabled={submitting || !question.trim()}
-          onClick={() => void handleSubmit()}
-          loading={submitting}
-          data-testid="nl-submit-button"
-        >
-          {submitting ? t("nlPage.generating") : t("nlPage.generate")}
-        </Button>
+        <Tooltip label={t("nlPage.generateTooltip")} multiline w={280}>
+          <Button
+            disabled={submitting || !question.trim()}
+            onClick={() => void handleSubmit()}
+            loading={submitting}
+            data-testid="nl-submit-button"
+          >
+            {submitting ? t("nlPage.generating") : t("nlPage.generate")}
+          </Button>
+        </Tooltip>
         {/* Hand the same question to the MCP chat assistant, which runs it agentically. */}
-        <Button
-          variant="light"
-          disabled={!question.trim()}
-          onClick={() =>
-            navigate("/explore", { state: { mcpQuestion: question.trim() } })
-          }
-          data-testid="nl-mcp-chat-button"
-        >
-          {t("nlPage.mcpChat")}
-        </Button>
+        <Tooltip label={t("nlPage.mcpChatTooltip")} multiline w={280}>
+          <Button
+            variant="light"
+            disabled={!question.trim()}
+            onClick={() =>
+              navigate("/explore", { state: { mcpQuestion: question.trim() } })
+            }
+            data-testid="nl-mcp-chat-button"
+          >
+            {t("nlPage.mcpChat")}
+          </Button>
+        </Tooltip>
       </Group>
 
       {globalError && (
@@ -339,15 +347,16 @@ function BranchPanel({
       <Group justify="space-between" px="sm" py={6} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
         <Badge variant="light" size="sm">{label}</Badge>
         {!branch.loading && branch.query && (
-          <Button
-            size="compact-xs"
-            variant="light"
-            title={t("nlPage.openInExplorer", { label })}
-            onClick={() => onOpen(target, branch.query!)}
-            data-testid={`nl-open-button-${target}`}
-          >
-            {t("nlPage.openIn", { label })}
-          </Button>
+          <Tooltip label={t("nlPage.openInExplorer", { label })} multiline w={280}>
+            <Button
+              size="compact-xs"
+              variant="light"
+              onClick={() => onOpen(target, branch.query!)}
+              data-testid={`nl-open-button-${target}`}
+            >
+              {t("nlPage.openIn", { label })}
+            </Button>
+          </Tooltip>
         )}
       </Group>
       <ScrollArea style={{ flex: 1 }} p="sm">

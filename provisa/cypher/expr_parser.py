@@ -101,9 +101,10 @@ _KW = pp.MatchFirst(
         "END",
         "DISTINCT",
         "WHERE",
-        "EXISTS",
-        "COUNT",
-        "COLLECT",
+        # EXISTS / COUNT / COLLECT are deliberately absent: Cypher does not reserve them, so they
+        # are ordinary identifiers except when a "{" follows (the subquery-expression form, which
+        # the `subq` rule matches ahead of the variable rule). Reserving them broke `COUNT(*) AS
+        # count` — every later reference to that column failed with "Expected '{'".
     )
 )
 
@@ -232,7 +233,7 @@ def _build_grammar() -> pp.ParserElement:
     subq_body = pp.original_text_for(pp.nested_expr("{", "}"))
     subq = (
         pp.CaselessKeyword("EXISTS") | pp.CaselessKeyword("COUNT") | pp.CaselessKeyword("COLLECT")
-    )("kind") + subq_body("body")
+    )("kind") + pp.FollowedBy("{") + subq_body("body")
 
     def _mk_subq(t):
         raw = t["body"].strip()

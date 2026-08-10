@@ -241,6 +241,45 @@ def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> 
     return scalars
 
 
+def _build_group_by_node_selection(
+    schema: GraphQLSchema,
+    gql_table: str,
+    base_scalars: list[str],
+    include_param: str | None,
+) -> tuple[str, str | None]:  # REQ-1408
+    """The ``nodes { ... }`` selection for ``?includeNodes=true`` (REQ-1401).
+
+    Every base-table scalar, plus whatever ``?include=`` names. An entry is either a relationship
+    name (``user`` — every scalar of the related table) or a ``rel.col`` dot-path selecting one
+    column, the same projection gRPC's ``include`` (query_ir::_include_node_fields) and REST's
+    ``?includeNodes=`` dot-path list accept, so one plan drives all three surfaces.
+
+    Returns ``(selection, error_detail)``; ``error_detail`` is non-None when an entry names an
+    unknown relationship or column, which the caller turns into a 400.
+    """
+    node_fields = list(base_scalars)
+    valid_rel_names = set(_get_relationship_fields(schema, gql_table).values())
+    include_names = (
+        [n.strip() for n in include_param.split(",") if n.strip()] if include_param else []
+    )
+    rel_columns: dict[str, list[str]] = {}
+    for inc in include_names:
+        rel, _, column = inc.partition(".")
+        if rel not in valid_rel_names:
+            return "", f"Unknown relationship {rel!r}"
+        rel_scalars = _relationship_scalars(schema, gql_table, rel)
+        if column and column not in rel_scalars:
+            return "", f"Unknown field {column!r} on relationship {rel!r}"
+        requested = rel_columns.setdefault(rel, [])
+        for col in [column] if column else rel_scalars:
+            if col not in requested:
+                requested.append(col)
+    for rel, columns in rel_columns.items():
+        if columns:
+            node_fields.append(f"{rel} {{ {' '.join(columns)} }}")
+    return " ".join(node_fields), None
+
+
 def _build_graphql_query(
     table: str,
     fields: list[str],
@@ -571,27 +610,13 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 # the same ?include= relationship sideloading the base listing endpoint offers.
                 node_selection = None
                 if raw_params.get("includeNodes") in ("true", "1"):
-                    node_fields = list(all_scalars)
-                    rel_fields = _get_relationship_fields(schema, gql_table)
-                    valid_rel_names = set(rel_fields.values())
-                    include_param = raw_params.get("include")
-                    include_names = (
-                        [n.strip() for n in include_param.split(",") if n.strip()]
-                        if include_param
-                        else []
+                    node_selection, bad_include = _build_group_by_node_selection(
+                        schema, gql_table, list(all_scalars), raw_params.get("include")
                     )
-                    for inc in include_names:
-                        if inc not in valid_rel_names:
-                            return _jsonapi_error_response(
-                                400,
-                                "Invalid Include",
-                                f"Unknown relationship {inc!r}",
-                                source_parameter="include",
-                            )
-                        inc_scalars = _relationship_scalars(schema, gql_table, inc)
-                        if inc_scalars:
-                            node_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
-                    node_selection = " ".join(node_fields)
+                    if bad_include is not None:
+                        return _jsonapi_error_response(
+                            400, "Invalid Include", bad_include, source_parameter="include"
+                        )
 
                 gql_query = _build_group_by_graphql_query(
                     target_field,

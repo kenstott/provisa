@@ -1125,3 +1125,186 @@ class TestFlatReturnClause:
         assert result is not None, "semantic_sql_to_cypher returned None"
         assert "collect(" in result, f"Expected collect() in non-flat RETURN: {result}"
         assert "AS assignment" in result, f"Missing AS assignment in: {result}"
+
+
+class TestCorrelatedSubqueries:
+    """NL-generated SQL puts correlated subqueries in SELECT; RETURN must not carry the SQL text."""
+
+    def _make_ctx_and_label_map(self):
+        users_meta = _TableMeta(
+            table_id=1,
+            field_name="users",
+            type_name="Users",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="pet_store",
+            table_name="users",
+            domain_id="pet_store",
+        )
+        inq_meta = _TableMeta(
+            table_id=2,
+            field_name="inquiries",
+            type_name="Inquiries",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="pet_store",
+            table_name="inquiries",
+            domain_id="pet_store",
+        )
+        pets_meta = _TableMeta(
+            table_id=3,
+            field_name="pets",
+            type_name="Pets",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="pet_store",
+            table_name="pets",
+            domain_id="pet_store",
+        )
+        ctx = _Ctx(
+            tables={"users": users_meta, "inquiries": inq_meta, "pets": pets_meta},
+            aggregate_columns={
+                1: [("id", "integer"), ("name", "varchar")],
+                2: [("id", "integer"), ("user_id", "integer"), ("pet_id", "integer")],
+                3: [("id", "integer"), ("name", "varchar")],
+            },
+        )
+        users_node = NodeMapping(
+            label="Users",
+            type_name="Users",
+            domain_label=None,
+            table_label="Users",
+            table_id=1,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="pet_store",
+            table_name="users",
+            properties={"id": "id", "name": "name"},
+        )
+        inq_node = NodeMapping(
+            label="Inquiries",
+            type_name="Inquiries",
+            domain_label=None,
+            table_label="Inquiries",
+            table_id=2,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="pet_store",
+            table_name="inquiries",
+            properties={"id": "id", "userId": "user_id", "petId": "pet_id"},
+        )
+        pets_node = NodeMapping(
+            label="Pets",
+            type_name="Pets",
+            domain_label=None,
+            table_label="Pets",
+            table_id=3,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="pet_store",
+            table_name="pets",
+            properties={"id": "id", "name": "name"},
+        )
+        lm = CypherLabelMap(
+            nodes={"Users": users_node, "Inquiries": inq_node, "Pets": pets_node},
+            relationships={
+                "HAS_INQUIRIES::Users→Inquiries": RelationshipMapping(
+                    rel_type="HAS_INQUIRIES",
+                    source_label="Users",
+                    target_label="Inquiries",
+                    join_source_column="id",
+                    join_target_column="user_id",
+                    field_name="inquiries",
+                    many=True,
+                ),
+                "HAS_PET::Inquiries→Pets": RelationshipMapping(
+                    rel_type="HAS_PET",
+                    source_label="Inquiries",
+                    target_label="Pets",
+                    join_source_column="pet_id",
+                    join_target_column="id",
+                    field_name="pet",
+                    many=False,
+                ),
+            },
+        )
+        return ctx, lm
+
+    def test_correlated_count_becomes_count_subquery(self):
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT users.id AS user_id, (SELECT COUNT(*) FROM "pet_store"."inquiries" AS inquiries '
+            "WHERE inquiries.user_id = users.id) AS inquiry_count "
+            'FROM "pet_store"."users" AS users LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None, "correlated COUNT(*) must translate, not fall through to None"
+        assert "SELECT" not in result, f"SQL text leaked into Cypher: {result}"
+        assert "COUNT { MATCH (a:Users)-[:HAS_INQUIRIES]->" in result, result
+        assert "AS inquiry_count" in result
+
+    def test_correlated_count_parses_as_cypher(self):
+        from provisa.cypher.expr_parser import parse_expression
+        from provisa.cypher.parser import parse_cypher
+
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT users.id AS user_id, (SELECT COUNT(*) FROM "pet_store"."inquiries" AS inquiries '
+            "WHERE inquiries.user_id = users.id) AS inquiry_count "
+            'FROM "pet_store"."users" AS users LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        parse_cypher(result)
+        count_item = next(
+            item for item in result.split("RETURN ")[1].split("\n")[0].split(", ") if "COUNT" in item
+        )
+        parse_expression(count_item.split(" AS ")[0])
+
+    def test_jsonb_build_object_subquery_translates(self):
+        """The jsonb spelling must reach the json-subquery pass, not the raw-SQL RETURN path."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            "SELECT users.id AS user_id, (SELECT JSON_AGG(JSONB_BUILD_OBJECT("
+            "'pet_id', inquiries.pet_id)) FROM \"pet_store\".\"inquiries\" AS inquiries "
+            "WHERE inquiries.user_id = users.id) AS pet_details "
+            'FROM "pet_store"."users" AS users LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None, "jsonb_build_object subquery must translate"
+        assert "JSONB_BUILD_OBJECT" not in result.upper(), result
+        assert "collect({" in result, result
+
+    def test_untranslatable_subquery_returns_none(self):
+        """A subquery no pass claims must yield None — never SQL text pasted into RETURN."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT users.id AS user_id, (SELECT MAX(inquiries.id) FROM "pet_store"."inquiries" AS '
+            "inquiries WHERE inquiries.user_id = users.id) AS last_inquiry "
+            'FROM "pet_store"."users" AS users LIMIT 100'
+        )
+        assert semantic_sql_to_cypher(sql, lm, ctx) is None
+
+    def test_json_subquery_join_gets_its_own_traversal(self):
+        """A table JOINed inside the json subquery must become a hop, not a bare SQL alias."""
+        from provisa.cypher.parser import parse_cypher
+
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            "SELECT users.id AS user_id, (SELECT JSON_AGG(JSONB_BUILD_OBJECT("
+            "'pet_id', pets.id, 'pet_name', pets.name)) FROM \"pet_store\".\"inquiries\" AS "
+            'inquiries JOIN "pet_store"."pets" AS pets ON inquiries.pet_id = pets.id '
+            "WHERE inquiries.user_id = users.id) AS pet_details "
+            'FROM "pet_store"."users" AS users LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "[:HAS_PET]->" in result, result
+        assert "pets." not in result, f"raw SQL alias leaked: {result}"
+        parse_cypher(result)

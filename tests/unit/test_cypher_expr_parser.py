@@ -212,6 +212,17 @@ class TestStructures:
         assert isinstance(node, SubqueryExpr) and node.kind == "EXISTS"
         assert "MATCH (n)-[:R]->(m)" in node.body
 
+    def test_subquery_keywords_are_not_reserved(self):
+        # Cypher does not reserve EXISTS/COUNT/COLLECT; only a following "{" makes them a subquery
+        # expression. `COUNT(*) AS count` binds a variable named count, and every later reference to
+        # it failed with "Expected '{'" while these were reserved words.
+        for name in ("count", "exists", "collect"):
+            assert P(name) == Variable(name)
+            assert P(f"node.{name}") == Property(Variable("node"), name)
+        assert isinstance(P("COUNT { (a)-[:R]->(b) }"), SubqueryExpr)
+        assert isinstance(P("count(*)"), FunctionCall)
+        assert P("a.count + count") == Binary("+", Property(Variable("a"), "count"), Variable("count"))
+
     def test_quantifier(self):
         for kind, text in [
             ("ALL", "all(x IN n.l WHERE x > 0)"),

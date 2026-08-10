@@ -259,3 +259,20 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step24",
   },
 ];
+
+/**
+ * The route step `index` must be on, walking back to the nearest preceding step that declares one.
+ *
+ * A step omits `route` when it continues on the page its predecessor navigated to (e.g. the
+ * sources add-form steps after the /sources step). Stepping forward that works, but resuming
+ * straight into such a step lands on whatever page the visitor was already on, its anchor never
+ * appears, and the runner's wait times out — the tour button looks dead. Resolving the inherited
+ * route makes any index directly enterable.
+ */
+export function stepRoute(index: number): string | undefined {
+  for (let i = index; i >= 0; i--) {
+    const route = TOUR_STEPS[i].route;
+    if (route) return route;
+  }
+  return undefined;
+}

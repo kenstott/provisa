@@ -24,7 +24,7 @@ import { useTranslation } from "react-i18next";
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
-import { TOUR_STEPS, type TourStep } from "./tourSteps";
+import { TOUR_STEPS, stepRoute, type TourStep } from "./tourSteps";
 import { prefetchAllPageChunks } from "../pageChunks";
 
 const TOUR_SEEN_KEY = "provisa_tour_seen";
@@ -271,11 +271,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
   const activeStepRef = useRef<number | null>(null);
 
-  // End the tour. `completed` (Done on the last step) clears saved progress; an early dismissal
-  // saves the current step so the next launch resumes there.
-  const endTour = useCallback((completed: boolean) => {
+  // End the tour. "completed" (Done on the last step) clears saved progress; "dismissed" (X / Esc)
+  // saves the current step so the next launch resumes there. "failed" — the step's anchor never
+  // appeared — also clears it: re-saving an index that could not render leaves the launch button
+  // dead, since every later click would enter the same step and abort the same way.
+  const endTour = useCallback((how: "completed" | "dismissed" | "failed") => {
     localStorage.setItem(TOUR_SEEN_KEY, "true");
-    if (completed) {
+    if (how !== "dismissed") {
       localStorage.removeItem(TOUR_PROGRESS_KEY);
     } else if (activeStepRef.current != null) {
       localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
@@ -306,15 +308,20 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // is always defined here; a bad index would throw into the catch below.
         const step: TourStep = TOUR_STEPS[i];
         if (step.prep) PREP_ACTIONS[step.prep]?.();
-        if (step.route && step.route !== currentPathRef.current) {
-          currentPathRef.current = step.route;
+        // The step's own route, or the one it inherits from an earlier step (see stepRoute) — a
+        // resume can enter at any index, including one that omits `route` because it continues on
+        // its predecessor's page. Stepping forward the inherited route already equals
+        // currentPathRef, so the equality guard makes this a no-op exactly as before.
+        const route = stepRoute(i);
+        if (route && route !== currentPathRef.current) {
+          currentPathRef.current = route;
           if (step.openBranch) {
             // Land on the explorer with the branch's demo query pre-filled + auto-run,
             // exactly as NlPage's "Open in X" button does.
             const { stateKey, query } = BRANCH_NAV[step.openBranch];
-            navigate(step.route, { state: { [stateKey]: query, autoRun: true } });
+            navigate(route, { state: { [stateKey]: query, autoRun: true } });
           } else {
-            navigate(step.route);
+            navigate(route);
           }
         }
         if (step.clickBefore) {
@@ -351,7 +358,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             prevBtnText: t("tour.nav.back"),
             onNextClick: () => {
               clickIfPresent(step.clickAfterNext);
-              if (isLast) endTour(true);
+              if (isLast) endTour("completed");
               else setActiveStep(i + 1);
             },
             onPrevClick: () => {
@@ -360,7 +367,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             },
             onCloseClick: () => {
               clickIfPresent(step.clickAfterNext);
-              endTour(false);
+              endTour("dismissed");
             },
             // Inject a "Start" button that jumps back to the opening step, so a
             // visitor can restart the tour from any popover. Omitted on step 0,
@@ -384,7 +391,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
                 docsBtn.className = "driver-popover-docs-btn";
                 docsBtn.textContent = t("tour.nav.docs");
                 docsBtn.addEventListener("click", () => {
-                  endTour(true);
+                  endTour("completed");
                   navigate("/docs");
                 });
                 popover.footerButtons.prepend(docsBtn);
@@ -396,7 +403,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // Anchor never appeared (layout changed / gated by permission) — end
         // gracefully, saving progress so the user can resume rather than being
         // trapped behind an overlay.
-        endTour(false);
+        endTour("failed");
       }
     })();
     return () => {

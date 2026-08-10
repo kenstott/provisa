@@ -161,7 +161,11 @@ def generate_jsonapi_openapi_spec(
                 "name": "include",
                 "in": "query",
                 "schema": {"type": "string"},
-                "description": "Comma-separated relationship names to sideload",
+                "description": (
+                    "Comma-separated relationship names to sideload. On a groupBy request with "
+                    "includeNodes=true, an entry may also be a 'relationship.column' dot-path, "
+                    "selecting just that column inside nodes"
+                ),
             },
         ]
         for col, col_schema, col_desc in columns:

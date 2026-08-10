@@ -32,7 +32,9 @@ from provisa.cypher.sql_to_cypher_helpers import (
     _sql_to_cypher_expr,
 )
 from provisa.cypher.sql_to_cypher_agg import (
+    UntranslatableSubquery,
     _process_array_agg_subqueries,
+    _process_count_subqueries,
     _process_json_subqueries,
 )
 
@@ -74,6 +76,8 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     if not isinstance(tree, exp.Select):
         return None
+
+    _normalize_json_builders(tree)
 
     domain_to_label = _build_domain_to_label(ctx, label_map, domain_to_sql_name)
     join_to_rel = _build_join_to_rel(label_map)
@@ -204,7 +208,7 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         _node,
     )
 
-    _process_json_subqueries(
+    _agg_alias_counter = _process_count_subqueries(
         select_exprs,
         domain_to_label,
         label_to_rel,
@@ -214,16 +218,35 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         base_alias,
         base_label,
         sql_base_alias,
-        flat,
         _agg_alias_counter,
-        _agg_seen,
-        _agg_seen_label,
         array_agg_return,
-        cypher_lines,
         _letters,
-        _prop_map_for_label,
         _node,
     )
+
+    try:
+        _process_json_subqueries(
+            select_exprs,
+            domain_to_label,
+            label_to_rel,
+            src_tgt_to_rel,
+            alias_map,
+            alias_label,
+            base_alias,
+            base_label,
+            sql_base_alias,
+            flat,
+            _agg_alias_counter,
+            _agg_seen,
+            _agg_seen_label,
+            array_agg_return,
+            cypher_lines,
+            _letters,
+            _prop_map_for_label,
+            _node,
+        )
+    except UntranslatableSubquery:
+        return None
 
     # --- WHERE ---
     where_expr = tree.args.get("where")
@@ -246,6 +269,15 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         )
         cypher_lines.append(f"RETURN {', '.join(node_aliases)}")
     else:
+        # A SELECT subquery that none of the aggregate passes above claimed has no Cypher form here;
+        # RETURN would otherwise carry its SQL text through verbatim and the query would fail at
+        # parse time ("Expected ')', found 'COUNT'"). Untranslatable is the documented result.
+        for _expr in select_exprs:
+            if isinstance(_expr, exp.Alias) and _expr.alias in array_agg_return:
+                continue
+            if list(_expr.find_all(exp.Subquery)):
+                return None
+
         return_items = _build_return(
             select_exprs,
             default_sql_alias,
@@ -280,6 +312,30 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
 
 # --- Extracted helpers for semantic_sql_to_cypher ---
+
+
+def _normalize_json_builders(tree: exp.Select) -> None:
+    """Rewrite jsonb_build_object/jsonb_agg into the typed nodes the rest of this module matches.
+
+    sqlglot lifts json_agg(json_object(...)) to JSONArrayAgg/JSONObject but leaves the jsonb
+    spellings — and the flat json_build_object(k, v, …) form — as Anonymous. Postgres' jsonb is the
+    same constructor over a binary representation, so the graph shape is identical; without this,
+    NL-generated SQL using the jsonb spelling never reaches _process_json_subqueries.
+    """
+    for node in list(tree.find_all(exp.Anonymous)):
+        name = node.name.upper()
+        if name in ("JSON_BUILD_OBJECT", "JSONB_BUILD_OBJECT"):
+            args = node.expressions
+            node.replace(
+                exp.JSONObject(
+                    expressions=[
+                        exp.JSONKeyValue(this=args[i], expression=args[i + 1])
+                        for i in range(0, len(args) - 1, 2)
+                    ]
+                )
+            )
+        elif name in ("JSON_AGG", "JSONB_AGG") and node.expressions:
+            node.replace(exp.JSONArrayAgg(this=node.expressions[0]))
 
 
 def _build_domain_to_label(

@@ -76,6 +76,10 @@ _STATIC_PREFIXES = (
     # navigation, so without this it would be treated as an API call and proxied upstream
     # instead of being served as the built page.
     "/auth-relay.html",
+    # The Schema Explorer's SDL view renders GraphQL Voyager inside a srcDoc iframe, which pulls
+    # these vendored bundles as script/style subresources — not navigations. Without the prefix
+    # they fall through to the API proxy and come back 401, and the iframe renders blank.
+    "/voyager/",
 )
 
 # Disable this proxy app's own Swagger so /docs falls through to the SPA (the API's

@@ -32,7 +32,7 @@ def _json_agg_object(expr: exp.Expression) -> exp.JSONObject | None:
         return expr.this
     if (
         isinstance(expr, exp.Anonymous)
-        and expr.name.upper() == "JSON_AGG"
+        and expr.name.upper() in ("JSON_AGG", "JSONB_AGG")
         and expr.expressions
         and isinstance(expr.expressions[0], exp.JSONObject)
     ):
@@ -584,7 +584,19 @@ def _collect_select_aliases(select: exp.Select) -> set[str]:
 
 def _is_aggregate_expr(expr: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Return True if expr is an aggregate function call."""
-    _AGG_NAMES = {"COUNT", "SUM", "MIN", "MAX", "AVG", "JSON_AGG", "ARRAY_AGG", "ARBITRARY"}
+    _AGG_NAMES = {
+        "COUNT",
+        "SUM",
+        "MIN",
+        "MAX",
+        "AVG",
+        "JSON_AGG",
+        # jsonb_agg is json_agg over Postgres' binary JSON type; sqlglot leaves it anonymous, so it
+        # must be named here or a correlated jsonb_agg subquery is treated as a non-aggregate.
+        "JSONB_AGG",
+        "ARRAY_AGG",
+        "ARBITRARY",
+    }
     if isinstance(expr, exp.Anonymous):
         return expr.name.upper() in _AGG_NAMES
     if isinstance(
@@ -623,7 +635,7 @@ def _lift_correlated_in_expr(
     if isinstance(expr, exp.JSONObject):
         return _lift_in_json_object(expr, outer_aliases, cte_defs, new_joins, cte_counter)
 
-    if isinstance(expr, exp.Anonymous) and expr.name.upper() in ("JSON_AGG", "ARRAY_AGG"):
+    if isinstance(expr, exp.Anonymous) and expr.name.upper() in ("JSON_AGG", "JSONB_AGG", "ARRAY_AGG"):
         children = expr.expressions or []
         if children:
             child_rewritten = _lift_correlated_in_expr(
@@ -1035,7 +1047,7 @@ def _flatten_nested_in_expr(
             return _flatten_walk_alias(node, _walk)
         if isinstance(node, exp.JSONObject):
             return _flatten_walk_json_object(node, _walk)
-        if isinstance(node, exp.Anonymous) and node.name.upper() in ("JSON_AGG", "ARRAY_AGG"):
+        if isinstance(node, exp.Anonymous) and node.name.upper() in ("JSON_AGG", "JSONB_AGG", "ARRAY_AGG"):
             return _flatten_walk_agg(node, _walk)
         if isinstance(node, exp.JSONArrayAgg):
             return _flatten_walk_json_array_agg(node, _walk)

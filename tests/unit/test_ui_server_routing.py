@@ -45,6 +45,14 @@ def test_auth_relay_is_served_as_a_file_not_proxied():
     assert "/auth-relay.html" in _STATIC_PREFIXES
 
 
+def test_voyager_assets_are_served_as_files_not_proxied():
+    # The SDL view's Voyager bundles load as script/style subresources of a srcDoc iframe.
+    # Without the static prefix they reach the API proxy and answer 401, blanking the view.
+    assert is_spa_navigation("GET", {"sec-fetch-dest": "script"}) is False
+    assert is_spa_navigation("GET", {"sec-fetch-dest": "style"}) is False
+    assert "/voyager/" in _STATIC_PREFIXES
+
+
 def test_non_get_navigation_never_serves_spa():
     # A POST with document dest is a non-navigation edge; header still governs,
     # but the point is a non-GET without the header is never SPA.

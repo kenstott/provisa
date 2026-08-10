@@ -193,3 +193,96 @@ class TestTranslation:
             async with c:
                 resp = await c.post("/data/grpc/Pet", json={"role_id": "analyst"})
         assert resp.status_code == 403
+
+
+class TestGroupByIncludeNodes:
+    """REQ-1401/REQ-1408: the proxy is the gRPC Explorer's transport, so a body carrying
+    include_nodes/include must produce the same nodes-bearing rows the native servicer yields —
+    dropping them made the Explorer answer a narrower query than the one it displayed."""
+
+    @staticmethod
+    def _column(**kw):
+        col = MagicMock()
+        for k, v in kw.items():
+            setattr(col, k, v)
+        return col
+
+    async def _post(self, state, monkeypatch, body):
+        import httpx
+
+        app = _make_app(state, monkeypatch)
+        c = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+        compiled = MagicMock()
+        compiled.sql = "SELECT 1"
+        compiled.params = None
+        compiled.columns = ["status", "count"]
+        compiled.nodes_sql = "SELECT 2"
+        compiled.nodes_params = None
+        compiled.nodes_columns = [
+            self._column(nested_in="__join_key__", field_name="status"),
+            self._column(nested_in=None, field_name="id"),
+            self._column(nested_in=None, field_name="user"),
+        ]
+
+        agg_result = MagicMock(rows=[["open", 2]])
+        nodes_result = MagicMock(rows=[["open", 7, {"email": "a@b.c"}]])
+
+        gql_text = patch(
+            "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_group_by_graphql_text",
+            return_value="{ inquiries_group_by(by: [status]) { nodes { id user { email } } } }",
+        )
+        parse = patch("provisa.compiler.parser.parse_query", return_value=MagicMock())
+        compile_ = patch("provisa.compiler.sql_gen.compile_query", return_value=[compiled])
+        split_gb = patch(
+            "provisa.api.data.endpoint_grpc_proxy.split_group_by_columns",
+            return_value=([self._column(column="status")], [0], ["count"], [1]),
+        )
+        split_agg = patch(
+            "provisa.api.data.endpoint_grpc_proxy.split_agg_columns",
+            return_value=({"count": 2}, {}),
+        )
+        govern = patch(
+            "provisa.api.data.endpoint_grpc_proxy._govern_and_route_compiled",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        )
+        execute = patch(
+            "provisa.api.data.endpoint_grpc_proxy._execute_plan",
+            new_callable=AsyncMock,
+            side_effect=[agg_result, nodes_result],
+        )
+        with gql_text as gql_mock, parse, compile_, split_gb, split_agg, govern, execute:
+            async with c:
+                resp = await c.post("/data/grpc/InquiriesGroupBy", json=body)
+        return resp, gql_mock
+
+    async def test_include_flags_reach_the_graphql_synthesis(self, state, monkeypatch):
+        resp, gql_mock = await self._post(
+            state,
+            monkeypatch,
+            {
+                "role_id": "analyst",
+                "by": ["status"],
+                "include_nodes": True,
+                "include": ["user.email"],
+            },
+        )
+        assert resp.status_code == 200
+        assert gql_mock.call_args.kwargs["include_nodes"] is True
+        assert gql_mock.call_args.kwargs["include"] == ["user.email"]
+
+    async def test_nodes_are_joined_onto_their_group(self, state, monkeypatch):
+        resp, _ = await self._post(
+            state,
+            monkeypatch,
+            {"role_id": "analyst", "by": ["status"], "include_nodes": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == [
+            {
+                "group_key": {"status": "open"},
+                "aggregate": {"count": 2},
+                "nodes": [{"id": 7, "user": {"email": "a@b.c"}}],
+            }
+        ]

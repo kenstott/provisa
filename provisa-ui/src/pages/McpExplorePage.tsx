@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Code, Collapse, Group, Paper, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Code, Collapse, Group, Paper, Text, TextInput, Title, Tooltip } from "@mantine/core";
 import {
   MainContainer,
   ChatContainer,
@@ -131,9 +131,15 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
 
   return (
     <div style={{ marginBottom: "var(--mantine-spacing-sm)" }}>
-      <Button variant="subtle" size="xs" onClick={() => setOpen((o) => !o)}>
-        {open ? "Hide Claude Desktop setup" : "Connect Claude Desktop"}
-      </Button>
+      <Tooltip
+        label="Show the config that points Claude Desktop at this MCP server, so the same governed tools are available outside Provisa."
+        multiline
+        w={280}
+      >
+        <Button variant="subtle" size="xs" onClick={() => setOpen((o) => !o)}>
+          {open ? "Hide Claude Desktop setup" : "Connect Claude Desktop"}
+        </Button>
+      </Tooltip>
       <Collapse in={open}>
         <Paper withBorder p="sm" mt={6} radius="sm">
           <Text size="sm" fw={600} mb={4}>
@@ -152,13 +158,19 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
             )}{" "}
             Edit the URL if Provisa is remote or behind a proxy.
           </Text>
-          <TextInput
-            label="MCP URL"
-            size="xs"
-            value={url}
-            onChange={(e) => setUrl(e.currentTarget.value)}
-            mb={6}
-          />
+          <Tooltip
+            label="The endpoint Claude Desktop connects to. Change it if Provisa is remote or behind a proxy — the JSON below updates with it."
+            multiline
+            w={280}
+          >
+            <TextInput
+              label="MCP URL"
+              size="xs"
+              value={url}
+              onChange={(e) => setUrl(e.currentTarget.value)}
+              mb={6}
+            />
+          </Tooltip>
           <Code block>{snippet}</Code>
           <Group gap={6} mt={6}>
             <Button
@@ -378,24 +390,38 @@ export function McpExplorePage() {
       <Text c="dimmed" size="sm" mb="xs">
         {t("mcpExplore.intro")}
       </Text>
-      <Text size="xs" c="dimmed" mb="sm">
-        {t("mcpExplore.roleNote", { role: roleId || t("mcpExplore.noRole") })}
-      </Text>
+      <Tooltip label={t("mcpExplore.roleNoteTooltip")} multiline w={280}>
+        <Text size="xs" c="dimmed" mb="sm" style={{ width: "fit-content" }}>
+          {t("mcpExplore.roleNote", { role: roleId || t("mcpExplore.noRole") })}
+        </Text>
+      </Tooltip>
 
       <ConnectClaudeDesktop roleId={roleId} />
 
       {tools.length > 0 && (
         <Group gap={6} mb="xs" wrap="wrap">
           {tools.map((tl, i) => (
-            <Badge
+            <Tooltip
               key={i}
-              size="sm"
-              variant={tl.running ? "outline" : "light"}
-              color={tl.error ? "red" : "grape"}
-              data-testid="mcp-chat-tool"
+              label={
+                tl.error
+                  ? t("mcpExplore.toolErrorTooltip", { name: tl.name })
+                  : tl.running
+                    ? t("mcpExplore.toolRunningTooltip", { name: tl.name })
+                    : t("mcpExplore.toolDoneTooltip", { name: tl.name })
+              }
+              multiline
+              w={280}
             >
-              {tl.name}
-            </Badge>
+              <Badge
+                size="sm"
+                variant={tl.running ? "outline" : "light"}
+                color={tl.error ? "red" : "grape"}
+                data-testid="mcp-chat-tool"
+              >
+                {tl.name}
+              </Badge>
+            </Tooltip>
           ))}
         </Group>
       )}
@@ -488,7 +514,7 @@ export function McpExplorePage() {
             <button
               type="button"
               className="mcp-copy"
-              title={t("mcpExplore.clear")}
+              title={t("mcpExplore.clearTooltip")}
               aria-label={t("mcpExplore.clear")}
               data-testid="mcp-chat-clear"
               onClick={() => setDraft("")}

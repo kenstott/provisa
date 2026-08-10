@@ -9,7 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { GrpcCodeView } from "./grpc/GrpcCodeView";
@@ -110,11 +110,19 @@ function buildCommandTemplate(cmd: CommandDef | undefined): string {
   return JSON.stringify({ name: cmd.name, args }, null, 2);
 }
 
+// The group-by projection controls (REQ-1401/REQ-1408), carried together because the NL page's
+// call syntax states them together and the body must round-trip both.
+interface NodeProjection {
+  includeNodes: boolean;
+  include: string[];
+}
+
 function buildMessageTemplate(
   method: ProtoMethod,
   messages: Record<string, ProtoField[]>,
   byColumns?: string[] | null,
   funcs?: string[] | null,
+  projection?: NodeProjection | null,
 ): string {
   if (method.operation === "query") {
     // REQ-1359: Query{Type}Aggregate takes google.protobuf.Empty; Query{Type}GroupBy takes
@@ -129,6 +137,10 @@ function buildMessageTemplate(
     if (method.typeName.endsWith("GroupBy")) {
       const body: Record<string, unknown> = { by: byColumns ?? [] };
       if (funcs && funcs.length > 0) body.funcs = funcs;
+      if (projection?.includeNodes) {
+        body.include_nodes = true;
+        if (projection.include.length > 0) body.include = projection.include;
+      }
       return JSON.stringify(body, null, 2);
     }
     const filterFields = messages[`${method.typeName}Filter`] ?? [];
@@ -165,6 +177,18 @@ export function GrpcPage() {
     );
     return m ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : null;
   });
+  // REQ-1401/REQ-1408: the NL page hands over the whole call syntax, so the projection it chose
+  // must be read out of it too — parsing only by/funcs silently dropped the nodes selection and
+  // the gRPC page ran a narrower query than the one the visitor clicked "Open in gRPC" on.
+  const [navProjection] = useState<NodeProjection | null>(() => {
+    const sig = (location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "";
+    if (!/include_nodes\s*=\s*true/.test(sig)) return null;
+    const m = sig.match(/include=\[([^\]]*)\]/);
+    return {
+      includeNodes: true,
+      include: m ? m[1].split(",").map((x) => x.trim()).filter(Boolean) : [],
+    };
+  });
   const [navAutoRun] = useState(
     () => (location.state as { autoRun?: boolean } | null)?.autoRun === true,
   );
@@ -183,7 +207,9 @@ export function GrpcPage() {
   // REQ-1361 picker: group-by columns + restricted agg funcs for Query{Type}Aggregate/GroupBy.
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
   const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
-  const [groupByColumnOptions, setGroupByColumnOptions] = useState<string[]>([]);
+  const [fetchedGroupByColumns, setFetchedGroupByColumns] = useState<string[]>([]);
+  const [includeNodes, setIncludeNodes] = useState(false);
+  const [includeFields, setIncludeFields] = useState<string[]>([]);
 
   // Synthetic methods for registered commands (one generic CallCommand RPC, one entry per command).
   const commandsMapRef = useRef<Record<string, CommandDef>>({});
@@ -196,14 +222,22 @@ export function GrpcPage() {
   const allMethods = [...parsed.methods, ...commandMethods];
 
   const selectMethod = useCallback(
-    (method: ProtoMethod, proto: ParsedProto, byColumns?: string[] | null, funcs?: string[] | null) => {
+    (
+      method: ProtoMethod,
+      proto: ParsedProto,
+      byColumns?: string[] | null,
+      funcs?: string[] | null,
+      projection?: NodeProjection | null,
+    ) => {
       setSelectedMethod(method);
       setGroupByCols(byColumns ?? []);
       setSelectedFuncs(funcs ?? []);
+      setIncludeNodes(projection?.includeNodes ?? false);
+      setIncludeFields(projection?.include ?? []);
       setMessageText(
         method.operation === "command"
           ? buildCommandTemplate(commandsMapRef.current[method.name])
-          : buildMessageTemplate(method, proto.messages, byColumns, funcs),
+          : buildMessageTemplate(method, proto.messages, byColumns, funcs, projection),
       );
       setResponse("");
       setError("");
@@ -236,10 +270,13 @@ export function GrpcPage() {
     if (!isAggregate && !isGroupBy) return;
     const body: Record<string, unknown> = isGroupBy ? { by: groupByCols } : {};
     if (selectedFuncs.length > 0) body.funcs = selectedFuncs;
+    if (isGroupBy && includeNodes) {
+      body.include_nodes = true;
+      if (includeFields.length > 0) body.include = includeFields;
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs picker state (source of truth) into the JSON editor; selectedMethod change is the trigger, not something read back
     setMessageText(JSON.stringify(body, null, 2));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedMethod's operation/typeName gate is derived, not a separate dep
-  }, [groupByCols, selectedFuncs, selectedMethod]);
+  }, [groupByCols, selectedFuncs, includeNodes, includeFields, selectedMethod]);
 
   const fetchProto = useCallback(async (rid: string, domains: string) => {
     setProtoError("");
@@ -262,7 +299,13 @@ export function GrpcPage() {
       const initial = navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null;
       if (initial) {
         setOpType(initial.operation);
-        selectMethod(initial, p, navM ? navByColumns : null, navM ? navFuncs : null);
+        selectMethod(
+          initial,
+          p,
+          navM ? navByColumns : null,
+          navM ? navFuncs : null,
+          navM ? navProjection : null,
+        );
         // eslint-disable-next-line react-hooks/immutability -- one-shot guard written after async fetch resolves; read occurs in a separate effect that guards against re-auto-selection
         if (navM) navSelectDoneRef.current = true;
       }
@@ -270,7 +313,7 @@ export function GrpcPage() {
     } catch {
       setProtoError("Failed to fetch proto.");
     }
-  }, [navMethod, navByColumns, navFuncs, selectMethod]);
+  }, [navMethod, navByColumns, navFuncs, navProjection, selectMethod]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async proto fetch; all setState calls occur inside the async callback, not synchronously in the effect body
@@ -301,27 +344,55 @@ export function GrpcPage() {
   // enum actually accepts — the {Type}Filter message's fields (a different, broader set) yield
   // runtime 400s when selected.
   useEffect(() => {
-    if (!selectedMethod || !roleId || !selectedMethod.typeName.endsWith("GroupBy")) {
-      setGroupByColumnOptions([]);
-      return;
-    }
+    if (!selectedMethod || !roleId || !selectedMethod.typeName.endsWith("GroupBy")) return;
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async column-list fetch; setState occurs inside the async callback below
     void (async () => {
       try {
         const res = await fetch(
           `/data/grpc-group-by-columns/${encodeURIComponent(roleId)}/${encodeURIComponent(selectedMethod.typeName)}`,
         );
         const cols = res.ok ? ((await res.json()) as string[]) : [];
-        if (!cancelled) setGroupByColumnOptions(cols);
+        if (!cancelled) setFetchedGroupByColumns(cols);
       } catch {
-        if (!cancelled) setGroupByColumnOptions([]);
+        if (!cancelled) setFetchedGroupByColumns([]);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [selectedMethod, roleId]);
+
+  // Only a GroupBy method has group-by columns to offer, and the previous method's must not
+  // linger. Deriving that keeps the fetch the sole writer of the state.
+  const groupByColumnOptions = useMemo(
+    () =>
+      selectedMethod?.typeName.endsWith("GroupBy") && roleId ? fetchedGroupByColumns : [],
+    [selectedMethod, roleId, fetchedGroupByColumns],
+  );
+
+  // Include entries a group-by request accepts (REQ-1408), read off the proto's data message:
+  // a scalar field is a base column, a singular message-typed field is a many-to-one relationship
+  // whose own scalars are reachable as "rel.column" dot-paths. Mirrors query_ir.py::
+  // _include_node_fields, which resolves the same three shapes server-side.
+  const includeOptions = useMemo(() => {
+    if (!selectedMethod?.typeName.endsWith("GroupBy")) return [];
+    const typeName = selectedMethod.typeName.slice(0, -"GroupBy".length);
+    const fields = parsed.messages[typeName] ?? [];
+    const options: string[] = [];
+    for (const f of fields) {
+      const related = parsed.messages[f.protoType];
+      if (!related) {
+        options.push(f.name);
+        continue;
+      }
+      if (f.repeated) continue;
+      options.push(f.name);
+      for (const rf of related) {
+        if (!parsed.messages[rf.protoType]) options.push(`${f.name}.${rf.name}`);
+      }
+    }
+    return options;
+  }, [selectedMethod, parsed]);
 
   const handleRun = useCallback(async () => {
     if (!selectedMethod || !roleId) return;
@@ -494,6 +565,32 @@ export function GrpcPage() {
                     searchable
                     clearable
                   />
+                )}
+                {selectedMethod.typeName.endsWith("GroupBy") && (
+                  <>
+                    <Checkbox
+                      mt="sm"
+                      size="xs"
+                      data-testid="grpc-include-nodes-checkbox"
+                      label={t("grpcPage.includeNodes")}
+                      checked={includeNodes}
+                      onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
+                    />
+                    {includeNodes && (
+                      <MultiSelect
+                        mt="xs"
+                        aria-label={t("grpcPage.includeFields")}
+                        data-testid="grpc-include-picker"
+                        size="xs"
+                        placeholder={t("grpcPage.includeFields")}
+                        data={includeOptions}
+                        value={includeFields}
+                        onChange={setIncludeFields}
+                        searchable
+                        clearable
+                      />
+                    )}
+                  </>
                 )}
                 <Checkbox.Group
                   data-testid="grpc-funcs-picker"

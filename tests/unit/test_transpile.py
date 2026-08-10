@@ -44,6 +44,31 @@ class TestTranspileToTrino:
         pg = "SELECT json_build_object('u', json_build_object('id', \"b\".\"id\")) AS x FROM \"t\" \"b\""
         assert "json_build_object" not in transpile_to_trino(pg).lower()
 
+    def test_jsonb_build_object_is_rewritten(self):
+        # NL-generated SQL uses the jsonb spelling; Trino registers neither jsonb_build_object nor
+        # jsonb_agg. Regression for "line 1:237: Function 'jsonb_build_object' not registered".
+        pg = (
+            "SELECT users.id AS user_id, (SELECT JSON_AGG(JSONB_BUILD_OBJECT("
+            "'pet_id', pets.id, 'pet_name', pets.name)) FROM \"pet_store\".\"inquiries\" AS "
+            'inquiries JOIN "pet_store"."pets" AS pets ON inquiries.pet_id = pets.id '
+            'WHERE inquiries.user_id = users.id) AS pet_details '
+            'FROM "pet_store"."users" AS users LIMIT 100'
+        )
+        out = transpile_to_trino(pg).lower()
+        assert "jsonb_build_object" not in out
+        assert "json_object(" in out
+
+    def test_jsonb_agg_is_rewritten(self):
+        pg = (
+            "SELECT (SELECT JSONB_AGG(JSONB_BUILD_OBJECT('a', pets.id)) FROM "
+            '"pet_store"."pets" AS pets WHERE pets.user_id = users.id) AS d '
+            'FROM "pet_store"."users" AS users'
+        )
+        out = transpile_to_trino(pg).lower()
+        assert "jsonb_agg" not in out
+        assert "jsonb_build_object" not in out
+        assert "array_agg(json_parse(" in out
+
     def test_simple_select(self):
         pg = 'SELECT "id", "amount" FROM "public"."orders"'
         trino_sql = transpile_to_trino(pg)

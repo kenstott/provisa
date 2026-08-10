@@ -19,7 +19,15 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.sql_to_cypher_helpers import _resolve_label
+from provisa.cypher.sql_to_cypher_helpers import _resolve_label, _src_alias_from_on
+
+
+class UntranslatableSubquery(Exception):
+    """A correlated subquery references a table this pass could not bind to a graph pattern.
+
+    Raised instead of emitting the SQL alias into Cypher, where it would be an unbound variable.
+    semantic_sql_to_cypher catches it and returns None (the documented "cannot translate" result).
+    """
 
 
 def _extract_array_agg_col_and_from(
@@ -231,6 +239,84 @@ def _process_array_agg_chained(
     return agg_alias_counter
 
 
+def _count_star_target(inner: exp.Select) -> tuple[exp.Table, exp.EQ] | None:  # pyright: ignore[reportPrivateImportUsage]
+    """Return (table, correlation_eq) for `SELECT COUNT(*) FROM t WHERE t.fk = outer.pk`.
+
+    None for any other shape — a COUNT over a filtered or joined subquery is not the same as a
+    relationship-degree count, and translating it as one would silently change the result.
+    """
+    exprs = inner.args.get("expressions") or []
+    if len(exprs) != 1 or inner.args.get("joins") or inner.args.get("group"):
+        return None
+    node = exprs[0]
+    if isinstance(node, exp.Alias):
+        node = node.this
+    if not (isinstance(node, exp.Count) and isinstance(node.this, exp.Star)):
+        return None
+    from_node = inner.args.get("from_")
+    if not (from_node and isinstance(from_node.this, exp.Table)):
+        return None
+    tbl = from_node.this
+    where_node = inner.args.get("where")
+    if where_node is None or not isinstance(where_node.this, exp.EQ):
+        return None
+    eq = where_node.this
+    inner_alias = tbl.alias or tbl.name
+    left, right = eq.this, eq.expression
+    if not (isinstance(left, exp.Column) and isinstance(right, exp.Column)):
+        return None
+    tables = {left.table, right.table}
+    if inner_alias not in tables or len(tables) != 2:
+        return None
+    return tbl, eq
+
+
+def _process_count_subqueries(
+    select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    domain_to_label: dict[tuple[str, str], str],
+    label_to_rel: dict[str, str | None],
+    src_tgt_to_rel: dict[tuple[str, str], str],
+    alias_map: dict[str, str],
+    alias_label: dict[str, str],
+    base_alias: str,
+    base_label: str,
+    sql_base_alias: str,
+    agg_alias_counter: int,
+    array_agg_return: dict[str, str | list[str]],
+    letters: list[str],
+    node_fn,
+) -> int:
+    """Translate correlated `(SELECT COUNT(*) FROM t WHERE t.fk = src.pk)` items to `COUNT { … }`.
+
+    The correlated subquery counts the rows on the far side of a foreign key — in the graph that is
+    the degree of the relationship, which Cypher spells as a COUNT subquery over the pattern.
+    """
+    for expr in select_exprs:
+        if not (isinstance(expr, exp.Alias) and isinstance(expr.this, exp.Subquery)):
+            continue
+        inner = expr.this.this
+        if not isinstance(inner, exp.Select):
+            continue
+        found = _count_star_target(inner)
+        if found is None:
+            continue
+        tbl, eq = found
+        tgt_lbl = _resolve_label(tbl, domain_to_label)
+        if tgt_lbl is None:
+            continue
+        inner_sql_alias = tbl.alias or tbl.name
+        src_sql = _resolve_where_src_alias(eq, inner_sql_alias, sql_base_alias)
+        src_short = alias_map.get(src_sql, base_alias)
+        src_lbl = alias_label.get(src_sql, base_label)
+        rel_type = src_tgt_to_rel.get((src_lbl, tgt_lbl)) or label_to_rel.get(tgt_lbl)
+        rel_str = f"[:{rel_type}]" if rel_type else "[]"
+        tgt_short = _next_short_alias(agg_alias_counter, letters)
+        agg_alias_counter += 1
+        pattern = f"{node_fn(src_short, src_lbl)}-{rel_str}->{node_fn(tgt_short, tgt_lbl)}"
+        array_agg_return[expr.alias] = f"COUNT {{ MATCH {pattern} }}"
+    return agg_alias_counter
+
+
 def _resolve_jbo_sel(outer_sel: exp.Select) -> exp.Select | None:
     """Resolve the actual SELECT containing json_object from a json_agg or json_object wrapper."""
     _outer_exprs = outer_sel.args.get("expressions") or []
@@ -372,6 +458,40 @@ def _process_json_subqueries(
                     f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}-{_rel_str}->{node_fn(_arr_short, _tgt_lbl)}"
                 )
 
+            # Tables JOINed inside the subquery are further hops off the correlated node; without
+            # their own OPTIONAL MATCH the map literal below would reference an unbound SQL alias.
+            for _join in _sel.args.get("joins") or []:
+                _join_tbl = _join.this
+                if not isinstance(_join_tbl, exp.Table):
+                    raise UntranslatableSubquery(f"non-table JOIN in subquery: {_join.sql()}")
+                _join_sql_alias = _join_tbl.alias or _join_tbl.name
+                if _join_sql_alias in agg_seen:
+                    continue
+                _join_lbl = _resolve_label(_join_tbl, domain_to_label)
+                if _join_lbl is None:
+                    raise UntranslatableSubquery(f"unmapped JOIN table: {_join_tbl.sql()}")
+                _join_src_sql = _src_alias_from_on(
+                    _join.args.get("on"), _join_sql_alias, _inner_sql_alias
+                )
+                _join_src_short = agg_seen.get(_join_src_sql) or alias_map.get(
+                    _join_src_sql, base_alias
+                )
+                _join_src_lbl = agg_seen_label.get(_join_src_sql) or alias_label.get(
+                    _join_src_sql, base_label
+                )
+                _join_rel = src_tgt_to_rel.get((_join_src_lbl, _join_lbl)) or label_to_rel.get(
+                    _join_lbl
+                )
+                _join_rel_str = f"[:{_join_rel}]" if _join_rel else "[]"
+                _join_short = _next_short_alias(agg_alias_counter, letters)
+                agg_alias_counter += 1
+                agg_seen[_join_sql_alias] = _join_short
+                agg_seen_label[_join_sql_alias] = _join_lbl
+                cypher_lines.append(
+                    f"OPTIONAL MATCH {node_fn(_join_src_short, _join_src_lbl)}"
+                    f"-{_join_rel_str}->{node_fn(_join_short, _join_lbl)}"
+                )
+
             _enqueue_jbo_nested_subqueries(_sel, _inner_sql_alias, _queue)
 
         if _top_alias not in array_agg_return:
@@ -414,7 +534,9 @@ def _flat_return_items_from_jbo(
         val = kv.expression
         if isinstance(val, exp.Column):
             tbl = val.table or ""
-            short = agg_seen.get(tbl, tbl)
+            if tbl not in agg_seen:
+                raise UntranslatableSubquery(f"unbound subquery alias in json_object: {tbl!r}")
+            short = agg_seen[tbl]
             lbl = agg_seen_label.get(tbl)
             lbl_prefix = lbl.lower() if lbl else short
             # key is already the GQL/Cypher property name (set by _build_rel_json_kv)
@@ -460,7 +582,9 @@ def _cypher_map_from_jbo(
         if isinstance(val, exp.Column):
             tbl = val.table or ""
             col = val.name
-            short = agg_seen.get(tbl, tbl)
+            if tbl not in agg_seen:
+                raise UntranslatableSubquery(f"unbound subquery alias in json_object: {tbl!r}")
+            short = agg_seen[tbl]
             lbl = agg_seen_label.get(tbl)
             pmap = prop_map_for_label(lbl) if lbl else {}
             cypher_prop = pmap.get(col, col)

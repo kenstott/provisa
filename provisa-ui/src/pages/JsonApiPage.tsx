@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { useDomains, useTables } from "../hooks/useAdminQueries";
+import { useAllRelationships, useDomains, useTables } from "../hooks/useAdminQueries";
 import { serverMessage } from "../i18n/serverMessage";
 import "./JsonApiPage.css";
 
@@ -250,6 +250,7 @@ export function JsonApiPage() {
     () => (location.state as { autoRun?: boolean } | null)?.autoRun === true,
   );
   const { tables, loading } = useTables();
+  const { relationships } = useAllRelationships();
   const { domains } = useDomains();
   const domainDescMap = useMemo(
     () => Object.fromEntries(domains.map((d) => [d.id, d.description])),
@@ -277,6 +278,10 @@ export function JsonApiPage() {
       // array (see runner.py::_generate_jsonapi_query) — must survive the round-trip or the
       // replicated JSON:API call silently drops the nodes.
       includeNodes: params.get("includeNodes") === "true" || params.get("includeNodes") === "1",
+      // REQ-1408: ?include= carries the nodes projection as relationship names and "rel.col"
+      // dot-paths (runner.py::_generate_jsonapi_query). Without seeding the picker from it the
+      // page rebuilt the URL without the projection and the related columns vanished.
+      include: (params.get("include") ?? "").split(",").filter(Boolean),
     };
   }, [navUrl]);
 
@@ -301,7 +306,7 @@ export function JsonApiPage() {
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
   const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
   const [includeNodes, setIncludeNodes] = useState(false);
-  const [groupByColumnOptions, setGroupByColumnOptions] = useState<string[]>([]);
+  const [fetchedGroupByColumns, setFetchedGroupByColumns] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<string>(savedSettings.pageSize ?? "20");
   const [parsedDoc, setParsedDoc] = useState<JsonApiDocument | null>(null);
   const [activeUrl, setActiveUrl] = useState<string>("");
@@ -375,13 +380,24 @@ export function JsonApiPage() {
     [tableObj],
   );
 
-  // Relationship names derived from FK columns (strip _id suffix)
-  const relationshipNames = useMemo(() => {
+  // Relationships of the selected table, each with the related table's columns. graphqlAlias is
+  // the GraphQL field name (server-derived when not persisted, see fetch_relationships), which is
+  // exactly what ?include= names — deriving it from the FK column instead would miss any
+  // relationship whose field name is not the column minus "_id".
+  const tableRelationships = useMemo(() => {
     if (!tableObj) return [];
-    return tableObj.columns
-      .filter((c) => c.isForeignKey && c.columnName.endsWith("_id"))
-      .map((c) => c.columnName.slice(0, -3));
-  }, [tableObj]);
+    return relationships
+      .filter((r) => r.sourceTableId === tableObj.id && r.graphqlAlias)
+      .map((r) => ({
+        name: r.graphqlAlias as string,
+        columns: (tables.find((tb) => tb.id === r.targetTableId)?.columns ?? []).map(toGqlName),
+      }));
+  }, [relationships, tables, tableObj]);
+
+  const relationshipNames = useMemo(
+    () => tableRelationships.map((r) => r.name),
+    [tableRelationships],
+  );
 
   // Pagination links from parsed response
   const paginationLinks = useMemo((): PaginationLinks | null => {
@@ -418,12 +434,15 @@ export function JsonApiPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset of per-table interactive state (checked fields, filters, sort, results) when selected table changes; these are user-controlled inputs that cannot be derived from render
     setCheckedFields(new Set());
-    setCheckedIncludes(new Set());
     setFilterField("");
     setSortField("");
     if (skipNextResetRef.current) {
       skipNextResetRef.current = false;
     } else {
+      // The include selection belongs to the aggregate picker's nodes projection, so it is
+      // preserved by the same skip — clearing it unconditionally wiped the ?include= dot-paths
+      // the nav-init effect had just seeded, and "Open in JSON:API" ran a narrower query.
+      setCheckedIncludes(new Set());
       setGroupByCols([]);
       setSelectedFuncs([]);
     }
@@ -439,23 +458,28 @@ export function JsonApiPage() {
   // (the server's actual source of truth for valid `by` columns), not the table's full column
   // set — offering every column yields runtime 400s for columns the enum excludes (e.g. RLS-hidden).
   useEffect(() => {
-    if (!roleId || !selectedDomainId || !selectedTableName) {
-      setGroupByColumnOptions([]);
-      return;
-    }
+    if (!roleId || !selectedDomainId || !selectedTableName) return;
     let cancelled = false;
     fetch(`/data/jsonapi-group-by-columns/${roleId}/${selectedDomainId}/${selectedTableName}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((cols) => {
-        if (!cancelled) setGroupByColumnOptions(cols);
+        if (!cancelled) setFetchedGroupByColumns(cols);
       })
       .catch(() => {
-        if (!cancelled) setGroupByColumnOptions([]);
+        if (!cancelled) setFetchedGroupByColumns([]);
       });
     return () => {
       cancelled = true;
     };
   }, [roleId, selectedDomainId, selectedTableName]);
+
+  // With no table selected there is nothing to offer, and the previous table's columns must not
+  // linger. Deriving that rather than clearing state in the effect keeps the fetch the only
+  // writer, so no render is spent on an intermediate value.
+  const groupByColumnOptions = useMemo(
+    () => (roleId && selectedDomainId && selectedTableName ? fetchedGroupByColumns : []),
+    [roleId, selectedDomainId, selectedTableName, fetchedGroupByColumns],
+  );
 
   const navInitDoneRef = useRef(false);
   useEffect(() => {
@@ -476,6 +500,7 @@ export function JsonApiPage() {
       setGroupByCols(parsedNav.groupBy ? parsedNav.groupBy.split(",").filter(Boolean) : []);
       setSelectedFuncs(parsedNav.funcs.length > 0 ? parsedNav.funcs : [...AGG_FUNCS]);
       setIncludeNodes(parsedNav.includeNodes);
+      setCheckedIncludes(new Set(parsedNav.include));
     }
   }, [tables, parsedNav]);
 
@@ -506,11 +531,26 @@ export function JsonApiPage() {
     });
   }
 
+  // A bare relationship name means every column of the related table, so it and that
+  // relationship's dot-paths are alternatives — selecting either clears the other.
   function toggleInclude(rel: string) {
     setCheckedIncludes((prev) => {
-      const next = new Set(prev);
-      if (next.has(rel)) next.delete(rel);
+      const next = new Set([...prev].filter((e) => !e.startsWith(`${rel}.`)));
+      if (prev.has(rel)) next.delete(rel);
       else next.add(rel);
+      return next;
+    });
+  }
+
+  // REQ-1408: a "relationship.column" dot-path selects one column of the related table inside
+  // the group-by nodes projection.
+  function toggleIncludeColumn(rel: string, column: string) {
+    const path = `${rel}.${column}`;
+    setCheckedIncludes((prev) => {
+      const next = new Set(prev);
+      next.delete(rel);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   }
@@ -541,7 +581,12 @@ export function JsonApiPage() {
       if (roleId) aggParams.set("role", roleId);
       aggParams.set("aggregate", selectedFuncs.join(","));
       if (groupByCols.length > 0) aggParams.set("groupBy", groupByCols.join(","));
-      if (groupByCols.length > 0 && includeNodes) aggParams.set("includeNodes", "true");
+      if (groupByCols.length > 0 && includeNodes) {
+        aggParams.set("includeNodes", "true");
+        // REQ-1401/REQ-1408: include names widen the nodes projection to related columns — a
+        // relationship name pulls its whole related row, a "rel.col" dot-path just that column.
+        if (includeParam) aggParams.set("include", includeParam);
+      }
       return `/data/jsonapi/${selectedDomainId}/${selectedTableName}?${aggParams.toString()}`;
     }
     const params = new URLSearchParams();
@@ -746,15 +791,35 @@ export function JsonApiPage() {
                   </button>
                   <Collapse in={includeOpen}>
                     <div className="jsonapi-field-list">
-                      {relationshipNames.map((rel) => (
-                        <Checkbox
-                          key={rel}
-                          className="jsonapi-field-item"
-                          size="xs"
-                          checked={checkedIncludes.has(rel)}
-                          onChange={() => toggleInclude(rel)}
-                          label={<span className="jsonapi-field-name">{rel}</span>}
-                        />
+                      {tableRelationships.map((rel) => (
+                        <div key={rel.name}>
+                          <Checkbox
+                            className="jsonapi-field-item"
+                            size="xs"
+                            checked={checkedIncludes.has(rel.name)}
+                            onChange={() => toggleInclude(rel.name)}
+                            label={<span className="jsonapi-field-name">{rel.name}</span>}
+                          />
+                          {/* Per-column dot-paths only apply to the group-by nodes projection —
+                              a plain include sideloads whole related resources. */}
+                          {includeNodes &&
+                            groupByCols.length > 0 &&
+                            rel.columns.map((col) => (
+                              <Checkbox
+                                key={`${rel.name}.${col}`}
+                                className="jsonapi-field-item jsonapi-field-item-nested"
+                                size="xs"
+                                checked={checkedIncludes.has(`${rel.name}.${col}`)}
+                                onChange={() => toggleIncludeColumn(rel.name, col)}
+                                data-testid={`jsonapi-include-${rel.name}.${col}`}
+                                label={
+                                  <span className="jsonapi-field-name">
+                                    {rel.name}.{col}
+                                  </span>
+                                }
+                              />
+                            ))}
+                        </div>
                       ))}
                     </div>
                   </Collapse>

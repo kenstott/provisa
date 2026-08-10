@@ -101,9 +101,12 @@ def _users_meta() -> TableMeta:
     )
 
 
-def _ctx():
+def _ctx(exposed_to_physical=None):
+    # SchemaContext always carries exposed_to_physical (sql_types.py::SchemaContext); the stub
+    # names it too so the plan can render JSON:API's include paths with the schema's field names.
     return SimpleNamespace(
-        tables={"pets": _pets_meta(), "inquiries": _inquiries_meta(), "users": _users_meta()}
+        tables={"pets": _pets_meta(), "inquiries": _inquiries_meta(), "users": _users_meta()},
+        exposed_to_physical=exposed_to_physical or {},
     )
 
 
@@ -133,7 +136,13 @@ class TestResolveAggregationPlan:
         sql = "SELECT species, COUNT(*) FROM pet_store.pets GROUP BY species"
         plan = _resolve_aggregation_plan(ctx, app_state, sql)
         assert plan is not None
-        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan[:5]
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = (
+            plan.meta,
+            plan.group_cols,
+            plan.is_aggregate_only,
+            plan.funcs,
+            plan.dim_paths,
+        )
         assert meta.table_name == "pets"
         assert group_cols == ["species"]
         assert is_aggregate_only is False
@@ -146,7 +155,13 @@ class TestResolveAggregationPlan:
         sql = "SELECT COUNT(*) FROM pet_store.pets"
         plan = _resolve_aggregation_plan(ctx, app_state, sql)
         assert plan is not None
-        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan[:5]
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = (
+            plan.meta,
+            plan.group_cols,
+            plan.is_aggregate_only,
+            plan.funcs,
+            plan.dim_paths,
+        )
         assert meta.table_name == "pets"
         assert group_cols == []
         assert is_aggregate_only is True
@@ -195,7 +210,13 @@ class TestResolveAggregationPlan:
         )
         plan = _resolve_aggregation_plan(ctx, app_state, sql)
         assert plan is not None
-        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan[:5]
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = (
+            plan.meta,
+            plan.group_cols,
+            plan.is_aggregate_only,
+            plan.funcs,
+            plan.dim_paths,
+        )
         assert meta.table_name == "inquiries"
         assert group_cols == ["user_id"]
         assert is_aggregate_only is False
@@ -208,13 +229,7 @@ class TestResolveAggregationPlan:
         # than SELECT it raw (which would force it into GROUP BY too). dim_paths extraction must
         # walk the whole json_build_object(...) subtree (find_all, not find) so both pets columns
         # surface, not just the first.
-        ctx = SimpleNamespace(
-            tables={
-                "pets": _pets_meta(),
-                "inquiries": _inquiries_meta(),
-                "users": _users_meta(),
-            }
-        )
+        ctx = _ctx()
         app_state = _app_state()
         sql = (
             "SELECT users.name, COUNT(inquiries.id) AS inquiry_count, "
@@ -226,12 +241,38 @@ class TestResolveAggregationPlan:
         )
         plan = _resolve_aggregation_plan(ctx, app_state, sql)
         assert plan is not None
-        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan[:5]
+        meta, group_cols, is_aggregate_only, funcs, dim_paths = (
+            plan.meta,
+            plan.group_cols,
+            plan.is_aggregate_only,
+            plan.funcs,
+            plan.dim_paths,
+        )
         assert meta.table_name == "inquiries"
         assert group_cols == ["user_id"]
         assert is_aggregate_only is False
         assert funcs == ["count"]
         assert sorted(dim_paths) == ["pet.id", "pet.name", "user.name"]
+
+    def test_dim_paths_carry_both_namings_for_renamed_columns(self):
+        # gRPC and REST take include paths in the API's own physical naming, JSON:API's ?include=
+        # validates against the relationship's GraphQL fields — so a renamed column has to reach
+        # the surfaces under two names, or JSON:API answers "Unknown field 'breed_name'".
+        ctx = _ctx({(1, "breedName"): "breed_name"})
+        app_state = _app_state()
+        sql = (
+            "SELECT pets.breed_name, COUNT(inquiries.id) "
+            "FROM pet_store.inquiries "
+            "JOIN pet_store.pets ON pets.id = inquiries.pet_id "
+            "GROUP BY pets.breed_name"
+        )
+        plan = _resolve_aggregation_plan(ctx, app_state, sql)
+        assert plan is not None
+        assert plan.dim_paths == ["pet.breed_name"]
+        assert plan.dim_paths_gql == ["pet.breedName"]
+        q, e = _generate_jsonapi_query(plan, set(), {})
+        assert e is None
+        assert q is not None and q.endswith("&includeNodes=true&include=pet.breedName")
 
     def test_group_by_on_unjoined_table_returns_none(self):
         # dimension column belongs to a table with no JOIN condition linking it to the
@@ -799,13 +840,19 @@ class TestAggregationPlanFromGraphql:
         )
 
     def test_jsonapi_query_splits_include_nodes_flag_from_include_list(self):
-        # JSON:API honours includeNodes only as true/1 and takes relations via ?include=.
+        # JSON:API honours includeNodes only as true/1 and takes the projection via ?include=,
+        # whose entries are dot-paths — naming the relationship alone would widen the nodes
+        # selection to every column of the related table. Those dot-paths carry the schema's
+        # field names (pet.breedName), not the physical ones gRPC and REST use: ?include= is
+        # validated against the relationship's GraphQL fields, so breed_name is rejected.
         plan = _aggregation_plan_from_graphql(self._strict_ctx(), self.GQL)
         q, e = _generate_jsonapi_query(plan, set(), {})
         assert e is None
         assert q == (
             "/data/jsonapi/pet-store/inquiries?groupBy=user_id&aggregate=count"
-            "&includeNodes=true&include=user,pet"
+            "&includeNodes=true&include="
+            "user.id,user.name,user.email,user.phone,"
+            "pet.id,pet.name,pet.species,pet.breedName,pet.price,pet.available"
         )
 
     def test_openapi_query_uses_dot_paths(self):
@@ -833,9 +880,9 @@ class TestIncludeRelations:
 
         q = (
             "/data/jsonapi/pet-store/inquiries?groupBy=user_id&aggregate=count"
-            "&includeNodes=true&include=user,pet"
+            "&includeNodes=true&include=user.name,user.email,pet.name"
         )
-        assert _include_relations(q) == ["user", "pet"]
+        assert _include_relations(q) == ["user.name", "user.email", "pet.name"]
 
     def test_rest_dot_paths(self):
         from provisa.nl.executor import _include_relations

@@ -19,6 +19,7 @@ from graphql import parse, validate
 from provisa.api.jsonapi.generator import (
     _build_agg_selection,
     _build_group_by_graphql_query,
+    _build_group_by_node_selection,
     _get_agg_fields_type,
     _parse_aggregate_param,
     _parse_group_by_param,
@@ -310,3 +311,115 @@ class TestDisabledTableRejected:
         schema, _ = _build_schema_and_ctx(enable_aggregates=False, enable_group_by=False)
         assert "orders_group_by" not in schema.query_type.fields
         assert _resolve_query_field(schema.query_type, "orders", "_group_by", "GroupBy") is None
+
+
+def _build_schema_with_relationship():
+    """``orders`` group-by joined to a ``customers`` relationship, for include dot-path tests."""
+    _naming.configure(gql="snake")
+    tables = [
+        {
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "enable_aggregates": True,
+            "enable_group_by": True,
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "customer_id", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+                {"column_name": "region", "visible_to": ["admin"]},
+            ],
+        },
+        {
+            "id": 2,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "customers",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "name", "visible_to": ["admin"]},
+                {"column_name": "email", "visible_to": ["admin"]},
+            ],
+        },
+    ]
+    relationships = [
+        {
+            "id": "ord-cust",
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "customer_id",
+            "target_column": "id",
+            "cardinality": "many-to-one",
+        },
+    ]
+    column_types = {
+        1: [
+            _col("id", "integer"),
+            _col("customer_id", "integer"),
+            _col("amount", "decimal(10,2)"),
+            _col("region", "varchar(20)"),
+        ],
+        2: [_col("id", "integer"), _col("name", "varchar(100)"), _col("email", "varchar(200)")],
+    }
+    si = SchemaInput(
+        tables=tables,
+        relationships=relationships,
+        column_types=column_types,
+        naming_rules=[],
+        role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+        domains=[{"id": "sales", "description": "Sales"}],
+    )
+    return generate_schema(si)
+
+
+class TestGroupByNodeSelection:
+    """REQ-1408: ?include= on a group-by takes the same rel/rel.col projection gRPC and REST take."""
+
+    def test_base_scalars_only_without_include(self):
+        schema = _build_schema_with_relationship()
+        selection, err = _build_group_by_node_selection(schema, "orders", ["id", "amount"], None)
+        assert err is None
+        assert selection == "id amount"
+
+    def test_bare_relationship_selects_every_related_scalar(self):
+        schema = _build_schema_with_relationship()
+        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "customer")
+        assert err is None
+        assert selection == "id customer { id name email }"
+
+    def test_dot_path_selects_only_that_column(self):
+        schema = _build_schema_with_relationship()
+        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "customer.email")
+        assert err is None
+        assert selection == "id customer { email }"
+
+    def test_dot_paths_on_one_relationship_merge(self):
+        schema = _build_schema_with_relationship()
+        selection, err = _build_group_by_node_selection(
+            schema, "orders", ["id"], "customer.email,customer.name"
+        )
+        assert err is None
+        assert selection == "id customer { email name }"
+
+    def test_selection_parses_as_graphql(self):
+        schema = _build_schema_with_relationship()
+        selection, _ = _build_group_by_node_selection(schema, "orders", ["id"], "customer.email")
+        query = _build_group_by_graphql_query(
+            "orders_group_by", ["region"], "count", {}, [], None, None, selection
+        )
+        assert not validate(schema, parse(query))
+
+    def test_unknown_relationship_is_an_error(self):
+        schema = _build_schema_with_relationship()
+        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "nope.email")
+        assert selection == ""
+        assert err == "Unknown relationship 'nope'"
+
+    def test_unknown_column_on_relationship_is_an_error(self):
+        schema = _build_schema_with_relationship()
+        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "customer.nope")
+        assert selection == ""
+        assert err == "Unknown field 'nope' on relationship 'customer'"

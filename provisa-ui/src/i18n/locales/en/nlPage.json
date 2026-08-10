@@ -21,6 +21,9 @@
     "noRowsReturned": "No rows returned",
     "showingRows": "Showing {{shown}} of {{total}} rows",
     "strictMode": "Strict",
-    "strictModeTooltip": "Strict: GraphQL is generated first and validated against the schema, then compiled to SQL, then to Cypher. Off: SQL and GraphQL are generated independently and Cypher is derived from the SQL result."
+    "strictModeTooltip": "All generation based strictly on GraphQL expression: GraphQL is generated first and validated against the schema, then compiled to SQL, then to Cypher. Off: SQL and GraphQL are generated independently and Cypher is derived from the SQL result.",
+    "questionTooltip": "Ask in plain English using your own table, column, and relationship names. Enter submits; Shift+Enter adds a line.",
+    "generateTooltip": "Generate a query for every surface — GraphQL, SQL, and Cypher — from this question, using the schema your current role can see.",
+    "mcpChatTooltip": "Hand this question to the MCP assistant, which explores the catalog and runs the query for you instead of only generating it."
   }
 }
