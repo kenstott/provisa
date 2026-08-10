@@ -1038,12 +1038,13 @@ export async function runSql(
 export async function nlToSql(
   question: string,
   role: string = "admin",
-): Promise<{ sql: string; attempts: number; error?: string }> {
+  strict: boolean = true,
+): Promise<{ sql: string; cypher?: string; attempts: number; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, role }),
+      body: JSON.stringify({ question, role, strict }),
     });
     if (!resp.ok) {
       const text = await resp.text();
@@ -1373,11 +1374,15 @@ export async function recomputeSchemaClusters(): Promise<{
   return res.json();
 }
 
-export async function submitNlQuery(q: string, role: string): Promise<{ job_id: string }> {
+export async function submitNlQuery(
+  q: string,
+  role: string,
+  strict: boolean = false,
+): Promise<{ job_id: string }> {
   const res = await fetch(`${API_BASE}/query/nl`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ q, role }),
+    body: JSON.stringify({ q, role, strict }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));

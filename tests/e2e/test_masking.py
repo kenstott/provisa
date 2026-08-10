@@ -261,7 +261,9 @@ class TestDateTruncateMasking:
             }
         }
         result = inject_masking(compiled, ctx, rules, "analyst")
-        assert "DATE_TRUNC('month'" in result.sql
+        # sqlglot re-serializes the DATE_TRUNC field literal in uppercase (postgres accepts
+        # either case) when it regenerates SQL through the masking-injection pipeline.
+        assert "DATE_TRUNC('MONTH'" in result.sql
         assert 'AS "created_at"' in result.sql
 
 

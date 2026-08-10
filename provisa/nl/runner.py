@@ -32,7 +32,6 @@ from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobSto
 from provisa.nl.loop import (
     LLMClient,
     generation_loop,
-    make_cypher_compiler,
     make_graphql_compiler,
 )
 
@@ -416,7 +415,7 @@ async def _generate_sql_from_nl(
         )
     multihop_lines = _build_multihop_lines(selected_types, lm, _sql_domain)
     relevant_type_names = _build_relevant_type_names(selected_types, lm)
-    schema_block = _build_schema_block(
+    schema_block, table_columns = _build_schema_block(
         all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines
     )
 
@@ -427,6 +426,7 @@ async def _generate_sql_from_nl(
         gov_ctx,
         role_obj,
         raw_tables,
+        table_columns,
         config=llm_config,
         api_keys=llm_api_keys,
     )
@@ -447,10 +447,115 @@ async def _generate_sql_from_nl(
     return semantic_sql, None
 
 
+def _build_cypher_label_map(
+    ctx: object,  # object-ok: circular-import boundary — CompilationContext lives in provisa.compiler
+    role: str,
+    app_state: AppState,
+) -> "CypherLabelMap":
+    from provisa.cypher.label_map import CypherLabelMap
+
+    role_obj = getattr(app_state, "roles", {}).get(role) or {}
+    schema_build_cache = getattr(app_state, "schema_build_cache", {})
+    return CypherLabelMap.from_schema(
+        ctx,
+        domain_access=role_obj.get("domain_access"),
+        all_tables=schema_build_cache.get("tables"),
+        all_relationships=schema_build_cache.get("relationships"),
+        all_column_types=schema_build_cache.get("column_types"),
+        source_catalogs=getattr(app_state, "source_catalogs", None),
+    )
+
+
+def best_effort_cypher_for_sql(
+    sql: str,
+    ctx: object,  # object-ok: circular-import boundary — CompilationContext lives in provisa.compiler
+    role: str,
+    app_state: AppState,
+) -> str | None:
+    """Best-effort semantic-SQL -> Cypher translation for the direct-SQL (non-strict) path.
+
+    Reuses the same translator as the strict (GraphQL-backed) path. There is no compiled-query
+    list here with per-query result_limit/params, so the whole SQL string is passed through once.
+    Returns None (not an error) when the SQL has no Cypher-representable pattern — the SQL result
+    is still valid and useful on its own.
+    """
+    from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
+
+    label_map = _build_cypher_label_map(ctx, role, app_state)
+    return semantic_sql_to_cypher(sql, label_map, ctx)
+
+
+async def _generate_graphql_sql_from_nl(
+    nl_query: str,
+    role: str,
+    app_state: AppState,
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """Generate GraphQL, SQL, and Cypher via the GraphQL-backed pipeline ("strict" mode).
+
+    The NL question is first compiled to a schema-validated GraphQL query, then to SQL via
+    the same compiler the GraphQL Explorer uses — join reachability and aggregate/group-by
+    shape come from the approved schema relationships, not prompt discipline, closing the
+    class of hallucinated-join/column bugs the direct-SQL path can only catch after the fact.
+    The Cypher form reuses ``semantic_sql_to_cypher`` (the same translator behind the GraphQL
+    Explorer's Cypher tab) since the compiled SQL is already ARRAY_AGG-shaped (flat=False),
+    which is what that translator requires as input.
+
+    Returns (graphql, sql, cypher, None) on success or (None, None, None, error_message) on
+    failure. ``cypher`` is None when the query structure has no Cypher-representable pattern
+    (not itself an error).
+    """
+    from graphql import GraphQLSchema
+    from provisa.api.admin.dev_queries import compile_query as _compile_query_governed
+    from provisa.llm.client import ProvisaLLMClient
+
+    schema = getattr(app_state, "schemas", {}).get(role)
+    if not isinstance(schema, GraphQLSchema):
+        return None, None, None, f"No GraphQL schema for role: {role}"
+
+    schema_sdl = _get_schema_sdl(app_state, role)
+    compiler = make_graphql_compiler(schema)
+    llm_config, llm_api_keys = await _resolve_llm_org_ctx(app_state)
+    llm = ProvisaLLMClient("sql_generation", config=llm_config, api_keys=llm_api_keys)
+
+    valid_query, error = await generation_loop(
+        nl_query, "graphql", schema_sdl, compiler, llm  # type: ignore[arg-type]
+    )
+    if error or valid_query is None:
+        return None, None, None, error or "GraphQL generation failed"
+
+    try:
+        results = await _compile_query_governed(role, valid_query, {})
+    except ValueError as exc:
+        return valid_query, None, None, str(exc)
+    if not results:
+        return valid_query, None, None, "No query fields found"
+
+    sql = "\n".join(r["semantic_sql"] for r in results)
+    cypher_parts = [r["compiled_cypher"] for r in results if r.get("compiled_cypher")]
+    cypher = "\n".join(cypher_parts) if cypher_parts else None
+
+    return valid_query, sql, cypher, None
+
+
 async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
-    job_id: str, nl_query: str, role: str, app_state: AppState, job_store: JobStore, llm: LLMClient
+    job_id: str,
+    nl_query: str,
+    role: str,
+    app_state: AppState,
+    job_store: JobStore,
+    llm: LLMClient,
+    strict: bool = False,
 ) -> None:
-    """Background coroutine: runs all six generation branches, writes results."""
+    """Background coroutine: runs all six generation branches, writes results.
+
+    ``strict`` (REQ-1400) selects the generation order for the graphql/sql/cypher branches:
+    strict compiles NL -> GraphQL first (schema-validated), then GraphQL -> SQL, then SQL ->
+    Cypher, so join reachability and aggregate shape come from the approved schema relationships
+    rather than prompt discipline. Non-strict keeps NL -> SQL and NL -> GraphQL independent
+    (direct LLM generation each), and derives Cypher from the SQL branch's result (best-effort).
+    grpc/jsonapi/openapi are unaffected by ``strict`` — both modes drive them off the SQL
+    branch's compiled semantic SQL.
+    """
     await job_store.set_state(job_id, "running")
 
     schema_sdl = _get_schema_sdl(app_state, role)
@@ -489,21 +594,16 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             log.debug("Query embedding failed: %s", exc)
     relevant_entities = format_entities(matcher.top_k(query_emb), table_roles=_table_roles)
 
-    # A role may have no GraphQL schema. Never validate the GraphQL branch with the
-    # Cypher compiler (that masks the absence); instead omit the graphql compiler so
-    # the graphql branch fails independently as a per-branch error (see _run_branch),
-    # leaving the other branches unaffected.
-    compilers = {"cypher": make_cypher_compiler()}
-    if graphql_schema is not None:
+    # A role may have no GraphQL schema. Non-strict mode never validates the GraphQL branch
+    # with the Cypher compiler (that masks the absence); instead the graphql compiler is
+    # omitted so the graphql branch fails independently as a per-branch error (see
+    # _run_branch), leaving the other branches unaffected. Strict mode's graphql/sql/cypher
+    # branches run through the shared chain below instead of this compiler map.
+    compilers: dict[str, Any] = {}
+    if not strict and graphql_schema is not None:
         compilers["graphql"] = make_graphql_compiler(graphql_schema)
 
     ctx = getattr(app_state, "contexts", {}).get(role)
-    cypher_schema_block = ""
-    if ctx is not None:
-        from provisa.cypher.label_map import CypherLabelMap
-
-        lm = CypherLabelMap.from_schema(ctx)
-        cypher_schema_block = _format_cypher_schema(lm)
 
     # Shared table selection for SQL and protocol-based branches (one LLM call). A failure here
     # (e.g. a missing/invalid per-org LLM API key, REQ-1395) must not crash the whole job — it is
@@ -541,11 +641,37 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
 
     _QUERY_TARGETS = {"cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"}
 
+    # Strict mode (REQ-1400): graphql/sql/cypher come from a single NL -> GraphQL -> SQL ->
+    # Cypher chain, run once and shared by all three branches, instead of being generated
+    # independently. asyncio.Task caches its result, so awaiting it from three branches only
+    # runs the chain once.
+    strict_chain_task: "asyncio.Task[tuple[str | None, str | None, str | None, str | None]] | None" = None
+    if strict:
+
+        async def _run_strict_chain() -> tuple[str | None, str | None, str | None, str | None]:
+            try:
+                return await _generate_graphql_sql_from_nl(nl_query, role, app_state)
+            # complexity-gate: allow-ble=3 reason="[file ceiling 3] The strict chain runs an
+            # LLM + compiler pipeline with an unbounded failure surface; a failure must become
+            # the shared error surfaced to the graphql/sql/cypher branches, not crash the job."
+            except Exception as exc:
+                log.warning("NL strict chain failed: %s", exc)
+                return None, None, None, str(exc)
+
+        strict_chain_task = asyncio.create_task(_run_strict_chain())
+
     async def _run_branch(target: NlTarget) -> tuple[NlTarget, str | None, str | None]:
         # Each branch is independent: a failure in one (e.g. SQL generation
         # raising) must not abort the asyncio.as_completed loop and discard the
         # other branches' results. Convert any exception into a branch error.
         try:
+            if strict and target in ("graphql", "sql", "cypher") and strict_chain_task is not None:
+                graphql_query, chain_sql, chain_cypher, chain_error = await strict_chain_task
+                if target == "graphql":
+                    return target, graphql_query, chain_error if graphql_query is None else None
+                if target == "sql":
+                    return target, chain_sql, chain_error if chain_sql is None else None
+                return target, chain_cypher, chain_error if chain_sql is None else None
             if target == "sql":
                 # REQ-1319: a metric-shaped question resolves to the governed semantic
                 # form (metric + matched dimension columns) instead of asking the model
@@ -559,6 +685,18 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                     nl_query, role, app_state, pre_selected_types=shared_selected_types
                 )
                 return target, valid_query, error
+            if target == "cypher":
+                # Non-strict: derive Cypher from the SQL branch's result (best-effort,
+                # sql-to-cypher) instead of generating it independently from NL.
+                if table_selection_error is not None:
+                    return target, None, table_selection_error
+                _, sql_query, sql_error = await sql_task
+                if sql_query is None or sql_error is not None:
+                    return target, None, sql_error
+                if ctx is None:
+                    return target, None, f"No schema context for role: {role}"
+                cypher_query = best_effort_cypher_for_sql(sql_query, ctx, role, app_state)
+                return target, cypher_query, None
             if target in ("grpc", "jsonapi", "openapi"):
                 # REQ-1359: wait for the SQL branch's compiled semantic SQL so these three
                 # protocol surfaces target the identical table/GROUP BY it resolved to,
@@ -579,14 +717,13 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             compiler = compilers.get(target)  # type: ignore[arg-type]
             if compiler is None:
                 return target, None, f"No GraphQL schema for role: {role}"
-            entities = cypher_schema_block if target == "cypher" else relevant_entities
             valid_query, error = await generation_loop(
                 nl_query,
                 target,
                 schema_sdl,
                 compiler,
                 llm,
-                relevant_entities=entities,  # type: ignore[arg-type]
+                relevant_entities=relevant_entities,  # type: ignore[arg-type]
             )
             return target, valid_query, error
         # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL compilation boundary: each target (graphql/cypher/…) runs an LLM + compiler pipeline with an unbounded failure surface; a failing branch must be captured as that branch's error string and returned so sibling branches still complete — never abort the whole NL run."
@@ -594,8 +731,8 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             log.warning("NL branch %s failed: %s", target, exc)
             return target, None, str(exc)
 
-    # The sql branch must be scheduled before grpc/jsonapi/openapi so those three can
-    # await its compiled semantic SQL (see _run_branch) without a forward reference.
+    # The sql branch must be scheduled before grpc/jsonapi/openapi (and, non-strict, cypher)
+    # so those can await its compiled semantic SQL (see _run_branch) without a forward reference.
     sql_task = asyncio.create_task(_run_branch("sql"))
     branch_tasks = [sql_task] + [
         asyncio.create_task(_run_branch(t)) for t in _TARGETS if t != "sql"
@@ -619,36 +756,6 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         log.debug("Branch %s complete: valid=%s", target, valid_query is not None)
 
     await job_store.set_state(job_id, "complete")
-
-
-def _format_cypher_schema(lm: "CypherLabelMap") -> str:  # type: ignore[name-defined]
-    """Serialize CypherLabelMap to an authoritative label/relationship reference block."""
-
-    lm_typed: CypherLabelMap = lm
-    lines = [
-        "GRAPH SCHEMA (use these exact node labels and relationship types — do not invent others):"
-    ]
-    lines.append("Node labels:")
-    seen_labels: set[str] = set()
-    for nm in lm_typed.nodes.values():
-        label = lm_typed.display_label(nm)
-        if label not in seen_labels:
-            seen_labels.add(label)
-            props = ", ".join(nm.properties.keys())
-            lines.append(f"  ({label})  properties: {props}" if props else f"  ({label})")
-    lines.append("Relationship types:")
-    seen_rels: set[str] = set()
-    for rel_list in lm_typed.aliases.values():
-        for rel in rel_list:
-            key = f"{rel.rel_type}::{rel.source_label}→{rel.target_label}"
-            if key not in seen_rels:
-                seen_rels.add(key)
-                src_nm = lm_typed.nodes.get(rel.source_label)
-                tgt_nm = lm_typed.nodes.get(rel.target_label)
-                src = lm_typed.display_label(src_nm) if src_nm else rel.source_label
-                tgt = lm_typed.display_label(tgt_nm) if tgt_nm else rel.target_label
-                lines.append(f"  ({src})-[:{rel.rel_type}]->({tgt})")
-    return "\n".join(lines)
 
 
 def _get_schema_sdl(app_state: AppState, role: str) -> str:

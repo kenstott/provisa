@@ -22,9 +22,11 @@ import {
   ScrollArea,
   SimpleGrid,
   Stack,
+  Switch,
   Table,
   Text,
   Textarea,
+  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -130,7 +132,9 @@ export function NlPage() {
   const navigate = useNavigate();
   const NL_QUESTION_KEY = "nl-question";
   const NL_BRANCHES_KEY = "nl-branches";
+  const NL_STRICT_KEY = "nl-strict";
   const [question, setQuestion] = useState(() => localStorage.getItem(NL_QUESTION_KEY) ?? "");
+  const [strict, setStrict] = useState(() => localStorage.getItem(NL_STRICT_KEY) === "1");
   const [submitting, setSubmitting] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [branches, setBranches] = useState<Record<Target, BranchState>>(() => {
@@ -165,11 +169,15 @@ export function NlPage() {
   const handleSubmit = useCallback(async () => {
     const q = question.trim();
     if (!q || submitting) return;
+    if (!role) {
+      setGlobalError("No role selected — wait for roles to load before submitting.");
+      return;
+    }
 
     cancelRef.current?.();
     cancelRef.current = null;
 
-    const roleId = role ? role.id : "default";
+    const roleId = role.id;
     setGlobalError(null);
     setHasResults(true);
     setSubmitting(true);
@@ -184,7 +192,7 @@ export function NlPage() {
 
     let jobId: string;
     try {
-      const res = await submitNlQuery(q, roleId);
+      const res = await submitNlQuery(q, roleId, strict);
       jobId = res.job_id;
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : String(e));
@@ -231,7 +239,7 @@ export function NlPage() {
       },
     );
     cancelRef.current = stop;
-  }, [question, submitting, role, saveBranches]);
+  }, [question, submitting, role, strict, saveBranches]);
 
   const openInExplorer = useCallback((target: Target, _query: string) => {
     const route = EXPLORER_ROUTES[target];
@@ -263,6 +271,18 @@ export function NlPage() {
             }
           }}
         />
+        <Tooltip label={t("nlPage.strictModeTooltip")} multiline w={280}>
+          <Switch
+            label={t("nlPage.strictMode")}
+            checked={strict}
+            onChange={(e) => {
+              const next = e.currentTarget.checked;
+              setStrict(next);
+              localStorage.setItem(NL_STRICT_KEY, next ? "1" : "0");
+            }}
+            data-testid="nl-strict-toggle"
+          />
+        </Tooltip>
         <Button
           disabled={submitting || !question.trim()}
           onClick={() => void handleSubmit()}

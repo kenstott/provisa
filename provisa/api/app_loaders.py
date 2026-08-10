@@ -445,7 +445,7 @@ def _load_mv_and_views_config(
             view_id = view_cfg["id"]
             view_sql = view_cfg["sql"]
             materialize = view_cfg.get("materialize", False)
-            domain_id = view_cfg.get("domain_id", "default")
+            domain_id = view_cfg["domain_id"]
             description = view_cfg.get("description")
             refresh_interval = view_cfg.get("refresh_interval", 300)
 

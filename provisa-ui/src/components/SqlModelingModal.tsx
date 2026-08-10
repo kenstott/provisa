@@ -26,6 +26,7 @@ import {
   NumberInput,
   SegmentedControl,
   Select,
+  Switch,
   Tabs,
   Text,
   TextInput,
@@ -87,6 +88,8 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const [nlText, setNlText] = useState("");
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
+  const [nlStrict, setNlStrict] = useState(true);
+  const [nlCypher, setNlCypher] = useState("");
   const [page, setPage] = useState(0);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -595,12 +598,14 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                       if (e.key === "Enter" && nlText.trim() && !nlLoading) {
                         setNlLoading(true);
                         setNlError("");
-                        const result = await nlToSql(nlText.trim(), role);
+                        setNlCypher("");
+                        const result = await nlToSql(nlText.trim(), role, nlStrict);
                         setNlLoading(false);
                         if (result.error) {
                           setNlError(result.error);
                         } else {
                           setSqlText(result.sql);
+                          setNlCypher(result.cypher ?? "");
                         }
                       }
                     }}
@@ -613,6 +618,15 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     style={{ flex: 1 }}
                     data-testid="sql-modeling-nl-input"
                   />
+                  <Switch
+                    size="xs"
+                    label={t("sqlEditorPanel.nlStrict")}
+                    title={t("sqlEditorPanel.nlStrictHint")}
+                    checked={nlStrict}
+                    onChange={(e) => setNlStrict(e.currentTarget.checked)}
+                    data-testid="sql-modeling-nl-strict-toggle"
+                    style={{ whiteSpace: "nowrap" }}
+                  />
                   <Button
                     size="xs"
                     disabled={!nlText.trim() || nlLoading}
@@ -621,18 +635,32 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                       if (!nlText.trim() || nlLoading) return;
                       setNlLoading(true);
                       setNlError("");
-                      const result = await nlToSql(nlText.trim(), role);
+                      setNlCypher("");
+                      const result = await nlToSql(nlText.trim(), role, nlStrict);
                       setNlLoading(false);
                       if (result.error) {
                         setNlError(result.error);
                       } else {
                         setSqlText(result.sql);
+                        setNlCypher(result.cypher ?? "");
                       }
                     }}
                     data-testid="sql-modeling-generate-sql"
                   >
                     {nlLoading ? t("sqlModelingModal.generating") : t("sqlModelingModal.generateSql")}
                   </Button>
+                  {nlCypher && (
+                    <Badge
+                      variant="light"
+                      size="sm"
+                      data-testid="sql-modeling-nl-cypher-badge"
+                      title={nlCypher}
+                      style={{ cursor: "pointer", maxWidth: "300px" }}
+                      onClick={() => navigator.clipboard.writeText(nlCypher)}
+                    >
+                      {t("sqlEditorPanel.nlCypherBadge")}
+                    </Badge>
+                  )}
                 </Group>
 
                 {/* Editor */}

@@ -19,6 +19,8 @@
     "notApplicable": "Not applicable for this query type",
     "noQueryGenerated": "No query generated",
     "noRowsReturned": "No rows returned",
-    "showingRows": "Showing {{shown}} of {{total}} rows"
+    "showingRows": "Showing {{shown}} of {{total}} rows",
+    "strictMode": "Strict",
+    "strictModeTooltip": "Strict: GraphQL is generated first and validated against the schema, then compiled to SQL, then to Cypher. Off: SQL and GraphQL are generated independently and Cypher is derived from the SQL result."
   }
 }

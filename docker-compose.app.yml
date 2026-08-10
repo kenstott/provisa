@@ -22,6 +22,10 @@ services:
       # they track the same postgres service (parity with the Helm deployment).
       TENANT_DATABASE_URL: "postgresql+asyncpg://${CONFIG_DB_USER:-provisa}:${CONFIG_DB_PASSWORD:-provisa}@${CONFIG_DB_HOST:-postgres}:${CONFIG_DB_PORT:-5432}/${CONFIG_DB_NAME:-provisa}"
       PLATFORM_DATABASE_URL: "postgresql+asyncpg://${CONFIG_DB_USER:-provisa}:${CONFIG_DB_PASSWORD:-provisa}@${CONFIG_DB_HOST:-postgres}:${CONFIG_DB_PORT:-5432}/${CONFIG_DB_NAME:-provisa}"
+      # Federation engine selection (REQ-1266). provisa.env sets PROVISA_ENGINE on the host; without
+      # this passthrough the container never sees it and silently falls back to duckdb regardless of
+      # the deployment's intended engine pin.
+      PROVISA_ENGINE: "${PROVISA_ENGINE:-duckdb}"
       TRINO_HOST: trino
       TRINO_PORT: 8080
       # The Arrow Flight SQL proxy (trino_lifecycle.connect_infra reads ZAYCHIK_HOST/ZAYCHIK_PORT —
@@ -57,5 +61,7 @@ services:
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000"]
     ports:
       - "${UI_PORT:-3000}:3000"
+    environment:
+      PROVISA_ENGINE: "${PROVISA_ENGINE:-duckdb}"
     depends_on:
       - provisa

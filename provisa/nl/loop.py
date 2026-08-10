@@ -153,16 +153,23 @@ def make_graphql_compiler(schema: GraphQLSchema) -> Callable[[str], CompileResul
 
 
 def make_sql_compiler() -> Callable[[str], CompileResult]:  # REQ-464
-    """Return a compiler callable that validates SQL syntax via sqlglot."""
+    """Return a compiler callable that validates SQL syntax and GROUP BY semantics via sqlglot."""
     import sqlglot
+
+    from provisa.nl.sql_group_by import check_distinct_json_agg, check_group_by_semantics
 
     def _compile(query: str) -> CompileResult:
         try:
             parsed = sqlglot.parse(query, dialect="postgres")
             if not parsed or parsed[0] is None:
                 return CompileResult(valid=False, error="Empty or unparseable SQL")
-            return CompileResult(valid=True)
         except Exception as exc:
             return CompileResult(valid=False, error=str(exc))
+
+        for stmt in parsed:
+            error = check_group_by_semantics(stmt) or check_distinct_json_agg(stmt)
+            if error:
+                return CompileResult(valid=False, error=error)
+        return CompileResult(valid=True)
 
     return _compile

@@ -10,7 +10,17 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Badge, Box, Button, Group, NumberInput, Select, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Group,
+  NumberInput,
+  Select,
+  Switch,
+  TextInput,
+} from "@mantine/core";
 import { Play, Copy, Check, X, Sparkles } from "lucide-react";
 import { format as formatSql } from "sql-formatter";
 import CodeMirror from "@uiw/react-codemirror";
@@ -107,6 +117,7 @@ export function SqlEditorPanel({
   onOpenViewModal,
 }: SqlEditorPanelProps) {
   const { t } = useTranslation();
+  const [nlStrict, setNlStrict] = React.useState(true);
 
   return (
     <>
@@ -260,7 +271,7 @@ export function SqlEditorPanel({
               if (e.key === "Enter" && nlText.trim() && !nlLoading) {
                 setNlLoading(true);
                 setNlError("");
-                const result = await nlToSql(nlText.trim(), role);
+                const result = await nlToSql(nlText.trim(), role, nlStrict);
                 setNlLoading(false);
                 if (result.error) {
                   setNlError(result.error);
@@ -271,6 +282,15 @@ export function SqlEditorPanel({
             }}
           />
         </Box>
+        <Switch
+          size="xs"
+          label={t("sqlEditorPanel.nlStrict")}
+          title={t("sqlEditorPanel.nlStrictHint")}
+          checked={nlStrict}
+          onChange={(e) => setNlStrict(e.currentTarget.checked)}
+          data-testid="sql-nl-strict-toggle"
+          style={{ whiteSpace: "nowrap" }}
+        />
         <Button
           size="xs"
           disabled={nlLoading || !nlText.trim()}
@@ -278,7 +298,7 @@ export function SqlEditorPanel({
           onClick={async () => {
             setNlLoading(true);
             setNlError("");
-            const result = await nlToSql(nlText.trim(), role);
+            const result = await nlToSql(nlText.trim(), role, nlStrict);
             setNlLoading(false);
             if (result.error) {
               setNlError(result.error);

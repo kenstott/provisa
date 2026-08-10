@@ -45,6 +45,7 @@ _job_store = make_job_store()
 class NlRequest(BaseModel):
     q: str
     role: str = "default"
+    strict: bool = False  # REQ-1400
 
 
 @router.post("/query/nl")
@@ -68,11 +69,11 @@ async def submit_nl_query(
             )
 
     job_id = new_job_id()
-    job = NlJob(job_id=job_id, nl_query=body.q, role=body.role)
+    job = NlJob(job_id=job_id, nl_query=body.q, role=body.role, strict=body.strict)
     await _job_store.put(job)
 
     llm = await _get_llm(state)
-    asyncio.create_task(_run_job(job_id, body.q, body.role, state, llm))
+    asyncio.create_task(_run_job(job_id, body.q, body.role, state, llm, body.strict))
 
     return JSONResponse(status_code=202, content={"job_id": job_id})
 
@@ -101,11 +102,13 @@ async def stream_nl_result(job_id: str) -> StreamingResponse:  # REQ-354, REQ-35
 # ---------------------------------------------------------------------------
 
 
-async def _run_job(job_id: str, nl_query: str, role: str, app_state: AppState, llm) -> None:
+async def _run_job(
+    job_id: str, nl_query: str, role: str, app_state: AppState, llm, strict: bool = False
+) -> None:
     from provisa.nl.runner import run_nl_job
 
     try:
-        await run_nl_job(job_id, nl_query, role, app_state, _job_store, llm)
+        await run_nl_job(job_id, nl_query, role, app_state, _job_store, llm, strict=strict)
     except Exception as exc:
         log.exception("NL job %s failed: %s", job_id, exc)
         await _job_store.set_state(job_id, "failed")

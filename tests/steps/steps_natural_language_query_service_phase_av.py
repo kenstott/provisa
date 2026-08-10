@@ -19,7 +19,9 @@ from provisa.nl.job import (
     NlJob,
     new_job_id,
 )
+from provisa.compiler.sql_types import CompilationContext
 from provisa.nl.loop import CompileResult, LLMClient, generation_loop
+from provisa.nl.prompt import NlTarget
 from provisa.nl.runner import run_nl_job
 
 
@@ -40,17 +42,6 @@ _SDL = "type Query { persons: [Person] }\ntype Person { id: ID! name: String }"
 @pytest.fixture
 def shared_data() -> dict:
     return {}
-
-
-class _ValidCypherLLM(LLMClient):
-    """Deterministic LLM that produces a syntactically valid Cypher query."""
-
-    def __init__(self) -> None:
-        self.call_count = 0
-
-    async def complete(self, prompt: str) -> str:
-        self.call_count += 1
-        return "MATCH (n) RETURN n LIMIT 1"
 
 
 class _FakeAppState:
@@ -83,7 +74,7 @@ def submit_nl_question(shared_data: dict) -> None:
     shared_data["nl_query"] = nl_query
     shared_data["role"] = role
     shared_data["app_state"] = _FakeAppState()
-    shared_data["llm"] = _ValidCypherLLM()
+    shared_data["llm"] = _AllValidLLM()
     assert nl_query and not nl_query.strip().upper().startswith(("SELECT", "MATCH", "QUERY"))
 
 
@@ -130,7 +121,7 @@ def job_id_and_pollable_result(shared_data: dict) -> None:
 
         executed: list[str] = []
 
-        async def _fake_execute(query, target, role, app_state):
+        async def _fake_execute(_query, target, _role, _app_state):
             executed.append(target)
             return {"columns": ["n"], "rows": [{"n": 1}]}
 
@@ -206,7 +197,7 @@ class _SingleQueryLLM(LLMClient):
 def _make_refining_compiler(target: str, counter: list[int]):
     """Compiler that rejects the first candidate then accepts on retry."""
 
-    def _compile(query: str) -> CompileResult:
+    def _compile(_query: str) -> CompileResult:
         counter[0] += 1
         if counter[0] >= 2:
             return CompileResult(valid=True)
@@ -230,7 +221,7 @@ def three_generation_loops_run(shared_data: dict) -> None:
         nl_query = shared_data["nl_query"]
         sdl = shared_data["sdl"]
 
-        candidates = {
+        candidates: dict[NlTarget, str] = {
             "cypher": "MATCH (n:Person) RETURN n LIMIT 10",
             "graphql": "{ persons { id name } }",
             "sql": "SELECT id, name FROM persons LIMIT 10",
@@ -239,7 +230,7 @@ def three_generation_loops_run(shared_data: dict) -> None:
         counters = {t: [0] for t in candidates}
         llms = {t: _SingleQueryLLM(q) for t, q in candidates.items()}
 
-        async def _run_loop(target: str):
+        async def _run_loop(target: NlTarget):
             return await generation_loop(
                 nl_query,
                 target,
@@ -327,7 +318,9 @@ def all_three_loops_complete(shared_data: dict, job_store: InMemoryJobStore) -> 
         shared_data["role"] = role
         shared_data["job_id"] = job_id
         shared_data["store"] = job_store
-        shared_data["app_state"] = _FakeAppState()
+        app_state = _FakeAppState()
+        app_state.contexts[role] = CompilationContext()
+        shared_data["app_state"] = app_state
         shared_data["llm"] = _AllValidLLM()
 
         pre = await job_store.get(job_id)
@@ -345,7 +338,7 @@ def results_are_returned(shared_data: dict) -> None:
 
         executed: list[str] = []
 
-        async def _fake_execute(query, target, role, app_state):
+        async def _fake_execute(_query, target, _role, _app_state):
             executed.append(target)
             if target == "graphql":
                 return {"data": {"persons": [{"id": "1", "name": "Alice"}]}}
@@ -354,16 +347,29 @@ def results_are_returned(shared_data: dict) -> None:
         async def _fake_sql(nl_query, role, app_state, pre_selected_types=None):
             return ("SELECT id, name FROM persons LIMIT 10", None)
 
+        def _fake_cypher(sql, ctx, role, app_state):
+            return "MATCH (n:Person) RETURN n LIMIT 10"
+
+        async def _fake_table_selection(
+            u_nodes, nl_query, sql_dom, tbl_to_type, config=None, api_keys=None
+        ):
+            return set()
+
         with patch("provisa.nl.runner._generate_sql_from_nl", side_effect=_fake_sql):
-            with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
-                await run_nl_job(
-                    job_id,
-                    shared_data["nl_query"],
-                    shared_data["role"],
-                    shared_data["app_state"],
-                    store,
-                    shared_data["llm"],
-                )
+            with patch("provisa.nl.runner.best_effort_cypher_for_sql", side_effect=_fake_cypher):
+                with patch(
+                    "provisa.api.data.endpoint_dev._run_table_selection",
+                    side_effect=_fake_table_selection,
+                ):
+                    with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
+                        await run_nl_job(
+                            job_id,
+                            shared_data["nl_query"],
+                            shared_data["role"],
+                            shared_data["app_state"],
+                            store,
+                            shared_data["llm"],
+                        )
 
         job = await store.get(job_id)
         assert job is not None
@@ -477,7 +483,7 @@ def compared_to_commodity_tools(shared_data: dict) -> None:
         nl_query = shared_data["nl_query"]
         role_sdl = shared_data["role_scoped_sdl"]
 
-        candidates = {
+        candidates: dict[NlTarget, str] = {
             "cypher": "MATCH (p:Person) RETURN p.id, p.name LIMIT 10",
             "graphql": "{ persons { id name } }",
             "sql": "SELECT id, name FROM persons LIMIT 10",
@@ -486,7 +492,7 @@ def compared_to_commodity_tools(shared_data: dict) -> None:
         counters = {t: [0] for t in candidates}
         llms = {t: _CapturePromptLLM(q) for t, q in candidates.items()}
 
-        async def _run_loop(target: str):
+        async def _run_loop(target: NlTarget):
             return await generation_loop(
                 nl_query,
                 target,

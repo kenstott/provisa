@@ -238,8 +238,8 @@ def endpoint_unauthenticated(shared_data, path):
     )
 
 
-@when("GET /health or GET /setup/status is called without an Authorization header")
-def call_whitelisted_and_protected(shared_data):
+@pytest_asyncio.fixture
+async def _whitelisted_and_protected_responses(shared_data):
     """Call both unauthenticated endpoints plus a protected one without a token.
 
     The whitelisted endpoints (``/health`` and ``/setup/status``) must succeed
@@ -250,9 +250,17 @@ def call_whitelisted_and_protected(shared_data):
     When there is no live infrastructure (no PROVISA_INTEGRATION) we still spin
     up the FastAPI ASGI app in-process so that real route definitions and
     middleware are exercised — no mocking involved.
-    """
-    import asyncio as _asyncio
 
+    This runs as a ``pytest_asyncio.fixture`` (mirroring ``auth_app_client``
+    above) rather than a plain ``asyncio.run()``-wrapped sync step: the entire
+    test session shares one event loop (``asyncio_default_fixture_loop_scope =
+    "session"``), and ``state.admin_db`` is a process-wide asyncpg pool built
+    once and reused across app instances. Spinning up a separate loop via
+    ``asyncio.run()`` would hand that pool connections bound to a different
+    loop and fail with "attached to a different loop". A plain ``async def``
+    step function isn't awaited by pytest-bdd either — only fixtures pass
+    through pytest-asyncio's setup path.
+    """
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
     from provisa.api.app import state as _state, create_app
@@ -273,27 +281,35 @@ def call_whitelisted_and_protected(shared_data):
 
     app = create_app()
 
-    async def _run():
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            shared_data["health_resp"] = await client.get("/health", headers={})
-            shared_data["health_head_resp"] = await client.head("/health", headers={})
-            shared_data["setup_resp"] = await client.get("/setup/status", headers={})
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        shared_data["health_resp"] = await client.get("/health", headers={})
+        shared_data["health_head_resp"] = await client.head("/health", headers={})
+        shared_data["setup_resp"] = await client.get("/setup/status", headers={})
 
-            # A non-whitelisted endpoint must be guarded by the bearer
-            # requirement when auth middleware is active.
-            shared_data["protected_resp"] = await client.post(
-                "/graphql",
-                json={"query": "{ __typename }"},
-                headers={},
-            )
+        # A non-whitelisted endpoint must be guarded by the bearer
+        # requirement when auth middleware is active.
+        shared_data["protected_resp"] = await client.post(
+            "/graphql",
+            json={"query": "{ __typename }"},
+            headers={},
+        )
 
-        # Capture the middleware state so the Then step can branch correctly.
-        from provisa.api.app import state as _app_state
+    # Capture the middleware state so the Then step can branch correctly.
+    from provisa.api.app import state as _app_state
 
-        shared_data["auth_middleware_active"] = _app_state.auth_middleware_active
+    shared_data["auth_middleware_active"] = _app_state.auth_middleware_active
 
-    _asyncio.run(_run())
+
+@when("GET /health or GET /setup/status is called without an Authorization header")
+def call_whitelisted_and_protected(_whitelisted_and_protected_responses):
+    """Trigger fixture resolution of ``_whitelisted_and_protected_responses``.
+
+    pytest-bdd steps aren't awaited even when declared ``async def``; only
+    fixtures are routed through pytest-asyncio's setup path. Depending on the
+    async fixture here forces it to run on the session event loop before this
+    step returns.
+    """
 
 
 @then("the request succeeds; all other endpoints return 401 without a valid bearer token")

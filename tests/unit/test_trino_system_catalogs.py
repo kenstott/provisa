@@ -52,12 +52,14 @@ class _Conn:
 
 @pytest.fixture(autouse=True)
 def _control_plane_address_from_the_url_only(monkeypatch):
-    # tests/conftest.py exports PROVISA_ENGINE_CONTROL_PLANE_HOST/_PORT so the containerized Trino
-    # in the integration lanes dials `postgres:5432` instead of the host-side port. These unit
-    # tests assert the derivation FROM the passed URL, so the ambient override has to come off or
-    # every spec here reports the compose address rather than the one under test.
+    # tests/conftest.py exports PROVISA_ENGINE_CONTROL_PLANE_HOST/_PORT and
+    # PROVISA_ENGINE_OTEL_S3_ENDPOINT so the containerized Trino in the integration lanes dials
+    # `postgres:5432` / `minio:9000` instead of the host-side ports. These unit tests assert the
+    # derivation FROM the passed URL/env, so the ambient overrides have to come off or every spec
+    # here reports the compose address rather than the one under test.
     monkeypatch.delenv("PROVISA_ENGINE_CONTROL_PLANE_HOST", raising=False)
     monkeypatch.delenv("PROVISA_ENGINE_CONTROL_PLANE_PORT", raising=False)
+    monkeypatch.delenv("PROVISA_ENGINE_OTEL_S3_ENDPOINT", raising=False)
 
 
 def test_no_system_catalog_is_shipped_as_a_mounted_properties_file():

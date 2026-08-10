@@ -129,7 +129,7 @@ async def test_one_branch_exhausted_others_complete():
 
 @pytest.mark.asyncio
 async def test_all_valid_all_executed():
-    """When all branches produce valid queries, all three are executed."""
+    """When branches produce valid queries, they are executed and results recorded."""
     store = InMemoryJobStore()
     job_id = new_job_id()
     await store.put(NlJob(job_id=job_id, nl_query="test", role="default"))
@@ -146,10 +146,62 @@ async def test_all_valid_all_executed():
 
     job = await store.get(job_id)
     assert job.state == "complete"
-    # Check that branches with results have non-None result
-    successful = [t for t, b in job.branches.items() if b.result is not None]
-    # At least cypher should succeed (ValidLLM always returns valid Cypher)
-    assert len(successful) >= 1
+    assert len(job.branches) == 6
+
+
+@pytest.mark.asyncio
+async def test_non_strict_cypher_derives_from_sql_branch():
+    """Non-strict mode: cypher is not generated independently — it is derived from the sql
+    branch's result, so when sql fails (no schema context for the role), cypher fails with
+    the same error instead of independently succeeding via its own LLM call."""
+    store = InMemoryJobStore()
+    job_id = new_job_id()
+    await store.put(NlJob(job_id=job_id, nl_query="test", role="default"))
+
+    state = _make_app_state()
+
+    async def _fake_execute(q, target, role, app_state):
+        return {"columns": ["x"], "rows": [{"x": 1}]}
+
+    with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
+        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM(), strict=False)
+
+    job = await store.get(job_id)
+    assert job.state == "complete"
+    sql_branch = job.branches["sql"]
+    cypher_branch = job.branches["cypher"]
+    assert sql_branch.error is not None
+    assert cypher_branch.query is None
+    assert cypher_branch.error == sql_branch.error
+
+
+@pytest.mark.asyncio
+async def test_strict_mode_shares_one_chain_across_graphql_sql_cypher():
+    """Strict mode (REQ-1400): graphql/sql/cypher all come from one NL -> GraphQL -> SQL ->
+    Cypher chain, so they share the same failure (no GraphQL schema for the role) rather than
+    generating independently."""
+    store = InMemoryJobStore()
+    job_id = new_job_id()
+    await store.put(NlJob(job_id=job_id, nl_query="test", role="default"))
+
+    state = _make_app_state()
+
+    async def _fake_execute(q, target, role, app_state):
+        return {"columns": ["x"], "rows": [{"x": 1}]}
+
+    with patch("provisa.nl.executor.execute", side_effect=_fake_execute):
+        await run_nl_job(job_id, "test", "default", state, store, _ValidLLM(), strict=True)
+
+    job = await store.get(job_id)
+    assert job is not None
+    assert job.state == "complete"
+    graphql_branch = job.branches["graphql"]
+    sql_branch = job.branches["sql"]
+    cypher_branch = job.branches["cypher"]
+    assert graphql_branch.query is None
+    assert sql_branch.query is None
+    assert cypher_branch.query is None
+    assert graphql_branch.error == sql_branch.error == cypher_branch.error
 
 
 @pytest.mark.asyncio

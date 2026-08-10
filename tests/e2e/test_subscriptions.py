@@ -11,7 +11,7 @@
 """E2E tests for SSE subscription endpoint (Phase AB)."""
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -36,11 +36,25 @@ async def client():
 class TestSubscribeSSE:
     async def test_subscribe_returns_event_stream(self, client):
         """SSE endpoint should return text/event-stream content type."""
-        resp = await client.get(
-            "/data/subscribe/orders",
-            headers={"Accept": "text/event-stream"},
-            timeout=5.0,
-        )
+        # /data/subscribe/{table} streams indefinitely (30s keepalive loop) and only exits
+        # its loop once request.is_disconnected() reports True. httpx's ASGITransport runs
+        # the whole ASGI app call in a single coroutine and only surfaces http.disconnect on
+        # a receive() made AFTER the app's response is complete — which for this endpoint
+        # can only happen once the loop has already exited. Under ASGITransport that request
+        # never arrives, so is_disconnected() can never return True and the loop (and the
+        # test) never ends: client.stream() doesn't help either, since handle_async_request
+        # still awaits the full app coroutine before returning anything (a real socket
+        # transport, e.g. uvicorn, delivers the disconnect concurrently and this works fine
+        # in production). Simulate an already-disconnected client so the generator's first
+        # is_disconnected() poll exits the loop immediately.
+        with patch(
+            "starlette.requests.Request.is_disconnected",
+            new=AsyncMock(return_value=True),
+        ):
+            resp = await client.get(
+                "/data/subscribe/orders",
+                headers={"Accept": "text/event-stream"},
+            )
         # Either 200 (streaming) or 503 (no DB) or 404 (table not found)
         assert resp.status_code in (200, 404, 503)
 

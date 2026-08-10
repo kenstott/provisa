@@ -65,6 +65,7 @@ class NlJob:  # REQ-354
     state: NlJobState = "pending"
     created_at: float = field(default_factory=time.time)
     branches: dict[NlTarget, BranchResult] = field(default_factory=dict)
+    strict: bool = False  # REQ-1400
 
     def to_dict(self) -> dict:
         return {
@@ -73,6 +74,7 @@ class NlJob:  # REQ-354
             "role": self.role,
             "state": self.state,
             "created_at": self.created_at,
+            "strict": self.strict,
             "branches": {
                 k: {"query": v.query, "result": v.result, "error": v.error}
                 for k, v in self.branches.items()
@@ -87,6 +89,7 @@ class NlJob:  # REQ-354
             role=d["role"],
             state=d["state"],
             created_at=d["created_at"],
+            strict=d.get("strict", False),
         )
         for k, v in d.get("branches", {}).items():
             job.branches[k] = BranchResult(  # type: ignore[index]

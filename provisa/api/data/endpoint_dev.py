@@ -482,18 +482,21 @@ def _build_schema_block(
     ctx,
     sql_domain_fn,
     multihop_lines: list[str],
-) -> str:
+) -> tuple[str, dict[str, set[str]]]:
     from provisa.compiler.sql_rewrite import semantic_table_name
 
     schema_lines: list[str] = []
+    table_columns: dict[str, set[str]] = {}
     for tbl in all_tables:
         if tbl.type_name not in relevant_type_names:
             continue
         cols = ctx.aggregate_columns.get(tbl.table_id, [])
-        col_list = ", ".join(
+        col_names = [
             ctx.physical_to_sql.get((tbl.table_id, col_name), col_name) for col_name, _ in cols
-        )
+        ]
+        col_list = ", ".join(col_names)
         tbl_sql = semantic_table_name(tbl)
+        table_columns[tbl_sql.lower()] = {c.lower() for c in col_names}
         schema_lines.append(f"Table {sql_domain_fn(tbl.domain_id)}.{tbl_sql}")
         schema_lines.append(f"  Columns: {col_list or '(unknown)'}")
         for (src_type, _), jm in ctx.joins.items():
@@ -510,7 +513,33 @@ def _build_schema_block(
             "\n\nMulti-hop join paths (use these when tables are not directly joined):\n"
             + "\n".join(multihop_lines)
         )
-    return schema_block
+    return schema_block, table_columns
+
+
+def _check_columns_exist(tree, table_columns: dict[str, set[str]]) -> str | None:
+    """Return an error if a column is referenced that does not exist on its table.
+
+    `_check_qualifier_binding` only confirms the table qualifier itself is a real
+    FROM/JOIN relation; it does not check the column exists on that table. This is
+    the gap that let a plausible-looking, structurally-valid column reference (e.g.
+    a typo'd or hallucinated name) reach the query engine, where it fails as a
+    catalog/analyzer error instead of a caught, retryable generation error.
+    """
+    from sqlglot import exp
+
+    for col in tree.find_all(exp.Column):
+        if not col.table:
+            continue
+        columns = table_columns.get(col.table.lower())
+        if columns is None:
+            continue  # unresolved qualifier — reported by _check_qualifier_binding
+        if col.name.lower() not in columns:
+            valid = ", ".join(sorted(columns))
+            return (
+                f"Unknown column '{col.table}.{col.name}' — this table's columns are: "
+                f"{valid}. Use only the column names listed for this table in the schema."
+            )
+    return None
 
 
 # REQ-1362: phrase -> aggregate function(s) it implies, checked against the generated SQL after
@@ -569,6 +598,7 @@ async def _run_sql_generation_loop(
     gov_ctx,
     role_obj,
     raw_tables: list,
+    table_columns: dict[str, set[str]],
     *,
     config: dict | None = None,
     api_keys: dict[str, str] | None = None,
@@ -576,6 +606,11 @@ async def _run_sql_generation_loop(
     import sqlglot
     from provisa.llm.client import ProvisaLLMClient
     from provisa.compiler.sql_validator import validate_sql
+    from provisa.nl.sql_group_by import (
+        GROUP_BY_GUIDANCE,
+        check_distinct_json_agg,
+        check_group_by_semantics,
+    )
 
     sql_gen_system = (
         "You are a SQL generator for the Provisa data platform.\n"
@@ -605,7 +640,8 @@ async def _run_sql_generation_loop(
         "'minimum'/'lowest'/'smallest' -> MIN(), 'maximum'/'highest'/'largest' -> MAX(). "
         "Never return the bare column when the question asks for one of these — wrap it in the "
         "matching aggregate function.\n"
-        "8. Output only the SQL statement — no explanation, no markdown fences."
+        f"8. {GROUP_BY_GUIDANCE}\n"
+        "9. Output only the SQL statement — no explanation, no markdown fences."
     )
 
     _sql_gen = ProvisaLLMClient("sql_generation", config=config, api_keys=api_keys)
@@ -649,9 +685,19 @@ async def _run_sql_generation_loop(
             last_error = binding_error
             continue
 
+        column_error = _check_columns_exist(tree, table_columns)
+        if column_error:
+            last_error = column_error
+            continue
+
         missing_agg_error = _check_missing_aggregate(question, tree)
         if missing_agg_error:
             last_error = missing_agg_error
+            continue
+
+        group_by_error = check_group_by_semantics(tree) or check_distinct_json_agg(tree)
+        if group_by_error:
+            last_error = group_by_error
             continue
 
         normalized = rewrite_semantic_to_physical(last_sql, ctx)
@@ -669,6 +715,7 @@ async def _run_sql_generation_loop(
 class NLToSQLRequest(BaseModel):
     question: str
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
+    strict: bool = True  # REQ-1400: strict routes via the schema-validated GraphQL compiler; off is direct-SQL LLM generation
 
 
 @router.post("/nl-to-sql")
@@ -691,6 +738,19 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
     if role_id not in state.contexts:
         raise ApiError(400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id)
+
+    if request.strict:
+        from provisa.nl.runner import _generate_graphql_sql_from_nl
+
+        _graphql, sql, cypher, error = await _generate_graphql_sql_from_nl(request.question, role_id, state)
+        if error:
+            raise ApiError(
+                422,
+                "data.sql_generation_failed",
+                f"Could not generate valid SQL via the strict (GraphQL-backed) path: {error}",
+                error=str(error),
+            )
+        return {"sql": sql, "cypher": cypher, "attempts": 1}
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
@@ -726,7 +786,7 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
 
     multihop_lines = _build_multihop_lines(selected_types, _lm, _sql_domain)
     relevant_type_names = _build_relevant_type_names(selected_types, _lm)
-    schema_block = _build_schema_block(
+    schema_block, table_columns = _build_schema_block(
         all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines
     )
 
@@ -737,6 +797,7 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
         gov_ctx,
         role_obj,
         raw_tables,
+        table_columns,
         config=llm_config,
         api_keys=llm_api_keys,
     )
@@ -749,7 +810,12 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
             error=str(last_error),
         )
 
-    return {"sql": last_sql, "attempts": attempt}
+    from provisa.nl.runner import best_effort_cypher_for_sql
+
+    assert last_sql is not None
+    cypher = best_effort_cypher_for_sql(last_sql, ctx, role_id, state)
+
+    return {"sql": last_sql, "cypher": cypher, "attempts": attempt}
 
 
 class QueryRequest(BaseModel):

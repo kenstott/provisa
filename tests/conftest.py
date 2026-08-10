@@ -310,6 +310,14 @@ def _allocate_itest_ports() -> None:
     _minio = f"localhost:{os.environ['MINIO_PORT']}"
     os.environ["PROVISA_OTEL_S3_ENDPOINT"] = f"http://{_minio}"
     os.environ["MINIO_ENDPOINT"] = _minio  # host-side minio clients (e.g. infra bdd)
+    # otel_object_store()["endpoint"] above is host-visible; the otel/results Iceberg catalogs
+    # are JDBC/S3 specs the Trino *coordinator* dials from inside the compose network, where the
+    # host-published port means nothing (trino_system_catalogs.engine_visible_s3_endpoint reads
+    # this override, mirroring PROVISA_ENGINE_CONTROL_PLANE_HOST/PORT above). Leaving it unset
+    # makes every S3 call the otel catalog issues (e.g. DROP VIEW on an Iceberg table) retry
+    # against an unreachable localhost:<host-port> forever, starving Trino's query queue for the
+    # rest of the session.
+    os.environ.setdefault("PROVISA_ENGINE_OTEL_S3_ENDPOINT", "http://minio:9000")
     # Redirect/result-spill S3 path (test_redirect_encryption_minio) reads this; wire it to the
     # isolated stack's minio so the encryption round-trip runs instead of skipping on :9000.
     os.environ["PROVISA_REDIRECT_ENDPOINT"] = f"http://{_minio}"

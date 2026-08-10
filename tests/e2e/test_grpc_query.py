@@ -32,10 +32,15 @@ def _make_pb2_with_descriptor(type_name: str, fields: list[str]):
     """Build a fake pb2 module with proper DESCRIPTOR for e2e-style testing."""
     field_descriptors = []
     for f in fields:
-        fd = SimpleNamespace(name=f, message_type=None)
+        # No known FieldDescriptor.TYPE_* matches -> _proto_value's fallthrough returns the
+        # row value unchanged, preserving the exact int/float types the tests assert on.
+        fd = SimpleNamespace(name=f, message_type=None, type=-1)
         field_descriptors.append(fd)
 
-    descriptor = SimpleNamespace(fields=field_descriptors)
+    descriptor = SimpleNamespace(
+        fields=field_descriptors,
+        fields_by_name={fd.name: fd for fd in field_descriptors},
+    )
     msg_cls = MagicMock()
     msg_cls.DESCRIPTOR = descriptor
 

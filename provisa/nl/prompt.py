@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from provisa.nl.sql_group_by import GROUP_BY_GUIDANCE
+
 NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
 _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
@@ -42,12 +44,34 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
         "Use only fields and types present in the schema SDL below.\n"
         "Always wrap the query with a named operation: query SomeCamelCaseName { ... } "
         "where the name is a concise CamelCase slug of the question (e.g. UsersWithInquiryCount).\n"
-        "GraphQL cannot perform GROUP BY or aggregations (COUNT, SUM, AVG, etc.) — "
-        "it can only return fields defined in the schema. "
-        "When the question asks for an aggregation or grouping, return the closest meaningful query instead: "
-        "fetch the raw rows that would be grouped (e.g. for 'count inquiries per user', "
-        "return inquiries with their nested user fields so the client can count). "
-        "Never respond NOT_APPLICABLE — always return the best approximation.\n"
+        "GROUP BY and aggregations (COUNT, SUM, AVG, MIN, MAX) ARE supported, but not via bare "
+        "SQL-style syntax — every aggregatable type exposes two extra root query fields "
+        "alongside its plain list field (look for them in the schema SDL below, spelled either "
+        "<type>_aggregate/<type>_group_by or <Type>Aggregate/<Type>GroupBy depending on the "
+        "schema's naming convention):\n"
+        "  - <type>_aggregate(where: ...): { aggregate { count sum { ... } avg { ... } min { ... } "
+        "max { ... } } nodes { ... } } — use this for a single aggregate over the whole set "
+        "(the question has no 'by <dimension>' / 'per <dimension>' phrase).\n"
+        "  - <type>_group_by(by: [...], where: ..., having: ..., order_by: ..., limit: ...): "
+        "[{ groupKey aggregate { count sum { ... } avg { ... } min { ... } max { ... } } "
+        "nodes { ... } }] — use this whenever the question groups/aggregates 'by' or 'per' a "
+        "dimension. `by` takes the grouping column(s) as an enum list. Each returned row's "
+        "`groupKey` is the JSON group key; `aggregate` holds the measure(s); `nodes` is the full "
+        "list of underlying rows in that group — request nested relationship fields under `nodes` "
+        "(e.g. nodes { pet { id name } }) to get 'details' alongside the aggregate, instead of "
+        "trying to flatten or dedupe anything yourself. There is no separate DISTINCT concept — "
+        "`nodes` already lists every row belonging to the group.\n"
+        "Example — question: 'count of inquiries by user, with pet details':\n"
+        "  query InquiriesCountByUser {\n"
+        "    inquiries_group_by(by: [userId]) {\n"
+        "      groupKey\n"
+        "      aggregate { count }\n"
+        "      nodes { id pet { id name species } }\n"
+        "    }\n"
+        "  }\n"
+        "If neither an _aggregate nor a _group_by field exists for the relevant type in the "
+        "schema below, fall back to the plain list field with the raw rows the client would need "
+        "to aggregate itself. Never respond NOT_APPLICABLE — always return the best approximation.\n"
         "Return only the GraphQL query — no explanation, no markdown fences."
     ),
     "sql": (
@@ -59,13 +83,7 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
         "Do not use vendor-specific syntax; write standard SQL (postgres dialect).\n"
         "SQL can express everything GraphQL and Cypher can and more (GROUP BY, aggregates, joins, "
         "window functions) — always generate a SQL query. Never respond NOT_APPLICABLE.\n"
-        "When grouping by one dimension (e.g. 'by user') while also including detail from a "
-        "DIFFERENT joined table that is not itself a grouping dimension (e.g. 'with pet details'), "
-        "do not SELECT that other table's columns raw — they would force the SQL engine to add "
-        "them to GROUP BY too, silently turning them into extra grouping keys and fragmenting the "
-        "result. Instead aggregate them with json_agg(json_build_object('col', table.col, ...)) "
-        "(or array_agg(DISTINCT table.col) for a single column) so only the intended dimension's "
-        "columns appear in GROUP BY.\n"
+        f"{GROUP_BY_GUIDANCE}\n"
         "Return only the SQL statement — no explanation, no markdown fences."
     ),
 }

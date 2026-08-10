@@ -93,6 +93,15 @@ _BASE="not packaging and not cluster and not isolated and not requires_warehouse
 [[ "$(uname -s)" == "Darwin" ]] && _BASE="$_BASE and not linux_mem"
 _KAFKA="requires_kafka or requires_debezium"
 _DATASTORE="requires_elasticsearch or requires_sparql or requires_mongodb or requires_prometheus"
+# requires_hive_s3's hive-s3-metastore is session-provisioned (not in _HEAVY_MARKERS, so it stays
+# up for the whole lane), unlike requires_hive's hive-metastore which _heavy_db_service brings up
+# per-test and tears down. Both are Hive-connector Trino catalogs, and Trino's Hive connector
+# leaks metastore-client state across CREATE/DROP CATALOG within one coordinator JVM — so if both
+# markers' tests run in the same pytest session (same Trino container), the second Hive-connector
+# catalog created resolves through the first's stale connector state and queries fail with
+# CATALOG_NOT_FOUND for the WRONG (already-dropped) catalog name. Giving requires_hive_s3 its own
+# lane guarantees it never shares a Trino coordinator with a requires_hive test.
+_HIVE_S3="requires_hive_s3"
 
 # The heavy relational/analytic DBs (oracle, druid, splunk, cassandra, greenplum, …) stay in
 # THIS lane but are NOT brought up together: tests/conftest.py::_heavy_db_service provisions
@@ -112,7 +121,11 @@ COVERAGE_FILE=.coverage.default pytest tests tests/steps \
 
 echo "== lane: default/app (in-process app startup — e2e-marked integration) =="
 COVERAGE_FILE=.coverage.app pytest tests tests/steps \
-  -m "$_BASE and not ($_KAFKA or requires_neo4j or $_DATASTORE) and e2e" "${COV_ARGS[@]}" "$@" || rc=1
+  -m "$_BASE and not ($_KAFKA or requires_neo4j or $_DATASTORE or $_HIVE_S3) and e2e" "${COV_ARGS[@]}" "$@" || rc=1
+
+echo "== lane: default/hive_s3 (own Trino coordinator — avoids Hive-connector cross-catalog leak) =="
+COVERAGE_FILE=.coverage.hive_s3 pytest tests tests/steps \
+  -m "$_BASE and ($_HIVE_S3) and e2e" "${COV_ARGS[@]}" "$@" || rc=1
 
 echo "== lane: default/kafka (kafka + debezium) =="
 COVERAGE_FILE=.coverage.kafka pytest tests tests/steps \

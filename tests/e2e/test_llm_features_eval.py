@@ -119,7 +119,7 @@ def test_relationship_inference_finds_obvious_fks():
     di = DiscoveryInput(tables=[customers, orders, order_items], existing_relationships=[], rejected_pairs=[])
 
     prompt = build_prompt(di)
-    cands = analyze(prompt, os.environ["ANTHROPIC_API_KEY"], di, min_confidence=0.5)
+    cands = analyze(prompt, {"anthropic": os.environ["ANTHROPIC_API_KEY"]}, di, min_confidence=0.5)
 
     edges = {(c.source_table_id, c.source_column, c.target_table_id, c.target_column) for c in cands}
     # GROUND TRUTH — the two unambiguous FKs (many-to-one child -> parent).
@@ -149,6 +149,6 @@ def test_relationship_inference_does_not_invent_edges_on_unrelated_tables():
     recipes = _tbl(11, "recipes", ["id", "title", "instructions", "servings"])
     di = DiscoveryInput(tables=[weather, recipes], existing_relationships=[], rejected_pairs=[])
 
-    cands = analyze(build_prompt(di), os.environ["ANTHROPIC_API_KEY"], di, min_confidence=0.7)
+    cands = analyze(build_prompt(di), {"anthropic": os.environ["ANTHROPIC_API_KEY"]}, di, min_confidence=0.7)
     # At a 0.7 confidence bar there is no real FK to find; allow at most one low-signal guess.
     assert len(cands) <= 1, f"hallucinated relationships between unrelated tables: {cands}"

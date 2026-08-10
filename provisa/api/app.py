@@ -1507,7 +1507,14 @@ def create_app() -> FastAPI:
 
     # ActiveOrgPool, not state.tenant_db: the middleware outlives the request, and the tenant
     # control plane it must read is whichever org the request binds (REQ-1266).
-    wire_auth(app, state.auth_config, db_pool=ActiveOrgPool(), admin_pool=state.admin_db)
+    # Always None here, never state.auth_config: create_app() runs before the lifespan
+    # (_load_and_build) resolves it, so state.auth_config at this point is either unset or —
+    # when a prior create_app() call ran earlier in this same process (e2e tests share the
+    # `state` singleton across apps) — a stale leftover from that EARLIER app. Passing it
+    # would take AuthMiddleware's eager path and permanently latch onto that stale value,
+    # never re-resolving. None always takes the lazy path, which reads state.auth_config
+    # fresh on this app's own first request, after this app's own lifespan has run.
+    wire_auth(app, None, db_pool=ActiveOrgPool(), admin_pool=state.admin_db)
 
     app.include_router(data_router)
     app.include_router(redirect_unwrap_router)
