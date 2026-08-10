@@ -214,6 +214,14 @@ Auto-generated plain REST endpoint for every registered table. The query string 
 
 The authenticated role is required; unauthenticated requests return `401`. An OpenAPI spec for these routes is served at `GET /data/rest/openapi.json` with Swagger UI at `GET /data/rest/docs`.
 
+#### OpenAPI / Swagger UI Explorer
+
+The OpenAPI explorer page (`/app/openapi`) embeds the Swagger UI in a sandboxed iframe. The spec is role-scoped — only tables and columns visible to the current role appear — and optionally domain-filtered via the domain selector. The UI switches between light and dark themes automatically. [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:20-34`]
+
+The page loads the spec HTML via `fetch()` rather than a direct iframe `src`, so the request carries the session's bearer token and Swagger UI's own relative requests resolve correctly against the same origin. [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:44-69`]
+
+When navigated from an NL "Open in OpenAPI" link, the page auto-expands the target endpoint, populates query parameters from the NL-generated URL (e.g. `aggregate`, `groupBy`), and clicks Execute — using DOM polling to ensure each step completes before the next fires. (REQ-1359) [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:94-171`]
+
 ---
 
 ### `GET /data/jsonapi/{domain_id}/{table_name}`
@@ -228,8 +236,26 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 - `filter[<col>]` / `filter[<col>][<op>]` — e.g. `?filter[region]=US`, `?filter[amount][gt]=100`
 - `sort` — comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — pagination
+- `aggregate` — comma-separated aggregate functions to run instead of row retrieval: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Use `?aggregate=count,sum` to request a subset. Aggregate responses return `data: null` with results in `meta.aggregate`. (REQ-1359) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:238`]
+- `groupBy` — comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see. (REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
+- `includeNodes` — `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details. (REQ-1405)
 
 Responses are resource objects with `type`/`id`/`attributes`. Errors follow the JSON:API error object shape.
+
+#### JSON:API Explorer
+
+The JSON:API explorer page (`/app/jsonapi`) is a browser UI over these endpoints. Select a table from the domain-grouped list, then configure:
+
+- **Fields** — choose which columns to include (sparse fieldset); leave all unchecked to request every column
+- **Relationships** — select FK-derived relationship names to sideload via `?include=`
+- **Filter** — field, operator (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`), and value
+- **Sort** — one field, ascending or descending
+- **Aggregate** — pick group-by columns from the server-validated list, then check one or more aggregate functions; when group-by columns are selected, an "Include nodes" checkbox appends base-table scalar columns to each row
+- **Page size** — resources per page, with first/prev/next/last navigation
+
+Results render in a formatted summary view (resource cards with clickable relationship anchors) or a raw JSON tab. The live request URL is shown and can be copied. Table selection and page size persist across sessions in `localStorage`. [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx`]
+
+When navigated from an NL "Open in JSON:API" link, the explorer pre-selects the table and seeds the aggregate picker from the NL-generated query parameters, then auto-runs the request. [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:460-479`]
 
 ---
 
@@ -265,6 +291,12 @@ Three generation loops (Cypher, GraphQL, SQL) run in parallel, each validated th
 ```
 
 A branch that exhausts its iteration limit returns `query: null`, `result: null`, and an `error` string. Every generated query executes under the consumer's rights with Stage 2 governance applied — the service never bypasses governance. (REQ-359)
+
+#### NL Group-By with Dimension Details (REQ-1405)
+
+When an NL group-by query also projects columns from a joined dimension table — for example, "count of inquiries by user with user name and email" — the runner derives per-field dot-paths (`dim_paths`) from the SELECT-projected dimension columns. These paths populate the `includeNodes=` parameter on the JSON:API and OpenAPI panels' generated URLs, so those panels request the same joined-dimension fields the SQL and GraphQL branches resolved. Without this, `includeNodes=true` would return only the base aggregate table's own scalar fields. (REQ-1405) [tool-verified: `docs/arch/requirements.md:REQ-1405`]
+
+On the gRPC panel, the generated `{Type}GroupByRequest` carries `include_nodes` (bool) and `include` (repeated string of relationship field names). The returned `{Type}GroupByRow` includes a typed `nodes` field with the dimension-detail rows. [tool-verified: `provisa/grpc/query_ir.py:168-196`]
 
 ---
 
@@ -845,6 +877,19 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 ```
 
 The gRPC server starts only when a valid proto can be compiled at startup. If schema build fails, the gRPC server does not start. (REQ-529)
+
+#### Aggregate and Group-By RPCs (REQ-1359, REQ-1361, REQ-1405)
+
+When a table has `enable_aggregates` set, the generated proto includes two additional RPCs alongside `Query{TypeName}`:
+
+- **`Query{TypeName}Aggregate`** — returns aggregate scalars for the table (`count`; `sum`, `avg`, `stddev`, `variance` per numeric column; `min`, `max` per comparable column)
+- **`Query{TypeName}GroupBy`** — returns one row per group key with aggregate sub-fields and, optionally, base-table scalars and joined-dimension rows in a `nodes` field
+
+Both route through the same compiler aggregate pipeline as GraphQL's `{field}_aggregate` and `{field}_group_by` root fields — no separate aggregate implementation. (REQ-1359) [tool-verified: `provisa/grpc/query_ir.py:133-196`]
+
+**`funcs` field (REQ-1361).** The request message accepts a `funcs` repeated-string field. Valid values are `count`, `sum`, `avg`, `stddev`, `variance`, `min`, and `max`. When `funcs` is omitted, every function the schema exposes for that table is requested. When set, only the named functions appear. If none of the named functions apply to the table's column types, the query falls back to `count`. [tool-verified: `provisa/grpc/query_ir.py:66`, `provisa/grpc/query_ir.py:75-97`]
+
+**`include_nodes` and `include` fields (REQ-1405).** `Query{TypeName}GroupBy` requests may set `include_nodes: true` to include base-table scalar columns in each row's `nodes` field. The `include` repeated-string field names many-to-one relationship fields whose scalar columns are also nested inside `nodes`. This matches the JSON:API `?includeNodes=` / `?include=` behavior. [tool-verified: `provisa/grpc/query_ir.py:168-195`]
 
 ---
 

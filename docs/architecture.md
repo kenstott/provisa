@@ -456,6 +456,40 @@ The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001)
 
 (REQ-164, REQ-165, REQ-166, REQ-167)
 
+## AI Models Configuration
+
+`GET /admin/ai-models` and `PUT /admin/ai-models` configure the LLM pipeline for each org. (REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349)
+
+Settings are **org-scoped**: each org's choices layer over the deployment config and take effect on the next request — no restart required. (REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
+
+**Per-operation model assignments.** Five NL operations each have a configurable vendor and model string:
+
+| Operation | What it drives |
+| --------- | -------------- |
+| `table_description` | LLM-generated table descriptions |
+| `column_description` | LLM-generated column descriptions |
+| `relationship_inference` | FK candidate discovery |
+| `sql_generation` | NL → SQL generation |
+| `table_selection` | Choosing which tables to include in the NL prompt |
+
+The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default. [tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
+
+**NL rate limit.** An optional requests-per-period cap applied per role. Excess requests return `429` with `Retry-After`. [tool-verified: `provisa-ui/src/components/admin/AiModelsTab.tsx:306-313`]
+
+**Vector model registry.** A list of embedding models (fields: `id`, `provider`, `dimensions`, optional `api_key_env` and `base_url`, `enabled` flag). Full-list replacement: every entry must have `id`, `provider`, and `dimensions` or the write is rejected `400`. [tool-verified: `provisa/api/admin/ai_models_router.py:122-131`]
+
+**API keys.** Per-vendor LLM API keys are stored encrypted via `provisa.core.org_secrets` (see below). The `GET` response reports only whether a key is set for each vendor — the value is never returned. Sending a blank string for a vendor clears that key, reverting LLM calls for that vendor to the deployment's environment-variable credential. (REQ-1395, REQ-1398) [tool-verified: `provisa/api/admin/ai_models_router.py:76-78`, `provisa/api/admin/ai_models_router.py:149-165`]
+
+## Per-Org Encrypted Secrets
+
+`provisa/core/org_secrets.py` stores credentials that must never appear as plaintext in the database. Currently restricted to LLM vendor API keys (`{vendor}_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
+
+Values are encrypted via the process-wide `encryption_service` from `provisa.encryption.runtime` — the same mechanism as `api_sources.auth`. [tool-verified: `provisa/core/org_secrets.py:16-17`]
+
+Twelve `aisuite`-compatible vendors are supported: `anthropic`, `openai`, `cohere`, `groq`, `mistral`, `xai`, `deepseek`, `together`, `fireworks`, `nebius`, `sambanova`, and `inception`. Google, AWS, and Azure are excluded because they require configuration beyond a plain API key (project IDs, IAM roles, region). Local-endpoint vendors (`ollama`, `lmstudio`) have no key and are excluded for the same reason. [tool-verified: `provisa/core/org_secrets.py:33-53`]
+
+Passing `value=None` to `write_org_secret` deletes the row. Callers that read a secret consume it immediately (e.g. to construct an LLM client) and must not echo it in any API response. [tool-verified: `provisa/core/org_secrets.py:97-117`]
+
 ## Auto-Generated REST & JSON:API Endpoints
 
 Registered tables are exposed as REST and JSON:API endpoints alongside the GraphQL interface. (REQ-256, REQ-257)
