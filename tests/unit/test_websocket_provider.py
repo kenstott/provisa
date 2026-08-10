@@ -13,18 +13,11 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from datetime import datetime, timezone
 from typing import AsyncIterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
-# Stub out websockets so provider can be imported without the real library
-_ws_stub = types.ModuleType("websockets")
-_ws_stub.connect = MagicMock()  # will be overridden per test
-sys.modules.setdefault("websockets", _ws_stub)
 
 
 # ---------------------------------------------------------------------------
