@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from provisa.grpc.proto_gen import _to_proto_type_name
 from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobStore
@@ -94,9 +94,113 @@ def _join_fk_column(tree: Any, target_ref: str, dim_ref: str) -> str | None:
     return None
 
 
+class AggregationPlan(NamedTuple):
+    """What the gRPC/JSON:API/OpenAPI branches must express (REQ-1359/REQ-1405/REQ-1408).
+
+    ``node_scalars`` are the base-table scalar columns a ``nodes`` sub-selection projects; it is
+    populated only by the GraphQL-driven rewrite (the SQL-driven resolver has no nodes concept)
+    and drives REST's ``?includeNodes=`` dot-path projection.
+    """
+
+    meta: Any
+    group_cols: list[str]
+    is_aggregate_only: bool
+    funcs: list[str]
+    dim_paths: list[str]
+    node_scalars: list[str] = []
+
+
+def _plan_dim_relations(plan: AggregationPlan) -> list[str]:
+    """Relationship field names behind ``dim_paths``, in first-seen order."""
+    return list(dict.fromkeys(p.split(".", 1)[0] for p in plan.dim_paths))
+
+
+def _aggregation_plan_from_graphql(ctx: Any, graphql_query: str) -> AggregationPlan | None:
+    """Rewrite the strict chain's GraphQL query into the protocol plan (REQ-1408).
+
+    Strict mode has already produced a schema-validated GraphQL query, and JSON:API/REST/gRPC
+    expose variants of that same governed shape, so the rewrite is mechanical: root field → table,
+    the ``by:`` argument → group-by columns, the ``aggregate`` sub-selection → funcs, the ``nodes``
+    sub-selection → includeNodes scalars and relationship paths. Re-deriving the plan by parsing
+    the compiled SQL (``_resolve_aggregation_plan``) cannot work on this path — the merged
+    group-by + nodes SQL has a subquery in its outer FROM, so no table is found and every protocol
+    surface degrades to a plain row fetch of an unrelated table.
+
+    Returns None when the query has no root field this role's schema maps to a table.
+    """
+    from graphql import FieldNode, OperationDefinitionNode, parse
+
+    document = parse(graphql_query)
+    for definition in document.definitions:
+        if not isinstance(definition, OperationDefinitionNode):
+            continue
+        for selection in definition.selection_set.selections:
+            if not isinstance(selection, FieldNode):
+                continue
+            meta = ctx.tables.get(selection.name.value)
+            if meta is None:
+                continue
+            return _plan_for_root_field(ctx, meta, selection)
+    return None
+
+
+def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPlan:
+    """Build the protocol plan for one validated GraphQL root field (REQ-1408)."""
+    from graphql import EnumValueNode, FieldNode, ListValueNode, StringValueNode
+
+    from provisa.grpc.query_ir import AGG_FUNCS
+
+    name = field_node.name.value
+    is_aggregate_only = name.endswith("_aggregate") or name.endswith("Aggregate")
+    is_group_by = name.endswith("_group_by") or name.endswith("GroupBy")
+
+    def _physical(table_id: int, gql_name: str) -> str:
+        # Same idiom as the compiler's own resolution (provisa/compiler/aggregates.py): the map
+        # holds an entry only when the exposed and physical names differ.
+        return ctx.exposed_to_physical.get((table_id, gql_name), gql_name)
+
+    group_cols: list[str] = []
+    if is_group_by:
+        for arg in field_node.arguments or []:
+            if arg.name.value != "by":
+                continue
+            values = arg.value.values if isinstance(arg.value, ListValueNode) else [arg.value]
+            for value in values:
+                if isinstance(value, (EnumValueNode, StringValueNode)):
+                    group_cols.append(_physical(meta.table_id, value.value))
+
+    funcs: list[str] = []
+    node_scalars: list[str] = []
+    dim_paths: list[str] = []
+    for sub in (field_node.selection_set.selections if field_node.selection_set else []):
+        if not isinstance(sub, FieldNode):
+            continue
+        if sub.name.value == "aggregate" and sub.selection_set:
+            requested = {
+                s.name.value for s in sub.selection_set.selections if isinstance(s, FieldNode)
+            }
+            funcs = [fn for fn in AGG_FUNCS if fn in requested]
+        elif sub.name.value == "nodes" and sub.selection_set:
+            for node_sel in sub.selection_set.selections:
+                if not isinstance(node_sel, FieldNode):
+                    continue
+                if node_sel.selection_set is None:
+                    node_scalars.append(_physical(meta.table_id, node_sel.name.value))
+                    continue
+                # A sub-selection under nodes is a relationship field; the query is
+                # schema-validated, so ctx.joins always carries its JoinMeta.
+                rel = node_sel.name.value
+                target = ctx.joins[(meta.type_name, rel)].target
+                for rel_sel in node_sel.selection_set.selections:
+                    if isinstance(rel_sel, FieldNode):
+                        dim_paths.append(f"{rel}.{_physical(target.table_id, rel_sel.name.value)}")
+
+    return AggregationPlan(meta, group_cols, is_aggregate_only, funcs, dim_paths, node_scalars)
+
+
 def _resolve_aggregation_plan(
     ctx: Any, app_state: Any, semantic_sql: str
-) -> tuple[Any, list[str], bool, list[str], list[str]] | None:
+) -> AggregationPlan | None:
     """Parse the SQL branch's compiled semantic SQL to find the table and any GROUP BY the
     model settled on (REQ-1359), so gRPC/JSON:API/OpenAPI target the identical table and
     aggregation SQL/GraphQL/Cypher already resolved instead of independently guessing from the
@@ -244,39 +348,38 @@ def _resolve_aggregation_plan(
     found = {_agg_expr_types()[type(n)] for n in tree.find_all(*_agg_expr_types()) if type(n) in _agg_expr_types()}
     funcs = [fn for fn in AGG_FUNCS if fn in found]
 
-    return meta, group_cols, is_aggregate_only, funcs, dim_paths
+    return AggregationPlan(meta, group_cols, is_aggregate_only, funcs, dim_paths, [])
 
 
 def _generate_grpc_query(
-    plan: tuple[Any, list[str], bool, list[str], list[str]] | None,
+    plan: AggregationPlan | None,
     selected_type_names: set[str],
     user_nodes: dict,
 ) -> tuple[str | None, str | None]:
     if plan is not None:
-        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
         # REQ-1359/REQ-1361: {Type}AggregateRequest.funcs and {Type}GroupByRequest.funcs
         # (provisa/grpc/proto_gen.py) restrict to a caller-chosen subset of aggregate functions,
         # mirroring jsonapi/openapi's aggregate=... param.
-        proto_type = _to_proto_type_name(meta.type_name)
-        funcs_arg = f"funcs=[{', '.join(funcs)}]" if funcs else ""
-        if is_aggregate_only:
+        proto_type = _to_proto_type_name(plan.meta.type_name)
+        funcs_arg = f"funcs=[{', '.join(plan.funcs)}]" if plan.funcs else ""
+        if plan.is_aggregate_only:
             if funcs_arg:
                 return f"Query{proto_type}Aggregate({funcs_arg})", None
             return f"Query{proto_type}Aggregate", None
-        if dim_paths:
-            # REQ-1405: GroupByRequest.include names many-to-one relation fields (the wire type is
-            # repeated string, not a dot-path list), so dedupe dim_paths' "rel.col" entries down to
-            # their relation prefix for display.
-            rels = list(dict.fromkeys(p.split(".", 1)[0] for p in dim_paths))
-            args = [f"by=[{', '.join(group_cols)}]"]
-            if funcs_arg:
-                args.append(funcs_arg)
-            args.append("include_nodes=true")
-            args.append(f"include=[{', '.join(rels)}]")
-            return f"Query{proto_type}GroupBy({', '.join(args)})", None
-        args = [f"by=[{', '.join(group_cols)}]"]
+        if not plan.group_cols:
+            return f"Query{proto_type}", None
+        args = [f"by=[{', '.join(plan.group_cols)}]"]
         if funcs_arg:
             args.append(funcs_arg)
+        if plan.dim_paths or plan.node_scalars:
+            args.append("include_nodes=true")
+        # REQ-1408: GroupByRequest.include takes the nodes projection as base scalars and
+        # "rel.col" dot-paths (query_ir._include_node_fields), the same list REST carries in
+        # ?includeNodes= — so the gRPC call mirrors the GraphQL nodes sub-selection column for
+        # column instead of naming relations only.
+        include_paths = [*plan.node_scalars, *plan.dim_paths]
+        if include_paths:
+            args.append(f"include=[{', '.join(include_paths)}]")
         return f"Query{proto_type}GroupBy({', '.join(args)})", None
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
@@ -288,22 +391,24 @@ def _generate_grpc_query(
 
 
 def _generate_jsonapi_query(
-    plan: tuple[Any, list[str], bool, list[str], list[str]] | None,
+    plan: AggregationPlan | None,
     selected_type_names: set[str],
     user_nodes: dict,
 ) -> tuple[str | None, str | None]:
     if plan is not None:
-        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
-        base = f"/data/jsonapi/{meta.domain_id}/{meta.table_name}"
-        aggregate_param = ",".join(funcs) if funcs else "true"
-        if is_aggregate_only:
+        base = f"/data/jsonapi/{plan.meta.domain_id}/{plan.meta.table_name}"
+        aggregate_param = ",".join(plan.funcs) if plan.funcs else "true"
+        if plan.is_aggregate_only:
             return f"{base}?aggregate={aggregate_param}", None
-        include_nodes = ",".join(dim_paths) if dim_paths else "true"
-        return (
-            f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}"
-            f"&includeNodes={include_nodes}",
-            None,
-        )
+        if not plan.group_cols:
+            return f"{base}?page[size]=20", None
+        # REQ-1408: JSON:API's group-by handler (provisa/api/jsonapi/generator.py) honours
+        # includeNodes only as true/1 and takes relationships through its own ?include= list, so
+        # the GraphQL nodes sub-selection splits across the two params rather than dot-paths.
+        query = f"{base}?groupBy={','.join(plan.group_cols)}&aggregate={aggregate_param}&includeNodes=true"
+        if plan.dim_paths:
+            query += f"&include={','.join(_plan_dim_relations(plan))}"
+        return query, None
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
     type_name = next(iter(sorted(selected_type_names)))
@@ -314,19 +419,24 @@ def _generate_jsonapi_query(
 
 
 def _generate_openapi_query(
-    plan: tuple[Any, list[str], bool, list[str], list[str]] | None,
+    plan: AggregationPlan | None,
     selected_type_names: set[str],
     user_nodes: dict,
 ) -> tuple[str | None, str | None]:
     if plan is not None:
-        meta, group_cols, is_aggregate_only, funcs, dim_paths = plan
-        base = f"GET /data/rest/{meta.domain_id}/{meta.table_name}"
-        aggregate_param = ",".join(funcs) if funcs else "true"
-        if is_aggregate_only:
+        base = f"GET /data/rest/{plan.meta.domain_id}/{plan.meta.table_name}"
+        aggregate_param = ",".join(plan.funcs) if plan.funcs else "true"
+        if plan.is_aggregate_only:
             return f"{base}?aggregate={aggregate_param}", None
-        include_nodes = ",".join(dim_paths) if dim_paths else "true"
+        if not plan.group_cols:
+            return base, None
+        # REQ-1408: REST has no ?include= — its group-by handler (provisa/api/rest/generator.py)
+        # reads the whole nodes projection off ?includeNodes= as a dot-path list, so scalars and
+        # relation columns go into the one param.
+        paths = [*plan.node_scalars, *plan.dim_paths]
+        include_nodes = ",".join(paths) if paths else "true"
         return (
-            f"{base}?groupBy={','.join(group_cols)}&aggregate={aggregate_param}"
+            f"{base}?groupBy={','.join(plan.group_cols)}&aggregate={aggregate_param}"
             f"&includeNodes={include_nodes}",
             None,
         )
@@ -703,10 +813,19 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                 # instead of independently guessing from the raw table-selection set.
                 if table_selection_error is not None:
                     return target, None, table_selection_error
-                _, sql_query, sql_error = await sql_task
                 plan = None
-                if sql_query is not None and sql_error is None and ctx is not None:
-                    plan = _resolve_aggregation_plan(ctx, app_state, sql_query)
+                # REQ-1408: these three surfaces expose variants of the GraphQL shape, so the plan
+                # is a mechanical rewrite of the GraphQL branch's own query — strict or not. The
+                # SQL-derived plan cannot express it: a query whose GraphQL carries a nodes
+                # sub-selection compiles to SQL with a subquery in its outer FROM, so no table
+                # resolves and every surface degrades to a plain row fetch of another table.
+                _, graphql_query, graphql_error = await graphql_task
+                if graphql_query is not None and graphql_error is None and ctx is not None:
+                    plan = _aggregation_plan_from_graphql(ctx, graphql_query)
+                if plan is None:
+                    _, sql_query, sql_error = await sql_task
+                    if sql_query is not None and sql_error is None and ctx is not None:
+                        plan = _resolve_aggregation_plan(ctx, app_state, sql_query)
                 gen_fn = {
                     "grpc": _generate_grpc_query,
                     "jsonapi": _generate_jsonapi_query,
@@ -731,11 +850,13 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
             log.warning("NL branch %s failed: %s", target, exc)
             return target, None, str(exc)
 
-    # The sql branch must be scheduled before grpc/jsonapi/openapi (and, non-strict, cypher)
-    # so those can await its compiled semantic SQL (see _run_branch) without a forward reference.
+    # The sql and graphql branches must be scheduled before grpc/jsonapi/openapi (and,
+    # non-strict, cypher) so those can await the compiled semantic SQL and the GraphQL query
+    # they rewrite (see _run_branch) without a forward reference.
     sql_task = asyncio.create_task(_run_branch("sql"))
-    branch_tasks = [sql_task] + [
-        asyncio.create_task(_run_branch(t)) for t in _TARGETS if t != "sql"
+    graphql_task = asyncio.create_task(_run_branch("graphql"))
+    branch_tasks = [sql_task, graphql_task] + [
+        asyncio.create_task(_run_branch(t)) for t in _TARGETS if t not in ("sql", "graphql")
     ]
 
     from provisa.nl.executor import execute as _execute

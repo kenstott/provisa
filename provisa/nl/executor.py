@@ -333,7 +333,24 @@ def _parse_aggregate_funcs(raw: str) -> list[str] | None:
 
 
 def _has_include_nodes(query: str) -> bool:
-    return re.search(r"[?&]includeNodes=(true|1)(&|$)", query) is not None
+    return re.search(r"[?&]includeNodes=[^&]+(&|$)", query) is not None
+
+
+def _include_relations(query: str) -> list[str]:
+    """What the URL's ``nodes`` projection selects (REQ-1408).
+
+    The two surfaces express it differently: JSON:API carries relationships in its own
+    ``?include=rel1,rel2`` (its ``includeNodes`` is a true/1 flag), while REST has no ``include``
+    and puts the whole projection into ``?includeNodes=`` as dot-paths (``id,user.email``). Both
+    forms are what ``grpc_table_to_group_by_graphql_text``'s ``include`` already accepts
+    (query_ir._include_node_fields), so the list passes through unchanged.
+    """
+    m = re.search(r"[?&]include=([^&]+)(&|$)", query)
+    if m is None:
+        m = re.search(r"[?&]includeNodes=([^&]+)(&|$)", query)
+    if m is None or m.group(1) in ("true", "1"):
+        return []
+    return [p.strip() for p in m.group(1).split(",") if p.strip()]
 
 
 async def _execute_jsonapi(query: str, role: str, app_state: Any) -> dict:
@@ -352,6 +369,7 @@ async def _execute_jsonapi(query: str, role: str, app_state: Any) -> dict:
             "jsonapi",
             _parse_aggregate_funcs(m.group(4)),
             _has_include_nodes(query),
+            _include_relations(query),
         )
     m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)\?aggregate=([^&]+)$", query)
     if m is not None:
@@ -376,6 +394,7 @@ async def _execute_openapi(query: str, role: str, app_state: Any) -> dict:
             "openapi",
             _parse_aggregate_funcs(m.group(4)),
             _has_include_nodes(query),
+            _include_relations(query),
         )
     m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)\?aggregate=([^&]+)$", query)
     if m is not None:
@@ -415,6 +434,7 @@ async def _execute_domain_table_aggregate(
     protocol: Literal["jsonapi", "openapi"],
     funcs: list[str] | None = None,
     include_nodes: bool = False,
+    include: list[str] | None = None,
 ) -> dict:
     """REQ-1359: JSON:API/REST aggregate|groupBy params, routed through the same compile_query
     pipeline GraphQL/gRPC aggregate queries use (grpc_table_to_*_graphql_text), then shaped into
@@ -436,7 +456,9 @@ async def _execute_domain_table_aggregate(
     if meta is None:
         raise RuntimeError(f"No table matches {domain_id}/{table_name}")
     if by_columns:
-        graphql_text = _grpc_group_by_graphql_text(ctx, meta.type_name, by_columns, funcs, include_nodes)
+        graphql_text = _grpc_group_by_graphql_text(
+            ctx, meta.type_name, by_columns, funcs, include_nodes, include
+        )
     else:
         graphql_text = _grpc_aggregate_graphql_text(ctx, meta.type_name, funcs)
     if graphql_text is None:

@@ -14501,3 +14501,17 @@ docker-compose.app.yml passes PROVISA_ENGINE through to both the provisa and pro
 **Code:** `docker-compose.app.yml`
 
 **Tests:** `tests/unit/test_infra_requirements.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1408 · Natural Language Query {#REQ-1408}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+NL group-by results support a dot-path `include` projection (`rel.col`, plus bare base-table scalars) instead of only whole-relation names, mirrored consistently across gRPC (`GroupByRequest.include`), JSON:API (`?include=`), and REST (`?includeNodes=` dot-paths). In strict NL mode, the gRPC/JSON:API/OpenAPI/REST query plan is now derived by rewriting the already schema-validated GraphQL branch's query (root field, `by:` argument, `aggregate` and `nodes` sub-selections) rather than re-parsing the compiled SQL, because a GraphQL query with a `nodes` sub-selection compiles to SQL with a subquery in its outer FROM that the SQL-based resolver cannot map back to a table.
+
+**Use case:** An NL group-by question that also asks for specific joined-dimension columns (not every column on the related table) gets identically-scoped projections across every generated protocol surface, instead of some surfaces over-fetching whole relations.
+
+**Code:** `provisa/grpc/query_ir.py`, `provisa/nl/runner.py`, `provisa/nl/executor.py`, `provisa-ui/src/pages/NlPage.tsx`
+
+**Tests:** `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_nl_aggregation_routing.py`

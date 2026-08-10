@@ -321,6 +321,41 @@ class TestQueryIRAggregateText:
         assert text is not None
         assert "nodes" not in text
 
+    def test_group_by_text_include_dot_path_projects_single_relation_column(self):
+        # REQ-1408: include takes REST's ?includeNodes= dot-path form, so only the named
+        # relation column is projected instead of every scalar of the related table.
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(
+            ctx, "Inquiries", ["status"], include_nodes=True, include=["user.email"]
+        )
+        assert text is not None
+        assert "nodes { amount created_at status user { email } }" in text
+
+    def test_group_by_text_include_dot_paths_merge_per_relation_in_order(self):
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(
+            ctx, "Inquiries", ["status"], include_nodes=True, include=["user.email", "user.name"]
+        )
+        assert text is not None
+        assert "nodes { amount created_at status user { email name } }" in text
+
+    def test_group_by_text_include_base_scalars_restrict_node_projection(self):
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(
+            ctx, "Inquiries", ["status"], include_nodes=True, include=["status", "user.email"]
+        )
+        assert text is not None
+        assert "nodes { status user { email } }" in text
+
+    def test_group_by_text_include_unknown_relation_column_is_skipped(self):
+        ctx = self._ctx_with_relation()
+        text = grpc_table_to_group_by_graphql_text(
+            ctx, "Inquiries", ["status"], include_nodes=True, include=["user.nonexistent"]
+        )
+        assert text is not None
+        assert "user" not in text.split("nodes")[1]
+        assert "nodes { amount created_at status }" in text
+
     def test_group_by_text_include_skips_non_many_to_one_relation(self):
         ctx = self._ctx_with_relation()
         text = grpc_table_to_group_by_graphql_text(

@@ -43065,3 +43065,36 @@
     Given provisa.env sets PROVISA_ENGINE=trino
     When the provisa and provisa-ui containers start via docker-compose.app.yml
     Then both containers see PROVISA_ENGINE=trino in their environment and the federation engine selects Trino, not the DuckDB default
+
+- id: REQ-1408
+  status: complete
+  since: 2026-08
+  group: "5. Query Languages, Compilation & Operations"
+  category: Natural Language Query
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    NL group-by results support a dot-path `include` projection (`rel.col`, plus bare base-table
+    scalars) instead of only whole-relation names, mirrored consistently across gRPC
+    (`GroupByRequest.include`), JSON:API (`?include=`), and REST (`?includeNodes=` dot-paths). In
+    strict NL mode, the gRPC/JSON:API/OpenAPI/REST query plan is now derived by rewriting the
+    already schema-validated GraphQL branch's query (root field, `by:` argument, `aggregate` and
+    `nodes` sub-selections) rather than re-parsing the compiled SQL, because a GraphQL query with a
+    `nodes` sub-selection compiles to SQL with a subquery in its outer FROM that the SQL-based
+    resolver cannot map back to a table.
+  use_case: >-
+    An NL group-by question that also asks for specific joined-dimension columns (not every column
+    on the related table) gets identically-scoped projections across every generated protocol
+    surface, instead of some surfaces over-fetching whole relations.
+  code:
+    - provisa/grpc/query_ir.py
+    - provisa/nl/runner.py
+    - provisa/nl/executor.py
+    - provisa-ui/src/pages/NlPage.tsx
+  tests:
+    - tests/unit/test_grpc_aggregates.py
+    - tests/unit/test_nl_aggregation_routing.py
+  scenario: |
+    Given an NL group-by question projecting specific columns from a joined dimension table
+    When the strict GraphQL branch resolves a nodes sub-selection with dot-path columns
+    Then the gRPC, JSON:API, and REST generated queries all request the identical dot-path projection

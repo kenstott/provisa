@@ -160,6 +160,38 @@ def grpc_relation_scalars(ctx: Any, type_name: str, rel_field: str) -> list[str]
     return [c for c, _t in ctx.aggregate_columns.get(join_meta.target.table_id, [])]
 
 
+def _include_node_fields(ctx: Any, meta: Any, include: list[str]) -> list[str]:
+    """The ``nodes { ... }`` selection for a group-by query's ``include`` list (REQ-1408).
+
+    Entries are either a relationship field (``user`` — every scalar of the related table, the
+    REQ-1405 shape), a dot-path (``user.email`` — just that column), or a base-table scalar
+    (``status``). Dot-paths make the gRPC ``include`` accept the same projection REST expresses
+    through ``?includeNodes=id,status,user.email``, so one plan drives both surfaces. Naming no
+    base scalar keeps all of them, which is what ``include_nodes=true`` alone means. Entries that
+    match neither a many-to-one relation nor a known column are skipped, same as an unknown
+    relationship field has always been.
+    """
+    base_scalars = [c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
+    selected_base: list[str] = []
+    rel_columns: dict[str, list[str]] = {}
+    for entry in include:
+        rel, _, column = entry.partition(".")
+        rel_scalars = grpc_relation_scalars(ctx, meta.type_name, rel)
+        if rel_scalars:
+            requested = rel_columns.setdefault(rel, [])
+            for col in [column] if column else rel_scalars:
+                if col in rel_scalars and col not in requested:
+                    requested.append(col)
+        elif not column and entry in base_scalars and entry not in selected_base:
+            selected_base.append(entry)
+
+    fields = [apply_gql_name(c) for c in (selected_base or base_scalars)]
+    for rel, columns in rel_columns.items():
+        if columns:
+            fields.append(f"{rel} {{ {' '.join(apply_gql_name(c) for c in columns)} }}")
+    return fields
+
+
 def grpc_table_to_group_by_graphql_text(
     ctx: Any,
     type_name: str,
@@ -174,9 +206,10 @@ def grpc_table_to_group_by_graphql_text(
     ``funcs`` restricts to a caller-chosen subset of aggregate functions (REQ-1361).
     ``include_nodes`` (REQ-1401) appends a ``nodes { ... }`` sub-selection of the base table's
     scalar columns, mirroring JSON:API/REST's ``?includeNodes=true`` (provisa/api/jsonapi/
-    generator.py::_build_group_by_graphql_query). ``include`` (REQ-1405) names many-to-one
-    relationship fields whose scalar columns nest inside ``nodes`` too, mirroring JSON:API's
-    ``?include=`` sideloading (generator.py::_relationship_scalars)."""
+    generator.py::_build_group_by_graphql_query). ``include`` (REQ-1405/REQ-1408) selects what
+    ``nodes`` projects — many-to-one relationship fields, ``rel.col`` dot-paths, and base-table
+    scalars — mirroring JSON:API's ``?include=`` sideloading and REST's ``?includeNodes=``
+    dot-path list; see ``_include_node_fields``."""
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
@@ -187,10 +220,6 @@ def grpc_table_to_group_by_graphql_text(
     agg_selection = _agg_fields_selection(ctx, meta.table_id, funcs)
     nodes_part = ""
     if include_nodes:
-        node_fields = [apply_gql_name(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
-        for rel in include or []:
-            rel_scalars = grpc_relation_scalars(ctx, meta.type_name, rel)
-            if rel_scalars:
-                node_fields.append(f"{rel} {{ {' '.join(apply_gql_name(c) for c in rel_scalars)} }}")
+        node_fields = _include_node_fields(ctx, meta, include or [])
         nodes_part = f" nodes {{ {' '.join(node_fields)} }}"
     return f"{{ {gb_field}(by: {by_arg}) {{ groupKey aggregate {agg_selection}{nodes_part} }} }}"

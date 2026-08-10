@@ -73,12 +73,19 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
 
 
 def _rewrite_json_build_object_for_trino(sql: str) -> str:
-    """Replace JSON_BUILD_OBJECT(k, v, ...) with JSON_OBJECT('k': v, ...) for Trino."""
+    """Replace JSON_BUILD_OBJECT(k, v, ...) with JSON_OBJECT('k': v, ...) for Trino.
+
+    JSONB_BUILD_OBJECT is the same constructor over Postgres' binary JSON type — Trino registers
+    neither, and its JSON type is the single one — so both spellings rewrite identically.
+    """
     # Parse failure must fail loud: returning input skips the required Trino rewrite.
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_BUILD_OBJECT":
+        if isinstance(node, exp.Anonymous) and node.name.upper() in (
+            "JSON_BUILD_OBJECT",
+            "JSONB_BUILD_OBJECT",
+        ):
             exprs = node.expressions
             # Recurse: transform is pre-order and skips a replaced node's children, so a nested
             # json_build_object would survive unrewritten.

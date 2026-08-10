@@ -411,10 +411,15 @@ function ResultTable({ result }: { result: unknown }) {
     ? rows.slice(Math.max(TOP_LIMIT, rows.length - BOTTOM_LIMIT))
     : [];
 
+  // Cypher/GraphQL group-by rows carry nested maps and lists (a `nodes` collection, a related
+  // entity map); String() renders those as "[object Object]", so serialize them instead.
+  const formatCell = (v: unknown): string =>
+    v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+
   const renderRow = (row: Record<string, unknown>, key: string | number) => (
     <Table.Tr key={key}>
       {columns.map((c, j) => (
-        <Table.Td key={j}>{row[c] == null ? "" : String(row[c])}</Table.Td>
+        <Table.Td key={j}>{formatCell(row[c])}</Table.Td>
       ))}
     </Table.Tr>
   );
