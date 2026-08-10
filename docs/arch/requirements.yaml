@@ -43007,3 +43007,61 @@
     Given SQL that joins a dimension table and projects its columns alongside an aggregate on the base table (e.g. "SELECT users.name, COUNT(inquiries.id) FROM users JOIN inquiries ON users.id = inquiries.user_id GROUP BY users.name")
     When _resolve_aggregation_plan parses this SQL
     Then dim_paths contains the joined-table columns as includeNodes dot-paths (e.g. "user.name"), and JSON:API/OpenAPI's generated query text includes them via includeNodes=, and gRPC's QueryXGroupBy call is shown with include_nodes=true, include=[user]
+- id: REQ-1406
+  status: complete
+  since: 2026-08
+  group: "5. Query Languages, Compilation & Operations"
+  category: Natural Language Query
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Both NL→SQL generation paths produce a best-effort Cypher form alongside SQL. The
+    GraphQL-backed ("strict") path compiles NL to GraphQL first, then reuses the same
+    SQL and Cypher compilation the GraphQL Explorer uses, so join reachability and Cypher
+    shape come from approved schema relationships rather than prompt discipline. The
+    direct-SQL path calls `best_effort_cypher_for_sql` to run the already-generated
+    semantic SQL through the same `semantic_sql_to_cypher` translator once, with no
+    per-query result_limit/params list. Cypher is None (not an error) when the SQL has no
+    Cypher-representable pattern; the SQL result stands on its own either way.
+  use_case: >-
+    A user asking an NL question in the SQL Explorer or NL/SQL editor panel sees a Cypher
+    form of the answer alongside SQL, without needing to separately compose or understand
+    Cypher, matching the existing NL→SQL/Cypher/GraphQL pipeline description.
+  code:
+    - provisa/nl/runner.py
+    - provisa/nl/loop.py
+    - provisa/nl/prompt.py
+    - provisa/nl/job.py
+    - provisa/api/data/endpoint_dev.py
+    - provisa/api/rest/nl_router.py
+  tests:
+    - tests/unit/test_nl_runner.py
+    - tests/e2e/test_bolt_cypher.py
+  scenario: |
+    Given an NL question that maps to a joinable, Cypher-representable query shape
+    When the question is submitted through either the GraphQL-backed or direct-SQL NL path
+    Then the response includes a Cypher form derived from the same compiled SQL, alongside the SQL and (for the GraphQL-backed path) GraphQL forms
+- id: REQ-1407
+  status: complete
+  since: 2026-08
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Cloud Appliance Bootstrap
+  priority: MUST
+  type: behavioral
+  description: >-
+    docker-compose.app.yml passes PROVISA_ENGINE through to both the provisa and
+    provisa-ui containers. Previously the variable was set in provisa.env but not forwarded
+    into the containers' environment, so the federation engine silently fell back to DuckDB
+    instead of the pinned engine (e.g. trino) even when provisa.env correctly specified it.
+  use_case: >-
+    A cloud node deployment that pins PROVISA_ENGINE=trino in provisa.env must actually run
+    against Trino; a silent fallback to DuckDB serves wrong/incomplete data for orgs that
+    depend on Trino-only federation behavior.
+  code:
+    - docker-compose.app.yml
+  tests:
+    - tests/unit/test_infra_requirements.py
+  scenario: |
+    Given provisa.env sets PROVISA_ENGINE=trino
+    When the provisa and provisa-ui containers start via docker-compose.app.yml
+    Then both containers see PROVISA_ENGINE=trino in their environment and the federation engine selects Trino, not the DuckDB default

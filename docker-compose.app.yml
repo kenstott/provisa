@@ -22,7 +22,7 @@ services:
       # they track the same postgres service (parity with the Helm deployment).
       TENANT_DATABASE_URL: "postgresql+asyncpg://${CONFIG_DB_USER:-provisa}:${CONFIG_DB_PASSWORD:-provisa}@${CONFIG_DB_HOST:-postgres}:${CONFIG_DB_PORT:-5432}/${CONFIG_DB_NAME:-provisa}"
       PLATFORM_DATABASE_URL: "postgresql+asyncpg://${CONFIG_DB_USER:-provisa}:${CONFIG_DB_PASSWORD:-provisa}@${CONFIG_DB_HOST:-postgres}:${CONFIG_DB_PORT:-5432}/${CONFIG_DB_NAME:-provisa}"
-      # Federation engine selection (REQ-1266). provisa.env sets PROVISA_ENGINE on the host; without
+      # Federation engine selection (REQ-1407). provisa.env sets PROVISA_ENGINE on the host; without
       # this passthrough the container never sees it and silently falls back to duckdb regardless of
       # the deployment's intended engine pin.
       PROVISA_ENGINE: "${PROVISA_ENGINE:-duckdb}"

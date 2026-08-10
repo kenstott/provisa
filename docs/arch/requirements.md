@@ -14475,3 +14475,29 @@ _resolve_aggregation_plan (provisa/nl/runner.py) must derive includeNodes dot-pa
 **Code:** `provisa/nl/runner.py`, `provisa/grpc/proto_gen.py`, `provisa/grpc/query_ir.py`, `provisa/grpc/server.py`
 
 **Tests:** `tests/unit/test_nl_aggregation_routing.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_grpc_server.py`
+
+### REQ-1406 · Natural Language Query {#REQ-1406}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Both NL→SQL generation paths produce a best-effort Cypher form alongside SQL. The GraphQL-backed ("strict") path compiles NL to GraphQL first, then reuses the same SQL and Cypher compilation the GraphQL Explorer uses, so join reachability and Cypher shape come from approved schema relationships rather than prompt discipline. The direct-SQL path calls `best_effort_cypher_for_sql` to run the already-generated semantic SQL through the same `semantic_sql_to_cypher` translator once, with no per-query result_limit/params list. Cypher is None (not an error) when the SQL has no Cypher-representable pattern; the SQL result stands on its own either way.
+
+**Use case:** A user asking an NL question in the SQL Explorer or NL/SQL editor panel sees a Cypher form of the answer alongside SQL, without needing to separately compose or understand Cypher, matching the existing NL→SQL/Cypher/GraphQL pipeline description.
+
+**Code:** `provisa/nl/runner.py`, `provisa/nl/loop.py`, `provisa/nl/prompt.py`, `provisa/nl/job.py`, `provisa/api/data/endpoint_dev.py`, `provisa/api/rest/nl_router.py`
+
+**Tests:** `tests/unit/test_nl_runner.py`, `tests/e2e/test_bolt_cypher.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1407 · Cloud Appliance Bootstrap {#REQ-1407}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+docker-compose.app.yml passes PROVISA_ENGINE through to both the provisa and provisa-ui containers. Previously the variable was set in provisa.env but not forwarded into the containers' environment, so the federation engine silently fell back to DuckDB instead of the pinned engine (e.g. trino) even when provisa.env correctly specified it.
+
+**Use case:** A cloud node deployment that pins PROVISA_ENGINE=trino in provisa.env must actually run against Trino; a silent fallback to DuckDB serves wrong/incomplete data for orgs that depend on Trino-only federation behavior.
+
+**Code:** `docker-compose.app.yml`
+
+**Tests:** `tests/unit/test_infra_requirements.py`

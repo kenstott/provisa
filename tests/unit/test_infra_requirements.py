@@ -1190,3 +1190,31 @@ class TestREQ876ComposePortParameterization:
                 assert default.isdigit(), (
                     f"{compose.name}: default {default!r} is not a port number"
                 )
+
+
+# ---------------------------------------------------------------------------
+# REQ-1407: docker-compose.app.yml passes PROVISA_ENGINE through to the
+#           provisa and provisa-ui containers, so provisa.env's engine pin
+#           (e.g. trino) is not silently dropped in favor of the duckdb
+#           fallback.
+# ---------------------------------------------------------------------------
+
+
+class TestREQ1407EngineVarPassthrough:
+    """REQ-1407"""
+
+    def test_app_compose_passes_provisa_engine_to_all_services(self):
+        # REQ-1407 — every service in docker-compose.app.yml must forward
+        # PROVISA_ENGINE, or the federation engine silently falls back to duckdb.
+        doc = yaml.safe_load((REPO_ROOT / "docker-compose.app.yml").read_text())
+        services = doc.get("services", {})
+        assert services, "docker-compose.app.yml must define services"
+        for name, svc in services.items():
+            env = svc.get("environment", {})
+            assert "PROVISA_ENGINE" in env, (
+                f"docker-compose.app.yml service {name!r} must pass through PROVISA_ENGINE"
+            )
+            assert env["PROVISA_ENGINE"] == "${PROVISA_ENGINE:-duckdb}", (
+                f"docker-compose.app.yml service {name!r} PROVISA_ENGINE must read from the "
+                "host env with a duckdb default"
+            )
