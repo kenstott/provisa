@@ -44,7 +44,7 @@ from provisa.api.flight.server import ProvisaFlightServer
 from provisa.grpc.auth import AuthInterceptor
 from provisa.security.high_security import KMS_KEY_HEADER, HighSecurityMiddleware
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.e2e]
 
 _KMS_KEY = "arn:aws:kms:us-east-1:000000000000:key/high-security-surfaces"
 

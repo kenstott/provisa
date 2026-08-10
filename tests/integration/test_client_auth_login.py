@@ -27,7 +27,7 @@ import bcrypt
 import pytest
 from fastapi import FastAPI
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.e2e]
 
 _PASSWORD = "pw-login-test"
 _USERNAME = "analyst-user"
