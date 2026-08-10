@@ -172,7 +172,12 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
     # Anything else (fetch/XHR/EventSource: empty; iframe subresource; any
     # non-GET) is an API request and is proxied below — never served index.html.
     if is_spa_navigation(request.method, request.headers):
-        return FileResponse(index)
+        # no-store: an SPA route and an API route can share a path (/admin/ai-models is both a
+        # tab and its own GET endpoint). FileResponse alone sends last-modified/etag with no
+        # Cache-Control, so the browser heuristically caches the shell under that URL and then
+        # answers the tab's fetch() from cache — the API is never reached and the JSON parse
+        # dies on "<!doctype". The shell is per-navigation content; it is never cacheable.
+        return FileResponse(index, headers={"Cache-Control": "no-store"})
 
     # ── API proxy — forward to the provisa API, surfacing its real status ─────
     target = f"{API_BASE_URL}/{full_path}"

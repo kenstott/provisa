@@ -58,3 +58,20 @@ def test_non_get_navigation_never_serves_spa():
     # but the point is a non-GET without the header is never SPA.
     assert is_spa_navigation("POST", {"accept": "text/html"}) is False
     assert is_spa_navigation("PUT", {}) is False
+
+
+def test_spa_shell_is_never_cached(tmp_path, monkeypatch):
+    # /admin/ai-models is both an SPA tab and its own GET endpoint. FileResponse alone sends
+    # last-modified/etag with no Cache-Control, so the browser heuristically caches the shell
+    # under that URL and answers the tab's fetch() from cache — the JSON parse then dies on
+    # "<!doctype" and the tab renders only that SyntaxError.
+    from fastapi.testclient import TestClient
+
+    import provisa.ui_server as ui_server
+
+    (tmp_path / "index.html").write_text("<!doctype html><title>provisa</title>")
+    monkeypatch.setattr(ui_server, "STATIC_DIR", tmp_path)
+    with TestClient(ui_server.app) as client:
+        resp = client.get("/admin/ai-models", headers={"sec-fetch-dest": "document"})
+    assert resp.status_code == 200
+    assert resp.headers["cache-control"] == "no-store"
