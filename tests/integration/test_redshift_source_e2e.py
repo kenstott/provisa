@@ -108,16 +108,33 @@ def _drop(cur, name):
 
 def _seed_redshift() -> None:
     """Create a scratch table on the real cluster and insert 3 rows via psycopg2 (Redshift's
-    leader node speaks the Postgres wire protocol for ordinary DDL/DML — see module docstring)."""
+    leader node speaks the Postgres wire protocol for ordinary DDL/DML — see module docstring).
+
+    Retries the connect for the same DNS/ENI/security-group propagation lag documented in
+    ``_drop_redshift_table``: the fixture's raw-socket TCP-ready check can succeed moments before
+    a full psycopg2 connect from this process still times out. ``connect_timeout`` caps each
+    attempt well below the OS-level TCP connect timeout (which alone can run 60-90s on an
+    unreachable host), so the loop actually gets multiple tries inside the overall deadline
+    instead of exhausting it on one hung attempt.
+    """
     import psycopg2
 
-    conn = psycopg2.connect(
-        host=os.environ["REDSHIFT_HOST"],
-        port=int(os.environ["REDSHIFT_PORT"]),
-        dbname=os.environ["REDSHIFT_DATABASE"],
-        user=os.environ["REDSHIFT_USER"],
-        password=os.environ["REDSHIFT_PASSWORD"],
-    )
+    deadline = time.monotonic() + 120
+    conn = None
+    while conn is None:
+        try:
+            conn = psycopg2.connect(
+                host=os.environ["REDSHIFT_HOST"],
+                port=int(os.environ["REDSHIFT_PORT"]),
+                dbname=os.environ["REDSHIFT_DATABASE"],
+                user=os.environ["REDSHIFT_USER"],
+                password=os.environ["REDSHIFT_PASSWORD"],
+                connect_timeout=10,
+            )
+        except psycopg2.OperationalError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(5)
     conn.autocommit = True
     try:
         cur = conn.cursor()
@@ -131,16 +148,23 @@ def _seed_redshift() -> None:
 
 
 def _drop_redshift_table() -> None:
-    """Drop the scratch table, retrying the connect.
+    """Best-effort drop of the scratch table, retrying the connect.
 
     Same DNS/ENI/security-group propagation lag documented for ``_wait_tcp_ready`` in
     ``redshift_cluster.py`` can still bite a one-shot connect made well after the fixture's initial
     TCP-ready wait — observed here as a bare ``psycopg2.OperationalError: ... Operation timed out``
     in this teardown call despite the same endpoint answering moments earlier in the test body.
+
+    Best-effort like the ``_drop`` catalog helper above: ``redshift_cluster`` deletes the whole
+    workgroup/namespace in its own ``finally`` block right after this runs, so a table this can't
+    reach is destroyed wholesale moments later regardless — not worth failing the test over.
+    ``connect_timeout`` caps each attempt well below the OS-level TCP connect timeout (see
+    ``_seed_redshift``), so the retry loop gets multiple tries instead of exhausting its deadline
+    on one hung attempt.
     """
     import psycopg2
 
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 120
     conn = None
     while conn is None:
         try:
@@ -150,10 +174,11 @@ def _drop_redshift_table() -> None:
                 dbname=os.environ["REDSHIFT_DATABASE"],
                 user=os.environ["REDSHIFT_USER"],
                 password=os.environ["REDSHIFT_PASSWORD"],
+                connect_timeout=10,
             )
         except psycopg2.OperationalError:
             if time.monotonic() >= deadline:
-                raise
+                return
             time.sleep(5)
     conn.autocommit = True
     try:
