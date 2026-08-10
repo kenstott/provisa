@@ -427,7 +427,8 @@ def rewrite_correlated_subqueries_for_trino(sql: str) -> str:  # REQ-066, REQ-06
     if not isinstance(tree, exp.Select):
         return sql
 
-    # Handle sampling wrapper: SELECT * FROM (inner_select) AS alias [LIMIT N]
+    # Handle sampling wrapper: SELECT * FROM (inner_select) AS alias [LIMIT N]. Its CTEs
+    # are hoisted to the outer WITH rather than left local to the derived table.
     exprs = tree.args.get("expressions") or []
     from_clause = tree.args.get("from_")
     if (
@@ -464,6 +465,13 @@ def rewrite_correlated_subqueries_for_trino(sql: str) -> str:  # REQ-066, REQ-06
             new_tree.set("from_", new_from)
             return new_tree.sql(dialect="postgres")
 
+    # Recurse into FROM/JOIN-nested derived tables: correlated subqueries can be buried
+    # inside a derived table's own projection list (e.g. a group-by's nodes aggregation
+    # joined against a nodes subquery), invisible to the top-level scan below, which
+    # only inspects this SELECT's own projection list. Unlike the sampling-wrapper case
+    # above, these CTEs stay local to their derived table rather than hoisting out.
+    tree, recursed = _rewrite_from_join_subqueries(tree)
+
     outer_aliases = _collect_select_aliases(tree)
     cte_defs: list[exp.CTE] = []
     cte_counter = [0]
@@ -480,7 +488,7 @@ def rewrite_correlated_subqueries_for_trino(sql: str) -> str:  # REQ-066, REQ-06
             new_exprs.append(expr)
 
     if not modified:
-        return sql
+        return tree.sql(dialect="postgres") if recursed else sql
 
     new_tree = tree.copy()
     new_tree.set("expressions", new_exprs)
@@ -496,6 +504,63 @@ def rewrite_correlated_subqueries_for_trino(sql: str) -> str:  # REQ-066, REQ-06
             new_tree.set("with_", exp.With(expressions=cte_defs))
 
     return new_tree.sql(dialect="postgres")
+
+
+def _rewrite_from_join_subqueries(tree: exp.Select) -> tuple[exp.Select, bool]:
+    """Recursively rewrite correlated subqueries nested inside FROM/JOIN derived tables.
+
+    The projection-list scan in rewrite_correlated_subqueries_for_trino only sees a
+    SELECT's own top-level expressions; it can't reach a correlated subquery sitting
+    inside a derived table's SELECT one or more FROM/JOIN levels down. Recurse into
+    every FROM/JOIN Subquery's inner SELECT and rewrite it independently — the nested
+    SELECT's own CTEs stay local to that derived table, which is valid SQL.
+    """
+    changed = False
+    new_tree = tree.copy()
+
+    from_clause = new_tree.args.get("from_")
+    if from_clause is not None and isinstance(from_clause.this, exp.Subquery):
+        rewritten_from, sub_changed = _rewrite_subquery_node(from_clause.this)
+        if sub_changed:
+            new_from = from_clause.copy()
+            new_from.set("this", rewritten_from)
+            new_tree.set("from_", new_from)
+            changed = True
+
+    new_joins: list[exp.Join] = []
+    joins_changed = False
+    for join in new_tree.args.get("joins") or []:
+        if isinstance(join.this, exp.Subquery):
+            rewritten_join_subq, sub_changed = _rewrite_subquery_node(join.this)
+            if sub_changed:
+                new_join = join.copy()
+                new_join.set("this", rewritten_join_subq)
+                new_joins.append(new_join)
+                joins_changed = True
+                continue
+        new_joins.append(join)
+    if joins_changed:
+        new_tree.set("joins", new_joins)
+        changed = True
+
+    return new_tree, changed
+
+
+def _rewrite_subquery_node(subq: exp.Subquery) -> tuple[exp.Subquery, bool]:
+    """Apply rewrite_correlated_subqueries_for_trino to a derived table's inner SELECT."""
+    inner = subq.this
+    if not isinstance(inner, exp.Select):
+        return subq, False
+    inner_sql = inner.sql(dialect="postgres")
+    rewritten_inner_sql = rewrite_correlated_subqueries_for_trino(inner_sql)
+    if rewritten_inner_sql == inner_sql:
+        return subq, False
+    rewritten_inner_tree = sqlglot.parse_one(rewritten_inner_sql, read="postgres")
+    if not isinstance(rewritten_inner_tree, exp.Select):
+        return subq, False
+    new_subq = subq.copy()
+    new_subq.set("this", rewritten_inner_tree)
+    return new_subq, True
 
 
 def _collect_select_aliases(select: exp.Select) -> set[str]:
