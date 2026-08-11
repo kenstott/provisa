@@ -70,6 +70,8 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "compacted into Iceberg",
     "logs": "OpenTelemetry log records emitted by Provisa and by the federation engine, "
     "compacted into Iceberg",
+    "org_registry": "The deployment's own tenancy (REQ-1301) — one row per org per org_admin, "
+    "joining the platform-plane org record to the tenant-plane role assignment",
     "queries": "The query spans of the trace stream — one row per statement Provisa executed, "
     "with the table, domain, role, and elapsed time it ran under",
 }
@@ -417,5 +419,14 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "role_id": "Role the statement executed under",
         "query_text": "Statement text",
         "_date": "Partition day the span was compacted into",
+    },
+    "org_registry": {
+        "org_id": "Org the row is about",
+        "org_name": "Display name the org was created under",
+        "provisioning_state": "Where the org is in provisioning — a schema exists only once ready",
+        "created_at": "When the org was created",
+        "org_admin_user_id": "A user holding org_admin in that org, null when nobody does yet",
+        "org_admin_email": "That admin's email",
+        "org_admin_display_name": "That admin's display name",
     },
 }

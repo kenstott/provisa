@@ -799,10 +799,14 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                 "domain_id": "meta",
                 "schema_name": schema_name,
                 "table_name": VIEW_NAME,
+                "description": _TBL_DESC[VIEW_NAME],
             },
             index_elements=["source_id", "schema_name", "table_name"],
             returning="id",
             update_columns=["domain_id"],
+            set_extra=_keep_edited_description(
+                _registered_tables_t.c.description, _TBL_DESC[VIEW_NAME]
+            ),
         )
         cols = await conn.reflect_columns(VIEW_NAME, schema=schema_name)
         for col in cols:
@@ -816,9 +820,13 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                     # A view over the registry has no key of its own — one org appears once per
                     # org_admin — so nothing here is a primary key.
                     "is_primary_key": False,
+                    "description": _COL_DESC[VIEW_NAME][col["column_name"]],
                 },
                 index_elements=["table_id", "column_name"],
                 update_columns=["data_type"],
+                set_extra=_keep_edited_description(
+                    _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
+                ),
             )
     return True
 

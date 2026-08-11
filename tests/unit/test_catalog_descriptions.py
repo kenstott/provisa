@@ -29,6 +29,8 @@ from provisa.api._meta_views import (
     _OPS_REPORT_VIEWS,
 )
 from provisa.api.app_loaders import _META_TABLES
+from provisa.core.org_registry_view import VIEW_COLUMNS as ORG_REGISTRY_COLUMNS
+from provisa.core.org_registry_view import VIEW_NAME as ORG_REGISTRY_VIEW
 from provisa.observability.ops_schema import OPS_TABLES
 
 
@@ -62,6 +64,8 @@ def _exposed_columns() -> dict[str, list[str]]:
         exposed[tbl] = [c for c, _t, _pk in cols]
     for view_name, cols, _ddl in _OPS_VIEWS:
         exposed[view_name] = [c for c, _t, _pk in cols]
+    # REQ-1301: registered by seed_org_registry_view, not by the meta seed's table list.
+    exposed[ORG_REGISTRY_VIEW] = list(ORG_REGISTRY_COLUMNS)
     return exposed
 
 
