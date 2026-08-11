@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 AUDIT_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS query_audit_log (
     id BIGSERIAL PRIMARY KEY,
-    tenant_id UUID,
+    tenant_id TEXT,
     user_id TEXT NOT NULL,
     role_id TEXT NOT NULL,
     query_hash TEXT NOT NULL,

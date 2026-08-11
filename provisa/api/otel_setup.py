@@ -98,13 +98,41 @@ query_counter: Any = None
 query_duration: Any = None
 
 
-def _is_http_endpoint(endpoint: str) -> bool:
-    """Return True when endpoint uses an http:// or https:// scheme (OTLP/HTTP)."""
-    return endpoint.startswith("http://") or endpoint.startswith("https://")
+def _otlp_protocol(configured: str = "") -> str:
+    """Resolve the OTLP transport: OTEL_EXPORTER_OTLP_PROTOCOL, else the config's, else grpc."""
+    protocol = (
+        os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") or configured or "grpc"
+    ).strip().lower()
+    if protocol not in ("grpc", "http/protobuf"):
+        raise ValueError(
+            f"OTLP protocol {protocol!r} is not a transport; use 'grpc' or 'http/protobuf'"
+        )
+    return protocol
 
 
-def _make_span_exporter(endpoint: str):
-    if _is_http_endpoint(endpoint):
+def _is_http_endpoint(endpoint: str, protocol: str = "") -> bool:
+    """Return True when the OTLP transport for `endpoint` is OTLP/HTTP rather than gRPC.
+
+    The URL scheme does not answer this. The OTLP spec writes a gRPC endpoint as
+    ``http://collector:4317`` exactly as it writes an HTTP one as ``http://collector:4318`` —
+    ``OTEL_EXPORTER_OTLP_PROTOCOL`` is what distinguishes them, and it is what every producer
+    of an endpoint in this repo (scripts/provisa, start-ui.sh, the Helm chart) points at a
+    gRPC port with an http:// scheme. Reading the scheme therefore built an HTTP exporter that
+    POSTed every batch to the gRPC port, where the collector resets the connection and the
+    BatchSpanProcessor drops the span — the SaaS node exported nothing at all while its
+    endpoint, its collector and its parquet writer were all healthy.
+
+    Default is grpc, the spec's default; a deployment pointed at an HTTP-only receiver (the
+    otlp2parquet port config/provisa.yaml names, say) declares http/protobuf — in the env var
+    or as `observability.protocol`, which arrives here as `protocol`.
+    """
+    if not endpoint:
+        return False
+    return _otlp_protocol(protocol) == "http/protobuf"
+
+
+def _make_span_exporter(endpoint: str, protocol: str = ""):
+    if _is_http_endpoint(endpoint, protocol):
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
             OTLPSpanExporter as HTTPSpanExporter,
         )
@@ -115,8 +143,8 @@ def _make_span_exporter(endpoint: str):
     return OTLPSpanExporter(endpoint=endpoint, insecure=True)
 
 
-def _make_metric_exporter(endpoint: str):
-    if _is_http_endpoint(endpoint):
+def _make_metric_exporter(endpoint: str, protocol: str = ""):
+    if _is_http_endpoint(endpoint, protocol):
         from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
             OTLPMetricExporter as HTTPMetricExporter,
         )
@@ -127,8 +155,8 @@ def _make_metric_exporter(endpoint: str):
     return OTLPMetricExporter(endpoint=endpoint, insecure=True)
 
 
-def _make_log_exporter(endpoint: str):
-    if _is_http_endpoint(endpoint):
+def _make_log_exporter(endpoint: str, protocol: str = ""):
+    if _is_http_endpoint(endpoint, protocol):
         from opentelemetry.exporter.otlp.proto.http._log_exporter import (
             OTLPLogExporter as HTTPLogExporter,
         )
@@ -140,7 +168,7 @@ def _make_log_exporter(endpoint: str):
 
 
 def attach_otlp_exporters(
-    endpoint: str, service_name: str = "provisa"
+    endpoint: str, service_name: str = "provisa", otlp_protocol: str = ""
 ) -> None:  # REQ-302, REQ-303, REQ-549
     """Attach OTLP exporters to existing providers when endpoint is set at runtime."""
     import logging
@@ -166,11 +194,13 @@ def attach_otlp_exporters(
         if hasattr(provider, "add_span_processor"):
             _delay = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS", 1000))
             _cast(_SdkTracerProvider, provider).add_span_processor(
-                BatchSpanProcessor(_make_span_exporter(endpoint), schedule_delay_millis=_delay)
+                BatchSpanProcessor(
+                    _make_span_exporter(endpoint, otlp_protocol), schedule_delay_millis=_delay
+                )
             )
 
         metric_reader = PeriodicExportingMetricReader(
-            _make_metric_exporter(endpoint),
+            _make_metric_exporter(endpoint, otlp_protocol),
             export_interval_millis=15000,
         )
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
@@ -188,7 +218,9 @@ def attach_otlp_exporters(
         import logging as _logging
 
         log_provider = LoggerProvider(resource=resource)
-        log_provider.add_log_record_processor(BatchLogRecordProcessor(_make_log_exporter(endpoint)))
+        log_provider.add_log_record_processor(
+            BatchLogRecordProcessor(_make_log_exporter(endpoint, otlp_protocol))
+        )
         set_logger_provider(log_provider)
         handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
         _logging.getLogger().addHandler(handler)
@@ -295,8 +327,16 @@ def setup_otel(
             _otel_cfg = (yaml.safe_load(_f) or {}).get("observability", {})
     except Exception:
         pass
-    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or _otel_cfg.get("endpoint", "")
+    env_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    endpoint = env_endpoint or _otel_cfg.get("endpoint", "")
     service_name = os.environ.get("OTEL_SERVICE_NAME") or _otel_cfg.get("service_name", "provisa")
+    # Which OTLP transport the endpoint speaks. Declared, never inferred from the URL — see
+    # _is_http_endpoint. The env var still outranks this; the config states it for deployments
+    # whose endpoint is the file's (config/provisa.yaml names otlp2parquet, which is HTTP-only).
+    # The transport belongs to whichever endpoint won. `observability.protocol` describes the
+    # CONFIG's endpoint (config/provisa.yaml names otlp2parquet, HTTP-only); carrying it onto an
+    # env endpoint would speak HTTP at whatever receiver the deployment actually pointed at.
+    otlp_protocol = "" if env_endpoint else str(_otel_cfg.get("protocol", ""))
     sample_rate = float(_otel_cfg.get("sample_rate", 1.0))
     log_level_name = os.environ.get("OTEL_LOG_LEVEL") or _otel_cfg.get("log_level", "WARNING")
     span_export_delay_millis = int(
@@ -352,7 +392,7 @@ def setup_otel(
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
             _internal_exporter = _make_filtering_exporter(
-                _make_span_exporter(endpoint),
+                _make_span_exporter(endpoint, otlp_protocol),
                 _internal_redact_sql,
                 _internal_redact_attrs,
             )
@@ -371,7 +411,7 @@ def setup_otel(
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
             _support_exporter = _make_filtering_exporter(
-                _make_span_exporter(support_endpoint),
+                _make_span_exporter(support_endpoint, otlp_protocol),
                 _support_redact_sql,
                 _support_redact_attrs,
             )
@@ -397,7 +437,7 @@ def setup_otel(
             from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
             metric_reader = PeriodicExportingMetricReader(
-                _make_metric_exporter(endpoint),
+                _make_metric_exporter(endpoint, otlp_protocol),
                 export_interval_millis=15000,
             )
             meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
@@ -428,7 +468,7 @@ def setup_otel(
 
             log_provider = LoggerProvider(resource=resource)
             log_provider.add_log_record_processor(
-                BatchLogRecordProcessor(_make_log_exporter(endpoint))
+                BatchLogRecordProcessor(_make_log_exporter(endpoint, otlp_protocol))
             )
             set_logger_provider(log_provider)
             _log_provider = log_provider

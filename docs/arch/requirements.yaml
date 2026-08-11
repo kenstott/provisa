@@ -16662,18 +16662,23 @@
   category: OpenTelemetry Instrumentation
   priority: SHOULD
   type: behavioral
-  description: 'Provisa auto-detects OTLP transport from the endpoint URL scheme: `http://` or `https://`
-    schemes use OTLP/HTTP with `/v1/traces`, `/v1/metrics`, and `/v1/logs` path suffixes appended automatically;
-    any other scheme uses OTLP/gRPC with insecure mode.'
-  use_case: URL-scheme-based transport detection lets operators configure the OTLP endpoint without a
-    separate transport config field.
+  description: 'Provisa takes the OTLP transport from an explicit declaration — `OTEL_EXPORTER_OTLP_PROTOCOL`,
+    else `observability.protocol`, else the spec default `grpc`. `http/protobuf` uses OTLP/HTTP with
+    `/v1/traces`, `/v1/metrics` and `/v1/logs` appended; `grpc` uses OTLP/gRPC in insecure mode. An
+    unrecognised value raises. The URL scheme is never read as the transport.'
+  use_case: The OTLP spec writes a gRPC endpoint as `http://collector:4317` exactly as it writes an HTTP
+    one as `http://collector:4318`, so the scheme cannot distinguish them. Inferring it from the scheme
+    built an HTTP exporter that POSTed every batch to the gRPC port, where the collector reset the
+    connection and the batch processor dropped the spans — the SaaS node exported nothing while its
+    endpoint, collector and parquet writer were all healthy, and the ops traces/queries/metrics/logs
+    reports read zero rows.
   code:
   - provisa/api/otel_setup.py
   tests:
   - tests/unit/test_otel_requirements.py
   - tests/integration/test_registration_governance_integration.py
   since: 2026-01
-  scenario: 'Given an OTLP endpoint URL starting with http:// or https://
+  scenario: 'Given an OTLP endpoint whose declared protocol is http/protobuf
 
     When Provisa configures the exporter
 

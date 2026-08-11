@@ -235,6 +235,7 @@ class AppState:
     otel_compact_cron: str = "* * * * *"  # cron for Parquet→Iceberg compaction
     otel_compact_batch_size: int = 1000  # rows per INSERT batch during compaction
     otel_compact_file_chunk: int = 50  # Parquet files processed per compaction chunk
+    otel_compact_max_files_per_run: int = 500  # per-signal file budget for one compaction run
     otel_s3_endpoint: str = "http://minio:9000"  # MinIO/S3 endpoint for compaction
     domain_write_targets: dict[
         str, tuple[str, str]
@@ -667,6 +668,7 @@ async def _load_and_build(
         state.otel_compact_cron = config.observability.compact_cron
         state.otel_compact_batch_size = config.observability.compact_batch_size
         state.otel_compact_file_chunk = config.observability.compact_file_chunk
+        state.otel_compact_max_files_per_run = config.observability.compact_max_files_per_run
         state.otel_snapshot_retention_hours = config.observability.ops_snapshot_retention_hours
         state.otel_s3_endpoint = config.observability.s3_endpoint
 

@@ -196,6 +196,8 @@ spec:
             # obs=collector: export to an operator-supplied OTLP endpoint, deploy no stack.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "{{ .Values.observability.externalEndpoint }}"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "{{ .Values.observability.externalProtocol }}"
             - name: OTEL_SERVICE_NAME
               value: "provisa"
             {{- end }}

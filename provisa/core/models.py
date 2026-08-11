@@ -1140,9 +1140,13 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
 class OtelConfig(BaseModel):  # REQ-545
     """OpenTelemetry tracing configuration.
 
-    endpoint: OTLP gRPC collector address (e.g. http://otel-collector:4317).
+    endpoint: OTLP collector address (e.g. http://otel-collector:4317).
     Empty string means spans are generated but silently dropped.
     Overridden at runtime by OTEL_EXPORTER_OTLP_ENDPOINT env var.
+
+    protocol: which OTLP transport that endpoint speaks — "grpc" (default) or "http/protobuf".
+    The URL cannot answer it: a gRPC endpoint is written http://host:4317 exactly as an HTTP
+    one is written http://host:4318. Overridden by OTEL_EXPORTER_OTLP_PROTOCOL.
 
     service_name: reported service name. Overridden by OTEL_SERVICE_NAME env var.
     sample_rate: fraction of traces to sample (1.0 = 100%).
@@ -1150,6 +1154,9 @@ class OtelConfig(BaseModel):  # REQ-545
     compact_cron: cron expression for the Parquet→Iceberg compaction job (default every minute).
     compact_batch_size: rows per INSERT batch during compaction; reduce for low-memory engines.
     compact_file_chunk: Parquet files processed per compaction chunk; reduce for low-memory environments.
+    compact_max_files_per_run: Parquet files each signal may take in one compaction run. The signals
+        are compacted in a fixed order, so this is what keeps a large backlog in an earlier signal
+        from starving a later one; the remainder is picked up on the next tick.
     ops_snapshot_retention_hours: if set, expire Iceberg snapshots and orphan files older than
         this many hours on each startup. None (default) disables expiry.
     span_export_delay_millis: how often the BatchSpanProcessor flushes spans to the collector
@@ -1164,12 +1171,14 @@ class OtelConfig(BaseModel):  # REQ-545
     """
 
     endpoint: str = ""
+    protocol: str = "grpc"
     service_name: str = "provisa"
     sample_rate: float = 1.0
     log_level: str = "WARNING"
     compact_cron: str = "* * * * *"
     compact_batch_size: int = 10
     compact_file_chunk: int = 50
+    compact_max_files_per_run: int = 500
     ops_snapshot_retention_hours: int | None = None
     span_export_delay_millis: int = 1000
     otlp2parquet_max_age_secs: int = 5

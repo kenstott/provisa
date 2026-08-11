@@ -377,33 +377,50 @@ def test_support_endpoint_enabled_via_config(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# REQ-549 — URL-scheme-based OTLP transport selection
+# REQ-549 — declared OTLP transport selection
 # ---------------------------------------------------------------------------
 
 
-def test_is_http_endpoint_http_scheme():
-    # REQ-549
-    # http:// scheme must be detected as HTTP transport.
+def test_transport_is_declared_not_read_off_the_url_scheme():
+    # REQ-549. http://collector:4317 is how the OTLP spec writes a gRPC endpoint, and it is what
+    # scripts/provisa, start-ui.sh and the Helm chart all export. Deciding from the scheme built
+    # an HTTP exporter that POSTed to the gRPC port, so every batch was reset and dropped.
     from provisa.api.otel_setup import _is_http_endpoint
 
-    assert _is_http_endpoint("http://localhost:4318") is True
+    assert _is_http_endpoint("http://otel-collector:4317") is False
+    assert _is_http_endpoint("https://collector.example.com:4318") is False
 
 
-def test_is_http_endpoint_https_scheme():
+def test_http_transport_comes_from_the_config_or_the_env(monkeypatch):
     # REQ-549
-    # https:// scheme must also be detected as HTTP transport.
     from provisa.api.otel_setup import _is_http_endpoint
 
-    assert _is_http_endpoint("https://collector.example.com:4318") is True
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL", raising=False)
+    assert _is_http_endpoint("http://localhost:4319", "http/protobuf") is True
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
+    assert _is_http_endpoint("http://localhost:4319") is True
+    # The env var outranks the config: an operator repointing at a gRPC collector says so there.
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+    assert _is_http_endpoint("http://localhost:4319", "http/protobuf") is False
 
 
-def test_is_http_endpoint_grpc_scheme():
+def test_an_unset_endpoint_selects_no_transport():
     # REQ-549
-    # Any non-http/https scheme (e.g. bare host:port or grpc://) must NOT be HTTP.
     from provisa.api.otel_setup import _is_http_endpoint
 
-    assert _is_http_endpoint("localhost:4317") is False
-    assert _is_http_endpoint("grpc://localhost:4317") is False
+    assert _is_http_endpoint("") is False
+
+
+def test_an_unknown_protocol_raises_rather_than_guessing(monkeypatch):
+    # REQ-549. Silently treating "http" as either transport is how a collector-shaped typo
+    # became an exporter that dropped every batch without a word.
+    import pytest as _pytest
+
+    from provisa.api.otel_setup import _otlp_protocol
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http")
+    with _pytest.raises(ValueError, match="not a transport"):
+        _otlp_protocol()
 
 
 def test_make_span_exporter_http_appends_path():
@@ -414,7 +431,7 @@ def test_make_span_exporter_http_appends_path():
 
     from provisa.api.otel_setup import _make_span_exporter
 
-    exporter = _make_span_exporter("http://localhost:4318")
+    exporter = _make_span_exporter("http://localhost:4318", "http/protobuf")
     # The exporter stores the endpoint; retrieve it to verify the /v1/traces suffix.
     endpoint = getattr(exporter, "_endpoint", None)
     assert endpoint is not None and endpoint.endswith("/v1/traces"), (
@@ -430,7 +447,7 @@ def test_make_metric_exporter_http_appends_path():
 
     from provisa.api.otel_setup import _make_metric_exporter
 
-    exporter = _make_metric_exporter("http://localhost:4318")
+    exporter = _make_metric_exporter("http://localhost:4318", "http/protobuf")
     endpoint = getattr(exporter, "_endpoint", None)
     assert endpoint is not None and endpoint.endswith("/v1/metrics"), (
         f"Expected /v1/metrics suffix, got: {endpoint}"
@@ -445,7 +462,7 @@ def test_make_log_exporter_http_appends_path():
 
     from provisa.api.otel_setup import _make_log_exporter
 
-    exporter = _make_log_exporter("http://localhost:4318")
+    exporter = _make_log_exporter("http://localhost:4318", "http/protobuf")
     endpoint = getattr(exporter, "_endpoint", None)
     assert endpoint is not None and endpoint.endswith("/v1/logs"), (
         f"Expected /v1/logs suffix, got: {endpoint}"

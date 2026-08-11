@@ -197,6 +197,9 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         "otel": {
             "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
             or otel_cfg.get("endpoint", ""),
+            # REQ-549: the transport that endpoint speaks, declared — the scheme cannot say it.
+            "protocol": os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
+            or otel_cfg.get("protocol", OtelConfig.model_fields["protocol"].default),
             "service_name": os.environ.get("OTEL_SERVICE_NAME")
             or otel_cfg.get("service_name", "provisa"),
             "sample_rate": float(otel_cfg.get("sample_rate", 1.0)),
@@ -214,6 +217,12 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             "compact_file_chunk": int(
                 otel_cfg.get(
                     "compact_file_chunk", OtelConfig.model_fields["compact_file_chunk"].default
+                )
+            ),
+            "compact_max_files_per_run": int(
+                otel_cfg.get(
+                    "compact_max_files_per_run",
+                    OtelConfig.model_fields["compact_max_files_per_run"].default,
                 )
             ),
             "ops_snapshot_retention_hours": otel_cfg.get("ops_snapshot_retention_hours"),
@@ -287,6 +296,10 @@ def _apply_otel(o: dict, updated: list) -> None:
             cfg["observability"]["endpoint"] = o["endpoint"]
             os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = o["endpoint"]
             updated.append("otel.endpoint")
+        if "protocol" in o:
+            cfg["observability"]["protocol"] = o["protocol"]
+            os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = o["protocol"]
+            updated.append("otel.protocol")
         if "service_name" in o:
             cfg["observability"]["service_name"] = o["service_name"]
             os.environ["OTEL_SERVICE_NAME"] = o["service_name"]
@@ -306,6 +319,7 @@ def _apply_otel(o: dict, updated: list) -> None:
         for _k in (
             "compact_batch_size",
             "compact_file_chunk",
+            "compact_max_files_per_run",
             "span_export_delay_millis",
             "otlp2parquet_max_age_secs",
             "collector_batch_timeout_ms",
@@ -338,7 +352,9 @@ def _apply_otel(o: dict, updated: list) -> None:
             from provisa.api.otel_setup import attach_otlp_exporters
 
             service = cfg["observability"].get("service_name", "provisa")
-            attach_otlp_exporters(o["endpoint"], service)
+            attach_otlp_exporters(
+                o["endpoint"], service, str(cfg["observability"].get("protocol", ""))
+            )
     except Exception:
         pass
 

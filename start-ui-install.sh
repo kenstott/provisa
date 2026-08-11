@@ -503,6 +503,9 @@ start_backend() {
       PROVISA_OTEL_S3_ACCESS_KEY="${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
       PROVISA_OTEL_S3_SECRET_KEY="${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
       OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4319"
+      # 4319 is otlp2parquet, which speaks OTLP/HTTP only. The transport is declared, never read
+      # off the scheme (REQ-549) — the default is gRPC, which this receiver does not serve.
+      OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
       OTEL_SERVICE_NAME="provisa"
     )
   fi

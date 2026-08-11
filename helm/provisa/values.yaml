@@ -274,6 +274,10 @@ observability:
   # externalEndpoint exports OTLP to an operator-supplied collector when enabled=false
   # (e.g. http://otel-gateway:4317). Ignored when enabled=true (in-cluster wins).
   externalEndpoint: ""
+  # Which OTLP transport externalEndpoint speaks: "grpc" (default) or "http/protobuf". The URL
+  # cannot say — a gRPC endpoint is written http://host:4317 exactly as an HTTP one is written
+  # http://host:4318 (REQ-549). The in-cluster collector is always reached over gRPC.
+  externalProtocol: "grpc"
 
   otelCollector:
     image: otel/opentelemetry-collector-contrib

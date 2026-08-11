@@ -108,8 +108,8 @@ async def write_audit(pending: PendingAudit | None, status_code: int, state: Any
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
 
+    from provisa.api.org_runtime import current_org
     from provisa.audit.query_log import log_query
-    from provisa.core.meta_rls import current_meta_tenant
     from provisa.encryption.runtime import encryption_service
 
     tenant_db = state.tenant_db
@@ -118,9 +118,14 @@ async def write_audit(pending: PendingAudit | None, status_code: int, state: Any
             "audit write has no tenant database — query_audit_log lives in the org's tenant "
             "schema and the org runtime must be bound before a governed statement runs"
         )
+    # The tenant IS the org (REQ-594): `current_org` when a surface bound one, the default org
+    # otherwise — the same resolution AppState._active_runtime uses to pick the tenant_db this row
+    # is about to land in, so the recorded tenant always names the schema holding the row. The
+    # meta-RLS ContextVar that used to be read here is set by nothing in production, so every
+    # audit row carried a NULL tenant and every ops report showed a NULL tenant column.
     await log_query(
         tenant_db,
-        tenant_id=current_meta_tenant(),
+        tenant_id=current_org.get() or state.org_id,
         user_id=pending.user_id,
         role_id=pending.role_id,
         query_text=pending.query_text,

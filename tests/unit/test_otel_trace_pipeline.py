@@ -285,3 +285,206 @@ class TestAttrKeyMapping:
                 f"Mapping {col!r} → {attr!r} not found in jobs.py source. "
                 "Schema drift: update _OPS_TABLES or _attr_keys."
             )
+
+
+# ---------------------------------------------------------------------------
+# Object-store layout: where each signal's service partition actually sits
+# ---------------------------------------------------------------------------
+
+
+class _FakePaginator:
+    def __init__(self, keys, recorder):
+        self._keys = keys
+        self._recorder = recorder
+
+    def paginate(self, Bucket, Prefix):  # noqa: N803 — boto3's own parameter names
+        self._recorder["prefix"] = Prefix
+        return [{"Contents": [{"Key": k} for k in self._keys if k.startswith(Prefix)]}]
+
+
+class _FakeS3:
+    def __init__(self, keys, recorder):
+        self._keys = keys
+        self._recorder = recorder
+
+    def get_paginator(self, _name):
+        return _FakePaginator(self._keys, self._recorder)
+
+    def get_object(self, Bucket, Key):  # noqa: N803
+        self._recorder.setdefault("fetched", []).append(Key)
+        raise RuntimeError("stop after selection")
+
+
+class TestSignalPartitionLayout:
+    """otlp2parquet nests metrics one level deeper than traces and logs.
+
+    traces/logs land at {signal}/{service}/{date}; metrics land at
+    {signal}/{instrument}/{service}/{date}, because a metric's parquet schema depends on its
+    instrument type. A prefix pinned to {signal}/{service}/ matched no metric file ever written,
+    so the metrics report read zero rows on a node whose writer produced a file every 15 seconds.
+    """
+
+    def _run(self, monkeypatch, signal, keys, max_files=50):
+        import boto3
+
+        from provisa.scheduler import jobs
+
+        recorder: dict = {}
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "provisa")
+        monkeypatch.setattr(boto3, "client", lambda *a, **kw: _FakeS3(keys, recorder))
+        jobs._compact_signal(
+            signal,
+            datetime(2026, 8, 11),
+            "http://minio:9000",
+            "k",
+            "s",
+            "provisa-otel",
+            50,
+            max_files,
+            None,
+        )
+        return recorder
+
+    def test_metrics_are_found_under_the_instrument_segment(self, monkeypatch):
+        key = "metrics/histogram/provisa/year=2026/month=08/day=11/hour=03/a.parquet"
+        recorder = self._run(monkeypatch, "metrics", [key])
+        assert recorder["fetched"] == [key]
+
+    def test_traces_keep_the_service_first_layout(self, monkeypatch):
+        key = "traces/provisa/year=2026/month=08/day=11/hour=03/a.parquet"
+        recorder = self._run(monkeypatch, "traces", [key])
+        assert recorder["fetched"] == [key]
+
+    def test_every_reporting_services_partition_is_compacted(self, monkeypatch):
+        """The federated engine exports its own spans under its own service name. Filtering keys
+        on OTEL_SERVICE_NAME left those files unread and undeleted forever — 26521 of them on the
+        SaaS node — while the traces report showed nothing of what the engine actually did."""
+        key = "traces/trino/year=2026/month=08/day=11/hour=03/a.parquet"
+        recorder = self._run(monkeypatch, "traces", [key])
+        assert recorder["fetched"] == [key]
+
+    def test_one_run_takes_no_more_than_the_per_signal_budget(self, monkeypatch):
+        """The signals are compacted in a fixed order, so an unbounded backlog in an earlier one
+        starves every later one: metrics held the whole run and traces — last in the list — never
+        got a turn, which is why the traces report stayed empty while metrics filled."""
+        pytest.importorskip("pyarrow")
+        import io
+
+        import boto3
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        from provisa.scheduler import jobs
+
+        buf = io.BytesIO()
+        pq.write_table(pa.table({"trace_id": ["a"]}), buf)
+        payload = buf.getvalue()
+
+        keys = [f"traces/provisa/year=2026/month=08/day=11/hour=03/{i}.parquet" for i in range(10)]
+        fetched: list[str] = []
+        deleted: list[str] = []
+
+        class _ReadableS3(_FakeS3):
+            def get_object(self, Bucket, Key):  # noqa: N803
+                fetched.append(Key)
+                return {"Body": io.BytesIO(payload)}
+
+            def delete_objects(self, Bucket, Delete):  # noqa: N803
+                deleted.extend(o["Key"] for o in Delete["Objects"])
+                return {}
+
+        class _DescribingEngine(_FakeEngine):
+            def execute_engine_sync(self, sql, params=None, **kw):
+                super().execute_engine_sync(sql, params, **kw)
+                from provisa.executor.result import QueryResult
+
+                if "SHOW COLUMNS" in sql:
+                    return QueryResult(rows=[("trace_id", "varchar")], column_names=[])
+                return QueryResult(rows=[], column_names=[])
+
+        monkeypatch.setattr(boto3, "client", lambda *a, **kw: _ReadableS3(keys, {}))
+        jobs._compact_signal(
+            "traces",
+            datetime(2026, 8, 11),
+            "http://minio:9000",
+            "k",
+            "s",
+            "provisa-otel",
+            50,
+            3,
+            _DescribingEngine(),
+        )
+        assert fetched == keys[:3]
+        assert deleted == keys[:3]
+
+    def test_another_days_partition_is_not_compacted(self, monkeypatch):
+        key = "traces/provisa/year=2026/month=08/day=10/hour=03/a.parquet"
+        recorder = self._run(monkeypatch, "traces", [key])
+        assert "fetched" not in recorder
+
+
+class _FakeEngine:
+    """Records every statement the compactor sends, so commit count is observable."""
+
+    def __init__(self):
+        self.statements: list[str] = []
+
+    def execute_engine_sync(self, sql, params=None, **kw):
+        assert params is None, (
+            "compaction inlines its literals; a parameterised statement is capped"
+        )
+        self.statements.append(sql)
+        return None
+
+
+class TestInsertCommitAmplification:
+    """Each INSERT is one Iceberg commit, and each commit writes a metadata.json embedding the
+    whole snapshot list. Five rows per statement made the SaaS node write 23857 metadata files —
+    67 GiB — for 30 MiB of trace data, until the root filesystem filled and every commit failed
+    with ICEBERG_COMMIT_ERROR."""
+
+    def _cols(self):
+        return ['"span_name"', '"_date"'], ["CAST(? AS VARCHAR)", "CAST(? AS DATE)"]
+
+    def test_the_configured_batch_size_is_what_runs(self):
+        from provisa.scheduler import jobs
+
+        col_names, placeholders = self._cols()
+        engine = _FakeEngine()
+        rows = [(f"span-{i}", "2026-08-11") for i in range(1000)]
+        jobs._execute_batch_inserts(engine, "traces", rows, col_names, placeholders, 500)
+        assert len(engine.statements) == 2
+
+    def test_no_signal_is_clamped_below_the_configured_size(self, monkeypatch):
+        from provisa.api.app import state
+        from provisa.scheduler import jobs
+
+        monkeypatch.setattr(state, "otel_compact_batch_size", 1000, raising=False)
+        assert jobs._resolve_batch_size("traces") == 1000
+        assert jobs._resolve_batch_size("metrics") == 1000
+
+    def test_a_quote_in_a_span_attribute_cannot_break_out_of_its_literal(self):
+        from provisa.scheduler import jobs
+
+        col_names, placeholders = self._cols()
+        engine = _FakeEngine()
+        jobs._execute_batch_inserts(
+            engine,
+            "traces",
+            [("o'brien'); DROP TABLE x --", "2026-08-11")],
+            col_names,
+            placeholders,
+            100,
+        )
+        assert "'o''brien''); DROP TABLE x --'" in engine.statements[0]
+        assert engine.statements[0].count("INSERT") == 1
+
+    def test_a_long_row_splits_the_statement_before_trinos_query_length_limit(self):
+        from provisa.scheduler import jobs
+
+        col_names, placeholders = self._cols()
+        engine = _FakeEngine()
+        rows = [("x" * 100_000, "2026-08-11") for _ in range(10)]
+        jobs._execute_batch_inserts(engine, "traces", rows, col_names, placeholders, 1000)
+        assert len(engine.statements) > 1
+        assert max(len(s) for s in engine.statements) < 1_000_000

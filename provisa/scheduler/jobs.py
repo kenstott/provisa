@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -112,7 +113,8 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         state.federation_engine is not None,
     )
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
-    file_chunk = getattr(state, "otel_compact_file_chunk", 50)
+    file_chunk = state.otel_compact_file_chunk
+    max_files = state.otel_compact_max_files_per_run
     engine = state.federation_engine
 
     loop = asyncio.get_event_loop()
@@ -130,6 +132,7 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
                 secret_key,
                 otel_bucket,
                 file_chunk,
+                max_files,
                 engine,
             )
         except asyncio.CancelledError:
@@ -150,11 +153,11 @@ def _compact_signal(
     secret_key: str,
     otel_bucket: str,
     file_chunk: int,
+    max_files: int,
     engine,
 ) -> None:
     """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking."""
     import io
-    import os
 
     import boto3
     from botocore.config import Config as BotoConfig
@@ -174,14 +177,32 @@ def _compact_signal(
         config=BotoConfig(signature_version="s3v4"),
     )
 
-    service = os.environ.get("OTEL_SERVICE_NAME", "provisa")
-    prefix = f"{signal}/{service}/{date_glob}"
+    # The service segment is not always the first one under the signal. otlp2parquet writes traces
+    # and logs as {signal}/{service}/{date}, but metrics as {signal}/{instrument}/{service}/{date}
+    # — one level deeper, because a metric's parquet schema depends on its instrument type
+    # (histogram, sum, ...). Listing the signal root and matching the date segment anywhere in the
+    # key covers both layouts without hard-coding either one's depth.
+    #
+    # Every service that reports to the collector is compacted, not just this process. The federated
+    # engine emits its own spans under `traces/trino/`, and a filter on OTEL_SERVICE_NAME left those
+    # files unread and undeleted forever — 26521 of them on the SaaS node — while the traces report
+    # showed nothing of what the engine actually did.
     paginator = s3.get_paginator("list_objects_v2")
     keys = []
-    for page in paginator.paginate(Bucket=otel_bucket, Prefix=prefix):
+    for page in paginator.paginate(Bucket=otel_bucket, Prefix=f"{signal}/"):
         for obj in page.get("Contents", []):
-            if obj["Key"].endswith(".parquet"):
+            if obj["Key"].endswith(".parquet") and date_glob in obj["Key"]:
                 keys.append(obj["Key"])
+
+    # Each signal gets a bounded share of one run. The signals are compacted in a fixed order, so an
+    # unbounded backlog in an earlier one starves every later one: metrics held the whole run and
+    # traces — last in the list — never got a turn, which is why the traces report stayed empty
+    # while metrics filled. Remaining files are picked up by the next tick.
+    if len(keys) > max_files:
+        logger.info(
+            "compact_otel: %s backlog %d files, taking %d this run", signal, len(keys), max_files
+        )
+        keys = keys[:max_files]
 
     if not keys:
         logger.debug("compact_otel: no %s files for %s", signal, date_glob)
@@ -278,6 +299,10 @@ _ATTR_KEYS: dict[str, str] = {
     "query_text": "provisa.query_text",
 }
 _SPAN_ATTRS_MAX: int = 4096
+
+# Trino's query.max-length defaults to 1,000,000 characters. Chunking the generated INSERT well
+# under that keeps one statement — and therefore one Iceberg commit — per chunk.
+_MAX_INSERT_SQL_CHARS: int = 400_000
 
 
 def _build_iceberg_col_defs(signal: str, table: pa.Table) -> list[str]:
@@ -389,14 +414,37 @@ def _build_row(
     return base + tuple(attrs.get(_ATTR_KEYS[ec]) for ec in extra_cols if ec.lower() in engine_cols)
 
 
-def _resolve_batch_size(signal: str) -> int:
-    """Determine INSERT batch size from app state, bounded to safe limits."""
+def _resolve_batch_size(_signal: str) -> int:
+    """Rows per INSERT statement, from `observability.compact_batch_size`.
+
+    The clamp that used to hold this at ten rows — five for traces — was a workaround for the Trino
+    client's parameterised-statement header limit. _execute_batch_inserts inlines its literals now,
+    so the configured size is what runs, and each statement is one Iceberg commit instead of one
+    commit per five spans.
+    """
     from provisa.api.app import state as _state
 
-    batch = min(max(_state.otel_compact_batch_size, 1), 10)
-    if signal == "traces":
-        batch = min(batch, 5)
-    return batch
+    return max(_state.otel_compact_batch_size, 1)
+
+
+def _sql_literal(value) -> str:
+    """Render one INSERT value as a Trino SQL literal."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if math.isnan(value):
+            return "nan()"
+        if math.isinf(value):
+            return "infinity()" if value > 0 else "-infinity()"
+        return repr(value)
+    if isinstance(value, (bytes, bytearray)):
+        return f"X'{value.hex()}'"
+    # Trino string literals have no escape sequences — a doubled quote is the entire rule.
+    return "'" + str(value).replace("'", "''") + "'"
 
 
 def _execute_batch_inserts(
@@ -407,16 +455,31 @@ def _execute_batch_inserts(
     placeholders: list[str],
     batch_size: int,
 ) -> None:
-    """Execute multi-row batch INSERTs into Iceberg through the engine terminal."""
-    row_ph = f"({', '.join(placeholders)})"
-    for i in range(0, len(rows), batch_size):
-        batch = rows[i : i + batch_size]
-        multi_sql = (
-            f"INSERT INTO otel.signals.{signal} ({', '.join(col_names)}) VALUES "
-            + ", ".join([row_ph] * len(batch))
+    """Execute multi-row INSERTs into Iceberg through the engine terminal.
+
+    Values are inlined rather than parameterised. The Trino client carries a parameterised
+    statement in an HTTP header, and that header cap is what held the batch at five rows — one
+    Iceberg commit per five spans, which is how the node accumulated 67 GiB of metadata for 30 MiB
+    of trace data. Inlining takes the header out of the path, so each chunk commits exactly once.
+    """
+    prefix = f"INSERT INTO otel.signals.{signal} ({', '.join(col_names)}) VALUES "
+    values: list[str] = []
+    pending = len(prefix)
+    for row in rows:
+        rendered = (
+            "("
+            + ", ".join(ph.replace("?", _sql_literal(v)) for ph, v in zip(placeholders, row))
+            + ")"
         )
-        flat = [v for row in batch for v in row]
-        engine.execute_engine_sync(multi_sql, flat)
+        over_chars = pending + len(rendered) > _MAX_INSERT_SQL_CHARS
+        if values and (over_chars or len(values) >= batch_size):
+            engine.execute_engine_sync(prefix + ", ".join(values))
+            values = []
+            pending = len(prefix)
+        values.append(rendered)
+        pending += len(rendered) + 2
+    if values:
+        engine.execute_engine_sync(prefix + ", ".join(values))
 
 
 def _expire_iceberg_snapshots(engine, signal: str) -> None:

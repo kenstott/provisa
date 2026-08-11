@@ -31,6 +31,22 @@ def test_app_overlay_does_not_default_the_otlp_endpoint():
     assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
 
 
+def test_app_overlay_passes_the_object_store_the_compactor_reads():
+    # compact_otel_signals returns immediately when the S3 keys are unset — that gate means "native
+    # tier, no object store". Without this passthrough the docker tier asserted the same thing:
+    # otlp2parquet wrote parquet forever, nothing built the `signals` Iceberg tables, and every ops
+    # report (traces, queries, metrics, logs) read zero rows on a node serving real traffic.
+    compose = yaml.safe_load((_REPO / "docker-compose.app.yml").read_text())
+    env = compose["services"]["provisa"]["environment"]
+    assert env["PROVISA_OTEL_S3_ENDPOINT"] == "${PROVISA_OTEL_S3_ENDPOINT:-http://minio:9000}"
+    assert env["PROVISA_OTEL_S3_ACCESS_KEY"] == "${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
+    assert env["PROVISA_OTEL_S3_SECRET_KEY"] == "${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
+    assert env["PROVISA_OTEL_BUCKET"] == "${PROVISA_OTEL_BUCKET:-provisa-otel}"
+    # minio is a core service and minio-init creates the bucket, so the default is always reachable.
+    core = yaml.safe_load((_REPO / "docker-compose.core.yml").read_text())["services"]
+    assert "minio" in core
+
+
 def test_only_the_observability_overlay_defines_the_collector():
     obs = yaml.safe_load((_REPO / "docker-compose.observability.yml").read_text())
     assert "image" in obs["services"]["otel-collector"]

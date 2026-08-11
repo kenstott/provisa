@@ -4,7 +4,7 @@
 #
 # This source code is licensed under the Business Source License 1.1
 
-"""BDD step definitions for REQ-549 — OpenTelemetry OTLP transport auto-detection."""
+"""BDD step definitions for REQ-549 — the declared OpenTelemetry OTLP transport."""
 
 from __future__ import annotations
 
@@ -25,24 +25,25 @@ def shared_data() -> dict:
     "REQ-549 default behaviour",
 )
 def test_req_549_default_behaviour():
-    """OTLP/HTTP transport auto-detection from URL scheme."""
+    """OTLP/HTTP is selected by the declared protocol, never by the URL scheme."""
 
 
-@given(parsers.parse("an OTLP endpoint URL starting with http:// or https://"))
-@given("an OTLP endpoint URL starting with http:// or https://")
+@given(parsers.parse("an OTLP endpoint whose declared protocol is http/protobuf"))
+@given("an OTLP endpoint whose declared protocol is http/protobuf")
 def given_http_endpoint(shared_data):
     endpoint = "http://otel-collector:4318"
     shared_data["endpoint"] = endpoint
-    # Confirm scheme detection classifies this as an HTTP endpoint
-    assert otel_setup._is_http_endpoint(endpoint) is True
+    shared_data["protocol"] = "http/protobuf"
+    assert otel_setup._is_http_endpoint(endpoint, "http/protobuf") is True
 
 
 @when("Provisa configures the exporter")
 def when_configure_exporter(shared_data):
     endpoint = shared_data["endpoint"]
-    shared_data["span_exporter"] = otel_setup._make_span_exporter(endpoint)
-    shared_data["metric_exporter"] = otel_setup._make_metric_exporter(endpoint)
-    shared_data["log_exporter"] = otel_setup._make_log_exporter(endpoint)
+    protocol = shared_data["protocol"]
+    shared_data["span_exporter"] = otel_setup._make_span_exporter(endpoint, protocol)
+    shared_data["metric_exporter"] = otel_setup._make_metric_exporter(endpoint, protocol)
+    shared_data["log_exporter"] = otel_setup._make_log_exporter(endpoint, protocol)
 
 
 def _exporter_endpoint(exporter) -> str:
@@ -73,18 +74,15 @@ def then_http_paths_appended(shared_data):
     assert "http" in type(shared_data["log_exporter"]).__module__
 
 
-def test_is_http_endpoint_http_scheme():
-    """_is_http_endpoint returns True for http:// URLs."""
-    assert otel_setup._is_http_endpoint("http://localhost:4318") is True
+def test_declared_http_protobuf_selects_http():
+    """The declared protocol, not the scheme, is what makes the transport HTTP."""
+    assert otel_setup._is_http_endpoint("http://localhost:4318", "http/protobuf") is True
+    assert otel_setup._is_http_endpoint("https://otel.example.com:4318", "http/protobuf") is True
 
 
-def test_is_http_endpoint_https_scheme():
-    """_is_http_endpoint returns True for https:// URLs."""
-    assert otel_setup._is_http_endpoint("https://otel.example.com:4318") is True
-
-
-def test_is_http_endpoint_grpc_scheme():
-    """_is_http_endpoint returns False for grpc:// URLs."""
+def test_an_http_scheme_alone_is_still_grpc():
+    """http://collector:4317 is how the spec writes a gRPC endpoint — the scheme decides nothing."""
+    assert otel_setup._is_http_endpoint("http://otel-collector:4317") is False
     assert otel_setup._is_http_endpoint("grpc://localhost:4317") is False
 
 
@@ -94,78 +92,77 @@ def test_is_http_endpoint_empty_string():
 
 
 def test_make_span_exporter_http_uses_http_class():
-    """_make_span_exporter with http:// endpoint returns an OTLP/HTTP span exporter."""
-    exporter = otel_setup._make_span_exporter("http://otel-collector:4318")
+    """_make_span_exporter under http/protobuf returns an OTLP/HTTP span exporter."""
+    exporter = otel_setup._make_span_exporter("http://otel-collector:4318", "http/protobuf")
     assert "http" in type(exporter).__module__
 
 
 def test_make_span_exporter_http_path_suffix():
-    """_make_span_exporter appends /v1/traces to an http:// endpoint."""
-    exporter = otel_setup._make_span_exporter("http://otel-collector:4318")
+    """_make_span_exporter appends /v1/traces under http/protobuf."""
+    exporter = otel_setup._make_span_exporter("http://otel-collector:4318", "http/protobuf")
     ep = _exporter_endpoint(exporter)
     assert ep == "http://otel-collector:4318/v1/traces", f"got {ep}"
 
 
 def test_make_span_exporter_https_path_suffix():
-    """_make_span_exporter appends /v1/traces to an https:// endpoint."""
-    exporter = otel_setup._make_span_exporter("https://otel.example.com:4318")
+    """_make_span_exporter appends /v1/traces to an https:// endpoint under http/protobuf."""
+    exporter = otel_setup._make_span_exporter("https://otel.example.com:4318", "http/protobuf")
     ep = _exporter_endpoint(exporter)
     assert ep == "https://otel.example.com:4318/v1/traces", f"got {ep}"
 
 
 def test_make_metric_exporter_http_uses_http_class():
-    """_make_metric_exporter with http:// endpoint returns an OTLP/HTTP metric exporter."""
-    exporter = otel_setup._make_metric_exporter("http://otel-collector:4318")
+    """_make_metric_exporter under http/protobuf returns an OTLP/HTTP metric exporter."""
+    exporter = otel_setup._make_metric_exporter("http://otel-collector:4318", "http/protobuf")
     assert "http" in type(exporter).__module__
 
 
 def test_make_metric_exporter_http_path_suffix():
-    """_make_metric_exporter appends /v1/metrics to an http:// endpoint."""
-    exporter = otel_setup._make_metric_exporter("http://otel-collector:4318")
+    """_make_metric_exporter appends /v1/metrics under http/protobuf."""
+    exporter = otel_setup._make_metric_exporter("http://otel-collector:4318", "http/protobuf")
     ep = _exporter_endpoint(exporter)
     assert ep == "http://otel-collector:4318/v1/metrics", f"got {ep}"
 
 
 def test_make_log_exporter_http_uses_http_class():
-    """_make_log_exporter with http:// endpoint returns an OTLP/HTTP log exporter."""
-    exporter = otel_setup._make_log_exporter("http://otel-collector:4318")
+    """_make_log_exporter under http/protobuf returns an OTLP/HTTP log exporter."""
+    exporter = otel_setup._make_log_exporter("http://otel-collector:4318", "http/protobuf")
     assert "http" in type(exporter).__module__
 
 
 def test_make_log_exporter_http_path_suffix():
-    """_make_log_exporter appends /v1/logs to an http:// endpoint."""
-    exporter = otel_setup._make_log_exporter("http://otel-collector:4318")
+    """_make_log_exporter appends /v1/logs under http/protobuf."""
+    exporter = otel_setup._make_log_exporter("http://otel-collector:4318", "http/protobuf")
     ep = _exporter_endpoint(exporter)
     assert ep == "http://otel-collector:4318/v1/logs", f"got {ep}"
 
 
 def test_make_span_exporter_grpc_uses_grpc_class():
-    """_make_span_exporter with a non-http scheme returns an OTLP/gRPC span exporter."""
-    exporter = otel_setup._make_span_exporter("grpc://otel-collector:4317")
+    """The default transport is gRPC, so an undeclared endpoint gets the gRPC span exporter."""
+    exporter = otel_setup._make_span_exporter("http://otel-collector:4317")
     assert "grpc" in type(exporter).__module__
 
 
 def test_make_metric_exporter_grpc_uses_grpc_class():
-    """_make_metric_exporter with a non-http scheme returns an OTLP/gRPC metric exporter."""
-    exporter = otel_setup._make_metric_exporter("grpc://otel-collector:4317")
+    """The default transport is gRPC, so an undeclared endpoint gets the gRPC metric exporter."""
+    exporter = otel_setup._make_metric_exporter("http://otel-collector:4317")
     assert "grpc" in type(exporter).__module__
 
 
 def test_make_log_exporter_grpc_uses_grpc_class():
-    """_make_log_exporter with a non-http scheme returns an OTLP/gRPC log exporter."""
-    exporter = otel_setup._make_log_exporter("grpc://otel-collector:4317")
+    """The default transport is gRPC, so an undeclared endpoint gets the gRPC log exporter."""
+    exporter = otel_setup._make_log_exporter("http://otel-collector:4317")
     assert "grpc" in type(exporter).__module__
 
 
 def test_http_and_grpc_exporters_are_different_types():
     """HTTP and gRPC span exporters must be distinct classes."""
-    http_exporter = otel_setup._make_span_exporter("http://otel-collector:4318")
-    grpc_exporter = otel_setup._make_span_exporter("grpc://otel-collector:4317")
+    http_exporter = otel_setup._make_span_exporter("http://otel-collector:4318", "http/protobuf")
+    grpc_exporter = otel_setup._make_span_exporter("http://otel-collector:4317", "grpc")
     assert type(http_exporter) is not type(grpc_exporter)
 
 
-def test_https_endpoint_also_uses_http_exporter():
-    """https:// scheme must produce the same OTLP/HTTP exporter class as http://."""
-    http_exporter = otel_setup._make_span_exporter("http://otel-collector:4318")
-    https_exporter = otel_setup._make_span_exporter("https://otel.example.com:4318")
-    assert type(http_exporter) is type(https_exporter)
+def test_an_unknown_protocol_raises_rather_than_guessing():
+    """A collector-shaped typo must stop the exporter, not silently pick a transport."""
+    with pytest.raises(ValueError, match="not a transport"):
+        otel_setup._otlp_protocol("http")

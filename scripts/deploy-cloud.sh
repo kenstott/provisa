@@ -236,6 +236,29 @@ push_obs() {
     | grep -q . || { echo "observability installed but the app exports no OTLP endpoint" >&2; exit 1; }
 }
 
+# The app overlay itself. ${PROVISA_HOME}/compose/docker-compose.app.yml is whatever the release
+# installer wrote, and nothing in this script ever refreshed it — so an env passthrough added to the
+# repo's overlay (the PROVISA_OTEL_S3_* block the OTLP compactor needs, say) reaches the image but
+# never the container, and the fix looks deployed while the node still runs the old environment.
+# Same ordering rule as the extensions: it recreates the stack, so it runs BEFORE the pushes.
+APP_YML="/root/.provisa/compose/docker-compose.app.yml"
+
+push_app() {
+  local want have
+  want="$(shasum -a 256 "$REPO/docker-compose.app.yml" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $APP_YML" | tr -d '\r' | cut -d' ' -f1)"
+  [ -n "$have" ] || { echo "cannot read $APP_YML on the node" >&2; exit 1; }
+  if [ "$want" = "$have" ]; then
+    echo "== app overlay: up to date"
+    return
+  fi
+  echo "== app overlay: updating"
+  scp_node "$REPO/docker-compose.app.yml" /tmp/docker-compose.app.yml
+  ssh_node "sudo cp $APP_YML $APP_YML.bak-\$(date +%s) && sudo cp /tmp/docker-compose.app.yml $APP_YML"
+  echo "== app overlay: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+}
+
 # REQ-1416/REQ-1418: the isolated engine lane. The provisioner ships in the image, but the org
 # engine tab greys the Isolated radio out unless PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE is set in
 # the process, and that variable exists only in docker-compose.isolated-engine.yml — so on a node
@@ -344,18 +367,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    build_api; push_obs; push_isolated; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_api; push_app; push_obs; push_isolated; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    build_cfg; push_obs; push_isolated; push_cfg; restart; verify ;;
+    build_cfg; push_app; push_obs; push_isolated; push_cfg; restart; verify ;;
   all)
-    build_ui; build_api; build_cfg; push_obs; push_isolated; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_ui; build_api; build_cfg; push_app; push_obs; push_isolated; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     reset_state; restart; verify; verify_api; verify_demo ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    build_ui; build_api; build_cfg; push_obs; push_isolated; push_ui; push_api; push_cfg; restart; verify ;;
+    build_ui; build_api; build_cfg; push_app; push_obs; push_isolated; push_ui; push_api; push_cfg; restart; verify ;;
 esac
 echo "== deployed $TARGET"

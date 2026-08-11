@@ -144,6 +144,7 @@ naming:
 observability:
   endpoint: http://localhost:4319
   ops_snapshot_retention_hours: 1
+  protocol: http/protobuf
   sample_rate: 1.0
   service_name: provisa
 relationships:

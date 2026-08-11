@@ -826,7 +826,9 @@ query_audit_log = Table(
     Column(
         "id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
     ),
-    Column("tenant_id", Uuid),
+    # The tenant is the ORG, and an org id is text ("default", "kstott") — not a UUID. Typing this
+    # column UUID meant the only value the audit pipeline could ever store was NULL.
+    Column("tenant_id", Text),
     Column("user_id", Text, nullable=False),
     Column("role_id", Text, nullable=False),
     Column("query_hash", Text, nullable=False),

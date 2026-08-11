@@ -53,8 +53,9 @@ class _Ctx:
 class _CapturingState:
     """An AppState stand-in whose tenant_db records the audit insert."""
 
-    def __init__(self) -> None:
+    def __init__(self, org_id: str = "default") -> None:
         self.tenant_db = object()
+        self.org_id = org_id
 
 
 @pytest.fixture
@@ -65,7 +66,6 @@ def captured(monkeypatch) -> list[dict]:
         rows.append(kwargs)
 
     monkeypatch.setattr("provisa.audit.query_log.log_query", _log_query)
-    monkeypatch.setattr("provisa.core.meta_rls.current_meta_tenant", lambda: "t1")
     monkeypatch.setattr("provisa.encryption.runtime.encryption_service", lambda: None)
     return rows
 
@@ -171,6 +171,26 @@ def test_write_audit_appends_the_completed_statement(captured):
     assert row["status_code"] == 200
     assert row["table_ids"] == [7]
     assert row["duration_ms"] >= 0
+    assert row["tenant_id"] == "default"
+
+
+def test_the_recorded_tenant_is_the_org_that_owns_the_row(captured):
+    """The tenant IS the org (REQ-594). This read the meta-RLS ContextVar, which production sets
+    nowhere, so every row landed with a NULL tenant and every ops report showed a NULL column."""
+    from provisa.api.org_runtime import reset_current_org, set_current_org
+
+    token = set_current_org("kstott")
+    try:
+        asyncio.run(
+            write_audit(
+                PendingAudit("alice", "http", "org_admin", "SELECT 1", [], 0.0),
+                200,
+                _CapturingState(org_id="default"),
+            )
+        )
+    finally:
+        reset_current_org(token)
+    assert captured[0]["tenant_id"] == "kstott"
 
 
 def test_write_audit_on_a_none_record_writes_nothing(captured):
@@ -184,6 +204,7 @@ def test_write_audit_refuses_to_run_without_a_tenant_database(captured):
 
     class _NoTenant:
         tenant_db = None
+        org_id = "default"
 
     pending = PendingAudit("alice", "pgwire", "analyst", "SELECT 1", [], 0.0)
     with pytest.raises(RuntimeError, match="tenant database"):
