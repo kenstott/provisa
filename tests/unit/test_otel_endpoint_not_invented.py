@@ -113,3 +113,34 @@ def test_trino_tracing_uses_the_configured_endpoint(tmp_path, monkeypatch):
     assert "tracing.enabled=true" in props
     assert "otel.exporter.endpoint=http://collector.internal:4317" in props
     assert os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://collector.internal:4317"
+
+
+def _parquet_trace_span_filters() -> list[str]:
+    cfg = yaml.safe_load((_REPO / "observability" / "otel-collector-config.yaml").read_text())
+    pipeline = cfg["service"]["pipelines"]["traces"]
+    assert "otlphttp/parquet" in pipeline["exporters"]
+    assert "filter/parquet_traces" in pipeline["processors"]
+    return cfg["processors"]["filter/parquet_traces"]["traces"]["span"]
+
+
+def test_the_parquet_lane_carries_only_provisa_query_traffic():
+    """REQ-1428: what enters the Iceberg lane is what the ops views read, and nothing else.
+
+    Compaction turns parquet rows into inlined INSERT statements — one Iceberg commit per batch —
+    so the lane's cost is set by its row count. Two sources drowned it: Trino's coordinator, which
+    exports a span per stage/task/split, and asyncpg auto-instrumentation, which exports a span per
+    statement the control plane runs against its own metadata store (1080 of 1134 sampled spans).
+    Neither is read by any view. Ingest outran the per-minute compaction job, the backlog grew
+    without bound, and admin / reports / queries stayed empty while queries were executing.
+    """
+    conditions = _parquet_trace_span_filters()
+    assert 'resource.attributes["service.name"] != "${PROVISA_OTEL_SERVICE_NAME}"' in conditions
+    assert 'instrumentation_scope.name == "opentelemetry.instrumentation.asyncpg"' in conditions
+
+
+def test_the_dev_overlay_does_not_reopen_the_parquet_lane():
+    """The overlay's own trace pipeline is additive. Redefining `traces` replaces the core
+    pipeline's processor list wholesale, which silently drops the filter above and restores the
+    flood on exactly the deployments that enable observability."""
+    dev = yaml.safe_load((_REPO / "observability" / "otel-collector-config.dev.yaml").read_text())
+    assert "traces" not in dev["service"]["pipelines"]

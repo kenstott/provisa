@@ -43790,3 +43790,46 @@
   - REQ-1043
   - REQ-1244
   - REQ-1266
+- id: REQ-1428
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: OpenTelemetry Instrumentation
+  priority: MUST
+  type: behavioral
+  description: >-
+    No OTel signal's compaction backlog may starve another's. The scheduled compaction job drains
+    logs, metrics and traces from the object store into Iceberg, each signal with its own per-run
+    file budget. Draining them one after another in a fixed order made the budget meaningless: on
+    the SaaS node a single run spent minutes on logs and metrics and was killed - by a restart or
+    the node's idle-stop - before traces, last in the order, ever got a turn. Trace rows stopped
+    landing in Iceberg entirely, so the ops queries report read an empty table while fifteen
+    thousand trace files accumulated unconsumed. The three signals are therefore compacted
+    concurrently, and a failure in one still lets the others complete before the error surfaces.
+    Fairness alone does not make the lane sustainable: a run's throughput is set by how fast it
+    reads the object store and how many rows it commits. Each chunk's files are therefore fetched
+    concurrently rather than one round trip at a time, and only telemetry an ops view reads enters
+    the lane at all - the collector drops spans from other services and from asyncpg
+    auto-instrumentation, the control plane's own per-statement database chatter, which measured
+    1080 of every 1134 spans arriving. Those spans remain visible to live trace inspection; they
+    just do not become Iceberg rows.
+  use_case: >-
+    An operator opens admin / reports / queries and sees the queries that just ran, rather than an
+    empty table caused by one signal's backlog monopolising every compaction run.
+  code:
+  - provisa/scheduler/jobs.py
+  - observability/otel-collector-config.yaml
+  - scripts/deploy-cloud.sh
+  tests:
+  - tests/unit/test_otel_compaction_fairness.py
+  - tests/unit/test_otel_endpoint_not_invented.py
+  scenario: |-
+    Given trace, log and metric files are all waiting in the object store
+    And draining the logs alone exceeds the time the process survives
+    When the compaction job runs
+    Then traces are compacted in the same run rather than waiting for logs to finish
+    And the ops queries report returns the spans of queries that have executed
+  related_reqs:
+  - REQ-302
+  - REQ-303
+  - REQ-1425

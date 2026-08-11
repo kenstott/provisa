@@ -243,6 +243,34 @@ push_obs() {
     | grep -q . || { echo "observability installed but the app exports no OTLP endpoint" >&2; exit 1; }
 }
 
+# REQ-1428: the collector's own config, which the overlay bind-mounts from
+# ${PROVISA_HOME}/compose/observability. Only the release installer ever wrote that directory, so a
+# change to observability/*.yaml reached the repo and never the node: the node kept running a
+# collector without REQ-1425's filter, Trino's per-split/per-task span tree poured into the parquet
+# lane, and the compaction job spent every run sweeping tens of thousands of engine-internal files
+# for rows no view reads — while the queries report the filter exists to serve stayed empty. Config
+# is bind-mounted, so a container restart is enough; no stack recreate, no loss of hot-pushed code.
+OBS_CONF_DIR="/root/.provisa/compose/observability"
+
+push_obs_config() {
+  local changed=0 name want have
+  for f in "$REPO"/observability/*.yaml; do
+    name="$(basename "$f")"
+    want="$(shasum -a 256 "$f" | cut -d' ' -f1)"
+    have="$(ssh_node "sudo shasum -a 256 $OBS_CONF_DIR/$name 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)"
+    [ "$want" = "$have" ] && continue
+    scp_node "$f" "/tmp/$name"
+    ssh_node "sudo mkdir -p $OBS_CONF_DIR && sudo cp /tmp/$name $OBS_CONF_DIR/$name"
+    echo "== collector config: updated $name"
+    changed=1
+  done
+  if [ "$changed" = "0" ]; then
+    echo "== collector config: up to date"
+    return
+  fi
+  ssh_node "sudo docker restart compose-otel-collector-1"
+}
+
 # The app overlay itself. ${PROVISA_HOME}/compose/docker-compose.app.yml is whatever the release
 # installer wrote, and nothing in this script ever refreshed it — so an env passthrough added to the
 # repo's overlay (the PROVISA_OTEL_S3_* block the OTLP compactor needs, say) reaches the image but
@@ -374,18 +402,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    build_api; push_app; push_obs; push_isolated; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_api; push_app; push_obs; push_obs_config; push_isolated; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    build_cfg; push_app; push_obs; push_isolated; push_cfg; restart; verify ;;
+    build_cfg; push_app; push_obs; push_obs_config; push_isolated; push_cfg; restart; verify ;;
   all)
-    build_ui; build_api; build_cfg; push_app; push_obs; push_isolated; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_isolated; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     reset_state; restart; verify; verify_api; verify_demo ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    build_ui; build_api; build_cfg; push_app; push_obs; push_isolated; push_ui; push_api; push_cfg; restart; verify ;;
+    build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_isolated; push_ui; push_api; push_cfg; restart; verify ;;
 esac
 echo "== deployed $TARGET"

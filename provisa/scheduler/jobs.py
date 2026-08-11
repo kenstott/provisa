@@ -20,6 +20,7 @@ import logging
 import math
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -34,6 +35,10 @@ if TYPE_CHECKING:
     from provisa.core.models import ScheduledTrigger
 
 logger = logging.getLogger(__name__)
+
+# REQ-1428: concurrent object-store fetches per compaction chunk. Sized to the object store's
+# round-trip latency rather than to CPU — the work is entirely network wait.
+_OTEL_FETCH_WORKERS = 16
 
 
 async def _execute_webhook(
@@ -88,7 +93,6 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     reinserting so re-runs are idempotent. Set OTEL_COMPACT_DATE (YYYY-MM-DD)
     to backfill a specific date.
     """
-    logger.warning("compact_otel: invoked")
     import asyncio
     import os
 
@@ -110,21 +114,17 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         return
 
     s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT") or state.otel_s3_endpoint
-    logger.warning(
-        "compact_otel: starting — s3=%s engine=%s",
-        s3_endpoint,
-        state.federation_engine is not None,
-    )
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
     file_chunk = state.otel_compact_file_chunk
     max_files = state.otel_compact_max_files_per_run
     engine = state.federation_engine
 
     loop = asyncio.get_event_loop()
-    for signal in ("logs", "metrics", "traces"):
-        if loop.is_closed() or not loop.is_running():
-            logger.warning("compact_otel: event loop shutting down, skipping %s", signal)
-            return
+    if loop.is_closed() or not loop.is_running():
+        logger.warning("compact_otel: event loop shutting down, skipping this run")
+        return
+
+    async def _one(signal: str) -> None:
         try:
             await asyncio.to_thread(
                 _compact_signal,
@@ -140,12 +140,18 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
             )
         except asyncio.CancelledError:
             logger.warning("compact_otel: cancelled during shutdown, skipping %s", signal)
-            return
         except RuntimeError as e:
             if "shutdown" in str(e).lower() or "closed" in str(e).lower():
                 logger.warning("compact_otel: executor shutting down, skipping %s", signal)
                 return
             raise
+
+    # Concurrent, not a fixed sequence (REQ-1428): each signal owns its own file budget, but a
+    # sequential run spent minutes on `logs` and `metrics` and was killed — by a restart or the
+    # node's idle-stop — before `traces` ever got a turn. Traces stopped landing in Iceberg
+    # entirely, so the queries report read an empty table while 15k trace files sat in the object
+    # store. Running the three together means no signal's backlog can starve another's.
+    await asyncio.gather(*(_one(s) for s in ("logs", "metrics", "traces")))
 
 
 _DATE_SEG_RE = re.compile(r"year=(\d{4})/month=(\d{2})/day=(\d{2})/")
@@ -193,7 +199,11 @@ def _compact_signal(
         # The object store's own region — R2 requires "auto", MinIO ignores it. Hardcoding
         # us-east-1 here contradicted otel_object_store(), which reads PROVISA_OTEL_S3_REGION.
         region_name=os.environ.get("PROVISA_OTEL_S3_REGION", "us-east-1"),
-        config=BotoConfig(signature_version="s3v4"),
+        # REQ-1428: the pool has to hold every concurrent fetch. botocore defaults to 10, below the
+        # worker count, so the surplus workers' connections were built and discarded on each chunk
+        # ("Connection pool is full, discarding connection") — paying a TLS handshake per file for
+        # the round trips the concurrency exists to amortise.
+        config=BotoConfig(signature_version="s3v4", max_pool_connections=_OTEL_FETCH_WORKERS),
     )
 
     # The service segment is not always the first one under the signal. otlp2parquet writes traces
@@ -262,10 +272,18 @@ def _compact_signal(
         for chunk_start in range(0, len(keys), file_chunk):
             chunk_keys = keys[chunk_start : chunk_start + file_chunk]
             try:
-                parts = []
-                for key in chunk_keys:
+                # REQ-1428: the chunk's objects are fetched concurrently. Read one at a time, a
+                # chunk cost one object-store round trip per file — roughly 50 files a minute
+                # against R2 — so the per-minute run never came close to its 500-file budget and
+                # compaction was slower than ingest. The backlog therefore grew regardless of how
+                # the signals were scheduled, and the traces the queries report reads never
+                # arrived. Order is preserved so a chunk's rows keep their key order.
+                def _read(key: str):
                     obj = s3.get_object(Bucket=otel_bucket, Key=key)
-                    parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
+                    return pq.read_table(io.BytesIO(obj["Body"].read()))
+
+                with ThreadPoolExecutor(max_workers=_OTEL_FETCH_WORKERS) as pool:
+                    parts = list(pool.map(_read, chunk_keys))
                 combined = pa.concat_tables(parts, promote_options="default")
             except Exception:
                 logger.exception(

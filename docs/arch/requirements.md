@@ -14731,3 +14731,31 @@ No registered column is ever persisted without a data type. The catalog rendered
 **Code:** `provisa/core/repositories/table.py`, `provisa/api/admin/_table_ops.py`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/grpc_remote_router.py`, `provisa/core/config_loader.py`, `provisa/govdata/schema_import.py`, `provisa/ddn/mapper.py`
 
 **Tests:** `tests/unit/test_registered_columns_always_typed.py`, `tests/unit/test_view_column_types.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1427 · Multi-Tenancy {#REQ-1427}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An isolated org's sources are provisioned onto its own coordinator even though that coordinator is asleep. The org's engine terminal is deliberately bound with connection kwargs and no open connection, so the dedicated cluster can idle-stop between sessions and wake on real traffic. Source registration is that traffic: the Trino backend's catalog lifecycle - create, drop and analyze - reuses a live terminal connection when there is one and otherwise opens one from the stored kwargs for the duration of the DDL, closing it afterwards and never adopting it as the terminal. Gating the DDL on an open connection alone made registration a silent no-op, so an org that moved to an isolated engine had its catalogs issued nowhere and every query against it failed with CATALOG_NOT_FOUND while the same query succeeded on the shared engine.
+
+**Use case:** An org admin who switches the org to a dedicated engine expects its sources to be queryable immediately, without a manual catalog rebuild or a restart.
+
+**Code:** `provisa/federation/backend.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_isolated_engine_provisioning.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1428 · OpenTelemetry Instrumentation {#REQ-1428}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+No OTel signal's compaction backlog may starve another's. The scheduled compaction job drains logs, metrics and traces from the object store into Iceberg, each signal with its own per-run file budget. Draining them one after another in a fixed order made the budget meaningless: on the SaaS node a single run spent minutes on logs and metrics and was killed - by a restart or the node's idle-stop - before traces, last in the order, ever got a turn. Trace rows stopped landing in Iceberg entirely, so the ops queries report read an empty table while fifteen thousand trace files accumulated unconsumed. The three signals are therefore compacted concurrently, and a failure in one still lets the others complete before the error surfaces. Fairness alone does not make the lane sustainable: a run's throughput is set by how fast it reads the object store and how many rows it commits. Each chunk's files are therefore fetched concurrently rather than one round trip at a time, and only telemetry an ops view reads enters the lane at all - the collector drops spans from other services and from asyncpg auto-instrumentation, the control plane's own per-statement database chatter, which measured 1080 of every 1134 spans arriving. Those spans remain visible to live trace inspection; they just do not become Iceberg rows.
+
+**Use case:** An operator opens admin / reports / queries and sees the queries that just ran, rather than an empty table caused by one signal's backlog monopolising every compaction run.
+
+**Code:** `provisa/scheduler/jobs.py`, `observability/otel-collector-config.yaml`, `scripts/deploy-cloud.sh`
+
+**Tests:** `tests/unit/test_otel_compaction_fairness.py`, `tests/unit/test_otel_endpoint_not_invented.py`

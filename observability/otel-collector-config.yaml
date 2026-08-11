@@ -30,6 +30,14 @@ processors:
     traces:
       span:
         - 'resource.attributes["service.name"] != "${PROVISA_OTEL_SERVICE_NAME}"'
+        # REQ-1428: the control plane's own database traffic. asyncpg auto-instrumentation emits a
+        # span per statement — BEGIN, COMMIT, every SELECT the API makes against its metadata
+        # store — and measured 1080 of every 1134 spans reaching the lane. Compaction inlines rows
+        # into INSERT statements, so that volume cost one Iceberg commit per few hundred spans and
+        # ingest permanently outran the job: the backlog grew, the queries report stayed empty, and
+        # every row of the flood was one no ops view reads. Live inspection keeps them via the dev
+        # overlay's Tempo pipeline; the Iceberg lane carries query spans, not connection chatter.
+        - 'instrumentation_scope.name == "opentelemetry.instrumentation.asyncpg"'
 
 service:
   pipelines:
