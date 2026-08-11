@@ -345,6 +345,32 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         reason_policy="required",  # a deprecation must say why
         expires_policy="optional",  # planned removal date, when known
     ),
+    # The two retrieval tags. Tagging IS the registration — there is no second place to
+    # declare a derived document source, so the tag carries the whole decision.
+    Tag(
+        id="entity",
+        description=(
+            "Column values are entity names — the distinct values become retrieval "
+            "vocabulary for entity matching"
+        ),
+        # Column-only: a vocabulary is drawn from one column's values, and there is no
+        # table-level reading of "these rows are entity names".
+        applies_to=["column"],
+        is_system=True,
+        reason_policy="hidden",  # the tag states its own purpose
+        expires_policy="hidden",  # a declaration about the column, not a countdown
+    ),
+    Tag(
+        id="natural_language",
+        description=(
+            "Column holds prose — extract information with regex, LIKE, ILIKE or "
+            "cosine_similarity rather than equality or range predicates"
+        ),
+        applies_to=["column"],
+        is_system=True,
+        reason_policy="hidden",  # the tag states its own purpose
+        expires_policy="hidden",  # a declaration about the column, not a countdown
+    ),
 )
 
 SYSTEM_TAG_IDS = tuple(tag.id for tag in SYSTEM_TAGS)
