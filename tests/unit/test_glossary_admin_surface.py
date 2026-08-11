@@ -103,8 +103,8 @@ async def _surface(tmp_path, monkeypatch):
                     schema_name="s",
                     table_name="orders",
                     columns=[
-                        Column(name="cust_id", visible_to=[]),
-                        Column(name="order_dt", visible_to=[]),
+                        Column(name="cust_id", data_type="text", visible_to=[]),
+                        Column(name="order_dt", data_type="timestamp", visible_to=[]),
                     ],
                     view_sql="SELECT 1",
                 ),

@@ -23,11 +23,12 @@ import { toSnakeCase } from "../../naming";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
-import { fetchTableUniqueConstraints } from "../../api/admin";
+import { fetchIrTypes, fetchTableUniqueConstraints } from "../../api/admin";
 import type { RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
 import { CDC_TYPES } from "./constants";
+import { IR_TYPES_FALLBACK, toIrType } from "../../irTypes";
 import { isWatermarkEligible, normalizeDomain } from "./helpers";
 
 interface RegisterTableFormProps {
@@ -84,6 +85,18 @@ export function RegisterTableForm({
   const [dataProduct, setDataProduct] = useState(false);
   const [discover, setDiscover] = useState(false); // REQ-252: infer columns from the live source
   const [loadingColumns, setLoadingColumns] = useState(false);
+
+  // REQ-846/REQ-1426: the canonical IR type vocabulary a steward picks from. Registration is the
+  // last point at which a type can be assigned — nothing infers one afterwards — so the list comes
+  // from the backend (provisa/core/ir_types.py) with a static fallback if that fetch fails.
+  const [irTypes, setIrTypes] = useState<string[]>(IR_TYPES_FALLBACK);
+  useEffect(() => {
+    fetchIrTypes()
+      .then((types) => {
+        if (types.length > 0) setIrTypes(types);
+      })
+      .catch(() => setIrTypes(IR_TYPES_FALLBACK));
+  }, []);
 
   const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
     sourceId || null,
@@ -198,6 +211,7 @@ export function RegisterTableForm({
       .filter((c) => c.selected)
       .map((c) => ({
         name: c.name,
+        dataType: c.dataType,
         visibleTo: c.visibleTo,
         writableBy: c.writableBy,
         unmaskedTo: c.unmaskedTo.trim() ? c.unmaskedTo.split(",").map((s) => s.trim()) : [],
@@ -219,6 +233,14 @@ export function RegisterTableForm({
     // REQ-252: with discover on, columns are inferred from the live source, so none need be selected.
     if (!discover && selectedCols.length === 0) {
       setError(t("registerTableForm.errorNoColumnsSelected"));
+      return;
+    }
+    // REQ-1426: a design is not complete until every column carries a data type. Discovery types
+    // what the source can describe; whatever it could not type the steward assigns here, because
+    // nothing infers a type after registration.
+    const untyped = selectedCols.filter((c) => !c.dataType).map((c) => c.name);
+    if (untyped.length > 0) {
+      setError(t("registerTableForm.errorUntypedColumns", { columns: untyped.join(", ") }));
       return;
     }
     try {
@@ -437,12 +459,13 @@ export function RegisterTableForm({
           {t("registerTableForm.columnsLabel")} {loadingColumns && t("registerTableForm.columnsLoading")}
         </Text>
         {columns.length > 0 && (
-          <Table.ScrollContainer minWidth={900}>
+          <Table.ScrollContainer minWidth={1050}>
             <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th></Table.Th>
                   <Table.Th>{t("registerTableForm.colHeaderColumn")}</Table.Th>
+                  <Table.Th>{t("registerTableForm.colHeaderDataType")}</Table.Th>
                   <Table.Th ta="center">{t("registerTableForm.colHeaderPk")}</Table.Th>
                   <Table.Th>{t("registerTableForm.colHeaderVisibleTo")}</Table.Th>
                   <Table.Th>{t("registerTableForm.colHeaderWritableBy")}</Table.Th>
@@ -468,6 +491,21 @@ export function RegisterTableForm({
                       </Table.Td>
                       <Table.Td ff="monospace" fz="sm">
                         {col.name}
+                      </Table.Td>
+                      <Table.Td>
+                        <Select
+                          aria-label={t("registerTableForm.colHeaderDataType")}
+                          placeholder={t("registerTableForm.dataTypePlaceholder")}
+                          data={Array.from(
+                            new Set([...(col.dataType ? [toIrType(col.dataType)] : []), ...irTypes]),
+                          )}
+                          value={col.dataType ? toIrType(col.dataType) : null}
+                          onChange={(v) => updateCol(i, "dataType", v ?? "")}
+                          error={col.selected && !col.dataType}
+                          searchable
+                          allowDeselect={false}
+                          data-testid={`register-table-col-datatype-${col.name}`}
+                        />
                       </Table.Td>
                       <Table.Td ta="center">
                         <Checkbox
@@ -589,7 +627,7 @@ export function RegisterTableForm({
                             />
                           </Table.Td>
                         )}
-                        <Table.Td colSpan={4}>
+                        <Table.Td colSpan={5}>
                           <TextInput
                             value={col.unmaskedTo}
                             onChange={(e) => updateCol(i, "unmaskedTo", e.currentTarget.value)}

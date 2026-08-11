@@ -83,38 +83,103 @@ async def _discover_columns_for_registration(source_id: str, table_name: str) ->
     return _call_discover(adapter, row["type"], row, hints)
 
 
-async def _resolve_ref_type_map(conn, ref_names: set[str]) -> dict[str, str]:
-    """Map column_name -> data_type for columns of registered tables referenced by name/alias."""
-    type_map: dict[str, str] = {}
-    if ref_names:
-        _res = await conn.execute_core(
-            select(table_columns.c.column_name, table_columns.c.data_type)
-            .select_from(
-                table_columns.join(
-                    registered_tables, registered_tables.c.id == table_columns.c.table_id
-                )
-            )
-            .where(
-                or_(
-                    registered_tables.c.table_name.in_(list(ref_names)),
-                    registered_tables.c.alias.in_(list(ref_names)),
-                ),
-                table_columns.c.data_type.is_not(None),
+async def _resolve_ref_schema(conn, ref_names: set[str]) -> dict[str, dict[str, str]]:
+    """Map referenced table/alias name -> {column_name: data_type} for SQLGlot annotation."""
+    schema: dict[str, dict[str, str]] = {}
+    if not ref_names:
+        return schema
+    _res = await conn.execute_core(
+        select(
+            registered_tables.c.table_name,
+            registered_tables.c.alias,
+            table_columns.c.column_name,
+            table_columns.c.data_type,
+        )
+        .select_from(
+            table_columns.join(
+                registered_tables, registered_tables.c.id == table_columns.c.table_id
             )
         )
-        for r in _res.fetchall():
-            type_map.setdefault(r.column_name, r.data_type)
-    return type_map
+        .where(
+            or_(
+                registered_tables.c.table_name.in_(list(ref_names)),
+                registered_tables.c.alias.in_(list(ref_names)),
+            ),
+            table_columns.c.data_type.is_not(None),
+        )
+    )
+    for r in _res.fetchall():
+        for _name in (r.table_name, r.alias):
+            if _name in ref_names:
+                schema.setdefault(_name, {})[r.column_name] = r.data_type
+    return schema
 
 
-async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]) -> list:
+def _annotate_view_output_types(view_sql: str, schema: dict[str, dict[str, str]]) -> dict[str, str]:
+    """Return {output column -> SQL type} for a view, inferred by SQLGlot from `schema`.
+
+    REQ-1426: a projected expression (aggregate, concatenation, CAST, literal) has a knowable type
+    even though its name matches no source column. Name-matching alone could not type those and
+    stamped them ``varchar``; annotation types them properly. Columns SQLGlot cannot type are
+    simply absent from the result — the caller refuses to register them rather than defaulting.
+    """
+    import sqlglot
+    import sqlglot.errors
+    import sqlglot.expressions as exp
+    from sqlglot.optimizer.annotate_types import annotate_types
+    from sqlglot.optimizer.qualify import qualify
+
+    _schema: dict[str, object] = dict(schema)
+    try:
+        tree = sqlglot.parse_one(view_sql, read="postgres")
+        tree = qualify(tree, schema=_schema, dialect="postgres", validate_qualify_columns=False)
+        tree = annotate_types(tree, schema=_schema)
+    except (sqlglot.errors.SqlglotError, KeyError, ValueError):
+        return {}
+    out: dict[str, str] = {}
+    for sel in getattr(tree, "selects", []) or []:
+        # A plain column reference keeps the referenced table's stored spelling verbatim — the
+        # catalog's types must round-trip through a view unchanged; only computed expressions
+        # take the annotator's rendering.
+        _inner = sel.unalias() if isinstance(sel, exp.Alias) else sel
+        if isinstance(_inner, exp.Column):
+            _tbl = schema.get(_inner.table or "")
+            _stored = _tbl.get(_inner.name) if _tbl else None
+            if _stored:
+                out[sel.alias_or_name] = _stored
+                continue
+        _t = sel.type
+        if _t is None or _t.this in (exp.DataType.Type.UNKNOWN, exp.DataType.Type.NULL):
+            continue
+        out[sel.alias_or_name] = _t.sql().lower()
+    return out
+
+
+def _unresolved_columns_result(names: list[str], view_sql_hint: bool) -> "MutationResult":
+    from provisa.api.admin.types import MutationResult
+
+    _where = "the view SQL" if view_sql_hint else "the source"
+    return MutationResult(
+        success=False,
+        message=(
+            f"Cannot register: no data type could be resolved from {_where} for "
+            f"column(s): {', '.join(names)}. Register the referenced tables with types, "
+            "or CAST the projected expression so its type is explicit."
+        ),
+        code="schema.column_types_unresolved",
+        params={"columns": ", ".join(names)},
+    )
+
+
+async def _introspect_view_columns(
+    conn, view_sql: str, default_roles: list[str]
+) -> "tuple[list, MutationResult | None]":
     """Derive a view's columns from its SQL when the caller supplies none.
 
-    Output column names come from the SELECT projection (SQLGlot). Each column's
-    data_type is resolved from the stored columns of the registered tables the view
-    references (by name match), falling back to varchar for expressions/aggregates the
-    type can't be traced to. visible_to defaults to all roles. This makes a view's
-    schema self-describing — the view SQL is the source of truth for its columns.
+    Output column names come from the SELECT projection (SQLGlot). Each column's data_type is
+    inferred by SQLGlot from the stored types of the registered tables the view references. A
+    column whose type cannot be inferred is refused (REQ-1426) — never persisted untyped or
+    stamped with a default — so a view's schema is self-describing and always complete.
     """
     import sqlglot
     import sqlglot.errors
@@ -125,31 +190,36 @@ async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]
     try:
         tree = sqlglot.parse_one(view_sql, read="postgres")
     except sqlglot.errors.ParseError:
-        return []
+        return [], None
     output_names = list(getattr(tree, "named_selects", []) or [])
     if not output_names:
-        return []
+        return [], None
 
     ref_names = {t.name for t in tree.find_all(exp.Table) if t.name}
-    type_map = await _resolve_ref_type_map(conn, ref_names)
-
+    type_map = await _resolve_ref_schema(conn, ref_names)
+    annotated = _annotate_view_output_types(view_sql, type_map)
+    unresolved = [n for n in output_names if n not in annotated]
+    if unresolved:
+        return [], _unresolved_columns_result(unresolved, view_sql_hint=True)
     return [
-        ColumnModel(name=n, data_type=type_map.get(n, "varchar"), visible_to=list(default_roles))
+        ColumnModel(name=n, data_type=annotated[n], visible_to=list(default_roles))
         for n in output_names
-    ]
+    ], None
 
 
-async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
+async def _ensure_view_column_types(
+    conn, view_sql: str, columns: list
+) -> "tuple[list, MutationResult | None]":
     """Fill any null/empty data_type on caller-supplied view columns.
 
-    The admin UI snapshots a view's columns by running its SQL; a column whose type
-    can't be traced (e.g. it references a source not yet introspected) arrives with
-    data_type=None. introspect_tables requires every SQL-catalog column to have a
-    type, so resolve nulls the same way _introspect_view_columns does — from the
-    referenced tables, else varchar — so a view can never be persisted schema-broken.
+    The admin UI snapshots a view's columns by running its SQL; a column whose type can't be
+    traced (e.g. it references a source not yet introspected) arrives with data_type=None.
+    Resolve those the same way _introspect_view_columns does — SQLGlot annotation over the
+    referenced tables' stored types — and refuse the registration when one cannot be resolved
+    (REQ-1426), so a view is never persisted with an untyped or guessed column.
     """
     if not any(getattr(c, "data_type", None) in (None, "") for c in columns):
-        return columns
+        return columns, None
     import sqlglot
     import sqlglot.errors
     import sqlglot.expressions as exp
@@ -159,11 +229,19 @@ async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
     except sqlglot.errors.ParseError:
         tree = None
     ref_names = {t.name for t in tree.find_all(exp.Table) if t.name} if tree else set()
-    type_map = await _resolve_ref_type_map(conn, ref_names)
+    type_map = await _resolve_ref_schema(conn, ref_names)
+    annotated = _annotate_view_output_types(view_sql, type_map)
+    unresolved: list[str] = []
     for c in columns:
         if getattr(c, "data_type", None) in (None, ""):
-            c.data_type = type_map.get(c.name, "varchar")
-    return columns
+            resolved = annotated.get(c.name)
+            if resolved:
+                c.data_type = resolved
+            else:
+                unresolved.append(c.name)
+    if unresolved:
+        return [], _unresolved_columns_result(unresolved, view_sql_hint=True)
+    return columns, None
 
 
 async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult | None]":
@@ -182,10 +260,14 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
     if input.view_sql and not columns:
         async with pool.acquire() as _vc:
             _roles = [r.id for r in (await _vc.execute_core(select(roles.c.id))).fetchall()]
-            columns = await _introspect_view_columns(_vc, input.view_sql, _roles or ["admin"])
+            columns, _err = await _introspect_view_columns(_vc, input.view_sql, _roles or ["admin"])
+            if _err is not None:
+                return [], _err
     elif input.view_sql and columns:
         async with pool.acquire() as _vc:
-            columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
+            columns, _err = await _ensure_view_column_types(_vc, input.view_sql, columns)
+            if _err is not None:
+                return [], _err
     elif getattr(input, "discover", False):
         from provisa.api.admin.types import ColumnInput as _ColInput
         from provisa.discovery.column_inference import merge_discovered_columns
@@ -193,7 +275,12 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
         try:
             discovered = await _discover_columns_for_registration(input.source_id, input.table_name)
         except Exception as e:
-            return [], MutationResult(success=False, message=f"Schema discovery failed: {e}", code="schema.discovery_failed", params={"error": str(e)})
+            return [], MutationResult(
+                success=False,
+                message=f"Schema discovery failed: {e}",
+                code="schema.discovery_failed",
+                params={"error": str(e)},
+            )
         discovered_models = _build_column_models(
             [_ColInput(name=d["name"], data_type=d.get("type"), visible_to=[]) for d in discovered]
         )

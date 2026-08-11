@@ -321,4 +321,53 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         JOIN registered_tables rb ON rb.id = b.table_id
         GROUP BY a.table_id, ra.table_name, b.table_id, rb.table_name
     """,
+    # One row per tag in the registry — how widely it is applied and how much traffic
+    # reaches what it marks. Driven from tags_meta, not the tags table, so the code-defined
+    # system tags (models.SYSTEM_TAGS, which have no rows) are present; a tag nobody has
+    # applied still surfaces, with zeroes. The two aggregates are separate derived tables on
+    # purpose: joining assignments to usage in one pass multiplies each assignment by the
+    # statements that read it, and the counts stop meaning what their names say. Usage counts
+    # DISTINCT statements over DISTINCT tagged tables, so a table carrying the same tag at
+    # table level and on three columns still counts one statement once.
+    "tag_usage": """
+        CREATE OR REPLACE VIEW tag_usage AS
+        SELECT t.id AS id, t.id AS tag_id, t.is_system,
+               COALESCE(a.assignment_count, 0) AS assignment_count,
+               COALESCE(a.sources_tagged, 0) AS sources_tagged,
+               COALESCE(a.tables_tagged, 0) AS tables_tagged,
+               COALESCE(a.columns_tagged, 0) AS columns_tagged,
+               COALESCE(a.relationships_tagged, 0) AS relationships_tagged,
+               COALESCE(a.commands_tagged, 0) AS commands_tagged,
+               COALESCE(a.expiring_count, 0) AS expiring_count,
+               COALESCE(a.expired_count, 0) AS expired_count,
+               COALESCE(q.query_count, 0) AS query_count,
+               COALESCE(q.distinct_users, 0) AS distinct_users,
+               q.last_queried_at AS last_queried_at
+        FROM tags_meta t
+        LEFT JOIN (
+            SELECT tag_id,
+                   COUNT(*) AS assignment_count,
+                   COUNT(DISTINCT source_id) AS sources_tagged,
+                   COUNT(DISTINCT table_id) AS tables_tagged,
+                   COUNT(DISTINCT CASE WHEN object_type = 'column'
+                                       THEN object_key END) AS columns_tagged,
+                   COUNT(DISTINCT relationship_id) AS relationships_tagged,
+                   COUNT(DISTINCT command_name) AS commands_tagged,
+                   SUM(CASE WHEN expires_on IS NOT NULL THEN 1 ELSE 0 END) AS expiring_count,
+                   SUM(CASE WHEN expires_on < CAST(CURRENT_DATE AS TEXT)
+                            THEN 1 ELSE 0 END) AS expired_count
+            FROM tag_assignments
+            GROUP BY tag_id
+        ) a ON a.tag_id = t.id
+        LEFT JOIN (
+            SELECT tt.tag_id,
+                   COUNT(DISTINCT u.id) AS query_count,
+                   COUNT(DISTINCT u.user_id) AS distinct_users,
+                   MAX(u.logged_at) AS last_queried_at
+            FROM (SELECT DISTINCT tag_id, table_id FROM tag_assignments
+                  WHERE table_id IS NOT NULL) tt
+            JOIN ops_table_usage u ON u.table_id = tt.table_id
+            GROUP BY tt.tag_id
+        ) q ON q.tag_id = t.id
+    """,
 }

@@ -74,7 +74,10 @@ def _config(tables: dict[str, list[str]]) -> dict:
                 "domain_id": "sales",
                 "schema": "public",
                 "table": name,
-                "columns": [{"name": c, "visible_to": ["admin"]} for c in columns],
+                # REQ-1426: a design carries a type for every column; the loader assigns none.
+                "columns": [
+                    {"name": c, "data_type": "text", "visible_to": ["admin"]} for c in columns
+                ],
             }
             for name, columns in tables.items()
         ],

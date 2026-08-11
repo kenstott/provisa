@@ -191,6 +191,38 @@ def _model_table_id(model: DDNModel, connector_name: str) -> str:
     return f"{source_id}.public.{collection}"
 
 
+# DDN scalar type name → SQL type, the spelling Column.data_type carries. A type outside this map
+# is an object, enum, or custom scalar, which V1 surfaces as JSON (same rule as the GraphQL remote).
+_DDN_SCALAR_TO_SQL: dict[str, str] = {
+    "String": "varchar",
+    "ID": "varchar",
+    "Uuid": "varchar",
+    "Int": "integer",
+    "Int32": "integer",
+    "Int64": "bigint",
+    "BigInt": "bigint",
+    "Float": "double precision",
+    "Float64": "double precision",
+    "Double": "double precision",
+    "Decimal": "numeric",
+    "Boolean": "boolean",
+    "Bool": "boolean",
+    "Date": "date",
+    "Timestamp": "timestamp",
+    "Timestamptz": "timestamp with time zone",
+    "Json": "jsonb",
+    "Jsonb": "jsonb",
+}
+
+
+def _ddn_field_to_sql_type(ddn_type: str) -> str:  # REQ-1426
+    """Map a DDN field type (e.g. ``String!``, ``[Int!]!``) to the SQL type of its column."""
+    name = ddn_type.strip().rstrip("!")
+    if name.startswith("["):
+        return "jsonb"
+    return _DDN_SCALAR_TO_SQL.get(name, "jsonb")
+
+
 def _map_model_to_table(  # REQ-183, REQ-185, REQ-189
     model: DDNModel,
     ot: DDNObjectType,
@@ -224,6 +256,9 @@ def _map_model_to_table(  # REQ-183, REQ-185, REQ-189
 
         col = Column(
             name=physical_col,
+            # REQ-1426: the ObjectType already carries the field's type — dropping it persisted an
+            # untyped column the catalog rendered as "unknown".
+            data_type=_ddn_field_to_sql_type(ot.fields[gql_field]),
             visible_to=sorted(visible_to),
         )
         if gql_field != physical_col:

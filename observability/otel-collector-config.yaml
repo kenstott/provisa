@@ -20,12 +20,22 @@ exporters:
 processors:
   batch:
     timeout: ${OTEL_COLLECTOR_BATCH_TIMEOUT}
+  # REQ-1425: the parquet lane feeds otel.signals.traces, whose readers (the ops queries report and
+  # the trace views) select on service_name = the Provisa service. Trino's coordinator exports a
+  # span per query stage/task/split to the same endpoint, which was ~2/3 of the parquet files the
+  # per-minute compaction job had to sweep — for rows no view ever reads. Those spans still reach
+  # the trace backend in the dev overlay; they just do not enter the Iceberg lane.
+  filter/parquet_traces:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["service.name"] != "${PROVISA_OTEL_SERVICE_NAME}"'
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [filter/parquet_traces, batch]
       exporters: [otlphttp/parquet, debug]
     metrics:
       receivers: [otlp]

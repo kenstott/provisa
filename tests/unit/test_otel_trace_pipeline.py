@@ -422,6 +422,64 @@ class TestSignalPartitionLayout:
         recorder = self._run(monkeypatch, "traces", [key])
         assert "fetched" not in recorder
 
+    def test_the_scheduled_run_drains_earlier_dates_oldest_first(self, monkeypatch):
+        """The scheduled job pins no date. Listing only today's partition was an unbounded leak:
+        once a file's date segment rolled over it was never listed again, so it was never inserted
+        and never deleted — 70586 such files (15 GiB under traces/trino/) accumulated on the SaaS
+        node and filled the coordinator's disk. Oldest first, so the backlog drains from the tail
+        instead of being permanently outrun by the current partition."""
+        import boto3
+
+        from provisa.scheduler import jobs
+
+        old = "traces/provisa/year=2026/month=08/day=09/hour=03/a.parquet"
+        new = "traces/provisa/year=2026/month=08/day=11/hour=03/b.parquet"
+        recorder: dict = {}
+        monkeypatch.setattr(boto3, "client", lambda *a, **kw: _FakeS3([new, old], recorder))
+        jobs._compact_signal(
+            "traces", None, "http://minio:9000", "k", "s", "provisa-otel", 50, 50, None
+        )
+        assert recorder["fetched"] == [old]  # raised before reaching the newer date
+
+    def test_each_batch_lands_in_its_own_keys_date_partition(self, monkeypatch):
+        """Draining a backlog must not misfile an earlier day's spans under today — each batch
+        carries its own key's date into the `_date` partition."""
+        pytest.importorskip("pyarrow")
+        import io
+
+        import boto3
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        from provisa.scheduler import jobs
+
+        buf = io.BytesIO()
+        pq.write_table(pa.table({"trace_id": ["a"]}), buf)
+        payload = buf.getvalue()
+        keys = [
+            "traces/provisa/year=2026/month=08/day=09/hour=03/a.parquet",
+            "traces/provisa/year=2026/month=08/day=11/hour=03/b.parquet",
+        ]
+
+        class _ReadableS3(_FakeS3):
+            def get_object(self, Bucket, Key):  # noqa: N803
+                return {"Body": io.BytesIO(payload)}
+
+            def delete_objects(self, Bucket, Delete):  # noqa: N803
+                return {}
+
+        dates: list = []
+        monkeypatch.setattr(boto3, "client", lambda *a, **kw: _ReadableS3(keys, {}))
+        monkeypatch.setattr(
+            jobs,
+            "_insert_otel_iceberg",
+            lambda engine, signal, table, date_val: dates.append(date_val),
+        )
+        jobs._compact_signal(
+            "traces", None, "http://minio:9000", "k", "s", "provisa-otel", 50, 50, None
+        )
+        assert dates == [datetime(2026, 8, 9), datetime(2026, 8, 11)]
+
 
 class _FakeEngine:
     """Records every statement the compactor sends, so commit count is observable."""
@@ -547,3 +605,165 @@ class TestPipelineSpanAttributes:
         )
         await _pipeline._execute_plan(plan, state=_State())
         assert seen["span_attrs"] == attrs
+
+
+class TestOtelStorageReclamation:
+    """Expiring snapshots alone does NOT free space — it only unlinks them; the files an expired
+    snapshot referenced become unreferenced, and ONLY remove_orphan_files deletes those. Nothing
+    ran it, so the SaaS node reached 57 GiB of metadata behind 93 MiB of data and filled the
+    coordinator's disk. Trino floors both retentions at 7 days and REJECTS a shorter threshold
+    outright, so the configured value only applies if the catalog session properties are set with
+    the statement."""
+
+    async def _run(self, monkeypatch, retention):
+        from provisa.api import app as app_module
+        from provisa.scheduler import jobs
+
+        calls: list[tuple[str, dict]] = []
+
+        class _Engine:
+            def execute_engine_sync(self, sql, params=None, *, session_hints=None):
+                calls.append((sql, session_hints))
+
+        monkeypatch.setattr(app_module.state, "otel_snapshot_retention_hours", retention)
+        monkeypatch.setattr(app_module.state, "federation_engine", _Engine())
+        await jobs.reclaim_otel_storage()
+        return calls
+
+    async def test_orphan_files_are_removed_not_just_snapshots_expired(self, monkeypatch):
+        calls = await self._run(monkeypatch, 1)
+        for signal in ("logs", "metrics", "traces"):
+            assert any(
+                f"otel.signals.{signal} EXECUTE remove_orphan_files" in sql for sql, _ in calls
+            )
+            assert any(f"otel.signals.{signal} EXECUTE expire_snapshots" in sql for sql, _ in calls)
+
+    async def test_the_configured_retention_overrides_trinos_seven_day_floor(self, monkeypatch):
+        calls = await self._run(monkeypatch, 1)
+        for sql, hints in calls:
+            assert "retention_threshold => '1h'" in sql
+            proc = "expire_snapshots" if "expire_snapshots" in sql else "remove_orphan_files"
+            assert hints == {f"otel.{proc}_min_retention": "1h"}
+
+    async def test_no_configured_retention_reclaims_nothing(self, monkeypatch):
+        assert await self._run(monkeypatch, None) == []
+
+
+# ---------------------------------------------------------------------------
+# DIRECT + admin terminals — span coverage for the ops `queries` report
+# ---------------------------------------------------------------------------
+
+
+@_skip_otel
+class TestNonEngineTerminalsAreReported:
+    """The ops `queries` report selects spans named provisa.query.*. Only the ENGINE terminal
+    emitted one, so a single-source (pushed-down) statement and every meta/ops statement executed
+    without ever appearing in the report — the report read zero rows on a node that had served
+    hundreds of audited queries."""
+
+    class _Pool:
+        def has(self, source_id):
+            return True
+
+        async def execute(self, source_id, sql, params):
+            from provisa.executor.result import QueryResult
+
+            return QueryResult(rows=[(1,)], column_names=["id"])
+
+    _ATTRS = {"provisa.table": "pets", "provisa.domain": "pet-store", "provisa.role": "analyst"}
+
+    async def test_direct_terminal_emits_an_attributed_query_span(self, otel_spans):
+        from provisa.executor.direct import execute_direct
+
+        await execute_direct(self._Pool(), "pg", "SELECT 1", None, self._ATTRS)
+        target = next(
+            (s for s in otel_spans.get_finished_spans() if s.name == "provisa.query.direct"), None
+        )
+        assert target is not None, [s.name for s in otel_spans.get_finished_spans()]
+        assert target.attributes.get("provisa.table") == "pets"
+        assert target.attributes.get("provisa.role") == "analyst"
+
+    async def test_unattributed_direct_execution_keeps_the_plain_span_name(self, otel_spans):
+        from provisa.executor.direct import execute_direct
+
+        await execute_direct(self._Pool(), "pg", "SELECT 1")
+        names = [s.name for s in otel_spans.get_finished_spans()]
+        assert "direct.execute" in names
+        assert "provisa.query.direct" not in names
+
+    async def test_engine_runtime_forwards_span_attrs_to_the_native_terminal(self, otel_spans):
+        from provisa.federation.runtime import EngineRuntime
+
+        captured: dict = {}
+
+        async def _fake(pool, source_id, sql, params=None, span_attrs=None):
+            captured["span_attrs"] = span_attrs
+
+        runtime = EngineRuntime.__new__(EngineRuntime)
+        runtime.execute_native = _fake  # type: ignore[method-assign]
+        from provisa.transpiler.router import Route
+
+        class _Decision:
+            route = Route.DIRECT
+            source_id = "pg"
+
+        await runtime.execute(
+            _Decision(), "SELECT 1", None, source_pools=self._Pool(), span_attrs=self._ATTRS
+        )
+        assert captured["span_attrs"] == self._ATTRS
+
+    def test_the_direct_plan_carries_the_span_attributes(self):
+        """Both planners' DIRECT branches must set span_attrs; only their ENGINE branches did."""
+        import inspect
+
+        from provisa.pgwire import _pipeline
+
+        for fn in (_pipeline._govern_and_route, _pipeline._govern_and_route_compiled):
+            src = inspect.getsource(fn)
+            assert src.count("span_attrs=_plan_span_attrs(") == 2, fn.__name__
+
+    async def test_admin_terminal_emits_an_attributed_query_span(self, otel_spans):
+        from contextlib import asynccontextmanager
+
+        from provisa.pgwire._pipeline import _Plan, _run_plan_terminal
+        from provisa.transpiler.router import Route
+
+        class _Row(dict):
+            def keys(self):
+                return ["n"]
+
+            def __iter__(self):
+                return iter([1])
+
+        class _Conn:
+            async def fetch(self, sql):
+                return [_Row()]
+
+        class _TenantDB:
+            @asynccontextmanager
+            async def acquire(self):
+                yield _Conn()
+
+        class _Pools:
+            def has(self, source_id):
+                return False
+
+        class _State:
+            tenant_db = _TenantDB()
+            source_pools = _Pools()
+            source_types: dict = {}
+            federation_engine = None
+
+        plan = _Plan(
+            route=Route.DIRECT,
+            sql="SELECT 1 AS n",
+            source_id="provisa-admin",
+            dialect="postgres",
+            span_attrs=self._ATTRS,
+        )
+        await _run_plan_terminal(plan, _State())
+        target = next(
+            (s for s in otel_spans.get_finished_spans() if s.name == "provisa.query.postgres"), None
+        )
+        assert target is not None, [s.name for s in otel_spans.get_finished_spans()]
+        assert target.attributes.get("provisa.table") == "pets"

@@ -51,6 +51,7 @@ def _ungrant_control_plane(role_ids: list[str] | None, control_plane: set[str]) 
     """
     return [r for r in (role_ids or []) if r not in control_plane]
 
+
 _COLUMN_PROJECTION = [
     table_columns.c.column_name,
     table_columns.c.data_type,
@@ -203,6 +204,15 @@ async def upsert(
             f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw
         ]
         _data_type = getattr(col, "data_type", None) or _existing_types.get(col.name)
+        # REQ-1426: a column without a type is not registrable. Every writer resolves the type
+        # before it gets here (source introspection, SQLGlot annotation for views, the remote
+        # mappers' own type maps); persisting NULL made the catalog render "unknown" and left the
+        # SQL layer with no type to compile against. Refuse loudly at the last gate.
+        if not _data_type:
+            raise ValueError(
+                f"column {table.table_name}.{col.name} has no data_type; "
+                "resolve the type at registration — an untyped column cannot be persisted"
+            )
         await conn.execute_core(
             table_columns.insert().values(
                 table_id=table_id,

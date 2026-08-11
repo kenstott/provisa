@@ -119,7 +119,11 @@ async def test_upsert_replaces_by_name(tmp_path):
             await metric_repo.upsert(conn, Metric(name="gmv", expression="SUM(orders.amount)"))
             await metric_repo.upsert(
                 conn,
-                Metric(name="gmv", expression="SUM(orders.amount) + SUM(orders.tax)", datatype="decimal"),
+                Metric(
+                    name="gmv",
+                    expression="SUM(orders.amount) + SUM(orders.tax)",
+                    datatype="decimal",
+                ),
             )
             rows = await metric_repo.list_all(conn)
     assert len(rows) == 1
@@ -185,7 +189,7 @@ async def _seed_semantic_layer(conn):
             domain_id="sales",
             schema_name="public",
             table_name=name,
-            columns=[Column(name=c, visible_to=["*"]) for c in cols],
+            columns=[Column(name=c, data_type="text", visible_to=["*"]) for c in cols],
         )
 
     await table_repo.upsert(conn, _tbl("orders", ["amount", "refunds", "customer_id"]))
@@ -282,7 +286,9 @@ async def test_metric_upsert_regenerates_dependent_view_sql(tmp_path):
             await table_repo.upsert(conn, model)
 
             # unrelated metric → nothing regenerates
-            await metric_repo.upsert(conn, Metric(name="order_count", expression="COUNT(orders.amount)"))
+            await metric_repo.upsert(
+                conn, Metric(name="order_count", expression="COUNT(orders.amount)")
+            )
             assert await regenerate_metric_views(conn, "order_count") == []
 
             # the referenced metric changes → the stored view SQL is regenerated

@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-549 — OpenTelemetry Instrumentation
-  # Provisa takes the OTLP transport from an explicit declaration — OTEL_EXPORTER_OTLP_PROTOCOL, else observability.protoc…
+  # Provisa takes the OTLP transport from an explicit declaration — `OTEL_EXPORTER_OTLP_PROTOCOL`, else `observability.proto…
 
   Scenario: REQ-549 default behaviour
     Given an OTLP endpoint whose declared protocol is http/protobuf

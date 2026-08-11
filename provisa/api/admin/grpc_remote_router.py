@@ -193,16 +193,25 @@ async def _register_schema(  # REQ-325, REQ-326, REQ-599
                 for d in defs
             ]
 
+        # REQ-1426: ColumnDef.type is already the resolved SQL type (mapper._proto_field_to_sql
+        # maps every proto field, repeated or message included). Dropping it here wrote NULL
+        # data_type rows the catalog rendered as "unknown".
         output_cols = [
             Column(
                 name=c.name,
                 visible_to=[],
+                data_type=c.type,
                 object_fields=_col_def_to_object_fields(c.object_fields),
             )
             for c in q.columns
         ]
         nf_cols = [
-            Column(name=f"_nf_{c.name}", visible_to=[], native_filter_type="grpc_input")
+            Column(
+                name=f"_nf_{c.name}",
+                visible_to=[],
+                data_type=c.type,
+                native_filter_type="grpc_input",
+            )
             for c in q.input_fields
         ]
         tbl = Table(

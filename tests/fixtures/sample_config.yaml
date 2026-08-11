@@ -57,10 +57,13 @@ tables:
         data_type: integer
         visible_to: [org_admin, analyst]
       - name: name
+        data_type: varchar
         visible_to: [org_admin, analyst]
       - name: email
+        data_type: varchar
         visible_to: [org_admin]
       - name: region
+        data_type: varchar
         visible_to: [org_admin, analyst]
   - source_id: sales-pg
     domain_id: product-catalog
@@ -71,10 +74,13 @@ tables:
         data_type: integer
         visible_to: [org_admin, analyst]
       - name: name
+        data_type: varchar
         visible_to: [org_admin, analyst]
       - name: price
+        data_type: numeric
         visible_to: [org_admin]
       - name: category
+        data_type: varchar
         visible_to: [org_admin, analyst]
 
 relationships:

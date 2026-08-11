@@ -157,12 +157,21 @@ class EngineRuntime:  # REQ-825, REQ-840
             yield conn
 
     async def execute_native(
-        self, source_pools: Any, source_id: str, sql: str, params: list | None = None
+        self,
+        source_pools: Any,
+        source_id: str,
+        sql: str,
+        params: list | None = None,
+        span_attrs: dict[str, str] | None = None,
     ) -> QueryResult:
-        """DIRECT terminal (REQ-825): execute on a single reachable source's native driver."""
+        """DIRECT terminal (REQ-825): execute on a single reachable source's native driver.
+
+        ``span_attrs`` carries the governed plan's OTel attributes so the DIRECT terminal is
+        observable on the same footing as ENGINE (REQ-1425).
+        """
         from provisa.executor.direct import execute_direct
 
-        return await execute_direct(source_pools, source_id, sql, params)
+        return await execute_direct(source_pools, source_id, sql, params, span_attrs)
 
     def execute_native_stream(
         self,
@@ -460,7 +469,9 @@ class EngineRuntime:  # REQ-825, REQ-840
             and decision.source_id
             and source_pools.has(decision.source_id)
         ):
-            return await self.execute_native(source_pools, decision.source_id, sql, params)
+            return await self.execute_native(
+                source_pools, decision.source_id, sql, params, span_attrs
+            )
         return await self.execute_engine(
             sql,
             params,

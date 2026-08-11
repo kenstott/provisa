@@ -30,6 +30,7 @@ import sqlglot
 from sqlglot.errors import ParseError
 
 from provisa.api._meta_views import (
+    _META_TABLE_VIEWS,
     _OPS_LOG_TABLE_ALIAS,
     _OPS_LOG_TABLE_VIEWS,
     _OPS_REPORT_VIEWS,
@@ -242,6 +243,7 @@ _REPORT_VIEW_NAMES = {
     "query_health",
     "stale_metadata",
     "join_hotspots",
+    "tag_usage",
 }
 
 
@@ -338,26 +340,39 @@ async def test_report_views_functional(uri):
             await conn.execute_core(insert(sources).values(id="s1", type="postgres"))
             await conn.execute_core(
                 insert(registered_tables).values(
-                    id=1, source_id="s1", domain_id="shelter",
-                    schema_name="public", table_name="orders", description="orders",
+                    id=1,
+                    source_id="s1",
+                    domain_id="shelter",
+                    schema_name="public",
+                    table_name="orders",
+                    description="orders",
                 )
             )
             await conn.execute_core(
                 insert(registered_tables).values(
-                    id=2, source_id="s1", domain_id="shelter",
-                    schema_name="public", table_name="customers",  # no description
+                    id=2,
+                    source_id="s1",
+                    domain_id="shelter",
+                    schema_name="public",
+                    table_name="customers",  # no description
                 )
             )
             await conn.execute_core(
                 insert(tag_assignments).values(
-                    tag_id="deprecated", object_type="table", table_id=1,
-                    object_key="table:1", reason="legacy",
+                    tag_id="deprecated",
+                    object_type="table",
+                    table_id=1,
+                    object_key="table:1",
+                    reason="legacy",
                 )
             )
             await conn.execute_core(
                 insert(tag_assignments).values(
-                    tag_id="pii", object_type="column", table_id=2,
-                    column_name="email", object_key="column:2:email",
+                    tag_id="pii",
+                    object_type="column",
+                    table_id=2,
+                    column_name="email",
+                    object_key="column:2:email",
                 )
             )
             for uid, tids, status, dur in (
@@ -367,25 +382,29 @@ async def test_report_views_functional(uri):
             ):
                 await conn.execute_core(
                     insert(query_audit_log).values(
-                        user_id=uid, role_id="analyst", query_hash="h",
-                        table_ids=tids, source="graphql",
-                        status_code=status, duration_ms=dur,
+                        user_id=uid,
+                        role_id="analyst",
+                        query_hash="h",
+                        table_ids=tids,
+                        source="graphql",
+                        status_code=status,
+                        duration_ms=dur,
                     )
                 )
             dialect = conn.capabilities.dialect
             await conn.execute(_adapt_view_ddl(_ops_table_usage_ddl(dialect), dialect))
+            # tag_usage reads tags_meta, which _seed_meta_domain creates first at startup
+            # (startup_seed.py: _seed_meta_domain then _seed_ops_domain). DuckDB resolves a
+            # view's references when it is created, so the order matters here too.
+            for ddl in _META_TABLE_VIEWS.values():
+                await conn.execute(_adapt_view_ddl(ddl, dialect))
             for ddl in _OPS_REPORT_VIEWS.values():
                 await conn.execute(_adapt_view_ddl(ddl, dialect))
 
             async def rows(sql):
                 return (await conn.execute_core(text(sql))).fetchall()
 
-            usage = {
-                r[0]: r[1]
-                for r in await rows(
-                    "SELECT id, query_count FROM usage_ranking"
-                )
-            }
+            usage = {r[0]: r[1] for r in await rows("SELECT id, query_count FROM usage_ranking")}
             assert usage[1] == 2  # orders queried twice
             assert usage[2] == 2  # customers queried twice (incl. the denial)
 
@@ -406,9 +425,9 @@ async def test_report_views_functional(uri):
             )
             assert [(r[0], r[1], r[2]) for r in health] == [(3, 1, 40)]
 
-            stale = {(r[0], r[1]) for r in await rows(
-                "SELECT object_type, issue FROM stale_metadata"
-            )}
+            stale = {
+                (r[0], r[1]) for r in await rows("SELECT object_type, issue FROM stale_metadata")
+            }
             assert ("table", "missing_description") in stale  # customers
             assert ("domain", "missing_steward") in stale  # shelter et al.
 
@@ -416,6 +435,21 @@ async def test_report_views_functional(uri):
                 "SELECT table_id_a, table_id_b, co_occurrence_count FROM join_hotspots"
             )
             assert [(r[0], r[1], r[2]) for r in hot] == [(1, 2, 1)]
+
+            tags = {
+                r[0]: r[1:]
+                for r in await rows(
+                    "SELECT id, assignment_count, tables_tagged, columns_tagged, "
+                    "query_count, distinct_users FROM tag_usage"
+                )
+            }
+            # deprecated marks table 1, read by two statements from one user.
+            assert tags["deprecated"] == (1, 1, 0, 2, 1)
+            # pii marks a column of table 2 — the tagged *table* is what carries the traffic,
+            # so its three readers (alice's join, bob's denial) resolve to two statements.
+            assert tags["pii"] == (1, 1, 1, 2, 2)
+            # A system tag nobody applied is still a row, with zeroes rather than absent.
+            assert tags["technical"] == (0, 0, 0, 0, 0)
     finally:
         await db.close()
 

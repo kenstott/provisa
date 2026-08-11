@@ -38,6 +38,7 @@ tables:
         data_type: integer
         visible_to: [org_admin, analyst]
       - name: amount
+        data_type: numeric
         visible_to: [org_admin, analyst]
 
 roles:

@@ -393,9 +393,13 @@ async def _execute_with_gql_remote(
 async def _execute(
     sql: str, params: list, state: Any, span_attrs: dict[str, str] | None = None
 ) -> list[dict]:
-    """Execute SQL against the federation engine and return rows as dicts."""
-    if not state.federation_engine.is_connected():
-        raise RuntimeError("Federation engine not connected")
+    """Execute SQL against the federation engine and return rows as dicts.
+
+    No readiness gate here: an isolated-engine org (REQ-1043/REQ-1244) is bound with kwargs and no
+    connection on purpose — its dedicated coordinator sleeps and the first real query wakes it. The
+    backend's execute() owns that contract and raises only when the terminal has NEITHER a
+    connection nor kwargs, so gating on is_connected() here refused every first query.
+    """
     result = await state.federation_engine.execute_engine(sql, params or [], span_attrs=span_attrs)
     return [dict(zip(result.column_names, row)) for row in result.rows]
 

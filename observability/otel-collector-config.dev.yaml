@@ -8,7 +8,10 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    # Tempo gets EVERY span, including the Trino coordinator's — live trace inspection is exactly
+    # where they are useful. The core `traces` pipeline (parquet lane) keeps its service filter, so
+    # this overlay must not redefine it (REQ-1425).
+    traces/tempo:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/parquet, otlp/tempo, debug]
+      exporters: [otlp/tempo]

@@ -220,8 +220,15 @@ restart() {
 OBS_EXT="/root/.provisa/extensions/observability/docker-compose.observability.yml"
 
 push_obs() {
-  if ssh_node "sudo test -f $OBS_EXT" 2>/dev/null; then
-    echo "== observability: already installed"
+  # Content-compared, not merely existence-checked: a present-but-stale overlay is the same failure
+  # push_app was written to close. The parquet writer's object store lives in this file, so an
+  # existence check left otlp2parquet writing to the node's bundled MinIO after the deployment had
+  # been pointed at an external store — the writer and the compactor addressed different buckets.
+  local want have
+  want="$(shasum -a 256 "$REPO/docker-compose.observability.yml" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $OBS_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)"
+  if [ "$want" = "$have" ]; then
+    echo "== observability: up to date"
     return
   fi
   echo "== observability: installing overlay"

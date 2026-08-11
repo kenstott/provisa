@@ -182,30 +182,36 @@ tables:
 - columns:
   - description: Unique identifier for the pet record
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Name of the pet
     name: name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Species of the pet (e.g. dog, cat, bird)
     name: species
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Breed of the pet
     name: breed_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Sale price of the pet in USD
     name: price
+    data_type: decimal
     visible_to:
     - org_admin
   - description: Whether the pet is currently available for purchase
     name: available
+    data_type: boolean
     visible_to:
     - analyst
     - org_admin
@@ -220,35 +226,42 @@ tables:
   columns:
   - description: Status to filter on - sent to the Petstore API as a query parameter
     name: _nf_status
+    data_type: varchar
     native_filter_type: query_param
     visible_to: []
   - description: Pet identifier assigned by the Petstore API
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Pet's name as listed in the store
     name: name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Availability status - available, pending, or sold
     name: status
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Photo URLs published with the listing
     name: photoUrls
+    data_type: json
     visible_to:
     - analyst
     - org_admin
   - description: Tags the store applies to the pet
     name: tags
+    data_type: json
     visible_to:
     - analyst
     - org_admin
   - description: Store category the pet is listed under
     name: category
+    data_type: json
     visible_to:
     - analyst
     - org_admin
@@ -262,35 +275,42 @@ tables:
   columns:
   - description: Tags to filter on - sent to the Petstore API as a query parameter
     name: _nf_tags
+    data_type: json
     native_filter_type: query_param
     visible_to: []
   - description: Pet identifier assigned by the Petstore API
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Pet's name as listed in the store
     name: name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Availability status - available, pending, or sold
     name: status
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Photo URLs published with the listing
     name: photoUrls
+    data_type: json
     visible_to:
     - analyst
     - org_admin
   - description: Tags the store applies to the pet
     name: tags
+    data_type: json
     visible_to:
     - analyst
     - org_admin
   - description: Store category the pet is listed under
     name: category
+    data_type: json
     visible_to:
     - analyst
     - org_admin
@@ -303,35 +323,42 @@ tables:
   columns:
   - description: Pet id to fetch - sent to the Petstore API as a path parameter
     name: _nf_petId
+    data_type: integer
     native_filter_type: path_param
     visible_to: []
   - description: Pet identifier assigned by the Petstore API
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Pet's name as listed in the store
     name: name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Availability status - available, pending, or sold
     name: status
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Photo URLs published with the listing
     name: photoUrls
+    data_type: json
     visible_to:
     - analyst
     - org_admin
   - description: Tags the store applies to the pet
     name: tags
+    data_type: json
     visible_to:
     - analyst
     - org_admin
   - description: Store category the pet is listed under
     name: category
+    data_type: json
     visible_to:
     - analyst
     - org_admin
@@ -344,11 +371,13 @@ tables:
   columns:
   - description: Availability status the count is grouped by
     name: status
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Number of pets in the store with that status
     name: count
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
@@ -361,35 +390,42 @@ tables:
   columns:
   - description: Order id to fetch - sent to the Petstore API as a path parameter
     name: orderId
+    data_type: integer
     native_filter_type: path_param
     visible_to: []
   - description: Order identifier assigned by the Petstore API
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Pet the order was placed for
     name: petId
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Number of animals on the order
     name: quantity
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: When the order is scheduled to ship
     name: shipDate
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Order fulfilment status - placed, approved, or delivered
     name: status
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Whether the order has been fulfilled
     name: complete
+    data_type: boolean
     visible_to:
     - analyst
     - org_admin
@@ -402,34 +438,41 @@ tables:
   columns:
   - description: User identifier assigned by the Petstore API
     name: id
+    data_type: integer
     visible_to:
     - org_admin
   - description: Login name the account was created under
     name: username
+    data_type: varchar
     native_filter_type: path_param
     visible_to:
     - analyst
     - org_admin
   - description: Account holder's first name
     name: firstName
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Account holder's last name
     name: lastName
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Contact email on the account
     name: email
+    data_type: varchar
     visible_to:
     - org_admin
   - description: Contact phone number on the account
     name: phone
+    data_type: varchar
     visible_to:
     - org_admin
   - description: Account status code returned by the Petstore API
     name: userStatus
+    data_type: integer
     visible_to:
     - org_admin
   description: User account by username from Petstore API
@@ -440,24 +483,29 @@ tables:
 - columns:
   - description: Identifier of the customer
     name: id
+    data_type: bigint
     visible_to:
     - analyst
     - org_admin
   - description: Customer's full name
     name: name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Customer's email address
     name: email
+    data_type: varchar
     visible_to:
     - org_admin
   - description: Customer's phone number
     name: phone
+    data_type: varchar
     visible_to:
     - org_admin
   - description: When the customer record was created
     name: created_at
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -469,36 +517,43 @@ tables:
 - columns:
   - description: Identifier of the inquiry
     name: id
+    data_type: bigint
     visible_to:
     - analyst
     - org_admin
   - description: Pet the inquiry is about
     name: pet_id
+    data_type: bigint
     visible_to:
     - analyst
     - org_admin
   - description: Customer who submitted the inquiry
     name: user_id
+    data_type: bigint
     visible_to:
     - analyst
     - org_admin
   - description: Kind of inquiry - adoption, price, or availability
     name: inquiry_type
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Free-text message the customer wrote
     name: message
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Where the inquiry stands - new, contacted, or closed
     name: status
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: When the inquiry was submitted
     name: submitted_at
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -512,31 +567,37 @@ tables:
 - columns:
   - description: Breed name, unique across the shelter's catalogue
     name: name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Species the breed belongs to
     name: species
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: How much day-to-day care the breed needs
     name: care_level
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Typical lifespan of the breed in years
     name: avg_lifespan_years
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Environment the breed is suited to
     name: typical_habitat
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Notes shelter staff keep on the breed
     name: description
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -550,35 +611,42 @@ tables:
 - columns:
   - description: Breed name to fetch - sent to the GraphQL query as an argument
     name: _nf_name
+    data_type: varchar
     native_filter_type: query_param
     visible_to: []
   - description: Breed name, unique across the shelter's catalogue
     name: name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Species the breed belongs to
     name: species
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: How much day-to-day care the breed needs
     name: care_level
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Typical lifespan of the breed in years
     name: avg_lifespan_years
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Environment the breed is suited to
     name: typical_habitat
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Notes shelter staff keep on the breed
     name: description
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -592,26 +660,31 @@ tables:
 - columns:
   - description: Identifier of the shelter employee
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Employee's first name
     name: first_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Employee's last name
     name: last_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the employee joined the shelter
     name: hire_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Shelter department the employee works in
     name: department
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -645,30 +718,36 @@ tables:
 - columns:
   - description: Employee id to fetch - sent to the GraphQL query as an argument
     name: _nf_id
+    data_type: integer
     native_filter_type: query_param
     visible_to: []
   - description: Identifier of the shelter employee
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Employee's first name
     name: first_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Employee's last name
     name: last_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the employee joined the shelter
     name: hire_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Shelter department the employee works in
     name: department
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -702,31 +781,37 @@ tables:
 - columns:
   - description: Identifier of the assignment
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Employee the breed is assigned to
     name: employee_id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Breed the employee is assigned to care for
     name: breed_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Role the employee holds on that breed
     name: role
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the assignment started
     name: start_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the assignment ended, null while it is current
     name: end_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -739,35 +824,42 @@ tables:
 - columns:
   - description: Employee id to filter on - sent to the GraphQL query as an argument
     name: _nf_employee_id
+    data_type: integer
     native_filter_type: query_param
     visible_to: []
   - description: Identifier of the assignment
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Employee the breed is assigned to
     name: employee_id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Breed the employee is assigned to care for
     name: breed_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Role the employee holds on that breed
     name: role
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the assignment started
     name: start_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the assignment ended, null while it is current
     name: end_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -781,35 +873,42 @@ tables:
 - columns:
   - description: Breed name to filter on - sent to the GraphQL query as an argument
     name: _nf_breed_name
+    data_type: varchar
     native_filter_type: query_param
     visible_to: []
   - description: Identifier of the assignment
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Employee the breed is assigned to
     name: employee_id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Breed the employee is assigned to care for
     name: breed_name
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Role the employee holds on that breed
     name: role
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the assignment started
     name: start_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Date the assignment ended, null while it is current
     name: end_date
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -823,31 +922,37 @@ tables:
 - columns:
   - description: Identifier of the schedule entry
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Employee the shift belongs to
     name: employee_id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Day of the week the shift falls on
     name: day_of_week
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Time the shift starts
     name: shift_start
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Time the shift ends
     name: shift_end
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Shelter location the shift covers
     name: location
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
@@ -860,35 +965,42 @@ tables:
 - columns:
   - description: Employee id to filter on - sent to the GraphQL query as an argument
     name: _nf_employee_id
+    data_type: integer
     native_filter_type: query_param
     visible_to: []
   - description: Identifier of the schedule entry
     name: id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Employee the shift belongs to
     name: employee_id
+    data_type: integer
     visible_to:
     - analyst
     - org_admin
   - description: Day of the week the shift falls on
     name: day_of_week
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Time the shift starts
     name: shift_start
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Time the shift ends
     name: shift_end
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin
   - description: Shelter location the shift covers
     name: location
+    data_type: varchar
     visible_to:
     - analyst
     - org_admin

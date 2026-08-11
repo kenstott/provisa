@@ -65,7 +65,7 @@ async def _server(tmp_path):
                     domain_id="d",
                     schema_name="s",
                     table_name="orders",
-                    columns=[Column(name="cust_id", visible_to=[])],
+                    columns=[Column(name="cust_id", data_type="text", visible_to=[])],
                     view_sql="SELECT 1",
                 ),
             )
@@ -83,9 +83,7 @@ async def test_search_terms_is_a_registered_tool(tmp_path):
 
 async def test_search_terms_round_trips_through_the_protocol(tmp_path):
     async with _server(tmp_path) as server:
-        content = await server.call_tool(
-            "search_terms", {"query": "customer", "role": "analyst"}
-        )
+        content = await server.call_tool("search_terms", {"query": "customer", "role": "analyst"})
         blocks = content[0] if isinstance(content, tuple) else content
         payload = json.loads(blocks[0].text)
         term = payload[0] if isinstance(payload, list) else payload

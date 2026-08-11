@@ -39,27 +39,6 @@ log = logging.getLogger(__name__)
 # All govdata columns default visible to these roles unless overridden.
 _DEFAULT_VISIBLE_TO = ["admin", "analyst"]
 
-# JDBC type code → Provisa/GraphQL scalar type
-_JDBC_TYPE_MAP: dict[int, str] = {
-    -7: "Boolean",  # BIT
-    -6: "Int",  # TINYINT
-    5: "Int",  # SMALLINT
-    4: "Int",  # INTEGER
-    -5: "BigInt",  # BIGINT
-    6: "Float",  # FLOAT
-    7: "Float",  # REAL
-    8: "Float",  # DOUBLE
-    2: "Decimal",  # NUMERIC
-    3: "Decimal",  # DECIMAL
-    1: "String",  # CHAR
-    12: "String",  # VARCHAR
-    -1: "String",  # LONGVARCHAR
-    91: "Date",  # DATE
-    92: "Time",  # TIME
-    93: "Timestamp",  # TIMESTAMP
-    16: "Boolean",  # BOOLEAN
-}
-
 
 class _ColumnInfo(TypedDict):
     name: str
@@ -67,10 +46,32 @@ class _ColumnInfo(TypedDict):
     nullable: bool
 
 
-def _jdbc_type_name(type_code: int) -> str:
-    if type_code not in _JDBC_TYPE_MAP:
+# JDBC type code → SQL type, the spelling Column.data_type carries.
+_JDBC_SQL_TYPE_MAP: dict[int, str] = {
+    -7: "boolean",  # BIT
+    -6: "smallint",  # TINYINT
+    5: "smallint",  # SMALLINT
+    4: "integer",  # INTEGER
+    -5: "bigint",  # BIGINT
+    6: "double precision",  # FLOAT
+    7: "real",  # REAL
+    8: "double precision",  # DOUBLE
+    2: "numeric",  # NUMERIC
+    3: "numeric",  # DECIMAL
+    1: "char",  # CHAR
+    12: "varchar",  # VARCHAR
+    -1: "text",  # LONGVARCHAR
+    91: "date",  # DATE
+    92: "time",  # TIME
+    93: "timestamp",  # TIMESTAMP
+    16: "boolean",  # BOOLEAN
+}
+
+
+def _jdbc_sql_type(type_code: int) -> str:
+    if type_code not in _JDBC_SQL_TYPE_MAP:
         raise ValueError(f"unmapped JDBC type code: {type_code}")
-    return _JDBC_TYPE_MAP[type_code]
+    return _JDBC_SQL_TYPE_MAP[type_code]
 
 
 def _read_tables(meta, schema: str) -> list[tuple[str, str]]:
@@ -163,6 +164,10 @@ def import_govdata_source(  # REQ-492, REQ-540, REQ-018, REQ-413
         columns = [
             Column(
                 name=c["name"],
+                # REQ-1426: the JDBC type code is already read; dropping it persisted an untyped
+                # column that the catalog rendered as "unknown". _jdbc_sql_type raises on an
+                # unmapped code rather than guessing one.
+                data_type=_jdbc_sql_type(c["type_code"]),
                 visible_to=list(_DEFAULT_VISIBLE_TO),
             )
             for c in raw_cols

@@ -63,7 +63,7 @@ def _tbl(name: str, columns: list[str]) -> Table:
         domain_id="d",
         schema_name="s",
         table_name=name,
-        columns=[Column(name=c, visible_to=[]) for c in columns],
+        columns=[Column(name=c, data_type="text", visible_to=[]) for c in columns],
         view_sql="SELECT 1",
     )
 
@@ -84,10 +84,15 @@ async def test_generic_columns_qualify_with_the_table_and_machinery_derives_noth
                 schema_name="s",
                 table_name="employees",
                 columns=[
-                    Column(name="first_name", visible_to=[]),
-                    Column(name="id", visible_to=[]),
+                    Column(name="first_name", data_type="text", visible_to=[]),
+                    Column(name="id", data_type="integer", visible_to=[]),
                     # Native-filter pseudo-columns are query machinery, not business fields.
-                    Column(name="_nf_region", visible_to=[], native_filter_type="query_param"),
+                    Column(
+                        name="_nf_region",
+                        data_type="text",
+                        visible_to=[],
+                        native_filter_type="query_param",
+                    ),
                 ],
                 view_sql="SELECT 1",
             ),

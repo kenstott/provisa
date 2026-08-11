@@ -276,7 +276,11 @@ def _map_table(
     """Map a Hasura table to Provisa Table + side-effects."""
     tid = _table_id(source_name, ht.schema_name, ht.name)
 
-    # Build columns from select permissions
+    # Build columns from select permissions. REQ-1426: Hasura permission metadata names columns but
+    # carries no types, and this converter runs offline against files — it cannot reach the database.
+    # The emitted YAML therefore leaves data_type null, which makes it an INCOMPLETE design: the
+    # user must assign every missing type before it will load. Nothing infers a type at load or run
+    # time, so an unfinished design fails the load rather than persisting an untyped column.
     all_columns: dict[str, Column] = {}
     for perm in ht.select_permissions:
         cols = perm.columns

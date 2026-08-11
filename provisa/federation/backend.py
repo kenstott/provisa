@@ -563,31 +563,57 @@ class TrinoBackend(EngineBackend):
 
     # -- source lifecycle ------------------------------------------------------
 
+    @contextmanager
+    def _provisioning_conn(self, state: Any):
+        """The connection catalog DDL is issued on, honoring the wake-on-traffic contract.
+
+        REQ-1043/REQ-1244/REQ-1427: an isolated org's terminal is bound with kwargs and NO
+        connection so its dedicated coordinator can sleep. Source provisioning is real traffic —
+        gating it on ``engine_conn`` alone made registration a silent no-op, so the org's catalogs
+        were never issued onto its own coordinator and every query failed CATALOG_NOT_FOUND.
+        Connect from the stored kwargs (waking the cluster) and close that connection after.
+        Yields ``None`` only when the terminal has NEITHER a connection nor kwargs.
+        """
+        conn = state.engine_conn
+        if conn is not None:
+            yield conn
+            return
+        conn_kwargs = state.engine_conn_kwargs
+        if not conn_kwargs:
+            yield None
+            return
+        from provisa.federation import trino_lifecycle
+
+        conn = trino_lifecycle.connect(conn_kwargs)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def register_source(
         self, state: Any, source: Any, resolved_password: str, catalog_name: str | None = None
     ) -> None:
-        if state.engine_conn is not None:
-            from provisa.core import catalog
+        with self._provisioning_conn(state) as conn:
+            if conn is not None:
+                from provisa.core import catalog
 
-            catalog.create_catalog(
-                state.engine_conn, source, resolved_password, catalog_name=catalog_name
-            )
+                catalog.create_catalog(conn, source, resolved_password, catalog_name=catalog_name)
 
     def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:
-        if state.engine_conn is not None:
-            from provisa.core import catalog
+        with self._provisioning_conn(state) as conn:
+            if conn is not None:
+                from provisa.core import catalog
 
-            catalog.drop_catalog(state.engine_conn, source_id, catalog_name=catalog_name)
+                catalog.drop_catalog(conn, source_id, catalog_name=catalog_name)
 
     def analyze(
         self, state: Any, source: Any, tables: list, catalog_name: str | None = None
     ) -> None:
-        if state.engine_conn is not None:
-            from provisa.core import catalog
+        with self._provisioning_conn(state) as conn:
+            if conn is not None:
+                from provisa.core import catalog
 
-            catalog.analyze_source_tables(
-                state.engine_conn, source, tables, catalog_name=catalog_name
-            )
+                catalog.analyze_source_tables(conn, source, tables, catalog_name=catalog_name)
 
     # -- connections -----------------------------------------------------------
 
@@ -698,9 +724,7 @@ class TrinoBackend(EngineBackend):
         # Same wake-on-traffic contract as execute(): kwargs-only means execute_trino connects.
         if conn is None and not state.engine_conn_kwargs:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        return execute_trino(
-            cast("Any", conn), sql, params=params, session_hints=session_hints
-        )
+        return execute_trino(cast("Any", conn), sql, params=params, session_hints=session_hints)
 
     # -- engine-specific transports (Arrow via Zaychik Flight SQL proxy) --------
 

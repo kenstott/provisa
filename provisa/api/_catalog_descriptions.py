@@ -64,6 +64,8 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "domains missing a steward",
     "join_hotspots": "Table pairs read together in the same query, most frequent first — the "
     "materialization and caching candidates",
+    "tag_usage": "One row per tag in the registry — how widely it is applied, across which kinds "
+    "of object, and how much query traffic reaches what it marks",
     "traces": "OpenTelemetry spans emitted by Provisa and by the federation engine, compacted "
     "into Iceberg",
     "metrics": "OpenTelemetry metric points emitted by Provisa and by the federation engine, "
@@ -338,6 +340,22 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_name_b": "Name of that table",
         "co_occurrence_count": "Statements that read both tables together",
         "last_seen_at": "When the pair was last read together",
+    },
+    "tag_usage": {
+        "id": "The tag name, which is its key",
+        "tag_id": "The tag name",
+        "is_system": "True for the tags Provisa defines in code, false for org-defined ones",
+        "assignment_count": "Times the tag is applied, across every kind of object",
+        "sources_tagged": "Distinct sources carrying the tag",
+        "tables_tagged": "Distinct tables carrying the tag, at table or column level",
+        "columns_tagged": "Distinct columns carrying the tag",
+        "relationships_tagged": "Distinct relationships carrying the tag",
+        "commands_tagged": "Distinct commands carrying the tag",
+        "expiring_count": "Assignments with an expiry date set",
+        "expired_count": "Assignments whose expiry date has passed",
+        "query_count": "Statements that read a table carrying the tag",
+        "distinct_users": "Users who ran those statements",
+        "last_queried_at": "When a table carrying the tag was last read",
     },
     "traces": {
         "trace_id": "Identifier shared by every span of one end-to-end operation",

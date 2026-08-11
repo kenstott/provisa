@@ -96,7 +96,8 @@ def _config(naming: dict, domains: list, table_domain: str) -> dict:
                 "domain_id": table_domain,
                 "schema": "public",
                 "table": "orders",
-                "columns": [{"name": "id", "visible_to": ["admin"]}],
+                # REQ-1426: every column carries a type; the loader assigns none.
+                "columns": [{"name": "id", "data_type": "integer", "visible_to": ["admin"]}],
             }
         ],
         "roles": [{"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}],
@@ -140,7 +141,7 @@ class TestSingleDomainMode:
                 domain_id="sales",
                 schema_name="public",
                 table_name="widgets",
-                columns=[Column(name="id", visible_to=["admin"])],
+                columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
             with pytest.raises(ValueError, match="cannot register domain"):
                 await table_repo.upsert(conn, bad)

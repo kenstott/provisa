@@ -415,8 +415,10 @@ async def _execute_engine_standard(
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.compiler.hints import extract_hints
 
-    if not state.federation_engine.is_connected():
-        raise ApiError(503, "data.engine_not_connected", "the engine not connected")
+    # No readiness gate: an isolated-engine org (REQ-1043/REQ-1244) is bound with kwargs and no
+    # connection on purpose — its dedicated coordinator sleeps and the first real query wakes it.
+    # The backend's execute() owns that contract and raises only when the terminal has NEITHER a
+    # connection nor kwargs, so gating on is_connected() here refused every first query.
 
     (
         _dataloader_srcs,

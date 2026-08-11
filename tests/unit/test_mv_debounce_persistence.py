@@ -63,7 +63,7 @@ async def test_mv_debounce_round_trips_through_repo(tmp_path):
         domain_id="d",
         schema_name="views",
         table_name="daily",
-        columns=[Column(name="id", visible_to=[])],
+        columns=[Column(name="id", data_type="integer", visible_to=[])],
         view_sql="SELECT 1 AS id",
         materialize=True,
         mv_debounce_quiet=3.5,
@@ -87,7 +87,7 @@ async def test_mv_debounce_defaults_when_unset(tmp_path):
         domain_id="d",
         schema_name="views",
         table_name="live",
-        columns=[Column(name="id", visible_to=[])],
+        columns=[Column(name="id", data_type="integer", visible_to=[])],
         view_sql="SELECT 1 AS id",
         materialize=True,
     )

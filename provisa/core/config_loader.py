@@ -19,12 +19,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
 import yaml
-from sqlalchemy import column as _sa_column
 from sqlalchemy import delete as _delete
 from sqlalchemy import insert, or_, select, update
-from sqlalchemy import table as _sa_table
 
-from provisa.core.models import DERIVED_SOURCE_ID, ControlPlaneConfig, Domain, ProvisaConfig, Source, Table
+from provisa.core.models import (
+    DERIVED_SOURCE_ID,
+    ControlPlaneConfig,
+    Domain,
+    ProvisaConfig,
+    Source,
+    Table,
+)
 from provisa.core import domain_policy
 from provisa.core.schema_org import (
     api_endpoints,
@@ -59,90 +64,6 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 log = logging.getLogger(__name__)
-
-# Lightweight reference to PG's information_schema.columns — a DB system view (not a
-# provisa metadata table), read over the same connection to see uncommitted writes.
-_information_schema_columns = _sa_table(
-    "columns",
-    _sa_column("column_name"),
-    _sa_column("data_type"),
-    _sa_column("table_schema"),
-    _sa_column("table_name"),
-    schema="information_schema",
-)
-
-
-async def _fill_null_column_types(
-    conn: "Connection", source_id: str, schema: str, table: str, types: dict[str, str]
-) -> None:
-    """Set table_columns.data_type for columns the YAML left null, from `types`
-    (column_name -> data_type). Never overrides an explicit YAML-declared type."""
-    if not types:
-        return
-    result = await conn.execute_core(
-        select(registered_tables.c.id).where(
-            registered_tables.c.source_id == source_id,
-            registered_tables.c.schema_name == schema,
-            registered_tables.c.table_name == table,
-        )
-    )
-    row = result.fetchone()
-    table_id = row[0] if row is not None else None
-    if table_id is None:
-        return
-    for _col, _dt in types.items():
-        await conn.execute_core(
-            update(table_columns)
-            .where(
-                table_columns.c.table_id == table_id,
-                table_columns.c.column_name == _col,
-                table_columns.c.data_type.is_(None),
-            )
-            .values(data_type=_dt)
-        )
-
-
-# PG information_schema.data_type → the engine type name. Mirrors what the engine's
-# information_schema.columns reports for a PG-backed catalog, so types read via
-# the (same-connection, uncommitted-visible) asyncpg path match the engine path.
-_PG_TO_PHYSICAL_TYPE = {
-    "text": "varchar",
-    "character varying": "varchar",
-    "bigint": "bigint",
-    "integer": "integer",
-    "smallint": "smallint",
-    "double precision": "double",
-    "real": "real",
-    "boolean": "boolean",
-    "json": "json",
-    "jsonb": "json",
-    "date": "date",
-    "timestamp without time zone": "timestamp(6)",
-    "timestamp with time zone": "timestamp(6) with time zone",
-    "bytea": "varbinary",
-    "numeric": "decimal",
-}
-
-
-async def _pg_column_types(conn: "Connection", pg_schema: str, pg_table: str) -> dict[str, str]:
-    """Return {column_name: column_type} for a PG table read over the same asyncpg
-    connection — sees uncommitted writes (e.g. an OpenAPI cache table just created
-    in this transaction), which a separate the engine JDBC connection cannot."""
-    result = await conn.execute_core(
-        select(
-            _information_schema_columns.c.column_name,
-            _information_schema_columns.c.data_type,
-        ).where(
-            _information_schema_columns.c.table_schema == pg_schema,
-            _information_schema_columns.c.table_name == pg_table,
-        )
-    )
-    rows = [dict(r._mapping) for r in result.fetchall()]
-    return {
-        r["column_name"]: _PG_TO_PHYSICAL_TYPE[r["data_type"]]
-        for r in rows
-        if r["data_type"] in _PG_TO_PHYSICAL_TYPE
-    }
 
 
 def _normalize_op_id(s: str) -> str:
@@ -214,16 +135,6 @@ def parse_config_dict(data: dict) -> ProvisaConfig:  # REQ-250
 
 
 _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]
-
-_OAPI_PHYSICAL = {
-    "string": "varchar",
-    "integer": "integer",
-    "number": "double",
-    "boolean": "boolean",
-    "array": "json",
-    "object": "json",
-    "jsonb": "json",
-}
 
 
 async def _replace_mode_cleanup(
@@ -302,14 +213,13 @@ def _enrich_openapi_table_columns(
     tbl: Table,
     spec: dict,
 ) -> None:
-    """Update table columns with descriptions and data types from the OpenAPI spec (in-place).
+    """Update table columns with descriptions from the OpenAPI spec (in-place).
 
-    openapi is a FETCH-mechanism source (REQ-636/REQ-251): introspect_columns short-circuits to
-    {} for it, so the engine-introspection fallback in _fill_null_column_types never fires. The
-    spec itself is the only source of truth for these types.
+    REQ-1426: descriptions only. A column's data_type is design-time metadata carried by the
+    config; nothing types a column while loading it.
     """
     from provisa.openapi.mapper import parse_spec
-    from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+    from provisa.openapi.register import _schema_to_columns
 
     queries, _ = parse_spec(spec)
     match = next(
@@ -323,22 +233,9 @@ def _enrich_openapi_table_columns(
     if not match:
         return
     spec_col_map = {c["name"]: c for c in _schema_to_columns(match.response_schema)}
-    # Native-filter path/query param columns have no entry in spec_col_map (not response
-    # fields) — type them from the params list instead. The demo config names these both
-    # with and without the "_nf_" prefix, so index both forms.
-    param_type_by_name = {
-        p["name"]: _openapi_to_provisa_type(p.get("type"))
-        for p in (*match.path_params, *match.query_params)
-    }
-    nf_type_map = {f"_nf_{name}": t for name, t in param_type_by_name.items()}
-    nf_type_map.update(param_type_by_name)
     for col in tbl.columns:
         if col.name in spec_col_map and not col.description:
             col.description = spec_col_map[col.name].get("description")
-        if col.name in spec_col_map and not col.data_type:
-            col.data_type = spec_col_map[col.name].get("type")
-        elif col.name in nf_type_map and not col.data_type:
-            col.data_type = nf_type_map[col.name]
 
 
 def _sqlite_lands(engine: Any, src: Source) -> bool:
@@ -376,7 +273,7 @@ async def _handle_sqlite_table(
     attaches the source in place (DuckDB) or reads a landed replica. ``land`` additionally migrates
     the rows into the control-plane store — only for engines that cannot read the file live (Trino
     FETCH); it is skipped for ATTACH engines (and would fail on a non-PG control plane anyway)."""
-    from provisa.file_source.pg_migrate import migrate_sqlite_table, sqlite_column_types
+    from provisa.file_source.pg_migrate import migrate_sqlite_table
 
     assert src.path is not None
     try:
@@ -384,13 +281,6 @@ async def _handle_sqlite_table(
             await migrate_sqlite_table(
                 src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
             )
-        await _fill_null_column_types(
-            conn,
-            tbl.source_id,
-            tbl.schema_name,
-            tbl.table_name,
-            sqlite_column_types(src.path, tbl.table_name),
-        )
     except Exception as _e:
         log.warning(
             "SQLite registration post-step failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
@@ -450,8 +340,6 @@ async def _register_api_endpoint(
     default_params: dict,
     api_columns: list[dict],
 ) -> None:
-    from provisa.openapi.register import _schema_to_columns
-
     await conn.upsert(
         api_sources,
         {"id": src.id, "type": "openapi", "base_url": resolved_base_url, "auth": None},
@@ -490,33 +378,8 @@ async def _register_api_endpoint(
                 .values(object_fields=col_data["object_fields"])
             )
     # Persist column data_type from the spec. OpenAPI tables are
-    # API-backed: their cached response may be empty (so the engine can't
-    # introspect every column), and native-filter params (_nf_*) never
-    # appear in the response at all. The spec is authoritative for
-    # both. introspect_tables trusts stored types — fill any null.
-
-    # The cache table (built above, in this transaction) is
-    # authoritative for response columns — including map-typed
-    # responses (e.g. status→count) the spec schema has no
-    # properties for. Read it over this same connection, which
-    # sees the uncommitted table; the engine pass below cannot.
-    await _fill_null_column_types(
-        conn,
-        tbl.source_id,
-        tbl.schema_name,
-        tbl.table_name,
-        await _pg_column_types(conn, tbl.schema_name, tbl.table_name),
-    )
-    # Spec is authoritative for native-filter params (_nf_*),
-    # which never appear in the cached response at all.
-    _oapi_types: dict[str, str] = {}
-    for _sc in _schema_to_columns(match.response_schema):
-        _oapi_types[_sc["name"]] = _OAPI_PHYSICAL.get(_sc.get("type") or "string", "varchar")
-    for _p in match.path_params + match.query_params:
-        _pt = _OAPI_PHYSICAL.get(_p.get("type") or "string", "varchar")
-        _oapi_types[_p["name"]] = _pt
-        _oapi_types["_nf_" + _p["name"]] = _pt
-    await _fill_null_column_types(conn, tbl.source_id, tbl.schema_name, tbl.table_name, _oapi_types)
+    # REQ-1426: nothing types a column here. data_type is design-time metadata the config carries;
+    # the cached response and the spec are runtime artifacts and neither may set one.
 
 
 async def _handle_openapi_table(
@@ -600,6 +463,9 @@ async def _upsert_single_table(
         if spec:
             _enrich_openapi_table_columns(tbl, spec)
 
+    # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
+    # here. A column that reaches this point untyped means the design was never completed; the
+    # repository refuses it rather than persisting a hole the catalog renders as "unknown".
     await table_repo.upsert(conn, tbl)
 
     if src and src.type.value == "sqlite" and src.path:
@@ -608,20 +474,6 @@ async def _upsert_single_table(
         spec = openapi_specs.get(src.id, {})
         if spec:
             await _handle_openapi_table(conn, tbl, src, spec)
-
-    # Resolve column types from the FEDERATION ENGINE's own metadata — the single
-    # introspection seam (EngineRuntime.introspect_columns): the engine reads its normalized
-    # information_schema, DuckDB DESCRIBEs the attached source. No engine is referenced
-    # directly here. introspect_tables trusts stored types, so fill any the YAML left
-    # null (never overrides); an engine that can't introspect returns {} and YAML stands.
-    if engine is not None and src is not None and tbl.columns:
-        await _fill_null_column_types(
-            conn,
-            tbl.source_id,
-            tbl.schema_name,
-            tbl.table_name,
-            engine.introspect_columns(src, tbl.schema_name, tbl.table_name),
-        )
 
 
 async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> None:

@@ -29,6 +29,8 @@
     "columnsLabel": "Columns",
     "columnsLoading": "(loading...)",
     "colHeaderColumn": "Column",
+    "colHeaderDataType": "Data Type",
+    "dataTypePlaceholder": "Assign type...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Visible To (Read)",
     "colHeaderWritableBy": "Writable By (R/W)",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "Primary key: {{name}}",
     "submitButton": "+ Table",
     "errorRequiredFields": "Source, schema, and table name are required.",
-    "errorNoColumnsSelected": "At least one column must be selected."
+    "errorNoColumnsSelected": "At least one column must be selected.",
+    "errorUntypedColumns": "Every column needs a data type. Assign one for: {{columns}}"
   }
 }

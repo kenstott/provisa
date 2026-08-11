@@ -171,7 +171,7 @@ class TestRepoUpsertSerializesLive:
             domain_id="default",
             schema_name="public",
             table_name="orders",
-            columns=[Column(name="id", visible_to=["analyst"])],
+            columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
             live=live,
         )
         conn = AsyncMock()
@@ -197,7 +197,7 @@ class TestRepoUpsertSerializesLive:
             domain_id="default",
             schema_name="public",
             table_name="orders",
-            columns=[Column(name="id", visible_to=["analyst"])],
+            columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
             live=None,
         )
         conn = AsyncMock()

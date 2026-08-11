@@ -26,6 +26,7 @@ tables:
         # refuse it. platform_admin holds cross_org, so it never reaches a column grant.
         visible_to: [platform_admin, org_admin]
       - name: amount
+        data_type: numeric
         visible_to: [org_admin]
   # A Provisa-managed virtual view, exactly as config/provisa-install.yaml ships dim_pet /
   # fact_pet_inquiries. Its source_id names no config source — __derived__ is a SYSTEM source
@@ -41,6 +42,7 @@ tables:
         data_type: integer
         visible_to: [org_admin]
       - name: amount
+        data_type: numeric
         visible_to: [org_admin]
 
 roles:

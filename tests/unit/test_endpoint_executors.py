@@ -469,19 +469,46 @@ class TestExecuteGrpcRemoteSource:
 
 
 class TestExecuteEngineStandard:
-    async def test_engine_not_connected_raises_503(self):
-        from fastapi import HTTPException
+    async def test_disconnected_engine_still_executes(self):
+        """An isolated-engine org (REQ-1043/REQ-1244) is bound with kwargs and no live connection.
 
+        Its dedicated coordinator sleeps until a query wakes it, so there is no readiness gate here:
+        the backend's execute() owns that contract and raises only when the terminal has neither a
+        connection nor kwargs. Gating on is_connected() refused every first query with
+        "Federation engine not connected".
+        """
         from provisa.api.data.endpoint_executors import _execute_engine_standard
 
         ctx = _make_ctx("pets")
         compiled = _compiled()
-        state = SimpleNamespace(federation_engine=SimpleNamespace(is_connected=lambda: False))
-        with pytest.raises(HTTPException) as exc_info:
-            await _execute_engine_standard(
+        engine_result = _query_result()
+        engine = SimpleNamespace(
+            is_connected=lambda: False,
+            transpile_physical=lambda s: s,
+            execute_engine=AsyncMock(return_value=engine_result),
+        )
+        state = SimpleNamespace(
+            federation_engine=engine,
+            source_types={"pg": "postgresql"},
+            source_federation_hints={},
+            hot_manager=None,
+            engine_conn_kwargs={"host": "isolated-coordinator"},
+        )
+        with (
+            patch(
+                "provisa.api.data.endpoint_executors._hydrate_api_tables_before_engine",
+                new=AsyncMock(return_value=({}, {}, 0, 0)),
+            ),
+            patch(
+                "provisa.api.data.endpoint_executors._materialize_api_to_engine_cache",
+                new=AsyncMock(return_value=({}, {}, [])),
+            ),
+        ):
+            result = await _execute_engine_standard(
                 compiled, ctx, state, "admin", "pets", None, {}, "SELECT..."
             )
-        assert exc_info.value.status_code == 503
+        assert result[0] is engine_result
+        engine.execute_engine.assert_awaited_once()
 
     async def test_executes_and_returns_nine_tuple(self):
         from provisa.api.data.endpoint_executors import _execute_engine_standard

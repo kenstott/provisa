@@ -43417,7 +43417,7 @@
 - id: REQ-1417
   status: complete
   since: 2026-08
-  group: 4. API Surfaces
+  group: 8. Client Access & Protocols
   category: JSON:API
   priority: MUST
   type: behavioral
@@ -43464,7 +43464,7 @@
 - id: REQ-1418
   status: complete
   since: 2026-08
-  group: 3. Federation Engine
+  group: 13. Multi-Tenancy & Organizations
   category: Multi-Tenancy
   priority: MUST
   type: behavioral
@@ -43517,7 +43517,7 @@
 - id: REQ-1421
   status: complete
   since: 2026-08
-  group: 3. Federation Engine
+  group: 13. Multi-Tenancy & Organizations
   category: Multi-Tenancy
   priority: MUST
   type: behavioral
@@ -43553,3 +43553,240 @@
   - REQ-905
   - REQ-916
   - REQ-1418
+- id: REQ-1422
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: OpenTelemetry Instrumentation
+  priority: MUST
+  type: infrastructure
+  description: >-
+    The OTel signal store reclaims its own object-store footprint on a schedule, with no operator
+    action. A scheduled job runs both `expire_snapshots` AND `remove_orphan_files` on
+    otel.signals.{logs,metrics,traces} at the configured `ops_snapshot_retention_hours`. Expiring
+    snapshots only unlinks them; `remove_orphan_files` is what deletes the bytes. Trino floors both
+    retentions at 7 days and rejects a shorter threshold outright, so the job sets the matching
+    per-catalog session properties (`otel.expire_snapshots_min_retention`,
+    `otel.remove_orphan_files_min_retention`) with the statement so the configured value is the one
+    that applies. Raw parquet staging is reclaimed by the same guarantee: the compactor lists every
+    date partition present and drains oldest-first, so a file whose date segment has rolled over is
+    still compacted and deleted rather than stranded forever.
+  use_case: >-
+    An unattended node keeps running. Without scheduled reclamation the SaaS coordinator reached
+    57 GiB of Iceberg metadata behind 93 MiB of data, plus 70586 stranded parquet files (15 GiB),
+    filled its boot disk, and every ops view creation and Iceberg commit failed.
+  code:
+  - provisa/scheduler/jobs.py
+  - provisa/api/app_startup.py
+  tests:
+  - tests/unit/test_otel_trace_pipeline.py
+  scenario: |
+    Given an OTel signal store with snapshots and orphan files older than the configured retention
+    When the scheduled reclamation job runs
+    Then expire_snapshots and remove_orphan_files both execute for every signal table
+    And the configured retention applies rather than Trino's seven-day floor
+    And raw parquet from an earlier date partition is compacted and deleted rather than stranded
+  related_reqs:
+  - REQ-302
+  - REQ-303
+- id: REQ-1423
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: OpenTelemetry Instrumentation
+  priority: MUST
+  type: infrastructure
+  description: >-
+    The OTel/results object store is a single set of coordinates every participant resolves from
+    the same environment variables, so a deployment can point it at storage that is not the node's
+    own disk. The parquet writer (otlp2parquet), the compactor's boto3 client, and the Iceberg
+    catalog Trino dials all derive endpoint, bucket, credentials and region from
+    PROVISA_OTEL_S3_ENDPOINT / _BUCKET / _S3_ACCESS_KEY / _S3_SECRET_KEY / _S3_REGION. No overlay
+    hardcodes a value for any of them. The SaaS deployment sets these to Cloudflare R2, which has
+    no size bound and shares no space with the engine's spill directory; the bundled MinIO remains
+    the default for self-hosted compose.
+  use_case: >-
+    Telemetry and query results competed with Trino's spill space on one boot disk, so a large
+    table could fail a query by filling the disk telemetry was also writing to. Hardcoding the
+    bundled MinIO on the writer meant repointing a deployment moved only the reader, and the two
+    silently addressed different stores.
+  code:
+  - docker-compose.observability.yml
+  - docker-compose.app.yml
+  - provisa/core/trino_system_catalogs.py
+  tests:
+  - tests/unit/test_otel_endpoint_not_invented.py
+  scenario: |
+    Given a deployment configured with an external object store
+    When otlp2parquet writes parquet and the compactor reads it
+    Then both address the same endpoint, bucket, credentials and region
+    And no compose overlay supplies a hardcoded object-store address
+  related_reqs:
+  - REQ-1332
+  - REQ-1422
+- id: REQ-1424
+  status: complete
+  since: 2026-08
+  group: 3. Source Registration & Data Modeling
+  category: Metadata Management
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The ops domain exposes a tag_usage report: one row per tag in the registry, giving the breadth
+    of its application (total assignments, and distinct sources, tables, columns, relationships and
+    commands carrying it), its expiry posture (assignments with an expiry date, and how many have
+    passed), and the traffic reaching what it marks (distinct statements, distinct users, last read
+    time). It is driven from tags_meta rather than the tags table, so the code-defined system tags
+    — which have no rows — appear, and a tag nobody has applied appears with zeroes. Assignment
+    counts and usage counts are computed as independent aggregates and joined to the tag, never
+    joined to each other in one pass, which would multiply each assignment by the statements that
+    read it. Usage counts distinct statements over the distinct tagged tables, so a table carrying
+    one tag at table level and on several columns still counts a statement once.
+  use_case: >-
+    An org admin deciding whether a classification scheme is working needs to see which tags are
+    actually applied, which are declared but unused, and which mark data that is genuinely being
+    read — before extending the scheme or retiring part of it.
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/_catalog_descriptions.py
+  tests:
+  - tests/unit/test_ops_domain.py
+  scenario: |
+    Given tags applied to tables and columns, and audit-logged statements reading those tables
+    When an org admin queries ops.tag_usage
+    Then every tag in the registry has a row, including unapplied system tags
+    And each row reports its assignment breadth and the distinct statements and users reaching it
+    And a tag applied to both a table and its columns does not count one statement more than once
+  related_reqs:
+  - REQ-1373
+  - REQ-1386
+- id: REQ-1425
+  status: complete
+  since: 2026-08
+  group: 1. Access Governance & Security
+  category: Query Observability
+  priority: MUST
+  type: behavioral
+  description: >-
+    Every terminal of the one query pipeline emits an attributed query span, not only the ENGINE
+    terminal. The ops queries report selects spans named provisa.query.*, so a statement executed
+    on any other terminal was invisible to it: a single-source statement the router pushed down
+    (DIRECT, span named direct.execute) and every meta/ops statement served from the admin
+    tenant_db (no span at all) executed, audited and returned rows while the report read zero. Both
+    planners now set span_attrs on their DIRECT plans as they already did on their ENGINE plans,
+    _run_plan_terminal forwards plan.span_attrs through execute_native into execute_direct, and the
+    admin terminal opens its own span. Naming follows the engine convention — provisa.query.direct
+    and provisa.query.postgres when the plan carries attributes, the previous unattributed names
+    otherwise — so a statement with no acting principal (seeding, rebuilds, where begin_audit
+    returns None) still traces but never enters the report.
+  use_case: >-
+    An operator watching the queries report needs it to account for the traffic the deployment
+    actually served, not only the subset that happened to be federated.
+  code:
+  - provisa/pgwire/_pipeline.py
+  - provisa/federation/runtime.py
+  - provisa/executor/direct.py
+  tests:
+  - tests/unit/test_otel_trace_pipeline.py
+  scenario: |
+    Given a governed statement a user issues against a single reachable source
+    When the router pushes it down to the DIRECT terminal
+    Then the span it emits is named provisa.query.direct and carries provisa.table, provisa.domain
+      and provisa.role
+    And a meta statement served from the admin tenant_db emits provisa.query.postgres the same way
+    And both appear in the ops queries report alongside federated statements
+  related_reqs:
+  - REQ-074
+  - REQ-825
+  - REQ-1386
+- id: REQ-1426
+  status: complete
+  since: 2026-08
+  group: 3. Source Registration & Data Modeling
+  category: Schema Registration
+  priority: MUST
+  type: behavioral
+  description: >-
+    No registered column is ever persisted without a data type. The catalog rendered such a column
+    as "unknown" and the SQL layer had no type to compile against. Every writer now resolves the
+    type it already holds before the write: the GraphQL remote types its native-filter (_nf_*)
+    columns from the argument's resolved type, the gRPC remote keeps ColumnDef.type on both output
+    and input columns, the GovData import maps the JDBC type code it already read, the DDN import
+    maps the ObjectType field type it previously discarded, and view registration infers output
+    types with SQLGlot's annotator (which types projected expressions - aggregates, concatenations,
+    CASTs - that name-matching could never type, and whose plain column references keep the
+    referenced table's stored spelling verbatim). A data type is design-time metadata: inference
+    runs only while a design is being authored - discovery at registration, the SQLGlot annotator
+    on a view, a mapper reading a spec - and its result is written into Provisa's own metadata.
+    Nothing inspects a data source for a type afterwards. The config loader therefore assigns no
+    types at all; it carries what the YAML declares, and the shipped seed configs declare a type
+    for every column. Onboarding closes the remaining gap: the registration form shows the
+    discovered type for each column, lets the steward pick from the canonical IR vocabulary for any
+    column the source could not describe, and refuses to submit while a selected column is untyped.
+    Hasura v2 metadata names columns but carries no types and the converter runs offline against
+    files, so it emits null - which makes the emitted YAML an incomplete design the user must
+    finish before it will load. An unassigned type fails loudly: view registration returns
+    schema.column_types_unresolved naming the columns, and the table repository - the single write
+    path for table_columns - raises rather than persisting the null. There is therefore no unknown
+    data type at run time.
+  use_case: >-
+    An operator browsing the catalog needs every column to state its type, and the compiler needs a
+    type for every column it plans against.
+  code:
+  - provisa/core/repositories/table.py
+  - provisa/api/admin/_table_ops.py
+  - provisa/api/admin/graphql_remote_router.py
+  - provisa/api/admin/grpc_remote_router.py
+  - provisa/core/config_loader.py
+  - provisa/govdata/schema_import.py
+  - provisa/ddn/mapper.py
+  tests:
+  - tests/unit/test_registered_columns_always_typed.py
+  - tests/unit/test_view_column_types.py
+  scenario: |
+    Given a table registered through any registrar - source, view, GraphQL remote, gRPC remote,
+      OpenAPI, GovData, DDN or a YAML config
+    When its columns are persisted
+    Then every column carries a data type
+    And a column whose type cannot be resolved is refused with a message naming it
+    And no table_columns row is ever written with a null data_type
+  related_reqs:
+  - REQ-038
+  - REQ-039
+  - REQ-421
+- id: REQ-1427
+  status: complete
+  since: 2026-08
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy
+  priority: MUST
+  type: behavioral
+  description: >-
+    An isolated org's sources are provisioned onto its own coordinator even though that
+    coordinator is asleep. The org's engine terminal is deliberately bound with connection kwargs
+    and no open connection, so the dedicated cluster can idle-stop between sessions and wake on
+    real traffic. Source registration is that traffic: the Trino backend's catalog lifecycle -
+    create, drop and analyze - reuses a live terminal connection when there is one and otherwise
+    opens one from the stored kwargs for the duration of the DDL, closing it afterwards and never
+    adopting it as the terminal. Gating the DDL on an open connection alone made registration a
+    silent no-op, so an org that moved to an isolated engine had its catalogs issued nowhere and
+    every query against it failed with CATALOG_NOT_FOUND while the same query succeeded on the
+    shared engine.
+  use_case: >-
+    An org admin who switches the org to a dedicated engine expects its sources to be queryable
+    immediately, without a manual catalog rebuild or a restart.
+  code:
+  - provisa/federation/backend.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_isolated_engine_provisioning.py
+  scenario: |
+    Given an org bound to its own federation engine whose coordinator has no open connection
+    When the org runtime is built and its sources are registered
+    Then the catalog DDL reaches that coordinator on a connection opened from the stored kwargs
+    And the connection is closed afterwards rather than becoming the org's terminal
+    And the org's first query resolves its catalogs instead of failing CATALOG_NOT_FOUND
+  related_reqs:
+  - REQ-1043
+  - REQ-1244
+  - REQ-1266

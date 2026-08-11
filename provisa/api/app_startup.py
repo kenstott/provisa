@@ -591,13 +591,29 @@ def _start_scheduler(_log: logging.Logger) -> None:
                     name=job.name,
                     replace_existing=True,
                 )
-        from provisa.scheduler.jobs import compact_otel_signals, watch_engine
+        from provisa.scheduler.jobs import (
+            compact_otel_signals,
+            reclaim_otel_storage,
+            watch_engine,
+        )
 
         scheduler.add_job(
             compact_otel_signals,
             trigger=CronTrigger.from_crontab(state.otel_compact_cron),
             id="otel_compact",
             name="otel:compact_signals",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        # Hourly, not per-minute: expire_snapshots + remove_orphan_files rewrite table metadata and
+        # list the whole object store. Nothing ran them before, so 93 MiB of data sat behind 57 GiB
+        # of unreferenced files and filled the coordinator disk (REQ-303).
+        scheduler.add_job(
+            reclaim_otel_storage,
+            trigger=CronTrigger.from_crontab("0 * * * *"),
+            id="otel_reclaim",
+            name="otel:reclaim_storage",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

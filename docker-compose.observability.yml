@@ -15,7 +15,10 @@ services:
     environment:
       OTLP2PARQUET_STORAGE_BACKEND: "${OTLP2PARQUET_STORAGE_BACKEND:-s3}"
       OTLP2PARQUET_S3_BUCKET: "${PROVISA_OTEL_BUCKET:-provisa-otel}"
-      OTLP2PARQUET_S3_ENDPOINT: "http://minio:9000"
+      # Same object store the app's compactor reads (PROVISA_OTEL_S3_ENDPOINT). Hardcoding the
+      # bundled MinIO here pinned the writer to the node's own disk, so pointing the deployment at
+      # an external store (Cloudflare R2) moved only the reader and the two disagreed.
+      OTLP2PARQUET_S3_ENDPOINT: "${PROVISA_OTEL_S3_ENDPOINT:-http://minio:9000}"
       OTLP2PARQUET_S3_REGION: "${PROVISA_OTEL_S3_REGION:-us-east-1}"
       OTLP2PARQUET_HTTP_PORT: "${OTLP2PARQUET_HTTP_PORT:-4318}"
       AWS_ACCESS_KEY_ID: "${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
@@ -47,6 +50,9 @@ services:
       - "--config=/etc/otel-collector-config.dev.yaml"
     environment:
       OTEL_COLLECTOR_BATCH_TIMEOUT: "${OTEL_COLLECTOR_BATCH_TIMEOUT:-200ms}"
+      # REQ-1425: the service whose spans enter the Iceberg/parquet lane — the same name the app
+      # container reports, so the filter tracks it if the deployment renames the service.
+      PROVISA_OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-provisa}"
     ports:
       - "${OTEL_GRPC_PORT:-4317}:4317"
       - "${OTEL_HTTP_PORT:-4318}:4318"

@@ -56,6 +56,7 @@ async def execute_direct(  # REQ-027, REQ-031
     source_id: str,
     sql: str,
     params: list | None = None,
+    span_attrs: dict[str, str] | None = None,
 ) -> QueryResult:
     """Execute SQL directly against a source via its driver.
 
@@ -64,11 +65,20 @@ async def execute_direct(  # REQ-027, REQ-031
         source_id: Target source identifier.
         sql: SQL in the source's native dialect (after SQLGlot transpilation).
         params: Positional parameter values.
+        span_attrs: governed-plan OTel attributes, present when an acting principal issued the
+            statement. The ops ``queries`` report reads spans named ``provisa.query.*``, so the
+            DIRECT terminal names its span that way for exactly the statements the ENGINE terminal
+            would — otherwise every single-source (pushed-down) user query is missing from the
+            report while the identical federated query appears.
 
     Returns:
         QueryResult with rows and column names.
     """
-    with _tracer.start_as_current_span("direct.execute") as span:
+    span_name = "provisa.query.direct" if span_attrs else "direct.execute"
+    with _tracer.start_as_current_span(span_name) as span:
+        if span_attrs:
+            for _k, _v in span_attrs.items():
+                span.set_attribute(_k, _v)
         from provisa.compiler.params import extract_params_comment
 
         sql, embedded = extract_params_comment(sql)

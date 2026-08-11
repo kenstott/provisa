@@ -47,6 +47,25 @@ def test_app_overlay_passes_the_object_store_the_compactor_reads():
     assert "minio" in core
 
 
+def test_the_parquet_writer_and_the_compactor_share_one_object_store():
+    """otlp2parquet writes the parquet the compactor reads. A hardcoded endpoint on the writer
+    pinned it to the bundled MinIO — the node's own boot disk — so pointing a deployment at an
+    external store (Cloudflare R2, which the SaaS node needs to keep telemetry off the disk Trino
+    spills to) moved only the reader and the two silently addressed different buckets."""
+    obs = yaml.safe_load((_REPO / "docker-compose.observability.yml").read_text())
+    env = obs["services"]["otlp2parquet"]["environment"]
+    app = yaml.safe_load((_REPO / "docker-compose.app.yml").read_text())["services"]["provisa"][
+        "environment"
+    ]
+    assert env["OTLP2PARQUET_S3_ENDPOINT"] == app["PROVISA_OTEL_S3_ENDPOINT"]
+    assert env["OTLP2PARQUET_S3_BUCKET"] == app["PROVISA_OTEL_BUCKET"]
+    assert env["AWS_ACCESS_KEY_ID"] == app["PROVISA_OTEL_S3_ACCESS_KEY"]
+    assert env["AWS_SECRET_ACCESS_KEY"] == app["PROVISA_OTEL_S3_SECRET_KEY"]
+    # The writer signs for OTLP2PARQUET_S3_REGION; the compactor and the Iceberg catalog sign for
+    # PROVISA_OTEL_S3_REGION. R2 rejects a mismatch, so both must resolve from the same variable.
+    assert env["OTLP2PARQUET_S3_REGION"] == app["PROVISA_OTEL_S3_REGION"]
+
+
 def test_only_the_observability_overlay_defines_the_collector():
     obs = yaml.safe_load((_REPO / "docker-compose.observability.yml").read_text())
     assert "image" in obs["services"]["otel-collector"]

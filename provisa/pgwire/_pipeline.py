@@ -27,11 +27,13 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
+from provisa.otel_compat import get_tracer as _get_tracer
 
 if TYPE_CHECKING:
     from provisa.executor.redirect import Delivery
 
 log = logging.getLogger(__name__)
+_tracer = _get_tracer(__name__)
 
 # RLS session-variable predicate: current_setting('provisa.<var>' [, true]).
 _CURRENT_SETTING_RE = re.compile(
@@ -189,7 +191,10 @@ async def _optimize_and_route(
     )
     _actually_dropped: set[str] = set()
     if _dropped:
-        from provisa.compiler.nf_extractor import drop_union_branches_for_table, find_api_table_names
+        from provisa.compiler.nf_extractor import (
+            drop_union_branches_for_table,
+            find_api_table_names,
+        )
 
         for _dtn in _dropped:
             exec_sql = drop_union_branches_for_table(exec_sql, _dtn)
@@ -283,7 +288,9 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
         return
     target = parsed.this
-    tbl = target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
+    tbl = (
+        target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
+    )
     if tbl is not None and tbl.name in view_map:
         op = type(parsed).__name__.upper()
         raise PermissionError(
@@ -311,7 +318,6 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     # normalized_sql is postgres downstream (then transpiled per route), so build the inline
     # relations in the postgres dialect for a faithful round-trip.
     return await localize_commands(tree, commands, _run, dialect="postgres")
-
 
 
 def _plan_span_attrs(
@@ -519,9 +525,15 @@ async def _govern_and_route(
     # reaches the engine unchanged ("no such table").
     from provisa.compiler.nf_extractor import extract_nf_args
 
-    _physical_sql = rewrite_semantic_to_catalog_physical(normalize_table_refs(governed_semantic, ctx), ctx)
-    _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(_physical_sql, embedded_params or [])
-    exec_params = _nf_clean_params if _nf_clean_params != (embedded_params or []) else embedded_params
+    _physical_sql = rewrite_semantic_to_catalog_physical(
+        normalize_table_refs(governed_semantic, ctx), ctx
+    )
+    _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
+        _physical_sql, embedded_params or []
+    )
+    exec_params = (
+        _nf_clean_params if _nf_clean_params != (embedded_params or []) else embedded_params
+    )
     _nf_args = _extracted_nf or None
 
     _qualified, decision, _default_source, _optimized, _sources = await _optimize_and_route(
@@ -575,7 +587,10 @@ async def _govern_and_route(
         from provisa.transpiler.router import RouteDecision
 
         decision = RouteDecision(
-            route=Route.ENGINE, source_id=None, dialect=None, reason="buffered-transport auto-delivery"
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason="buffered-transport auto-delivery",
         )
 
     # REQ-1159: a localized statement carries an inline local relation as a VALUES list, which rides
@@ -605,12 +620,15 @@ async def _govern_and_route(
                 normalize_table_refs(_qualified, ctx), ctx
             )
 
-        _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {
-            "iceberg",
-            "otel",
-            "results",
-            "mat_store",  # REQ-1163: the materialization store an expanded bitemporal view reconstructs over
-        }
+        _known_cats_pgwire = (
+            set(getattr(state, "source_catalogs", {}).values())
+            | {
+                "iceberg",
+                "otel",
+                "results",
+                "mat_store",  # REQ-1163: the materialization store an expanded bitemporal view reconstructs over
+            }
+        )
         from provisa.api.data.materialization import _lookup_gql_remote_table as _lookup_gql
         import sqlglot as _sg
         import sqlglot.expressions as _exp
@@ -673,6 +691,9 @@ async def _govern_and_route(
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            # REQ-1425: every route carries the plan's span attributes, so the ops queries report
+            # covers pushed-down single-source statements identically to federated ones.
+            span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
@@ -786,17 +807,27 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         tenant_db = state.tenant_db
         if tenant_db is None:
             raise RuntimeError("Admin tenant_db not available")
-        async with tenant_db.acquire() as _conn:
-            _conn = _conn  # type: ignore[assignment]
-            _rows = await _conn.fetch(plan.sql)
-            if _rows:
-                col_names = list(_rows[0].keys())
-                rows = [tuple(r) for r in _rows]
-            else:
-                # Execute again for column names via a describe-style query
-                stmt = await _conn.prepare(plan.sql)
-                col_names = [a.name for a in stmt.get_attributes()]
-                rows = []
+        # REQ-1425: the admin terminal is a query terminal like any other — it emits the same
+        # provisa.query.* span so meta/ops statements reach the ops queries report.
+        _span_name = "provisa.query.postgres" if plan.span_attrs else "admin.execute"
+        with _tracer.start_as_current_span(_span_name) as _span:
+            if plan.span_attrs:
+                for _k, _v in plan.span_attrs.items():
+                    _span.set_attribute(_k, _v)
+            _span.set_attribute("db.system", "postgres")
+            _span.set_attribute("db.statement", plan.sql[:1000])
+            async with tenant_db.acquire() as _conn:
+                _conn = _conn  # type: ignore[assignment]
+                _rows = await _conn.fetch(plan.sql)
+                if _rows:
+                    col_names = list(_rows[0].keys())
+                    rows = [tuple(r) for r in _rows]
+                else:
+                    # Execute again for column names via a describe-style query
+                    stmt = await _conn.prepare(plan.sql)
+                    col_names = [a.name for a in stmt.get_attributes()]
+                    rows = []
+            _span.set_attribute("db.row_count", len(rows))
         result = QueryResult(rows=rows, column_names=col_names)
     else:
         # DIRECT terminal (REQ-825): single reachable source on its native driver.
@@ -805,6 +836,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
             plan.source_id,
             plan.sql,
             plan.exec_params,
+            plan.span_attrs,
         )
     return result
 
@@ -1034,7 +1066,10 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
         from provisa.transpiler.router import RouteDecision
 
         decision = RouteDecision(
-            route=Route.ENGINE, source_id=None, dialect=None, reason="buffered-transport auto-delivery"
+            route=Route.ENGINE,
+            source_id=None,
+            dialect=None,
+            reason="buffered-transport auto-delivery",
         )
 
     if decision.route == Route.ENGINE:
@@ -1114,6 +1149,8 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            # REQ-1425: every route carries the plan's span attributes (see _govern_and_route).
+            span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )

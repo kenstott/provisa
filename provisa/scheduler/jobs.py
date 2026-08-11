@@ -14,9 +14,12 @@ internal function names. Reuses existing async patterns.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
+import os
+import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -24,6 +27,8 @@ import httpx
 import pyarrow as pa
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+
+from provisa.core.trino_system_catalogs import OTEL_CATALOG
 
 if TYPE_CHECKING:
     from provisa.core.models import ScheduledTrigger
@@ -89,11 +94,9 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
 
     from provisa.api.app import state
 
+    # None = compact every date present, oldest first. A backfill pins one date.
     override = os.environ.get("OTEL_COMPACT_DATE")
-    if override:
-        target = datetime.strptime(override, "%Y-%m-%d")
-    else:
-        target = datetime.now(timezone.utc).replace(tzinfo=None)
+    target = datetime.strptime(override, "%Y-%m-%d") if override else None
 
     # OTEL→Iceberg compaction targets an S3/MinIO object store. The native (no-Docker) tier has no
     # S3, so its credentials are unset — there is nothing to compact. Skip cleanly instead of
@@ -145,9 +148,20 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
             raise
 
 
+_DATE_SEG_RE = re.compile(r"year=(\d{4})/month=(\d{2})/day=(\d{2})/")
+
+
+def _key_date(key: str) -> datetime | None:
+    """The partition date encoded in an otlp2parquet key, or None if the layout doesn't carry one."""
+    m = _DATE_SEG_RE.search(key)
+    if not m:
+        return None
+    return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
 def _compact_signal(
     signal: str,
-    target: datetime,
+    target: datetime | None,
     s3_endpoint: str,
     access_key: str,
     secret_key: str,
@@ -156,24 +170,29 @@ def _compact_signal(
     max_files: int,
     engine,
 ) -> None:
-    """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking."""
+    """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking.
+
+    ``target`` pins compaction to a single date (the OTEL_COMPACT_DATE backfill); None — the
+    scheduled case — compacts EVERY date present, oldest first. Restricting the listing to today
+    was an unbounded leak: a file whose date segment had rolled over was never listed again, so it
+    was never inserted and never deleted. 70586 such files (15 GiB under `traces/trino/`) had
+    accumulated on the SaaS node and filled the coordinator's disk. Rows carry their own key's
+    date into the `_date` partition, so draining a backlog cannot misfile yesterday's spans
+    under today.
+    """
     import io
 
     import boto3
     from botocore.config import Config as BotoConfig
-
-    assert isinstance(target, datetime)
-    year = target.strftime("%Y")
-    month = target.strftime("%m")
-    day = target.strftime("%d")
-    date_glob = f"year={year}/month={month}/day={day}/"
 
     s3 = boto3.client(
         "s3",
         endpoint_url=s3_endpoint,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
-        region_name="us-east-1",
+        # The object store's own region — R2 requires "auto", MinIO ignores it. Hardcoding
+        # us-east-1 here contradicted otel_object_store(), which reads PROVISA_OTEL_S3_REGION.
+        region_name=os.environ.get("PROVISA_OTEL_S3_REGION", "us-east-1"),
         config=BotoConfig(signature_version="s3v4"),
     )
 
@@ -188,24 +207,47 @@ def _compact_signal(
     # files unread and undeleted forever — 26521 of them on the SaaS node — while the traces report
     # showed nothing of what the engine actually did.
     paginator = s3.get_paginator("list_objects_v2")
-    keys = []
+    by_date: dict[datetime, list[str]] = {}
     for page in paginator.paginate(Bucket=otel_bucket, Prefix=f"{signal}/"):
         for obj in page.get("Contents", []):
-            if obj["Key"].endswith(".parquet") and date_glob in obj["Key"]:
-                keys.append(obj["Key"])
+            key = obj["Key"]
+            if not key.endswith(".parquet"):
+                continue
+            key_date = _key_date(key)
+            if key_date is None:
+                continue
+            if target is not None and key_date != target.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ):
+                continue
+            by_date.setdefault(key_date, []).append(key)
 
     # Each signal gets a bounded share of one run. The signals are compacted in a fixed order, so an
     # unbounded backlog in an earlier one starves every later one: metrics held the whole run and
     # traces — last in the list — never got a turn, which is why the traces report stayed empty
-    # while metrics filled. Remaining files are picked up by the next tick.
-    if len(keys) > max_files:
-        logger.info(
-            "compact_otel: %s backlog %d files, taking %d this run", signal, len(keys), max_files
-        )
-        keys = keys[:max_files]
+    # while metrics filled. Remaining files are picked up by the next tick. Oldest date first, so a
+    # backlog drains from the tail instead of being permanently outrun by the current partition.
+    total_available = sum(len(v) for v in by_date.values())
+    budget = max_files
+    batches: list[tuple[datetime, list[str]]] = []
+    for key_date in sorted(by_date):
+        if budget <= 0:
+            break
+        take = by_date[key_date][:budget]
+        budget -= len(take)
+        batches.append((key_date, take))
 
-    if not keys:
-        logger.debug("compact_otel: no %s files for %s", signal, date_glob)
+    if total_available > max_files:
+        logger.info(
+            "compact_otel: %s backlog %d files across %d dates, taking %d this run",
+            signal,
+            total_available,
+            len(by_date),
+            max_files,
+        )
+
+    if not batches:
+        logger.debug("compact_otel: no %s files to compact", signal)
         return
 
     try:
@@ -216,41 +258,44 @@ def _compact_signal(
         return
 
     total_rows = 0
-    for chunk_start in range(0, len(keys), file_chunk):
-        chunk_keys = keys[chunk_start : chunk_start + file_chunk]
-        try:
-            parts = []
-            for key in chunk_keys:
-                obj = s3.get_object(Bucket=otel_bucket, Key=key)
-                parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
-            combined = pa.concat_tables(parts, promote_options="default")
-        except Exception:
-            logger.exception(
-                "compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start
-            )
-            return
-
-        try:
-            _insert_otel_iceberg(engine, signal, combined, target)
-            total_rows += len(combined)
-            del_resp = s3.delete_objects(
-                Bucket=otel_bucket,
-                Delete={"Objects": [{"Key": k} for k in chunk_keys]},
-            )
-            for err in del_resp.get("Errors", []):
-                logger.warning(
-                    "compact_otel: s3 delete failed key=%s code=%s msg=%s",
-                    err.get("Key"),
-                    err.get("Code"),
-                    err.get("Message"),
+    for key_date, keys in batches:
+        for chunk_start in range(0, len(keys), file_chunk):
+            chunk_keys = keys[chunk_start : chunk_start + file_chunk]
+            try:
+                parts = []
+                for key in chunk_keys:
+                    obj = s3.get_object(Bucket=otel_bucket, Key=key)
+                    parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
+                combined = pa.concat_tables(parts, promote_options="default")
+            except Exception:
+                logger.exception(
+                    "compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start
                 )
-        except Exception:
-            logger.exception(
-                "compact_otel: failed inserting %s into Iceberg (chunk %d)", signal, chunk_start
-            )
-            return
+                return
 
-    logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
+            try:
+                _insert_otel_iceberg(engine, signal, combined, key_date)
+                total_rows += len(combined)
+                del_resp = s3.delete_objects(
+                    Bucket=otel_bucket,
+                    Delete={"Objects": [{"Key": k} for k in chunk_keys]},
+                )
+                for err in del_resp.get("Errors", []):
+                    logger.warning(
+                        "compact_otel: s3 delete failed key=%s code=%s msg=%s",
+                        err.get("Key"),
+                        err.get("Code"),
+                        err.get("Message"),
+                    )
+            except Exception:
+                logger.exception(
+                    "compact_otel: failed inserting %s into Iceberg (chunk %d)", signal, chunk_start
+                )
+                return
+
+    logger.info(
+        "compact_otel: inserted %d %s rows across %d date(s)", total_rows, signal, len(batches)
+    )
 
 
 _PA_TO_PHYSICAL: dict[object, str] = {
@@ -482,15 +527,46 @@ def _execute_batch_inserts(
         engine.execute_engine_sync(prefix + ", ".join(values))
 
 
-def _expire_iceberg_snapshots(engine, signal: str) -> None:
-    """Expire old Iceberg snapshots to prevent metadata bloat."""
-    try:
-        engine.execute_engine_sync(
-            f"ALTER TABLE otel.signals.{signal} EXECUTE expire_snapshots"
-            f"(retention_threshold => '7d')"
-        )
-    except Exception:
-        logger.warning("compact_otel: expire_snapshots for %s failed", signal, exc_info=True)
+async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
+    """Reclaim the OTel Iceberg tables' object-store footprint (scheduled).
+
+    Expiring snapshots alone does NOT free space — it only unlinks them. The files an expired
+    snapshot referenced become unreferenced, and ONLY ``remove_orphan_files`` deletes those.
+    Nothing ran it, so the SaaS node reached 57 GiB of metadata behind 93 MiB of data and filled
+    the coordinator's disk; a manual pass returned 59 GiB. Both procedures run here, at the
+    configured ``ops_snapshot_retention_hours``.
+
+    Trino floors both retentions at 7 days (``iceberg.expire-snapshots.min-retention``,
+    ``iceberg.remove-orphan-files.min-retention``) and REJECTS a shorter threshold outright, so a
+    configured retention below that is not merely ignored — the procedure errors. The matching
+    catalog session properties are set for this statement so the configured value is the one that
+    applies.
+    """
+    from provisa.api.app import state
+
+    retention_hours = state.otel_snapshot_retention_hours
+    if retention_hours is None:
+        logger.debug("reclaim_otel: no ops_snapshot_retention_hours configured — skipping")
+        return
+    engine = state.federation_engine
+    if engine is None:
+        return
+
+    threshold = f"{retention_hours}h"
+    for signal in ("logs", "metrics", "traces"):
+        for proc, hint in (
+            ("expire_snapshots", "expire_snapshots_min_retention"),
+            ("remove_orphan_files", "remove_orphan_files_min_retention"),
+        ):
+            try:
+                await asyncio.to_thread(
+                    engine.execute_engine_sync,
+                    f"ALTER TABLE otel.signals.{signal} EXECUTE {proc}"
+                    f"(retention_threshold => '{threshold}')",
+                    session_hints={f"{OTEL_CATALOG}.{hint}": threshold},
+                )
+            except Exception:
+                logger.warning("reclaim_otel: %s on %s failed", proc, signal, exc_info=True)
 
 
 def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> None:
@@ -534,7 +610,6 @@ def _insert_otel_iceberg(engine, signal: str, table: pa.Table, dt: datetime) -> 
 
     batch_size = _resolve_batch_size(signal)
     _execute_batch_inserts(engine, signal, rows, col_names, placeholders, batch_size)
-    _expire_iceberg_snapshots(engine, signal)
 
 
 async def watch_engine() -> None:

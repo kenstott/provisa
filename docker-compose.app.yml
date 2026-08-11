@@ -59,6 +59,10 @@ services:
       PROVISA_OTEL_S3_ACCESS_KEY: "${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
       PROVISA_OTEL_S3_SECRET_KEY: "${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
       PROVISA_OTEL_BUCKET: "${PROVISA_OTEL_BUCKET:-provisa-otel}"
+      # Signed with the request by both the compactor's boto3 client and the Iceberg catalog Trino
+      # dials. Cloudflare R2 issues its credentials against region `auto`; omitting the passthrough
+      # left both signing for us-east-1 while otlp2parquet (which does read it) signed for auto.
+      PROVISA_OTEL_S3_REGION: "${PROVISA_OTEL_S3_REGION:-us-east-1}"
       GRAPHQL_DEMO_ENABLED: "${GRAPHQL_DEMO_ENABLED:-false}"
       GRAPHQL_DEMO_URL: "${GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}"
     depends_on:

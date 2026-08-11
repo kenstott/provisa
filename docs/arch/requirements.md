@@ -5442,9 +5442,9 @@ The Provisa support OTLP endpoint (`support_endpoint` config or `PROVISA_SUPPORT
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Provisa auto-detects OTLP transport from the endpoint URL scheme: `http://` or `https://` schemes use OTLP/HTTP with `/v1/traces`, `/v1/metrics`, and `/v1/logs` path suffixes appended automatically; any other scheme uses OTLP/gRPC with insecure mode.
+Provisa takes the OTLP transport from an explicit declaration — `OTEL_EXPORTER_OTLP_PROTOCOL`, else `observability.protocol`, else the spec default `grpc`. `http/protobuf` uses OTLP/HTTP with `/v1/traces`, `/v1/metrics` and `/v1/logs` appended; `grpc` uses OTLP/gRPC in insecure mode. An unrecognised value raises. The URL scheme is never read as the transport.
 
-**Use case:** URL-scheme-based transport detection lets operators configure the OTLP endpoint without a separate transport config field.
+**Use case:** The OTLP spec writes a gRPC endpoint as `http://collector:4317` exactly as it writes an HTTP one as `http://collector:4318`, so the scheme cannot distinguish them. Inferring it from the scheme built an HTTP exporter that POSTed every batch to the gRPC port, where the collector reset the connection and the batch processor dropped the spans — the SaaS node exported nothing while its endpoint, collector and parquet writer were all healthy, and the ops traces/queries/metrics/logs reports read zero rows.
 
 **Code:** `provisa/api/otel_setup.py`
 
@@ -14623,3 +14623,111 @@ The SaaS CREATES an isolated org's dedicated federation-engine coordinator, rath
 **Code:** `provisa/federation/isolated_provisioner.py`, `provisa/federation/engine.py`, `provisa/api/admin/org_engine_router.py`, `provisa/api/admin/orgs_router.py`, `docker-compose.isolated-engine.yml`
 
 **Tests:** `tests/unit/test_isolated_engine_provisioner.py`, `tests/unit/test_org_engine_lane.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1417 · JSON:API {#REQ-1417}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The JSON:API surface speaks physical column and relationship names end to end, in the parameters it accepts and the keys it emits alike. include, fields[type], sort and filter[col] all name columns and relationships as the SQL plane spells them (global_sql_naming_convention, [REQ-471](#REQ-471)), including the dotted rel.column form of include and includeNodes; attributes, the nodes projection under a groupBy result, and the keys inside included come back in that same spelling. The GraphQL naming convention (gql_naming_convention, camelCase under apollo_graphql) belongs to the GraphQL surface alone, so the handler borrows it only for the GraphQL text it synthesizes: names are translated physical -> exposed at that emit boundary and translated back on the way out, the rule ?groupBy= ([REQ-1361](#REQ-1361)) and gRPC's include ([REQ-1408](#REQ-1408)) already follow. The translation authority is the compiler's own record of the rename (ctx.exposed_to_physical, keyed by the table_id a sideloaded relationship reaches through ctx.joins), never a second application of the convention. A name that is not a physical column or relationship is a 400 naming the offending parameter, not a silently dropped filter or sort. The generated foreign-key column selected to resolve a relationship's linkage is likewise derived as <rel>_id and translated, rather than assuming the exposed spelling.
+
+**Use case:** A caller who knows the tables -- or an NL-generated JSON:API URL -- uses one vocabulary across SQL, ?groupBy=, gRPC and JSON:API, instead of having to know which surface renamed a column.
+
+**Code:** `provisa/api/jsonapi/naming.py`, `provisa/api/jsonapi/generator.py`, `provisa/nl/runner.py`
+
+**Tests:** `tests/unit/test_jsonapi_aggregates.py`, `tests/unit/test_jsonapi_physical_naming.py`, `tests/unit/test_nl_jsonapi_include_roundtrip.py`, `tests/unit/test_nl_aggregation_routing.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1418 · Multi-Tenancy {#REQ-1418}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An organization on the external engine lane runs an engine KIND of its own, not only a coordinator of its own. orgs.engine_kind names any _ENGINE_BUILDERS key and orgs.engine_url_enc holds that engine's DSN encrypted at rest with the same service as api_sources.auth ([REQ-686](#REQ-686)), so one organization queries its own Databricks, Snowflake, BigQuery, ClickHouse, Fabric, Synapse or SQLAlchemy store while the deployment stays on Trino. NULL means the deployment's kind -- the state of every shared and isolated organization, and of an organization that moved only its coordinator ([REQ-1412](#REQ-1412)). Which address an organization must supply is derived from the chosen kind's ENGINE_REGISTRY config_fields via engine_addressing (federation_engine_url = a DSN, federation_engine_host = a host/port pair), never by inspecting the value typed; the bundled trino kind, whose coordinator the deployment manages, is endpoint-addressed when an organization operates one. build_org_runtime passes the kind to build_engine and records the DSN on the OrgRuntime, where configured_engine_url reads it back through the AppState shim ahead of $PROVISA_ENGINE_URL and the persisted federation_engine_url, so every URL-addressed backend resolves the acting organization's warehouse with no per-backend change. The native tier's single-org guard ([REQ-1266](#REQ-1266)) admits an organization that holds its own EngineRuntime, since the collision it prevents is a SHARED process-wide runtime. The admin surface never returns a stored DSN -- it reports whether one is set, and an omitted external_url on write means unchanged.
+
+**Use case:** A tenant with an existing Databricks warehouse points its organization at that warehouse and keeps its data in its own account, without the deployment changing engine for every other tenant.
+
+**Code:** `provisa/core/schema_admin.py`, `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/federation/engine.py`, `provisa/federation/native_backend.py`, `provisa/api/admin/org_engine_router.py`, `provisa-ui/src/components/admin/OrgEngineTab.tsx`
+
+**Tests:** `tests/unit/test_org_engine_lane.py`, `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`
+
+### REQ-1421 · Multi-Tenancy {#REQ-1421}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The engine kinds offered to an organization name the PRODUCT it runs, not the library or the process that hosts it. ENGINE_REGISTRY carries one kind per network-addressable relational database (_RDB_KINDS: MySQL, MariaDB, Oracle, SQL Server, Db2, Redshift, Greenplum, CockroachDB, YugabyteDB, openGauss, TiDB, SingleStore, Vertica, Exasol, Teradata, SAP HANA, SAP ASE, SAP SQL Anywhere, MonetDB, Firebird), each on the same self-only land-everything runtime as the generic sqlalchemy kind and differing only in the DSN its dialect takes; the sqlalchemy kind remains as the catch-all for a database with no key of its own. File-embedded stores (SQLite, Access) are never offered, since a store on someone else's local disk is not reachable from where Provisa runs. The org-engine list additionally drops the kinds that run INSIDE the Provisa process even though they carry a federation_engine_url -- embedded ClickHouse (chdb), whose URL is a local data directory -- because an organization cannot operate one; its external counterpart is the clickhouse-server kind.
+
+**Use case:** An administrator choosing an engine for the organization picks "MySQL" or "Oracle Database" from the list, rather than reading a library name and inferring which databases it reaches.
+
+**Code:** `provisa/federation/engine.py`, `provisa/api/admin/org_engine_router.py`
+
+**Tests:** `tests/unit/test_federation_engine.py`, `tests/unit/test_org_engine_lane.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1422 · OpenTelemetry Instrumentation {#REQ-1422}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+The OTel signal store reclaims its own object-store footprint on a schedule, with no operator action. A scheduled job runs both `expire_snapshots` AND `remove_orphan_files` on otel.signals.{logs,metrics,traces} at the configured `ops_snapshot_retention_hours`. Expiring snapshots only unlinks them; `remove_orphan_files` is what deletes the bytes. Trino floors both retentions at 7 days and rejects a shorter threshold outright, so the job sets the matching per-catalog session properties (`otel.expire_snapshots_min_retention`, `otel.remove_orphan_files_min_retention`) with the statement so the configured value is the one that applies. Raw parquet staging is reclaimed by the same guarantee: the compactor lists every date partition present and drains oldest-first, so a file whose date segment has rolled over is still compacted and deleted rather than stranded forever.
+
+**Use case:** An unattended node keeps running. Without scheduled reclamation the SaaS coordinator reached 57 GiB of Iceberg metadata behind 93 MiB of data, plus 70586 stranded parquet files (15 GiB), filled its boot disk, and every ops view creation and Iceberg commit failed.
+
+**Code:** `provisa/scheduler/jobs.py`, `provisa/api/app_startup.py`
+
+**Tests:** `tests/unit/test_otel_trace_pipeline.py`
+
+### REQ-1423 · OpenTelemetry Instrumentation {#REQ-1423}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+The OTel/results object store is a single set of coordinates every participant resolves from the same environment variables, so a deployment can point it at storage that is not the node's own disk. The parquet writer (otlp2parquet), the compactor's boto3 client, and the Iceberg catalog Trino dials all derive endpoint, bucket, credentials and region from PROVISA_OTEL_S3_ENDPOINT / _BUCKET / _S3_ACCESS_KEY / _S3_SECRET_KEY / _S3_REGION. No overlay hardcodes a value for any of them. The SaaS deployment sets these to Cloudflare R2, which has no size bound and shares no space with the engine's spill directory; the bundled MinIO remains the default for self-hosted compose.
+
+**Use case:** Telemetry and query results competed with Trino's spill space on one boot disk, so a large table could fail a query by filling the disk telemetry was also writing to. Hardcoding the bundled MinIO on the writer meant repointing a deployment moved only the reader, and the two silently addressed different stores.
+
+**Code:** `docker-compose.observability.yml`, `docker-compose.app.yml`, `provisa/core/trino_system_catalogs.py`
+
+**Tests:** `tests/unit/test_otel_endpoint_not_invented.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1424 · Metadata Management {#REQ-1424}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The ops domain exposes a tag_usage report: one row per tag in the registry, giving the breadth of its application (total assignments, and distinct sources, tables, columns, relationships and commands carrying it), its expiry posture (assignments with an expiry date, and how many have passed), and the traffic reaching what it marks (distinct statements, distinct users, last read time). It is driven from tags_meta rather than the tags table, so the code-defined system tags — which have no rows — appear, and a tag nobody has applied appears with zeroes. Assignment counts and usage counts are computed as independent aggregates and joined to the tag, never joined to each other in one pass, which would multiply each assignment by the statements that read it. Usage counts distinct statements over the distinct tagged tables, so a table carrying one tag at table level and on several columns still counts a statement once.
+
+**Use case:** An org admin deciding whether a classification scheme is working needs to see which tags are actually applied, which are declared but unused, and which mark data that is genuinely being read — before extending the scheme or retiring part of it.
+
+**Code:** `provisa/api/_meta_views.py`, `provisa/api/_catalog_descriptions.py`
+
+**Tests:** `tests/unit/test_ops_domain.py`
+
+## 1. Access Governance & Security
+
+### REQ-1425 · Query Observability {#REQ-1425}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Every terminal of the one query pipeline emits an attributed query span, not only the ENGINE terminal. The ops queries report selects spans named provisa.query.*, so a statement executed on any other terminal was invisible to it: a single-source statement the router pushed down (DIRECT, span named direct.execute) and every meta/ops statement served from the admin tenant_db (no span at all) executed, audited and returned rows while the report read zero. Both planners now set span_attrs on their DIRECT plans as they already did on their ENGINE plans, _run_plan_terminal forwards plan.span_attrs through execute_native into execute_direct, and the admin terminal opens its own span. Naming follows the engine convention — provisa.query.direct and provisa.query.postgres when the plan carries attributes, the previous unattributed names otherwise — so a statement with no acting principal (seeding, rebuilds, where begin_audit returns None) still traces but never enters the report.
+
+**Use case:** An operator watching the queries report needs it to account for the traffic the deployment actually served, not only the subset that happened to be federated.
+
+**Code:** `provisa/pgwire/_pipeline.py`, `provisa/federation/runtime.py`, `provisa/executor/direct.py`
+
+**Tests:** `tests/unit/test_otel_trace_pipeline.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1426 · Schema Registration {#REQ-1426}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+No registered column is ever persisted without a data type. The catalog rendered such a column as "unknown" and the SQL layer had no type to compile against. Every writer now resolves the type it already holds before the write: the GraphQL remote types its native-filter (_nf_*) columns from the argument's resolved type, the gRPC remote keeps ColumnDef.type on both output and input columns, the GovData import maps the JDBC type code it already read, the DDN import maps the ObjectType field type it previously discarded, and view registration infers output types with SQLGlot's annotator (which types projected expressions - aggregates, concatenations, CASTs - that name-matching could never type, and whose plain column references keep the referenced table's stored spelling verbatim). A data type is design-time metadata: inference runs only while a design is being authored - discovery at registration, the SQLGlot annotator on a view, a mapper reading a spec - and its result is written into Provisa's own metadata. Nothing inspects a data source for a type afterwards. The config loader therefore assigns no types at all; it carries what the YAML declares, and the shipped seed configs declare a type for every column. Onboarding closes the remaining gap: the registration form shows the discovered type for each column, lets the steward pick from the canonical IR vocabulary for any column the source could not describe, and refuses to submit while a selected column is untyped. Hasura v2 metadata names columns but carries no types and the converter runs offline against files, so it emits null - which makes the emitted YAML an incomplete design the user must finish before it will load. An unassigned type fails loudly: view registration returns schema.column_types_unresolved naming the columns, and the table repository - the single write path for table_columns - raises rather than persisting the null. There is therefore no unknown data type at run time.
+
+**Use case:** An operator browsing the catalog needs every column to state its type, and the compiler needs a type for every column it plans against.
+
+**Code:** `provisa/core/repositories/table.py`, `provisa/api/admin/_table_ops.py`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/grpc_remote_router.py`, `provisa/core/config_loader.py`, `provisa/govdata/schema_import.py`, `provisa/ddn/mapper.py`
+
+**Tests:** `tests/unit/test_registered_columns_always_typed.py`, `tests/unit/test_view_column_types.py`
