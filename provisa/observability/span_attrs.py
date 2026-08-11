@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7337be0b-6667-4a2c-bdb9-6d594d79490d
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """OTel span attributes derived from governed semantic SQL.
 
 The ops `queries` report reads the `otel.signals.traces` table, whose table_name/domain_id/
