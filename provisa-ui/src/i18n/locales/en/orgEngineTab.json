@@ -1,7 +1,7 @@
 {
   "orgEngineTab": {
     "loading": "Loading…",
-    "intro": "Choose which query engine this organization runs on. The deployment decides the engine kind ({{engine}}); this choice decides whose coordinator answers your queries.",
+    "intro": "Choose which query engine this organization runs on. The deployment runs {{engine}}; this organization can share it, take a dedicated one, or run an engine of its own.",
     "modeLabel": "Engine",
     "modeShared": "Shared — the pooled engine Provisa operates",
     "modeSharedHelp": "The default. Your queries run on the multi-tenant coordinator, isolated by catalog and role.",
@@ -9,7 +9,13 @@
     "modeIsolatedHelp": "A coordinator reserved for this organization alone. No other tenant's work shares its resources.",
     "modeIsolatedUnavailable": "This deployment cannot provision a dedicated coordinator, so an isolated engine is not available here.",
     "modeExternal": "External — an engine you operate",
-    "modeExternalHelp": "Point Provisa at a {{engine}} coordinator you run. Data planning stays in Provisa; execution lands on your cluster.",
+    "modeExternalHelp": "Point Provisa at an engine you run — any supported kind, not only the deployment's {{engine}}. Planning and governance stay in Provisa; execution lands on your cluster.",
+    "kindLabel": "Engine kind",
+    "kindHelp": "Which engine this organization runs. It does not have to match the deployment's — an organization can run on its own Databricks, Snowflake, BigQuery, ClickHouse or Trino.",
+    "urlLabel": "Engine URL",
+    "urlHelp": "The connection URL for this engine, including its credentials.",
+    "urlStored": "A URL is stored. Leave blank to keep it; enter a new one to replace it.",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
     "hostLabel": "Coordinator host",
     "hostPlaceholder": "trino.internal.example.com",
     "portLabel": "Coordinator port",

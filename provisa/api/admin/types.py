@@ -304,6 +304,17 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     def auto_suggested(self) -> bool:
         return self.id.startswith("fk__")
 
+    @strawberry.field
+    def physical_name(self) -> str | None:  # REQ-471, REQ-1417
+        """The relationship's name on the SQL plane — what ?include= and gRPC's include take.
+
+        Derived by the naming authority, never by a client transliterating the GraphQL alias's
+        casing: the convention is server configuration, so only the server can answer this.
+        """
+        from provisa.api.jsonapi.naming import physical_rel_name
+
+        return physical_rel_name(self.graphql_alias) if self.graphql_alias else None
+
 
 @strawberry.type
 class RoleRateLimitType:  # REQ-1174

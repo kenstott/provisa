@@ -1201,6 +1201,27 @@ def engine_registry() -> list[dict]:
     ]
 
 
+def engine_addressing(key: str) -> str:
+    """REQ-1418: how an engine kind is ADDRESSED — ``"url"``, ``"endpoint"`` or ``"none"``.
+
+    Derived from that kind's ``ENGINE_REGISTRY`` config fields, which are already the single
+    statement of what a kind needs to be reached: ``federation_engine_url`` means a DSN
+    (databricks://, snowflake://, clickhouse://, any SQLAlchemy URL), ``federation_engine_host``
+    means a coordinator host/port pair, and neither means the kind is in-process (duckdb) or
+    deployment-managed (trino). Callers asking an org for connection details read this rather than
+    inspecting the value the org typed — a value never says which kind it belongs to.
+    """
+    entry = next((e for e in ENGINE_REGISTRY if e["key"] == key), None)
+    if entry is None:
+        raise ValueError(f"unknown engine kind {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
+    keys = {f["config_key"] for f in entry["config_fields"]}
+    if "federation_engine_url" in keys:
+        return "url"
+    if "federation_engine_host" in keys:
+        return "endpoint"
+    return "none"
+
+
 def _engine_config() -> dict:
     """The persisted platform config, for engine selection/URL fallback. Empty if unreadable
     (e.g. very early boot before a config file exists)."""
@@ -1211,12 +1232,36 @@ def _engine_config() -> dict:
     return read_config() or {}
 
 
+def active_org_engine_url() -> str | None:
+    """REQ-1418: the DSN of the engine the ACTIVE org operates itself, or ``None``.
+
+    Reads back off the org runtime through the same AppState shim ``terminal_conn_kwargs`` uses for
+    ``active_engine_endpoint``, so an org's own warehouse is resolved by the org routing that is
+    already bound rather than by threading a DSN through every backend. Import-guarded because the
+    engine layer is built before (and independently of) the API layer — a process with no app
+    (desktop profile, tooling) simply has no active org."""
+    try:
+        from provisa.api.app import state
+    except ImportError:
+        return None
+    return state.active_engine_url
+
+
 def configured_engine_url() -> str | None:
-    """The engine DSN for sqlalchemy/clickhouse/pg: ``$PROVISA_ENGINE_URL`` then the persisted
-    ``federation_engine_url`` config field."""
+    """The engine DSN for sqlalchemy/clickhouse/pg/warehouse engines: the ACTIVE ORG's own DSN
+    (REQ-1418) first, then ``$PROVISA_ENGINE_URL``, then the persisted ``federation_engine_url``
+    config field.
+
+    The org's comes first because it is the more specific statement: an org on the external lane
+    with a DSN of its own has said which warehouse ITS queries run on, and the deployment-wide URL
+    is what every other org uses."""
     import os
 
-    return os.environ.get("PROVISA_ENGINE_URL") or _engine_config().get("federation_engine_url")
+    return (
+        active_org_engine_url()
+        or os.environ.get("PROVISA_ENGINE_URL")
+        or _engine_config().get("federation_engine_url")
+    )
 
 
 def configured_materialize_url() -> str | None:

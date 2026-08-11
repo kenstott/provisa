@@ -265,6 +265,7 @@ query RelationshipsQuery {
     functionArg
     alias
     graphqlAlias
+    physicalName
     computedCypherAlias
     autoSuggested
     disableCypher
@@ -288,6 +289,7 @@ query AllRelationshipsQuery {
     functionArg
     alias
     graphqlAlias
+    physicalName
     computedCypherAlias
     autoSuggested
     disableCypher

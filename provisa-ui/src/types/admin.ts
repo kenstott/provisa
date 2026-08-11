@@ -259,6 +259,9 @@ export interface Relationship {
   functionArg: string | null;
   alias: string | null;
   graphqlAlias: string | null;
+  // REQ-1417: the relationship as the SQL plane spells it — what ?include= takes. Server-derived
+  // by the naming authority; the client must never transliterate graphqlAlias itself.
+  physicalName: string | null;
   computedCypherAlias: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;

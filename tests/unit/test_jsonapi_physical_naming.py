@@ -272,6 +272,59 @@ async def test_included_resources_come_back_physically_named(client):
 
 
 @pytest.mark.anyio
+async def test_group_by_keys_come_back_physically_named(client, monkeypatch):
+    """``groupKey`` is keyed by the ``by:`` argument this handler synthesized, which went through
+    the GQL convention — so it needs translating back exactly as ``nodes`` does."""
+
+    def _fake_group_by(rows, columns, node_rows, node_columns, root_field):
+        return {
+            "data": {
+                root_field: [
+                    {"groupKey": {"userId": 7}, "aggregate": {"count": 3}, "nodes": [dict(_GQL_ROW)]}
+                ]
+            }
+        }
+
+    monkeypatch.setattr("provisa.executor.serialize.serialize_group_by", _fake_group_by)
+    async with client as c:
+        r = await c.get(
+            "/data/jsonapi/pet-store/inquiries",
+            params={"aggregate": "count", "groupBy": "user_id", "includeNodes": "true"},
+            headers=_HEADERS,
+        )
+    assert r.status_code == 200, r.text
+    attrs = r.json()["data"][0]["attributes"]
+    assert attrs["groupKey"] == {"user_id": 7}
+    assert "user_id" in attrs["nodes"][0]
+    assert "userId" not in attrs["nodes"][0]
+
+
+def test_the_relationship_physical_name_comes_from_the_naming_authority():
+    """The admin API answers what ?include= should name a relationship, so no client has to
+    transliterate ``graphqlAlias``'s casing itself."""
+    from provisa.api.admin.types import RelationshipType
+    from provisa.api.jsonapi.naming import physical_rel_name
+
+    rel = RelationshipType(
+        id="r1",
+        source_table_id=1,
+        target_table_id=2,
+        source_table_name="inquiries",
+        source_domain_id="pet-store",
+        target_table_name="pet_breeds",
+        source_column="pet_breed_id",
+        target_column="id",
+        cardinality="many-to-one",
+        materialize=False,
+        refresh_interval=300,
+        target_function_name=None,
+        function_arg=None,
+        graphql_alias="petBreed",
+    )
+    assert rel.physical_name() == physical_rel_name("petBreed") == "pet_breed"
+
+
+@pytest.mark.anyio
 async def test_include_rejects_the_exposed_relationship_name(client):
     async with client as c:
         r = await c.get(

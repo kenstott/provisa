@@ -74,9 +74,11 @@ interface JsonApiDocument {
   errors?: Array<{ detail?: string }>;
 }
 
-function toGqlName(col: { columnName: string; alias?: string | null }): string {
-  if (col.alias) return col.alias;
-  return col.columnName.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+// REQ-1417: every name JSON:API takes in a parameter — fields[], filter[], sort, groupBy and
+// include, dot-paths included — is the physical column name, not the GraphQL surface's renamed
+// spelling. An alias renames the GraphQL field only; the column underneath keeps its own name.
+function toApiName(col: { columnName: string; alias?: string | null }): string {
+  return col.columnName;
 }
 
 interface PaginationLinks {
@@ -367,30 +369,30 @@ export function JsonApiPage() {
   const effectiveSelectedTable = selectedTable && tableObj ? selectedTable : "";
 
   const columnNames = useMemo(
-    () => tableObj?.columns.map(toGqlName) ?? [],
+    () => tableObj?.columns.map(toApiName) ?? [],
     [tableObj],
   );
 
   const columnSelectData = useMemo(
     () =>
       (tableObj?.columns ?? []).map((c) => ({
-        value: toGqlName(c),
+        value: toApiName(c),
         label: c.alias ?? c.columnName,
       })),
     [tableObj],
   );
 
-  // Relationships of the selected table, each with the related table's columns. graphqlAlias is
-  // the GraphQL field name (server-derived when not persisted, see fetch_relationships), which is
-  // exactly what ?include= names — deriving it from the FK column instead would miss any
-  // relationship whose field name is not the column minus "_id".
+  // Relationships of the selected table, each with the related table's columns. REQ-1417:
+  // ?include= names a relationship as the SQL plane spells it, and physicalName is that spelling
+  // as the naming authority computed it server-side (RelationshipType.physical_name) — the
+  // convention is server configuration, so the client never derives it from graphqlAlias.
   const tableRelationships = useMemo(() => {
     if (!tableObj) return [];
     return relationships
-      .filter((r) => r.sourceTableId === tableObj.id && r.graphqlAlias)
+      .filter((r) => r.sourceTableId === tableObj.id && r.physicalName)
       .map((r) => ({
-        name: r.graphqlAlias as string,
-        columns: (tables.find((tb) => tb.id === r.targetTableId)?.columns ?? []).map(toGqlName),
+        name: r.physicalName as string,
+        columns: (tables.find((tb) => tb.id === r.targetTableId)?.columns ?? []).map(toApiName),
       }));
   }, [relationships, tables, tableObj]);
 
@@ -757,15 +759,15 @@ export function JsonApiPage() {
                 <Collapse in={fieldsOpen}>
                   <div className="jsonapi-field-list">
                     {(tableObj?.columns ?? []).map((col) => {
-                      const gqlName = toGqlName(col);
+                      const apiName = toApiName(col);
                       return (
                         <Checkbox
                           key={col.columnName}
                           className="jsonapi-field-item"
                           size="xs"
                           title={col.description ?? undefined}
-                          checked={checkedFields.has(gqlName)}
-                          onChange={() => toggleField(gqlName)}
+                          checked={checkedFields.has(apiName)}
+                          onChange={() => toggleField(apiName)}
                           label={<span className="jsonapi-field-name">{col.alias ?? col.columnName}</span>}
                         />
                       );

@@ -43456,3 +43456,56 @@
   - REQ-471
   - REQ-1361
   - REQ-1408
+- id: REQ-1418
+  status: complete
+  since: 2026-08
+  group: 3. Federation Engine
+  category: Multi-Tenancy
+  priority: MUST
+  type: behavioral
+  description: >-
+    An organization on the external engine lane runs an engine KIND of its own, not only a
+    coordinator of its own. orgs.engine_kind names any _ENGINE_BUILDERS key and orgs.engine_url_enc
+    holds that engine's DSN encrypted at rest with the same service as api_sources.auth (REQ-686),
+    so one organization queries its own Databricks, Snowflake, BigQuery, ClickHouse, Fabric,
+    Synapse or SQLAlchemy store while the deployment stays on Trino. NULL means the deployment's
+    kind -- the state of every shared and isolated organization, and of an organization that moved
+    only its coordinator (REQ-1412). Which address an organization must supply is derived from the
+    chosen kind's ENGINE_REGISTRY config_fields via engine_addressing (federation_engine_url = a
+    DSN, federation_engine_host = a host/port pair), never by inspecting the value typed; the
+    bundled trino kind, whose coordinator the deployment manages, is endpoint-addressed when an
+    organization operates one. build_org_runtime passes the kind to build_engine and records the
+    DSN on the OrgRuntime, where configured_engine_url reads it back through the AppState shim
+    ahead of $PROVISA_ENGINE_URL and the persisted federation_engine_url, so every URL-addressed
+    backend resolves the acting organization's warehouse with no per-backend change. The native
+    tier's single-org guard (REQ-1266) admits an organization that holds its own EngineRuntime,
+    since the collision it prevents is a SHARED process-wide runtime. The admin surface never
+    returns a stored DSN -- it reports whether one is set, and an omitted external_url on write
+    means unchanged.
+  use_case: >-
+    A tenant with an existing Databricks warehouse points its organization at that warehouse and
+    keeps its data in its own account, without the deployment changing engine for every other
+    tenant.
+  code:
+  - provisa/core/schema_admin.py
+  - provisa/api/org_runtime.py
+  - provisa/api/app.py
+  - provisa/federation/engine.py
+  - provisa/federation/native_backend.py
+  - provisa/api/admin/org_engine_router.py
+  - provisa-ui/src/components/admin/OrgEngineTab.tsx
+  tests:
+  - tests/unit/test_org_engine_lane.py
+  - provisa-ui/src/__tests__/OrgEngineTab.test.tsx
+  scenario: |
+    Given a deployment running the bundled Trino engine
+    When an organization administrator moves the organization to the external lane,
+      chooses the Databricks kind and supplies its warehouse URL
+    Then the URL is stored encrypted and the organization's runtime is rebuilt on a Databricks engine
+    And that organization's queries resolve its own DSN while every other organization keeps Trino
+    And re-saving without re-entering the URL keeps the stored one
+  related_reqs:
+  - REQ-1043
+  - REQ-1266
+  - REQ-1412
+  - REQ-1416

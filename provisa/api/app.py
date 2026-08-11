@@ -108,7 +108,7 @@ from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig  # noqa: F401
-from typing import TYPE_CHECKING, Any, cast  # noqa: F401
+from typing import TYPE_CHECKING, Any, NamedTuple, cast  # noqa: F401
 
 if TYPE_CHECKING:
     from provisa.cache.hot_tables import HotTableManager
@@ -370,6 +370,20 @@ class AppState:
         """REQ-1412: the coordinator endpoint the active org OPERATES ITSELF (external engine), or
         ``None`` when the endpoint is the deployment's to resolve (shared or SaaS-dedicated)."""
         return self._active_runtime().engine_endpoint
+
+    @property
+    def active_engine_url(self) -> str | None:
+        """REQ-1418: the DSN of the engine the active org OPERATES ITSELF, or ``None`` when the
+        engine URL is the deployment's to resolve. ``configured_engine_url`` prefers this, which is
+        what lets one org run on Databricks while the deployment runs Trino.
+
+        Reads the registry directly rather than through ``_active_runtime`` because this is the one
+        shim the engine layer calls from inside ``build_engine`` — which runs at startup, BEFORE the
+        default org's runtime is registered, and in processes that never build one (desktop,
+        tooling). An unregistered runtime means no org has claimed an engine of its own; that is the
+        answer, not a value gone missing."""
+        rt = self.org_registry.get(self.active_org_id) or self.org_registry.get(self.org_id)
+        return rt.engine_url if rt is not None else None
 
     @property
     def tenant_db(self) -> Database | None:
@@ -782,14 +796,25 @@ async def _load_and_build(
     _mark("hot_tables")
 
 
-async def _read_org_flags(org_id: str) -> tuple[bool, bool, tuple[str, int] | None]:
-    """``(seeded_demo, isolated_engine, external_endpoint)`` for ``org_id``, from the admin plane.
+class OrgLane(NamedTuple):
+    """The admin-plane row that decides how one org's runtime is built."""
+
+    seeded_demo: bool
+    isolated_engine: bool
+    external_engine: tuple[str, int] | None
+    engine_kind: str | None
+    engine_url: str | None
+
+
+async def _read_org_flags(org_id: str) -> OrgLane:
+    """The engine lane of ``org_id``, from the admin plane.
 
     The org registry is in-memory with no TTL, so after a process restart the per-request router
     must rebuild an org's runtime on first access. ``seeded_demo`` tells it whether to reload the
     demo sources; ``isolated_engine`` whether to bind a dedicated federation engine
-    (REQ-1043/REQ-1067); ``external_endpoint`` is the org's own coordinator when it runs an
-    external engine (REQ-1412) — no defaults, the row is authoritative."""
+    (REQ-1043/REQ-1067); ``external_engine`` is the org's own coordinator when it runs an external
+    engine (REQ-1412); ``engine_kind``/``engine_url`` are that engine's kind and DSN when the org
+    runs a kind of its own (REQ-1418) — no defaults, the row is authoritative."""
     from sqlalchemy import select as _select
 
     from provisa.core.schema_admin import orgs as _orgs
@@ -802,13 +827,22 @@ async def _read_org_flags(org_id: str) -> tuple[bool, bool, tuple[str, int] | No
                 _orgs.c.isolated_engine,
                 _orgs.c.external_engine_host,
                 _orgs.c.external_engine_port,
+                _orgs.c.engine_kind,
+                _orgs.c.engine_url_enc,
             ).where(_orgs.c.id == org_id)
         )
         row = result.fetchone()
     if row is None:
         raise KeyError(f"org {org_id!r} not found in the admin plane — cannot route a request to it")
     external = (row[2], int(row[3])) if row[2] else None
-    return bool(row[0]), bool(row[1]), external
+    # REQ-1418: the DSN is stored encrypted; it is decrypted once here, at build time, rather than
+    # per query — the same treatment source DSNs already get on the runtime.
+    engine_url = None
+    if row[5] is not None:
+        from provisa.encryption.runtime import encryption_service
+
+        engine_url = encryption_service().decrypt(bytes(row[5])).decode("utf-8")
+    return OrgLane(bool(row[0]), bool(row[1]), external, row[4], engine_url)
 
 
 async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
@@ -821,12 +855,14 @@ async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
     (no default)."""
 
     async def _builder(oid: str) -> OrgRuntime:
-        include_demo, isolated_engine, external = await _read_org_flags(oid)
+        lane = await _read_org_flags(oid)
         return await build_org_runtime(
             oid,
-            include_demo=include_demo,
-            isolated_engine=isolated_engine,
-            external_engine=external,
+            include_demo=lane.seeded_demo,
+            isolated_engine=lane.isolated_engine,
+            external_engine=lane.external_engine,
+            engine_kind=lane.engine_kind,
+            engine_url=lane.engine_url,
         )
 
     return await state.org_registry.get_or_build(org_id, _builder)
@@ -838,6 +874,8 @@ async def build_org_runtime(
     include_demo: bool = False,
     isolated_engine: bool = False,
     external_engine: tuple[str, int] | None = None,
+    engine_kind: str | None = None,
+    engine_url: str | None = None,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -864,18 +902,26 @@ async def build_org_runtime(
     state.org_registry.set(org_id, rt)
     token = set_current_org(org_id)
     try:
-        if external_engine is not None:
+        if external_engine is not None or engine_url is not None:
             # REQ-1412: the org runs its OWN coordinator. Same dedicated-EngineRuntime shape as an
             # isolated org — what changes is where the terminal points, which terminal_conn_kwargs
             # reads back off the runtime (state.active_engine_endpoint) instead of resolving the
             # deployment's shared or SaaS-dedicated host. Recorded BEFORE bind_terminal, which
             # reads it.
+            #
+            # REQ-1418: an external engine is addressed EITHER by an endpoint (a Trino coordinator)
+            # OR by a DSN (Databricks, Snowflake, BigQuery, ClickHouse, Fabric, Synapse, any
+            # SQLAlchemy URL), which is why either one alone puts the org on this lane. engine_kind
+            # picks which of the twelve builders answers; None keeps the deployment's kind, so an
+            # org that only moved its endpoint is unaffected.
             from provisa.federation.engine import build_engine
             from provisa.federation.runtime import EngineRuntime
 
             rt.isolated_engine = True
             rt.engine_endpoint = external_engine
-            rt.federation_engine = EngineRuntime(build_engine(), state)
+            rt.engine_kind = engine_kind
+            rt.engine_url = engine_url
+            rt.federation_engine = EngineRuntime(build_engine(engine_kind), state)
             rt.federation_engine.bind_terminal()
         elif isolated_engine:
             # REQ-1043/REQ-1067/REQ-1244: this org runs on its OWN federation engine. Bind a

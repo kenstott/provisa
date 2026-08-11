@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, NumberInput, Radio, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Group, NumberInput, Radio, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Check } from "lucide-react";
 import { fetchOrgEngine, setOrgEngine, type OrgEngineMode, type OrgEngineState } from "../../api/admin";
 
@@ -21,8 +21,10 @@ export function OrgEngineTab() {
   const { t } = useTranslation();
   const [state, setState] = useState<OrgEngineState | null>(null);
   const [mode, setMode] = useState<OrgEngineMode>("shared");
+  const [kind, setKind] = useState<string | null>(null);
   const [host, setHost] = useState("");
   const [port, setPort] = useState("");
+  const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -32,13 +34,22 @@ export function OrgEngineTab() {
       .then((s) => {
         setState(s);
         setMode(s.mode);
+        setKind(s.engine_kind);
         setHost(s.external_host ?? "");
         setPort(s.external_port == null ? "" : String(s.external_port));
       })
       .catch((e) => setError(String(e)));
   }, []);
 
-  const externalIncomplete = mode === "external" && (!host.trim() || !port.trim());
+  // REQ-1418: which address the org has to supply comes from the CHOSEN KIND, reported by the
+  // server alongside the kind list — the tab never decides it from the shape of what was typed.
+  const addressing = state?.external_kinds.find((k) => k.key === kind)?.addressing ?? null;
+  const externalIncomplete =
+    mode === "external" &&
+    (!kind ||
+      (addressing === "endpoint"
+        ? !host.trim() || !port.trim()
+        : !url.trim() && !state?.external_url_set));
 
   const save = async () => {
     if (!state) return;
@@ -46,13 +57,23 @@ export function OrgEngineTab() {
     setMsg("");
     setError("");
     try {
+      const external = mode === "external";
       await setOrgEngine({
         mode,
-        external_host: mode === "external" ? host.trim() : null,
-        external_port: mode === "external" ? Number(port) : null,
+        engine_kind: external ? kind : null,
+        external_host: external && addressing === "endpoint" ? host.trim() : null,
+        external_port: external && addressing === "endpoint" ? Number(port) : null,
+        // Omitted when blank: an unchanged DSN is not re-sent, and the server keeps the stored one.
+        external_url: external && addressing === "url" && url.trim() ? url.trim() : null,
       });
       setMsg(t("orgEngineTab.saved"));
-      setState({ ...state, mode });
+      setState({
+        ...state,
+        mode,
+        engine_kind: external ? kind : null,
+        external_url_set: external && addressing === "url" ? true : false,
+      });
+      setUrl("");
     } catch (e) {
       setError(String(e));
     } finally {
@@ -113,21 +134,52 @@ export function OrgEngineTab() {
 
       {mode === "external" && (
         <Stack gap="sm">
-          <TextInput
-            label={t("orgEngineTab.hostLabel")}
+          <Select
+            label={t("orgEngineTab.kindLabel")}
+            description={t("orgEngineTab.kindHelp")}
             required
-            placeholder={t("orgEngineTab.hostPlaceholder")}
-            value={host}
-            onChange={(e) => setHost(e.currentTarget.value)}
-            data-testid="org-engine-host"
+            value={kind}
+            onChange={setKind}
+            data={state.external_kinds.map((k) => ({ value: k.key, label: k.label }))}
+            data-testid="org-engine-kind"
           />
-          <NumberInput
-            label={t("orgEngineTab.portLabel")}
-            required
-            value={port === "" ? "" : Number(port)}
-            onChange={(v) => setPort(String(v ?? ""))}
-            data-testid="org-engine-port"
-          />
+          {kind && (
+            <Text c="dimmed" size="xs">
+              {state.external_kinds.find((k) => k.key === kind)?.description}
+            </Text>
+          )}
+          {addressing === "endpoint" && (
+            <>
+              <TextInput
+                label={t("orgEngineTab.hostLabel")}
+                required
+                placeholder={t("orgEngineTab.hostPlaceholder")}
+                value={host}
+                onChange={(e) => setHost(e.currentTarget.value)}
+                data-testid="org-engine-host"
+              />
+              <NumberInput
+                label={t("orgEngineTab.portLabel")}
+                required
+                value={port === "" ? "" : Number(port)}
+                onChange={(v) => setPort(String(v ?? ""))}
+                data-testid="org-engine-port"
+              />
+            </>
+          )}
+          {addressing === "url" && (
+            <TextInput
+              label={t("orgEngineTab.urlLabel")}
+              required={!state.external_url_set}
+              description={
+                state.external_url_set ? t("orgEngineTab.urlStored") : t("orgEngineTab.urlHelp")
+              }
+              placeholder={t("orgEngineTab.urlPlaceholder")}
+              value={url}
+              onChange={(e) => setUrl(e.currentTarget.value)}
+              data-testid="org-engine-url"
+            />
+          )}
         </Stack>
       )}
 

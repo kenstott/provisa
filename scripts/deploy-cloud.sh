@@ -19,9 +19,10 @@
 #   scripts/deploy-cloud.sh reset  # accounts/orgs -> none, demo data re-seeded
 #   scripts/deploy-cloud.sh patch  # like all, but KEEPS accounts and orgs
 #
-# Every arm that pushes first ensures the observability overlay is installed on the node — the
-# ops reports over the OTLP parquet store (traces, queries, metrics, logs) are empty without a
-# collector. It is a one-time install; once present the check is a no-op.
+# Every arm that pushes first ensures the observability and isolated-engine overlays are installed
+# on the node — the ops reports over the OTLP parquet store (traces, queries, metrics, logs) are
+# empty without a collector, and no org can take a dedicated coordinator without the isolated-engine
+# overlay. Both are one-time installs; once present the checks are no-ops.
 #
 # api/all/reset also wipe the control plane back to the first-start state (no
 # claimed super-admin, no accounts, no tenant orgs) and let the restart re-seed
@@ -235,6 +236,41 @@ push_obs() {
     | grep -q . || { echo "observability installed but the app exports no OTLP endpoint" >&2; exit 1; }
 }
 
+# REQ-1416/REQ-1418: the isolated engine lane. The provisioner ships in the image, but the org
+# engine tab greys the Isolated radio out unless PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE is set in
+# the process, and that variable exists only in docker-compose.isolated-engine.yml — so on a node
+# without the overlay a SaaS org can never take a dedicated coordinator. Installed the same way
+# observability is: dropped into ${PROVISA_HOME}/extensions, picked up by scripts/provisa's
+# COMPOSE_FILES enumeration, and therefore also BEFORE the pushes (it recreates the stack).
+ISO_EXT="/root/.provisa/extensions/isolated-engine/docker-compose.isolated-engine.yml"
+
+push_isolated() {
+  if ssh_node "sudo test -f $ISO_EXT" 2>/dev/null; then
+    echo "== isolated engine: already installed"
+    return
+  fi
+  echo "== isolated engine: installing overlay"
+  # The overlay requires PROVISA_ISOLATED_ENGINE_NETWORK with no default, on purpose: a coordinator
+  # attached to the wrong network starts healthy and is unreachable from the app. Read the network
+  # the API container is actually on rather than assuming the project name — that IS the answer to
+  # "which network reaches the app", and an empty read is a stop, not a guess.
+  local net
+  net="$(ssh_node "sudo docker inspect -f '{{range \$k, \$v := .NetworkSettings.Networks}}{{\$k}}{{end}}' $API_CONTAINER" | tr -d '\r' | tail -1)"
+  [ -n "$net" ] || { echo "cannot resolve the network of $API_CONTAINER" >&2; exit 1; }
+  echo "== isolated engine: network $net"
+  scp_node "$REPO/docker-compose.isolated-engine.yml" /tmp/docker-compose.isolated-engine.yml
+  # provisa.env is the systemd EnvironmentFile `provisa start` runs under, so it is what compose
+  # interpolates the overlay's variables from — the same file that carries the PROVISA_ENGINE pin.
+  ssh_node "sudo mkdir -p $(dirname $ISO_EXT) \
+    && sudo cp /tmp/docker-compose.isolated-engine.yml $ISO_EXT \
+    && sudo sed -i '/^PROVISA_ISOLATED_ENGINE_NETWORK=/d' /root/.provisa/provisa.env \
+    && echo 'PROVISA_ISOLATED_ENGINE_NETWORK=$net' | sudo tee -a /root/.provisa/provisa.env >/dev/null"
+  echo "== isolated engine: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+  ssh_node "sudo docker exec $API_CONTAINER printenv PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE" \
+    | grep -q . || { echo "isolated-engine overlay installed but the app has no host template" >&2; exit 1; }
+}
+
 # The demo data set is not pushed by this script: startup rebuilds the bootstrap org from the
 # deployment's own config on every boot (REQ-1296), and dropping the tenant schemas above also
 # cascaded away the cross-org org_registry view (REQ-1301). Both are restart-rebuilt, so this
@@ -308,18 +344,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    build_api; push_obs; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_api; push_obs; push_isolated; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    build_cfg; push_obs; push_cfg; restart; verify ;;
+    build_cfg; push_obs; push_isolated; push_cfg; restart; verify ;;
   all)
-    build_ui; build_api; build_cfg; push_obs; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_ui; build_api; build_cfg; push_obs; push_isolated; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     reset_state; restart; verify; verify_api; verify_demo ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    build_ui; build_api; build_cfg; push_obs; push_ui; push_api; push_cfg; restart; verify ;;
+    build_ui; build_api; build_cfg; push_obs; push_isolated; push_ui; push_api; push_cfg; restart; verify ;;
 esac
 echo "== deployed $TARGET"

@@ -209,6 +209,14 @@ def validation_error_for_convention(convention: str) -> str | None:  # REQ-416
 def _canonical_convention(convention: str) -> str:
     """Resolve preset convention to field/column naming form."""
     convention = normalize_convention(convention)
+    # A name outside the presets is a caller bug, not a case to guess at: the old `else camelCase`
+    # turned a mistyped convention into a silent no-op rename in whichever direction happened to
+    # match, which is how `apply_convention(name, "snake_case")` (the *output form*, not a preset)
+    # read as apollo and left camelCase names untouched on the SQL plane.
+    if convention not in VALID_CONVENTIONS:
+        raise ValueError(
+            f"unknown naming convention {convention!r}; expected one of {sorted(VALID_CONVENTIONS)}"
+        )
     # REQ-194: hasura_graphql is snake_case; apollo_graphql is camelCase.
     if convention in ("snake", "hasura_graphql"):
         return "snake_case"

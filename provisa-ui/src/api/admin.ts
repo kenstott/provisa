@@ -721,14 +721,30 @@ export async function setFederationEngine(
 
 export type OrgEngineMode = "shared" | "isolated" | "external";
 
+/** How an engine kind is reached: a DSN, a coordinator host/port pair (REQ-1418). */
+export type OrgEngineAddressing = "url" | "endpoint";
+
+export interface OrgEngineKind {
+  key: string;
+  label: string;
+  description: string;
+  addressing: OrgEngineAddressing;
+}
+
 export interface OrgEngineState {
   org_id: string;
   mode: OrgEngineMode;
   external_host: string | null;
   external_port: number | null;
+  /** REQ-1418: the kind this org's own engine is; null means the deployment's kind. */
+  engine_kind: string | null;
+  /** Whether a DSN is on file. The value itself is never sent — it carries a warehouse token. */
+  external_url_set: boolean;
+  /** The kinds an org may operate itself, with the address each one needs. */
+  external_kinds: OrgEngineKind[];
   /** False when the deployment cannot resolve a dedicated coordinator, so the option is unusable. */
   isolated_available: boolean;
-  /** The engine kind the deployment runs — what an external coordinator has to speak. */
+  /** The engine kind the deployment runs — the default for an org that picks none of its own. */
   engine_name: string;
 }
 
@@ -740,8 +756,10 @@ export async function fetchOrgEngine(): Promise<OrgEngineState> {
 
 export async function setOrgEngine(body: {
   mode: OrgEngineMode;
+  engine_kind?: string | null;
   external_host?: string | null;
   external_port?: number | null;
+  external_url?: string | null;
 }): Promise<{ success: boolean; mode: OrgEngineMode }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/org-engine`, {
     method: "PUT",

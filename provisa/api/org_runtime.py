@@ -77,6 +77,13 @@ class OrgRuntime:
     # endpoint. ``isolated_engine`` is true alongside it because the org still carries its own
     # EngineRuntime — what differs is who runs the coordinator.
     engine_endpoint: tuple[str, int] | None = None
+    # REQ-1418: the engine KIND this org's own coordinator is (an _ENGINE_BUILDERS key), and the
+    # DSN it is addressed by when that kind is URL-addressed. ``None`` means the deployment's kind
+    # / the deployment's URL — the state of every shared and isolated org. Held here rather than
+    # read per query because the AppState shims make it reachable from the engine layer
+    # (``state.active_engine_url``) exactly as ``engine_endpoint`` already is.
+    engine_kind: str | None = None
+    engine_url: str | None = None
     federation_engine: Any = None
     engine_conn: Any = None
     engine_conn_kwargs: dict = field(default_factory=dict)

@@ -103,6 +103,18 @@ orgs = Table(
     # two columns, never stored twice.
     Column("external_engine_host", Text),
     Column("external_engine_port", Integer),
+    # REQ-1418: which engine KIND the org's own coordinator is. NULL means the deployment's kind
+    # (PROVISA_ENGINE / persisted federation_engine) — the case every shared-lane and isolated org
+    # is in. An external org may instead run a kind of its own: the value is an _ENGINE_BUILDERS
+    # key, so an org can point Provisa at Databricks, Snowflake, BigQuery, ClickHouse, Fabric,
+    # Synapse or any SQLAlchemy URL while the deployment stays on Trino.
+    Column("engine_kind", Text),
+    # REQ-1418: the DSN for a URL-addressed engine kind (databricks:// snowflake:// …), encrypted
+    # at rest with the same process-wide service as api_sources.auth (REQ-686) because it carries
+    # the org's warehouse token. Host/port kinds (trino-byo) use the two columns above instead —
+    # which of the two an org fills is decided by the chosen kind's ENGINE_REGISTRY config_fields,
+    # never by sniffing the value.
+    Column("engine_url_enc", LargeBinary),
     # REQ-1355: the org IS the billing subject. These columns were the ``tenants`` table, whose
     # UUID pk duplicated the org and forced every billing call site to carry a second identifier.
     # The externally-visible billing key is now the org slug.

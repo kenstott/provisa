@@ -27,7 +27,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from provisa.compiler.naming import apply_convention
+from provisa.api.jsonapi.naming import physical_rel_name
 from provisa.grpc.proto_gen import _to_proto_type_name
 from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobStore
 from provisa.nl.loop import (
@@ -198,7 +198,7 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
                     if isinstance(rel_sel, FieldNode):
                         phys_col = _physical(target.table_id, rel_sel.name.value)
                         dim_paths.append(f"{rel}.{phys_col}")
-                        dim_paths_api.append(f"{apply_convention(rel, 'snake_case')}.{phys_col}")
+                        dim_paths_api.append(f"{physical_rel_name(rel)}.{phys_col}")
 
     return AggregationPlan(
         meta, group_cols, is_aggregate_only, funcs, dim_paths, node_scalars, dim_paths_api
@@ -340,7 +340,7 @@ def _resolve_aggregation_plan(
             rel_field = rel_field_name(dim_meta.field_name, "many-to-one")
             for dim_col in dim_cols:
                 dim_paths.append(f"{rel_field}.{dim_col}")
-                dim_paths_api.append(f"{apply_convention(rel_field, 'snake_case')}.{dim_col}")
+                dim_paths_api.append(f"{physical_rel_name(rel_field)}.{dim_col}")
 
     is_aggregate_only = not group_cols and (
         tree.find(exp.Count, exp.Sum, exp.Avg, exp.Max, exp.Min, exp.Stddev, exp.Variance)

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from provisa.compiler.naming import apply_convention
+from provisa.compiler.naming import apply_sql_name
 
 
 def scalar_name_maps(
@@ -41,14 +41,21 @@ def scalar_name_maps(
     return gql_to_physical, {p: g for g, p in gql_to_physical.items()}
 
 
-def relationship_name_maps(gql_rels: list[str]) -> tuple[dict[str, str], dict[str, str]]:
-    """``(gql → physical, physical → gql)`` for relationship field names.
+def physical_rel_name(gql_name: str) -> str:
+    """The physical spelling of one relationship field name.
 
     A relationship field name is minted by ``naming.rel_field_name``, which joins its words with
-    ``_`` and then applies the GQL convention, so the physical spelling is the snake form of the
-    GQL one — identity when the convention is already snake.
+    ``_`` and then applies the GQL convention, so the physical spelling is that same name under the
+    SQL plane's convention (REQ-471) — identity when the two conventions agree. Every surface that
+    needs this name calls here rather than transliterating the casing itself; the admin API exposes
+    it as ``RelationshipType.physical_name`` so the UI never has to.
     """
-    gql_to_physical = {g: apply_convention(g, "snake_case") for g in gql_rels}
+    return apply_sql_name(gql_name)
+
+
+def relationship_name_maps(gql_rels: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """``(gql → physical, physical → gql)`` for relationship field names."""
+    gql_to_physical = {g: physical_rel_name(g) for g in gql_rels}
     return gql_to_physical, {p: g for g, p in gql_to_physical.items()}
 
 

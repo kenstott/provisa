@@ -675,6 +675,16 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             # an update of a value this statement never supplies.
             update_columns=["type"],
         )
+        # The virtual-views sentinel was renamed __provisa__ -> __derived__ (REQ-1328). The
+        # rename only changed what this seed writes, so every schema seeded before it still
+        # carries the retired id: it is not in _SYSTEM_SOURCE_IDS, so replace-mode cleanup
+        # would drop it, but a patch deploy never runs that cleanup and an org schema cloned
+        # from one of those carries it forward. It surfaces on the Sources screen as a source
+        # the deployment has no engine for, stamped with whatever federation engine was
+        # configured the last time it was written. Nothing registers tables against it — this
+        # seed is the only writer either id ever had — so retiring the row here is the rename
+        # finishing, not a data migration.
+        await _conn.execute_core(_delete(_sources_t).where(_sources_t.c.id == "__provisa__"))
         await _seed_meta_domain(_conn, org_id=eff_org)
         await _seed_ops_pg(_conn)
         await _seed_ops_domain(_conn, org_id=eff_org)  # REQ-884

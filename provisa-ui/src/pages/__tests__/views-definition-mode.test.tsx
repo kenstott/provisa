@@ -150,6 +150,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     functionArg: null,
     alias: null,
     graphqlAlias: null,
+    physicalName: null,
     computedCypherAlias: null,
     autoSuggested: false,
     disableCypher: false,

@@ -735,10 +735,15 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     agg_compiled.root_field,
                 )
                 group_rows = shaped.get("data", {}).get(agg_compiled.root_field, [])
-                # REQ-1417: groupKey is already keyed physically — its field names come straight
-                # from the ?groupBy= list (compiler/aggregates.py ColumnRef field_name=col) — but
-                # the nodes projection is keyed by the GraphQL selection set, so it is renamed back.
+                # REQ-1417: both groupKey and nodes are keyed by the GraphQL text this handler
+                # synthesized — groupKey's field names are the `by:` argument's, which
+                # _build_group_by_graphql_query put through apply_gql_name — so both are renamed
+                # back to the physical spelling the caller's ?groupBy= and ?include= used.
                 for row in group_rows:
+                    if "groupKey" in row:
+                        row["groupKey"] = {
+                            gql_to_physical.get(k, k): v for k, v in row["groupKey"].items()
+                        }
                     if "nodes" in row:
                         row["nodes"] = [
                             rename_row_keys(

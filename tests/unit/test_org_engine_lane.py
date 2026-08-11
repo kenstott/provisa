@@ -56,12 +56,19 @@ def test_modes_are_the_three_lanes():
 
 
 def test_mode_is_derived_never_stored_twice():
-    assert _mode_of(None, False) == SHARED
-    assert _mode_of(None, True) == ISOLATED
-    assert _mode_of("trino.acme.example.com", True) == EXTERNAL
+    assert _mode_of(None, False, False) == SHARED
+    assert _mode_of(None, False, True) == ISOLATED
+    assert _mode_of("trino.acme.example.com", False, True) == EXTERNAL
     # An external host wins over the isolated flag: the org runs the cluster either way, and the
     # host is what says whose it is.
-    assert _mode_of("trino.acme.example.com", False) == EXTERNAL
+    assert _mode_of("trino.acme.example.com", False, False) == EXTERNAL
+
+
+def test_a_dsn_addressed_org_is_external_without_a_host():  # REQ-1418
+    """A Databricks/Snowflake/BigQuery engine has no coordinator host — reading only the host would
+    file an org running its own warehouse as shared, and route its queries to the pooled engine."""
+    assert _mode_of(None, True, False) == EXTERNAL
+    assert _mode_of(None, True, True) == EXTERNAL
 
 
 def test_orgs_table_carries_the_external_endpoint():
@@ -118,6 +125,111 @@ def test_active_engine_endpoint_exposes_the_external_coordinator(external_org):
         assert state.active_engine_endpoint == ("trino.acme.example.com", 8443)
     finally:
         reset_current_org(token)
+
+
+# ---- per-org engine kind + DSN (REQ-1418) ------------------------------------
+
+
+@pytest.fixture()
+def databricks_org():
+    """An org running its OWN Databricks warehouse while the deployment runs something else."""
+    org_id = "dbxorg"
+    rt = OrgRuntime(org_id=org_id)
+    rt.isolated_engine = True
+    rt.engine_kind = "databricks"
+    rt.engine_url = "databricks://token:SECRET@dbx.example.com?http_path=/sql/1.0/warehouses/abc"
+    state.org_registry.set(org_id, rt)
+    yield org_id, rt
+    state.org_registry.invalidate(org_id)
+
+
+def test_orgs_table_carries_the_org_engine_kind_and_encrypted_dsn():
+    from provisa.core.schema_admin import orgs
+
+    assert orgs.c.engine_kind.nullable is True
+    # The DSN carries the org's warehouse token, so it is stored as ciphertext, never as text.
+    assert orgs.c.engine_url_enc.nullable is True
+    assert orgs.c.engine_url_enc.type.__class__.__name__ == "LargeBinary"
+
+
+def test_engine_addressing_comes_from_the_registry_not_from_the_value():
+    from provisa.federation.engine import _ENGINE_BUILDERS, engine_addressing
+
+    assert engine_addressing("databricks") == "url"
+    assert engine_addressing("snowflake") == "url"
+    assert engine_addressing("bigquery") == "url"
+    assert engine_addressing("sqlalchemy") == "url"
+    assert engine_addressing("trino-byo") == "endpoint"
+    assert engine_addressing("duckdb") == "none"
+    assert engine_addressing("trino") == "none"
+    # Every builder key is answerable — the admin surface validates against this set.
+    for key in _ENGINE_BUILDERS:
+        assert engine_addressing(key) in {"url", "endpoint", "none"}
+
+
+def test_unknown_engine_kind_raises_rather_than_guessing():
+    from provisa.federation.engine import engine_addressing
+
+    with pytest.raises(ValueError, match="unknown engine kind"):
+        engine_addressing("not-an-engine")
+
+
+def test_external_kinds_exclude_engines_an_org_cannot_operate():
+    from provisa.api.admin.org_engine_router import _external_kinds
+
+    keys = {k["key"] for k in _external_kinds()}
+    # Bundled Trino is the deployment's to run and DuckDB is in-process — neither is reachable
+    # from outside, so neither is offered as an engine the ORG operates.
+    assert "trino" not in keys and "duckdb" not in keys
+    assert {"databricks", "snowflake", "bigquery", "trino-byo"} <= keys
+    assert all(k["addressing"] in {"url", "endpoint"} for k in _external_kinds())
+
+
+def test_a_deployment_managed_trino_is_endpoint_addressed_when_the_org_runs_it():
+    """The bundled kind carries no address in the registry because the DEPLOYMENT manages its
+    coordinator; an org that operates one reaches it exactly as trino-byo does."""
+    from provisa.api.admin.org_engine_router import _external_addressing
+
+    assert _external_addressing("trino") == "endpoint"
+    assert _external_addressing("databricks") == "url"
+
+
+def test_active_engine_url_is_the_orgs_own_dsn(databricks_org):
+    org_id, rt = databricks_org
+    assert state.active_engine_url is None  # no org bound → the deployment's URL answers
+    token = set_current_org(org_id)
+    try:
+        assert state.active_engine_url == rt.engine_url
+    finally:
+        reset_current_org(token)
+
+
+def test_configured_engine_url_prefers_the_orgs_dsn_over_the_deployment(databricks_org, monkeypatch):
+    """The org's DSN is the more specific statement: it says which warehouse ITS queries run on,
+    which is what lets one org run Databricks while the deployment runs Trino."""
+    from provisa.federation.engine import configured_engine_url
+
+    monkeypatch.setenv("PROVISA_ENGINE_URL", "snowflake://deployment/db/schema")
+    assert configured_engine_url() == "snowflake://deployment/db/schema"
+    org_id, rt = databricks_org
+    token = set_current_org(org_id)
+    try:
+        assert configured_engine_url() == rt.engine_url
+    finally:
+        reset_current_org(token)
+
+
+def test_an_org_with_its_own_engine_runtime_is_not_blocked_by_the_native_single_org_guard():
+    """REQ-1266's guard exists because native engines SHARE one process-wide runtime with bare
+    attach aliases. An org on the isolated/external lane holds its own EngineRuntime, so there is
+    nothing to collide with — rejecting it would make a per-org Databricks engine unusable."""
+    import inspect
+
+    from provisa.federation import native_backend
+
+    src = inspect.getsource(native_backend.NativeEngineBackend._attach_registered)
+    assert "active_isolated_org" in src
+    assert "_owns_engine" in src
 
 
 # ---- availability gate -------------------------------------------------------

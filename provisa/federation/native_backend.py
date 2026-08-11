@@ -107,10 +107,19 @@ class NativeEngineBackend(EngineBackend):
         # would collide into one attach. Multi-org isolation on the shared coordinator is
         # implemented for the Trino tier (org-prefixed CREATE CATALOG); the native tier is single-
         # org only. Rather than silently serve another org's rows, refuse a non-default org here.
+        #
+        # REQ-1418: the collision this guards against is SHARING one runtime, not being a non-default
+        # org. An org on the isolated/external lane carries its OWN EngineRuntime — hence its own
+        # backend instance and its own ``self._runtime`` — so its bare attach aliases live in a
+        # namespace nothing else writes to. That org runs a native kind (Databricks, Snowflake,
+        # BigQuery, ClickHouse, …) of its own legitimately; ``active_isolated_org`` is exactly the
+        # seam that says so.
         from provisa.api.org_runtime import current_org
 
         _active_org = current_org.get()
-        if _active_org is not None and _active_org != getattr(state, "org_id", None):
+        _owns_engine = getattr(state, "active_isolated_org", None) == _active_org
+        _default_org = getattr(state, "org_id", None)
+        if _active_org is not None and not _owns_engine and _active_org != _default_org:
             raise RuntimeError(
                 f"native federation engine {self.engine.name!r} is single-org; org "
                 f"{_active_org!r} requires the Trino tier for per-org catalog isolation (REQ-1266)"

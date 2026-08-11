@@ -17,9 +17,15 @@ and an org administrator holds it in either tenancy mode.
 
 The three modes are derived from the ``orgs`` row, not stored a second time:
 
-    external  external_engine_host is set — a coordinator the ORG operates
+    external  an endpoint or a DSN is set — an engine the ORG operates
     isolated  isolated_engine is true     — a coordinator SaaS runs for this org alone
     shared    neither                     — the pooled lane every org starts on (REQ-1243)
+
+REQ-1418: an external engine is not required to be the deployment's kind. The org picks any kind in
+the registry that is externally addressable — Trino, Databricks, Snowflake, BigQuery, ClickHouse,
+Fabric, Synapse, or any SQLAlchemy URL — and supplies whichever of endpoint/DSN that kind is
+addressed by. Which one is required comes from ``engine_addressing(kind)``, never from inspecting
+what was typed.
 """
 
 from __future__ import annotations
@@ -49,8 +55,14 @@ MODES = (SHARED, ISOLATED, EXTERNAL)
 
 class OrgEngineBody(BaseModel):
     mode: str
+    # REQ-1418: which engine kind the org's own engine IS. ``None`` keeps the deployment's kind —
+    # the state of an org that only moved its coordinator, and of every non-external org.
+    engine_kind: str | None = None
     external_host: str | None = None
     external_port: int | None = None
+    # The DSN for a URL-addressed kind. Write-only: the GET reports whether one is set, never its
+    # value, because it carries the org's warehouse token.
+    external_url: str | None = None
 
 
 def _admin_pool():
@@ -60,10 +72,45 @@ def _admin_pool():
     return state.admin_db
 
 
-def _mode_of(host: str | None, isolated: bool) -> str:
-    if host:
+def _mode_of(host: str | None, url_set: bool, isolated: bool) -> str:
+    # REQ-1418: either address puts the org on the external lane — a DSN-addressed engine
+    # (databricks://, snowflake://, …) has no host to look at.
+    if host or url_set:
         return EXTERNAL
     return ISOLATED if isolated else SHARED
+
+
+def _external_addressing(kind: str) -> str:
+    """How an ORG-operated engine of ``kind`` is addressed.
+
+    Identical to ``engine_addressing`` except for the bundled ``trino`` kind, which carries no
+    address in the registry because the DEPLOYMENT manages its coordinator's lifecycle. When an org
+    operates that coordinator instead, it is reached exactly as ``trino-byo`` is — host and port —
+    which is the state of every org that moved its endpoint before kinds were selectable.
+    """
+    from provisa.federation.engine import engine_addressing
+
+    return "endpoint" if kind == "trino" else engine_addressing(kind)
+
+
+def _external_kinds() -> list[dict]:
+    """The engine kinds an org can run ITSELF: every registry kind that is externally addressable.
+
+    Excludes the kinds with no address of their own — the deployment-managed bundled Trino and
+    in-process DuckDB, neither of which an org can point at from outside the process.
+    """
+    from provisa.federation.engine import ENGINE_REGISTRY, engine_addressing
+
+    return [
+        {
+            "key": e["key"],
+            "label": e["label"],
+            "description": e["description"],
+            "addressing": engine_addressing(e["key"]),
+        }
+        for e in ENGINE_REGISTRY
+        if engine_addressing(e["key"]) != "none"
+    ]
 
 
 def _isolated_available() -> bool:
@@ -100,12 +147,24 @@ async def _read_row(org_id: str):
                 orgs.c.isolated_engine,
                 orgs.c.external_engine_host,
                 orgs.c.external_engine_port,
+                orgs.c.engine_kind,
+                orgs.c.engine_url_enc,
             ).where(orgs.c.id == org_id)
         )
         row = result.fetchone()
     if row is None:
         raise ApiError(404, "org_engine.org_not_found", f"org {org_id!r} not found", org=org_id)
     return row
+
+
+async def _stored_engine_url(org_id: str) -> str | None:
+    """REQ-1418: the DSN already on file for ``org_id``, decrypted, or ``None`` if it has none."""
+    row = await _read_row(org_id)
+    if row[4] is None:
+        return None
+    from provisa.encryption.runtime import encryption_service
+
+    return encryption_service().decrypt(bytes(row[4])).decode("utf-8")
 
 
 @router.get("/admin/org-engine")
@@ -118,9 +177,15 @@ async def get_org_engine(request: Request):  # REQ-1412
     row = await _read_row(org_id)
     return {
         "org_id": org_id,
-        "mode": _mode_of(row[1], bool(row[0])),
+        "mode": _mode_of(row[1], row[4] is not None, bool(row[0])),
         "external_host": row[1],
         "external_port": row[2],
+        # REQ-1418: the org's own kind (``None`` = the deployment's), whether a DSN is on file, and
+        # the kinds an org may choose. The DSN itself is never returned — it carries a warehouse
+        # token, so the tab shows "set / not set" and re-entry replaces it.
+        "engine_kind": row[3],
+        "external_url_set": row[4] is not None,
+        "external_kinds": _external_kinds(),
         "isolated_available": _isolated_available(),
         # REQ-1416: whether moving onto the isolated lane also CREATES the coordinator here.
         "isolated_provisioned_here": _isolated_provisioned_here(),
@@ -157,15 +222,67 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
         )
     host: str | None = None
     port: int | None = None
+    kind: str | None = None
+    url: str | None = None
     if mode == EXTERNAL:
-        host = (body.external_host or "").strip()
-        port = body.external_port
-        if not host or not port:
+        from provisa.federation.engine import _ENGINE_BUILDERS
+
+        # REQ-1418: an omitted kind means the deployment's kind — the org moved its coordinator, not
+        # its engine. ``selected_key`` is what build_engine resolved for this process, so the
+        # addressing rule below is the same one that will be applied when the runtime is built.
+        kind = body.engine_kind
+        effective_kind = kind or state.federation_engine.selected_key
+        if effective_kind not in _ENGINE_BUILDERS:
             raise ApiError(
                 400,
-                "org_engine.external_endpoint_required",
-                "external mode requires both external_host and external_port",
+                "org_engine.unknown_engine_kind",
+                f"unknown engine kind {effective_kind!r}; valid: {sorted(_ENGINE_BUILDERS)}",
+                engine_kind=str(effective_kind),
+                valid=sorted(_ENGINE_BUILDERS),
             )
+        addressing = _external_addressing(effective_kind)
+        if addressing == "url":
+            url = (body.external_url or "").strip() or None
+            if url is None:
+                # The GET never returns the stored DSN (it carries a token), so a tab that changed
+                # only the kind or the lane sends none back. Omitting it means UNCHANGED — the DSN
+                # already on file is reused. There is no DSN to reuse on a first move to this lane,
+                # which is the error below.
+                url = await _stored_engine_url(org_id)
+            if url is None:
+                raise ApiError(
+                    400,
+                    "org_engine.external_url_required",
+                    f"engine kind {effective_kind!r} is addressed by a URL; external_url is required",
+                    engine_kind=effective_kind,
+                )
+        elif addressing == "endpoint":
+            host = (body.external_host or "").strip()
+            port = body.external_port
+            if not host or not port:
+                raise ApiError(
+                    400,
+                    "org_engine.external_endpoint_required",
+                    f"engine kind {effective_kind!r} is addressed by a coordinator endpoint; both "
+                    "external_host and external_port are required",
+                    engine_kind=effective_kind,
+                )
+        else:
+            raise ApiError(
+                400,
+                "org_engine.engine_kind_not_external",
+                f"engine kind {effective_kind!r} has no external address — it is managed by the "
+                "deployment or runs in-process, so an org cannot operate one of its own",
+                engine_kind=effective_kind,
+            )
+
+    # REQ-1418: the DSN is stored encrypted with the same process-wide service as api_sources.auth
+    # (REQ-686), because it carries the org's warehouse token.
+    url_enc: bytes | None = None
+    if url is not None:
+        from provisa.encryption.runtime import encryption_service
+
+        url_enc = encryption_service().encrypt(url.encode("utf-8"))
 
     async with _admin_pool().acquire() as conn:
         await conn.execute_core(
@@ -175,6 +292,8 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
                 isolated_engine=(mode == ISOLATED),
                 external_engine_host=host,
                 external_engine_port=port,
+                engine_kind=kind,
+                engine_url_enc=url_enc,
             )
         )
 
@@ -206,7 +325,7 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
     # per-org lock — REQ-1322 — rather than invalidating and letting the next request race.
     from provisa.api.app import _read_org_flags
 
-    seeded_demo = (await _read_org_flags(org_id))[0]
+    seeded_demo = (await _read_org_flags(org_id)).seeded_demo
     await state.org_registry.rebuild(
         org_id,
         lambda oid: build_org_runtime(
@@ -214,6 +333,8 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
             include_demo=seeded_demo,
             isolated_engine=(mode == ISOLATED),
             external_engine=(host, port) if mode == EXTERNAL and host and port else None,
+            engine_kind=kind if mode == EXTERNAL else None,
+            engine_url=url if mode == EXTERNAL else None,
         ),
     )
     if _isolated_provisioned_here() and mode != ISOLATED:
@@ -225,5 +346,12 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
 
         await deprovision_isolated_engine(org_id)
 
-    log.info("org %s moved to %s federation-engine lane", org_id, mode)
-    return {"success": True, "mode": mode, "external_host": host, "external_port": port}
+    log.info("org %s moved to %s federation-engine lane (kind=%s)", org_id, mode, kind or "-")
+    return {
+        "success": True,
+        "mode": mode,
+        "engine_kind": kind,
+        "external_host": host,
+        "external_port": port,
+        "external_url_set": url is not None,
+    }
