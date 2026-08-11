@@ -862,6 +862,44 @@ _ENGINE_BUILDERS = {
     "sqlalchemy": build_sqlalchemy_engine,  # any SQLAlchemy URL, zero connectors (self-only)
 }
 
+# The NETWORK-ADDRESSABLE relational databases the generic self-only engine reaches, one kind per
+# product (REQ-1421). Each runs the same runtime as ``sqlalchemy`` — zero federation connectors,
+# every source LANDs into the store — and differs only in the DSN its dialect takes, so a picker
+# names the database rather than the library. File-embedded stores (SQLite, Access, …) are absent
+# on purpose: the store must be reachable over the network from wherever Provisa runs, which a
+# local file on someone else's disk is not.
+#
+# (key, label, DSN placeholder)
+_RDB_KINDS: list[tuple[str, str, str]] = [
+    ("mysql", "MySQL", "mysql+pymysql://user:pass@host:3306/db"),
+    ("mariadb", "MariaDB", "mariadb+pymysql://user:pass@host:3306/db"),
+    ("oracle", "Oracle Database", "oracle+oracledb://user:pass@host:1521/?service_name=svc"),
+    ("mssql", "Microsoft SQL Server", "mssql+pyodbc://user:pass@host:1433/db?driver=ODBC+Driver+18+for+SQL+Server"),
+    ("db2", "IBM Db2", "db2+ibm_db://user:pass@host:50000/db"),
+    ("redshift", "Amazon Redshift", "redshift+psycopg2://user:pass@cluster.region.redshift.amazonaws.com:5439/db"),
+    ("greenplum", "Greenplum", "postgresql+psycopg2://user:pass@host:5432/db"),
+    ("cockroachdb", "CockroachDB", "cockroachdb://user:pass@host:26257/db"),
+    ("yugabytedb", "YugabyteDB", "postgresql+psycopg2://user:pass@host:5433/db"),
+    ("opengauss", "openGauss", "opengauss://user:pass@host:5432/db"),
+    ("tidb", "TiDB", "mysql+pymysql://user:pass@host:4000/db"),
+    ("singlestore", "SingleStore", "singlestoredb://user:pass@host:3306/db"),
+    ("vertica", "Vertica", "vertica+vertica_python://user:pass@host:5433/db"),
+    ("exasol", "Exasol", "exa+websocket://user:pass@host:8563/schema"),
+    ("teradata", "Teradata Vantage", "teradatasql://user:pass@host/database"),
+    ("saphana", "SAP HANA", "hana+hdbcli://user:pass@host:39015/db"),
+    ("sapase", "SAP ASE (Sybase)", "sybase+pyodbc://user:pass@dsn"),
+    ("sqlanywhere", "SAP SQL Anywhere", "sqlalchemy-sqlany://user:pass@host:2638/db"),
+    ("monetdb", "MonetDB", "monetdb://user:pass@host:50000/db"),
+    ("firebird", "Firebird", "firebird+fdb://user:pass@host:3050/path/to/db.fdb"),
+]
+
+for _rdb_key, _rdb_label, _rdb_dsn in _RDB_KINDS:
+    # Bind the key as the engine's name so a running engine reports the database it is on, not the
+    # shared implementation. Default-arg binding, not a closure over the loop variable.
+    _ENGINE_BUILDERS[_rdb_key] = (
+        lambda _k=_rdb_key: build_sqlalchemy_engine(name=_k)  # noqa: B008 — bound per iteration
+    )
+
 
 # Selectable-engine registry (REQ-916): metadata + config schema the admin UI renders to pick and
 # configure the federation engine. ``config_fields[].config_key`` names the ProvisaConfig field the
@@ -976,7 +1014,7 @@ ENGINE_REGISTRY: list[dict] = [
     },
     {
         "key": "trino-byo",
-        "label": "Trino (bring-your-own)",
+        "label": "Trino",
         "description": "Connect to an external Trino coordinator you operate. Provisa does not manage its process, JVM, or memory — only the connection.",
         "config_fields": [
             {
@@ -1113,17 +1151,37 @@ ENGINE_REGISTRY: list[dict] = [
             },
         ],
     },
+    *[
+        {
+            "key": key,
+            "label": label,
+            "description": (
+                f"{label} as a self-only warehouse. Every source lands into the target store and is "
+                f"federated with plain SQL in the {label} dialect; the server is yours to operate."
+            ),
+            "config_fields": [
+                {
+                    "config_key": "federation_engine_url",
+                    "label": f"{label} URL",
+                    "type": "string",
+                    "required": True,
+                    "placeholder": dsn,
+                },
+            ],
+        }
+        for key, label, dsn in _RDB_KINDS
+    ],
     {
         "key": "sqlalchemy",
-        "label": "SQLAlchemy (any RDB)",
-        "description": "Any SQLAlchemy-reachable database as a self-only warehouse. Every source lands into the target store.",
+        "label": "Other relational database (by connection URL)",
+        "description": "A relational database not named above, reached by its connection URL with a dialect installed, as a self-only warehouse. Every source lands into the target store.",
         "config_fields": [
             {
                 "config_key": "federation_engine_url",
-                "label": "SQLAlchemy URL",
+                "label": "Database URL",
                 "type": "string",
                 "required": True,
-                "placeholder": "postgresql+psycopg2://user:pass@host:5432/db",
+                "placeholder": "dialect+driver://user:pass@host:port/db",
             },
         ],
     },

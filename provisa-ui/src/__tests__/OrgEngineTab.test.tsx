@@ -31,7 +31,7 @@ function state(overrides: Partial<OrgEngineState> = {}): OrgEngineState {
     engine_kind: null,
     external_url_set: false,
     external_kinds: [
-      { key: 'trino-byo', label: 'Trino (bring-your-own)', description: 'A Trino you run.', addressing: 'endpoint' },
+      { key: 'trino-byo', label: 'Trino', description: 'A Trino you run.', addressing: 'endpoint' },
       { key: 'databricks', label: 'Databricks', description: 'A Databricks SQL warehouse.', addressing: 'url' },
     ],
     isolated_available: false,

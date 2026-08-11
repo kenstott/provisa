@@ -93,11 +93,20 @@ def _external_addressing(kind: str) -> str:
     return "endpoint" if kind == "trino" else engine_addressing(kind)
 
 
+# Kinds that run INSIDE the Provisa process. They carry a `federation_engine_url` (a local data
+# directory), so addressing alone does not exclude them from the org-operated list.
+_IN_PROCESS_KINDS = frozenset({"clickhouse"})
+
+
 def _external_kinds() -> list[dict]:
     """The engine kinds an org can run ITSELF: every registry kind that is externally addressable.
 
     Excludes the kinds with no address of their own — the deployment-managed bundled Trino and
-    in-process DuckDB, neither of which an org can point at from outside the process.
+    in-process DuckDB, neither of which an org can point at from outside the process — and the
+    in-process kinds whose ``federation_engine_url`` is a LOCAL path rather than a network address:
+    embedded ClickHouse (chdb) links into the Provisa process and its "URL" is a data directory on
+    the deployment's disk, so an org cannot operate one. Its external counterpart is the
+    ``clickhouse-server`` kind.
     """
     from provisa.federation.engine import ENGINE_REGISTRY, engine_addressing
 
@@ -109,7 +118,7 @@ def _external_kinds() -> list[dict]:
             "addressing": engine_addressing(e["key"]),
         }
         for e in ENGINE_REGISTRY
-        if engine_addressing(e["key"]) != "none"
+        if engine_addressing(e["key"]) != "none" and e["key"] not in _IN_PROCESS_KINDS
     ]
 
 

@@ -1163,7 +1163,7 @@ Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` 
 | Engine key | Label | Dialect | MPP | External-link mechanism | Auth |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
 | `trino` | Provisa Federation Engine | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
-| `trino-byo` | Trino (bring-your-own) | Trino SQL | Yes | Same as `trino`; unmanaged coordinator | JDBC credentials |
+| `trino-byo` | Trino | Trino SQL | Yes | Same as `trino`; unmanaged coordinator | JDBC credentials |
 | `pg` | PostgreSQL | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
 | `duckdb` | DuckDB | DuckDB | No | Extension-native ATTACH | None (in-process) |
 | `clickhouse` | ClickHouse (embedded) | ClickHouse | Yes | S3 / IcebergS3 / DeltaLake table engines | chdb (in-process, no auth) |
@@ -1173,7 +1173,27 @@ Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` 
 | `bigquery` | BigQuery | BigQuery | Yes | BigQuery external / BigLake tables | `GOOGLE_APPLICATION_CREDENTIALS` |
 | `fabric` | Microsoft Fabric | T-SQL | Yes | OneLake shortcuts → OPENROWSET | Azure AD (`az login` or managed identity) |
 | `synapse` | Azure Synapse | T-SQL | Yes | ADLS OPENROWSET / external tables | Azure AD |
-| `sqlalchemy` | SQLAlchemy (any RDB) | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `mysql` | MySQL | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `mariadb` | MariaDB | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `oracle` | Oracle Database | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `mssql` | Microsoft SQL Server | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `db2` | IBM Db2 | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `redshift` | Amazon Redshift | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `greenplum` | Greenplum | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `cockroachdb` | CockroachDB | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `yugabytedb` | YugabyteDB | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `opengauss` | openGauss | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `tidb` | TiDB | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `singlestore` | SingleStore | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `vertica` | Vertica | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `exasol` | Exasol | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `teradata` | Teradata Vantage | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `saphana` | SAP HANA | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `sapase` | SAP ASE (Sybase) | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `sqlanywhere` | SAP SQL Anywhere | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `monetdb` | MonetDB | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `firebird` | Firebird | Per-dialect | No | None (land-only) | Per-dialect credentials |
+| `sqlalchemy` | Other relational database (by connection URL) | Per-dialect | No | None (land-only) | Per-dialect credentials |
 
 ### Engine reference
 
@@ -1271,13 +1291,13 @@ PROVISA_ENGINE=synapse
 
 Materialization store defaults to `TENANT_DATABASE_URL`.
 
-#### sqlalchemy
+#### Relational-database engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) and `sqlalchemy`
 
-Generic RDBMS land-only engine (no federation to external sources). Use for single-warehouse deployments or testing.
+One key per network-addressable relational database, all on the same land-only runtime (no federation to external sources): every source lands into the store and is queried there. The key selects the database; `PROVISA_ENGINE_URL` carries the DSN its dialect takes. `sqlalchemy` is the catch-all for a database with no key of its own. File-embedded stores (SQLite, Access) are not offered — the server has to be reachable over the network.
 
 ```bash
-PROVISA_ENGINE=sqlalchemy
-PROVISA_ENGINE_URL="postgresql+psycopg2://user:pass@host/db"
+PROVISA_ENGINE=mysql
+PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
 
 Materialization store defaults to `TENANT_DATABASE_URL`.

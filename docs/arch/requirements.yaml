@@ -43509,3 +43509,42 @@
   - REQ-1266
   - REQ-1412
   - REQ-1416
+- id: REQ-1421
+  status: complete
+  since: 2026-08
+  group: 3. Federation Engine
+  category: Multi-Tenancy
+  priority: MUST
+  type: behavioral
+  description: >-
+    The engine kinds offered to an organization name the PRODUCT it runs, not the library or the
+    process that hosts it. ENGINE_REGISTRY carries one kind per network-addressable relational
+    database (_RDB_KINDS: MySQL, MariaDB, Oracle, SQL Server, Db2, Redshift, Greenplum,
+    CockroachDB, YugabyteDB, openGauss, TiDB, SingleStore, Vertica, Exasol, Teradata, SAP HANA,
+    SAP ASE, SAP SQL Anywhere, MonetDB, Firebird), each on the same self-only land-everything
+    runtime as the generic sqlalchemy kind and differing only in the DSN its dialect takes; the
+    sqlalchemy kind remains as the catch-all for a database with no key of its own. File-embedded
+    stores (SQLite, Access) are never offered, since a store on someone else's local disk is not
+    reachable from where Provisa runs. The org-engine list additionally drops the kinds that run
+    INSIDE the Provisa process even though they carry a federation_engine_url -- embedded ClickHouse
+    (chdb), whose URL is a local data directory -- because an organization cannot operate one; its
+    external counterpart is the clickhouse-server kind.
+  use_case: >-
+    An administrator choosing an engine for the organization picks "MySQL" or "Oracle Database"
+    from the list, rather than reading a library name and inferring which databases it reaches.
+  code:
+  - provisa/federation/engine.py
+  - provisa/api/admin/org_engine_router.py
+  tests:
+  - tests/unit/test_federation_engine.py
+  - tests/unit/test_org_engine_lane.py
+  scenario: |
+    Given a deployment offering the org-engine kinds
+    When an organization administrator opens the external-engine kind list
+    Then each network-addressable relational database appears as its own named kind
+    And embedded ClickHouse is absent while ClickHouse (Server / Cloud) is present
+    And no kind is named after the connection library
+  related_reqs:
+  - REQ-905
+  - REQ-916
+  - REQ-1418

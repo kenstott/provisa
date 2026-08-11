@@ -324,7 +324,7 @@ def test_direct_engine_construction_from_connectors():
 
 
 def test_engine_registry_lists_all_selectable_engines():
-    from provisa.federation.engine import engine_registry
+    from provisa.federation.engine import _RDB_KINDS, engine_registry
 
     reg = engine_registry()
     keys = {e["key"] for e in reg}
@@ -341,6 +341,9 @@ def test_engine_registry_lists_all_selectable_engines():
         "bigquery",  # first-class warehouse engine (GCS external links + Arrow)
         "fabric",  # Microsoft Fabric Warehouse (T-SQL, OneLake shortcut external links)
         "synapse",  # Azure Synapse serverless SQL (T-SQL, ADLS external links)
+        # REQ-1421: one kind per network-addressable relational database on the generic self-only
+        # runtime, plus the catch-all for a database not named here.
+        *{k for k, _label, _dsn in _RDB_KINDS},
         "sqlalchemy",
     }
     # every entry carries UI metadata + a config schema; every field declares a type

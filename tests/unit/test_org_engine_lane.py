@@ -181,6 +181,9 @@ def test_external_kinds_exclude_engines_an_org_cannot_operate():
     # Bundled Trino is the deployment's to run and DuckDB is in-process — neither is reachable
     # from outside, so neither is offered as an engine the ORG operates.
     assert "trino" not in keys and "duckdb" not in keys
+    # Embedded ClickHouse (chdb) links into the Provisa process; its "URL" is a local data
+    # directory, not an address an org can operate. clickhouse-server is its external counterpart.
+    assert "clickhouse" not in keys and "clickhouse-server" in keys
     assert {"databricks", "snowflake", "bigquery", "trino-byo"} <= keys
     assert all(k["addressing"] in {"url", "endpoint"} for k in _external_kinds())
 
