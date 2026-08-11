@@ -43409,3 +43409,50 @@
   - REQ-1067
   - REQ-1244
   - REQ-1412
+- id: REQ-1417
+  status: complete
+  since: 2026-08
+  group: 4. API Surfaces
+  category: JSON:API
+  priority: MUST
+  type: behavioral
+  description: >-
+    The JSON:API surface speaks physical column and relationship names end to end, in the parameters
+    it accepts and the keys it emits alike. include, fields[type], sort and filter[col] all name
+    columns and relationships as the SQL plane spells them (global_sql_naming_convention, REQ-471),
+    including the dotted rel.column form of include and includeNodes; attributes, the nodes
+    projection under a groupBy result, and the keys inside included come back in that same spelling.
+    The GraphQL naming convention (gql_naming_convention, camelCase under apollo_graphql) belongs to
+    the GraphQL surface alone, so the handler borrows it only for the GraphQL text it synthesizes:
+    names are translated physical -> exposed at that emit boundary and translated back on the way
+    out, the rule ?groupBy= (REQ-1361) and gRPC's include (REQ-1408) already follow. The translation
+    authority is the compiler's own record of the rename (ctx.exposed_to_physical, keyed by the
+    table_id a sideloaded relationship reaches through ctx.joins), never a second application of the
+    convention. A name that is not a physical column or relationship is a 400 naming the offending
+    parameter, not a silently dropped filter or sort. The generated foreign-key column selected to
+    resolve a relationship's linkage is likewise derived as <rel>_id and translated, rather than
+    assuming the exposed spelling.
+  use_case: >-
+    A caller who knows the tables -- or an NL-generated JSON:API URL -- uses one vocabulary across
+    SQL, ?groupBy=, gRPC and JSON:API, instead of having to know which surface renamed a column.
+  code:
+  - provisa/api/jsonapi/naming.py
+  - provisa/api/jsonapi/generator.py
+  - provisa/nl/runner.py
+  tests:
+  - tests/unit/test_jsonapi_aggregates.py
+  - tests/unit/test_jsonapi_physical_naming.py
+  - tests/unit/test_nl_jsonapi_include_roundtrip.py
+  - tests/unit/test_nl_aggregation_routing.py
+  scenario: |
+    Given a domain whose GraphQL convention renames breed_name to breedName
+    When a JSON:API request asks for fields[pets]=breed_name, sort=-breed_name,
+      filter[breed_name]=Poodle, or include=pet.breed_name
+    Then each is accepted and compiled against the exposed GraphQL name
+    And the response attributes, included entries and groupBy nodes are keyed breed_name
+    And a request naming breedName instead is rejected with a 400 citing that parameter
+  related_reqs:
+  - REQ-257
+  - REQ-471
+  - REQ-1361
+  - REQ-1408

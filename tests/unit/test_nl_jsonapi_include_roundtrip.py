@@ -11,11 +11,11 @@
 """REQ-1405/REQ-1408: the NL-generated JSON:API ``?include=`` must be the list the JSON:API
 handler accepts — end to end, with no stub in between.
 
-``?groupBy=`` names PHYSICAL columns and ``?include=`` names the columns as the GraphQL schema
-EXPOSES them, so the two halves of one generated URL use different vocabularies. The unit tests
-around ``_resolve_aggregation_plan`` feed it a stub context, which can agree with a schema that
-was never built; that is how ``include=pet.breed_name`` reached a handler whose ``pet`` type
-carries ``breedName`` and answered ``Unknown field 'breed_name' on relationship 'pet'``.
+REQ-1417 made the whole JSON:API surface physical: ``?groupBy=`` and ``?include=`` name the same
+columns the same way, and the handler translates to the schema's exposed spelling itself. The unit
+tests around ``_resolve_aggregation_plan`` feed it a stub context, which can agree with a schema
+that was never built, so the generated URL is checked here against the real handler helper rather
+than against a hand-written expectation.
 
 Here the context and the schema both come from one ``SchemaInput`` through the real
 ``build_context``/``generate_schema``, under the default apollo (camelCase) convention where a
@@ -28,7 +28,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from provisa.api.jsonapi.generator import _build_group_by_node_selection
+from provisa.api.jsonapi.generator import (
+    _build_group_by_node_selection,
+    _get_relationship_fields,
+    _relationship_scalars,
+)
+from provisa.api.jsonapi.naming import relationship_name_maps, relationship_scalar_maps
 from provisa.compiler import naming as _naming
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
@@ -118,6 +123,17 @@ def petstore():
     _naming.configure()
 
 
+def _include_maps(schema, ctx, gql_table):
+    """The physical → GQL maps the handler builds for itself before validating ``?include=``."""
+    gql_rels = list(_get_relationship_fields(schema, gql_table).values())
+    _, rel_physical_to_gql = relationship_name_maps(gql_rels)
+    rel_scalars = {rel: _relationship_scalars(schema, gql_table, rel) for rel in gql_rels}
+    _, rel_scalar_physical_to_gql = relationship_scalar_maps(
+        ctx, ctx.tables[gql_table].type_name, rel_scalars
+    )
+    return rel_physical_to_gql, rel_scalar_physical_to_gql
+
+
 def test_the_schema_renames_the_multi_word_column(petstore):
     """The premise: under apollo, ``breed_name`` is exposed as ``breedName``. Without this the
     rest of the file would pass on a schema that never renamed anything."""
@@ -130,12 +146,13 @@ def test_the_schema_renames_the_multi_word_column(petstore):
     assert "breed_name" not in pet_type.fields
 
 
-def test_generated_include_names_columns_as_the_schema_exposes_them(petstore):
+def test_generated_include_names_columns_physically(petstore):
     _schema, ctx, app_state = petstore
     plan = _resolve_aggregation_plan(ctx, app_state, _SQL)
     assert plan is not None
-    assert plan.dim_paths_gql == ["pet.id", "pet.name", "pet.breedName"]
-    # dim_paths stays physical — it is what gRPC's include= takes.
+    # REQ-1417: JSON:API takes both segments physically.
+    assert plan.dim_paths_api == ["pet.id", "pet.name", "pet.breed_name"]
+    # dim_paths keeps the schema-exposed relationship segment — it is what gRPC's include= takes.
     assert plan.dim_paths == ["pet.id", "pet.name", "pet.breed_name"]
 
 
@@ -147,16 +164,19 @@ def test_generated_url_is_accepted_by_the_jsonapi_handler(petstore):
     assert err is None
     assert url is not None
     include_param = url.split("&include=", 1)[1]
-    selection, detail = _build_group_by_node_selection(schema, "inquiries", ["userId"], include_param)
+    selection, detail = _build_group_by_node_selection(
+        schema, "inquiries", ["userId"], include_param, *_include_maps(schema, ctx, "inquiries")
+    )
     assert detail is None, detail
+    # The handler translates to the schema's spelling at the GraphQL emit boundary.
     assert "pet { id name breedName }" in selection
 
 
-def test_the_physical_naming_is_the_one_the_handler_rejects(petstore):
-    """The failure that was reported, asserted as the handler's own behavior — so a regression
-    that reverts the include list to physical names fails here instead of in a browser."""
-    schema, _ctx, _app_state = petstore
+def test_the_exposed_naming_is_the_one_the_handler_rejects(petstore):
+    """REQ-1417 inverted the accepted vocabulary, so the camelCase spelling a caller might copy
+    out of the GraphQL schema is now the one that 400s."""
+    schema, ctx, _app_state = petstore
     _selection, detail = _build_group_by_node_selection(
-        schema, "inquiries", ["userId"], "pet.breed_name"
+        schema, "inquiries", ["userId"], "pet.breedName", *_include_maps(schema, ctx, "inquiries")
     )
-    assert detail == "Unknown field 'breed_name' on relationship 'pet'"
+    assert detail == "Unknown field 'breedName' on relationship 'pet'"

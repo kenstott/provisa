@@ -254,10 +254,9 @@ class TestResolveAggregationPlan:
         assert funcs == ["count"]
         assert sorted(dim_paths) == ["pet.id", "pet.name", "user.name"]
 
-    def test_dim_paths_carry_both_namings_for_renamed_columns(self):
-        # gRPC and REST take include paths in the API's own physical naming, JSON:API's ?include=
-        # validates against the relationship's GraphQL fields — so a renamed column has to reach
-        # the surfaces under two names, or JSON:API answers "Unknown field 'breed_name'".
+    def test_dim_paths_stay_physical_for_a_renamed_column(self):
+        # REQ-1417: every surface takes include paths physically, so a column the GQL convention
+        # renames still reaches all of them as breed_name — the handler does the translating.
         ctx = _ctx({(1, "breedName"): "breed_name"})
         app_state = _app_state()
         sql = (
@@ -269,10 +268,10 @@ class TestResolveAggregationPlan:
         plan = _resolve_aggregation_plan(ctx, app_state, sql)
         assert plan is not None
         assert plan.dim_paths == ["pet.breed_name"]
-        assert plan.dim_paths_gql == ["pet.breedName"]
+        assert plan.dim_paths_api == ["pet.breed_name"]
         q, e = _generate_jsonapi_query(plan, set(), {})
         assert e is None
-        assert q is not None and q.endswith("&includeNodes=true&include=pet.breedName")
+        assert q is not None and q.endswith("&includeNodes=true&include=pet.breed_name")
 
     def test_group_by_on_unjoined_table_returns_none(self):
         # dimension column belongs to a table with no JOIN condition linking it to the
@@ -842,9 +841,8 @@ class TestAggregationPlanFromGraphql:
     def test_jsonapi_query_splits_include_nodes_flag_from_include_list(self):
         # JSON:API honours includeNodes only as true/1 and takes the projection via ?include=,
         # whose entries are dot-paths — naming the relationship alone would widen the nodes
-        # selection to every column of the related table. Those dot-paths carry the schema's
-        # field names (pet.breedName), not the physical ones gRPC and REST use: ?include= is
-        # validated against the relationship's GraphQL fields, so breed_name is rejected.
+        # selection to every column of the related table. REQ-1417: both segments are physical,
+        # the same vocabulary ?groupBy= uses, and the handler translates at its GraphQL boundary.
         plan = _aggregation_plan_from_graphql(self._strict_ctx(), self.GQL)
         q, e = _generate_jsonapi_query(plan, set(), {})
         assert e is None
@@ -852,7 +850,7 @@ class TestAggregationPlanFromGraphql:
             "/data/jsonapi/pet-store/inquiries?groupBy=user_id&aggregate=count"
             "&includeNodes=true&include="
             "user.id,user.name,user.email,user.phone,"
-            "pet.id,pet.name,pet.species,pet.breedName,pet.price,pet.available"
+            "pet.id,pet.name,pet.species,pet.breed_name,pet.price,pet.available"
         )
 
     def test_openapi_query_uses_dot_paths(self):

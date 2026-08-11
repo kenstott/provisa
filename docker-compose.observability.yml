@@ -22,6 +22,16 @@ services:
       AWS_SECRET_ACCESS_KEY: "${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
     ports:
       - "${OTLP2PARQUET_HOST_PORT:-4319}:4318"
+    # The image bakes in `HEALTHCHECK CMD /usr/local/bin/otlp2parquet --health-check`, a flag its
+    # own binary rejects ("error: unexpected argument '--health-check' found", exit 2), so the
+    # container reports unhealthy from first start no matter what the service is doing. The image
+    # is distroless — no shell, no curl, no wget — so there is no in-container probe to swap in,
+    # and a probe that only runs the binary would report healthy for a server that stopped
+    # listening. The service does answer GET /health with 200 on the OTLP port; probe that from
+    # outside the container (the port is published) rather than trusting a container status the
+    # image cannot produce.
+    healthcheck:
+      disable: true
     depends_on:
       minio:
         condition: service_healthy

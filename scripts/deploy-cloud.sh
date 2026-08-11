@@ -19,6 +19,10 @@
 #   scripts/deploy-cloud.sh reset  # accounts/orgs -> none, demo data re-seeded
 #   scripts/deploy-cloud.sh patch  # like all, but KEEPS accounts and orgs
 #
+# Every arm that pushes first ensures the observability overlay is installed on the node — the
+# ops reports over the OTLP parquet store (traces, queries, metrics, logs) are empty without a
+# collector. It is a one-time install; once present the check is a no-op.
+#
 # api/all/reset also wipe the control plane back to the first-start state (no
 # claimed super-admin, no accounts, no tenant orgs) and let the restart re-seed
 # the bootstrap org's demo data set from the deployment config. Use `patch` when
@@ -198,6 +202,39 @@ restart() {
   ssh_node "sudo docker restart $CONTAINERS"
 }
 
+# The telemetry tier the ops reports read. `traces`, `queries`, `metrics` and `logs` are views over
+# the OTLP parquet store, so with no collector on the node those four reports return zero rows no
+# matter how much traffic the node serves — and docker-compose.app.yml deliberately stopped
+# defaulting OTEL_EXPORTER_OTLP_ENDPOINT, so the app exports nothing until a collector exists.
+#
+# Installed as an extension rather than by flag: scripts/provisa enumerates
+# ${PROVISA_HOME}/extensions/*/docker-compose.*.yml into COMPOSE_FILES (scripts/provisa:141-146),
+# and the endpoint export is keyed off that resolved list matching *observability*
+# (scripts/provisa:427-432), so dropping the overlay in that directory is what both creates the
+# collector and points the app at it. The observability config tree it mounts
+# (./observability/*.yaml) already ships to ${PROVISA_HOME}/compose/observability.
+#
+# Adding a compose file needs a stack recreate, which reverts hot-pushed code, so this runs BEFORE
+# the pushes in every arm that pushes. Already-installed is the no-op path: no recreate, no loss.
+OBS_EXT="/root/.provisa/extensions/observability/docker-compose.observability.yml"
+
+push_obs() {
+  if ssh_node "sudo test -f $OBS_EXT" 2>/dev/null; then
+    echo "== observability: already installed"
+    return
+  fi
+  echo "== observability: installing overlay"
+  scp_node "$REPO/docker-compose.observability.yml" /tmp/docker-compose.observability.yml
+  ssh_node "sudo mkdir -p $(dirname $OBS_EXT) \
+    && sudo cp /tmp/docker-compose.observability.yml $OBS_EXT"
+  # systemctl, not `docker restart`: the collector container does not exist yet, and the app's
+  # OTEL_EXPORTER_OTLP_ENDPOINT is set from the resolved compose set at `provisa start`.
+  echo "== observability: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+  ssh_node "sudo docker exec $API_CONTAINER printenv OTEL_EXPORTER_OTLP_ENDPOINT" \
+    | grep -q . || { echo "observability installed but the app exports no OTLP endpoint" >&2; exit 1; }
+}
+
 # The demo data set is not pushed by this script: startup rebuilds the bootstrap org from the
 # deployment's own config on every boot (REQ-1296), and dropping the tenant schemas above also
 # cascaded away the cross-org org_registry view (REQ-1301). Both are restart-rebuilt, so this
@@ -271,18 +308,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    build_api; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_api; push_obs; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    build_cfg; push_cfg; restart; verify ;;
+    build_cfg; push_obs; push_cfg; restart; verify ;;
   all)
-    build_ui; build_api; build_cfg; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
+    build_ui; build_api; build_cfg; push_obs; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     reset_state; restart; verify; verify_api; verify_demo ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    build_ui; build_api; build_cfg; push_ui; push_api; push_cfg; restart; verify ;;
+    build_ui; build_api; build_cfg; push_obs; push_ui; push_api; push_cfg; restart; verify ;;
 esac
 echo "== deployed $TARGET"

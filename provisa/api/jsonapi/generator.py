@@ -38,6 +38,12 @@ from provisa.api.jsonapi.pagination import (
     page_to_limit_offset,
     parse_page_params,
 )
+from provisa.api.jsonapi.naming import (
+    relationship_name_maps,
+    relationship_scalar_maps,
+    rename_row_keys,
+    scalar_name_maps,
+)
 from provisa.api.jsonapi.serializer import rows_to_jsonapi
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
@@ -246,6 +252,8 @@ def _build_group_by_node_selection(
     gql_table: str,
     base_scalars: list[str],
     include_param: str | None,
+    rel_physical_to_gql: dict[str, str],
+    rel_scalar_physical_to_gql: dict[str, dict[str, str]],
 ) -> tuple[str, str | None]:  # REQ-1408
     """The ``nodes { ... }`` selection for ``?includeNodes=true`` (REQ-1401).
 
@@ -254,24 +262,28 @@ def _build_group_by_node_selection(
     column, the same projection gRPC's ``include`` (query_ir::_include_node_fields) and REST's
     ``?includeNodes=`` dot-path list accept, so one plan drives all three surfaces.
 
+    Both segments are physical names — the spelling ``?groupBy=`` already takes — and are
+    translated to the schema's GQL-convention spelling here, at the emit boundary (REQ-1417).
+
     Returns ``(selection, error_detail)``; ``error_detail`` is non-None when an entry names an
     unknown relationship or column, which the caller turns into a 400.
     """
     node_fields = list(base_scalars)
-    valid_rel_names = set(_get_relationship_fields(schema, gql_table).values())
     include_names = (
         [n.strip() for n in include_param.split(",") if n.strip()] if include_param else []
     )
     rel_columns: dict[str, list[str]] = {}
     for inc in include_names:
         rel, _, column = inc.partition(".")
-        if rel not in valid_rel_names:
+        gql_rel = rel_physical_to_gql.get(rel)
+        if gql_rel is None:
             return "", f"Unknown relationship {rel!r}"
-        rel_scalars = _relationship_scalars(schema, gql_table, rel)
-        if column and column not in rel_scalars:
+        column_map = rel_scalar_physical_to_gql[gql_rel]
+        if column and column not in column_map:
             return "", f"Unknown field {column!r} on relationship {rel!r}"
-        requested = rel_columns.setdefault(rel, [])
-        for col in [column] if column else rel_scalars:
+        rel_scalars = _relationship_scalars(schema, gql_table, gql_rel)
+        requested = rel_columns.setdefault(gql_rel, [])
+        for col in [column_map[column]] if column else rel_scalars:
             if col not in requested:
                 requested.append(col)
     for rel, columns in rel_columns.items():
@@ -501,10 +513,44 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         raw_params = dict(request.query_params)
 
+        all_scalars = _get_scalar_fields(schema, gql_table)
+
+        # REQ-1417: JSON:API is an API over the SQL plane, so every name it accepts in a param and
+        # every key it emits is the *physical* column or relationship name. The GQL naming
+        # convention is the GraphQL surface's alone (REQ-471); this handler borrows it only for the
+        # GraphQL text it synthesizes below, so names are translated physical → GQL here at that
+        # emit boundary and back on the way out — the rule ?groupBy= (REQ-1361) and gRPC's include
+        # (REQ-1408) already follow.
+        table_meta = ctx.tables.get(gql_table)
+        if table_meta is None:
+            return _jsonapi_error_response(
+                404,
+                "Not Found",
+                f"Resource type {domain_id!r}/{table_name!r} not found",
+            )
+        gql_to_physical, physical_to_gql = scalar_name_maps(ctx, table_meta.table_id, all_scalars)
+        rel_fields = _get_relationship_fields(schema, gql_table)
+        gql_rel_names = list(rel_fields.values())
+        rel_gql_to_physical, rel_physical_to_gql = relationship_name_maps(gql_rel_names)
+        rel_scalars_by_rel = {
+            rel: _relationship_scalars(schema, gql_table, rel) for rel in gql_rel_names
+        }
+        rel_scalar_gql_to_physical, rel_scalar_physical_to_gql = relationship_scalar_maps(
+            ctx, table_meta.type_name, rel_scalars_by_rel
+        )
+
         # Parse JSON:API params
         sparse = _parse_sparse_fieldsets(raw_params).get(table_name)
-        all_scalars = _get_scalar_fields(schema, gql_table)
-        selected_fields = sparse if sparse else all_scalars
+        if sparse is not None:
+            unknown = [f for f in sparse if f not in physical_to_gql]
+            if unknown:
+                return _jsonapi_error_response(
+                    400,
+                    "Invalid Fieldset",
+                    f"Unknown field {unknown[0]!r}",
+                    source_parameter=f"fields[{table_name}]",
+                )
+        selected_fields = [physical_to_gql[f] for f in sparse] if sparse else list(all_scalars)
 
         if not selected_fields:
             return _jsonapi_error_response(
@@ -517,31 +563,33 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         if "id" in all_scalars and "id" not in selected_fields:
             selected_fields = ["id"] + selected_fields
 
-        filters = _parse_filters(raw_params)
-        sort = _parse_sort(raw_params.get("sort"))
+        physical_filters = _parse_filters(raw_params)
+        physical_sort = _parse_sort(raw_params.get("sort"))
         page = parse_page_params(raw_params)
         page_number, page_size = page["number"], page["size"]
         limit, pg_offset = page_to_limit_offset(page)
 
-        # Validate filter columns
-        for col in filters:
-            if col not in all_scalars:
+        # Validate + translate filter columns
+        for col in physical_filters:
+            if col not in physical_to_gql:
                 return _jsonapi_error_response(
                     400,
                     "Invalid Filter",
                     f"Unknown filter field {col!r}",
                     source_parameter=f"filter[{col}]",
                 )
+        filters = {physical_to_gql[col]: ops for col, ops in physical_filters.items()}
 
-        # Validate sort columns
-        for s in sort:
-            if s["field"] not in all_scalars:
+        # Validate + translate sort columns
+        for s in physical_sort:
+            if s["field"] not in physical_to_gql:
                 return _jsonapi_error_response(
                     400,
                     "Invalid Sort",
                     f"Unknown sort field {s['field']!r}",
                     source_parameter="sort",
                 )
+        sort = [{**s, "field": physical_to_gql[s["field"]]} for s in physical_sort]
 
         # REQ-1359: ?aggregate/?groupBy synthesize {field}_aggregate / {field}_group_by GraphQL
         # query text instead of the base table field — same synthesize-then-compile pipeline
@@ -557,12 +605,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             # REQ-1361: ?groupBy= takes API-native (physical) column names, same as the
             # jsonapi-group-by-columns picker offers — not the schema's GQL-convention field
             # names, which all_scalars holds. Validate against ctx.aggregate_columns instead.
-            table_meta = ctx.tables.get(gql_table)
-            valid_group_by_cols = (
-                {c for c, _t in ctx.aggregate_columns.get(table_meta.table_id, [])}
-                if table_meta is not None
-                else set()
-            )
+            valid_group_by_cols = {
+                c for c, _t in ctx.aggregate_columns.get(table_meta.table_id, [])
+            }
             for col in group_cols:
                 if col not in valid_group_by_cols:
                     return _jsonapi_error_response(
@@ -611,7 +656,12 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 node_selection = None
                 if raw_params.get("includeNodes") in ("true", "1"):
                     node_selection, bad_include = _build_group_by_node_selection(
-                        schema, gql_table, list(all_scalars), raw_params.get("include")
+                        schema,
+                        gql_table,
+                        list(all_scalars),
+                        raw_params.get("include"),
+                        rel_physical_to_gql,
+                        rel_scalar_physical_to_gql,
                     )
                     if bad_include is not None:
                         return _jsonapi_error_response(
@@ -685,6 +735,20 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     agg_compiled.root_field,
                 )
                 group_rows = shaped.get("data", {}).get(agg_compiled.root_field, [])
+                # REQ-1417: groupKey is already keyed physically — its field names come straight
+                # from the ?groupBy= list (compiler/aggregates.py ColumnRef field_name=col) — but
+                # the nodes projection is keyed by the GraphQL selection set, so it is renamed back.
+                for row in group_rows:
+                    if "nodes" in row:
+                        row["nodes"] = [
+                            rename_row_keys(
+                                node,
+                                gql_to_physical,
+                                rel_gql_to_physical,
+                                rel_scalar_gql_to_physical,
+                            )
+                            for node in row["nodes"]
+                        ]
                 data = [
                     {"type": f"{table_name}GroupBy", "id": str(idx), "attributes": row}
                     for idx, row in enumerate(group_rows)
@@ -708,30 +772,32 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             )
 
         # REQ-257: ?include=rel1,rel2 — sideload related resources as a compound document.
-        rel_fields = _get_relationship_fields(schema, gql_table)
-        valid_rel_names = set(rel_fields.values())
-        fk_by_rel = {rel_name: fk for fk, rel_name in rel_fields.items()}
+        # REQ-1417: the names are physical; they are translated to the schema's field names here.
         include_param = raw_params.get("include")
-        include_names = (
+        physical_include_names = (
             [n.strip() for n in include_param.split(",") if n.strip()] if include_param else []
         )
-        for inc in include_names:
-            if inc not in valid_rel_names:
+        for inc in physical_include_names:
+            if inc not in rel_physical_to_gql:
                 return _jsonapi_error_response(
                     400,
                     "Invalid Include",
                     f"Unknown relationship {inc!r}",
                     source_parameter="include",
                 )
+        include_names = [rel_physical_to_gql[inc] for inc in physical_include_names]
         query_fields = list(selected_fields)
         for inc in include_names:
-            inc_scalars = _relationship_scalars(schema, gql_table, inc)
+            inc_scalars = list(rel_scalars_by_rel[inc])
             if "id" in inc_scalars:
                 inc_scalars = ["id"] + [s for s in inc_scalars if s != "id"]
             query_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
-            # the FK column must be selected so the resource's relationship linkage resolves
-            fk = fk_by_rel.get(inc)
-            if fk and fk in all_scalars and fk not in query_fields:
+            # the FK column must be selected so the resource's relationship linkage resolves.
+            # It is named from the *physical* convention (``pet`` → ``pet_id``) and translated to
+            # the schema's spelling, rather than assuming one — under apollo the exposed column is
+            # ``petId``, under snake it stays ``pet_id``.
+            fk = physical_to_gql.get(f"{rel_gql_to_physical[inc]}_id")
+            if fk and fk not in query_fields:
                 query_fields.append(fk)
 
         gql_query = _build_graphql_query(
@@ -843,15 +909,26 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         response_data = serialize_rows(result.rows, compiled.columns, gql_table)
         rows = response_data.get("data", {}).get(gql_table, [])
 
+        # REQ-1417: back to physical names before anything downstream keys off them, so the
+        # relationship map, the included buckets, and the emitted attributes all speak one
+        # convention.
+        rows = [
+            rename_row_keys(
+                row, gql_to_physical, rel_gql_to_physical, rel_scalar_gql_to_physical
+            )
+            for row in rows
+        ]
+        physical_rel_fields = {f"{p}_id": p for p in rel_physical_to_gql}
+
         # REQ-257: pull nested included entities out of the rows into a deduplicated set.
-        included_rows = _extract_included(rows, include_names)
+        included_rows = _extract_included(rows, physical_include_names)
 
         # Build JSON:API document (compound when includes were requested)
         doc = rows_to_jsonapi(
             rows,
             table_name,
             id_field="id",
-            relationship_fields=rel_fields,
+            relationship_fields=physical_rel_fields,
             included_rows=included_rows or None,
         )
         doc.setdefault("meta", {})["total"] = total_count

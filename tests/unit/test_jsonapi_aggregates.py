@@ -21,10 +21,13 @@ from provisa.api.jsonapi.generator import (
     _build_group_by_graphql_query,
     _build_group_by_node_selection,
     _get_agg_fields_type,
+    _get_relationship_fields,
     _parse_aggregate_param,
     _parse_group_by_param,
+    _relationship_scalars,
     _resolve_query_field,
 )
+from provisa.api.jsonapi.naming import relationship_name_maps, relationship_scalar_maps
 from provisa.compiler import naming as _naming
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
@@ -372,54 +375,71 @@ def _build_schema_with_relationship():
         role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
     )
-    return generate_schema(si)
+    return generate_schema(si), build_context(si)
+
+
+def _node_selection(schema, ctx, base_scalars, include_param):
+    """Call the helper the way the handler does — with the physical → GQL maps it builds first."""
+    gql_rels = list(_get_relationship_fields(schema, "orders").values())
+    _, rel_physical_to_gql = relationship_name_maps(gql_rels)
+    rel_scalars = {rel: _relationship_scalars(schema, "orders", rel) for rel in gql_rels}
+    _, rel_scalar_physical_to_gql = relationship_scalar_maps(
+        ctx, ctx.tables["orders"].type_name, rel_scalars
+    )
+    return _build_group_by_node_selection(
+        schema,
+        "orders",
+        base_scalars,
+        include_param,
+        rel_physical_to_gql,
+        rel_scalar_physical_to_gql,
+    )
 
 
 class TestGroupByNodeSelection:
-    """REQ-1408: ?include= on a group-by takes the same rel/rel.col projection gRPC and REST take."""
+    """REQ-1408/REQ-1417: ?include= takes the same rel/rel.col projection gRPC and REST take,
+    named physically on both segments."""
 
     def test_base_scalars_only_without_include(self):
-        schema = _build_schema_with_relationship()
-        selection, err = _build_group_by_node_selection(schema, "orders", ["id", "amount"], None)
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id", "amount"], None)
         assert err is None
         assert selection == "id amount"
 
     def test_bare_relationship_selects_every_related_scalar(self):
-        schema = _build_schema_with_relationship()
-        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "customer")
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer")
         assert err is None
         assert selection == "id customer { id name email }"
 
     def test_dot_path_selects_only_that_column(self):
-        schema = _build_schema_with_relationship()
-        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "customer.email")
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.email")
         assert err is None
         assert selection == "id customer { email }"
 
     def test_dot_paths_on_one_relationship_merge(self):
-        schema = _build_schema_with_relationship()
-        selection, err = _build_group_by_node_selection(
-            schema, "orders", ["id"], "customer.email,customer.name"
-        )
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.email,customer.name")
         assert err is None
         assert selection == "id customer { email name }"
 
     def test_selection_parses_as_graphql(self):
-        schema = _build_schema_with_relationship()
-        selection, _ = _build_group_by_node_selection(schema, "orders", ["id"], "customer.email")
+        schema, ctx = _build_schema_with_relationship()
+        selection, _ = _node_selection(schema, ctx, ["id"], "customer.email")
         query = _build_group_by_graphql_query(
             "orders_group_by", ["region"], "count", {}, [], None, None, selection
         )
         assert not validate(schema, parse(query))
 
     def test_unknown_relationship_is_an_error(self):
-        schema = _build_schema_with_relationship()
-        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "nope.email")
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "nope.email")
         assert selection == ""
         assert err == "Unknown relationship 'nope'"
 
     def test_unknown_column_on_relationship_is_an_error(self):
-        schema = _build_schema_with_relationship()
-        selection, err = _build_group_by_node_selection(schema, "orders", ["id"], "customer.nope")
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.nope")
         assert selection == ""
         assert err == "Unknown field 'nope' on relationship 'customer'"

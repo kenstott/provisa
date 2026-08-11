@@ -27,6 +27,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from provisa.compiler.naming import apply_convention
 from provisa.grpc.proto_gen import _to_proto_type_name
 from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobStore
 from provisa.nl.loop import (
@@ -101,10 +102,10 @@ class AggregationPlan(NamedTuple):
     populated only by the GraphQL-driven rewrite (the SQL-driven resolver has no nodes concept)
     and drives REST's ``?includeNodes=`` dot-path projection.
 
-    ``dim_paths`` names related columns physically (``pet.breed_name``) for gRPC and REST, whose
-    include params are API-native; ``dim_paths_gql`` names the same columns as the schema exposes
-    them (``pet.breedName``) for JSON:API, whose ``?include=`` is the GraphQL-name relationship
-    sideloading param and validates against the schema's field names.
+    ``dim_paths`` names related columns physically after a relationship field named as the schema
+    exposes it (``pet.breed_name``) — the split gRPC's include= takes. ``dim_paths_api`` names both
+    segments physically (``pet.breed_name``, ``breedGroup.breed_name`` → ``breed_group.breed_name``)
+    for JSON:API, whose params are physical end to end (REQ-1417).
     """
 
     meta: Any
@@ -113,7 +114,7 @@ class AggregationPlan(NamedTuple):
     funcs: list[str]
     dim_paths: list[str]
     node_scalars: list[str] = []
-    dim_paths_gql: list[str] = []
+    dim_paths_api: list[str] = []
 
 
 def _aggregation_plan_from_graphql(ctx: Any, graphql_query: str) -> AggregationPlan | None:
@@ -173,7 +174,7 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
     funcs: list[str] = []
     node_scalars: list[str] = []
     dim_paths: list[str] = []
-    dim_paths_gql: list[str] = []
+    dim_paths_api: list[str] = []
     for sub in (field_node.selection_set.selections if field_node.selection_set else []):
         if not isinstance(sub, FieldNode):
             continue
@@ -195,11 +196,12 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
                 target = ctx.joins[(meta.type_name, rel)].target
                 for rel_sel in node_sel.selection_set.selections:
                     if isinstance(rel_sel, FieldNode):
-                        dim_paths.append(f"{rel}.{_physical(target.table_id, rel_sel.name.value)}")
-                        dim_paths_gql.append(f"{rel}.{rel_sel.name.value}")
+                        phys_col = _physical(target.table_id, rel_sel.name.value)
+                        dim_paths.append(f"{rel}.{phys_col}")
+                        dim_paths_api.append(f"{apply_convention(rel, 'snake_case')}.{phys_col}")
 
     return AggregationPlan(
-        meta, group_cols, is_aggregate_only, funcs, dim_paths, node_scalars, dim_paths_gql
+        meta, group_cols, is_aggregate_only, funcs, dim_paths, node_scalars, dim_paths_api
     )
 
 
@@ -307,11 +309,7 @@ def _resolve_aggregation_plan(
     # includeNodes dot-paths for gRPC/JSON:API/OpenAPI, the same relationship detail
     # SQL/GraphQL already resolved — a single-table group-by has no other way to express them.
     dim_paths: list[str] = []
-    dim_paths_gql: list[str] = []
-    # exposed_to_physical holds an entry only where the two names differ, so inverting it gives
-    # the schema-exposed name for every renamed column and leaves the rest alone — the same
-    # mapping JSON:API's ?include= validates against.
-    physical_to_exposed = {(tid, phys): gql for (tid, gql), phys in ctx.exposed_to_physical.items()}
+    dim_paths_api: list[str] = []
     select_exprs = tree.args.get("expressions") or []
     dim_cols_by_ref: dict[str, list[str]] = {}
     for e in select_exprs:
@@ -342,9 +340,7 @@ def _resolve_aggregation_plan(
             rel_field = rel_field_name(dim_meta.field_name, "many-to-one")
             for dim_col in dim_cols:
                 dim_paths.append(f"{rel_field}.{dim_col}")
-                dim_paths_gql.append(
-                    f"{rel_field}.{physical_to_exposed.get((dim_meta.table_id, dim_col), dim_col)}"
-                )
+                dim_paths_api.append(f"{apply_convention(rel_field, 'snake_case')}.{dim_col}")
 
     is_aggregate_only = not group_cols and (
         tree.find(exp.Count, exp.Sum, exp.Avg, exp.Max, exp.Min, exp.Stddev, exp.Variance)
@@ -362,7 +358,7 @@ def _resolve_aggregation_plan(
     funcs = [fn for fn in AGG_FUNCS if fn in found]
 
     return AggregationPlan(
-        meta, group_cols, is_aggregate_only, funcs, dim_paths, [], dim_paths_gql
+        meta, group_cols, is_aggregate_only, funcs, dim_paths, [], dim_paths_api
     )
 
 
@@ -422,11 +418,11 @@ def _generate_jsonapi_query(
         # names or "rel.col" dot-paths (generator.py::_build_group_by_node_selection). Naming the
         # relationship alone pulls every column of the related table, so the dot-paths carry the
         # GraphQL nodes sub-selection column for column. Base scalars are implicit there.
-        # The columns are named as the schema exposes them: ?include= validates against the
-        # relationship's GraphQL field names, unlike ?groupBy=, which is physical.
+        # Both segments are physical, matching ?groupBy= — REQ-1417 made the whole JSON:API
+        # surface physical, params and emitted keys alike.
         query = f"{base}?groupBy={','.join(plan.group_cols)}&aggregate={aggregate_param}&includeNodes=true"
-        if plan.dim_paths_gql:
-            query += f"&include={','.join(plan.dim_paths_gql)}"
+        if plan.dim_paths_api:
+            query += f"&include={','.join(plan.dim_paths_api)}"
         return query, None
     if not selected_type_names:
         return None, "NOT_APPLICABLE"
