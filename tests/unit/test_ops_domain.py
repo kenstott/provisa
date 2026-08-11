@@ -418,3 +418,31 @@ async def test_report_views_functional(uri):
             assert [(r[0], r[1], r[2]) for r in hot] == [(1, 2, 1)]
     finally:
         await db.close()
+
+
+class TestViewDdlIsReseedableAfterNarrowing:
+    """A release that REMOVES a column from an ops view (the reports dropping tenant_id) must
+    still seed against the previous release's view. PostgreSQL's CREATE OR REPLACE VIEW accepts
+    only added trailing columns — a narrowed one raises "cannot drop columns from view" and the
+    app never finishes startup."""
+
+    def test_every_dialect_drops_the_view_before_recreating_it(self):
+        from provisa.api.startup_seed import _adapt_view_ddl
+
+        ddl = "CREATE OR REPLACE VIEW policy_denials AS SELECT id FROM query_audit_log"
+        for dialect in ("postgresql", "sqlite", "mysql", "duckdb"):
+            adapted = _adapt_view_ddl(ddl, dialect)
+            assert adapted.startswith("DROP VIEW IF EXISTS policy_denials"), dialect
+            assert "CREATE VIEW policy_denials AS" in adapted, dialect
+            assert "OR REPLACE" not in adapted, dialect
+
+    def test_postgres_cascades_so_a_dependent_report_view_does_not_block_the_drop(self):
+        from provisa.api.startup_seed import _adapt_view_ddl
+
+        ddl = "CREATE OR REPLACE VIEW query_audit_log_ops AS SELECT id FROM query_audit_log"
+        assert "DROP VIEW IF EXISTS query_audit_log_ops CASCADE;" in _adapt_view_ddl(
+            ddl, "postgresql"
+        )
+        # SQLite/MySQL have no CASCADE keyword for DROP VIEW.
+        assert "CASCADE" not in _adapt_view_ddl(ddl, "sqlite")
+        assert "CASCADE" not in _adapt_view_ddl(ddl, "mysql")

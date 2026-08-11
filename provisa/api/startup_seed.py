@@ -115,25 +115,29 @@ _CREATE_OR_REPLACE_VIEW_RE = re.compile(
 
 
 def _adapt_view_ddl(ddl: str, dialect: str) -> str:
-    """Rewrite ``CREATE OR REPLACE VIEW name AS`` to dialect-appropriate DDL.
+    """Rewrite ``CREATE OR REPLACE VIEW name AS`` to ``DROP VIEW IF EXISTS`` + ``CREATE VIEW``.
 
-    SQLite does not support ``CREATE OR REPLACE VIEW`` (syntax error near "OR").
-    For SQLite we emit ``DROP VIEW IF EXISTS name; CREATE VIEW name AS ...``
-    instead.  The result is a multi-statement DDL string; ``Connection.execute``
-    detects multiple statements and routes to ``execute_script``, which splits on
-    ``;`` and runs each statement individually on the SQLite driver.
+    SQLite has no ``CREATE OR REPLACE VIEW`` at all (syntax error near "OR"), and PostgreSQL's
+    accepts only a superset of the existing column list — dropping or renaming a column raises
+    ``cannot drop columns from view``, so a startup that narrows a view (the ops reports losing
+    ``tenant_id``) would fail against the previous release's view. Dropping first makes the seed
+    idempotent for ANY shape change rather than only widening ones.
 
-    PostgreSQL and all other dialects that support ``CREATE OR REPLACE VIEW``
-    receive the original DDL unchanged.
+    The result is a multi-statement DDL string; ``Connection.execute`` detects multiple
+    statements and routes to ``execute_script``, which runs each statement individually.
+
+    PostgreSQL refuses to drop a view another view selects from, so the drop CASCADEs: the seed
+    recreates the whole ops graph in dependency order (log views, then the ``ops_table_usage``
+    spine, then the report views) immediately afterwards, so a cascaded dependent is rebuilt on
+    the same pass.
     """
-    if dialect != "sqlite":
-        return ddl
     m = _CREATE_OR_REPLACE_VIEW_RE.search(ddl)
     if not m:
         return ddl
     view_name = m.group(1)
     select_sql = ddl[m.end():].strip()
-    return f"DROP VIEW IF EXISTS {view_name};\nCREATE VIEW {view_name} AS {select_sql}"
+    cascade = " CASCADE" if dialect in ("postgresql", "duckdb") else ""
+    return f"DROP VIEW IF EXISTS {view_name}{cascade};\nCREATE VIEW {view_name} AS {select_sql}"
 
 
 def _keep_edited_description(column: Any, seeded: str | None) -> dict[str, Any]:
