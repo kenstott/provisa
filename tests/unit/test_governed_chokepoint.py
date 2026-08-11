@@ -79,7 +79,7 @@ async def test_execute_plan_accepts_pipeline_minted_plan():
     and executes. Proves the stamp is not merely a tripwire — the legitimate path works."""
 
     class _FakeEngine:
-        async def execute_engine(self, sql, params=None, session_hints=None):
+        async def execute_engine(self, sql, params=None, session_hints=None, span_attrs=None):
             return QueryResult(rows=[(1,)], column_names=["n"])
 
     class _FakeState:

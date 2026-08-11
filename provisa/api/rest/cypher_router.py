@@ -62,8 +62,8 @@ from provisa.api.rest.cypher_exec import (
     _lookup_api_endpoint,
     _lookup_gql_remote_table,
     _resolve_role_id,
-    _span_attrs_from_semantic_sql,
 )
+from provisa.observability.span_attrs import span_attrs_from_semantic_sql
 
 log = logging.getLogger(__name__)
 
@@ -662,7 +662,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         )
 
     resolved_params = [body.params.get(name) for name in ordered_params]
-    span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(semantic_sql, role_id, body.query)
+    span_attrs: dict[str, str] = span_attrs_from_semantic_sql(semantic_sql, role_id, body.query)
 
     # Stage 4: Pipeline (governance + routing)
     try:

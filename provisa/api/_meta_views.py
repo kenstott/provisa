@@ -155,7 +155,7 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
         CREATE OR REPLACE VIEW query_audit_log_ops AS
-        SELECT id, tenant_id, user_id, role_id, query_hash,
+        SELECT id, user_id, role_id, query_hash,
                table_ids, source, status_code, duration_ms, logged_at
         FROM query_audit_log
     """,
@@ -171,21 +171,21 @@ def _ops_table_usage_ddl(dialect: str) -> str:
     header = "CREATE OR REPLACE VIEW ops_table_usage AS"
     if dialect == "sqlite":
         body = """
-        SELECT q.id, q.tenant_id, q.user_id, q.role_id, q.source,
+        SELECT q.id, q.user_id, q.role_id, q.source,
                q.status_code, q.duration_ms, q.logged_at,
                CAST(j.value AS INTEGER) AS table_id
         FROM query_audit_log q, json_each(q.table_ids) j
         """
     elif dialect == "mysql":
         body = """
-        SELECT q.id, q.tenant_id, q.user_id, q.role_id, q.source,
+        SELECT q.id, q.user_id, q.role_id, q.source,
                q.status_code, q.duration_ms, q.logged_at, jt.table_id
         FROM query_audit_log q,
              JSON_TABLE(q.table_ids, '$[*]' COLUMNS (table_id INT PATH '$')) AS jt
         """
     elif dialect == "duckdb":
         body = """
-        SELECT q.id, q.tenant_id, q.user_id, q.role_id, q.source,
+        SELECT q.id, q.user_id, q.role_id, q.source,
                q.status_code, q.duration_ms, q.logged_at,
                CAST(unnest(from_json(q.table_ids, '["VARCHAR"]')) AS INTEGER) AS table_id
         FROM query_audit_log q
@@ -194,7 +194,7 @@ def _ops_table_usage_ddl(dialect: str) -> str:
         # PostgreSQL (table_ids is JSONB per AUDIT_SCHEMA_SQL); any other dialect
         # fails loudly at CREATE rather than silently mis-parsing.
         body = """
-        SELECT q.id, q.tenant_id, q.user_id, q.role_id, q.source,
+        SELECT q.id, q.user_id, q.role_id, q.source,
                q.status_code, q.duration_ms, q.logged_at,
                CAST(j.elem AS INTEGER) AS table_id
         FROM query_audit_log q,
@@ -219,12 +219,11 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
                rt.schema_name, rt.table_name,
                COUNT(u.id) AS query_count,
                COUNT(DISTINCT u.user_id) AS distinct_users,
-               MAX(u.logged_at) AS last_queried_at,
-               rt.tenant_id
+               MAX(u.logged_at) AS last_queried_at
         FROM registered_tables rt
         LEFT JOIN ops_table_usage u ON u.table_id = rt.id
         GROUP BY rt.id, rt.source_id, rt.domain_id,
-                 rt.schema_name, rt.table_name, rt.tenant_id
+                 rt.schema_name, rt.table_name
     """,
     # One row per access to a table carrying (or containing a column carrying)
     # the 'deprecated' system tag — the consumers blocking safe removal.
@@ -233,7 +232,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT CAST(u.id AS TEXT) || ':' || CAST(ta.id AS TEXT) AS id,
                u.table_id, rt.table_name, rt.domain_id,
                ta.object_type, ta.column_name, ta.reason, ta.expires_on,
-               u.user_id, u.role_id, u.source, u.logged_at, u.tenant_id
+               u.user_id, u.role_id, u.source, u.logged_at
         FROM ops_table_usage u
         JOIN tag_assignments ta
           ON ta.table_id = u.table_id AND ta.tag_id = 'deprecated'
@@ -247,7 +246,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
                u.table_id, rt.table_name, rt.domain_id,
                ta.object_type, ta.column_name AS pii_column,
                u.user_id, u.role_id, u.source, u.status_code,
-               u.logged_at, u.tenant_id
+               u.logged_at
         FROM ops_table_usage u
         JOIN tag_assignments ta
           ON ta.table_id = u.table_id AND ta.tag_id = 'pii'
@@ -256,7 +255,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # Access attempts rejected by governance (401 unauthenticated / 403 denied).
     "policy_denials": """
         CREATE OR REPLACE VIEW policy_denials AS
-        SELECT id, tenant_id, user_id, role_id, query_hash, table_ids,
+        SELECT id, user_id, role_id, query_hash, table_ids,
                source, status_code, duration_ms, logged_at
         FROM query_audit_log
         WHERE status_code IN (401, 403)
@@ -264,29 +263,25 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # Daily traffic per protocol surface (the audit log's ``source`` column).
     "surface_mix": """
         CREATE OR REPLACE VIEW surface_mix AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
-                 || ':' || COALESCE(CAST(tenant_id AS TEXT), '') AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
-               COUNT(DISTINCT user_id) AS distinct_users,
-               tenant_id
+               COUNT(DISTINCT user_id) AS distinct_users
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), tenant_id
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
     """,
     # Daily latency/error profile per protocol surface. Portable aggregates only
     # (percentile_cont is PG-only); p95 arrives with the REQ-1386 rollup tables.
     "query_health": """
         CREATE OR REPLACE VIEW query_health AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
-                 || ':' || COALESCE(CAST(tenant_id AS TEXT), '') AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS error_count,
                AVG(duration_ms) AS avg_duration_ms,
-               MAX(duration_ms) AS max_duration_ms,
-               tenant_id
+               MAX(duration_ms) AS max_duration_ms
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), tenant_id
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
     """,
     # Governance-completeness gaps: tables/columns missing a description,
     # domains missing a steward (REQ-609 PENDING state).
@@ -294,19 +289,19 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW stale_metadata AS
         SELECT 'table:' || CAST(rt.id AS TEXT) AS id, 'table' AS object_type,
                rt.table_name AS object_name, rt.domain_id,
-               'missing_description' AS issue, rt.tenant_id
+               'missing_description' AS issue
         FROM registered_tables rt
         WHERE rt.description IS NULL OR rt.description = ''
         UNION ALL
         SELECT 'column:' || CAST(tc.id AS TEXT), 'column',
                rt.table_name || '.' || tc.column_name, rt.domain_id,
-               'missing_description', tc.tenant_id
+               'missing_description'
         FROM table_columns tc
         JOIN registered_tables rt ON rt.id = tc.table_id
         WHERE tc.description IS NULL OR tc.description = ''
         UNION ALL
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,
-               'missing_steward', d.tenant_id
+               'missing_steward'
         FROM domains d
         WHERE d.steward IS NULL AND d.id <> ''
     """,
@@ -314,19 +309,16 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # candidates. Pairs ordered table_id_a < table_id_b to count each pair once.
     "join_hotspots": """
         CREATE OR REPLACE VIEW join_hotspots AS
-        SELECT CAST(a.table_id AS TEXT) || ':' || CAST(b.table_id AS TEXT)
-                 || ':' || COALESCE(CAST(a.tenant_id AS TEXT), '') AS id,
+        SELECT CAST(a.table_id AS TEXT) || ':' || CAST(b.table_id AS TEXT) AS id,
                a.table_id AS table_id_a, ra.table_name AS table_name_a,
                b.table_id AS table_id_b, rb.table_name AS table_name_b,
                COUNT(*) AS co_occurrence_count,
-               MAX(a.logged_at) AS last_seen_at,
-               a.tenant_id
+               MAX(a.logged_at) AS last_seen_at
         FROM ops_table_usage a
         JOIN ops_table_usage b
           ON b.id = a.id AND b.table_id > a.table_id
         JOIN registered_tables ra ON ra.id = a.table_id
         JOIN registered_tables rb ON rb.id = b.table_id
-        GROUP BY a.table_id, ra.table_name, b.table_id, rb.table_name,
-                 a.tenant_id
+        GROUP BY a.table_id, ra.table_name, b.table_id, rb.table_name
     """,
 }

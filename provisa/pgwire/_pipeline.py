@@ -87,6 +87,13 @@ class _Plan:
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
+    # REQ-074/REQ-1386 (ops `queries` report): the OTel span attributes for this statement —
+    # provisa.table / provisa.domain / provisa.role / provisa.query_text, the attributes
+    # TRACE_ATTR_COLS lifts into the trace table the report reads. Minted at the top of the
+    # pipeline alongside the audit record and handed to the engine at the ENGINE terminal, so
+    # every governed surface emits an attributed query span instead of an anonymous one. None
+    # when nothing user-initiated is running (seeding, rebuilds) — same condition as `audit`.
+    span_attrs: dict[str, str] | None = field(default=None)
     # Governed-provenance stamp (see below). Minted ONLY at the top of the pipeline
     # (_govern_and_route / _govern_and_route_compiled); _execute_plan refuses any plan lacking a
     # valid one, so an un-governed / side-door plan can never be executed.
@@ -304,6 +311,23 @@ async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     # normalized_sql is postgres downstream (then transpiled per route), so build the inline
     # relations in the postgres dialect for a faithful round-trip.
     return await localize_commands(tree, commands, _run, dialect="postgres")
+
+
+
+def _plan_span_attrs(
+    semantic_sql: str, role_id: str, query_text: str, audit: PendingAudit | None
+) -> dict[str, str] | None:
+    """The OTel attributes for a governed ENGINE plan, or None when no principal is acting.
+
+    Gated on the audit record for the same reason it exists: `audit is None` means nothing
+    user-initiated is running (seeding, rebuilds), and those executions are not queries the ops
+    report describes.
+    """
+    if audit is None:
+        return None
+    from provisa.observability.span_attrs import span_attrs_from_semantic_sql
+
+    return span_attrs_from_semantic_sql(semantic_sql, role_id, query_text, no_table_label="sql")
 
 
 async def _govern_and_route(
@@ -618,6 +642,7 @@ async def _govern_and_route(
             physical_sql=physical_sql,
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
+            span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )
@@ -746,7 +771,10 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         assert plan.physical_sql is not None
         # ENGINE terminal (REQ-825): hand the federated SQL to the bound engine.
         result = await engine.execute_engine(
-            plan.physical_sql, params=plan.exec_params, session_hints=plan.session_hints
+            plan.physical_sql,
+            params=plan.exec_params,
+            session_hints=plan.session_hints,
+            span_attrs=plan.span_attrs,
         )
     elif getattr(state, "source_types", {}).get(plan.source_id) == "govdata":
         # GovData sources execute via the GovData/Calcite bridge, not a native pool or the engine.
@@ -1058,6 +1086,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # p
             session_hints=_hints,
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
+            span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         )

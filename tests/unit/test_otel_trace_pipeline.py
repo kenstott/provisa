@@ -488,3 +488,62 @@ class TestInsertCommitAmplification:
         jobs._execute_batch_inserts(engine, "traces", rows, col_names, placeholders, 1000)
         assert len(engine.statements) > 1
         assert max(len(s) for s in engine.statements) < 1_000_000
+
+
+class TestPipelineSpanAttributes:
+    """The ops `queries` report reads spans named provisa.query.* whose provisa.* attributes
+    TRACE_ATTR_COLS lifts into the trace table. The ONE pipeline mints those attributes and the
+    ENGINE terminal hands them to the engine — without that, every span is anonymous and the
+    report is empty no matter how much traffic ran."""
+
+    def test_attrs_name_the_root_table_domain_and_role(self):
+        from provisa.observability.span_attrs import span_attrs_from_semantic_sql
+
+        attrs = span_attrs_from_semantic_sql(
+            "SELECT * FROM pet_store.pets WHERE status = 'available'", "analyst", "raw text"
+        )
+        assert attrs["provisa.table"] == "pet_store.pets"
+        assert attrs["provisa.domain"] == "pet_store"
+        assert attrs["provisa.role"] == "analyst"
+        assert attrs["provisa.query_text"] == "raw text"
+
+    def test_a_table_less_statement_is_labelled_by_its_surface(self):
+        from provisa.observability.span_attrs import span_attrs_from_semantic_sql
+
+        attrs = span_attrs_from_semantic_sql("SELECT 1", "analyst", no_table_label="sql")
+        assert attrs["provisa.table"] == "sql"
+        assert "provisa.query_text" not in attrs
+
+    def test_no_attrs_are_minted_when_no_principal_is_acting(self):
+        from provisa.pgwire._pipeline import _plan_span_attrs
+
+        assert _plan_span_attrs("SELECT * FROM pet_store.pets", "analyst", "q", None) is None
+
+    async def test_the_engine_terminal_forwards_the_plans_attrs(self):
+        from provisa.executor.result import QueryResult
+        from provisa.pgwire import _pipeline
+        from provisa.pgwire._pipeline import _Plan, _mint_stamp
+        from provisa.transpiler.router import Route
+
+        seen: dict = {}
+
+        class _Engine:
+            async def execute_engine(self, sql, params=None, session_hints=None, span_attrs=None):
+                seen["span_attrs"] = span_attrs
+                return QueryResult(rows=[(1,)], column_names=["n"])
+
+        class _State:
+            federation_engine = _Engine()
+
+        attrs = {"provisa.table": "pet_store.pets", "provisa.role": "analyst"}
+        plan = _Plan(
+            route=Route.ENGINE,
+            sql="SELECT 1",
+            source_id="pg",
+            dialect="trino",
+            physical_sql="SELECT 1",
+            span_attrs=attrs,
+            stamp=_mint_stamp(),
+        )
+        await _pipeline._execute_plan(plan, state=_State())
+        assert seen["span_attrs"] == attrs

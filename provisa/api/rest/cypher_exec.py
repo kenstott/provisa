@@ -35,51 +35,9 @@ from provisa.api.rest.registered_call import (
     _detect_procedure,  # noqa: F401 — re-exported for tests
     _handle_procedure,  # noqa: F401 — re-exported for tests
 )
-
+from provisa.observability.span_attrs import span_attrs_from_semantic_sql
 
 log = logging.getLogger(__name__)
-
-
-def _span_attrs_from_semantic_sql(
-    semantic_sql: str,
-    role_id: str,
-    query_text: str | None = None,
-) -> dict[str, str]:
-    """Extract normalized table names from semantic SQL for OTel span attributes.
-
-    Semantic SQL uses domain_to_sql_name(domain_id) as schema, e.g. pet_store.pets.
-    sqlglot Table nodes expose .db (schema/domain) and .name (table).
-    """
-    import sqlglot
-    import sqlglot.expressions as _sge
-
-    tables: set[str] = set()
-    domains: set[str] = set()
-    try:
-        parsed = sqlglot.parse_one(semantic_sql, dialect="postgres")
-        # Walk only the primary FROM clause — LATERAL joins (ops/meta traversal) live in
-        # parsed.args["joins"] and must be excluded so provisa.table is a single root
-        # table name rather than a comma list that never matches the exact-match join condition.
-        from_node = parsed.args.get("from")
-        if from_node:
-            for tbl in from_node.find_all(_sge.Table):
-                db = tbl.db
-                name = tbl.name
-                if db:
-                    tables.add(f"{db}.{name}")
-                    domains.add(db)
-                elif name:
-                    tables.add(name)
-    except Exception:
-        pass
-    attrs: dict[str, str] = {
-        "provisa.table": ", ".join(sorted(tables)) or "cypher",
-        "provisa.domain": ", ".join(sorted(domains)) or "cypher",
-        "provisa.role": role_id,
-    }
-    if query_text is not None:
-        attrs["provisa.query_text"] = query_text
-    return attrs
 
 
 def _resolve_role_id(request: Request, state: AppState) -> str:  # noqa: ARG001
@@ -461,7 +419,7 @@ async def _execute_call_body(
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     sql_str = sql_ast.sql(dialect="postgres")
     semantic_sql = make_semantic_sql(sql_str, ctx)
-    _cb_span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(semantic_sql, role_id)
+    _cb_span_attrs: dict[str, str] = span_attrs_from_semantic_sql(semantic_sql, role_id)
     resolved_params = [params.get(name) for name in ordered_params]
 
     plan = await _govern_and_route_compiled(

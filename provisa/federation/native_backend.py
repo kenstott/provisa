@@ -34,8 +34,12 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from opentelemetry import trace
+
 from provisa.federation.backend import EngineBackend
 from provisa.federation.engine import UnreachableSource
+
+_tracer = trace.get_tracer(__name__)
 
 if TYPE_CHECKING:
     from provisa.executor.result import QueryResult, ResultStream
@@ -448,7 +452,18 @@ class NativeEngineBackend(EngineBackend):
         span_attrs: dict[str, str] | None = None,
         extra_table_attrs: list[dict[str, str]] | None = None,
     ) -> QueryResult:
-        return await self._runtime_for(state).run(sql, params)
+        # The ops `queries` report reads spans named provisa.query.* and lifts their provisa.*
+        # attributes into the trace table (TRACE_ATTR_COLS). The Trino terminal names its span
+        # that way in execute_trino; a native engine has no such executor, so the terminal names
+        # it here — otherwise every native-engine org's report is blank.
+        span_name = f"provisa.query.{self.dialect}" if span_attrs else f"{self.dialect}.execute"
+        with _tracer.start_as_current_span(span_name) as span:
+            span.set_attribute("db.system", self.dialect)
+            span.set_attribute("db.statement", sql[:1000])
+            if span_attrs:
+                for k, v in span_attrs.items():
+                    span.set_attribute(k, v)
+            return await self._runtime_for(state).run(sql, params)
 
     def execute_sync(
         self,

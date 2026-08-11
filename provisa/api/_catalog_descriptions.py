@@ -250,7 +250,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     "query_audit_log": {
         "id": "Audit row identifier",
-        "tenant_id": "Org the statement ran for",
         "user_id": "Principal that issued the statement",
         "role_id": "Role the statement executed under",
         "query_hash": "Hash of the statement text; the text itself is encrypted (REQ-689)",
@@ -269,7 +268,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "query_count": "Statements that read the table",
         "distinct_users": "Distinct principals that read it",
         "last_queried_at": "When it was last read",
-        "tenant_id": "Org the table is registered in",
     },
     "deprecated_usage": {
         "id": "Composite key of the audit row and the deprecation tag it hit",
@@ -284,7 +282,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "role_id": "Role the read executed under",
         "source": "Protocol surface the read arrived on",
         "logged_at": "When the read happened",
-        "tenant_id": "Org the read ran for",
     },
     "pii_access": {
         "id": "Composite key of the audit row and the pii tag it hit",
@@ -298,11 +295,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "source": "Protocol surface the read arrived on",
         "status_code": "How the read ended — 200 served, 403 denied by governance",
         "logged_at": "When the read happened",
-        "tenant_id": "Org the read ran for",
     },
     "policy_denials": {
         "id": "Audit row identifier",
-        "tenant_id": "Org the statement ran for",
         "user_id": "Principal whose statement was refused",
         "role_id": "Role the statement executed under",
         "query_hash": "Hash of the statement text; the text itself is encrypted (REQ-689)",
@@ -318,7 +313,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "day": "Calendar day the counts cover",
         "query_count": "Statements that arrived on the surface that day",
         "distinct_users": "Distinct principals that used it that day",
-        "tenant_id": "Org the traffic belonged to",
     },
     "query_health": {
         "id": "Composite key of the surface, the day, and the org",
@@ -328,7 +322,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "error_count": "How many of them ended at 400 or above",
         "avg_duration_ms": "Mean wall-clock milliseconds across them",
         "max_duration_ms": "Slowest statement that day, in milliseconds",
-        "tenant_id": "Org the traffic belonged to",
     },
     "stale_metadata": {
         "id": "Kind-prefixed key of the object with the gap",
@@ -336,7 +329,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_name": "Name of the object with the gap",
         "domain_id": "Domain the object belongs to — who owns closing the gap",
         "issue": "missing_description, or missing_steward for a domain",
-        "tenant_id": "Org the object is registered in",
     },
     "join_hotspots": {
         "id": "Composite key of the two tables and the org",
@@ -346,7 +338,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_name_b": "Name of that table",
         "co_occurrence_count": "Statements that read both tables together",
         "last_seen_at": "When the pair was last read together",
-        "tenant_id": "Org the reads ran for",
     },
     "traces": {
         "trace_id": "Identifier shared by every span of one end-to-end operation",

@@ -287,30 +287,37 @@ sources:
 tables:
 - alias: animal_breed
   columns:
-  - name: _nf_name
+  - description: Breed name to fetch - sent to the GraphQL query as an argument
+    name: _nf_name
     native_filter_type: query_param
     visible_to: []
-  - name: avg_lifespan_years
+  - description: Typical lifespan of the breed in years
+    name: avg_lifespan_years
     visible_to:
     - org_admin
     - analyst
-  - name: care_level
+  - description: How much day-to-day care the breed needs
+    name: care_level
     visible_to:
     - org_admin
     - analyst
-  - name: description
+  - description: Notes shelter staff keep on the breed
+    name: description
     visible_to:
     - org_admin
     - analyst
-  - name: name
+  - description: Breed name, unique across the shelter's catalogue
+    name: name
     visible_to:
     - org_admin
     - analyst
-  - name: species
+  - description: Species the breed belongs to
+    name: species
     visible_to:
     - org_admin
     - analyst
-  - name: typical_habitat
+  - description: Environment the breed is suited to
+    name: typical_habitat
     visible_to:
     - org_admin
     - analyst
@@ -322,27 +329,33 @@ tables:
   table: animalBreed
 - alias: animal_breeds
   columns:
-  - name: avg_lifespan_years
+  - description: Typical lifespan of the breed in years
+    name: avg_lifespan_years
     visible_to:
     - org_admin
     - analyst
-  - name: care_level
+  - description: How much day-to-day care the breed needs
+    name: care_level
     visible_to:
     - org_admin
     - analyst
-  - name: description
+  - description: Notes shelter staff keep on the breed
+    name: description
     visible_to:
     - org_admin
     - analyst
-  - name: name
+  - description: Breed name, unique across the shelter's catalogue
+    name: name
     visible_to:
     - org_admin
     - analyst
-  - name: species
+  - description: Species the breed belongs to
+    name: species
     visible_to:
     - org_admin
     - analyst
-  - name: typical_habitat
+  - description: Environment the breed is suited to
+    name: typical_habitat
     visible_to:
     - org_admin
     - analyst
@@ -353,27 +366,33 @@ tables:
   source_id: graphql-demo
   table: animalBreeds
 - columns:
-  - name: breed_name
+  - description: Breed the employee is assigned to care for
+    name: breed_name
     visible_to:
     - org_admin
     - analyst
-  - name: employee_id
+  - description: Employee the breed is assigned to
+    name: employee_id
     visible_to:
     - org_admin
     - analyst
-  - name: end_date
+  - description: Date the assignment ended, null while it is current
+    name: end_date
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the assignment
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: role
+  - description: Role the employee holds on that breed
+    name: role
     visible_to:
     - org_admin
     - analyst
-  - name: start_date
+  - description: Date the assignment started
+    name: start_date
     visible_to:
     - org_admin
     - analyst
@@ -385,30 +404,37 @@ tables:
   table: assignments
 - alias: assignments_by_breed
   columns:
-  - name: _nf_breed_name
+  - description: Breed name to filter on - sent to the GraphQL query as an argument
+    name: _nf_breed_name
     native_filter_type: query_param
     visible_to: []
-  - name: breed_name
+  - description: Breed the employee is assigned to care for
+    name: breed_name
     visible_to:
     - org_admin
     - analyst
-  - name: employee_id
+  - description: Employee the breed is assigned to
+    name: employee_id
     visible_to:
     - org_admin
     - analyst
-  - name: end_date
+  - description: Date the assignment ended, null while it is current
+    name: end_date
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the assignment
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: role
+  - description: Role the employee holds on that breed
+    name: role
     visible_to:
     - org_admin
     - analyst
-  - name: start_date
+  - description: Date the assignment started
+    name: start_date
     visible_to:
     - org_admin
     - analyst
@@ -420,30 +446,37 @@ tables:
   table: assignmentsByBreed
 - alias: assignments_by_employee
   columns:
-  - name: _nf_employee_id
+  - description: Employee id to filter on - sent to the GraphQL query as an argument
+    name: _nf_employee_id
     native_filter_type: query_param
     visible_to: []
-  - name: breed_name
+  - description: Breed the employee is assigned to care for
+    name: breed_name
     visible_to:
     - org_admin
     - analyst
-  - name: employee_id
+  - description: Employee the breed is assigned to
+    name: employee_id
     visible_to:
     - org_admin
     - analyst
-  - name: end_date
+  - description: Date the assignment ended, null while it is current
+    name: end_date
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the assignment
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: role
+  - description: Role the employee holds on that breed
+    name: role
     visible_to:
     - org_admin
     - analyst
-  - name: start_date
+  - description: Date the assignment started
+    name: start_date
     visible_to:
     - org_admin
     - analyst
@@ -454,27 +487,33 @@ tables:
   source_id: graphql-demo
   table: assignmentsByEmployee
 - columns:
-  - name: available
+  - description: Whether the pet is currently available for purchase
+    name: available
     visible_to:
     - org_admin
     - analyst
-  - name: breed_name
+  - description: Breed of the pet
+    name: breed_name
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the pet record
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: name
+  - description: Name the pet is known by
+    name: name
     visible_to:
     - org_admin
     - analyst
-  - name: price
+  - description: Sale price of the pet in USD
+    name: price
     visible_to:
     - org_admin
     - analyst
-  - name: species
+  - description: Species of the pet (e.g. dog, cat, bird)
+    name: species
     visible_to:
     - org_admin
     - analyst
@@ -489,10 +528,12 @@ tables:
   view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM
     "pet_store_sqlite"."pet_store"."pets"
 - columns:
-  - name: _nf_id
+  - description: Employee id to fetch - sent to the GraphQL query as an argument
+    name: _nf_id
     native_filter_type: query_param
     visible_to: []
   - data_type: jsonb
+    description: Employee's contact details
     name: contact
     object_fields:
     - name: email
@@ -512,23 +553,28 @@ tables:
     visible_to:
     - org_admin
     - analyst
-  - name: department
+  - description: Shelter department the employee works in
+    name: department
     visible_to:
     - org_admin
     - analyst
-  - name: first_name
+  - description: Employee's first name
+    name: first_name
     visible_to:
     - org_admin
     - analyst
-  - name: hire_date
+  - description: Date the employee joined the shelter
+    name: hire_date
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the shelter employee
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: last_name
+  - description: Employee's last name
+    name: last_name
     visible_to:
     - org_admin
     - analyst
@@ -540,6 +586,7 @@ tables:
   table: employee
 - columns:
   - data_type: jsonb
+    description: Employee's contact details
     name: contact
     object_fields:
     - name: email
@@ -559,23 +606,28 @@ tables:
     visible_to:
     - org_admin
     - analyst
-  - name: department
+  - description: Shelter department the employee works in
+    name: department
     visible_to:
     - org_admin
     - analyst
-  - name: first_name
+  - description: Employee's first name
+    name: first_name
     visible_to:
     - org_admin
     - analyst
-  - name: hire_date
+  - description: Date the employee joined the shelter
+    name: hire_date
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the shelter employee
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: last_name
+  - description: Employee's last name
+    name: last_name
     visible_to:
     - org_admin
     - analyst
@@ -586,11 +638,13 @@ tables:
   source_id: graphql-demo
   table: employees
 - columns:
-  - name: id
+  - description: Identifier of the inquiry
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: pet_id
+  - description: Pet the inquiry is about
+    name: pet_id
     visible_to:
     - org_admin
     - analyst
@@ -606,30 +660,37 @@ tables:
     GROUP BY "pet_id"
 - alias: pet_by_status
   columns:
-  - name: _nf_status
+  - description: Status to filter on - sent to the Petstore API as a query parameter
+    name: _nf_status
     native_filter_type: query_param
     visible_to: []
-  - name: category
+  - description: Store category the pet is listed under
+    name: category
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Pet identifier assigned by the Petstore API
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: name
+  - description: Pet's name as listed in the store
+    name: name
     visible_to:
     - org_admin
     - analyst
-  - name: photoUrls
+  - description: Photo URLs published with the listing
+    name: photoUrls
     visible_to:
     - org_admin
     - analyst
-  - name: status
+  - description: Availability status - available, pending, or sold
+    name: status
     visible_to:
     - org_admin
     - analyst
-  - name: tags
+  - description: Tags the store applies to the pet
+    name: tags
     visible_to:
     - org_admin
     - analyst
@@ -641,30 +702,37 @@ tables:
   table: find_pets_by_status
 - alias: pet_by_tags
   columns:
-  - name: _nf_tags
+  - description: Tags to filter on - sent to the Petstore API as a query parameter
+    name: _nf_tags
     native_filter_type: query_param
     visible_to: []
-  - name: category
+  - description: Store category the pet is listed under
+    name: category
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Pet identifier assigned by the Petstore API
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: name
+  - description: Pet's name as listed in the store
+    name: name
     visible_to:
     - org_admin
     - analyst
-  - name: photoUrls
+  - description: Photo URLs published with the listing
+    name: photoUrls
     visible_to:
     - org_admin
     - analyst
-  - name: status
+  - description: Availability status - available, pending, or sold
+    name: status
     visible_to:
     - org_admin
     - analyst
-  - name: tags
+  - description: Tags the store applies to the pet
+    name: tags
     visible_to:
     - org_admin
     - analyst
@@ -675,11 +743,13 @@ tables:
   table: find_pets_by_tags
 - alias: inventory
   columns:
-  - name: count
+  - description: Number of pets in the store with that status
+    name: count
     visible_to:
     - org_admin
     - analyst
-  - name: status
+  - description: Availability status the count is grouped by
+    name: status
     visible_to:
     - org_admin
     - analyst
@@ -690,30 +760,37 @@ tables:
   table: get_inventory
 - alias: order_by_id
   columns:
-  - name: complete
+  - description: Whether the order has been fulfilled
+    name: complete
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Order identifier assigned by the Petstore API
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: orderId
+  - description: Order id to fetch - sent to the Petstore API as a path parameter
+    name: orderId
     native_filter_type: path_param
     visible_to: []
-  - name: petId
+  - description: Pet the order was placed for
+    name: petId
     visible_to:
     - org_admin
     - analyst
-  - name: quantity
+  - description: Number of animals on the order
+    name: quantity
     visible_to:
     - org_admin
     - analyst
-  - name: shipDate
+  - description: When the order is scheduled to ship
+    name: shipDate
     visible_to:
     - org_admin
     - analyst
-  - name: status
+  - description: Order fulfilment status - placed, approved, or delivered
+    name: status
     visible_to:
     - org_admin
     - analyst
@@ -724,30 +801,37 @@ tables:
   table: get_order_by_id
 - alias: pet_by_id
   columns:
-  - name: _nf_petId
+  - description: Pet id to fetch - sent to the Petstore API as a path parameter
+    name: _nf_petId
     native_filter_type: path_param
     visible_to: []
-  - name: category
+  - description: Store category the pet is listed under
+    name: category
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Pet identifier assigned by the Petstore API
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: name
+  - description: Pet's name as listed in the store
+    name: name
     visible_to:
     - org_admin
     - analyst
-  - name: photoUrls
+  - description: Photo URLs published with the listing
+    name: photoUrls
     visible_to:
     - org_admin
     - analyst
-  - name: status
+  - description: Availability status - available, pending, or sold
+    name: status
     visible_to:
     - org_admin
     - analyst
-  - name: tags
+  - description: Tags the store applies to the pet
+    name: tags
     visible_to:
     - org_admin
     - analyst
@@ -758,27 +842,34 @@ tables:
   table: get_pet_by_id
 - alias: user_by_name
   columns:
-  - name: email
+  - description: Contact email on the account
+    name: email
     visible_to:
     - org_admin
-  - name: firstName
-    visible_to:
-    - org_admin
-    - analyst
-  - name: id
-    visible_to:
-    - org_admin
-  - name: lastName
+  - description: Account holder's first name
+    name: firstName
     visible_to:
     - org_admin
     - analyst
-  - name: phone
+  - description: User identifier assigned by the Petstore API
+    name: id
     visible_to:
     - org_admin
-  - name: userStatus
+  - description: Account holder's last name
+    name: lastName
     visible_to:
     - org_admin
-  - name: username
+    - analyst
+  - description: Contact phone number on the account
+    name: phone
+    visible_to:
+    - org_admin
+  - description: Account status code returned by the Petstore API
+    name: userStatus
+    visible_to:
+    - org_admin
+  - description: Login name the account was created under
+    name: username
     native_filter_type: path_param
     visible_to:
     - org_admin
@@ -789,31 +880,38 @@ tables:
   source_id: petstore-api
   table: get_user_by_name
 - columns:
-  - name: id
+  - description: Identifier of the inquiry
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: inquiry_type
+  - description: Kind of inquiry - adoption, price, or availability
+    name: inquiry_type
     visible_to:
     - org_admin
     - analyst
-  - name: message
+  - description: Free-text message the customer wrote
+    name: message
     visible_to:
     - org_admin
     - analyst
-  - name: pet_id
+  - description: Pet the inquiry is about
+    name: pet_id
     visible_to:
     - org_admin
     - analyst
-  - name: status
+  - description: Where the inquiry stands - new, contacted, or closed
+    name: status
     visible_to:
     - org_admin
     - analyst
-  - name: submitted_at
+  - description: When the inquiry was submitted
+    name: submitted_at
     visible_to:
     - org_admin
     - analyst
-  - name: user_id
+  - description: Customer who submitted the inquiry
+    name: user_id
     visible_to:
     - org_admin
     - analyst
@@ -863,31 +961,38 @@ tables:
   table: pets
 - alias: schedule_by_employee
   columns:
-  - name: _nf_employee_id
+  - description: Employee id to filter on - sent to the GraphQL query as an argument
+    name: _nf_employee_id
     native_filter_type: query_param
     visible_to: []
-  - name: day_of_week
+  - description: Day of the week the shift falls on
+    name: day_of_week
     visible_to:
     - org_admin
     - analyst
-  - name: employee_id
+  - description: Employee the shift belongs to
+    name: employee_id
     gql_selection: "employee_id: employee { id }"
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the schedule entry
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: location
+  - description: Shelter location the shift covers
+    name: location
     visible_to:
     - org_admin
     - analyst
-  - name: shift_end
+  - description: Time the shift ends
+    name: shift_end
     visible_to:
     - org_admin
     - analyst
-  - name: shift_start
+  - description: Time the shift starts
+    name: shift_start
     visible_to:
     - org_admin
     - analyst
@@ -898,28 +1003,34 @@ tables:
   source_id: graphql-demo
   table: scheduleByEmployee
 - columns:
-  - name: day_of_week
+  - description: Day of the week the shift falls on
+    name: day_of_week
     visible_to:
     - org_admin
     - analyst
-  - name: employee_id
+  - description: Employee the shift belongs to
+    name: employee_id
     gql_selection: "employee_id: employee { id }"
     visible_to:
     - org_admin
     - analyst
-  - name: id
+  - description: Identifier of the schedule entry
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: location
+  - description: Shelter location the shift covers
+    name: location
     visible_to:
     - org_admin
     - analyst
-  - name: shift_end
+  - description: Time the shift ends
+    name: shift_end
     visible_to:
     - org_admin
     - analyst
-  - name: shift_start
+  - description: Time the shift starts
+    name: shift_start
     visible_to:
     - org_admin
     - analyst
@@ -930,22 +1041,27 @@ tables:
   source_id: graphql-demo
   table: schedules
 - columns:
-  - name: created_at
+  - description: When the customer record was created
+    name: created_at
     visible_to:
     - org_admin
     - analyst
-  - name: email
+  - description: Customer's email address
+    name: email
     visible_to:
     - org_admin
-  - name: id
+  - description: Identifier of the customer
+    name: id
     visible_to:
     - org_admin
     - analyst
-  - name: name
+  - description: Customer's full name
+    name: name
     visible_to:
     - org_admin
     - analyst
-  - name: phone
+  - description: Customer's phone number
+    name: phone
     visible_to:
     - org_admin
   description: Prospective adopters who have submitted inquiries
