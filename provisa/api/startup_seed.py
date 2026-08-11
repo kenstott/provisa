@@ -26,7 +26,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete as _delete, func as _sa_func, select, update
+from sqlalchemy import (
+    delete as _delete,
+    func as _sa_func,
+    literal as _sa_literal,
+    select,
+    update,
+)
 
 from provisa.api._meta_views import (
     _META_TABLE_VIEWS,
@@ -37,6 +43,10 @@ from provisa.api._meta_views import (
 )
 from provisa.core.control_plane import bring_up_platform
 from provisa.core.database import Connection, Database, create_engine_from_url
+from provisa.api._catalog_descriptions import (
+    COLUMN_DESCRIPTIONS as _COL_DESC,
+    TABLE_DESCRIPTIONS as _TBL_DESC,
+)
 from provisa.core.db import init_schema
 from provisa.core.schema_org import (
     domains as _domains_t,
@@ -126,6 +136,20 @@ def _adapt_view_ddl(ddl: str, dialect: str) -> str:
     return f"DROP VIEW IF EXISTS {view_name};\nCREATE VIEW {view_name} AS {select_sql}"
 
 
+def _keep_edited_description(column: Any, seeded: str | None) -> dict[str, Any]:
+    """Set assignments that fill a blank description with the seeded text and leave an edited one.
+
+    The built-in meta/ops tables have no registering author to write their descriptions, so the
+    platform supplies them (:mod:`provisa.api._catalog_descriptions`) — but a steward may improve
+    any of them in the UI, and a plain update would overwrite that on the next boot. A column with
+    no seeded text is left NULL, which is exactly what the REQ-609 ``stale_metadata`` report exists
+    to surface; :mod:`tests.unit.test_catalog_descriptions` is what keeps that set empty.
+    """
+    if seeded is None:
+        return {}
+    return {"description": _sa_func.coalesce(_sa_func.nullif(column, ""), _sa_literal(seeded))}
+
+
 async def _seed_meta_domain(
     conn: "Connection", org_id: str = "default"
 ) -> None:  # REQ-012, REQ-016, REQ-695
@@ -152,10 +176,12 @@ async def _seed_meta_domain(
                 "domain_id": "meta",
                 "schema_name": schema_name,
                 "table_name": tbl,
+                "description": _TBL_DESC[tbl],
             },
             index_elements=["source_id", "schema_name", "table_name"],
             returning="id",
             update_columns=["domain_id"],
+            set_extra=_keep_edited_description(_registered_tables_t.c.description, _TBL_DESC[tbl]),
         )
         # Portable reflection (SQLAlchemy Inspector) instead of information_schema. The org
         # schema is honoured only on schema-capable backends — the abstraction decides.
@@ -184,9 +210,13 @@ async def _seed_meta_domain(
                     "visible_to": [],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] in pk_cols,
+                    "description": _COL_DESC[tbl].get(col["column_name"]),
                 },
                 index_elements=["table_id", "column_name"],
                 update_columns=[],
+                set_extra=_keep_edited_description(
+                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                ),
             )
 
     # Register registered_tables → table_columns relationship (table_id FK)
@@ -248,10 +278,12 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
                 "domain_id": "ops",
                 "schema_name": schema_name,
                 "table_name": tbl,
+                "description": _TBL_DESC[tbl],
             },
             index_elements=["source_id", "schema_name", "table_name"],
             returning="id",
             update_columns=["domain_id"],
+            set_extra=_keep_edited_description(_registered_tables_t.c.description, _TBL_DESC[tbl]),
         )
         # PKs from the physical table; exposed columns from the curated view.
         pk_cols = {
@@ -280,9 +312,13 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
                     "visible_to": ["org_admin"],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] in pk_cols,
+                    "description": _COL_DESC[tbl].get(col["column_name"]),
                 },
                 index_elements=["table_id", "column_name"],
                 update_columns=[],
+                set_extra=_keep_edited_description(
+                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                ),
             )
 
     # REQ-1386: management report views. The unnest spine first (the report views
@@ -300,10 +336,14 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
                 "domain_id": "ops",
                 "schema_name": schema_name,
                 "table_name": view_name,
+                "description": _TBL_DESC[view_name],
             },
             index_elements=["source_id", "schema_name", "table_name"],
             returning="id",
             update_columns=["domain_id"],
+            set_extra=_keep_edited_description(
+                _registered_tables_t.c.description, _TBL_DESC[view_name]
+            ),
         )
         cols = await conn.reflect_columns(view_name, schema=schema_name)
         col_names = {col["column_name"] for col in cols}
@@ -326,8 +366,12 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
                     "visible_to": ["org_admin"],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] == "id",
+                    "description": _COL_DESC[view_name].get(col["column_name"]),
                 },
                 index_elements=["table_id", "column_name"],
+                set_extra=_keep_edited_description(
+                    _table_columns_t.c.description, _COL_DESC[view_name].get(col["column_name"])
+                ),
                 update_columns=[],
             )
 
@@ -479,8 +523,9 @@ async def _compute_and_store_clusters(conn: "Connection") -> int:  # REQ-510
 async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
     """Register ops tables/views in PG registered_tables + table_columns (idempotent)."""
 
-    async def _seed_cols(table_id: Any, cols: list) -> None:
+    async def _seed_cols(table_id: Any, table_name: str, cols: list) -> None:
         for col_name, pg_type, is_pk in cols:
+            seeded = _COL_DESC[table_name].get(col_name)
             await conn.upsert(
                 _table_columns_t,
                 {
@@ -495,9 +540,11 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
                     "visible_to": ["org_admin"],
                     "data_type": pg_type,
                     "is_primary_key": is_pk,
+                    "description": seeded,
                 },
                 index_elements=["table_id", "column_name"],
                 update_columns=[],
+                set_extra=_keep_edited_description(_table_columns_t.c.description, seeded),
             )
 
     for tbl_name, cols in _OPS_TABLES.items():
@@ -508,12 +555,16 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
                 "domain_id": "ops",
                 "schema_name": "signals",
                 "table_name": tbl_name,
+                "description": _TBL_DESC[tbl_name],
             },
             index_elements=["source_id", "schema_name", "table_name"],
             returning="id",
             update_columns=["domain_id"],
+            set_extra=_keep_edited_description(
+                _registered_tables_t.c.description, _TBL_DESC[tbl_name]
+            ),
         )
-        await _seed_cols(table_id, cols)
+        await _seed_cols(table_id, tbl_name, cols)
     for view_name, cols, _ in _OPS_VIEWS:
         table_id = await conn.upsert_returning(
             _registered_tables_t,
@@ -522,12 +573,16 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
                 "domain_id": "ops",
                 "schema_name": "signals",
                 "table_name": view_name,
+                "description": _TBL_DESC[view_name],
             },
             index_elements=["source_id", "schema_name", "table_name"],
             returning="id",
             update_columns=["domain_id"],
+            set_extra=_keep_edited_description(
+                _registered_tables_t.c.description, _TBL_DESC[view_name]
+            ),
         )
-        await _seed_cols(table_id, cols)
+        await _seed_cols(table_id, view_name, cols)
 
 
 async def _init_control_planes(
