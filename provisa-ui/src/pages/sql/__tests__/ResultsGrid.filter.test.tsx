@@ -38,7 +38,9 @@ describe("ResultsGrid column filter", () => {
         <Harness />
       </StrictMode>,
     );
-    const input = screen.getAllByRole("textbox")[0];
+    // Address the column's own filter box by label — the toolbar also carries the REQ-1438
+    // rows-per-page control, so "the first textbox" is no longer this one.
+    const input = screen.getByLabelText("Filter rows… domain");
     fireEvent.change(input, { target: { value: "sales" } });
     expect(screen.queryByText("ops")).toBeNull();
     expect(screen.getByText("sales")).toBeTruthy();

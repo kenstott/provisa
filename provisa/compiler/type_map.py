@@ -242,4 +242,7 @@ OPS_PG_TO_PHYSICAL: dict[str, str] = {
     "float8": "DOUBLE",
     "date": "DATE",
     "boolean": "BOOLEAN",
+    # REQ-1435: microseconds is the resolution the compactor writes (jobs._PA_TO_PHYSICAL) and the
+    # one every store in the lane keeps, so the ops DDL and the registered column agree on it.
+    "timestamp": "TIMESTAMP(6)",
 }

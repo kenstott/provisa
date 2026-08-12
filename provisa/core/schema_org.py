@@ -796,6 +796,17 @@ user_role_assignments = Table(
     UniqueConstraint("user_id", "role_id", "domain_id"),
 )
 
+# REQ-1439: tenant-local mirror of the platform user directory, so an ops report can put a
+# person's name next to the IdP subject it logs. See the matching block in schema.sql.
+user_directory = Table(
+    "user_directory",
+    metadata,
+    Column("user_id", Text, primary_key=True),
+    Column("display_name", Text),
+    Column("email", Text),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 node_ids = Table(
     "node_ids",
     metadata,

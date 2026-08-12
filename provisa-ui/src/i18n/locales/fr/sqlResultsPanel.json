@@ -62,6 +62,7 @@
     "statsCacheHit": "cache atteint",
     "groupByCol": "Grouper par {{label}}",
     "ungroupLevel": "Dégrouper le niveau {{level}}",
-    "pageNumber": "Page {{page}}"
+    "pageNumber": "Page {{page}}",
+    "rowsPerPage": "Lignes par page"
   }
 }

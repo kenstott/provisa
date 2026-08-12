@@ -753,6 +753,19 @@ CREATE TABLE IF NOT EXISTS user_role_assignments (
     UNIQUE (user_id, role_id, domain_id)
 );
 
+-- REQ-1439: tenant-local mirror of the platform user directory. Every ops report keys rows by
+-- user_id, which is an IdP subject and unreadable to a person. The directory that maps it to a
+-- name (user_profiles) lives in the PLATFORM control plane — a different engine and possibly a
+-- different physical database — so a report view cannot join to it. The auth middleware writes
+-- this copy into the tenant plane at the same moment it upserts the platform profile, which puts
+-- the name a plain SQL LEFT JOIN away from the audit rows it labels.
+CREATE TABLE IF NOT EXISTS user_directory (
+    user_id      TEXT PRIMARY KEY,
+    display_name TEXT,
+    email        TEXT,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- tenant_id isolation for _META_TABLES (SaaS multi-tenancy)
 DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS tenant_id UUID;

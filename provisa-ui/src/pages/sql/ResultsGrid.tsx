@@ -14,7 +14,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Anchor, Button, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Anchor, Button, Select, Text, TextInput } from "@mantine/core";
 import {
   Copy,
   Check,
@@ -26,7 +26,8 @@ import {
   Filter,
   Layers,
 } from "lucide-react";
-import { COL_MIN } from "./types";
+import { COL_MIN, PAGE_SIZES } from "./types";
+import { formatCell } from "./formatCell";
 import type { ResultsGridState } from "./useResultsGrid";
 import { TraceDetailsModal } from "../../components/telemetry/TraceDetailsModal";
 import {
@@ -58,6 +59,8 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
     baseColumns,
     page,
     setPage,
+    pageSize,
+    setPageSize,
     displayColumns,
     displayRows,
     pagedItems,
@@ -121,6 +124,21 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
             : ""}
         </Text>
         <div style={{ flex: 1 }} />
+        {/* REQ-1438: rows per page is the reader's choice, offered whether or not the current
+            result happens to spill past one page. */}
+        <Select
+          size="xs"
+          w={78}
+          aria-label={t("sqlResultsPanel.rowsPerPage")}
+          title={t("sqlResultsPanel.rowsPerPage")}
+          data={PAGE_SIZES.map((n) => String(n))}
+          value={String(pageSize)}
+          onChange={(v) => {
+            if (v !== null) setPageSize(Number(v));
+          }}
+          allowDeselect={false}
+          data-testid="page-size-select"
+        />
         {(totalPages > 1 || serverPaged) && (
           <>
             <ActionIcon
@@ -309,6 +327,20 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
             </tr>
           </thead>
           <tbody>
+            {/* REQ-1436: an empty page says so inside the table, under the live header row, so the
+                filter that emptied it stays on screen and can be cleared. */}
+            {pagedItems.length === 0 && (
+              <tr data-testid="results-grid-empty">
+                <td
+                  colSpan={displayColumns.length}
+                  style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-dim)" }}
+                >
+                  <Text size="sm" c="dimmed">
+                    {t("tablePreview.noRows")}
+                  </Text>
+                </td>
+              </tr>
+            )}
             {pagedItems.map((item, i) =>
               item.type === "group" ? (
                 <tr
@@ -347,7 +379,10 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
                   {displayColumns.map((c) => {
                     const v = item.row[c];
                     const isNum = typeof v === "number";
-                    const text = v != null ? String(v) : null;
+                    // REQ-1437: an instant reaches the grid in the engine's wire form. formatCell
+                    // renders it for a reader — no T, no fractional seconds, no zone suffix — and
+                    // leaves every other value exactly as it arrived.
+                    const text = formatCell(v);
                     const kind = telemetryIdKind(c);
                     return (
                       <td

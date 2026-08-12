@@ -25,7 +25,6 @@ import { runSql } from "../api/admin";
 import type { RegisteredTable } from "../types/admin";
 import { ResultsGrid } from "../pages/sql/ResultsGrid";
 import { useResultsGrid } from "../pages/sql/useResultsGrid";
-import { PAGE_SIZE } from "../pages/sql/types";
 import {
   optionalParamColumns,
   pagedViewerSql,
@@ -67,24 +66,34 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
     `table:${table.schemaName}.${table.alias || table.tableName}`,
     { hasMore: result?.hasMore ?? false },
   );
-  const { page, sorts, filters, groupBy } = grid;
+  const { page, pageSize, sorts, filters, groupBy } = grid;
   const canRun = requiredParamsSatisfied(table, paramValues);
 
   // One page per query: refetch whenever the page or any pushed-down choice
   // changes. Debounced so filter keystrokes coalesce.
-  const queryKey = JSON.stringify([page, sorts, filters, groupBy, activeParams, refreshTick]);
+  // REQ-1438: pageSize is part of the key — the LIMIT is pushed into the query, so a resize is a
+  // different page of the relation and has to be refetched, not re-sliced.
+  const queryKey = JSON.stringify([
+    page,
+    pageSize,
+    sorts,
+    filters,
+    groupBy,
+    activeParams,
+    refreshTick,
+  ]);
   const loading = activeParams != null && fetchedKey !== queryKey;
   useEffect(() => {
     if (activeParams == null) return;
     let cancelled = false;
     const timer = setTimeout(() => {
-      runSql(pagedViewerSql(table, activeParams, filters, sorts, groupBy, page, PAGE_SIZE)).then(
+      runSql(pagedViewerSql(table, activeParams, filters, sorts, groupBy, page, pageSize)).then(
         (r) => {
           if (cancelled) return;
           setResult({
             columns: r.columns,
-            rows: r.rows.slice(0, PAGE_SIZE),
-            hasMore: r.rows.length > PAGE_SIZE,
+            rows: r.rows.slice(0, pageSize),
+            hasMore: r.rows.length > pageSize,
             error: r.error ?? "",
           });
           setFetchedKey(queryKey);
@@ -167,7 +176,10 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
             {result.error}
           </pre>
         </Alert>
-      ) : result != null && result.rows.length === 0 && page === 0 ? (
+      ) : result != null && result.columns.length === 0 ? (
+        // REQ-1436: only a relation with no projection at all gets bare text. An empty PAGE keeps
+        // the grid: replacing it took the header row away, and with it the filter inputs, so a
+        // filter that matched nothing could no longer be cleared.
         <Text size="sm" c="dimmed" ta="center" py="xl">
           {t("tablePreview.noRows")}
         </Text>

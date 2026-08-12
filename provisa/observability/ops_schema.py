@@ -35,8 +35,8 @@ OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
         ("span_kind", "integer", False),
         ("service_name", "text", False),
         ("service_namespace", "text", False),
-        ("timestamp", "bigint", False),
-        ("end_timestamp", "bigint", False),
+        ("timestamp", "timestamp", False),
+        ("end_timestamp", "timestamp", False),
         ("duration", "bigint", False),
         ("status_code", "integer", False),
         ("status_message", "text", False),
@@ -52,8 +52,8 @@ OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
         ("_date", "date", False),
     ],
     "metrics": [
-        ("timestamp", "bigint", True),
-        ("start_timestamp", "bigint", False),
+        ("timestamp", "timestamp", True),
+        ("start_timestamp", "timestamp", False),
         ("metric_name", "text", False),
         ("metric_description", "text", False),
         ("metric_unit", "text", False),
@@ -68,8 +68,8 @@ OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
         ("_date", "date", False),
     ],
     "logs": [
-        ("timestamp", "bigint", True),
-        ("observed_timestamp", "bigint", False),
+        ("timestamp", "timestamp", True),
+        ("observed_timestamp", "timestamp", False),
         ("trace_id", "text", False),
         ("span_id", "text", False),
         ("severity_number", "integer", False),
@@ -98,6 +98,12 @@ TRACE_ATTR_COLS: dict[str, str] = {
 
 _TYPE_MAP = {
     "text": sa.Text,
+    # REQ-1435: the OTLP wire carries every instant as an integer count of nanoseconds since the
+    # epoch. Registered as bigint, every ops report rendered those instants as a 19-digit number,
+    # which no reader can date and no grid can sort as time. The writers convert to a real instant
+    # (otlp2sql builds a datetime; the compactor casts the parquet int64 to an arrow timestamp),
+    # so the registered type is the instant, not its encoding.
+    "timestamp": sa.DateTime,
     "integer": sa.Integer,
     "bigint": sa.BigInteger,
     "float8": sa.Float,
@@ -111,7 +117,7 @@ def build_metadata(schema: str | None = OPS_SCHEMA) -> tuple[sa.MetaData, dict[s
     without namespaces, e.g. sqlite).
 
     Telemetry tables are append-only: the ``is_key`` flag is a logical/partition
-    hint, NOT a physical primary key — a real PK on a bigint timestamp would (a)
+    hint, NOT a physical primary key — a real PK on a timestamp would (a)
     be wrong (many rows share a timestamp) and (b) make SQLAlchemy emit an
     autoincrement (BIGSERIAL) that DuckDB rejects.
     """

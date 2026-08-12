@@ -44061,3 +44061,147 @@
   - REQ-1266
   - REQ-1318
   - REQ-1317
+- id: REQ-1435
+  status: complete
+  since: 2026-08
+  group: 09. Observability
+  category: Observability
+  priority: MUST
+  type: behavioral
+  description: >-
+    OTel instant columns are timestamps end to end, not epoch-nanosecond integers. The otlp2sql
+    writer casts an int64 nanosecond field to timestamp by way of timestamp('ns') before narrowing
+    to timestamp('us') - a direct cast to microseconds reads the nanos as micros and lands in the
+    year 57000 - and the compactor refuses to append into a table whose physical schema still
+    carries the integer column, naming the drop that lets it recreate the table at the current
+    schema rather than silently writing the wrong type.
+  use_case: >-
+    An operator opens the traces report and reads a start time, instead of a 19-digit number.
+  code:
+  - provisa/observability/otlp2sql.py
+  - provisa/observability/ops_schema.py
+  - provisa/compiler/type_map.py
+  - provisa/scheduler/jobs.py
+  tests:
+  - tests/unit/test_otlp2sql.py
+  - tests/unit/test_otel_trace_pipeline.py
+  scenario: |-
+    Given an OTel parquet file whose start_time is int64 nanoseconds
+    When the compaction job writes it into otel.signals.traces
+    Then the column is TIMESTAMP(6) holding the same instant
+  related_reqs:
+  - REQ-1386
+- id: REQ-1436
+  status: complete
+  since: 2026-08
+  group: 06. User Interface & Experience
+  category: UI
+  priority: MUST
+  type: behavioral
+  description: >-
+    A filter that matches nothing leaves the grid standing. The governed viewer swaps in bare text
+    only for a relation with no projection at all; an empty PAGE keeps the header row, and with it
+    the filter inputs, so the filter that emptied the result can still be cleared. The grid renders
+    a single full-width empty row under the headers in place of the missing data.
+  use_case: >-
+    An admin types a filter into a report, gets no rows, and clears the filter - instead of being
+    stranded on a page with no controls.
+  code:
+  - provisa-ui/src/components/GovernedTableViewer.tsx
+  - provisa-ui/src/pages/sql/ResultsGrid.tsx
+  tests:
+  - provisa-ui/src/pages/sql/__tests__/ResultsGrid.filter.test.tsx
+  scenario: |-
+    Given a report filter that matches no rows
+    When the page renders the empty result
+    Then the column headers and their filter inputs are still on screen
+  related_reqs:
+  - REQ-1386
+- id: REQ-1437
+  status: complete
+  since: 2026-08
+  group: 06. User Interface & Experience
+  category: UI
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A grid cell renders an instant for a reader rather than for a parser - "2026-08-12 12:01:59",
+    with no T separator, no fractional seconds and no zone suffix. A value carrying a zone is shown
+    on the viewer's own clock, because that is the clock the reader compares it against; a value
+    carrying none is already the reader's wall time and is shown unchanged rather than shifted by an
+    offset it never had. Anything that is not an instant passes through untouched.
+  use_case: >-
+    An admin scans logged_at down an ops report and reads the times at a glance.
+  code:
+  - provisa-ui/src/pages/sql/formatCell.ts
+  - provisa-ui/src/pages/sql/ResultsGrid.tsx
+  tests:
+  - provisa-ui/src/pages/sql/__tests__/formatCell.test.ts
+  scenario: |-
+    Given a cell holding 2026-08-12T12:01:59.174658Z
+    When the grid renders it
+    Then it reads 2026-08-12 12:01:59 in the viewer's own time zone
+  related_reqs:
+  - REQ-1435
+  - REQ-1386
+- id: REQ-1438
+  status: complete
+  since: 2026-08
+  group: 06. User Interface & Experience
+  category: UI
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The reader chooses how many rows a page holds - 25, 50, 100, 250, 500 or 1000 - from a control
+    in the results toolbar, offered whether or not the current result spills past one page. The
+    choice is retained per report alongside the other grid choices and restored on the next visit.
+    Resizing returns the reader to the first page, since the page numbers now point elsewhere in the
+    relation, and the governed viewer treats the size as part of its query key because the LIMIT is
+    pushed into SQL - a resize refetches rather than re-slicing.
+  use_case: >-
+    An admin works a report 500 rows at a time and finds it still at 500 on the next visit.
+  code:
+  - provisa-ui/src/pages/sql/useResultsGrid.ts
+  - provisa-ui/src/pages/sql/ResultsGrid.tsx
+  - provisa-ui/src/pages/sql/types.ts
+  - provisa-ui/src/components/GovernedTableViewer.tsx
+  tests:
+  - provisa-ui/src/pages/sql/__tests__/useResultsGrid.test.tsx
+  scenario: |-
+    Given a report shown 100 rows a page
+    When the reader selects 25 and revisits the report later
+    Then the report opens at 25 rows a page, on the first page
+  related_reqs:
+  - REQ-1386
+- id: REQ-1439
+  status: complete
+  since: 2026-08
+  group: 07. Governance & Audit
+  category: Governance
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Every ops report that carries a user id also carries that person's name. The directory that maps
+    an IdP subject to a name lives in the platform control plane, a separate engine from the tenant
+    plane the report views are built in, so the auth middleware writes a tenant-local user_directory
+    mirror on the same sign-in that upserts the platform profile. query_audit_log_ops,
+    deprecated_usage, pii_access and policy_denials each LEFT JOIN that mirror and project
+    display_name as user_name; a principal with no directory row still appears, with an empty name.
+    Aggregate-only reports, which count distinct users rather than naming them, are unchanged.
+  use_case: >-
+    An admin reads the policy denials report and sees who was refused, by name.
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/auth/middleware.py
+  - provisa/core/schema.sql
+  - provisa/core/schema_org.py
+  - provisa/api/_catalog_descriptions.py
+  tests:
+  - tests/unit/test_ops_domain.py
+  scenario: |-
+    Given an audit row logged for a user who has signed in
+    When the pii_access report is read
+    Then the row carries that user's display name beside the user id
+  related_reqs:
+  - REQ-1386
+  - REQ-1266

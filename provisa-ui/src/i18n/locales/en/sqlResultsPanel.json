@@ -62,6 +62,7 @@
     "statsElapsedMs": "{{ms}} ms",
     "statsRows": "rows:",
     "statsCacheHit": "cache hit",
-    "pageNumber": "Page {{page}}"
+    "pageNumber": "Page {{page}}",
+    "rowsPerPage": "Rows per page"
   }
 }

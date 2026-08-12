@@ -73,8 +73,10 @@ def test_otlp_trace_lands_as_ops_row(tmp_path):
     assert row["domain_id"] == "sales"
     assert row["role_id"] == "analyst"
     assert row["query_text"] == "SELECT 1"
-    assert row["timestamp"] == 1_720_000_000_000
-    assert row["duration"] == 50
+    # REQ-1435: the instant is stored as an instant, not as its integer nanosecond encoding —
+    # ops reports rendered the encoding as an undatable 19-digit number.
+    assert str(row["timestamp"]) == "2024-07-03 09:46:40.000000"
+    assert row["duration"] == 50_000_000  # elapsed nanoseconds, per the catalog description
     assert str(row["_date"]) == "2024-07-03"
 
 

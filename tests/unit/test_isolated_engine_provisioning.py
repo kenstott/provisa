@@ -141,8 +141,10 @@ def test_the_ops_catalogs_reach_the_org_s_own_coordinator(backend, monkeypatch):
     opened = _Conn()
     monkeypatch.setattr("provisa.federation.trino_lifecycle.connect", lambda kwargs: opened)
     calls: list[tuple] = []
+    # REQ-1429: reseed ENSURES the system catalogs — re-registering them would drop the
+    # deployment-scoped `otel`/`results` out from under every other org on a shared coordinator.
     monkeypatch.setattr(
-        "provisa.core.trino_system_catalogs.register_system_catalogs",
+        "provisa.core.trino_system_catalogs.ensure_system_catalogs",
         lambda conn, url, org_id: calls.append(("catalogs", conn, url, org_id)),
     )
     monkeypatch.setattr(

@@ -75,11 +75,12 @@ _OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
             ("parent_span_id", "text", False),
             ("span_name", "text", False),
             ("service_name", "text", False),
-            # The compactor maps the arrow timestamp column to TIMESTAMP(6) (see
-            # jobs._ARROW_TO_SQL); registering it as bigint leaves the view stale — Trino refuses
-            # to project a timestamp(6) column through a view definition that stores bigint.
+            # The compactor maps both instant columns to TIMESTAMP(6) (see jobs._PA_TO_PHYSICAL
+            # and jobs._instants_from_epoch_nanos); registering either as bigint leaves the view
+            # stale — Trino refuses to project a timestamp(6) column through a view definition
+            # that stores bigint.
             ("timestamp", "timestamp", False),
-            ("end_timestamp", "bigint", False),
+            ("end_timestamp", "timestamp", False),
             ("duration", "bigint", False),
             ("status_code", "integer", False),
             ("table_name", "text", False),

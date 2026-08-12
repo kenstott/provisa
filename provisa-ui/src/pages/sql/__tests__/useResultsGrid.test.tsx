@@ -113,6 +113,23 @@ describe("useResultsGrid", () => {
     expect(other.result.current.groupBy).toEqual([]);
   });
 
+  // REQ-1438
+  it("pages by the chosen size, returns to the first page, and restores the choice", () => {
+    const first = renderHook(() => useResultsGrid(ROWS, COLS, "test:pagesize"));
+    act(() => first.result.current.setPageSize(2));
+    expect(first.result.current.pagedItems).toHaveLength(2);
+    expect(first.result.current.totalPages).toBe(2);
+
+    act(() => first.result.current.setPage(1));
+    // A resize renumbers the pages, so the reader is put back on the first one.
+    act(() => first.result.current.setPageSize(25));
+    expect(first.result.current.page).toBe(0);
+    first.unmount();
+
+    const second = renderHook(() => useResultsGrid(ROWS, COLS, "test:pagesize"));
+    expect(second.result.current.pageSize).toBe(25);
+  });
+
   it("persists column widths per storageKey and restores them", () => {
     const first = renderHook(() => useResultsGrid(ROWS, COLS, "test:widths"));
     const th = document.createElement("th");

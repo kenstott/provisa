@@ -33,7 +33,7 @@ from provisa.core.schema_admin import (
     user_org_memberships,
     user_profiles,
 )
-from provisa.core.schema_org import user_role_assignments
+from provisa.core.schema_org import user_directory, user_role_assignments
 from provisa.security.rights import (
     ORG_ADMIN_ROLE,
     PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
@@ -49,9 +49,7 @@ from provisa.security.sni import is_control_plane_host, org_from_host
 logger = logging.getLogger(__name__)
 
 
-def _deny(
-    request: Request, status: int, detail: str, *, cause: str | None = None
-) -> JSONResponse:
+def _deny(request: Request, status: int, detail: str, *, cause: str | None = None) -> JSONResponse:
     """REQ-1318: every auth denial records WHY, at WARNING, with the request identity.
 
     A 401 that logs nothing is indistinguishable from every other 401 in the container log, so a
@@ -98,6 +96,7 @@ def _requested_org_from_host(request: Request) -> str | None:
     if is_control_plane_host(host):
         return request.headers.get("x-org-provisa")
     return org_from_host(host)
+
 
 # Liveness/readiness probes (/live, /ready) return a static status with no data and must be
 # reachable by unauthenticated orchestrators (k8s, load balancers) — same as /health.
@@ -165,9 +164,7 @@ def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
     into identity.roles for the capability layer to see it. '*' domain collapses to a
     bare role_id, matching resolve_assignments' inverse parse (role_id[:domain_id]).
     """
-    return [
-        a.role_id if a.domain_id == "*" else f"{a.role_id}:{a.domain_id}" for a in assignments
-    ]
+    return [a.role_id if a.domain_id == "*" else f"{a.role_id}:{a.domain_id}" for a in assignments]
 
 
 # Plain ASGI middleware, not starlette.middleware.base.BaseHTTPMiddleware: that class relays the
@@ -271,6 +268,22 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 },
                 index_elements=["user_id"],
                 update_columns=["email", "display_name", "provider", "last_seen"],
+            )
+        # REQ-1439: the same identity, copied into the tenant plane, so the ops report views can
+        # LEFT JOIN a name onto the user_id they log. The platform profile above is the record of
+        # truth; this is a read-side mirror written on the same sign-in.
+        assert self._db_pool, "no tenant control plane bound for the active org"
+        async with self._db_pool.acquire() as conn:
+            await conn.upsert(
+                user_directory,
+                {
+                    "user_id": identity.user_id,
+                    "email": identity.email,
+                    "display_name": identity.display_name,
+                    "updated_at": func.now(),
+                },
+                index_elements=["user_id"],
+                update_columns=["email", "display_name", "updated_at"],
             )
 
     async def _read_assignments(self, identity: AuthIdentity) -> list[RoleAssignment]:
@@ -492,9 +505,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # REQ-1337: the decision is a RIGHT (cross_org), resolved from the assigned roles'
             # capabilities. Nothing here tests a role name.
             can_cross_org = _can_act_cross_org(
-                _capabilities_for_claims(
-                    {a.role_id for a in platform_assignments}, _loaded_roles()
-                )
+                _capabilities_for_claims({a.role_id for a in platform_assignments}, _loaded_roles())
             )
             member_org_ids: list[str] = []
             if self._admin_pool is not None:

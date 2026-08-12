@@ -62,6 +62,7 @@
     "statsCacheHit": "Cache-Treffer",
     "groupByCol": "Nach {{label}} gruppieren",
     "ungroupLevel": "Gruppierungsebene {{level}} aufheben",
-    "pageNumber": "Seite {{page}}"
+    "pageNumber": "Seite {{page}}",
+    "rowsPerPage": "Zeilen pro Seite"
   }
 }

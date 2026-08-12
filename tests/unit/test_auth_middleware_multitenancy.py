@@ -161,11 +161,11 @@ def _auth(uid: str) -> dict:
 def test_provisa_db_assignments_mirror_into_identity_roles():
     # A Firebase token carries no roles claim; the DB row must surface to identity.roles
     # so the capability layer sees the granted org role.
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]}
     )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     client = TestClient(app)
     resp = client.get("/test", headers=_auth("u1"))
     assert resp.status_code == 200
@@ -178,9 +178,7 @@ def test_domain_scoped_assignment_renders_colon_claim():
         rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "sales"}]}
     )
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app).get("/test", headers=_auth("u1"))
     assert resp.json()["roles"] == ["analyst:sales"]
 
@@ -201,13 +199,11 @@ def test_empty_db_rows_fall_back_to_default_assignments():
 
 def test_no_org_selection_required_on_tenant_path():
     # Member of two orgs, no subdomain org, non-platform path → must choose.
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
-    admin = _Pool(
-        rows_by_table={"user_org_memberships": [{"org_id": "acme"}, {"org_id": "beta"}]}
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]}
     )
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}, {"org_id": "beta"}]})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app).get("/test", headers=_auth("u1"))
     assert resp.status_code == 401
     assert "Org selection" in resp.json()["detail"]
@@ -217,9 +213,7 @@ def test_member_less_user_allowed_on_platform_plane():
     # Just-authenticated invitee with no membership yet: /auth/* must not 401; active org None.
     db = _Pool(rows_by_table={"user_role_assignments": []})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app).get("/auth/me", headers=_auth("newbie"))
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] is None
@@ -228,9 +222,7 @@ def test_member_less_user_allowed_on_platform_plane():
 def test_member_less_user_blocked_on_tenant_plane():
     db = _Pool(rows_by_table={"user_role_assignments": []})
     admin = _Pool(rows_by_table={"user_org_memberships": []})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app).get("/test", headers=_auth("newbie"))
     assert resp.status_code == 401
 
@@ -240,9 +232,10 @@ def test_member_less_user_blocked_on_tenant_plane():
 
 def test_bootstrap_claimant_is_granted_platform_admin():
     admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
-    app = _make_app(
-        bootstrap_superadmin=True, admin_pool=admin, multitenancy=True
-    )
+    # A tenant pool is bound on every real request — REQ-1439 writes the user_directory mirror
+    # through it on the same sign-in that upserts the platform profile.
+    db = _Pool(rows_by_table={"user_role_assignments": []})
+    app = _make_app(bootstrap_superadmin=True, db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app).get("/test", headers=_auth("first"))
     assert resp.status_code == 200
     assert resp.json()["roles"] == ["platform_admin"]  # REQ-1297
@@ -295,7 +288,9 @@ def test_the_acting_role_is_one_the_caller_holds_not_the_configured_default():
 
 
 def test_an_ordinary_user_also_acts_as_an_assigned_role_not_the_default():
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "developer", "domain_id": "*"}]})
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "developer", "domain_id": "*"}]}
+    )
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(
         assignments_source="provisa",
@@ -330,9 +325,9 @@ def test_bootstrap_claimant_asking_for_platform_admin_gets_their_data_role():
 
 
 def test_bootstrap_claimant_may_still_name_a_specific_data_role():
-    resp = TestClient(
-        _claimant_app([*_SEATED, {"role_id": "analyst", "domain_id": "*"}])
-    ).get("/test", headers={**_auth("first"), "X-Provisa-Role": "analyst"})
+    resp = TestClient(_claimant_app([*_SEATED, {"role_id": "analyst", "domain_id": "*"}])).get(
+        "/test", headers={**_auth("first"), "X-Provisa-Role": "analyst"}
+    )
     assert resp.status_code == 200
     assert resp.json()["role"] == "analyst"
 
@@ -346,7 +341,9 @@ def test_holding_the_bootstrap_slot_grants_platform_admin_even_with_no_tenant_ro
 
 
 def test_a_non_claimant_is_not_handed_platform_admin():
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]}
+    )
     admin = _Pool(
         rows_by_table={"user_org_memberships": [{"org_id": "root"}]}, claimant="somebody-else"
     )
@@ -384,9 +381,7 @@ def test_an_unclaimed_slot_is_not_taken_by_merely_authenticating():
 
 def test_bootstrap_second_user_403_when_single_tenant():
     admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
-    app = _make_app(
-        bootstrap_superadmin=True, admin_pool=admin, multitenancy=False
-    )
+    app = _make_app(bootstrap_superadmin=True, admin_pool=admin, multitenancy=False)
     resp = TestClient(app).get("/test", headers=_auth("second"))
     assert resp.status_code == 403
     assert "single administrator" in resp.json()["detail"]
@@ -395,7 +390,9 @@ def test_bootstrap_second_user_403_when_single_tenant():
 def test_bootstrap_second_user_falls_through_when_multitenant():
     # Not the claimant → not 403; resolves via DB assignments + redeem-invite flow.
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]}, claimant="first")
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]})
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "org_admin", "domain_id": "*"}]}
+    )
     app = _make_app(
         bootstrap_superadmin=True,
         admin_pool=admin,
@@ -416,9 +413,7 @@ def test_subdomain_host_resolves_org():
     # REQ-1276: acme.provisa.org → org "acme"
     db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://acme.provisa.org").get("/test", headers=_auth("u1"))
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] == "acme"
@@ -426,11 +421,11 @@ def test_subdomain_host_resolves_org():
 
 def test_apex_host_resolves_to_none():
     # REQ-1276: provisa.org → no org (None)
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": []})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://provisa.org").get("/auth/me", headers=_auth("u1"))
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] is None
@@ -438,11 +433,11 @@ def test_apex_host_resolves_to_none():
 
 def test_localhost_resolves_to_none():
     # REQ-1276: localhost → no org (None)
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": []})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://localhost:3000").get("/auth/me", headers=_auth("u1"))
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] is None
@@ -450,11 +445,11 @@ def test_localhost_resolves_to_none():
 
 def test_control_plane_host_cloud_uses_x_org_provisa_header():
     # REQ-1276: cloud.provisa.dev requires x-org-provisa header for org
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
         "/test",
         headers={**_auth("u1"), "x-org-provisa": "acme"},
@@ -465,11 +460,11 @@ def test_control_plane_host_cloud_uses_x_org_provisa_header():
 
 def test_control_plane_host_cloud_without_header_resolves_to_none():
     # REQ-1276: cloud.provisa.dev with no header → None (platform-plane auth allowed)
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": []})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://cloud.provisa.dev").get("/auth/me", headers=_auth("u1"))
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] is None
@@ -479,9 +474,7 @@ def test_subdomain_non_member_rejected_req1276():
     # REQ-1276: user not a member of org from subdomain → 403
     db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://evil.provisa.org").get(
         "/test",
         headers=_auth("u1"),
@@ -494,9 +487,7 @@ def test_control_plane_host_with_non_member_org_header_rejected():
     # REQ-1276: x-org-provisa header with non-member org → 403
     db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
-    )
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
         "/test",
         headers={**_auth("u1"), "x-org-provisa": "evil"},
@@ -509,11 +500,11 @@ def test_platform_admin_subdomain_nonmember_org_denied_req1327():
     # REQ-1327: membership is the ONLY way into an org — the platform_admin role is control-plane
     # and confers no tenant binding. Naming a non-member org via subdomain is rejected, same as
     # for any other identity (the audited REQ-1303 recovery grant is the sanctioned way in).
-    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]})
-    admin = _Pool(rows_by_table={"user_org_memberships": []})
-    app = _make_app(
-        assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True
+    db = _Pool(
+        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
     )
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app, base_url="http://anyorg.provisa.org").get(
         "/test",
         headers=_auth("root"),
@@ -558,8 +549,13 @@ def test_bootstrap_platform_admin_is_usable_on_tenant_plane_immediately():
     # reported symptom — claim platform_admin, get no access, sign out and back in, and it works. The
     # claimant has no membership either, so it took the same 401 branch.
     admin = _Pool(rows_by_table={"user_org_memberships": []}, claimant="first")
+    db = _Pool(rows_by_table={"user_role_assignments": []})
     app = _make_app(
-        bootstrap_superadmin=True, admin_pool=admin, multitenancy=True, default_org_id="root"
+        bootstrap_superadmin=True,
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=True,
+        default_org_id="root",
     )
     client = TestClient(app)
     assert client.get("/auth/me", headers=_auth("first")).status_code == 200

@@ -263,13 +263,21 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
 
                 return JSONResponse(
                     jsonable_encoder(
-                        {"data": {"sql": rows_as_dicts}, "provisa_stats": qs.to_dict()}
+                        {
+                            "data": {"sql": rows_as_dicts},
+                            "columns": list(result.column_names),
+                            "provisa_stats": qs.to_dict(),
+                        }
                     )
                 )
             # non-json formats fall through to standard response (no stats injection)
 
         if output_format == "json":
-            return {"data": {"sql": rows_as_dicts}}
+            # REQ-1436: the projection is carried alongside the rows. A client that reads the
+            # column names off the first row has none when the result is empty, so a filter that
+            # matches nothing collapsed the grid to bare text — taking the header row, and with it
+            # the filter inputs, away. There was then no control left to clear the filter with.
+            return {"data": {"sql": rows_as_dicts}, "columns": list(result.column_names)}
         from provisa.compiler.sql_gen import ColumnRef
 
         columns = [

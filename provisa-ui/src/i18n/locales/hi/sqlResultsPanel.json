@@ -62,6 +62,7 @@
     "statsCacheHit": "कैश हिट",
     "groupByCol": "{{label}} के अनुसार समूहित करें",
     "ungroupLevel": "स्तर {{level}} का समूहन हटाएँ",
-    "pageNumber": "पृष्ठ {{page}}"
+    "pageNumber": "पृष्ठ {{page}}",
+    "rowsPerPage": "प्रति पृष्ठ पंक्तियाँ"
   }
 }

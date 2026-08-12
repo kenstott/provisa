@@ -62,6 +62,7 @@
     "statsCacheHit": "缓存命中",
     "groupByCol": "按 {{label}} 分组",
     "ungroupLevel": "取消第 {{level}} 级分组",
-    "pageNumber": "第 {{page}} 页"
+    "pageNumber": "第 {{page}} 页",
+    "rowsPerPage": "每页行数"
   }
 }

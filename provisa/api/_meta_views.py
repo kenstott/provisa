@@ -155,9 +155,10 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
         CREATE OR REPLACE VIEW query_audit_log_ops AS
-        SELECT id, user_id, role_id, query_hash,
-               table_ids, source, status_code, duration_ms, logged_at
-        FROM query_audit_log
+        SELECT q.id, q.user_id, ud.display_name AS user_name, q.role_id, q.query_hash,
+               q.table_ids, q.source, q.status_code, q.duration_ms, q.logged_at
+        FROM query_audit_log q
+        LEFT JOIN user_directory ud ON ud.user_id = q.user_id
     """,
 }
 
@@ -232,11 +233,12 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT CAST(u.id AS TEXT) || ':' || CAST(ta.id AS TEXT) AS id,
                u.table_id, rt.table_name, rt.domain_id,
                ta.object_type, ta.column_name, ta.reason, ta.expires_on,
-               u.user_id, u.role_id, u.source, u.logged_at
+               u.user_id, ud.display_name AS user_name, u.role_id, u.source, u.logged_at
         FROM ops_table_usage u
         JOIN tag_assignments ta
           ON ta.table_id = u.table_id AND ta.tag_id = 'deprecated'
         JOIN registered_tables rt ON rt.id = u.table_id
+        LEFT JOIN user_directory ud ON ud.user_id = u.user_id
     """,
     # One row per access to a table carrying (or containing a column carrying)
     # the 'pii' system tag: who, under which role, over which surface.
@@ -245,20 +247,22 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT CAST(u.id AS TEXT) || ':' || CAST(ta.id AS TEXT) AS id,
                u.table_id, rt.table_name, rt.domain_id,
                ta.object_type, ta.column_name AS pii_column,
-               u.user_id, u.role_id, u.source, u.status_code,
+               u.user_id, ud.display_name AS user_name, u.role_id, u.source, u.status_code,
                u.logged_at
         FROM ops_table_usage u
         JOIN tag_assignments ta
           ON ta.table_id = u.table_id AND ta.tag_id = 'pii'
         JOIN registered_tables rt ON rt.id = u.table_id
+        LEFT JOIN user_directory ud ON ud.user_id = u.user_id
     """,
     # Access attempts rejected by governance (401 unauthenticated / 403 denied).
     "policy_denials": """
         CREATE OR REPLACE VIEW policy_denials AS
-        SELECT id, user_id, role_id, query_hash, table_ids,
-               source, status_code, duration_ms, logged_at
-        FROM query_audit_log
-        WHERE status_code IN (401, 403)
+        SELECT q.id, q.user_id, ud.display_name AS user_name, q.role_id, q.query_hash, q.table_ids,
+               q.source, q.status_code, q.duration_ms, q.logged_at
+        FROM query_audit_log q
+        LEFT JOIN user_directory ud ON ud.user_id = q.user_id
+        WHERE q.status_code IN (401, 403)
     """,
     # Daily traffic per protocol surface (the audit log's ``source`` column).
     "surface_mix": """

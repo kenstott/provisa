@@ -96,7 +96,12 @@ async def sql_client(monkeypatch):
     app_mod.state.schemas = {"org_admin": MagicMock()}
     app_mod.state.contexts = {"org_admin": ctx}
     app_mod.state.rls_contexts = {"org_admin": rls}
-    app_mod.state.roles = {"org_admin": {"id": "org_admin", "capabilities": ["query_development", "full_results", "usage", "write"]}}
+    app_mod.state.roles = {
+        "org_admin": {
+            "id": "org_admin",
+            "capabilities": ["query_development", "full_results", "usage", "write"],
+        }
+    }
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {"pg": "postgresql"}
     app_mod.state.source_dialects = {"pg": "postgres"}
@@ -179,7 +184,10 @@ class TestSqlEndpointNoSchema:
         # state.roles (passes the middleware) but absent from state.schemas.
         import provisa.api.app as app_mod
 
-        app_mod.state.roles["schemaless"] = {"id": "schemaless", "capabilities": ["query_development", "full_results", "usage", "write"]}
+        app_mod.state.roles["schemaless"] = {
+            "id": "schemaless",
+            "capabilities": ["query_development", "full_results", "usage", "write"],
+        }
         try:
             resp = await sql_client.post(
                 "/data/sql",
@@ -228,7 +236,9 @@ class TestSqlEndpointStatsAndFormat:
                 "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
             )
         assert resp.status_code == 200
-        assert resp.json() == {"data": {"sql": [{"id": 1}]}}
+        # REQ-1436: the projection rides alongside the rows, so a grid can draw its header
+        # (and the filter inputs in it) even when the result set is empty.
+        assert resp.json() == {"data": {"sql": [{"id": 1}]}, "columns": ["id"]}
 
     async def test_csv_accept_format_uses_format_response(self, sql_client):
         fallback_result = _make_query_result(rows=[(1, "test")], column_names=["id", "name"])
@@ -407,7 +417,9 @@ class TestCheckSqlCapabilities:
     def test_admin_capability_passes(self):
         from provisa.api.data.endpoint_dev import _check_sql_capabilities
 
-        _check_sql_capabilities({"capabilities": ["query_development", "full_results", "usage", "write"]})  # no raise
+        _check_sql_capabilities(
+            {"capabilities": ["query_development", "full_results", "usage", "write"]}
+        )  # no raise
 
 
 class TestCheckQualifierBinding:

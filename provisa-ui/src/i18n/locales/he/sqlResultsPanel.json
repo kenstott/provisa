@@ -62,6 +62,7 @@
     "statsCacheHit": "פגיעת מטמון",
     "groupByCol": "קיבוץ לפי {{label}}",
     "ungroupLevel": "ביטול קיבוץ רמה {{level}}",
-    "pageNumber": "עמוד {{page}}"
+    "pageNumber": "עמוד {{page}}",
+    "rowsPerPage": "שורות בעמוד"
   }
 }

@@ -62,6 +62,7 @@
     "statsCacheHit": "快取命中",
     "groupByCol": "依 {{label}} 分組",
     "ungroupLevel": "取消第 {{level}} 層分組",
-    "pageNumber": "第 {{page}} 頁"
+    "pageNumber": "第 {{page}} 頁",
+    "rowsPerPage": "每頁行數"
   }
 }

@@ -62,6 +62,7 @@
     "statsCacheHit": "попадание в кеш",
     "groupByCol": "Группировать по {{label}}",
     "ungroupLevel": "Убрать группировку уровня {{level}}",
-    "pageNumber": "Страница {{page}}"
+    "pageNumber": "Страница {{page}}",
+    "rowsPerPage": "Строк на странице"
   }
 }

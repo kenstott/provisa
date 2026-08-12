@@ -72,6 +72,8 @@ export const tabNlKey = (id: string) => `provisa.sql.tab.${id}.nl`;
 export const tabResultsKey = (id: string) => `provisa.sql.tab.${id}.results`;
 
 export const PAGE_SIZE = 100;
+/** REQ-1438: the page sizes offered in the grid pager. */
+export const PAGE_SIZES = [25, 50, 100, 250, 500, 1000];
 export const COL_MAX = 280;
 export const COL_MIN = 60;
 export const CHAR_PX = 7.5;

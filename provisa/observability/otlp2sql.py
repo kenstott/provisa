@@ -97,14 +97,21 @@ def _attrs(kvs) -> dict:
     return {kv.key: _anyval(kv.value) for kv in kvs}
 
 
-def _ns_to_ms(ns: int) -> int | None:
-    return ns // 1_000_000 if ns else None
+def _ns_to_dt(ns: int) -> datetime | None:
+    """OTLP instant (nanoseconds since the epoch) as a UTC datetime.
+
+    REQ-1435: the ops tables register these columns as timestamps, so the row carries the instant
+    itself rather than its integer encoding. Microsecond is the resolution every store in the lane
+    keeps (Iceberg TIMESTAMP(6), Postgres/DuckDB TIMESTAMP), so the sub-microsecond digits are
+    dropped here rather than silently at the first write.
+    """
+    return datetime.fromtimestamp(ns / 1_000_000_000, timezone.utc).replace(tzinfo=None) if ns else None
 
 
-def _date_of(ms: int | None) -> date | None:
-    if not ms:
+def _date_of(ts: datetime | None) -> date | None:
+    if not ts:
         return None
-    return datetime.fromtimestamp(ms / 1000, timezone.utc).date()
+    return ts.date()
 
 
 # ── OTLP -> rows ──────────────────────────────────────────────────────────────
@@ -119,8 +126,8 @@ def _trace_rows(req: ExportTraceServiceRequest) -> list[dict]:
             scope = ss.scope.name
             for sp in ss.spans:
                 a = _attrs(sp.attributes)
-                ts = _ns_to_ms(sp.start_time_unix_nano)
-                end = _ns_to_ms(sp.end_time_unix_nano)
+                ts = _ns_to_dt(sp.start_time_unix_nano)
+                end = _ns_to_dt(sp.end_time_unix_nano)
                 row = {
                     "trace_id": sp.trace_id.hex(),
                     "span_id": sp.span_id.hex(),
@@ -131,7 +138,13 @@ def _trace_rows(req: ExportTraceServiceRequest) -> list[dict]:
                     "service_namespace": ns,
                     "timestamp": ts,
                     "end_timestamp": end,
-                    "duration": (end - ts) if (ts and end) else None,
+                    # Elapsed nanoseconds, per the catalog description. Taken from the wire
+                    # integers, not the rounded datetimes above.
+                    "duration": (
+                        sp.end_time_unix_nano - sp.start_time_unix_nano
+                        if (sp.start_time_unix_nano and sp.end_time_unix_nano)
+                        else None
+                    ),
                     "status_code": int(sp.status.code),
                     "status_message": sp.status.message or None,
                     "scope_name": scope,
@@ -170,12 +183,12 @@ def _metric_rows(req: ExportMetricsServiceRequest) -> list[dict]:
                 else:
                     continue  # histograms/summaries: not modelled as a scalar row
                 for dp, mtype in points:
-                    ts = _ns_to_ms(dp.time_unix_nano)
+                    ts = _ns_to_dt(dp.time_unix_nano)
                     val = dp.as_double if dp.HasField("as_double") else float(dp.as_int)
                     rows.append(
                         {
                             "timestamp": ts,
-                            "start_timestamp": _ns_to_ms(dp.start_time_unix_nano),
+                            "start_timestamp": _ns_to_dt(dp.start_time_unix_nano),
                             "metric_name": m.name,
                             "metric_description": m.description or None,
                             "metric_unit": m.unit or None,
@@ -203,11 +216,11 @@ def _log_rows(req: ExportLogsServiceRequest) -> list[dict]:
         for sl in rl.scope_logs:
             scope = sl.scope.name
             for r in sl.log_records:
-                ts = _ns_to_ms(r.time_unix_nano)
+                ts = _ns_to_dt(r.time_unix_nano)
                 rows.append(
                     {
                         "timestamp": ts,
-                        "observed_timestamp": _ns_to_ms(r.observed_time_unix_nano),
+                        "observed_timestamp": _ns_to_dt(r.observed_time_unix_nano),
                         "trace_id": r.trace_id.hex() or None,
                         "span_id": r.span_id.hex() or None,
                         "severity_number": int(r.severity_number),

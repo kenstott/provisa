@@ -204,6 +204,42 @@ def _drop_foreign_rows(signal: str, table):
     return table
 
 
+# REQ-1435: OTLP instant columns. otlp2parquet writes most of them as int64 nanoseconds since the
+# epoch, so the Iceberg column came out BIGINT and every ops report rendered the instant as a
+# 19-digit number — undatable by a reader and unsortable as time by the grid.
+_EPOCH_NANO_COLS = frozenset(
+    {"timestamp", "end_timestamp", "start_timestamp", "observed_timestamp"}
+)
+
+
+def _instants_from_epoch_nanos(table):
+    """Reinterpret the int64 epoch-nanosecond columns as real timestamps.
+
+    Cast in two steps on purpose: int64 -> timestamp('ns') reinterprets the value in the unit it
+    was actually written in, and only then is it rescaled to the microseconds every store in the
+    lane keeps (Iceberg TIMESTAMP(6)). Casting straight to timestamp('us') would read nanoseconds
+    as microseconds and put every span in the year 57000.
+
+    Columns already carrying an arrow timestamp — traces.timestamp is one — are left alone.
+    """
+    import pyarrow as pa
+
+    for name in table.column_names:
+        if name.lower() not in _EPOCH_NANO_COLS:
+            continue
+        col = table.column(name)
+        if not pa.types.is_integer(col.type):
+            continue
+        idx = table.column_names.index(name)
+        # safe=False is the rescale, not a shortcut: a nanosecond value that is not a whole number
+        # of microseconds cannot be represented at TIMESTAMP(6), and a checked cast refuses it
+        # outright. Truncating the sub-microsecond digits is the intended narrowing — that is the
+        # precision the lane's stores keep.
+        converted = col.cast(pa.timestamp("ns")).cast(pa.timestamp("us"), safe=False)
+        table = table.set_column(idx, pa.field(name, pa.timestamp("us")), converted)
+    return table
+
+
 def _compact_signal(
     signal: str,
     target: datetime | None,
@@ -325,6 +361,7 @@ def _compact_signal(
                     parts = list(pool.map(_read, chunk_keys))
                 combined = pa.concat_tables(parts, promote_options="default")
                 combined = _drop_foreign_rows(signal, combined)
+                combined = _instants_from_epoch_nanos(combined)
             except Exception:
                 logger.exception(
                     "compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start
@@ -463,6 +500,15 @@ def _cast_table_to_physical_schema(
             raise ValueError(f"unknown engine column type for {field.name!r}: {column_type}")
         else:
             pa_type = _PHYSICAL_TO_PA[column_type]
+        # REQ-1435: an instant column narrowed back to an integer would be cast, not reinterpreted
+        # — timestamp('us') -> int64 yields microseconds where the column's contract is an instant,
+        # and the rows would land silently wrong. It means the table predates the instant columns
+        # and has to be recreated, so say that instead of writing the bad value.
+        if pa.types.is_timestamp(field.type) and not pa.types.is_timestamp(pa_type):
+            raise ValueError(
+                f"otel.signals.{signal}.{field.name} is {column_type} but the lane now writes a "
+                f"timestamp; drop the table so it is recreated at the current schema"
+            )
         cast_fields.append(pa.field(field.name, pa_type))
     return table.cast(pa.schema(cast_fields), safe=False)
 

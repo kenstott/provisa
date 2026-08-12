@@ -330,6 +330,7 @@ async def test_report_views_functional(uri):
         registered_tables,
         sources,
         tag_assignments,
+        user_directory,
     )
     from provisa.api.startup_seed import _adapt_view_ddl
 
@@ -375,6 +376,13 @@ async def test_report_views_functional(uri):
                     object_key="column:2:email",
                 )
             )
+            # REQ-1439: the tenant-local directory the report views resolve names through. bob is
+            # deliberately absent, so the LEFT JOIN's null branch is exercised too.
+            await conn.execute_core(
+                insert(user_directory).values(
+                    user_id="alice", display_name="Alice Adams", email="alice@example.com"
+                )
+            )
             for uid, tids, status, dur in (
                 ("alice", [1, 2], 200, 40),
                 ("alice", [1], 200, 10),
@@ -408,14 +416,15 @@ async def test_report_views_functional(uri):
             assert usage[1] == 2  # orders queried twice
             assert usage[2] == 2  # customers queried twice (incl. the denial)
 
-            dep = await rows("SELECT table_id, user_id FROM deprecated_usage")
-            assert {(r[0], r[1]) for r in dep} == {(1, "alice")}
+            dep = await rows("SELECT table_id, user_id, user_name FROM deprecated_usage")
+            assert {(r[0], r[1], r[2]) for r in dep} == {(1, "alice", "Alice Adams")}
 
-            pii = await rows("SELECT table_id, pii_column, user_id FROM pii_access")
-            assert (2, "email", "bob") in {(r[0], r[1], r[2]) for r in pii}
+            pii = await rows("SELECT table_id, pii_column, user_id, user_name FROM pii_access")
+            # bob has no directory row, so the report still shows the access with a null name.
+            assert (2, "email", "bob", None) in {(r[0], r[1], r[2], r[3]) for r in pii}
 
-            denials = await rows("SELECT user_id, status_code FROM policy_denials")
-            assert denials == [("bob", 403)]
+            denials = await rows("SELECT user_id, user_name, status_code FROM policy_denials")
+            assert denials == [("bob", None, 403)]
 
             mix = await rows("SELECT source, query_count FROM surface_mix")
             assert mix == [("graphql", 3)]

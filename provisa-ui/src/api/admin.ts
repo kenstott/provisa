@@ -1113,7 +1113,11 @@ export async function runSql(
     }
     const json = await resp.json();
     const rows: Record<string, unknown>[] = json?.data?.sql ?? [];
-    const columns = rows.length > 0 && rows[0] != null ? Object.keys(rows[0] as object) : [];
+    // REQ-1436: the projection comes from the response, not from the first row. Read off a row, an
+    // empty result has no columns, so a filter matching nothing left the grid with no header row —
+    // and therefore no filter input to clear it with. /data/sql returns `columns` on every JSON
+    // response, empty result included.
+    const columns: string[] = json.columns;
     return { columns, rows, provisa_stats: json?.provisa_stats };
   } catch (e) {
     return { columns: [], rows: [], error: e instanceof Error ? e.message : String(e) };

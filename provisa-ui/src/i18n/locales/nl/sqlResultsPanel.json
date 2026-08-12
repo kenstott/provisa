@@ -62,6 +62,7 @@
     "statsCacheHit": "cachetreffer",
     "groupByCol": "Groeperen op {{label}}",
     "ungroupLevel": "Groepering niveau {{level}} opheffen",
-    "pageNumber": "Pagina {{page}}"
+    "pageNumber": "Pagina {{page}}",
+    "rowsPerPage": "Rijen per pagina"
   }
 }

@@ -34,6 +34,9 @@ export interface ResultsGridState {
   baseColumns: string[];
   page: number;
   setPage: React.Dispatch<React.SetStateAction<number>>;
+  /** REQ-1438: rows per page, chosen by the reader and retained with the other grid choices. */
+  pageSize: number;
+  setPageSize: (n: number) => void;
   displayColumns: string[];
   displayRows: Record<string, unknown>[];
   pagedItems: GridItem[];
@@ -59,6 +62,7 @@ interface PersistedGridChoices {
   filters?: Record<string, string>;
   groupBy?: string[];
   colWidths?: Record<string, number>;
+  pageSize?: number;
 }
 
 function loadChoices(storageKey: string | undefined): PersistedGridChoices {
@@ -92,6 +96,11 @@ export function useResultsGrid(
   const [groupBy, setGroupBy] = useState<string[]>(() => loadChoices(storageKey).groupBy ?? []);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
+  // REQ-1438: retained per report/table exactly like the other choices — a reader who works a
+  // report at 500 rows a page should not reset it to 100 on every visit.
+  const [pageSize, setPageSizeState] = useState<number>(
+    () => loadChoices(storageKey).pageSize ?? PAGE_SIZE,
+  );
   const [copiedResults, setCopiedResults] = useState(false);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
 
@@ -99,9 +108,9 @@ export function useResultsGrid(
     if (!storageKey) return;
     localStorage.setItem(
       `provisa.grid.${storageKey}`,
-      JSON.stringify({ sorts, filters, groupBy, colWidths }),
+      JSON.stringify({ sorts, filters, groupBy, colWidths, pageSize }),
     );
-  }, [storageKey, sorts, filters, groupBy, colWidths]);
+  }, [storageKey, sorts, filters, groupBy, colWidths, pageSize]);
 
   const baseColumns = useMemo(
     () => (resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {})),
@@ -193,14 +202,21 @@ export function useResultsGrid(
   }, [displayRows, displayColumns]);
 
   const pagedItems = useMemo(
-    () => (serverPaged ? items : items.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)),
-    [items, page, serverPaged],
+    () => (serverPaged ? items : items.slice(page * pageSize, (page + 1) * pageSize)),
+    [items, page, pageSize, serverPaged],
   );
 
   // Server mode never knows the total; the pager runs on hasMore instead.
   const totalPages = serverPaged
     ? page + 1 + (serverHasMore ? 1 : 0)
-    : Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+    : Math.max(1, Math.ceil(items.length / pageSize));
+
+  // A resize renumbers every page, so the reader goes back to the first one rather than to a
+  // page number that now points somewhere else in the relation.
+  const setPageSize = useCallback((n: number) => {
+    setPageSizeState(n);
+    setPage(0);
+  }, []);
 
   const toggleGroupBy = useCallback((col: string) => {
     setGroupBy((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]));
@@ -333,6 +349,7 @@ export function useResultsGrid(
     setGroupBy([]);
     setCollapsedGroups(new Set());
     setPage(0);
+    setPageSizeState(PAGE_SIZE);
   }, []);
 
   return {
@@ -346,6 +363,8 @@ export function useResultsGrid(
     baseColumns,
     page,
     setPage,
+    pageSize,
+    setPageSize,
     displayColumns,
     displayRows,
     pagedItems,
