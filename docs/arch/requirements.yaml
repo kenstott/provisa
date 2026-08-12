@@ -43824,7 +43824,13 @@
     than to a limit that no longer exists: an Iceberg commit costs seconds whatever it carries, so
     the shipped ten-row default - the ceiling the Trino client's parameterised-statement header
     once imposed, left behind when the inserts began inlining their literals - held the drain rate
-    a hundredfold below what the job could sustain.
+    a hundredfold below what the job could sustain. The collector's filter protects only objects
+    written after it shipped; the same predicate therefore applies again at compaction, on rows
+    already read. Twenty-one thousand trace objects predating the filter were still in the bucket,
+    asyncpg statement spans making up most of their rows, and compaction walks oldest-date-first -
+    so every one of those rows would have been committed to Iceberg, seconds per commit, before the
+    job reached the provisa.query spans the ops report reads. Dropping them in memory costs one
+    filter; the objects are deleted from the bucket either way.
   use_case: >-
     An operator opens admin / reports / queries and sees the queries that just ran, rather than an
     empty table caused by one signal's backlog monopolising every compaction run.
