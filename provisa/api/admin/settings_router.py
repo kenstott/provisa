@@ -183,6 +183,7 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         "naming": {
             "domain_prefix": naming_cfg.get("domain_prefix", False),
             "convention": naming_cfg.get("convention", "apollo_graphql"),
+            "sql_convention": naming_cfg.get("sql_convention", "snake"),
             "use_domains": naming_cfg.get("use_domains", None),
             "default_domain": naming_cfg.get("default_domain", "default"),
         },
@@ -436,13 +437,18 @@ async def _apply_naming(n: dict, updated: list) -> str | None:
         cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
         updated.append("naming.domain_prefix")
         needs_reload = True
-    if "convention" in n:
-        from provisa.compiler.naming import VALID_CONVENTIONS
+    # REQ-471 keeps the GraphQL and SQL planes on separate conventions, so each is its own key:
+    # `convention` names GraphQL fields (and Cypher property keys), `sql_convention` names the SQL
+    # plane the pgwire/Bolt/semantic surfaces read.
+    from provisa.compiler.naming import VALID_CONVENTIONS
 
-        if n["convention"] not in VALID_CONVENTIONS:
-            return f"Invalid convention: {n['convention']!r}"
-        cfg.setdefault("naming", {})["convention"] = n["convention"]
-        updated.append("naming.convention")
+    for key in ("convention", "sql_convention"):
+        if key not in n:
+            continue
+        if n[key] not in VALID_CONVENTIONS:
+            return f"Invalid convention: {n[key]!r}"
+        cfg.setdefault("naming", {})[key] = n[key]
+        updated.append(f"naming.{key}")
         needs_reload = True
     if needs_reload:
         write_config(path, cfg)

@@ -267,14 +267,19 @@ export function AdminPage() {
     // destructive /admin/domain-policy endpoint — never through the normal save.
     const { use_domains: _ud, default_domain: _dd, ...naming } = settings.naming;
     const payload = { ...settings, naming } as unknown as Partial<PlatformSettings>;
-    const result = await updateSettings(payload);
-    const base = result.updated.length
-      ? t("adminPage.settingsUpdated", { fields: result.updated.join(", ") })
-      : t("adminPage.settingsNoChanges");
-    setSettingsMsg(
-      result.restart_required ? t("adminPage.settingsRestartRequired", { base }) : base,
-    );
-    setSettingsSaving(false);
+    try {
+      const result = await updateSettings(payload);
+      const base = result.updated.length
+        ? t("adminPage.settingsUpdated", { fields: result.updated.join(", ") })
+        : t("adminPage.settingsNoChanges");
+      setSettingsMsg(
+        result.restart_required ? t("adminPage.settingsRestartRequired", { base }) : base,
+      );
+    } catch (e: unknown) {
+      setSettingsMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSettingsSaving(false);
+    }
   }, [settings, t]);
 
   const applyDomainPolicy = useCallback(async () => {
@@ -407,18 +412,40 @@ export function AdminPage() {
                     <Select
                       label={t("adminPage.namingConvention")}
                       description={t("adminPage.namingConventionHint")}
+                      // The presets naming.VALID_CONVENTIONS accepts. The previous list offered
+                      // output forms (none/snake_case/camelCase/PascalCase), none of which the
+                      // server recognizes, so every save of this field came back "Invalid
+                      // convention" and the stored apollo_graphql matched no option, leaving the
+                      // control blank.
                       data={[
-                        { value: "none", label: t("adminPage.namingConventionNone") },
-                        { value: "snake_case", label: t("adminPage.namingConventionSnake") },
-                        { value: "camelCase", label: t("adminPage.namingConventionCamel") },
-                        { value: "PascalCase", label: t("adminPage.namingConventionPascal") },
+                        { value: "snake", label: t("adminPage.namingConventionSnake") },
+                        { value: "hasura_graphql", label: t("adminPage.namingConventionHasura") },
+                        { value: "apollo_graphql", label: t("adminPage.namingConventionApollo") },
                       ]}
-                      value={settings.naming.convention || "snake_case"}
+                      value={settings.naming.convention}
                       onChange={(v) =>
                         v &&
                         setSettings({
                           ...settings,
                           naming: { ...settings.naming, convention: v },
+                        })
+                      }
+                      allowDeselect={false}
+                    />
+                    <Select
+                      label={t("adminPage.sqlNamingConvention")}
+                      description={t("adminPage.sqlNamingConventionHint")}
+                      data={[
+                        { value: "snake", label: t("adminPage.namingConventionSnake") },
+                        { value: "hasura_graphql", label: t("adminPage.namingConventionHasura") },
+                        { value: "apollo_graphql", label: t("adminPage.namingConventionApollo") },
+                      ]}
+                      value={settings.naming.sql_convention}
+                      onChange={(v) =>
+                        v &&
+                        setSettings({
+                          ...settings,
+                          naming: { ...settings.naming, sql_convention: v },
                         })
                       }
                       allowDeselect={false}

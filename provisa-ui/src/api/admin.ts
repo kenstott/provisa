@@ -643,6 +643,7 @@ export interface PlatformSettings {
   naming: {
     domain_prefix: boolean;
     convention: string;
+    sql_convention: string;
     use_domains: boolean | null;
     default_domain: string;
   };
@@ -1039,7 +1040,12 @@ export async function updateSettings(
     body: JSON.stringify(settings),
   });
   if (!resp.ok) throw new Error(requestFailed("Settings update", resp.status));
-  return resp.json();
+  const data = await resp.json();
+  // A rejected value (an unknown naming convention, an engine setting that fails validation) comes
+  // back 200 with success:false and a message instead of `updated`, so reading `updated.length`
+  // here threw a TypeError and the reason the server gave never reached the operator.
+  if (!data.success) throw new Error(serverMessage(data, "Settings update rejected"));
+  return data;
 }
 
 export async function setDomainPolicy(body: {
