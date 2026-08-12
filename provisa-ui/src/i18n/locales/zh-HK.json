@@ -24,7 +24,8 @@
     "none": "未設定角色",
     "all": "全部",
     "role": "角色：{{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "正在檢查…"
   },
   "localUsers": {
     "colUsername": "使用者名稱",

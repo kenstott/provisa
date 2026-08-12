@@ -24,7 +24,8 @@
     "none": "Роли не настроены",
     "all": "Все",
     "role": "Роль: {{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "Проверка…"
   },
   "localUsers": {
     "colUsername": "Имя пользователя",

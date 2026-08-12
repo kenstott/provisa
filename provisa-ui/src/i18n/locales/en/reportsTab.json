@@ -13,6 +13,7 @@
     "delete": "Delete report",
     "deleteConfirm": "Delete report {{name}}?",
     "deleted": "Report {{name}} deleted.",
-    "empty": "No reports registered in the ops domain."
+    "empty": "No reports registered in the ops domain.",
+    "resize": "Resize the report list"
   }
 }

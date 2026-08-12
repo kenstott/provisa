@@ -1135,6 +1135,30 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
         return self
 
 
+class SubsystemTracesConfig(BaseModel):  # REQ-1432
+    """Which subsystems emit spans.
+
+    Named for what they are in this product, not for the instrumentation library behind them —
+    an operator deciding whether to keep a signal is reasoning about "the catalog database", not
+    about asyncpg. Each field gates one instrumentor in setup_otel.
+
+    catalog_database is off by default: every catalog read and every metadata write is an asyncpg
+    call, so it buries the query traces an operator opened the panel to read.
+    """
+
+    # An unknown subsystem name is a mistake, not a forward-compatible extra: it would be written
+    # to the config file and gate nothing.
+    model_config = ConfigDict(extra="forbid")
+
+    http_api: bool = True
+    outbound_http: bool = True
+    catalog_database: bool = False
+    result_cache: bool = True
+    document_sources: bool = True
+    search_sources: bool = True
+    grpc_services: bool = True
+
+
 class OtelConfig(BaseModel):  # REQ-545
     """OpenTelemetry tracing configuration.
 
@@ -1188,6 +1212,7 @@ class OtelConfig(BaseModel):  # REQ-545
     otlp2parquet_max_age_secs: int = 5
     collector_batch_timeout_ms: int = 200
     s3_endpoint: str = "http://minio:9000"
+    subsystem_traces: SubsystemTracesConfig = SubsystemTracesConfig()  # REQ-1432
 
 
 class GraphQLRemoteConfig(BaseModel):

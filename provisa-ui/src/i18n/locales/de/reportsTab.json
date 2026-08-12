@@ -13,6 +13,7 @@
     "delete": "Bericht löschen",
     "deleteConfirm": "Bericht {{name}} löschen?",
     "deleted": "Bericht {{name}} gelöscht.",
-    "empty": "Keine Berichte in der Ops-Domäne registriert."
+    "empty": "Keine Berichte in der Ops-Domäne registriert.",
+    "resize": "Berichtsliste in der Breite ändern"
   }
 }

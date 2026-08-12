@@ -62,6 +62,26 @@
     "errorsPrefix": "Errores: {{errors}}",
     "failed": "Error",
     "restarted": "Reiniciado: {{container}}",
-    "clustered": "Se agruparon {{count}} tablas."
+    "clustered": "Se agruparon {{count}} tablas.",
+    "subsystemsTitle": "Trazas por subsistema",
+    "subsystemsIntro": "Qué subsistemas emiten spans. Se aplica al reiniciar.",
+    "subsystem": {
+      "http_api": "API HTTP",
+      "outbound_http": "Llamadas HTTP salientes",
+      "catalog_database": "Base de datos del catálogo",
+      "result_cache": "Caché de resultados",
+      "document_sources": "Fuentes documentales",
+      "search_sources": "Fuentes de búsqueda",
+      "grpc_services": "Servicios gRPC"
+    },
+    "subsystemHelp": {
+      "http_api": "Solicitudes atendidas por la API de la plataforma.",
+      "outbound_http": "Solicitudes de la plataforma a fuentes REST y GraphQL.",
+      "catalog_database": "Lecturas y escrituras de metadatos. Desactivado por defecto: cada consulta al catálogo genera una y sepultan las trazas de consulta.",
+      "result_cache": "Lecturas y escrituras en la caché.",
+      "document_sources": "Consultas a almacenes documentales.",
+      "search_sources": "Consultas a índices de búsqueda.",
+      "grpc_services": "La superficie de consulta gRPC, entrante y saliente."
+    }
   }
 }

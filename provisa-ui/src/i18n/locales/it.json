@@ -24,7 +24,8 @@
     "none": "Nessun ruolo configurato",
     "all": "Tutti",
     "role": "Ruolo: {{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "Verifica…"
   },
   "localUsers": {
     "colUsername": "Nome utente",

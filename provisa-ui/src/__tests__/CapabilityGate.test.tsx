@@ -10,9 +10,17 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { render } from '../test-utils/render';
 import { CapabilityGate } from '../components/CapabilityGate';
 import type { Capability } from '../types/auth';
+
+// REQ-1430: the gate reads `loading` off the auth context. Stub the context rather than mounting a
+// provider, which would fetch /auth/me.
+const authState = { loading: false };
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => authState,
+}));
 
 // Mock the useCapability hook so we can control its return value without
 // mounting a full AuthProvider (which makes network requests).
@@ -28,6 +36,36 @@ const mockUseCapability = vi.mocked(useCapability);
 describe('CapabilityGate', () => {
   beforeEach(() => {
     mockUseCapability.mockReset();
+    authState.loading = false;
+  });
+
+  it('says credentials are being checked while the bootstrap is in flight', () => {
+    authState.loading = true;
+    mockUseCapability.mockReturnValue(false);
+
+    render(
+      <CapabilityGate capability={'observability' as Capability} fallback={<div>Not Authorized</div>}>
+        <span>Reports</span>
+      </CapabilityGate>
+    );
+
+    expect(screen.getByTestId('capability-gate-checking')).toBeInTheDocument();
+    expect(screen.queryByText('Not Authorized')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reports')).not.toBeInTheDocument();
+  });
+
+  it('shows the denial only once the bootstrap has settled', () => {
+    authState.loading = false;
+    mockUseCapability.mockReturnValue(false);
+
+    render(
+      <CapabilityGate capability={'observability' as Capability} fallback={<div>Not Authorized</div>}>
+        <span>Reports</span>
+      </CapabilityGate>
+    );
+
+    expect(screen.queryByTestId('capability-gate-checking')).not.toBeInTheDocument();
+    expect(screen.getByText('Not Authorized')).toBeInTheDocument();
   });
 
   it('renders children when the capability is allowed', () => {
@@ -52,8 +90,9 @@ describe('CapabilityGate', () => {
     );
 
     expect(screen.queryByText('Admin Only')).not.toBeInTheDocument();
-    // Container should be essentially empty (just the root div from RTL)
-    expect(container.textContent).toBe('');
+    // The gate contributes no markup of its own; the provider's injected <style> tags are all
+    // that remain in the container.
+    expect(container.querySelectorAll(':not(style)')).toHaveLength(0);
   });
 
   it('renders fallback when capability is not allowed and fallback provided', () => {

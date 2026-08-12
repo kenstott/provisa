@@ -24,7 +24,8 @@
     "none": "Nenhuma função configurada",
     "all": "Todas",
     "role": "Função: {{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "Verificando…"
   },
   "localUsers": {
     "colUsername": "Nome de usuário",

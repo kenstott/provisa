@@ -41,6 +41,7 @@ function makeAuthValue(overrides: {
   availableRoles?: Role[];
   selectRole?: (role: Role | 'all') => void;
   devMode?: boolean;
+  loading?: boolean;
 }) {
   const selectedRole = overrides.selectedRole ?? 'all';
   const availableRoles = overrides.availableRoles ?? [ADMIN_ROLE, ANALYST_ROLE];
@@ -58,7 +59,7 @@ function makeAuthValue(overrides: {
     availableDomains: [],
     assignments: [],
     devMode: overrides.devMode ?? false,
-    loading: false,
+    loading: overrides.loading ?? false,
     error: null,
     selectOrg: vi.fn(),
     activeOrgId: null,
@@ -84,6 +85,18 @@ describe('RoleSelector', () => {
 
     render(<RoleSelector />);
     expect(screen.getByText(t('roleSelector.none'))).toBeInTheDocument();
+  });
+
+  // REQ-1430: "No roles configured" is a settled fact about the account, so an in-flight bootstrap
+  // must say it is still checking instead.
+  it('says it is checking while the bootstrap is in flight', () => {
+    mockUseAuth.mockReturnValue(makeAuthValue({ availableRoles: [], loading: true }));
+
+    render(<RoleSelector />);
+    expect(screen.getByTestId('role-selector-checking')).toHaveTextContent(
+      t('roleSelector.checking'),
+    );
+    expect(screen.queryByText(t('roleSelector.none'))).not.toBeInTheDocument();
   });
 
   it('renders trigger button with "All" label when selectedRole is "all"', () => {

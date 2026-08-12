@@ -19,6 +19,7 @@ import {
   Modal,
   NumberInput,
   Stack,
+  Switch,
   Text,
   TextInput,
   Title,
@@ -30,6 +31,7 @@ import {
   restartQueryEngine,
   recomputeSchemaClusters,
 } from "../../api/admin";
+import { SUBSYSTEM_TRACE_KEYS } from "../../api/admin";
 import type { PlatformSettings } from "../../api/admin";
 
 interface ObsTabProps {
@@ -280,6 +282,30 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
             placeholder="WARNING"
             description={t("observabilityTab.logLevelHelp")}
           />
+        </Stack>
+
+        {/* REQ-1432: which subsystems emit spans. The catalog database is off by default —
+            every catalog read is one of its calls, and they bury the query traces. */}
+        <Title order={4} mt="lg">{t("observabilityTab.subsystemsTitle")}</Title>
+        <Text c="dimmed" size="sm" mb="md">
+          {t("observabilityTab.subsystemsIntro")}
+        </Text>
+        <Stack gap="xs">
+          {SUBSYSTEM_TRACE_KEYS.map((key) => (
+            <Switch
+              key={key}
+              data-testid={`subsystem-trace-${key}`}
+              label={t(`observabilityTab.subsystem.${key}`)}
+              description={t(`observabilityTab.subsystemHelp.${key}`)}
+              checked={settings.otel.subsystem_traces[key]}
+              onChange={(e) =>
+                update("subsystem_traces", {
+                  ...settings.otel.subsystem_traces,
+                  [key]: e.currentTarget.checked,
+                })
+              }
+            />
+          ))}
         </Stack>
 
         <Title order={4} mt="lg">{t("observabilityTab.pipelineTitle")}</Title>

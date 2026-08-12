@@ -24,7 +24,8 @@
     "none": "कोई भूमिका कॉन्फ़िगर नहीं है",
     "all": "सभी",
     "role": "भूमिका: {{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "जाँच जारी…"
   },
   "localUsers": {
     "colUsername": "उपयोगकर्ता नाम",

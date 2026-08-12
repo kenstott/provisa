@@ -18,6 +18,8 @@ import { SubnavExtraProvider } from "./context/SubnavExtraContext";
 import { NavBar } from "./components/NavBar";
 import { NAV_GROUPS, entryItem } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
+import { CredentialCheck } from "./components/CredentialCheck";
+import { PageLoading } from "./components/PageLoading";
 import { OnboardGate } from "./components/OnboardGate";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { fetchSetupStatus } from "./api/setup";
@@ -65,8 +67,11 @@ function NotAuthorized() {
  * tab to click. A caller holding no admin surface at all still gets NotAuthorized.
  */
 function AdminEntry() {
-  const { capabilities } = useAuth();
+  const { capabilities, loading } = useAuth();
   const group = NAV_GROUPS.find((g) => g.id === "admin");
+  // REQ-1430: no capabilities yet during bootstrap — resolving the entry now would deny a caller
+  // whose rights simply have not arrived.
+  if (loading) return <CredentialCheck />;
   const target = group ? entryItem(group, capabilities) : undefined;
   if (!target) return <NotAuthorized />;
   return <Navigate to={target.to} replace />;
@@ -161,7 +166,7 @@ function App() {
           ) : !setupChecked ? (
             <div className="page"><p>Loading...</p></div>
           ) : needsSetup ? (
-            <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
+            <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route path="*" element={
                   <SetupPage onSetupComplete={() => { setNeedsSetup(false); }} />
@@ -169,7 +174,7 @@ function App() {
               </Routes>
             </Suspense>
           ) : authEnabled && !token ? (
-            <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
+            <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route path="*" element={
                   <LandingPage onLoginSuccess={handleLoginSuccess} authDisabled={!authEnabled} />
@@ -188,7 +193,7 @@ function App() {
                 <PlatformAdminWelcomeModal />
                 <NavBar />
                 <main>
-                <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
+                <Suspense fallback={<PageLoading />}>
                 <Routes>
                   <Route path="/" element={<Navigate to="/query" replace />} />
                   <Route
@@ -271,7 +276,7 @@ function App() {
                     path="/schema"
                     element={
                       <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
-                        <Suspense fallback={<div className="page">Loading schema explorer...</div>}>
+                        <Suspense fallback={<PageLoading />}>
                           <SchemaExplorer />
                         </Suspense>
                       </CapabilityGate>

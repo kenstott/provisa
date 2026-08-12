@@ -62,6 +62,26 @@
     "errorsPrefix": "Erreurs : {{errors}}",
     "failed": "Échec",
     "restarted": "Redémarré : {{container}}",
-    "clustered": "{{count}} tables regroupées."
+    "clustered": "{{count}} tables regroupées.",
+    "subsystemsTitle": "Traces par sous-système",
+    "subsystemsIntro": "Quels sous-systèmes émettent des spans. Prise en compte au redémarrage.",
+    "subsystem": {
+      "http_api": "API HTTP",
+      "outbound_http": "Appels HTTP sortants",
+      "catalog_database": "Base de données du catalogue",
+      "result_cache": "Cache de résultats",
+      "document_sources": "Sources documentaires",
+      "search_sources": "Sources de recherche",
+      "grpc_services": "Services gRPC"
+    },
+    "subsystemHelp": {
+      "http_api": "Requêtes servies par l'API de la plateforme.",
+      "outbound_http": "Requêtes de la plateforme vers les sources REST et GraphQL.",
+      "catalog_database": "Lectures et écritures de métadonnées. Désactivé par défaut : chaque consultation du catalogue en produit une, et elles noient les traces de requête.",
+      "result_cache": "Lectures et écritures du cache.",
+      "document_sources": "Requêtes vers les magasins de documents.",
+      "search_sources": "Requêtes vers les index de recherche.",
+      "grpc_services": "La surface de requête gRPC, entrante et sortante."
+    }
   }
 }

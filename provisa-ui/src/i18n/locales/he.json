@@ -24,7 +24,8 @@
     "none": "לא הוגדרו תפקידים",
     "all": "הכול",
     "role": "תפקיד: {{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "בודק…"
   },
   "localUsers": {
     "colUsername": "שם משתמש",

@@ -594,6 +594,27 @@ export async function uploadConfig(yaml: string): Promise<{ success: boolean; me
 
 // --- Platform Settings ---
 
+/** REQ-1432: the trace switches, one per logical subsystem. Mirrors SubsystemTracesConfig. */
+export interface SubsystemTraces {
+  http_api: boolean;
+  outbound_http: boolean;
+  catalog_database: boolean;
+  result_cache: boolean;
+  document_sources: boolean;
+  search_sources: boolean;
+  grpc_services: boolean;
+}
+
+export const SUBSYSTEM_TRACE_KEYS: (keyof SubsystemTraces)[] = [
+  "http_api",
+  "outbound_http",
+  "catalog_database",
+  "result_cache",
+  "document_sources",
+  "search_sources",
+  "grpc_services",
+];
+
 export interface PlatformSettings {
   features?: {
     live_config_export: boolean;
@@ -641,6 +662,9 @@ export interface PlatformSettings {
     support_endpoint: string;
     support_redact_sql_literals: boolean;
     support_redact_attributes: string[];
+    // REQ-1432: which subsystems emit spans. Keys are the logical subsystem names the backend's
+    // SubsystemTracesConfig declares.
+    subsystem_traces: SubsystemTraces;
   };
   graphql_remote: {
     max_object_depth: number;

@@ -35,6 +35,14 @@ observability:
   protocol: http/protobuf
   sample_rate: 1.0
   service_name: provisa
+  subsystem_traces:
+    catalog_database: false
+    document_sources: true
+    grpc_services: true
+    http_api: true
+    outbound_http: true
+    result_cache: true
+    search_sources: true
 relationships:
 - alias: LISTED_AS
   cardinality: many-to-one

@@ -13,6 +13,7 @@
     "delete": "Supprimer le rapport",
     "deleteConfirm": "Supprimer le rapport {{name}} ?",
     "deleted": "Rapport {{name}} supprimé.",
-    "empty": "Aucun rapport enregistré dans le domaine ops."
+    "empty": "Aucun rapport enregistré dans le domaine ops.",
+    "resize": "Redimensionner la liste des rapports"
   }
 }

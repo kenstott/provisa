@@ -18,8 +18,11 @@ import type { Role } from "../types/auth";
  *  navigation, focus management, and correct `menuitem` roles (REQ-1013). */
 export function RoleSelector() {
   const { t } = useTranslation();
-  const { selectedRole, availableRoles, selectRole, devMode } = useAuth();
+  const { selectedRole, availableRoles, selectRole, devMode, loading } = useAuth();
 
+  // REQ-1430: an in-flight bootstrap has no roles yet. "No roles configured" states a settled fact
+  // about the account, so it must wait until the roles have actually been fetched.
+  if (loading) return <span data-testid="role-selector-checking">{t("roleSelector.checking")}</span>;
   if (availableRoles.length === 0) return <span>{t("roleSelector.none")}</span>;
 
   const allSelected = selectedRole === "all";

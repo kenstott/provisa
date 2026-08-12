@@ -14,7 +14,7 @@
 // exportable, and access-controlled like any table). Rows load through the one
 // governed SQL pipeline; sort/filter/group happen client-side in ResultsGrid.
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -55,6 +55,24 @@ export function ReportsTab() {
   // report (key) and owns fetching + grid state.
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = reports.find((r) => r.id === selectedId) ?? reports[0] ?? null;
+
+  const [listWidth, setListWidth] = useState(240);
+  const startDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = listWidth;
+      const onMove = (ev: MouseEvent) =>
+        setListWidth(Math.max(160, Math.min(560, startW + ev.clientX - startX)));
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [listWidth],
+  );
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -115,11 +133,10 @@ export function ReportsTab() {
     <div style={{ display: "flex", gap: "0.75rem", height: "calc(100vh - 180px)", minHeight: 420 }}>
       <div
         style={{
-          width: 240,
+          width: listWidth,
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          borderInlineEnd: "1px solid var(--border)",
         }}
         data-testid="reports-list"
       >
@@ -180,6 +197,26 @@ export function ReportsTab() {
             })
           )}
         </div>
+      </div>
+
+      {/* The rule between the list and the report IS the grab handle: a 1px line drawn inside a
+          wider hit area so it stays easy to grab without thickening the divider. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("reportsTab.resize")}
+        onMouseDown={startDrag}
+        data-testid="reports-resize-handle"
+        style={{
+          flexShrink: 0,
+          width: 9,
+          marginInline: "-0.375rem",
+          cursor: "col-resize",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
+        <div style={{ width: 1, height: "100%", background: "var(--border)" }} />
       </div>
 
       {selected ? (

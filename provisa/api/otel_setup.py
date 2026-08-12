@@ -355,6 +355,12 @@ def setup_otel(
     _support_filter = _otel_cfg.get("support_telemetry_filter", {})
     _support_redact_sql = bool(_support_filter.get("redact_sql_literals", True))
     _support_redact_attrs = list(_support_filter.get("redact_attributes", []))
+    # REQ-1432: per-subsystem trace switches. SubsystemTracesConfig owns the names and the
+    # defaults — catalog_database off, everything else on — so the config file only has to state
+    # the departures from them.
+    from provisa.core.models import SubsystemTracesConfig
+
+    _subsystems = SubsystemTracesConfig(**(_otel_cfg.get("subsystem_traces") or {}))
     _write_otlp2parquet_toml(otlp2parquet_max_age_secs, config_path)
     try:
         from opentelemetry import trace
@@ -479,46 +485,54 @@ def setup_otel(
             _logging.getLogger().addHandler(handler)
             _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
 
-        FastAPIInstrumentor.instrument_app(app)
-        try:
-            from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        # REQ-1432: each block is one subsystem, instrumented only when its switch is on.
+        if _subsystems.http_api:
+            FastAPIInstrumentor.instrument_app(app)
+        if _subsystems.outbound_http:
+            try:
+                from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
-            HTTPXClientInstrumentor().instrument()
-        except ImportError:
-            pass
-        try:
-            from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+                HTTPXClientInstrumentor().instrument()
+            except ImportError:
+                pass
+        if _subsystems.catalog_database:
+            try:
+                from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
 
-            AsyncPGInstrumentor().instrument()
-        except ImportError:
-            pass
-        try:
-            from opentelemetry.instrumentation.redis import RedisInstrumentor
+                AsyncPGInstrumentor().instrument()
+            except ImportError:
+                pass
+        if _subsystems.result_cache:
+            try:
+                from opentelemetry.instrumentation.redis import RedisInstrumentor
 
-            RedisInstrumentor().instrument()
-        except ImportError:
-            pass
-        try:
-            from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+                RedisInstrumentor().instrument()
+            except ImportError:
+                pass
+        if _subsystems.document_sources:
+            try:
+                from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
 
-            PymongoInstrumentor().instrument()
-        except ImportError:
-            pass
-        try:
-            from opentelemetry.instrumentation.elasticsearch import ElasticsearchInstrumentor
+                PymongoInstrumentor().instrument()
+            except ImportError:
+                pass
+        if _subsystems.search_sources:
+            try:
+                from opentelemetry.instrumentation.elasticsearch import ElasticsearchInstrumentor
 
-            ElasticsearchInstrumentor().instrument()
-        except ImportError:
-            pass
-        try:
-            from opentelemetry.instrumentation.grpc import (
-                GrpcInstrumentorClient,
-                GrpcInstrumentorServer,
-            )
+                ElasticsearchInstrumentor().instrument()
+            except ImportError:
+                pass
+        if _subsystems.grpc_services:
+            try:
+                from opentelemetry.instrumentation.grpc import (
+                    GrpcInstrumentorClient,
+                    GrpcInstrumentorServer,
+                )
 
-            GrpcInstrumentorClient().instrument()
-            GrpcInstrumentorServer().instrument()
-        except ImportError:
-            pass
+                GrpcInstrumentorClient().instrument()
+                GrpcInstrumentorServer().instrument()
+            except ImportError:
+                pass
     except ImportError:
         _log.warning("OTel packages missing; skipping instrumentation")

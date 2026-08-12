@@ -24,7 +24,8 @@
     "none": "Geen rollen geconfigureerd",
     "all": "Alle",
     "role": "Rol: {{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "Controleren…"
   },
   "localUsers": {
     "colUsername": "Gebruikersnaam",

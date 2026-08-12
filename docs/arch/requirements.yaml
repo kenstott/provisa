@@ -43891,3 +43891,103 @@
   - REQ-1332
   - REQ-1412
   - REQ-1427
+- id: REQ-1430
+  status: complete
+  since: 2026-08
+  group: 2. Authentication & Identity
+  category: Authentication & Identity
+  priority: MUST
+  type: behavioral
+  description: >-
+    An identity bootstrap that has not finished is not a denial. CapabilityGate rendered its
+    NotAuthorized fallback whenever the unioned capabilities were empty, which includes every
+    render before /auth/me and the roles query answer. Against a cold coordinator that is tens of
+    seconds, so a signed-in admin opening an admin page was told "You do not have permission to
+    view this page" (with "No roles configured" in the header) and then watched the real page
+    appear on its own - indistinguishable from a spontaneous reload. The gate, the /admin entry
+    resolver, and the role selector therefore consult the auth context's `loading` flag first and
+    say the credentials are being checked; the denial and "No roles configured" are stated only
+    once the bootstrap has settled.
+  use_case: >-
+    A signed-in administrator opens an admin page while the identity fetch is still in flight and
+    sees that their credentials are being checked, rather than a permission denial that reverses
+    itself.
+  code:
+  - provisa-ui/src/components/CapabilityGate.tsx
+  - provisa-ui/src/components/CredentialCheck.tsx
+  - provisa-ui/src/components/RoleSelector.tsx
+  - provisa-ui/src/App.tsx
+  tests:
+  - provisa-ui/src/__tests__/CapabilityGate.test.tsx
+  - provisa-ui/src/__tests__/RoleSelector.test.tsx
+  scenario: |-
+    Given a signed-in user whose identity bootstrap has not yet returned
+    When they open a capability-gated page
+    Then the page says the credentials are being checked
+    And the permission denial is shown only after the bootstrap settles without the capability
+  related_reqs:
+  - REQ-1291
+  - REQ-1295
+  - REQ-1349
+- id: REQ-1431
+  status: complete
+  since: 2026-08
+  group: 5. Query Languages, Compilation & Operations
+  category: Operational Views
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The rule between the report list and the report on the admin Reports tab is a grab handle:
+    dragging it sets the list width, clamped between 160px and 560px so neither pane can be
+    dragged away. Report names and descriptions are long enough that a fixed 240px list truncated
+    them while the report pane had room to spare.
+  use_case: >-
+    An administrator widens the report list to read full report descriptions, then narrows it
+    again to give the report grid more room.
+  code:
+  - provisa-ui/src/components/admin/ReportsTab.tsx
+  tests:
+  - provisa-ui/src/components/admin/__tests__/ReportsTab.resize.test.tsx
+  scenario: |-
+    Given the admin Reports tab
+    When the rule between the list and the report is dragged
+    Then the report list resizes with the pointer, clamped to its minimum and maximum width
+  related_reqs:
+  - REQ-1386
+- id: REQ-1432
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: OpenTelemetry Instrumentation
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Tracing is enabled per subsystem, under observability.subsystem_traces. The switches are named
+    for what each subsystem is in this product - HTTP API, outbound HTTP calls, catalog database,
+    result cache, document sources, search sources, gRPC services - not for the instrumentation
+    library behind it. The catalog database is off by default: every catalog read and metadata
+    write is an asyncpg call, and instrumenting them buries the query spans the live trace panel
+    exists to show. Each switch gates one instrumentor inside setup_otel, since an instrumentor
+    patches its driver globally and cannot be undone later. An unknown subsystem name is rejected
+    rather than written to the config file. The admin Observability tab carries the same switches.
+  use_case: >-
+    An operator opens the live trace panel, sees it filled with driver-level Postgres spans, and
+    turns off the subsystems they do not care about from the Observability tab.
+  code:
+  - provisa/core/models.py
+  - provisa/api/otel_setup.py
+  - provisa/api/admin/settings_router.py
+  - config/provisa.yaml
+  - provisa-ui/src/api/admin.ts
+  - provisa-ui/src/components/admin/ObservabilityTab.tsx
+  tests:
+  - tests/unit/test_otel_subsystem_traces.py
+  - provisa-ui/src/components/admin/__tests__/ObservabilityTab.subsystems.test.tsx
+  scenario: |-
+    Given a deployment with no subsystem_traces stated in its config
+    When the API starts
+    Then the catalog database emits no spans and every other subsystem does
+  related_reqs:
+  - REQ-302
+  - REQ-303
+  - REQ-545

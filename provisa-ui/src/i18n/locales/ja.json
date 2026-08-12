@@ -24,7 +24,8 @@
     "none": "ロールが設定されていません",
     "all": "すべて",
     "role": "ロール: {{role}}",
-    "dev": "DEV"
+    "dev": "DEV",
+    "checking": "確認中…"
   },
   "localUsers": {
     "colUsername": "ユーザー名",

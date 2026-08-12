@@ -139,7 +139,12 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
     from provisa.compiler.sql_gen import _get_default_row_limit
     from provisa.api.app import state
 
-    from provisa.core.models import GraphQLRemoteConfig, OtelConfig, ProvisaConfig
+    from provisa.core.models import (
+        GraphQLRemoteConfig,
+        OtelConfig,
+        ProvisaConfig,
+        SubsystemTracesConfig,
+    )
 
     rc = RedirectConfig.from_env()
     cfg = read_config()
@@ -203,6 +208,10 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             "service_name": os.environ.get("OTEL_SERVICE_NAME")
             or otel_cfg.get("service_name", "provisa"),
             "sample_rate": float(otel_cfg.get("sample_rate", 1.0)),
+            # REQ-1432: per-subsystem trace switches; the model states the defaults.
+            "subsystem_traces": SubsystemTracesConfig(
+                **(otel_cfg.get("subsystem_traces") or {})
+            ).model_dump(),
             # REQ-545: tracing pipeline tuning. Defaults mirror OtelConfig field defaults.
             "log_level": os.environ.get("OTEL_LOG_LEVEL")
             or otel_cfg.get("log_level", OtelConfig.model_fields["log_level"].default),
@@ -307,6 +316,15 @@ def _apply_otel(o: dict, updated: list) -> None:
         if "sample_rate" in o:
             cfg["observability"]["sample_rate"] = float(o["sample_rate"])
             updated.append("otel.sample_rate")
+        # REQ-1432: per-subsystem trace switches. Validated through the model so an unknown
+        # subsystem name is rejected rather than written into the file and silently ignored.
+        if "subsystem_traces" in o:
+            from provisa.core.models import SubsystemTracesConfig
+
+            cfg["observability"]["subsystem_traces"] = SubsystemTracesConfig(
+                **o["subsystem_traces"]
+            ).model_dump()
+            updated.append("otel.subsystem_traces")
         # REQ-545: tracing pipeline tuning (applied on restart).
         if "log_level" in o:
             cfg["observability"]["log_level"] = o["log_level"]
