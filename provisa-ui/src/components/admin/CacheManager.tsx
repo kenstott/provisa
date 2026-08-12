@@ -24,18 +24,17 @@ import {
   Tabs,
   Text,
 } from "@mantine/core";
+import { usePurgeCache, useTables } from "../../hooks/useAdminQueries";
 import {
   useCacheStats,
   useCacheTableStats,
   useHotTables,
   useMaterializeStoreInfo,
   useMVList,
-  usePurgeCache,
   usePurgeCacheByTable,
   useRefreshMV,
-  useTables,
   useToggleMV,
-} from "../../hooks/useAdminQueries";
+} from "../../hooks/useAdminOpsQueries";
 import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { CacheStorageTab } from "./CacheStorageTab";
 import { FilterInput } from "./FilterInput";

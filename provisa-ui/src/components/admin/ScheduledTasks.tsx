@@ -29,7 +29,7 @@ import {
   useToggleScheduledTask,
   useCreateScheduledTask,
   useDeleteScheduledTask,
-} from "../../hooks/useAdminQueries";
+} from "../../hooks/useAdminOpsQueries";
 import { fetchActions, type TrackedWebhook } from "../../api/actions";
 
 const PAGE_SIZE = 50;

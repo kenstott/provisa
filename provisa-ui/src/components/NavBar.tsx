@@ -20,7 +20,7 @@ import { OrgSwitcher } from "./OrgSwitcher";
 import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { useSubnavExtraSlot } from "../context/SubnavExtraContext";
+import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { clearSessionState } from "../lib/session";
 import { NAV_GROUPS, entryItem, writeLastSubnav } from "./navGroups";

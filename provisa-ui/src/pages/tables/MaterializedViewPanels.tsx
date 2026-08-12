@@ -7,7 +7,7 @@
 import { Alert, Checkbox, Group, NumberInput, Select, Text, Textarea, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { RegisteredTable } from "../../types/admin";
-import { useMaterializeStoreInfo } from "../../hooks/useAdminQueries";
+import { useMaterializeStoreInfo } from "../../hooks/useAdminOpsQueries";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { FieldLabel } from "./FieldLabel";
 import { SnapshotSchedulePanel } from "./SnapshotSchedulePanel";

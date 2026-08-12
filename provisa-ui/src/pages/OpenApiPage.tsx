@@ -45,30 +45,38 @@ export function OpenApiPage() {
   // can't carry the bearer token installAuthFetch attaches to fetch() calls, so the request hits
   // the auth middleware with no Authorization header. srcDoc's content still resolves relative
   // URLs (e.g. Swagger UI's own openapi.json fetch) against this page's origin.
-  const [html, setHtml] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  //
+  // The result carries the `src` it came from, so a change of role/domain/theme retires the
+  // previous document by comparison at render time. Clearing two state variables at the top of the
+  // effect would do the same thing by way of an extra render pass.
+  const [loaded, setLoaded] = useState<{
+    src: string;
+    html: string | null;
+    error: string | null;
+  } | null>(null);
   useEffect(() => {
     // authLoading gates re-fetch when AuthContext is mid-refresh (e.g. a token
     // renewal in flight) so this doesn't race an about-to-change provisa_token.
     if (authLoading) return;
     let cancelled = false;
-    setHtml(null);
-    setLoadError(null);
     fetch(src)
       .then((res) => {
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         return res.text();
       })
       .then((text) => {
-        if (!cancelled) setHtml(text);
+        if (!cancelled) setLoaded({ src, html: text, error: null });
       })
       .catch((err: Error) => {
-        if (!cancelled) setLoadError(err.message);
+        if (!cancelled) setLoaded({ src, html: null, error: err.message });
       });
     return () => {
       cancelled = true;
     };
   }, [src, authLoading]);
+  const current = loaded?.src === src ? loaded : null;
+  const html = current?.html ?? null;
+  const loadError = current?.error ?? null;
 
   // Swagger UI mounts/expands/re-renders each step asynchronously (React tree inside the
   // iframe); polling for the actual DOM state avoids racing fixed setTimeout delays that fire

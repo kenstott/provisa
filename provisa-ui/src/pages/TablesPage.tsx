@@ -31,12 +31,11 @@ import {
   useUpdateTablePreferMaterialized,
   useUpdateTableLoadProtection,
   useUpdateTableNaming,
-  usePurgeCacheByTable,
-  useInvalidateFileSource,
   useDeployViewToDb,
   useSuggestTableAlias,
   useAllRelationships,
 } from "../hooks/useAdminQueries";
+import { usePurgeCacheByTable, useInvalidateFileSource } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";

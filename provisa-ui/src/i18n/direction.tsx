@@ -11,16 +11,7 @@
 import { useEffect } from 'react'
 import { useDirection } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
-
-// RTL layout support: layout direction is a function of the active locale.
-// Only the base subtag matters (he-IL → he). The set covers the RTL scripts
-// i18next could resolve to; today only `he` ships a catalog.
-const RTL_BASE_LNGS = new Set(['he', 'ar', 'fa', 'ur', 'yi'])
-
-export function dirForLanguage(lng: string): 'rtl' | 'ltr' {
-  const base = lng.toLowerCase().split('-')[0]
-  return RTL_BASE_LNGS.has(base) ? 'rtl' : 'ltr'
-}
+import { dirForLanguage } from './dirForLanguage'
 
 // Keeps <html dir>/<html lang> and Mantine's direction context in sync with
 // the active i18next language, including runtime switches. Must render inside

@@ -62,11 +62,7 @@ export function TeamPage() {
 
   const loadMembers = useCallback(async () => {
     if (!activeOrgId) return;
-    try {
-      setMembers(await fetchOrgMembers(activeOrgId));
-    } catch (e) {
-      reportError(e);
-    }
+    await fetchOrgMembers(activeOrgId).then(setMembers).catch(reportError);
   }, [activeOrgId]);
 
   useEffect(() => {
@@ -76,8 +72,9 @@ export function TeamPage() {
   }, []);
 
   useEffect(() => {
-    void loadMembers();
-  }, [loadMembers]);
+    if (!activeOrgId) return;
+    fetchOrgMembers(activeOrgId).then(setMembers).catch(reportError);
+  }, [activeOrgId]);
 
   // REQ-1302: the server refuses the removal or demotion that would leave the org with no admin.
   // The page mirrors that rule so the last admin sees a disabled control instead of an error.

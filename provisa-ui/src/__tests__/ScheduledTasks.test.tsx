@@ -25,8 +25,8 @@ let mockTasks: unknown[] = [];
 // replace-everything factory here leaks into other files. In particular a stubbed
 // useMaterializeStoreInfo would win over the real Apollo hook that
 // TableEditForm.consistency drives through MockedProvider.
-vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
+vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useAdminOpsQueries")>()),
   useScheduledTasks: () => ({ scheduledTasks: mockTasks, loading: false }),
   useToggleScheduledTask: () => ({ toggleScheduledTask: toggleSpy }),
   useCreateScheduledTask: () => ({ createScheduledTask: createSpy }),

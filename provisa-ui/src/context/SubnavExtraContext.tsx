@@ -8,17 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { createContext, useContext, useState, type ReactNode } from "react";
-
-// Lets a page portal a small control (e.g. a view-toggle SegmentedControl) into
-// the right-hand side of NavBar's subnav row, instead of spending its own
-// vertical real estate on a second toolbar row.
-interface SubnavExtraSlot {
-  node: HTMLDivElement | null;
-  setNode: (n: HTMLDivElement | null) => void;
-}
-
-const SubnavExtraContext = createContext<SubnavExtraSlot | null>(null);
+import { useState, type ReactNode } from "react";
+import { SubnavExtraContext } from "./subnavExtraSlot";
 
 export function SubnavExtraProvider({ children }: { children: ReactNode }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
@@ -27,10 +18,4 @@ export function SubnavExtraProvider({ children }: { children: ReactNode }) {
       {children}
     </SubnavExtraContext.Provider>
   );
-}
-
-export function useSubnavExtraSlot(): SubnavExtraSlot {
-  const ctx = useContext(SubnavExtraContext);
-  if (!ctx) throw new Error("useSubnavExtraSlot must be used within SubnavExtraProvider");
-  return ctx;
 }

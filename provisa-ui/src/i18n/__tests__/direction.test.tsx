@@ -13,7 +13,8 @@ import { act, render, cleanup } from "@testing-library/react";
 import { DirectionProvider, MantineProvider } from "@mantine/core";
 import { I18nextProvider } from "react-i18next";
 import i18n from "../index";
-import { DirectionSync, dirForLanguage } from "../direction";
+import { DirectionSync } from "../direction";
+import { dirForLanguage } from "../dirForLanguage";
 
 describe("dirForLanguage", () => {
   it("maps RTL base subtags including regional variants", () => {

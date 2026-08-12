@@ -15,7 +15,7 @@ import { Alert, Box, Loader, SegmentedControl, Stack, Text } from "@mantine/core
 import { AlertCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { useSubnavExtraSlot } from "../context/SubnavExtraContext";
+import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useTables, useAllRelationships, useDomains } from "../hooks/useAdminQueries";
 import { ErdPanel } from "../components/erd/ErdPanel";
 

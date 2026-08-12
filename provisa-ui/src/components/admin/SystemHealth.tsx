@@ -11,7 +11,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Group, Table, Text } from "@mantine/core";
-import { useSystemHealth } from "../../hooks/useAdminQueries";
+import { useSystemHealth } from "../../hooks/useAdminOpsQueries";
 
 // null = neutral/disabled (grey), true = ok (green), false = down (red)
 function StatusDot({ ok }: { ok: boolean | null }) {

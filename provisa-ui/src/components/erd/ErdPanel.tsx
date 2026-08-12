@@ -628,7 +628,10 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
   const EXPORT_BG = palette.bg;
   const EXPORT_PAD = 10;
 
-  const addRasterPadding = (blob: Blob, mimeType: string, quality: number, filename: string) => {
+  // Depends on the palette, so the export helpers below list it: pinned to [] they kept the
+  // background colour from the theme in force when the panel first mounted, and an export taken
+  // after a light/dark switch came out on the previous theme's ground.
+  const addRasterPadding = useCallback((blob: Blob, mimeType: string, quality: number, filename: string) => {
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
@@ -643,7 +646,7 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
       canvas.toBlob((b) => b && downloadBlob(b, filename), mimeType, quality);
     };
     img.src = url;
-  };
+  }, [EXPORT_BG]);
 
   const exportSvg = useCallback(() => {
     const cy = cyRef.current;
@@ -662,19 +665,19 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
       },
     ).replace("</svg>", "</g></svg>");
     downloadBlob(new Blob([padded], { type: "image/svg+xml" }), "erd.svg");
-  }, []);
+  }, [EXPORT_BG]);
 
   const exportPng = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
     addRasterPadding(cy.png({ output: "blob", full: true, bg: EXPORT_BG }) as unknown as Blob, "image/png", 1, "erd.png");
-  }, []);
+  }, [EXPORT_BG, addRasterPadding]);
 
   const exportJpeg = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
     addRasterPadding(cy.jpg({ output: "blob", full: true, bg: EXPORT_BG, quality: 0.92 }) as unknown as Blob, "image/jpeg", 0.92, "erd.jpg");
-  }, []);
+  }, [EXPORT_BG, addRasterPadding]);
 
   // ── collapse all / expand all (visible domains only) ─────────────────────
   const visibleDomainIds = allDomainIds.filter((id) => !hiddenDomains.has(id));

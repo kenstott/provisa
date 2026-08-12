@@ -138,6 +138,12 @@ const deployViewToDb = vi.fn().mockResolvedValue(mutationOk());
 // replace-everything factory here leaks into other files. In particular a stubbed
 // useMaterializeStoreInfo would win over the real Apollo hook that
 // TableEditForm.consistency drives through MockedProvider.
+vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useAdminOpsQueries")>()),
+  usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
+  useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
+}));
+
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useTables: () => ({ tables: EMPTY_TABLES, loading: false, refetch: refetchTables }),
@@ -163,8 +169,6 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   // TableEditForm (rendered on edit) uses these; include them so the module mock is complete and a
   // vmThreads cross-file leak (fileParallelism:false shares one context) can't break later tests.
   useRefreshPolicyPreview: () => async () => null,
-  usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
-  useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
   useDeployViewToDb: () => ({ deployViewToDb, loading: false }),
   useAllRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
   useSuggestTableAlias: () => ({

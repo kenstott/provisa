@@ -117,8 +117,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         setCheckedDomains(restoreChecked(ds));
       }
     }
-    // Keyed by the role SET, not the array identity, so the fetch does not re-run every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the role SET (the joined ids), not the array identity, so the fetch does not re-run on every render
   }, [roleIds, hasWildcard, namedDomains]);
 
   function toggleDomain(id: string) {
