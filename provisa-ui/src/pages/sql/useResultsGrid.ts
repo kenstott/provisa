@@ -58,6 +58,7 @@ interface PersistedGridChoices {
   sorts?: { col: string; dir: "asc" | "desc" }[];
   filters?: Record<string, string>;
   groupBy?: string[];
+  colWidths?: Record<string, number>;
 }
 
 function loadChoices(storageKey: string | undefined): PersistedGridChoices {
@@ -72,7 +73,7 @@ function loadChoices(storageKey: string | undefined): PersistedGridChoices {
 export function useResultsGrid(
   resultRows: Record<string, unknown>[],
   resultColumns: string[],
-  /** When set, filter/group/sort choices persist to localStorage under this key
+  /** When set, filter/group/sort choices and column widths persist to localStorage under this key
       and restore on the next mount (per-report / per-table retention). */
   storageKey?: string,
   /** Present = server-paged: the caller fetches one page at a time (pushing
@@ -85,7 +86,9 @@ export function useResultsGrid(
   const [filters, setFilters] = useState<Record<string, string>>(
     () => loadChoices(storageKey).filters ?? {},
   );
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const [colWidths, setColWidths] = useState<Record<string, number>>(
+    () => loadChoices(storageKey).colWidths ?? {},
+  );
   const [groupBy, setGroupBy] = useState<string[]>(() => loadChoices(storageKey).groupBy ?? []);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
@@ -94,8 +97,11 @@ export function useResultsGrid(
 
   useEffect(() => {
     if (!storageKey) return;
-    localStorage.setItem(`provisa.grid.${storageKey}`, JSON.stringify({ sorts, filters, groupBy }));
-  }, [storageKey, sorts, filters, groupBy]);
+    localStorage.setItem(
+      `provisa.grid.${storageKey}`,
+      JSON.stringify({ sorts, filters, groupBy, colWidths }),
+    );
+  }, [storageKey, sorts, filters, groupBy, colWidths]);
 
   const baseColumns = useMemo(
     () => (resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {})),

@@ -36,8 +36,15 @@ export function previewSql(
     Filters and sorts are pushed into the SQL so they act on the full relation,
     not the fetched slice. Group columns lead the ORDER BY so group blocks stay
     contiguous across page boundaries; primary-key columns are appended as a
-    tiebreaker so OFFSET paging is stable. Fetch pageSize+1 rows: the extra row
-    only signals that a next page exists. */
+    tiebreaker so OFFSET paging is stable under a user-chosen order.
+
+    With no sort and no grouping chosen there is no ORDER BY at all. A
+    primary-key tiebreaker on its own orders a relation the user never asked to
+    order, and that sort is a full scan: on the ops traces table (2.8M rows)
+    `ORDER BY trace_id LIMIT 51` took 5m20s against the same page unordered at
+    3.6s, so every telemetry report opened on a spinner that never resolved.
+
+    Fetch pageSize+1 rows: the extra row only signals that a next page exists. */
 export function pagedViewerSql(
   table: RegisteredTable,
   params: Record<string, string>,
@@ -60,11 +67,13 @@ export function pagedViewerSql(
   const orderCols: string[] = [];
   for (const col of groupBy) orderCols.push(`"${col}" ASC`);
   for (const s of sorts) if (!groupBy.includes(s.col)) orderCols.push(`"${s.col}" ${s.dir.toUpperCase()}`);
-  for (const c of table.columns) {
-    if (c.isPrimaryKey) {
-      const name = c.alias || c.columnName;
-      if (!groupBy.includes(name) && !sorts.some((s) => s.col === name))
-        orderCols.push(`"${name}" ASC`);
+  if (orderCols.length > 0) {
+    for (const c of table.columns) {
+      if (c.isPrimaryKey) {
+        const name = c.alias || c.columnName;
+        if (!groupBy.includes(name) && !sorts.some((s) => s.col === name))
+          orderCols.push(`"${name}" ASC`);
+      }
     }
   }
   const orderBy = orderCols.length > 0 ? ` ORDER BY ${orderCols.join(", ")}` : "";

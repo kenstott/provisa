@@ -119,13 +119,22 @@ describe("nativeParams", () => {
       expect(sql).toContain(`ORDER BY "status" ASC, "name" DESC`);
     });
 
-    it("appends primary-key columns as a stable-paging tiebreaker", () => {
-      const pkTable = {
-        ...TABLE,
-        columns: [...TABLE.columns.map((c) => ({ ...c })), { ...col("id", null, "bigint"), isPrimaryKey: true }],
-      } as unknown as RegisteredTable;
+    const pkTable = {
+      ...TABLE,
+      columns: [...TABLE.columns.map((c) => ({ ...c })), { ...col("id", null, "bigint"), isPrimaryKey: true }],
+    } as unknown as RegisteredTable;
+
+    it("appends primary-key columns as a stable-paging tiebreaker under a chosen order", () => {
+      const sql = pagedViewerSql(pkTable, {}, {}, [{ col: "name", dir: "asc" }], [], 0, 100);
+      expect(sql).toContain(`ORDER BY "name" ASC, "id" ASC`);
+    });
+
+    // A pk-only ORDER BY sorts a relation the user never asked to sort, and that
+    // sort is a full scan — it stalled every telemetry report for minutes.
+    it("emits no ORDER BY when no sort or grouping is chosen", () => {
       const sql = pagedViewerSql(pkTable, {}, {}, [], [], 0, 100);
-      expect(sql).toContain(`ORDER BY "id" ASC`);
+      expect(sql).not.toContain("ORDER BY");
+      expect(sql).toBe(`SELECT * FROM "petstore"."pets" LIMIT 101 OFFSET 0`);
     });
   });
 });

@@ -12,6 +12,7 @@
 // group tree (row headers, never aggregates) -> page.
 
 import { describe, it, expect } from "vitest";
+import type React from "react";
 import { renderHook, act } from "@testing-library/react";
 import { useResultsGrid } from "../useResultsGrid";
 import type { GridItem } from "../useResultsGrid";
@@ -110,6 +111,31 @@ describe("useResultsGrid", () => {
 
     const other = renderHook(() => useResultsGrid(ROWS, COLS, "test:other"));
     expect(other.result.current.groupBy).toEqual([]);
+  });
+
+  it("persists column widths per storageKey and restores them", () => {
+    const first = renderHook(() => useResultsGrid(ROWS, COLS, "test:widths"));
+    const th = document.createElement("th");
+    const handle = document.createElement("div");
+    th.appendChild(handle);
+    document.body.appendChild(th);
+    act(() =>
+      first.result.current.handleResizeStart("domain", {
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        currentTarget: handle,
+        clientX: 100,
+      } as unknown as React.MouseEvent),
+    );
+    act(() => {
+      document.dispatchEvent(new MouseEvent("mousemove", { clientX: 260 }));
+      document.dispatchEvent(new MouseEvent("mouseup"));
+    });
+    expect(first.result.current.colWidths.domain).toBe(160);
+    first.unmount();
+
+    const second = renderHook(() => useResultsGrid(ROWS, COLS, "test:widths"));
+    expect(second.result.current.colWidths.domain).toBe(160);
   });
 
   it("server-paged mode: no client filter/sort/slice, pager runs on hasMore", () => {
