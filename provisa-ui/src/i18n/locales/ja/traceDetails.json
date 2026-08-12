@@ -1,0 +1,10 @@
+{
+  "traceDetails": {
+    "traceTitle": "トレース {{id}}",
+    "spanTitle": "スパン {{id}}",
+    "loading": "テレメトリを読み込み中…",
+    "notFound": "この ID のテレメトリは記録されていません。",
+    "spanIndex": "スパン {{index}} / {{total}}",
+    "openDetails": "テレメトリの全詳細を表示"
+  }
+}

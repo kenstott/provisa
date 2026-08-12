@@ -1,0 +1,10 @@
+{
+  "traceDetails": {
+    "traceTitle": "追踪 {{id}}",
+    "spanTitle": "跨度 {{id}}",
+    "loading": "正在加载遥测数据…",
+    "notFound": "该 ID 没有记录遥测数据。",
+    "spanIndex": "跨度 {{index}} / {{total}}",
+    "openDetails": "显示全部遥测详情"
+  }
+}

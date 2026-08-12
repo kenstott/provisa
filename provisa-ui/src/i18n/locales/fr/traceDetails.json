@@ -1,0 +1,10 @@
+{
+  "traceDetails": {
+    "traceTitle": "Trace {{id}}",
+    "spanTitle": "Span {{id}}",
+    "loading": "Chargement de la télémétrie…",
+    "notFound": "Aucune télémétrie enregistrée pour cet identifiant.",
+    "spanIndex": "Span {{index}} sur {{total}}",
+    "openDetails": "Afficher tous les détails de télémétrie"
+  }
+}

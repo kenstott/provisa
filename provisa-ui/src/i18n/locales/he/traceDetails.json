@@ -1,0 +1,10 @@
+{
+  "traceDetails": {
+    "traceTitle": "מעקב {{id}}",
+    "spanTitle": "ספאן {{id}}",
+    "loading": "טוען טלמטריה…",
+    "notFound": "לא נרשמה טלמטריה עבור מזהה זה.",
+    "spanIndex": "ספאן {{index}} מתוך {{total}}",
+    "openDetails": "הצג את כל פרטי הטלמטריה"
+  }
+}

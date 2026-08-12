@@ -1,0 +1,10 @@
+{
+  "traceDetails": {
+    "traceTitle": "Rastreio {{id}}",
+    "spanTitle": "Span {{id}}",
+    "loading": "A carregar telemetria…",
+    "notFound": "Nenhuma telemetria registada para este id.",
+    "spanIndex": "Span {{index}} de {{total}}",
+    "openDetails": "Mostrar todos os detalhes de telemetria"
+  }
+}

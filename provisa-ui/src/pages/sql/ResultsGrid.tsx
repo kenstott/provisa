@@ -12,8 +12,9 @@
 // useResultsGrid. Shared by the SQL workbench results tab, the admin Reports
 // viewer, and the table preview modal.
 
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Button, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Anchor, Button, Text, TextInput } from "@mantine/core";
 import {
   Copy,
   Check,
@@ -27,6 +28,12 @@ import {
 } from "lucide-react";
 import { COL_MIN } from "./types";
 import type { ResultsGridState } from "./useResultsGrid";
+import { TraceDetailsModal } from "../../components/telemetry/TraceDetailsModal";
+import {
+  TELEMETRY_ID_RE,
+  telemetryIdKind,
+  type TelemetryIdKind,
+} from "../../components/telemetry/traceDetails";
 
 interface ResultsGridProps {
   grid: ResultsGridState;
@@ -38,6 +45,8 @@ interface ResultsGridProps {
 
 export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGridProps) {
   const { t } = useTranslation();
+  // Trace/span ids in any column drill down to the full span record.
+  const [detail, setDetail] = useState<{ kind: TelemetryIdKind; id: string } | null>(null);
   const {
     sorts,
     filters,
@@ -338,6 +347,8 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
                   {displayColumns.map((c) => {
                     const v = item.row[c];
                     const isNum = typeof v === "number";
+                    const text = v != null ? String(v) : null;
+                    const kind = telemetryIdKind(c);
                     return (
                       <td
                         key={c}
@@ -348,10 +359,20 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {v != null ? (
-                          String(v)
-                        ) : (
+                        {text === null ? (
                           <span className="null-val">{t("sqlResultsPanel.nullValue")}</span>
+                        ) : kind !== null && TELEMETRY_ID_RE.test(text) ? (
+                          <Anchor
+                            component="button"
+                            type="button"
+                            inherit
+                            title={t("traceDetails.openDetails")}
+                            onClick={() => setDetail({ kind, id: text })}
+                          >
+                            {text}
+                          </Anchor>
+                        ) : (
+                          text
                         )}
                       </td>
                     );
@@ -362,6 +383,13 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
           </tbody>
         </table>
       </div>
+      {detail !== null && (
+        <TraceDetailsModal
+          kind={detail.kind}
+          id={detail.id}
+          onClose={() => setDetail(null)}
+        />
+      )}
     </div>
   );
 }

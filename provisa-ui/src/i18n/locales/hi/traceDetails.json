@@ -1,0 +1,10 @@
+{
+  "traceDetails": {
+    "traceTitle": "ट्रेस {{id}}",
+    "spanTitle": "स्पैन {{id}}",
+    "loading": "टेलीमेट्री लोड हो रही है…",
+    "notFound": "इस आईडी के लिए कोई टेलीमेट्री दर्ज नहीं है।",
+    "spanIndex": "{{total}} में से स्पैन {{index}}",
+    "openDetails": "पूरी टेलीमेट्री जानकारी दिखाएं"
+  }
+}
