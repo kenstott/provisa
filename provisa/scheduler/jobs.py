@@ -169,24 +169,39 @@ def _key_date(key: str) -> datetime | None:
     return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
 
 
-def _drop_asyncpg_rows(signal: str, table):
-    """REQ-1428: keep the control plane's own database chatter out of the Iceberg lane.
+def _drop_foreign_rows(signal: str, table):
+    """REQ-1428/REQ-1425: apply the collector's parquet-lane predicates to the bucket backlog.
 
-    The collector drops these spans before they are written now, but the bucket still holds the
-    objects written before that filter existed — 21 000 files in which asyncpg statement spans
-    (BEGIN, COMMIT, every SELECT the API makes against its metadata store) were 95% of the rows.
-    Compaction walks oldest-date-first, so all of those rows had to be committed to Iceberg, at
-    seconds per commit, before the job reached the provisa.query spans the ops report reads.
-    Applying the same predicate on rows already in memory costs one filter and removes the reason
-    the drain ran slower than ingest; the objects are deleted from the bucket either way.
+    The collector drops both of these span classes before they are written now, but the bucket
+    still holds the objects written before those filters existed, and compaction commits every one
+    of their rows to Iceberg:
+
+    * asyncpg statement spans (BEGIN, COMMIT, every SELECT the API makes against its metadata
+      store) — 21 000 files in which they were 95% of the rows.
+    * spans from any service other than Provisa. The Trino coordinator's javaagent emits a span
+      per stage, task, split and internal HTTP call; on the cloud node they reached 3.57M of the
+      3.58M rows in ``otel.signals.traces``, against 59 ``provisa.query`` spans. The queries
+      report reads that table through a ``span_name LIKE 'provisa.query%'`` view, so a page of 51
+      rows had to scan all 3.57M and took 2m34s — past the 60s request timeout, which is the
+      Internal Server Error the report showed.
+
+    Compaction walks oldest-date-first, so all of those rows had to be committed before the job
+    reached the spans the ops reports read. Applying the same predicates on rows already in memory
+    costs one filter each; the objects are deleted from the bucket either way.
     """
-    if signal != "traces" or "scope_name" not in table.column_names:
+    if signal != "traces":
         return table
     import pyarrow as pa
     import pyarrow.compute as pc
 
-    keep = pc.not_equal(table.column("scope_name"), pa.scalar(_ASYNCPG_SCOPE, type=pa.string()))
-    return table.filter(pc.fill_null(keep, True))
+    if "scope_name" in table.column_names:
+        keep = pc.not_equal(table.column("scope_name"), pa.scalar(_ASYNCPG_SCOPE, type=pa.string()))
+        table = table.filter(pc.fill_null(keep, True))
+    if "service_name" in table.column_names:
+        service = os.environ.get("PROVISA_OTEL_SERVICE_NAME", "provisa")
+        keep = pc.equal(table.column("service_name"), pa.scalar(service, type=pa.string()))
+        table = table.filter(pc.fill_null(keep, False))
+    return table
 
 
 def _compact_signal(
@@ -309,7 +324,7 @@ def _compact_signal(
                 with ThreadPoolExecutor(max_workers=_OTEL_FETCH_WORKERS) as pool:
                     parts = list(pool.map(_read, chunk_keys))
                 combined = pa.concat_tables(parts, promote_options="default")
-                combined = _drop_asyncpg_rows(signal, combined)
+                combined = _drop_foreign_rows(signal, combined)
             except Exception:
                 logger.exception(
                     "compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start

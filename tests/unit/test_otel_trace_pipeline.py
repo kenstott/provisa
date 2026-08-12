@@ -811,8 +811,31 @@ def test_pre_filter_backlog_objects_do_not_carry_asyncpg_rows_into_iceberg():
             "span_name": pa.array(["BEGIN;", "provisa.query.trino", "COMMIT;"]),
         }
     )
-    kept = jobs._drop_asyncpg_rows("traces", table)
+    kept = jobs._drop_foreign_rows("traces", table)
     assert kept.column("span_name").to_pylist() == ["provisa.query.trino"]
 
     # Logs and metrics carry no span scope to judge; they pass through untouched.
-    assert jobs._drop_asyncpg_rows("logs", table).num_rows == 3
+    assert jobs._drop_foreign_rows("logs", table).num_rows == 3
+
+
+def test_compaction_drops_spans_from_other_services():
+    """REQ-1425: the Trino coordinator's own spans never enter the Iceberg lane.
+
+    The javaagent emits a span per stage, task, split and internal HTTP call. On the cloud node
+    those reached 3.57M of the 3.58M rows in otel.signals.traces against 59 provisa.query spans,
+    so the queries report's 51-row page scanned all of them and timed out. The collector filters
+    them by service name; objects written before that filter shipped are still in the bucket, so
+    compaction applies the same predicate to rows it has already read.
+    """
+    import pyarrow as pa
+
+    from provisa.scheduler import jobs
+
+    table = pa.table(
+        {
+            "service_name": pa.array(["trino", "provisa", "trino", None]),
+            "span_name": pa.array(["split", "provisa.query.trino", "process", "orphan"]),
+        }
+    )
+    kept = jobs._drop_foreign_rows("traces", table)
+    assert kept.column("span_name").to_pylist() == ["provisa.query.trino"]
