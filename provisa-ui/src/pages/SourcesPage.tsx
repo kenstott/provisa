@@ -1146,23 +1146,21 @@ export function SourcesPage() {
                               />
                               <SourceFormFields {...sourceFormFieldsProps} />
                               <Group justify="flex-end" align="flex-start" gap="sm" style={{ alignSelf: "end" }}>
-                                <ActionIcon
-                                  variant="subtle"
+                                <Button
+                                  variant="default"
                                   type="button"
-                                  aria-label={t("sourcesPage.cancelEdit")}
-                                  title={t("sourcesPage.cancelEdit")}
+                                  leftSection={<X size={14} />}
                                   onClick={handleCancelForm}
                                 >
-                                  <X size={14} />
-                                </ActionIcon>
-                                <ActionIcon
+                                  {t("sourcesPage.cancelEdit")}
+                                </Button>
+                                <Button
                                   variant="filled"
                                   type="submit"
-                                  aria-label={t("sourcesPage.saveEdit")}
-                                  title={t("sourcesPage.saveEdit")}
+                                  leftSection={<Check size={14} />}
                                 >
-                                  <Check size={14} />
-                                </ActionIcon>
+                                  {t("sourcesPage.saveEdit")}
+                                </Button>
                               </Group>
                             </form>
                           ) : (

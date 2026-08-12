@@ -239,6 +239,9 @@ describe("auth relay (control-plane side)", () => {
     const event = new MessageEvent("message", { data: { type: "provisa-auth-request" }, origin });
     Object.defineProperty(event, "source", { value: source, configurable: true });
     window.dispatchEvent(event);
+    // REQ-1434: the relay asks Firebase for a live token before replying, so the reply lands a
+    // microtask after dispatch rather than inside it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     return replies;
   }
 

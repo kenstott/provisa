@@ -20,6 +20,7 @@ import {
   Select,
   Switch,
   TextInput,
+  useComputedColorScheme,
 } from "@mantine/core";
 import { Play, Copy, Check, X, Sparkles } from "lucide-react";
 import { format as formatSql } from "sql-formatter";
@@ -117,6 +118,8 @@ export function SqlEditorPanel({
   onOpenViewModal,
 }: SqlEditorPanelProps) {
   const { t } = useTranslation();
+  // Follows the app colour scheme; undefined = CodeMirror's own light theme.
+  const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [nlStrict, setNlStrict] = React.useState(true);
 
   return (
@@ -381,7 +384,7 @@ export function SqlEditorPanel({
         <CodeMirror
           value={sqlText}
           height="220px"
-          theme={oneDark}
+          theme={cmTheme}
           extensions={sqlExtensions}
           onChange={(v) => {
             setSqlText(v);

@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "Tiempo de espera de lote del collector (ms)",
     "collectorBatchTimeoutHelp": "Tiempo de espera del procesador de lotes del OTel Collector.",
     "saveButton": "Guardar",
+    "cancelButton": "Cancelar",
     "restartNote": "Nota: los cambios de endpoint y service_name surten efecto en el próximo reinicio. La tasa de muestreo se aplica de inmediato.",
     "supportTitle": "Telemetría de soporte",
     "supportIntro": "Opcionalmente, reenvíe telemetría al soporte de Provisa. Los literales SQL se eliminan de forma predeterminada.",

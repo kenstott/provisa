@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Badge,
+  Button,
   Checkbox,
   Group,
   Select,
@@ -490,23 +491,21 @@ export function RelationshipRow({
                   </Text>
                 )}
                 <Group gap="sm" justify="flex-end">
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={t("relationshipRow.cancel")}
-                    title={t("relationshipRow.cancel")}
+                  <Button
+                    variant="default"
+                    leftSection={<X size={14} />}
                     onClick={() => setEditingRel(null)}
                   >
-                    <X size={14} />
-                  </ActionIcon>
-                  <ActionIcon
+                    {t("relationshipRow.cancel")}
+                  </Button>
+                  <Button
                     variant="filled"
-                    aria-label={t("relationshipRow.save")}
-                    title={t("relationshipRow.save")}
+                    leftSection={<Check size={14} />}
                     onClick={onEditSave}
                     disabled={!!saving}
                   >
-                    <Check size={14} />
-                  </ActionIcon>
+                    {t("relationshipRow.save")}
+                  </Button>
                 </Group>
               </Stack>
             )}

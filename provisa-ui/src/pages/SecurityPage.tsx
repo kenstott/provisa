@@ -321,16 +321,16 @@ export function SecurityRolesPage() {
             />
           </Group>
           <Group justify="flex-end">
-            <ActionIcon
+            <Button
               variant="filled"
               color="blue"
-              aria-label={t("securityPage.save")}
+              leftSection={<Check size={14} />}
               data-testid="save-role"
               onClick={handleSaveRole}
               disabled={saving}
             >
-              <Check size={14} />
-            </ActionIcon>
+              {t("securityPage.save")}
+            </Button>
           </Group>
         </Stack>
       )}
@@ -423,22 +423,22 @@ export function SecurityRolesPage() {
                               }
                             />
                             <Group justify="flex-end">
-                              <ActionIcon
-                                variant="subtle"
-                                aria-label={t("securityPage.cancel")}
+                              <Button
+                                variant="default"
+                                leftSection={<X size={14} />}
                                 onClick={() => setEditingRoleInRow(null)}
                               >
-                                <X size={14} />
-                              </ActionIcon>
-                              <ActionIcon
+                                {t("securityPage.cancel")}
+                              </Button>
+                              <Button
                                 variant="filled"
                                 color="blue"
-                                aria-label={t("securityPage.save")}
+                                leftSection={<Check size={14} />}
                                 onClick={handleSaveRole}
                                 disabled={saving}
                               >
-                                <Check size={14} />
-                              </ActionIcon>
+                                {t("securityPage.save")}
+                              </Button>
                             </Group>
                           </Stack>
                         )}
@@ -679,16 +679,16 @@ export function SecurityRlsPage() {
         <Stack gap="sm" p="md" style={{ border: "1px solid var(--border)", borderRadius: "0.5rem" }}>
           {ruleFormFields}
           <Group justify="flex-end">
-            <ActionIcon
+            <Button
               variant="filled"
               color="blue"
-              aria-label={t("securityPage.save")}
+              leftSection={<Check size={14} />}
               data-testid="save-rule"
               onClick={handleSaveRule}
               disabled={saving}
             >
-              <Check size={14} />
-            </ActionIcon>
+              {t("securityPage.save")}
+            </Button>
           </Group>
         </Stack>
       )}
@@ -800,22 +800,22 @@ export function SecurityRlsPage() {
                         <Stack gap="sm">
                           {ruleFormFields}
                           <Group justify="flex-end">
-                            <ActionIcon
-                              variant="subtle"
-                              aria-label={t("securityPage.cancel")}
+                            <Button
+                              variant="default"
+                              leftSection={<X size={14} />}
                               onClick={() => setEditingRuleInRow(null)}
                             >
-                              <X size={14} />
-                            </ActionIcon>
-                            <ActionIcon
+                              {t("securityPage.cancel")}
+                            </Button>
+                            <Button
                               variant="filled"
                               color="blue"
-                              aria-label={t("securityPage.save")}
+                              leftSection={<Check size={14} />}
                               onClick={handleSaveRule}
                               disabled={saving}
                             >
-                              <Check size={14} />
-                            </ActionIcon>
+                              {t("securityPage.save")}
+                            </Button>
                           </Group>
                         </Stack>
                       )}

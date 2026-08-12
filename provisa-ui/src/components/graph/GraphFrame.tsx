@@ -14,7 +14,7 @@
    ref reads/writes during render are intentional throughout this module. */
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { ActionIcon, Loader, Menu, Select } from "@mantine/core";
+import { ActionIcon, Loader, Menu, Select, useComputedColorScheme } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Relationship } from "../../types/admin";
 import { extractElements, injectExclusion } from "./graph-model";
@@ -101,6 +101,9 @@ export function GraphFrame({
   onEffectiveDataChange,
 }: GraphFrameProps) {
   const { t } = useTranslation();
+  // The editors sit inside the app chrome, so they follow the app's scheme rather than staying
+  // dark on a light page. undefined = CodeMirror's own light theme.
+  const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [view, setView] = useState<"graph" | "table" | "json" | "graphstats" | "code">("graph");
   const [selected, setSelectedRaw] = useState<
     { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null
@@ -484,7 +487,7 @@ export function GraphFrame({
           <CodeMirror
             className="gf-header-query-input"
             value={editQuery}
-            theme={oneDark}
+            theme={cmTheme}
             minHeight="2.8em"
             extensions={[
               ..._gfCypherLangExts,
@@ -922,7 +925,7 @@ export function GraphFrame({
               <CodeMirror
                 className="gf-json-view"
                 value={jsonStr}
-                theme={oneDark}
+                theme={cmTheme}
                 height={`${graphAreaHeight}px`}
                 readOnly
                 basicSetup={{ foldGutter: true, lineNumbers: true }}
@@ -971,7 +974,7 @@ export function GraphFrame({
             <CodeMirror
               className="gf-json-view"
               value={jsonStr}
-              theme={oneDark}
+              theme={cmTheme}
               height={`${graphAreaHeight}px`}
               readOnly
               basicSetup={{ foldGutter: true, lineNumbers: true }}

@@ -185,16 +185,16 @@ def _unwrap_type(gql_type: Any) -> Any:
     return gql_type
 
 
-def _resolve_agg_field_name(
-    schema: GraphQLSchema, table: str, group_by: bool
-) -> str | None:
+def _resolve_agg_field_name(schema: GraphQLSchema, table: str, group_by: bool) -> str | None:
     """Resolve {table}_aggregate / {table}_group_by against the live schema under either
     naming convention (snake or apollo camelCase — process-local, see naming.py), mirroring
     JSON:API's ``_resolve_query_field`` so REST doesn't hardcode one convention (REQ-1359)."""
     query_type = schema.query_type
     if query_type is None:
         return None
-    snake_suffix, camel_suffix = ("_group_by", "GroupBy") if group_by else ("_aggregate", "Aggregate")
+    snake_suffix, camel_suffix = (
+        ("_group_by", "GroupBy") if group_by else ("_aggregate", "Aggregate")
+    )
     for candidate in (f"{table}{snake_suffix}", f"{table}{camel_suffix}"):
         if candidate in query_type.fields:
             return candidate
@@ -467,10 +467,11 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
 
     @rest_router.get("/docs", include_in_schema=False)
     async def rest_docs(  # pyright: ignore[reportUnusedFunction]
+        theme: str | None = None,
     ):
-        from provisa.api.rest.openapi_spec import SWAGGER_UI_HTML
+        from provisa.api.rest.openapi_spec import swagger_ui_html
 
-        return HTMLResponse(content=SWAGGER_UI_HTML)
+        return HTMLResponse(content=swagger_ui_html(theme))
 
     @rest_router.get("/{domain_id}/{table_name}")
     async def rest_table_endpoint(  # pyright: ignore[reportUnusedFunction]
@@ -538,9 +539,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             )
             for col in group_by_cols:
                 if col not in valid_group_by_cols:
-                    raise HTTPException(
-                        status_code=400, detail=f"Unknown group-by field {col!r}"
-                    )
+                    raise HTTPException(status_code=400, detail=f"Unknown group-by field {col!r}")
             # REQ-1401: ?includeNodes=true adds a nodes { ... } sub-selection — per-group
             # row-level detail, mirroring GraphQL's {table}_group_by nodes field. REST has
             # no ?include= relationship sideloading, so this is scalar fields only.

@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "收集器批次逾時（毫秒）",
     "collectorBatchTimeoutHelp": "OTel Collector 批次處理器的逾時。",
     "saveButton": "儲存",
+    "cancelButton": "取消",
     "restartNote": "注意：端點及 service_name 的變更於下次重新啟動時生效。取樣率會立即套用。",
     "supportTitle": "支援遙測",
     "supportIntro": "可選擇將遙測轉發至 Provisa 支援。SQL 常值預設會被移除。",

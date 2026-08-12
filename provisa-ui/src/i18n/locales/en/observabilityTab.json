@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "Collector Batch Timeout (ms)",
     "collectorBatchTimeoutHelp": "OTel Collector batch processor timeout.",
     "saveButton": "Save",
+    "cancelButton": "Cancel",
     "restartNote": "Note: endpoint and service_name changes take effect on next restart. Sample rate is applied immediately.",
     "supportTitle": "Support Telemetry",
     "supportIntro": "Optionally forward telemetry to Provisa support. SQL literals are stripped by default.",

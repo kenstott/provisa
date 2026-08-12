@@ -235,21 +235,33 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  // The last state the server acknowledged, which is what Cancel restores. The switches write
+  // straight through to the parent's settings object, so without a copy taken before editing there
+  // is nothing to go back to short of reloading the page.
+  const [saved, setSaved] = useState(settings.otel);
 
   const update = (key: keyof typeof settings.otel, value: unknown) =>
     setSettings({ ...settings, otel: { ...settings.otel, [key]: value } });
+
+  const dirty = JSON.stringify(settings.otel) !== JSON.stringify(saved);
 
   const save = async () => {
     setSaving(true);
     setMsg("");
     try {
       const result = await updateSettings({ otel: settings.otel });
+      setSaved(settings.otel);
       setMsg(`Saved: ${result.updated.join(", ")}`);
     } catch (e: unknown) {
       setMsg(e instanceof Error ? e.message : t("observabilityTab.saveFailed"));
     } finally {
       setSaving(false);
     }
+  };
+
+  const cancel = () => {
+    setSettings({ ...settings, otel: saved });
+    setMsg("");
   };
 
   const active = Boolean(settings.otel.endpoint);
@@ -441,15 +453,22 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
 
         {/* One save for the whole tab: every panel edits the same otel settings object. */}
         <Group mt="md" gap="0.75rem" align="center">
-          <ActionIcon
+          <Button
             className="btn-primary"
             onClick={save}
             disabled={saving}
-            aria-label={t("observabilityTab.saveButton")}
-            title={t("observabilityTab.saveButton")}
+            leftSection={saving ? <Loader size={14} /> : <Check size={14} />}
           >
-            {saving ? <Loader size={14} /> : <Check size={14} />}
-          </ActionIcon>
+            {t("observabilityTab.saveButton")}
+          </Button>
+          <Button
+            variant="default"
+            onClick={cancel}
+            disabled={saving || !dirty}
+            leftSection={<X size={14} />}
+          >
+            {t("observabilityTab.cancelButton")}
+          </Button>
           {msg && (
             <Text className="upload-msg" size="sm">
               {msg}

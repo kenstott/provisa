@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "Collector-batchtime-out (ms)",
     "collectorBatchTimeoutHelp": "Time-out van de batchprocessor van de OTel Collector.",
     "saveButton": "Opslaan",
+    "cancelButton": "Annuleren",
     "restartNote": "Let op: wijzigingen in endpoint en service_name gaan in bij de volgende herstart. De samplefrequentie wordt direct toegepast.",
     "supportTitle": "Supporttelemetrie",
     "supportIntro": "Stuur optioneel telemetrie door naar Provisa-support. SQL-literals worden standaard verwijderd.",

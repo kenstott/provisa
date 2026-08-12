@@ -102,7 +102,7 @@ describe("ObservabilityTab subsystem trace switches", () => {
     const settings = makeSettings();
     render(<ObservabilityTab settings={settings} setSettings={vi.fn()} />);
 
-    fireEvent.click(screen.getByLabelText("Save"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(updateSettings).toHaveBeenCalledWith({ otel: settings.otel });
   });

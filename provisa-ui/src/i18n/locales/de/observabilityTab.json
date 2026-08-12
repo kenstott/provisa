@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "Collector-Batch-Timeout (ms)",
     "collectorBatchTimeoutHelp": "Timeout des Batch-Prozessors im OTel Collector.",
     "saveButton": "Speichern",
+    "cancelButton": "Abbrechen",
     "restartNote": "Hinweis: Änderungen an Endpunkt und service_name greifen erst nach dem nächsten Neustart. Die Sampling-Rate wird sofort angewendet.",
     "supportTitle": "Support-Telemetrie",
     "supportIntro": "Telemetrie optional an den Provisa-Support weiterleiten. SQL-Literale werden standardmäßig entfernt.",

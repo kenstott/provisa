@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "コレクターバッチタイムアウト(ms)",
     "collectorBatchTimeoutHelp": "OTel Collector のバッチプロセッサーのタイムアウトです。",
     "saveButton": "保存",
+    "cancelButton": "キャンセル",
     "restartNote": "注意: endpoint と service_name の変更は次回再起動時に反映されます。サンプルレートは即時に適用されます。",
     "supportTitle": "サポートテレメトリー",
     "supportIntro": "任意で Provisa サポートにテレメトリーを転送できます。SQL リテラルはデフォルトで除去されます。",

@@ -27,6 +27,7 @@
 
 import { installFirebaseTokenSync } from "./lib/firebase";
 import { isSiblingOrigin } from "./lib/authHost";
+import { currentBearer } from "./lib/authFetch";
 
 /** Parent → relay: "send me the current bearer". */
 const REQUEST = "provisa-auth-request";
@@ -35,21 +36,19 @@ const TOKEN = "provisa-auth-token";
 /** Relay → parent: "I am listening", so the parent can request without racing frame load. */
 const READY = "provisa-auth-ready";
 
-// The relay reads the same key authFetch reads rather than calling Firebase directly, so it
-// serves every auth mode the deployment supports (Firebase social/email, and basic auth, whose
-// token never passes through Firebase at all). installFirebaseTokenSync has already settled by
-// the time this runs, so on a Firebase deploy the key holds a freshly-rotated token.
-function currentToken(): string | null {
-  return localStorage.getItem("provisa_token");
-}
-
+// REQ-1434: ask Firebase for the current token rather than reading the mirrored copy. The copy is
+// only as fresh as the last rotation, and this frame is loaded on demand — often in a tab that has
+// been idle long enough for the mirror to have expired, which would hand the org subdomain a dead
+// bearer it has no way to refresh. currentBearer falls back to the stored key for the auth modes
+// that never pass through Firebase (basic auth).
 function onMessage(event: MessageEvent): void {
   if (event.data?.type !== REQUEST) return;
   if (!isSiblingOrigin(event.origin)) return;
-  (event.source as WindowProxy | null)?.postMessage(
-    { type: TOKEN, token: currentToken() },
-    event.origin,
-  );
+  const source = event.source as WindowProxy | null;
+  const origin = event.origin;
+  void currentBearer().then((token) => {
+    source?.postMessage({ type: TOKEN, token }, origin);
+  });
 }
 
 async function main(): Promise<void> {

@@ -186,9 +186,7 @@ class TestCommandPaths:
         assert op["operationId"] == "call_random_python_set"
 
     def test_command_domain_filter_excludes(self):
-        spec = generate_rest_openapi_spec(
-            self._state_with_commands(), "admin", domains=["other"]
-        )
+        spec = generate_rest_openapi_spec(self._state_with_commands(), "admin", domains=["other"])
         assert not any("/commands/" in p for p in spec["paths"])
 
 
@@ -364,3 +362,34 @@ class TestDomainFilter:
         spec = generate_rest_openapi_spec(state, "admin", domains=["sales"])
         assert "/sales/orders" in spec["paths"]
         assert "/catalog/products" not in spec["paths"]
+
+
+class TestSwaggerUiTheme:
+    """REQ-1434: the docs page carries the app's colour scheme in its markup.
+
+    The UI loads this page into a ``srcDoc`` iframe (so the request can carry the bearer), and a
+    srcdoc document's location is ``about:srcdoc`` — it has no query string. Reading ?theme in the
+    browser therefore always missed, and the frame rendered dark inside a light app.
+    """
+
+    def test_light_renders_without_the_dark_class(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        assert '<html lang="en" class="">' in swagger_ui_html("light")
+
+    def test_dark_is_stamped_on_the_root_element(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        assert '<html lang="en" class="dark-mode">' in swagger_ui_html("dark")
+
+    def test_a_direct_visit_with_no_theme_is_dark(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        assert '<html lang="en" class="dark-mode">' in swagger_ui_html(None)
+
+    def test_the_page_never_reads_the_theme_from_the_url(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light")
+        assert "__PROVISA_THEME_CLASS__" not in html
+        assert 'get("theme")' not in html

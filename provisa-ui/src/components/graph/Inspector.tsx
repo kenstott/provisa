@@ -14,7 +14,17 @@
 
 import { useRef, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Badge, Button, Menu, Table, Text, TextInput, Tooltip } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Menu,
+  Table,
+  Text,
+  TextInput,
+  Tooltip,
+  useComputedColorScheme,
+} from "@mantine/core";
 import { Braces, Check, ChevronRight, Copy, X } from "lucide-react";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor, getStableNodeId } from "./graph-model";
@@ -62,6 +72,7 @@ export function Inspector({
   pkMap,
 }: InspectorProps) {
   const { t } = useTranslation();
+  const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [inspView, setInspView] = useState<"details" | "json">("details");
   const [showPalette, setShowPalette] = useState(false);
   const [edgeCql, setEdgeCql] = useState("");
@@ -434,7 +445,7 @@ export function Inspector({
         <CodeMirror
           value={JSON.stringify(selected.data, null, 2)}
           extensions={[jsonLang()]}
-          theme={oneDark}
+          theme={cmTheme}
           basicSetup={{ foldGutter: true, lineNumbers: false, highlightActiveLine: false }}
           readOnly
           style={{ fontSize: 12, flex: 1, overflow: "auto" }}

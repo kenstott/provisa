@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "Tempo limite do lote do coletor (ms)",
     "collectorBatchTimeoutHelp": "Tempo limite do processador de lotes do OTel Collector.",
     "saveButton": "Salvar",
+    "cancelButton": "Cancelar",
     "restartNote": "Observação: alterações de endpoint e service_name entram em vigor na próxima reinicialização. A taxa de amostragem é aplicada imediatamente.",
     "supportTitle": "Telemetria de suporte",
     "supportIntro": "Opcionalmente, encaminhe telemetria ao suporte da Provisa. Literais SQL são removidos por padrão.",

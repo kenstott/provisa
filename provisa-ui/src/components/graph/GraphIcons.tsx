@@ -15,12 +15,11 @@ interface IconProps {
 export function DatabaseIcon({ size = 16 }: IconProps) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="8" cy="3" r="1.8" fill="currentColor" stroke="none"/>
-      <circle cx="3" cy="12.5" r="1.8" fill="currentColor" stroke="none"/>
-      <circle cx="13" cy="12.5" r="1.8" fill="currentColor" stroke="none"/>
-      <line x1="8" y1="4.8" x2="3.9" y2="10.8"/>
-      <line x1="8" y1="4.8" x2="12.1" y2="10.8"/>
-      <line x1="4.8" y1="12.5" x2="11.2" y2="12.5"/>
+      {/* The stacked-cylinder database glyph. The three-dot version this replaced read as a
+          share/network icon, which is what the neighbouring graph controls mean. */}
+      <ellipse cx="8" cy="3.6" rx="5" ry="2.1"/>
+      <path d="M3 3.6v8.8c0 1.16 2.24 2.1 5 2.1s5-.94 5-2.1V3.6"/>
+      <path d="M3 8c0 1.16 2.24 2.1 5 2.1s5-.94 5-2.1"/>
     </svg>
   );
 }

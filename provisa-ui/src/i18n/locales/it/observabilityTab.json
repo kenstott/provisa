@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "Timeout batch del collector (ms)",
     "collectorBatchTimeoutHelp": "Timeout del processore batch del Collector OTel.",
     "saveButton": "Salva",
+    "cancelButton": "Annulla",
     "restartNote": "Nota: le modifiche a endpoint e service_name hanno effetto al prossimo riavvio. La frequenza di campionamento viene applicata immediatamente.",
     "supportTitle": "Telemetria di supporto",
     "supportIntro": "Inoltro facoltativo della telemetria al supporto Provisa. I letterali SQL vengono rimossi per impostazione predefinita.",

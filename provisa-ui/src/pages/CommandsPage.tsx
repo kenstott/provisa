@@ -446,22 +446,22 @@ export function CommandsPage() {
                           <Stack component="form" gap="sm" onSubmit={handleSave}>
                             <CommandFormFields {...formFieldsProps} />
                             <Group justify="flex-end">
-                              <ActionIcon
+                              <Button
                                 type="button"
                                 variant="default"
-                                aria-label={t("commandsPage.cancelAria")}
+                                leftSection={<X size={14} />}
                                 onClick={handleCancel}
                               >
-                                <X size={14} />
-                              </ActionIcon>
-                              <ActionIcon
+                                {t("commandsPage.cancelAria")}
+                              </Button>
+                              <Button
                                 type="submit"
                                 variant="filled"
-                                aria-label={t("commandsPage.saveAria")}
+                                leftSection={<Check size={14} />}
                                 disabled={saving}
                               >
-                                <Check size={14} />
-                              </ActionIcon>
+                                {t("commandsPage.saveAria")}
+                              </Button>
                             </Group>
                           </Stack>
                         ) : (
@@ -692,22 +692,22 @@ export function CommandsPage() {
                           <Stack component="form" gap="sm" onSubmit={handleSave}>
                             <CommandFormFields {...formFieldsProps} />
                             <Group justify="flex-end">
-                              <ActionIcon
+                              <Button
                                 type="button"
                                 variant="default"
-                                aria-label={t("commandsPage.cancelAria")}
+                                leftSection={<X size={14} />}
                                 onClick={handleCancel}
                               >
-                                <X size={14} />
-                              </ActionIcon>
-                              <ActionIcon
+                                {t("commandsPage.cancelAria")}
+                              </Button>
+                              <Button
                                 type="submit"
                                 variant="filled"
-                                aria-label={t("commandsPage.saveAria")}
+                                leftSection={<Check size={14} />}
                                 disabled={saving}
                               >
-                                <Check size={14} />
-                              </ActionIcon>
+                                {t("commandsPage.saveAria")}
+                              </Button>
                             </Group>
                           </Stack>
                         ) : (

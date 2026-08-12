@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "कलेक्टर बैच टाइमआउट (ms)",
     "collectorBatchTimeoutHelp": "OTel कलेक्टर बैच प्रोसेसर टाइमआउट।",
     "saveButton": "सहेजें",
+    "cancelButton": "रद्द करें",
     "restartNote": "नोट: endpoint और service_name के परिवर्तन अगले रीस्टार्ट पर प्रभावी होते हैं। सैंपल दर तुरंत लागू होती है।",
     "supportTitle": "सपोर्ट टेलीमेट्री",
     "supportIntro": "वैकल्पिक रूप से टेलीमेट्री Provisa सपोर्ट को भेजें। SQL लिटरल डिफ़ॉल्ट रूप से हटा दिए जाते हैं।",

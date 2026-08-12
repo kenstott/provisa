@@ -361,16 +361,19 @@ export function AdminPage() {
                   <Stack gap="sm">
                     <Checkbox
                       label={t("adminPage.enabled")}
+                      description={t("adminPage.enabledHint")}
                       checked={settings.redirect.enabled}
                       onChange={(e) => updateRedirect("enabled", e.currentTarget.checked)}
                     />
                     <NumberInput
                       label={t("adminPage.defaultThreshold")}
+                      description={t("adminPage.defaultThresholdHint")}
                       value={settings.redirect.threshold}
                       onChange={(v) => updateRedirect("threshold", typeof v === "number" ? v : 0)}
                     />
                     <Select
                       label={t("adminPage.defaultFormat")}
+                      description={t("adminPage.defaultFormatHint")}
                       data={FORMAT_OPTIONS}
                       value={settings.redirect.default_format}
                       onChange={(v) => v && updateRedirect("default_format", v)}
@@ -378,6 +381,7 @@ export function AdminPage() {
                     />
                     <NumberInput
                       label={t("adminPage.presignedUrlTtl")}
+                      description={t("adminPage.presignedUrlTtlHint")}
                       value={settings.redirect.ttl}
                       onChange={(v) => updateRedirect("ttl", typeof v === "number" ? v : 0)}
                     />
@@ -391,6 +395,7 @@ export function AdminPage() {
                   <Stack gap="sm">
                     <Checkbox
                       label={t("adminPage.domainPrefix")}
+                      description={t("adminPage.domainPrefixHint")}
                       checked={settings.naming.domain_prefix}
                       onChange={(e) =>
                         setSettings({
@@ -401,6 +406,7 @@ export function AdminPage() {
                     />
                     <Select
                       label={t("adminPage.namingConvention")}
+                      description={t("adminPage.namingConventionHint")}
                       data={[
                         { value: "none", label: t("adminPage.namingConventionNone") },
                         { value: "snake_case", label: t("adminPage.namingConventionSnake") },
@@ -419,6 +425,7 @@ export function AdminPage() {
                     />
                     <Select
                       label={t("adminPage.domainMode")}
+                      description={t("adminPage.domainModeHint")}
                       data={[
                         { value: "legacy", label: t("adminPage.domainModeLegacy") },
                         { value: "single", label: t("adminPage.domainModeSingle") },
@@ -438,6 +445,7 @@ export function AdminPage() {
                     />
                     <TextInput
                       label={t("adminPage.defaultDomain")}
+                      description={t("adminPage.defaultDomainHint")}
                       value={policyDefaultDomain}
                       disabled={policyUseDomains !== false}
                       onChange={(e) => setPolicyDefaultDomain(e.currentTarget.value)}
@@ -465,6 +473,7 @@ export function AdminPage() {
                   </Title>
                   <NumberInput
                     label={t("adminPage.defaultSampleSize")}
+                    description={t("adminPage.defaultSampleSizeHint")}
                     value={settings.sampling.default_sample_size}
                     onChange={(v) =>
                       setSettings({
@@ -499,6 +508,7 @@ export function AdminPage() {
                   </Title>
                   <NumberInput
                     label={t("adminPage.defaultTtl")}
+                    description={t("adminPage.defaultTtlHint")}
                     value={settings.cache.default_ttl}
                     onChange={(v) =>
                       setSettings({
@@ -516,6 +526,7 @@ export function AdminPage() {
                   <Stack gap="sm">
                     <NumberInput
                       label={t("adminPage.maxObjectDepth")}
+                      description={t("adminPage.maxObjectDepthHint")}
                       min={1}
                       value={settings.graphql_remote.max_object_depth}
                       onChange={(v) =>
@@ -530,6 +541,7 @@ export function AdminPage() {
                     />
                     <NumberInput
                       label={t("adminPage.maxListDepth")}
+                      description={t("adminPage.maxListDepthHint")}
                       min={1}
                       value={settings.graphql_remote.max_list_depth}
                       onChange={(v) =>
@@ -544,6 +556,7 @@ export function AdminPage() {
                     />
                     <NumberInput
                       label={t("adminPage.maxListItems")}
+                      description={t("adminPage.maxListItemsHint")}
                       min={1}
                       value={settings.graphql_remote.max_list_items}
                       onChange={(v) =>
@@ -560,15 +573,14 @@ export function AdminPage() {
                 </Card>
 
                 <Group gap="sm" align="center">
-                  <ActionIcon
+                  <Button
                     variant="filled"
-                    size="lg"
-                    aria-label={t("adminPage.saveSettings")}
+                    leftSection={<Check size={14} />}
                     onClick={saveSettings}
                     loading={settingsSaving}
                   >
-                    <Check size={14} />
-                  </ActionIcon>
+                    {t("adminPage.saveSettings")}
+                  </Button>
                   {settingsMsg && <Text fz="sm">{settingsMsg}</Text>}
                 </Group>
               </SimpleGrid>

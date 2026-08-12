@@ -212,6 +212,31 @@ export function installFirebaseTokenSync(): Promise<void> {
   });
 }
 
+/**
+ * REQ-1434: the bearer to send right now, refreshed if the stored copy has expired.
+ *
+ * `installFirebaseTokenSync` mirrors the token into localStorage whenever the SDK rotates it, but
+ * that rotation only happens while the tab is running: after a laptop sleeps, a background tab is
+ * throttled, or a refresh fails transiently (REQ-1318 deliberately keeps the old token in that
+ * case), the mirrored copy is expired and every request made before the next rotation sends it —
+ * which is what "Invalid or expired token" on a query the user just typed means.
+ *
+ * `getIdToken()` returns the cached token and transparently mints a new one when it is expired or
+ * near expiry, so asking at request time closes that window. The result is written back so the
+ * mirror stays current for the org-subdomain relay, which reads the same key.
+ *
+ * Returns null when this deploy has no Firebase session to ask — a basic-auth JWT or a token
+ * borrowed by an org subdomain lives only in localStorage, and the caller uses it as-is.
+ */
+export async function currentFirebaseToken(): Promise<string | null> {
+  if (!hasFirebaseConfig()) return null;
+  const user = firebaseAuth().currentUser;
+  if (!user) return null;
+  const token = await user.getIdToken();
+  localStorage.setItem("provisa_token", token);
+  return token;
+}
+
 // Tear down the Firebase session so a later sign-in shows the Google account chooser
 // instead of silently reusing the persisted account. No-op on basic/none deploys (no
 // firebase config), so logout stays safe for every provider.

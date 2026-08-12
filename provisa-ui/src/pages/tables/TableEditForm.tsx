@@ -12,9 +12,9 @@ import { Fragment, useEffect, useState } from "react";
 import { Check, X, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionIcon,
   Alert,
   Badge,
+  Button,
   Checkbox,
   Group,
   NumberInput,
@@ -961,35 +961,30 @@ export function TableEditForm({
         </Table.Tbody>
       </Table>
       <Group justify="flex-end" gap="sm" p="0.75rem 0.5rem">
-        <Tooltip label={t("tableEditForm.cancel")}>
-          <ActionIcon
-            variant="subtle"
-            aria-label={t("tableEditForm.cancel")}
-            data-testid="table-edit-cancel"
-            onClick={cancelEditing}
-            disabled={saving}
-          >
-            <X size={14} />
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip label={t("tableEditForm.save")}>
-          <ActionIcon
-            variant="filled"
-            aria-label={t("tableEditForm.save")}
-            data-testid="table-edit-save"
-            onClick={handleSaveEdit}
-            disabled={saving}
-          >
-            {saving ? (
-              <Loader2
-                size={14}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
+        <Button
+          variant="default"
+          leftSection={<X size={14} />}
+          data-testid="table-edit-cancel"
+          onClick={cancelEditing}
+          disabled={saving}
+        >
+          {t("tableEditForm.cancel")}
+        </Button>
+        <Button
+          variant="filled"
+          leftSection={
+            saving ? (
+              <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
             ) : (
               <Check size={14} />
-            )}
-          </ActionIcon>
-        </Tooltip>
+            )
+          }
+          data-testid="table-edit-save"
+          onClick={handleSaveEdit}
+          disabled={saving}
+        >
+          {t("tableEditForm.save")}
+        </Button>
       </Group>
     </>
   );

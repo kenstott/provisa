@@ -12,7 +12,7 @@
 import { useRef, useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useMantineColorScheme } from "@mantine/core";
+import { useComputedColorScheme } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import "./OpenApiPage.css";
@@ -20,7 +20,9 @@ import "./OpenApiPage.css";
 export function OpenApiPage() {
   const { t } = useTranslation();
   const location = useLocation();
-  const { colorScheme } = useMantineColorScheme();
+  // Computed, not the raw setting: the raw value is "auto" when the user follows the system, and
+  // "auto" is not "light", so the docs frame rendered dark on a light app.
+  const colorScheme = useComputedColorScheme("light");
   const { role, loading: authLoading } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const roleId = role?.id ?? "";

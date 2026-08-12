@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "פסק זמן אצווה של Collector‏ (ms)",
     "collectorBatchTimeoutHelp": "פסק זמן של מעבד האצוות ב-OTel Collector.",
     "saveButton": "שמירה",
+    "cancelButton": "ביטול",
     "restartNote": "הערה: שינויים ב-endpoint וב-service_name נכנסים לתוקף בהפעלה הבאה. קצב הדגימה חל מיידית.",
     "supportTitle": "טלמטריית תמיכה",
     "supportIntro": "ניתן להעביר טלמטריה לתמיכה של Provisa. ליטרלים של SQL מוסרים כברירת מחדל.",

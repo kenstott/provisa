@@ -11,7 +11,6 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -186,26 +185,24 @@ function MetricFormCard({
         </Alert>
       )}
       <Group justify="flex-end" gap="sm">
-        <ActionIcon
-          variant="subtle"
-          aria-label={t("metricsPage.cancel")}
-          title={t("metricsPage.cancel")}
+        <Button
+          variant="default"
+          leftSection={<X size={14} />}
           onClick={onCancel}
           data-testid="metric-cancel-button"
         >
-          <X size={14} />
-        </ActionIcon>
-        <ActionIcon
+          {t("metricsPage.cancel")}
+        </Button>
+        <Button
           variant="filled"
-          aria-label={t("metricsPage.save")}
-          title={t("metricsPage.save")}
+          leftSection={<Check size={14} />}
           onClick={onSave}
           loading={saving}
           disabled={!form.name.trim() || !form.expression.trim()}
           data-testid="metric-save-button"
         >
-          <Check size={14} />
-        </ActionIcon>
+          {t("metricsPage.save")}
+        </Button>
       </Group>
     </Stack>
   );

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ActionIcon } from "@mantine/core";
+import { ActionIcon, useComputedColorScheme } from "@mantine/core";
 import { CirclePlus, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import CodeMirror from "@uiw/react-codemirror";
@@ -56,6 +56,7 @@ export function QueryBar({
   onToggleAutoImpute,
 }: QueryBarProps) {
   const { t } = useTranslation();
+  const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
   const viewRef = useRef<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
@@ -120,7 +121,7 @@ export function QueryBar({
           <CodeMirror
             className="graph-query-input"
             value={query}
-            theme={oneDark}
+            theme={cmTheme}
             extensions={[
               ..._cypherLangExts,
               cypherLinter({ showErrors: false }),

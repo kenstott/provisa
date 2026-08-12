@@ -10,24 +10,28 @@
 
 import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from "@apollo/client";
 import { map } from "rxjs/operators";
-import { ORG_HEADER } from "./lib/authFetch";
+import { currentBearer, ORG_HEADER } from "./lib/authFetch";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 const httpLink = new HttpLink({
   uri: `${API_BASE}/admin/graphql`,
   credentials: "include",
+  // REQ-1434: the bearer is attached here rather than in a link because it has to be awaited —
+  // a Firebase session re-mints an expired token on demand, and a link runs synchronously, so a
+  // link can only read the mirrored copy, which is stale after a sleep or a throttled tab.
+  fetch: async (input, init) => {
+    const token = await currentBearer();
+    const headers = new Headers(init?.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return fetch(input, { ...init, headers });
+  },
 });
 
 const authLink = new ApolloLink((operation, forward) => {
-  const token = localStorage.getItem("provisa_token");
   const orgId = localStorage.getItem("provisa_org");
-  const headers: Record<string, string> = {};
-  if (token) headers["authorization"] = `Bearer ${token}`;
-  if (orgId) headers[ORG_HEADER] = orgId; // REQ-1317: the name the middleware reads.
-  if (Object.keys(headers).length > 0) {
-    operation.setContext({ headers });
-  }
+  // REQ-1317: the name the middleware reads.
+  if (orgId) operation.setContext({ headers: { [ORG_HEADER]: orgId } });
   return forward(operation);
 });
 

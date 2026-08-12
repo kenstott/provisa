@@ -44019,3 +44019,45 @@
   related_reqs:
   - REQ-1337
   - REQ-1416
+- id: REQ-1434
+  status: complete
+  since: 2026-08
+  group: 06. User Interface & Experience
+  category: UI
+  priority: MUST
+  type: behavioral
+  description: >-
+    The bearer token is asked for at request time rather than read from the copy mirrored into
+    localStorage on the last rotation. window.fetch, Apollo's HttpLink fetch, and the
+    cross-subdomain auth relay all resolve currentBearer(), which asks a live Firebase session for
+    its current token - the SDK re-mints an expired one - and writes it back to storage; deploys
+    with no Firebase session (basic auth, an org subdomain holding a borrowed copy) keep storage as
+    their only source. The Swagger UI explorer receives its light/dark theme stamped into the
+    server-rendered HTML because a srcdoc frame has no location.search to read it from, and the
+    CodeMirror panels on the graph and SQL explorers resolve the computed color scheme instead of
+    rendering a fixed palette. Every save and cancel control shows a text label beside its icon
+    rather than being icon-only, the observability subsystem panel offers a Cancel that restores
+    the last server-acknowledged values, and each Platform Settings control carries inline
+    descriptive help.
+  use_case: >-
+    A user leaves a query tab idle past the token lifetime, returns, and runs a GraphQL query - it
+    succeeds instead of answering "Invalid or expired token".
+  code:
+  - provisa-ui/src/lib/firebase.ts
+  - provisa-ui/src/lib/authFetch.ts
+  - provisa-ui/src/apolloClient.ts
+  - provisa-ui/src/authRelay.ts
+  - provisa-ui/src/components/admin/ObservabilityTab.tsx
+  - provisa-ui/src/pages/AdminPage.tsx
+  - provisa/api/rest/openapi_spec.py
+  tests:
+  - provisa-ui/src/__tests__/requestTimeToken.test.ts
+  - provisa-ui/src/__tests__/crossSubdomainAuth.test.ts
+  scenario: |-
+    Given the token mirrored in localStorage has expired
+    When the page issues an authenticated request
+    Then Firebase mints a current token and that token is sent
+  related_reqs:
+  - REQ-1266
+  - REQ-1318
+  - REQ-1317

@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "Тайм-аут пакетов коллектора (мс)",
     "collectorBatchTimeoutHelp": "Тайм-аут пакетного процессора OTel Collector.",
     "saveButton": "Сохранить",
+    "cancelButton": "Отмена",
     "restartNote": "Примечание: изменения endpoint и service_name вступают в силу после следующего перезапуска. Частота выборки применяется сразу.",
     "supportTitle": "Телеметрия поддержки",
     "supportIntro": "При желании отправляйте телеметрию в поддержку Provisa. Литералы SQL по умолчанию удаляются.",

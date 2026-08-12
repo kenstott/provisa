@@ -23,6 +23,7 @@ import {
   Textarea,
   TextInput,
   Title,
+  useComputedColorScheme,
 } from "@mantine/core";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -85,6 +86,8 @@ export function ViewModal({
   onCloseConfirmation,
 }: ViewModalProps) {
   const { t } = useTranslation();
+  // Follows the app colour scheme; undefined = CodeMirror's own light theme.
+  const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
 
   const closeConfirmation = () => {
     setSavedViewId(null);
@@ -196,7 +199,7 @@ export function ViewModal({
             <CodeMirror
               value={viewSqlNormalized}
               extensions={viewSqlExtensions}
-              theme={oneDark}
+              theme={cmTheme}
               editable={false}
               height="100%"
               basicSetup={{ lineNumbers: false, foldGutter: false }}

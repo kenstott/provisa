@@ -56,9 +56,7 @@ def _agg_result_schema(
         if cols:
             props[func_name] = {
                 "type": "object",
-                "properties": {
-                    c: col_schemas.get(c, {"type": "string"}) for c in cols
-                },
+                "properties": {c: col_schemas.get(c, {"type": "string"}) for c in cols},
             }
     return {"type": "object", "properties": props}
 
@@ -319,7 +317,7 @@ def generate_rest_openapi_spec(
                     "description": (
                         "Attach a nodes array of the underlying rows to each group "
                         "(REQ-1401). `true` attaches every field; a JSON array of "
-                        "dot-notated paths (e.g. `[\"user_id\",\"user.email\"]`) projects "
+                        'dot-notated paths (e.g. `["user_id","user.email"]`) projects '
                         "to just those fields — a bare path names a scalar field on the "
                         "row, each further dot segment names a scalar field one more "
                         "relationship hop away (REQ-1402). Handled by generator.py's "
@@ -424,9 +422,7 @@ def generate_rest_openapi_spec(
                 "requestBody": {
                     "required": bool(arg_props),
                     "content": {
-                        "application/json": {
-                            "schema": {"type": "object", "properties": arg_props}
-                        }
+                        "application/json": {"schema": {"type": "object", "properties": arg_props}}
                     },
                 },
                 "responses": {
@@ -490,22 +486,16 @@ def _empty_spec() -> dict[str, Any]:
     }
 
 
+_THEME_CLASS_SLOT = "__PROVISA_THEME_CLASS__"
+
 SWAGGER_UI_HTML = """\
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="__PROVISA_THEME_CLASS__">
 <head>
   <meta charset="UTF-8" />
   <title>Provisa REST API</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
-  <script>
-    // Apply the app's theme (passed via ?theme=dark|light) before paint so the
-    // page never flashes the wrong scheme. Defaults to dark when absent.
-    (function () {
-      var theme = new URLSearchParams(window.location.search).get("theme");
-      if (theme !== "light") document.documentElement.classList.add("dark-mode");
-    })();
-  </script>
   <style>
     /* Provisa design tokens — light defaults, dark overrides below */
     :root {
@@ -718,3 +708,17 @@ SWAGGER_UI_HTML = """\
 </body>
 </html>
 """
+
+
+def swagger_ui_html(theme: str | None) -> str:
+    """The Swagger UI page with the app's colour scheme already applied.
+
+    The theme is stamped into the markup rather than read from ``location.search`` in the browser:
+    the UI loads this page into a ``srcDoc`` iframe so it can attach the bearer token, and a
+    srcdoc document's location is ``about:srcdoc`` — it carries no query string, so the page read
+    no theme and every deployment rendered dark on a light app.
+
+    Anything other than "light" is dark, which is what a direct visit to /data/rest/docs (no theme
+    param, no app around it) gets.
+    """
+    return SWAGGER_UI_HTML.replace(_THEME_CLASS_SLOT, "" if theme == "light" else "dark-mode")

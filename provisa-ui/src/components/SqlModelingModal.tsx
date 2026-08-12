@@ -30,6 +30,7 @@ import {
   Tabs,
   Text,
   TextInput,
+  useComputedColorScheme,
 } from "@mantine/core";
 import { runSql, nlToSql } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
@@ -55,6 +56,8 @@ import { HistoryPanel } from "./sql-modeling/HistoryPanel";
 
 export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: Props) {
   const { t } = useTranslation();
+  // Follows the app colour scheme; undefined = CodeMirror's own light theme.
+  const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [topTab, setTopTab] = useState<TopTab>("sql");
   const [sqlText, setSqlText] = useState("");
   const [role, setRole] = useState("admin");
@@ -683,7 +686,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                   <CodeMirror
                     value={sqlText}
                     height="220px"
-                    theme={oneDark}
+                    theme={cmTheme}
                     extensions={sqlExtensions}
                     onChange={(v) => setSqlText(v)}
                     onCreateEditor={(view) => {

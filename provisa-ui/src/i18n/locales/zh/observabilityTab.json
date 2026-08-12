@@ -42,6 +42,7 @@
     "collectorBatchTimeoutLabel": "收集器批处理超时（毫秒）",
     "collectorBatchTimeoutHelp": "OTel Collector 批处理器超时。",
     "saveButton": "保存",
+    "cancelButton": "取消",
     "restartNote": "注意：终结点和 service_name 的更改在下次重启时生效。采样率立即生效。",
     "supportTitle": "支持遥测",
     "supportIntro": "可选择将遥测数据转发给 Provisa 支持团队。默认剥离 SQL 字面量。",

@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { currentFirebaseToken } from "./firebase";
+
 // REQ-1267: on an auth-enforced deploy (firebase/basic) the bearer token lives in
 // localStorage and must ride on EVERY same-origin request. The Apollo link already adds it
 // for GraphQL, but the ~100 REST fetch() call sites (api/*.ts, pages, hooks) did not — so
@@ -24,6 +26,20 @@
 // unconditionally.
 export const ORG_HEADER = "X-Org-Provisa";
 
+/**
+ * REQ-1434: the bearer to put on the next request.
+ *
+ * A live Firebase session is asked for its current token, which the SDK re-mints when the one it
+ * holds has expired. Deployments without one (basic auth; an org subdomain holding a copy borrowed
+ * from the control plane, refreshed on its own interval by crossSubdomainAuth) keep the stored
+ * token as their only bearer — this is the whole set of token sources, not a guess at one.
+ */
+export async function currentBearer(): Promise<string | null> {
+  const live = await currentFirebaseToken();
+  if (live !== null) return live;
+  return localStorage.getItem("provisa_token");
+}
+
 /** Wrap window.fetch to attach `Authorization: Bearer <provisa_token>` to same-origin requests. */
 export function installAuthFetch(): void {
   const originalFetch = window.fetch.bind(window);
@@ -36,8 +52,8 @@ export function installAuthFetch(): void {
     return url.startsWith(window.location.origin);
   };
 
-  window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const token = localStorage.getItem("provisa_token");
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const token = await currentBearer();
     const orgId = localStorage.getItem("provisa_org");
     if (!token) return originalFetch(input, init);
 
