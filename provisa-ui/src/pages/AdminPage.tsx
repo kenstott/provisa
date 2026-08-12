@@ -68,6 +68,7 @@ import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { ConfigDiffView } from "../components/admin/ConfigDiffView";
+import { PageLoading } from "../components/PageLoading";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
 
@@ -323,7 +324,7 @@ export function AdminPage() {
     setDomainMsg(t("adminPage.domainDeleted", { id }));
   };
 
-  if (loading) return <div className="page">{t("adminPage.loading")}</div>;
+  if (loading) return <PageLoading message={t("adminPage.loading")} />;
 
   return (
     <div className="page">

@@ -43991,3 +43991,31 @@
   - REQ-302
   - REQ-303
   - REQ-545
+- id: REQ-1433
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: Infrastructure
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Restarting the query engine from the admin console speaks the Docker Engine API over the
+    bind-mounted socket rather than shelling out to a docker CLI, which the app image does not
+    carry. The container name comes from the request, else QUERY_ENGINE_CONTAINER, else discovery
+    against the containers docker reports - matching the engine name as a whole name component, so
+    compose's compose-trino-1 is found where the bare engine name was not. Two matches are refused
+    rather than guessed, and an unmounted socket is reported as such.
+  use_case: >-
+    A platform admin presses Restart Engine on a compose deployment and the engine restarts,
+    instead of the request failing with "docker not found on PATH".
+  code:
+  - provisa/api/admin/settings_router.py
+  tests:
+  - tests/unit/test_query_engine_restart.py
+  scenario: |-
+    Given the docker socket is mounted and the engine runs as compose-trino-1
+    When a platform admin restarts the query engine
+    Then the container compose-trino-1 is restarted through the socket
+  related_reqs:
+  - REQ-1337
+  - REQ-1416

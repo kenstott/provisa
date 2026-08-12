@@ -68,6 +68,7 @@ import {
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { SourceFormFields } from "./sources/SourceFormFields";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
+import { PageLoading } from "../components/PageLoading";
 
 export function SourcesPage() {
   const { t } = useTranslation();
@@ -893,7 +894,7 @@ export function SourcesPage() {
     grpcCacheTtl, setGrpcCacheTtl,
   };
 
-  if (loading) return <div className="page">{t("sourcesPage.loading")}</div>;
+  if (loading) return <PageLoading message={t("sourcesPage.loading")} />;
 
   return (
     <div className="page">

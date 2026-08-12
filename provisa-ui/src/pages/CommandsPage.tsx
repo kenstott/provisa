@@ -53,6 +53,7 @@ import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
 import { EMPTY_FORM, deriveReturnSchema, columnsFromReturnSchema } from "./commands/types";
 import { CommandFormFields } from "./commands/CommandFormFields";
+import { PageLoading } from "../components/PageLoading";
 
 export function CommandsPage() {
   const { t } = useTranslation();
@@ -280,7 +281,7 @@ export function CommandsPage() {
     loadingFunctions,
   };
 
-  if (loading) return <Text p="md">{t("commandsPage.loading")}</Text>;
+  if (loading) return <PageLoading message={t("commandsPage.loading")} />;
 
   // Hide rows whose domain is unchecked in the NavBar domain filter (an empty set = show all),
   // matching the TablesPage/SqlPage convention. Rows with no domain are always shown.

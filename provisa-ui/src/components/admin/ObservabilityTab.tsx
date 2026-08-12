@@ -22,6 +22,7 @@ import {
   Switch,
   Text,
   TextInput,
+  Tabs,
   Title,
 } from "@mantine/core";
 import { Check, Pause, Play, Maximize2, X } from "lucide-react";
@@ -82,7 +83,9 @@ function TraceList({
     <div className="trace-feed-list" ref={listRef}>
       {visible.length === 0 ? (
         <Text className="trace-empty" size="sm" c="dimmed">
-          {traces.length === 0 ? t("observabilityTab.noSpansYet") : t("observabilityTab.noSpansMatch")}
+          {traces.length === 0
+            ? t("observabilityTab.noSpansYet")
+            : t("observabilityTab.noSpansMatch")}
         </Text>
       ) : (
         visible.map((tr) => (
@@ -182,7 +185,10 @@ function TraceFeed() {
         </ActionIcon>
         <ActionIcon
           className="trace-expand-btn"
-          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
           aria-label={expanded ? t("observabilityTab.collapse") : t("observabilityTab.expand")}
           title={expanded ? t("observabilityTab.collapse") : t("observabilityTab.expand")}
           variant="subtle"
@@ -196,10 +202,14 @@ function TraceFeed() {
   return (
     <>
       <div className="trace-feed">
-        <div className="trace-feed-header">
-          {headerContent}
-        </div>
-        <TraceList traces={traces} filter={filter} selected={selected} setSelected={setSelected} listRef={listRef} />
+        <div className="trace-feed-header">{headerContent}</div>
+        <TraceList
+          traces={traces}
+          filter={filter}
+          selected={selected}
+          setSelected={setSelected}
+          listRef={listRef}
+        />
       </div>
       <Modal
         opened={expanded}
@@ -209,7 +219,12 @@ function TraceFeed() {
         transitionProps={{ duration: 0 }}
       >
         <div style={{ height: "80vh", overflow: "auto" }}>
-          <TraceList traces={traces} filter={filter} selected={selected} setSelected={setSelected} />
+          <TraceList
+            traces={traces}
+            filter={filter}
+            selected={selected}
+            setSelected={setSelected}
+          />
         </div>
       </Modal>
     </>
@@ -242,7 +257,6 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
   return (
     <div className="observability-layout">
       <div className="settings-section">
-        <Title order={4}>{t("observabilityTab.otelTitle")}</Title>
         <Text c="dimmed" size="sm" mb="md">
           {t("observabilityTab.statusLabel")}{" "}
           <Text component="strong" c={active ? "var(--success)" : "dimmed"} span>
@@ -251,127 +265,181 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
               : t("observabilityTab.statusActiveNoCollector")}
           </Text>
         </Text>
-        <Stack gap="md">
-          <TextInput
-            label={t("observabilityTab.endpointLabel")}
-            value={settings.otel.endpoint}
-            onChange={(e) => update("endpoint", e.target.value)}
-            placeholder="http://otel-collector:4317"
-            description={t("observabilityTab.endpointHelp")}
-          />
-          <TextInput
-            label={t("observabilityTab.serviceNameLabel")}
-            value={settings.otel.service_name}
-            onChange={(e) => update("service_name", e.target.value)}
-            placeholder="provisa"
-            description={t("observabilityTab.serviceNameHelp")}
-          />
-          <NumberInput
-            label={t("observabilityTab.sampleRateLabel")}
-            min={0}
-            max={1}
-            step={0.01}
-            value={settings.otel.sample_rate}
-            onChange={(v) => update("sample_rate", typeof v === "number" ? v : 0)}
-            description={t("observabilityTab.sampleRateHelp")}
-          />
-          <TextInput
-            label={t("observabilityTab.logLevelLabel")}
-            value={settings.otel.log_level}
-            onChange={(e) => update("log_level", e.target.value)}
-            placeholder="WARNING"
-            description={t("observabilityTab.logLevelHelp")}
-          />
-        </Stack>
+        {/* Four unrelated groups of fields stacked into one column ran far past the trace feed
+            beside them; as tabs each is a screenful and the page ends where the feed does. */}
+        <Tabs defaultValue="exporter" keepMounted={false}>
+          <Tabs.List mb="md">
+            <Tabs.Tab value="exporter">{t("observabilityTab.otelTitle")}</Tabs.Tab>
+            <Tabs.Tab value="subsystems">{t("observabilityTab.subsystemsTitle")}</Tabs.Tab>
+            <Tabs.Tab value="pipeline">{t("observabilityTab.pipelineTitle")}</Tabs.Tab>
+            <Tabs.Tab value="support">{t("observabilityTab.supportTitle")}</Tabs.Tab>
+          </Tabs.List>
 
-        {/* REQ-1432: which subsystems emit spans. The catalog database is off by default —
-            every catalog read is one of its calls, and they bury the query traces. */}
-        <Title order={4} mt="lg">{t("observabilityTab.subsystemsTitle")}</Title>
-        <Text c="dimmed" size="sm" mb="md">
-          {t("observabilityTab.subsystemsIntro")}
-        </Text>
-        <Stack gap="xs">
-          {SUBSYSTEM_TRACE_KEYS.map((key) => (
-            <Switch
-              key={key}
-              data-testid={`subsystem-trace-${key}`}
-              label={t(`observabilityTab.subsystem.${key}`)}
-              description={t(`observabilityTab.subsystemHelp.${key}`)}
-              checked={settings.otel.subsystem_traces[key]}
-              onChange={(e) =>
-                update("subsystem_traces", {
-                  ...settings.otel.subsystem_traces,
-                  [key]: e.currentTarget.checked,
-                })
-              }
-            />
-          ))}
-        </Stack>
+          <Tabs.Panel value="exporter">
+            <Stack gap="md">
+              <TextInput
+                label={t("observabilityTab.endpointLabel")}
+                value={settings.otel.endpoint}
+                onChange={(e) => update("endpoint", e.target.value)}
+                placeholder="http://otel-collector:4317"
+                description={t("observabilityTab.endpointHelp")}
+              />
+              <TextInput
+                label={t("observabilityTab.serviceNameLabel")}
+                value={settings.otel.service_name}
+                onChange={(e) => update("service_name", e.target.value)}
+                placeholder="provisa"
+                description={t("observabilityTab.serviceNameHelp")}
+              />
+              <NumberInput
+                label={t("observabilityTab.sampleRateLabel")}
+                min={0}
+                max={1}
+                step={0.01}
+                value={settings.otel.sample_rate}
+                onChange={(v) => update("sample_rate", typeof v === "number" ? v : 0)}
+                description={t("observabilityTab.sampleRateHelp")}
+              />
+              <TextInput
+                label={t("observabilityTab.logLevelLabel")}
+                value={settings.otel.log_level}
+                onChange={(e) => update("log_level", e.target.value)}
+                placeholder="WARNING"
+                description={t("observabilityTab.logLevelHelp")}
+              />
+            </Stack>
+          </Tabs.Panel>
 
-        <Title order={4} mt="lg">{t("observabilityTab.pipelineTitle")}</Title>
-        <Text c="dimmed" size="sm" mb="md">
-          {t("observabilityTab.pipelineIntro")}
-        </Text>
-        <Stack gap="md">
-          <TextInput
-            label={t("observabilityTab.s3EndpointLabel")}
-            value={settings.otel.s3_endpoint}
-            onChange={(e) => update("s3_endpoint", e.target.value)}
-            placeholder="http://minio:9000"
-            description={t("observabilityTab.s3EndpointHelp")}
-          />
-          <TextInput
-            label={t("observabilityTab.compactCronLabel")}
-            value={settings.otel.compact_cron}
-            onChange={(e) => update("compact_cron", e.target.value)}
-            placeholder="* * * * *"
-            description={t("observabilityTab.compactCronHelp")}
-          />
-          <NumberInput
-            label={t("observabilityTab.compactBatchSizeLabel")}
-            min={1}
-            value={settings.otel.compact_batch_size}
-            onChange={(v) => update("compact_batch_size", typeof v === "number" ? v : 0)}
-            description={t("observabilityTab.compactBatchSizeHelp")}
-          />
-          <NumberInput
-            label={t("observabilityTab.compactFileChunkLabel")}
-            min={1}
-            value={settings.otel.compact_file_chunk}
-            onChange={(v) => update("compact_file_chunk", typeof v === "number" ? v : 0)}
-            description={t("observabilityTab.compactFileChunkHelp")}
-          />
-          <NumberInput
-            label={t("observabilityTab.opsSnapshotRetentionLabel")}
-            min={0}
-            value={settings.otel.ops_snapshot_retention_hours ?? ""}
-            onChange={(v) =>
-              update("ops_snapshot_retention_hours", v === "" ? null : Number(v))
-            }
-            description={t("observabilityTab.opsSnapshotRetentionHelp")}
-          />
-          <NumberInput
-            label={t("observabilityTab.spanExportDelayLabel")}
-            min={0}
-            value={settings.otel.span_export_delay_millis}
-            onChange={(v) => update("span_export_delay_millis", typeof v === "number" ? v : 0)}
-            description={t("observabilityTab.spanExportDelayHelp")}
-          />
-          <NumberInput
-            label={t("observabilityTab.otlp2parquetMaxAgeLabel")}
-            min={0}
-            value={settings.otel.otlp2parquet_max_age_secs}
-            onChange={(v) => update("otlp2parquet_max_age_secs", typeof v === "number" ? v : 0)}
-            description={t("observabilityTab.otlp2parquetMaxAgeHelp")}
-          />
-          <NumberInput
-            label={t("observabilityTab.collectorBatchTimeoutLabel")}
-            min={0}
-            value={settings.otel.collector_batch_timeout_ms}
-            onChange={(v) => update("collector_batch_timeout_ms", typeof v === "number" ? v : 0)}
-            description={t("observabilityTab.collectorBatchTimeoutHelp")}
-          />
-        </Stack>
+          {/* REQ-1432: which subsystems emit spans. The catalog database is off by default —
+              every catalog read is one of its calls, and they bury the query traces. */}
+          <Tabs.Panel value="subsystems">
+            <Text c="dimmed" size="sm" mb="md">
+              {t("observabilityTab.subsystemsIntro")}
+            </Text>
+            <Stack gap="xs">
+              {SUBSYSTEM_TRACE_KEYS.map((key) => (
+                <Switch
+                  key={key}
+                  data-testid={`subsystem-trace-${key}`}
+                  label={t(`observabilityTab.subsystem.${key}`)}
+                  description={t(`observabilityTab.subsystemHelp.${key}`)}
+                  checked={settings.otel.subsystem_traces[key]}
+                  onChange={(e) =>
+                    update("subsystem_traces", {
+                      ...settings.otel.subsystem_traces,
+                      [key]: e.currentTarget.checked,
+                    })
+                  }
+                />
+              ))}
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="pipeline">
+            <Text c="dimmed" size="sm" mb="md">
+              {t("observabilityTab.pipelineIntro")}
+            </Text>
+            <Stack gap="md">
+              <TextInput
+                label={t("observabilityTab.s3EndpointLabel")}
+                value={settings.otel.s3_endpoint}
+                onChange={(e) => update("s3_endpoint", e.target.value)}
+                placeholder="http://minio:9000"
+                description={t("observabilityTab.s3EndpointHelp")}
+              />
+              <TextInput
+                label={t("observabilityTab.compactCronLabel")}
+                value={settings.otel.compact_cron}
+                onChange={(e) => update("compact_cron", e.target.value)}
+                placeholder="* * * * *"
+                description={t("observabilityTab.compactCronHelp")}
+              />
+              <NumberInput
+                label={t("observabilityTab.compactBatchSizeLabel")}
+                min={1}
+                value={settings.otel.compact_batch_size}
+                onChange={(v) => update("compact_batch_size", typeof v === "number" ? v : 0)}
+                description={t("observabilityTab.compactBatchSizeHelp")}
+              />
+              <NumberInput
+                label={t("observabilityTab.compactFileChunkLabel")}
+                min={1}
+                value={settings.otel.compact_file_chunk}
+                onChange={(v) => update("compact_file_chunk", typeof v === "number" ? v : 0)}
+                description={t("observabilityTab.compactFileChunkHelp")}
+              />
+              <NumberInput
+                label={t("observabilityTab.opsSnapshotRetentionLabel")}
+                min={0}
+                value={settings.otel.ops_snapshot_retention_hours ?? ""}
+                onChange={(v) =>
+                  update("ops_snapshot_retention_hours", v === "" ? null : Number(v))
+                }
+                description={t("observabilityTab.opsSnapshotRetentionHelp")}
+              />
+              <NumberInput
+                label={t("observabilityTab.spanExportDelayLabel")}
+                min={0}
+                value={settings.otel.span_export_delay_millis}
+                onChange={(v) => update("span_export_delay_millis", typeof v === "number" ? v : 0)}
+                description={t("observabilityTab.spanExportDelayHelp")}
+              />
+              <NumberInput
+                label={t("observabilityTab.otlp2parquetMaxAgeLabel")}
+                min={0}
+                value={settings.otel.otlp2parquet_max_age_secs}
+                onChange={(v) => update("otlp2parquet_max_age_secs", typeof v === "number" ? v : 0)}
+                description={t("observabilityTab.otlp2parquetMaxAgeHelp")}
+              />
+              <NumberInput
+                label={t("observabilityTab.collectorBatchTimeoutLabel")}
+                min={0}
+                value={settings.otel.collector_batch_timeout_ms}
+                onChange={(v) =>
+                  update("collector_batch_timeout_ms", typeof v === "number" ? v : 0)
+                }
+                description={t("observabilityTab.collectorBatchTimeoutHelp")}
+              />
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="support">
+            <Text c="dimmed" size="sm" mb="md">
+              {t("observabilityTab.supportIntro")}
+            </Text>
+            <Stack gap="md">
+              <TextInput
+                label={t("observabilityTab.supportEndpointLabel")}
+                value={settings.otel.support_endpoint}
+                onChange={(e) => update("support_endpoint", e.target.value)}
+                placeholder="https://otel.provisa.io:4318"
+                description={t("observabilityTab.supportEndpointHelp")}
+              />
+              <Checkbox
+                checked={settings.otel.support_redact_sql_literals}
+                onChange={(e) => update("support_redact_sql_literals", e.target.checked)}
+                label={t("observabilityTab.redactSqlLabel")}
+              />
+              <TextInput
+                label={t("observabilityTab.redactAttrsLabel")}
+                value={(settings.otel.support_redact_attributes ?? []).join(", ")}
+                onChange={(e) =>
+                  update(
+                    "support_redact_attributes",
+                    e.target.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  )
+                }
+                placeholder="user.id, db.user, ..."
+                description={t("observabilityTab.redactAttrsHelp")}
+              />
+            </Stack>
+          </Tabs.Panel>
+        </Tabs>
+
+        {/* One save for the whole tab: every panel edits the same otel settings object. */}
         <Group mt="md" gap="0.75rem" align="center">
           <ActionIcon
             className="btn-primary"
@@ -382,45 +450,15 @@ export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
           >
             {saving ? <Loader size={14} /> : <Check size={14} />}
           </ActionIcon>
-          {msg && <Text className="upload-msg" size="sm">{msg}</Text>}
+          {msg && (
+            <Text className="upload-msg" size="sm">
+              {msg}
+            </Text>
+          )}
         </Group>
-        <Text mt="lg" size="xs" c="dimmed">
+        <Text mt="sm" size="xs" c="dimmed">
           {t("observabilityTab.restartNote")}
         </Text>
-
-        <Title order={4} mt="lg">{t("observabilityTab.supportTitle")}</Title>
-        <Text c="dimmed" size="sm" mb="md">
-          {t("observabilityTab.supportIntro")}
-        </Text>
-        <Stack gap="md">
-          <TextInput
-            label={t("observabilityTab.supportEndpointLabel")}
-            value={settings.otel.support_endpoint}
-            onChange={(e) => update("support_endpoint", e.target.value)}
-            placeholder="https://otel.provisa.io:4318"
-            description={t("observabilityTab.supportEndpointHelp")}
-          />
-          <Checkbox
-            checked={settings.otel.support_redact_sql_literals}
-            onChange={(e) => update("support_redact_sql_literals", e.target.checked)}
-            label={t("observabilityTab.redactSqlLabel")}
-          />
-          <TextInput
-            label={t("observabilityTab.redactAttrsLabel")}
-            value={(settings.otel.support_redact_attributes ?? []).join(", ")}
-            onChange={(e) =>
-              update(
-                "support_redact_attributes",
-                e.target.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              )
-            }
-            placeholder="user.id, db.user, ..."
-            description={t("observabilityTab.redactAttrsHelp")}
-          />
-        </Stack>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <TraceFeed />
@@ -489,11 +527,23 @@ function QueryEngineActions() {
         <Button className="btn-primary" onClick={handleReload} disabled={reloading}>
           {reloading ? t("observabilityTab.reloading") : t("observabilityTab.reloadCatalog")}
         </Button>
-        <Button color="yellow" className="btn-warning" onClick={handleRestart} disabled={restarting}>
+        <Button
+          color="yellow"
+          className="btn-warning"
+          onClick={handleRestart}
+          disabled={restarting}
+        >
           {restarting ? t("observabilityTab.restarting") : t("observabilityTab.restartEngine")}
         </Button>
-        <Button variant="default" className="btn-secondary" onClick={handleRecluster} disabled={reclustering}>
-          {reclustering ? t("observabilityTab.clustering") : t("observabilityTab.recomputeClusters")}
+        <Button
+          variant="default"
+          className="btn-secondary"
+          onClick={handleRecluster}
+          disabled={reclustering}
+        >
+          {reclustering
+            ? t("observabilityTab.clustering")
+            : t("observabilityTab.recomputeClusters")}
         </Button>
       </Group>
       {reloadStatus && (

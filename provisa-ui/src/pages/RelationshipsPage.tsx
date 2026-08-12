@@ -45,6 +45,7 @@ import {
   ReverseRelationshipModal,
 } from "../components/relationships/RelationshipModals";
 import { CandidatesTable } from "../components/relationships/CandidatesTable";
+import { PageLoading } from "../components/PageLoading";
 
 export function RelationshipsPage() {
   const { t } = useTranslation();
@@ -340,7 +341,7 @@ export function RelationshipsPage() {
     setReverseForm(null);
   }, [reverseForm, upsertRelationship]);
 
-  if (loading) return <div className="page">{t("relationshipsPage.loading")}</div>;
+  if (loading) return <PageLoading message={t("relationshipsPage.loading")} />;
 
   const matchesFilter = (r: Relationship) => {
     if (remoteTableIds.has(r.sourceTableId)) return false;

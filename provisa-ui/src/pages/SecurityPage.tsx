@@ -42,6 +42,7 @@ import {
 import type { Role, Capability } from "../types/auth";
 import type { RLSRule } from "../types/admin";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { PageLoading } from "../components/PageLoading";
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -219,7 +220,7 @@ export function SecurityRolesPage() {
     ...domains.map((d) => ({ id: d.id, label: d.id })),
   ];
 
-  if (loading) return <Text p="md">{t("securityPage.loadingRoles")}</Text>;
+  if (loading) return <PageLoading message={t("securityPage.loadingRoles")} />;
 
   return (
     <Stack gap="md" p="md">
@@ -569,7 +570,7 @@ export function SecurityRlsPage() {
     setError("");
   };
 
-  if (loading) return <Text p="md">{t("securityPage.loadingRules")}</Text>;
+  if (loading) return <PageLoading message={t("securityPage.loadingRules")} />;
 
   // A plain element, not a nested component: a component declared during render gets a new identity
   // every pass, so React unmounts and remounts the fields (losing focus mid-typing).

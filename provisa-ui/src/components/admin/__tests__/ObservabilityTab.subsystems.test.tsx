@@ -64,11 +64,15 @@ function makeSettings(): PlatformSettings {
 // Mantine puts the data-testid on the Switch's own input element.
 const switchFor = (key: string) => screen.getByTestId(`subsystem-trace-${key}`);
 
+// The settings pane is tabbed; the switches live behind the subsystems tab.
+const openSubsystems = () => fireEvent.click(screen.getByRole("tab", { name: "Subsystem traces" }));
+
 describe("ObservabilityTab subsystem trace switches", () => {
   beforeEach(() => updateSettings.mockClear());
 
   it("renders the catalog database off and the rest on", () => {
     render(<ObservabilityTab settings={makeSettings()} setSettings={vi.fn()} />);
+    openSubsystems();
 
     expect(switchFor("catalog_database")).not.toBeChecked();
     expect(switchFor("http_api")).toBeChecked();
@@ -78,6 +82,7 @@ describe("ObservabilityTab subsystem trace switches", () => {
   it("hands the whole map back with only the toggled subsystem changed", () => {
     const setSettings = vi.fn();
     render(<ObservabilityTab settings={makeSettings()} setSettings={setSettings} />);
+    openSubsystems();
 
     fireEvent.click(switchFor("catalog_database"));
 

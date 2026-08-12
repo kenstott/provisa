@@ -1086,45 +1086,79 @@ async def reload_query_engine_catalog(request: Request, catalog: str = "otel"):
     )
 
 
+async def _resolve_engine_container(client, engine_name: str) -> str:  # REQ-1433
+    """The name docker knows the query engine by.
+
+    An explicit name is the caller's or the deployment's business. Without one, ask docker what is
+    running rather than assuming the container is named after the engine: under compose it is
+    ``compose-trino-1``, and restarting the name "trino" is a 404 that reads as a broken button.
+    A match has to be unambiguous — two candidates mean this process cannot tell which engine is
+    the one it is bound to, and picking either would restart a container at random.
+    """
+    resp = await client.get("/containers/json", params={"all": "true"})
+    resp.raise_for_status()
+    candidates = sorted(
+        {
+            name.lstrip("/")
+            for c in resp.json()
+            for name in c.get("Names", [])
+            if engine_name in name.lstrip("/").split("-")
+        }
+    )
+    if len(candidates) == 1:
+        return candidates[0]
+    raise ApiError(
+        400,
+        "settings.no_container_resolvable",
+        f"cannot tell which container runs {engine_name}: "
+        f"{'no container matches' if not candidates else 'matched ' + ', '.join(candidates)}. "
+        "Set QUERY_ENGINE_CONTAINER or pass container=.",
+    )
+
+
 @router.post("/admin/query-engine/restart")
-async def restart_query_engine(request: Request, container: str | None = None):
-    """Restart the query engine container (single-node dev only). Falls back to
-    QUERY_ENGINE_CONTAINER env var, then the bound engine's name."""
+async def restart_query_engine(request: Request, container: str | None = None):  # REQ-1433
+    """Restart the query engine container.
+
+    Speaks the Docker Engine API over the bind-mounted socket. The app image carries no docker CLI
+    — shelling out to one failed with "docker not found on PATH" on every deployment that mounts
+    the socket, which is all of them.
+    """
     require_platform_settings(request)  # REQ-1337
-    import asyncio
+    import httpx
 
     from provisa.api.app import state
+    from provisa.federation.isolated_provisioner import _client, _socket_path
 
-    container = (
-        container or os.environ.get("QUERY_ENGINE_CONTAINER") or state.federation_engine.name
-    )
-    if not container:
+    socket = _socket_path()
+    if not os.path.exists(socket):
         raise ApiError(
-            400,
-            "settings.no_container_resolvable",
-            "no container specified and none resolvable from QUERY_ENGINE_CONTAINER or the bound engine",
+            503,
+            "settings.docker_socket_unavailable",
+            f"the docker socket is not mounted at {socket}; this deployment cannot restart containers",
         )
+
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "restart",
-            container,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-    except asyncio.TimeoutError:
-        raise ApiError(504, "settings.docker_restart_timeout", "docker restart timed out")
-    except FileNotFoundError:
-        raise ApiError(503, "settings.docker_not_found", "docker not found on PATH")
+        async with _client(socket) as client:
+            name = (
+                container
+                or os.environ.get("QUERY_ENGINE_CONTAINER")
+                or await _resolve_engine_container(client, state.federation_engine.name)
+            )
+            resp = await client.post(f"/containers/{name}/restart", timeout=120.0)
+    except httpx.TimeoutException:
+        raise ApiError(504, "settings.docker_restart_timeout", "the restart timed out")
+    except httpx.HTTPError as exc:
+        raise ApiError(502, "settings.docker_unreachable", f"docker socket error: {exc}")
 
-    if proc.returncode != 0:
+    if resp.status_code == 404:
+        raise ApiError(404, "settings.container_not_found", f"no container named {name}")
+    if resp.status_code >= 400:
         raise HTTPException(
-            status_code=500,
-            detail=stderr.decode().strip() or f"docker restart exited {proc.returncode}",
+            status_code=500, detail=resp.text.strip() or f"docker {resp.status_code}"
         )
 
-    return {"success": True, "container": container, "output": stdout.decode().strip()}
+    return {"success": True, "container": name}
 
 
 @router.post("/admin/schema-clusters/recompute")
