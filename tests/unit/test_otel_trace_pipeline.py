@@ -784,3 +784,35 @@ def test_the_shipped_compaction_batch_is_not_the_parameterised_era_value():
 
     assert OtelConfig().compact_batch_size == AppState().otel_compact_batch_size
     assert OtelConfig().compact_batch_size >= 1000
+
+
+def test_pre_filter_backlog_objects_do_not_carry_asyncpg_rows_into_iceberg():
+    """REQ-1428: the collector filter protects new objects; the bucket still holds the old ones.
+
+    When the asyncpg drop shipped, 21 000 trace objects were already in R2 in which control-plane
+    statement spans were most of the rows. Compaction walks oldest-date-first, so every one of
+    those rows would be committed to Iceberg — at seconds per commit — before the job reached the
+    provisa.query spans the ops report reads, and the report stayed empty while queries ran. The
+    same predicate therefore applies at compaction, on rows already read.
+    """
+    import pyarrow as pa
+
+    from provisa.scheduler import jobs
+
+    table = pa.table(
+        {
+            "scope_name": pa.array(
+                [
+                    "opentelemetry.instrumentation.asyncpg",
+                    "provisa.executor.trino",
+                    "opentelemetry.instrumentation.asyncpg",
+                ]
+            ),
+            "span_name": pa.array(["BEGIN;", "provisa.query.trino", "COMMIT;"]),
+        }
+    )
+    kept = jobs._drop_asyncpg_rows("traces", table)
+    assert kept.column("span_name").to_pylist() == ["provisa.query.trino"]
+
+    # Logs and metrics carry no span scope to judge; they pass through untouched.
+    assert jobs._drop_asyncpg_rows("logs", table).num_rows == 3

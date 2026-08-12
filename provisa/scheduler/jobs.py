@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 # round-trip latency rather than to CPU — the work is entirely network wait.
 _OTEL_FETCH_WORKERS = 16
 
+# REQ-1428: the instrumentation scope the collector's parquet-lane filter drops. Named here too
+# because the bucket still holds objects written before that filter shipped.
+_ASYNCPG_SCOPE = "opentelemetry.instrumentation.asyncpg"
+
 
 async def _execute_webhook(
     url: str, trigger_id: str, args: dict | None = None
@@ -165,6 +169,26 @@ def _key_date(key: str) -> datetime | None:
     return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
 
 
+def _drop_asyncpg_rows(signal: str, table):
+    """REQ-1428: keep the control plane's own database chatter out of the Iceberg lane.
+
+    The collector drops these spans before they are written now, but the bucket still holds the
+    objects written before that filter existed — 21 000 files in which asyncpg statement spans
+    (BEGIN, COMMIT, every SELECT the API makes against its metadata store) were 95% of the rows.
+    Compaction walks oldest-date-first, so all of those rows had to be committed to Iceberg, at
+    seconds per commit, before the job reached the provisa.query spans the ops report reads.
+    Applying the same predicate on rows already in memory costs one filter and removes the reason
+    the drain ran slower than ingest; the objects are deleted from the bucket either way.
+    """
+    if signal != "traces" or "scope_name" not in table.column_names:
+        return table
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    keep = pc.not_equal(table.column("scope_name"), pa.scalar(_ASYNCPG_SCOPE, type=pa.string()))
+    return table.filter(pc.fill_null(keep, True))
+
+
 def _compact_signal(
     signal: str,
     target: datetime | None,
@@ -285,6 +309,7 @@ def _compact_signal(
                 with ThreadPoolExecutor(max_workers=_OTEL_FETCH_WORKERS) as pool:
                     parts = list(pool.map(_read, chunk_keys))
                 combined = pa.concat_tables(parts, promote_options="default")
+                combined = _drop_asyncpg_rows(signal, combined)
             except Exception:
                 logger.exception(
                     "compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start
