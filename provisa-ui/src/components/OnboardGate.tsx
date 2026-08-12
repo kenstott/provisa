@@ -15,6 +15,7 @@ import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { fetchBootstrapStatus } from "../api/admin";
 import { clearSessionState } from "../lib/session";
+import { PageLoading } from "./PageLoading";
 
 const OnboardOrgPage = lazy(() =>
   import("../pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })),
@@ -150,7 +151,7 @@ export function OnboardGate({
     // The admin-slot answer decides which screen this is; do not guess it.
     return (
       <div className="page">
-        <p>Loading...</p>
+        <PageLoading />
       </div>
     );
   }
@@ -174,7 +175,7 @@ export function OnboardGate({
       <Suspense
         fallback={
           <div className="page">
-            <p>Loading...</p>
+            <PageLoading />
           </div>
         }
       >

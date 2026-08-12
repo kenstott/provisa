@@ -164,7 +164,7 @@ function App() {
               <p>{setupError}</p>
             </div>
           ) : !setupChecked ? (
-            <div className="page"><p>Loading...</p></div>
+            <div className="page"><PageLoading /></div>
           ) : needsSetup ? (
             <Suspense fallback={<PageLoading />}>
               <Routes>

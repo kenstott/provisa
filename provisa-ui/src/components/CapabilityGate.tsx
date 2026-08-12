@@ -29,7 +29,11 @@ interface Props {
 export function CapabilityGate({ capability, children, fallback }: Props) {
   const { loading } = useAuth();
   const allowed = useCapability(capability);
-  if (loading) return <CredentialCheck />;
+  // A gate with a fallback owns a whole region — a route body — and has to show something there.
+  // A gate without one contributes a nav link or a button to a larger layout: it renders nothing
+  // when denied, so it renders nothing while loading too. Otherwise every inline gate on the page
+  // paints its own centred 60vh spinner and the layout fills with them.
+  if (loading) return fallback === undefined ? null : <CredentialCheck />;
   if (!allowed) return fallback ?? null;
   return <>{children}</>;
 }

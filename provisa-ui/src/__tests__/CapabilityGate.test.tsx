@@ -54,6 +54,23 @@ describe('CapabilityGate', () => {
     expect(screen.queryByText('Reports')).not.toBeInTheDocument();
   });
 
+  it('stays silent while loading when it has no fallback', () => {
+    // An inline gate — a nav link, a toolbar button — has no region of its own to fill. A spinner
+    // per gate covers the page in them.
+    authState.loading = true;
+    mockUseCapability.mockReturnValue(false);
+
+    const { container } = render(
+      <CapabilityGate capability={'admin' as Capability}>
+        <span>Admin Only</span>
+      </CapabilityGate>
+    );
+
+    expect(screen.queryByTestId('capability-gate-checking')).not.toBeInTheDocument();
+    expect(screen.queryByText('Admin Only')).not.toBeInTheDocument();
+    expect(container.querySelectorAll(':not(style)')).toHaveLength(0);
+  });
+
   it('shows the denial only once the bootstrap has settled', () => {
     authState.loading = false;
     mockUseCapability.mockReturnValue(false);
