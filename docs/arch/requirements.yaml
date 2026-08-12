@@ -43853,3 +43853,41 @@
   - REQ-302
   - REQ-303
   - REQ-1425
+- id: REQ-1429
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: Query Engine Federation
+  priority: MUST
+  type: behavioral
+  description: >-
+    Rebuilding one org's runtime may not take a system catalog away from the orgs sharing the
+    coordinator. Provisa registers its own catalogs dynamically and refreshes one by dropping it
+    first, because Trino exposes no way to read a live catalog's properties back. That is right at
+    boot, when the coordinator serves nobody yet. It is wrong on every later per-org rebuild:
+    `otel` and `results` are deployment-scoped - their specs take no org id and are identical for
+    every org - so re-registering them on behalf of one org drops a catalog the others are
+    querying, and the drop races the create. Changing an org's engine on the SaaS node did exactly
+    that: the rebuild dropped `otel`, its own CREATE lost the race and failed CATALOG_NOT_FOUND,
+    the whole rebuild aborted, and the shared coordinator was left with no `otel` at all - the ops
+    reports and the org-engine tab then failed for every org on it. A per-org rebuild therefore
+    ENSURES the system catalogs rather than re-registering them: it creates only what the
+    coordinator is missing. `provisa_admin` is the exception and is still refreshed, because its
+    JDBC URL names the org's own schema and a stale one points the control plane at another org.
+  use_case: >-
+    An org administrator switches the org's query engine and the other orgs on the shared
+    coordinator keep working, rather than losing the telemetry catalog their reports read.
+  code:
+  - provisa/core/trino_system_catalogs.py
+  - provisa/federation/backend.py
+  tests:
+  - tests/unit/test_trino_system_catalogs.py
+  scenario: |-
+    Given a shared coordinator that already has the provisa_admin, otel and results catalogs
+    When one org's runtime is rebuilt
+    Then only provisa_admin is re-registered
+    And otel and results are left in place for the orgs querying them
+  related_reqs:
+  - REQ-1332
+  - REQ-1412
+  - REQ-1427

@@ -542,12 +542,14 @@ class TrinoBackend(EngineBackend):
         with self._provisioning_conn(state) as conn:
             if conn is None:
                 return
-            from provisa.core.trino_system_catalogs import register_system_catalogs
+            from provisa.core.trino_system_catalogs import ensure_system_catalogs
             from provisa.observability.ops_trino import seed_ops_trino
 
             # Ordering as in provision(): seed_ops_trino writes into `otel`.
             assert state.tenant_engine is not None
-            register_system_catalogs(conn, state.tenant_engine.url, state.org_id)
+            # REQ-1429: ensure, not re-register — dropping the deployment-scoped `otel`/`results`
+            # for one org takes them away from every other org on a shared coordinator.
+            ensure_system_catalogs(conn, state.tenant_engine.url, state.org_id)
             seed_ops_trino(conn, ops_views, retention_hours)
 
     def cluster_diagnostics(self, state: Any) -> tuple[bool, int, int]:

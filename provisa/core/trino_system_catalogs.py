@@ -287,3 +287,34 @@ def register_system_catalogs(conn: TrinoConnection, url: URL, org_id: str) -> No
     ensure_iceberg_catalog_tables(url)
     for spec in system_catalog_specs(url, org_id):
         register_catalog(conn, spec)
+
+
+def _live_catalogs(conn: TrinoConnection) -> set[str]:
+    cur = conn.cursor()
+    cur.execute("SHOW CATALOGS")
+    return {row[0] for row in cur.fetchall()}
+
+
+def ensure_system_catalogs(conn: TrinoConnection, url: URL, org_id: str) -> None:
+    """Register this coordinator's system catalogs without disturbing the ones already serving.
+
+    REQ-1429: ``register_catalog`` refreshes by dropping first, because Trino cannot read a
+    catalog's properties back. That is right at boot, when the coordinator serves nobody yet, and
+    wrong on every later per-org rebuild: ``otel`` and ``results`` are DEPLOYMENT-scoped — their
+    specs take no ``org_id`` and are byte-identical for every org — so re-registering them for one
+    org drops a catalog the other orgs are querying, and the drop races the create. Switching an
+    org's engine did exactly that on the SaaS node: the rebuild dropped ``otel``, its own CREATE
+    lost the race and failed CATALOG_NOT_FOUND, and the shared coordinator was left with no ``otel``
+    at all, so the ops reports and the org-engine tab both broke for every org on it.
+
+    ``provisa_admin`` is the one org-scoped spec (its JDBC URL names ``org_<id>``), so it is still
+    refreshed — a stale schema there is the mis-pointing this module exists to prevent.
+    """
+    from provisa.core.catalog import wait_until_ready
+
+    wait_until_ready(conn)
+    ensure_iceberg_catalog_tables(url)
+    live = _live_catalogs(conn)
+    for spec in system_catalog_specs(url, org_id):
+        if spec.name == PROVISA_ADMIN_CATALOG or spec.name not in live:
+            register_catalog(conn, spec)

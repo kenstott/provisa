@@ -114,7 +114,9 @@ def test_iceberg_specs_track_the_control_plane_and_object_store(monkeypatch):
         == "jdbc:postgresql://10.1.2.3:6543/provisa_cloud"
     )
     assert otel.properties["iceberg.jdbc-catalog.catalog-name"] == "otel"
-    assert otel.properties["iceberg.jdbc-catalog.default-warehouse-dir"] == "s3://cloud-otel/warehouse"
+    assert (
+        otel.properties["iceberg.jdbc-catalog.default-warehouse-dir"] == "s3://cloud-otel/warehouse"
+    )
     assert otel.properties["s3.endpoint"] == "http://10.1.2.3:9000"
     assert otel.properties["s3.aws-access-key"] == "ak"
     assert otel.properties["s3.aws-secret-key"] == "sk"
@@ -139,7 +141,10 @@ def test_register_catalog_drops_before_creating():
     assert conn.executed[0] == "DROP CATALOG IF EXISTS provisa_admin"
     create = conn.executed[1]
     assert create.startswith("CREATE CATALOG provisa_admin USING postgresql WITH (")
-    assert "\"connection-url\" = 'jdbc:postgresql://10.1.2.3:6543/provisa_cloud?currentSchema=org_default'" in create
+    assert (
+        "\"connection-url\" = 'jdbc:postgresql://10.1.2.3:6543/provisa_cloud?currentSchema=org_default'"
+        in create
+    )
 
 
 def test_registration_ensures_the_iceberg_metastore_before_creating_any_catalog(monkeypatch):
@@ -181,3 +186,55 @@ def test_a_catalog_that_cannot_be_dropped_is_reported_not_worked_around():
         tsc.register_catalog(conn, tsc.otel_spec(_URL))
     # It must not fall through to CREATE CATALOG IF NOT EXISTS against the shadowing catalog.
     assert len(conn.executed) == 1
+
+
+class _ShowCatalogsCursor(_Cursor):
+    def __init__(self, log: list[str], live: set[str]):
+        super().__init__(log, None)
+        self._live = live
+        self._last = ""
+
+    def execute(self, sql: str):
+        self._last = sql
+        super().execute(sql)
+
+    def fetchall(self):
+        return [[name] for name in sorted(self._live)] if self._last == "SHOW CATALOGS" else []
+
+
+class _LiveConn(_Conn):
+    def __init__(self, live: set[str]):
+        super().__init__()
+        self._live = live
+
+    def cursor(self):
+        return _ShowCatalogsCursor(self.executed, self._live)
+
+
+def test_a_per_org_rebuild_leaves_the_deployment_scoped_catalogs_alone(monkeypatch):
+    # REQ-1429: `otel` and `results` take no org_id — one spec serves every org on the coordinator.
+    # Re-registering them for one org DROPS a catalog the others are querying, and the drop races
+    # the create: switching an org's engine on the SaaS node left the shared coordinator with no
+    # `otel` at all after its own CREATE failed CATALOG_NOT_FOUND.
+    from provisa.core import catalog as catalog_module
+
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
+    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url: None)
+    registered: list[str] = []
+    monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: registered.append(spec.name))
+
+    tsc.ensure_system_catalogs(_LiveConn({"provisa_admin", "otel", "results"}), _URL, "kstott")
+    # provisa_admin names org_<id> in its JDBC URL, so it alone is refreshed per org.
+    assert registered == ["provisa_admin"]
+
+
+def test_a_missing_deployment_catalog_is_still_created(monkeypatch):
+    from provisa.core import catalog as catalog_module
+
+    monkeypatch.setattr(catalog_module, "wait_until_ready", lambda conn: None)
+    monkeypatch.setattr(tsc, "ensure_iceberg_catalog_tables", lambda url: None)
+    registered: list[str] = []
+    monkeypatch.setattr(tsc, "register_catalog", lambda _c, spec: registered.append(spec.name))
+
+    tsc.ensure_system_catalogs(_LiveConn({"results"}), _URL, "kstott")
+    assert registered == ["provisa_admin", "otel"]
