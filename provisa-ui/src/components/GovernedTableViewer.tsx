@@ -131,9 +131,12 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
               label={c.alias || c.columnName}
               required={c.nativeFilterType === "path_param"}
               value={paramValues[c.columnName] ?? ""}
-              onChange={(e) =>
-                setParamValues((prev) => ({ ...prev, [c.columnName]: e.currentTarget.value }))
-              }
+              onChange={(e) => {
+                // Read before the updater: a functional updater can run on a later render pass,
+                // when the synthetic event has been pooled and currentTarget is null.
+                const next = e.currentTarget.value;
+                setParamValues((prev) => ({ ...prev, [c.columnName]: next }));
+              }}
               data-testid={`preview-param-${c.columnName}`}
             />
           ))}

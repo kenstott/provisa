@@ -126,3 +126,73 @@ class TestREQ595CacheKeyPrefixing:
         key_short = apq._build_key("hash", "abc")
         key_long = apq._build_key("hash", "abcd")
         assert key_short != key_long
+
+
+# ---------------------------------------------------------------------------
+# REQ-595: the write side must key by tenant too
+# ---------------------------------------------------------------------------
+
+
+class TestREQ595InlineResultWritesTenantScoped:
+    """The inline query path reads with check_cache(..., org_id) and so must write with the
+    same org_id. Writing without it lands the entry at the unprefixed provisa:cache:<hash>,
+    which no tenant read ever looks at — on the SaaS node every query missed forever while
+    single-org desktop, whose org_id is None on both sides, kept working.
+    """
+
+    # REQ-595
+    async def test_inline_result_stores_under_the_org(self, monkeypatch):
+        import types
+
+        from provisa.api.data import endpoint_executors as ee
+
+        captured: dict = {}
+
+        async def _fake_store(store, key, data, ttl, table_ids=None, org_id=None):
+            captured.update(key=key, org_id=org_id)
+
+        monkeypatch.setattr(ee, "store_result", _fake_store)
+        monkeypatch.setattr(ee, "_record_per_source_stats", lambda *a, **k: None)
+        monkeypatch.setattr(ee._qs_mod, "current", lambda: None)
+        monkeypatch.setattr(
+            ee, "_format_response", lambda *a, **k: {"data": {"users": [{"id": 1}]}}
+        )
+
+        state = types.SimpleNamespace(
+            source_cache={},
+            table_cache={},
+            response_cache_default_ttl=300,
+            response_cache_store=object(),
+        )
+        compiled = types.SimpleNamespace(
+            nodes_sql=None,
+            columns=["id"],
+            sources={"src"},
+            canonical_field="users",
+            result_limit=None,
+        )
+        ctx = types.SimpleNamespace(tables={})
+        result = types.SimpleNamespace(rows=[(1,)])
+
+        await ee._exec_inline_result(
+            compiled,
+            ctx,
+            state,
+            None,
+            "users",
+            result,
+            "json",
+            "ck-1",
+            None,
+            False,
+            0.0,
+            None,
+            {},
+            0.0,
+            0,
+            0,
+            None,
+            org_id="acme",
+        )
+
+        assert captured == {"key": "ck-1", "org_id": "acme"}

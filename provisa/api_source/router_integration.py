@@ -29,9 +29,9 @@ from provisa.api_source.cache import resolve_ttl
 from provisa.api_source.caller import call_api
 from provisa.api_source.flattener import flatten_response
 from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
+from provisa.api_source import engine_cache as _engine_cache
 from provisa.api_source.engine_cache import (
     CacheLocation,
-    cache_location,
     cache_table_name,
     land_api_cache,
     schedule_drop,
@@ -96,7 +96,10 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
             _cc = getattr(source, "cache_catalog", None) if source else None
             _default_cs = f"org_{org_id}_api_cache"
             _cs = getattr(source, "cache_schema", _default_cs) if source else _default_cs
-            loc = cache_location(endpoint.source_id, _cc, _cs, engine=engine)
+            # Resolved through the module, not a from-import binding: a from-import taken while a
+            # test patches engine_cache.cache_location captures the patch permanently, since this
+            # module is first imported lazily from inside the patched block.
+            loc = _engine_cache.cache_location(endpoint.source_id, _cc, _cs, engine=engine)
 
         with engine.isolated_sync() as _c:
             _hit = table_exists(_c, loc, tbl, ttl=ttl)

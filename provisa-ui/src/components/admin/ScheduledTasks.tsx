@@ -210,9 +210,10 @@ export function ScheduledTasks() {
                       </>
                     }
                     value={argValues[arg.name] ?? ""}
-                    onChange={(e) =>
-                      setArgValues((prev) => ({ ...prev, [arg.name]: e.currentTarget.value }))
-                    }
+                    onChange={(e) => {
+                      const next = e.currentTarget.value;
+                      setArgValues((prev) => ({ ...prev, [arg.name]: next }));
+                    }}
                     placeholder={arg.type}
                   />
                 ))}

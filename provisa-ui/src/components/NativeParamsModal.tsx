@@ -54,9 +54,12 @@ export function NativeParamsModal({ table, onClose, onSubmit }: NativeParamsModa
             label={c.alias || c.columnName}
             required={c.nativeFilterType === "path_param"}
             value={values[c.columnName] ?? ""}
-            onChange={(e) =>
-              setValues((prev) => ({ ...prev, [c.columnName]: e.currentTarget.value }))
-            }
+            onChange={(e) => {
+              // React may run a functional updater on a later render pass, by which point the
+              // synthetic event has been pooled and currentTarget is null. Read it here.
+              const next = e.currentTarget.value;
+              setValues((prev) => ({ ...prev, [c.columnName]: next }));
+            }}
             data-testid={`native-param-${c.columnName}`}
           />
         ))}

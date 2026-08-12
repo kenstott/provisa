@@ -135,9 +135,10 @@ export function FederationEngineTab() {
               key={f.config_key}
               label={f.label}
               checked={values[f.config_key] === true}
-              onChange={(e) =>
-                setValues((v) => ({ ...v, [f.config_key]: e.currentTarget.checked }))
-              }
+              onChange={(e) => {
+                const next = e.currentTarget.checked;
+                setValues((v) => ({ ...v, [f.config_key]: next }));
+              }}
             />
           ) : f.type === "select" ? (
             <Select
@@ -164,9 +165,10 @@ export function FederationEngineTab() {
               required={f.required}
               placeholder={f.placeholder}
               value={String(values[f.config_key] ?? "")}
-              onChange={(e) =>
-                setValues((v) => ({ ...v, [f.config_key]: e.currentTarget.value }))
-              }
+              onChange={(e) => {
+                const next = e.currentTarget.value;
+                setValues((v) => ({ ...v, [f.config_key]: next }));
+              }}
             />
           ),
         )}

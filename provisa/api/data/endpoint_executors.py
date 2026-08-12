@@ -837,6 +837,7 @@ async def _exec_inline_result(
     _hydration_rows,
     _hydration_cache_hits,
     physical_sql,
+    org_id: str | None = None,
 ):
     """Build inline response, cache it, record stats, and return (root_field, field_rows, None, ck, None)."""
     if compiled.nodes_sql is not None:
@@ -880,8 +881,18 @@ async def _exec_inline_result(
         field_rows = response_data
 
     if isinstance(response_data, dict):
+        # REQ-595: the read side keys by tenant (check_cache(..., org_id)); writing without the
+        # org_id lands the entry at an unprefixed key that no tenant read can ever reach.
         await _store_response_cache(
-            state, ck, response_data, root_field, ctx, compiled, response_cache_ttl, no_cache
+            state,
+            ck,
+            response_data,
+            root_field,
+            ctx,
+            compiled,
+            response_cache_ttl,
+            no_cache,
+            org_id=org_id,
         )
 
     _n_rows = len(field_rows) if isinstance(field_rows, list) else 0

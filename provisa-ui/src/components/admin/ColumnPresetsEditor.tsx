@@ -213,7 +213,10 @@ export function ColumnPresetsEditor({ presets, columns, columnTypes, onChange }:
             aria-label={t("columnPresetsEditor.headerNamePlaceholder")}
             placeholder={t("columnPresetsEditor.headerNamePlaceholder")}
             value={draft.name ?? ""}
-            onChange={(e) => setDraft((d) => ({ ...d, name: e.currentTarget.value || null }))}
+            onChange={(e) => {
+              const next = e.currentTarget.value || null;
+              setDraft((d) => ({ ...d, name: next }));
+            }}
             data-testid="column-presets-header-name-input"
           />
         )}

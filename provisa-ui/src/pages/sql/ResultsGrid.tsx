@@ -270,10 +270,11 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
                         aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${c}`}
                         value={filters[c] ?? ""}
                         onChange={(e) => {
-                          setFilters((prev) => ({
-                            ...prev,
-                            [c]: e.currentTarget.value,
-                          }));
+                          // Read before the updater: React runs a functional updater on a later
+                          // render pass, when the synthetic event has been pooled and
+                          // currentTarget is null — typing a filter threw there.
+                          const next = e.currentTarget.value;
+                          setFilters((prev) => ({ ...prev, [c]: next }));
                           setPage(0);
                         }}
                         onClick={(e) => e.stopPropagation()}

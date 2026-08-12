@@ -162,9 +162,7 @@ async def compile_endpoint(  # REQ-161, REQ-163
         results = await _compile_only(role_id, request.query, request.variables)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    serializable_results = [
-        {**r, "enforcement": asdict(r["enforcement"])} for r in results
-    ]
+    serializable_results = [{**r, "enforcement": asdict(r["enforcement"])} for r in results]
     return JSONResponse({"compiled": serializable_results})
 
 
@@ -763,6 +761,7 @@ async def _execute_one_field(
         _hydration_rows,
         _hydration_cache_hits,
         physical_sql,
+        org_id=org_id,
     )
 
 
@@ -798,7 +797,9 @@ async def _handle_query(
     from provisa.compiler.limits import role_query_limits as _rql
 
     _rt_ms = _rql(role)[2]
-    _role_timeout = _request_timeout() if _rt_ms is None else min(_request_timeout(), _rt_ms / 1000.0)
+    _role_timeout = (
+        _request_timeout() if _rt_ms is None else min(_request_timeout(), _rt_ms / 1000.0)
+    )
 
     action_sels, regular_names = _split_action_fields(document, state)
 
@@ -812,7 +813,9 @@ async def _handle_query(
 
     if action_sels and regular_names:
         raise ApiError(
-            400, "data.mixed_action_and_table_queries", "Cannot mix action fields with table queries"
+            400,
+            "data.mixed_action_and_table_queries",
+            "Cannot mix action fields with table queries",
         )
 
     compiled_queries = compile_query(document, ctx, variables)

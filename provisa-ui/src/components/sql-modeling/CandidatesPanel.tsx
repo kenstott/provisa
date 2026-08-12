@@ -59,13 +59,12 @@ export function CandidatesPanel({
                   aria-label={t("candidatesPanel.idLabel")}
                   value={c.id}
                   size="xs"
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const next = e.currentTarget.value;
                     setCandidates((prev) =>
-                      prev.map((item, i) =>
-                        i === idx ? { ...item, id: e.currentTarget.value } : item,
-                      ),
-                    )
-                  }
+                      prev.map((item, i) => (i === idx ? { ...item, id: next } : item)),
+                    );
+                  }}
                 />
               </Table.Td>
               <Table.Td>
