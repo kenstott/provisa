@@ -478,7 +478,9 @@ class Column(
     mask_value: str | None = None  # constant value
     mask_precision: str | None = None  # truncate precision (year, month, day, etc.)
     alias: str | None = None  # GraphQL field name override
-    gql_selection: str | None = None  # literal GraphQL selection override (e.g. "employee_id: employee { id }")
+    gql_selection: str | None = (
+        None  # literal GraphQL selection override (e.g. "employee_id: employee { id }")
+    )
     description: str | None = None  # GraphQL field description
     path: str | None = None  # JSON extraction path (e.g. "payload.order_id")
     native_filter_type: str | None = None  # "path_param" | "query_param" for OpenAPI sources
@@ -597,9 +599,7 @@ class Metric(BaseModel):  # REQ-1317
     @classmethod
     def _valid_name(cls, v: str) -> str:
         if not re.fullmatch(r"[a-z][a-z0-9_]*", v):
-            raise ValueError(
-                f"metric name {v!r} must be snake_case (letters, digits, underscores)"
-            )
+            raise ValueError(f"metric name {v!r} must be snake_case (letters, digits, underscores)")
         return v
 
 
@@ -794,9 +794,7 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
         None  # persisted GraphQL field name override (computed from target+cardinality when absent)
     )
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
-    hide_target_meta: bool = (
-        False  # REQ-1132: when True, suppress the TARGET's metadata from DEFAULT-tier meta discovery
-    )
+    hide_target_meta: bool = False  # REQ-1132: when True, suppress the TARGET's metadata from DEFAULT-tier meta discovery
     source_json_key: str | None = (
         None  # when set, JOIN extracts this key from source column as JSON object
     )
@@ -1153,6 +1151,12 @@ class OtelConfig(BaseModel):  # REQ-545
     log_level: Python log level name forwarded to the OTLP log exporter (default WARNING).
     compact_cron: cron expression for the Parquet→Iceberg compaction job (default every minute).
     compact_batch_size: rows per INSERT batch during compaction; reduce for low-memory engines.
+        Each batch is one Iceberg commit, which costs seconds regardless of its size, so this is
+        what sets the job's throughput. The value was 10 because the Trino client carried
+        parameterised statements in an HTTP header whose cap allowed no more; _execute_batch_inserts
+        inlines its literals now and bounds a statement by characters instead, so the old value only
+        survived as a hundredfold ceiling on the drain rate — the trace backlog outgrew compaction
+        and the ops queries report read an empty table.
     compact_file_chunk: Parquet files processed per compaction chunk; reduce for low-memory environments.
     compact_max_files_per_run: Parquet files each signal may take in one compaction run. The signals
         are compacted in a fixed order, so this is what keeps a large backlog in an earlier signal
@@ -1176,7 +1180,7 @@ class OtelConfig(BaseModel):  # REQ-545
     sample_rate: float = 1.0
     log_level: str = "WARNING"
     compact_cron: str = "* * * * *"
-    compact_batch_size: int = 10
+    compact_batch_size: int = 1000
     compact_file_chunk: int = 50
     compact_max_files_per_run: int = 500
     ops_snapshot_retention_hours: int | None = None
@@ -1446,9 +1450,7 @@ class ProvisaConfig(BaseModel):
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
-    metadata_export: MetadataExportConfig = Field(
-        default_factory=MetadataExportConfig
-    )  # REQ-1068
+    metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     nl: NlConfig = Field(default_factory=NlConfig)

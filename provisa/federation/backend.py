@@ -528,11 +528,27 @@ class TrinoBackend(EngineBackend):
         trino_lifecycle.register_kafka_catalog(state, kafka_source)
 
     def reseed_ops(self, state: Any, ops_views: list, retention_hours: int | None) -> None:
-        if state.engine_conn is None:
-            return
-        from provisa.observability.ops_trino import seed_ops_trino
+        """Register the Provisa-owned catalogs and seed the ops views on THIS org's terminal.
 
-        seed_ops_trino(state.engine_conn, ops_views, retention_hours)
+        REQ-1043/REQ-1244/REQ-1427: gating on ``engine_conn`` alone made this a silent no-op on
+        every isolated- or external-engine org, whose terminal is bound with kwargs and no
+        connection. ``provision()`` — the only other caller of ``register_system_catalogs`` — runs
+        for the deployment's shared engine, so an org moved to its own coordinator had
+        ``provisa_admin``, ``otel`` and ``results`` on the coordinator it had just left: the admin
+        reports read ``otel.signals.*`` and failed CATALOG_NOT_FOUND, and no amount of telemetry
+        compaction could put rows in front of that org. Use the same provisioning connection source
+        registration uses, which honours the wake-on-traffic contract.
+        """
+        with self._provisioning_conn(state) as conn:
+            if conn is None:
+                return
+            from provisa.core.trino_system_catalogs import register_system_catalogs
+            from provisa.observability.ops_trino import seed_ops_trino
+
+            # Ordering as in provision(): seed_ops_trino writes into `otel`.
+            assert state.tenant_engine is not None
+            register_system_catalogs(conn, state.tenant_engine.url, state.org_id)
+            seed_ops_trino(conn, ops_views, retention_hours)
 
     def cluster_diagnostics(self, state: Any) -> tuple[bool, int, int]:
         conn = state.engine_conn

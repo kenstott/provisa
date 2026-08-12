@@ -43771,10 +43771,16 @@
     adopting it as the terminal. Gating the DDL on an open connection alone made registration a
     silent no-op, so an org that moved to an isolated engine had its catalogs issued nowhere and
     every query against it failed with CATALOG_NOT_FOUND while the same query succeeded on the
-    shared engine.
+    shared engine. The Provisa-owned catalogs - provisa_admin, otel and results - and the ops views
+    built on them follow the same contract for the same reason: they were registered only on the
+    deployment's shared engine, so an org that moved to its own coordinator kept them on the
+    coordinator it had just left and every admin report against otel.signals failed
+    CATALOG_NOT_FOUND. They are registered on whichever terminal the org actually runs on, before
+    the ops views that are created inside otel.
   use_case: >-
     An org admin who switches the org to a dedicated engine expects its sources to be queryable
-    immediately, without a manual catalog rebuild or a restart.
+    immediately, and the admin reports to keep working, without a manual catalog rebuild or a
+    restart.
   code:
   - provisa/federation/backend.py
   - provisa/api/app.py
@@ -43786,10 +43792,12 @@
     Then the catalog DDL reaches that coordinator on a connection opened from the stored kwargs
     And the connection is closed afterwards rather than becoming the org's terminal
     And the org's first query resolves its catalogs instead of failing CATALOG_NOT_FOUND
+    And the ops catalogs and views are seeded on that same coordinator
   related_reqs:
   - REQ-1043
   - REQ-1244
   - REQ-1266
+  - REQ-1332
 - id: REQ-1428
   status: complete
   since: 2026-08
@@ -43812,17 +43820,23 @@
     the lane at all - the collector drops spans from other services and from asyncpg
     auto-instrumentation, the control plane's own per-statement database chatter, which measured
     1080 of every 1134 spans arriving. Those spans remain visible to live trace inspection; they
-    just do not become Iceberg rows.
+    just do not become Iceberg rows. The batch a run commits is likewise sized to the work rather
+    than to a limit that no longer exists: an Iceberg commit costs seconds whatever it carries, so
+    the shipped ten-row default - the ceiling the Trino client's parameterised-statement header
+    once imposed, left behind when the inserts began inlining their literals - held the drain rate
+    a hundredfold below what the job could sustain.
   use_case: >-
     An operator opens admin / reports / queries and sees the queries that just ran, rather than an
     empty table caused by one signal's backlog monopolising every compaction run.
   code:
   - provisa/scheduler/jobs.py
+  - provisa/core/models.py
   - observability/otel-collector-config.yaml
   - scripts/deploy-cloud.sh
   tests:
   - tests/unit/test_otel_compaction_fairness.py
   - tests/unit/test_otel_endpoint_not_invented.py
+  - tests/unit/test_otel_trace_pipeline.py
   scenario: |-
     Given trace, log and metric files are all waiting in the object store
     And draining the logs alone exceeds the time the process survives

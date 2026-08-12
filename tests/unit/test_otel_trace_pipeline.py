@@ -767,3 +767,20 @@ class TestNonEngineTerminalsAreReported:
         )
         assert target is not None, [s.name for s in otel_spans.get_finished_spans()]
         assert target.attributes.get("provisa.table") == "pets"
+
+
+def test_the_shipped_compaction_batch_is_not_the_parameterised_era_value():
+    """REQ-1428: a deployment that configures nothing must still drain faster than it ingests.
+
+    Every batch is one Iceberg commit, and a commit costs about four seconds whatever it carries —
+    so batch size, not row count, sets the job's throughput. OtelConfig still defaulted to
+    ten rows, the ceiling the Trino client's parameterised-statement header once imposed, while
+    AppState's own default said a thousand; app startup applied the config, so the node committed
+    ten spans at a time, drained roughly a hundred rows a minute against an ingest rate many times
+    that, and admin / reports / queries read an empty table while queries were executing.
+    """
+    from provisa.api.app import AppState
+    from provisa.core.models import OtelConfig
+
+    assert OtelConfig().compact_batch_size == AppState().otel_compact_batch_size
+    assert OtelConfig().compact_batch_size >= 1000

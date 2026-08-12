@@ -121,3 +121,40 @@ def test_drop_and_analyze_follow_the_same_wake_contract(backend, monkeypatch):
         "drop:org_kstott__pet_store_sqlite",
         "analyze:org_kstott__pet_store_sqlite",
     ]
+
+
+def test_the_ops_catalogs_reach_the_org_s_own_coordinator(backend, monkeypatch):
+    """REQ-1332/REQ-1428: provisa_admin, otel and results belong to every terminal, not to one.
+
+    register_system_catalogs ran only in provision(), which serves the deployment's shared engine.
+    An org moved to its own coordinator therefore had the Provisa-owned catalogs on the coordinator
+    it had just left: admin / reports / traces returned
+    "FederationError(type=USER_ERROR, name=CATALOG_NOT_FOUND, Catalog 'otel' not found)", and no
+    amount of telemetry compaction could put a row in front of that org.
+    """
+    state = types.SimpleNamespace(
+        engine_conn=None,
+        engine_conn_kwargs={"host": "trino-kstott", "port": 8080},
+        tenant_engine=types.SimpleNamespace(url="postgresql://cp/provisa"),
+        org_id="kstott",
+    )
+    opened = _Conn()
+    monkeypatch.setattr("provisa.federation.trino_lifecycle.connect", lambda kwargs: opened)
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        "provisa.core.trino_system_catalogs.register_system_catalogs",
+        lambda conn, url, org_id: calls.append(("catalogs", conn, url, org_id)),
+    )
+    monkeypatch.setattr(
+        "provisa.observability.ops_trino.seed_ops_trino",
+        lambda conn, views, hours: calls.append(("views", conn, tuple(views), hours)),
+    )
+
+    backend.reseed_ops(state, ["traces"], 24)
+
+    # Catalogs first: the ops views are created inside `otel`.
+    assert [c[0] for c in calls] == ["catalogs", "views"]
+    assert calls[0] == ("catalogs", opened, "postgresql://cp/provisa", "kstott")
+    assert calls[1] == ("views", opened, ("traces",), 24)
+    assert opened.closed
+    assert state.engine_conn is None
