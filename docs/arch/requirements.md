@@ -14997,3 +14997,71 @@ Readiness for a tour step means both halves: the destination's code chunk is com
 **Code:** `provisa-ui/src/hooks/useAdminQueries.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`, `provisa-ui/src/pages/RelationshipsPage.tsx`
 
 **Tests:** `provisa-ui/src/__tests__/tourDataPreload.test.tsx`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1447 · Federation Engine {#REQ-1447}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+SaaS runs ONE engine architecture on one GKE cluster. Shared ([REQ-1243](#REQ-1243)) and isolated ([REQ-1043](#REQ-1043), [REQ-1412](#REQ-1412)) are the same Trino deployment from the same manifests and the same image, differing only in tenancy and in which node pool they schedule onto: the shared instance hosts every Starter org on a pool that grows as customers sign up, and an isolated instance hosts one org on a pool tainted to that org alone. There is no second engine kind, no second provisioning path, and no isolated-only configuration -- provisioning takes tenancy and size and is otherwise one code path. This replaces two unrelated systems: the shared engine is today a google_compute_instance coordinator plus a regional MIG and autoscaler for workers (terraform/gcp-saas/main.tf:297,401,421) with the app in compose on that VM, while isolated engines are containers created through the Docker Engine API on that same VM's socket (PROVISA_ISOLATED_ENGINE_DOCKER_SOCKET), joined to PROVISA_ISOLATED_ENGINE_NETWORK. That co-tenancy is why an isolated org can currently degrade everyone: HostConfig bounds Memory but never NanoCpus, and the generated config sets node-scheduler.include-coordinator=true so the container EXECUTES scans on the shared node where the SaaS coordinator only plans. Under scheduler placement the contention is structurally absent rather than policed -- a dedicated node pool is the bound, and requests==limits (Guaranteed QoS) makes the CPU cap idiomatic instead of an omission. Unifying also removes the divergence the isolated path was forced into: _JVM_CONFIG deliberately forgoes the shared cluster's jvm.config because that one loads the OpenTelemetry javaagent from /etc/trino/otel, a path only the compose mount provides and whose absence aborts the JVM before Trino logs anything; one image plus a ConfigMap ends that split. Kubernetes also supplies the cluster lifecycle SaaS would otherwise author -- per-node config with unique node.id, partial-provision reconciliation, cascading teardown, and a readiness gate on readyReplicas rather than today's _wait_until_ready poll of /v1/info starting==false, which returns as soon as the coordinator answers and would release queries onto a partially registered cluster. The control plane holds scoped k8s RBAC instead of a mounted Docker socket, a materially narrower grant than handing the app process a container runtime. provisioning_available() already draws the seam and names Kubernetes as the anticipated out-of-band case: PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE resolves WHERE an engine lives independently of whether this process can create one, so routing, status, and catalog reissue are unchanged. The one GKE cluster is a single failure domain covering both lanes; this is not a regression, since both lanes today share one VM.
+
+**Use case:** An org on the isolated lane gets the same engine the shared lane runs, on hardware it alone occupies, and a query that saturates it leaves every other org untouched.
+
+**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/api/admin/org_engine_router.py`, `terraform/gcp-saas/main.tf`
+
+**Tests:** —
+
+### REQ-1448 · Federation Engine {#REQ-1448}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+An isolated engine idles to zero and wakes on traffic, so the org pays for compute it uses rather than 730 node-hours a month. Today neither half exists: provision_isolated_engine is reached only from admin routes (org_engine_router.py, orgs_router.py), never from a query path, and no reaper stops an idle engine -- the container even carries RestartPolicy unless-stopped. Idling scales the org's node pool to zero, not merely its pods: a node with zero pods still bills in full, whereas an empty node pool costs nothing, which beats the stopped-VM floor of a retained boot disk. Wake therefore pays a node provision of roughly 90-120s, deliberately accepted over keeping warm capacity per org, and well inside the tier's competitive envelope where Databricks classic SQL warehouses cold-start in minutes. The query path holds for it rather than timing out. The shared engine never idles; only isolated pools scale to zero. Waking is NOT merely scheduling the pods. An engine holds no data and its catalogs are issued from the org's config every time its runtime is built, booting with catalog.management=dynamic -- so a resumed engine answers /v1/info with zero catalogs, and a query released against it fails. Wake is therefore coupled steps under the registry lock: scale the pool up, await readyReplicas rather than the coordinator merely answering, force the org runtime rebuild that reissues CREATE CATALOG, and only then release the waiting query. Scaling IN must drain: terminating a worker mid-query kills its tasks, so terminationGracePeriodSeconds must exceed the longest permitted query and rely on Trino's SHUTTING_DOWN drain. Keeping an engine warm 24x7 is the org's choice, expressed as traffic, and is billed as the compute it is.
+
+**Use case:** An org that queries for two hours a day pays for two hours of engine time, and an org that wants a permanently warm engine keeps it awake by using it and pays accordingly.
+
+**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/federation/trino_lifecycle.py`, `provisa/api/org_runtime.py`
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1449 · SaaS Billing {#REQ-1449}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Pro is sold as three fixed sizes -- S (4 vCPU / 32GB), M (8/64), L (16/128) -- expressed as the node pool machine type and the pod requests/limits of the org's engine ([REQ-1447](#REQ-1447)), each a plan-fixed constant rather than a control the org adjusts, since each plan is a fixed setting and orgs do not tune their own entitlements. Sizes are carried per plan in the entitlements table rather than derived from a machine family, so a later size may change family (c3-highcpu for a CPU-bound profile) without a schema change. The ladder is vertical because GCE pricing is linear per vCPU and GB, making scale-up cost-neutral against scale-out at equal capacity while avoiding network exchange between pods; it stops at L well inside the practical single-JVM ceiling, since jvm.config sets MaxRAMPercentage=70 with G1 and pause times grow with heap and live-set, so useful single-JVM scale ends near 200-300GB heap. Past that the same substrate carries the org further by splitting the engine into more worker pods with modest heaps rather than one large one, trading in-JVM reference passing for exchange serialization -- worth paying only above that heap threshold, which is why S/M/L do not do it. Workloads exceeding what one node pool serves are met by the external lane ([REQ-1412](#REQ-1412)) or a self-hosted multi-node deployment sized at apply time (terraform/gcp node_count, worker_machine_type). Dedicated placement ([REQ-1447](#REQ-1447)) also makes the lane's charges directly meterable, which is the metering path [REQ-1281](#REQ-1281) lacked. Engine-hours accrue only while the org's node pool is scaled up, read from the platform rather than inferred, and egress is attributable because the pool serves one org -- neither is derivable for a container sharing a node. The derived query.max-memory and query.max-memory-per-node follow from the size rather than the deployment-wide PROVISA_ISOLATED_ENGINE_MEMORY; on a single-pod engine the per-node bound must not sit below the cluster bound, as today's 30%/60% split does, since both name the same pool and the lower value kills queries at half the stated budget. Because the isolated lane cannot degrade other tenants once placement is dedicated, it carries no query concurrency or duration limits -- the size is the only limit, and the org pays for what it runs.
+
+**Use case:** An org picks one of three Pro sizes and is invoiced engine-hours at that size's rate plus measured egress, on hardware it exclusively occupies.
+
+**Code:** —
+
+**Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1450 · Federation Engine {#REQ-1450}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+The shared engine ([REQ-1243](#REQ-1243)) is one multi-tenant Trino deployment on the GKE cluster ([REQ-1447](#REQ-1447)), serving every Starter org from a single cluster whose node pool grows as customers sign up. Tenants are separated INSIDE that Trino -- by resource group and by the catalog set the org's runtime issues -- not by pod or node, which is exactly what distinguishes it from the isolated lane running the identical manifests for one org. Fairness therefore stays the resource manager's job: trino/etc/resource-groups.json (templated at provisa/api/trino_setup.py) becomes a ConfigMap, its per-tenant `tenant-${USER}` subgroup unchanged, and the per-query caps of [REQ-1044](#REQ-1044) remain the Starter-side limit since one org's query CAN degrade its neighbours here. Operators must know that ConfigMap updates reach pods on the kubelet sync interval, roughly 60s, rather than on Trino's file-watch interval, so resource-group changes propagate more slowly than they do today. Worker count is an HPA scaling on queued queries rather than the instance-level signal the current regional autoscaler uses (terraform/gcp-saas/main.tf:401,421), and scale-in must drain per [REQ-1448](#REQ-1448). The shared pool never scales to zero: it is always serving someone, so idle-to-zero belongs to the isolated lane alone. This deployment replaces the google_compute_instance coordinator plus worker MIG. Capacity is added by growing the worker node pool on the SAME cluster, keeping one coordinator; workers in a separate cluster could join over flat VPC-native networking but would put a cluster boundary in every exchange for no gain. That path ends at the coordinator, not the workers: a single Trino coordinator plans, schedules, and assembles results for every concurrent query, and open-source Trino has no multi-coordinator mode, so beyond some concurrency more workers stop helping. The answer then is a SECOND shared cluster with its own coordinator and Starter orgs assigned across them -- sharding, not scaling -- which reuses the endpoint resolution the lanes already share rather than introducing a new mechanism. Shards are named shared_1, shared_2, and so on, with the org row naming the shard it belongs to. Starter fairness is two mechanisms, not one. The per-query caps of [REQ-1044](#REQ-1044) are the hard bound, and metered compute is the soft one: because Starter pays for the hours it consumes, an org has an incentive not to crowd its neighbours even while staying inside every cap -- which is the failure a limit alone cannot reach. Metering the shared lane therefore CANNOT read infrastructure uptime the way the isolated lane does ([REQ-1449](#REQ-1449)), since the nodes host every Starter org at once; attribution must come from Trino itself, summing per-query CPU time and peak memory per org from the event listener. That is a distinct integration from the node-pool uptime read, and it is the half of [REQ-1281](#REQ-1281) the shared lane needs.
+
+**Use case:** Every Starter org queries one shared Trino whose capacity grows with signups, with resource groups keeping any one org from starving the others.
+
+**Code:** `trino/etc/resource-groups.json`, `provisa/api/trino_setup.py`, `terraform/gcp-saas/main.tf`
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1451 · Deployment Topology {#REQ-1451}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+
+The GKE cluster ([REQ-1447](#REQ-1447)) hosts Trino and nothing else. The control plane -- the Provisa API, UI, and background workers -- stays on its own VM as today, with Cloud SQL holding the admin database, and is deliberately NOT moved into Kubernetes. Two reasons make the split correct rather than merely expedient. First, OrgRegistry serializes runtime rebuilds on an in-process asyncio.Lock (provisa/api/org_runtime.py:144-151), and the per-process federation engine is a settled invariant ([REQ-1241](#REQ-1241)), so more than one replica would let concurrent rebuilds for the same org race; a single-VM control plane keeps that lock meaningful. Second, the engine tier is the part with elastic, per-tenant, scale-to-zero lifecycle, and the control plane is not -- hosting it on the same substrate would buy orchestration it has no use for. The app reaches the cluster through the Kubernetes API authenticated by the VM's attached service account, so no key material is exported and the mounted Docker socket (PROVISA_ISOLATED_ENGINE_DOCKER_SOCKET) is retired -- a narrower grant than handing the app process a container runtime, and the reason isolated engines can no longer land on the control plane's own host. Engine endpoints stay resolved by PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, now naming in-cluster services, so routing is unchanged by the substrate move.
+
+**Use case:** Operators run one Kubernetes cluster for query engines and one VM for the control plane, each sized and scaled for what it actually does.
+
+**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/api/org_runtime.py`, `terraform/gcp-saas/main.tf`
+
+**Tests:** —

@@ -124,7 +124,15 @@ jobs:
             exit 1
           fi
           printf '%s' "$SP_CERT_P12_BASE64" | base64 -d > sharepoint.pfx
-          chmod 600 sharepoint.pfx
+          # The runner writes this file as uid 1001; Trino reads it as uid 1000 through the bind
+          # mount, and a Linux bind mount carries the host's ownership through unchanged. At mode
+          # 600 the plugin could not open the file at all, and Calcite reported only "Error
+          # instantiating JsonCustomSchema(name=sharepoint)" — the schema list for the catalog
+          # then failed forever and the spec's wait for the `sharepoint` schema could never
+          # succeed. Hand the file to Trino's uid instead of widening the mode.
+          sudo chown 1000:1000 sharepoint.pfx
+          sudo chmod 600 sharepoint.pfx
+          ls -l sharepoint.pfx
 
       # The Calcite-derived connector plugins are gitignored (they exist only where built), and
       # Trino aborts with "No service providers of type io.trino.spi.Plugin" without them — a
@@ -197,3 +205,14 @@ jobs:
         run: |
           docker ps -a
           docker compose -f docker-compose.core.yml logs --tail=200
+          # A connector that fails to instantiate does so minutes before the spec's wait expires,
+          # so the tail above scrolls the stack trace off. Keep the whole Trino log as an artifact.
+          docker compose -f docker-compose.core.yml logs --no-color trino > trino-container.log
+
+      - name: Upload Trino container log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trino-container-log
+          path: trino-container.log
+          retention-days: 7
