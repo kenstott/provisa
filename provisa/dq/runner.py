@@ -42,9 +42,14 @@ from provisa.dq.results import RESULT_FIELDS
 # must not be held by it forever.
 DEFAULT_TIMEOUT = 600.0
 
-# How many failing rows the checker may sample. Bounds the child's memory and the diagnostics column
-# alike — the scan itself never streams the dataset into Python, and this keeps the EVIDENCE bounded
-# to match.
+# How many failing values a checker may sample into ``diagnostics``. The scan itself never streams
+# the dataset into Python — it is aggregate SQL — and this keeps the EVIDENCE bounded to match.
+#
+# It reaches only Great Expectations, as its result_format partial_unexpected_count. Soda collects no
+# failing-row samples at all without Soda Cloud: its sampler limit is read from the CLOUD dataset
+# configuration (soda_core/check_collections/base.py sets it from
+# dataset_configuration.test_row_sampler_configuration.test_row_sampler.limit), so a Cloud-less run
+# has sampling disabled outright. That bound is structural, not a setting this can raise.
 DEFAULT_SAMPLER_LIMIT = 100
 
 # The checker's own outcome vocabulary → the shipped ``outcome`` column's. Soda's five-value

@@ -133,6 +133,13 @@ GOVERNANCE_ATTRIBUTE = "Provisa Governance"
 RELATIONSHIP_ATTRIBUTE = "Provisa Approved Relationships"
 LINEAGE_ATTRIBUTE = "Provisa Lineage"
 STEWARD_ATTRIBUTE = "Provisa Steward"
+# REQ-1443: the checks a registered contract makes about this asset, as a JSON document on the
+# asset the checker OBSERVES. Collibra's own Data Quality Rule assets live in a rulebook a data
+# office curates, and publishing rows into it would put Provisa-authored rules inside a
+# steward-owned domain — the containment argument in the module docstring holds only while
+# Provisa mentions its own assets. So the checks ride a Provisa-authored attribute instead, the
+# same choice governance and lineage make above, and the target maps them onto its rulebook.
+DATA_QUALITY_ATTRIBUTE = "Provisa Data Quality"
 
 # REQ-1387: Collibra's own glossary vocabulary. Business Term and the Glossary domain type are
 # out-of-the-box, as are the term-to-term relation types below — named as Collibra names them,
@@ -196,6 +203,32 @@ def _governance_value(snapshot: MetadataSnapshot, asset_fqn: str) -> str | None:
     )
 
 
+def _data_quality_value(snapshot: MetadataSnapshot, asset_fqn: str) -> str | None:  # REQ-1443
+    """The contract checks made about one asset, as a JSON document.
+
+    ``resultsTable`` names where the outcomes land, so a reader of the observed asset can reach
+    the scan output; that table publishes as an ordinary table row alongside.
+    """
+    assertions = [a for a in snapshot.assertions if a.asset.fqn() == asset_fqn]
+    if not assertions:
+        return None
+    return json.dumps(
+        [
+            {
+                "checker": assertion.checker,
+                "checkType": assertion.check_type,
+                "definition": assertion.definition,
+                "severity": assertion.severity,
+                "resultsTable": assertion.results_table.fqn(),
+                # REQ-1443: the most recent scan's verdict, carried in the same Provisa-authored
+                # attribute rather than written into a steward-curated rulebook.
+                "outcome": assertion.outcome.as_document(),
+            }
+            for assertion in assertions
+        ]
+    )
+
+
 def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dict[str, Any]]:
     """The snapshot as Collibra import rows, hierarchy first.
 
@@ -240,6 +273,9 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
         governance = _governance_value(snapshot, table.ref.fqn())
         if governance is not None:
             attributes[GOVERNANCE_ATTRIBUTE] = [{"value": governance}]
+        data_quality = _data_quality_value(snapshot, table.ref.fqn())  # REQ-1443
+        if data_quality is not None:
+            attributes[DATA_QUALITY_ATTRIBUTE] = [{"value": data_quality}]
         edges = relationships_by_source.get(table.ref.fqn(), [])
         if edges:
             attributes[RELATIONSHIP_ATTRIBUTE] = [
@@ -284,6 +320,9 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
             column_governance = _governance_value(snapshot, column.ref.fqn())
             if column_governance is not None:
                 column_attributes[GOVERNANCE_ATTRIBUTE] = [{"value": column_governance}]
+            column_data_quality = _data_quality_value(snapshot, column.ref.fqn())  # REQ-1443
+            if column_data_quality is not None:
+                column_attributes[DATA_QUALITY_ATTRIBUTE] = [{"value": column_data_quality}]
             lineage = lineage_by_downstream.get(column.ref.fqn(), [])
             if lineage:
                 # Collibra's own lineage is a harvested technical relation between columns it

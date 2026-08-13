@@ -286,11 +286,27 @@ export function TagsTab() {
                     ))}
                   </Group>
                 </Table.Td>
-                <Table.Td>{assignmentCounts[tag.id] ?? 0}</Table.Td>
+                {/* REQ-1443: a derived tag is computed off each table's registration and is never
+                    assigned, so a count of stored assignments would read as "unused" when the tag
+                    may hold on every table in the estate. */}
+                <Table.Td>
+                  {tag.derived ? (
+                    <Badge size="xs" variant="light" color="teal" data-testid="tags-derived">
+                      {t("tagsTab.derivedTag")}
+                    </Badge>
+                  ) : (
+                    (assignmentCounts[tag.id] ?? 0)
+                  )}
+                </Table.Td>
                 <Table.Td>
                   {tag.isSystem ? (
-                    <Tooltip label={t("tagsTab.systemTag")}>
-                      <Lock size={13} aria-label={t("tagsTab.systemTag")} />
+                    <Tooltip
+                      label={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
+                    >
+                      <Lock
+                        size={13}
+                        aria-label={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
+                      />
                     </Tooltip>
                   ) : (
                     <Group gap="xs">

@@ -29,7 +29,7 @@ test("tour does not show a step's popover over a page still loading its data", a
 
   // Steps 0-3 live on /sources; advance to step4, which navigates to /tables and highlights
   // the persistent nav-tables anchor — the element that used to resolve before TablesPage's
-  // own data had loaded. Synchronize on each popover's own "Next (n/25)" label (driver.js
+  // own data had loaded. Synchronize on each popover's own "Next (n/30)" label (driver.js
   // renders it from TOUR_STEPS' 1-based position, matching the step reached — see
   // tour.nav.next in tour.json) rather than firing clicks on a fixed clock: driver.js only
   // swaps the button label once the *new* step's async waitForElement chain has resolved and
@@ -42,13 +42,13 @@ test("tour does not show a step's popover over a page still loading its data", a
     // compiling and querying at the same time. The default 5s expect timeout covers none of that
     // reliably. Once step0's popover is up, every later step is an in-app transition and 5s is
     // ample, so the extra budget is spent only where the work actually is.
-    await expect(nextBtn).toHaveText(`Next (${n}/25)`, { timeout: n === 1 ? 60000 : 5000 });
+    await expect(nextBtn).toHaveText(`Next (${n}/30)`, { timeout: n === 1 ? 60000 : 5000 });
     if (n < 4) await nextBtn.click();
   }
   await nextBtn.click(); // enters step4: navigates to /tables, highlights nav-tables
 
   // Poll in-browser (a single evaluate, not round-tripping two separate Playwright assertions)
-  // for the *first instant* step4's own popover is showing (identified by its "Next (5/25)"
+  // for the *first instant* step4's own popover is showing (identified by its "Next (5/30)"
   // label — the driver.js popover container persists across step transitions, so merely
   // checking "a popover exists" can still match the *previous* step's lingering popover), and
   // capture in that same tick whether "Loading tables…" is still on screen. Two independent
@@ -57,7 +57,7 @@ test("tour does not show a step's popover over a page still loading its data", a
   const state = await page.waitForFunction(
     () => {
       const nextBtnEl = document.querySelector(".driver-popover-next-btn");
-      if (nextBtnEl?.textContent?.trim() !== "Next (5/25)") return null;
+      if (nextBtnEl?.textContent?.trim() !== "Next (5/30)") return null;
       const loading = Array.from(document.querySelectorAll(".page")).some(
         (el) => el.textContent?.trim() === "Loading tables...",
       );

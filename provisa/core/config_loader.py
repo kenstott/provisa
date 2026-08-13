@@ -655,6 +655,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_table_kafka_sinks(config)
     _validate_table_live_delivery(config)
     _validate_change_signal(config)
+    _validate_dq_contracts(config)
     _validate_probe_type(config)
     _validate_watermark_columns(config)
     await _upsert_tables(conn, engine, config, openapi_specs)
@@ -883,6 +884,33 @@ def _validate_change_signal(config) -> None:  # REQ-932
                 f"Table {table.table_name!r}: change_signal={sig} requires source-level cdc "
                 f"transport on {table.source_id!r} (bootstrap_servers/topic_prefix)"
             )
+
+
+def _validate_dq_contracts(config) -> None:  # REQ-1443
+    """Validate data-quality checker tables and REPLACE their columns with the shipped schema.
+
+    The per-table derivation lives in :func:`provisa.dq.registration.derive_checker_table`, shared
+    with the admin registerTable mutation so a checker table registered through the UI comes out
+    identical to the same table written in YAML. What this adds is the whole-config half: a
+    ``dq_contract`` on a non-checker table is a config error, because its rows would come from
+    wherever that source's loader fetched them and the results schema does not describe those.
+    """
+    from provisa.dq.contract import CHECKERS  # noqa: PLC0415
+    from provisa.dq.registration import derive_checker_table, is_checker_source_type  # noqa: PLC0415
+
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        source = sources_by_id.get(table.source_id)
+        stype = getattr(source, "type", None) if source else None
+        if not is_checker_source_type(stype):
+            if table.dq_contract is not None:
+                raise ValueError(
+                    f"Table {table.table_name!r}: dq_contract is only valid on a data-quality "
+                    f"checker source ({sorted(CHECKERS)}), not on source type "
+                    f"{str(getattr(stype, 'value', stype))!r}"
+                )
+            continue
+        derive_checker_table(table, stype, config.tables)
 
 
 def _validate_probe_type(config) -> None:  # REQ-982

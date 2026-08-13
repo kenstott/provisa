@@ -228,6 +228,23 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step19",
   },
   {
+    // REQ-1443: the demo's checker source lands its scans as an ordinary table, so the quality
+    // contract is edited where every other table setting is. `?source=` seeds the filter box, so
+    // the first row is the checker's results table — expand it and its edit control appears.
+    route: "/tables?source=dq-checker",
+    element: '[data-testid="table-read-view-edit"]',
+    key: "stepQualityTable",
+    clickBefore: ".data-table tbody tr.clickable",
+  },
+  {
+    // The edit form is already open from the previous step's highlight target; opening it is this
+    // step's clickBefore. Next collapses the row, which also cancels the edit.
+    element: '[data-tour="dq-panel"]',
+    key: "stepQualityPanel",
+    clickBefore: '[data-testid="table-read-view-edit"]',
+    clickAfterNext: ".data-table tbody tr.clickable",
+  },
+  {
     route: "/views",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,

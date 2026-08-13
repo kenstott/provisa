@@ -52,17 +52,27 @@ _HTTP_API_TYPES = frozenset(
     {"openapi", "graphql_remote", "grpc_remote", "rss", "prometheus", "google_sheets"}
 )
 
+# Data-quality checkers (REQ-1443): a scan is not a fetch of a pre-existing dataset, it PRODUCES the
+# rows on each run, so there is nothing upstream to probe for change. watermark, because scan_time
+# advances every scan and the results table is a scan HISTORY (append, REQ-982); or none, for an
+# operator who only wants the latest scan. hash/count would probe a dataset that does not exist until
+# the scan runs.
+_DQ_CHECKER_TYPES = frozenset({"soda", "great_expectations"})
+
 _ALL = frozenset({WATERMARK, HASH, COUNT, NONE})
 
 
 def probe_capabilities(source_type: str) -> frozenset[str]:
     """The probe_types a source of ``source_type`` supports (REQ-982). SQL/engine-scannable sources
     (the open-ended default) support all four; HTTP APIs all four (watermark/count conditional on the
-    API surface); files hash|none; streaming/push sources none (not on the probe axis)."""
+    API surface); files hash|none; data-quality checkers watermark|none; streaming/push sources none
+    (not on the probe axis)."""
     if source_type in _STREAMING_TYPES:
         return frozenset()
     if source_type in _FILE_TYPES:
         return frozenset({HASH, NONE})
+    if source_type in _DQ_CHECKER_TYPES:
+        return frozenset({WATERMARK, NONE})
     if source_type in _HTTP_API_TYPES:
         return _ALL
     return _ALL  # RDBMS / DW / OLAP / lake / connector NoSQL / graph — engine-scannable

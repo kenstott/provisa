@@ -66,6 +66,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -82,6 +83,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         AssetRef,
         ColumnAsset,
+        DataQualityAssertion,
         GlossaryTermAsset,
         MetadataSnapshot,
         TableAsset,
@@ -132,6 +134,11 @@ GLOSSARY_DISPLAY_NAME = "Provisa Glossary"
 # OpenMetadata, carried through verbatim so the fqn-keyed upsert cannot wipe them
 # (same single-writer discipline as ``_CARRIED_TABLE_FIELDS``, REQ-1389).
 _CARRIED_TERM_FIELDS = ("tags", "reviewers", "owners", "references", "style", "extension")
+
+# REQ-1443: how each Provisa checker names itself in OpenMetadata's TestPlatform enum. The
+# enum already carries both, so a published test case reports the engine that actually runs it
+# instead of implying OpenMetadata executes it.
+_TEST_PLATFORMS = {"soda": "Soda", "great_expectations": "GreatExpectations"}
 
 _KIND_OF = "KIND_OF"
 _SYNONYM_OF = "SYNONYM_OF"
@@ -310,6 +317,195 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
     return Entity(asset=table.ref, path="/api/v1/tables", kind="table", body=body)
 
 
+# REQ-1443: Provisa's scan outcomes in OpenMetadata's own vocabulary. A warn maps to Failed, not
+# Success — the checker raised it because a threshold was breached, and the severity is the
+# author's volume knob, not a verdict. error/skipped/never_run are absent on purpose: they reached
+# no verdict, and OpenMetadata's Aborted would claim a run that did not reach one here.
+_TEST_CASE_STATUSES: dict[str, str] = {"pass": "Success", "fail": "Failed", "warn": "Failed"}
+
+
+def _test_definition_name(assertion: DataQualityAssertion, entity_type: str) -> str:
+    """The TestDefinition a check publishes under (REQ-1443).
+
+    Keyed by checker, check type and entity type together: OpenMetadata's own definitions
+    (``columnValuesToBeNotNull`` and the rest) describe tests OpenMetadata runs, and reusing one
+    would say the catalog executes a check the checker actually executes elsewhere. A definition
+    is COLUMN- or TABLE-scoped in OpenMetadata, so a check type used at both levels needs one of
+    each rather than a single definition that lies about half its uses.
+    """
+    return f"provisa_{assertion.checker}_{assertion.check_type}_{entity_type.lower()}"
+
+
+def _entity_type_of(assertion: DataQualityAssertion, table: TableAsset) -> str:
+    """``COLUMN`` when the assertion's ref carries a column beyond the table's parts."""
+    return "COLUMN" if len(assertion.asset.parts) > len(table.ref.parts) else "TABLE"
+
+
+def _test_suite_name(table: TableAsset) -> str:
+    return f"{_table_fqn(table)}.testSuite"
+
+
+def _entity_link(assertion: DataQualityAssertion, table: TableAsset) -> str:
+    table_link = f"<#E::table::{_table_fqn(table)}"
+    if _entity_type_of(assertion, table) == "COLUMN":
+        return f"{table_link}::columns::{assertion.asset.parts[-1]}>"
+    return f"{table_link}>"
+
+
+def _data_quality_entities(snapshot: MetadataSnapshot) -> list[Entity]:
+    """Contract checks as OpenMetadata TestDefinitions, basic TestSuites and TestCases.
+
+    Published on the OBSERVED table — the one the checker scans — because that is where a
+    consumer asks whether a column is checked. The results table publishes as an ordinary
+    table alongside; the link back to it rides each test case's description, since
+    ``CreateTestCase`` carries no field for a second asset reference.
+
+    Order is the contract, as it is for classifications: a test case names a definition and a
+    suite by FQN, and OpenMetadata rejects a reference it cannot resolve. A basic suite (one
+    bound to a single table) rather than a logical one, because a logical suite takes its
+    members through a separate endpoint while a basic suite owns the tests on its table.
+
+    ``testPlatforms`` names the checker itself — OpenMetadata's enum already has ``Soda`` and
+    ``GreatExpectations`` — so the catalog reports which engine runs the test rather than
+    implying OpenMetadata does.
+    """
+    tables = {table.ref.fqn(): table for table in snapshot.tables}
+    definitions: dict[str, Entity] = {}
+    suites: dict[str, Entity] = {}
+    cases: list[Entity] = []
+    results: list[Entity] = []
+    for assertion in snapshot.assertions:
+        # The observed table is a published table by construction: the builder emits an
+        # assertion only when both ends survive the Data Product filter.
+        table = tables[".".join(assertion.asset.parts[:3])]
+        entity_type = _entity_type_of(assertion, table)
+        definition_name = _test_definition_name(assertion, entity_type)
+        platform = _TEST_PLATFORMS[assertion.checker]
+        definitions.setdefault(
+            definition_name,
+            Entity(
+                asset=AssetRefStub(definition_name),
+                path="/api/v1/dataQuality/testDefinitions",
+                kind="test_definition",
+                body={
+                    "name": definition_name,
+                    "displayName": f"{platform} {assertion.check_type}",
+                    "description": (
+                        f"A {assertion.check_type} check {platform} runs against Provisa. "
+                        "The check's own text is on each test case."
+                    ),
+                    "entityType": entity_type,
+                    "testPlatforms": [platform],
+                    "parameterDefinition": [],
+                },
+            ),
+        )
+        suite_name = _test_suite_name(table)
+        suites.setdefault(
+            suite_name,
+            Entity(
+                asset=table.ref,
+                path="/api/v1/dataQuality/testSuites/basic",
+                kind="test_suite",
+                body={
+                    "name": suite_name,
+                    "description": f"Data-quality contract Provisa registered over {table.ref.fqn()}.",
+                    "basicEntityReference": _table_fqn(table),
+                },
+            ),
+        )
+        cases.append(
+            Entity(
+                asset=assertion.asset,
+                path="/api/v1/dataQuality/testCases",
+                kind="test_case",
+                body={
+                    "name": _test_case_name(assertion, table),
+                    "entityLink": _entity_link(assertion, table),
+                    "testDefinition": definition_name,
+                    "testSuite": suite_name,
+                    "description": (
+                        f"{assertion.definition}\n\n"
+                        f"Severity: {assertion.severity}. "
+                        f"Outcomes land in {assertion.results_table.fqn()}."
+                    ),
+                    "parameterValues": [],
+                },
+            )
+        )
+        # REQ-1443: the last scan's verdict, on OpenMetadata's own test-result endpoint, so the
+        # catalog's Data Quality tab shows the current state rather than only the test's
+        # existence. A check that reached no verdict — never run, errored, skipped — posts no
+        # result: OpenMetadata's own statuses are outcomes, and Aborted would claim a run that
+        # either never happened or is still the checker's business to report.
+        result_body = _test_case_result(assertion)
+        if result_body is not None:
+            case_fqn = _test_case_fqn(assertion, table)
+            results.append(
+                Entity(
+                    asset=assertion.asset,
+                    path=f"/api/v1/dataQuality/testCases/{case_fqn}/testCaseResult",
+                    kind="test_case_result",
+                    body=result_body,
+                )
+            )
+    # Results last: a result addresses its test case by FQN, and OpenMetadata rejects one it
+    # cannot resolve — the same ordering contract the cases have with their definitions.
+    return [*definitions.values(), *suites.values(), *cases, *results]
+
+
+def _test_case_fqn(assertion: DataQualityAssertion, table: TableAsset) -> str:
+    """How OpenMetadata addresses a test case: its entity's FQN, then the case name."""
+    name = _test_case_name(assertion, table)
+    if _entity_type_of(assertion, table) == "COLUMN":
+        return f"{_column_fqn(table, assertion.asset.parts[-1])}.{name}"
+    return f"{_table_fqn(table)}.{name}"
+
+
+def _test_case_result(assertion: DataQualityAssertion) -> dict[str, Any] | None:
+    """One check's last verdict as a ``CreateTestCaseResult``, or None when it reached none.
+
+    ``timestamp`` is epoch milliseconds, which is how OpenMetadata timestamps every result, and
+    it is the scan's own time rather than the publish time — a result stamped now would claim the
+    check was verified by this export.
+    """
+    outcome = assertion.outcome
+    status = _TEST_CASE_STATUSES.get(outcome.status)
+    if status is None:
+        return None
+    assert outcome.scan_time is not None  # a verdict implies the scan that reached it
+    result_text = f"{assertion.checker} reported {outcome.status} (severity {assertion.severity})"
+    if outcome.failed_rows is not None:
+        result_text += f"; {outcome.failed_rows} failing rows"
+    return {
+        "timestamp": int(outcome.scan_time.timestamp() * 1000),
+        "testCaseStatus": status,
+        "result": result_text,
+        "testResultValue": (
+            [{"name": assertion.check_type, "value": str(outcome.metric_value)}]
+            if outcome.metric_value is not None
+            else []
+        ),
+    }
+
+
+def _test_case_name(assertion: DataQualityAssertion, table: TableAsset) -> str:
+    """A per-suite unique name, derived from what the check is about rather than its position.
+
+    An index would renumber every case below a check the steward removed from the contract, so
+    the next publish would address a different test case with each name.
+    """
+    scope = (
+        assertion.asset.parts[-1]
+        if _entity_type_of(assertion, table) == "COLUMN"
+        else table.ref.parts[-1]
+    )
+    digest = sha256(
+        "|".join([assertion.checker, assertion.check_type, scope, assertion.definition]).encode()
+    ).hexdigest()[:12]
+    return f"provisa_{assertion.check_type}_{scope}_{digest}"
+
+
 def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """The snapshot as OpenMetadata upserts, in dependency order.
 
@@ -403,6 +599,9 @@ def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
         )
 
     entities.extend(_table_entity(snapshot, table) for table in snapshot.tables)
+    # REQ-1443: after the tables, because a test case's entityLink addresses the table it
+    # observes and OpenMetadata resolves that link at creation time.
+    entities.extend(_data_quality_entities(snapshot))
     return entities
 
 

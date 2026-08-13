@@ -64,6 +64,9 @@ export interface Tag {
   description: string;
   appliesTo: TagObjectType[];
   isSystem: boolean;
+  // REQ-1443: the tag names what the object already IS, read off its own registration. It is
+  // never assigned or unassigned — the picker does not offer it and the server refuses it.
+  derived: boolean;
   // Whether the picker shows reason/expiresOn for this tag, and whether they're demanded.
   reasonPolicy: TagFieldPolicy;
   expiresPolicy: TagFieldPolicy;
@@ -190,6 +193,7 @@ export interface RegisteredTable {
   uniqueConstraints: UniqueConstraint[]; // REQ-1093
   apiEndpoint: string | null;
   viewSql: string | null;
+  dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
   materialize: boolean;
   mvRefreshInterval: number;
   mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time
@@ -225,6 +229,127 @@ export interface ViewMetricsSpec {
   dimensions: string[];
   filters: string[];
 }
+
+// REQ-1443: the data-quality contract as the builder panel holds it. The contract TEXT stays the
+// source of truth — these rows are a parse of it, returned by the server so the soda / Great
+// Expectations dialects have exactly one implementation and the panel has none.
+export interface DqCheck {
+  columnName: string; // "" for a dataset-level check
+  checkType: string;
+  definition: string; // the check's own authored text, not a normalized summary
+}
+
+export interface DqContract {
+  dataset: string | null;
+  checker: string;
+  checks: DqCheck[];
+  error: string | null; // non-null = the text does not parse; the editor keeps what was typed
+}
+
+export interface DqContractText {
+  text: string;
+  error: string | null;
+}
+
+// REQ-1443 clause 7: a dry run's per-check outcome. Nothing is landed — this is what proves the
+// contract's dataset resolved to the table the operator meant.
+export interface DqDryRunCheck {
+  columnName: string | null;
+  checkType: string;
+  outcome: string; // pass | fail | warn | error | skipped
+  rowsTested: number | null;
+  failedRows: number | null;
+  value: number | null;
+  diagnostics: string | null; // the per-check-type jsonb block, as JSON text
+}
+
+export interface DqDryRun {
+  success: boolean;
+  message: string;
+  checkerVersion: string | null;
+  checks: DqDryRunCheck[];
+}
+
+// REQ-1443 clause 7: the check catalog the picker renders. The vocabulary is the server's — the
+// panel offers what provisa.dq.catalog says a checker can express against a column of that type,
+// and knows no check names of its own.
+export interface DqCheckParam {
+  name: string;
+  valueType: string; // string | number | integer | boolean | column | sql
+  required: boolean;
+  choices: string[]; // empty = free text
+}
+
+export interface DqCheckKind {
+  checkType: string;
+  scope: string; // dataset | column
+  params: DqCheckParam[];
+  comparators: string[]; // empty = the check takes no threshold
+  metrics: string[];
+  levels: string[]; // the severities this check can carry, e.g. warn | fail
+  thresholdUnits: string[]; // empty = the threshold is a bare number
+}
+
+export interface DqCheckColumn {
+  name: string;
+  dataType: string | null;
+  checks: DqCheckKind[]; // already scoped to this column's type
+}
+
+export interface DqCheckCatalog {
+  datasetChecks: DqCheckKind[];
+  columns: DqCheckColumn[];
+  error: string | null; // non-null = the dataset resolves nowhere; no columns to scope by
+}
+
+export interface DqCheckCatalogVars {
+  checker: string;
+  dataset: string;
+}
+
+// The arguments the picker, threshold and severity editors produce for ONE check. `params` is JSON
+// text on purpose: typing it here would put the checker's vocabulary in the browser, which is the
+// thing provisa.dq.catalog exists to keep in one place.
+export interface DqCheckBuildInput {
+  checkType: string;
+  columnName: string;
+  params: string;
+  comparator: string;
+  thresholdValue: number | null;
+  metric: string;
+  unit: string;
+  level: string;
+}
+
+export interface DqCheckDefinition {
+  definition: string;
+  error: string | null;
+}
+
+export interface DqCheckDefinitionVars {
+  checker: string;
+  check: DqCheckBuildInput;
+}
+
+export interface DqContractParseVars {
+  checker: string;
+  contractText: string;
+}
+
+export interface DqContractBuildVars {
+  checker: string;
+  dataset: string;
+  checks: DqCheck[];
+}
+
+export interface DqDryRunVars {
+  sourceId: string;
+  contractText: string;
+}
+
+// The checker source types REQ-1443 ships. Soda is Elastic-Licence (self-host and desktop only);
+// Great Expectations is Apache-2.0. Mirrors provisa.dq.contract.CHECKERS.
+export const DQ_CHECKERS = ["soda", "great_expectations"] as const;
 
 // The sentinel source id for DERIVED relations — defined by their declaration (view_sql,
 // entity/fact lowering), not scanned from an external system. Mirrors the backend

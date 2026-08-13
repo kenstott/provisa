@@ -802,6 +802,16 @@ _compute_needs_docker() {
   if [ "$OBS_MODE" = "docker" ]; then NEEDS_DOCKER=true; fi
   if [ "$(_lc "$INSTALL_DEMO")" = "y" ] && [ "$DEMO_MODE" = "docker" ]; then NEEDS_DOCKER=true; fi
 }
+# REQ-1443: the demo config registers a Great Expectations suite over the pet inventory, so the
+# quality scorecard has data only when GX is installed. A demo install that named no checker takes
+# GX (Apache 2.0, no hosted-service bar) rather than shipping a demo whose scan cannot run.
+apply_demo_checker_default() {
+  if [ "$(_lc "$INSTALL_DEMO")" = "y" ] && [ "$DQ_CHECKER" = "none" ]; then
+    DQ_CHECKER="gx"
+    info "Demo selected: installing Great Expectations (Apache 2.0) so the quality scorecard has data."
+  fi
+}
+
 resolve_deployment() {
   if [ "$NON_INTERACTIVE" = true ]; then
     DEPLOY_ENGINE="${PROVISA_ENGINE:-duckdb}"
@@ -810,8 +820,12 @@ resolve_deployment() {
     OBS_MODE="${PROVISA_OBS_MODE:-none}"
     OTLP_ENDPOINT="${PROVISA_OTLP_ENDPOINT:-}"
     INSTALL_DEMO="${PROVISA_INSTALL_DEMO:-n}"
+    # REQ-1443: none | soda | gx. Default none — a checker is an external, out-of-process
+    # component; it is never installed unless the operator asks for it by name.
+    DQ_CHECKER="${PROVISA_DQ_CHECKER:-none}"
     _compute_needs_docker
-    ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER}"
+    apply_demo_checker_default
+  ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER}"
     return
   fi
 
@@ -838,8 +852,29 @@ resolve_deployment() {
   printf "${CYAN}[provisa]${NC} To reconfigure with other options later, just run this setup again.\n"
   local dm; read -rp "$(printf "${CYAN}[provisa]${NC} Install the demo dataset with guided tour (y/N): ")" dm
   case "$dm" in [yY]|[yY][eE][sS]) INSTALL_DEMO="y" ;; *) INSTALL_DEMO="n" ;; esac
+
+  # ── Data quality checker (REQ-1443, optional) ──
+  # An external process aimed at Provisa's own pgwire endpoint; its scan results land as ordinary
+  # source rows. Soda is Elastic License 2.0 — self-hosted only, never the hosted cloud plane.
+  printf "\n${BOLD}Data quality checker (optional)${NC}\n"
+  printf "  1) none  — skip (default)\n  2) soda  — Soda Core contracts (Elastic License 2.0; self-hosted only)\n  3) gx    — Great Expectations suites (Apache 2.0)\n"
+  local qc; read -rp "$(printf "${CYAN}[provisa]${NC} Choose 1-3 [1]: ")" qc
+  case "$qc" in 2) DQ_CHECKER="soda" ;; 3) DQ_CHECKER="gx" ;; *) DQ_CHECKER="none" ;; esac
   _compute_needs_docker
-  ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER}"
+  apply_demo_checker_default
+  ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER} dq=${DQ_CHECKER}"
+}
+
+# ── The pyproject extra set for the native venv (REQ-1443) ───────────────────
+# The checker the operator chose is installed alongside the base extras. `none` adds nothing, so a
+# default install acquires no checker at all — soda-core is Elastic License 2.0 and is never vendored.
+_native_extras() {
+  case "${DQ_CHECKER:-none}" in
+    soda) printf 'embedded,soda' ;;
+    gx)   printf 'embedded,gx' ;;
+    none) printf 'embedded' ;;
+    *) err "Unknown data-quality checker '${DQ_CHECKER}' (expected none|soda|gx)."; exit 1 ;;
+  esac
 }
 
 # ── Network check (online vs airgapped) ──────────────────────────────────────
@@ -888,13 +923,15 @@ setup_native_venv() {
   local pin=""
   [ -n "$PROVISA_VERSION" ] && pin="==${PROVISA_VERSION#v}"
   local wheels; wheels="$(_find_payload wheels '*.whl' || true)"
+  # REQ-1443: the operator's chosen data-quality checker rides in as a pyproject extra.
+  local extras; extras="$(_native_extras)"
 
   if _online; then
     info "Installing Provisa from PyPI..."
-    "$pip" install --quiet "provisa[embedded]${pin}" uvicorn mcp-proxy
+    "$pip" install --quiet "provisa[${extras}]${pin}" uvicorn mcp-proxy
   elif [ -n "$wheels" ]; then
     info "Installing Provisa from bundled wheels (offline)..."
-    "$pip" install --quiet --no-index --find-links "$wheels" "provisa[embedded]" uvicorn mcp-proxy
+    "$pip" install --quiet --no-index --find-links "$wheels" "provisa[${extras}]" uvicorn mcp-proxy
   else
     err "No network and no bundled wheels found — reinstall Provisa."
     exit 1
@@ -975,6 +1012,9 @@ materialize_url: "${MATERIALIZE_URL:-}"
 obs_mode: ${OBS_MODE:-none}
 otlp_endpoint: "${OTLP_ENDPOINT:-}"
 demo: ${demo_flag}
+# REQ-1443: the optional external data-quality checker (none|soda|gx). scripts/provisa turns it into
+# the PROVISA_EXTRAS docker build arg; the native venv installs the matching pyproject extra.
+dq_checker: ${DQ_CHECKER:-none}
 YAML
 
   else

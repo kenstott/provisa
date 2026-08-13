@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "Data quality contract",
+    "contractLabel": "Contract",
+    "contractHelp": "The checker's own contract text. This is what registers and what the scan runs — the editors below write through it, so hand edits are never discarded.",
+    "dataset": "Observing {{dataset}}",
+    "datasetScope": "whole table",
+    "columnHeader": "Column",
+    "checkHeader": "Check",
+    "definitionHeader": "Definition",
+    "outcomeHeader": "Outcome",
+    "valueHeader": "Value",
+    "failedRowsHeader": "Failed rows",
+    "removeCheck": "Remove check",
+    "columnLabel": "Column",
+    "checkLabel": "Check",
+    "checkPlaceholder": "— pick a check —",
+    "metricLabel": "Metric",
+    "comparatorLabel": "Compare",
+    "thresholdLabel": "Threshold",
+    "unitLabel": "Unit",
+    "levelLabel": "Severity",
+    "addCheck": "Add check",
+    "dryRun": "Dry run",
+    "dryRunHelp": "Runs the contract against the live table and lands nothing."
+  }
+}

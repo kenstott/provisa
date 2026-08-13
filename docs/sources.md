@@ -253,6 +253,79 @@ sources:
 | `domain_id` | Yes | — | Domain this source belongs to |
 | `description` | No | `""` | Human-readable description |
 
+### Data Quality Checkers (REQ-1443)
+
+A data-quality checker is a source type, not a subsystem. Its scan output is data: a check result is an observation, so it lands through the ordinary source path and inherits cadence, freshness, events, lineage, governance, RLS, grid and export from every other source. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
+
+Two are supported, and the choice is a licence choice as much as a feature one.
+
+| Source Type | Contract Dialect | Extra | Licence | Hosted cloud plane |
+| ------------ | ----------------- | ------- | --------- | -------------------- |
+| `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refused — see below |
+| `great_expectations` | Expectation suite JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Allowed |
+
+Elastic License 2.0 prohibits providing the software to third parties as a hosted or managed service, and running Soda inside the SaaS plane on a tenant's behalf is exactly that. `config/capabilities.yaml` carries the split as `cloud_eligible: false` on the `soda` option, and the hosted plane reads that flag. A hosted deployment that wants Soda reaches an operator-supplied Soda endpoint the operator runs themselves. [tool-verified: `config/capabilities.yaml` lines 197–203]
+
+Provisa vendors and links nothing. The scan runs in a child interpreter (`python -m provisa.dq.worker`), which is the only place `soda_core` or `great_expectations` is imported, so a source-available checker never reaches the server process and a checker crash kills a subprocess rather than the event loop. [tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
+
+**The source points at Provisa's own pgwire endpoint.** That is what lets one postgres driver check a Snowflake- or Iceberg-backed table: the checker scans the federated view, not the underlying system. Because policy applies to that connection, the scan identity is declared rather than inherited — a filtered row set must never produce a silently passing check.
+
+```yaml
+sources:
+
+  - id: dq
+    type: soda
+    domain_id: sales-analytics
+    description: Soda contract scans over the governed estate
+    mapping:
+      host: localhost
+      port: 5439          # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner    # the scan identity, declared explicitly
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+**One results table per contract, and the contract is the whole registration.** The table carries `dq_contract` — the contract text verbatim — and nothing else about its shape. Columns, watermark and promotions are all derived. [tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
+
+```yaml
+tables:
+
+  - source_id: dq
+    schema_name: quality
+    table_name: orders_scan
+    domain_id: sales-analytics
+    change_signal: ttl_probe
+    cache_ttl: 3600
+    columns:
+      - name: scan_id          # declared only to carry visible_to; replaced at parse
+        visible_to: [analyst, admin]
+    dq_contract: |
+      dataset: provisa/sales/orders
+      columns:
+        - name: customer_id
+          checks:
+            - missing:
+                threshold:
+                  metric: percent
+                  must_be_less_than: 1
+      checks:
+        - row_count:
+            must_be_greater_than: 0
+```
+
+What the registration derives from that text:
+
+- **Lineage.** The contract already names its target dataset, so the registration parses it the way `extract_inputs` parses SQL (REQ-939) and resolves it to the governed table. One definition, no second copy that can drift. A contract naming an ungoverned dataset fails loud at registration rather than landing rows nobody asked for.
+- **Columns.** The result envelope is the checker's, not the operator's — 16 shipped columns from `scan_id` through `diagnostics`. Declared columns are read only for their `visible_to`, which must be unanimous, and are then replaced. [tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
+- **Watermark.** `scan_time` becomes the watermark, which makes the landing an append (REQ-982). Scan history accumulates with no history subsystem.
+- **Promotions.** `freshness_max_timestamp` and `dataset_rows_tested` are promoted out of the `diagnostics` jsonb as typed columns (REQ-119). Add more the way you would on any other jsonb column. [tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
+
+Timing introduces no new fields. `change_signal` plus `cache_ttl` give the poll cadence; `mv_debounce_quiet` and `mv_debounce_max_delay` collapse an upstream burst into one scan (REQ-963); a calendar grain makes it periodic (REQ-962); `expected_events` holds the scan until its inputs are fresh through the window (REQ-961). The poll loop is the scan scheduler.
+
+`outcome` is one of `pass`, `fail`, `warn`, `error`, `skipped`. None of them is a verdict — enforcement, if wanted, is a separate declaration later: a preflight or an MV over the landed results. Because a landed observation carries no determinism obligation (REQ-964), non-deterministic checks are admissible here that could never sit on a preflight gate — anomaly score, trailing-window change, freshness against now.
+
+The contract is authored in the UI, in the table edit surface's data-quality panel, and the raw contract text there is always the source of truth. A dry run executes the contract against the live table and shows the outcomes without landing them — which is how you catch a contract whose dataset name resolved somewhere unexpected and would otherwise land nothing but passing rows.
+
 ---
 
 ## Custom Connectors (REQ-1177)

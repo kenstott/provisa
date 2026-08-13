@@ -88,6 +88,14 @@
         "title": "Sécurité au niveau des lignes",
         "description": "🔎 Une fois les rôles définis, allez plus loin — restreignez les <strong>lignes</strong> visibles par chaque rôle avec des prédicats basés sur des attributs :<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Piloté par les données et appliqué ligne par ligne — sur toutes les sources et tous les protocoles.</p>"
       },
+      "stepQualityTable": {
+        "title": "Un contrôleur qualité n'est qu'une source",
+        "description": "🧪 Un contrôleur de qualité des données — Soda ou Great Expectations — s'enregistre comme <strong>source</strong>. Il analyse via le propre point d'accès postgres de Provisa : un seul dialecte de contrat couvre aussi bien une table Snowflake, une table Iceberg qu'une collection Mongo. Les résultats arrivent comme une table ordinaire : dépliez la ligne et ouvrez-la comme les autres."
+      },
+      "stepQualityPanel": {
+        "title": "Construire un contrat qualité",
+        "description": "✅ Écrivez le contrat à la main ou composez les contrôles colonne par colonne — taux de valeurs nulles, nombre de lignes, plages, fraîcheur — puis lancez un <strong>essai à blanc</strong> avant d'enregistrer. Chaque analyse s'ajoute : cette table <em>est</em> l'historique qualité — à tracer, à alerter, à joindre à tout."
+      },
       "step20": {
         "title": "Construisez votre pipeline de livraison",
         "description": "🔧 Composez tout votre pipeline de livraison ici même — sans outil ETL séparé :<ul><li>👁️ <strong>Vues</strong> — sur n'importe quelle table, éphémères ou matérialisées, et des vues sur des vues.</li><li>⚡ <strong>Commandes</strong> — des opérations typées et gouvernées (un service HTTP, un modèle Python, une procédure stockée) qui remplissent un double rôle : une étape au sein de votre pipeline, <em>et</em> une API de premier plan que les applications et agents en aval appellent pour agir sur vos données — invocable depuis toutes les surfaces, entièrement gouvernée et tracée.</li><li>⭐ <strong>Entités &amp; faits</strong> — déclarez une dimension ou un fait une seule fois, et Provisa génère l'entrepôt, indépendamment de la méthodologie : 3NF (Inmon), schéma en étoile (Kimball), ou Data Vault.</li><li>📏 <strong>Métriques</strong> — des définitions d'agrégats gouvernées (&ldquo;revenu net&rdquo;) dont la granularité se lie au moment de la requête. Définissez une seule fois ; chaque surface — SQL, GraphQL, agents IA — calcule le même chiffre, et les vues construites sur une métrique se régénèrent quand sa définition change.</li></ul>"

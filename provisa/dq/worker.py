@@ -202,8 +202,14 @@ def run_gx(payload: dict) -> dict:
     )
     # SUMMARY carries element_count / unexpected_count / unexpected_percent — the counts the shipped
     # schema reports — plus a bounded sample of failing values. COMPLETE would return every failing
-    # value, which is the unbounded pull the out-of-process design exists to avoid.
-    result = validation.run(result_format="SUMMARY")
+    # value, which is the unbounded pull the out-of-process design exists to avoid; partial_unexpected_count
+    # is where the payload's sampler_limit lands (soda has no local equivalent — see runner.py).
+    result = validation.run(
+        result_format={
+            "result_format": "SUMMARY",
+            "partial_unexpected_count": payload["sampler_limit"],
+        }
+    )
     return {
         "checker": "great_expectations",
         "checker_version": version("great_expectations"),
@@ -214,6 +220,10 @@ def run_gx(payload: dict) -> dict:
 def _gx_check_row(validation_result: Any) -> dict:
     config = validation_result.expectation_config
     kwargs = dict(config.kwargs or {})
+    # GX injects the runtime batch_id into every expectation's kwargs. It identifies THIS run's
+    # batch, not the check, so it is dropped: check_definition is what the operator authored, and a
+    # per-run id in it would make the same check look different on every scan.
+    kwargs.pop("batch_id", None)
     column_name = kwargs.get("column") or ""
     exception_info = validation_result.exception_info or {}
     raised = any(

@@ -54,6 +54,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     implicitDimensions: [],
     apiEndpoint: null,
     viewSql: null,
+    dqContract: null,
     materialize: false,
     mvRefreshInterval: 300,
     mvDebounceQuiet: 0,

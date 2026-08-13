@@ -88,6 +88,14 @@
         "title": "Seguridad de nivel de fila",
         "description": "🔎 Una vez que existen los roles, puedes ir más fino — restringir qué <strong>filas</strong> ve cada rol mediante predicados basados en atributos:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Basado en datos y aplicado fila por fila — en todos los orígenes y protocolos.</p>"
       },
+      "stepQualityTable": {
+        "title": "Un verificador de calidad es una fuente más",
+        "description": "🧪 Un verificador de calidad de datos — Soda o Great Expectations — se registra como <strong>fuente</strong>. Escanea a través del propio endpoint postgres de Provisa, así que un mismo dialecto de contrato cubre por igual una tabla de Snowflake, una de Iceberg y una colección de Mongo. Sus resultados llegan como una tabla normal: despliega la fila y ábrela como cualquier otra."
+      },
+      "stepQualityPanel": {
+        "title": "Construye un contrato de calidad",
+        "description": "✅ Escribe el contrato a mano o crea comprobaciones columna a columna — nulos, recuento de filas, rangos, frescura — y haz una <strong>ejecución de prueba</strong> antes de guardar. Cada escaneo se añade, así que esta tabla <em>es</em> el historial de calidad: grafícala, alerta sobre ella, únela con lo que quieras."
+      },
       "step20": {
         "title": "Construye tu pipeline de entrega",
         "description": "🔧 Compón todo tu pipeline de entrega aquí mismo — sin herramienta de ETL aparte:<ul><li>👁️ <strong>Vistas</strong> — sobre cualquier tabla, efímeras o materializadas, y vistas sobre vistas.</li><li>⚡ <strong>Comandos</strong> — operaciones gobernadas y tipadas (un servicio HTTP, un modelo en Python, un procedimiento almacenado) que cumplen doble función: un paso dentro de tu pipeline <em>y</em> una API de primer nivel que las aplicaciones y agentes posteriores invocan para actuar sobre tus datos — invocable desde cualquier superficie, completamente gobernada y trazada.</li><li>⭐ <strong>Entidades y hechos</strong> — declara una dimensión o un hecho una sola vez y Provisa genera el almacén, sin atarse a una metodología: 3FN (Inmon), esquema en estrella (Kimball) o Data Vault.</li><li>📏 <strong>Métricas</strong> — definiciones agregadas gobernadas (&ldquo;ingresos netos&rdquo;) con la granularidad fijada en el momento de la consulta. Se definen una vez; cada superficie — SQL, GraphQL, agentes de IA — calcula el mismo número, y las vistas construidas sobre una métrica se regeneran cuando cambia su definición.</li></ul>"

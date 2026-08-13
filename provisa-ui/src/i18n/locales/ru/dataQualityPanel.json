@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "Контракт качества данных",
+    "contractLabel": "Контракт",
+    "contractHelp": "Текст контракта самого проверщика. Именно он регистрируется и выполняется при сканировании — редакторы ниже пишут через него, поэтому ручные правки никогда не теряются.",
+    "dataset": "Наблюдает {{dataset}}",
+    "datasetScope": "вся таблица",
+    "columnHeader": "Столбец",
+    "checkHeader": "Проверка",
+    "definitionHeader": "Определение",
+    "outcomeHeader": "Итог",
+    "valueHeader": "Значение",
+    "failedRowsHeader": "Ошибочные строки",
+    "removeCheck": "Удалить проверку",
+    "columnLabel": "Столбец",
+    "checkLabel": "Проверка",
+    "checkPlaceholder": "— выберите проверку —",
+    "metricLabel": "Метрика",
+    "comparatorLabel": "Сравнение",
+    "thresholdLabel": "Порог",
+    "unitLabel": "Единица",
+    "levelLabel": "Уровень",
+    "addCheck": "Добавить проверку",
+    "dryRun": "Пробный запуск",
+    "dryRunHelp": "Выполняет контракт на живой таблице, ничего не записывая."
+  }
+}

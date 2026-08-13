@@ -37,6 +37,8 @@
     "policy_required": "חובה",
     "reasonPolicyBadge": "סיבה: {{policy}}",
     "expiresPolicyBadge": "תפוגה: {{policy}}",
-    "scope_command": "פקודה"
+    "scope_command": "פקודה",
+    "derivedTag": "נגזרת",
+    "derivedTagHelp": "נגזרת מהרישום של האובייקט עצמו — לעולם אינה מוקצית"
   }
 }

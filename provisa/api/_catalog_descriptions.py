@@ -48,6 +48,8 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "planned end date",
     "tag_expiry": "Tag assignments carrying a planned end date, with expiring/expired state "
     "derived at query time — the governance review queue",
+    "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
+    "star-schema role and whether it holds data-quality scan results",
     # ops
     "query_audit_log": "One row per governed statement: who ran it, under which role, over which "
     "protocol surface, and how it ended",
@@ -248,6 +250,16 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "reason": "Justification recorded with the assignment",
         "expires_on": "Planned end date of the assignment",
         "status": "expired when the end date has passed, expiring while it is still ahead",
+        "tenant_id": _TENANT,
+    },
+    "derived_tags": {
+        "tag_id": "Computed tag (fact, dimension, data_quality)",
+        "object_type": "Kind of object tagged; always table — derivation is a table-level fact",
+        "source_id": "Source the table belongs to",
+        "table_id": "Table the tag was derived for",
+        "table_name": "Name of that table",
+        "domain_id": "Domain the table is governed under",
+        "object_key": "Canonical key of the tagged object, matching tag_assignments",
         "tenant_id": _TENANT,
     },
     "query_audit_log": {

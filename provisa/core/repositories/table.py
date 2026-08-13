@@ -103,6 +103,7 @@ async def upsert(
             u.model_dump() for u in getattr(table, "unique_constraints", [])
         ],  # REQ-1093
         "view_sql": getattr(table, "view_sql", None),
+        "dq_contract": getattr(table, "dq_contract", None),  # REQ-1443
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
@@ -143,6 +144,7 @@ async def upsert(
         "column_presets",
         "unique_constraints",  # REQ-1093
         "view_sql",
+        "dq_contract",  # REQ-1443
         "view_metrics",  # REQ-1318
         "data_product",
         "materialize",

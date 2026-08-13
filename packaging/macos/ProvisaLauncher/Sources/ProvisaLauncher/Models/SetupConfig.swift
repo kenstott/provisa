@@ -13,6 +13,13 @@ enum ObsMode: String {
     case none, docker, collector
 }
 
+/// External data-quality checker the operator opted into (REQ-1443). The checker is a separate
+/// process Provisa aims at its own pgwire endpoint; nothing is linked in, and `none` installs
+/// nothing at all. `soda` is Elastic License 2.0 — self-hosted only, never the hosted cloud plane.
+enum DqChecker: String {
+    case none, soda, gx
+}
+
 final class SetupConfig: ObservableObject {
     @Published var installDir: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".provisa")
@@ -34,6 +41,9 @@ final class SetupConfig: ObservableObject {
     /// OTLP collector endpoint (obsMode == .collector).
     @Published var otlpEndpoint: String = ""
     @Published var installDemo: Bool = false
+    /// REQ-1443: which external checker to install, if any. Default none — a checker is an
+    /// out-of-process add-on, never installed unless the operator asks for it by name.
+    @Published var dqChecker: DqChecker = .none
 
     /// True when the chosen deployment runs on the user's Docker (Trino engine or Docker obs).
     var needsDocker: Bool {
@@ -67,6 +77,9 @@ final class SetupConfig: ObservableObject {
             "PROVISA_OBS_MODE":       obsMode.rawValue,
             "PROVISA_INSTALL_DEMO":   installDemo ? "y" : "n",
             "PROVISA_DEMO_MODE":      "native",
+            // REQ-1443: first-launch.sh:resolve_deployment writes this to config.yaml as
+            // dq_checker, and installs the matching pyproject extra into the native venv.
+            "PROVISA_DQ_CHECKER":     dqChecker.rawValue,
         ]
         if !engineUrl.isEmpty       { env["PROVISA_ENGINE_URL"]      = engineUrl }
         if !materializeUrl.isEmpty  { env["PROVISA_MATERIALIZE_URL"] = materializeUrl }

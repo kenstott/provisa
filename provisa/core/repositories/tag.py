@@ -23,22 +23,36 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
 
-from provisa.core.models import SYSTEM_TAG_IDS, SYSTEM_TAGS, Tag, TagAssignment
+from provisa.core.models import (
+    DERIVED_TAG_IDS,
+    DERIVED_TAGS,
+    SYSTEM_TAG_IDS,
+    SYSTEM_TAGS,
+    Tag,
+    TagAssignment,
+)
 from provisa.core.schema_org import registered_tables, tag_assignments, tags
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-def _system_tag_row(tag: Tag) -> dict:
+def _code_tag_row(tag: Tag) -> dict:
     return {
         "id": tag.id,
         "description": tag.description,
         "applies_to": list(tag.applies_to),
         "is_system": True,
+        "derived": tag.derived,
         "reason_policy": tag.reason_policy,
         "expires_policy": tag.expires_policy,
     }
+
+
+def _user_tag_row(row) -> dict:
+    # The tags table holds user tags only, so nothing in it is ever derived (REQ-1443) — the
+    # column does not exist and the flag is supplied here rather than defaulted at every reader.
+    return {**dict(row._mapping), "derived": False}
 
 
 async def upsert(conn: "Connection", tag: Tag) -> None:
@@ -58,20 +72,19 @@ async def upsert(conn: "Connection", tag: Tag) -> None:
 
 
 async def get(conn: "Connection", tag_id: str) -> dict | None:
-    for system in SYSTEM_TAGS:
-        if system.id == tag_id:
-            return _system_tag_row(system)
+    for code_tag in SYSTEM_TAGS + DERIVED_TAGS:
+        if code_tag.id == tag_id:
+            return _code_tag_row(code_tag)
     result = await conn.execute_core(select(tags).where(tags.c.id == tag_id))
     row = result.fetchone()
-    return dict(row._mapping) if row is not None else None
+    return _user_tag_row(row) if row is not None else None
 
 
 async def list_all(conn: "Connection") -> list[dict]:
     result = await conn.execute_core(select(tags).order_by(tags.c.id))
-    user_rows = [
-        dict(r._mapping) for r in result.fetchall() if r._mapping["id"] not in SYSTEM_TAG_IDS
-    ]
-    return [_system_tag_row(t) for t in SYSTEM_TAGS] + user_rows
+    reserved = SYSTEM_TAG_IDS + DERIVED_TAG_IDS
+    user_rows = [_user_tag_row(r) for r in result.fetchall() if r._mapping["id"] not in reserved]
+    return [_code_tag_row(t) for t in SYSTEM_TAGS + DERIVED_TAGS] + user_rows
 
 
 async def delete(conn: "Connection", tag_id: str) -> bool:

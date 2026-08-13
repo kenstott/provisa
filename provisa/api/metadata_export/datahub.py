@@ -72,6 +72,7 @@ the ``deprecation`` aspect naming its successor, the same succession pattern dat
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 
 from dataclasses import dataclass, replace
 from urllib.parse import quote
@@ -105,7 +106,13 @@ TAG_PREFIX = "provisa_"
 
 
 def dataset_urn(ref: AssetRef) -> str:
-    return f"urn:li:dataset:(urn:li:dataPlatform:{PLATFORM},{ref.fqn()},{FABRIC})"
+    return _dataset_urn_for(ref.fqn())
+
+
+def _dataset_urn_for(fqn: str) -> str:
+    """The dataset URN for an already-rendered fqn — used where the address is derived from a
+    column ref rather than held as a table ref."""
+    return f"urn:li:dataset:(urn:li:dataPlatform:{PLATFORM},{fqn},{FABRIC})"
 
 
 def _tag_urn(signal: str) -> str:
@@ -428,6 +435,125 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
     return proposals
 
 
+def _assertion_urn(assertion: Any) -> str:  # REQ-1443
+    """A stable assertion URN, derived from what the assertion IS.
+
+    DataHub mints assertion ids; Provisa has none to send, so the id is a digest over the
+    observed asset, the check type and the check's own text. Republishing an unchanged contract
+    therefore addresses the same assertion entity — a random id would fork a new one on every
+    reconcile and leave the previous ones behind as orphans.
+    """
+    identity = "|".join(
+        (
+            assertion.asset.fqn(),
+            assertion.checker,
+            assertion.check_type,
+            assertion.definition,
+            assertion.results_table.fqn(),
+        )
+    )
+    return f"urn:li:assertion:{PLATFORM}-{sha256(identity.encode()).hexdigest()[:32]}"
+
+
+def _assertion_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # REQ-1443
+    """Contract checks as DataHub ``assertion`` entities on the datasets they observe.
+
+    ``operator`` is ``_NATIVE_`` and ``logic`` carries the check's authored text: DataHub's
+    standard operator enum cannot express a Soda threshold or a GX expectation without
+    reinterpreting it, and an approximate operator would tell a consumer the assertion tests
+    something other than what runs. ``nativeType`` names the check type as the checker spells it.
+    """
+    proposals: list[AspectProposal] = []
+    for assertion in snapshot.assertions:
+        is_column = len(assertion.asset.parts) == 4
+        dataset = _dataset_urn_for(".".join(assertion.asset.parts[:3]))
+        info: dict[str, Any] = {
+            "type": "DATASET",
+            "description": f"{assertion.checker} {assertion.check_type}",
+            "datasetAssertion": {
+                "dataset": dataset,
+                "scope": "DATASET_COLUMN" if is_column else "DATASET_ROWS",
+                "fields": [f"urn:li:schemaField:({dataset},{assertion.asset.parts[-1]})"]
+                if is_column
+                else [],
+                "operator": "_NATIVE_",
+                "nativeType": assertion.check_type,
+                "logic": assertion.definition,
+            },
+            "customProperties": {
+                "provisaChecker": assertion.checker,
+                "provisaSeverity": assertion.severity,
+                # Where the outcomes land — the pointer from the assertion back to the rows.
+                "provisaResultsTable": assertion.results_table.fqn(),
+                # REQ-1443: the last scan's state in full, including the ones no run event can
+                # carry — never_run, error, skipped — so an unexecuted check reads as unexecuted
+                # rather than as an assertion with no results yet.
+                "provisaOutcome": assertion.outcome.status,
+            },
+        }
+        urn = _assertion_urn(assertion)
+        proposals.append(
+            AspectProposal(
+                asset=assertion.asset,
+                kind="assertion",
+                entity_type="assertion",
+                urn=urn,
+                aspect_name="assertionInfo",
+                aspect=info,
+            )
+        )
+        # REQ-1443: the last scan's verdict as DataHub's own run event, so the assertion shows
+        # as passing or failing rather than merely declared. A check that reached no verdict —
+        # never run, errored, skipped — emits none: DataHub's result type is the outcome itself,
+        # and its customProperties already carry the state on the assertion.
+        run_event = _assertion_run_event(assertion, urn)
+        if run_event is not None:
+            proposals.append(
+                AspectProposal(
+                    asset=assertion.asset,
+                    kind="assertion_run",
+                    entity_type="assertion",
+                    urn=urn,
+                    aspect_name="assertionRunEvent",
+                    aspect=run_event,
+                )
+            )
+    return proposals
+
+
+# REQ-1443: Provisa's outcomes as DataHub assertion results. A warn is FAILURE because the
+# checker raised it on a breached threshold; severity rides customProperties, where a consumer
+# can see how loudly the author asked to be told.
+_ASSERTION_RESULTS: dict[str, str] = {"pass": "SUCCESS", "fail": "FAILURE", "warn": "FAILURE"}
+
+
+def _assertion_run_event(assertion: Any, urn: str) -> dict[str, Any] | None:  # REQ-1443
+    """One check's last scan as an ``assertionRunEvent``, or None when it reached no verdict.
+
+    ``runId`` is the scan's own id and ``timestampMillis`` its own time — the run this reports is
+    the checker's, not the publish, so re-publishing the same scan restates one run instead of
+    inventing a second.
+    """
+    result_type = _ASSERTION_RESULTS.get(assertion.outcome.status)
+    if result_type is None:
+        return None
+    scan_time = assertion.outcome.scan_time
+    assert scan_time is not None  # a verdict implies the scan that reached it
+    result: dict[str, Any] = {"type": result_type, "nativeResults": {}}
+    if assertion.outcome.metric_value is not None:
+        result["actualAggValue"] = assertion.outcome.metric_value
+    if assertion.outcome.failed_rows is not None:
+        result["rowCount"] = assertion.outcome.failed_rows
+    return {
+        "timestampMillis": int(scan_time.timestamp() * 1000),
+        "runId": assertion.outcome.scan_id,
+        "assertionUrn": urn,
+        "asserteeUrn": _dataset_urn_for(".".join(assertion.asset.parts[:3])),
+        "status": "COMPLETE",
+        "result": result,
+    }
+
+
 def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
     """The snapshot as DataHub aspect proposals.
 
@@ -569,6 +695,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
 
     proposals.extend(_lineage_aspects(snapshot))
     proposals.extend(_glossary_proposals(snapshot))  # REQ-1387
+    proposals.extend(_assertion_proposals(snapshot))  # REQ-1443
     return proposals
 
 

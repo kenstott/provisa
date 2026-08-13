@@ -88,6 +88,14 @@
         "title": "Beveiliging op rijniveau",
         "description": "🔎 Zodra rollen bestaan, ga je fijnmaziger — beperk welke <strong>rijen</strong> elke rol ziet met attribuutgebaseerde predicaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datagedreven en per rij afgedwongen — over elke bron en elk protocol.</p>"
       },
+      "stepQualityTable": {
+        "title": "Een kwaliteitscontroleur is gewoon een bron",
+        "description": "🧪 Een datakwaliteitscontroleur — Soda of Great Expectations — registreer je als <strong>bron</strong>. Hij scant via Provisa's eigen postgres-endpoint, dus één contractdialect dekt een Snowflake-tabel, een Iceberg-tabel en een Mongo-collectie even goed. De resultaten komen binnen als gewone tabel: klap de rij uit en open hem als elke andere."
+      },
+      "stepQualityPanel": {
+        "title": "Bouw een kwaliteitscontract",
+        "description": "✅ Schrijf het contract zelf of bouw controles kolom voor kolom — lege waarden, rijaantallen, bereiken, versheid — en doe een <strong>proefrun</strong> voor je opslaat. Elke scan wordt toegevoegd, dus deze tabel <em>is</em> de kwaliteitshistorie: visualiseer, alarmeer, koppel aan alles."
+      },
       "step20": {
         "title": "Bouw je opleveringspipeline",
         "description": "🔧 Stel je hele opleveringspipeline hier samen — geen apart ETL-tool nodig:<ul><li>👁️ <strong>Views</strong> — over elke tabel, efemeer of gematerialiseerd, en views over views.</li><li>⚡ <strong>Opdrachten</strong> — governed, getypeerde operaties (een HTTP-service, een Python-model, een stored procedure) die een dubbele rol vervullen: een stap in je pipeline, <em>en</em> een volwaardige API die downstream apps en agents aanroepen om op je data te acteren — aanroepbaar vanuit elk oppervlak, volledig governed en getraceerd.</li><li>⭐ <strong>Entiteiten &amp; feiten</strong> — declareer een dimensie of feit eenmalig en Provisa genereert het warehouse, methodologie-neutraal: 3NF (Inmon), sterschema (Kimball), of Data Vault.</li><li>📏 <strong>Metrics</strong> — governed geaggregeerde definities (&ldquo;netto-omzet&rdquo;) met granulariteit gebonden op querymoment. Eenmalig definiëren; elk oppervlak — SQL, GraphQL, AI-agents — berekent hetzelfde getal, en views gebouwd op een metric worden opnieuw gegenereerd wanneer de definitie verandert.</li></ul>"

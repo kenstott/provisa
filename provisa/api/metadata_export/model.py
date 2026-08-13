@@ -20,6 +20,7 @@ share one definition of what Provisa knows (REQ-1069).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 
 
@@ -183,6 +184,100 @@ class ModelTag:  # REQ-1375, REQ-1377, REQ-1378
 
 
 @dataclass
+class DataQualityOutcome:  # REQ-1443
+    """What the most recent scan observed about one check.
+
+    The results table is scan history (``scan_time`` is the watermark, so scans append), which
+    makes the rows of the maximum ``scan_time`` the last execution — a fact the export reads back
+    and publishes, so a catalog shows whether the check currently passes rather than only that it
+    exists.
+
+    ``status`` is the checker's own word (pass | fail | warn | error | skipped) plus ``never_run``
+    for a contract registered but not yet scanned. That state is published, not omitted: "this
+    column has a null check that has never executed" is precisely what a consumer needs to know,
+    and dropping it would render an unrun check identical to a passing one. ``scan_id`` and
+    ``scan_time`` are empty exactly when ``status`` is ``never_run``, since there is no scan to
+    name.
+    """
+
+    status: str
+    scan_id: str = ""
+    scan_time: datetime | None = None
+    metric_value: float | None = None
+    failed_rows: int | None = None
+
+    NEVER_RUN = "never_run"
+
+    @property
+    def ran(self) -> bool:
+        return self.status != DataQualityOutcome.NEVER_RUN
+
+    @property
+    def success(self) -> bool | None:
+        """The boolean an OpenLineage assertion entry requires, or None when there is none.
+
+        ``warn`` is not a success: the checker raised it because a threshold WAS breached, and
+        only its severity is milder. Reporting it as passing would hide the breach behind the
+        author's choice of how loudly to complain about it. ``error`` and ``skipped`` reached no
+        verdict at all, and ``never_run`` never started, so all three are None rather than a
+        failure that did not happen.
+        """
+        if self.status == "pass":
+            return True
+        if self.status in ("fail", "warn"):
+            return False
+        return None
+
+    def as_document(self) -> dict[str, object]:
+        """The outcome as the JSON object the Provisa-authored carriers embed.
+
+        One shape for every catalog that has no native run-result surface (the Atlas governance
+        document, the Collibra attribute, the OpenLineage Provisa facet), so a consumer reading
+        Provisa's own carrier reads the same fields wherever it finds them.
+        """
+        return {
+            "status": self.status,
+            "scanId": self.scan_id,
+            "scanTime": self.scan_time.isoformat() if self.scan_time is not None else None,
+            "metricValue": self.metric_value,
+            "failedRows": self.failed_rows,
+        }
+
+
+@dataclass
+class DataQualityAssertion:  # REQ-1443
+    """One check a registered contract makes about a governed asset.
+
+    Published on the OBSERVED asset — the table or column the checker scans — not on the table
+    the outcomes land in. Every target catalog models it that way (OpenMetadata TestCase,
+    DataHub Assertion, Collibra Data Quality Rule, Atlan DQ, the OpenLineage
+    ``dataQualityAssertions`` facet): a consumer asks "is this column checked for nulls?" of the
+    column, and hanging the answer off the results table would put it where nobody looks.
+
+    ``results_table`` names where the outcomes DO land, so the two halves stay navigable in both
+    directions; that table publishes as an ordinary table alongside, carrying the derived
+    ``data_quality`` tag. ``definition`` is the check's own authored text in the checker's
+    dialect — the same string :func:`provisa.dq.contract.contract_checks` reads back — because a
+    normalized summary would describe a check the checker does not run.
+    """
+
+    asset: AssetRef
+    checker: str  # soda | great_expectations
+    check_type: str
+    definition: str
+    # fail | warn. Soda carries this as threshold.level; a GX expectation has no warn level at
+    # all, so every GX assertion publishes as 'fail' — the dialect's own semantics, not a default.
+    severity: str
+    results_table: AssetRef
+    # The last scan's verdict for this check, read back out of ``results_table``. Always present:
+    # a check the scan never covered carries a ``never_run`` outcome rather than None, so every
+    # adapter publishes a state instead of leaving the consumer to guess at an absence.
+    outcome: DataQualityOutcome = field(
+        default_factory=lambda: DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
+    )
+
+
+@dataclass
 class GlossaryTermAsset:  # REQ-1387
     """One business-glossary term: the normalized vocabulary entry over the semantic layer.
 
@@ -229,6 +324,7 @@ class MetadataSnapshot:  # REQ-1070
     model_tags: list[ModelTag] = field(default_factory=list)  # REQ-1377/1378
     glossary_terms: list[GlossaryTermAsset] = field(default_factory=list)  # REQ-1387
     glossary_edges: list[GlossaryTermEdge] = field(default_factory=list)  # REQ-1387
+    assertions: list[DataQualityAssertion] = field(default_factory=list)  # REQ-1443
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]

@@ -84,6 +84,12 @@ declare module "*.graphql" {
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
   export const SuggestTableAlias: DocumentNode;
+  // REQ-1443: the contract builder panel's three server calls.
+  export const DqCheckCatalog: DocumentNode;
+  export const DqCheckDefinition: DocumentNode;
+  export const DqContractParse: DocumentNode;
+  export const DqContractBuild: DocumentNode;
+  export const DryRunDqContract: DocumentNode;
   export default doc;
 }
 
@@ -160,5 +166,11 @@ declare module "*.gql" {
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
   export const SuggestTableAlias: DocumentNode;
+  // REQ-1443: the contract builder panel's three server calls.
+  export const DqCheckCatalog: DocumentNode;
+  export const DqCheckDefinition: DocumentNode;
+  export const DqContractParse: DocumentNode;
+  export const DqContractBuild: DocumentNode;
+  export const DryRunDqContract: DocumentNode;
   export default doc;
 }

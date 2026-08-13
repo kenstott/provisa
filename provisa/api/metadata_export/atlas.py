@@ -371,6 +371,33 @@ def _governance_document(
             }
             for edge in edges
         ]
+    # REQ-1443: Atlas has no assertion entity type, so the checks a contract makes about this
+    # table ride the governance document — the same asymmetry the relationship tags above ride.
+    # ``resultsTable`` names where the outcomes land, which is the only pointer a reader has
+    # from the observed table back to the scan output.
+    asset_prefix = table.ref.fqn()
+    assertions = [
+        assertion
+        for assertion in snapshot.assertions
+        if assertion.asset.fqn() == asset_prefix
+        or assertion.asset.fqn().startswith(f"{asset_prefix}.")
+    ]
+    if assertions:
+        body["dataQuality"] = [
+            {
+                "asset": assertion.asset.fqn(),
+                "checker": assertion.checker,
+                "checkType": assertion.check_type,
+                "definition": assertion.definition,
+                "severity": assertion.severity,
+                "resultsTable": assertion.results_table.fqn(),
+                # REQ-1443: the most recent scan's verdict. Atlas has no native DQ result, so it
+                # rides the document the governance facts already ride; ``never_run`` says the
+                # contract is registered but has not executed, which is a state, not an absence.
+                "outcome": assertion.outcome.as_document(),
+            }
+            for assertion in assertions
+        ]
     if not body:
         return None
     return json.dumps(body)

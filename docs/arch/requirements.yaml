@@ -44298,7 +44298,7 @@
   - REQ-1386
   - REQ-1436
 - id: REQ-1443
-  status: proposed
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Data Quality Sources

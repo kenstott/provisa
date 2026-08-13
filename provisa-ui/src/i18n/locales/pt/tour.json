@@ -88,6 +88,14 @@
         "title": "Segurança em nível de linha",
         "description": "🔎 Uma vez que as funções existam, vá mais a fundo — restrinja quais <strong>linhas</strong> cada função vê com predicados baseados em atributos:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Orientado por dados e aplicado por linha — em todas as fontes e protocolos.</p>"
       },
+      "stepQualityTable": {
+        "title": "Um verificador de qualidade é só mais uma fonte",
+        "description": "🧪 Um verificador de qualidade de dados — Soda ou Great Expectations — registra-se como <strong>fonte</strong>. Ele varre pelo próprio endpoint postgres do Provisa, então um único dialeto de contrato cobre igualmente uma tabela Snowflake, uma Iceberg e uma coleção Mongo. Os resultados chegam como uma tabela comum: expanda a linha e abra como qualquer outra."
+      },
+      "stepQualityPanel": {
+        "title": "Monte um contrato de qualidade",
+        "description": "✅ Escreva o contrato à mão ou monte as verificações coluna a coluna — nulos, contagem de linhas, faixas, atualidade — e faça uma <strong>execução de teste</strong> antes de salvar. Cada varredura é anexada, então esta tabela <em>é</em> o histórico de qualidade: represente em gráfico, alerte, junte com o que quiser."
+      },
       "step20": {
         "title": "Construa seu pipeline de entrega",
         "description": "🔧 Componha todo o seu pipeline de entrega bem aqui — sem uma ferramenta de ETL separada:<ul><li>👁️ <strong>Exibições</strong> — sobre qualquer tabela, efêmeras ou materializadas, e exibições sobre exibições.</li><li>⚡ <strong>Comandos</strong> — operações governadas e tipadas (um serviço HTTP, um modelo Python, um procedimento armazenado) que cumprem dupla função: uma etapa dentro do seu pipeline <em>e</em> uma API de primeira classe que aplicativos e agentes downstream chamam para atuar sobre seus dados — invocável a partir de qualquer interface, totalmente governada e rastreada.</li><li>⭐ <strong>Entidades e fatos</strong> — declare uma dimensão ou fato uma vez e o Provisa gera o warehouse, neutro em relação à metodologia: 3FN (Inmon), esquema estrela (Kimball) ou Data Vault.</li><li>📏 <strong>Métricas</strong> — definições de agregados governadas (&ldquo;receita líquida&rdquo;) com granularidade vinculada no momento da consulta. Defina uma vez; toda interface — SQL, GraphQL, agentes de IA — calcula o mesmo número, e exibições construídas sobre uma métrica se regeneram quando sua definição muda.</li></ul>"

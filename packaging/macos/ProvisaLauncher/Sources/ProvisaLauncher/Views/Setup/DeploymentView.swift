@@ -62,6 +62,24 @@ struct DeploymentView: View {
                     TextField("http://collector-host:4317", text: $config.otlpEndpoint)
                         .wizardField()
                 }
+
+                Divider().background(.white.opacity(0.12))
+
+                // ── Data quality checker (REQ-1443) — parity with install.sh's prompt ──
+                // The checker runs as a separate process aimed at Provisa's own pgwire endpoint;
+                // its scan results land as ordinary source rows. Nothing is installed by default.
+                Text("Data quality checker (optional)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+
+                Picker("", selection: $config.dqChecker) {
+                    Text("None").tag(DqChecker.none)
+                    Text("Soda Core — contracts (Elastic License 2.0; self-hosted only)")
+                        .tag(DqChecker.soda)
+                    Text("Great Expectations — suites (Apache 2.0)").tag(DqChecker.gx)
+                }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
             }
             .padding(.horizontal, 60)
 

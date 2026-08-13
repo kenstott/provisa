@@ -29,6 +29,7 @@ import pytest
 from provisa.api.errors import ApiError
 from provisa.control_plane.models import Org
 from provisa.control_plane.store import control_plane_store
+from provisa.core.models import ProvisaConfig
 
 ORG_ID = "acme"
 
@@ -346,11 +347,15 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
 
     monkeypatch.setattr(sync_mod, "metadata_export", lambda config: _Partial())
     monkeypatch.setattr(
-        sync_mod, "build_snapshot", lambda config, *, org_id, dialect, glossary=None: object()
+        sync_mod,
+        "build_snapshot",
+        lambda config, *, org_id, dialect, glossary=None, dq_outcomes=None: object(),
     )
 
     async def _stub_model():
-        return object()
+        # Empty rather than a bare object: the publish path reads each registered contract's
+        # last scan off this config (REQ-1443), and an empty config registers none.
+        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
 
     # The model now assembles from the registration tables (DB truth, #97); stub the
     # assembly the same way the builder is stubbed — this test is about the publish report.

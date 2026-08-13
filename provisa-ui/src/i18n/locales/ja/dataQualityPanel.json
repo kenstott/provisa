@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "データ品質コントラクト",
+    "contractLabel": "コントラクト",
+    "contractHelp": "チェッカーのコントラクト本文です。登録され、スキャンが実行するのはこれで、下のエディタはこの本文を書き換えるため、手書きの編集が失われることはありません。",
+    "dataset": "{{dataset}} を観測",
+    "datasetScope": "テーブル全体",
+    "columnHeader": "列",
+    "checkHeader": "チェック",
+    "definitionHeader": "定義",
+    "outcomeHeader": "結果",
+    "valueHeader": "値",
+    "failedRowsHeader": "失敗行数",
+    "removeCheck": "チェックを削除",
+    "columnLabel": "列",
+    "checkLabel": "チェック",
+    "checkPlaceholder": "— チェックを選択 —",
+    "metricLabel": "メトリック",
+    "comparatorLabel": "比較",
+    "thresholdLabel": "しきい値",
+    "unitLabel": "単位",
+    "levelLabel": "重大度",
+    "addCheck": "チェックを追加",
+    "dryRun": "ドライラン",
+    "dryRunHelp": "実テーブルに対してコントラクトを実行し、何も書き込みません。"
+  }
+}

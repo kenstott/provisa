@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "डेटा गुणवत्ता अनुबंध",
+    "contractLabel": "अनुबंध",
+    "contractHelp": "चेकर का अपना अनुबंध पाठ। यही पंजीकृत होता है और यही स्कैन चलाता है — नीचे के संपादक इसी के माध्यम से लिखते हैं, इसलिए हाथ से किए गए संपादन कभी नहीं हटते।",
+    "dataset": "{{dataset}} का अवलोकन",
+    "datasetScope": "पूरी तालिका",
+    "columnHeader": "स्तंभ",
+    "checkHeader": "जाँच",
+    "definitionHeader": "परिभाषा",
+    "outcomeHeader": "परिणाम",
+    "valueHeader": "मान",
+    "failedRowsHeader": "विफल पंक्तियाँ",
+    "removeCheck": "जाँच हटाएँ",
+    "columnLabel": "स्तंभ",
+    "checkLabel": "जाँच",
+    "checkPlaceholder": "— एक जाँच चुनें —",
+    "metricLabel": "मीट्रिक",
+    "comparatorLabel": "तुलना",
+    "thresholdLabel": "सीमा",
+    "unitLabel": "इकाई",
+    "levelLabel": "गंभीरता",
+    "addCheck": "जाँच जोड़ें",
+    "dryRun": "ड्राई रन",
+    "dryRunHelp": "अनुबंध को वास्तविक तालिका पर चलाता है और कुछ भी नहीं लिखता।"
+  }
+}

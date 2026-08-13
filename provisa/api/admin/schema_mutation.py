@@ -41,6 +41,8 @@ from provisa.api.admin.types import (
     CompileQueryInput,
     CompileQueryResult,
     DomainInput,
+    DqDryRunCheckType,
+    DqDryRunType,
     EnforcementType,
     EntityInput,
     FactInput,
@@ -224,6 +226,7 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             description=r["description"],
             applies_to=list(r["applies_to"] or []),
             is_system=bool(r["is_system"]),
+            derived=bool(r["derived"]),
             reason_policy=r["reason_policy"],
             expires_policy=r["expires_policy"],
         )
@@ -307,6 +310,32 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Rebuild in-memory schema from DB state. Useful after external DB changes."""
         await _rebuild_schemas()
         return MutationResult(success=True, message="Schemas rebuilt", code="schema.schemas_rebuilt")
+
+    @strawberry.mutation
+    async def dry_run_dq_contract(  # REQ-1443 clause 7
+        self, source_id: str, contract_text: str
+    ) -> DqDryRunType:
+        """Run a contract against the live table and report the outcomes, landing none.
+
+        A mutation rather than a query because it costs a real scan — a client that refetched it on
+        cache invalidation would re-scan the table — but it writes nothing: the checker's rows go
+        into the response instead of into the results table. What it proves is the thing a syntax
+        check cannot: which governed table the dataset identifier actually resolved to."""
+        from provisa.api.admin._dq_resolvers import dry_run_contract
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await dry_run_contract(
+                cast("Connection", conn), source_id=source_id, contract_text=contract_text
+            )
+        if not result["success"]:
+            return DqDryRunType(success=False, message=result["message"])
+        return DqDryRunType(
+            success=True,
+            message=result["message"],
+            checker_version=result["checker_version"],
+            checks=[DqDryRunCheckType(**c) for c in result["checks"]],
+        )
 
     @strawberry.mutation
     async def create_calendar(self, input: "CalendarInput") -> MutationResult:  # REQ-962
@@ -660,6 +689,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def upsert_tag(self, input: TagInput) -> MutationResult:  # REQ-1373, REQ-1375
         from provisa.core.models import (
+            DERIVED_TAG_IDS,
             SYSTEM_TAG_IDS,
             TAG_FIELD_POLICIES,
             TAG_OBJECT_TYPES,
@@ -667,7 +697,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         from provisa.core.repositories import tag as tag_repo
 
-        if input.id in SYSTEM_TAG_IDS:
+        # REQ-1443: a derived tag is code-defined like a system tag, so it is reserved the same way.
+        if input.id in SYSTEM_TAG_IDS + DERIVED_TAG_IDS:
             return MutationResult(
                 success=False,
                 message=f"Tag {input.id!r} is a system tag and cannot be redefined",
@@ -710,10 +741,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def delete_tag(self, id: str) -> MutationResult:  # REQ-1373, REQ-1375
-        from provisa.core.models import SYSTEM_TAG_IDS
+        from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
         from provisa.core.repositories import tag as tag_repo
 
-        if id in SYSTEM_TAG_IDS:
+        if id in SYSTEM_TAG_IDS + DERIVED_TAG_IDS:
             return MutationResult(
                 success=False,
                 message=f"Tag {id!r} is a system tag and cannot be deleted",
@@ -777,6 +808,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     success=False,
                     message=f"Tag {input.tag_id!r} not found",
                     code="schema.tag_not_found",
+                    params={"tag": input.tag_id},
+                )
+            # REQ-1443: a derived tag reports state the table already carries, so assigning it
+            # would either duplicate that state or contradict it — the registration is the only
+            # way to change it.
+            if tag_row["derived"]:
+                return MutationResult(
+                    success=False,
+                    message=(
+                        f"Tag {input.tag_id!r} is derived from the object's own registration "
+                        "and cannot be assigned"
+                    ),
+                    code="schema.tag_derived_immutable",
                     params={"tag": input.tag_id},
                 )
             # REQ-1375: the registry's per-tag field policy governs the assignment fields —
@@ -1048,6 +1092,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         model = _table_model_from_input(input, columns, presets, input.alias)
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
+            # REQ-1443: same contract-driven derivation the register path and the YAML loader run.
+            from provisa.api.admin._dq_registration import apply_dq_registration
+
+            try:
+                await apply_dq_registration(_conn, model)
+            except ValueError as _dq_err:
+                return MutationResult(success=False, message=str(_dq_err))
             _conflict = await _domain_table_conflict(
                 _conn,
                 model.domain_id,

@@ -112,7 +112,13 @@ TERM_DEPRECATION_MESSAGE = "Deprecated in the Provisa registry."
 
 @register_provider
 class AtlanExport(AtlasExport):  # REQ-1069
-    """Publish a snapshot to Atlan over its Atlas-shaped ingestion API."""
+    """Publish a snapshot to Atlan over its Atlas-shaped ingestion API.
+
+    REQ-1443: contract checks ride the inherited Atlas governance document rather than Atlan's
+    own data-quality rules. That surface is addressed through routes this adapter has not
+    verified — the same reason ``_canonicalize_identity`` and ``classification_merge`` are off
+    here — so the checks publish where every Atlan consumer can already read them.
+    """
 
     provider_name = "atlan"
 

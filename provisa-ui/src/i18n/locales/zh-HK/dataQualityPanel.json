@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "數據品質契約",
+    "contractLabel": "契約",
+    "contractHelp": "檢查器本身的契約文字。註冊與掃描執行的都是它——下方的編輯器都透過它寫入，因此手動編輯不會被丟棄。",
+    "dataset": "觀測 {{dataset}}",
+    "datasetScope": "整張表",
+    "columnHeader": "欄",
+    "checkHeader": "檢查",
+    "definitionHeader": "定義",
+    "outcomeHeader": "結果",
+    "valueHeader": "值",
+    "failedRowsHeader": "失敗列數",
+    "removeCheck": "移除檢查",
+    "columnLabel": "欄",
+    "checkLabel": "檢查",
+    "checkPlaceholder": "— 選擇一項檢查 —",
+    "metricLabel": "指標",
+    "comparatorLabel": "比較",
+    "thresholdLabel": "閾值",
+    "unitLabel": "單位",
+    "levelLabel": "嚴重級別",
+    "addCheck": "新增檢查",
+    "dryRun": "試執行",
+    "dryRunHelp": "對實時表執行契約，不寫入任何數據。"
+  }
+}

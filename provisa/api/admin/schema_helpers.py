@@ -397,6 +397,7 @@ async def _fetch_table_with_columns(
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
         view_sql=view_sql,
+        dq_contract=row.get("dq_contract"),  # REQ-1443
         view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),

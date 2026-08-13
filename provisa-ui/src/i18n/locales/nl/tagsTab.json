@@ -37,6 +37,8 @@
     "policy_required": "Verplicht",
     "reasonPolicyBadge": "Reden: {{policy}}",
     "expiresPolicyBadge": "Verval: {{policy}}",
-    "scope_command": "Opdracht"
+    "scope_command": "Opdracht",
+    "derivedTag": "afgeleid",
+    "derivedTagHelp": "Afgeleid uit de registratie van het object zelf — wordt nooit toegekend"
   }
 }

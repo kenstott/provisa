@@ -101,6 +101,11 @@ _MATERIALIZE_ONLY = frozenset(
         "sharepoint",
         "govdata",
         "ingest",
+        # REQ-1443: a data-quality checker produces rows by running a contract; there is no remote
+        # table for the engine to federate a query against, so scan results are landed and read from
+        # the materialization store like any other produced dataset.
+        "soda",
+        "great_expectations",
     }
 )
 

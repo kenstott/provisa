@@ -37,6 +37,8 @@
     "policy_required": "必填",
     "reasonPolicyBadge": "原因：{{policy}}",
     "expiresPolicyBadge": "到期：{{policy}}",
-    "scope_command": "命令"
+    "scope_command": "命令",
+    "derivedTag": "派生",
+    "derivedTagHelp": "由各对象自身的注册信息推导 — 从不分配"
   }
 }

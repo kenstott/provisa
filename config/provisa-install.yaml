@@ -258,6 +258,21 @@ server:
     request_timeout: 60
     trino_query_timeout: 120
 sources:
+# REQ-1443: the demo's data-quality checker. Great Expectations, not Soda: Apache 2.0 carries no
+# hosted-service bar, so the same demo config is valid in the cloud plane. The checker connects back
+# through Provisa's OWN pgwire endpoint, which is what makes it scan the federated view. Under the
+# demo's auth provider (none) pgwire is in trust mode and the startup user IS the role, so the scan
+# identity is org_admin: a filtered row set must never produce a silently passing check.
+- description: "Great Expectations quality scans \u2014 each results table is one\
+    \ suite's per-check outcomes, landed as ordinary source rows"
+  id: dq-checker
+  mapping:
+    database: provisa
+    host: ${env:PROVISA_DQ_HOST:-localhost}
+    password: ${env:PROVISA_DQ_PASSWORD:-provisa}
+    port: ${env:PROVISA_PGWIRE_PORT:-5439}
+    user: ${env:PROVISA_DQ_USER:-org_admin}
+  type: great_expectations
 - description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
     \ and animal assignment records managed by shelter operations"
   id: graphql-demo
@@ -1061,6 +1076,45 @@ tables:
   schema: pet_store
   source_id: pet-store-sqlite
   table: pets
+# REQ-1443: one results table per contract. The suite below is the whole registration: the scanned
+# target is read back out of meta.dataset (REQ-939), the 16 shipped result columns replace what is
+# declared here, and scan_time becomes the watermark so each scan appends and the table IS the scan
+# history. The single declared column exists only to carry visible_to.
+- alias: pets_quality
+  columns:
+  - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
+    name: scan_id
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  cache_ttl: 3600
+  change_signal: ttl_probe
+  description: "Quality scan results for the pet inventory — one row per check\
+    \ per scan, with outcome, metric value and threshold"
+  domain_id: pet-store
+  dq_contract: |
+    name: pets_quality
+    meta:
+      dataset: provisa/pet_store/pets
+    expectations:
+      - type: expect_table_row_count_to_be_between
+        kwargs:
+          min_value: 1
+      - type: expect_column_values_to_not_be_null
+        kwargs:
+          column: name
+      - type: expect_column_values_to_be_between
+        kwargs:
+          column: price
+          min_value: 0
+      - type: expect_column_values_to_not_be_null
+        kwargs:
+          column: species
+  probe_type: watermark
+  schema: quality
+  source_id: dq-checker
+  table: pets_scan
 - alias: schedule_by_employee
   columns:
   - description: Employee id to filter on - sent to the GraphQL query as an argument

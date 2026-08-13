@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "חוזה איכות נתונים",
+    "contractLabel": "חוזה",
+    "contractHelp": "טקסט החוזה של הבודק. זה מה שנרשם ומה שהסריקה מריצה — העורכים שלמטה כותבים דרכו, ולכן עריכות ידניות לעולם אינן נמחקות.",
+    "dataset": "צופה ב-{{dataset}}",
+    "datasetScope": "הטבלה כולה",
+    "columnHeader": "עמודה",
+    "checkHeader": "בדיקה",
+    "definitionHeader": "הגדרה",
+    "outcomeHeader": "תוצאה",
+    "valueHeader": "ערך",
+    "failedRowsHeader": "שורות שנכשלו",
+    "removeCheck": "הסרת בדיקה",
+    "columnLabel": "עמודה",
+    "checkLabel": "בדיקה",
+    "checkPlaceholder": "— בחר בדיקה —",
+    "metricLabel": "מדד",
+    "comparatorLabel": "השוואה",
+    "thresholdLabel": "סף",
+    "unitLabel": "יחידה",
+    "levelLabel": "חומרה",
+    "addCheck": "הוספת בדיקה",
+    "dryRun": "הרצת ניסיון",
+    "dryRunHelp": "מריץ את החוזה מול הטבלה החיה ואינו כותב דבר."
+  }
+}

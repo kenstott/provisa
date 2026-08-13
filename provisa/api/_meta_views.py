@@ -22,26 +22,33 @@ from __future__ import annotations
 # source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
 # for callers near the view definitions.
 from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
-from provisa.core.models import SYSTEM_TAGS
+from provisa.core.models import DERIVED_TAGS, SYSTEM_TAGS
+from provisa.dq.contract import CHECKERS
 
-# REQ-1375: system tags are code-defined intrinsics with no rows in the tags table, so the
-# meta view unions them in from the constant — the registry a query surface sees is complete.
-# Built from SYSTEM_TAGS at import time; never hand-edit the literals.
+# REQ-1375/REQ-1443: system and derived tags are code-defined intrinsics with no rows in the tags
+# table, so the meta view unions them in from the constants — the registry a query surface sees is
+# complete. Built at import time; never hand-edit the literals.
 import json as _json
 
 
 def _system_tag_rows_sql() -> str:
     rows = []
-    for tag in SYSTEM_TAGS:
+    for tag in SYSTEM_TAGS + DERIVED_TAGS:
         desc = tag.description.replace("'", "''")
         applies = _json.dumps(tag.applies_to).replace(" ", "")
         rows.append(
             f"SELECT '{tag.id}' AS id, '{desc}' AS description, "
             f"'{applies}' AS applies_to, TRUE AS is_system, "
+            f"{'TRUE' if tag.derived else 'FALSE'} AS derived, "
             f"'{tag.reason_policy}' AS reason_policy, "
             f"'{tag.expires_policy}' AS expires_policy, NULL AS tenant_id"
         )
     return "\n        UNION ALL\n        ".join(rows)
+
+
+# REQ-1443: the checker source types, as a SQL IN-list. Built from the constant so the view and
+# provisa.core.derived_tags cannot disagree about what a data-quality source is.
+_CHECKER_TYPES_SQL = ", ".join(f"'{name}'" for name in sorted(CHECKERS))
 
 
 _META_TABLE_VIEWS: dict[str, str] = {
@@ -56,8 +63,28 @@ _META_TABLE_VIEWS: dict[str, str] = {
         {_system_tag_rows_sql()}
         UNION ALL
         SELECT id, description, CAST(applies_to AS TEXT) AS applies_to, is_system,
-               reason_policy, expires_policy, CAST(tenant_id AS TEXT) AS tenant_id
+               FALSE AS derived, reason_policy, expires_policy,
+               CAST(tenant_id AS TEXT) AS tenant_id
         FROM tags
+    """,
+    # REQ-1443: derived tags are computed, never assigned, so they have no rows in
+    # tag_assignments and cannot be unioned into it — a governance query that treats a
+    # derivation as an assignment would offer the operator an unassign that does nothing.
+    # They get their own view, whose WHERE clauses restate provisa.core.derived_tags.
+    "derived_tags": f"""
+        CREATE OR REPLACE VIEW derived_tags AS
+        SELECT rt.modeling_role AS tag_id, 'table' AS object_type, rt.source_id,
+               rt.id AS table_id, rt.table_name, rt.domain_id,
+               'table:' || CAST(rt.id AS TEXT) AS object_key,
+               CAST(rt.tenant_id AS TEXT) AS tenant_id
+        FROM registered_tables rt
+        WHERE rt.modeling_role IN ('fact', 'dimension')
+        UNION ALL
+        SELECT 'data_quality', 'table', rt.source_id, rt.id, rt.table_name, rt.domain_id,
+               'table:' || CAST(rt.id AS TEXT), CAST(rt.tenant_id AS TEXT)
+        FROM registered_tables rt
+        JOIN sources s ON s.id = rt.source_id
+        WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL
     """,
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS

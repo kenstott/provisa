@@ -88,6 +88,14 @@
         "title": "Row-level security",
         "description": "🔎 Once roles exist, go finer — restrict which <strong>rows</strong> each role sees with attribute-based predicates:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Data-driven and enforced per row — across every source and protocol.</p>"
       },
+      "stepQualityTable": {
+        "title": "A quality checker is just a source",
+        "description": "🧪 A data-quality checker — Soda or Great Expectations — registers as a <strong>source</strong>. It scans back through Provisa's own postgres endpoint, so one contract dialect covers a Snowflake table, an Iceberg table and a Mongo collection alike. Its results land as an ordinary table: expand the row and open it like any other."
+      },
+      "stepQualityPanel": {
+        "title": "Build a quality contract",
+        "description": "✅ Write the contract by hand or build checks column by column — null rates, row counts, ranges, freshness — and <strong>dry-run</strong> it before saving. Every scan appends, so this table <em>is</em> the quality history: chart it, alert on it, join it to anything."
+      },
       "step20": {
         "title": "Build your delivery pipeline",
         "description": "🔧 Compose your whole delivery pipeline right here — no separate ETL tool:<ul><li>👁️ <strong>Views</strong> — over any table, ephemeral or materialized, and views over views.</li><li>⚡ <strong>Commands</strong> — governed, typed operations (an HTTP service, a Python model, a stored procedure) that do double duty: a step inside your pipeline, <em>and</em> a first-class API that downstream apps and agents call to act on your data — invokable from every surface, fully governed and traced.</li><li>⭐ <strong>Entities &amp; facts</strong> — declare a dimension or fact once and Provisa generates the warehouse, methodology-neutral: 3NF (Inmon), star schema (Kimball), or Data Vault.</li><li>📏 <strong>Metrics</strong> — governed aggregate definitions (&ldquo;net revenue&rdquo;) with grain bound at query time. Define once; every surface — SQL, GraphQL, AI agents — computes the same number, and views built on a metric regenerate when its definition changes.</li></ul>"

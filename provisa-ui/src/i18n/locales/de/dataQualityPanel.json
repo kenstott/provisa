@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "Datenqualitätsvertrag",
+    "contractLabel": "Vertrag",
+    "contractHelp": "Der Vertragstext des Prüfers. Er wird registriert und vom Scan ausgeführt — die Editoren unten schreiben durch ihn hindurch, handschriftliche Änderungen gehen also nie verloren.",
+    "dataset": "Beobachtet {{dataset}}",
+    "datasetScope": "gesamte Tabelle",
+    "columnHeader": "Spalte",
+    "checkHeader": "Prüfung",
+    "definitionHeader": "Definition",
+    "outcomeHeader": "Ergebnis",
+    "valueHeader": "Wert",
+    "failedRowsHeader": "Fehlgeschlagene Zeilen",
+    "removeCheck": "Prüfung entfernen",
+    "columnLabel": "Spalte",
+    "checkLabel": "Prüfung",
+    "checkPlaceholder": "— Prüfung wählen —",
+    "metricLabel": "Metrik",
+    "comparatorLabel": "Vergleich",
+    "thresholdLabel": "Schwellenwert",
+    "unitLabel": "Einheit",
+    "levelLabel": "Schweregrad",
+    "addCheck": "Prüfung hinzufügen",
+    "dryRun": "Probelauf",
+    "dryRunHelp": "Führt den Vertrag gegen die reale Tabelle aus und schreibt nichts."
+  }
+}

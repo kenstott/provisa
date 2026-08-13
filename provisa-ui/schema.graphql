@@ -141,55 +141,101 @@ input DimRefInput {
 input DomainInput {
   id: String!
   description: String! = ""
+  steward: String = null
   graphqlAlias: String = null
-}
-
-input TagInput {
-  id: String!
-  description: String! = ""
-  appliesTo: [String!]! = []
-  reasonPolicy: String! = "optional"
-  expiresPolicy: String! = "optional"
-}
-
-input TagAssignmentInput {
-  tagId: String!
-  objectType: String!
-  sourceId: String = null
-  tableId: Int = null
-  columnName: String = null
-  relationshipId: String = null
-  commandName: String = null
-  reason: String = null
-  expiresOn: String = null
-}
-
-type TagType {
-  id: String!
-  description: String!
-  appliesTo: [String!]!
-  isSystem: Boolean!
-  reasonPolicy: String!
-  expiresPolicy: String!
-}
-
-type TagAssignmentType {
-  tagId: String!
-  objectType: String!
-  sourceId: String
-  tableId: Int
-  columnName: String
-  relationshipId: String
-  commandName: String
-  tableRef: String
-  reason: String
-  expiresOn: String
 }
 
 type DomainType {
   id: String!
   description: String!
+  steward: String
   graphqlAlias: String
+}
+
+input DqCheckBuildInput {
+  checkType: String!
+  columnName: String! = ""
+  params: String! = ""
+  comparator: String! = ""
+  thresholdValue: Float = null
+  metric: String! = ""
+  unit: String! = ""
+  level: String! = "fail"
+}
+
+type DqCheckCatalogType {
+  datasetChecks: [DqCheckKindType!]!
+  columns: [DqCheckColumnType!]!
+  error: String
+}
+
+type DqCheckColumnType {
+  name: String!
+  dataType: String
+  checks: [DqCheckKindType!]!
+}
+
+type DqCheckDefinitionType {
+  definition: String!
+  error: String
+}
+
+input DqCheckInput {
+  columnName: String!
+  checkType: String!
+  definition: String!
+}
+
+type DqCheckKindType {
+  checkType: String!
+  scope: String!
+  params: [DqCheckParamType!]!
+  comparators: [String!]!
+  metrics: [String!]!
+  levels: [String!]!
+  thresholdUnits: [String!]!
+}
+
+type DqCheckParamType {
+  name: String!
+  valueType: String!
+  required: Boolean!
+  choices: [String!]!
+}
+
+type DqCheckType {
+  columnName: String!
+  checkType: String!
+  definition: String!
+}
+
+type DqContractTextType {
+  text: String!
+  error: String
+}
+
+type DqContractType {
+  dataset: String
+  checker: String!
+  checks: [DqCheckType!]!
+  error: String
+}
+
+type DqDryRunCheckType {
+  columnName: String
+  checkType: String!
+  outcome: String!
+  rowsTested: Int
+  failedRows: Int
+  value: Float
+  diagnostics: String
+}
+
+type DqDryRunType {
+  success: Boolean!
+  message: String!
+  checkerVersion: String
+  checks: [DqDryRunCheckType!]!
 }
 
 type EnforcementType {
@@ -228,6 +274,11 @@ type HotTableStatType {
   rowCount: Int!
   isApi: Boolean!
   loaded: Boolean!
+}
+
+type ImplicitMeasureType {
+  column: String!
+  aggFuncs: [String!]!
 }
 
 """
@@ -295,6 +346,7 @@ type MaterializeStoreInfoType {
   engineName: String!
   storeRef: String
   mvCount: Int!
+  instanceLocalStore: Boolean!
 }
 
 input MeasureInput {
@@ -302,8 +354,28 @@ input MeasureInput {
   agg: String! = "sum"
 }
 
+input MetricInput {
+  name: String!
+  expression: String!
+  datatype: String = null
+  description: String = null
+  aiContext: String = null
+  visibleTo: [String!]! = ["*"]
+}
+
+type MetricType {
+  name: String!
+  expression: String!
+  datatype: String
+  description: String
+  aiContext: String
+  visibleTo: [String!]!
+  fromFact: String
+}
+
 type Mutation {
   rebuildSchemas: MutationResult!
+  dryRunDqContract(sourceId: String!, contractText: String!): DqDryRunType!
   createCalendar(input: CalendarInput!): MutationResult!
   deleteCalendar(name: String!): MutationResult!
   createSource(input: SourceInput!): MutationResult!
@@ -357,6 +429,8 @@ type Mutation {
 type MutationResult {
   success: Boolean!
   message: String!
+  code: String
+  params: JSON
 }
 
 type ProtocolHealthType {
@@ -367,6 +441,7 @@ type ProtocolHealthType {
 
 type Query {
   calendars: [CalendarType!]!
+  metrics: [MetricType!]!
   creationRequests: [CreationRequestType!]!
   schemaVersion: String!
   sources: [SourceType!]!
@@ -375,7 +450,6 @@ type Query {
   tags: [TagType!]!
   tagAssignments: [TagAssignmentType!]!
   tables: [RegisteredTableType!]!
-  metrics: [MetricType!]!
   relationships: [RelationshipType!]!
   allRelationships: [RelationshipType!]!
   roles: [RoleType!]!
@@ -388,6 +462,10 @@ type Query {
   suggestTableAlias(tableName: String!, domainId: String!, sourceId: String!): String!
   mvList: [MVType!]!
   refreshPolicyPreview(sourceId: String!, domainId: String!, schemaName: String!, tableName: String!, cacheTtl: Int = null, preferMaterialized: Boolean = null, loadProtected: Boolean = null, offPeakWindow: String = null, offPeakTz: String = null, changeSignal: String = null): RefreshPolicySummaryType
+  dqContractParse(checker: String!, contractText: String!): DqContractType!
+  dqCheckCatalog(checker: String!, dataset: String!): DqCheckCatalogType!
+  dqCheckDefinition(checker: String!, check: DqCheckBuildInput!): DqCheckDefinitionType!
+  dqContractBuild(checker: String!, dataset: String!, checks: [DqCheckInput!]!): DqContractTextType!
   cacheStats: CacheStatsType!
   cacheTableStats: [CacheTableStatType!]!
   hotTables: [HotTableStatType!]!
@@ -440,8 +518,7 @@ type RegisteredTableType {
   apiEndpoint: String
   viewSql: String
   viewMetrics: ViewMetricsType
-  modelingRole: String
-  modelingHistory: String
+  dqContract: String
   changeSignal: String
   probeQuery: String
   probeType: String
@@ -461,19 +538,16 @@ type RegisteredTableType {
   mvAllowedLateness: Float!
   mvExpectedEvents: [String!]
   mvBusinessDayGrain: Boolean!
+  modelingRole: String
+  modelingHistory: String
   dataProduct: Boolean!
   enableAggregates: Boolean!
   enableGroupBy: Boolean!
   canDeployToDb: Boolean!
   live: LiveDeliveryConfigType
-  refreshPolicySummary: RefreshPolicySummaryType
   implicitMeasures: [ImplicitMeasureType!]!
   implicitDimensions: [String!]!
-}
-
-type ImplicitMeasureType {
-  column: String!
-  aggFuncs: [String!]!
+  refreshPolicySummary: RefreshPolicySummaryType
 }
 
 input RelationshipInput {
@@ -512,18 +586,35 @@ type RelationshipType {
   computedCypherAlias: String
   disableCypher: Boolean!
   autoSuggested: Boolean!
+  physicalName: String
 }
 
 input RoleInput {
   id: String!
   capabilities: [String!]!
   domainAccess: [String!]!
+  rateLimit: RoleRateLimitInput = null
+}
+
+input RoleRateLimitInput {
+  requestsPerSecond: Int = null
+  maxQueryDepth: Int = null
+  maxQueryNodes: Int = null
+  maxQueryTimeMs: Int = null
+}
+
+type RoleRateLimitType {
+  requestsPerSecond: Int
+  maxQueryDepth: Int
+  maxQueryNodes: Int
+  maxQueryTimeMs: Int
 }
 
 type RoleType {
   id: String!
   capabilities: [String!]!
   domainAccess: [String!]!
+  rateLimit: RoleRateLimitType
 }
 
 type ScheduledTaskType {
@@ -564,6 +655,7 @@ input SourceInput {
   description: String! = ""
   allowedDomains: [String!]! = []
   mappingJson: String = null
+  federationHintsJson: String = null
   changeSignal: String! = "ttl"
   loadProtected: Boolean! = false
   offPeakWindow: String = null
@@ -643,9 +735,8 @@ input TableInput {
   columnPresets: [ColumnPresetInput!]! = []
   uniqueConstraints: [UniqueConstraintInput!]! = []
   viewSql: String = null
+  dqContract: String = null
   viewMetrics: ViewMetricsInput = null
-  modelingRole: String = null
-  modelingHistory: String = null
   loadProtected: Boolean = null
   offPeakWindow: String = null
   offPeakTz: String = null
@@ -668,6 +759,8 @@ input TableInput {
   mvAllowedLateness: Float! = 0
   mvExpectedEvents: [String!] = null
   mvBusinessDayGrain: Boolean! = false
+  modelingRole: String = null
+  modelingHistory: String = null
   dataProduct: Boolean! = false
   enableAggregates: Boolean! = false
   enableGroupBy: Boolean! = false
@@ -675,15 +768,57 @@ input TableInput {
   live: LiveDeliveryConfigInput = null
 }
 
+input TagAssignmentInput {
+  tagId: String!
+  objectType: String!
+  sourceId: String = null
+  tableId: Int = null
+  columnName: String = null
+  relationshipId: String = null
+  commandName: String = null
+  reason: String = null
+  expiresOn: String = null
+}
+
+type TagAssignmentType {
+  tagId: String!
+  objectType: String!
+  sourceId: String
+  tableId: Int
+  columnName: String
+  relationshipId: String
+  commandName: String
+  tableRef: String
+  reason: String
+  expiresOn: String
+}
+
+input TagInput {
+  id: String!
+  description: String! = ""
+  appliesTo: [String!]! = []
+  reasonPolicy: String! = "optional"
+  expiresPolicy: String! = "optional"
+}
+
+type TagType {
+  id: String!
+  description: String!
+  appliesTo: [String!]!
+  isSystem: Boolean!
+  reasonPolicy: String!
+  expiresPolicy: String!
+  derived: Boolean!
+}
+
 input UniqueConstraintInput {
   name: String!
   columns: [String!]!
 }
 
-type ViewMetricsType {
-  metrics: [String!]!
-  dimensions: [String!]!
-  filters: [String!]!
+type UniqueConstraintType {
+  name: String!
+  columns: [String!]!
 }
 
 input ViewMetricsInput {
@@ -692,26 +827,8 @@ input ViewMetricsInput {
   filters: [String!]! = []
 }
 
-type MetricType {
-  name: String!
-  expression: String!
-  datatype: String
-  description: String
-  aiContext: String
-  visibleTo: [String!]!
-  fromFact: String
-}
-
-input MetricInput {
-  name: String!
-  expression: String!
-  datatype: String = null
-  description: String = null
-  aiContext: String = null
-  visibleTo: [String!]! = ["*"]
-}
-
-type UniqueConstraintType {
-  name: String!
-  columns: [String!]!
+type ViewMetricsType {
+  metrics: [String!]!
+  dimensions: [String!]!
+  filters: [String!]!
 }

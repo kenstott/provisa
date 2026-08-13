@@ -28,6 +28,8 @@ from __future__ import annotations
 from provisa.api.metadata_export.governance import build_governance_tags
 from provisa.api.metadata_export.model import (
     ColumnAsset,
+    DataQualityAssertion,
+    DataQualityOutcome,
     DomainAsset,
     GlossaryTermAsset,
     GlossaryTermEdge,
@@ -53,7 +55,15 @@ from provisa.api.metadata_export.refs import (
     table_uri,
     term_uri,
 )
+from provisa.core.derived_tags import derived_tags_for_table
 from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignment
+from provisa.dq.contract import (
+    CHECKERS,
+    check_severity,
+    contract_checks,
+    contract_dataset,
+    resolve_contract_target,
+)
 from provisa.lineage.graph import Edge, LineageGraph, Node, build_column_graph
 
 
@@ -305,6 +315,104 @@ def _model_tags(
     return tags
 
 
+def _checker_tables(config: ProvisaConfig) -> list[Table]:
+    """Registered tables whose source is a checker and which carry a contract (REQ-1443).
+
+    This is the same pair of facts :func:`provisa.core.derived_tags.derived_tags_for_table` reads
+    for the ``data_quality`` tag, so a table cannot publish assertions without also publishing the
+    tag that says where they came from.
+    """
+    checker_sources = {source.id for source in config.sources if source.type.value in CHECKERS}
+    return [
+        table
+        for table in config.tables
+        if table.source_id in checker_sources and table.dq_contract
+    ]
+
+
+def _derived_model_tags(
+    config: ProvisaConfig, keep: set[tuple[str, ...]]
+) -> list[ModelTag]:  # REQ-1443
+    """Computed tags on published tables, published exactly like assigned ones.
+
+    A derived tag is a system tag by construction — it is code-defined and no steward can assign
+    it — so it publishes with ``is_system`` set and carries neither reason nor expiry: both are
+    ``hidden`` on the registry entries, because the registration is the only thing that can change
+    the fact.
+    """
+    source_types = {source.id: source.type.value for source in config.sources}
+    tags: list[ModelTag] = []
+    for table in config.tables:
+        ref = table_ref(table)
+        if ref.parts not in keep:
+            continue
+        state = {"modeling_role": table.modeling_role, "dq_contract": table.dq_contract}
+        for tag_id in derived_tags_for_table(state, source_types.get(table.source_id)):
+            tags.append(ModelTag(tag_id=tag_id, is_system=True, asset=ref))
+    return tags
+
+
+def _dq_assertions(
+    config: ProvisaConfig,
+    keep: set[tuple[str, ...]],
+    published_columns: set[tuple[str, ...]],
+    dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome],
+) -> list[DataQualityAssertion]:  # REQ-1443
+    """Each registered contract's checks, published on the assets they observe.
+
+    Both ends must publish: the observed asset, because that is what the assertion is about, and
+    the results table, because an assertion pointing at an asset the catalog was never sent is the
+    dangling reference the Data Product filter exists to prevent. A contract that fails to parse
+    raises rather than being skipped — registration already refused an unparseable one, so text
+    that no longer parses means the stored contract disagrees with the checker that will run it.
+
+    ``dq_outcomes`` is the last scan's verdicts, keyed the way a results row identifies its check:
+    (target table, column name, check type). A check the map does not name has not run — the
+    contract may be newly registered, or the scan may never have fired — and publishes as
+    ``never_run``, which is a state a catalog should show, not an absence it should hide.
+    """
+    assertions: list[DataQualityAssertion] = []
+    for results in _checker_tables(config):
+        results_ref = table_ref(results)
+        if results_ref.parts not in keep:
+            continue
+        checker = next(s.type.value for s in config.sources if s.id == results.source_id)
+        dataset = contract_dataset(results.dq_contract, checker)
+        observed = resolve_contract_target(dataset, config.tables)
+        observed_table_ref = table_ref(observed)
+        if observed_table_ref.parts not in keep:
+            continue
+        for check in contract_checks(results.dq_contract, checker):
+            if check["column_name"]:
+                asset = column_ref(observed, check["column_name"])
+                if asset.parts not in published_columns:
+                    continue
+            else:
+                asset = observed_table_ref
+            # The results row records its target as schema.table — the same address the loader
+            # passed the scan (provisa.events.source_loader.make_dq_loader), so the two ends of
+            # this join are written from one definition rather than two.
+            outcome_key = (
+                f"{observed.schema_name}.{observed.table_name}",
+                check["column_name"] or "",
+                check["check_type"],
+            )
+            assertions.append(
+                DataQualityAssertion(
+                    asset=asset,
+                    checker=checker,
+                    check_type=check["check_type"],
+                    definition=check["definition"],
+                    severity=check_severity(check, checker),
+                    results_table=results_ref,
+                    outcome=dq_outcomes.get(
+                        outcome_key, DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
+                    ),
+                )
+            )
+    return assertions
+
+
 def _glossary_assets(
     glossary: dict,
     exported: list[Table],
@@ -365,13 +473,24 @@ def _glossary_assets(
 
 
 def build_snapshot(
-    config: ProvisaConfig, *, org_id: str, dialect: str, glossary: dict | None = None
+    config: ProvisaConfig,
+    *,
+    org_id: str,
+    dialect: str,
+    glossary: dict | None = None,
+    dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome] | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
     ``dialect`` is the federation engine's SQLGlot dialect — the one the view SQL was compiled
     for. It is required rather than defaulted: parsing a view with the wrong dialect yields
     plausible, wrong lineage.
+
+    ``glossary`` and ``dq_outcomes`` are the two DB-resident inputs, hydrated by the caller
+    (:func:`~provisa.api.metadata_export.publishing.publish_snapshot`) and passed in, because this
+    function is a pure projection of the config and never queries data itself. Omitting
+    ``dq_outcomes`` publishes every check as never run, which is what a caller with no results to
+    read is entitled to say.
     """
     # Name resolution sees EVERY table: a bare relationship/lineage name that is ambiguous
     # across the full config stays refused, whether or not both candidates publish.
@@ -414,14 +533,21 @@ def build_snapshot(
         governance_tags=[
             tag for tag in build_governance_tags(config, org_id) if tag.asset.parts[:3] in keep
         ],
-        model_tags=_model_tags(
-            config,
-            index,
-            keep,
-            published_columns,
-            {edge.id for edge in relationships},
-            published_source_ids,
-        ),
+        model_tags=[
+            *_model_tags(
+                config,
+                index,
+                keep,
+                published_columns,
+                {edge.id for edge in relationships},
+                published_source_ids,
+            ),
+            # REQ-1443: computed tags publish alongside assigned ones. They are the only
+            # signal telling a consumer that a published table holds check outcomes rather
+            # than business records.
+            *_derived_model_tags(config, keep),
+        ],
         glossary_terms=glossary_terms,
         glossary_edges=glossary_edges,
+        assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}),
     )

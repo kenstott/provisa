@@ -88,6 +88,14 @@
         "title": "行級安全",
         "description": "🔎 有了角色之後，可以再細緻一點——用屬性型判斷式限制每個角色可以看到哪些<strong>資料列</strong>：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 由數據驅動，並按資料列逐一強制執行——涵蓋每個數據來源與每種協定。</p>"
       },
+      "stepQualityTable": {
+        "title": "質量檢查器也只是一個資料來源",
+        "description": "🧪 資料質量檢查器（Soda 或 Great Expectations）以<strong>資料來源</strong>的方式註冊。它透過 Provisa 自己的 postgres 端點掃描，所以同一套契約語法可以同樣覆蓋 Snowflake 表、Iceberg 表和 Mongo 集合。掃描結果以普通表的形式落地：展開該行，像打開其他表一樣打開它。"
+      },
+      "stepQualityPanel": {
+        "title": "建立質量契約",
+        "description": "✅ 可以直接撰寫契約，也可以逐欄建立檢查 — 空值率、行數、數值範圍、新鮮度 — 並在儲存前先做一次<strong>試跑</strong>。每次掃描都是追加，所以這張表本身就是質量歷史：可以畫圖、告警，也可以與任何資料關聯。"
+      },
       "step20": {
         "title": "建構你的交付管線",
         "description": "🔧 直接在這裡組合整條交付管線——毋須另一套 ETL 工具：<ul><li>👁️ <strong>檢視</strong>——建立於任何表格之上，可為暫時性或具體化，也可檢視之上再建檢視。</li><li>⚡ <strong>命令</strong>——受管治、有型別的操作（HTTP 服務、Python 模型、預存程序），身兼兩職：既是管線中的一個步驟，<em>也</em>是一個一流的 API，供下游應用程式與代理程式呼叫以操作你的數據——可從每種介面呼叫，並全面受管治與追蹤。</li><li>⭐ <strong>實體與事實</strong>——只需宣告一次維度或事實，Provisa 即可產生數據倉庫，不受方法論限制：3NF（Inmon）、星型結構描述（Kimball），或 Data Vault。</li><li>📏 <strong>指標</strong>——受管治的彙總定義（例如「淨收入」），粒度於查詢時綁定。定義一次；每種介面——SQL、GraphQL、AI 代理程式——都算出同一個數值，而建構於指標之上的檢視，會在指標定義變更時自動重新產生。</li></ul>"

@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "数据质量契约",
+    "contractLabel": "契约",
+    "contractHelp": "检查器自身的契约文本。注册和扫描运行的都是它——下面的编辑器都通过它写入，因此手工编辑不会被丢弃。",
+    "dataset": "观测 {{dataset}}",
+    "datasetScope": "整张表",
+    "columnHeader": "列",
+    "checkHeader": "检查",
+    "definitionHeader": "定义",
+    "outcomeHeader": "结果",
+    "valueHeader": "值",
+    "failedRowsHeader": "失败行数",
+    "removeCheck": "移除检查",
+    "columnLabel": "列",
+    "checkLabel": "检查",
+    "checkPlaceholder": "— 选择一项检查 —",
+    "metricLabel": "指标",
+    "comparatorLabel": "比较",
+    "thresholdLabel": "阈值",
+    "unitLabel": "单位",
+    "levelLabel": "严重级别",
+    "addCheck": "添加检查",
+    "dryRun": "试运行",
+    "dryRunHelp": "针对实时表运行契约，不写入任何数据。"
+  }
+}

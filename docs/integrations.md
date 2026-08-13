@@ -285,6 +285,27 @@ See [docs/sources.md](sources.md#kafka-sources) for Kafka topic configuration as
 
 ---
 
+## Data Quality Checkers (REQ-1443)
+
+Soda Core and Great Expectations connect to Provisa the same way any other postgres client does — through pgwire. That is the whole integration: the checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker. [tool-verified: `provisa/events/source_loader.py` `make_dq_loader`]
+
+The scan runs in a child interpreter — `python -m provisa.dq.worker` — which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop. [tool-verified: `provisa/dq/runner.py` `build_command`]
+
+Scan results land as ordinary source rows, so cadence, freshness, events, lineage, governance, RLS, the grid and export all apply without a second mechanism. Contract authoring, the result envelope and the derived registration are covered in [docs/sources.md](sources.md#data-quality-checkers-req-1443).
+
+### Installing a checker
+
+Neither library ships by default. The installer asks which one you want, and the answer becomes `dq_checker: none|soda|gx` in `~/.provisa/config.yaml`. On the Docker tier `scripts/provisa` turns that into the `PROVISA_EXTRAS` build arg; on the native tier `first-launch.sh` installs the matching pyproject extra into the venv. [tool-verified: `scripts/provisa:69-79`, `packaging/linux/first-launch.sh` `_native_extras`]
+
+| `dq_checker` | Library | Licence | Hosted cloud plane |
+| -------------- | --------- | --------- | -------------------- |
+| `soda` | `soda-postgres` | Elastic License 2.0 | Refused (`cloud_eligible: false`) |
+| `gx` | `great-expectations[postgresql]` | Apache 2.0 | Allowed |
+
+Elastic License 2.0 bars providing the software to third parties as a hosted service, which is what running Soda inside the SaaS plane on a tenant's behalf would be. A hosted deployment that wants Soda points at a Soda endpoint the operator runs themselves. See [docs/configuration.md](configuration.md#data-quality-checkers-soda--great_expectations) for the connection keys.
+
+---
+
 ## Apache Ossie Semantic Interchange (REQ-1316)
 
 Provisa exchanges semantic models with Apache Ossie (spec 0.2.0.dev0, incubating; formerly Open

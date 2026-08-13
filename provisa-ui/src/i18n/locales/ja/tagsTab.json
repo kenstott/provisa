@@ -37,6 +37,8 @@
     "policy_required": "必須",
     "reasonPolicyBadge": "理由: {{policy}}",
     "expiresPolicyBadge": "期限: {{policy}}",
-    "scope_command": "コマンド"
+    "scope_command": "コマンド",
+    "derivedTag": "派生",
+    "derivedTagHelp": "各オブジェクトの登録内容から導出 — 割り当ては行われません"
   }
 }

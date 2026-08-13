@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from provisa.api.metadata_export.builder import build_snapshot
+from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
 from provisa.api.metadata_export.provider import PublishResult
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.control_plane.entitlements import (
@@ -226,8 +227,15 @@ async def publish_snapshot(org_id: str) -> PublishResult:
 
         async with tenant_db.acquire() as conn:
             glossary = await glossary_repo.export_graph(conn)
+        # REQ-1443: a check's last verdict lives in its results table, which is data rather than
+        # config, so it is read here and handed to the builder exactly as the term graph is.
+        dq_outcomes = await read_latest_outcomes(model)
         snapshot = build_snapshot(
-            model, org_id=org_id, dialect=GOVERNED_DIALECT, glossary=glossary
+            model,
+            org_id=org_id,
+            dialect=GOVERNED_DIALECT,
+            glossary=glossary,
+            dq_outcomes=dq_outcomes,
         )
         exporter = metadata_export(config)
         async with tenant_db.acquire() as conn:

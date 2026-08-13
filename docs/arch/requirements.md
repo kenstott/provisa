@@ -14759,3 +14759,241 @@ No OTel signal's compaction backlog may starve another's. The scheduled compacti
 **Code:** `provisa/scheduler/jobs.py`, `provisa/core/models.py`, `observability/otel-collector-config.yaml`, `scripts/deploy-cloud.sh`
 
 **Tests:** `tests/unit/test_otel_compaction_fairness.py`, `tests/unit/test_otel_endpoint_not_invented.py`, `tests/unit/test_otel_trace_pipeline.py`
+
+### REQ-1429 · Query Engine Federation {#REQ-1429}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Rebuilding one org's runtime may not take a system catalog away from the orgs sharing the coordinator. Provisa registers its own catalogs dynamically and refreshes one by dropping it first, because Trino exposes no way to read a live catalog's properties back. That is right at boot, when the coordinator serves nobody yet. It is wrong on every later per-org rebuild: `otel` and `results` are deployment-scoped - their specs take no org id and are identical for every org - so re-registering them on behalf of one org drops a catalog the others are querying, and the drop races the create. Changing an org's engine on the SaaS node did exactly that: the rebuild dropped `otel`, its own CREATE lost the race and failed CATALOG_NOT_FOUND, the whole rebuild aborted, and the shared coordinator was left with no `otel` at all - the ops reports and the org-engine tab then failed for every org on it. A per-org rebuild therefore ENSURES the system catalogs rather than re-registering them: it creates only what the coordinator is missing. `provisa_admin` is the exception and is still refreshed, because its JDBC URL names the org's own schema and a stale one points the control plane at another org.
+
+**Use case:** An org administrator switches the org's query engine and the other orgs on the shared coordinator keep working, rather than losing the telemetry catalog their reports read.
+
+**Code:** `provisa/core/trino_system_catalogs.py`, `provisa/federation/backend.py`
+
+**Tests:** `tests/unit/test_trino_system_catalogs.py`
+
+## 2. Authentication & Identity
+
+### REQ-1430 · Authentication & Identity {#REQ-1430}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An identity bootstrap that has not finished is not a denial. CapabilityGate rendered its NotAuthorized fallback whenever the unioned capabilities were empty, which includes every render before /auth/me and the roles query answer. Against a cold coordinator that is tens of seconds, so a signed-in admin opening an admin page was told "You do not have permission to view this page" (with "No roles configured" in the header) and then watched the real page appear on its own - indistinguishable from a spontaneous reload. The gate, the /admin entry resolver, and the role selector therefore consult the auth context's `loading` flag first and say the credentials are being checked; the denial and "No roles configured" are stated only once the bootstrap has settled.
+
+**Use case:** A signed-in administrator opens an admin page while the identity fetch is still in flight and sees that their credentials are being checked, rather than a permission denial that reverses itself.
+
+**Code:** `provisa-ui/src/components/CapabilityGate.tsx`, `provisa-ui/src/components/CredentialCheck.tsx`, `provisa-ui/src/components/RoleSelector.tsx`, `provisa-ui/src/App.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/CapabilityGate.test.tsx`, `provisa-ui/src/__tests__/RoleSelector.test.tsx`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1431 · Operational Views {#REQ-1431}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The rule between the report list and the report on the admin Reports tab is a grab handle: dragging it sets the list width, clamped between 160px and 560px so neither pane can be dragged away. Report names and descriptions are long enough that a fixed 240px list truncated them while the report pane had room to spare.
+
+**Use case:** An administrator widens the report list to read full report descriptions, then narrows it again to give the report grid more room.
+
+**Code:** `provisa-ui/src/components/admin/ReportsTab.tsx`
+
+**Tests:** `provisa-ui/src/components/admin/__tests__/ReportsTab.resize.test.tsx`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1432 · OpenTelemetry Instrumentation {#REQ-1432}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Tracing is enabled per subsystem, under observability.subsystem_traces. The switches are named for what each subsystem is in this product - HTTP API, outbound HTTP calls, catalog database, result cache, document sources, search sources, gRPC services - not for the instrumentation library behind it. The catalog database is off by default: every catalog read and metadata write is an asyncpg call, and instrumenting them buries the query spans the live trace panel exists to show. Each switch gates one instrumentor inside setup_otel, since an instrumentor patches its driver globally and cannot be undone later. An unknown subsystem name is rejected rather than written to the config file. The admin Observability tab carries the same switches.
+
+**Use case:** An operator opens the live trace panel, sees it filled with driver-level Postgres spans, and turns off the subsystems they do not care about from the Observability tab.
+
+**Code:** `provisa/core/models.py`, `provisa/api/otel_setup.py`, `provisa/api/admin/settings_router.py`, `config/provisa.yaml`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/components/admin/ObservabilityTab.tsx`
+
+**Tests:** `tests/unit/test_otel_subsystem_traces.py`, `provisa-ui/src/components/admin/__tests__/ObservabilityTab.subsystems.test.tsx`
+
+### REQ-1433 · Infrastructure {#REQ-1433}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Restarting the query engine from the admin console speaks the Docker Engine API over the bind-mounted socket rather than shelling out to a docker CLI, which the app image does not carry. The container name comes from the request, else QUERY_ENGINE_CONTAINER, else discovery against the containers docker reports - matching the engine name as a whole name component, so compose's compose-trino-1 is found where the bare engine name was not. Two matches are refused rather than guessed, and an unmounted socket is reported as such.
+
+**Use case:** A platform admin presses Restart Engine on a compose deployment and the engine restarts, instead of the request failing with "docker not found on PATH".
+
+**Code:** `provisa/api/admin/settings_router.py`
+
+**Tests:** `tests/unit/test_query_engine_restart.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1434 · UI {#REQ-1434}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The bearer token is asked for at request time rather than read from the copy mirrored into localStorage on the last rotation. window.fetch, Apollo's HttpLink fetch, and the cross-subdomain auth relay all resolve currentBearer(), which asks a live Firebase session for its current token - the SDK re-mints an expired one - and writes it back to storage; deploys with no Firebase session (basic auth, an org subdomain holding a borrowed copy) keep storage as their only source. The Swagger UI explorer receives its light/dark theme stamped into the server-rendered HTML because a srcdoc frame has no location.search to read it from, and the CodeMirror panels on the graph and SQL explorers resolve the computed color scheme instead of rendering a fixed palette. Every save and cancel control shows a text label beside its icon rather than being icon-only, the observability subsystem panel offers a Cancel that restores the last server-acknowledged values, and each Platform Settings control carries inline descriptive help.
+
+**Use case:** A user leaves a query tab idle past the token lifetime, returns, and runs a GraphQL query - it succeeds instead of answering "Invalid or expired token".
+
+**Code:** `provisa-ui/src/lib/firebase.ts`, `provisa-ui/src/lib/authFetch.ts`, `provisa-ui/src/apolloClient.ts`, `provisa-ui/src/authRelay.ts`, `provisa-ui/src/components/admin/ObservabilityTab.tsx`, `provisa-ui/src/pages/AdminPage.tsx`, `provisa/api/rest/openapi_spec.py`
+
+**Tests:** `provisa-ui/src/__tests__/requestTimeToken.test.ts`, `provisa-ui/src/__tests__/crossSubdomainAuth.test.ts`
+
+## 1. Access Governance & Security
+
+### REQ-1435 · Observability {#REQ-1435}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+OTel instant columns are timestamps end to end, not epoch-nanosecond integers. The otlp2sql writer casts an int64 nanosecond field to timestamp by way of timestamp('ns') before narrowing to timestamp('us') - a direct cast to microseconds reads the nanos as micros and lands in the year 57000 - and the compactor refuses to append into a table whose physical schema still carries the integer column, naming the drop that lets it recreate the table at the current schema rather than silently writing the wrong type.
+
+**Use case:** An operator opens the traces report and reads a start time, instead of a 19-digit number.
+
+**Code:** `provisa/observability/otlp2sql.py`, `provisa/observability/ops_schema.py`, `provisa/compiler/type_map.py`, `provisa/scheduler/jobs.py`
+
+**Tests:** `tests/unit/test_otlp2sql.py`, `tests/unit/test_otel_trace_pipeline.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1436 · UI {#REQ-1436}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A filter that matches nothing leaves the grid standing. The governed viewer swaps in bare text only for a relation with no projection at all; an empty PAGE keeps the header row, and with it the filter inputs, so the filter that emptied the result can still be cleared. The grid renders a single full-width empty row under the headers in place of the missing data.
+
+**Use case:** An admin types a filter into a report, gets no rows, and clears the filter - instead of being stranded on a page with no controls.
+
+**Code:** `provisa-ui/src/components/GovernedTableViewer.tsx`, `provisa-ui/src/pages/sql/ResultsGrid.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/ResultsGrid.filter.test.tsx`
+
+### REQ-1437 · UI {#REQ-1437}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A grid cell renders an instant for a reader rather than for a parser - "2026-08-12 12:01:59", with no T separator, no fractional seconds and no zone suffix. A value carrying a zone is shown on the viewer's own clock, because that is the clock the reader compares it against; a value carrying none is already the reader's wall time and is shown unchanged rather than shifted by an offset it never had. Anything that is not an instant passes through untouched.
+
+**Use case:** An admin scans logged_at down an ops report and reads the times at a glance.
+
+**Code:** `provisa-ui/src/pages/sql/formatCell.ts`, `provisa-ui/src/pages/sql/ResultsGrid.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/formatCell.test.ts`
+
+### REQ-1438 · UI {#REQ-1438}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The reader chooses how many rows a page holds - 25, 50, 100, 250, 500 or 1000 - from a control in the results toolbar, offered whether or not the current result spills past one page. The choice is retained per report alongside the other grid choices and restored on the next visit. Resizing returns the reader to the first page, since the page numbers now point elsewhere in the relation, and the governed viewer treats the size as part of its query key because the LIMIT is pushed into SQL - a resize refetches rather than re-slicing.
+
+**Use case:** An admin works a report 500 rows at a time and finds it still at 500 on the next visit.
+
+**Code:** `provisa-ui/src/pages/sql/useResultsGrid.ts`, `provisa-ui/src/pages/sql/ResultsGrid.tsx`, `provisa-ui/src/pages/sql/types.ts`, `provisa-ui/src/components/GovernedTableViewer.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/useResultsGrid.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1439 · Governance {#REQ-1439}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Every ops report that carries a user id also carries that person's name. The directory that maps an IdP subject to a name lives in the platform control plane, a separate engine from the tenant plane the report views are built in, so the auth middleware writes a tenant-local user_directory mirror on the same sign-in that upserts the platform profile. query_audit_log_ops, deprecated_usage, pii_access and policy_denials each LEFT JOIN that mirror and project display_name as user_name; a principal with no directory row still appears, with an empty name. Aggregate-only reports, which count distinct users rather than naming them, are unchanged.
+
+**Use case:** An admin reads the policy denials report and sees who was refused, by name.
+
+**Code:** `provisa/api/_meta_views.py`, `provisa/auth/middleware.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/api/_catalog_descriptions.py`
+
+**Tests:** `tests/unit/test_ops_domain.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1440 · UI {#REQ-1440}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Any grid of results - a report, a table or view preview, a workbench result - exports to an Excel workbook alongside the CSV. Each column is written with the type it actually holds rather than as text: a column whose every non-null value is a number is written as numbers, a column whose every non-null value parses as an instant is written as dates carrying the same wall clock the grid displays, formatted yyyy-mm-dd hh:mm:ss or yyyy-mm-dd when the value has no time part. A column that disagrees with itself is written as text, because writing part of it as a date would silently reinterpret the rest. A null cell is left empty rather than filled with the word null.
+
+**Use case:** An analyst opens an exported report in Excel and sorts by date and sums a measure without first re-typing either column.
+
+**Code:** `provisa-ui/src/pages/sql/exportXlsx.ts`, `provisa-ui/src/pages/sql/formatCell.ts`, `provisa-ui/src/pages/sql/ResultsGrid.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/exportXlsx.test.ts`
+
+### REQ-1441 · UI {#REQ-1441}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+An exported workbook carries a second sheet recording how the first was produced. For a report or a table/view preview that is the relation and the name it is registered under, its source, description, API endpoint and view definition where those exist, the parameter values supplied, and the governed statement that actually fetched the rows; for a workbench result it is the statement in the editor. To those the grid adds the facts of this particular export: the export time in UTC, whether the sheet holds the whole result or one page of a server-paged relation and which page at what size, the row count, and the reader's own column filters, sort and grouping. The sheet closes with the type every column was written as, so a reader opening the file later can tell a page from a whole relation and knows what shaped it.
+
+**Use case:** A reviewer receives an exported report months later and reads off the exact statement, page and filters that produced it.
+
+**Code:** `provisa-ui/src/pages/sql/exportXlsx.ts`, `provisa-ui/src/pages/sql/ResultsGrid.tsx`, `provisa-ui/src/components/GovernedTableViewer.tsx`, `provisa-ui/src/pages/sql/ResultsPanel.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/exportXlsx.test.ts`
+
+### REQ-1442 · UI {#REQ-1442}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The results toolbar carries a clear-filters control on every grid, disabled while no column filter is set. Clearing drops every column filter at once and returns the reader to the first page. A reader who narrowed several columns until the grid emptied has one control to undo it rather than one per column.
+
+**Use case:** An admin filters four columns of a report down to no rows and restores the full result in one click.
+
+**Code:** `provisa-ui/src/pages/sql/useResultsGrid.ts`, `provisa-ui/src/pages/sql/ResultsGrid.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/ResultsGrid.clearFilters.test.tsx`
+
+## 4. Source Connectors
+
+### REQ-1443 · Data Quality Sources {#REQ-1443}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+An external data-quality checker (Soda first; the shape generalizes to GX Core and dbt tests) registers as a SOURCE TYPE, not as a gate, a subsystem, or a bundled library. Its scan output is DATA — a check result is an observation, not a verdict — so it lands through the ordinary source path (make_source_land's fetch contract, [REQ-982](#REQ-982) shape resolution) and every downstream capability is inherited rather than built: cadence, freshness, events, lineage, governance, RLS, grid, export. This is [REQ-967](#REQ-967)'s self-describing estate extended to a third-party checker, and it is deliberately NOT the [REQ-941](#REQ-941)/[REQ-1165](#REQ-1165) gate path — because a landed observation carries no [REQ-964](#REQ-964) determinism obligation, Soda's non-deterministic checks (anomaly score, trailing-window change, freshness-vs-now) are admissible where they could never sit on a preflight verdict. Enforcement, if wanted, is a SEPARATE and later declaration: a preflight or MV over the landed results emitting warn/error/quarantine. Four registration decisions follow. (1) The checker is an EXTERNAL PREREQ in the oracledb posture — capabilities.yaml provisioning: pip_driver, installed on operator selection, invoked out-of-process over the [REQ-940](#REQ-940) shell/HTTP adapter. Provisa vendors and links NOTHING, so a source-available checker licence (soda-core is Elastic 2.0) never reaches the distributed artifact. (2) The RESULTS SCHEMA IS FIXED AND SHIPPED, never hand-declared per table — unlike a Kafka topic, whose payload only the operator knows, the scan envelope is defined by the checker (scan timestamp, dataset, check, definition, outcome in pass/fail/warn/error, value). The per-check-type diagnostics block (a schema check's missing_column_names, a freshness check's max_column_timestamp) is one jsonb column, and [REQ-119](#REQ-119) promotions are the existing mechanism to surface a chosen field as a typed generated column. The checker's major version is PINNED at registration, since v3 SodaCL scans and v4 contract verification differ in result shape. (3) LINEAGE IS DERIVED FROM THE CONTRACT, never hand-declared: the contract YAML already names its target dataset, so the registration parses it the way extract_inputs parses SQL ([REQ-939](#REQ-939)) and resolves it to the governed table — one definition, no second copy that can drift, and a contract naming an ungoverned dataset fails loud at registration. Registration therefore carries a contract body plus timing, not an input ref. (4) ONE RESULTS NODE PER CONTRACT, never one shared results table for the estate: a single node fed by every governed table has a fan-in edge from everything, so blast radius is wrong, vintage is meaningless, and a churning table cannot debounce differently from a nightly one. The estate-wide scorecard is an MV unioning the per-contract nodes, which is [REQ-967](#REQ-967)'s shape regardless. Timing introduces NO new fields: change_signal + cache_ttl give the poll cadence, mv_debounce_quiet/mv_debounce_max_delay collapse an upstream burst into one scan ([REQ-963](#REQ-963)), a calendar grain makes it periodic ([REQ-962](#REQ-962)), and expected_events holds the scan until its inputs are fresh through the window ([REQ-961](#REQ-961)). probe_type watermark on the scan timestamp makes the landing an append, so scan history accumulates with no history machinery. Aiming the checker at Provisa's own pgwire endpoint checks the FEDERATED view rather than one source at a time — which the checker cannot do for itself — and because policy applies to that connection the scan identity is declared explicitly, so a filtered row set can never produce a silently passing check. The checker MUST push its work DOWN to the engine, and Soda does: every aggregate metric in a contract compiles into ONE `WITH ... SELECT <aggregate exprs> FROM cte` per dataset, split only when the SQL exceeds the dialect's max statement length, returning a single row of scalars (contract_verification_impl.AggregationQuery.build_sql/execute); failed-row output is bounded by sampler_limit through sql_dialect.apply_sampling, which is SQLGlot-rewritten the way Provisa's own compiler rewrites SQL. Nothing streams the dataset into Python, so scan cost is a warehouse aggregate scan, not an extract — which is what makes aiming a checker at the FEDERATED view viable at estate scale. A checker that only validates dataframes in process (pandera, Deequ without Spark) does NOT satisfy this clause and is out of scope. (5) THE CHECKER IS PLUGGABLE, AND THE LICENCE TIER IS PART OF THE CHOICE. The registration declares which checker it targets; the source shape, the results schema, and the pgwire target are identical across them, and only the contract dialect differs. Two are in scope. Soda Core (soda-postgres, Elastic License 2.0) — contract YAML, richest check vocabulary. Great Expectations (great-expectations[postgresql], Apache 2.0) — expectation suites, no hosted-service bar. dbt tests and Elementary (Apache 2.0) are a third family that fits the same landing shape but presumes a dbt project, so they are noted and deferred. Commercial monitors (Monte Carlo, Anomalo, Bigeye) invert the shape — there is no local checker at all, only a results REST API to poll — which is the SAME fetch contract with a different body and is therefore admissible later without a new node kind. (6) PROVISIONING IS OPERATOR-SELECTED AND THE CLOUD PLANE IS EXCLUDED BY LICENCE, NOT BY CAPABILITY. Each checker is a pyproject extra ([soda], [gx]) acquired from PyPI on selection, never vendored. install.sh prompts for one (none|soda|gx, default none) and writes dq_checker to ~/.provisa/config.yaml; scripts/provisa maps that to the PROVISA_EXTRAS docker build arg, whose DEFAULT (firebase,vector) carries no checker at all. capabilities.yaml gains a cloud_eligible field: soda is cloud_eligible: false because Elastic License 2.0 prohibits providing the software to third parties as a hosted or managed service, and running it inside the SaaS plane on behalf of tenants is exactly that. The hosted plane MUST therefore either omit the source or reach an operator-supplied Soda endpoint the operator runs themselves; great_expectations carries no such bar and is cloud-eligible. Nothing else in the codebase enforces this split, so the flag is the enforcement point and the cloud build must read it. (7) THE CONTRACT IS AUTHORED IN THE UI, as part of the table definition rather than as a file the operator maintains beside it. The table edit surface gains a data-quality panel that builds the contract from the columns Provisa already knows: a check picker scoped to each column's actual type (missing/invalid/duplicate/range on a numeric, freshness on the watermark column, schema on the table), a threshold editor, and a warn-vs-fail severity per check. The panel round-trips against the raw contract text — a YAML/JSON editor with schema validation is always available and is the source of truth — so an org with existing contracts pastes one in and the builder renders it, and hand edits are never lost to the form. A dry-run action executes the contract against the live table and shows the outcomes without landing them, since the failure mode this prevents is a contract that lands nothing but passing rows because its dataset name resolved somewhere else. (8) THE FEATURE IS NOT DONE UNTIL THE SURROUNDING MATERIAL MOVES WITH IT. In scope, not follow-up: docs/sources.md gains the checker source type and the licence split; docs/integrations.md and docs/configuration.md cover dq_checker and PROVISA_EXTRAS; the installer wizard (install.sh and the macOS SwiftUI parity path) offers the choice; the demo config registers one contract over a demo table so the scorecard is populated on a fresh install; provisa-ui/src/tour/tourSteps.ts gains a step for the quality panel with copy in every locale under i18n/locales/<lng>/tour.json ([REQ-1358](#REQ-1358)); and capabilities.yaml carries both rows. A shipped checker source with no demo data and no tour step is an unfinished feature, not a shipped one. (9) A RESULTS TABLE IS IDENTIFIABLE, AND ITS CHECKS PUBLISH ON THE ASSET THEY OBSERVE. The marker is a DERIVED tag — computed from the table's own registration (a checker source plus a registered contract), never assigned and never stored — joining fact and dimension, which are derived the same way from modeling_role. Derived tags are code-defined intrinsics like the [REQ-1373](#REQ-1373) system tags: synthesized in front of the tags table, refused by upsert, delete and assign, absent from the picker, and exposed alongside the assignments as a derived_tags view. A stored assignment would either duplicate the registration or contradict it. In the metadata export the results table publishes as an ORDINARY table carrying that tag — no special casing — while each check in its contract publishes as an assertion on the asset the checker OBSERVES (the governed table, or the column when the check names one), because that is where a consumer asks whether a column is checked; the assertion names the results table so the two halves stay navigable both ways. An assertion is emitted only when BOTH ends survive the Data Product filter, since a dangling reference is what that filter exists to prevent. The published definition is the check's own authored text in the checker's dialect, and the severity is the dialect's: Soda's threshold.level (defaulting to fail as Soda itself defaults it), while every Great Expectations expectation is fail because GX has no warn level to report. Adapters map it natively where a native concept exists — OpenMetadata TestDefinition/TestSuite/TestCase with the checker named as the test platform, DataHub assertion entities with a content-derived URN so a republished contract addresses the same entity — and where one does not, the checks ride the same Provisa-authored carrier the governance facts already ride: the Atlas governance document (inherited by Atlan, whose own DQ routes are unverified) and a Collibra attribute rather than rows in a steward-curated rulebook. EVERY assertion carries the LAST SCAN'S OUTCOME, because a results table is that scan's rows: the publish path reads each registered contract's results table at its maximum scan_time through the one governed query pipeline and joins the rows back to the contract on (target table, column, check type) — the same address the loader handed the scan. Checks that share that identity are logged and published with no outcome rather than handed a sibling's verdict, and a contract no scan has reached yet publishes the explicit state never_run, since an unrun check must never read as a clean one. warn is published as a failure, not a pass: the threshold WAS breached and only the severity is milder. The outcome reaches each catalog by its own native run surface where one exists — an OpenMetadata testCaseResult, a DataHub assertionRunEvent, and the OpenLineage spec facet dataQualityAssertions with a real success boolean — and rides the Provisa-authored carrier everywhere else. Only states that reached a verdict appear on the native surfaces, which can express nothing else; never_run, error and skipped are always present in the Provisa carrier.
+
+**Use case:** An org already running Soda points it at a Provisa-governed table, registers the contract as a source, and gets scan history, a quality scorecard, lineage from check back to table, and change-driven rather than cron-driven scans — without Provisa shipping a data-quality engine or the operator hand-declaring a results schema.
+
+**Code:** `provisa/core/models.py`, `provisa/core/config_loader.py`, `provisa/events/handlers.py`, `provisa/processors/shell.py`, `config/capabilities.yaml`, `pyproject.toml`, `Dockerfile`, `docker-compose.app.yml`, `install.sh`, `scripts/provisa`, `provisa-ui/src/pages/tables`, `provisa-ui/src/tour/tourSteps.ts`, `docs/sources.md`, `provisa/core/derived_tags.py`, `provisa/core/repositories/tag.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/collibra.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openlineage.py`, `provisa/dq/contract.py`
+
+**Tests:** `tests/unit/test_metadata_export_data_quality.py`, `tests/unit/test_dq_contract.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1444 · UI {#REQ-1444}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A file export — XLSX or CSV — is the whole relation under the reader's current filter, sort and group choices, never the page on screen. A server-paged grid ([REQ-1386](#REQ-1386)) holds one page at a time, so the export reads the rest itself: the same governed statement the page came from, re-issued one chunk at a time with an advancing OFFSET until a chunk comes back short. Both formats take the same rows, and both are named after the relation. The XLSX provenance sheet records the scope as every matching row, the exported row count, and the statement the export issued. A chunk that fails aborts the export and surfaces the error — a short file is never written, because a file that silently stops at the page boundary is indistinguishable from a complete one once it leaves the product. The export therefore belongs to the grid component rather than the grid-state hook, which by construction sees only the page.
+
+**Use case:** An analyst filters a million-row report to a few thousand rows and exports them to Excel, getting every matching row rather than the twenty-five on screen.
+
+**Code:** `provisa-ui/src/pages/sql/ResultsGrid.tsx`, `provisa-ui/src/pages/sql/useResultsGrid.ts`, `provisa-ui/src/components/GovernedTableViewer.tsx`
+
+**Tests:** `provisa-ui/src/pages/sql/__tests__/ResultsGrid.exportAll.test.tsx`, `provisa-ui/src/components/__tests__/GovernedTableViewer.exportAll.test.tsx`
+
+## 4. Source Connectors
+
+### REQ-1445 · Federation {#REQ-1445}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Google Sheets is reachable from the Trino engine, not DuckDB alone. Trino's gsheets connector addresses sheets through a metadata spreadsheet whose rows map a table name to the range backing it, so the catalog carries that sheet's id (the source's database) and the service-account key path (the source's mapping), and every table listed in the metadata sheet becomes a table in the catalog. The reach is ATTACH_R — Trino queries the sheet live in place and cannot write back — so the source dropdown offers the type as LIVE on a Trino-pinned deployment rather than greying it out with "LIVE w/ DuckDB".
+
+**Use case:** An operator on a Trino-pinned deployment registers a Google Sheets source and queries its ranges alongside warehouse tables, without switching the federation engine.
+
+**Code:** `provisa/federation/trino_connectors.py`, `provisa-ui/src/pages/SourcesPage.tsx`
+
+**Tests:** `tests/unit/test_gsheets_trino_connector.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1446 · Product Tour {#REQ-1446}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Readiness for a tour step means both halves: the destination's code chunk is compiled ([REQ-1362](#REQ-1362)) and the queries that page gates its render on are already in the Apollo cache. The tour therefore runs every query its destination pages read (sources, domains, tables, relationships, all relationships, RLS rules, roles) before showing step 0, and a query the visitor's role cannot read is swallowed rather than blocking the start. Because the list hooks read cache-and-network, which reports loading on every revalidating mount, a page reports "nothing to paint" only when its data is undefined — a cached empty list is an answer, so a warm page does not re-blank on re-entry. Steps whose highlight target lives in the persistent shell (navbar, subnav) carry a readySelector pointing at page content, so the popover never appears over a page still painting its own loading state.
+
+**Code:** `provisa-ui/src/hooks/useAdminQueries.ts`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/tourSteps.ts`, `provisa-ui/src/pages/RelationshipsPage.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/tourDataPreload.test.tsx`

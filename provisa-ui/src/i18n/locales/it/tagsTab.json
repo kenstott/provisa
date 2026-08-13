@@ -37,6 +37,8 @@
     "policy_required": "Obbligatorio",
     "reasonPolicyBadge": "Motivo: {{policy}}",
     "expiresPolicyBadge": "Scadenza: {{policy}}",
-    "scope_command": "Comando"
+    "scope_command": "Comando",
+    "derivedTag": "derivato",
+    "derivedTagHelp": "Derivato dalla registrazione dell'oggetto stesso — mai assegnato"
   }
 }

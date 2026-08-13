@@ -95,6 +95,9 @@ class TagType:  # REQ-1373, REQ-1375
     is_system: bool
     reason_policy: str = "optional"  # hidden | optional | required
     expires_policy: str = "optional"
+    # REQ-1443: computed from the object's own registration, so it is read-only everywhere —
+    # the picker must not offer it and assignTag refuses it.
+    derived: bool = False
 
 
 @strawberry.type
@@ -192,6 +195,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     api_endpoint: str | None = None
     view_sql: str | None = None
     view_metrics: ViewMetricsType | None = None  # REQ-1318: metric-composed view spec
+    # REQ-1443: the data-quality contract this table's rows are the scan results of, verbatim.
+    dq_contract: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
@@ -490,6 +495,10 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         default_factory=list
     )  # REQ-1093
     view_sql: str | None = None
+    # REQ-1443: the data-quality contract (soda contract / GX suite) this table's rows are the scan
+    # results of. The contract names what it scans, so the observed target is DERIVED from it
+    # (REQ-939) and the results columns are replaced by the shipped schema at load.
+    dq_contract: str | None = None
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with view_sql.
     # The server generates (and regenerates on metric change) the view SELECT from this spec.
     view_metrics: ViewMetricsInput | None = None
@@ -590,6 +599,141 @@ class ViewMetricsInput:  # REQ-1318: declarative metric-composed view definition
     metrics: list[str]
     dimensions: list[str]
     filters: list[str] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class DqCheckType:  # REQ-1443: one check as the contract panel renders and edits it
+    """``definition`` is the check's OWN authored text (a soda single-key mapping, a GX expectation
+    object), not a normalized summary — which is what lets the panel round-trip a pasted contract
+    without dropping a threshold it has no editor for."""
+
+    column_name: str  # "" for a dataset-level check
+    check_type: str
+    definition: str
+
+
+@strawberry.input
+class DqCheckInput:  # REQ-1443
+    column_name: str
+    check_type: str
+    definition: str
+
+
+@strawberry.type
+class DqCheckParamType:  # REQ-1443 clause 7: one editable field of a check's body
+    """``value_type`` is what the editor renders (number | string | number_list | string_list |
+    column | enum), and ``choices`` is non-empty only for ``enum``."""
+
+    name: str
+    value_type: str
+    required: bool
+    choices: list[str] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class DqCheckKindType:  # REQ-1443 clause 7: one check the picker may offer
+    """The vocabulary is the CHECKER's, served from :mod:`provisa.dq.catalog` rather than held in
+    the browser — a picker carrying its own copy of soda's or GX's check list is a second dialect
+    that drifts from the one the worker runs. Empty ``comparators`` means the check takes no
+    threshold; ``levels`` is ``["fail"]`` alone for GX, which has no warn level."""
+
+    check_type: str
+    scope: str  # column | dataset
+    params: list[DqCheckParamType] = strawberry.field(default_factory=list)
+    comparators: list[str] = strawberry.field(default_factory=list)
+    metrics: list[str] = strawberry.field(default_factory=list)
+    levels: list[str] = strawberry.field(default_factory=list)
+    threshold_units: list[str] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class DqCheckColumnType:  # REQ-1443 clause 7
+    """One column of the observed dataset and the checks offerable on ITS type."""
+
+    name: str
+    data_type: str | None
+    checks: list[DqCheckKindType] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class DqCheckCatalogType:  # REQ-1443 clause 7: the picker's offer, scoped to the real dataset
+    """``columns`` is empty and ``error`` non-null when the contract's dataset resolves to no
+    governed table — the same failure the registration reports, surfaced while the operator is still
+    editing rather than at scan time."""
+
+    dataset_checks: list[DqCheckKindType] = strawberry.field(default_factory=list)
+    columns: list[DqCheckColumnType] = strawberry.field(default_factory=list)
+    error: str | None = None
+
+
+@strawberry.input
+class DqCheckBuildInput:  # REQ-1443 clause 7
+    """What the picker, threshold editor and severity control produce for ONE check.
+
+    ``params`` is JSON text because a check's body is per-check-type (soda's valid_values, GX's
+    regex) — modelling it as typed fields would put the checker's vocabulary in the schema, which is
+    the thing :mod:`provisa.dq.catalog` exists to keep in one place."""
+
+    check_type: str
+    column_name: str = ""
+    params: str = ""
+    comparator: str = ""
+    threshold_value: float | None = None
+    metric: str = ""
+    unit: str = ""
+    level: str = "fail"
+
+
+@strawberry.type
+class DqCheckDefinitionType:  # REQ-1443 clause 7
+    """One built check's own text, or the reason it could not be built."""
+
+    definition: str = ""
+    error: str | None = None
+
+
+@strawberry.type
+class DqContractType:  # REQ-1443: the parsed contract behind the builder panel
+    """``error`` is non-null when the raw text does not parse or names no dataset; the panel keeps
+    the operator's text and shows the message rather than replacing it with an empty builder."""
+
+    dataset: str | None = None
+    checker: str = ""
+    checks: list[DqCheckType] = strawberry.field(default_factory=list)
+    error: str | None = None
+
+
+@strawberry.type
+class DqContractTextType:  # REQ-1443: edited rows serialized back into the contract's own dialect
+    """The inverse of :class:`DqContractType`. Serialization is a server call so the dialect has one
+    implementation; ``error`` carries a rejected build (an unparseable check body, a dataset that is
+    not the three-part form) rather than emitting text the checker would refuse."""
+
+    text: str = ""
+    error: str | None = None
+
+
+@strawberry.type
+class DqDryRunType:  # REQ-1443 clause 7: outcomes WITHOUT landing them
+    """The failure mode this prevents is a contract that lands nothing but passing rows because its
+    dataset name resolved somewhere else — so ``rows_tested`` and the per-check outcomes are shown as
+    the checker reported them, not summarized to a verdict."""
+
+    success: bool
+    message: str = ""
+    checker_version: str | None = None
+    checks: list["DqDryRunCheckType"] = strawberry.field(default_factory=list)
+
+
+@strawberry.type
+class DqDryRunCheckType:  # REQ-1443
+    column_name: str | None
+    check_type: str
+    outcome: str
+    rows_tested: int | None = None
+    failed_rows: int | None = None
+    value: float | None = None
+    diagnostics: str | None = None  # the per-check-type jsonb block, as JSON text
 
 
 @strawberry.type

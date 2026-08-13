@@ -532,12 +532,16 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
         )
 
     async def _model(*args, **kwargs):
-        return object()
+        # An empty config: the publish path reads the DQ outcomes off it (REQ-1443), and a
+        # config with no checker source has no results table to read.
+        return ProvisaConfig(sources=[], domains=[], tables=[], roles=[])
 
     monkeypatch.setattr(publishing, "_export_config", _export_config)
     monkeypatch.setattr(publishing, "_model_for_export", _model)
     monkeypatch.setattr(
-        publishing, "build_snapshot", lambda model, *, org_id, dialect, glossary=None: snapshot
+        publishing,
+        "build_snapshot",
+        lambda model, *, org_id, dialect, glossary=None, dq_outcomes=None: snapshot,
     )
     monkeypatch.setattr(publishing, "metadata_export", lambda config: exporter)
     monkeypatch.setattr(

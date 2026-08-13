@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "Contrat de qualité des données",
+    "contractLabel": "Contrat",
+    "contractHelp": "Le texte du contrat du vérificateur. C'est ce qui est enregistré et ce que l'analyse exécute : les éditeurs ci-dessous écrivent à travers lui, les modifications manuelles ne sont donc jamais perdues.",
+    "dataset": "Observe {{dataset}}",
+    "datasetScope": "table entière",
+    "columnHeader": "Colonne",
+    "checkHeader": "Contrôle",
+    "definitionHeader": "Définition",
+    "outcomeHeader": "Résultat",
+    "valueHeader": "Valeur",
+    "failedRowsHeader": "Lignes en échec",
+    "removeCheck": "Supprimer le contrôle",
+    "columnLabel": "Colonne",
+    "checkLabel": "Contrôle",
+    "checkPlaceholder": "— choisir un contrôle —",
+    "metricLabel": "Métrique",
+    "comparatorLabel": "Comparer",
+    "thresholdLabel": "Seuil",
+    "unitLabel": "Unité",
+    "levelLabel": "Gravité",
+    "addCheck": "Ajouter un contrôle",
+    "dryRun": "Exécution à blanc",
+    "dryRunHelp": "Exécute le contrat sur la table réelle sans rien écrire."
+  }
+}

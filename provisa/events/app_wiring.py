@@ -172,6 +172,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         from provisa.events.source_loader import (
             SourceRowLoader,
             UnsupportedSourceFetch,
+            make_dq_loader,
             make_graphql_remote_loader,
             make_openapi_loader,
         )
@@ -187,6 +188,14 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         _gql_sources = getattr(state, "graphql_remote_sources", None)
         if _gql_sources:
             _adapter_loaders["graphql_remote"] = make_graphql_remote_loader(_gql_sources)
+
+        # REQ-1443: a data-quality checker table's rows are the results of RUNNING its contract, so
+        # its loader runs the scan. Registered unconditionally for both checkers — the contract's
+        # dataset resolves against the whole governed table list, since a contract may observe a
+        # table under any source, not only its own.
+        _dq_loader = make_dq_loader(config.tables)
+        _adapter_loaders["soda"] = _dq_loader
+        _adapter_loaders["great_expectations"] = _dq_loader
 
         # files/sharepoint/splunk on an engine with NO connector for them are landed through the
         # connector's bundled Calcite pgwire server (REQ-954): resolve+cache the bundle, start it,

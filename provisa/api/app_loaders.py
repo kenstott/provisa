@@ -1084,6 +1084,7 @@ _META_TABLES = [
     "tags",  # REQ-1373: the tag registry (system tags unioned in by the view)
     "tag_assignments",  # REQ-1377
     "tag_expiry",  # REQ-1375: expiring/expired assignments report (view-only, like roles_domain_access)
+    "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped

@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "Datakwaliteitscontract",
+    "contractLabel": "Contract",
+    "contractHelp": "De contracttekst van de checker. Dit wordt geregistreerd en door de scan uitgevoerd — de editors hieronder schrijven erdoorheen, dus handmatige bewerkingen gaan nooit verloren.",
+    "dataset": "Observeert {{dataset}}",
+    "datasetScope": "hele tabel",
+    "columnHeader": "Kolom",
+    "checkHeader": "Controle",
+    "definitionHeader": "Definitie",
+    "outcomeHeader": "Uitkomst",
+    "valueHeader": "Waarde",
+    "failedRowsHeader": "Mislukte rijen",
+    "removeCheck": "Controle verwijderen",
+    "columnLabel": "Kolom",
+    "checkLabel": "Controle",
+    "checkPlaceholder": "— kies een controle —",
+    "metricLabel": "Metriek",
+    "comparatorLabel": "Vergelijk",
+    "thresholdLabel": "Drempel",
+    "unitLabel": "Eenheid",
+    "levelLabel": "Ernst",
+    "addCheck": "Controle toevoegen",
+    "dryRun": "Proefrun",
+    "dryRunHelp": "Voert het contract uit op de echte tabel en schrijft niets weg."
+  }
+}

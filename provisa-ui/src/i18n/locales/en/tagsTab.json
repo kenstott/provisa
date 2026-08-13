@@ -37,6 +37,8 @@
     "deleteConfirm": "Delete tag \"{{id}}\"? Its assignments are removed as well.",
     "saved": "Tag {{id}} saved",
     "deleted": "Tag {{id}} deleted",
-    "pagination": "Tags pagination"
+    "pagination": "Tags pagination",
+    "derivedTag": "derived",
+    "derivedTagHelp": "Derived from each object's own registration — never assigned"
   }
 }

@@ -88,6 +88,14 @@
         "title": "Sicurezza a livello di riga",
         "description": "🔎 Una volta definiti i ruoli, vai più a fondo — limita quali <strong>righe</strong> ogni ruolo può vedere con predicati basati sugli attributi:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Basato sui dati e applicato per riga — su ogni sorgente e protocollo.</p>"
       },
+      "stepQualityTable": {
+        "title": "Un controllo qualità è solo una sorgente",
+        "description": "🧪 Un controllore di qualità dei dati — Soda o Great Expectations — si registra come <strong>sorgente</strong>. Analizza tramite l'endpoint postgres di Provisa, quindi un solo dialetto di contratto copre allo stesso modo una tabella Snowflake, una Iceberg e una collection Mongo. I risultati arrivano come tabella ordinaria: espandi la riga e aprila come qualsiasi altra."
+      },
+      "stepQualityPanel": {
+        "title": "Costruisci un contratto di qualità",
+        "description": "✅ Scrivi il contratto a mano oppure componi i controlli colonna per colonna — valori nulli, conteggio righe, intervalli, freschezza — ed esegui una <strong>prova a vuoto</strong> prima di salvare. Ogni scansione si accoda, quindi questa tabella <em>è</em> lo storico della qualità: grafica, allerta, unisci a qualsiasi cosa."
+      },
       "step20": {
         "title": "Costruisci la tua pipeline di delivery",
         "description": "🔧 Componi qui l'intera pipeline di delivery — senza uno strumento ETL separato:<ul><li>👁️ <strong>Viste</strong> — su qualsiasi tabella, effimere o materializzate, e viste su viste.</li><li>⚡ <strong>Comandi</strong> — operazioni governate e tipizzate (un servizio HTTP, un modello Python, una stored procedure) che svolgono un doppio ruolo: un passaggio all'interno della tua pipeline <em>e</em> un'API di prim'ordine che app e agenti a valle chiamano per agire sui tuoi dati — invocabile da ogni superficie, pienamente governata e tracciata.</li><li>⭐ <strong>Entità e fatti</strong> — dichiara una dimensione o un fatto una sola volta e Provisa genera il warehouse, indipendentemente dalla metodologia: 3NF (Inmon), star schema (Kimball) o Data Vault.</li><li>📏 <strong>Metriche</strong> — definizioni aggregate governate (&ldquo;ricavo netto&rdquo;) con grana associata al momento della query. Definisci una volta; ogni superficie — SQL, GraphQL, agenti IA — calcola lo stesso numero, e le viste costruite su una metrica si rigenerano quando la sua definizione cambia.</li></ul>"

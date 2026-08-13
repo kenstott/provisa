@@ -108,6 +108,17 @@ check_compose() {
     fi
 }
 
+# REQ-1443: the demo config registers a Great Expectations suite over the pet inventory, so the
+# quality scorecard has data only when GX is installed. A demo install that named no checker takes
+# GX (Apache 2.0, no hosted-service bar) rather than shipping a demo whose scan cannot run.
+apply_demo_checker_default() {
+    case "$INSTALL_DEMO" in [yY]|[yY][eE][sS]) : ;; *) return ;; esac
+    if [ "$DQ_CHECKER" = "none" ]; then
+        DQ_CHECKER="gx"
+        info "Demo selected: installing Great Expectations (Apache 2.0) so the quality scorecard has data."
+    fi
+}
+
 # ── Deployment selection (parity with macOS SwiftUI wizard, REQ-972..979) ────
 # Sets globals: DEPLOY_ENGINE ENGINE_URL MATERIALIZE_URL TRINO_HOST TRINO_PORT
 #               OBS_MODE OTLP_ENDPOINT INSTALL_DEMO DEMO_MODE DQ_CHECKER
@@ -126,6 +137,7 @@ resolve_deployment() {
         # REQ-1443. none | soda | gx. Default none — a checker is an external, out-of-process
         # component; it is never installed unless the operator asks for it by name.
         DQ_CHECKER="${PROVISA_DQ_CHECKER:-none}"
+        apply_demo_checker_default
         ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO} dq=${DQ_CHECKER}"
         return
     fi
@@ -191,6 +203,8 @@ resolve_deployment() {
         3) DQ_CHECKER="gx" ;;
         *) DQ_CHECKER="none" ;;
     esac
+
+    apply_demo_checker_default
 
     ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO} dq=${DQ_CHECKER}"
 }

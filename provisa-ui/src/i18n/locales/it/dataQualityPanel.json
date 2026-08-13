@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "Contratto di qualità dei dati",
+    "contractLabel": "Contratto",
+    "contractHelp": "Il testo del contratto del checker. È ciò che viene registrato ed eseguito dalla scansione: gli editor sottostanti scrivono attraverso di esso, quindi le modifiche manuali non vengono mai perse.",
+    "dataset": "Osserva {{dataset}}",
+    "datasetScope": "intera tabella",
+    "columnHeader": "Colonna",
+    "checkHeader": "Controllo",
+    "definitionHeader": "Definizione",
+    "outcomeHeader": "Esito",
+    "valueHeader": "Valore",
+    "failedRowsHeader": "Righe fallite",
+    "removeCheck": "Rimuovi controllo",
+    "columnLabel": "Colonna",
+    "checkLabel": "Controllo",
+    "checkPlaceholder": "— scegli un controllo —",
+    "metricLabel": "Metrica",
+    "comparatorLabel": "Confronta",
+    "thresholdLabel": "Soglia",
+    "unitLabel": "Unità",
+    "levelLabel": "Gravità",
+    "addCheck": "Aggiungi controllo",
+    "dryRun": "Esecuzione di prova",
+    "dryRunHelp": "Esegue il contratto sulla tabella reale senza scrivere nulla."
+  }
+}

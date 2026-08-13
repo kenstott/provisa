@@ -37,6 +37,8 @@
     "policy_required": "आवश्यक",
     "reasonPolicyBadge": "कारण: {{policy}}",
     "expiresPolicyBadge": "समाप्ति: {{policy}}",
-    "scope_command": "कमांड"
+    "scope_command": "कमांड",
+    "derivedTag": "व्युत्पन्न",
+    "derivedTagHelp": "प्रत्येक ऑब्जेक्ट के अपने पंजीकरण से व्युत्पन्न — कभी असाइन नहीं किया जाता"
   }
 }

@@ -1,0 +1,27 @@
+{
+  "dataQualityPanel": {
+    "title": "Contrato de qualidade de dados",
+    "contractLabel": "Contrato",
+    "contractHelp": "O texto do contrato do verificador. É o que é registado e o que a análise executa — os editores abaixo escrevem através dele, por isso as edições manuais nunca são descartadas.",
+    "dataset": "A observar {{dataset}}",
+    "datasetScope": "tabela inteira",
+    "columnHeader": "Coluna",
+    "checkHeader": "Verificação",
+    "definitionHeader": "Definição",
+    "outcomeHeader": "Resultado",
+    "valueHeader": "Valor",
+    "failedRowsHeader": "Linhas com falha",
+    "removeCheck": "Remover verificação",
+    "columnLabel": "Coluna",
+    "checkLabel": "Verificação",
+    "checkPlaceholder": "— escolha uma verificação —",
+    "metricLabel": "Métrica",
+    "comparatorLabel": "Comparar",
+    "thresholdLabel": "Limiar",
+    "unitLabel": "Unidade",
+    "levelLabel": "Severidade",
+    "addCheck": "Adicionar verificação",
+    "dryRun": "Execução de teste",
+    "dryRunHelp": "Executa o contrato sobre a tabela real sem escrever nada."
+  }
+}

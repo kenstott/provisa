@@ -104,7 +104,10 @@ export function TagControl({
   const objectAssignments = tagAssignments.filter(matches);
   const assignmentByTagId = new Map(objectAssignments.map((a) => [a.tagId, a]));
   const assignedTags = tags.filter((tag) => assignmentByTagId.has(tag.id));
-  const applicableTags = tags.filter((tag) => tag.appliesTo.includes(objectType));
+  // REQ-1443: a derived tag reports what the object's own registration already says, so there is
+  // nothing to check or clear — the server refuses the assignment and offering it would put a
+  // control on screen whose only outcome is an error.
+  const applicableTags = tags.filter((tag) => tag.appliesTo.includes(objectType) && !tag.derived);
 
   const buildInput = (tagId: string): TagAssignment => ({
     tagId,

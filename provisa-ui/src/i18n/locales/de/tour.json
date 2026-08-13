@@ -88,6 +88,14 @@
         "title": "Row-Level-Sicherheit",
         "description": "🔎 Sobald Rollen existieren, noch feiner werden — einschränken, welche <strong>Zeilen</strong> jede Rolle sieht, mit attributbasierten Prädikaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datengetrieben und pro Zeile erzwungen — über jede Quelle und jedes Protokoll hinweg.</p>"
       },
+      "stepQualityTable": {
+        "title": "Ein Qualitätsprüfer ist einfach eine Quelle",
+        "description": "🧪 Ein Datenqualitätsprüfer — Soda oder Great Expectations — wird als <strong>Quelle</strong> registriert. Er prüft über Provisas eigenen Postgres-Endpunkt, sodass ein Vertragsdialekt für eine Snowflake-Tabelle, eine Iceberg-Tabelle und eine Mongo-Collection gleichermaßen gilt. Die Ergebnisse landen als gewöhnliche Tabelle: Zeile aufklappen und wie jede andere öffnen."
+      },
+      "stepQualityPanel": {
+        "title": "Einen Qualitätsvertrag erstellen",
+        "description": "✅ Schreiben Sie den Vertrag selbst oder bauen Sie Prüfungen Spalte für Spalte — Null-Quoten, Zeilenzahlen, Wertebereiche, Aktualität — und führen Sie vor dem Speichern einen <strong>Testlauf</strong> aus. Jeder Scan wird angehängt, diese Tabelle <em>ist</em> also die Qualitätshistorie: visualisieren, alarmieren, mit allem verknüpfen."
+      },
       "step20": {
         "title": "Ihre Delivery-Pipeline aufbauen",
         "description": "🔧 Ihre gesamte Delivery-Pipeline direkt hier zusammenstellen — kein separates ETL-Tool:<ul><li>👁️ <strong>Sichten</strong> — über jede Tabelle, flüchtig oder materialisiert, und Sichten über Sichten.</li><li>⚡ <strong>Befehle</strong> — governte, typisierte Operationen (ein HTTP-Dienst, ein Python-Modell, eine gespeicherte Prozedur), die eine Doppelrolle spielen: ein Schritt innerhalb Ihrer Pipeline <em>und</em> eine erstklassige API, die nachgelagerte Apps und Agenten aufrufen, um auf Ihre Daten einzuwirken — aufrufbar von jeder Oberfläche, vollständig governt und nachverfolgt.</li><li>⭐ <strong>Entitäten &amp; Fakten</strong> — eine Dimension oder ein Fakt einmal deklarieren, und Provisa generiert das Warehouse, methodikneutral: 3NF (Inmon), Sternschema (Kimball) oder Data Vault.</li><li>📏 <strong>Metriken</strong> — governte Aggregatdefinitionen (&ldquo;Nettoumsatz&rdquo;) mit zur Abfragezeit gebundener Granularität. Einmal definieren; jede Oberfläche — SQL, GraphQL, KI-Agenten — berechnet dieselbe Zahl, und Sichten, die auf einer Metrik aufbauen, werden neu generiert, wenn sich deren Definition ändert.</li></ul>"

@@ -37,6 +37,8 @@
     "policy_required": "Erforderlich",
     "reasonPolicyBadge": "Begründung: {{policy}}",
     "expiresPolicyBadge": "Ablauf: {{policy}}",
-    "scope_command": "Befehl"
+    "scope_command": "Befehl",
+    "derivedTag": "abgeleitet",
+    "derivedTagHelp": "Aus der Registrierung des jeweiligen Objekts abgeleitet — wird nie zugewiesen"
   }
 }

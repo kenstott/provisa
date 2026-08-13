@@ -30,6 +30,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     probeQuery: t.probeQuery || null,
     probeType: t.probeType || null,
     viewSql: t.viewSql || undefined,
+    dqContract: t.dqContract || null, // REQ-1443
     materialize: t.materialize,
     mvRefreshInterval: t.mvRefreshInterval,
     mvDebounceQuiet: t.mvDebounceQuiet,

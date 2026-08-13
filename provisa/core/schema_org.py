@@ -133,6 +133,8 @@ registered_tables = Table(
     # REQ-1093: table-level UNIQUE constraints — [{name, columns:[...]}], seeded from source introspection.
     Column("unique_constraints", JSON, nullable=False, default=list, server_default="[]"),
     Column("view_sql", Text),
+    # REQ-1443: the data-quality contract a checker table's rows are the scan results of.
+    Column("dq_contract", Text),
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON),

@@ -208,6 +208,15 @@ async def register_table(
     _effective_view_sql = input.view_sql
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
+        # REQ-1443: a checker table's columns, watermark and promotions come from its contract, not
+        # from the input — the same derivation the YAML loader runs, so both surfaces register the
+        # same table.
+        from provisa.api.admin._dq_registration import apply_dq_registration
+
+        try:
+            await apply_dq_registration(_conn, model)
+        except ValueError as _dq_err:
+            return MutationResult(success=False, message=str(_dq_err))
         if model.view_metrics is not None:
             # REQ-1318: compile the spec into the view SELECT against the live registries —
             # the generated SQL persists in view_sql and flows everywhere free-hand SQL does.

@@ -28,6 +28,7 @@ import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import type { RegisteredTable, Source } from "../../types/admin";
+import { DQ_CHECKERS } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { sourceProbeTypes } from "../../liveCapability";
@@ -40,6 +41,7 @@ import { MaterializedViewPanels } from "./MaterializedViewPanels";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
 import { TimeInput } from "@mantine/dates";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { DataQualityPanel } from "./DataQualityPanel";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 
@@ -632,6 +634,17 @@ export function TableEditForm({
           settings={settings}
         />
       </div>
+      {/* REQ-1443 clause 7: a checker source's table lands that checker's scans, so its contract is
+          edited here. Only a checker source has one — every other table has no contract to build. */}
+      {editSource != null &&
+        (DQ_CHECKERS as readonly string[]).includes((editSource.type ?? "").toLowerCase()) && (
+          <DataQualityPanel
+            checker={(editSource.type ?? "").toLowerCase()}
+            sourceId={editSource.id}
+            contractText={editingTable.dqContract ?? ""}
+            onChange={(text) => setEditingTable({ ...editingTable, dqContract: text || null })}
+          />
+        )}
       {(() => {
         const NOSQL = new Set(["mongodb", "cassandra"]);
         const src = sources.find((s) => s.id === editingTable.sourceId);

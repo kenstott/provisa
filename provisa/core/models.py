@@ -107,6 +107,13 @@ class SourceType(str, Enum):
     splunk = "splunk"
     # File crawler — directory of CSV/Parquet/XLSX/JSON surfaced as tables
     files = "files"
+    # Data-quality checkers (REQ-1443) — an external checker verifies a contract against a governed
+    # table through Provisa's own pgwire endpoint, and its scan results land as a governed table.
+    # Two types rather than one with a discriminator: every capabilities.yaml source option id maps
+    # 1:1 to a SourceType, and the licence tier differs (soda is Elastic 2.0 and self-host only;
+    # great_expectations is Apache 2.0 and cloud-eligible).
+    soda = "soda"
+    great_expectations = "great_expectations"
 
 
 class Cardinality(str, Enum):
@@ -306,6 +313,10 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # Which object types this tag may attach to; subset of TAG_OBJECT_TYPES.
     applies_to: list[str] = Field(default_factory=list)
     is_system: bool = False
+    # REQ-1443: the tag is COMPUTED from the object's registered state, not assigned by a
+    # steward. A derived tag is read-only everywhere — the picker does not offer it and the
+    # assign mutation refuses it — because the state it reports is the only way to change it.
+    derived: bool = False
     # Per-tag assignment-field policy (hidden | optional | required): whether the picker
     # shows reason/expires_on and whether the assign mutation demands them.
     reason_policy: str = "optional"
@@ -374,6 +385,49 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
 )
 
 SYSTEM_TAG_IDS = tuple(tag.id for tag in SYSTEM_TAGS)
+
+
+# REQ-1443: derived tags name what a table already IS, read off its registration. They are
+# code-defined like the system tags and never stored, but unlike them they are not assignable
+# either: `fact` follows modeling_role, `data_quality` follows a checker source carrying a
+# contract, and letting a steward hang one on an unrelated table would put the registry in
+# disagreement with the model it describes. The rule lives in provisa.core.derived_tags.
+DERIVED_TAGS: tuple[Tag, ...] = (
+    Tag(
+        id="fact",
+        description=(
+            "Star-schema fact table — measures at a declared grain, the centre of a join star"
+        ),
+        applies_to=["table"],
+        is_system=True,
+        derived=True,
+        reason_policy="hidden",  # derived: the modeling role is the reason
+        expires_policy="hidden",
+    ),
+    Tag(
+        id="dimension",
+        description="Star-schema dimension table — the descriptive attributes facts are sliced by",
+        applies_to=["table"],
+        is_system=True,
+        derived=True,
+        reason_policy="hidden",
+        expires_policy="hidden",
+    ),
+    Tag(
+        id="data_quality",
+        description=(
+            "Data-quality scan results — rows are check outcomes landed by an external checker, "
+            "not business records"
+        ),
+        applies_to=["table"],
+        is_system=True,
+        derived=True,
+        reason_policy="hidden",
+        expires_policy="hidden",
+    ),
+)
+
+DERIVED_TAG_IDS = tuple(tag.id for tag in DERIVED_TAGS)
 
 
 class TagAssignment(BaseModel):  # REQ-1377
@@ -677,6 +731,12 @@ class Table(
     # REQ-930: cache_ttl is the SINGLE per-table TTL. change_signal in {ttl, ttl_probe} requires it
     # (the poll/staleness cadence); when materialized it is also the refresh cadence. One value, so
     # the change-detection interval and the materialized-copy lifetime can never diverge.
+    # REQ-1443: the data-quality contract this table's rows are the SCAN RESULTS of — a soda contract
+    # or a Great Expectations suite, verbatim as authored. Required on a table registered under a
+    # checker source and forbidden anywhere else. The contract names the table it scans, so the
+    # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
+    # results columns are the shipped schema and are replaced at parse, not authored.
+    dq_contract: str | None = None
     view_sql: str | None = None  # when set, table is a Provisa-managed view
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with
     # view_sql (one view concept, two definition forms — validated below).

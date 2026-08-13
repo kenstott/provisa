@@ -37,6 +37,7 @@ const SYSTEM_TAG: Tag = {
   description: "Personally identifiable",
   appliesTo: ["column", "table"],
   isSystem: true,
+  derived: false,
   reasonPolicy: "optional",
   expiresPolicy: "optional",
 };
@@ -45,7 +46,18 @@ const USER_TAG: Tag = {
   description: "Finance domain",
   appliesTo: ["source", "table"],
   isSystem: false,
+  derived: false,
   reasonPolicy: "required",
+  expiresPolicy: "hidden",
+};
+// REQ-1443: computed off each table's own registration, so it carries no stored assignments.
+const DERIVED_TAG: Tag = {
+  id: "data_quality",
+  description: "Lands data-quality scan outcomes",
+  appliesTo: ["table"],
+  isSystem: true,
+  derived: true,
+  reasonPolicy: "hidden",
   expiresPolicy: "hidden",
 };
 const COMMAND_TAG: Tag = {
@@ -53,6 +65,7 @@ const COMMAND_TAG: Tag = {
   description: "Audited command",
   appliesTo: ["command"],
   isSystem: false,
+  derived: false,
   reasonPolicy: "optional",
   expiresPolicy: "optional",
 };
@@ -76,7 +89,7 @@ describe("TagsTab", () => {
   beforeEach(() => {
     upsertSpy.mockClear();
     deleteSpy.mockClear();
-    mockTags = [USER_TAG, SYSTEM_TAG, COMMAND_TAG];
+    mockTags = [USER_TAG, SYSTEM_TAG, COMMAND_TAG, DERIVED_TAG];
     mockAssignments = [
       { tagId: "pii", objectType: "column", tableId: 1, columnName: "ssn" },
       { tagId: "pii", objectType: "column", tableId: 1, columnName: "email" },
@@ -95,7 +108,9 @@ describe("TagsTab", () => {
     const bar = screen.getByTestId("tags-scope-bar");
     fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_table")));
     const rows = screen.getAllByTestId(/^tags-row-/);
+    // Derived tags are code-defined like system ones, so they sort with them, ahead of user tags.
     expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
+      "tags-row-data_quality",
       "tags-row-pii",
       "tags-row-finance",
     ]);
@@ -122,6 +137,18 @@ describe("TagsTab", () => {
     expect(within(systemRow).getByLabelText(t("tagsTab.systemTag"))).toBeTruthy();
     // The user tag keeps its delete action.
     expect(screen.getByTestId("tags-delete-finance")).toBeTruthy();
+  });
+
+  it("marks a derived tag rather than counting assignments it can never have", () => {
+    render(<TagsTab />);
+    fireEvent.click(
+      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
+    );
+    const row = screen.getByTestId("tags-row-data_quality");
+    expect(within(row).getByText(t("tagsTab.derivedTag"))).toBeTruthy();
+    // A "0" here would read as an unused tag, when the tag may hold on every table in the estate.
+    expect(within(row).queryByText("0")).toBeNull();
+    expect(within(row).getByLabelText(t("tagsTab.derivedTagHelp"))).toBeTruthy();
   });
 
   it("creates a tag through upsertTag with id, description and appliesTo", async () => {

@@ -97,6 +97,7 @@ query TagsQuery {
     description
     appliesTo
     isSystem
+    derived
     reasonPolicy
     expiresPolicy
   }
@@ -143,6 +144,7 @@ query TablesQuery {
     probeType
     apiEndpoint
     viewSql
+    dqContract
     viewMetrics {
       metrics
       dimensions
@@ -232,6 +234,96 @@ query RefreshPolicyPreview(
     text
     serving
     warning
+  }
+}
+
+# REQ-1443: the data-quality contract builder. Parsing and serialization are server calls so the
+# soda / Great Expectations dialects have exactly one implementation, and the panel can never emit a
+# shape the checker refuses to run.
+query DqContractParse($checker: String!, $contractText: String!) {
+  dqContractParse(checker: $checker, contractText: $contractText) {
+    dataset
+    checker
+    error
+    checks {
+      columnName
+      checkType
+      definition
+    }
+  }
+}
+
+# REQ-1443 clause 7: the checks the picker may offer. Scoped by the contract's own dataset, which
+# the server resolves the same way the registration and the dry run do, so the offered checks match
+# the columns the checker will really see.
+query DqCheckCatalog($checker: String!, $dataset: String!) {
+  dqCheckCatalog(checker: $checker, dataset: $dataset) {
+    error
+    datasetChecks {
+      checkType
+      scope
+      comparators
+      metrics
+      levels
+      thresholdUnits
+      params {
+        name
+        valueType
+        required
+        choices
+      }
+    }
+    columns {
+      name
+      dataType
+      checks {
+        checkType
+        scope
+        comparators
+        metrics
+        levels
+        thresholdUnits
+        params {
+          name
+          valueType
+          required
+          choices
+        }
+      }
+    }
+  }
+}
+
+# One check's definition text from the picker, threshold and severity editors.
+query DqCheckDefinition($checker: String!, $check: DqCheckBuildInput!) {
+  dqCheckDefinition(checker: $checker, check: $check) {
+    definition
+    error
+  }
+}
+
+query DqContractBuild($checker: String!, $dataset: String!, $checks: [DqCheckInput!]!) {
+  dqContractBuild(checker: $checker, dataset: $dataset, checks: $checks) {
+    text
+    error
+  }
+}
+
+# REQ-1443 clause 7: run the contract against the live table, landing nothing.
+mutation DryRunDqContract($sourceId: String!, $contractText: String!) {
+  dryRunDqContract(sourceId: $sourceId, contractText: $contractText) {
+    success
+    message
+    checkerVersion
+    checks {
+      columnName
+      checkType
+      outcome
+      rowsTested
+      failedRows
+      value
+      diagnostics
+    }
   }
 }
 
@@ -638,14 +730,34 @@ mutation UpdateTablePreferMaterialized($tableId: Int!, $preferMaterialized: Bool
   }
 }
 
-mutation UpdateSourceLoadProtection($sourceId: String!, $loadProtected: Boolean!, $offPeakWindow: String, $offPeakTz: String!) {
-  updateSourceLoadProtection(sourceId: $sourceId, loadProtected: $loadProtected, offPeakWindow: $offPeakWindow, offPeakTz: $offPeakTz) {
+mutation UpdateSourceLoadProtection(
+  $sourceId: String!
+  $loadProtected: Boolean!
+  $offPeakWindow: String
+  $offPeakTz: String!
+) {
+  updateSourceLoadProtection(
+    sourceId: $sourceId
+    loadProtected: $loadProtected
+    offPeakWindow: $offPeakWindow
+    offPeakTz: $offPeakTz
+  ) {
     ...MutationResult
   }
 }
 
-mutation UpdateTableLoadProtection($tableId: Int!, $loadProtected: Boolean, $offPeakWindow: String, $offPeakTz: String) {
-  updateTableLoadProtection(tableId: $tableId, loadProtected: $loadProtected, offPeakWindow: $offPeakWindow, offPeakTz: $offPeakTz) {
+mutation UpdateTableLoadProtection(
+  $tableId: Int!
+  $loadProtected: Boolean
+  $offPeakWindow: String
+  $offPeakTz: String
+) {
+  updateTableLoadProtection(
+    tableId: $tableId
+    loadProtected: $loadProtected
+    offPeakWindow: $offPeakWindow
+    offPeakTz: $offPeakTz
+  ) {
     ...MutationResult
   }
 }
@@ -722,8 +834,24 @@ mutation ToggleScheduledTask($taskId: String!, $enabled: Boolean!) {
   }
 }
 
-mutation CreateScheduledTask($id: String!, $name: String!, $cron: String!, $kind: String!, $webhookName: String, $argsJson: String, $sql: String) {
-  createScheduledTask(id: $id, name: $name, cron: $cron, kind: $kind, webhookName: $webhookName, argsJson: $argsJson, sql: $sql) {
+mutation CreateScheduledTask(
+  $id: String!
+  $name: String!
+  $cron: String!
+  $kind: String!
+  $webhookName: String
+  $argsJson: String
+  $sql: String
+) {
+  createScheduledTask(
+    id: $id
+    name: $name
+    cron: $cron
+    kind: $kind
+    webhookName: $webhookName
+    argsJson: $argsJson
+    sql: $sql
+  ) {
     ...MutationResult
   }
 }

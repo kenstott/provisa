@@ -40,6 +40,10 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         "rss",
         "prometheus",
         "google_sheets",
+        # REQ-1443: a data-quality checker source has no table to scan — its rows ARE the result of
+        # running the contract, produced by the checker subprocess. See :func:`make_dq_loader`.
+        "soda",
+        "great_expectations",
     }
 )
 
@@ -138,6 +142,55 @@ def make_openapi_loader(
                 )
             )
         return rows
+
+    return _load
+
+
+def make_dq_loader(tables: list) -> AdapterLoader:
+    """Build the data-quality checker row-fetch (REQ-1443).
+
+    A checker table's "current rows" are one scan's results, so the load RUNS the contract: the
+    checker subprocess verifies ``table.dq_contract`` against Provisa's own pgwire endpoint and its
+    per-check results are the rows. That makes the poll loop the scan scheduler — a checker table
+    refreshes on the same cadence machinery as any other table, with no separate scheduler.
+
+    The endpoint the checker connects back through is ``source.mapping`` (the per-source
+    type-specific DSL, REQ-251): host, port, database, user, password. ``tables`` is the governed
+    table list the contract's dataset resolves against — a contract aimed at a table Provisa does not
+    govern raises :class:`~provisa.dq.contract.ContractError` there, not here.
+    """
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        import uuid
+        from datetime import UTC, datetime
+
+        from provisa.dq.contract import contract_dataset, resolve_contract_target
+        from provisa.dq.runner import run_contract
+
+        stype = _source_type(source)
+        if not table.dq_contract:
+            raise UnsupportedSourceFetch(
+                f"{stype} source {source.id!r} table {table.table_name!r} carries no dq_contract; "
+                f"a checker table's rows are the results of running one"
+            )
+        dataset = contract_dataset(table.dq_contract, stype)
+        target = resolve_contract_target(dataset, tables)
+        mapping = source.mapping
+        return await run_contract(
+            checker=stype,
+            contract_text=table.dq_contract,
+            connection={
+                "host": mapping["host"],
+                "port": mapping["port"],
+                "database": mapping["database"],
+                "user": mapping["user"],
+                "password": mapping["password"],
+            },
+            data_source_name=dataset.split("/")[0],
+            scan_id=str(uuid.uuid4()),
+            scan_time=datetime.now(UTC),
+            target_table=f"{target.schema_name}.{target.table_name}",
+        )
 
     return _load
 

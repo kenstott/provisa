@@ -37,6 +37,8 @@
     "policy_required": "Обязательно",
     "reasonPolicyBadge": "Причина: {{policy}}",
     "expiresPolicyBadge": "Истечение: {{policy}}",
-    "scope_command": "Команда"
+    "scope_command": "Команда",
+    "derivedTag": "производный",
+    "derivedTagHelp": "Выводится из регистрации самого объекта — никогда не назначается"
   }
 }

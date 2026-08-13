@@ -17,19 +17,22 @@ import { ActionIcon, Badge, Collapse, Group, Text } from "@mantine/core";
 export function CollapsibleSection({
   title,
   testId,
+  tourId,
   badge,
   defaultOpen = false,
   children,
 }: {
   title: string;
   testId: string;
+  /** REQ-1358: `data-tour` on the section wrapper, so a tour step can highlight the whole panel. */
+  tourId?: string;
   badge?: ReactNode;
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ gridColumn: "1 / -1" }}>
+    <div style={{ gridColumn: "1 / -1" }} data-tour={tourId}>
       <Group
         gap="xs"
         wrap="nowrap"

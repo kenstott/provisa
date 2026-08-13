@@ -105,6 +105,9 @@ All sources share a common field set. [tool-verified: `provisa/core/models.py:12
 | `splunk` | `host`/`port` or `base_url` + `mapping` | |
 | **GovData** | | |
 | `govdata` | subject + `domain_id` | Separate `GovDataSource` model; see §GovData below |
+| **Data Quality** | | |
+| `soda` | host/port aimed at Provisa's pgwire | Needs the `soda` extra; Elastic License 2.0, self-hosted only (REQ-1443) |
+| `great_expectations` | host/port aimed at Provisa's pgwire | Needs the `gx` extra; Apache 2.0 (REQ-1443) |
 
 ### Source type reference
 
@@ -512,6 +515,45 @@ sources:
       datamodel_filter: ""     # optional Splunk Data Model filter
       disable_ssl_validation: false
 ```
+
+#### Data quality checkers (soda / great_expectations)
+
+[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
+
+A checker source points at Provisa's own pgwire endpoint, so one postgres driver scans the federated view of a Snowflake- or Iceberg-backed table. The scan identity is declared, never inherited — policy applies to that connection, and a filtered row set must not produce a silently passing check. Connection keys come from `mapping`: `host`, `port`, `database`, `user`, `password`.
+
+```yaml
+sources:
+  - id: dq
+    type: soda                 # or great_expectations
+    domain_id: sales-analytics
+    mapping:
+      host: localhost
+      port: 5439               # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+Each results table carries `dq_contract` — Soda contract YAML or a Great Expectations suite JSON, verbatim. Columns, watermark and promotions are derived from it; see [Data Quality Checkers](sources.md#data-quality-checkers-req-1443) for the full derivation.
+
+**Install-time selection.** The checker is not linked in — the scan runs in a child interpreter, and the library is installed only when an operator names it. Every installer path (`install.sh`, `packaging/linux/first-launch.sh`, and the macOS wizard through `PROVISA_DQ_CHECKER`) writes the choice to `~/.provisa/config.yaml`:
+
+```yaml
+dq_checker: none        # none | soda | gx
+```
+
+`scripts/provisa` reads that key and exports `PROVISA_EXTRAS`, which `docker-compose.app.yml` passes as a build arg to the `Dockerfile`'s `ARG PROVISA_EXTRAS`: [tool-verified: `scripts/provisa:69-79`]
+
+| `dq_checker` | `PROVISA_EXTRAS` (Docker tier) | Native venv install |
+| -------------- | -------------------------------- | --------------------- |
+| `none` | `firebase,vector` | `provisa[embedded]` |
+| `soda` | `firebase,vector,soda` | `provisa[embedded,soda]` |
+| `gx` | `firebase,vector,gx` | `provisa[embedded,gx]` |
+
+Installing the demo dataset raises `none` to `gx` and says so, because the demo config registers a Great Expectations suite over `pet_store.pets` and its quality scorecard would otherwise have nothing to show. Naming `soda` keeps `soda`.
+
+Any other value stops the launcher rather than starting without the checker the operator asked for. The `soda` extra pulls `soda-postgres`; `gx` pulls `great-expectations[postgresql]`. Soda Core is Elastic License 2.0 — `config/capabilities.yaml` marks the option `cloud_eligible: false`, and the hosted plane refuses it.
 
 ## Domains
 
@@ -1393,6 +1435,8 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_MTLS_MODE` | `required` once a CA is set | `required` or `optional`; any other value refuses to start (REQ-1228) |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the authenticating username (REQ-1228) |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Comma-separated sites permitted to open a Bolt WebSocket from a browser; unset refuses every browser origin (REQ-802) |
+| `PROVISA_EXTRAS` | `firebase,vector` | Pyproject extras baked into the app image; `scripts/provisa` derives it from `dq_checker` in `~/.provisa/config.yaml` (REQ-1443) |
+| `PROVISA_DQ_CHECKER` | `none` | Installer-only: `none`/`soda`/`gx`, read by `first-launch.sh` in non-interactive mode and written to `config.yaml` as `dq_checker` (REQ-1443) |
 | `ANTHROPIC_API_KEY` | — | Claude API key (discovery) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Overrides `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Overrides `observability.service_name` |

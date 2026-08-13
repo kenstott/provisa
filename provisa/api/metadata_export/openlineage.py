@@ -146,6 +146,74 @@ def _relationships_facet(edges: list[RelationshipEdge]) -> dict[str, Any]:
     )
 
 
+def _assertion_column(table: TableAsset, assertion: Any) -> str | None:
+    """The column an assertion names, or None when it is about the whole dataset.
+
+    A column assertion's ref is the table's parts plus the column; a table-level one is the
+    table's parts exactly.
+    """
+    return (
+        assertion.asset.parts[-1]
+        if len(assertion.asset.parts) > len(table.ref.parts)
+        else None
+    )
+
+
+def _spec_data_quality_facet(
+    table: TableAsset, assertions: list[Any]
+) -> dict[str, Any] | None:  # REQ-1443
+    """The spec's ``dataQualityAssertions`` facet: the most recent scan's verdicts.
+
+    Its entries require a ``success`` boolean, which is a run outcome — and Provisa has one,
+    because a results table is that scan's rows and the export reads the latest back. A check
+    whose last run neither passed nor failed (error, skipped) and one that has never run carry no
+    boolean, so they are absent HERE and reported in the Provisa facet instead: inventing a
+    ``success`` for them would state a verdict that was never reached. The facet is omitted
+    entirely when no assertion on this dataset has one.
+    """
+    entries = [
+        {
+            "assertion": assertion.check_type,
+            "success": assertion.outcome.success,
+            "column": _assertion_column(table, assertion),
+        }
+        for assertion in assertions
+        if assertion.outcome.success is not None
+    ]
+    if not entries:
+        return None
+    return {
+        "_producer": PRODUCER,
+        "_schemaURL": f"{FACET_URL}/DataQualityAssertionsDatasetFacet",
+        "assertions": entries,
+    }
+
+
+def _data_quality_facet(table: TableAsset, assertions: list[Any]) -> dict[str, Any]:  # REQ-1443
+    """The checks a contract makes about one dataset and its columns, and how each last fared.
+
+    Carries what the spec facet has no room for: the checker and its dialect's own severity, the
+    authored definition, the dataset the outcomes land in, and the last run's status in full —
+    including ``never_run`` for a contract registered but not yet scanned, and the error/skipped
+    states that reached no verdict. A consumer that reads only ``dataQualityAssertions`` sees the
+    passes and failures; one that reads this too can tell an unchecked column from a clean one.
+    """
+    return _custom_facet(
+        assertions=[
+            {
+                "assertion": assertion.check_type,
+                "column": _assertion_column(table, assertion),
+                "checker": assertion.checker,
+                "definition": assertion.definition,
+                "severity": assertion.severity,
+                "resultsTable": ".".join(assertion.results_table.parts),
+                "outcome": assertion.outcome.as_document(),
+            }
+            for assertion in assertions
+        ]
+    )
+
+
 def _dataset_facets(
     snapshot: MetadataSnapshot,
     table: TableAsset,
@@ -182,6 +250,20 @@ def _dataset_facets(
     edges = [edge for edge in snapshot.relationships if edge.source.fqn() == asset_prefix]
     if edges:
         facets["provisa_relationships"] = _relationships_facet(edges)
+
+    # REQ-1443: the assertions publish on the dataset they OBSERVE, so a consumer asking what is
+    # checked about this table asks the table, not the table the outcomes land in.
+    assertions = [
+        assertion
+        for assertion in snapshot.assertions
+        if assertion.asset.fqn() == asset_prefix
+        or assertion.asset.fqn().startswith(f"{asset_prefix}.")
+    ]
+    if assertions:
+        facets["provisa_data_quality"] = _data_quality_facet(table, assertions)
+        spec_facet = _spec_data_quality_facet(table, assertions)
+        if spec_facet is not None:
+            facets["dataQualityAssertions"] = spec_facet
     return facets
 
 

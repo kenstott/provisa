@@ -39,6 +39,7 @@ describe("TagControl", () => {
         description: "Marked for removal",
         appliesTo: ["source", "table", "column", "relationship"],
         isSystem: true,
+        derived: false,
         reasonPolicy: "required",
         expiresPolicy: "optional",
       },
@@ -47,6 +48,7 @@ describe("TagControl", () => {
         description: "Personally identifiable",
         appliesTo: ["column"],
         isSystem: true,
+        derived: false,
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
       },
@@ -55,6 +57,7 @@ describe("TagControl", () => {
         description: "Finance domain",
         appliesTo: ["table"],
         isSystem: false,
+        derived: false,
         reasonPolicy: "hidden",
         expiresPolicy: "required",
       },
@@ -63,8 +66,18 @@ describe("TagControl", () => {
         description: "Beta command",
         appliesTo: ["command"],
         isSystem: false,
+        derived: false,
         reasonPolicy: "optional",
         expiresPolicy: "optional",
+      },
+      {
+        id: "data_quality",
+        description: "Lands data-quality scan outcomes",
+        appliesTo: ["table"],
+        isSystem: true,
+        derived: true,
+        reasonPolicy: "hidden",
+        expiresPolicy: "hidden",
       },
     ];
     mockAssignments = [
@@ -95,6 +108,15 @@ describe("TagControl", () => {
     await screen.findByTestId("tag-option-deprecated");
     expect(screen.getByTestId("tag-option-finance")).toBeInTheDocument();
     expect(screen.queryByTestId("tag-option-pii")).toBeNull();
+  });
+
+  it("picker never offers a derived tag, which the server refuses to assign", async () => {
+    // REQ-1443: the tag reports what the table's own registration already says. A checkbox for it
+    // would be a control whose only outcome is an error.
+    render(<TagControl objectType="table" tableId={7} />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    await screen.findByTestId("tag-option-deprecated");
+    expect(screen.queryByTestId("tag-option-data_quality")).toBeNull();
   });
 
   it("checking opens the inline form; Apply calls assignTag with identifiers and reason", async () => {

@@ -88,6 +88,14 @@
         "title": "行级安全",
         "description": "🔎 有了角色之后，还可以更细粒度地控制——通过基于属性的谓词限制每个角色能看到哪些<strong>行</strong>：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 由数据驱动，逐行强制执行——覆盖所有数据源和协议。</p>"
       },
+      "stepQualityTable": {
+        "title": "质量检查器也只是一个数据源",
+        "description": "🧪 数据质量检查器（Soda 或 Great Expectations）以<strong>数据源</strong>的方式注册。它通过 Provisa 自己的 postgres 端点扫描，因此同一套契约语法可以同样覆盖 Snowflake 表、Iceberg 表和 Mongo 集合。扫描结果以普通表的形式落地：展开行，像打开其他表一样打开它。"
+      },
+      "stepQualityPanel": {
+        "title": "构建质量契约",
+        "description": "✅ 既可以直接书写契约，也可以逐列搭建检查 — 空值率、行数、取值范围、新鲜度 — 并在保存前先做一次<strong>试跑</strong>。每次扫描都是追加，所以这张表本身就是质量历史：可以画图、告警，也可以与任何数据关联。"
+      },
       "step20": {
         "title": "构建你的交付管道",
         "description": "🔧 在这里直接组建整条交付管道——不需要单独的 ETL 工具：<ul><li>👁️ <strong>视图</strong> —— 基于任意表，可以是临时的也可以是物化的，还支持视图之上的视图。</li><li>⚡ <strong>命令</strong> —— 受治理的、类型化的操作（一个 HTTP 服务、一个 Python 模型、一个存储过程），身兼两职：既是管道中的一个步骤，<em>也</em>是下游应用和智能体可调用的一等 API，用于对数据执行操作——可从每一种界面调用，完全受治理且可追踪。</li><li>⭐ <strong>实体与事实</strong> —— 声明一次维度或事实，Provisa 就会生成数据仓库，方法论中立：3NF（Inmon）、星型模式（Kimball）或 Data Vault。</li><li>📏 <strong>指标</strong> —— 受治理的聚合定义（“净收入”），粒度在查询时绑定。定义一次；每一种界面——SQL、GraphQL、AI 智能体——都计算出相同的数字，基于某个指标构建的视图会在该指标定义变化时自动重新生成。</li></ul>"

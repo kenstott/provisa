@@ -43,6 +43,16 @@ from provisa.api.admin.types import (
     CacheTableStatType,
     CalendarType,
     DomainType,
+    DqCheckBuildInput,
+    DqCheckCatalogType,
+    DqCheckColumnType,
+    DqCheckDefinitionType,
+    DqCheckInput,
+    DqCheckKindType,
+    DqCheckParamType,
+    DqCheckType,
+    DqContractTextType,
+    DqContractType,
     HotTableStatType,
     MaterializeStoreInfoType,
     MetricType,
@@ -115,6 +125,19 @@ def _is_instance_local_store(store_ref: str | None) -> bool:
         return False
     scheme = store_ref.split("://", 1)[0].split("+", 1)[0].strip().lower()
     return scheme in _INSTANCE_LOCAL_STORE_SCHEMES
+
+
+def _dq_kind(kind: dict) -> DqCheckKindType:  # REQ-1443 clause 7
+    """One catalog entry as the picker receives it."""
+    return DqCheckKindType(
+        check_type=kind["check_type"],
+        scope=kind["scope"],
+        params=[DqCheckParamType(**p) for p in kind["params"]],
+        comparators=kind["comparators"],
+        metrics=kind["metrics"],
+        levels=kind["levels"],
+        threshold_units=kind["threshold_units"],
+    )
 
 
 @strawberry.type
@@ -275,6 +298,7 @@ class Query:  # REQ-021, REQ-042
                 is_system=bool(r["is_system"]),
                 reason_policy=r["reason_policy"],
                 expires_policy=r["expires_policy"],
+                derived=bool(r["derived"]),
             )
             for r in rows
         ]
@@ -663,6 +687,104 @@ class Query:  # REQ-021, REQ-042
             off_peak_tz=off_peak_tz,
             change_signal=change_signal,
         )
+
+    # ── Admin: Data-quality contracts (REQ-1443) ──
+
+    @strawberry.field
+    async def dq_contract_parse(self, checker: str, contract_text: str) -> DqContractType:
+        """Parse raw contract text into the builder panel's editable rows (REQ-1443 clause 7).
+
+        The raw editor is the source of truth, so this is a READ of it: the panel calls this on every
+        edit and rebuilds its rows from what the text actually says. A parse failure comes back as
+        ``error`` rather than as a GraphQL error, because half-written text is the normal state of a
+        field the operator is typing into."""
+        from provisa.api.admin._dq_resolvers import parse_contract
+
+        parsed = parse_contract(checker, contract_text)
+        return DqContractType(
+            dataset=parsed["dataset"],
+            checker=parsed["checker"],
+            checks=[DqCheckType(**c) for c in parsed["checks"]],
+            error=parsed["error"],
+        )
+
+    @strawberry.field
+    async def dq_check_catalog(self, checker: str, dataset: str) -> DqCheckCatalogType:
+        """The checks ``checker`` offers, scoped to the columns of ``dataset`` (REQ-1443 clause 7).
+
+        The picker is scoped by the CONTRACT's dataset rather than by a table handed to the panel:
+        the dataset identifier is what the scan observes, so resolving it here offers checks against
+        the columns the checker will really see, through the same resolution the registration uses.
+        """
+        from provisa.api.admin._dq_resolvers import check_catalog_for
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await check_catalog_for(
+                cast("Connection", conn), checker=checker, dataset=dataset
+            )
+        return DqCheckCatalogType(
+            dataset_checks=[_dq_kind(k) for k in result["dataset_checks"]],
+            columns=[
+                DqCheckColumnType(
+                    name=c["name"],
+                    data_type=c["data_type"],
+                    checks=[_dq_kind(k) for k in c["checks"]],
+                )
+                for c in result["columns"]
+            ],
+            error=result["error"],
+        )
+
+    @strawberry.field
+    async def dq_check_definition(
+        self, checker: str, check: DqCheckBuildInput
+    ) -> DqCheckDefinitionType:
+        """One check's text from the panel's editors (REQ-1443 clause 7).
+
+        Server-side for the same reason the whole contract's serialization is: the dialect has one
+        implementation, so a builder-made check and a hand-typed one are the same object."""
+        from provisa.api.admin._dq_resolvers import build_check
+
+        built = build_check(
+            checker,
+            {
+                "check_type": check.check_type,
+                "column_name": check.column_name,
+                "params": check.params,
+                "comparator": check.comparator,
+                "threshold_value": check.threshold_value,
+                "metric": check.metric,
+                "unit": check.unit,
+                "level": check.level,
+            },
+        )
+        return DqCheckDefinitionType(definition=built["definition"], error=built["error"])
+
+    @strawberry.field
+    async def dq_contract_build(
+        self, checker: str, dataset: str, checks: list[DqCheckInput]
+    ) -> DqContractTextType:
+        """Serialize edited check rows back into contract text (REQ-1443 clause 7).
+
+        The inverse of :meth:`dq_contract_parse`, and deliberately server-side: the soda and GX
+        dialects have exactly one implementation, so the panel cannot emit a shape the checker
+        refuses to run."""
+        from provisa.api.admin._dq_resolvers import serialize_contract
+
+        built = serialize_contract(
+            checker,
+            dataset,
+            [
+                {
+                    "column_name": c.column_name,
+                    "check_type": c.check_type,
+                    "definition": c.definition,
+                }
+                for c in checks
+            ],
+        )
+        return DqContractTextType(text=built["text"], error=built["error"])
 
     # ── Admin: Cache Stats ──
 
