@@ -33,6 +33,11 @@ import {
   requiredParamsSatisfied,
 } from "./nativeParams";
 
+// REQ-1444: rows per statement while reading the whole relation for an export. Larger than any
+// on-screen page size (the reader is a file, not a viewport) and still bounded, so one export is a
+// handful of governed statements rather than one unbounded scan.
+const EXPORT_CHUNK_SIZE = 5000;
+
 interface PageResult {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -108,8 +113,25 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryKey is the serialized form of every input that must trigger a refetch
   }, [table, queryKey]);
 
+  // REQ-1444: the XLSX export is the whole relation under the current filter/sort/group choices,
+  // not the page on screen. Read it the same way the grid reads a page — the same governed
+  // statement, one call per chunk with an advancing OFFSET — until a chunk comes back short.
+  const fetchAllRows = async (): Promise<Record<string, unknown>[]> => {
+    if (activeParams == null) throw new Error("export requested before params were supplied");
+    const rows: Record<string, unknown>[] = [];
+    for (let chunk = 0; ; chunk++) {
+      const r = await runSql(
+        pagedViewerSql(table, activeParams, filters, sorts, groupBy, chunk, EXPORT_CHUNK_SIZE),
+      );
+      if (r.error) throw new Error(r.error);
+      rows.push(...r.rows.slice(0, EXPORT_CHUNK_SIZE));
+      if (r.rows.length <= EXPORT_CHUNK_SIZE) return rows;
+    }
+  };
+
   // REQ-1441: what the exported workbook records about this relation. The statement is the one that
-  // actually fetched the rows in the grid — same call, same arguments — not a reconstruction.
+  // actually fetched the exported rows — same call, same arguments — not a reconstruction.
+  // REQ-1444: the export issues it once per chunk with OFFSET advancing by EXPORT_CHUNK_SIZE.
   const provenanceFor = (params: Record<string, string>): ProvenanceEntry[] => {
     const entries: ProvenanceEntry[] = [
       {
@@ -133,7 +155,7 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
       });
     entries.push({
       label: t("tablePreview.provStatement"),
-      value: pagedViewerSql(table, params, filters, sorts, groupBy, page, pageSize),
+      value: pagedViewerSql(table, params, filters, sorts, groupBy, 0, EXPORT_CHUNK_SIZE),
     });
     return entries;
   };
@@ -220,6 +242,7 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
             grid={grid}
             totalRowCount={result.rows.length}
             provenance={provenanceFor(activeParams)}
+            fetchAllRows={fetchAllRows}
             exportName={table.alias || table.tableName}
           />
         </div>

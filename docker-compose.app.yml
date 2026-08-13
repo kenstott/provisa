@@ -3,7 +3,13 @@
 services:
   provisa:
     restart: unless-stopped
-    build: .
+    # REQ-1443: PROVISA_EXTRAS is the pyproject extra set baked into the image. scripts/provisa
+    # exports it from config.yaml's dq_checker. The default omits every checker — soda-core is
+    # Elastic License 2.0 and must not ship in the hosted cloud plane's image.
+    build:
+      context: .
+      args:
+        PROVISA_EXTRAS: "${PROVISA_EXTRAS:-firebase,vector}"
     ports:
       - "${API_PORT:-8000}:8000"
       - "${FLIGHT_PORT:-8815}:8815"
@@ -73,7 +79,10 @@ services:
 
   provisa-ui:
     restart: unless-stopped
-    build: .
+    build:
+      context: .
+      args:
+        PROVISA_EXTRAS: "${PROVISA_EXTRAS:-firebase,vector}"
     command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000"]
     ports:
       - "${UI_PORT:-3000}:3000"

@@ -123,6 +123,17 @@ mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]
 all-drivers = ["aiomysql", "aioodbc", "oracledb"]
+# REQ-1443: external data-quality checker, invoked out-of-process (never linked). Only the
+# postgres package is needed — the checker aims at Provisa's own pgwire endpoint so it scans the
+# FEDERATED view, which is why a Snowflake- or Iceberg-backed table needs no per-warehouse package.
+# soda-core is Elastic License 2.0: acquired from PyPI on operator selection (the oracledb posture),
+# never vendored, and NEVER enabled in the hosted cloud plane — ELv2 prohibits offering it as a
+# managed service to third parties.
+soda = ["soda-postgres"]
+# The interchangeable Apache-2.0 checker. Same out-of-process contract, same results schema, same
+# pgwire target — the difference is the contract dialect (GX expectation suite vs Soda checks YAML)
+# and the licence: Apache 2.0 carries no hosted-service bar, so this extra IS cloud-eligible.
+gx = ["great-expectations[postgresql]"]
 govdata = ["askamerica[engine]"]
 firebase = ["firebase-admin"]
 # Local embedding provider for catalog search (REQ-1008, provisa/vector/providers.py

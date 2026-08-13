@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Anchor, Button, Select, Text, TextInput } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import {
   Copy,
   Check,
@@ -49,6 +50,10 @@ interface ResultsGridProps {
   provenance?: ProvenanceEntry[];
   /** Base name for the exported workbook, without extension (default "results"). */
   exportName?: string;
+  /** REQ-1444: server-paged callers pass a reader for the WHOLE relation under the current
+      filter/sort/group choices. The XLSX export uses it instead of the page on screen; without
+      it the grid already holds every row and the page is the relation. */
+  fetchAllRows?: () => Promise<Record<string, unknown>[]>;
 }
 
 export function ResultsGrid({
@@ -57,10 +62,12 @@ export function ResultsGrid({
   groupable = true,
   provenance = [],
   exportName = "results",
+  fetchAllRows,
 }: ResultsGridProps) {
   const { t } = useTranslation();
   // Trace/span ids in any column drill down to the full span record.
   const [detail, setDetail] = useState<{ kind: TelemetryIdKind; id: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
   const {
     sorts,
     filters,
@@ -93,21 +100,34 @@ export function ResultsGrid({
   const canGoBack = page > 0;
   const canGoForward = serverPaged ? hasMore : page < totalPages - 1;
 
-  // REQ-1441: the caller's facts describe the relation; these describe this export of it. A
-  // server-paged viewer fetched one page, so the sheet holds that page and says so — a reader who
-  // opens the file later cannot otherwise tell a page from a whole relation.
-  const handleDownloadXlsx = () => {
+  // REQ-1441: the caller's facts describe the relation; these describe this export of it.
+  // REQ-1444: the export is the whole relation under the current choices, not the page on screen —
+  // a server-paged caller reads the remaining pages first, so the scope line says "all rows" and
+  // only a caller that cannot read past its page (there is none today) would say otherwise.
+  const handleDownloadXlsx = async () => {
+    setExporting(true);
+    try {
+      await writeXlsx(fetchAllRows ? await fetchAllRows() : displayRows);
+    } catch (e) {
+      notifications.show({ color: "red", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const writeXlsx = async (rows: Record<string, unknown>[]) => {
     const none = t("sqlResultsPanel.provNone");
     const entries: ProvenanceEntry[] = [
       ...provenance,
       { label: t("sqlResultsPanel.provExportedAt"), value: new Date().toISOString() },
       {
         label: t("sqlResultsPanel.provScope"),
-        value: serverPaged
-          ? t("sqlResultsPanel.provScopePage", { page: page + 1, pageSize })
-          : t("sqlResultsPanel.provScopeAll"),
+        value:
+          serverPaged && !fetchAllRows
+            ? t("sqlResultsPanel.provScopePage", { page: page + 1, pageSize })
+            : t("sqlResultsPanel.provScopeAll"),
       },
-      { label: t("sqlResultsPanel.provRowsExported"), value: String(displayRows.length) },
+      { label: t("sqlResultsPanel.provRowsExported"), value: String(rows.length) },
       {
         label: t("sqlResultsPanel.provFilters"),
         value:
@@ -134,7 +154,7 @@ export function ResultsGrid({
       typeDate: t("sqlResultsPanel.provTypeDate"),
       typeText: t("sqlResultsPanel.provTypeText"),
     };
-    void downloadXlsx(`${exportName}.xlsx`, displayColumns, displayRows, entries, labels);
+    await downloadXlsx(`${exportName}.xlsx`, displayColumns, rows, entries, labels);
   };
 
   return (
@@ -163,7 +183,8 @@ export function ResultsGrid({
         <Button
           variant="default"
           size="compact-xs"
-          onClick={handleDownloadXlsx}
+          onClick={() => void handleDownloadXlsx()}
+          loading={exporting}
           title={t("sqlResultsPanel.downloadXlsxTitle")}
           data-testid="download-xlsx-btn"
         >

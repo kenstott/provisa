@@ -66,6 +66,18 @@ OBS_MODE="$(read_config obs_mode none)"
 OTLP_ENDPOINT="$(read_config otlp_endpoint "")"
 DEMO="$(read_config demo false)"
 
+# REQ-1443: the optional external data-quality checker (none|soda|gx), chosen at install. It becomes
+# a pyproject extra baked at image build. Exported so `docker compose build` interpolates it into the
+# PROVISA_EXTRAS build arg (docker-compose.app.yml). The DEFAULT set carries no checker: soda-core is
+# Elastic License 2.0 and must never ship in the hosted cloud plane's image.
+DQ_CHECKER="$(read_config dq_checker none)"
+case "$DQ_CHECKER" in
+    soda) export PROVISA_EXTRAS="firebase,vector,soda" ;;
+    gx)   export PROVISA_EXTRAS="firebase,vector,gx" ;;
+    none) export PROVISA_EXTRAS="firebase,vector" ;;
+    *) printf "${RED}[provisa]${NC} Unknown dq_checker '%s' in config.yaml (expected none|soda|gx).\n" "$DQ_CHECKER" >&2; exit 1 ;;
+esac
+
 RUNTIME_DIR="${PROVISA_HOME}/venv"          # Python venv (native tier)
 NATIVE_PID_FILE="${PROVISA_HOME}/.native.pid"
 

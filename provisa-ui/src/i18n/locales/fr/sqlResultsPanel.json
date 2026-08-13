@@ -75,7 +75,7 @@
     "provExportedAt": "Exporté le (UTC)",
     "provScope": "Portée",
     "provScopePage": "Page {{page}} de la relation, {{pageSize}} lignes par page",
-    "provScopeAll": "L'ensemble du résultat contenu dans la grille",
+    "provScopeAll": "Toutes les lignes correspondant aux choix consignés ici",
     "provRowsExported": "Lignes exportées",
     "provFilters": "Filtres de colonne",
     "provSort": "Tri",

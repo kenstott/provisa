@@ -75,7 +75,7 @@
     "provExportedAt": "エクスポート日時 (UTC)",
     "provScope": "範囲",
     "provScopePage": "リレーションの {{page}} ページ目、1ページあたり {{pageSize}} 行",
-    "provScopeAll": "グリッドが保持する結果全体",
+    "provScopeAll": "ここに記録された選択に一致するすべての行",
     "provRowsExported": "エクスポートした行数",
     "provFilters": "列フィルター",
     "provSort": "並べ替え",

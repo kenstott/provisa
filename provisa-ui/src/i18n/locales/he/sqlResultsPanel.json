@@ -75,7 +75,7 @@
     "provExportedAt": "יוצא בתאריך (UTC)",
     "provScope": "היקף",
     "provScopePage": "עמוד {{page}} של הרלציה, {{pageSize}} שורות לעמוד",
-    "provScopeAll": "כל התוצאה שבטבלה",
+    "provScopeAll": "כל שורה התואמת את הבחירות המתועדות כאן",
     "provRowsExported": "שורות שיוצאו",
     "provFilters": "מסנני עמודות",
     "provSort": "מיון",

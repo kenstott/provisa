@@ -75,7 +75,7 @@
     "provExportedAt": "Exportiert am (UTC)",
     "provScope": "Umfang",
     "provScopePage": "Seite {{page}} der Relation, {{pageSize}} Zeilen pro Seite",
-    "provScopeAll": "Das gesamte im Raster enthaltene Ergebnis",
+    "provScopeAll": "Jede Zeile, die den hier festgehaltenen Auswahlen entspricht",
     "provRowsExported": "Exportierte Zeilen",
     "provFilters": "Spaltenfilter",
     "provSort": "Sortierung",

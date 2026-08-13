@@ -75,7 +75,7 @@
     "provExportedAt": "Geëxporteerd op (UTC)",
     "provScope": "Omvang",
     "provScopePage": "Pagina {{page}} van de relatie, {{pageSize}} rijen per pagina",
-    "provScopeAll": "Het volledige resultaat in het raster",
+    "provScopeAll": "Elke rij die voldoet aan de hier vastgelegde keuzes",
     "provRowsExported": "Geëxporteerde rijen",
     "provFilters": "Kolomfilters",
     "provSort": "Sortering",

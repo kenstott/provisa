@@ -110,7 +110,7 @@ check_compose() {
 
 # ── Deployment selection (parity with macOS SwiftUI wizard, REQ-972..979) ────
 # Sets globals: DEPLOY_ENGINE ENGINE_URL MATERIALIZE_URL TRINO_HOST TRINO_PORT
-#               OBS_MODE OTLP_ENDPOINT INSTALL_DEMO DEMO_MODE
+#               OBS_MODE OTLP_ENDPOINT INSTALL_DEMO DEMO_MODE DQ_CHECKER
 resolve_deployment() {
     # Non-interactive / CI: read the same env vars the macOS wizard forwards.
     if [ "$NON_INTERACTIVE" = true ]; then
@@ -123,7 +123,10 @@ resolve_deployment() {
         OTLP_ENDPOINT="${PROVISA_OTLP_ENDPOINT:-}"
         INSTALL_DEMO="${PROVISA_INSTALL_DEMO:-n}"
         DEMO_MODE="${PROVISA_DEMO_MODE:-docker}"
-        ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+        # REQ-1443. none | soda | gx. Default none — a checker is an external, out-of-process
+        # component; it is never installed unless the operator asks for it by name.
+        DQ_CHECKER="${PROVISA_DQ_CHECKER:-none}"
+        ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO} dq=${DQ_CHECKER}"
         return
     fi
 
@@ -173,7 +176,23 @@ resolve_deployment() {
     esac
     DEMO_MODE="docker"
 
-    ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}"
+    # ── Data quality checker (REQ-1443, optional) ──
+    # A checker is an EXTERNAL process Provisa aims at its own pgwire endpoint; its scan results land
+    # as ordinary source rows. Nothing here is linked into Provisa, and nothing is installed by
+    # default. Soda is Elastic License 2.0 — fine self-hosted, never in the hosted cloud plane.
+    printf "\n${BOLD}Data quality checker (optional)${NC}\n"
+    echo "  1) none  — skip (default)"
+    echo "  2) soda  — Soda Core contracts (Elastic License 2.0; self-hosted only)"
+    echo "  3) gx    — Great Expectations suites (Apache 2.0)"
+    local dq_choice
+    dq_choice="$(prompt_or_default "Choose 1-3" "1")"
+    case "$dq_choice" in
+        2) DQ_CHECKER="soda" ;;
+        3) DQ_CHECKER="gx" ;;
+        *) DQ_CHECKER="none" ;;
+    esac
+
+    ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO} dq=${DQ_CHECKER}"
 }
 
 # ── Config generation ────────────────────────────────────────────────────────
@@ -214,6 +233,9 @@ obs_mode: ${OBS_MODE}
 otlp_endpoint: "${OTLP_ENDPOINT}"
 demo: ${demo_flag}
 demo_mode: ${DEMO_MODE}
+# REQ-1443: which external data-quality checker the operator opted into (none|soda|gx). Drives the
+# PROVISA_EXTRAS docker build arg; 'soda' is refused by the hosted cloud plane (Elastic License 2.0).
+dq_checker: ${DQ_CHECKER}
 YAML
     ok "Created config at ${PROVISA_HOME}/config.yaml"
 }

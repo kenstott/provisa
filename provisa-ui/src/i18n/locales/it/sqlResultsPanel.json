@@ -75,7 +75,7 @@
     "provExportedAt": "Esportato il (UTC)",
     "provScope": "Ambito",
     "provScopePage": "Pagina {{page}} della relazione, {{pageSize}} righe per pagina",
-    "provScopeAll": "L'intero risultato contenuto nella griglia",
+    "provScopeAll": "Tutte le righe che corrispondono alle scelte registrate qui",
     "provRowsExported": "Righe esportate",
     "provFilters": "Filtri di colonna",
     "provSort": "Ordinamento",

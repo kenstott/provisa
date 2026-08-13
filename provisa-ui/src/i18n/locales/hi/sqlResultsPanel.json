@@ -75,7 +75,7 @@
     "provExportedAt": "निर्यात किया गया (UTC)",
     "provScope": "दायरा",
     "provScopePage": "रिलेशन का पृष्ठ {{page}}, प्रति पृष्ठ {{pageSize}} पंक्तियाँ",
-    "provScopeAll": "ग्रिड में मौजूद पूरा परिणाम",
+    "provScopeAll": "यहाँ दर्ज विकल्पों से मेल खाने वाली हर पंक्ति",
     "provRowsExported": "निर्यात की गई पंक्तियाँ",
     "provFilters": "कॉलम फ़िल्टर",
     "provSort": "क्रम",

@@ -75,7 +75,7 @@
     "provExportedAt": "Exportado em (UTC)",
     "provScope": "Escopo",
     "provScopePage": "Página {{page}} da relação, {{pageSize}} linhas por página",
-    "provScopeAll": "Todo o resultado contido na grade",
+    "provScopeAll": "Todas as linhas que correspondem às opções registadas aqui",
     "provRowsExported": "Linhas exportadas",
     "provFilters": "Filtros de coluna",
     "provSort": "Ordenação",

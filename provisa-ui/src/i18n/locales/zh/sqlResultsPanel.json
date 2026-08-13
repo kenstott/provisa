@@ -75,7 +75,7 @@
     "provExportedAt": "导出时间 (UTC)",
     "provScope": "范围",
     "provScopePage": "关系的第 {{page}} 页，每页 {{pageSize}} 行",
-    "provScopeAll": "网格中保存的全部结果",
+    "provScopeAll": "符合此处记录的选择的全部行",
     "provRowsExported": "导出行数",
     "provFilters": "列筛选",
     "provSort": "排序",

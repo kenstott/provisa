@@ -75,7 +75,7 @@
     "provExportedAt": "Exported at (UTC)",
     "provScope": "Scope",
     "provScopePage": "Page {{page}} of the relation, {{pageSize}} rows per page",
-    "provScopeAll": "The whole result held by the grid",
+    "provScopeAll": "Every row matching the choices recorded here",
     "provRowsExported": "Rows exported",
     "provFilters": "Column filters",
     "provSort": "Sort",

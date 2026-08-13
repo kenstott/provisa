@@ -75,7 +75,7 @@
     "provExportedAt": "匯出時間 (UTC)",
     "provScope": "範圍",
     "provScopePage": "關係的第 {{page}} 頁，每頁 {{pageSize}} 行",
-    "provScopeAll": "格線中保存的全部結果",
+    "provScopeAll": "符合此處記錄的選擇的全部列",
     "provRowsExported": "匯出行數",
     "provFilters": "欄位篩選",
     "provSort": "排序",

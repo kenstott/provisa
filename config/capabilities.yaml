@@ -15,6 +15,9 @@
 #                   seconds     — initdb / server boot at launch
 #                   install-time — heavy setup done at INSTALL, never at launch
 #   prereq          one-line badge text shown in the wizard
+#   cloud_eligible  false = self-hosted/desktop ONLY; the hosted cloud plane must never provision it.
+#                   Absent = eligible. Set this for a LICENCE bar (a component whose terms forbid
+#                   offering it as a managed service), not for a capability gap.
 #
 # RULE: the demo preset may only use options whose startup_cost == instant AND provisioning == bundled.
 
@@ -189,6 +192,15 @@ roles:
       - { id: graphql_remote, name: GraphQL,     platforms: [macos, linux, windows], provisioning: bundled, startup_cost: instant, prereq: "endpoint URL (demo ships a mock)", default_for: [demo] }
       - { id: postgresql, name: PostgreSQL,      platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, prereq: "host + credentials" }
       - { id: mysql,      name: MySQL/MariaDB,   platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, prereq: "host + credentials" }
+      # REQ-1443. Scan results land as ordinary source rows; the checker runs out-of-process and is
+      # never linked in. cloud_eligible: false is enforcement of a LICENCE line, not a capability
+      # one — soda-core is Elastic License 2.0, which prohibits offering it to third parties as a
+      # hosted or managed service, so the SaaS plane must reach an operator-supplied endpoint or
+      # omit the source entirely. Self-hosted and desktop installs may carry it.
+      - { id: soda,       name: Soda (external data quality), platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, cloud_eligible: false, prereq: "installs soda-postgres (Elastic License 2.0); needs a contract YAML naming a governed table" }
+      # The Apache-2.0 alternative. Same source shape and same results schema — the contract dialect
+      # differs (expectation suite vs checks YAML). No hosted-service bar, so no cloud_eligible key.
+      - { id: great_expectations, name: Great Expectations (external data quality), platforms: [macos, linux, windows], provisioning: pip_driver, startup_cost: instant, prereq: "installs great-expectations (Apache 2.0); needs an expectation suite naming a governed table" }
 
 # The demo preset: every role pinned to a bundled, instant option — so "Demo" runs in a few seconds
 # with NO Trino/Redis/MinIO/Docker and nothing to install or download at launch.

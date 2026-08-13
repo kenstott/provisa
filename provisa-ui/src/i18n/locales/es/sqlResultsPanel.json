@@ -75,7 +75,7 @@
     "provExportedAt": "Exportado el (UTC)",
     "provScope": "Alcance",
     "provScopePage": "Página {{page}} de la relación, {{pageSize}} filas por página",
-    "provScopeAll": "Todo el resultado contenido en la cuadrícula",
+    "provScopeAll": "Todas las filas que coinciden con las opciones registradas aquí",
     "provRowsExported": "Filas exportadas",
     "provFilters": "Filtros de columna",
     "provSort": "Orden",

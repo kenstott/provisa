@@ -12,8 +12,13 @@ COPY vendor/ ./vendor/
 # torch is pre-installed from the CPU wheel index: the default amd64 torch is the CUDA build,
 # ~2.5 GiB of GPU libraries this CPU-only container never loads — it pushed the core-images
 # release tarballs past GitHub's 2 GiB per-asset limit (alpha.308/309 publish failures).
+# REQ-1443: PROVISA_EXTRAS is the build-time extra set. The DEFAULT is what the cloud plane ships —
+# adding [soda] to the default would put an Elastic-License-2.0 component into the hosted service,
+# which its terms forbid. A self-hosted build opts in explicitly:
+#   docker build --build-arg PROVISA_EXTRAS=firebase,vector,soda .
+ARG PROVISA_EXTRAS=firebase,vector
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
- && pip install --no-cache-dir '.[firebase,vector]'
+ && pip install --no-cache-dir ".[${PROVISA_EXTRAS}]"
 
 # Stage 2: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim

@@ -75,7 +75,7 @@
     "provExportedAt": "Экспортировано (UTC)",
     "provScope": "Охват",
     "provScopePage": "Страница {{page}} отношения, {{pageSize}} строк на странице",
-    "provScopeAll": "Весь результат, содержащийся в таблице",
+    "provScopeAll": "Все строки, соответствующие записанным здесь параметрам",
     "provRowsExported": "Экспортировано строк",
     "provFilters": "Фильтры столбцов",
     "provSort": "Сортировка",

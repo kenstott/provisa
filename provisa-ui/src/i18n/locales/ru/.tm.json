@@ -3085,7 +3085,7 @@
   "ru/sqlResultsPanel.json::sqlResultsPanel.provExportedAt": "Exported at (UTC)",
   "ru/sqlResultsPanel.json::sqlResultsPanel.provScope": "Scope",
   "ru/sqlResultsPanel.json::sqlResultsPanel.provScopePage": "Page {{page}} of the relation, {{pageSize}} rows per page",
-  "ru/sqlResultsPanel.json::sqlResultsPanel.provScopeAll": "The whole result held by the grid",
+  "ru/sqlResultsPanel.json::sqlResultsPanel.provScopeAll": "Every row matching the choices recorded here",
   "ru/sqlResultsPanel.json::sqlResultsPanel.provRowsExported": "Rows exported",
   "ru/sqlResultsPanel.json::sqlResultsPanel.provFilters": "Column filters",
   "ru/sqlResultsPanel.json::sqlResultsPanel.provSort": "Sort",
