@@ -43,6 +43,27 @@ function scopeOf(entries: { label: string; value: string }[]): string {
   return entry.value;
 }
 
+describe("ResultsGrid CSV export scope", () => {
+  it("writes every row the reader returns, not the page on screen", async () => {
+    const blobs: Blob[] = [];
+    const createObjectURL = vi.fn((b: Blob) => {
+      blobs.push(b);
+      return "blob:csv";
+    });
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<ServerPaged fetchAllRows={() => Promise.resolve(ALL)} />);
+    fireEvent.click(screen.getByTestId("download-csv-btn"));
+
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(await blobs[0].text()).toBe("id\n1\n2\n3");
+
+    click.mockRestore();
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("ResultsGrid XLSX export scope", () => {
   beforeEach(() => {
     vi.mocked(downloadXlsx).mockClear();

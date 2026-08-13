@@ -51,8 +51,8 @@ interface ResultsGridProps {
   /** Base name for the exported workbook, without extension (default "results"). */
   exportName?: string;
   /** REQ-1444: server-paged callers pass a reader for the WHOLE relation under the current
-      filter/sort/group choices. The XLSX export uses it instead of the page on screen; without
-      it the grid already holds every row and the page is the relation. */
+      filter/sort/group choices. Both exports use it instead of the page on screen; without it the
+      grid already holds every row and the page is the relation. */
   fetchAllRows?: () => Promise<Record<string, unknown>[]>;
 }
 
@@ -92,7 +92,6 @@ export function ResultsGrid({
     copiedResults,
     handleSort,
     handleResizeStart,
-    handleDownloadCsv,
     handleCopyResults,
     serverPaged,
     hasMore,
@@ -104,15 +103,37 @@ export function ResultsGrid({
   // REQ-1444: the export is the whole relation under the current choices, not the page on screen —
   // a server-paged caller reads the remaining pages first, so the scope line says "all rows" and
   // only a caller that cannot read past its page (there is none today) would say otherwise.
-  const handleDownloadXlsx = async () => {
+  const handleDownloadXlsx = () => runExport(writeXlsx);
+  const handleDownloadCsv = () => runExport(writeCsv);
+
+  // REQ-1444: both exports take the same rows — the whole relation when the caller can read past
+  // its page, the grid's own rows when it already holds everything.
+  const runExport = async (write: (rows: Record<string, unknown>[]) => void | Promise<void>) => {
     setExporting(true);
     try {
-      await writeXlsx(fetchAllRows ? await fetchAllRows() : displayRows);
+      await write(fetchAllRows ? await fetchAllRows() : displayRows);
     } catch (e) {
       notifications.show({ color: "red", message: e instanceof Error ? e.message : String(e) });
     } finally {
       setExporting(false);
     }
+  };
+
+  const writeCsv = (rows: Record<string, unknown>[]) => {
+    const escape = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+    const lines = [displayColumns.map(escape).join(",")];
+    for (const row of rows) lines.push(displayColumns.map((c) => escape(row[c])).join(","));
+    const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${exportName}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const writeXlsx = async (rows: Record<string, unknown>[]) => {
@@ -175,7 +196,8 @@ export function ResultsGrid({
         <Button
           variant="default"
           size="compact-xs"
-          onClick={handleDownloadCsv}
+          onClick={() => void handleDownloadCsv()}
+          loading={exporting}
           data-testid="download-csv-btn"
         >
           {t("sqlResultsPanel.downloadCsv")}

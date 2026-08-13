@@ -10,7 +10,8 @@
 
 // Client-side results-grid state shared by the SQL workbench, the admin Reports
 // viewer, and the table preview modal: filter -> group -> sort -> page, plus
-// column widths, CSV/clipboard export, and column profiling.
+// column widths, clipboard copy, and column profiling. File exports live in
+// ResultsGrid — REQ-1444 reads past the page, which this hook cannot do.
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { CHAR_PX, COL_MAX, COL_MIN, PAGE_SIZE } from "./types";
@@ -51,7 +52,6 @@ export interface ResultsGridState {
   profile: ColumnProfile[];
   handleSort: (col: string) => void;
   handleResizeStart: (col: string, e: React.MouseEvent) => void;
-  handleDownloadCsv: () => void;
   handleCopyResults: () => void;
   handleDownloadProfile: () => void;
   resetGrid: () => void;
@@ -279,24 +279,6 @@ export function useResultsGrid(
     document.addEventListener("mouseup", onUp);
   }, []);
 
-  const handleDownloadCsv = useCallback(() => {
-    const escape = (v: unknown) => {
-      const s = v == null ? "" : String(v);
-      return s.includes(",") || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"`
-        : s;
-    };
-    const lines = [displayColumns.map(escape).join(",")];
-    for (const row of displayRows) lines.push(displayColumns.map((c) => escape(row[c])).join(","));
-    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "results.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [displayRows, displayColumns]);
-
   const handleCopyResults = useCallback(() => {
     const lines = [displayColumns.join("\t")];
     for (const row of displayRows)
@@ -389,7 +371,6 @@ export function useResultsGrid(
     profile,
     handleSort,
     handleResizeStart,
-    handleDownloadCsv,
     handleCopyResults,
     handleDownloadProfile,
     resetGrid,
