@@ -435,6 +435,10 @@ export function SourcesPage() {
         setAuthFields({});
       }
     }
+    if (s.type === "google_sheets" && s.mappingJson) {
+      const m = JSON.parse(s.mappingJson) as Record<string, string>;
+      setAuthFields({ credentials_json: m.credentials_json });
+    }
     if (s.type === "sharepoint" && s.mappingJson) {
       try {
         const m = JSON.parse(s.mappingJson) as Record<string, string>;
@@ -556,9 +560,14 @@ export function SourcesPage() {
             })
           : form.type === "splunk" && splunkDisableSsl
             ? JSON.stringify({ disable_ssl_validation: true })
-            : DATA_LAKE.has(form.type)
-              ? JSON.stringify({ storage: lakeStorage, ...authFields })
-              : undefined;
+            : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+              // sheet id (which rides in `database`), so it travels in the mapping like the other
+              // connectors' extra options.
+              form.type === "google_sheets"
+              ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
+              : DATA_LAKE.has(form.type)
+                ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                : undefined;
       const sourcePayload = {
         ...coreForm,
         type: backendType(form.type),

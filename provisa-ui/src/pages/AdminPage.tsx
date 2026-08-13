@@ -340,7 +340,9 @@ export function AdminPage() {
         </Title>
       )}
 
-      <Stack gap="lg">
+      {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
+          page has painted, so it gates on the admin content itself. */}
+      <Stack gap="lg" data-tour="admin-content">
         {activeTab === "Overview" && (
           <>
             <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">

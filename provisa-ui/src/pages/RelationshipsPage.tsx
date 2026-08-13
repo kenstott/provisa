@@ -63,7 +63,6 @@ export function RelationshipsPage() {
   const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [restLoading, setRestLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [discoverError, setDiscoverError] = useState("");
@@ -114,7 +113,6 @@ export function RelationshipsPage() {
   };
 
   const load = useCallback(async () => {
-    setRestLoading(true);
     const [actions, c, rc] = await Promise.all([
       fetchActions().catch(() => ({ functions: [], webhooks: [] })),
       fetchCandidates().catch(() => []),
@@ -123,16 +121,20 @@ export function RelationshipsPage() {
     setFunctions(actions.functions);
     setCandidates(c as Candidate[]);
     setRejectedCount(rc);
-    setRestLoading(false);
   }, []);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- mount data-fetch: load() sets loading state synchronously by design */
+  /* eslint-disable react-hooks/set-state-in-effect -- mount data-fetch: load() stores its results in state by design */
   useEffect(() => {
     load();
   }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const loading = relsLoading || tablesLoading || restLoading;
+  // The page's own content is the relationships table, so only its two queries can withhold it.
+  // The three REST reads back secondary regions that render themselves once they arrive — the
+  // discovered-candidates table, the action list behind the add-form's function picker, and the
+  // rejected-suggestion count — and blanking the whole page for them meant the guided tour
+  // (REQ-1362) landed here on a "Loading…" screen with none of its anchors present.
+  const loading = relsLoading || tablesLoading;
 
   const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
   const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");

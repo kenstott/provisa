@@ -44022,7 +44022,7 @@
 - id: REQ-1434
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: MUST
   type: behavioral
@@ -44064,7 +44064,7 @@
 - id: REQ-1435
   status: complete
   since: 2026-08
-  group: 09. Observability
+  group: 1. Access Governance & Security
   category: Observability
   priority: MUST
   type: behavioral
@@ -44094,7 +44094,7 @@
 - id: REQ-1436
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: MUST
   type: behavioral
@@ -44120,7 +44120,7 @@
 - id: REQ-1437
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: SHOULD
   type: behavioral
@@ -44147,7 +44147,7 @@
 - id: REQ-1438
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: SHOULD
   type: behavioral
@@ -44176,7 +44176,7 @@
 - id: REQ-1439
   status: complete
   since: 2026-08
-  group: 07. Governance & Audit
+  group: 1. Access Governance & Security
   category: Governance
   priority: SHOULD
   type: behavioral
@@ -44208,7 +44208,7 @@
 - id: REQ-1440
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: SHOULD
   type: behavioral
@@ -44239,7 +44239,7 @@
 - id: REQ-1441
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: SHOULD
   type: behavioral
@@ -44273,7 +44273,7 @@
 - id: REQ-1442
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: SHOULD
   type: behavioral
@@ -44395,6 +44395,41 @@
     gains a step for the quality panel with copy in every locale under i18n/locales/<lng>/tour.json
     (REQ-1358); and capabilities.yaml carries both rows. A shipped checker source with no demo data
     and no tour step is an unfinished feature, not a shipped one.
+
+    (9) A RESULTS TABLE IS IDENTIFIABLE, AND ITS CHECKS PUBLISH ON THE ASSET THEY OBSERVE. The
+    marker is a DERIVED tag — computed from the table's own registration (a checker source plus a
+    registered contract), never assigned and never stored — joining fact and dimension, which are
+    derived the same way from modeling_role. Derived tags are code-defined intrinsics like the
+    REQ-1373 system tags: synthesized in front of the tags table, refused by upsert, delete and
+    assign, absent from the picker, and exposed alongside the assignments as a derived_tags view. A
+    stored assignment would either duplicate the registration or contradict it. In the metadata
+    export the results table publishes as an ORDINARY table carrying that tag — no special casing —
+    while each check in its contract publishes as an assertion on the asset the checker OBSERVES
+    (the governed table, or the column when the check names one), because that is where a consumer
+    asks whether a column is checked; the assertion names the results table so the two halves stay
+    navigable both ways. An assertion is emitted only when BOTH ends survive the Data Product
+    filter, since a dangling reference is what that filter exists to prevent. The published
+    definition is the check's own authored text in the checker's dialect, and the severity is the
+    dialect's: Soda's threshold.level (defaulting to fail as Soda itself defaults it), while every
+    Great Expectations expectation is fail because GX has no warn level to report. Adapters map it
+    natively where a native concept exists — OpenMetadata TestDefinition/TestSuite/TestCase with the
+    checker named as the test platform, DataHub assertion entities with a content-derived URN so a
+    republished contract addresses the same entity — and where one does not, the checks ride the
+    same Provisa-authored carrier the governance facts already ride: the Atlas governance document
+    (inherited by Atlan, whose own DQ routes are unverified) and a Collibra attribute rather than
+    rows in a steward-curated rulebook. EVERY assertion carries the LAST SCAN'S OUTCOME, because a
+    results table is that scan's rows: the publish path reads each registered contract's results
+    table at its maximum scan_time through the one governed query pipeline and joins the rows back
+    to the contract on (target table, column, check type) — the same address the loader handed the
+    scan. Checks that share that identity are logged and published with no outcome rather than
+    handed a sibling's verdict, and a contract no scan has reached yet publishes the explicit state
+    never_run, since an unrun check must never read as a clean one. warn is published as a failure,
+    not a pass: the threshold WAS breached and only the severity is milder. The outcome reaches each
+    catalog by its own native run surface where one exists — an OpenMetadata testCaseResult, a
+    DataHub assertionRunEvent, and the OpenLineage spec facet dataQualityAssertions with a real
+    success boolean — and rides the Provisa-authored carrier everywhere else. Only states that
+    reached a verdict appear on the native surfaces, which can express nothing else; never_run,
+    error and skipped are always present in the Provisa carrier.
   use_case: >-
     An org already running Soda points it at a Provisa-governed table, registers the contract as a
     source, and gets scan history, a quality scorecard, lineage from check back to table, and
@@ -44414,6 +44449,23 @@
   - provisa-ui/src/pages/tables
   - provisa-ui/src/tour/tourSteps.ts
   - docs/sources.md
+  - provisa/core/derived_tags.py
+  - provisa/core/repositories/tag.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/metadata_export/builder.py
+  - provisa/api/metadata_export/model.py
+  - provisa/api/metadata_export/openmetadata.py
+  - provisa/api/metadata_export/datahub.py
+  - provisa/api/metadata_export/collibra.py
+  - provisa/api/metadata_export/atlas.py
+  - provisa/api/metadata_export/openlineage.py
+  - provisa/dq/contract.py
+  - provisa/api/metadata_export/dq_outcomes.py
+  - provisa/api/metadata_export/publishing.py
+  tests:
+  - tests/unit/test_metadata_export_data_quality.py
+  - tests/unit/test_metadata_export_dq_outcomes.py
+  - tests/unit/test_dq_contract.py
   scenario: |-
     Given a Soda contract whose checks name a governed table
     When the contract is registered as a soda source with a debounce window
@@ -44434,6 +44486,14 @@
     When a check is added in the data-quality panel and dry-run
     Then the generated contract text is visible and editable, and the outcomes display without any
     result rows landing
+    Given a results table registered under a checker source
+    Then it carries the derived data_quality tag, which no upsert, delete or assign can change
+    Given a metadata export of that table and the table its contract observes
+    Then the results table publishes as an ordinary table carrying that tag, while each check
+    publishes as an assertion on the observed table or column, naming the results table and the
+    check's own severity
+    Given an observed table excluded from the Data Product filter
+    Then no assertion publishes for it, because the reference would dangle
   related_reqs:
   - REQ-967
   - REQ-939
@@ -44448,7 +44508,7 @@
 - id: REQ-1444
   status: complete
   since: 2026-08
-  group: 06. User Interface & Experience
+  group: 10. UI & Admin Surfaces
   category: UI
   priority: SHOULD
   type: behavioral
@@ -44483,3 +44543,73 @@
   - REQ-1386
   - REQ-1441
   - REQ-1442
+- id: REQ-1445
+  status: complete
+  since: 2026-08
+  group: 4. Source Connectors
+  category: Federation
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Google Sheets is reachable from the Trino engine, not DuckDB alone. Trino's gsheets connector
+    addresses sheets through a metadata spreadsheet whose rows map a table name to the range backing
+    it, so the catalog carries that sheet's id (the source's database) and the service-account key
+    path (the source's mapping), and every table listed in the metadata sheet becomes a table in the
+    catalog. The reach is ATTACH_R — Trino queries the sheet live in place and cannot write back — so
+    the source dropdown offers the type as LIVE on a Trino-pinned deployment rather than greying it
+    out with "LIVE w/ DuckDB".
+  rationale: >-
+    Engine reach is a pure projection of the connector registry (REQ-947), so a type with no Trino
+    connector class is unselectable on a Trino deployment however well Trino itself supports it.
+    Provisa's cloud node is pinned to Trino, which made Google Sheets unreachable there despite
+    Trino shipping the connector.
+  use_case: >-
+    An operator on a Trino-pinned deployment registers a Google Sheets source and queries its
+    ranges alongside warehouse tables, without switching the federation engine.
+  code:
+  - provisa/federation/trino_connectors.py
+  - provisa-ui/src/pages/SourcesPage.tsx
+  tests:
+  - tests/unit/test_gsheets_trino_connector.py
+  scenario: |-
+    Given a deployment whose federation engine is Trino
+    When the operator opens the source-type dropdown
+    Then Google Sheets is selectable and tagged LIVE, and registering one with a metadata sheet id
+    and a service-account key path creates a gsheets catalog carrying both
+  related_reqs:
+  - REQ-947
+  - REQ-842
+  - REQ-899
+- id: REQ-1446
+  status: complete
+  since: 2026-08
+  group: 10. UI & Admin Surfaces
+  category: Product Tour
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Readiness for a tour step means both halves: the destination's code chunk is compiled (REQ-1362)
+    and the queries that page gates its render on are already in the Apollo cache. The tour therefore
+    runs every query its destination pages read (sources, domains, tables, relationships, all
+    relationships, RLS rules, roles) before showing step 0, and a query the visitor's role cannot read
+    is swallowed rather than blocking the start. Because the list hooks read cache-and-network, which
+    reports loading on every revalidating mount, a page reports "nothing to paint" only when its data
+    is undefined — a cached empty list is an answer, so a warm page does not re-blank on re-entry.
+    Steps whose highlight target lives in the persistent shell (navbar, subnav) carry a readySelector
+    pointing at page content, so the popover never appears over a page still painting its own loading
+    state.
+  code:
+  - provisa-ui/src/hooks/useAdminQueries.ts
+  - provisa-ui/src/tour/useTour.tsx
+  - provisa-ui/src/tour/tourSteps.ts
+  - provisa-ui/src/pages/RelationshipsPage.tsx
+  tests:
+  - provisa-ui/src/__tests__/tourDataPreload.test.tsx
+  scenario: |-
+    Given a visitor who has not yet opened the admin pages
+    When the visitor starts the product tour
+    Then every query the destination pages read has resolved into the Apollo cache before step 0
+    appears, a query the visitor's role cannot read is swallowed instead of blocking the start, and
+    re-entering a page whose cached list is empty does not re-blank it
+  related_reqs:
+  - REQ-1362

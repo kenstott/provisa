@@ -409,7 +409,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   return (
     <div className="page">
-      <div className="page-header">
+      {/* Anchor the tour waits on before highlighting a step whose element lives in the shell —
+          tables-add is absent in viewsOnly, so the header is the one marker both modes render. */}
+      <div className="page-header" data-tour="tables-header">
         <Title order={2}>
           {viewsOnly ? translate("tablesPage.titleViews") : translate("tablesPage.titleTables")}
         </Title>

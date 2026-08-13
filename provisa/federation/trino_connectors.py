@@ -512,6 +512,45 @@ class TrinoPrometheusConnector(_TrinoMappingDslConnector):
     trino_connector = "prometheus"
 
 
+class TrinoGsheetsConnector(_TrinoConnector):
+    """Google Sheets read live in place through Trino's ``gsheets`` connector. Trino addresses sheets
+    through a METADATA sheet — a spreadsheet whose rows map a table name to the sheet range that backs
+    it — so the catalog needs that sheet's id plus a service-account key, and every table in it becomes
+    a table in this catalog. That is a different addressing model from the DuckDB engine's
+    ``read_gsheet`` scanner view, which names one spreadsheet per source.
+
+    Read-only: the connector has no write path upstream."""
+
+    source_type = "google_sheets"
+    trino_connector = "gsheets"
+    mechanism = Mechanism.ATTACH_R  # live in place, read-only — Sheets is not writable through Trino
+
+    def capability(self) -> Capability:
+        return Capability()  # the Sheets connector pushes nothing down; Trino filters after the fetch
+
+    def details(self, source: Source) -> dict:
+        from provisa.core.secrets import resolve_secrets
+
+        # Both are required by Trino's connector — a catalog missing either fails to load, so an
+        # absent value is a misconfigured source and is raised here rather than papered over.
+        if not source.database:
+            raise ValueError(
+                f"Source {source.id!r}: 'database' (Google metadata sheet id) is required for the "
+                "gsheets connector"
+            )
+        credentials = source.mapping.get("credentials_json")
+        if not credentials:
+            raise ValueError(
+                f"Source {source.id!r}: mapping 'credentials_json' (service-account key path) is "
+                "required for the gsheets connector"
+            )
+        return {
+            "gsheets.metadata-sheet-id": resolve_secrets(source.database),
+            "gsheets.credentials-path": resolve_secrets(credentials),
+            "case-insensitive-name-matching": "true",
+        }
+
+
 class TrinoKafkaConnector(_TrinoConnector):
     source_type = "kafka"
     trino_connector = "kafka"
@@ -549,6 +588,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoRedisConnector(),
         TrinoElasticsearchConnector(),
         TrinoPrometheusConnector(),
+        TrinoGsheetsConnector(),
         TrinoKafkaConnector(),
     ]
     connectors.extend(

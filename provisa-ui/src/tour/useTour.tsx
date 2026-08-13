@@ -26,6 +26,7 @@ import "driver.js/dist/driver.css";
 import "./tour.css";
 import { TOUR_STEPS, stepRoute, type TourStep } from "./tourSteps";
 import { prefetchAllPageChunks } from "../pageChunks";
+import { useTourPrefetch } from "../hooks/useAdminQueries";
 
 const TOUR_SEEN_KEY = "provisa_tour_seen";
 
@@ -266,6 +267,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // effect having pre-assigned a callback ref (which caused auto-start to no-op,
   // since child effects run before the parent's).
   const [activeStep, setActiveStep] = useState<number | null>(null);
+  const prefetchTourData = useTourPrefetch();
   const driverRef = useRef<Driver | null>(null);
   const currentPathRef = useRef<string>("");
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
@@ -442,12 +444,15 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }
       },
     });
-    void prefetchAllPageChunks().then(() => {
+    // Both halves of "the destination is ready": its chunk is compiled and its queries are in the
+    // cache. Waiting for the data too is what keeps a step from landing on a page still painting
+    // its own "Loading…" state.
+    void Promise.all([prefetchAllPageChunks(), prefetchTourData()]).then(() => {
       // The wait may have outlasted a dismissal (e.g. immediate Esc) — don't resurrect it.
       if (!driverRef.current) return;
       setActiveStep(opts?.restart ? 0 : (tourResumeStep() ?? 0));
     });
-  }, []);
+  }, [prefetchTourData]);
 
   return (
     <TourContext.Provider

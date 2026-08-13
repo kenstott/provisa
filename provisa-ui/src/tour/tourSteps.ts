@@ -74,6 +74,9 @@ export interface TourStep {
 const SOURCES_ADD = '[data-tour="sources-add"]';
 const TABLES_ADD = '[data-tour="tables-add"]';
 const RELS_ADD = '[data-tour="rels-add"]';
+// The Views page is TablesPage in viewsOnly mode, which omits tables-add — its header is the one
+// marker both modes paint past the loading state.
+const VIEWS_READY = '[data-tour="tables-header"]';
 
 // A complex-enough query over the same proven demo tables the SQL surface runs (`default.users`
 // JOIN `default.inquiries`), plus an UPPER() transform so the DAG shows a real source → transform →
@@ -89,11 +92,13 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/sources",
     element: ".navbar-tour-btn",
+    readySelector: SOURCES_ADD,
     key: "step0",
   },
   {
     route: "/sources",
     element: '[data-tour="nav-sources"]',
+    readySelector: SOURCES_ADD,
     key: "step1",
   },
   {
@@ -213,21 +218,25 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/security/roles",
     element: '.subnav a[href="/security/roles"]',
+    readySelector: '[data-testid="toggle-role-form"]',
     key: "step18",
   },
   {
     route: "/security/rls",
     element: '.subnav a[href="/security/rls"]',
+    readySelector: '[data-testid="toggle-rule-form"]',
     key: "step19",
   },
   {
     route: "/views",
     element: '.subnav a[href="/views"]',
+    readySelector: VIEWS_READY,
     key: "step20",
   },
   {
     route: "/views",
     element: '.subnav a[href="/views"]',
+    readySelector: VIEWS_READY,
     key: "step21",
   },
   {
@@ -238,6 +247,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/overview",
     element: '[data-tour="nav-admin"]',
+    readySelector: '[data-tour="admin-content"]',
     key: "step23",
   },
   {

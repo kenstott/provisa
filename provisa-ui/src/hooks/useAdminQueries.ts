@@ -17,6 +17,16 @@ import type {
   RegisteredTable,
   Metric,
   RefreshPolicySummary,
+  DqContract,
+  DqContractText,
+  DqContractParseVars,
+  DqContractBuildVars,
+  DqCheckCatalog,
+  DqCheckCatalogVars,
+  DqCheckDefinition,
+  DqCheckDefinitionVars,
+  DqDryRun,
+  DqDryRunVars,
   Relationship,
   RLSRule,
   MutationResult,
@@ -39,6 +49,11 @@ import {
   CreateCalendar as CREATE_CALENDAR_MUTATION,
   DeleteCalendar as DELETE_CALENDAR_MUTATION,
   RefreshPolicyPreview as REFRESH_POLICY_PREVIEW_QUERY,
+  DqContractParse as DQ_CONTRACT_PARSE_QUERY,
+  DqContractBuild as DQ_CONTRACT_BUILD_QUERY,
+  DqCheckCatalog as DQ_CHECK_CATALOG_QUERY,
+  DqCheckDefinition as DQ_CHECK_DEFINITION_QUERY,
+  DryRunDqContract as DRY_RUN_DQ_CONTRACT_MUTATION,
   MetricsQuery as METRICS_QUERY,
   UpsertMetric as UPSERT_METRIC_MUTATION,
   DeleteMetric as DELETE_METRIC_MUTATION,
@@ -83,6 +98,71 @@ import {
   SuggestTableAlias,
 } from "./admin.graphql";
 
+/**
+ * `loading` on the list hooks below means "nothing to show yet", not "a request is in flight".
+ *
+ * They all read `cache-and-network`, which reports `loading: true` on every mount that revalidates
+ * a warm cache. Pages gate their whole render on that flag, so a cached page would blank itself on
+ * re-entry — which is what made the guided tour (REQ-1362) land on empty screens even after its
+ * prefetch had already fetched the data. An undefined `data` is the only signal that there is
+ * genuinely nothing to paint; a cached empty list is an answer, not an absence.
+ */
+function firstLoad(loading: boolean, data: unknown): boolean {
+  return loading && data === undefined;
+}
+
+/**
+ * REQ-1362: warm the data the guided tour's destination pages read, not just their code.
+ *
+ * Preloading the route chunks (see pageChunks.ts) only removes the fetch-and-parse delay. The
+ * pages still gate their render on their own queries, so the tour would arrive on /relationships,
+ * /security/*, or /admin and find a "Loading…" screen with none of the anchors its steps point at
+ * — the runner then sits in waitForElement, showing nothing, for as long as those queries take.
+ *
+ * These are every query mounted by a page the tour navigates to: /relationships reads
+ * relationships, all relationships, tables and domains; /security/roles and /security/rls read
+ * roles, RLS rules, tables and domains; /sources, /tables and /views read sources, tables and
+ * domains; /admin reads all of them. Running them fills the Apollo cache the page hooks then read
+ * from, so each page paints on arrival and revalidates behind the visible content.
+ *
+ * A rejection is swallowed per query for the same reason the chunk prefetch swallows its own: an
+ * endpoint the visitor's role cannot read (roles and RLS rules need admin capabilities) must not
+ * keep the tour from starting. That page then loads on arrival exactly as it does without this.
+ */
+export function useTourPrefetch(): () => Promise<void> {
+  const opts = { fetchPolicy: "network-only" as const };
+  const [loadSources] = useLazyQuery(SOURCES_QUERY, opts);
+  const [loadDomains] = useLazyQuery(DOMAINS_QUERY, opts);
+  const [loadTables] = useLazyQuery(TABLES_QUERY, opts);
+  const [loadRelationships] = useLazyQuery(RELATIONSHIPS_QUERY, opts);
+  const [loadAllRelationships] = useLazyQuery(ALL_RELATIONSHIPS_QUERY, opts);
+  const [loadRlsRules] = useLazyQuery(RLS_RULES_QUERY, opts);
+  const [loadRoles] = useLazyQuery(ROLES_QUERY, opts);
+  return useCallback(
+    () =>
+      Promise.all(
+        [
+          loadSources,
+          loadDomains,
+          loadTables,
+          loadRelationships,
+          loadAllRelationships,
+          loadRlsRules,
+          loadRoles,
+        ].map((run) => run().catch(() => undefined)),
+      ).then(() => undefined),
+    [
+      loadSources,
+      loadDomains,
+      loadTables,
+      loadRelationships,
+      loadAllRelationships,
+      loadRlsRules,
+      loadRoles,
+    ],
+  );
+}
+
 const NO_SOURCES: Source[] = [];
 const NO_DOMAINS: Domain[] = [];
 const NO_TABLES: RegisteredTable[] = [];
@@ -95,7 +175,7 @@ export function useSources() {
   });
   return {
     sources: data?.sources ?? NO_SOURCES,
-    loading,
+    loading: firstLoad(loading, data),
     error,
     refetch,
   };
@@ -107,7 +187,7 @@ export function useDomains() {
   });
   return {
     domains: data?.domains ?? NO_DOMAINS,
-    loading,
+    loading: firstLoad(loading, data),
     error,
     refetch,
   };
@@ -119,7 +199,7 @@ export function useTables() {
   });
   return {
     tables: data?.tables ?? NO_TABLES,
-    loading,
+    loading: firstLoad(loading, data),
     error,
     refetch,
   };
@@ -240,6 +320,58 @@ export function useRefreshPolicyPreview() {
   };
 }
 
+// REQ-1443: the contract builder's three server calls. The soda / Great Expectations dialects are
+// parsed and serialized server-side, so the panel holds contract TEXT and check rows and never a
+// dialect of its own — a hand edit in the raw editor can therefore never disagree with the builder.
+export function useDqContract() {
+  const [parse] = useLazyQuery<{ dqContractParse: DqContract }, DqContractParseVars>(
+    DQ_CONTRACT_PARSE_QUERY,
+    { fetchPolicy: "no-cache" },
+  );
+  const [build] = useLazyQuery<{ dqContractBuild: DqContractText }, DqContractBuildVars>(
+    DQ_CONTRACT_BUILD_QUERY,
+    { fetchPolicy: "no-cache" },
+  );
+  const [catalog] = useLazyQuery<{ dqCheckCatalog: DqCheckCatalog }, DqCheckCatalogVars>(
+    DQ_CHECK_CATALOG_QUERY,
+    { fetchPolicy: "no-cache" },
+  );
+  const [buildOne] = useLazyQuery<{ dqCheckDefinition: DqCheckDefinition }, DqCheckDefinitionVars>(
+    DQ_CHECK_DEFINITION_QUERY,
+    { fetchPolicy: "no-cache" },
+  );
+  const [dryRun] = useMutation<{ dryRunDqContract: DqDryRun }, DqDryRunVars>(
+    DRY_RUN_DQ_CONTRACT_MUTATION,
+  );
+  return {
+    checkCatalog: useCallback(
+      async (vars: DqCheckCatalogVars): Promise<DqCheckCatalog | null> =>
+        (await catalog({ variables: vars })).data?.dqCheckCatalog ?? null,
+      [catalog],
+    ),
+    buildCheck: useCallback(
+      async (vars: DqCheckDefinitionVars): Promise<DqCheckDefinition | null> =>
+        (await buildOne({ variables: vars })).data?.dqCheckDefinition ?? null,
+      [buildOne],
+    ),
+    parseContract: useCallback(
+      async (vars: DqContractParseVars): Promise<DqContract | null> =>
+        (await parse({ variables: vars })).data?.dqContractParse ?? null,
+      [parse],
+    ),
+    buildContract: useCallback(
+      async (vars: DqContractBuildVars): Promise<DqContractText | null> =>
+        (await build({ variables: vars })).data?.dqContractBuild ?? null,
+      [build],
+    ),
+    dryRunContract: useCallback(
+      async (vars: DqDryRunVars): Promise<DqDryRun | null> =>
+        (await dryRun({ variables: vars })).data?.dryRunDqContract ?? null,
+      [dryRun],
+    ),
+  };
+}
+
 export function useRelationships() {
   const { data, loading, error, refetch } = useQuery<{ relationships: Relationship[] }>(
     RELATIONSHIPS_QUERY,
@@ -247,7 +379,7 @@ export function useRelationships() {
   );
   return {
     relationships: data?.relationships ?? NO_RELATIONSHIPS,
-    loading,
+    loading: firstLoad(loading, data),
     error,
     refetch,
   };
@@ -260,7 +392,7 @@ export function useAllRelationships() {
   );
   return {
     relationships: data?.allRelationships ?? NO_RELATIONSHIPS,
-    loading,
+    loading: firstLoad(loading, data),
     error,
     refetch,
   };
@@ -272,7 +404,7 @@ export function useRLSRules() {
   });
   return {
     rlsRules: data?.rlsRules ?? NO_RLS_RULES,
-    loading,
+    loading: firstLoad(loading, data),
     error,
     refetch,
   };
@@ -722,7 +854,7 @@ export function useRoles() {
       })),
     [rawRoles],
   );
-  return { roles, loading, error, refetch };
+  return { roles, loading: firstLoad(loading, data), error, refetch };
 }
 
 // ── Lazy (on-demand) query hooks: imperative trigger that still participates in the cache ──
