@@ -20,6 +20,11 @@ import type { Page, Route } from "@playwright/test";
  * back — is the real thing under test, and is what a stub cannot fake.
  */
 
+// openTab budgets 60 s for the on-demand compile of the admin chunk. Under the 30 s default
+// per-test timeout that budget could never be spent — the test clock expired first, reporting a
+// test timeout while the wait was still well inside its own allowance.
+test.describe.configure({ timeout: 120_000 });
+
 const PREMIUM_STATE = {
   entitled: true,
   required_tier: "premium",

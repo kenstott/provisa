@@ -98,7 +98,7 @@ describe("session-scoped client state (REQ-1326)", () => {
     );
 
     render(
-      <AuthProvider authEnabled>
+      <AuthProvider authEnabled authSettled>
         <ActiveOrg />
       </AuthProvider>,
     );
@@ -113,7 +113,7 @@ describe("session-scoped client state (REQ-1326)", () => {
     mockFetchMe.mockResolvedValue(identity({ userId: "u1" }));
 
     render(
-      <AuthProvider authEnabled>
+      <AuthProvider authEnabled authSettled>
         <ActiveOrg />
       </AuthProvider>,
     );
@@ -137,7 +137,7 @@ describe("session-scoped client state (REQ-1326)", () => {
     );
 
     render(
-      <AuthProvider authEnabled>
+      <AuthProvider authEnabled authSettled>
         <ActiveOrg />
       </AuthProvider>,
     );

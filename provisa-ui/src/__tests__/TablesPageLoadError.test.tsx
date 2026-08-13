@@ -31,7 +31,7 @@ vi.mock("../api/admin", async (importOriginal) => ({
 function renderTables(mocks: readonly MockedResponse[]) {
   return render(
     <MemoryRouter>
-      <AuthProvider authEnabled={false}>
+      <AuthProvider authEnabled={false} authSettled>
         <DomainFilterProvider>
           <TablesPage />
         </DomainFilterProvider>

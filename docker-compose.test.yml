@@ -249,8 +249,14 @@ services:
     shm_size: 2g
     ports:
       - "${EXASOL_PORT:-8563}:8563"
-    volumes:
-      - exasol_test_data:/exa
+    # No volume: /exa lives on the container's writable layer and dies with it. exasol is a
+    # _HEAVY_MARKERS service, so `_heavy_db_service` SIGKILLs and removes the container after
+    # every test that uses it. A *named* volume outlived those removals, so the second test's
+    # container booted on an /exa left behind by a killed instance: EXAStorage never finished
+    # recovery, the container was reported healthy once and then crash-looped, and exaplus
+    # answered "java.net.ConnectException: Connection refused" for the rest of the run. Each
+    # per-test container now initialises a clean /exa, which is the state the first (passing)
+    # boot always had.
     healthcheck:
       # A TCP probe on 8563 is NOT readiness: the listener opens while EXAStorage is still
       # loading the database, and every login in that window fails with "no-8563". The probe
@@ -826,7 +832,6 @@ volumes:
   singlestore_test_data:
   cassandra_test_data:
   firebird_test_data:
-  exasol_test_data:
   splunk_test_data:
   druid_metadata_data:
   druid_shared:

@@ -47,7 +47,7 @@ function Probe() {
 
 function renderAuth(authEnabled: boolean) {
   return render(
-    <AuthProvider authEnabled={authEnabled}>
+    <AuthProvider authEnabled={authEnabled} authSettled>
       <Probe />
     </AuthProvider>,
   );

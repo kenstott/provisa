@@ -63,7 +63,10 @@ test("file connector: add northwind source and query customers", async ({ page }
 
   // ── 1. Add Files source via UI ────────────────────────────────────────────
   await page.goto("/sources");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
+  // /sources sits behind a CapabilityGate, so the header does not render until the identity
+  // bootstrap resolves — app boot, /setup/status, /auth/me and the roles query, on a runner with
+  // five other workers competing. 15 s covered the render but not the bootstrap in front of it.
+  await page.waitForSelector(".page-header", { timeout: 60000 });
 
   await page.getByRole("button", { name: /\+ Source/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });

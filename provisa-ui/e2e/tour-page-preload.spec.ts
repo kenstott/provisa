@@ -13,6 +13,12 @@ import { TOUR_STEPS } from "../src/tour/tourSteps";
 const TOTAL_STEPS = TOUR_STEPS.length;
 const RELATIONSHIPS_STEP = TOUR_STEPS.findIndex((s) => s.route === "/relationships");
 
+// The waits below budget 60 s for the first popover alone — the app bundle boot, the identity
+// bootstrap, TourAutoStart and a first-visit route chunk, all against five other workers. Under the
+// 30 s default per-test timeout that budget could never be spent: the test died on the test clock
+// while its own expect was still inside its allowance.
+test.describe.configure({ timeout: 180_000 });
+
 // The guided tour hops between surfaces faster than a step's own destination can pay its
 // first-visit chunk fetch/data load, which used to show a step's popover over a page still
 // stuck on its own "Loading…" state (observed on both /tables and /relationships). ?tour=1
@@ -71,7 +77,11 @@ test("tour does not show a step's popover over a page still loading its data", a
       return { loading };
     },
     TOTAL_STEPS,
-    { timeout: 5000 },
+    // Entering step4 navigates to /tables and pays that route's first-visit chunk fetch, so the
+    // wait for its popover is a page transition, not an in-place DOM update. The budget does not
+    // weaken the assertion: what is asserted is the loading state captured in the same tick the
+    // popover first appears, whenever that is.
+    { timeout: 60000 },
   );
   const { loading } = await state.jsonValue();
   expect(loading, "tour popover appeared while TablesPage was still on its loading state").toBe(false);
@@ -96,7 +106,10 @@ test("tour does not show the relationships step popover over a page still loadin
   await page.locator(".navbar-tour-btn").click();
 
   const popover = page.locator(".driver-popover");
-  await expect(popover).toBeVisible();
+  // Clicking the tour button resumes at the relationships step, which navigates and pays that
+  // route's first-visit chunk fetch before driver.js highlights anything — more than the 5 s
+  // default expect timeout covers on a loaded runner.
+  await expect(popover).toBeVisible({ timeout: 60000 });
   await expect(page).toHaveURL(/\/relationships/);
   await expect(page.getByText("Loading relationships...")).toHaveCount(0);
   await expect(page.locator('[data-tour="rels-add"]')).toBeVisible();

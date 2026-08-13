@@ -7,9 +7,16 @@
 
 import { test, expect } from "./coverage";
 
+// The header wait below budgets 60 s for the identity bootstrap; the 30 s default per-test timeout
+// would expire before that budget could be spent.
+test.describe.configure({ timeout: 120_000 });
+
 async function checkHeaderLayout(page: import("@playwright/test").Page, route: string, screenshotName: string) {
   await page.goto(route);
-  await page.waitForSelector(".page-header", { timeout: 10000 });
+  // These routes sit behind a CapabilityGate, so the header does not render until the identity
+  // bootstrap resolves — app boot, /setup/status, /auth/me and the roles query. That is not what
+  // this spec measures; the layout assertions below run once the header is up, whenever that is.
+  await page.waitForSelector(".page-header", { timeout: 60000 });
   await page.waitForSelector(".data-table", { timeout: 5000 });
 
   await page.screenshot({

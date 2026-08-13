@@ -192,6 +192,7 @@ function App() {
             OnboardGate read the freshly stored token as a rejected credential. */}
         <AuthProvider
           authEnabled={authEnabled}
+          authSettled={setupChecked}
           authVersion={authVersion}
           multitenancy={multitenancy}
         >

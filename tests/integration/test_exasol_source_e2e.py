@@ -239,9 +239,9 @@ def _seed_exasol() -> str:
     else:
         raise RuntimeError(f"exasol schema creation never succeeded: {last_err}")
 
-    # DROP before CREATE, not CREATE IF NOT EXISTS: the source test and the pipeline test each seed,
-    # and the container outlives the first of them, so idempotent DDL plus non-idempotent INSERTs
-    # left six rows — three of each widget — and the pipeline test's served rows came back doubled.
+    # DROP before CREATE, not CREATE IF NOT EXISTS: the source test and the pipeline test each
+    # seed, so idempotent DDL plus non-idempotent INSERTs left six rows — three of each widget —
+    # and the pipeline test's served rows came back doubled.
     _exaplus(container_id, f"DROP TABLE IF EXISTS {_SCHEMA}.{_TABLE}", fingerprint)
     _exaplus(
         container_id,

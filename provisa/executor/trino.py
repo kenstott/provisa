@@ -231,13 +231,18 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                     from provisa.executor.errors import FederationError
 
                     err_msg = str(exc)
-                    # Memory errors are never retryable.
+                    # Memory errors are never retryable. Match the error NAMES only: the bare
+                    # substring "Query exceeded" also matches "Query exceeded the maximum
+                    # execution time limit of 120.00s" (EXCEEDED_TIME_LIMIT), which reported a
+                    # timeout as "Query exceeded Trino memory limit — add a limit clause" and sent
+                    # the SharePoint schema-enumeration failure down a memory investigation.
                     if any(
                         k in err_msg
                         for k in (
                             "EXCEEDED_LOCAL_MEMORY_LIMIT",
                             "EXCEEDED_GLOBAL_MEMORY_LIMIT",
-                            "Query exceeded",
+                            "Query exceeded per-node memory limit",
+                            "Query exceeded distributed user memory limit",
                         )
                     ):
                         span.set_attribute("error", True)

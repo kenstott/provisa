@@ -111,11 +111,18 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({
   children,
   authEnabled,
+  authSettled,
   authVersion = 0,
   multitenancy = false,
 }: {
   children: ReactNode;
   authEnabled: boolean;
+  // True once /setup/status has answered, i.e. once `authEnabled` carries the deployment's real
+  // value rather than the `false` it is initialised to. The bootstrap waits for it: run before the
+  // flag settles, the whole identity fetch is thrown away and repeated the moment it flips, so
+  // every page load paid for two serialised rounds of /auth/me + roles + domains and the capability
+  // gates stayed on "Checking your credentials…" until the SECOND round landed.
+  authSettled: boolean;
   // REQ-1291: bumped by App every time a token is stored or dropped. The provider outlives the
   // login page, so without this the identity fetched at mount (none) was never revisited: a
   // just-signed-in user stayed userId=null and OnboardGate read the fresh token as a rejected
@@ -282,9 +289,10 @@ export function AuthProvider({
   }, [bootstrap]);
 
   useEffect(() => {
-    // Re-bootstrap when the runtime auth-enforcement flag resolves (starts false, flips true
-    // once /setup/status returns) so the dev-mode fallback keys off the settled value, and on
-    // every authVersion bump (REQ-1291).
+    // Bootstrap once the runtime auth-enforcement flag has resolved, so the dev-mode fallback keys
+    // off the settled value; and again on every authVersion bump (REQ-1291). An unsettled flag is
+    // not a value to bootstrap against — see `authSettled`.
+    if (!authSettled) return;
     let cancelled = false;
     async function run() {
       await bootstrap();
@@ -294,7 +302,7 @@ export function AuthProvider({
     return () => {
       cancelled = true;
     };
-  }, [bootstrap]);
+  }, [bootstrap, authSettled]);
 
   const availableDomains = useMemo(() => {
     const roleFilter = selectedRole === "all" ? null : (selectedRole as Role).id;

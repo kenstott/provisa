@@ -81,7 +81,7 @@ function resolvesTo(spec: Identity) {
 
 function renderGate(onSessionExpired: () => void = vi.fn()) {
   return render(
-    <AuthProvider authEnabled>
+    <AuthProvider authEnabled authSettled>
       <OnboardGate onSessionExpired={onSessionExpired}>
         <div data-testid="app-shell" />
       </OnboardGate>
@@ -169,7 +169,7 @@ function CurrentIdentity() {
 function SignInHarness({ children }: { children: React.ReactNode }) {
   const [authVersion, setAuthVersion] = useState(0);
   return (
-    <AuthProvider authEnabled authVersion={authVersion}>
+    <AuthProvider authEnabled authSettled authVersion={authVersion}>
       <button
         data-testid="sign-in"
         onClick={() => {

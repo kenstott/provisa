@@ -54,6 +54,12 @@ async function selectTerm(page: Page, name: string) {
   await expect(page.getByTestId("glossary-name-input")).toHaveValue(name);
 }
 
+// Every test here starts with openGlossary, whose two waits alone budget 90 s for the first paint
+// of the lazily-compiled admin chunk plus the term list. Under the 30 s default per-test timeout
+// those budgets could never be spent: the expert test reached its post-reload wait — itself written
+// for 60 s — with the test clock already exhausted and died inside page.reload().
+test.describe.configure({ timeout: 180_000 });
+
 test.describe("REQ-1387 glossary curation", () => {
   test("lists terms derived from the registered model's columns", async ({ page }) => {
     await openGlossary(page);

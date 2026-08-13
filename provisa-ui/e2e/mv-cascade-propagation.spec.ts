@@ -24,17 +24,17 @@ import { test, expect, BACKEND_URL } from "./coverage";
 const A = "e2e_mv_a";
 const B = "e2e_mv_b";
 
-async function runSql(page: import("@playwright/test").Page, sql: string) {
+async function runSql(api: import("@playwright/test").APIRequestContext, sql: string) {
   // Use BACKEND_URL directly (not Vite proxy) — page.request resolves localhost to ::1 but
   // the API server listens on all interfaces; the Vite proxy on port 3901 is IPv4-only.
-  const resp = await page.request.post(`${BACKEND_URL}/data/sql`, { data: { sql, role: "admin" } });
+  const resp = await api.post(`${BACKEND_URL}/data/sql`, { data: { sql, role: "admin" } });
   expect(resp.ok(), await resp.text()).toBeTruthy();
   const json = await resp.json();
   return json.data.sql as Record<string, unknown>[];
 }
 
-async function refreshMv(page: import("@playwright/test").Page, tableName: string) {
-  const resp = await page.request.post(`${BACKEND_URL}/admin/graphql`, {
+async function refreshMv(api: import("@playwright/test").APIRequestContext, tableName: string) {
+  const resp = await api.post(`${BACKEND_URL}/admin/graphql`, {
     data: {
       query: "mutation($mvId: String!) { refreshMv(mvId: $mvId) { success message } }",
       variables: { mvId: `view-${tableName}` },
@@ -153,8 +153,21 @@ async function deleteTable(page: import("@playwright/test").Page, tableName: str
 // deadlock/crash the backend via simultaneous DuckDB writes. Use test.describe.serial so
 // --repeat-each=N runs copies sequentially in one worker rather than in parallel across workers.
 test.describe.serial("dag-cascade", () => {
+  // Restore the shared pet_store.pets row through the `request` fixture, not through page.request.
+  // A test that exceeds its timeout has its browser context torn down, so the restore that used to
+  // live in the body's `finally` failed with "Target page, context or browser has been closed" and
+  // left price = 999.99 behind: the retry then read 999.99 where it asserts the 380.00 baseline and
+  // failed for a reason that had nothing to do with the cascade. The `request` fixture is a separate
+  // context that outlives the page and carries the same x-e2e-worker header (coverage.ts).
+  test.afterEach(async ({ request }) => {
+    await runSql(request, "UPDATE pet_store.pets SET price = 380.00 WHERE id = 1");
+  });
+
   test("source state change propagates through a two-level materialized-view DAG", async ({ page }) => {
-    test.setTimeout(150000);
+    // The steps below carry their own budgets — two createView flows (60 s + 30 s + 30 s each) and
+    // two materialize flows (60 s + 30 s + 30 s + 60 s each) — which already sum past 150 s before a
+    // single MV refresh runs. The run that timed out was inside those allowances, not stuck.
+    test.setTimeout(600000);
 
     // In demo mode, a fresh browser context auto-starts the guided tour on first navigation, which
     // hijacks the route to its own first stop (/sources) regardless of where the test navigated.
@@ -176,26 +189,26 @@ test.describe.serial("dag-cascade", () => {
 
       // views.e2e_mv_a's activation synchronously populated it from pets.id=1 (price 380.00); force
       // e2e_mv_b to (re)materialize from it now so both levels start from a known baseline.
-      await refreshMv(page, B);
-      let rows = await runSql(page, `SELECT price FROM views.${B} WHERE id = 1`);
+      await refreshMv(page.request, B);
+      let rows = await runSql(page.request, `SELECT price FROM views.${B} WHERE id = 1`);
       expect(Number(rows[0].price)).toBeCloseTo(380.0, 2);
 
       // Mutate the physical source table directly (the SQL Explorer's Run wraps all SQL as a SELECT
       // subquery and cannot execute this UPDATE) and confirm it landed.
-      await runSql(page, "UPDATE pet_store.pets SET price = 999.99 WHERE id = 1");
-      const updated = await runSql(page, "SELECT price FROM pet_store.pets WHERE id = 1");
+      await runSql(page.request, "UPDATE pet_store.pets SET price = 999.99 WHERE id = 1");
+      const updated = await runSql(page.request, "SELECT price FROM pet_store.pets WHERE id = 1");
       expect(Number(updated[0].price)).toBeCloseTo(999.99, 2);
 
       // Force the cascade rather than waiting on the default 300s TTL poll: refresh level 1, then level
       // 2 — mirroring the order the real change-signal loop would apply the ripple in.
-      await refreshMv(page, A);
-      await refreshMv(page, B);
+      await refreshMv(page.request, A);
+      await refreshMv(page.request, B);
 
-      rows = await runSql(page, `SELECT price FROM views.${B} WHERE id = 1`);
+      rows = await runSql(page.request, `SELECT price FROM views.${B} WHERE id = 1`);
       expect(Number(rows[0].price)).toBeCloseTo(999.99, 2); // the change reached level 2
     } finally {
-      // Best-effort cleanup so repeated runs don't accumulate views or leave the shared demo row mutated.
-      await runSql(page, "UPDATE pet_store.pets SET price = 380.00 WHERE id = 1").catch(() => {});
+      // Best-effort cleanup so repeated runs don't accumulate views. The shared demo row is restored
+      // in afterEach instead — see there.
       await deleteTable(page, B).catch(() => {});
       await deleteTable(page, A).catch(() => {});
     }
