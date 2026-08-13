@@ -204,38 +204,62 @@ def _drop_foreign_rows(signal: str, table):
     return table
 
 
-# REQ-1435: OTLP instant columns. otlp2parquet writes most of them as int64 nanoseconds since the
-# epoch, so the Iceberg column came out BIGINT and every ops report rendered the instant as a
-# 19-digit number — undatable by a reader and unsortable as time by the grid.
-_EPOCH_NANO_COLS = frozenset(
+# REQ-1435: OTLP instant columns that otlp2parquet writes as an integer rather than an arrow
+# timestamp, so the Iceberg column came out BIGINT and every ops report rendered the instant as a
+# long digit string — undatable by a reader and unsortable as time by the grid.
+#
+# The writer does NOT use one unit for all of them, and the epoch unit is not recoverable from the
+# parquet type (they are all plain int64). Each is listed with the unit that signal's writer
+# actually emits, verified against live objects in the bucket:
+#
+#   traces.end_timestamp        1786588661161      epoch milliseconds
+#   metrics.start_timestamp     1786588918330      epoch milliseconds
+#   logs.observed_timestamp     1786589996931031   epoch microseconds
+#
+# `timestamp` is written as timestamp[us] in all three signals and needs no reinterpretation.
+# An unlisted integer instant column is a writer schema change, not something to guess at: the
+# conversion raises so the new column is mapped deliberately instead of landing in 1970.
+_EPOCH_INT_INSTANTS: dict[str, dict[str, str]] = {
+    "traces": {"end_timestamp": "ms"},
+    "metrics": {"start_timestamp": "ms"},
+    "logs": {"observed_timestamp": "us"},
+}
+
+_INSTANT_COL_NAMES = frozenset(
     {"timestamp", "end_timestamp", "start_timestamp", "observed_timestamp"}
 )
 
 
-def _instants_from_epoch_nanos(table):
-    """Reinterpret the int64 epoch-nanosecond columns as real timestamps.
+def _instants_from_epoch_ints(signal: str, table):
+    """Reinterpret this signal's integer epoch columns as real timestamps.
 
-    Cast in two steps on purpose: int64 -> timestamp('ns') reinterprets the value in the unit it
-    was actually written in, and only then is it rescaled to the microseconds every store in the
-    lane keeps (Iceberg TIMESTAMP(6)). Casting straight to timestamp('us') would read nanoseconds
-    as microseconds and put every span in the year 57000.
+    Cast in two steps on purpose: int64 -> timestamp(<the unit it was written in>) reinterprets the
+    value, and only then is it rescaled to the microseconds every store in the lane keeps (Iceberg
+    TIMESTAMP(6)). Casting straight to timestamp('us') reads a millisecond count as microseconds
+    and puts every span in 1970.
 
-    Columns already carrying an arrow timestamp — traces.timestamp is one — are left alone.
+    Columns already carrying an arrow timestamp are left alone.
     """
     import pyarrow as pa
 
+    units = _EPOCH_INT_INSTANTS[signal]
     for name in table.column_names:
-        if name.lower() not in _EPOCH_NANO_COLS:
+        if name.lower() not in _INSTANT_COL_NAMES:
             continue
         col = table.column(name)
         if not pa.types.is_integer(col.type):
             continue
+        unit = units.get(name.lower())
+        if unit is None:
+            raise ValueError(
+                f"compact_otel: {signal}.{name} arrived as an integer with no epoch unit mapped; "
+                "add it to _EPOCH_INT_INSTANTS with the unit otlp2parquet writes"
+            )
         idx = table.column_names.index(name)
-        # safe=False is the rescale, not a shortcut: a nanosecond value that is not a whole number
-        # of microseconds cannot be represented at TIMESTAMP(6), and a checked cast refuses it
-        # outright. Truncating the sub-microsecond digits is the intended narrowing — that is the
-        # precision the lane's stores keep.
-        converted = col.cast(pa.timestamp("ns")).cast(pa.timestamp("us"), safe=False)
+        # safe=False is the rescale, not a shortcut: a sub-microsecond value cannot be represented
+        # at TIMESTAMP(6), and a checked cast refuses it outright. Truncating those digits is the
+        # intended narrowing — that is the precision the lane's stores keep.
+        converted = col.cast(pa.timestamp(unit)).cast(pa.timestamp("us"), safe=False)
         table = table.set_column(idx, pa.field(name, pa.timestamp("us")), converted)
     return table
 
@@ -361,7 +385,7 @@ def _compact_signal(
                     parts = list(pool.map(_read, chunk_keys))
                 combined = pa.concat_tables(parts, promote_options="default")
                 combined = _drop_foreign_rows(signal, combined)
-                combined = _instants_from_epoch_nanos(combined)
+                combined = _instants_from_epoch_ints(signal, combined)
             except Exception:
                 logger.exception(
                     "compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start

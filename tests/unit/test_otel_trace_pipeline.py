@@ -841,13 +841,13 @@ def test_compaction_drops_spans_from_other_services():
     assert kept.column("span_name").to_pylist() == ["provisa.query.trino"]
 
 
-def test_compaction_reinterprets_epoch_nanosecond_columns_as_instants():
-    """REQ-1435: otlp2parquet writes instants as int64 nanoseconds since the epoch.
+def test_compaction_reinterprets_epoch_integer_columns_as_instants():
+    """REQ-1435: otlp2parquet writes some instants as an integer epoch count.
 
     Left as integers, the Iceberg column came out BIGINT and every ops report rendered the instant
-    as a 19-digit number — undatable by a reader, unsortable as time by the grid. The cast is done
-    in two steps because int64 -> timestamp('us') would read nanoseconds as microseconds and put
-    every span in the year 57000.
+    as a long digit string — undatable by a reader, unsortable as time by the grid. The cast is
+    done in two steps: reinterpret in the unit the writer used, then rescale to the microseconds
+    the lane's stores keep.
     """
     import datetime as _dt
 
@@ -857,28 +857,29 @@ def test_compaction_reinterprets_epoch_nanosecond_columns_as_instants():
 
     table = pa.table(
         {
-            "timestamp": pa.array([1_720_000_000_000_000_000], type=pa.int64()),
-            "end_timestamp": pa.array([1_720_000_000_050_000_000], type=pa.int64()),
-            "duration": pa.array([50_000_000], type=pa.int64()),
+            # traces.timestamp already arrives as an arrow timestamp and is left alone
+            "timestamp": pa.array([_dt.datetime(2024, 7, 3, 9, 46, 40)], type=pa.timestamp("us")),
+            # traces.end_timestamp arrives as epoch MILLISECONDS
+            "end_timestamp": pa.array([1_720_000_000_050], type=pa.int64()),
+            "duration": pa.array([50], type=pa.int64()),
             "span_name": pa.array(["provisa.query.trino"]),
         }
     )
-    out = jobs._instants_from_epoch_nanos(table)
+    out = jobs._instants_from_epoch_ints("traces", table)
 
     assert out.schema.field("timestamp").type == pa.timestamp("us")
     assert out.schema.field("end_timestamp").type == pa.timestamp("us")
-    assert out.column("timestamp").to_pylist() == [_dt.datetime(2024, 7, 3, 9, 46, 40)]
+    assert out.column("end_timestamp").to_pylist() == [_dt.datetime(2024, 7, 3, 9, 46, 40, 50_000)]
     # duration is an elapsed count, not an instant — it stays an integer
     assert out.schema.field("duration").type == pa.int64()
     assert out.schema.field("span_name").type == pa.string()
 
 
-def test_instant_cast_truncates_sub_microsecond_digits():
-    """REQ-1435: real span clocks land on odd nanosecond counts.
+def test_compaction_reads_each_signals_integer_instant_in_its_own_unit():
+    """REQ-1435: the writer does not use one epoch unit across the signals.
 
-    Those digits do not fit TIMESTAMP(6), and a checked cast refuses the value rather than
-    rounding it — which failed the whole chunk. Truncation to the store's precision is the
-    intended narrowing.
+    logs.observed_timestamp is microseconds and metrics.start_timestamp is milliseconds; reading
+    either in the other's unit lands the row decades away from the span it belongs to.
     """
     import datetime as _dt
 
@@ -886,10 +887,30 @@ def test_instant_cast_truncates_sub_microsecond_digits():
 
     from provisa.scheduler import jobs
 
-    table = pa.table({"timestamp": pa.array([1_720_000_000_000_000_499], type=pa.int64())})
-    out = jobs._instants_from_epoch_nanos(table)
+    logs = pa.table({"observed_timestamp": pa.array([1_720_000_000_000_050], type=pa.int64())})
+    assert jobs._instants_from_epoch_ints("logs", logs).column(
+        "observed_timestamp"
+    ).to_pylist() == [_dt.datetime(2024, 7, 3, 9, 46, 40, 50)]
 
-    assert out.column("timestamp").to_pylist() == [_dt.datetime(2024, 7, 3, 9, 46, 40)]
+    metrics = pa.table({"start_timestamp": pa.array([1_720_000_000_050], type=pa.int64())})
+    assert jobs._instants_from_epoch_ints("metrics", metrics).column(
+        "start_timestamp"
+    ).to_pylist() == [_dt.datetime(2024, 7, 3, 9, 46, 40, 50_000)]
+
+
+def test_compaction_refuses_an_unmapped_integer_instant_column():
+    """An integer instant with no mapped unit is a writer schema change, not something to guess.
+
+    Picking a unit by feel is how end_timestamp landed in 1970 for every span on the node.
+    """
+    import pyarrow as pa
+    import pytest
+
+    from provisa.scheduler import jobs
+
+    table = pa.table({"start_timestamp": pa.array([1_720_000_000_050], type=pa.int64())})
+    with pytest.raises(ValueError, match="no epoch unit mapped"):
+        jobs._instants_from_epoch_ints("traces", table)
 
 
 def test_compaction_refuses_to_narrow_an_instant_back_to_an_integer():
