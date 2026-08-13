@@ -63,13 +63,23 @@ export function ProfilePanel({ profile, resultRows, handleDownloadProfile }: Pro
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("profilePanel.colColumn")}</Table.Th>
-              <Table.Th title={t("profilePanel.colNullsTitle")}>{t("profilePanel.colNulls")}</Table.Th>
-              <Table.Th title={t("profilePanel.colBlanksTitle")}>{t("profilePanel.colBlanks")}</Table.Th>
-              <Table.Th title={t("profilePanel.colDistinctTitle")}>{t("profilePanel.colDistinct")}</Table.Th>
-              <Table.Th title={t("profilePanel.colConstantTitle")}>{t("profilePanel.colConstant")}</Table.Th>
+              <Table.Th title={t("profilePanel.colNullsTitle")}>
+                {t("profilePanel.colNulls")}
+              </Table.Th>
+              <Table.Th title={t("profilePanel.colBlanksTitle")}>
+                {t("profilePanel.colBlanks")}
+              </Table.Th>
+              <Table.Th title={t("profilePanel.colDistinctTitle")}>
+                {t("profilePanel.colDistinct")}
+              </Table.Th>
+              <Table.Th title={t("profilePanel.colConstantTitle")}>
+                {t("profilePanel.colConstant")}
+              </Table.Th>
               <Table.Th>{t("profilePanel.colMin")}</Table.Th>
               <Table.Th>{t("profilePanel.colMax")}</Table.Th>
-              <Table.Th title={t("profilePanel.colMeanTitle")}>{t("profilePanel.colMean")}</Table.Th>
+              <Table.Th title={t("profilePanel.colMeanTitle")}>
+                {t("profilePanel.colMean")}
+              </Table.Th>
               <Table.Th>{t("profilePanel.colTopValues")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -94,7 +104,9 @@ export function ProfilePanel({ profile, resultRows, handleDownloadProfile }: Pro
                     {p.nullCount > 0 ? (
                       `${p.nullCount} (${nullPct}%)`
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>{t("profilePanel.emptyValue")}</span>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {t("profilePanel.emptyValue")}
+                      </span>
                     )}
                   </Table.Td>
                   <Table.Td
@@ -105,7 +117,9 @@ export function ProfilePanel({ profile, resultRows, handleDownloadProfile }: Pro
                     {p.blankCount > 0 ? (
                       p.blankCount
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>{t("profilePanel.emptyValue")}</span>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {t("profilePanel.emptyValue")}
+                      </span>
                     )}
                   </Table.Td>
                   <Table.Td
@@ -122,31 +136,41 @@ export function ProfilePanel({ profile, resultRows, handleDownloadProfile }: Pro
                   >
                     {isConstant ? (
                       <span title={String(p.constantValue)}>
-                        {t("profilePanel.constantYes", { value: String(p.constantValue).slice(0, 12) })}
+                        {t("profilePanel.constantYes", {
+                          value: String(p.constantValue).slice(0, 12),
+                        })}
                       </span>
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>{t("profilePanel.emptyValue")}</span>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {t("profilePanel.emptyValue")}
+                      </span>
                     )}
                   </Table.Td>
                   <Table.Td style={{ fontFamily: "monospace" }}>
                     {p.min !== null ? (
                       String(p.min).slice(0, 16)
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>{t("profilePanel.emptyValue")}</span>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {t("profilePanel.emptyValue")}
+                      </span>
                     )}
                   </Table.Td>
                   <Table.Td style={{ fontFamily: "monospace" }}>
                     {p.max !== null ? (
                       String(p.max).slice(0, 16)
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>{t("profilePanel.emptyValue")}</span>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {t("profilePanel.emptyValue")}
+                      </span>
                     )}
                   </Table.Td>
                   <Table.Td style={{ fontFamily: "monospace" }}>
                     {p.mean !== null ? (
                       p.mean.toFixed(2)
                     ) : (
-                      <span style={{ color: "var(--text-muted)" }}>{t("profilePanel.emptyValue")}</span>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {t("profilePanel.emptyValue")}
+                      </span>
                     )}
                   </Table.Td>
                   <Table.Td>

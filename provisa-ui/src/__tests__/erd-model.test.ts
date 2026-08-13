@@ -199,14 +199,7 @@ describe("buildErdElements", () => {
   const domains = [DOMAIN_SALES, DOMAIN_HR];
 
   it("creates domain nodes for each used domain", () => {
-    const { nodes } = buildErdElements(
-      tables,
-      [intraRel],
-      domains,
-      new Set(),
-      NO_HIDDEN,
-      "none",
-    );
+    const { nodes } = buildErdElements(tables, [intraRel], domains, new Set(), NO_HIDDEN, "none");
     const domainNodes = nodes.filter((n) => n.classes === "erd-domain");
     expect(domainNodes.map((n) => n.data.domainId)).toEqual(
       expect.arrayContaining(["sales", "hr"]),
@@ -214,14 +207,7 @@ describe("buildErdElements", () => {
   });
 
   it("creates table nodes as children of domain nodes", () => {
-    const { nodes } = buildErdElements(
-      tables,
-      [intraRel],
-      domains,
-      new Set(),
-      NO_HIDDEN,
-      "none",
-    );
+    const { nodes } = buildErdElements(tables, [intraRel], domains, new Set(), NO_HIDDEN, "none");
     const tableNodes = nodes.filter((n) => n.classes === "erd-table");
     expect(tableNodes).toHaveLength(3);
     const ordersNode = tableNodes.find((n) => n.data.type === "table" && n.data.tableId === 1);
@@ -229,14 +215,7 @@ describe("buildErdElements", () => {
   });
 
   it("creates edges for visible table pairs", () => {
-    const { edges } = buildErdElements(
-      tables,
-      [intraRel],
-      domains,
-      new Set(),
-      NO_HIDDEN,
-      "none",
-    );
+    const { edges } = buildErdElements(tables, [intraRel], domains, new Set(), NO_HIDDEN, "none");
     expect(edges).toHaveLength(1);
     expect(edges[0].data.source).toBe("t:1");
     expect(edges[0].data.target).toBe("t:2");

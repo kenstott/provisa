@@ -53,7 +53,9 @@ const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
  * Resolves with the token, or `null` when the control plane has no session either (a real answer —
  * it means "sign in", not "something failed"). Rejects if the relay never answers.
  */
-export function acquireTokenFromControlPlane(timeoutMs: number = RELAY_TIMEOUT_MS): Promise<string | null> {
+export function acquireTokenFromControlPlane(
+  timeoutMs: number = RELAY_TIMEOUT_MS,
+): Promise<string | null> {
   const origin = controlPlaneOrigin();
   return new Promise<string | null>((resolve, reject) => {
     const frame = document.createElement("iframe");
@@ -89,7 +91,10 @@ export function acquireTokenFromControlPlane(timeoutMs: number = RELAY_TIMEOUT_M
     };
 
     const timer = setTimeout(
-      () => finish(() => reject(new Error(`auth relay at ${origin} did not respond in ${timeoutMs}ms`))),
+      () =>
+        finish(() =>
+          reject(new Error(`auth relay at ${origin} did not respond in ${timeoutMs}ms`)),
+        ),
       timeoutMs,
     );
 

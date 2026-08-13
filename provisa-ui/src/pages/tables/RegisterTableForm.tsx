@@ -10,15 +10,7 @@
 
 import { useState, useEffect, Fragment } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Button,
-  Checkbox,
-  Select,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Button, Checkbox, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { toSnakeCase } from "../../naming";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
@@ -286,7 +278,10 @@ export function RegisterTableForm({
       (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
     );
   const allTablesRegistered =
-    !loadingTables && !!schemaName && availableTables.length > 0 && availableTables.every(isRegistered);
+    !loadingTables &&
+    !!schemaName &&
+    availableTables.length > 0 &&
+    availableTables.every(isRegistered);
 
   const sourceType = sources.find((s) => s.id === sourceId)?.type ?? "";
   const isCdcSource = CDC_TYPES.has(sourceType);
@@ -456,7 +451,8 @@ export function RegisterTableForm({
       )}
       <Stack gap="xs" style={{ gridColumn: "1 / -1" }}>
         <Text fw={600} fz="sm">
-          {t("registerTableForm.columnsLabel")} {loadingColumns && t("registerTableForm.columnsLoading")}
+          {t("registerTableForm.columnsLabel")}{" "}
+          {loadingColumns && t("registerTableForm.columnsLoading")}
         </Text>
         {columns.length > 0 && (
           <Table.ScrollContainer minWidth={1050}>
@@ -497,7 +493,10 @@ export function RegisterTableForm({
                           aria-label={t("registerTableForm.colHeaderDataType")}
                           placeholder={t("registerTableForm.dataTypePlaceholder")}
                           data={Array.from(
-                            new Set([...(col.dataType ? [toIrType(col.dataType)] : []), ...irTypes]),
+                            new Set([
+                              ...(col.dataType ? [toIrType(col.dataType)] : []),
+                              ...irTypes,
+                            ]),
                           )}
                           value={col.dataType ? toIrType(col.dataType) : null}
                           onChange={(v) => updateCol(i, "dataType", v ?? "")}

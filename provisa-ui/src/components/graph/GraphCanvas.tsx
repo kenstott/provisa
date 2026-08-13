@@ -17,7 +17,12 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
-import { buildClusterElements, buildClusterMetaEdges, cidToId, type ClusterLevel } from "./graph-clusters";
+import {
+  buildClusterElements,
+  buildClusterMetaEdges,
+  cidToId,
+  type ClusterLevel,
+} from "./graph-clusters";
 import { buildGraphStylesheet } from "./graph-stylesheet";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
@@ -187,7 +192,10 @@ export function GraphCanvas({
       // Compute hull from children positions in graph coords.
       const children = cn.children();
       if (children.length === 0) return;
-      let minX_g = Infinity, maxX_g = -Infinity, minY_g = Infinity, maxY_g = -Infinity;
+      let minX_g = Infinity,
+        maxX_g = -Infinity,
+        minY_g = Infinity,
+        maxY_g = -Infinity;
       children.forEach((c) => {
         const p = c.position();
         const hw = c.width() / 2 + 6;
@@ -306,10 +314,12 @@ export function GraphCanvas({
         const cy = cyRef.current;
         if (cy) {
           const clusterId = `__cluster_${clusterLevelRef.current}_${cidToId(drag.cid)}`;
-          cy.getElementById(clusterId).children().forEach((n) => {
-            anchoredRef.current.add(n.id() as string);
-            n.addClass("pinned");
-          });
+          cy.getElementById(clusterId)
+            .children()
+            .forEach((n) => {
+              anchoredRef.current.add(n.id() as string);
+              n.addClass("pinned");
+            });
           // Skip gravity layout — it pulls surrounding clusters toward the dragged
           // one and produces a skewed result. Directly recompute hull/port positions.
           if (portEdgesAddedRef.current) {
@@ -368,7 +378,14 @@ export function GraphCanvas({
       clusterLevel !== "none"
         ? [
             ...buildClusterElements(nodes, edges, clusterLevel, overlayEdges, collapsedClusters),
-            ...buildClusterMetaEdges(nodes, edges, clusterLevel, overlayEdges, collapsedClusters, false),
+            ...buildClusterMetaEdges(
+              nodes,
+              edges,
+              clusterLevel,
+              overlayEdges,
+              collapsedClusters,
+              false,
+            ),
           ]
         : (() => {
             const _els: CyElementDefinition[] = [];
@@ -435,7 +452,14 @@ export function GraphCanvas({
         if (gn) {
           const pos = evt.renderedPosition ?? evt.position;
           const isLocked = anchoredRef.current.has(evt.target.id() as string);
-          setNodeRingMenu({ x: pos.x, y: pos.y, nodeKey: evt.target.id() as string, node: gn, graphStats, isLocked });
+          setNodeRingMenu({
+            x: pos.x,
+            y: pos.y,
+            nodeKey: evt.target.id() as string,
+            node: gn,
+            graphStats,
+            isLocked,
+          });
           onSelect({ kind: "node", data: gn, graphStats });
         }
       }
@@ -463,11 +487,21 @@ export function GraphCanvas({
     cy.on("cxttap", (evt) => {
       if (evt.target === cy) setNodeCtxMenu(null);
     });
-    cy.on("mouseover", "node", (evt) => { evt.target.addClass("hovered"); });
-    cy.on("mouseout", "node", (evt) => { evt.target.removeClass("hovered"); });
-    cy.on("mouseover", "edge", (evt) => { evt.target.addClass("hovered"); });
-    cy.on("mouseout", "edge", (evt) => { evt.target.removeClass("hovered"); });
-    cy.on("layoutstop", () => { if (pendingNudgesRef.current === 0) computeHulls(); });
+    cy.on("mouseover", "node", (evt) => {
+      evt.target.addClass("hovered");
+    });
+    cy.on("mouseout", "node", (evt) => {
+      evt.target.removeClass("hovered");
+    });
+    cy.on("mouseover", "edge", (evt) => {
+      evt.target.addClass("hovered");
+    });
+    cy.on("mouseout", "edge", (evt) => {
+      evt.target.removeClass("hovered");
+    });
+    cy.on("layoutstop", () => {
+      if (pendingNudgesRef.current === 0) computeHulls();
+    });
     cy.on("viewport", computeHulls);
     // Track manually dragged nodes as anchored, then auto-nudge
     // "free" fires on every click too — only nudge if position actually changed
@@ -669,7 +703,15 @@ export function GraphCanvas({
       cy.nodes().forEach((node) => {
         const lbl = node.data("label") as string;
         const gn = node.data("_node") as GNode | undefined;
-        applyNodeSize(node, lbl, gn, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
+        applyNodeSize(
+          node,
+          lbl,
+          gn,
+          sizeByPropertyRef.current,
+          sizeOverridesRef.current,
+          sizeMultiplierRef.current,
+          labelSizeRange,
+        );
       });
     });
   }, [sizeOverrides, sizeByProperty, sizeMultiplier]);
@@ -683,9 +725,7 @@ export function GraphCanvas({
         const n = node.data("_node") as GNode | undefined;
         if (!n) return;
         const prop = labelPropertyRef.current[n.label];
-        const txt = prop
-          ? String(n.properties[prop] ?? n.id)
-          : resolveNodeLabel(n);
+        const txt = prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n);
         node.style("label", txt);
       });
     });

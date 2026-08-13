@@ -8,13 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import {
-  SQL_QUERY_KEY,
-  NL_PROMPT_KEY,
-  TABS_KEY,
-  tabSqlKey,
-  tabNlKey,
-} from "./types";
+import { SQL_QUERY_KEY, NL_PROMPT_KEY, TABS_KEY, tabSqlKey, tabNlKey } from "./types";
 import type { SqlTab } from "./types";
 
 export function newTabId(): string {
@@ -22,7 +16,16 @@ export function newTabId(): string {
 }
 
 export function emptyTab(id: string, title: string, sqlText = "", nlText = ""): SqlTab {
-  return { id, title, sqlText, nlText, resultColumns: [], resultRows: [], resultError: "", execMs: null };
+  return {
+    id,
+    title,
+    sqlText,
+    nlText,
+    resultColumns: [],
+    resultRows: [],
+    resultError: "",
+    execMs: null,
+  };
 }
 
 /** Load tab metadata + per-tab sql/nl from localStorage. Results hydrate later from IndexedDB. */

@@ -72,7 +72,12 @@ export const SOURCE_TYPES = [
   { value: "sqlite", label: "SQLite", category: "File", defaultPort: 0 },
   { value: "csv", label: "CSV File", category: "File", defaultPort: 0 },
   { value: "parquet", label: "Parquet File", category: "File", defaultPort: 0 },
-  { value: "files", label: "File Directory (CSV/Parquet/XLSX/JSON, etc.)", category: "File", defaultPort: 0 },
+  {
+    value: "files",
+    label: "File Directory (CSV/Parquet/XLSX/JSON, etc.)",
+    category: "File",
+    defaultPort: 0,
+  },
   // Other
   { value: "google_sheets", label: "Google Sheets", category: "Other", defaultPort: 0 },
   { value: "prometheus", label: "Prometheus", category: "Other", defaultPort: 9090 },
@@ -138,7 +143,10 @@ export const SIMPLE_RDBMS = new Set([
 export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive"]);
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
-export const TYPE_ALIAS: Record<string, string> = { graphql: "graphql_remote", grpc: "grpc_remote" };
+export const TYPE_ALIAS: Record<string, string> = {
+  graphql: "graphql_remote",
+  grpc: "grpc_remote",
+};
 
 export const GOVDATA_SUBJECTS: { value: string; label: string; schemas: string[] }[] = [
   { value: "COMMERCE", label: "Commerce", schemas: ["sec", "patents"] },

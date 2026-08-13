@@ -384,7 +384,10 @@ export function SourceFormFieldsExtended({
             label={t("sourceFormFieldsExtended.https")}
             checked={authFields.use_https === "true"}
             onChange={(e) =>
-              setAuthFields({ ...authFields, use_https: e.currentTarget.checked ? "true" : "false" })
+              setAuthFields({
+                ...authFields,
+                use_https: e.currentTarget.checked ? "true" : "false",
+              })
             }
             mt="1.5rem"
             data-testid="neo4j-https-checkbox"
@@ -552,7 +555,10 @@ export function SourceFormFieldsExtended({
             value={spAuthType}
             onChange={(v) => setSpAuthType(v ?? "")}
             data={[
-              { value: "CLIENT_CREDENTIALS", label: t("sourceFormFieldsExtended.clientCredentials") },
+              {
+                value: "CLIENT_CREDENTIALS",
+                label: t("sourceFormFieldsExtended.clientCredentials"),
+              },
               { value: "USERNAME_PASSWORD", label: t("sourceFormFieldsExtended.usernamePassword") },
               { value: "CERTIFICATE", label: t("sourceFormFieldsExtended.certificate") },
             ]}
@@ -800,7 +806,11 @@ export function SourceFormFieldsExtended({
               onChange={(e) => setForm({ ...form, cacheEnabled: e.currentTarget.checked })}
               data-testid="cache-enabled-checkbox"
             />
-            <Tooltip label={t("sourceFormFieldsExtended.preferMaterializedTooltip")} multiline w={280}>
+            <Tooltip
+              label={t("sourceFormFieldsExtended.preferMaterializedTooltip")}
+              multiline
+              w={280}
+            >
               <Checkbox
                 label={t("sourceFormFieldsExtended.preferMaterialized")}
                 checked={form.preferMaterialized}
@@ -879,7 +889,9 @@ export function SourceFormFieldsExtended({
               data-testid="cdc-transport-accordion"
             >
               <Accordion.Item value="cdc">
-                <Accordion.Control>{t("sourceFormFieldsExtended.cdcTransportHeading")}</Accordion.Control>
+                <Accordion.Control>
+                  {t("sourceFormFieldsExtended.cdcTransportHeading")}
+                </Accordion.Control>
                 <Accordion.Panel>
                   <Stack gap="sm">
                     <Text size="sm" c="dimmed">

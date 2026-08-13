@@ -15,7 +15,12 @@ import { useSystemHealth } from "../../hooks/useAdminOpsQueries";
 
 // null = neutral/disabled (grey), true = ok (green), false = down (red)
 function StatusDot({ ok }: { ok: boolean | null }) {
-  const color = ok === null ? "var(--text-muted, #6b7280)" : ok ? "var(--success, #22c55e)" : "var(--error, #ef4444)";
+  const color =
+    ok === null
+      ? "var(--text-muted, #6b7280)"
+      : ok
+        ? "var(--success, #22c55e)"
+        : "var(--error, #ef4444)";
   return (
     <Box
       component="span"
@@ -59,7 +64,9 @@ export function SystemHealth() {
             <Table.Td>
               <Group gap={0} wrap="nowrap">
                 <StatusDot ok={health.engineConnected} />
-                {health.engineConnected ? t("systemHealth.connected") : t("systemHealth.disconnected")}
+                {health.engineConnected
+                  ? t("systemHealth.connected")
+                  : t("systemHealth.disconnected")}
               </Group>
             </Table.Td>
             <Table.Td>
@@ -138,7 +145,9 @@ export function SystemHealth() {
             <Table.Td>
               <Group gap={0} wrap="nowrap">
                 <StatusDot ok={health.mvRefreshLoopRunning} />
-                {health.mvRefreshLoopRunning ? t("systemHealth.running") : t("systemHealth.stopped")}
+                {health.mvRefreshLoopRunning
+                  ? t("systemHealth.running")
+                  : t("systemHealth.stopped")}
               </Group>
             </Table.Td>
             <Table.Td></Table.Td>

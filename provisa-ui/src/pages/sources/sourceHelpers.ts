@@ -34,7 +34,10 @@ export interface ReachInfo {
 // Classify a source type against the CURRENTLY-configured engine, so the dropdown can annotate and
 // gate it — LIVE (engine attaches it in place), REPLICA (Provisa lands a refreshed copy the engine
 // reads), or unreachable here but LIVE on another engine (REQ-947). Educates on the engine choice.
-export function reachInfoFor(uiValue: string, engineState: FederationEngineState | null): ReachInfo {
+export function reachInfoFor(
+  uiValue: string,
+  engineState: FederationEngineState | null,
+): ReachInfo {
   if (!engineState) return { tag: "live", selectable: true, liveEngines: [] };
   const t = backendType(uiValue);
   const current = engineState.engines.find((e) => e.key === engineState.current);
@@ -61,7 +64,15 @@ export function getDefaultPort(type: string) {
 }
 
 export const parseFilesPath = (fullPath: string): { transport: string; path: string } => {
-  for (const t of ["ftp://", "sftp://", "s3a://", "s3://", "http://", "https://", "sharepoint://"]) {
+  for (const t of [
+    "ftp://",
+    "sftp://",
+    "s3a://",
+    "s3://",
+    "http://",
+    "https://",
+    "sharepoint://",
+  ]) {
     if (fullPath.startsWith(t)) return { transport: t, path: fullPath.slice(t.length) };
   }
   return { transport: "file://", path: fullPath };

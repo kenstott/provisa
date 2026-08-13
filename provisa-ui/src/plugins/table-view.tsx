@@ -425,27 +425,37 @@ export function ResponseTableOverlay() {
 
   const handleDownloadCSV = useCallback(() => {
     void fetchServerCsv().then((csv) => {
-      const filename = tables.length > 1 ? `${currentTable?.key ?? "response"}.csv` : "response.csv";
+      const filename =
+        tables.length > 1 ? `${currentTable?.key ?? "response"}.csv` : "response.csv";
       downloadFile(csv, filename, "text/csv");
     });
   }, [fetchServerCsv, tables, currentTable, downloadFile]);
 
-  const fetchPage = useCallback(async (p: number) => {
-    if (p === 0) { setPagedResponseText(null); return; }
-    const query = editorContext.queryEditor?.getValue() ?? "";
-    const varsRaw = editorContext.variableEditor?.getValue() ?? "";
-    const variables = varsRaw.trim() ? JSON.parse(varsRaw) : null;
-    const res = await fetch("/data/graphql", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "X-Provisa-Role": role?.id ?? "",
-      },
-      body: JSON.stringify({ query: injectLimitOffset(query, PAGE_SIZE, p * PAGE_SIZE), variables }),
-    });
-    setPagedResponseText(await res.text());
-  }, [editorContext.queryEditor, editorContext.variableEditor, role?.id]);
+  const fetchPage = useCallback(
+    async (p: number) => {
+      if (p === 0) {
+        setPagedResponseText(null);
+        return;
+      }
+      const query = editorContext.queryEditor?.getValue() ?? "";
+      const varsRaw = editorContext.variableEditor?.getValue() ?? "";
+      const variables = varsRaw.trim() ? JSON.parse(varsRaw) : null;
+      const res = await fetch("/data/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Provisa-Role": role?.id ?? "",
+        },
+        body: JSON.stringify({
+          query: injectLimitOffset(query, PAGE_SIZE, p * PAGE_SIZE),
+          variables,
+        }),
+      });
+      setPagedResponseText(await res.text());
+    },
+    [editorContext.queryEditor, editorContext.variableEditor, role?.id],
+  );
 
   const handleNextPage = useCallback(() => {
     const next = page + 1;
@@ -713,9 +723,17 @@ export function ResponseTableOverlay() {
             )}
             {hasData && (
               <span className="response-table-pager">
-                <button onClick={handlePrevPage} disabled={page === 0} title="Previous page">‹</button>
+                <button onClick={handlePrevPage} disabled={page === 0} title="Previous page">
+                  ‹
+                </button>
                 {` p${page + 1} `}
-                <button onClick={handleNextPage} disabled={rows.length < PAGE_SIZE} title="Next page">›</button>
+                <button
+                  onClick={handleNextPage}
+                  disabled={rows.length < PAGE_SIZE}
+                  title="Next page"
+                >
+                  ›
+                </button>
               </span>
             )}
           </div>

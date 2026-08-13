@@ -39,9 +39,7 @@ export const CLAIMED_ADMIN_FLAG = "provisa_claimed_platform_admin";
 export function PlatformAdminWelcomeModal() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [opened, setOpened] = useState(
-    () => localStorage.getItem(CLAIMED_ADMIN_FLAG) === "1",
-  );
+  const [opened, setOpened] = useState(() => localStorage.getItem(CLAIMED_ADMIN_FLAG) === "1");
 
   const close = () => {
     localStorage.removeItem(CLAIMED_ADMIN_FLAG);

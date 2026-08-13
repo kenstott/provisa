@@ -76,12 +76,8 @@ export function TagsTab() {
   const q = search.toLowerCase();
   const filtered = tags
     .filter((tag) => tag.appliesTo.includes(scope))
-    .filter(
-      (tag) => tag.id.toLowerCase().includes(q) || tag.description.toLowerCase().includes(q),
-    )
-    .sort((a, b) =>
-      a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1,
-    );
+    .filter((tag) => tag.id.toLowerCase().includes(q) || tag.description.toLowerCase().includes(q))
+    .sort((a, b) => (a.isSystem === b.isSystem ? a.id.localeCompare(b.id) : a.isSystem ? -1 : 1));
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
@@ -265,7 +261,9 @@ export function TagsTab() {
                     <Group gap={4} mt={2}>
                       {tag.reasonPolicy !== "optional" && (
                         <Badge size="xs" variant="light" color="gray">
-                          {t("tagsTab.reasonPolicyBadge", { policy: policyLabel(tag.reasonPolicy) })}
+                          {t("tagsTab.reasonPolicyBadge", {
+                            policy: policyLabel(tag.reasonPolicy),
+                          })}
                         </Badge>
                       )}
                       {tag.expiresPolicy !== "optional" && (

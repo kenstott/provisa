@@ -10,32 +10,32 @@
 
 /** Capabilities matching provisa/security/rights.py */
 export type Capability =
-  | 'source_registration'
-  | 'table_registration'
-  | 'create_relationship'
-  | 'access_config'
-  | 'query_development'
-  | 'approve_view'
-  | 'full_results'
-  | 'admin'
-  | 'usage'
-  | 'read_restricted'
-  | 'approve_relationship'
-  | 'create_view'
-  | 'column_grant'
-  | 'user_management'
-  | 'masking_config'
-  | 'superadmin'
+  | "source_registration"
+  | "table_registration"
+  | "create_relationship"
+  | "access_config"
+  | "query_development"
+  | "approve_view"
+  | "full_results"
+  | "admin"
+  | "usage"
+  | "read_restricted"
+  | "approve_relationship"
+  | "create_view"
+  | "column_grant"
+  | "user_management"
+  | "masking_config"
+  | "superadmin"
   // REQ-1337: RIGHTS ONLY — no role id appears in this union. Every gate, server and UI alike,
   // names a right; the seed decides which role carries it (platform_settings and cross_org go to
   // platform_admin always, and to org_admin only where single-tenant mode grants them).
-  | 'platform_settings'
-  | 'cross_org'
+  | "platform_settings"
+  | "cross_org"
   // REQ-1349: the org-scoped pair. `org_settings` gates surfaces whose subject is the acting org
   // (its AI/NL provider, domains, scheduled tasks, approvals); `observability` gates read-only
   // performance and health. org_admin carries both in either tenancy mode.
-  | 'org_settings'
-  | 'observability';
+  | "org_settings"
+  | "observability";
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;
@@ -71,7 +71,7 @@ export interface AuthState {
   capabilities: Capability[];
   /** Unioned domain_access across all selected roles. */
   domainAccess: string[];
-  selectedRole: Role | 'all';
+  selectedRole: Role | "all";
   selectedDomain: string | null;
   /** All role:domain pairs for the authenticated user (empty in dev mode until roles load). */
   assignments: RoleAssignment[];

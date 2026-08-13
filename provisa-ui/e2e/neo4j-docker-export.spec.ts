@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { test, expect, BACKEND_URL } from "./coverage";
-import { NEO4J_BOLT_PORT, NEO4J_URL } from "./neo4j-container";
+import { NEO4J_URL } from "./neo4j-container";
 
 const EXPORT_BATCH = 200;
 
@@ -23,7 +23,13 @@ type ApiEdge = {
   endNode: ApiNode;
 };
 type ExportNode = { id: number; tableLabel: string; properties: Record<string, unknown> };
-type ExportEdge = { start: number; end: number; type: string; startNodeLabel: string; endNodeLabel: string };
+type ExportEdge = {
+  start: number;
+  end: number;
+  type: string;
+  startNodeLabel: string;
+  endNodeLabel: string;
+};
 
 async function waitForNeo4j(timeoutMs = 90_000): Promise<void> {
   // Poll the transactional endpoint (not the discovery root) because the root `/`
@@ -89,12 +95,20 @@ function extractNodesAndEdges(
         edgesMap.set(key, edge);
         for (const n of [e.startNode, e.endNode]) {
           if (!nodesById.has(n.id))
-            nodesById.set(n.id, { id: n.id, tableLabel: n.tableLabel, properties: n.properties ?? {} });
+            nodesById.set(n.id, {
+              id: n.id,
+              tableLabel: n.tableLabel,
+              properties: n.properties ?? {},
+            });
         }
       } else if ("id" in v && "tableLabel" in v && typeof (v as ApiNode).id === "number") {
         const n = v as unknown as ApiNode;
         if (!nodesById.has(n.id))
-          nodesById.set(n.id, { id: n.id, tableLabel: n.tableLabel, properties: n.properties ?? {} });
+          nodesById.set(n.id, {
+            id: n.id,
+            tableLabel: n.tableLabel,
+            properties: n.properties ?? {},
+          });
       }
     }
   }
@@ -153,8 +167,12 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   for (let i = 0; i < nodes.length; i += EXPORT_BATCH) {
     const resp = await request.post(`${BACKEND_URL}/data/neo4j-export`, {
       data: {
-        url: NEO4J_URL, username: "neo4j", password: "neo4j", database: "neo4j",
-        nodes: nodes.slice(i, i + EXPORT_BATCH), edges: [],
+        url: NEO4J_URL,
+        username: "neo4j",
+        password: "neo4j",
+        database: "neo4j",
+        nodes: nodes.slice(i, i + EXPORT_BATCH),
+        edges: [],
       },
       headers: { "Content-Type": "application/json", "X-Role": "DEV" },
     });
@@ -166,8 +184,12 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   if (edges.length > 0) {
     const resp = await request.post(`${BACKEND_URL}/data/neo4j-export`, {
       data: {
-        url: NEO4J_URL, username: "neo4j", password: "neo4j", database: "neo4j",
-        nodes: [], edges,
+        url: NEO4J_URL,
+        username: "neo4j",
+        password: "neo4j",
+        database: "neo4j",
+        nodes: [],
+        edges,
       },
       headers: { "Content-Type": "application/json", "X-Role": "DEV" },
     });
@@ -181,7 +203,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   // ── 5. Verify counts in Neo4j ─────────────────────────────────────────────
   const countResp = await fetch(`${NEO4J_URL}/db/neo4j/tx/commit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
       statements: [
         { statement: "MATCH (n) RETURN count(n) AS nodeCount" },
@@ -194,13 +216,17 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
     results: Array<{ data: Array<{ row: [number] }> }>;
     errors: Array<{ message: string }>;
   };
-  expect(countBody.errors, `neo4j count errors: ${JSON.stringify(countBody.errors)}`).toHaveLength(0);
+  expect(countBody.errors, `neo4j count errors: ${JSON.stringify(countBody.errors)}`).toHaveLength(
+    0,
+  );
 
   const nodeCount = countBody.results[0]?.data[0]?.row[0] ?? 0;
   const relCount = countBody.results[1]?.data[0]?.row[0] ?? 0;
 
   // MERGE deduplicates on _provisa_id within a label, so nodeCount <= nodes.length
   expect(nodeCount, "neo4j must contain exported nodes").toBeGreaterThan(0);
-  expect(nodeCount, "neo4j node count must not exceed exported count").toBeLessThanOrEqual(nodes.length);
+  expect(nodeCount, "neo4j node count must not exceed exported count").toBeLessThanOrEqual(
+    nodes.length,
+  );
   expect(relCount, "neo4j relationship count").toBe(edges.length);
 });

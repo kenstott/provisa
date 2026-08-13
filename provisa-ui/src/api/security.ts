@@ -32,9 +32,9 @@ export async function fetchSecurity(): Promise<SecurityState> {
   return resp.json();
 }
 
-export async function setSecurity(
-  body: { mode: string },
-): Promise<{ success: boolean; restart_required: boolean }> {
+export async function setSecurity(body: {
+  mode: string;
+}): Promise<{ success: boolean; restart_required: boolean }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/security`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

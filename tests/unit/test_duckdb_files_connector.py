@@ -9,10 +9,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 
 from provisa.federation.connector_duckdb import DuckDBFilesConnector
 from provisa.federation.connector_base import Mechanism

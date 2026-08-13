@@ -52,9 +52,7 @@ describe("traceDetailSql", () => {
 
 describe("formatTelemetryValue", () => {
   it("expands attribute maps and passes scalars through", () => {
-    expect(formatTelemetryValue({ "db.system": "trino" })).toBe(
-      '{\n  "db.system": "trino"\n}',
-    );
+    expect(formatTelemetryValue({ "db.system": "trino" })).toBe('{\n  "db.system": "trino"\n}');
     expect(formatTelemetryValue(42)).toBe("42");
     expect(formatTelemetryValue(null)).toBe("");
   });
@@ -83,7 +81,9 @@ describe("ResultsGrid telemetry drill-down", () => {
     const link = screen.getByRole("button", { name: TRACE });
     fireEvent.click(link);
 
-    await waitFor(() => expect(vi.mocked(runSql)).toHaveBeenCalledWith(traceDetailSql("trace", TRACE)));
+    await waitFor(() =>
+      expect(vi.mocked(runSql)).toHaveBeenCalledWith(traceDetailSql("trace", TRACE)),
+    );
     expect(await screen.findByText("span_attributes")).toBeTruthy();
     expect(screen.getByText(/db\.system/)).toBeTruthy();
   });

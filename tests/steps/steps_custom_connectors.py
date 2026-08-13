@@ -91,7 +91,7 @@ def _duckdb_attach(cc_ctx, tmp_path, monkeypatch):
 
     cfg = _write(
         tmp_path,
-        f"""
+        """
         connectors:
           - engine: duckdb
             source_type: ducklake
@@ -100,7 +100,7 @@ def _duckdb_attach(cc_ctx, tmp_path, monkeypatch):
             install_from_community: false
             probe_symbol: ducklake_snapshots
             mechanism: attach_rw
-            attach_template: "ATTACH 'ducklake:{{path}}' AS \\"{{alias}}\\" (DATA_PATH '{{data_path}}')"
+            attach_template: "ATTACH 'ducklake:{path}' AS \\"{alias}\\" (DATA_PATH '{data_path}')"
             remote_schema: main
         """,
     )

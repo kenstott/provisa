@@ -48,9 +48,12 @@ export function useMVList() {
 }
 
 export function useCacheStats() {
-  const { data, loading, error, refetch } = useQuery<{ cacheStats: CacheStats }>(CACHE_STATS_QUERY, {
-    fetchPolicy: "cache-and-network",
-  });
+  const { data, loading, error, refetch } = useQuery<{ cacheStats: CacheStats }>(
+    CACHE_STATS_QUERY,
+    {
+      fetchPolicy: "cache-and-network",
+    },
+  );
   return { cacheStats: data?.cacheStats ?? null, loading, error, refetch };
 }
 

@@ -15,7 +15,16 @@ import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { format as formatSql } from "sql-formatter";
 import { EditorView } from "@codemirror/view";
-import { Button, Drawer, Group, Modal, SegmentedControl, Checkbox, Text, Title } from "@mantine/core";
+import {
+  Button,
+  Drawer,
+  Group,
+  Modal,
+  SegmentedControl,
+  Checkbox,
+  Text,
+  Title,
+} from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { runSql } from "../api/admin";
@@ -114,7 +123,9 @@ export function SqlPage() {
   const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(active0.resultRows);
   const [resultError, setResultError] = useState(active0.resultError);
   const [execMs, setExecMs] = useState<number | null>(active0.execMs);
-  const [statsEnabled, setStatsEnabled] = useState(() => localStorage.getItem("sql:statsEnabled") === "true");
+  const [statsEnabled, setStatsEnabled] = useState(
+    () => localStorage.getItem("sql:statsEnabled") === "true",
+  );
   const [queryStats, setQueryStats] = useState<unknown>(null);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
@@ -171,9 +182,7 @@ export function SqlPage() {
 
   // Persist tab metadata + per-tab sql/nl whenever the active tab's text changes.
   useEffect(() => {
-    const merged = tabs.map((t) =>
-      t.id === activeTabId ? { ...t, sqlText, nlText } : t,
-    );
+    const merged = tabs.map((t) => (t.id === activeTabId ? { ...t, sqlText, nlText } : t));
     persistTabsMeta(merged, activeTabId);
   }, [tabs, activeTabId, sqlText, nlText]);
 
@@ -186,7 +195,9 @@ export function SqlPage() {
     const schema: Record<string, string[] | Record<string, string[]>> = {};
     for (const t of tables) {
       const cols = t.columns.flatMap((c) =>
-        c.nativeFilterType ? [c.computedSqlAlias, `_nf_${c.computedSqlAlias}`] : [c.computedSqlAlias],
+        c.nativeFilterType
+          ? [c.computedSqlAlias, `_nf_${c.computedSqlAlias}`]
+          : [c.computedSqlAlias],
       );
       schema[t.tableName] = cols;
       if (t.alias) schema[t.alias] = cols;
@@ -355,18 +366,21 @@ export function SqlPage() {
     [tabs, activeTabId, sqlText, nlText, resultColumns, resultRows, resultError, execMs],
   );
 
-  const loadTabIntoWorkingState = useCallback((t: SqlTab) => {
-    setSqlText(t.sqlText);
-    setNlText(t.nlText);
-    setResultColumns(t.resultColumns);
-    setResultRows(t.resultRows);
-    setResultError(t.resultError);
-    setExecMs(t.execMs);
-    setQueryStats(null);
-    setNlError("");
-    resetGrid();
-    setResultTab("results");
-  }, [resetGrid]);
+  const loadTabIntoWorkingState = useCallback(
+    (t: SqlTab) => {
+      setSqlText(t.sqlText);
+      setNlText(t.nlText);
+      setResultColumns(t.resultColumns);
+      setResultRows(t.resultRows);
+      setResultError(t.resultError);
+      setExecMs(t.execMs);
+      setQueryStats(null);
+      setNlError("");
+      resetGrid();
+      setResultTab("results");
+    },
+    [resetGrid],
+  );
 
   const switchTab = useCallback(
     (id: string) => {
@@ -456,7 +470,11 @@ export function SqlPage() {
         viewSql: asMetricView ? undefined : viewSqlNormalized,
         viewMetrics:
           asMetricView && metricViewInfo
-            ? { metrics: [metricViewInfo.metric], dimensions: metricViewInfo.dimensions, filters: [] }
+            ? {
+                metrics: [metricViewInfo.metric],
+                dimensions: metricViewInfo.dimensions,
+                filters: [],
+              }
             : undefined,
         columns,
       });
@@ -572,8 +590,7 @@ export function SqlPage() {
     for (const t of tables) {
       for (const c of t.columns) {
         if (c.description) {
-          if (!colDescMap.has(c.columnName))
-            colDescMap.set(c.columnName, c.description);
+          if (!colDescMap.has(c.columnName)) colDescMap.set(c.columnName, c.description);
           const aliased = `${t.tableName}_${c.columnName}`;
           if (!colDescMap.has(aliased)) colDescMap.set(aliased, c.description);
         }

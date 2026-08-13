@@ -74,7 +74,9 @@ export function EncryptionTab() {
         key_id: keyId || null,
         config: config[provider] ?? {},
       });
-      setMsg(res.restart_required ? t("encryptionTab.savedRestartRequired") : t("encryptionTab.saved"));
+      setMsg(
+        res.restart_required ? t("encryptionTab.savedRestartRequired") : t("encryptionTab.saved"),
+      );
       load();
     } catch (e) {
       setError(String(e));
@@ -129,7 +131,11 @@ export function EncryptionTab() {
           allowDeselect={false}
           data-testid="encryption-provider-select"
         />
-        {current && <Text c="dimmed" fz="xs">{current.description}</Text>}
+        {current && (
+          <Text c="dimmed" fz="xs">
+            {current.description}
+          </Text>
+        )}
 
         {unavailable && (
           <Alert color="yellow" variant="light" data-testid="encryption-unavailable">

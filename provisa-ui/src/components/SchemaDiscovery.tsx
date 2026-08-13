@@ -324,9 +324,7 @@ export function SchemaDiscovery({
                       <TextInput
                         aria-label={t("schemaDiscovery.colDescription")}
                         value={col.description}
-                        onChange={(e) =>
-                          updateColumn(idx, { description: e.currentTarget.value })
-                        }
+                        onChange={(e) => updateColumn(idx, { description: e.currentTarget.value })}
                         placeholder={t("schemaDiscovery.descriptionOptional")}
                         w="10rem"
                       />
@@ -375,11 +373,7 @@ export function SchemaDiscovery({
               onChange={(e) => setRegForm({ ...regForm, tableName: e.currentTarget.value })}
               placeholder={t("schemaDiscovery.tableNamePlaceholder")}
             />
-            <Button
-              onClick={handleRegister}
-              loading={registering}
-              data-testid="register-table-btn"
-            >
+            <Button onClick={handleRegister} loading={registering} data-testid="register-table-btn">
               {registering ? t("schemaDiscovery.registering") : t("schemaDiscovery.register")}
             </Button>
           </Group>

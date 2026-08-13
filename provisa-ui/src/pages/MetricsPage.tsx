@@ -50,7 +50,8 @@ const EMPTY_FORM: MetricForm = {
 // The expression-builder shape: AGG(fact.column). A hand-edited expression that
 // matches prefills the pickers on edit; anything else leaves them blank.
 const AGGREGATES = ["SUM", "AVG", "COUNT", "MIN", "MAX"] as const;
-const BUILDER_EXPR_RE = /^\s*(SUM|AVG|COUNT|MIN|MAX)\s*\(\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\)\s*$/i;
+const BUILDER_EXPR_RE =
+  /^\s*(SUM|AVG|COUNT|MIN|MAX)\s*\(\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\)\s*$/i;
 
 interface BuilderState {
   fact: string | null;
@@ -229,9 +230,7 @@ export function MetricsPage() {
   const factTables = tables.filter((tbl) => tbl.modelingRole === "fact");
 
   const dependentViews = (name: string) =>
-    tables
-      .filter((tbl) => tbl.viewMetrics?.metrics.includes(name))
-      .map((tbl) => tbl.tableName);
+    tables.filter((tbl) => tbl.viewMetrics?.metrics.includes(name)).map((tbl) => tbl.tableName);
 
   const openCreate = () => {
     setEditingName(null);
@@ -400,7 +399,11 @@ export function MetricsPage() {
                           {m.name}
                         </Text>
                         {m.fromFact && (
-                          <Badge size="xs" variant="light" data-testid={`metrics-from-fact-${m.name}`}>
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            data-testid={`metrics-from-fact-${m.name}`}
+                          >
                             {t("metricsPage.fromFact")}
                           </Badge>
                         )}

@@ -23,7 +23,12 @@ import {
 } from "@mantine/core";
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { RegisteredTable, Source, LiveDeliveryConfig, LiveOutputConfig } from "../../types/admin";
+import type {
+  RegisteredTable,
+  Source,
+  LiveDeliveryConfig,
+  LiveOutputConfig,
+} from "../../types/admin";
 import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { PlatformSettings } from "../../api/admin";
 import { isWatermarkEligible } from "./helpers";
@@ -51,18 +56,11 @@ export function LiveDeliveryFieldset({
   // (the inbound axis), never re-chosen here (REQ-932: change_signal subsumes
   // the legacy live.strategy). Live Delivery only owns the outbound choices:
   // on/off, watermark selection (append vs replace), poll interval, outputs.
-  const effectiveSignal =
-    editingTable.changeSignal || src?.changeSignal || "ttl";
-  const isPushSignal = ["native", "debezium", "kafka"].includes(
-    effectiveSignal,
-  );
+  const effectiveSignal = editingTable.changeSignal || src?.changeSignal || "ttl";
+  const isPushSignal = ["native", "debezium", "kafka"].includes(effectiveSignal);
   const live = editingTable.live;
   const setLive = (patch: Partial<LiveDeliveryConfig>) =>
-    setEditingTable(
-      live
-        ? { ...editingTable, live: { ...live, ...patch } }
-        : editingTable,
-    );
+    setEditingTable(live ? { ...editingTable, live: { ...live, ...patch } } : editingTable);
   const wmCols = editingTable.columns.filter((c) => {
     const dt = editingColumnTypes[c.columnName];
     return !dt || isWatermarkEligible(dt);
@@ -76,11 +74,8 @@ export function LiveDeliveryFieldset({
     : effWatermark
       ? "append"
       : "replace";
-  const refreshInterval = editingTable.materialize
-    ? editingTable.mvRefreshInterval
-    : null;
-  const kafkaOut =
-    live?.outputs.find((o) => o.type === "kafka") ?? null;
+  const refreshInterval = editingTable.materialize ? editingTable.mvRefreshInterval : null;
+  const kafkaOut = live?.outputs.find((o) => o.type === "kafka") ?? null;
   const setKafkaOut = (patch: Partial<LiveOutputConfig>) => {
     if (!live) return;
     const others = live.outputs.filter((o) => o.type !== "kafka");
@@ -100,19 +95,13 @@ export function LiveDeliveryFieldset({
     pollInterval: 10,
     // Derived from the effective Change Signal; kept only for the REQ-932
     // legacy read-through in reconcile (change_signal is authoritative).
-    strategy: (isPushSignal
-      ? effectiveSignal
-      : "poll") as LiveDeliveryConfig["strategy"],
+    strategy: (isPushSignal ? effectiveSignal : "poll") as LiveDeliveryConfig["strategy"],
     kafka: null,
     outputs: [],
   };
   return (
     <Fieldset
-      legend={
-        live
-          ? t("liveDeliveryFieldset.legendActive")
-          : t("liveDeliveryFieldset.legend")
-      }
+      legend={live ? t("liveDeliveryFieldset.legendActive") : t("liveDeliveryFieldset.legend")}
       style={{ gridColumn: "1 / -1" }}
     >
       {isEngineDerived && !editingTable.materialize && (
@@ -180,9 +169,7 @@ export function LiveDeliveryFieldset({
                         variant="subtle"
                         color="gray"
                         size="xs"
-                        aria-label={t(
-                          "liveDeliveryFieldset.watermarkColumnTooltip",
-                        )}
+                        aria-label={t("liveDeliveryFieldset.watermarkColumnTooltip")}
                       >
                         <Info size={12} />
                       </ActionIcon>
@@ -192,9 +179,7 @@ export function LiveDeliveryFieldset({
                     id="live-delivery-watermark-column"
                     data-testid="watermark-column-select"
                     value={live.watermarkColumn ?? ""}
-                    onChange={(value) =>
-                      setLive({ watermarkColumn: value ?? "" })
-                    }
+                    onChange={(value) => setLive({ watermarkColumn: value ?? "" })}
                     data={[
                       {
                         value: "",
@@ -225,9 +210,7 @@ export function LiveDeliveryFieldset({
                       variant="subtle"
                       color="gray"
                       size="xs"
-                      aria-label={t(
-                        "liveDeliveryFieldset.pollIntervalTooltip",
-                      )}
+                      aria-label={t("liveDeliveryFieldset.pollIntervalTooltip")}
                     >
                       <Info size={12} />
                     </ActionIcon>
@@ -244,14 +227,13 @@ export function LiveDeliveryFieldset({
                     })
                   }
                 />
-                {refreshInterval != null &&
-                  live.pollInterval < refreshInterval && (
-                    <Text size="xs" c="yellow.7" mt={4}>
-                      {t("liveDeliveryFieldset.pollFasterWarning", {
-                        seconds: refreshInterval,
-                      })}
-                    </Text>
-                  )}
+                {refreshInterval != null && live.pollInterval < refreshInterval && (
+                  <Text size="xs" c="yellow.7" mt={4}>
+                    {t("liveDeliveryFieldset.pollFasterWarning", {
+                      seconds: refreshInterval,
+                    })}
+                  </Text>
+                )}
               </div>
             </>
           )}
@@ -274,7 +256,9 @@ export function LiveDeliveryFieldset({
                 label={t("liveDeliveryFieldset.kafkaConsumeTopicLabel")}
                 value={live.kafka?.topic ?? ""}
                 onChange={(e) =>
-                  setLive({ kafka: { ...(live.kafka ?? { topic: "" }), topic: e.currentTarget.value } })
+                  setLive({
+                    kafka: { ...(live.kafka ?? { topic: "" }), topic: e.currentTarget.value },
+                  })
                 }
                 placeholder="orders.cdc"
                 data-testid="live-kafka-topic"
@@ -284,7 +268,10 @@ export function LiveDeliveryFieldset({
                 value={live.kafka?.format ?? ""}
                 onChange={(e) =>
                   setLive({
-                    kafka: { ...(live.kafka ?? { topic: "" }), format: e.currentTarget.value || undefined },
+                    kafka: {
+                      ...(live.kafka ?? { topic: "" }),
+                      format: e.currentTarget.value || undefined,
+                    },
                   })
                 }
                 placeholder="json"
@@ -310,12 +297,7 @@ export function LiveDeliveryFieldset({
             <Text size="xs" fw={600} mb={4}>
               {t("liveDeliveryFieldset.outputsHeading")}
             </Text>
-            <Checkbox
-              checked
-              readOnly
-              disabled
-              label={t("liveDeliveryFieldset.sseFanoutLabel")}
-            />
+            <Checkbox checked readOnly disabled label={t("liveDeliveryFieldset.sseFanoutLabel")} />
             <Checkbox
               data-testid="kafka-sink-checkbox"
               checked={!!kafkaOut}
@@ -324,9 +306,7 @@ export function LiveDeliveryFieldset({
                 if (e.currentTarget.checked) setKafkaOut({});
                 else
                   setLive({
-                    outputs: live.outputs.filter(
-                      (o) => o.type !== "kafka",
-                    ),
+                    outputs: live.outputs.filter((o) => o.type !== "kafka"),
                   });
               }}
             />
@@ -335,9 +315,7 @@ export function LiveDeliveryFieldset({
                 <TextInput
                   label={t("liveDeliveryFieldset.kafkaBootstrapLabel")}
                   value={kafkaOut.bootstrapServers ?? ""}
-                  placeholder={t(
-                    "liveDeliveryFieldset.kafkaBootstrapPlaceholder",
-                  )}
+                  placeholder={t("liveDeliveryFieldset.kafkaBootstrapPlaceholder")}
                   onChange={(e) =>
                     setKafkaOut({
                       bootstrapServers: e.currentTarget.value,
@@ -347,9 +325,7 @@ export function LiveDeliveryFieldset({
                 <TextInput
                   label={t("liveDeliveryFieldset.kafkaTopicLabel")}
                   value={kafkaOut.topic ?? ""}
-                  onChange={(e) =>
-                    setKafkaOut({ topic: e.currentTarget.value })
-                  }
+                  onChange={(e) => setKafkaOut({ topic: e.currentTarget.value })}
                 />
                 <TextInput
                   label={t("liveDeliveryFieldset.kafkaKeyColumnLabel")}

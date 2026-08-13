@@ -55,12 +55,14 @@ function ModelingTableRow({
       onClick={() => insertAtCursor(ref)}
       draggable={topTab === "canvas"}
       onDragStart={
-        topTab === "canvas"
-          ? (e) => e.dataTransfer.setData("tableName", tbl.tableName)
-          : undefined
+        topTab === "canvas" ? (e) => e.dataTransfer.setData("tableName", tbl.tableName) : undefined
       }
       data-testid={`schema-${group}-table-${tbl.tableName}`}
-      title={topTab === "canvas" ? t("schemaBrowser.dragToCanvas") : t("schemaBrowser.insertTableReference")}
+      title={
+        topTab === "canvas"
+          ? t("schemaBrowser.dragToCanvas")
+          : t("schemaBrowser.insertTableReference")
+      }
       style={{
         width: "100%",
         textAlign: "left",
@@ -208,9 +210,7 @@ export function SchemaBrowser({
                     metrics.map((m) => (
                       <div key={m.name} style={{ display: "flex", alignItems: "center" }}>
                         <UnstyledButton
-                          onClick={() =>
-                            insertAtCursor(`SELECT value FROM metrics.${m.name}`)
-                          }
+                          onClick={() => insertAtCursor(`SELECT value FROM metrics.${m.name}`)}
                           draggable={topTab === "canvas"}
                           onDragStart={
                             topTab === "canvas"
@@ -571,9 +571,7 @@ export function SchemaBrowser({
                               }}
                             >
                               <ActionIcon
-                                onClick={() =>
-                                  setDomainPages((p) => ({ ...p, [domain]: dp - 1 }))
-                                }
+                                onClick={() => setDomainPages((p) => ({ ...p, [domain]: dp - 1 }))}
                                 disabled={dp === 0}
                                 aria-label={t("schemaBrowser.previousPage")}
                                 title={t("schemaBrowser.previousPage")}
@@ -584,15 +582,16 @@ export function SchemaBrowser({
                               >
                                 ‹
                               </ActionIcon>
-                              <Text component="span" style={{ fontSize: "0.65rem", color: "var(--text-muted)" }}>
+                              <Text
+                                component="span"
+                                style={{ fontSize: "0.65rem", color: "var(--text-muted)" }}
+                              >
                                 {dp * DOMAIN_PAGE_SIZE + 1}–
                                 {Math.min((dp + 1) * DOMAIN_PAGE_SIZE, domainTables.length)} /{" "}
                                 {domainTables.length}
                               </Text>
                               <ActionIcon
-                                onClick={() =>
-                                  setDomainPages((p) => ({ ...p, [domain]: dp + 1 }))
-                                }
+                                onClick={() => setDomainPages((p) => ({ ...p, [domain]: dp + 1 }))}
                                 disabled={dp >= totalDomainPages - 1}
                                 aria-label={t("schemaBrowser.nextPage")}
                                 title={t("schemaBrowser.nextPage")}

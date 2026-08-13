@@ -50,11 +50,18 @@ export interface RecurrenceBuilderProps {
 // "monthly on day N" vs "monthly on the Nth weekday" — Outlook's two-mode monthly panel.
 type MonthlyMode = "day" | "weekday";
 
-export function RecurrenceBuilder({ value, onChange, placeholder, label, testId }: RecurrenceBuilderProps) {
+export function RecurrenceBuilder({
+  value,
+  onChange,
+  placeholder,
+  label,
+  testId,
+}: RecurrenceBuilderProps) {
   const { t } = useTranslation();
 
   const isPreset = value !== null && (PRESETS as readonly string[]).includes(value);
-  const mode: Preset | "custom" | "" = value === null ? "" : isPreset ? (value as Preset) : "custom";
+  const mode: Preset | "custom" | "" =
+    value === null ? "" : isPreset ? (value as Preset) : "custom";
   const rule = useMemo(() => (mode === "custom" && value ? parseRule(value) : null), [mode, value]);
   const opts = rule?.origOptions;
 
@@ -115,7 +122,15 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
                 { value: String(RRule.YEARLY), label: t("recurrence.freqYearly") },
               ]}
               value={String(freq)}
-              onChange={(v) => v && emit({ freq: Number(v), byweekday: undefined, bymonthday: undefined, bysetpos: undefined })}
+              onChange={(v) =>
+                v &&
+                emit({
+                  freq: Number(v),
+                  byweekday: undefined,
+                  bymonthday: undefined,
+                  bysetpos: undefined,
+                })
+              }
               comboboxProps={{ withinPortal: true }}
             />
             <NumberInput
@@ -157,7 +172,9 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
             <Chip.Group
               multiple
               value={byweekday.map((w) => WD_ABBR[w.weekday])}
-              onChange={(vals) => emit({ byweekday: vals.map((a) => WEEKDAYS[WD_ABBR.indexOf(a)]) })}
+              onChange={(vals) =>
+                emit({ byweekday: vals.map((a) => WEEKDAYS[WD_ABBR.indexOf(a)]) })
+              }
             >
               <Group gap={4} data-testid="recurrence-weekdays">
                 {WD_ABBR.map((a, i) => (
@@ -174,7 +191,10 @@ export function RecurrenceBuilder({ value, onChange, placeholder, label, testId 
               label={t("recurrence.month")}
               data-testid="recurrence-month"
               w={160}
-              data={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: t(`recurrence.mo${i}`) }))}
+              data={Array.from({ length: 12 }, (_, i) => ({
+                value: String(i + 1),
+                label: t(`recurrence.mo${i}`),
+              }))}
               value={String(firstNum(opts?.bymonth) ?? 1)}
               onChange={(v) => v && emit({ bymonth: Number(v) })}
               comboboxProps={{ withinPortal: true }}
@@ -213,42 +233,42 @@ function MonthlyPanel({
 
   // The day / nth-weekday inputs; the on-day vs on-the toggle lives up on the Frequency line.
   return mode === "day" ? (
-        <Select
-          label={t("recurrence.dayOfMonth")}
-          data-testid="recurrence-monthday"
-          w={140}
-          // 1..31, plus "Last day" (-1). No 0 — there is no 0th day of a month.
-          data={[
-            ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
-            { value: "-1", label: t("recurrence.lastDay") },
-          ]}
-          value={String(bymonthday ?? 1)}
-          onChange={(v) => v && onDayChange(Number(v))}
-          comboboxProps={{ withinPortal: true }}
-          allowDeselect={false}
-        />
-      ) : (
-        <Group gap="xs" align="flex-end">
-          <Select
-            label={t("recurrence.ordinal")}
-            data-testid="recurrence-ordinal"
-            w={120}
-            data={ORDINALS.map((n) => ({ value: String(n), label: t(`recurrence.ord${n}`) }))}
-            value={String(nth)}
-            onChange={(v) => v && onWeekdayChange(Number(v), new Weekday(wd.weekday))}
-            comboboxProps={{ withinPortal: true }}
-          />
-          <Select
-            label={t("recurrence.weekday")}
-            data-testid="recurrence-weekday"
-            w={140}
-            data={WD_ABBR.map((_a, i) => ({ value: String(i), label: t(`recurrence.wdFull${i}`) }))}
-            value={String(wd.weekday)}
-            onChange={(v) => v !== null && onWeekdayChange(nth, new Weekday(Number(v)))}
-            comboboxProps={{ withinPortal: true }}
-          />
-        </Group>
-      );
+    <Select
+      label={t("recurrence.dayOfMonth")}
+      data-testid="recurrence-monthday"
+      w={140}
+      // 1..31, plus "Last day" (-1). No 0 — there is no 0th day of a month.
+      data={[
+        ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) })),
+        { value: "-1", label: t("recurrence.lastDay") },
+      ]}
+      value={String(bymonthday ?? 1)}
+      onChange={(v) => v && onDayChange(Number(v))}
+      comboboxProps={{ withinPortal: true }}
+      allowDeselect={false}
+    />
+  ) : (
+    <Group gap="xs" align="flex-end">
+      <Select
+        label={t("recurrence.ordinal")}
+        data-testid="recurrence-ordinal"
+        w={120}
+        data={ORDINALS.map((n) => ({ value: String(n), label: t(`recurrence.ord${n}`) }))}
+        value={String(nth)}
+        onChange={(v) => v && onWeekdayChange(Number(v), new Weekday(wd.weekday))}
+        comboboxProps={{ withinPortal: true }}
+      />
+      <Select
+        label={t("recurrence.weekday")}
+        data-testid="recurrence-weekday"
+        w={140}
+        data={WD_ABBR.map((_a, i) => ({ value: String(i), label: t(`recurrence.wdFull${i}`) }))}
+        value={String(wd.weekday)}
+        onChange={(v) => v !== null && onWeekdayChange(nth, new Weekday(Number(v)))}
+        comboboxProps={{ withinPortal: true }}
+      />
+    </Group>
+  );
 }
 
 function toArray<T>(v: T | T[] | null | undefined): T[] {

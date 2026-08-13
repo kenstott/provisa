@@ -109,7 +109,8 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
     [userTables],
   );
 
-  const colLabel = (c: TableColumn) => (c.dataType ? `${c.columnName} (${c.dataType})` : c.columnName);
+  const colLabel = (c: TableColumn) =>
+    c.dataType ? `${c.columnName} (${c.dataType})` : c.columnName;
   const allColumnOptions = columns.map((c) => ({ value: c.columnName, label: colLabel(c) }));
   const keyColumnOptions = columns.map((c) => ({
     value: c.columnName,
@@ -242,14 +243,26 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
         </Alert>
       )}
       <TextInput
-        label={<FieldLabel text={t("modelingForm.nameLabel")} help={t("modelingForm.nameHelp")} required />}
+        label={
+          <FieldLabel
+            text={t("modelingForm.nameLabel")}
+            help={t("modelingForm.nameHelp")}
+            required
+          />
+        }
         value={name}
         onChange={(e) => setName(e.currentTarget.value)}
         placeholder={kind === "entity" ? "Customer" : "Sales"}
         data-testid="modeling-name"
       />
       <Select
-        label={<FieldLabel text={t("modelingForm.sourceLabel")} help={t("modelingForm.sourceHelp")} required />}
+        label={
+          <FieldLabel
+            text={t("modelingForm.sourceLabel")}
+            help={t("modelingForm.sourceHelp")}
+            required
+          />
+        }
         searchable
         data={sourceOptions}
         value={source}
@@ -259,7 +272,13 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
         data-testid="modeling-source"
       />
       <Select
-        label={<FieldLabel text={t("modelingForm.domainLabel")} help={t("modelingForm.domainHelp")} required />}
+        label={
+          <FieldLabel
+            text={t("modelingForm.domainLabel")}
+            help={t("modelingForm.domainHelp")}
+            required
+          />
+        }
         data={domains.map((d) => ({ value: d.id, label: d.id }))}
         value={domainId}
         onChange={(v) => setDomainId(v ?? "")}
@@ -269,7 +288,13 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
       {kind === "entity" ? (
         <>
           <MultiSelect
-            label={<FieldLabel text={t("modelingForm.keyLabel")} help={t("modelingForm.keyHelp")} required />}
+            label={
+              <FieldLabel
+                text={t("modelingForm.keyLabel")}
+                help={t("modelingForm.keyHelp")}
+                required
+              />
+            }
             description={t("modelingForm.keyHint")}
             searchable
             data={keyColumnOptions}
@@ -281,7 +306,12 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
             data-testid="modeling-key"
           />
           <MultiSelect
-            label={<FieldLabel text={t("modelingForm.attributesLabel")} help={t("modelingForm.attributesHelp")} />}
+            label={
+              <FieldLabel
+                text={t("modelingForm.attributesLabel")}
+                help={t("modelingForm.attributesHelp")}
+              />
+            }
             searchable
             data={allColumnOptions}
             value={attributes}
@@ -303,7 +333,12 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
             </Button>
           )}
           <Select
-            label={<FieldLabel text={t("modelingForm.historyLabel")} help={t("modelingForm.historyHelp")} />}
+            label={
+              <FieldLabel
+                text={t("modelingForm.historyLabel")}
+                help={t("modelingForm.historyHelp")}
+              />
+            }
             data={[
               { value: "none", label: t("modelingForm.historyNone") },
               { value: "scd2", label: t("modelingForm.historyScd2") },
@@ -319,7 +354,13 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
       ) : (
         <>
           <MultiSelect
-            label={<FieldLabel text={t("modelingForm.grainLabel")} help={t("modelingForm.grainHelp")} required />}
+            label={
+              <FieldLabel
+                text={t("modelingForm.grainLabel")}
+                help={t("modelingForm.grainHelp")}
+                required
+              />
+            }
             description={t("modelingForm.keyHint")}
             searchable
             data={keyColumnOptions}
@@ -331,7 +372,12 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
             data-testid="modeling-grain"
           />
           <MultiSelect
-            label={<FieldLabel text={t("modelingForm.measuresLabel")} help={t("modelingForm.measuresHelp")} />}
+            label={
+              <FieldLabel
+                text={t("modelingForm.measuresLabel")}
+                help={t("modelingForm.measuresHelp")}
+              />
+            }
             description={t("modelingForm.measuresHint")}
             searchable
             data={numericColumnOptions}

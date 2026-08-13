@@ -35,11 +35,7 @@ vi.mock("idb-keyval", () => ({
 // CodeMirror → plain textarea bound to value/onChange.
 vi.mock("@uiw/react-codemirror", () => ({
   default: ({ value, onChange }: { value: string; onChange?: (v: string) => void }) => (
-    <textarea
-      data-testid="sql-editor"
-      value={value}
-      onChange={(e) => onChange?.(e.target.value)}
-    />
+    <textarea data-testid="sql-editor" value={value} onChange={(e) => onChange?.(e.target.value)} />
   ),
 }));
 vi.mock("@codemirror/lang-sql", () => ({ sql: () => [], PostgreSQL: {} }));
@@ -164,12 +160,16 @@ describe("SQL explore query tabs", () => {
     await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.newTab") }));
     await waitFor(() => screen.getByText("Query 2"));
 
-    await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.closeTab", { title: "Query 2" }) }));
+    await user.click(
+      screen.getByRole("button", { name: t("sqlEditorPanel.closeTab", { title: "Query 2" }) }),
+    );
     await waitFor(() => expect(screen.queryByText("Query 2")).not.toBeInTheDocument());
     expect(screen.getByText("Query 1")).toBeInTheDocument();
 
     // closing the last tab resets it rather than removing it
-    await user.click(screen.getByRole("button", { name: t("sqlEditorPanel.closeTab", { title: "Query 1" }) }));
+    await user.click(
+      screen.getByRole("button", { name: t("sqlEditorPanel.closeTab", { title: "Query 1" }) }),
+    );
     expect(screen.getByText("Query 1")).toBeInTheDocument();
   });
 

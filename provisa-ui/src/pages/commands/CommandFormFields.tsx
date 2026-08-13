@@ -94,7 +94,10 @@ export function CommandFormFields({
     setArgColumns(idx, cols);
   };
   const removeArgColumn = (idx: number, ci: number) =>
-    setArgColumns(idx, (form.arguments[idx].columns ?? []).filter((_, i) => i !== ci));
+    setArgColumns(
+      idx,
+      (form.arguments[idx].columns ?? []).filter((_, i) => i !== ci),
+    );
 
   // REQ-1159: canonical IR-typed output dataset contract.
   const addOutputColumn = () =>
@@ -200,7 +203,9 @@ export function CommandFormFields({
               label={t("commandFormFields.bindingArgv")}
               required
               value={bindingStr("argv")}
-              onChange={(e) => setBinding("argv", e.currentTarget.value.split(/\s+/).filter(Boolean))}
+              onChange={(e) =>
+                setBinding("argv", e.currentTarget.value.split(/\s+/).filter(Boolean))
+              }
               placeholder="/usr/local/bin/transform --json"
               data-testid="command-binding-argv"
             />
@@ -449,7 +454,10 @@ export function CommandFormFields({
             {/* REQ-1159: a dataset arg (table_ref/result_set) carries an IR-typed column contract. */}
             {form.actionType === "function" &&
               DATASET_ARG_KINDS.has(arg.argKind ?? "column_value") && (
-                <div style={{ marginInlineStart: 24, marginBottom: 12 }} data-testid={`dataset-columns-${i}`}>
+                <div
+                  style={{ marginInlineStart: 24, marginBottom: 12 }}
+                  data-testid={`dataset-columns-${i}`}
+                >
                   <Title order={6} c="dimmed" mb={4}>
                     input dataset columns
                   </Title>
@@ -495,40 +503,40 @@ export function CommandFormFields({
       {form.actionType === "function" &&
         form.implKind !== "source_procedure" &&
         form.returnSchemaMode === "dataset" && (
-        <div style={{ gridColumn: "1 / -1" }} data-testid="output-columns">
-          <Title order={5} mb="xs">
-            output dataset columns
-          </Title>
-          {form.outputColumns.map((col, ci) => (
-            <Group key={ci} gap="xs" mb="xs" align="center" wrap="nowrap">
-              <TextInput
-                value={col.name}
-                onChange={(e) => changeOutputColumn(ci, "name", e.currentTarget.value)}
-                placeholder="column"
-                style={{ flex: 1, minWidth: 0 }}
-              />
-              <Select
-                value={col.type}
-                onChange={(val) => changeOutputColumn(ci, "type", val ?? "text")}
-                data={IR_TYPES}
-                allowDeselect={false}
-                w={130}
-              />
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                aria-label={`remove output column ${col.name || ci + 1}`}
-                onClick={() => removeOutputColumn(ci)}
-              >
-                <X size={14} />
-              </ActionIcon>
-            </Group>
-          ))}
-          <Button variant="subtle" size="xs" onClick={addOutputColumn}>
-            add output column
-          </Button>
-        </div>
-      )}
+          <div style={{ gridColumn: "1 / -1" }} data-testid="output-columns">
+            <Title order={5} mb="xs">
+              output dataset columns
+            </Title>
+            {form.outputColumns.map((col, ci) => (
+              <Group key={ci} gap="xs" mb="xs" align="center" wrap="nowrap">
+                <TextInput
+                  value={col.name}
+                  onChange={(e) => changeOutputColumn(ci, "name", e.currentTarget.value)}
+                  placeholder="column"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <Select
+                  value={col.type}
+                  onChange={(val) => changeOutputColumn(ci, "type", val ?? "text")}
+                  data={IR_TYPES}
+                  allowDeselect={false}
+                  w={130}
+                />
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  aria-label={`remove output column ${col.name || ci + 1}`}
+                  onClick={() => removeOutputColumn(ci)}
+                >
+                  <X size={14} />
+                </ActionIcon>
+              </Group>
+            ))}
+            <Button variant="subtle" size="xs" onClick={addOutputColumn}>
+              add output column
+            </Button>
+          </div>
+        )}
     </>
   );
 }

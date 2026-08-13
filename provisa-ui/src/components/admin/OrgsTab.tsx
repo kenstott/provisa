@@ -157,7 +157,10 @@ export function OrgsTab() {
   );
   const invTotalPages = Math.max(1, Math.ceil(filteredInvites.length / PAGE_SIZE));
   const invSafePage = Math.min(invitePage, invTotalPages);
-  const pagedInvites = filteredInvites.slice((invSafePage - 1) * PAGE_SIZE, invSafePage * PAGE_SIZE);
+  const pagedInvites = filteredInvites.slice(
+    (invSafePage - 1) * PAGE_SIZE,
+    invSafePage * PAGE_SIZE,
+  );
 
   const orgSelectData = orgs.map((o) => ({ value: o.id, label: `${o.name} (${o.id})` }));
 
@@ -167,7 +170,10 @@ export function OrgsTab() {
         <Title order={3}>{t("orgsTab.orgsHeading")}</Title>
         <FilterInput
           value={orgSearch}
-          onChange={(v) => { setOrgSearch(v); setOrgPage(1); }}
+          onChange={(v) => {
+            setOrgSearch(v);
+            setOrgPage(1);
+          }}
           placeholder={t("orgsTab.orgsFilterPlaceholder")}
         />
         <Button
@@ -232,7 +238,9 @@ export function OrgsTab() {
                     <Button
                       variant="subtle"
                       size="compact-xs"
-                      leftSection={expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      leftSection={
+                        expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
+                      }
                       aria-expanded={expanded}
                       aria-label={t("orgsTab.expandOrg", { name: org.name })}
                       onClick={() => handleExpandOrg(org.id)}
@@ -326,7 +334,10 @@ export function OrgsTab() {
         <Title order={3}>{t("orgsTab.invitesHeading")}</Title>
         <FilterInput
           value={inviteSearch}
-          onChange={(v) => { setInviteSearch(v); setInvitePage(1); }}
+          onChange={(v) => {
+            setInviteSearch(v);
+            setInvitePage(1);
+          }}
           placeholder={t("orgsTab.invitesFilterPlaceholder")}
         />
         <Button
@@ -381,7 +392,9 @@ export function OrgsTab() {
               <Table.Tr key={inv.token}>
                 <Table.Td>{inv.org_name}</Table.Td>
                 <Table.Td>
-                  <Text ff="monospace" span>{inv.token.slice(0, 8)}…</Text>
+                  <Text ff="monospace" span>
+                    {inv.token.slice(0, 8)}…
+                  </Text>
                 </Table.Td>
                 <Table.Td>{inv.created_by}</Table.Td>
                 <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
@@ -393,8 +406,14 @@ export function OrgsTab() {
                 <Table.Td>
                   <Group gap="xs">
                     {!inv.used_at && (
-                      <Button size="compact-xs" variant="default" onClick={() => handleCopyInvite(inv.token)}>
-                        {copiedToken === inv.token ? t("orgsTab.copiedButton") : t("orgsTab.copyButton")}
+                      <Button
+                        size="compact-xs"
+                        variant="default"
+                        onClick={() => handleCopyInvite(inv.token)}
+                      >
+                        {copiedToken === inv.token
+                          ? t("orgsTab.copiedButton")
+                          : t("orgsTab.copyButton")}
                       </Button>
                     )}
                     {!inv.used_at && (

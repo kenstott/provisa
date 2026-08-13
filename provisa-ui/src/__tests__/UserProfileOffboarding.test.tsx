@@ -100,8 +100,6 @@ describe("UserProfileModal offboarding", () => {
 
   it("says what deletion keeps, so nobody expects their orgs to vanish with them", async () => {
     render(<UserProfileModal onClose={() => {}} />);
-    expect(
-      await screen.findByText(t("userProfileModal.deleteAccountHelp")),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(t("userProfileModal.deleteAccountHelp"))).toBeInTheDocument();
   });
 });

@@ -89,9 +89,7 @@ describe("nativeParams", () => {
       alias: "inventory",
       columns: [],
     } as unknown as RegisteredTable;
-    expect(previewSql(aliasedTable, {})).toBe(
-      `SELECT * FROM "pet_store"."inventory" LIMIT 1000`,
-    );
+    expect(previewSql(aliasedTable, {})).toBe(`SELECT * FROM "pet_store"."inventory" LIMIT 1000`);
   });
 
   describe("pagedViewerSql — one page per query, choices pushed into SQL", () => {
@@ -107,21 +105,16 @@ describe("nativeParams", () => {
     });
 
     it("orders by group columns first, then sorts, then pk tiebreaker", () => {
-      const sql = pagedViewerSql(
-        TABLE,
-        {},
-        {},
-        [{ col: "name", dir: "desc" }],
-        ["status"],
-        0,
-        100,
-      );
+      const sql = pagedViewerSql(TABLE, {}, {}, [{ col: "name", dir: "desc" }], ["status"], 0, 100);
       expect(sql).toContain(`ORDER BY "status" ASC, "name" DESC`);
     });
 
     const pkTable = {
       ...TABLE,
-      columns: [...TABLE.columns.map((c) => ({ ...c })), { ...col("id", null, "bigint"), isPrimaryKey: true }],
+      columns: [
+        ...TABLE.columns.map((c) => ({ ...c })),
+        { ...col("id", null, "bigint"), isPrimaryKey: true },
+      ],
     } as unknown as RegisteredTable;
 
     it("appends primary-key columns as a stable-paging tiebreaker under a chosen order", () => {

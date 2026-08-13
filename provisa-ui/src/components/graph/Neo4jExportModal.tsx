@@ -43,9 +43,14 @@ export function Neo4jExportModal({ nodes, edges, onClose }: Neo4jExportModalProp
       const result = await exportToNeo4j(nodes, edges, conn);
       setStatus("done");
       const errSuffix = result.errors.length
-        ? t("neo4jExportModal.errorsSuffix", { count: result.errors.length, first: result.errors[0] })
+        ? t("neo4jExportModal.errorsSuffix", {
+            count: result.errors.length,
+            first: result.errors[0],
+          })
         : "";
-      setMessage(`${t("neo4jExportModal.statementsImported", { count: result.imported })}${errSuffix}`);
+      setMessage(
+        `${t("neo4jExportModal.statementsImported", { count: result.imported })}${errSuffix}`,
+      );
     } catch (e) {
       setStatus("error");
       setMessage(e instanceof Error ? e.message : String(e));
@@ -66,7 +71,11 @@ export function Neo4jExportModal({ nodes, edges, onClose }: Neo4jExportModalProp
           {t("neo4jExportModal.edgeCount", { count: edges.length })}
         </Text>
 
-        <Button variant="default" onClick={handleDownloadScript} data-testid="neo4j-download-script-btn">
+        <Button
+          variant="default"
+          onClick={handleDownloadScript}
+          data-testid="neo4j-download-script-btn"
+        >
           {t("neo4jExportModal.downloadScript")}
         </Button>
 
@@ -119,7 +128,9 @@ export function Neo4jExportModal({ nodes, edges, onClose }: Neo4jExportModalProp
             loading={status === "exporting"}
             data-testid="neo4j-export-btn"
           >
-            {status === "exporting" ? t("neo4jExportModal.exporting") : t("neo4jExportModal.exportToServer")}
+            {status === "exporting"
+              ? t("neo4jExportModal.exporting")
+              : t("neo4jExportModal.exportToServer")}
           </Button>
         </Group>
       </Stack>

@@ -61,10 +61,21 @@ interface SidebarProps {
   labelCounts?: Record<string, number>;
 }
 
-const NUMERIC_TYPES = new Set(["int", "integer", "bigint", "float", "double", "decimal", "numeric", "real", "number"]);
+const NUMERIC_TYPES = new Set([
+  "int",
+  "integer",
+  "bigint",
+  "float",
+  "double",
+  "decimal",
+  "numeric",
+  "real",
+  "number",
+]);
 const isNumericType = (t: string) => {
   const lower = t.toLowerCase();
-  for (const nt of NUMERIC_TYPES) if (lower === nt || lower.startsWith(nt + "(") || lower.startsWith(nt + " ")) return true;
+  for (const nt of NUMERIC_TYPES)
+    if (lower === nt || lower.startsWith(nt + "(") || lower.startsWith(nt + " ")) return true;
   return false;
 };
 
@@ -111,22 +122,51 @@ export function Sidebar({
   const [relContextMenu, setRelContextMenu] = useState<RelContextMenuState | null>(null);
 
   const readCollapsed = (key: string, def: boolean): boolean => {
-    try { const v = localStorage.getItem(key); return v === null ? def : v === "1"; } catch { return def; }
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? def : v === "1";
+    } catch {
+      return def;
+    }
   };
-  const writeCollapsed = (key: string, v: boolean) => { try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* ignore */ } };
+  const writeCollapsed = (key: string, v: boolean) => {
+    try {
+      localStorage.setItem(key, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
 
-  const [nodeLabelsCollapsed, setNodeLabelsCollapsedRaw] = useState(() => readCollapsed("graph-sidebar:nodeLabels:collapsed", false));
-  const [relTypesCollapsed, setRelTypesCollapsedRaw] = useState(() => readCollapsed("graph-sidebar:relTypes:collapsed", false));
-  const [propKeysCollapsed, setPropKeysCollapsedRaw] = useState(() => readCollapsed("graph-sidebar:propKeys:collapsed", false));
+  const [nodeLabelsCollapsed, setNodeLabelsCollapsedRaw] = useState(() =>
+    readCollapsed("graph-sidebar:nodeLabels:collapsed", false),
+  );
+  const [relTypesCollapsed, setRelTypesCollapsedRaw] = useState(() =>
+    readCollapsed("graph-sidebar:relTypes:collapsed", false),
+  );
+  const [propKeysCollapsed, setPropKeysCollapsedRaw] = useState(() =>
+    readCollapsed("graph-sidebar:propKeys:collapsed", false),
+  );
 
   const setNodeLabelsCollapsed = (updater: boolean | ((prev: boolean) => boolean)) => {
-    setNodeLabelsCollapsedRaw((prev) => { const next = typeof updater === "function" ? updater(prev) : updater; writeCollapsed("graph-sidebar:nodeLabels:collapsed", next); return next; });
+    setNodeLabelsCollapsedRaw((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      writeCollapsed("graph-sidebar:nodeLabels:collapsed", next);
+      return next;
+    });
   };
   const setRelTypesCollapsed = (updater: boolean | ((prev: boolean) => boolean)) => {
-    setRelTypesCollapsedRaw((prev) => { const next = typeof updater === "function" ? updater(prev) : updater; writeCollapsed("graph-sidebar:relTypes:collapsed", next); return next; });
+    setRelTypesCollapsedRaw((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      writeCollapsed("graph-sidebar:relTypes:collapsed", next);
+      return next;
+    });
   };
   const setPropKeysCollapsed = (updater: boolean | ((prev: boolean) => boolean)) => {
-    setPropKeysCollapsedRaw((prev) => { const next = typeof updater === "function" ? updater(prev) : updater; writeCollapsed("graph-sidebar:propKeys:collapsed", next); return next; });
+    setPropKeysCollapsedRaw((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      writeCollapsed("graph-sidebar:propKeys:collapsed", next);
+      return next;
+    });
   };
   const [nodeLabelsPage, setNodeLabelsPage] = useState(0);
   const [relTypesPage, setRelTypesPage] = useState(0);
@@ -167,28 +207,41 @@ export function Sidebar({
     [width, onWidthChange],
   );
 
-  const handleNodeRightClick = useCallback((e: React.MouseEvent, node: SchemaNodeLabel) => {
-    e.preventDefault();
-    const compoundLabel = node.domainLabel
-      ? `${node.domainLabel}:${node.tableLabel}`
-      : node.tableLabel;
-    const numericFromSchema = node.nativeFilterColumns
-      .filter(c => isNumericType(c.type))
-      .map(c => c.name);
-    const numericFromPropertyTypes = Object.entries(node.propertyTypes)
-      .filter(([, t]) => isNumericType(t))
-      .map(([k]) => k);
-    const numericFromData = numericPropsByLabel[node.tableLabel] ?? [];
-    const numericProperties = [...new Set([...numericFromSchema, ...numericFromPropertyTypes, ...numericFromData, "degIn", "degOut", "degTotal", "degreeCentrality"])];
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      compoundLabel,
-      tableLabel: node.tableLabel,
-      properties: node.properties,
-      numericProperties,
-    });
-  }, [numericPropsByLabel]);
+  const handleNodeRightClick = useCallback(
+    (e: React.MouseEvent, node: SchemaNodeLabel) => {
+      e.preventDefault();
+      const compoundLabel = node.domainLabel
+        ? `${node.domainLabel}:${node.tableLabel}`
+        : node.tableLabel;
+      const numericFromSchema = node.nativeFilterColumns
+        .filter((c) => isNumericType(c.type))
+        .map((c) => c.name);
+      const numericFromPropertyTypes = Object.entries(node.propertyTypes)
+        .filter(([, t]) => isNumericType(t))
+        .map(([k]) => k);
+      const numericFromData = numericPropsByLabel[node.tableLabel] ?? [];
+      const numericProperties = [
+        ...new Set([
+          ...numericFromSchema,
+          ...numericFromPropertyTypes,
+          ...numericFromData,
+          "degIn",
+          "degOut",
+          "degTotal",
+          "degreeCentrality",
+        ]),
+      ];
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        compoundLabel,
+        tableLabel: node.tableLabel,
+        properties: node.properties,
+        numericProperties,
+      });
+    },
+    [numericPropsByLabel],
+  );
 
   const handleRelRightClick = useCallback((e: React.MouseEvent, type: string) => {
     e.preventDefault();
@@ -198,7 +251,11 @@ export function Sidebar({
   return (
     <aside className="graph-sidebar" style={{ width }}>
       <div className="graph-sidebar-tabs" role="tablist">
-        <Tooltip label={t("graphSidebar.tabDatabase")} withinPortal transitionProps={{ duration: 0 }}>
+        <Tooltip
+          label={t("graphSidebar.tabDatabase")}
+          withinPortal
+          transitionProps={{ duration: 0 }}
+        >
           <button
             type="button"
             className={`graph-sidebar-tab ${section === "db" ? "active" : ""}`}
@@ -212,7 +269,11 @@ export function Sidebar({
             <DatabaseIcon size={15} />
           </button>
         </Tooltip>
-        <Tooltip label={t("graphSidebar.tabHistory")} withinPortal transitionProps={{ duration: 0 }}>
+        <Tooltip
+          label={t("graphSidebar.tabHistory")}
+          withinPortal
+          transitionProps={{ duration: 0 }}
+        >
           <button
             type="button"
             className={`graph-sidebar-tab ${section === "history" ? "active" : ""}`}
@@ -226,7 +287,11 @@ export function Sidebar({
             <HistoryIcon size={15} />
           </button>
         </Tooltip>
-        <Tooltip label={t("graphSidebar.tabFavorites")} withinPortal transitionProps={{ duration: 0 }}>
+        <Tooltip
+          label={t("graphSidebar.tabFavorites")}
+          withinPortal
+          transitionProps={{ duration: 0 }}
+        >
           <button
             type="button"
             className={`graph-sidebar-tab ${section === "favorites" ? "active" : ""}`}
@@ -241,7 +306,11 @@ export function Sidebar({
           </button>
         </Tooltip>
         {onNeo4jExport && (
-          <Tooltip label={t("graphSidebar.tabExport")} withinPortal transitionProps={{ duration: 0 }}>
+          <Tooltip
+            label={t("graphSidebar.tabExport")}
+            withinPortal
+            transitionProps={{ duration: 0 }}
+          >
             <button
               type="button"
               className="graph-sidebar-tab"
@@ -346,14 +415,20 @@ export function Sidebar({
                         onClick={() => onLabelClick("*")}
                         title={t("graphSidebar.matchAllNodes")}
                       >
-                        *({totalNodeCount !== null ? totalNodeCount.toLocaleString() : schemaNodeLabels.length})
+                        *(
+                        {totalNodeCount !== null
+                          ? totalNodeCount.toLocaleString()
+                          : schemaNodeLabels.length}
+                        )
                       </button>
                     </div>
                     {(() => {
                       const sorted = [...schemaNodeLabels]
                         .map((n) => ({
                           node: n,
-                          compoundLabel: n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel,
+                          compoundLabel: n.domainLabel
+                            ? `${n.domainLabel}:${n.tableLabel}`
+                            : n.tableLabel,
                         }))
                         .sort((a, b) => a.node.tableLabel.localeCompare(b.node.tableLabel));
                       const paged = sorted.slice(
@@ -378,7 +453,13 @@ export function Sidebar({
                             >
                               {node.tableLabel}
                               {labelCounts[compoundLabel] !== undefined && (
-                                <span style={{ opacity: 0.7, fontSize: "0.7em", marginInlineStart: "0.25em" }}>
+                                <span
+                                  style={{
+                                    opacity: 0.7,
+                                    fontSize: "0.7em",
+                                    marginInlineStart: "0.25em",
+                                  }}
+                                >
                                   ({labelCounts[compoundLabel].toLocaleString()})
                                 </span>
                               )}
@@ -388,8 +469,9 @@ export function Sidebar({
                       });
                     })()}
                     {(() => {
-                      const sorted = [...schemaNodeLabels]
-                        .sort((a, b) => a.tableLabel.localeCompare(b.tableLabel));
+                      const sorted = [...schemaNodeLabels].sort((a, b) =>
+                        a.tableLabel.localeCompare(b.tableLabel),
+                      );
                       const totalPages = Math.max(1, Math.ceil(sorted.length / SCHEMA_PAGE_SIZE));
                       if (totalPages === 1) return null;
                       return (
@@ -436,7 +518,10 @@ export function Sidebar({
                             ‹
                           </button>
                           <span>
-                            {t("graphSidebar.pageIndicator", { page: nodeLabelsPage + 1, total: totalPages })}
+                            {t("graphSidebar.pageIndicator", {
+                              page: nodeLabelsPage + 1,
+                              total: totalPages,
+                            })}
                           </span>
                           <button
                             type="button"
@@ -514,7 +599,11 @@ export function Sidebar({
                             onClick={() => onRelClick("*")}
                             title={t("graphSidebar.matchAllRels")}
                           >
-                            *({totalRelCount !== null ? totalRelCount.toLocaleString() : uniqueRels.length})
+                            *(
+                            {totalRelCount !== null
+                              ? totalRelCount.toLocaleString()
+                              : uniqueRels.length}
+                            )
                           </button>
                         </div>,
                         ...paged.map(({ type }) => (
@@ -583,7 +672,10 @@ export function Sidebar({
                             ‹
                           </button>
                           <span>
-                            {t("graphSidebar.pageIndicator", { page: relTypesPage + 1, total: totalPages })}
+                            {t("graphSidebar.pageIndicator", {
+                              page: relTypesPage + 1,
+                              total: totalPages,
+                            })}
                           </span>
                           <button
                             type="button"
@@ -649,7 +741,11 @@ export function Sidebar({
                         type="button"
                         className={`graph-prop-key-tag${onPropertyKeyClick ? " graph-prop-key-tag--clickable" : ""}`}
                         onClick={() => onPropertyKeyClick?.(k)}
-                        title={onPropertyKeyClick ? `MATCH (n)\nWHERE n.${k} IS NOT NULL\nRETURN DISTINCT "node" AS entity, n.${k} AS ${k}\nLIMIT 25\nUNION ALL\nMATCH ()-[r]-()\nWHERE r.${k} IS NOT NULL\nRETURN DISTINCT "relationship" AS entity, r.${k} AS ${k}\nLIMIT 25` : undefined}
+                        title={
+                          onPropertyKeyClick
+                            ? `MATCH (n)\nWHERE n.${k} IS NOT NULL\nRETURN DISTINCT "node" AS entity, n.${k} AS ${k}\nLIMIT 25\nUNION ALL\nMATCH ()-[r]-()\nWHERE r.${k} IS NOT NULL\nRETURN DISTINCT "relationship" AS entity, r.${k} AS ${k}\nLIMIT 25`
+                            : undefined
+                        }
                       >
                         {k}
                       </button>
@@ -691,62 +787,71 @@ export function Sidebar({
               <div className="graph-schema-empty">{t("graphSidebar.noFavorites")}</div>
             ) : (
               <div className="graph-history-list">
-                {[...favorites].sort((a, b) => b.ts - a.ts).map((fav) => (
-                  <div key={fav.id} className="graph-fav-item">
-                    {renamingId === fav.id ? (
-                      <TextInput
-                        ref={renameInputRef}
-                        aria-label={t("graphSidebar.renameFavoriteInput")}
-                        classNames={{ input: "graph-fav-rename-input" }}
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitRename();
-                          if (e.key === "Escape") setRenamingId(null);
-                        }}
-                        onBlur={commitRename}
-                      />
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="graph-fav-run"
-                          title={t("graphSidebar.run")}
-                          aria-label={t("graphSidebar.run")}
-                          onClick={(e) => { e.stopPropagation(); onFavoriteRun?.(fav.query); }}
-                        >
-                          ▶
-                        </button>
-                        <button
-                          type="button"
-                          className="graph-fav-label"
-                          onClick={() => onFavoriteSelect?.(fav.query)}
-                          title={fav.query}
-                        >
-                          {fav.label}
-                        </button>
-                        <button
-                          type="button"
-                          className="graph-fav-rename-btn"
-                          title={t("graphSidebar.rename")}
-                          aria-label={t("graphSidebar.rename")}
-                          onClick={(e) => { e.stopPropagation(); setRenameValue(fav.label); setRenamingId(fav.id); }}
-                        >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          className="graph-fav-del"
-                          title={t("graphSidebar.remove")}
-                          aria-label={t("graphSidebar.remove")}
-                          onClick={() => onFavoriteDelete?.(fav.id)}
-                        >
-                          ✕
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ))}
+                {[...favorites]
+                  .sort((a, b) => b.ts - a.ts)
+                  .map((fav) => (
+                    <div key={fav.id} className="graph-fav-item">
+                      {renamingId === fav.id ? (
+                        <TextInput
+                          ref={renameInputRef}
+                          aria-label={t("graphSidebar.renameFavoriteInput")}
+                          classNames={{ input: "graph-fav-rename-input" }}
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitRename();
+                            if (e.key === "Escape") setRenamingId(null);
+                          }}
+                          onBlur={commitRename}
+                        />
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="graph-fav-run"
+                            title={t("graphSidebar.run")}
+                            aria-label={t("graphSidebar.run")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFavoriteRun?.(fav.query);
+                            }}
+                          >
+                            ▶
+                          </button>
+                          <button
+                            type="button"
+                            className="graph-fav-label"
+                            onClick={() => onFavoriteSelect?.(fav.query)}
+                            title={fav.query}
+                          >
+                            {fav.label}
+                          </button>
+                          <button
+                            type="button"
+                            className="graph-fav-rename-btn"
+                            title={t("graphSidebar.rename")}
+                            aria-label={t("graphSidebar.rename")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenameValue(fav.label);
+                              setRenamingId(fav.id);
+                            }}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="graph-fav-del"
+                            title={t("graphSidebar.remove")}
+                            aria-label={t("graphSidebar.remove")}
+                            onClick={() => onFavoriteDelete?.(fav.id)}
+                          >
+                            ✕
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
               </div>
             )}
           </div>

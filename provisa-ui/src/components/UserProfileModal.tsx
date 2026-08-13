@@ -8,7 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Alert, Badge, Button, Group, Modal, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Modal,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
@@ -21,7 +32,20 @@ interface Props {
 
 export function UserProfileModal({ onClose }: Props) {
   const { t } = useTranslation();
-  const { displayName, email, userId, givenName, familyName, devMode, availableRoles, assignments, capabilities, orgMemberships, activeOrgId, refresh } = useAuth();
+  const {
+    displayName,
+    email,
+    userId,
+    givenName,
+    familyName,
+    devMode,
+    availableRoles,
+    assignments,
+    capabilities,
+    orgMemberships,
+    activeOrgId,
+    refresh,
+  } = useAuth();
   const [first, setFirst] = useState(givenName ?? "");
   const [last, setLast] = useState(familyName ?? "");
   const [saving, setSaving] = useState(false);
@@ -67,10 +91,25 @@ export function UserProfileModal({ onClose }: Props) {
   }
 
   return (
-    <Modal opened onClose={onClose} title={t("userProfileModal.title")} size={560} centered data-testid="user-profile-modal">
+    <Modal
+      opened
+      onClose={onClose}
+      title={t("userProfileModal.title")}
+      size={560}
+      centered
+      data-testid="user-profile-modal"
+    >
       <Stack gap="lg">
         <section>
-          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+          <Title
+            order={4}
+            tt="uppercase"
+            fz="0.75rem"
+            c="dimmed"
+            fw={600}
+            mb="xs"
+            style={{ letterSpacing: "0.05em" }}
+          >
             {t("userProfileModal.identity")}
           </Title>
           <Group grow gap="sm" mb="sm">
@@ -88,7 +127,11 @@ export function UserProfileModal({ onClose }: Props) {
             />
           </Group>
           <Group justify="flex-end" mb="sm">
-            {saveError && <Text fz="0.8rem" c="var(--reject)" data-testid="profile-save-error">{saveError}</Text>}
+            {saveError && (
+              <Text fz="0.8rem" c="var(--reject)" data-testid="profile-save-error">
+                {saveError}
+              </Text>
+            )}
             <Button
               size="xs"
               onClick={handleSave}
@@ -103,7 +146,9 @@ export function UserProfileModal({ onClose }: Props) {
             <Table.Tbody>
               {displayName && (
                 <Table.Tr>
-                  <Table.Td c="dimmed" style={{ width: "max-content" }}>{t("userProfileModal.name")}</Table.Td>
+                  <Table.Td c="dimmed" style={{ width: "max-content" }}>
+                    {t("userProfileModal.name")}
+                  </Table.Td>
                   <Table.Td>{displayName}</Table.Td>
                 </Table.Tr>
               )}
@@ -122,7 +167,9 @@ export function UserProfileModal({ onClose }: Props) {
               {activeOrgId && (
                 <Table.Tr>
                   <Table.Td c="dimmed">{t("userProfileModal.org")}</Table.Td>
-                  <Table.Td>{orgMemberships.find((m) => m.org_id === activeOrgId)?.org_name ?? activeOrgId}</Table.Td>
+                  <Table.Td>
+                    {orgMemberships.find((m) => m.org_id === activeOrgId)?.org_name ?? activeOrgId}
+                  </Table.Td>
                 </Table.Tr>
               )}
               {devMode && (
@@ -140,17 +187,31 @@ export function UserProfileModal({ onClose }: Props) {
         </section>
 
         <section>
-          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+          <Title
+            order={4}
+            tt="uppercase"
+            fz="0.75rem"
+            c="dimmed"
+            fw={600}
+            mb="xs"
+            style={{ letterSpacing: "0.05em" }}
+          >
             {t("userProfileModal.rolesAndDomainAccess")}
           </Title>
           {availableRoles.length === 0 ? (
-            <Text fz="0.85rem" c="dimmed">{t("userProfileModal.noRolesAssigned")}</Text>
+            <Text fz="0.85rem" c="dimmed">
+              {t("userProfileModal.noRolesAssigned")}
+            </Text>
           ) : (
             <Table fz="0.82rem" withTableBorder={false}>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th c="dimmed" fw={500}>{t("userProfileModal.role")}</Table.Th>
-                  <Table.Th c="dimmed" fw={500}>{t("userProfileModal.domains")}</Table.Th>
+                  <Table.Th c="dimmed" fw={500}>
+                    {t("userProfileModal.role")}
+                  </Table.Th>
+                  <Table.Th c="dimmed" fw={500}>
+                    {t("userProfileModal.domains")}
+                  </Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -163,9 +224,13 @@ export function UserProfileModal({ onClose }: Props) {
                       <Table.Td ff="monospace">{role.id}</Table.Td>
                       <Table.Td>
                         {domains.length === 0 ? (
-                          <Text component="span" c="dimmed">—</Text>
+                          <Text component="span" c="dimmed">
+                            —
+                          </Text>
                         ) : domains.includes("*") ? (
-                          <Text component="span" c="var(--approve)">{t("userProfileModal.allDomains")}</Text>
+                          <Text component="span" c="var(--approve)">
+                            {t("userProfileModal.allDomains")}
+                          </Text>
                         ) : (
                           domains.join(", ")
                         )}
@@ -179,15 +244,33 @@ export function UserProfileModal({ onClose }: Props) {
         </section>
 
         <section>
-          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+          <Title
+            order={4}
+            tt="uppercase"
+            fz="0.75rem"
+            c="dimmed"
+            fw={600}
+            mb="xs"
+            style={{ letterSpacing: "0.05em" }}
+          >
             {t("userProfileModal.capabilities")}
           </Title>
           {capabilities.length === 0 ? (
-            <Text fz="0.85rem" c="dimmed">{t("userProfileModal.noCapabilities")}</Text>
+            <Text fz="0.85rem" c="dimmed">
+              {t("userProfileModal.noCapabilities")}
+            </Text>
           ) : (
             <Group gap="xs">
               {capabilities.map((cap) => (
-                <Badge key={cap} size="sm" variant="outline" color="gray" ff="monospace" tt="none" fw={400}>
+                <Badge
+                  key={cap}
+                  size="sm"
+                  variant="outline"
+                  color="gray"
+                  ff="monospace"
+                  tt="none"
+                  fw={400}
+                >
                   {cap}
                 </Badge>
               ))}
@@ -196,7 +279,15 @@ export function UserProfileModal({ onClose }: Props) {
         </section>
 
         <section data-testid="profile-memberships">
-          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+          <Title
+            order={4}
+            tt="uppercase"
+            fz="0.75rem"
+            c="dimmed"
+            fw={600}
+            mb="xs"
+            style={{ letterSpacing: "0.05em" }}
+          >
             {t("userProfileModal.membershipsHeading")}
           </Title>
           {membershipError && (
@@ -205,7 +296,9 @@ export function UserProfileModal({ onClose }: Props) {
             </Alert>
           )}
           {orgMemberships.length === 0 ? (
-            <Text fz="0.85rem" c="dimmed">{t("userProfileModal.noMemberships")}</Text>
+            <Text fz="0.85rem" c="dimmed">
+              {t("userProfileModal.noMemberships")}
+            </Text>
           ) : (
             <Table fz="0.82rem" withTableBorder={false}>
               <Table.Tbody>
@@ -233,14 +326,30 @@ export function UserProfileModal({ onClose }: Props) {
         </section>
 
         <section data-testid="profile-tokens">
-          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+          <Title
+            order={4}
+            tt="uppercase"
+            fz="0.75rem"
+            c="dimmed"
+            fw={600}
+            mb="xs"
+            style={{ letterSpacing: "0.05em" }}
+          >
             {t("userProfileModal.patHeading")}
           </Title>
           <PersonalAccessTokens />
         </section>
 
         <section data-testid="profile-delete-account">
-          <Title order={4} tt="uppercase" fz="0.75rem" c="dimmed" fw={600} mb="xs" style={{ letterSpacing: "0.05em" }}>
+          <Title
+            order={4}
+            tt="uppercase"
+            fz="0.75rem"
+            c="dimmed"
+            fw={600}
+            mb="xs"
+            style={{ letterSpacing: "0.05em" }}
+          >
             {t("userProfileModal.deleteAccountHeading")}
           </Title>
           <Text fz="0.85rem" c="dimmed" mb="xs">

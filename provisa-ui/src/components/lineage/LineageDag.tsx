@@ -37,7 +37,11 @@ const ROLE_COLOR: Record<string, string> = {
   command: "#9c36b5", // purple — an opaque command boundary
 };
 
-export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps): React.ReactElement {
+export function LineageDag({
+  graph,
+  height = 520,
+  onNodeClick,
+}: LineageDagProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<CyCore | null>(null);
   const [hovered, setHovered] = useState(false);
@@ -127,7 +131,8 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
         {
           selector: "node",
           style: {
-            "background-color": (el: NodeSingular) => ROLE_COLOR[el.data("role") as string] ?? "#868e96",
+            "background-color": (el: NodeSingular) =>
+              ROLE_COLOR[el.data("role") as string] ?? "#868e96",
             label: "data(label)",
             "text-wrap": "wrap",
             "text-valign": "center",
@@ -175,7 +180,12 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
         },
         {
           selector: 'edge[command = "yes"]',
-          style: { "line-color": "#9c36b5", "target-arrow-color": "#9c36b5", width: 2, "line-style": "dashed" },
+          style: {
+            "line-color": "#9c36b5",
+            "target-arrow-color": "#9c36b5",
+            width: 2,
+            "line-style": "dashed",
+          },
         },
         {
           // The dataset container: a labelled box wrapping its columns.
@@ -232,12 +242,22 @@ export function LineageDag({ graph, height = 520, onNodeClick }: LineageDagProps
         }}
       >
         <Tooltip label="Fit to screen">
-          <ActionIcon variant="default" onClick={fitToScreen} aria-label="Fit to screen" data-testid="lineage-fit">
+          <ActionIcon
+            variant="default"
+            onClick={fitToScreen}
+            aria-label="Fit to screen"
+            data-testid="lineage-fit"
+          >
             <Maximize2 size={16} />
           </ActionIcon>
         </Tooltip>
         <Tooltip label="Download PNG">
-          <ActionIcon variant="default" onClick={downloadPng} aria-label="Download PNG" data-testid="lineage-download">
+          <ActionIcon
+            variant="default"
+            onClick={downloadPng}
+            aria-label="Download PNG"
+            data-testid="lineage-download"
+          >
             <Download size={16} />
           </ActionIcon>
         </Tooltip>

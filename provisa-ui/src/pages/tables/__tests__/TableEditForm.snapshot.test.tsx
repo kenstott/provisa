@@ -140,9 +140,7 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
       makeTable({ mvCalendar: "fiscal-us", mvGrain: "monthly", mvExpectedEvents: null }),
     );
     fireEvent.click(screen.getByTestId("mv-expected-all"));
-    expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({ mvExpectedEvents: [] }),
-    );
+    expect(setEditingTable).toHaveBeenCalledWith(expect.objectContaining({ mvExpectedEvents: [] }));
   });
 
   it("shows the tags input when a custom required-inputs list is set", () => {

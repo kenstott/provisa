@@ -313,7 +313,9 @@ export function SchemaSidebar({
                             );
                             const columnTooltip =
                               col.description ??
-                              (topTab === "sql" ? t("schemaSidebar.clickToInsertColumn") : undefined);
+                              (topTab === "sql"
+                                ? t("schemaSidebar.clickToInsertColumn")
+                                : undefined);
                             return (
                               <div
                                 key={col.columnName}

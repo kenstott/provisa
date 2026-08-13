@@ -23,7 +23,9 @@ export function prefetchPageChunksOnIdle(): () => void {
       ? window.requestIdleCallback
       : (cb: () => void) => window.setTimeout(cb, 200);
   const cancel =
-    typeof window.cancelIdleCallback === "function" ? window.cancelIdleCallback : window.clearTimeout;
+    typeof window.cancelIdleCallback === "function"
+      ? window.cancelIdleCallback
+      : window.clearTimeout;
   const handle = schedule(() => {
     for (const load of Object.values(PAGE_CHUNK_LOADERS)) void load();
   });
@@ -42,7 +44,7 @@ export function prefetchPageChunksOnIdle(): () => void {
  * still applies if a chunk genuinely fails to load later.
  */
 export function prefetchAllPageChunks(): Promise<void> {
-  return Promise.all(Object.values(PAGE_CHUNK_LOADERS).map((load) => load().catch(() => undefined))).then(
-    () => undefined,
-  );
+  return Promise.all(
+    Object.values(PAGE_CHUNK_LOADERS).map((load) => load().catch(() => undefined)),
+  ).then(() => undefined);
 }

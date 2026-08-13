@@ -16,21 +16,30 @@
 // logout/sign-in cycle, which looks like an auth bug and is really an error-classification bug.
 // These tests fix the classification: transient → keep, terminal → clear.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Captured `onIdTokenChanged` listener, so a test can drive token states directly.
 let listener: ((user: unknown) => void) | null = null;
 
-vi.mock('firebase/app', () => ({
+vi.mock("firebase/app", () => ({
   initializeApp: vi.fn(() => ({})),
   getApps: vi.fn(() => []),
 }));
 
-vi.mock('firebase/auth', () => ({
+vi.mock("firebase/auth", () => ({
   getAuth: vi.fn(() => ({})),
-  GoogleAuthProvider: class { addScope() {} setCustomParameters() {} },
-  GithubAuthProvider: class { addScope() {} setCustomParameters() {} },
-  OAuthProvider: class { addScope() {} setCustomParameters() {} },
+  GoogleAuthProvider: class {
+    addScope() {}
+    setCustomParameters() {}
+  },
+  GithubAuthProvider: class {
+    addScope() {}
+    setCustomParameters() {}
+  },
+  OAuthProvider: class {
+    addScope() {}
+    setCustomParameters() {}
+  },
   onIdTokenChanged: vi.fn((_auth: unknown, cb: (u: unknown) => void) => {
     listener = cb;
     return () => {};
@@ -41,9 +50,9 @@ vi.mock('firebase/auth', () => ({
   signOut: vi.fn(),
 }));
 
-import { installFirebaseTokenSync } from '../lib/firebase';
+import { installFirebaseTokenSync } from "../lib/firebase";
 
-const LIVE_TOKEN = 'still-valid-bearer';
+const LIVE_TOKEN = "still-valid-bearer";
 
 function userWhoseRefresh(outcome: Promise<string>) {
   return { getIdToken: () => outcome };
@@ -54,11 +63,11 @@ beforeEach(() => {
   localStorage.clear();
   // hasFirebaseConfig(): runtime-injected config is the cloud path.
   (window as unknown as { __PROVISA_FIREBASE__?: unknown }).__PROVISA_FIREBASE__ = {
-    apiKey: 'k',
-    authDomain: 'd',
-    projectId: 'p',
+    apiKey: "k",
+    authDomain: "d",
+    projectId: "p",
   };
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -72,43 +81,43 @@ async function drive(user: unknown): Promise<void> {
   await settled;
 }
 
-describe('installFirebaseTokenSync token lifetime', () => {
-  it('writes the refreshed token for a live user', async () => {
-    await drive(userWhoseRefresh(Promise.resolve('fresh')));
-    expect(localStorage.getItem('provisa_token')).toBe('fresh');
+describe("installFirebaseTokenSync token lifetime", () => {
+  it("writes the refreshed token for a live user", async () => {
+    await drive(userWhoseRefresh(Promise.resolve("fresh")));
+    expect(localStorage.getItem("provisa_token")).toBe("fresh");
   });
 
   // Each code names a condition where the credential is fine and the NETWORK is not. Deleting the
   // bearer on any of these strands a signed-in user until they sign in again.
   it.each([
-    'auth/network-request-failed',
-    'auth/timeout',
-    'auth/too-many-requests',
-    'auth/internal-error',
-  ])('keeps the stored token when the refresh fails with %s', async (code) => {
-    localStorage.setItem('provisa_token', LIVE_TOKEN);
+    "auth/network-request-failed",
+    "auth/timeout",
+    "auth/too-many-requests",
+    "auth/internal-error",
+  ])("keeps the stored token when the refresh fails with %s", async (code) => {
+    localStorage.setItem("provisa_token", LIVE_TOKEN);
     await drive(userWhoseRefresh(Promise.reject(Object.assign(new Error(code), { code }))));
-    expect(localStorage.getItem('provisa_token')).toBe(LIVE_TOKEN);
+    expect(localStorage.getItem("provisa_token")).toBe(LIVE_TOKEN);
   });
 
-  it.each(['auth/user-token-expired', 'auth/user-disabled', 'auth/invalid-user-token'])(
-    'clears the stored token when the credential itself is dead (%s)',
+  it.each(["auth/user-token-expired", "auth/user-disabled", "auth/invalid-user-token"])(
+    "clears the stored token when the credential itself is dead (%s)",
     async (code) => {
-      localStorage.setItem('provisa_token', LIVE_TOKEN);
+      localStorage.setItem("provisa_token", LIVE_TOKEN);
       await drive(userWhoseRefresh(Promise.reject(Object.assign(new Error(code), { code }))));
-      expect(localStorage.getItem('provisa_token')).toBeNull();
+      expect(localStorage.getItem("provisa_token")).toBeNull();
     },
   );
 
-  it('clears the stored token on an explicit sign-out', async () => {
-    localStorage.setItem('provisa_token', LIVE_TOKEN);
+  it("clears the stored token on an explicit sign-out", async () => {
+    localStorage.setItem("provisa_token", LIVE_TOKEN);
     await drive(null);
-    expect(localStorage.getItem('provisa_token')).toBeNull();
+    expect(localStorage.getItem("provisa_token")).toBeNull();
   });
 
-  it('settles even when the refresh rejects, so boot never hangs', async () => {
+  it("settles even when the refresh rejects, so boot never hangs", async () => {
     const settled = installFirebaseTokenSync();
-    listener!(userWhoseRefresh(Promise.reject(Object.assign(new Error('x'), { code: 'auth/x' }))));
+    listener!(userWhoseRefresh(Promise.reject(Object.assign(new Error("x"), { code: "auth/x" }))));
     await expect(settled).resolves.toBeUndefined();
   });
 });

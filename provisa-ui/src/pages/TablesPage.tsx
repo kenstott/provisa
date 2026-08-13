@@ -404,16 +404,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // (refetchQueries after mutations, reload()) serve stale-then-fresh from Apollo's cache —
   // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
   // under concurrent load where backend schema rebuilds extend refetch latency to >10s.
-  if (loading || (tablesLoading && tables.length === 0)) return <div className="page">{translate("tablesPage.loading")}</div>;
+  if (loading || (tablesLoading && tables.length === 0))
+    return <div className="page">{translate("tablesPage.loading")}</div>;
 
   return (
     <div className="page">
       <div className="page-header">
-        <Title order={2}>{viewsOnly ? translate("tablesPage.titleViews") : translate("tablesPage.titleTables")}</Title>
+        <Title order={2}>
+          {viewsOnly ? translate("tablesPage.titleViews") : translate("tablesPage.titleTables")}
+        </Title>
         <FilterInput
           value={tableSearch}
           onChange={setTableSearch}
-          placeholder={viewsOnly ? translate("tablesPage.filterPlaceholderViews") : translate("tablesPage.filterPlaceholderTables")}
+          placeholder={
+            viewsOnly
+              ? translate("tablesPage.filterPlaceholderViews")
+              : translate("tablesPage.filterPlaceholderTables")
+          }
         />
         <div className="page-actions">
           {!viewsOnly && (
@@ -694,8 +701,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             const getGroupKey = (t: RegisteredTable, col: "source" | "domain") =>
               col === "source" ? t.sourceId : t.domainId ? normalizeDomain(t.domainId) : "(none)";
 
-            const colLabel = (col: "source" | "domain") =>
-              col === "source" ? "Source" : "Domain";
+            const colLabel = (col: "source" | "domain") => (col === "source" ? "Source" : "Domain");
 
             type GroupItem =
               | { type: "header"; level: 1 | 2; key: string; label: string; count: number }
@@ -814,7 +820,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       {t.sourceId === DERIVED_SOURCE_ID ? (
                         // A derived relation has no external source — its provenance is the
                         // lineage of its definition, so never print the storage sentinel.
-                        <Badge size="xs" variant="light" color="gray" data-testid={`tables-derived-${t.tableName}`}>
+                        <Badge
+                          size="xs"
+                          variant="light"
+                          color="gray"
+                          data-testid={`tables-derived-${t.tableName}`}
+                        >
                           {translate("tablesPage.derived")}
                         </Badge>
                       ) : (

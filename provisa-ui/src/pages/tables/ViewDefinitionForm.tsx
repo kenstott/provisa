@@ -162,9 +162,7 @@ export function ViewDefinitionForm({
       {mode === "sql" ? (
         <Stack gap="sm" data-testid="view-definition-sql-panel">
           <Text size="sm" c="dimmed">
-            {editing
-              ? t("viewDefinitionForm.sqlEditHint")
-              : t("viewDefinitionForm.sqlCreateHint")}
+            {editing ? t("viewDefinitionForm.sqlEditHint") : t("viewDefinitionForm.sqlCreateHint")}
           </Text>
           <Group gap="sm">
             <Button

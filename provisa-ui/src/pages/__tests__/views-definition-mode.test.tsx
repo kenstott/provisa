@@ -216,56 +216,60 @@ describe("Views definition-mode toggle (REQ-1318)", () => {
   });
 
   // 15s: long userEvent sequence; under full-suite load the 5s default trips.
-  it("Metrics mode submits registerTable with viewMetrics and no viewSql", { timeout: 15000 }, async () => {
-    const user = userEvent.setup();
-    const { onSuccess } = renderForm(null);
-    await user.click(screen.getByRole("radio", { name: "Metrics" }));
+  it(
+    "Metrics mode submits registerTable with viewMetrics and no viewSql",
+    { timeout: 15000 },
+    async () => {
+      const user = userEvent.setup();
+      const { onSuccess } = renderForm(null);
+      await user.click(screen.getByRole("radio", { name: "Metrics" }));
 
-    await user.type(screen.getByTestId("view-definition-name"), "rev_by_region");
-    await selectOption(screen.getByTestId("view-definition-domain"), "sales");
+      await user.type(screen.getByTestId("view-definition-name"), "rev_by_region");
+      await selectOption(screen.getByTestId("view-definition-domain"), "sales");
 
-    // Pick the metric.
-    await selectOption(
-      screen.getByPlaceholderText("Pick one or more registered metrics"),
-      "revenue",
-    );
+      // Pick the metric.
+      await selectOption(
+        screen.getByPlaceholderText("Pick one or more registered metrics"),
+        "revenue",
+      );
 
-    // Dimensions: columns of the metric's expression tables plus one relationship
-    // hop (orders.amount, customers.region) — pick region.
-    await selectOption(
-      screen.getByPlaceholderText(
-        "Columns of the metrics' tables (one relationship hop away included)",
-      ),
-      "customers.region",
-    );
+      // Dimensions: columns of the metric's expression tables plus one relationship
+      // hop (orders.amount, customers.region) — pick region.
+      await selectOption(
+        screen.getByPlaceholderText(
+          "Columns of the metrics' tables (one relationship hop away included)",
+        ),
+        "customers.region",
+      );
 
-    await user.type(screen.getByTestId("view-definition-filters"), "status = 'complete'");
-    await user.click(screen.getByTestId("view-definition-save"));
+      await user.type(screen.getByTestId("view-definition-filters"), "status = 'complete'");
+      await user.click(screen.getByTestId("view-definition-save"));
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-    expect(registerTable).toHaveBeenCalledTimes(1);
-    const input = registerTable.mock.calls[0][0] as Record<string, unknown>;
-    expect(input).toMatchObject({
-      sourceId: "__derived__",
-      domainId: "sales",
-      schemaName: "views",
-      tableName: "rev_by_region",
-      alias: "rev_by_region",
-      viewMetrics: {
-        metrics: ["revenue"],
-        dimensions: ["region"],
-        filters: ["status = 'complete'"],
-      },
-    });
-    // Declarative definition only — the UI never sends free-hand SQL here.
-    expect(input.viewSql).toBeUndefined();
-    // View output columns = dimensions + one column per metric.
-    expect(input.columns).toEqual([
-      { name: "region", visibleTo: ["*"] },
-      { name: "revenue", visibleTo: ["*"] },
-    ]);
-    expect(updateTable).not.toHaveBeenCalled();
-  });
+      await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+      expect(registerTable).toHaveBeenCalledTimes(1);
+      const input = registerTable.mock.calls[0][0] as Record<string, unknown>;
+      expect(input).toMatchObject({
+        sourceId: "__derived__",
+        domainId: "sales",
+        schemaName: "views",
+        tableName: "rev_by_region",
+        alias: "rev_by_region",
+        viewMetrics: {
+          metrics: ["revenue"],
+          dimensions: ["region"],
+          filters: ["status = 'complete'"],
+        },
+      });
+      // Declarative definition only — the UI never sends free-hand SQL here.
+      expect(input.viewSql).toBeUndefined();
+      // View output columns = dimensions + one column per metric.
+      expect(input.columns).toEqual([
+        { name: "region", visibleTo: ["*"] },
+        { name: "revenue", visibleTo: ["*"] },
+      ]);
+      expect(updateTable).not.toHaveBeenCalled();
+    },
+  );
 
   it("editing a metric view opens in Metrics mode prefilled", () => {
     renderForm(

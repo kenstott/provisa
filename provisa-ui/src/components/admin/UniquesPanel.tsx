@@ -71,7 +71,13 @@ export function UniquesPanel({ uniques, columns, onChange }: Props) {
         <Accordion.Panel>
           <Stack gap="sm">
             {uniques.map((u, i) => (
-              <Group key={i} gap="sm" align="flex-end" wrap="nowrap" data-testid={`unique-row-${i}`}>
+              <Group
+                key={i}
+                gap="sm"
+                align="flex-end"
+                wrap="nowrap"
+                data-testid={`unique-row-${i}`}
+              >
                 <TextInput
                   label={t("uniquesPanel.nameLabel")}
                   placeholder={t("uniquesPanel.namePlaceholder")}

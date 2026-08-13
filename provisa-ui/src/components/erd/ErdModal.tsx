@@ -15,7 +15,13 @@ import type { ErdModalProps } from "./sections/erd-types";
 
 // Modal chrome around ErdPanel — used by the Relationships page. The Schema
 // page embeds ErdPanel directly (no overlay) as its "ERD" sub-tab.
-export function ErdModal({ tables, relationships, domains, checkedDomains, onClose }: ErdModalProps) {
+export function ErdModal({
+  tables,
+  relationships,
+  domains,
+  checkedDomains,
+  onClose,
+}: ErdModalProps) {
   const colorScheme = useComputedColorScheme("dark");
   const palette = getErdPalette(colorScheme === "dark");
   return (

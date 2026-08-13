@@ -129,7 +129,13 @@ export function CanvasControls({
         </ActionIcon>
       </Tooltip>
       <Divider orientation="horizontal" className="gf-ctrl-divider" />
-      <Text component="label" htmlFor="canvas-edge-distance" size="sm" c="dimmed" title={t("canvasControls.edgeLength")}>
+      <Text
+        component="label"
+        htmlFor="canvas-edge-distance"
+        size="sm"
+        c="dimmed"
+        title={t("canvasControls.edgeLength")}
+      >
         ↔
       </Text>
       {/* Native vertical range — Mantine Slider has no vertical orientation, and

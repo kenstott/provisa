@@ -27,7 +27,7 @@ export function TablePreviewModal({ table, onClose }: TablePreviewModalProps) {
         <Modal.Header>
           <Modal.Title>
             <Text fw={600} ff="monospace">
-              {table ? (table.alias || table.tableName) : ""}
+              {table ? table.alias || table.tableName : ""}
             </Text>
           </Modal.Title>
           <Modal.CloseButton />

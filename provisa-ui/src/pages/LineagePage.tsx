@@ -201,7 +201,11 @@ export function LineagePage(): React.ReactElement {
           </div>
         </Input.Wrapper>
         <Stack gap="xs">
-          <Button onClick={() => run(() => fetchLineageGraph(sql))} loading={loading} data-testid="lineage-build">
+          <Button
+            onClick={() => run(() => fetchLineageGraph(sql))}
+            loading={loading}
+            data-testid="lineage-build"
+          >
             Statement Lineage
           </Button>
           <Button
@@ -222,7 +226,10 @@ export function LineagePage(): React.ReactElement {
       )}
 
       {cycles.length > 0 && (
-        <Alert color={cycles.some((c) => c.classification === "error") ? "red" : "yellow"} title="Cycles detected">
+        <Alert
+          color={cycles.some((c) => c.classification === "error") ? "red" : "yellow"}
+          title="Cycles detected"
+        >
           <Stack gap={4}>
             {cycles.map((c, i) => (
               <Text key={i} size="sm">

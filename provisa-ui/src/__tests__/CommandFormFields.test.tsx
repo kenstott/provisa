@@ -123,9 +123,7 @@ describe("CommandFormFields — REQ-885 implementation kinds", () => {
 
   it("hides the output-columns editor when the output is a registered table", () => {
     render(
-      <Harness
-        initial={{ actionType: "function", implKind: "grpc", returnSchemaMode: "table" }}
-      />,
+      <Harness initial={{ actionType: "function", implKind: "grpc", returnSchemaMode: "table" }} />,
     );
     expect(screen.queryByTestId("output-columns")).not.toBeInTheDocument();
   });

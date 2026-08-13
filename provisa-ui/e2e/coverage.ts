@@ -63,9 +63,7 @@ export async function expectNoA11yViolations(page: Page, context?: string) {
   const summary = results.violations
     .map(
       (v) =>
-        `${v.id} (${v.impact}): ${v.help} [${v.nodes
-          .map((n) => n.target.join(" "))
-          .join(", ")}]`,
+        `${v.id} (${v.impact}): ${v.help} [${v.nodes.map((n) => n.target.join(" ")).join(", ")}]`,
     )
     .join("\n");
   expect(
@@ -112,6 +110,9 @@ export const test = base.extend<{
   },
   // Exposed as a fixture so specs can call `await expectNoA11yViolations(page)`
   // without importing it separately; the standalone export remains available.
+  // Playwright parses the first parameter to resolve fixture dependencies and rejects anything
+  // that is not an object destructuring pattern, so a fixture with no dependencies spells it `{}`.
+  // eslint-disable-next-line no-empty-pattern -- required by Playwright's fixture signature parser
   expectNoA11yViolations: async ({}, use) => {
     // eslint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture callback, not a React hook
     await use(expectNoA11yViolations);

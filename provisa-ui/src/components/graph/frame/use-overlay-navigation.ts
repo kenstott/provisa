@@ -77,7 +77,9 @@ export function useOverlayNavigation({
       const gNode = _resolveNodeForKey(nodeKey);
       if (!gNode || gNode.id == null) return null;
       const tableLabel = gNode.tableLabel;
-      const rels = (relationships ?? []).filter((r) => dbTableLabel(r.sourceTableName) === tableLabel);
+      const rels = (relationships ?? []).filter(
+        (r) => dbTableLabel(r.sourceTableName) === tableLabel,
+      );
       if (rels.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
@@ -101,7 +103,9 @@ export function useOverlayNavigation({
       const gNode = _resolveNodeForKey(nodeKey);
       if (!gNode || gNode.id == null) return null;
       const tableLabel = gNode.tableLabel;
-      const rels = (relationships ?? []).filter((r) => dbTableLabel(r.targetTableName) === tableLabel);
+      const rels = (relationships ?? []).filter(
+        (r) => dbTableLabel(r.targetTableName) === tableLabel,
+      );
       if (rels.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(

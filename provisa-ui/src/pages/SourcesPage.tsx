@@ -284,17 +284,26 @@ export function SourcesPage() {
     if (s.type === "graphql_remote") {
       fetch("/admin/sources/graphql-remote")
         .then((r) => (r.ok ? r.json() : []))
-        .then((regs: { source_id: string; namespace: string; cache_ttl: number; auth: Record<string, string> | null }[]) => {
-          const reg = regs.find((r) => r.source_id === s.id);
-          setGqlNamespace(reg?.namespace ?? "");
-          setGqlCacheTtl(reg?.cache_ttl != null ? String(reg.cache_ttl) : "300");
-          if (reg?.auth?.type) {
-            setAuthType(reg.auth.type);
-            const { type: _t, ...rest } = reg.auth;
-            void _t;
-            setAuthFields(rest);
-          }
-        })
+        .then(
+          (
+            regs: {
+              source_id: string;
+              namespace: string;
+              cache_ttl: number;
+              auth: Record<string, string> | null;
+            }[],
+          ) => {
+            const reg = regs.find((r) => r.source_id === s.id);
+            setGqlNamespace(reg?.namespace ?? "");
+            setGqlCacheTtl(reg?.cache_ttl != null ? String(reg.cache_ttl) : "300");
+            if (reg?.auth?.type) {
+              setAuthType(reg.auth.type);
+              const { type: _t, ...rest } = reg.auth;
+              void _t;
+              setAuthFields(rest);
+            }
+          },
+        )
         .catch(() => {
           setGqlNamespace("");
           setGqlCacheTtl("300");
@@ -412,7 +421,13 @@ export function SourcesPage() {
       try {
         const { storage, ...creds } = JSON.parse(s.mappingJson) as Record<string, string>;
         setAuthType(
-          storage === "s3" ? "aws" : storage === "adls" ? "azure" : storage === "gcs" ? "gcs" : "none",
+          storage === "s3"
+            ? "aws"
+            : storage === "adls"
+              ? "azure"
+              : storage === "gcs"
+                ? "gcs"
+                : "none",
         );
         setAuthFields(creds);
       } catch {
@@ -548,11 +563,14 @@ export function SourcesPage() {
         ...coreForm,
         type: backendType(form.type),
         offPeakWindow: coreForm.offPeakWindow?.trim() || null,
-        path: FILE_SOURCES.has(form.type) || form.type === "files"
-          ? form.type === "files" && form.path
-            ? filesTransport === "file://" ? form.path : filesTransport + form.path
-            : form.path || null
-          : null,
+        path:
+          FILE_SOURCES.has(form.type) || form.type === "files"
+            ? form.type === "files" && form.path
+              ? filesTransport === "file://"
+                ? form.path
+                : filesTransport + form.path
+              : form.path || null
+            : null,
         database:
           form.type === "govdata"
             ? Array.from(
@@ -858,40 +876,70 @@ export function SourcesPage() {
 
   // Shared props object passed to SourceFormFields at both call sites.
   const sourceFormFieldsProps: SourceFormFieldsProps = {
-    form, setForm,
-    authType, setAuthType,
-    authFields, setAuthFields,
+    form,
+    setForm,
+    authType,
+    setAuthType,
+    authFields,
+    setAuthFields,
     editingSourceId,
-    cdc, setCdc,
+    cdc,
+    setCdc,
     domainsEnabled,
     domains,
-    spAuthType, setSpAuthType,
-    spCertPath, setSpCertPath,
-    spCertPassword, setSpCertPassword,
-    spUsername, setSpUsername,
-    spPassword, setSpPassword,
-    splunkDisableSsl, setSplunkDisableSsl,
-    filesTransport, setFilesTransport,
-    filesAuthMode, setFilesAuthMode,
-    filesCertPath, setFilesCertPath,
-    filesCertPassword, setFilesCertPassword,
-    govdataSubjects, setGovdataSubjects,
+    spAuthType,
+    setSpAuthType,
+    spCertPath,
+    setSpCertPath,
+    spCertPassword,
+    setSpCertPassword,
+    spUsername,
+    setSpUsername,
+    spPassword,
+    setSpPassword,
+    splunkDisableSsl,
+    setSplunkDisableSsl,
+    filesTransport,
+    setFilesTransport,
+    filesAuthMode,
+    setFilesAuthMode,
+    filesCertPath,
+    setFilesCertPath,
+    filesCertPassword,
+    setFilesCertPassword,
+    govdataSubjects,
+    setGovdataSubjects,
     submitting,
-    openapiSpecPath, setOpenapiSpecPath,
-    openapiSpecInline, setOpenapiSpecInline,
-    openapiSpecMode, setOpenapiSpecMode,
-    openapiBaseUrl, setOpenapiBaseUrl,
-    openapiCacheTtl, setOpenapiCacheTtl,
-    openapiPreview, openapiPreviewing, openapiPreviewError,
+    openapiSpecPath,
+    setOpenapiSpecPath,
+    openapiSpecInline,
+    setOpenapiSpecInline,
+    openapiSpecMode,
+    setOpenapiSpecMode,
+    openapiBaseUrl,
+    setOpenapiBaseUrl,
+    openapiCacheTtl,
+    setOpenapiCacheTtl,
+    openapiPreview,
+    openapiPreviewing,
+    openapiPreviewError,
     onOpenapiPreview: handleOpenapiPreview,
-    gqlNamespace, setGqlNamespace,
-    gqlCacheTtl, setGqlCacheTtl,
-    grpcProtoPath, setGrpcProtoPath,
-    grpcServerAddress, setGrpcServerAddress,
-    grpcNamespace, setGrpcNamespace,
-    grpcTls, setGrpcTls,
-    grpcImportPaths, setGrpcImportPaths,
-    grpcCacheTtl, setGrpcCacheTtl,
+    gqlNamespace,
+    setGqlNamespace,
+    gqlCacheTtl,
+    setGqlCacheTtl,
+    grpcProtoPath,
+    setGrpcProtoPath,
+    grpcServerAddress,
+    setGrpcServerAddress,
+    grpcNamespace,
+    setGrpcNamespace,
+    grpcTls,
+    setGrpcTls,
+    grpcImportPaths,
+    setGrpcImportPaths,
+    grpcCacheTtl,
+    setGrpcCacheTtl,
   };
 
   if (loading) return <PageLoading message={t("sourcesPage.loading")} />;
@@ -1007,7 +1055,8 @@ export function SourcesPage() {
           <Table.Tbody>
             {(() => {
               const filtered = sources.filter((s) => {
-                if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id)) return false;
+                if ([DERIVED_SOURCE_ID, "provisa-admin", "provisa-otel"].includes(s.id))
+                  return false;
                 if (!sourceSearch.trim()) return true;
                 const q = sourceSearch.toLowerCase();
                 return (
@@ -1046,7 +1095,9 @@ export function SourcesPage() {
                       }}
                     >
                       <Table.Td>{s.id}</Table.Td>
-                      <Table.Td>{SOURCE_TYPES.find((st) => st.value === s.type)?.label ?? s.type}</Table.Td>
+                      <Table.Td>
+                        {SOURCE_TYPES.find((st) => st.value === s.type)?.label ?? s.type}
+                      </Table.Td>
                       <Table.Td>{s.host}</Table.Td>
                       <Table.Td>{s.port || "—"}</Table.Td>
                       <Table.Td>{s.database || "—"}</Table.Td>
@@ -1145,7 +1196,12 @@ export function SourcesPage() {
                                 searchable
                               />
                               <SourceFormFields {...sourceFormFieldsProps} />
-                              <Group justify="flex-end" align="flex-start" gap="sm" style={{ alignSelf: "end" }}>
+                              <Group
+                                justify="flex-end"
+                                align="flex-start"
+                                gap="sm"
+                                style={{ alignSelf: "end" }}
+                              >
                                 <Button
                                   variant="default"
                                   type="button"
@@ -1169,7 +1225,9 @@ export function SourcesPage() {
                               domainsEnabled={domainsEnabled}
                               getEffectiveTtl={getEffectiveTtl}
                               onEdit={() => handleEdit(s)}
-                              onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
+                              onNavigate={() =>
+                                navigate(`/tables?source=${encodeURIComponent(s.id)}`)
+                              }
                               onDelete={async () => {
                                 await deleteSource(s.id);
                                 if (expanded === s.id) updateExpanded(null);

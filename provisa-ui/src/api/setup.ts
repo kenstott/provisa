@@ -23,7 +23,7 @@ export interface SetupStatus {
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
-  const res = await fetch('/setup/status');
+  const res = await fetch("/setup/status");
   if (!res.ok) {
     throw new Error(requestFailed("Setup status check", res.status));
   }
@@ -31,17 +31,17 @@ export async function fetchSetupStatus(): Promise<SetupStatus> {
 }
 
 export async function runSetup(body: {
-  provider: 'basic' | 'firebase' | 'none';
-  mode: 'single' | 'multi';
+  provider: "basic" | "firebase" | "none";
+  mode: "single" | "multi";
   admin_username?: string;
   admin_password?: string;
   firebase_project_id?: string;
   use_domains?: boolean | null;
   default_domain?: string;
 }): Promise<{ success: boolean; provider: string }> {
-  const res = await fetch('/setup', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const res = await fetch("/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

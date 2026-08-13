@@ -17,10 +17,23 @@ import type { LineageGraphData } from "../api/lineage";
 
 const graph: LineageGraphData = {
   nodes: [
-    { id: "orders.amount", column: "amount", relation: "orders", kind: "source", materialized: false },
+    {
+      id: "orders.amount",
+      column: "amount",
+      relation: "orders",
+      kind: "source",
+      materialized: false,
+    },
     { id: "total", column: "total", relation: null, kind: "derived", materialized: false },
   ],
-  edges: [{ source: "orders.amount", target: "total", transform: "orders.amount", ops: [{ name: "amount", kind: "identity" }] }],
+  edges: [
+    {
+      source: "orders.amount",
+      target: "total",
+      transform: "orders.amount",
+      ops: [{ name: "amount", kind: "identity" }],
+    },
+  ],
   outputs: ["total"],
   cycles: [{ nodes: ["x.c", "y.c"], has_materialization_boundary: false, classification: "error" }],
 };
@@ -47,21 +60,33 @@ describe("LineagePage — REQ-1160/1161", () => {
   });
 
   it("builds a statement graph and renders the DAG", async () => {
-    render(<MemoryRouter><LineagePage /></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <LineagePage />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByTestId("lineage-build"));
     await waitFor(() => expect(fetchLineageGraph).toHaveBeenCalled());
     expect(await screen.findByTestId("lineage-dag-stub")).toBeInTheDocument();
   });
 
   it("characterizes a boundary-less cycle as an error", async () => {
-    render(<MemoryRouter><LineagePage /></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <LineagePage />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByTestId("lineage-build"));
     expect(await screen.findByText(/no materialization boundary/i)).toBeInTheDocument();
     expect(screen.getByText("error")).toBeInTheDocument();
   });
 
   it("loads the federation graph on demand", async () => {
-    render(<MemoryRouter><LineagePage /></MemoryRouter>);
+    render(
+      <MemoryRouter>
+        <LineagePage />
+      </MemoryRouter>,
+    );
     fireEvent.click(screen.getByTestId("lineage-federation"));
     await waitFor(() => expect(fetchFederationGraph).toHaveBeenCalled());
   });

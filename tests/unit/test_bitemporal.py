@@ -117,8 +117,8 @@ def test_delta_append_is_upserts_then_tombstones():
     stmts = append_sql(TARGET, SELECT, _delta(), COLS, "TIMESTAMP '2026-07-20 00:00:00'", "duckdb")
     assert len(stmts) == 2
     upserts, tombstones = stmts
-    assert f"'upsert'" in upserts and "NOT EXISTS" in upserts
-    assert f"'delete'" in tombstones and "NOT EXISTS" in tombstones
+    assert "'upsert'" in upserts and "NOT EXISTS" in upserts
+    assert "'delete'" in tombstones and "NOT EXISTS" in tombstones
     # both are appends
     assert upserts.startswith(f"INSERT INTO {TARGET}")
     assert tombstones.startswith(f"INSERT INTO {TARGET}")

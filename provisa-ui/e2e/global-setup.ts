@@ -25,7 +25,9 @@ const BACKEND_URLS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "8901")
 const UI_URL = `http://127.0.0.1:${process.env.PROVISA_E2E_UI_PORT ?? "3901"}`;
 // Trino backend (sharepoint/splunk tests) — PROVISA_E2E_TRINO_CONFIG is set by playwright.config.ts.
 const TRINO_BACKEND_URL = `http://localhost:${process.env.PROVISA_E2E_TRINO_API_PORT ?? "8990"}`;
-const TRINO_CONFIG_PATH = process.env.PROVISA_E2E_TRINO_CONFIG ?? path.resolve(__dirname, "../../.playwright-trino-data/provisa-trino.yaml");
+const TRINO_CONFIG_PATH =
+  process.env.PROVISA_E2E_TRINO_CONFIG ??
+  path.resolve(__dirname, "../../.playwright-trino-data/provisa-trino.yaml");
 
 /** PUT /admin/config with connection-level retry.
  *
@@ -67,7 +69,7 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
   // auth.provider = basic, so POST /setup with provider=basic completes the flow.
   const statusRes = await fetch(`${BACKEND_URL}/setup/status`);
   if (statusRes.ok) {
-    const status = await statusRes.json() as { needs_setup: boolean };
+    const status = (await statusRes.json()) as { needs_setup: boolean };
     if (status.needs_setup) {
       const setupRes = await fetch(`${BACKEND_URL}/setup`, {
         method: "POST",
@@ -92,7 +94,8 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
     const schema = await fetch(`${BACKEND_URL}/data/graph-schema`).then((r) => r.json());
     const labels: string[] = (schema.node_labels ?? []).map((n: { label: string }) => n.label);
     if (labels.some((l) => l.startsWith("PetStore:"))) break;
-    if (i === 19) throw new Error("Schema did not rebuild with PetStore labels after config reload");
+    if (i === 19)
+      throw new Error("Schema did not rebuild with PetStore labels after config reload");
   }
 
   // Warm up DuckDB before tests run.  graph-show-children and graph-query-panel-height both
@@ -122,7 +125,9 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
     body: JSON.stringify({ query: "MATCH (n:PetStore:Pets) RETURN n LIMIT 5", params: {} }),
   });
   if (!petsWarmRes.ok) {
-    throw new Error(`Pets DuckDB warm-up query failed: ${petsWarmRes.status} ${await petsWarmRes.text()}`);
+    throw new Error(
+      `Pets DuckDB warm-up query failed: ${petsWarmRes.status} ${await petsWarmRes.text()}`,
+    );
   }
 
   // Warm up the Shelter domain too — cypher-variable-length-path and cypher-impute-edges
@@ -135,7 +140,9 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
     body: JSON.stringify({ query: "MATCH (n:Shelter:Employees) RETURN n LIMIT 5", params: {} }),
   });
   if (!shelterWarmRes.ok) {
-    throw new Error(`Shelter DuckDB warm-up query failed: ${shelterWarmRes.status} ${await shelterWarmRes.text()}`);
+    throw new Error(
+      `Shelter DuckDB warm-up query failed: ${shelterWarmRes.status} ${await shelterWarmRes.text()}`,
+    );
   }
 }
 
@@ -163,7 +170,9 @@ export default async function globalSetup() {
     const trinoYaml = fs.readFileSync(TRINO_CONFIG_PATH, "utf8");
     const trinoRes = await putAdminConfig(`${TRINO_BACKEND_URL}/admin/config`, trinoYaml);
     if (!trinoRes.ok) {
-      throw new Error(`Trino backend config reload failed: ${trinoRes.status} ${await trinoRes.text()}`);
+      throw new Error(
+        `Trino backend config reload failed: ${trinoRes.status} ${await trinoRes.text()}`,
+      );
     }
   }
 
@@ -178,6 +187,6 @@ export default async function globalSetup() {
   } catch (err) {
     // A connection error here means the Vite server is not up yet — Playwright's webServer
     // waits for the port before calling globalSetup, so this should not happen.
-    throw new Error(`Vite dev server pre-warm fetch to ${UI_URL} failed: ${err}`);
+    throw new Error(`Vite dev server pre-warm fetch to ${UI_URL} failed`, { cause: err });
   }
 }

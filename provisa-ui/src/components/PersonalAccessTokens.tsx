@@ -8,7 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Alert, Badge, Button, Code, Group, NumberInput, Table, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Code,
+  Group,
+  NumberInput,
+  Table,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -98,9 +108,13 @@ export function PersonalAccessTokens() {
 
       {minted && (
         <Alert color="yellow" mb="xs" data-testid="profile-pat-minted">
-          <Text fz="0.8rem" mb={4}>{t("userProfileModal.patMintedHelp")}</Text>
+          <Text fz="0.8rem" mb={4}>
+            {t("userProfileModal.patMintedHelp")}
+          </Text>
           <Group gap="xs" wrap="nowrap">
-            <Code data-testid="profile-pat-secret" style={{ wordBreak: "break-all" }}>{minted}</Code>
+            <Code data-testid="profile-pat-secret" style={{ wordBreak: "break-all" }}>
+              {minted}
+            </Code>
             <CopyButton text={minted} />
           </Group>
           <Button
@@ -142,15 +156,25 @@ export function PersonalAccessTokens() {
       </Group>
 
       {tokens && tokens.length === 0 ? (
-        <Text fz="0.85rem" c="dimmed">{t("userProfileModal.patNone")}</Text>
+        <Text fz="0.85rem" c="dimmed">
+          {t("userProfileModal.patNone")}
+        </Text>
       ) : (
         <Table fz="0.82rem" withTableBorder={false}>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th c="dimmed" fw={500}>{t("userProfileModal.patName")}</Table.Th>
-              <Table.Th c="dimmed" fw={500}>{t("userProfileModal.patPrefix")}</Table.Th>
-              <Table.Th c="dimmed" fw={500}>{t("userProfileModal.patLastUsed")}</Table.Th>
-              <Table.Th c="dimmed" fw={500}>{t("userProfileModal.patExpires")}</Table.Th>
+              <Table.Th c="dimmed" fw={500}>
+                {t("userProfileModal.patName")}
+              </Table.Th>
+              <Table.Th c="dimmed" fw={500}>
+                {t("userProfileModal.patPrefix")}
+              </Table.Th>
+              <Table.Th c="dimmed" fw={500}>
+                {t("userProfileModal.patLastUsed")}
+              </Table.Th>
+              <Table.Th c="dimmed" fw={500}>
+                {t("userProfileModal.patExpires")}
+              </Table.Th>
               <Table.Th />
             </Table.Tr>
           </Table.Thead>
@@ -158,7 +182,9 @@ export function PersonalAccessTokens() {
             {(tokens ?? []).map((tok) => (
               <Table.Tr key={tok.token_hash} data-testid={`profile-pat-row-${tok.prefix}`}>
                 <Table.Td>{tok.name}</Table.Td>
-                <Table.Td><Code>{tok.prefix}…</Code></Table.Td>
+                <Table.Td>
+                  <Code>{tok.prefix}…</Code>
+                </Table.Td>
                 <Table.Td>{when(tok.last_used_at)}</Table.Td>
                 <Table.Td>{when(tok.expires_at)}</Table.Td>
                 <Table.Td ta="right">

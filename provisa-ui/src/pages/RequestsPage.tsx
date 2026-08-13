@@ -194,12 +194,18 @@ export function RequestsPage() {
         <Title order={2}>{t("requestsPage.title")}</Title>
         <FilterInput
           value={search}
-          onChange={(v) => { setSearch(v); setPage(1); }}
+          onChange={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
           placeholder={t("requestsPage.filterPlaceholder")}
         />
         <Tabs
           value={tab}
-          onChange={(v) => { setTab((v as "pending" | "resolved") ?? "pending"); setPage(1); }}
+          onChange={(v) => {
+            setTab((v as "pending" | "resolved") ?? "pending");
+            setPage(1);
+          }}
         >
           <Tabs.List>
             <Tabs.Tab value="pending" data-testid="requests-tab-pending">
@@ -220,7 +226,10 @@ export function RequestsPage() {
 
       <Modal
         opened={rejectingId !== null}
-        onClose={() => { setRejectingId(null); setRejectReason(null); }}
+        onClose={() => {
+          setRejectingId(null);
+          setRejectReason(null);
+        }}
         title={t("requestsPage.rejectTitle", { id: rejectingId })}
       >
         <Stack gap="sm">
@@ -242,7 +251,10 @@ export function RequestsPage() {
             </Button>
             <Button
               variant="default"
-              onClick={() => { setRejectingId(null); setRejectReason(null); }}
+              onClick={() => {
+                setRejectingId(null);
+                setRejectReason(null);
+              }}
             >
               {t("requestsPage.cancel")}
             </Button>
@@ -252,9 +264,7 @@ export function RequestsPage() {
 
       {filtered.length === 0 ? (
         <Text c="dimmed">
-          {search
-            ? t("requestsPage.emptyFiltered", { tab })
-            : t("requestsPage.empty", { tab })}
+          {search ? t("requestsPage.emptyFiltered", { tab }) : t("requestsPage.empty", { tab })}
         </Text>
       ) : (
         <>
@@ -284,13 +294,17 @@ export function RequestsPage() {
                     </Table.Td>
                     <Table.Td style={{ maxWidth: "20rem" }}>
                       <details>
-                        <summary style={{ cursor: "pointer" }}>{t("requestsPage.viewPayload")}</summary>
+                        <summary style={{ cursor: "pointer" }}>
+                          {t("requestsPage.viewPayload")}
+                        </summary>
                         <pre style={{ fontSize: "0.75rem", whiteSpace: "pre-wrap" }}>
                           {JSON.stringify(row.payload, null, 2)}
                         </pre>
                       </details>
                     </Table.Td>
-                    <Table.Td>{row.approvals.length} / {row.required_approvals}</Table.Td>
+                    <Table.Td>
+                      {row.approvals.length} / {row.required_approvals}
+                    </Table.Td>
                     <Table.Td>
                       <Badge color={statusColor(row.status)} variant="light">
                         {row.status}
@@ -324,7 +338,10 @@ export function RequestsPage() {
                           <Button
                             size="compact-xs"
                             variant="default"
-                            onClick={() => { setRejectingId(row.id); setRejectReason(null); }}
+                            onClick={() => {
+                              setRejectingId(row.id);
+                              setRejectReason(null);
+                            }}
                             disabled={busy}
                             data-testid={`requests-reject-${row.id}`}
                           >

@@ -157,9 +157,7 @@ export function AiModelsTab() {
         nl: s.nl,
         ...(Object.keys(api_keys).length ? { api_keys } : {}),
       });
-      setMsg(
-        res.restart_required ? t("aiModelsTab.savedRestartRequired") : t("aiModelsTab.saved"),
-      );
+      setMsg(res.restart_required ? t("aiModelsTab.savedRestartRequired") : t("aiModelsTab.saved"));
       setS((prev) => {
         if (!prev) return prev;
         const api_keys_set = { ...prev.api_keys_set };
@@ -341,9 +339,7 @@ export function AiModelsTab() {
         label={t("aiModelsTab.rateLimitLabel")}
         data-testid="ai-models-rate-limit"
         value={s.nl.rate_limit ?? ""}
-        onChange={(val) =>
-          setS({ ...s, nl: { rate_limit: val === "" ? null : Number(val) } })
-        }
+        onChange={(val) => setS({ ...s, nl: { rate_limit: val === "" ? null : Number(val) } })}
       />
 
       <Title order={4}>{t("aiModelsTab.vectorHeading")}</Title>
@@ -391,9 +387,7 @@ export function AiModelsTab() {
                 <TextInput
                   aria-label={t("aiModelsTab.vectorApiKeyEnv")}
                   value={vm.api_key_env ?? ""}
-                  onChange={(e) =>
-                    setVector(i, { api_key_env: e.currentTarget.value || null })
-                  }
+                  onChange={(e) => setVector(i, { api_key_env: e.currentTarget.value || null })}
                 />
               </Table.Td>
               <Table.Td>

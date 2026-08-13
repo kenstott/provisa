@@ -34,11 +34,7 @@ describe("mergeCheckedDomains", () => {
   });
 
   it("checks a new domain even when others were unchecked", () => {
-    const merged = mergeCheckedDomains(
-      ["sales", "ops", "marketing"],
-      ["sales"],
-      ["sales", "ops"],
-    );
+    const merged = mergeCheckedDomains(["sales", "ops", "marketing"], ["sales"], ["sales", "ops"]);
     // ops stays off (known+unchecked); marketing is new → on.
     expect(merged).toEqual(new Set(["sales", "marketing"]));
   });

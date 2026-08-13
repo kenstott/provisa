@@ -58,8 +58,12 @@ describe("authHost host classification", () => {
   });
 
   it("derives the control-plane origin by replacing the org label", () => {
-    expect(controlPlaneOrigin(loc("https://kstott.provisa.dev/query"))).toBe("https://cloud.provisa.dev");
-    expect(controlPlaneOrigin(loc("http://acme.provisa.test:5173/"))).toBe("http://cloud.provisa.test:5173");
+    expect(controlPlaneOrigin(loc("https://kstott.provisa.dev/query"))).toBe(
+      "https://cloud.provisa.dev",
+    );
+    expect(controlPlaneOrigin(loc("http://acme.provisa.test:5173/"))).toBe(
+      "http://cloud.provisa.test:5173",
+    );
   });
 
   it("refuses to guess an origin for a host with no base domain", () => {
@@ -114,7 +118,11 @@ describe("acquireTokenFromControlPlane", () => {
   });
 
   afterEach(() => {
-    Object.defineProperty(window, "location", { value: realLocation, writable: true, configurable: true });
+    Object.defineProperty(window, "location", {
+      value: realLocation,
+      writable: true,
+      configurable: true,
+    });
     document.body.innerHTML = "";
   });
 
@@ -126,12 +134,21 @@ describe("acquireTokenFromControlPlane", () => {
     expect(frame?.getAttribute("src")).toBe("https://cloud.provisa.dev/auth-relay.html");
     // jsdom gives the frame a real contentWindow; intercept what the parent sends it.
     const post = vi.fn();
-    Object.defineProperty(frame!, "contentWindow", { value: { postMessage: post }, configurable: true });
+    Object.defineProperty(frame!, "contentWindow", {
+      value: { postMessage: post },
+      configurable: true,
+    });
 
     window.dispatchEvent(
-      new MessageEvent("message", { data: { type: "provisa-auth-ready" }, origin: "https://cloud.provisa.dev" }),
+      new MessageEvent("message", {
+        data: { type: "provisa-auth-ready" },
+        origin: "https://cloud.provisa.dev",
+      }),
     );
-    expect(post).toHaveBeenCalledWith({ type: "provisa-auth-request" }, "https://cloud.provisa.dev");
+    expect(post).toHaveBeenCalledWith(
+      { type: "provisa-auth-request" },
+      "https://cloud.provisa.dev",
+    );
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -185,7 +202,11 @@ describe("nextParam", () => {
   });
 
   afterEach(() => {
-    Object.defineProperty(window, "location", { value: realLocation, writable: true, configurable: true });
+    Object.defineProperty(window, "location", {
+      value: realLocation,
+      writable: true,
+      configurable: true,
+    });
   });
 
   it("accepts a return-to URL on a host of this deployment", async () => {
@@ -197,7 +218,12 @@ describe("nextParam", () => {
 
   it("refuses to forward a fresh session anywhere else", async () => {
     const { nextParam } = await import("../lib/crossSubdomainAuth");
-    for (const raw of ["https://evil.com/steal", "http://kstott.provisa.dev/", "/relative", "javascript:alert(1)"]) {
+    for (const raw of [
+      "https://evil.com/steal",
+      "http://kstott.provisa.dev/",
+      "/relative",
+      "javascript:alert(1)",
+    ]) {
       expect(nextParam("?next=" + encodeURIComponent(raw)), raw).toBeNull();
     }
     expect(nextParam("")).toBeNull();
@@ -226,7 +252,11 @@ describe("auth relay (control-plane side)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     for (const listener of added) window.removeEventListener("message", listener);
-    Object.defineProperty(window, "location", { value: realLocation, writable: true, configurable: true });
+    Object.defineProperty(window, "location", {
+      value: realLocation,
+      writable: true,
+      configurable: true,
+    });
     localStorage.clear();
   });
 

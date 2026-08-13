@@ -75,11 +75,16 @@ export function buildTableLabel(
 
 function cardinalityLabel(cardinality: string): string {
   switch (cardinality) {
-    case "one_to_many":  return "1:N";
-    case "many_to_one":  return "N:1";
-    case "many_to_many": return "N:M";
-    case "one_to_one":   return "1:1";
-    default:             return cardinality;
+    case "one_to_many":
+      return "1:N";
+    case "many_to_one":
+      return "N:1";
+    case "many_to_many":
+      return "N:M";
+    case "one_to_one":
+      return "1:1";
+    default:
+      return cardinality;
   }
 }
 
@@ -160,8 +165,20 @@ export function buildErdElements(
   for (const r of relationships) {
     if (r.targetTableId == null) continue;
 
-    const src = resolveEndpoint(r.sourceTableId, tableMap, visibleTableIds, collapsedDomains, hiddenDomains);
-    const tgt = resolveEndpoint(r.targetTableId, tableMap, visibleTableIds, collapsedDomains, hiddenDomains);
+    const src = resolveEndpoint(
+      r.sourceTableId,
+      tableMap,
+      visibleTableIds,
+      collapsedDomains,
+      hiddenDomains,
+    );
+    const tgt = resolveEndpoint(
+      r.targetTableId,
+      tableMap,
+      visibleTableIds,
+      collapsedDomains,
+      hiddenDomains,
+    );
 
     if (!src || !tgt || src === tgt) continue;
 

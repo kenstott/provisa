@@ -89,7 +89,11 @@ export const NAV_GROUPS: NavGroup[] = [
       // single-tenant deployment (apply_tenancy_role_grants), so a multitenant org_admin never sees
       // these entries.
       { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "platform_settings" },
-      { to: "/admin/scheduled-tasks", labelKey: "navBar.itemScheduler", capability: "org_settings" },
+      {
+        to: "/admin/scheduled-tasks",
+        labelKey: "navBar.itemScheduler",
+        capability: "org_settings",
+      },
       {
         to: "/admin/federation-engine",
         labelKey: "navBar.itemFederation",
@@ -116,7 +120,11 @@ export const NAV_GROUPS: NavGroup[] = [
       // REQ-1387: the glossary route stays /admin/glossary (org_settings) but its nav entry is
       // the top-level Glossary link in NavBar.tsx, not an item of this group.
       { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "observability" },
-      { to: "/admin/observability", labelKey: "navBar.itemObservability", capability: "observability" },
+      {
+        to: "/admin/observability",
+        labelKey: "navBar.itemObservability",
+        capability: "observability",
+      },
       { to: "/admin/mcp-server", labelKey: "navBar.itemMcpServer", capability: "admin" },
       { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "org_settings" },
     ],

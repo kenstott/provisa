@@ -17,21 +17,21 @@
 // gate's whole job is to read provider state that the provider itself computes, and the vitest pool
 // shares one module registry across files, so mocking AuthContext here decided what OTHER files saw
 // as well.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useState } from 'react';
-import { render, screen, waitFor } from '../test-utils/render';
-import { OnboardGate } from '../components/OnboardGate';
-import { AuthProvider, useAuth } from '../context/AuthContext';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { useState } from "react";
+import { render, screen, waitFor } from "../test-utils/render";
+import { OnboardGate } from "../components/OnboardGate";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 
-vi.mock('../api/admin', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../api/admin')>();
+vi.mock("../api/admin", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/admin")>();
   return { ...actual, fetchMe: vi.fn(), fetchBootstrapStatus: vi.fn() };
 });
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other test files and strips the hooks they render
 // against (a TablesPage test saw useTables become undefined).
-vi.mock('../hooks/useAdminQueries', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../hooks/useAdminQueries')>()),
+vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   // REQ-1337: the gate resolves the assigned role ids to the RIGHTS those roles carry, so the roles
   // registry must be populated for a control-plane assignment to mean anything. platform_admin's
   // seeded capability list (provisa/core/schema.sql) is what is mirrored here — `cross_org` is the
@@ -41,9 +41,9 @@ vi.mock('../hooks/useAdminQueries', async (importOriginal) => ({
       data: {
         roles: [
           {
-            id: 'platform_admin',
-            capabilities: ['admin', 'superadmin', 'platform_settings', 'cross_org'],
-            domain_access: ['*'],
+            id: "platform_admin",
+            capabilities: ["admin", "superadmin", "platform_settings", "cross_org"],
+            domain_access: ["*"],
           },
         ],
       },
@@ -51,11 +51,11 @@ vi.mock('../hooks/useAdminQueries', async (importOriginal) => ({
   }),
   useDomains: () => ({ refetch: vi.fn().mockResolvedValue({ data: { domains: [] } }) }),
 }));
-vi.mock('../pages/OnboardOrgPage', () => ({
+vi.mock("../pages/OnboardOrgPage", () => ({
   OnboardOrgPage: () => <div data-testid="onboard-org-page" />,
 }));
 
-import { AuthMeError, fetchBootstrapStatus, fetchMe } from '../api/admin';
+import { AuthMeError, fetchBootstrapStatus, fetchMe } from "../api/admin";
 const mockFetchMe = vi.mocked(fetchMe);
 const mockBootstrapStatus = vi.mocked(fetchBootstrapStatus);
 
@@ -89,50 +89,50 @@ function renderGate(onSessionExpired: () => void = vi.fn()) {
   );
 }
 
-describe('OnboardGate', () => {
+describe("OnboardGate", () => {
   beforeEach(() => {
     mockFetchMe.mockReset();
     mockBootstrapStatus.mockReset();
     // Default for these cases: the deployment already has a platform administrator, so the
     // first-login path (REQ-1292) is not what is under test here.
     mockBootstrapStatus.mockResolvedValue(false);
-    localStorage.setItem('provisa_token', 'tok');
+    localStorage.setItem("provisa_token", "tok");
   });
 
-  it('shows a server-unavailable retry screen when /auth/me 500s', async () => {
+  it("shows a server-unavailable retry screen when /auth/me 500s", async () => {
     mockFetchMe.mockRejectedValue(new AuthMeError(500));
     renderGate();
-    expect(await screen.findByTestId('identity-unavailable')).toBeInTheDocument();
-    expect(screen.queryByTestId('no-account')).not.toBeInTheDocument();
+    expect(await screen.findByTestId("identity-unavailable")).toBeInTheDocument();
+    expect(screen.queryByTestId("no-account")).not.toBeInTheDocument();
   });
 
-  it('treats an unreachable server (status 0) as unavailable, not as denied access', async () => {
+  it("treats an unreachable server (status 0) as unavailable, not as denied access", async () => {
     mockFetchMe.mockRejectedValue(new AuthMeError(0));
     renderGate();
-    expect(await screen.findByTestId('identity-unavailable')).toBeInTheDocument();
+    expect(await screen.findByTestId("identity-unavailable")).toBeInTheDocument();
   });
 
   // REQ-1289: a rejected credential is not a destination. There is nothing to decide on a "no
   // access" panel, and on a deployment with no administrator yet its advice — ask an administrator
   // for an invitation — names somebody who does not exist. Drop the stale token and go to sign-in.
   it.each([401, 403])(
-    'sends a rejected credential (%i) back to sign-in, not a dead end',
+    "sends a rejected credential (%i) back to sign-in, not a dead end",
     async (status) => {
       const onSessionExpired = vi.fn();
       mockFetchMe.mockRejectedValue(new AuthMeError(status));
       renderGate(onSessionExpired);
       await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
-      expect(localStorage.getItem('provisa_token')).toBeNull();
-      expect(screen.queryByTestId('no-account')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('identity-unavailable')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+      expect(localStorage.getItem("provisa_token")).toBeNull();
+      expect(screen.queryByTestId("no-account")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("identity-unavailable")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
     },
   );
 
-  it('routes a resolved identity with no org memberships to org onboarding', async () => {
-    resolvesTo({ userId: 'u1' });
+  it("routes a resolved identity with no org memberships to org onboarding", async () => {
+    resolvesTo({ userId: "u1" });
     renderGate();
-    expect(await screen.findByTestId('onboard-org-page')).toBeInTheDocument();
+    expect(await screen.findByTestId("onboard-org-page")).toBeInTheDocument();
   });
 
   // REQ-1337: what lets this identity through is the `cross_org` RIGHT its assigned role carries
@@ -140,18 +140,18 @@ describe('OnboardGate', () => {
   // only transiently — the shell renders while the identity is still loading, so findBy resolved on
   // the first tick and the gate flipped to onboarding immediately after. The settled state is
   // asserted below, after the bootstrap lands.
-  it('lets a control-plane principal with no memberships through to the shell', async () => {
-    resolvesTo({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] });
+  it("lets a control-plane principal with no memberships through to the shell", async () => {
+    resolvesTo({ userId: "u1", assignments: [{ role_id: "platform_admin", domain_id: "*" }] });
     renderGate();
     await waitFor(() => expect(mockBootstrapStatus).toHaveBeenCalled());
-    expect(await screen.findByTestId('app-shell')).toBeInTheDocument();
-    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
+    expect(screen.queryByTestId("onboard-org-page")).not.toBeInTheDocument();
   });
 
-  it('lets an org member through to the shell', async () => {
-    resolvesTo({ userId: 'u1', orgMemberships: [{ org_id: 'acme', org_name: 'Acme' }] });
+  it("lets an org member through to the shell", async () => {
+    resolvesTo({ userId: "u1", orgMemberships: [{ org_id: "acme", org_name: "Acme" }] });
     renderGate();
-    expect(await screen.findByTestId('app-shell')).toBeInTheDocument();
+    expect(await screen.findByTestId("app-shell")).toBeInTheDocument();
   });
 });
 
@@ -162,7 +162,7 @@ describe('OnboardGate', () => {
 // reported after claiming the platform-admin slot.
 function CurrentIdentity() {
   const { userId, loading } = useAuth();
-  return <div data-testid="identity">{loading ? 'loading' : (userId ?? 'anonymous')}</div>;
+  return <div data-testid="identity">{loading ? "loading" : (userId ?? "anonymous")}</div>;
 }
 
 /** App's shape: one authVersion counter shared by the login callback and the provider. */
@@ -173,7 +173,7 @@ function SignInHarness({ children }: { children: React.ReactNode }) {
       <button
         data-testid="sign-in"
         onClick={() => {
-          localStorage.setItem('provisa_token', 'fresh-token');
+          localStorage.setItem("provisa_token", "fresh-token");
           setAuthVersion((v) => v + 1);
         }}
       >
@@ -184,7 +184,7 @@ function SignInHarness({ children }: { children: React.ReactNode }) {
   );
 }
 
-describe('identity refresh after sign-in (REQ-1291)', () => {
+describe("identity refresh after sign-in (REQ-1291)", () => {
   beforeEach(() => {
     mockFetchMe.mockReset();
     mockBootstrapStatus.mockReset();
@@ -192,29 +192,33 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
     localStorage.clear();
   });
 
-  it('refetches /auth/me when a sign-in bumps authVersion', async () => {
+  it("refetches /auth/me when a sign-in bumps authVersion", async () => {
     mockFetchMe
       .mockRejectedValueOnce(new AuthMeError(401))
-      .mockResolvedValueOnce(identity({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] }));
+      .mockResolvedValueOnce(
+        identity({ userId: "u1", assignments: [{ role_id: "platform_admin", domain_id: "*" }] }),
+      );
     render(
       <SignInHarness>
         <CurrentIdentity />
       </SignInHarness>,
     );
-    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('anonymous'));
+    await waitFor(() => expect(screen.getByTestId("identity")).toHaveTextContent("anonymous"));
     expect(mockFetchMe).toHaveBeenCalledTimes(1);
 
-    screen.getByTestId('sign-in').click();
+    screen.getByTestId("sign-in").click();
 
-    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('u1'));
+    await waitFor(() => expect(screen.getByTestId("identity")).toHaveTextContent("u1"));
     expect(mockFetchMe).toHaveBeenCalledTimes(2);
   });
 
-  it('does not delete the token a sign-in just stored, and lands in the app shell', async () => {
+  it("does not delete the token a sign-in just stored, and lands in the app shell", async () => {
     const onSessionExpired = vi.fn();
     mockFetchMe
       .mockRejectedValueOnce(new AuthMeError(401))
-      .mockResolvedValueOnce(identity({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] }));
+      .mockResolvedValueOnce(
+        identity({ userId: "u1", assignments: [{ role_id: "platform_admin", domain_id: "*" }] }),
+      );
     render(
       <SignInHarness>
         <OnboardGate onSessionExpired={onSessionExpired}>
@@ -225,14 +229,14 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
     // Pre-login there is no token, so the gate has nothing to reject.
     await waitFor(() => expect(mockFetchMe).toHaveBeenCalledTimes(1));
 
-    screen.getByTestId('sign-in').click();
+    screen.getByTestId("sign-in").click();
 
-    await waitFor(() => expect(screen.getByTestId('app-shell')).toBeInTheDocument());
-    expect(localStorage.getItem('provisa_token')).toBe('fresh-token');
+    await waitFor(() => expect(screen.getByTestId("app-shell")).toBeInTheDocument());
+    expect(localStorage.getItem("provisa_token")).toBe("fresh-token");
     expect(onSessionExpired).not.toHaveBeenCalled();
   });
 
-  it('holds `loading` across the re-bootstrap so the gate never judges a stale identity', async () => {
+  it("holds `loading` across the re-bootstrap so the gate never judges a stale identity", async () => {
     // The re-fetch is deliberately left pending: during it the token exists and userId is still
     // null. If loading were false there, OnboardGate would delete the token mid-flight.
     const onSessionExpired = vi.fn();
@@ -253,14 +257,16 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
     );
     await waitFor(() => expect(mockFetchMe).toHaveBeenCalledTimes(1));
 
-    screen.getByTestId('sign-in').click();
+    screen.getByTestId("sign-in").click();
 
-    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('loading'));
-    expect(localStorage.getItem('provisa_token')).toBe('fresh-token');
+    await waitFor(() => expect(screen.getByTestId("identity")).toHaveTextContent("loading"));
+    expect(localStorage.getItem("provisa_token")).toBe("fresh-token");
     expect(onSessionExpired).not.toHaveBeenCalled();
 
-    resolveSecond(identity({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] }));
-    await waitFor(() => expect(screen.getByTestId('app-shell')).toBeInTheDocument());
+    resolveSecond(
+      identity({ userId: "u1", assignments: [{ role_id: "platform_admin", domain_id: "*" }] }),
+    );
+    await waitFor(() => expect(screen.getByTestId("app-shell")).toBeInTheDocument());
   });
 });
 
@@ -270,70 +276,73 @@ describe('identity refresh after sign-in (REQ-1291)', () => {
 // administrator: the SPA skipped sign-in — the only place the first-login disclosure (REQ-1288)
 // renders — and a hard refresh at /query landed on "create an organization". An unclaimed
 // platform-admin slot outranks org onboarding.
-describe('unclaimed platform-admin slot outranks org onboarding (REQ-1292)', () => {
+describe("unclaimed platform-admin slot outranks org onboarding (REQ-1292)", () => {
   beforeEach(() => {
     mockFetchMe.mockReset();
     mockBootstrapStatus.mockReset();
-    localStorage.setItem('provisa_token', 'stale-but-valid');
+    localStorage.setItem("provisa_token", "stale-but-valid");
   });
 
-  it('sends a token-holding user back to sign-in instead of org onboarding', async () => {
+  it("sends a token-holding user back to sign-in instead of org onboarding", async () => {
     const onSessionExpired = vi.fn();
-    resolvesTo({ userId: 'u1' }); // valid credential, zero memberships — yesterday: "Get started"
+    resolvesTo({ userId: "u1" }); // valid credential, zero memberships — yesterday: "Get started"
     mockBootstrapStatus.mockResolvedValue(true);
 
     renderGate(onSessionExpired);
 
     await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
-    expect(localStorage.getItem('provisa_token')).toBeNull();
-    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(localStorage.getItem("provisa_token")).toBeNull();
+    expect(screen.queryByTestId("onboard-org-page")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
   });
 
-  it('sends a token-holding platform admin back to sign-in too', async () => {
+  it("sends a token-holding platform admin back to sign-in too", async () => {
     // Assignments resolved from a stale identity do not administer THIS deployment: its admin slot
     // is still unclaimed. Falling through to the shell would hide that from the operator.
     const onSessionExpired = vi.fn();
-    resolvesTo({ userId: 'u1', assignments: [{ role_id: 'platform_admin', domain_id: '*' }] });
+    resolvesTo({ userId: "u1", assignments: [{ role_id: "platform_admin", domain_id: "*" }] });
     mockBootstrapStatus.mockResolvedValue(true);
 
     renderGate(onSessionExpired);
 
     await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
-    expect(localStorage.getItem('provisa_token')).toBeNull();
-    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(localStorage.getItem("provisa_token")).toBeNull();
+    expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
   });
 
-  it('decides nothing while the slot answer is still in flight', async () => {
+  it("decides nothing while the slot answer is still in flight", async () => {
     const onSessionExpired = vi.fn();
-    resolvesTo({ userId: 'u1' });
+    resolvesTo({ userId: "u1" });
     let resolveSlot: (unclaimed: boolean) => void = () => {};
     mockBootstrapStatus.mockImplementation(
-      () => new Promise((resolve) => { resolveSlot = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          resolveSlot = resolve;
+        }),
     );
 
     renderGate(onSessionExpired);
 
     await waitFor(() => expect(mockBootstrapStatus).toHaveBeenCalled());
-    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+    expect(screen.queryByTestId("onboard-org-page")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
     expect(onSessionExpired).not.toHaveBeenCalled();
-    expect(localStorage.getItem('provisa_token')).toBe('stale-but-valid');
+    expect(localStorage.getItem("provisa_token")).toBe("stale-but-valid");
 
     // Claimed after all -> today's behavior, unchanged.
     resolveSlot(false);
-    expect(await screen.findByTestId('onboard-org-page')).toBeInTheDocument();
-    expect(localStorage.getItem('provisa_token')).toBe('stale-but-valid');
+    expect(await screen.findByTestId("onboard-org-page")).toBeInTheDocument();
+    expect(localStorage.getItem("provisa_token")).toBe("stale-but-valid");
     expect(onSessionExpired).not.toHaveBeenCalled();
   });
 
-  it('surfaces a failed slot check instead of guessing which screen this is', async () => {
-    resolvesTo({ userId: 'u1' });
-    mockBootstrapStatus.mockRejectedValue(new Error('bootstrap-status 503'));
+  it("surfaces a failed slot check instead of guessing which screen this is", async () => {
+    resolvesTo({ userId: "u1" });
+    mockBootstrapStatus.mockRejectedValue(new Error("bootstrap-status 503"));
 
     renderGate();
 
-    expect(await screen.findByTestId('identity-unavailable')).toBeInTheDocument();
-    expect(screen.queryByTestId('onboard-org-page')).not.toBeInTheDocument();
+    expect(await screen.findByTestId("identity-unavailable")).toBeInTheDocument();
+    expect(screen.queryByTestId("onboard-org-page")).not.toBeInTheDocument();
   });
 });

@@ -62,9 +62,19 @@ function parseProto(text: string): ParsedProto {
     )) {
       const [, name, requestMsg] = m;
       if (name.startsWith("Query")) {
-        methods.push({ name, operation: "query", typeName: name.slice(5), requestMsgName: requestMsg });
+        methods.push({
+          name,
+          operation: "query",
+          typeName: name.slice(5),
+          requestMsgName: requestMsg,
+        });
       } else if (name.startsWith("Insert")) {
-        methods.push({ name, operation: "mutation", typeName: name.slice(6), requestMsgName: requestMsg });
+        methods.push({
+          name,
+          operation: "mutation",
+          typeName: name.slice(6),
+          requestMsgName: requestMsg,
+        });
       }
     }
   }
@@ -169,13 +179,23 @@ export function GrpcPage() {
     const m = ((location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "").match(
       /\(by=\[([^\]]*)\]/,
     );
-    return m ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : null;
+    return m
+      ? m[1]
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null;
   });
   const [navFuncs] = useState<string[] | null>(() => {
     const m = ((location.state as { grpcMethod?: string } | null)?.grpcMethod ?? "").match(
       /funcs=\[([^\]]*)\]/,
     );
-    return m ? m[1].split(",").map((s) => s.trim()).filter(Boolean) : null;
+    return m
+      ? m[1]
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null;
   });
   // REQ-1401/REQ-1408: the NL page hands over the whole call syntax, so the projection it chose
   // must be read out of it too — parsing only by/funcs silently dropped the nodes selection and
@@ -186,7 +206,12 @@ export function GrpcPage() {
     const m = sig.match(/include=\[([^\]]*)\]/);
     return {
       includeNodes: true,
-      include: m ? m[1].split(",").map((x) => x.trim()).filter(Boolean) : [],
+      include: m
+        ? m[1]
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : [],
     };
   });
   const [navAutoRun] = useState(
@@ -255,7 +280,10 @@ export function GrpcPage() {
     const first = allMethods.find((m) => m.operation === opType);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-selects first method when opType/parsed changes; cannot be derived during render because selectedMethod also has user-driven updates via handleMethodChange
     if (first) selectMethod(first, parsed);
-    else { setSelectedMethod(null); setMessageText(""); }
+    else {
+      setSelectedMethod(null);
+      setMessageText("");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- allMethods is derived from parsed+commands, which are the real deps; listing the fresh array each render would loop
   }, [opType, parsed, commands, selectMethod, selectedMethod]);
 
@@ -278,42 +306,48 @@ export function GrpcPage() {
     setMessageText(JSON.stringify(body, null, 2));
   }, [groupByCols, selectedFuncs, includeNodes, includeFields, selectedMethod]);
 
-  const fetchProto = useCallback(async (rid: string, domains: string) => {
-    setProtoError("");
-    try {
-      const url = domains
-        ? `/data/proto/${encodeURIComponent(rid)}?domains=${encodeURIComponent(domains)}`
-        : `/data/proto/${encodeURIComponent(rid)}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        setProtoError(`No proto for role "${rid}" — schema not yet built.`);
-        return;
+  const fetchProto = useCallback(
+    async (rid: string, domains: string) => {
+      setProtoError("");
+      try {
+        const url = domains
+          ? `/data/proto/${encodeURIComponent(rid)}?domains=${encodeURIComponent(domains)}`
+          : `/data/proto/${encodeURIComponent(rid)}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          setProtoError(`No proto for role "${rid}" — schema not yet built.`);
+          return;
+        }
+        const text = await res.text();
+        setProtoText(text);
+        const p = parseProto(text);
+        // Strip the "(by=[...])" call-syntax suffix the NL page's query text carries (REQ-1359)
+        // before matching against the bare typeName the proto actually exposes.
+        const preferred = navMethod ? navMethod.replace(/^Query/, "").replace(/\(.*$/, "") : "";
+        const navM = preferred
+          ? p.methods.find((m) => m.typeName === preferred && m.operation === "query")
+          : null;
+        const initial =
+          navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null;
+        if (initial) {
+          setOpType(initial.operation);
+          selectMethod(
+            initial,
+            p,
+            navM ? navByColumns : null,
+            navM ? navFuncs : null,
+            navM ? navProjection : null,
+          );
+          // eslint-disable-next-line react-hooks/immutability -- one-shot guard written after async fetch resolves; read occurs in a separate effect that guards against re-auto-selection
+          if (navM) navSelectDoneRef.current = true;
+        }
+        setParsed(p);
+      } catch {
+        setProtoError("Failed to fetch proto.");
       }
-      const text = await res.text();
-      setProtoText(text);
-      const p = parseProto(text);
-      // Strip the "(by=[...])" call-syntax suffix the NL page's query text carries (REQ-1359)
-      // before matching against the bare typeName the proto actually exposes.
-      const preferred = navMethod ? navMethod.replace(/^Query/, "").replace(/\(.*$/, "") : "";
-      const navM = preferred ? p.methods.find((m) => m.typeName === preferred && m.operation === "query") : null;
-      const initial = navM ?? p.methods.find((m) => m.operation === "query") ?? p.methods[0] ?? null;
-      if (initial) {
-        setOpType(initial.operation);
-        selectMethod(
-          initial,
-          p,
-          navM ? navByColumns : null,
-          navM ? navFuncs : null,
-          navM ? navProjection : null,
-        );
-        // eslint-disable-next-line react-hooks/immutability -- one-shot guard written after async fetch resolves; read occurs in a separate effect that guards against re-auto-selection
-        if (navM) navSelectDoneRef.current = true;
-      }
-      setParsed(p);
-    } catch {
-      setProtoError("Failed to fetch proto.");
-    }
-  }, [navMethod, navByColumns, navFuncs, navProjection, selectMethod]);
+    },
+    [navMethod, navByColumns, navFuncs, navProjection, selectMethod],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers async proto fetch; all setState calls occur inside the async callback, not synchronously in the effect body
@@ -365,8 +399,7 @@ export function GrpcPage() {
   // Only a GroupBy method has group-by columns to offer, and the previous method's must not
   // linger. Deriving that keeps the fetch the sole writer of the state.
   const groupByColumnOptions = useMemo(
-    () =>
-      selectedMethod?.typeName.endsWith("GroupBy") && roleId ? fetchedGroupByColumns : [],
+    () => (selectedMethod?.typeName.endsWith("GroupBy") && roleId ? fetchedGroupByColumns : []),
     [selectedMethod, roleId, fetchedGroupByColumns],
   );
 
@@ -412,7 +445,9 @@ export function GrpcPage() {
           const parsed_msg = JSON.parse(messageText) as { name?: string; args?: unknown };
           if (typeof parsed_msg.name === "string") name = parsed_msg.name;
           if (parsed_msg.args !== undefined) args = parsed_msg.args;
-        } catch { /* use defaults */ }
+        } catch {
+          /* use defaults */
+        }
         const res = await fetch(`/data/grpc-command/${encodeURIComponent(roleId)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
@@ -430,7 +465,9 @@ export function GrpcPage() {
       try {
         const parsed_msg = JSON.parse(messageText) as Record<string, unknown>;
         body = { ...parsed_msg, role_id: roleId };
-      } catch { /* use default body */ }
+      } catch {
+        /* use default body */
+      }
       const res = await fetch(`/data/grpc/${encodeURIComponent(selectedMethod.typeName)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
@@ -479,7 +516,12 @@ export function GrpcPage() {
             variant="outline"
             color="gray"
             radius="sm"
-            style={{ fontFamily: "monospace", fontWeight: 400, textTransform: "none", flexShrink: 0 }}
+            style={{
+              fontFamily: "monospace",
+              fontWeight: 400,
+              textTransform: "none",
+              flexShrink: 0,
+            }}
           >
             {t("grpcPage.serverBadge")}
           </Badge>
@@ -512,7 +554,13 @@ export function GrpcPage() {
         </Group>
         <Group className="grpc-topbar-right" wrap="nowrap" gap="sm">
           {protoError && (
-            <Text size="xs" c="red" data-testid="grpc-proto-error" style={{ maxWidth: 300 }} truncate="end">
+            <Text
+              size="xs"
+              c="red"
+              data-testid="grpc-proto-error"
+              style={{ maxWidth: 300 }}
+              truncate="end"
+            >
               {protoError}
             </Text>
           )}
@@ -550,8 +598,10 @@ export function GrpcPage() {
               </Tabs.Tab>
             </Tabs.List>
           </Tabs>
-          {leftTab === "body" && selectedMethod?.operation === "query" &&
-            (selectedMethod.typeName.endsWith("Aggregate") || selectedMethod.typeName.endsWith("GroupBy")) && (
+          {leftTab === "body" &&
+            selectedMethod?.operation === "query" &&
+            (selectedMethod.typeName.endsWith("Aggregate") ||
+              selectedMethod.typeName.endsWith("GroupBy")) && (
               <div className="grpc-agg-picker" data-testid="grpc-agg-picker">
                 {selectedMethod.typeName.endsWith("GroupBy") && (
                   <MultiSelect
@@ -602,7 +652,13 @@ export function GrpcPage() {
                 >
                   <Group gap="xs" mt={8} mb={4}>
                     {AGG_FUNCS.map((fn) => (
-                      <Checkbox key={fn} value={fn} label={fn} size="xs" data-testid={`grpc-func-${fn}`} />
+                      <Checkbox
+                        key={fn}
+                        value={fn}
+                        label={fn}
+                        size="xs"
+                        data-testid={`grpc-func-${fn}`}
+                      />
                     ))}
                   </Group>
                 </Checkbox.Group>

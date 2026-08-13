@@ -33,7 +33,9 @@ export function DocsPage() {
   const { t, i18n } = useTranslation();
   // "zh-HK" must be checked before stripping the region suffix (line below) —
   // it's a distinct docs tree from plain "zh", unlike other regional variants.
-  const docsLng = DOCS_LOCALES.includes(i18n.language) ? i18n.language : i18n.language.split("-")[0];
+  const docsLng = DOCS_LOCALES.includes(i18n.language)
+    ? i18n.language
+    : i18n.language.split("-")[0];
   const localePrefix = DOCS_LOCALES.includes(docsLng) ? `${docsLng}/` : "";
   // navigator.onLine === false is decided before the first paint; resolving it in the initializer
   // keeps the probe effect from setting state synchronously on mount.

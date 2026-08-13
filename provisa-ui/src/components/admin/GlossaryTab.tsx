@@ -499,9 +499,7 @@ export function GlossaryTab() {
                         data-testid={`glossary-ref-${ref.table_id}-${ref.column_name}`}
                       >
                         <Table.Td>{ref.column_name}</Table.Td>
-                        <Table.Td>
-                          {ref.alias || `${ref.schema_name}.${ref.table_name}`}
-                        </Table.Td>
+                        <Table.Td>{ref.alias || `${ref.schema_name}.${ref.table_name}`}</Table.Td>
                         <Table.Td>{ref.source_id}</Table.Td>
                         <Table.Td>{ref.domain_id}</Table.Td>
                         <Table.Td>
@@ -604,11 +602,7 @@ export function GlossaryTab() {
                 disabled={edgeTermId === null || edgeRelType === null}
                 onClick={() =>
                   void act(() =>
-                    addGlossaryEdge(
-                      detail.id,
-                      Number(edgeTermId),
-                      edgeRelType as GlossaryRelType,
-                    ),
+                    addGlossaryEdge(detail.id, Number(edgeTermId), edgeRelType as GlossaryRelType),
                   )
                 }
                 data-testid="glossary-edge-add-btn"
@@ -620,7 +614,11 @@ export function GlossaryTab() {
             <Title order={5}>{t("glossaryTab.expertsTitle")}</Title>
             <Stack gap={4}>
               {detail.experts.map((expert) => (
-                <Group key={expert.user_id} gap="xs" data-testid={`glossary-expert-${expert.user_id}`}>
+                <Group
+                  key={expert.user_id}
+                  gap="xs"
+                  data-testid={`glossary-expert-${expert.user_id}`}
+                >
                   <Text size="sm">{expert.user_id}</Text>
                   <Badge size="sm" variant="light">
                     {t(`glossaryTab.kind_${expert.kind}`)}
@@ -630,9 +628,7 @@ export function GlossaryTab() {
                     color="red"
                     size="sm"
                     aria-label={t("glossaryTab.removeExpert")}
-                    onClick={() =>
-                      void act(() => removeGlossaryExpert(detail.id, expert.user_id))
-                    }
+                    onClick={() => void act(() => removeGlossaryExpert(detail.id, expert.user_id))}
                   >
                     <Trash2 size={13} />
                   </ActionIcon>

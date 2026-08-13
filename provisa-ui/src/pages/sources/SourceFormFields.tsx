@@ -11,11 +11,7 @@
 import { NumberInput, PasswordInput, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Domain } from "../../types/admin";
-import {
-  DATA_LAKE,
-  FILE_SOURCES,
-  SIMPLE_RDBMS,
-} from "./constants";
+import { DATA_LAKE, FILE_SOURCES, SIMPLE_RDBMS } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
 import { SourceFormFieldsExtended } from "./SourceFormFieldsExtended";
 
@@ -205,7 +201,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
         />
       )}
       {form.type === "files" && (
-        <label style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+        <label
+          style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "0.25rem" }}
+        >
           {t("sourceFormFields.filesGlob")}
           <input
             value={form.path}
@@ -268,7 +266,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               <PasswordInput
                 label={t("sourceFormFields.passphrase")}
                 value={authFields.passphrase ?? ""}
-                onChange={(e) => setAuthFields({ ...authFields, passphrase: e.currentTarget.value })}
+                onChange={(e) =>
+                  setAuthFields({ ...authFields, passphrase: e.currentTarget.value })
+                }
                 placeholder="optional"
               />
             </>
@@ -362,7 +362,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               label={t("sourceFormFields.accessToken")}
               required
               value={authFields.access_token ?? ""}
-              onChange={(e) => setAuthFields({ ...authFields, access_token: e.currentTarget.value })}
+              onChange={(e) =>
+                setAuthFields({ ...authFields, access_token: e.currentTarget.value })
+              }
               placeholder="${env:DATABRICKS_TOKEN}"
             />
           )}
@@ -439,7 +441,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
                 label={t("sourceFormFields.accessKeyId")}
                 required
                 value={authFields.access_key_id ?? ""}
-                onChange={(e) => setAuthFields({ ...authFields, access_key_id: e.currentTarget.value })}
+                onChange={(e) =>
+                  setAuthFields({ ...authFields, access_key_id: e.currentTarget.value })
+                }
                 placeholder="${env:AWS_ACCESS_KEY_ID}"
               />
               <PasswordInput
@@ -575,7 +579,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
                 label={t("sourceFormFields.accessKeyId")}
                 required
                 value={authFields.access_key_id ?? ""}
-                onChange={(e) => setAuthFields({ ...authFields, access_key_id: e.currentTarget.value })}
+                onChange={(e) =>
+                  setAuthFields({ ...authFields, access_key_id: e.currentTarget.value })
+                }
                 placeholder="${env:AWS_ACCESS_KEY_ID}"
               />
               <PasswordInput
@@ -613,7 +619,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               <PasswordInput
                 label={t("sourceFormFields.accessKey")}
                 value={authFields.access_key ?? ""}
-                onChange={(e) => setAuthFields({ ...authFields, access_key: e.currentTarget.value })}
+                onChange={(e) =>
+                  setAuthFields({ ...authFields, access_key: e.currentTarget.value })
+                }
                 placeholder="shared key (or use SAS)"
               />
               <TextInput

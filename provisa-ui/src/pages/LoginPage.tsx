@@ -252,7 +252,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   };
 
   const firstLoginNotice = firstLogin ? (
-    <Alert color="blue" mb="md" title={t("loginPage.firstLoginTitle")} data-testid="first-login-notice">
+    <Alert
+      color="blue"
+      mb="md"
+      title={t("loginPage.firstLoginTitle")}
+      data-testid="first-login-notice"
+    >
       {t("loginPage.firstLoginBody")}
     </Alert>
   ) : null;

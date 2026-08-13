@@ -25,7 +25,6 @@ import { useAuth } from "../context/AuthContext";
 import { clearSessionState } from "../lib/session";
 import { NAV_GROUPS, entryItem, writeLastSubnav } from "./navGroups";
 
-
 function activeGroupId(pathname: string): string | null {
   for (const group of NAV_GROUPS) {
     if (
@@ -68,8 +67,7 @@ export function NavBar() {
     const group = NAV_GROUPS.find((g) => g.id === routeGroup);
     const item = group?.items.find(
       (i) =>
-        !i.comingSoon &&
-        (location.pathname === i.to || location.pathname.startsWith(i.to + "/")),
+        !i.comingSoon && (location.pathname === i.to || location.pathname.startsWith(i.to + "/")),
     );
     if (group && item) writeLastSubnav(group.id, item.to);
   }, [location.pathname, routeGroup]);
@@ -161,10 +159,14 @@ export function NavBar() {
         </div>
         <div className="navbar-links">
           <CapabilityGate capability="source_registration">
-            <NavLink to="/sources" data-tour="nav-sources">{t("navBar.sources")}</NavLink>
+            <NavLink to="/sources" data-tour="nav-sources">
+              {t("navBar.sources")}
+            </NavLink>
           </CapabilityGate>
           <CapabilityGate capability="table_registration">
-            <NavLink to="/tables" data-tour="nav-tables">{t("navBar.tables")}</NavLink>
+            <NavLink to="/tables" data-tour="nav-tables">
+              {t("navBar.tables")}
+            </NavLink>
           </CapabilityGate>
           <NavLink to="/relationships" data-tour="nav-relationships">
             {t("navBar.relationships")}
@@ -194,7 +196,9 @@ export function NavBar() {
             );
           })}
           {/* Docs — ungated, available to everyone */}
-          <NavLink to="/docs" data-tour="nav-docs">{t("navBar.docs")}</NavLink>
+          <NavLink to="/docs" data-tour="nav-docs">
+            {t("navBar.docs")}
+          </NavLink>
         </div>
         <div className="navbar-role">
           <OrgSwitcher />
@@ -260,7 +264,11 @@ export function NavBar() {
               <Menu.Dropdown>
                 {(displayName || email) && (
                   <Menu.Label>
-                    {displayName && <Text size="sm" fw={600}>{displayName}</Text>}
+                    {displayName && (
+                      <Text size="sm" fw={600}>
+                        {displayName}
+                      </Text>
+                    )}
                     {email && (
                       <Text size="xs" c="dimmed">
                         {email}

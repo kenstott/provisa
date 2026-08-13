@@ -71,8 +71,9 @@ pytestmark = [
 _DOMAIN = "redshift_e2e"
 
 
-async def test_redshift_registers_and_serves_semantic_query(  # noqa: F811
-    redshift_cluster, connector_client
+async def test_redshift_registers_and_serves_semantic_query(
+    redshift_cluster,  # noqa: F811 — pytest resolves the fixture by parameter name
+    connector_client,  # noqa: F811 — same
 ):
     """createSource → registerTable (types introspected) → rebuildSchemas → semantic SELECT.
 

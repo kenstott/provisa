@@ -39,7 +39,13 @@ const LIVE = {
   revoked_at: null,
 };
 
-const REVOKED = { ...LIVE, token_hash: "hash-dead", prefix: "provisa_pat_dead0000", name: "old", revoked_at: "2026-02-01T00:00:00Z" };
+const REVOKED = {
+  ...LIVE,
+  token_hash: "hash-dead",
+  prefix: "provisa_pat_dead0000",
+  name: "old",
+  revoked_at: "2026-02-01T00:00:00Z",
+};
 
 describe("PersonalAccessTokens", () => {
   beforeEach(() => {
@@ -55,14 +61,23 @@ describe("PersonalAccessTokens", () => {
   });
 
   it("shows the minted secret once, and only after issuance", async () => {
-    issueSpy.mockResolvedValue({ token: "provisa_pat_THE-SECRET", prefix: "provisa_pat_THE-SECR", name: "ci", expires_at: null });
+    issueSpy.mockResolvedValue({
+      token: "provisa_pat_THE-SECRET",
+      prefix: "provisa_pat_THE-SECR",
+      name: "ci",
+      expires_at: null,
+    });
     render(<PersonalAccessTokens />);
 
     fireEvent.change(await screen.findByTestId("profile-pat-name"), { target: { value: "ci" } });
     fireEvent.click(screen.getByTestId("profile-pat-issue"));
 
-    expect(await screen.findByTestId("profile-pat-secret")).toHaveTextContent("provisa_pat_THE-SECRET");
-    await waitFor(() => expect(issueSpy).toHaveBeenCalledWith({ name: "ci", expires_in_days: null }));
+    expect(await screen.findByTestId("profile-pat-secret")).toHaveTextContent(
+      "provisa_pat_THE-SECRET",
+    );
+    await waitFor(() =>
+      expect(issueSpy).toHaveBeenCalledWith({ name: "ci", expires_in_days: null }),
+    );
 
     // Dismissing removes it from the DOM: the server stores only a hash, so nothing can re-show it.
     fireEvent.click(screen.getByTestId("profile-pat-dismiss"));
@@ -90,7 +105,9 @@ describe("PersonalAccessTokens", () => {
   it("surfaces a server refusal rather than swallowing it", async () => {
     issueSpy.mockRejectedValue(new Error("expires_in_days must be between 1 and 366"));
     render(<PersonalAccessTokens />);
-    fireEvent.change(await screen.findByTestId("profile-pat-name"), { target: { value: "forever" } });
+    fireEvent.change(await screen.findByTestId("profile-pat-name"), {
+      target: { value: "forever" },
+    });
     fireEvent.click(screen.getByTestId("profile-pat-issue"));
     expect(await screen.findByTestId("profile-pat-error")).toHaveTextContent("between 1 and 366");
   });

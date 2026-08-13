@@ -189,7 +189,14 @@ export function SqlEditorPanel({
                       setEditingTabId(null);
                     }
                   }}
-                  styles={{ input: { width: "80px", fontSize: "0.75rem", height: "22px", minHeight: "22px" } }}
+                  styles={{
+                    input: {
+                      width: "80px",
+                      fontSize: "0.75rem",
+                      height: "22px",
+                      minHeight: "22px",
+                    },
+                  }}
                 />
               ) : (
                 <span>{t2.title}</span>
@@ -452,11 +459,7 @@ export function SqlEditorPanel({
             fontSize: "0.72rem",
           }}
         >
-          {copied ? (
-            <Check size={11} style={{ color: "var(--approve)" }} />
-          ) : (
-            <Copy size={11} />
-          )}
+          {copied ? <Check size={11} style={{ color: "var(--approve)" }} /> : <Copy size={11} />}
           {copied ? t("sqlEditorPanel.copied") : t("sqlEditorPanel.copy")}
         </button>
       </div>
@@ -502,7 +505,9 @@ export function SqlEditorPanel({
           value={sampleSize}
           min={1}
           max={10000}
-          onChange={(v) => setSampleSize(Math.max(1, typeof v === "number" ? v : parseInt(String(v)) || 100))}
+          onChange={(v) =>
+            setSampleSize(Math.max(1, typeof v === "number" ? v : parseInt(String(v)) || 100))
+          }
           size="xs"
           data-testid="sql-sample-size"
           style={{ width: "90px" }}

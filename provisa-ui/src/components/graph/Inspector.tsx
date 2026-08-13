@@ -56,7 +56,18 @@ interface InspectorProps {
 
 // The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
 // they don't appear twice (degreeCentrality was the visible duplicate).
-const HIDDEN_PROPS = new Set(["l1Cluster", "l2Cluster", "l3Cluster", "scl1", "scl2", "scl3", "degIn", "degOut", "degTotal", "degreeCentrality"]);
+const HIDDEN_PROPS = new Set([
+  "l1Cluster",
+  "l2Cluster",
+  "l3Cluster",
+  "scl1",
+  "scl2",
+  "scl3",
+  "degIn",
+  "degOut",
+  "degTotal",
+  "degreeCentrality",
+]);
 
 export function Inspector({
   selected,
@@ -126,7 +137,9 @@ export function Inspector({
         idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
       return [
         ...idRow,
-        ...Object.entries(props).filter(([k]) => !HIDDEN_PROPS.has(k)).sort(([a], [b]) => a.localeCompare(b)),
+        ...Object.entries(props)
+          .filter(([k]) => !HIDDEN_PROPS.has(k))
+          .sort(([a], [b]) => a.localeCompare(b)),
         ...Object.entries(pkEntry),
       ];
     }
@@ -177,7 +190,11 @@ export function Inspector({
           <div className="gf-overview">
             <div className="gf-overview-section-label">{t("graphInspector.nodeLabels")}</div>
             <div className="gf-overview-chips">
-              <Badge variant="filled" radius="xl" className="gf-overview-chip gf-overview-chip--all">
+              <Badge
+                variant="filled"
+                radius="xl"
+                className="gf-overview-chip gf-overview-chip--all"
+              >
                 *({overviewData.nodeCount.toLocaleString()})
               </Badge>
               {overviewData.nodesByLabel.map(([lbl, cnt]) => (
@@ -194,11 +211,20 @@ export function Inspector({
             </div>
             <div className="gf-overview-section-label">{t("graphInspector.relationshipTypes")}</div>
             <div className="gf-overview-chips">
-              <Badge variant="filled" radius="xl" className="gf-overview-chip gf-overview-chip--all">
+              <Badge
+                variant="filled"
+                radius="xl"
+                className="gf-overview-chip gf-overview-chip--all"
+              >
                 *({overviewData.edgeCount.toLocaleString()})
               </Badge>
               {overviewData.edgesByType.map(([type, cnt]) => (
-                <Badge key={type} variant="filled" radius="sm" className="gf-overview-chip gf-overview-chip--rel">
+                <Badge
+                  key={type}
+                  variant="filled"
+                  radius="sm"
+                  className="gf-overview-chip gf-overview-chip--rel"
+                >
                   {type} ({cnt.toLocaleString()})
                 </Badge>
               ))}
@@ -217,8 +243,10 @@ export function Inspector({
     );
   }
 
-  const headerLabel = isN ? t("graphInspector.nodeProperties") : t("graphInspector.relationshipProperties");
-  const chipLabel = isN ? (typeName || label) : label;
+  const headerLabel = isN
+    ? t("graphInspector.nodeProperties")
+    : t("graphInspector.relationshipProperties");
+  const chipLabel = isN ? typeName || label : label;
 
   return (
     <div className="gf-inspector" style={{ width }}>
@@ -246,12 +274,19 @@ export function Inspector({
               <Copy size={12} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label={inspView === "json" ? t("graphInspector.showDetails") : t("graphInspector.showJson")} withinPortal>
+          <Tooltip
+            label={
+              inspView === "json" ? t("graphInspector.showDetails") : t("graphInspector.showJson")
+            }
+            withinPortal
+          >
             <ActionIcon
               variant="subtle"
               size="sm"
               className={`gf-insp-viewbtn ${inspView === "json" ? "active" : ""}`}
-              aria-label={inspView === "json" ? t("graphInspector.showDetails") : t("graphInspector.showJson")}
+              aria-label={
+                inspView === "json" ? t("graphInspector.showDetails") : t("graphInspector.showJson")
+              }
               aria-pressed={inspView === "json"}
               onClick={() => setInspView(inspView === "json" ? "details" : "json")}
               data-testid="inspector-toggle-view"
@@ -284,7 +319,13 @@ export function Inspector({
             {domainPrefix}
           </Badge>
         )}
-        <Menu position="bottom-start" withinPortal transitionProps={{ duration: 0 }} opened={showPalette} onChange={setShowPalette}>
+        <Menu
+          position="bottom-start"
+          withinPortal
+          transitionProps={{ duration: 0 }}
+          opened={showPalette}
+          onChange={setShowPalette}
+        >
           <Menu.Target>
             <Badge
               component="button"
@@ -417,7 +458,12 @@ export function Inspector({
           <Table className="gf-inspector-table">
             <Table.Tbody>
               {propRows.map(([k, v]) => {
-                const vs = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+                const vs =
+                  v === null || v === undefined
+                    ? ""
+                    : typeof v === "object"
+                      ? JSON.stringify(v)
+                      : String(v);
                 return (
                   <Table.Tr key={k} className="gf-prop-row">
                     <Table.Td className="gf-prop-key">{k}</Table.Td>

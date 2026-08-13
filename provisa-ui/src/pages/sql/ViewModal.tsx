@@ -119,7 +119,10 @@ export function ViewModal({
       >
         <Group justify="flex-end" mb="sm" style={{ flexShrink: 0 }}>
           {viewMsg && (
-            <Text size="xs" c={viewMsg.startsWith("Error") ? "var(--destructive)" : "var(--approve)"}>
+            <Text
+              size="xs"
+              c={viewMsg.startsWith("Error") ? "var(--destructive)" : "var(--approve)"}
+            >
               {viewMsg}
             </Text>
           )}
@@ -210,7 +213,11 @@ export function ViewModal({
       <Modal
         opened={savedViewId !== null}
         onClose={closeConfirmation}
-        title={<Title order={4} component="span">{t("sqlViewModal.savedTitle")}</Title>}
+        title={
+          <Title order={4} component="span">
+            {t("sqlViewModal.savedTitle")}
+          </Title>
+        }
         centered
         data-testid="view-saved-modal"
       >
@@ -220,7 +227,11 @@ export function ViewModal({
             : t("sqlViewModal.savedMessageSubmitted", { viewId })}
         </Text>
         <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={closeConfirmation} data-testid="view-saved-close-button">
+          <Button
+            variant="default"
+            onClick={closeConfirmation}
+            data-testid="view-saved-close-button"
+          >
             {t("sqlViewModal.close")}
           </Button>
           <Button

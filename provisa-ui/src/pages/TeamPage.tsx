@@ -66,9 +66,7 @@ export function TeamPage() {
   }, [activeOrgId]);
 
   useEffect(() => {
-    fetchInvites()
-      .then(setInvites)
-      .catch(reportError);
+    fetchInvites().then(setInvites).catch(reportError);
   }, []);
 
   useEffect(() => {
@@ -183,7 +181,13 @@ export function TeamPage() {
       <Stack gap="sm">
         <Title order={4}>{t("teamPage.membersHeading")}</Title>
         <Table.ScrollContainer minWidth={640}>
-          <Table striped highlightOnHover withTableBorder verticalSpacing="xs" data-testid="team-members">
+          <Table
+            striped
+            highlightOnHover
+            withTableBorder
+            verticalSpacing="xs"
+            data-testid="team-members"
+          >
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>{t("teamPage.colPerson")}</Table.Th>
@@ -213,9 +217,7 @@ export function TeamPage() {
                       )}
                     </Table.Td>
                     <Table.Td>{m.provider ?? "—"}</Table.Td>
-                    <Table.Td>
-                      {m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")}
-                    </Table.Td>
+                    <Table.Td>{m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")}</Table.Td>
                     <Table.Td>
                       <Group gap="xs">
                         <Button
@@ -315,8 +317,14 @@ export function TeamPage() {
                 <Table.Td>
                   <Group gap="xs">
                     {!inv.used_at && (
-                      <Button size="compact-xs" variant="default" onClick={() => handleCopy(inv.token)}>
-                        {copiedToken === inv.token ? t("teamPage.copiedButton") : t("teamPage.copyButton")}
+                      <Button
+                        size="compact-xs"
+                        variant="default"
+                        onClick={() => handleCopy(inv.token)}
+                      >
+                        {copiedToken === inv.token
+                          ? t("teamPage.copiedButton")
+                          : t("teamPage.copyButton")}
                       </Button>
                     )}
                     {!inv.used_at && (

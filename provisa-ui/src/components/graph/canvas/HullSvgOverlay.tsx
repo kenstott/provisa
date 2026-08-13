@@ -67,7 +67,9 @@ export function HullSvgOverlay({
               const cy = cyRef.current;
               if (cy) {
                 const clusterId = `__cluster_${clusterLevelRef.current}_${cidToId(cid)}`;
-                cy.getElementById(clusterId).children().forEach((n) => n.unlock());
+                cy.getElementById(clusterId)
+                  .children()
+                  .forEach((n) => n.unlock());
               }
               hullDragRef.current = {
                 cid,

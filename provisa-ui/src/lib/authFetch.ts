@@ -57,12 +57,7 @@ export function installAuthFetch(): void {
     const orgId = localStorage.getItem("provisa_org");
     if (!token) return originalFetch(input, init);
 
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (!isSameOrigin(url)) return originalFetch(input, init);
 
     // Merge onto whichever headers source applies: init overrides a Request's own headers.

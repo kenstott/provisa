@@ -10,9 +10,24 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, NumberInput, Radio, Select, Stack, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Group,
+  NumberInput,
+  Radio,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { Check } from "lucide-react";
-import { fetchOrgEngine, setOrgEngine, type OrgEngineMode, type OrgEngineState } from "../../api/admin";
+import {
+  fetchOrgEngine,
+  setOrgEngine,
+  type OrgEngineMode,
+  type OrgEngineState,
+} from "../../api/admin";
 
 // REQ-1412: the org administrator's engine lane — shared, isolated (Provisa-operated), or external
 // (org-operated). Distinct from FederationEngineTab, which picks the engine KIND for the whole
@@ -102,7 +117,10 @@ export function OrgEngineTab() {
         <Stack gap="sm" mt="xs">
           <Radio
             value="shared"
-            label={t("orgEngineTab.modeShared") + (state.mode === "shared" ? t("orgEngineTab.currentSuffix") : "")}
+            label={
+              t("orgEngineTab.modeShared") +
+              (state.mode === "shared" ? t("orgEngineTab.currentSuffix") : "")
+            }
             description={t("orgEngineTab.modeSharedHelp")}
             data-testid="org-engine-mode-shared"
           />

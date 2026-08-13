@@ -239,9 +239,7 @@ describe("JoinCanvas metric drop (REQ-1322 / REQ-1321)", () => {
     expect(screen.getByTestId("canvas-metric-dim-revenue-orders.amount")).toBeInTheDocument();
     expect(screen.getByTestId("canvas-metric-dim-revenue-customers.region")).toBeInTheDocument();
     // audit_log is unrelated — not a valid dimension source
-    expect(
-      screen.queryByTestId("canvas-metric-dim-revenue-audit_log.col"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("canvas-metric-dim-revenue-audit_log.col")).not.toBeInTheDocument();
   });
 
   it("generates exactly the semantic SQL — no joins, no aggregation", async () => {

@@ -46,15 +46,9 @@ const GUIDE_KEY = "provisa.nl.guide.collapsed";
 
 function GuidanceBanner() {
   const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem(GUIDE_KEY) === "1",
-  );
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(GUIDE_KEY) === "1");
 
-  const examples = [
-    t("nlPage.example1"),
-    t("nlPage.example2"),
-    t("nlPage.example3"),
-  ];
+  const examples = [t("nlPage.example1"), t("nlPage.example2"), t("nlPage.example3")];
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
@@ -70,10 +64,21 @@ function GuidanceBanner() {
         aria-expanded={!collapsed}
         data-testid="nl-guide-toggle"
         p="sm"
-        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
       >
-        <Text fw={600} size="sm">{t("nlPage.guideTitle")}</Text>
-        {collapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+        <Text fw={600} size="sm">
+          {t("nlPage.guideTitle")}
+        </Text>
+        {collapsed ? (
+          <ChevronRight size={14} aria-hidden="true" />
+        ) : (
+          <ChevronDown size={14} aria-hidden="true" />
+        )}
       </UnstyledButton>
       {!collapsed && (
         <Stack gap="sm" p="sm" pt={0}>
@@ -83,7 +88,15 @@ function GuidanceBanner() {
           <Stack component="ul" gap={4} style={{ margin: 0, paddingInlineStart: 18 }}>
             <Text component="li" size="sm" c="dimmed">
               <Trans i18nKey="nlPage.guideRuleNames" t={t}>
-                Use the names of your entities, not synonyms (<Text component="em" fs="normal" c="blue" span>Orders</Text>, not <Text component="em" fs="normal" c="blue" span>purchases</Text>)
+                Use the names of your entities, not synonyms (
+                <Text component="em" fs="normal" c="blue" span>
+                  Orders
+                </Text>
+                , not{" "}
+                <Text component="em" fs="normal" c="blue" span>
+                  purchases
+                </Text>
+                )
               </Trans>
             </Text>
             <Text component="li" size="sm" c="dimmed">
@@ -122,8 +135,12 @@ const TARGETS = ["sql", "graphql", "cypher", "grpc", "jsonapi", "openapi"] as co
 type Target = (typeof TARGETS)[number];
 
 const LABELS: Record<Target, string> = {
-  sql: "SQL", graphql: "GraphQL", cypher: "Cypher",
-  grpc: "gRPC", jsonapi: "JSON:API", openapi: "OpenAPI",
+  sql: "SQL",
+  graphql: "GraphQL",
+  cypher: "Cypher",
+  grpc: "gRPC",
+  jsonapi: "JSON:API",
+  openapi: "OpenAPI",
 };
 
 export function NlPage() {
@@ -153,8 +170,12 @@ export function NlPage() {
       };
     } catch {
       return {
-        sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH,
-        grpc: EMPTY_BRANCH, jsonapi: EMPTY_BRANCH, openapi: EMPTY_BRANCH,
+        sql: EMPTY_BRANCH,
+        graphql: EMPTY_BRANCH,
+        cypher: EMPTY_BRANCH,
+        grpc: EMPTY_BRANCH,
+        jsonapi: EMPTY_BRANCH,
+        openapi: EMPTY_BRANCH,
       };
     }
   });
@@ -200,8 +221,12 @@ export function NlPage() {
       setGlobalError(e instanceof Error ? e.message : String(e));
       setSubmitting(false);
       saveBranches({
-        sql: EMPTY_BRANCH, graphql: EMPTY_BRANCH, cypher: EMPTY_BRANCH,
-        grpc: EMPTY_BRANCH, jsonapi: EMPTY_BRANCH, openapi: EMPTY_BRANCH,
+        sql: EMPTY_BRANCH,
+        graphql: EMPTY_BRANCH,
+        cypher: EMPTY_BRANCH,
+        grpc: EMPTY_BRANCH,
+        jsonapi: EMPTY_BRANCH,
+        openapi: EMPTY_BRANCH,
       });
       return;
     }
@@ -211,7 +236,10 @@ export function NlPage() {
       (event: NlBranchEvent) => {
         const t = event.target as Target;
         setBranches((prev) => {
-          const next = { ...prev, [t]: { query: event.query, result: event.result, error: event.error, loading: false } };
+          const next = {
+            ...prev,
+            [t]: { query: event.query, result: event.result, error: event.error, loading: false },
+          };
           localStorage.setItem(NL_BRANCHES_KEY, JSON.stringify(next));
           return next;
         });
@@ -243,14 +271,17 @@ export function NlPage() {
     cancelRef.current = stop;
   }, [question, submitting, role, strict, saveBranches]);
 
-  const openInExplorer = useCallback((target: Target, _query: string) => {
-    const route = EXPLORER_ROUTES[target];
-    if (!route.stateKey) {
-      navigate(route.path);
-      return;
-    }
-    navigate(route.path, { state: { [route.stateKey]: _query, autoRun: true } });
-  }, [navigate]);
+  const openInExplorer = useCallback(
+    (target: Target, _query: string) => {
+      const route = EXPLORER_ROUTES[target];
+      if (!route.stateKey) {
+        navigate(route.path);
+        return;
+      }
+      navigate(route.path, { state: { [route.stateKey]: _query, autoRun: true } });
+    },
+    [navigate],
+  );
 
   return (
     <Stack gap="md" p="md" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
@@ -266,7 +297,10 @@ export function NlPage() {
             minRows={2}
             style={{ flex: 1 }}
             data-testid="nl-question-input"
-            onChange={(e) => { setQuestion(e.currentTarget.value); localStorage.setItem(NL_QUESTION_KEY, e.currentTarget.value); }}
+            onChange={(e) => {
+              setQuestion(e.currentTarget.value);
+              localStorage.setItem(NL_QUESTION_KEY, e.currentTarget.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -302,9 +336,7 @@ export function NlPage() {
           <Button
             variant="light"
             disabled={!question.trim()}
-            onClick={() =>
-              navigate("/explore", { state: { mcpQuestion: question.trim() } })
-            }
+            onClick={() => navigate("/explore", { state: { mcpQuestion: question.trim() } })}
             data-testid="nl-mcp-chat-button"
           >
             {t("nlPage.mcpChat")}
@@ -321,7 +353,13 @@ export function NlPage() {
       {hasResults && (
         <SimpleGrid data-tour="nl-panels" cols={{ base: 1, md: 3 }} spacing="sm">
           {TARGETS.map((tk) => (
-            <BranchPanel key={tk} label={LABELS[tk]} target={tk} branch={branches[tk]} onOpen={openInExplorer} />
+            <BranchPanel
+              key={tk}
+              label={LABELS[tk]}
+              target={tk}
+              branch={branches[tk]}
+              onOpen={openInExplorer}
+            />
           ))}
         </SimpleGrid>
       )}
@@ -343,9 +381,27 @@ function BranchPanel({
   const { t } = useTranslation();
   const notApplicable = branch.error === "NOT_APPLICABLE";
   return (
-    <Paper withBorder radius="md" style={{ display: "flex", flexDirection: "column", minHeight: 200, maxHeight: 400, overflow: "hidden" }} data-testid={`nl-branch-panel-${target}`}>
-      <Group justify="space-between" px="sm" py={6} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
-        <Badge variant="light" size="sm">{label}</Badge>
+    <Paper
+      withBorder
+      radius="md"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 200,
+        maxHeight: 400,
+        overflow: "hidden",
+      }}
+      data-testid={`nl-branch-panel-${target}`}
+    >
+      <Group
+        justify="space-between"
+        px="sm"
+        py={6}
+        style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}
+      >
+        <Badge variant="light" size="sm">
+          {label}
+        </Badge>
         {!branch.loading && branch.query && (
           <Tooltip label={t("nlPage.openInExplorer", { label })} multiline w={280}>
             <Button
@@ -364,31 +420,42 @@ function BranchPanel({
           {branch.loading && (
             <Group gap={6}>
               <Loader size="xs" />
-              <Text size="sm" c="dimmed" fs="italic">{t("nlPage.generating")}</Text>
+              <Text size="sm" c="dimmed" fs="italic">
+                {t("nlPage.generating")}
+              </Text>
             </Group>
           )}
           {!branch.loading && notApplicable && (
-            <Text size="sm" c="dimmed" fs="italic">{t("nlPage.notApplicable")}</Text>
+            <Text size="sm" c="dimmed" fs="italic">
+              {t("nlPage.notApplicable")}
+            </Text>
           )}
           {!branch.loading && !notApplicable && branch.error && (
-            <Text size="sm" c="red">{branch.error}</Text>
+            <Text size="sm" c="red">
+              {branch.error}
+            </Text>
           )}
           {!branch.loading && branch.query && (
             <Text
               component="pre"
               size="xs"
               c="cyan"
-              style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "var(--mantine-font-family-monospace, monospace)" }}
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontFamily: "var(--mantine-font-family-monospace, monospace)",
+              }}
             >
               {branch.query}
             </Text>
           )}
           {!branch.loading && !branch.query && !branch.error && (
-            <Text size="sm" c="dimmed" fs="italic">{t("nlPage.noQueryGenerated")}</Text>
+            <Text size="sm" c="dimmed" fs="italic">
+              {t("nlPage.noQueryGenerated")}
+            </Text>
           )}
-          {!branch.loading && branch.result != null && (
-            <ResultTable result={branch.result} />
-          )}
+          {!branch.loading && branch.result != null && <ResultTable result={branch.result} />}
         </Stack>
       </ScrollArea>
     </Paper>
@@ -403,22 +470,30 @@ function ResultTable({ result }: { result: unknown }) {
     !Array.isArray((result as { rows?: unknown }).rows)
   ) {
     return (
-      <Text component="pre" size="xs" c="dimmed" style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+      <Text
+        component="pre"
+        size="xs"
+        c="dimmed"
+        style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+      >
         {JSON.stringify(result, null, 2)}
       </Text>
     );
   }
 
   const { columns, rows } = result as { columns: string[]; rows: Record<string, unknown>[] };
-  if (!rows.length) return <Text size="sm" c="dimmed" fs="italic">{t("nlPage.noRowsReturned")}</Text>;
+  if (!rows.length)
+    return (
+      <Text size="sm" c="dimmed" fs="italic">
+        {t("nlPage.noRowsReturned")}
+      </Text>
+    );
 
   const TOP_LIMIT = 100;
   const BOTTOM_LIMIT = 3;
   const truncated = rows.length > TOP_LIMIT;
   const topRows = rows.slice(0, TOP_LIMIT);
-  const bottomRows = truncated
-    ? rows.slice(Math.max(TOP_LIMIT, rows.length - BOTTOM_LIMIT))
-    : [];
+  const bottomRows = truncated ? rows.slice(Math.max(TOP_LIMIT, rows.length - BOTTOM_LIMIT)) : [];
 
   // Cypher/GraphQL group-by rows carry nested maps and lists (a `nodes` collection, a related
   // entity map); String() renders those as "[object Object]", so serialize them instead.

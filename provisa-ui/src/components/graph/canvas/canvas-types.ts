@@ -18,7 +18,12 @@ export interface CanvasProps {
   edges: Map<string, GEdge>;
   overlayNodes: Map<string, GNode>;
   overlayEdges: Map<string, GEdge>;
-  onSelect: (item: { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null) => void;
+  onSelect: (
+    item:
+      | { kind: "node"; data: GNode; graphStats?: GraphStats }
+      | { kind: "edge"; data: GEdge }
+      | null,
+  ) => void;
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;

@@ -34,13 +34,47 @@ describe("TagControl", () => {
     assignSpy.mockClear();
     unassignSpy.mockClear();
     mockTags = [
-      { id: "deprecated", description: "Marked for removal", appliesTo: ["source", "table", "column", "relationship"], isSystem: true, reasonPolicy: "required", expiresPolicy: "optional" },
-      { id: "pii", description: "Personally identifiable", appliesTo: ["column"], isSystem: true, reasonPolicy: "optional", expiresPolicy: "hidden" },
-      { id: "finance", description: "Finance domain", appliesTo: ["table"], isSystem: false, reasonPolicy: "hidden", expiresPolicy: "required" },
-      { id: "beta", description: "Beta command", appliesTo: ["command"], isSystem: false, reasonPolicy: "optional", expiresPolicy: "optional" },
+      {
+        id: "deprecated",
+        description: "Marked for removal",
+        appliesTo: ["source", "table", "column", "relationship"],
+        isSystem: true,
+        reasonPolicy: "required",
+        expiresPolicy: "optional",
+      },
+      {
+        id: "pii",
+        description: "Personally identifiable",
+        appliesTo: ["column"],
+        isSystem: true,
+        reasonPolicy: "optional",
+        expiresPolicy: "hidden",
+      },
+      {
+        id: "finance",
+        description: "Finance domain",
+        appliesTo: ["table"],
+        isSystem: false,
+        reasonPolicy: "hidden",
+        expiresPolicy: "required",
+      },
+      {
+        id: "beta",
+        description: "Beta command",
+        appliesTo: ["command"],
+        isSystem: false,
+        reasonPolicy: "optional",
+        expiresPolicy: "optional",
+      },
     ];
     mockAssignments = [
-      { tagId: "deprecated", objectType: "table", tableId: 7, reason: "Replaced by orders_v2", expiresOn: "2020-01-01" },
+      {
+        tagId: "deprecated",
+        objectType: "table",
+        tableId: 7,
+        reason: "Replaced by orders_v2",
+        expiresOn: "2020-01-01",
+      },
       { tagId: "finance", objectType: "table", tableId: 8 },
       { tagId: "pii", objectType: "column", tableId: 7, columnName: "email" },
       { tagId: "deprecated", objectType: "source", sourceId: "pg", reason: "Legacy source" },
@@ -180,10 +214,7 @@ describe("TagControl", () => {
 
   it("deprecated pill switches to filled variant when expiresOn is past", () => {
     render(<TagControl objectType="table" tableId={7} />);
-    expect(screen.getByTestId("tag-pill-deprecated")).toHaveAttribute(
-      "data-variant",
-      "filled",
-    );
+    expect(screen.getByTestId("tag-pill-deprecated")).toHaveAttribute("data-variant", "filled");
   });
 
   it("edit affordance pre-fills the form and Apply re-assigns with the new reason", async () => {

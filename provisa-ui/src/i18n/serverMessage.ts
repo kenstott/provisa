@@ -25,7 +25,10 @@ export interface ServerMessageShape {
   detail?: string | null;
 }
 
-export function serverMessage(body: ServerMessageShape | null | undefined, fallback: string): string {
+export function serverMessage(
+  body: ServerMessageShape | null | undefined,
+  fallback: string,
+): string {
   if (body?.code) {
     const key = `serverErrors.${body.code}`;
     if (i18n.isInitialized && i18n.exists(key)) {

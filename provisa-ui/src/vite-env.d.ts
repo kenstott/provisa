@@ -10,8 +10,8 @@
 
 /// <reference types="vite/client" />
 
-declare module '*.graphql' {
-  import { DocumentNode } from 'graphql';
+declare module "*.graphql" {
+  import { DocumentNode } from "graphql";
   const doc: DocumentNode;
   export const RolesQuery: DocumentNode;
   export const SourcesQuery: DocumentNode;
@@ -87,8 +87,8 @@ declare module '*.graphql' {
   export default doc;
 }
 
-declare module '*.gql' {
-  import { DocumentNode } from 'graphql';
+declare module "*.gql" {
+  import { DocumentNode } from "graphql";
   const doc: DocumentNode;
   export const RolesQuery: DocumentNode;
   export const SourcesQuery: DocumentNode;

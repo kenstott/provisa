@@ -140,15 +140,11 @@ describe("TableEditForm — MV preflight check (REQ-1165)", () => {
       name: t("tableEditForm.preprocessAria"),
     });
     fireEvent.change(box, { target: { value: "" } });
-    expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({ mvPreprocess: null }),
-    );
+    expect(setEditingTable).toHaveBeenCalledWith(expect.objectContaining({ mvPreprocess: null }));
   });
 
   it("hides the editor when the table is not materialized", () => {
     renderForm(makeTable({ materialize: false }));
-    expect(
-      screen.queryByRole("textbox", { name: t("tableEditForm.preprocessAria") }),
-    ).toBeNull();
+    expect(screen.queryByRole("textbox", { name: t("tableEditForm.preprocessAria") })).toBeNull();
   });
 });

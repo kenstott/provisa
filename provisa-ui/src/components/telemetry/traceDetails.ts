@@ -27,7 +27,10 @@ const TELEMETRY_ID_COLUMNS: Record<string, TelemetryIdKind> = {
 
 /** The kind of telemetry id a column holds, or null when it holds none. */
 export function telemetryIdKind(column: string): TelemetryIdKind | null {
-  const key = column.trim().toLowerCase().replace(/[\s.-]/g, "_");
+  const key = column
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.-]/g, "_");
   const kind = TELEMETRY_ID_COLUMNS[key];
   return kind === undefined ? null : kind;
 }

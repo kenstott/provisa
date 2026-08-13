@@ -12,7 +12,12 @@ import { describe, it, expect } from "vitest";
 import { buildCypherScript } from "../components/graph/graph-export";
 import type { GNode, GEdge } from "../components/graph/graph-model";
 
-const nodeA: GNode = { id: 1, label: "Person", tableLabel: "persons", properties: { name: "Alice" } };
+const nodeA: GNode = {
+  id: 1,
+  label: "Person",
+  tableLabel: "persons",
+  properties: { name: "Alice" },
+};
 const nodeB: GNode = { id: 2, label: "Person", tableLabel: "persons", properties: { name: "Bob" } };
 
 const edge: GEdge = {

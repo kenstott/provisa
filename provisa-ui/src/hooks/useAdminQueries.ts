@@ -23,11 +23,7 @@ import type {
   Tag,
   TagAssignment,
 } from "../types/admin";
-import type {
-  CompileResult,
-  TableMetadata,
-  ColumnMetadata,
-} from "../api/admin";
+import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
 import {
   RolesQuery as ROLES_QUERY,
   SourcesQuery as SOURCES_QUERY,
@@ -608,10 +604,7 @@ export function useUpdateTablePreferMaterialized() {
     updateTablePreferMaterialized: MutationResult;
   }>(UpdateTablePreferMaterialized);
   return {
-    updateTablePreferMaterialized: async (
-      tableId: number,
-      preferMaterialized: boolean | null,
-    ) => {
+    updateTablePreferMaterialized: async (tableId: number, preferMaterialized: boolean | null) => {
       const result = await updateTablePreferMaterialized({
         variables: { tableId, preferMaterialized },
       });
@@ -732,7 +725,6 @@ export function useRoles() {
   return { roles, loading, error, refetch };
 }
 
-
 // ── Lazy (on-demand) query hooks: imperative trigger that still participates in the cache ──
 
 // The lazy executors returned below are wrapped in useCallback so they have a
@@ -813,10 +805,9 @@ export function useGenerateTableDescription() {
 }
 
 export function useSuggestTableAlias() {
-  const [run, { loading }] = useLazyQuery<{ suggestTableAlias: string }>(
-    SuggestTableAlias,
-    { fetchPolicy: "no-cache" },
-  );
+  const [run, { loading }] = useLazyQuery<{ suggestTableAlias: string }>(SuggestTableAlias, {
+    fetchPolicy: "no-cache",
+  });
   return {
     suggestTableAlias: async (
       tableName: string,
@@ -881,9 +872,12 @@ export function useCompileQuery() {
 }
 
 export function useUpsertRlsRule() {
-  const [upsertRlsRule, { loading }] = useMutation<{ upsertRlsRule: MutationResult }>(UpsertRlsRule, {
-    refetchQueries: [{ query: RLS_RULES_QUERY }],
-  });
+  const [upsertRlsRule, { loading }] = useMutation<{ upsertRlsRule: MutationResult }>(
+    UpsertRlsRule,
+    {
+      refetchQueries: [{ query: RLS_RULES_QUERY }],
+    },
+  );
   return {
     upsertRlsRule: async (input: {
       tableId?: string | null;
@@ -899,15 +893,14 @@ export function useUpsertRlsRule() {
 }
 
 export function useDeleteRlsRule() {
-  const [deleteRlsRule, { loading }] = useMutation<{ deleteRlsRule: MutationResult }>(DeleteRlsRule, {
-    refetchQueries: [{ query: RLS_RULES_QUERY }],
-  });
+  const [deleteRlsRule, { loading }] = useMutation<{ deleteRlsRule: MutationResult }>(
+    DeleteRlsRule,
+    {
+      refetchQueries: [{ query: RLS_RULES_QUERY }],
+    },
+  );
   return {
-    deleteRlsRule: async (
-      roleId: string,
-      tableId?: number | null,
-      domainId?: string | null,
-    ) => {
+    deleteRlsRule: async (roleId: string, tableId?: number | null, domainId?: string | null) => {
       const result = await deleteRlsRule({
         variables: { roleId, tableId: tableId ?? null, domainId: domainId ?? null },
       });

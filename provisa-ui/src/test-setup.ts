@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import '@testing-library/jest-dom/vitest';
-import { afterEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import "@testing-library/jest-dom/vitest";
+import { afterEach, vi } from "vitest";
+import { cleanup } from "@testing-library/react";
 
 // @testing-library/react auto-cleanup doesn't reliably fire between tests in
 // vitest's vmThreads pool.  Register it explicitly so DOM state never leaks.
@@ -19,7 +19,7 @@ afterEach(cleanup);
 // Mantine components (ScrollArea, Select, transitions) depend on browser APIs
 // jsdom does not implement. Provide the standard polyfills once, globally, so
 // every component test can render Mantine without per-test boilerplate.
-if (typeof window !== 'undefined' && !window.matchMedia) {
+if (typeof window !== "undefined" && !window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({
       matches: false,
@@ -38,21 +38,21 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverStub as never);
-if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
 
 // @react-aria/interactions patches HTMLElement.prototype.focus at module-init time.
 // In jsdom vm contexts the property can be accessor-only; re-declare as a plain
 // writable value so the assignment doesn't throw in strict-mode ES module scope.
-if (typeof HTMLElement !== 'undefined') {
-  const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus');
+if (typeof HTMLElement !== "undefined") {
+  const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "focus");
   if (desc) {
-    const fn = 'value' in desc ? desc.value : desc.get?.call(HTMLElement.prototype);
-    Object.defineProperty(HTMLElement.prototype, 'focus', {
+    const fn = "value" in desc ? desc.value : desc.get?.call(HTMLElement.prototype);
+    Object.defineProperty(HTMLElement.prototype, "focus", {
       configurable: true,
       writable: true,
-      value: typeof fn === 'function' ? fn : () => {},
+      value: typeof fn === "function" ? fn : () => {},
     });
   }
 }

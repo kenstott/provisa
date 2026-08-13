@@ -253,7 +253,11 @@ export function SecurityRolesPage() {
       </Group>
 
       {showRoleForm && (
-        <Stack gap="sm" p="md" style={{ border: "1px solid var(--border)", borderRadius: "0.5rem" }}>
+        <Stack
+          gap="sm"
+          p="md"
+          style={{ border: "1px solid var(--border)", borderRadius: "0.5rem" }}
+        >
           <TextInput
             label={t("securityPage.roleId")}
             placeholder={t("securityPage.roleIdPlaceholder")}
@@ -632,9 +636,7 @@ export function SecurityRlsPage() {
 
   const filtered = rules.filter((r) => {
     if (selectedDomain !== "all") {
-      const ruleDomain = r.domainId
-        ? r.domainId
-        : tables.find((t) => t.id === r.tableId)?.domainId;
+      const ruleDomain = r.domainId ? r.domainId : tables.find((t) => t.id === r.tableId)?.domainId;
       if (ruleDomain !== selectedDomain) return false;
     }
     if (!ruleSearch.trim()) return true;
@@ -676,7 +678,11 @@ export function SecurityRlsPage() {
       </Group>
 
       {showRuleForm && (
-        <Stack gap="sm" p="md" style={{ border: "1px solid var(--border)", borderRadius: "0.5rem" }}>
+        <Stack
+          gap="sm"
+          p="md"
+          style={{ border: "1px solid var(--border)", borderRadius: "0.5rem" }}
+        >
           {ruleFormFields}
           <Group justify="flex-end">
             <Button

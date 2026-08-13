@@ -67,7 +67,10 @@ export function GraphPage() {
   const [totalNodeCount, setTotalNodeCount] = useState<number | null>(null);
   const [totalRelCount, setTotalRelCount] = useState<number | null>(null);
   const [labelCounts, setLabelCounts] = useState<Record<string, number>>({});
-  const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>("provisa.graph.sidebarWidth", 240);
+  const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
+    "provisa.graph.sidebarWidth",
+    240,
+  );
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
     "provisa.graph.colorOverrides",
@@ -90,7 +93,7 @@ export function GraphPage() {
     {},
   );
   const [autoImpute, setAutoImpute] = useLocalStorage<boolean>("provisa.graph.autoImpute", false);
-const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.favorites", []);
+  const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.favorites", []);
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>(
     "provisa.graph.relLineOverrides",
     {},
@@ -103,7 +106,9 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
     onConfirm: (params: Record<string, string>) => void;
   } | null>(null);
   const [showNeo4jModal, setShowNeo4jModal] = useState(false);
-  const effectiveDataRef = useRef<Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>>(new Map());
+  const effectiveDataRef = useRef<
+    Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>
+  >(new Map());
   const [numericPropsByLabel, setNumericPropsByLabel] = useState<Record<string, string[]>>({});
   const onEffectiveDataChange = useCallback(
     (frameId: string, nodes: Map<string, GNode>, edges: Map<string, GEdge>) => {
@@ -126,24 +131,33 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
     Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>
   >({});
 
-  const handleAddFavorite = useCallback((query: string) => {
-    const trimmed = query.trim();
-    setFavorites((prev) => {
-      const existing = prev.find((f) => f.query === trimmed);
-      if (existing) return prev.filter((f) => f.query !== trimmed);
-      const label = trimmed.split("\n")[0].slice(0, 50);
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      return [...prev, { id, query: trimmed, label, ts: Date.now() }];
-    });
-  }, [setFavorites]);
+  const handleAddFavorite = useCallback(
+    (query: string) => {
+      const trimmed = query.trim();
+      setFavorites((prev) => {
+        const existing = prev.find((f) => f.query === trimmed);
+        if (existing) return prev.filter((f) => f.query !== trimmed);
+        const label = trimmed.split("\n")[0].slice(0, 50);
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        return [...prev, { id, query: trimmed, label, ts: Date.now() }];
+      });
+    },
+    [setFavorites],
+  );
 
-  const handleFavoriteDelete = useCallback((id: string) => {
-    setFavorites((prev) => prev.filter((f) => f.id !== id));
-  }, [setFavorites]);
+  const handleFavoriteDelete = useCallback(
+    (id: string) => {
+      setFavorites((prev) => prev.filter((f) => f.id !== id));
+    },
+    [setFavorites],
+  );
 
-  const isFavorited = useCallback((query: string) => {
-    return favorites.some((f) => f.query === query.trim());
-  }, [favorites]);
+  const isFavorited = useCallback(
+    (query: string) => {
+      return favorites.some((f) => f.query === query.trim());
+    },
+    [favorites],
+  );
 
   // Fetch schema when role changes via dedicated graph-schema endpoint
   useEffect(() => {
@@ -229,7 +243,11 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
     try {
       const cached = localStorage.getItem(countsKey);
       if (cached) {
-        const c = JSON.parse(cached) as { node_count: number; rel_count: number; label_counts: Record<string, number> };
+        const c = JSON.parse(cached) as {
+          node_count: number;
+          rel_count: number;
+          label_counts: Record<string, number>;
+        };
         setTotalNodeCount(c.node_count);
         setTotalRelCount(c.rel_count);
         setLabelCounts(c.label_counts);
@@ -241,8 +259,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
       setTotalNodeCount(null);
       setTotalRelCount(null);
     }
-    const domainsParam =
-      checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
+    const domainsParam = checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
     fetch(`/data/graph-counts${domainsParam}`, { headers })
       .then((r) => r.json())
       .then((data) => {
@@ -254,12 +271,13 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         setLabelCounts(label_counts);
         try {
           localStorage.setItem(countsKey, JSON.stringify({ node_count, rel_count, label_counts }));
-        } catch { /* quota */ }
+        } catch {
+          /* quota */
+        }
       })
       .catch(() => {});
     /* eslint-disable-next-line react-hooks/exhaustive-deps -- refetch counts only on the listed schema/role/domain inputs; other referenced setters are stable */
   }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
-
 
   const runQuery = useCallback(
     async (query: string) => {
@@ -378,7 +396,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
 
   const handlePin = useCallback((id: string) => {
     setFrames((f) => {
-      const next = f.map((fr) => fr.id === id ? { ...fr, pinned: !fr.pinned } : fr);
+      const next = f.map((fr) => (fr.id === id ? { ...fr, pinned: !fr.pinned } : fr));
       graphState.frames = next;
       saveGraphState(graphState);
       return next;
@@ -394,7 +412,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         ? `${node.domainLabel}:${node.tableLabel}`
         : node.tableLabel;
       pk[compoundLabel] =
-        node.pkColumns.length > 0 ? node.pkColumns : (node.idColumn ? [node.idColumn] : []);
+        node.pkColumns.length > 0 ? node.pkColumns : node.idColumn ? [node.idColumn] : [];
       l2t[compoundLabel] = node.tableLabel;
     }
     return { pkMap: pk, labelToTableLabel: l2t };
@@ -493,10 +511,28 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
   const framesRef = useRef(frames);
   framesRef.current = frames;
 
-  const NUMERIC_TYPES = new Set(["integer", "bigint", "int", "int4", "int8", "smallint", "float", "double precision", "numeric", "decimal", "real", "float4", "float8"]);
+  const NUMERIC_TYPES = new Set([
+    "integer",
+    "bigint",
+    "int",
+    "int4",
+    "int8",
+    "smallint",
+    "float",
+    "double precision",
+    "numeric",
+    "decimal",
+    "real",
+    "float4",
+    "float8",
+  ]);
 
   const buildNfWhereClauses = useCallback(
-    (varName: string, filterColumns: { name: string; type: string }[], params: Record<string, string>) =>
+    (
+      varName: string,
+      filterColumns: { name: string; type: string }[],
+      params: Record<string, string>,
+    ) =>
       filterColumns
         .filter((col) => params[col.name] !== "")
         .map(({ name, type }) => {
@@ -712,9 +748,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
   const visibleNodeLabels =
     checkedDomains.size === 0
       ? schemaNodeLabels
-      : schemaNodeLabels.filter(
-          (n) => !n.domainId || checkedDomains.has(n.domainId),
-        );
+      : schemaNodeLabels.filter((n) => !n.domainId || checkedDomains.has(n.domainId));
 
   const visibleLabelSet = new Set(
     visibleNodeLabels.map((n) =>
@@ -724,9 +758,7 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
   const visibleSchemaRels =
     checkedDomains.size === 0
       ? schemaRels
-      : schemaRels.filter(
-          (r) => visibleLabelSet.has(r.source) && visibleLabelSet.has(r.target),
-        );
+      : schemaRels.filter((r) => visibleLabelSet.has(r.source) && visibleLabelSet.has(r.target));
 
   const cypherSchema: CypherSchema = {
     labels: visibleNodeLabels
@@ -738,7 +770,12 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
       .filter((v, i, a) => a.indexOf(v) === i),
     relationshipTypes: visibleSchemaRels.map((r) => r.type),
     propertyKeys: [
-      ...new Set(visibleNodeLabels.flatMap((n) => [...n.properties, ...n.nativeFilterColumns.map((c) => c.name)])),
+      ...new Set(
+        visibleNodeLabels.flatMap((n) => [
+          ...n.properties,
+          ...n.nativeFilterColumns.map((c) => c.name),
+        ]),
+      ),
     ],
   };
 
@@ -751,7 +788,10 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
   );
   const handleLabelClick = useCallback(
     (compoundLabel: string) => {
-      if (compoundLabel === "*") { runQuery("MATCH (n) RETURN n LIMIT 25"); return; }
+      if (compoundLabel === "*") {
+        runQuery("MATCH (n) RETURN n LIMIT 25");
+        return;
+      }
       const node = schemaNodeLabels.find((n) => {
         const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
         return cl === compoundLabel || n.domainLabel === compoundLabel;
@@ -776,7 +816,10 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
 
   const handleRelClick = useCallback(
     (type: string) => {
-      if (type === "*") { runQuery("MATCH p=()-->() RETURN p LIMIT 25"); return; }
+      if (type === "*") {
+        runQuery("MATCH p=()-->() RETURN p LIMIT 25");
+        return;
+      }
       runQuery(`MATCH ()-[r:${type}]->() RETURN r LIMIT 25`);
     },
     [runQuery],
@@ -808,27 +851,28 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
           onCancel={() => setNfModal(null)}
         />
       )}
-      {showNeo4jModal && (() => {
-        const allNodes = new Map<string, GNode>();
-        const allEdges = new Map<string, GEdge>();
-        for (const f of frames) {
-          const effective = effectiveDataRef.current.get(f.id);
-          if (effective) {
-            effective.nodes.forEach((n, k) => allNodes.set(k, n));
-            effective.edges.forEach((e, k) => allEdges.set(k, e));
-          } else {
-            f.nodes.forEach((n, k) => allNodes.set(k, n));
-            f.edges.forEach((e, k) => allEdges.set(k, e));
+      {showNeo4jModal &&
+        (() => {
+          const allNodes = new Map<string, GNode>();
+          const allEdges = new Map<string, GEdge>();
+          for (const f of frames) {
+            const effective = effectiveDataRef.current.get(f.id);
+            if (effective) {
+              effective.nodes.forEach((n, k) => allNodes.set(k, n));
+              effective.edges.forEach((e, k) => allEdges.set(k, e));
+            } else {
+              f.nodes.forEach((n, k) => allNodes.set(k, n));
+              f.edges.forEach((e, k) => allEdges.set(k, e));
+            }
           }
-        }
-        return (
-          <Neo4jExportModal
-            nodes={[...allNodes.values()]}
-            edges={[...allEdges.values()]}
-            onClose={() => setShowNeo4jModal(false)}
-          />
-        );
-      })()}
+          return (
+            <Neo4jExportModal
+              nodes={[...allNodes.values()]}
+              edges={[...allEdges.values()]}
+              onClose={() => setShowNeo4jModal(false)}
+            />
+          );
+        })()}
       <Sidebar
         schemaNodeLabels={visibleNodeLabels}
         schemaRels={visibleSchemaRels}
@@ -844,8 +888,13 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         favorites={favorites}
         onFavoriteSelect={(q) => setHistoryQuery(q)}
         onFavoriteDelete={handleFavoriteDelete}
-        onFavoriteRun={(q) => { setHistoryQuery(q); runQuery(q); }}
-        onFavoriteRename={(id, name) => setFavorites((prev) => prev.map((f) => f.id === id ? { ...f, label: name } : f))}
+        onFavoriteRun={(q) => {
+          setHistoryQuery(q);
+          runQuery(q);
+        }}
+        onFavoriteRename={(id, name) =>
+          setFavorites((prev) => prev.map((f) => (f.id === id ? { ...f, label: name } : f)))
+        }
         onLabelClick={handleLabelClick}
         onDomainClick={handleDomainClick}
         onRelClick={handleRelClick}
@@ -884,40 +933,44 @@ const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.fav
         <div className="graph-stream">
           {frames.length === 0 && (
             <div className="graph-stream-empty" role="status" data-testid="graph-empty-state">
-              <div className="graph-stream-empty-icon" aria-hidden="true">⬡</div>
+              <div className="graph-stream-empty-icon" aria-hidden="true">
+                ⬡
+              </div>
               <Text component="div">{t("graphPage.emptyStateHint")}</Text>
               <Text component="div" className="graph-stream-hint">
                 {t("graphPage.emptyStateShortcut")}
               </Text>
             </div>
           )}
-          {[...frames].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).map((frame) => (
-            <GraphFrame
-              key={frame.id}
-              frame={frame}
-              onClose={closeFrame}
-              onRerun={rerunFrame}
-              onTableDrop={onTableDrop}
-              onDomainDrop={onDomainDrop}
-              colorOverrides={colorOverrides}
-              sizeOverrides={sizeOverrides}
-              labelProperty={labelProperty}
-              sizeByProperty={sizeByProperty}
-              sizeMultiplier={sizeMultiplier}
-              relLineOverrides={relLineOverrides}
-              onColorChange={handleColorChange}
-              pkMap={pkMap}
-              labelToTableLabel={labelToTableLabel}
-              relationships={adminRels}
-              autoImpute={autoImpute}
-              onSaveEdgeAlias={handleSaveEdgeAlias}
-              onSelectedLabelChange={setActiveLabel}
-              onEffectiveDataChange={onEffectiveDataChange}
-              onAddFavorite={handleAddFavorite}
-              isFavorited={isFavorited}
-              onPin={handlePin}
-            />
-          ))}
+          {[...frames]
+            .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+            .map((frame) => (
+              <GraphFrame
+                key={frame.id}
+                frame={frame}
+                onClose={closeFrame}
+                onRerun={rerunFrame}
+                onTableDrop={onTableDrop}
+                onDomainDrop={onDomainDrop}
+                colorOverrides={colorOverrides}
+                sizeOverrides={sizeOverrides}
+                labelProperty={labelProperty}
+                sizeByProperty={sizeByProperty}
+                sizeMultiplier={sizeMultiplier}
+                relLineOverrides={relLineOverrides}
+                onColorChange={handleColorChange}
+                pkMap={pkMap}
+                labelToTableLabel={labelToTableLabel}
+                relationships={adminRels}
+                autoImpute={autoImpute}
+                onSaveEdgeAlias={handleSaveEdgeAlias}
+                onSelectedLabelChange={setActiveLabel}
+                onEffectiveDataChange={onEffectiveDataChange}
+                onAddFavorite={handleAddFavorite}
+                isFavorited={isFavorited}
+                onPin={handlePin}
+              />
+            ))}
         </div>
       </div>
     </div>

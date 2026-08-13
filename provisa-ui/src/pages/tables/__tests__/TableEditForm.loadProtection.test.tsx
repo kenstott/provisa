@@ -80,11 +80,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
   };
 }
 
-function renderForm(
-  table: RegisteredTable,
-  setEditingTable = vi.fn(),
-  sources: Source[] = [],
-) {
+function renderForm(table: RegisteredTable, setEditingTable = vi.fn(), sources: Source[] = []) {
   render(
     <TableEditForm
       editingTable={table}
@@ -147,7 +143,9 @@ describe("TableEditForm — load protection + refresh-policy summary (REQ-1141/1
 
   it("stages an off-peak window edit through the time widgets", () => {
     // REQ-1141: two TimeInputs (opens/closes) compose the "HH:MM-HH:MM" window string.
-    const setEditingTable = renderForm(makeTable({ loadProtected: true, offPeakWindow: "00:00-03:00" }));
+    const setEditingTable = renderForm(
+      makeTable({ loadProtected: true, offPeakWindow: "00:00-03:00" }),
+    );
     fireEvent.change(screen.getByTestId("off-peak-opens"), { target: { value: "01:00" } });
     expect(setEditingTable).toHaveBeenCalledWith(
       expect.objectContaining({ offPeakWindow: "01:00-03:00" }),

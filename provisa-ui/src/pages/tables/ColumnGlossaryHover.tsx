@@ -88,15 +88,12 @@ export function ColumnGlossaryHover({ tableId, columnName, children }: ColumnGlo
           {term.refs.length > 0 && (
             <Text fz="0.75rem" mt={4}>
               {t("glossaryTab.hoverRefsLabel")}{" "}
-              {term.refs
-                .map((r) => `${r.alias ?? r.table_name}.${r.column_name}`)
-                .join(", ")}
+              {term.refs.map((r) => `${r.alias ?? r.table_name}.${r.column_name}`).join(", ")}
             </Text>
           )}
           {term.experts.length > 0 && (
             <Text fz="0.75rem" mt={4}>
-              {t("glossaryTab.hoverExpertsLabel")}{" "}
-              {term.experts.map((e) => e.user_id).join(", ")}
+              {t("glossaryTab.hoverExpertsLabel")} {term.experts.map((e) => e.user_id).join(", ")}
             </Text>
           )}
           {edges.length > 0 && (

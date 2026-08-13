@@ -1,0 +1,8 @@
+# Vendored third-party bundles and forks — reformatting them destroys the upstream
+# diff and, for the minified builds, expands them by tens of thousands of lines.
+public/
+src/plugins/graphiql-explorer-fork.cjs
+
+# Build output and coverage reports.
+dist/
+coverage/

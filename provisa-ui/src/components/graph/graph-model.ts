@@ -321,7 +321,21 @@ export function injectExclusion(
         let bm: RegExpExecArray | null;
         while ((bm = bareRe.exec(matchSection)) !== null) {
           const candidate = bm[1];
-          if (!["WHERE", "WITH", "MATCH", "OPTIONAL", "RETURN", "ORDER", "LIMIT", "SKIP", "NOT", "AND", "OR"].includes(candidate.toUpperCase())) {
+          if (
+            ![
+              "WHERE",
+              "WITH",
+              "MATCH",
+              "OPTIONAL",
+              "RETURN",
+              "ORDER",
+              "LIMIT",
+              "SKIP",
+              "NOT",
+              "AND",
+              "OR",
+            ].includes(candidate.toUpperCase())
+          ) {
             bareVar = candidate;
             break;
           }

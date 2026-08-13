@@ -43,8 +43,22 @@ export interface CyElement {
   renderedWidth(): number;
   width(): number;
   height(): number;
-  boundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
-  renderedBoundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
+  boundingBox(opts?: object): {
+    x1: number;
+    x2: number;
+    y1: number;
+    y2: number;
+    w: number;
+    h: number;
+  };
+  renderedBoundingBox(opts?: object): {
+    x1: number;
+    x2: number;
+    y1: number;
+    y2: number;
+    w: number;
+    h: number;
+  };
   degree(includeLoops: boolean): number;
   indegree(includeLoops: boolean): number;
   outdegree(includeLoops: boolean): number;
@@ -75,8 +89,22 @@ export interface CyCollection {
   style(props: Record<string, unknown>): this;
   removeStyle(names: string): this;
   empty(): boolean;
-  boundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
-  renderedBoundingBox(opts?: object): { x1: number; x2: number; y1: number; y2: number; w: number; h: number };
+  boundingBox(opts?: object): {
+    x1: number;
+    x2: number;
+    y1: number;
+    y2: number;
+    w: number;
+    h: number;
+  };
+  renderedBoundingBox(opts?: object): {
+    x1: number;
+    x2: number;
+    y1: number;
+    y2: number;
+    w: number;
+    h: number;
+  };
   degree(includeLoops: boolean): number;
   width(): number;
   height(): number;

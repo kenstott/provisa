@@ -10,7 +10,16 @@
 
 import type { ActionArg, DatasetColumn, InlineField } from "../../api/actions";
 
-export const GRAPHQL_TYPES = ["String", "Int", "Float", "Boolean", "DateTime", "Date", "BigInt", "JSON"];
+export const GRAPHQL_TYPES = [
+  "String",
+  "Int",
+  "Float",
+  "Boolean",
+  "DateTime",
+  "Date",
+  "BigInt",
+  "JSON",
+];
 
 export const EMPTY_ARG: ActionArg = { name: "", type: "String" };
 export const EMPTY_INLINE: InlineField = { name: "", type: "String" };
@@ -143,9 +152,7 @@ function jsonSchemaTypeToIr(jsType: string): string {
 }
 
 // REQ-1159: derive the GraphQL projection (return_schema) from the canonical output dataset.
-export function deriveReturnSchema(
-  outputColumns: DatasetColumn[],
-): Record<string, unknown> | null {
+export function deriveReturnSchema(outputColumns: DatasetColumn[]): Record<string, unknown> | null {
   const cols = outputColumns.filter((c) => c.name.trim() !== "");
   if (cols.length === 0) return null;
   const properties: Record<string, unknown> = {};

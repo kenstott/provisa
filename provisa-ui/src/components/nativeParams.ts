@@ -66,7 +66,8 @@ export function pagedViewerSql(
 
   const orderCols: string[] = [];
   for (const col of groupBy) orderCols.push(`"${col}" ASC`);
-  for (const s of sorts) if (!groupBy.includes(s.col)) orderCols.push(`"${s.col}" ${s.dir.toUpperCase()}`);
+  for (const s of sorts)
+    if (!groupBy.includes(s.col)) orderCols.push(`"${s.col}" ${s.dir.toUpperCase()}`);
   if (orderCols.length > 0) {
     for (const c of table.columns) {
       if (c.isPrimaryKey) {
@@ -98,16 +99,10 @@ function sqlLiteral(value: string, dataType: string | null): string {
 }
 
 /** WHERE clause for the provided param values; empty string when none set. */
-export function buildParamWhere(
-  table: RegisteredTable,
-  values: Record<string, string>,
-): string {
+export function buildParamWhere(table: RegisteredTable, values: Record<string, string>): string {
   const predicates = [...requiredParamColumns(table), ...optionalParamColumns(table)]
     .filter((c) => (values[c.columnName] ?? "").trim() !== "")
-    .map(
-      (c) =>
-        `"${c.alias || c.columnName}" = ${sqlLiteral(values[c.columnName], c.dataType)}`,
-    );
+    .map((c) => `"${c.alias || c.columnName}" = ${sqlLiteral(values[c.columnName], c.dataType)}`);
   return predicates.length > 0 ? ` WHERE ${predicates.join(" AND ")}` : "";
 }
 
@@ -116,7 +111,5 @@ export function requiredParamsSatisfied(
   table: RegisteredTable,
   values: Record<string, string>,
 ): boolean {
-  return requiredParamColumns(table).every(
-    (c) => (values[c.columnName] ?? "").trim() !== "",
-  );
+  return requiredParamColumns(table).every((c) => (values[c.columnName] ?? "").trim() !== "");
 }

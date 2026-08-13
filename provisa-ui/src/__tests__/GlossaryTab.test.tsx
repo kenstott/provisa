@@ -251,9 +251,7 @@ describe("GlossaryTab", () => {
 
     fireEvent.click(screen.getByTestId("glossary-delete-btn"));
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(2));
-    expect(await screen.findByTestId("glossary-error")).toHaveTextContent(
-      "term 2 still has refs",
-    );
+    expect(await screen.findByTestId("glossary-error")).toHaveTextContent("term 2 still has refs");
   });
 
   it("toggles export exclusion through the PATCH endpoint", async () => {
@@ -265,9 +263,7 @@ describe("GlossaryTab", () => {
     expect(checkbox).not.toBeChecked();
 
     fireEvent.click(checkbox);
-    await waitFor(() =>
-      expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }),
-    );
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { export_excluded: true }));
   });
 
   it("bulk-generates definitions and shows a count notification", async () => {
@@ -279,7 +275,9 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockBulkDefinitions).toHaveBeenCalled());
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
-        expect.objectContaining({ message: t("glossaryTab.definitionsGenerated_other", { count: 3 }) }),
+        expect.objectContaining({
+          message: t("glossaryTab.definitionsGenerated_other", { count: 3 }),
+        }),
       ),
     );
   });

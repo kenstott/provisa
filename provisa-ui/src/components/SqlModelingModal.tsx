@@ -650,7 +650,9 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     }}
                     data-testid="sql-modeling-generate-sql"
                   >
-                    {nlLoading ? t("sqlModelingModal.generating") : t("sqlModelingModal.generateSql")}
+                    {nlLoading
+                      ? t("sqlModelingModal.generating")
+                      : t("sqlModelingModal.generateSql")}
                   </Button>
                   {nlCypher && (
                     <Badge
@@ -858,11 +860,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                         })}
                       </Tabs.List>
                       {execMs !== null && (
-                        <Text
-                          size="0.7rem"
-                          c="dimmed"
-                          style={{ paddingInlineEnd: "0.75rem" }}
-                        >
+                        <Text size="0.7rem" c="dimmed" style={{ paddingInlineEnd: "0.75rem" }}>
                           {t("sqlModelingModal.execMs", { ms: execMs })}
                         </Text>
                       )}

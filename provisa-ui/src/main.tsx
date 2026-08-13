@@ -8,36 +8,36 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { createRoot } from 'react-dom/client'
+import { createRoot } from "react-dom/client";
 // Install the same-origin bearer-token fetch interceptor before anything issues a request.
-import { installAuthFetch } from './lib/authFetch.ts'
+import { installAuthFetch } from "./lib/authFetch.ts";
 // Mantine styles must load before app CSS so local overrides win the cascade.
-import '@mantine/core/styles.css'
-import '@mantine/dates/styles.css'
-import '@mantine/notifications/styles.css'
-import { DirectionProvider, MantineProvider, localStorageColorSchemeManager } from '@mantine/core'
-import { Notifications } from '@mantine/notifications'
-import { I18nextProvider } from 'react-i18next'
-import { theme } from './theme/theme.ts'
-import './theme/tokens.css'
-import i18n from './i18n/index.ts'
-import { DirectionSync } from './i18n/direction.tsx'
-import './index.css'
-import App from './App.tsx'
-import { isOrgSubdomainHost } from './lib/authHost.ts'
+import "@mantine/core/styles.css";
+import "@mantine/dates/styles.css";
+import "@mantine/notifications/styles.css";
+import { DirectionProvider, MantineProvider, localStorageColorSchemeManager } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
+import { I18nextProvider } from "react-i18next";
+import { theme } from "./theme/theme.ts";
+import "./theme/tokens.css";
+import i18n from "./i18n/index.ts";
+import { DirectionSync } from "./i18n/direction.tsx";
+import "./index.css";
+import App from "./App.tsx";
+import { isOrgSubdomainHost } from "./lib/authHost.ts";
 
 declare global {
   interface Window {
-    __provisaHideSplash?: () => void
+    __provisaHideSplash?: () => void;
   }
 }
 
 // Key must match the inline anti-flash script in index.html.
-installAuthFetch()
+installAuthFetch();
 
 const colorSchemeManager = localStorageColorSchemeManager({
-  key: 'provisa-color-scheme',
-})
+  key: "provisa-color-scheme",
+});
 
 // REQ-1266: block the first render until the Firebase bearer is settled so the dashboard's
 // initial queries never fire against a stale/expired localStorage token (the boot-time race
@@ -51,14 +51,14 @@ async function bootstrap() {
   // locally, where signInWithPopup would fail with auth/unauthorized-domain. Returns false while
   // redirecting to the control-plane login, in which case there is nothing worth rendering.
   if (isOrgSubdomainHost()) {
-    const { establishOrgSubdomainSession } = await import('./lib/crossSubdomainAuth.ts')
-    if (!(await establishOrgSubdomainSession())) return
+    const { establishOrgSubdomainSession } = await import("./lib/crossSubdomainAuth.ts");
+    if (!(await establishOrgSubdomainSession())) return;
   } else {
-    const firebase = await import('./lib/firebase.ts')
-    await firebase.installFirebaseTokenSync()
+    const firebase = await import("./lib/firebase.ts");
+    await firebase.installFirebaseTokenSync();
   }
 
-  createRoot(document.getElementById('root')!).render(
+  createRoot(document.getElementById("root")!).render(
     <DirectionProvider>
       <MantineProvider
         theme={theme}
@@ -72,23 +72,23 @@ async function bootstrap() {
         </I18nextProvider>
       </MantineProvider>
     </DirectionProvider>,
-  )
+  );
 
   // Dismiss the pre-React convergence-splash once the app has mounted and painted its
   // first frame. The splash enforces its own minimum display time + fade, so this only
   // signals readiness.
-  requestAnimationFrame(() => requestAnimationFrame(() => window.__provisaHideSplash?.()))
+  requestAnimationFrame(() => requestAnimationFrame(() => window.__provisaHideSplash?.()));
 }
 
 // A boot that throws leaves the pre-React splash covering a page that will never mount, which
 // reads as a hang. Replace it with the failure so the cause is visible instead of hidden —
 // notably REQ-1348's unreachable auth relay, which is a broken control plane, not a sign-out.
 bootstrap().catch((err: unknown) => {
-  console.error('Provisa failed to start:', err)
-  window.__provisaHideSplash?.()
-  const root = document.getElementById('root')
+  console.error("Provisa failed to start:", err);
+  window.__provisaHideSplash?.();
+  const root = document.getElementById("root");
   if (root) {
-    root.textContent = `Provisa failed to start: ${err instanceof Error ? err.message : String(err)}`
-    root.setAttribute('style', 'padding:2rem;font-family:system-ui;color:#e5484d')
+    root.textContent = `Provisa failed to start: ${err instanceof Error ? err.message : String(err)}`;
+    root.setAttribute("style", "padding:2rem;font-family:system-ui;color:#e5484d");
   }
-})
+});

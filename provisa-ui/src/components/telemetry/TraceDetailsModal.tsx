@@ -12,11 +12,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Divider, Group, Loader, Modal, Stack, Table, Text } from "@mantine/core";
 import { runSql } from "../../api/admin";
-import {
-  formatTelemetryValue,
-  traceDetailSql,
-  type TelemetryIdKind,
-} from "./traceDetails";
+import { formatTelemetryValue, traceDetailSql, type TelemetryIdKind } from "./traceDetails";
 
 interface TraceDetailsModalProps {
   kind: TelemetryIdKind;

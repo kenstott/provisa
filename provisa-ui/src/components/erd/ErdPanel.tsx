@@ -28,7 +28,12 @@ import { buildErdElements } from "./erd-model";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent, CyLayoutOptions } from "../graph/cytoscape-types";
-import { nodesWithEdges, resolveCompoundOverlaps, packDomains, placeIsolatedGrid } from "./sections/erd-layout";
+import {
+  nodesWithEdges,
+  resolveCompoundOverlaps,
+  packDomains,
+  placeIsolatedGrid,
+} from "./sections/erd-layout";
 import { buildErdStylesheet } from "./sections/erd-stylesheet";
 import { getErdPalette } from "./sections/erd-palette";
 import type { TooltipState, ErdPanelProps } from "./sections/erd-types";
@@ -37,13 +42,27 @@ import type { TooltipState, ErdPanelProps } from "./sections/erd-types";
 type CyExt = Parameters<typeof cytoscape.use>[0];
 type CyExtModule = { default?: CyExt } | CyExt;
 const _interop = (m: CyExtModule): CyExt => (m as { default?: CyExt }).default ?? (m as CyExt);
-try { cytoscape.use(_interop(elkRaw as CyExtModule)); } catch { /* already registered */ }
-try { cytoscape.use(_interop(cytoscapeSvgRaw as CyExtModule)); } catch { /* already registered */ }
+try {
+  cytoscape.use(_interop(elkRaw as CyExtModule));
+} catch {
+  /* already registered */
+}
+try {
+  cytoscape.use(_interop(cytoscapeSvgRaw as CyExtModule));
+} catch {
+  /* already registered */
+}
 
 type Pt = { x: number; y: number };
 
 // ── component ─────────────────────────────────────────────────────────────────
-export function ErdPanel({ tables, relationships, domains, checkedDomains, onClose }: ErdPanelProps) {
+export function ErdPanel({
+  tables,
+  relationships,
+  domains,
+  checkedDomains,
+  onClose,
+}: ErdPanelProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const colorScheme = useComputedColorScheme("dark");
@@ -72,17 +91,21 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
   const edgeRoutingRef = useRef<"bezier" | "taxi">(
     (localStorage.getItem("erd.edgeRouting") as "bezier" | "taxi" | null) ?? "bezier",
   );
-  const [gridSnap, setGridSnap] = useState<number>(
-    () => parseInt(localStorage.getItem("erd.gridSnap") ?? "0", 10),
+  const [gridSnap, setGridSnap] = useState<number>(() =>
+    parseInt(localStorage.getItem("erd.gridSnap") ?? "0", 10),
   );
   const gridSnapRef = useRef<number>(parseInt(localStorage.getItem("erd.gridSnap") ?? "0", 10));
   const [showOrphans, setShowOrphans] = useState(
     () => localStorage.getItem("erd.showOrphans") !== "false",
   );
   const showOrphansRef = useRef(showOrphans);
-  useEffect(() => { showOrphansRef.current = showOrphans; }, [showOrphans]);
+  useEffect(() => {
+    showOrphansRef.current = showOrphans;
+  }, [showOrphans]);
   const isolatedIdsRef = useRef<Set<string>>(new Set());
-  const connectedDomainBboxesRef = useRef<Map<string, { x1: number; x2: number; y2: number }>>(new Map());
+  const connectedDomainBboxesRef = useRef<Map<string, { x1: number; x2: number; y2: number }>>(
+    new Map(),
+  );
   const isDraggingRef = useRef(false);
   const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(new Set());
   // Domains to hide, derived from the host page's domain filter (not the panel's own state).
@@ -93,11 +116,20 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
     return hidden;
   }, [tables, checkedDomains]);
   const [tooltip, setTooltip] = useState<TooltipState>({
-    visible: false, x: 0, y: 0, title: "", body: "",
+    visible: false,
+    x: 0,
+    y: 0,
+    title: "",
+    body: "",
   });
 
   const [hoveredDomainId, setHoveredDomainId] = useState<string | null>(null);
-  const [resizeHandleBox, setResizeHandleBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [resizeHandleBox, setResizeHandleBox] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   const handleHoverRef = useRef(false);
   const resizeDragRef = useRef<{
     corner: "se" | "sw" | "ne" | "nw";
@@ -112,22 +144,40 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
       return;
     }
     const node = cyRef.current.getElementById(`d:${domainId}`);
-    if (!node || (node as unknown as { empty(): boolean }).empty()) { setResizeHandleBox(null); return; }
-    const bb = (node as unknown as { renderedBoundingBox(opts: object): { x1: number; y1: number; w: number; h: number } })
-      .renderedBoundingBox({ includeLabels: false });
+    if (!node || (node as unknown as { empty(): boolean }).empty()) {
+      setResizeHandleBox(null);
+      return;
+    }
+    const bb = (
+      node as unknown as {
+        renderedBoundingBox(opts: object): { x1: number; y1: number; w: number; h: number };
+      }
+    ).renderedBoundingBox({ includeLabels: false });
     const rect = containerRef.current.getBoundingClientRect();
     setResizeHandleBox({ x: rect.left + bb.x1, y: rect.top + bb.y1, w: bb.w, h: bb.h });
   }, []);
 
   // Keep refs in sync so Cytoscape event handlers always see current values.
-  useEffect(() => { gridSnapRef.current = gridSnap; }, [gridSnap]);
-  useEffect(() => { edgeRoutingRef.current = edgeRouting; }, [edgeRouting]);
+  useEffect(() => {
+    gridSnapRef.current = gridSnap;
+  }, [gridSnap]);
+  useEffect(() => {
+    edgeRoutingRef.current = edgeRouting;
+  }, [edgeRouting]);
 
   // Persist toolbar choices across sessions.
-  useEffect(() => { localStorage.setItem("erd.columnDetail", columnDetail); }, [columnDetail]);
-  useEffect(() => { localStorage.setItem("erd.edgeRouting", edgeRouting); }, [edgeRouting]);
-  useEffect(() => { localStorage.setItem("erd.gridSnap", String(gridSnap)); }, [gridSnap]);
-  useEffect(() => { localStorage.setItem("erd.showOrphans", String(showOrphans)); }, [showOrphans]);
+  useEffect(() => {
+    localStorage.setItem("erd.columnDetail", columnDetail);
+  }, [columnDetail]);
+  useEffect(() => {
+    localStorage.setItem("erd.edgeRouting", edgeRouting);
+  }, [edgeRouting]);
+  useEffect(() => {
+    localStorage.setItem("erd.gridSnap", String(gridSnap));
+  }, [gridSnap]);
+  useEffect(() => {
+    localStorage.setItem("erd.showOrphans", String(showOrphans));
+  }, [showOrphans]);
 
   // All domain IDs present in the table list (before hiding).
   const allDomainIds = [...new Set(tables.map((t) => t.domainId))];
@@ -137,8 +187,12 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
     if (!containerRef.current) return;
     const visibleTables = tables;
     const elements = buildErdElements(
-      visibleTables, relationships, domains,
-      collapsedDomains, hiddenDomains, columnDetail,
+      visibleTables,
+      relationships,
+      domains,
+      collapsedDomains,
+      hiddenDomains,
+      columnDetail,
     );
     const allEls = [...elements.nodes, ...elements.edges] as unknown[];
 
@@ -152,7 +206,9 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
 
     cyRef.current = cy;
 
-    cy.on("grabon", "node", () => { isDraggingRef.current = true; });
+    cy.on("grabon", "node", () => {
+      isDraggingRef.current = true;
+    });
 
     // Two-phase post-layout: place orphan grid below each domain's connected bbox.
     cy.on("layoutstop", () => {
@@ -170,18 +226,24 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
         // unnecessary bends in right-angle edge routing after fCoSE snap jitter.
         const ALIGN_THRESHOLD = g;
         cy.edges(".erd-rel").forEach((edge) => {
-          const s = cy.getElementById(edge.data("source") as string) as unknown as { position(): Pt; position(p: Pt): void };
-          const t = cy.getElementById(edge.data("target") as string) as unknown as { position(): Pt; position(p: Pt): void };
+          const s = cy.getElementById(edge.data("source") as string) as unknown as {
+            position(): Pt;
+            position(p: Pt): void;
+          };
+          const t = cy.getElementById(edge.data("target") as string) as unknown as {
+            position(): Pt;
+            position(p: Pt): void;
+          };
           const sp = s.position();
           const tp = t.position();
           const dx = Math.abs(sp.x - tp.x);
           const dy = Math.abs(sp.y - tp.y);
           if (dx <= ALIGN_THRESHOLD && dx < dy) {
-            const ax = Math.round(((sp.x + tp.x) / 2) / g) * g;
+            const ax = Math.round((sp.x + tp.x) / 2 / g) * g;
             s.position({ ...sp, x: ax });
             t.position({ ...tp, x: ax });
           } else if (dy <= ALIGN_THRESHOLD && dy < dx) {
-            const ay = Math.round(((sp.y + tp.y) / 2) / g) * g;
+            const ay = Math.round((sp.y + tp.y) / 2 / g) * g;
             s.position({ ...sp, y: ay });
             t.position({ ...tp, y: ay });
           }
@@ -195,12 +257,17 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
         cy.nodes(".erd-domain").forEach((compound) => {
           if (compound.id() === leafDomain.id()) return;
           if ((compound.children() as unknown as { empty(): boolean }).empty()) return;
-          const cbb = (compound as unknown as { boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number } })
-            .boundingBox({});
+          const cbb = (
+            compound as unknown as {
+              boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number };
+            }
+          ).boundingBox({});
           const pos = (leafDomain as { position(): { x: number; y: number } }).position();
           if (pos.x > cbb.x1 && pos.x < cbb.x2 && pos.y > cbb.y1 && pos.y < cbb.y2) {
-            (leafDomain as { position(p: { x: number; y: number }): void })
-              .position({ x: cbb.x2 + 120, y: (cbb.y1 + cbb.y2) / 2 });
+            (leafDomain as { position(p: { x: number; y: number }): void }).position({
+              x: cbb.x2 + 120,
+              y: (cbb.y1 + cbb.y2) / 2,
+            });
           }
         });
       });
@@ -215,17 +282,19 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
           if (edgeConnectedNow.has((n as { id(): string }).id())) hasConnected = true;
         });
         if (!hasConnected) return;
-        const bb = (domain as unknown as { boundingBox(o: object): { x1: number; x2: number; y2: number } })
-          .boundingBox({ includeLabels: false });
+        const bb = (
+          domain as unknown as { boundingBox(o: object): { x1: number; x2: number; y2: number } }
+        ).boundingBox({ includeLabels: false });
         domainBboxes.set((domain as { id(): string }).id(), bb);
       });
 
       // Phase 2: place orphan grid, then apply showOrphans visibility.
       const edgeConnected = nodesWithEdges(cy);
       const isolatedIds = new Set(
-        cy.nodes(".erd-table")
+        cy
+          .nodes(".erd-table")
           .filter((n) => !edgeConnected.has((n as { id(): string }).id()))
-          .map((n) => (n as { id(): string }).id())
+          .map((n) => (n as { id(): string }).id()),
       );
       // Store for the showOrphans toggle effect (avoids re-running fCoSE on toggle).
       isolatedIdsRef.current = isolatedIds;
@@ -254,8 +323,16 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
         const MIN_LABEL_GAP = 60;
         const g = gridSnapRef.current > 0 ? gridSnapRef.current : 1;
         cy.edges(".erd-rel").forEach((edge) => {
-          const s = cy.getElementById(edge.data("source") as string) as unknown as { position(): Pt; position(p: Pt): void; boundingBox(o: object): BB };
-          const t = cy.getElementById(edge.data("target") as string) as unknown as { position(): Pt; position(p: Pt): void; boundingBox(o: object): BB };
+          const s = cy.getElementById(edge.data("source") as string) as unknown as {
+            position(): Pt;
+            position(p: Pt): void;
+            boundingBox(o: object): BB;
+          };
+          const t = cy.getElementById(edge.data("target") as string) as unknown as {
+            position(): Pt;
+            position(p: Pt): void;
+            boundingBox(o: object): BB;
+          };
           let sp = s.position();
           let tp = t.position();
           const sbb = s.boundingBox({});
@@ -268,7 +345,7 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
           const has2dOverlap = xSep < 0 && ySep < 0;
 
           // Y axis: MIN_LABEL_GAP if primary; clear 2D overlap only on secondary.
-          if (primaryY ? ySep < MIN_LABEL_GAP : (has2dOverlap && ySep < 0)) {
+          if (primaryY ? ySep < MIN_LABEL_GAP : has2dOverlap && ySep < 0) {
             const yNeeded = primaryY ? MIN_LABEL_GAP : 0;
             const push = Math.ceil((yNeeded - ySep) / 2 / g) * g;
             if (tp.y > sp.y) {
@@ -283,7 +360,7 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
           }
 
           // X axis: MIN_LABEL_GAP if primary; clear 2D overlap only on secondary.
-          if (!primaryY ? xSep < MIN_LABEL_GAP : (has2dOverlap && xSep < 0)) {
+          if (!primaryY ? xSep < MIN_LABEL_GAP : has2dOverlap && xSep < 0) {
             const xNeeded = !primaryY ? MIN_LABEL_GAP : 0;
             const push = Math.ceil((xNeeded - xSep) / 2 / g) * g;
             if (tp.x > sp.x) {
@@ -303,11 +380,20 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
         type BBxy = { x1: number; x2: number; y2: number };
         const freshBboxes = new Map<string, BBxy>();
         cy.nodes(".erd-domain").forEach((domain) => {
-          let x1 = Infinity, x2 = -Infinity, y2 = -Infinity, hasConnected = false;
+          let x1 = Infinity,
+            x2 = -Infinity,
+            y2 = -Infinity,
+            hasConnected = false;
           domain.children().forEach((child) => {
             if (isolatedIds.has((child as { id(): string }).id())) return;
-            const bb = (child as unknown as { boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number } }).boundingBox({});
-            x1 = Math.min(x1, bb.x1); x2 = Math.max(x2, bb.x2); y2 = Math.max(y2, bb.y2);
+            const bb = (
+              child as unknown as {
+                boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number };
+              }
+            ).boundingBox({});
+            x1 = Math.min(x1, bb.x1);
+            x2 = Math.max(x2, bb.x2);
+            y2 = Math.max(y2, bb.y2);
             hasConnected = true;
           });
           if (hasConnected) freshBboxes.set((domain as { id(): string }).id(), { x1, x2, y2 });
@@ -321,7 +407,10 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
         cy.nodes(".erd-table").style("display", "element");
       } else {
         isolatedIds.forEach((id) => {
-          (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style("display", "none");
+          (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style(
+            "display",
+            "none",
+          );
         });
       }
 
@@ -360,7 +449,8 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
       const domainId = evt.target.data("domainId") as string;
       setCollapsedDomains((prev) => {
         const next = new Set(prev);
-        if (next.has(domainId)) next.delete(domainId); else next.add(domainId);
+        if (next.has(domainId)) next.delete(domainId);
+        else next.add(domainId);
         return next;
       });
     });
@@ -379,8 +469,14 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
         body = (evt.target.data("description") as string) || "";
         setTooltip({
           visible: !!title,
-          x: (containerRef.current?.getBoundingClientRect().left ?? 0) + (evt.renderedPosition ?? evt.position).x + 12,
-          y: (containerRef.current?.getBoundingClientRect().top ?? 0) + (evt.renderedPosition ?? evt.position).y + 12,
+          x:
+            (containerRef.current?.getBoundingClientRect().left ?? 0) +
+            (evt.renderedPosition ?? evt.position).x +
+            12,
+          y:
+            (containerRef.current?.getBoundingClientRect().top ?? 0) +
+            (evt.renderedPosition ?? evt.position).y +
+            12,
           title,
           body,
         });
@@ -431,7 +527,10 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
 
     // Update resize handles when cy viewport changes
     cy.on("pan zoom", () => {
-      setHoveredDomainId((id) => { updateHandleBox(id); return id; });
+      setHoveredDomainId((id) => {
+        updateHandleBox(id);
+        return id;
+      });
     });
 
     // Hide true orphans before layout so ELK only places connected nodes.
@@ -458,9 +557,22 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
       },
     } as CyLayoutOptions).run();
 
-    return () => { cy.destroy(); cyRef.current = null; };
+    return () => {
+      cy.destroy();
+      cyRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- updateHandleBox is stable (useCallback); omitting it avoids infinite rebuild loop
-  }, [containerReady, tables, relationships, domains, collapsedDomains, hiddenDomains, columnDetail, isDark, navigate]);
+  }, [
+    containerReady,
+    tables,
+    relationships,
+    domains,
+    collapsedDomains,
+    hiddenDomains,
+    columnDetail,
+    isDark,
+    navigate,
+  ]);
 
   // Toggle orphan visibility without re-running fCoSE.
   useEffect(() => {
@@ -473,23 +585,38 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
       type BBxy = { x1: number; x2: number; y2: number };
       const liveBboxes = new Map<string, BBxy>();
       cy.nodes(".erd-domain").forEach((domain) => {
-        let x1 = Infinity, x2 = -Infinity, y2 = -Infinity, hasConnected = false;
+        let x1 = Infinity,
+          x2 = -Infinity,
+          y2 = -Infinity,
+          hasConnected = false;
         domain.children().forEach((child) => {
           if (isolatedIds.has((child as { id(): string }).id())) return;
-          const bb = (child as unknown as { boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number; w: number } }).boundingBox({});
+          const bb = (
+            child as unknown as {
+              boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number; w: number };
+            }
+          ).boundingBox({});
           if (!bb.w) return;
-          x1 = Math.min(x1, bb.x1); x2 = Math.max(x2, bb.x2); y2 = Math.max(y2, bb.y2);
+          x1 = Math.min(x1, bb.x1);
+          x2 = Math.max(x2, bb.x2);
+          y2 = Math.max(y2, bb.y2);
           hasConnected = true;
         });
         if (hasConnected) liveBboxes.set((domain as { id(): string }).id(), { x1, x2, y2 });
       });
       placeIsolatedGrid(cy, isolatedIds, liveBboxes);
       isolatedIds.forEach((id) => {
-        (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style("display", "element");
+        (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style(
+          "display",
+          "element",
+        );
       });
     } else {
       isolatedIds.forEach((id) => {
-        (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style("display", "none");
+        (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style(
+          "display",
+          "none",
+        );
       });
     }
     cy.fit(undefined, 10);
@@ -564,10 +691,23 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
     const b = drag.startBox;
 
     let { x, y, w, h } = b;
-    if (drag.corner === "se") { w = Math.max(80, b.w + dx); h = Math.max(60, b.h + dy); }
-    else if (drag.corner === "sw") { x = b.x + dx; w = Math.max(80, b.w - dx); h = Math.max(60, b.h + dy); }
-    else if (drag.corner === "ne") { y = b.y + dy; w = Math.max(80, b.w + dx); h = Math.max(60, b.h - dy); }
-    else if (drag.corner === "nw") { x = b.x + dx; y = b.y + dy; w = Math.max(80, b.w - dx); h = Math.max(60, b.h - dy); }
+    if (drag.corner === "se") {
+      w = Math.max(80, b.w + dx);
+      h = Math.max(60, b.h + dy);
+    } else if (drag.corner === "sw") {
+      x = b.x + dx;
+      w = Math.max(80, b.w - dx);
+      h = Math.max(60, b.h + dy);
+    } else if (drag.corner === "ne") {
+      y = b.y + dy;
+      w = Math.max(80, b.w + dx);
+      h = Math.max(60, b.h - dy);
+    } else if (drag.corner === "nw") {
+      x = b.x + dx;
+      y = b.y + dy;
+      w = Math.max(80, b.w - dx);
+      h = Math.max(60, b.h - dy);
+    }
 
     setResizeHandleBox({ x, y, w, h });
   };
@@ -575,7 +715,8 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
   const onResizePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const drag = resizeDragRef.current;
     resizeDragRef.current = null;
-    if (!drag || !hoveredDomainId || !cyRef.current || !resizeHandleBox || !containerRef.current) return;
+    if (!drag || !hoveredDomainId || !cyRef.current || !resizeHandleBox || !containerRef.current)
+      return;
 
     e.stopPropagation();
 
@@ -596,9 +737,18 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
     const children = cy.nodes(`[parent = "d:${hoveredDomainId}"]`);
     if (!(children as unknown as { empty(): boolean }).empty()) {
       // Read current compound bounds (before removing fCoSE size bypass).
-      const oldBb = (domainNode as unknown as {
-        boundingBox(o: object): { x1: number; y1: number; x2: number; y2: number; w: number; h: number };
-      }).boundingBox({ includeLabels: false });
+      const oldBb = (
+        domainNode as unknown as {
+          boundingBox(o: object): {
+            x1: number;
+            y1: number;
+            x2: number;
+            y2: number;
+            w: number;
+            h: number;
+          };
+        }
+      ).boundingBox({ includeLabels: false });
 
       // Scale each child's position proportionally from old compound bounds to
       // new model bounds, preserving the two-phase layout structure.
@@ -631,59 +781,76 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
   // Depends on the palette, so the export helpers below list it: pinned to [] they kept the
   // background colour from the theme in force when the panel first mounted, and an export taken
   // after a light/dark switch came out on the previous theme's ground.
-  const addRasterPadding = useCallback((blob: Blob, mimeType: string, quality: number, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width + EXPORT_PAD * 2;
-      canvas.height = img.height + EXPORT_PAD * 2;
-      const ctx = canvas.getContext("2d")!;
-      ctx.fillStyle = EXPORT_BG;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, EXPORT_PAD, EXPORT_PAD);
-      URL.revokeObjectURL(url);
-      canvas.toBlob((b) => b && downloadBlob(b, filename), mimeType, quality);
-    };
-    img.src = url;
-  }, [EXPORT_BG]);
+  const addRasterPadding = useCallback(
+    (blob: Blob, mimeType: string, quality: number, filename: string) => {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width + EXPORT_PAD * 2;
+        canvas.height = img.height + EXPORT_PAD * 2;
+        const ctx = canvas.getContext("2d")!;
+        ctx.fillStyle = EXPORT_BG;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, EXPORT_PAD, EXPORT_PAD);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((b) => b && downloadBlob(b, filename), mimeType, quality);
+      };
+      img.src = url;
+    },
+    [EXPORT_BG],
+  );
 
   const exportSvg = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
     const raw = cy.svg({ full: true, bg: EXPORT_BG }) as string;
     // Inject 10px padding by expanding width/height and wrapping content in a translate group
-    const padded = raw.replace(
-      /(<svg[^>]*\swidth="(\d+(?:\.\d+)?)"[^>]*\sheight="(\d+(?:\.\d+)?)"[^>]*>)/,
-      (_match: string, _tag: string, w: string, h: string) => {
-        const nw = parseFloat(w) + EXPORT_PAD * 2;
-        const nh = parseFloat(h) + EXPORT_PAD * 2;
-        return _tag
-          .replace(/width="[^"]*"/, `width="${nw}"`)
-          .replace(/height="[^"]*"/, `height="${nh}"`) +
-          `<rect width="${nw}" height="${nh}" fill="${EXPORT_BG}"/><g transform="translate(${EXPORT_PAD},${EXPORT_PAD})">`;
-      },
-    ).replace("</svg>", "</g></svg>");
+    const padded = raw
+      .replace(
+        /(<svg[^>]*\swidth="(\d+(?:\.\d+)?)"[^>]*\sheight="(\d+(?:\.\d+)?)"[^>]*>)/,
+        (_match: string, _tag: string, w: string, h: string) => {
+          const nw = parseFloat(w) + EXPORT_PAD * 2;
+          const nh = parseFloat(h) + EXPORT_PAD * 2;
+          return (
+            _tag
+              .replace(/width="[^"]*"/, `width="${nw}"`)
+              .replace(/height="[^"]*"/, `height="${nh}"`) +
+            `<rect width="${nw}" height="${nh}" fill="${EXPORT_BG}"/><g transform="translate(${EXPORT_PAD},${EXPORT_PAD})">`
+          );
+        },
+      )
+      .replace("</svg>", "</g></svg>");
     downloadBlob(new Blob([padded], { type: "image/svg+xml" }), "erd.svg");
   }, [EXPORT_BG]);
 
   const exportPng = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    addRasterPadding(cy.png({ output: "blob", full: true, bg: EXPORT_BG }) as unknown as Blob, "image/png", 1, "erd.png");
+    addRasterPadding(
+      cy.png({ output: "blob", full: true, bg: EXPORT_BG }) as unknown as Blob,
+      "image/png",
+      1,
+      "erd.png",
+    );
   }, [EXPORT_BG, addRasterPadding]);
 
   const exportJpeg = useCallback(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    addRasterPadding(cy.jpg({ output: "blob", full: true, bg: EXPORT_BG, quality: 0.92 }) as unknown as Blob, "image/jpeg", 0.92, "erd.jpg");
+    addRasterPadding(
+      cy.jpg({ output: "blob", full: true, bg: EXPORT_BG, quality: 0.92 }) as unknown as Blob,
+      "image/jpeg",
+      0.92,
+      "erd.jpg",
+    );
   }, [EXPORT_BG, addRasterPadding]);
 
   // ── collapse all / expand all (visible domains only) ─────────────────────
   const visibleDomainIds = allDomainIds.filter((id) => !hiddenDomains.has(id));
-  const allCollapsed = visibleDomainIds.length > 0 && visibleDomainIds.every((id) => collapsedDomains.has(id));
-  const toggleAll = () =>
-    setCollapsedDomains(allCollapsed ? new Set() : new Set(visibleDomainIds));
+  const allCollapsed =
+    visibleDomainIds.length > 0 && visibleDomainIds.every((id) => collapsedDomains.has(id));
+  const toggleAll = () => setCollapsedDomains(allCollapsed ? new Set() : new Set(visibleDomainIds));
 
   return (
     <div
@@ -703,7 +870,8 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
           wrap="wrap"
           data-tour="rels-erd-modal"
           style={{
-            padding: "0.6rem 0.75rem", borderBottom: `1px solid ${palette.panelBorder}`,
+            padding: "0.6rem 0.75rem",
+            borderBottom: `1px solid ${palette.panelBorder}`,
             flexShrink: 0,
           }}
         >
@@ -867,7 +1035,9 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
                 onPointerDown={(e) => onResizePointerDown(corner, e)}
                 onPointerMove={onResizePointerMove}
                 onPointerUp={onResizePointerUp}
-                onMouseEnter={() => { handleHoverRef.current = true; }}
+                onMouseEnter={() => {
+                  handleHoverRef.current = true;
+                }}
                 onMouseLeave={() => {
                   handleHoverRef.current = false;
                   if (!resizeDragRef.current) {
@@ -877,15 +1047,19 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
                 }}
                 style={{
                   position: "absolute",
-                  width: 16, height: 16,
+                  width: 16,
+                  height: 16,
                   background: palette.accent,
                   borderRadius: 2,
                   cursor: corner === "se" || corner === "nw" ? "nwse-resize" : "nesw-resize",
                   pointerEvents: "all",
-                  ...(corner === "nw" ? { top: -8, left: -8 } :
-                      corner === "ne" ? { top: -8, right: -8 } :
-                      corner === "sw" ? { bottom: -8, left: -8 } :
-                                        { bottom: -8, right: -8 }),
+                  ...(corner === "nw"
+                    ? { top: -8, left: -8 }
+                    : corner === "ne"
+                      ? { top: -8, right: -8 }
+                      : corner === "sw"
+                        ? { bottom: -8, left: -8 }
+                        : { bottom: -8, right: -8 }),
                 }}
               />
             ))}
@@ -922,15 +1096,27 @@ export function ErdPanel({ tables, relationships, domains, checkedDomains, onClo
           <div
             role="tooltip"
             style={{
-              position: "fixed", left: tooltip.x, top: tooltip.y,
-              background: palette.tooltipBg, border: `1px solid ${palette.tooltipBorder}`,
-              borderRadius: 6, padding: "6px 10px", fontSize: 11,
-              color: palette.text, maxWidth: 260, pointerEvents: "none",
-              zIndex: 2000, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+              position: "fixed",
+              left: tooltip.x,
+              top: tooltip.y,
+              background: palette.tooltipBg,
+              border: `1px solid ${palette.tooltipBorder}`,
+              borderRadius: 6,
+              padding: "6px 10px",
+              fontSize: 11,
+              color: palette.text,
+              maxWidth: 260,
+              pointerEvents: "none",
+              zIndex: 2000,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: tooltip.body ? 4 : 0 }}>{tooltip.title}</div>
-            {tooltip.body && <div style={{ color: palette.textMuted, lineHeight: 1.4 }}>{tooltip.body}</div>}
+            <div style={{ fontWeight: 600, marginBottom: tooltip.body ? 4 : 0 }}>
+              {tooltip.title}
+            </div>
+            {tooltip.body && (
+              <div style={{ color: palette.textMuted, lineHeight: 1.4 }}>{tooltip.body}</div>
+            )}
           </div>
         )}
       </>

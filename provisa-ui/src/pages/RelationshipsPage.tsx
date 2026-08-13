@@ -37,7 +37,11 @@ import {
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { Relationship } from "../types/admin";
-import { EMPTY_FORM, type Candidate, type RelForm } from "../components/relationships/relationship-types";
+import {
+  EMPTY_FORM,
+  type Candidate,
+  type RelForm,
+} from "../components/relationships/relationship-types";
 import { AddRelationshipForm } from "../components/relationships/AddRelationshipForm";
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import {
@@ -73,7 +77,9 @@ export function RelationshipsPage() {
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   const PAGE_SIZE = 50;
-  const [sortCol, setSortCol] = useState<"domain" | "source" | "target" | "cardinality" | "materialize">("source");
+  const [sortCol, setSortCol] = useState<
+    "domain" | "source" | "target" | "cardinality" | "materialize"
+  >("source");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [groupBy, setGroupBy] = useState<Array<"domain" | "cardinality" | "materialize">>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -349,7 +355,11 @@ export function RelationshipsPage() {
       const srcDomain = r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : undefined;
       const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
       const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
-      if (srcDomain !== selectedDomain && tgtDomain !== selectedDomain && ownerDomain !== selectedDomain)
+      if (
+        srcDomain !== selectedDomain &&
+        tgtDomain !== selectedDomain &&
+        ownerDomain !== selectedDomain
+      )
         return false;
     }
     if (!relSearch.trim()) return true;
@@ -403,8 +413,16 @@ export function RelationshipsPage() {
           {canManage && (
             <ActionIcon
               variant="subtle"
-              aria-label={discovering ? t("relationshipsPage.discovering") : t("relationshipsPage.suggestWithAi")}
-              title={discovering ? t("relationshipsPage.discovering") : t("relationshipsPage.suggestWithAi")}
+              aria-label={
+                discovering
+                  ? t("relationshipsPage.discovering")
+                  : t("relationshipsPage.suggestWithAi")
+              }
+              title={
+                discovering
+                  ? t("relationshipsPage.discovering")
+                  : t("relationshipsPage.suggestWithAi")
+              }
               onClick={handleDiscover}
               disabled={discovering}
             >
@@ -444,63 +462,164 @@ export function RelationshipsPage() {
       )}
 
       <div style={{ overflowX: "auto" }}>
-      <Table className="data-table" style={{ width: "100%", tableLayout: "fixed" }}>
-        <Table.Thead>
-          <Table.Tr>
-            {(
-              [
-                ["domain", "relationshipsPage.domain", "7%", true],
-                ["source", "relationshipsPage.source", "22%", false],
-                ["target", "relationshipsPage.target", "22%", false],
-              ] as const
-            )
-              .filter(([col]) => domainsEnabled || col !== "domain")
-              .map(([col, labelKey, width, isGroupable]) => {
-              const label = t(labelKey);
-              const groupLevel = isGroupable ? groupBy.indexOf(col as "domain" | "cardinality" | "materialize") : -1;
-              const isGrouped = groupLevel !== -1;
-              const sortActive = sortCol === col;
-              const sortLabel = sortActive
-                ? sortDir === "asc"
-                  ? t("relationshipsPage.sortAscending")
-                  : t("relationshipsPage.sortDescending")
-                : t("relationshipsPage.sortNone");
-              return (
-                <Table.Th key={col} style={{ width, whiteSpace: "nowrap", ...(col === "source" ? { paddingInlineStart: "2rem" } : {}) }}>
-                  <Group gap={4} wrap="nowrap" component="span">
-                    <button
-                      type="button"
-                      data-testid={`rels-sort-${col}`}
-                      onClick={() => {
-                        if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                        else { setSortCol(col); setSortDir("asc"); }
-                      }}
-                      aria-label={`${label}, ${sortLabel}`}
+        <Table className="data-table" style={{ width: "100%", tableLayout: "fixed" }}>
+          <Table.Thead>
+            <Table.Tr>
+              {(
+                [
+                  ["domain", "relationshipsPage.domain", "7%", true],
+                  ["source", "relationshipsPage.source", "22%", false],
+                  ["target", "relationshipsPage.target", "22%", false],
+                ] as const
+              )
+                .filter(([col]) => domainsEnabled || col !== "domain")
+                .map(([col, labelKey, width, isGroupable]) => {
+                  const label = t(labelKey);
+                  const groupLevel = isGroupable
+                    ? groupBy.indexOf(col as "domain" | "cardinality" | "materialize")
+                    : -1;
+                  const isGrouped = groupLevel !== -1;
+                  const sortActive = sortCol === col;
+                  const sortLabel = sortActive
+                    ? sortDir === "asc"
+                      ? t("relationshipsPage.sortAscending")
+                      : t("relationshipsPage.sortDescending")
+                    : t("relationshipsPage.sortNone");
+                  return (
+                    <Table.Th
+                      key={col}
                       style={{
-                        cursor: "pointer",
-                        userSelect: "none",
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        font: "inherit",
-                        color: "inherit",
+                        width,
+                        whiteSpace: "nowrap",
+                        ...(col === "source" ? { paddingInlineStart: "2rem" } : {}),
                       }}
                     >
-                      {label}
-                      {sortActive ? (
-                        sortDir === "asc" ? (
-                          <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                      <Group gap={4} wrap="nowrap" component="span">
+                        <button
+                          type="button"
+                          data-testid={`rels-sort-${col}`}
+                          onClick={() => {
+                            if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                            else {
+                              setSortCol(col);
+                              setSortDir("asc");
+                            }
+                          }}
+                          aria-label={`${label}, ${sortLabel}`}
+                          style={{
+                            cursor: "pointer",
+                            userSelect: "none",
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                            font: "inherit",
+                            color: "inherit",
+                          }}
+                        >
+                          {label}
+                          {sortActive ? (
+                            sortDir === "asc" ? (
+                              <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                            ) : (
+                              <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                            )
+                          ) : (
+                            <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                          )}
+                        </button>
+                        {isGroupable && (
+                          <ActionIcon
+                            variant="transparent"
+                            size="xs"
+                            data-testid={`rels-group-${col}`}
+                            aria-label={
+                              isGrouped
+                                ? t("relationshipsPage.ungroupLevel", { level: groupLevel + 1 })
+                                : t("relationshipsPage.groupBy", { label })
+                            }
+                            title={
+                              isGrouped
+                                ? t("relationshipsPage.ungroupLevel", { level: groupLevel + 1 })
+                                : t("relationshipsPage.groupBy", { label })
+                            }
+                            onClick={() =>
+                              toggleGroupBy(col as "domain" | "cardinality" | "materialize")
+                            }
+                            style={{ opacity: isGrouped ? 1 : 0.35 }}
+                          >
+                            <Layers
+                              size={11}
+                              color={isGrouped ? "var(--primary, #6366f1)" : undefined}
+                              aria-hidden="true"
+                            />
+                          </ActionIcon>
+                        )}
+                        {isGroupable && isGrouped && (
+                          <Text span fz="0.65rem" c="var(--primary, #6366f1)">
+                            {groupLevel + 1}
+                          </Text>
+                        )}
+                      </Group>
+                    </Table.Th>
+                  );
+                })}
+              <Table.Th style={{ width: "20%" }}>{t("relationshipsPage.gqlCqlAlias")}</Table.Th>
+              {(
+                [
+                  ["cardinality", "relationshipsPage.cardinality", "11%"],
+                  ["materialize", "relationshipsPage.materialize", "10%"],
+                ] as const
+              ).map(([col, labelKey, width]) => {
+                const label = t(labelKey);
+                const groupLevel = groupBy.indexOf(col as "cardinality" | "materialize");
+                const isGrouped = groupLevel !== -1;
+                const sortActive = sortCol === col;
+                const sortLabel = sortActive
+                  ? sortDir === "asc"
+                    ? t("relationshipsPage.sortAscending")
+                    : t("relationshipsPage.sortDescending")
+                  : t("relationshipsPage.sortNone");
+                return (
+                  <Table.Th key={col} style={{ width, whiteSpace: "nowrap" }}>
+                    <Group gap={4} wrap="nowrap" component="span">
+                      <button
+                        type="button"
+                        data-testid={`rels-sort-${col}`}
+                        onClick={() => {
+                          if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                          else {
+                            setSortCol(col);
+                            setSortDir("asc");
+                          }
+                        }}
+                        aria-label={`${label}, ${sortLabel}`}
+                        style={{
+                          cursor: "pointer",
+                          userSelect: "none",
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.25rem",
+                          font: "inherit",
+                          color: "inherit",
+                        }}
+                      >
+                        {label}
+                        {sortActive ? (
+                          sortDir === "asc" ? (
+                            <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                          ) : (
+                            <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                          )
                         ) : (
-                          <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                        )
-                      ) : (
-                        <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                      )}
-                    </button>
-                    {isGroupable && (
+                          <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                        )}
+                      </button>
                       <ActionIcon
                         variant="transparent"
                         size="xs"
@@ -515,269 +634,247 @@ export function RelationshipsPage() {
                             ? t("relationshipsPage.ungroupLevel", { level: groupLevel + 1 })
                             : t("relationshipsPage.groupBy", { label })
                         }
-                        onClick={() => toggleGroupBy(col as "domain" | "cardinality" | "materialize")}
+                        onClick={() => toggleGroupBy(col as "cardinality" | "materialize")}
                         style={{ opacity: isGrouped ? 1 : 0.35 }}
                       >
-                        <Layers size={11} color={isGrouped ? "var(--primary, #6366f1)" : undefined} aria-hidden="true" />
+                        <Layers
+                          size={11}
+                          color={isGrouped ? "var(--primary, #6366f1)" : undefined}
+                          aria-hidden="true"
+                        />
                       </ActionIcon>
-                    )}
-                    {isGroupable && isGrouped && (
-                      <Text span fz="0.65rem" c="var(--primary, #6366f1)">
-                        {groupLevel + 1}
-                      </Text>
-                    )}
-                  </Group>
-                </Table.Th>
-              );
-            })}
-            <Table.Th style={{ width: "20%" }}>{t("relationshipsPage.gqlCqlAlias")}</Table.Th>
-            {(
-              [["cardinality", "relationshipsPage.cardinality", "11%"], ["materialize", "relationshipsPage.materialize", "10%"]] as const
-            ).map(([col, labelKey, width]) => {
-              const label = t(labelKey);
-              const groupLevel = groupBy.indexOf(col as "cardinality" | "materialize");
-              const isGrouped = groupLevel !== -1;
-              const sortActive = sortCol === col;
-              const sortLabel = sortActive
-                ? sortDir === "asc"
-                  ? t("relationshipsPage.sortAscending")
-                  : t("relationshipsPage.sortDescending")
-                : t("relationshipsPage.sortNone");
-              return (
-                <Table.Th key={col} style={{ width, whiteSpace: "nowrap" }}>
-                  <Group gap={4} wrap="nowrap" component="span">
-                    <button
-                      type="button"
-                      data-testid={`rels-sort-${col}`}
-                      onClick={() => {
-                        if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                        else { setSortCol(col); setSortDir("asc"); }
-                      }}
-                      aria-label={`${label}, ${sortLabel}`}
-                      style={{
-                        cursor: "pointer",
-                        userSelect: "none",
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        font: "inherit",
-                        color: "inherit",
-                      }}
-                    >
-                      {label}
-                      {sortActive ? (
-                        sortDir === "asc" ? (
-                          <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
-                        ) : (
-                          <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                        )
-                      ) : (
-                        <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                      {isGrouped && (
+                        <Text span fz="0.65rem" c="var(--primary, #6366f1)">
+                          {groupLevel + 1}
+                        </Text>
                       )}
-                    </button>
-                    <ActionIcon
-                      variant="transparent"
-                      size="xs"
-                      data-testid={`rels-group-${col}`}
-                      aria-label={
-                        isGrouped
-                          ? t("relationshipsPage.ungroupLevel", { level: groupLevel + 1 })
-                          : t("relationshipsPage.groupBy", { label })
-                      }
-                      title={
-                        isGrouped
-                          ? t("relationshipsPage.ungroupLevel", { level: groupLevel + 1 })
-                          : t("relationshipsPage.groupBy", { label })
-                      }
-                      onClick={() => toggleGroupBy(col as "cardinality" | "materialize")}
-                      style={{ opacity: isGrouped ? 1 : 0.35 }}
+                    </Group>
+                  </Table.Th>
+                );
+              })}
+              <Table.Th style={{ width: "8%", whiteSpace: "nowrap" }}>
+                {t("relationshipsPage.refreshSeconds")}
+              </Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {(() => {
+              const filtered = rels.filter((r) => {
+                if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
+                return matchesFilter(r);
+              });
+
+              if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
+                return (
+                  <Table.Tr>
+                    <Table.Td
+                      colSpan={domainsEnabled ? 7 : 6}
+                      style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}
                     >
-                      <Layers size={11} color={isGrouped ? "var(--primary, #6366f1)" : undefined} aria-hidden="true" />
-                    </ActionIcon>
-                    {isGrouped && (
-                      <Text span fz="0.65rem" c="var(--primary, #6366f1)">
-                        {groupLevel + 1}
-                      </Text>
-                    )}
-                  </Group>
-                </Table.Th>
-              );
-            })}
-            <Table.Th style={{ width: "8%", whiteSpace: "nowrap" }}>{t("relationshipsPage.refreshSeconds")}</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {(() => {
-            const filtered = rels.filter((r) => {
-              if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
-              return matchesFilter(r);
-            });
-
-            if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
-              return (
-                <Table.Tr>
-                  <Table.Td colSpan={domainsEnabled ? 7 : 6} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
-                    {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
-                  </Table.Td>
-                </Table.Tr>
-              );
-            }
-
-            filtered.sort((a, b) => {
-              let cmp = 0;
-              if (sortCol === "domain") cmp = (a.sourceDomainId ?? "").localeCompare(b.sourceDomainId ?? "");
-              else if (sortCol === "source") cmp = a.sourceTableName.localeCompare(b.sourceTableName);
-              else if (sortCol === "target") cmp = (a.targetTableName ?? "").localeCompare(b.targetTableName ?? "");
-              else if (sortCol === "cardinality") cmp = a.cardinality.localeCompare(b.cardinality);
-              return sortDir === "asc" ? cmp : -cmp;
-            });
-
-            const getGroupKey = (r: Relationship, col: "domain" | "cardinality" | "materialize") =>
-              col === "domain"
-                ? (r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : t("relationshipsPage.none"))
-                : col === "materialize"
-                  ? (r.materialize ? t("relationshipsPage.materialized") : t("relationshipsPage.notMaterialized"))
-                  : r.cardinality;
-            const colLabel = (col: "domain" | "cardinality" | "materialize") =>
-              col === "domain"
-                ? t("relationshipsPage.domain")
-                : col === "materialize"
-                  ? t("relationshipsPage.materialize")
-                  : t("relationshipsPage.cardinality");
-
-            type GroupItem =
-              | { type: "header"; level: 1 | 2 | 3; key: string; label: string; count: number }
-              | { type: "row"; r: Relationship };
-
-            let items: GroupItem[];
-
-            if (groupBy.length === 0) {
-              items = filtered
-                .slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE)
-                .map((r) => ({ type: "row" as const, r }));
-            } else {
-              items = [];
-              const l1Col = groupBy[0];
-              const l2Col = groupBy[1];
-              const l3Col = groupBy[2];
-              const l1Map = new Map<string, Relationship[]>();
-              for (const r of filtered) {
-                const k = getGroupKey(r, l1Col);
-                if (!l1Map.has(k)) l1Map.set(k, []);
-                l1Map.get(k)!.push(r);
+                      {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
+                    </Table.Td>
+                  </Table.Tr>
+                );
               }
-              for (const [l1Key, l1Rels] of [...l1Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-                items.push({ type: "header", level: 1, key: l1Key, label: `${colLabel(l1Col)}: ${l1Key}`, count: l1Rels.length });
-                if (collapsedGroups.has(l1Key)) continue;
-                if (!l2Col) {
-                  for (const r of l1Rels) items.push({ type: "row", r });
-                } else {
-                  const l2Map = new Map<string, Relationship[]>();
-                  for (const r of l1Rels) {
-                    const k = getGroupKey(r, l2Col);
-                    if (!l2Map.has(k)) l2Map.set(k, []);
-                    l2Map.get(k)!.push(r);
-                  }
-                  for (const [l2Key, l2Rels] of [...l2Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-                    const compositeKey = `${l1Key}|${l2Key}`;
-                    items.push({ type: "header", level: 2, key: compositeKey, label: `${colLabel(l2Col)}: ${l2Key}`, count: l2Rels.length });
-                    if (collapsedGroups.has(compositeKey)) continue;
-                    if (!l3Col) {
-                      for (const r of l2Rels) items.push({ type: "row", r });
-                    } else {
-                      const l3Map = new Map<string, Relationship[]>();
-                      for (const r of l2Rels) {
-                        const k = getGroupKey(r, l3Col);
-                        if (!l3Map.has(k)) l3Map.set(k, []);
-                        l3Map.get(k)!.push(r);
-                      }
-                      for (const [l3Key, l3Rels] of [...l3Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-                        const l3CompositeKey = `${compositeKey}|${l3Key}`;
-                        items.push({ type: "header", level: 3, key: l3CompositeKey, label: `${colLabel(l3Col)}: ${l3Key}`, count: l3Rels.length });
-                        if (collapsedGroups.has(l3CompositeKey)) continue;
-                        for (const r of l3Rels) items.push({ type: "row", r });
+
+              filtered.sort((a, b) => {
+                let cmp = 0;
+                if (sortCol === "domain")
+                  cmp = (a.sourceDomainId ?? "").localeCompare(b.sourceDomainId ?? "");
+                else if (sortCol === "source")
+                  cmp = a.sourceTableName.localeCompare(b.sourceTableName);
+                else if (sortCol === "target")
+                  cmp = (a.targetTableName ?? "").localeCompare(b.targetTableName ?? "");
+                else if (sortCol === "cardinality")
+                  cmp = a.cardinality.localeCompare(b.cardinality);
+                return sortDir === "asc" ? cmp : -cmp;
+              });
+
+              const getGroupKey = (
+                r: Relationship,
+                col: "domain" | "cardinality" | "materialize",
+              ) =>
+                col === "domain"
+                  ? r.sourceDomainId
+                    ? normalizeDomain(r.sourceDomainId)
+                    : t("relationshipsPage.none")
+                  : col === "materialize"
+                    ? r.materialize
+                      ? t("relationshipsPage.materialized")
+                      : t("relationshipsPage.notMaterialized")
+                    : r.cardinality;
+              const colLabel = (col: "domain" | "cardinality" | "materialize") =>
+                col === "domain"
+                  ? t("relationshipsPage.domain")
+                  : col === "materialize"
+                    ? t("relationshipsPage.materialize")
+                    : t("relationshipsPage.cardinality");
+
+              type GroupItem =
+                | { type: "header"; level: 1 | 2 | 3; key: string; label: string; count: number }
+                | { type: "row"; r: Relationship };
+
+              let items: GroupItem[];
+
+              if (groupBy.length === 0) {
+                items = filtered
+                  .slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE)
+                  .map((r) => ({ type: "row" as const, r }));
+              } else {
+                items = [];
+                const l1Col = groupBy[0];
+                const l2Col = groupBy[1];
+                const l3Col = groupBy[2];
+                const l1Map = new Map<string, Relationship[]>();
+                for (const r of filtered) {
+                  const k = getGroupKey(r, l1Col);
+                  if (!l1Map.has(k)) l1Map.set(k, []);
+                  l1Map.get(k)!.push(r);
+                }
+                for (const [l1Key, l1Rels] of [...l1Map.entries()].sort(([a], [b]) =>
+                  a.localeCompare(b),
+                )) {
+                  items.push({
+                    type: "header",
+                    level: 1,
+                    key: l1Key,
+                    label: `${colLabel(l1Col)}: ${l1Key}`,
+                    count: l1Rels.length,
+                  });
+                  if (collapsedGroups.has(l1Key)) continue;
+                  if (!l2Col) {
+                    for (const r of l1Rels) items.push({ type: "row", r });
+                  } else {
+                    const l2Map = new Map<string, Relationship[]>();
+                    for (const r of l1Rels) {
+                      const k = getGroupKey(r, l2Col);
+                      if (!l2Map.has(k)) l2Map.set(k, []);
+                      l2Map.get(k)!.push(r);
+                    }
+                    for (const [l2Key, l2Rels] of [...l2Map.entries()].sort(([a], [b]) =>
+                      a.localeCompare(b),
+                    )) {
+                      const compositeKey = `${l1Key}|${l2Key}`;
+                      items.push({
+                        type: "header",
+                        level: 2,
+                        key: compositeKey,
+                        label: `${colLabel(l2Col)}: ${l2Key}`,
+                        count: l2Rels.length,
+                      });
+                      if (collapsedGroups.has(compositeKey)) continue;
+                      if (!l3Col) {
+                        for (const r of l2Rels) items.push({ type: "row", r });
+                      } else {
+                        const l3Map = new Map<string, Relationship[]>();
+                        for (const r of l2Rels) {
+                          const k = getGroupKey(r, l3Col);
+                          if (!l3Map.has(k)) l3Map.set(k, []);
+                          l3Map.get(k)!.push(r);
+                        }
+                        for (const [l3Key, l3Rels] of [...l3Map.entries()].sort(([a], [b]) =>
+                          a.localeCompare(b),
+                        )) {
+                          const l3CompositeKey = `${compositeKey}|${l3Key}`;
+                          items.push({
+                            type: "header",
+                            level: 3,
+                            key: l3CompositeKey,
+                            label: `${colLabel(l3Col)}: ${l3Key}`,
+                            count: l3Rels.length,
+                          });
+                          if (collapsedGroups.has(l3CompositeKey)) continue;
+                          for (const r of l3Rels) items.push({ type: "row", r });
+                        }
                       }
                     }
                   }
                 }
               }
-            }
 
-            return items.map((item) => {
-              if (item.type === "header") {
-                const lvl = item.level;
-                const isCollapsed = collapsedGroups.has(item.key);
-                const toggleCollapsed = () =>
-                  setCollapsedGroups((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(item.key)) next.delete(item.key);
-                    else next.add(item.key);
-                    return next;
-                  });
+              return items.map((item) => {
+                if (item.type === "header") {
+                  const lvl = item.level;
+                  const isCollapsed = collapsedGroups.has(item.key);
+                  const toggleCollapsed = () =>
+                    setCollapsedGroups((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(item.key)) next.delete(item.key);
+                      else next.add(item.key);
+                      return next;
+                    });
+                  return (
+                    <Table.Tr key={`grp-${item.key}`}>
+                      <Table.Td
+                        colSpan={domainsEnabled ? 7 : 6}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!isCollapsed}
+                        onClick={toggleCollapsed}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleCollapsed();
+                          }
+                        }}
+                        style={{
+                          fontWeight: lvl === 1 ? 600 : lvl === 2 ? 500 : 400,
+                          fontSize: lvl === 1 ? "0.8rem" : "0.75rem",
+                          padding:
+                            lvl === 1
+                              ? "0.35rem 0.75rem"
+                              : lvl === 2
+                                ? "0.25rem 1.5rem"
+                                : "0.2rem 2.25rem",
+                          color: "var(--text-muted)",
+                          background:
+                            lvl === 1
+                              ? "var(--surface)"
+                              : lvl === 2
+                                ? "var(--surface-raised, var(--surface))"
+                                : "var(--bg)",
+                          borderTop:
+                            lvl === 1 ? "2px solid var(--border)" : "1px solid var(--border)",
+                          cursor: "pointer",
+                          userSelect: "none",
+                        }}
+                      >
+                        {isCollapsed ? "▶" : "▼"} {item.label}{" "}
+                        <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                }
+                const r = item.r;
+                const id = String(r.id);
                 return (
-                  <Table.Tr key={`grp-${item.key}`}>
-                    <Table.Td
-                      colSpan={domainsEnabled ? 7 : 6}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={!isCollapsed}
-                      onClick={toggleCollapsed}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleCollapsed();
-                        }
-                      }}
-                      style={{
-                        fontWeight: lvl === 1 ? 600 : lvl === 2 ? 500 : 400,
-                        fontSize: lvl === 1 ? "0.8rem" : "0.75rem",
-                        padding: lvl === 1 ? "0.35rem 0.75rem" : lvl === 2 ? "0.25rem 1.5rem" : "0.2rem 2.25rem",
-                        color: "var(--text-muted)",
-                        background: lvl === 1 ? "var(--surface)" : lvl === 2 ? "var(--surface-raised, var(--surface))" : "var(--bg)",
-                        borderTop: lvl === 1 ? "2px solid var(--border)" : "1px solid var(--border)",
-                        cursor: "pointer",
-                        userSelect: "none",
-                      }}
-                    >
-                      {isCollapsed ? "▶" : "▼"} {item.label}{" "}
-                      <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
-                    </Table.Td>
-                  </Table.Tr>
+                  <RelationshipRow
+                    key={r.id}
+                    rel={r}
+                    isExpanded={expanded === id}
+                    onToggle={() => {
+                      setExpanded(expanded === id ? null : id);
+                      setEditingRel(null);
+                    }}
+                    editingRel={editingRel}
+                    setEditingRel={setEditingRel}
+                    canManage={canManage}
+                    onStartEdit={() => startEditing(r)}
+                    onReverse={() => setReverseForm(buildReverse(r))}
+                    onDelete={() => handleDelete(id)}
+                    onEditSave={handleEditSave}
+                    saving={saving}
+                    tables={tables}
+                    functions={functions}
+                    tableDomainById={tableDomainById}
+                    normalizeDomain={normalizeDomain}
+                    domainsEnabled={domainsEnabled}
+                  />
                 );
-              }
-              const r = item.r;
-              const id = String(r.id);
-              return (
-                <RelationshipRow
-                  key={r.id}
-                  rel={r}
-                  isExpanded={expanded === id}
-                  onToggle={() => {
-                    setExpanded(expanded === id ? null : id);
-                    setEditingRel(null);
-                  }}
-                  editingRel={editingRel}
-                  setEditingRel={setEditingRel}
-                  canManage={canManage}
-                  onStartEdit={() => startEditing(r)}
-                  onReverse={() => setReverseForm(buildReverse(r))}
-                  onDelete={() => handleDelete(id)}
-                  onEditSave={handleEditSave}
-                  saving={saving}
-                  tables={tables}
-                  functions={functions}
-                  tableDomainById={tableDomainById}
-                  normalizeDomain={normalizeDomain}
-                  domainsEnabled={domainsEnabled}
-                />
-              );
-            });
-          })()}
-        </Table.Tbody>
-      </Table>
+              });
+            })()}
+          </Table.Tbody>
+        </Table>
       </div>
       {totalPages > 1 && (
         <Group gap="sm" align="center" justify="flex-end" py="sm">

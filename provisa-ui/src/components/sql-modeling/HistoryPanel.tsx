@@ -70,16 +70,10 @@ export function HistoryPanel({ history, setSqlText, setRole, setResultTab }: His
                 <Table.Td style={{ whiteSpace: "nowrap" }} c="dimmed">
                   {h.role}
                 </Table.Td>
-                <Table.Td
-                  style={{ whiteSpace: "nowrap" }}
-                  c={h.error ? "red" : "dimmed"}
-                >
+                <Table.Td style={{ whiteSpace: "nowrap" }} c={h.error ? "red" : "dimmed"}>
                   {h.durationMs}ms
                 </Table.Td>
-                <Table.Td
-                  style={{ whiteSpace: "nowrap" }}
-                  c={h.error ? "red" : undefined}
-                >
+                <Table.Td style={{ whiteSpace: "nowrap" }} c={h.error ? "red" : undefined}>
                   {h.error ? (
                     <span title={h.error}>{t("sqlModelingHistoryPanel.error")}</span>
                   ) : (

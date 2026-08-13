@@ -136,11 +136,7 @@ export function TableReadView({
                         {t("tableReadView.akBadge")}
                       </Badge>
                     )}{" "}
-                    <TagControl
-                      objectType="column"
-                      tableId={table.id}
-                      columnName={c.columnName}
-                    />
+                    <TagControl objectType="column" tableId={table.id} columnName={c.columnName} />
                   </Table.Td>
                   <Table.Td ta="center">
                     {c.isPrimaryKey && (
@@ -462,9 +458,7 @@ export function TableReadView({
                           >
                             {c.topValues.map(({ value, count }) => {
                               const barPct =
-                                c.topValues[0].count > 0
-                                  ? (count / c.topValues[0].count) * 100
-                                  : 0;
+                                c.topValues[0].count > 0 ? (count / c.topValues[0].count) * 100 : 0;
                               return (
                                 <Group key={value} gap="0.3rem" wrap="nowrap">
                                   <Box
@@ -503,7 +497,13 @@ export function TableReadView({
                                   >
                                     {value.slice(0, 22)}
                                   </Text>
-                                  <Text span c="dimmed" fz="0.65rem" ml="auto" style={{ flexShrink: 0 }}>
+                                  <Text
+                                    span
+                                    c="dimmed"
+                                    fz="0.65rem"
+                                    ml="auto"
+                                    style={{ flexShrink: 0 }}
+                                  >
                                     ×{count}
                                   </Text>
                                 </Group>

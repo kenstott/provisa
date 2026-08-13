@@ -17,9 +17,8 @@ never ran. Crash-looping containers starved core services of memory.
 """
 
 import subprocess
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -29,7 +28,7 @@ def _run_fixture_with_marker(marker_name: str, up_side_effect):
 
     Returns the list of subprocess.run calls that were made.
     """
-    from tests.conftest import _heavy_db_service, _ITEST_COMPOSE_ARGS, _REPO_ROOT
+    from tests.conftest import _heavy_db_service
 
     calls_made: list = []
 

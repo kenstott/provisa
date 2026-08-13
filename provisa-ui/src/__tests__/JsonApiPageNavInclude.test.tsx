@@ -35,7 +35,12 @@ vi.mock("../hooks/useAdminQueries", () => ({
         tableName: "inquiries",
         columns: [{ columnName: "id" }, { columnName: "user_id" }],
       },
-      { id: "t2", domainId: "pet-store", tableName: "users", columns: [{ columnName: "id" }, { columnName: "name" }] },
+      {
+        id: "t2",
+        domainId: "pet-store",
+        tableName: "users",
+        columns: [{ columnName: "id" }, { columnName: "name" }],
+      },
     ],
   }),
   useAllRelationships: () => ({
@@ -61,7 +66,10 @@ describe("JsonApiPage — navigation hand-off", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } })),
+      vi.fn(
+        async () =>
+          new Response("[]", { status: 200, headers: { "content-type": "application/json" } }),
+      ),
     );
   });
 

@@ -65,7 +65,9 @@ export function SnapshotSchedulePanel({
           <Badge size="xs" variant="light" color="grape">
             {editingTable.mvCalendar}
             {/* display-only relabel of the RFC 5545 prefix; the stored value stays RRULE: */}
-            {editingTable.mvGrain ? ` · ${editingTable.mvGrain.replace(/^RRULE:/i, "RECURS:")}` : ""}
+            {editingTable.mvGrain
+              ? ` · ${editingTable.mvGrain.replace(/^RRULE:/i, "RECURS:")}`
+              : ""}
           </Badge>
         )}
       </Group>

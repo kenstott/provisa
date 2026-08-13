@@ -76,9 +76,7 @@ describe("ColumnGlossaryHover (REQ-1387)", () => {
     expect(screen.getByText("Money in.")).toBeInTheDocument();
     expect(screen.getByText(/orders\.amount/)).toBeInTheDocument();
     expect(screen.getByText(/alice/)).toBeInTheDocument();
-    expect(
-      screen.getByText(`${t("glossaryTab.rel_KIND_OF")}: Income`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`${t("glossaryTab.rel_KIND_OF")}: Income`)).toBeInTheDocument();
     expect(mockFetchByRef).toHaveBeenCalledWith(10, "amount");
   });
 

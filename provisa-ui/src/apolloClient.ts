@@ -118,26 +118,31 @@ function _scheduleActiveRefetch() {
     // the refetched result cannot merge with stale entries. A navigation away mid-refetch
     // aborts them and rejects this promise; nothing awaits it, so an unhandled rejection
     // would otherwise surface as an uncaught page error.
-    client.refetchQueries({ include: "active" })
+    client
+      .refetchQueries({ include: "active" })
       .catch(() => {})
-      .finally(() => { _refetchInFlight = false; });
+      .finally(() => {
+        _refetchInFlight = false;
+      });
   }, 300);
 }
 const schemaVersionLink = new ApolloLink((operation, forward) =>
-  forward(operation).pipe(map((response) => {
-    if (typeof window === "undefined") return response;
-    const ctx = operation.getContext();
-    const version = ctx.response?.headers?.get("x-schema-version");
-    if (version === null || version === undefined) return response;
-    const stored = localStorage.getItem(SCHEMA_VERSION_KEY);
-    if (stored !== null && stored !== version) {
-      localStorage.setItem(SCHEMA_VERSION_KEY, version);
-      _scheduleActiveRefetch();
-    } else if (stored === null) {
-      localStorage.setItem(SCHEMA_VERSION_KEY, version);
-    }
-    return response;
-  }))
+  forward(operation).pipe(
+    map((response) => {
+      if (typeof window === "undefined") return response;
+      const ctx = operation.getContext();
+      const version = ctx.response?.headers?.get("x-schema-version");
+      if (version === null || version === undefined) return response;
+      const stored = localStorage.getItem(SCHEMA_VERSION_KEY);
+      if (stored !== null && stored !== version) {
+        localStorage.setItem(SCHEMA_VERSION_KEY, version);
+        _scheduleActiveRefetch();
+      } else if (stored === null) {
+        localStorage.setItem(SCHEMA_VERSION_KEY, version);
+      }
+      return response;
+    }),
+  ),
 );
 
 export const client = new ApolloClient({

@@ -37,7 +37,9 @@ export function CacheStorageTab() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchCacheStorage().then(setS).catch((e) => setError(String(e)));
+    fetchCacheStorage()
+      .then(setS)
+      .catch((e) => setError(String(e)));
   }, []);
 
   const save = async () => {
@@ -56,7 +58,7 @@ export function CacheStorageTab() {
       setMsg(
         res.restart_required
           ? t("cacheStorageTab.savedRestartRequired")
-          : t("cacheStorageTab.saved")
+          : t("cacheStorageTab.saved"),
       );
     } catch (e) {
       setError(String(e));
@@ -119,17 +121,13 @@ export function CacheStorageTab() {
           <NumberInput
             label={t("cacheStorageTab.maxRowsLabel")}
             value={s.hot_tables.max_rows}
-            onChange={(v) =>
-              setS({ ...s, hot_tables: { ...s.hot_tables, max_rows: Number(v) } })
-            }
+            onChange={(v) => setS({ ...s, hot_tables: { ...s.hot_tables, max_rows: Number(v) } })}
           />
         </SimpleGrid>
         <NumberInput
           label={t("cacheStorageTab.maxBytesLabel")}
           value={s.hot_tables.max_bytes}
-          onChange={(v) =>
-            setS({ ...s, hot_tables: { ...s.hot_tables, max_bytes: Number(v) } })
-          }
+          onChange={(v) => setS({ ...s, hot_tables: { ...s.hot_tables, max_bytes: Number(v) } })}
         />
       </Stack>
 
@@ -149,9 +147,7 @@ export function CacheStorageTab() {
           <NumberInput
             label={t("cacheStorageTab.warmMaxRowsLabel")}
             value={s.warm_tables.max_rows}
-            onChange={(v) =>
-              setS({ ...s, warm_tables: { ...s.warm_tables, max_rows: Number(v) } })
-            }
+            onChange={(v) => setS({ ...s, warm_tables: { ...s.warm_tables, max_rows: Number(v) } })}
           />
           <NumberInput
             label={t("cacheStorageTab.warmRefreshLabel")}
@@ -220,8 +216,7 @@ export function CacheStorageTab() {
         {s.materialize.default_store_url ? (
           <>
             {" "}
-            —{" "}
-            <Code>{s.materialize.default_store_url}</Code>
+            — <Code>{s.materialize.default_store_url}</Code>
           </>
         ) : (
           t("cacheStorageTab.materializeIntroNoDefault")

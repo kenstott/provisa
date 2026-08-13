@@ -48,45 +48,14 @@ import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAllRelationships, useDomains, useTables } from "../hooks/useAdminQueries";
 import { serverMessage } from "../i18n/serverMessage";
+import {
+  toApiName,
+  type JsonApiDocument,
+  type JsonApiRelationshipRef,
+  type JsonApiResource,
+  type PaginationLinks,
+} from "./jsonapi/document";
 import "./JsonApiPage.css";
-
-interface JsonApiRelationshipRef {
-  type: string;
-  id: string;
-}
-
-interface JsonApiRelationship {
-  data?: JsonApiRelationshipRef | JsonApiRelationshipRef[] | null;
-}
-
-interface JsonApiResource {
-  type: string;
-  id?: string;
-  attributes?: Record<string, unknown>;
-  relationships?: Record<string, JsonApiRelationship>;
-}
-
-interface JsonApiDocument {
-  data?: JsonApiResource | JsonApiResource[];
-  included?: JsonApiResource[];
-  meta?: Record<string, unknown>;
-  links?: Record<string, string | null>;
-  errors?: Array<{ detail?: string }>;
-}
-
-// REQ-1417: every name JSON:API takes in a parameter — fields[], filter[], sort, groupBy and
-// include, dot-paths included — is the physical column name, not the GraphQL surface's renamed
-// spelling. An alias renames the GraphQL field only; the column underneath keeps its own name.
-function toApiName(col: { columnName: string; alias?: string | null }): string {
-  return col.columnName;
-}
-
-interface PaginationLinks {
-  first: string | null;
-  prev: string | null;
-  next: string | null;
-  last: string | null;
-}
 
 function ResourceCard({
   item,
@@ -99,9 +68,7 @@ function ResourceCard({
   includedSet?: Set<string>;
   relationshipTitle: (rel: string, ref: JsonApiRelationshipRef) => string;
 }) {
-  const rels = item.relationships
-    ? Object.entries(item.relationships)
-    : [];
+  const rels = item.relationships ? Object.entries(item.relationships) : [];
   return (
     <Card
       id={`res-${item.type}-${item.id ?? i}`}
@@ -119,7 +86,10 @@ function ResourceCard({
               const ref = relData?.data;
               const refs: JsonApiRelationshipRef[] = Array.isArray(ref) ? ref : ref ? [ref] : [];
               return refs
-                .filter((r: JsonApiRelationshipRef) => !includedSet || includedSet.has(`${r.type}::${r.id}`))
+                .filter(
+                  (r: JsonApiRelationshipRef) =>
+                    !includedSet || includedSet.has(`${r.type}::${r.id}`),
+                )
                 .map((r: JsonApiRelationshipRef) => (
                   <Anchor
                     key={`${relName}-${r.id}`}
@@ -144,11 +114,13 @@ function ResourceCard({
                   <Table.Tr key={k}>
                     <Table.Td className="jsonapi-attr-key">{k}</Table.Td>
                     <Table.Td className="jsonapi-attr-val">
-                      {v === null || v === undefined
-                        ? <span className="jsonapi-attr-null">null</span>
-                        : typeof v === "object"
-                          ? JSON.stringify(v)
-                          : String(v)}
+                      {v === null || v === undefined ? (
+                        <span className="jsonapi-attr-null">null</span>
+                      ) : typeof v === "object" ? (
+                        JSON.stringify(v)
+                      ) : (
+                        String(v)
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -171,15 +143,12 @@ function SummaryView({
   includedLabel: string;
   relationshipTitle: (rel: string, ref: JsonApiRelationshipRef) => string;
 }) {
-  const items: JsonApiResource[] = Array.isArray(doc.data)
-    ? doc.data
-    : doc.data
-      ? [doc.data]
-      : [];
+  const items: JsonApiResource[] = Array.isArray(doc.data) ? doc.data : doc.data ? [doc.data] : [];
   const included: JsonApiResource[] = Array.isArray(doc.included) ? doc.included : [];
   const includedSet = new Set<string>(included.map((r) => `${r.type}::${r.id}`));
   // REQ-1359: aggregate (non-group-by) responses have data: null, meta.aggregate: {...}.
-  const aggregateMeta = doc.data === null ? (doc.meta?.aggregate as Record<string, unknown> | undefined) : undefined;
+  const aggregateMeta =
+    doc.data === null ? (doc.meta?.aggregate as Record<string, unknown> | undefined) : undefined;
   if (aggregateMeta) {
     return (
       <div className="jsonapi-summary">
@@ -189,11 +158,13 @@ function SummaryView({
               <Table.Tr key={k}>
                 <Table.Td className="jsonapi-attr-key">{k}</Table.Td>
                 <Table.Td className="jsonapi-attr-val">
-                  {v === null || v === undefined
-                    ? <span className="jsonapi-attr-null">null</span>
-                    : typeof v === "object"
-                      ? JSON.stringify(v)
-                      : String(v)}
+                  {v === null || v === undefined ? (
+                    <span className="jsonapi-attr-null">null</span>
+                  ) : typeof v === "object" ? (
+                    JSON.stringify(v)
+                  ) : (
+                    String(v)
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -274,7 +245,10 @@ export function JsonApiPage() {
       // aggregate/group-by queries. `aggregate` is either "true" (every function — the SQL
       // branch matched no specific agg call) or a comma-separated func list (REQ-1361).
       aggregate: aggregateParam !== null,
-      funcs: aggregateParam && aggregateParam !== "true" ? aggregateParam.split(",").filter(Boolean) : [],
+      funcs:
+        aggregateParam && aggregateParam !== "true"
+          ? aggregateParam.split(",").filter(Boolean)
+          : [],
       groupBy: params.get("groupBy") ?? "",
       // REQ-1359: NL forwards includeNodes=true for group-by queries whose plan carries a nodes
       // array (see runner.py::_generate_jsonapi_query) — must survive the round-trip or the
@@ -368,10 +342,7 @@ export function JsonApiPage() {
   // setState-in-effect to reset it. tableObj encodes the "found in filtered list" check.
   const effectiveSelectedTable = selectedTable && tableObj ? selectedTable : "";
 
-  const columnNames = useMemo(
-    () => tableObj?.columns.map(toApiName) ?? [],
-    [tableObj],
-  );
+  const columnNames = useMemo(() => tableObj?.columns.map(toApiName) ?? [], [tableObj]);
 
   const columnSelectData = useMemo(
     () =>
@@ -413,9 +384,7 @@ export function JsonApiPage() {
   const resultMeta = useMemo(() => {
     if (!parsedDoc) return null;
     const total = parsedDoc.meta?.total as number | undefined;
-    const count = Array.isArray(parsedDoc.data)
-      ? parsedDoc.data.length
-      : parsedDoc.data ? 1 : 0;
+    const count = Array.isArray(parsedDoc.data) ? parsedDoc.data.length : parsedDoc.data ? 1 : 0;
     let rangeStart: number | undefined;
     let rangeEnd: number | undefined;
     if (activeUrl) {
@@ -595,9 +564,7 @@ export function JsonApiPage() {
     if (roleId) params.set("role", roleId);
     if (filterField && filterValue) {
       const key =
-        filterOp === "eq"
-          ? `filter[${filterField}]`
-          : `filter[${filterField}][${filterOp}]`;
+        filterOp === "eq" ? `filter[${filterField}]` : `filter[${filterField}][${filterOp}]`;
       params.set(key, filterValue);
     }
     if (sortField) {
@@ -608,7 +575,23 @@ export function JsonApiPage() {
     if (includeParam) params.set("include", includeParam);
     const qs = params.toString();
     return `/data/jsonapi/${selectedDomainId}/${selectedTableName}${qs ? "?" + qs : ""}`;
-  }, [effectiveSelectedTable, selectedDomainId, selectedTableName, roleId, filterField, filterOp, filterValue, sortField, sortDir, pageSize, sparseFieldsParam, includeParam, selectedFuncs, groupByCols, includeNodes]);
+  }, [
+    effectiveSelectedTable,
+    selectedDomainId,
+    selectedTableName,
+    roleId,
+    filterField,
+    filterOp,
+    filterValue,
+    sortField,
+    sortDir,
+    pageSize,
+    sparseFieldsParam,
+    includeParam,
+    selectedFuncs,
+    groupByCols,
+    includeNodes,
+  ]);
 
   const specUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -618,31 +601,34 @@ export function JsonApiPage() {
     return `/data/jsonapi/openapi.json?${params.toString()}`;
   }, [roleId, domainsParam]);
 
-  const fetchUrl = useCallback(async (fetchTarget: string) => {
-    setRunning(true);
-    setError("");
-    try {
-      const res = await fetch(fetchTarget, {
-        headers: {
-          Accept: "application/vnd.api+json",
-          ...(roleId ? { "x-provisa-role": roleId } : {}),
-        },
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(serverMessage(json.errors?.[0], JSON.stringify(json)));
+  const fetchUrl = useCallback(
+    async (fetchTarget: string) => {
+      setRunning(true);
+      setError("");
+      try {
+        const res = await fetch(fetchTarget, {
+          headers: {
+            Accept: "application/vnd.api+json",
+            ...(roleId ? { "x-provisa-role": roleId } : {}),
+          },
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          setError(serverMessage(json.errors?.[0], JSON.stringify(json)));
+          setParsedDoc(null);
+        } else {
+          setParsedDoc(json);
+          setActiveUrl(fetchTarget);
+        }
+      } catch (e) {
+        setError(String(e));
         setParsedDoc(null);
-      } else {
-        setParsedDoc(json);
-        setActiveUrl(fetchTarget);
+      } finally {
+        setRunning(false);
       }
-    } catch (e) {
-      setError(String(e));
-      setParsedDoc(null);
-    } finally {
-      setRunning(false);
-    }
-  }, [roleId]);
+    },
+    [roleId],
+  );
 
   const navAutoRunDoneRef = useRef(false);
   useEffect(() => {
@@ -728,7 +714,9 @@ export function JsonApiPage() {
           <Select
             label={t("jsonApiPage.tableLabel")}
             size="xs"
-            placeholder={loading ? t("jsonApiPage.loadingOption") : t("jsonApiPage.selectTablePlaceholder")}
+            placeholder={
+              loading ? t("jsonApiPage.loadingOption") : t("jsonApiPage.selectTablePlaceholder")
+            }
             data={tableSelectData}
             value={effectiveSelectedTable || null}
             onChange={(v) => setSelectedTable(v ?? "")}
@@ -736,9 +724,7 @@ export function JsonApiPage() {
             searchable
             data-testid="jsonapi-table-select"
           />
-          {tableObj?.description && (
-            <p className="jsonapi-table-desc">{tableObj.description}</p>
-          )}
+          {tableObj?.description && <p className="jsonapi-table-desc">{tableObj.description}</p>}
 
           {columnNames.length > 0 && (
             <>
@@ -768,7 +754,11 @@ export function JsonApiPage() {
                           title={col.description ?? undefined}
                           checked={checkedFields.has(apiName)}
                           onChange={() => toggleField(apiName)}
-                          label={<span className="jsonapi-field-name">{col.alias ?? col.columnName}</span>}
+                          label={
+                            <span className="jsonapi-field-name">
+                              {col.alias ?? col.columnName}
+                            </span>
+                          }
                         />
                       );
                     })}
@@ -923,7 +913,13 @@ export function JsonApiPage() {
               >
                 <Group gap="xs" mt={8} mb={4}>
                   {AGG_FUNCS.map((fn) => (
-                    <Checkbox key={fn} value={fn} label={fn} size="xs" data-testid={`jsonapi-func-${fn}`} />
+                    <Checkbox
+                      key={fn}
+                      value={fn}
+                      label={fn}
+                      size="xs"
+                      data-testid={`jsonapi-func-${fn}`}
+                    />
                   ))}
                 </Group>
               </Checkbox.Group>
@@ -940,7 +936,10 @@ export function JsonApiPage() {
             </>
           )}
 
-          <div className="jsonapi-section-divider" style={{ marginTop: columnNames.length ? undefined : "0.5rem" }}>
+          <div
+            className="jsonapi-section-divider"
+            style={{ marginTop: columnNames.length ? undefined : "0.5rem" }}
+          >
             {t("jsonApiPage.paginationSectionTitle")}
           </div>
           <NumberInput
@@ -961,7 +960,9 @@ export function JsonApiPage() {
           <Button
             className="jsonapi-run-btn"
             onClick={handleRun}
-            disabled={!effectiveSelectedTable || (groupByCols.length > 0 && selectedFuncs.length === 0)}
+            disabled={
+              !effectiveSelectedTable || (groupByCols.length > 0 && selectedFuncs.length === 0)
+            }
             loading={running}
             fullWidth
             mt="sm"
@@ -999,9 +1000,7 @@ export function JsonApiPage() {
                 <Text size="xs" fw={600} tt="uppercase">
                   {t("jsonApiPage.responseLabel")}
                 </Text>
-                {resultCountText && (
-                  <span className="jsonapi-result-count">{resultCountText}</span>
-                )}
+                {resultCountText && <span className="jsonapi-result-count">{resultCountText}</span>}
               </div>
               {parsedDoc && (
                 <Tabs

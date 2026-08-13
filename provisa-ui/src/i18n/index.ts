@@ -30,118 +30,118 @@ import hi from "./locales/hi.json";
 // migrated component owns a per-namespace file under ./locales/en/*.json which
 // is glob-merged here — so parallel component migrations never edit a shared
 // catalog. Each file's top-level keys become translation namespaces.
-const perComponent = import.meta.glob<Record<string, unknown>>(
-  "./locales/en/*.json",
-  { eager: true, import: "default" },
-);
+const perComponent = import.meta.glob<Record<string, unknown>>("./locales/en/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalog = Object.values(perComponent).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentEs = import.meta.glob<Record<string, unknown>>(
-  "./locales/es/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentEs = import.meta.glob<Record<string, unknown>>("./locales/es/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogEs = Object.values(perComponentEs).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentFr = import.meta.glob<Record<string, unknown>>(
-  "./locales/fr/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentFr = import.meta.glob<Record<string, unknown>>("./locales/fr/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogFr = Object.values(perComponentFr).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentDe = import.meta.glob<Record<string, unknown>>(
-  "./locales/de/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentDe = import.meta.glob<Record<string, unknown>>("./locales/de/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogDe = Object.values(perComponentDe).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentNl = import.meta.glob<Record<string, unknown>>(
-  "./locales/nl/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentNl = import.meta.glob<Record<string, unknown>>("./locales/nl/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogNl = Object.values(perComponentNl).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentHe = import.meta.glob<Record<string, unknown>>(
-  "./locales/he/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentHe = import.meta.glob<Record<string, unknown>>("./locales/he/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogHe = Object.values(perComponentHe).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentJa = import.meta.glob<Record<string, unknown>>(
-  "./locales/ja/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentJa = import.meta.glob<Record<string, unknown>>("./locales/ja/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogJa = Object.values(perComponentJa).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentZh = import.meta.glob<Record<string, unknown>>(
-  "./locales/zh/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentZh = import.meta.glob<Record<string, unknown>>("./locales/zh/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogZh = Object.values(perComponentZh).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentRu = import.meta.glob<Record<string, unknown>>(
-  "./locales/ru/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentRu = import.meta.glob<Record<string, unknown>>("./locales/ru/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogRu = Object.values(perComponentRu).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentIt = import.meta.glob<Record<string, unknown>>(
-  "./locales/it/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentIt = import.meta.glob<Record<string, unknown>>("./locales/it/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogIt = Object.values(perComponentIt).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentPt = import.meta.glob<Record<string, unknown>>(
-  "./locales/pt/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentPt = import.meta.glob<Record<string, unknown>>("./locales/pt/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogPt = Object.values(perComponentPt).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentZhHK = import.meta.glob<Record<string, unknown>>(
-  "./locales/zh-HK/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentZhHK = import.meta.glob<Record<string, unknown>>("./locales/zh-HK/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogZhHK = Object.values(perComponentZhHK).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
 );
 
-const perComponentHi = import.meta.glob<Record<string, unknown>>(
-  "./locales/hi/*.json",
-  { eager: true, import: "default" },
-);
+const perComponentHi = import.meta.glob<Record<string, unknown>>("./locales/hi/*.json", {
+  eager: true,
+  import: "default",
+});
 const componentCatalogHi = Object.values(perComponentHi).reduce(
   (acc, mod) => ({ ...acc, ...mod }),
   {} as Record<string, unknown>,
@@ -173,7 +173,21 @@ void i18n
     // Regional variants (es-MX, es-419, fr-CA) resolve to the base catalog.
     // "zh-HK" (Traditional, HK) must precede plain "zh" resolution: exact tag
     // wins; other zh-* variants fall back to the base Simplified catalog.
-    supportedLngs: ["en", "es", "fr", "de", "nl", "he", "ja", "zh", "zh-HK", "ru", "it", "pt", "hi"],
+    supportedLngs: [
+      "en",
+      "es",
+      "fr",
+      "de",
+      "nl",
+      "he",
+      "ja",
+      "zh",
+      "zh-HK",
+      "ru",
+      "it",
+      "pt",
+      "hi",
+    ],
     nonExplicitSupportedLngs: true,
     defaultNS,
     interpolation: {

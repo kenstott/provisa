@@ -88,7 +88,11 @@ export function FederationEngineTab() {
         body[f.config_key] = f.type === "number" && raw !== "" ? Number(raw) : raw;
       }
       const res = await setFederationEngine(body);
-      setMsg(res.restart_required ? t("federationEngineTab.savedRestartRequired") : t("federationEngineTab.saved"));
+      setMsg(
+        res.restart_required
+          ? t("federationEngineTab.savedRestartRequired")
+          : t("federationEngineTab.saved"),
+      );
     } catch (e) {
       setError(String(e));
     } finally {

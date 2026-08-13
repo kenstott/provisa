@@ -200,10 +200,9 @@ export async function removeGlossaryEdge(
   relType: GlossaryRelType,
 ): Promise<void> {
   const params = new URLSearchParams({ to_term_id: String(toTermId), rel_type: relType });
-  const res = await fetch(
-    `${API_BASE}/admin/glossary/terms/${termId}/edges?${params.toString()}`,
-    { method: "DELETE" },
-  );
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/edges?${params.toString()}`, {
+    method: "DELETE",
+  });
   if (!res.ok) throw await mutationError(res, "removeGlossaryEdge");
 }
 

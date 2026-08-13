@@ -8,16 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import {
-  Button,
-  Checkbox,
-  Group,
-  Modal,
-  NumberInput,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Button, Checkbox, Group, Modal, NumberInput, Stack, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Relationship } from "../../types/admin";
 import type { RelForm } from "./relationship-types";

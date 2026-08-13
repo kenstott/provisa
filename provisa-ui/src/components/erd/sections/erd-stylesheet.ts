@@ -87,7 +87,7 @@ export function buildErdStylesheet(isDark: boolean) {
         "text-margin-y": (ele: { data(k: string): unknown }) => {
           const label = (ele.data("label") as string) ?? "";
           const hash = label.split("").reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
-          return (hash % 3 - 1) * 14;
+          return ((hash % 3) - 1) * 14;
         },
         "text-background-color": p.tableBg,
         "text-background-opacity": 1,

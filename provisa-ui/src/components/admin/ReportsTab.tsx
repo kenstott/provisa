@@ -100,7 +100,10 @@ export function ReportsTab() {
         viewSql: addSql.trim(),
         columns: [],
       });
-      notifications.show({ color: "green", message: t("reportsTab.added", { name: addName.trim() }) });
+      notifications.show({
+        color: "green",
+        message: t("reportsTab.added", { name: addName.trim() }),
+      });
       setAddOpen(false);
       setAddName("");
       setAddDescription("");

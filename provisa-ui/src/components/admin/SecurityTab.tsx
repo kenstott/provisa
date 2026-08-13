@@ -79,7 +79,12 @@ export function SecurityTab() {
       </Stack>
 
       {mode === "high" && (
-        <Alert color="red" variant="filled" title={t("securityTab.highWarningTitle")} data-testid="security-high-warning">
+        <Alert
+          color="red"
+          variant="filled"
+          title={t("securityTab.highWarningTitle")}
+          data-testid="security-high-warning"
+        >
           {t("securityTab.highWarning")}
         </Alert>
       )}

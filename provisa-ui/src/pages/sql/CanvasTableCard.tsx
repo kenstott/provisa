@@ -184,7 +184,12 @@ export function CanvasTableCard({
               c="var(--text)"
               fz="0.72rem"
               ff="monospace"
-              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
+              }}
             >
               {col.columnName}
             </Text>

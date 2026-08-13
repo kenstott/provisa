@@ -24,15 +24,15 @@ import { describe, it, expect } from "vitest";
 import i18n from "../i18n";
 
 const hierarchy = (lng: string): string[] =>
-  (i18n.services.languageUtils as unknown as {
-    toResolveHierarchy: (l: string) => string[];
-  }).toResolveHierarchy(lng);
+  (
+    i18n.services.languageUtils as unknown as {
+      toResolveHierarchy: (l: string) => string[];
+    }
+  ).toResolveHierarchy(lng);
 
 describe("REQ-1342 language selection", () => {
   it("reads the language from the browser and caches nothing", () => {
-    const detection = i18n.options.detection as
-      | { order?: string[]; caches?: string[] }
-      | undefined;
+    const detection = i18n.options.detection as { order?: string[]; caches?: string[] } | undefined;
 
     expect(detection?.order).toEqual(["navigator"]);
     // An empty cache list is the requirement: a stored language would survive the browser

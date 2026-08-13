@@ -14,8 +14,6 @@ import { SubnavExtraContext } from "./subnavExtraSlot";
 export function SubnavExtraProvider({ children }: { children: ReactNode }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   return (
-    <SubnavExtraContext.Provider value={{ node, setNode }}>
-      {children}
-    </SubnavExtraContext.Provider>
+    <SubnavExtraContext.Provider value={{ node, setNode }}>{children}</SubnavExtraContext.Provider>
   );
 }

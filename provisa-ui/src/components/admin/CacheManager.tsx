@@ -93,10 +93,7 @@ function SortableTh({
 }) {
   const Icon = !active ? ChevronsUpDown : dir === "asc" ? ChevronUp : ChevronDown;
   return (
-    <Table.Th
-      onClick={onSort}
-      style={{ cursor: "pointer", userSelect: "none" }}
-    >
+    <Table.Th onClick={onSort} style={{ cursor: "pointer", userSelect: "none" }}>
       <Group gap={4} wrap="nowrap">
         {label}
         <Icon size={14} opacity={active ? 1 : 0.4} />
@@ -110,11 +107,7 @@ export function CacheManager() {
   const [tab, setTab] = useState<TabKey>("response");
   return (
     <div>
-      <Tabs
-        value={tab}
-        onChange={(v) => setTab((v as TabKey) ?? "response")}
-        mb="md"
-      >
+      <Tabs value={tab} onChange={(v) => setTab((v as TabKey) ?? "response")} mb="md">
         <Tabs.List>
           {TAB_KEYS.map((k) => (
             <Tabs.Tab key={k} value={k} data-testid={`cache-tab-${k}`}>
@@ -177,9 +170,10 @@ function ResponseCacheTab() {
 
   if (!stats) return <Text>{t("cacheManager.response.loading")}</Text>;
 
-  const hitRate = stats.hitCount + stats.missCount > 0
-    ? ((stats.hitCount / (stats.hitCount + stats.missCount)) * 100).toFixed(1)
-    : unknown;
+  const hitRate =
+    stats.hitCount + stats.missCount > 0
+      ? ((stats.hitCount / (stats.hitCount + stats.missCount)) * 100).toFixed(1)
+      : unknown;
 
   // Logical cached-result count. stats.totalKeys is a raw Redis DBSIZE (data + :meta
   // per entry + one table-index set per referenced table), so it overcounts entries by
@@ -190,9 +184,10 @@ function ResponseCacheTab() {
   // "memory" = embedded fakeredis: an enabled store, just without Redis INFO metrics.
   const isEnabled = stats.storeType !== "noop";
   const memUsed = fmtBytes(stats.usedMemoryBytes, unknown);
-  const memPct = stats.usedMemoryBytes != null && stats.maxMemoryBytes
-    ? ` / ${((stats.usedMemoryBytes / stats.maxMemoryBytes) * 100).toFixed(0)}%`
-    : "";
+  const memPct =
+    stats.usedMemoryBytes != null && stats.maxMemoryBytes
+      ? ` / ${((stats.usedMemoryBytes / stats.maxMemoryBytes) * 100).toFixed(0)}%`
+      : "";
 
   const q = tableSearch.toLowerCase();
   // Hide Provisa's own internal catalog (meta/ops system views) — matches TablesPage.
@@ -236,10 +231,22 @@ function ResponseCacheTab() {
           <>
             <StatCard value={stats.totalKeys} label={t("cacheManager.response.redisKeysRaw")} />
             <StatCard value={`${memUsed}${memPct}`} label={t("cacheManager.response.memory")} />
-            <StatCard value={stats.evictedKeys ?? unknown} label={t("cacheManager.response.evicted")} />
-            <StatCard value={stats.expiredKeys ?? unknown} label={t("cacheManager.response.expired")} />
-            <StatCard value={stats.connectedClients ?? unknown} label={t("cacheManager.response.clients")} />
-            <StatCard value={stats.opsPerSec ?? unknown} label={t("cacheManager.response.opsPerSec")} />
+            <StatCard
+              value={stats.evictedKeys ?? unknown}
+              label={t("cacheManager.response.evicted")}
+            />
+            <StatCard
+              value={stats.expiredKeys ?? unknown}
+              label={t("cacheManager.response.expired")}
+            />
+            <StatCard
+              value={stats.connectedClients ?? unknown}
+              label={t("cacheManager.response.clients")}
+            />
+            <StatCard
+              value={stats.opsPerSec ?? unknown}
+              label={t("cacheManager.response.opsPerSec")}
+            />
           </>
         )}
       </SimpleGrid>
@@ -249,7 +256,10 @@ function ResponseCacheTab() {
           <Group gap="sm" align="center">
             <FilterInput
               value={tableSearch}
-              onChange={(v) => { setTableSearch(v); setTablePage(0); }}
+              onChange={(v) => {
+                setTableSearch(v);
+                setTablePage(0);
+              }}
               placeholder={t("cacheManager.response.filterPlaceholder")}
             />
             {msg && (
@@ -340,7 +350,10 @@ function HotTablesTab() {
       </Text>
       <SimpleGrid cols={{ base: 2, sm: 3 }}>
         <StatCard value={loaded.length} label={t("cacheManager.hot.loadedTables")} />
-        <StatCard value={hotTables.length - loaded.length} label={t("cacheManager.hot.candidates")} />
+        <StatCard
+          value={hotTables.length - loaded.length}
+          label={t("cacheManager.hot.candidates")}
+        />
         <StatCard value={totalRows} label={t("cacheManager.hot.cachedRows")} />
       </SimpleGrid>
       {hotTables.length === 0 ? (
@@ -364,8 +377,14 @@ function HotTablesTab() {
                 <Table.Td>{h.catalog}</Table.Td>
                 <Table.Td>{h.schemaName}</Table.Td>
                 <Table.Td>{h.loaded ? h.rowCount : unknown}</Table.Td>
-                <Table.Td>{h.isApi ? t("cacheManager.hot.kindApi") : t("cacheManager.hot.kindEngine")}</Table.Td>
-                <Table.Td>{h.loaded ? t("cacheManager.hot.stateLoaded") : t("cacheManager.hot.stateCandidate")}</Table.Td>
+                <Table.Td>
+                  {h.isApi ? t("cacheManager.hot.kindApi") : t("cacheManager.hot.kindEngine")}
+                </Table.Td>
+                <Table.Td>
+                  {h.loaded
+                    ? t("cacheManager.hot.stateLoaded")
+                    : t("cacheManager.hot.stateCandidate")}
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
@@ -401,8 +420,14 @@ function MaterializedStoreTab() {
         {t("cacheManager.materialized.description")}
       </Text>
       <SimpleGrid cols={{ base: 2, sm: 2 }}>
-        <StatCard value={info?.engineName ?? unknown} label={t("cacheManager.materialized.federationEngine")} />
-        <StatCard value={info?.mvCount ?? unknown} label={t("cacheManager.materialized.materializedViews")} />
+        <StatCard
+          value={info?.engineName ?? unknown}
+          label={t("cacheManager.materialized.federationEngine")}
+        />
+        <StatCard
+          value={info?.mvCount ?? unknown}
+          label={t("cacheManager.materialized.materializedViews")}
+        />
       </SimpleGrid>
       {info?.storeRef && (
         <Text size="sm" c="dimmed">

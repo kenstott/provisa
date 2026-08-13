@@ -49,7 +49,10 @@ export interface LineageGraphData {
 }
 
 // REQ-1160: full column-level DAG for a single SQL statement.
-export async function fetchLineageGraph(sql: string, dialect = "postgres"): Promise<LineageGraphData> {
+export async function fetchLineageGraph(
+  sql: string,
+  dialect = "postgres",
+): Promise<LineageGraphData> {
   const resp = await fetch(`${API_BASE}/admin/lineage/graph`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

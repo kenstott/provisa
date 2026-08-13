@@ -11,7 +11,16 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Checkbox, Group, NumberInput, Select, Text, useMantineColorScheme } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Checkbox,
+  Group,
+  NumberInput,
+  Select,
+  Text,
+  useMantineColorScheme,
+} from "@mantine/core";
 import { X } from "lucide-react";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
@@ -90,13 +99,15 @@ monaco.languages.registerCompletionItemProvider("graphql", {
           label: "@reorder",
           insertText: "reorder(enabled: ${1|false,true|})",
           detail: "Federated join reordering",
-          documentation: "enabled: false disables the federation engine's cost-based join reordering.",
+          documentation:
+            "enabled: false disables the federation engine's cost-based join reordering.",
         },
         {
           label: "@broadcastSize",
           insertText: 'broadcastSize(size: "${1:512MB}")',
           detail: "Max broadcast table size",
-          documentation: "Sets the federation engine join_max_broadcast_table_size session property.",
+          documentation:
+            "Sets the federation engine join_max_broadcast_table_size session property.",
         },
         {
           label: "@redirect",
@@ -372,7 +383,11 @@ const syncedExplorerPlugin = {
 const REDIRECT_FORMAT_OPTIONS = [
   { value: "", labelKey: "queryPage.formatNone", mime: "" },
   { value: "parquet", labelKey: "queryPage.formatParquet", mime: "application/vnd.apache.parquet" },
-  { value: "arrow", labelKey: "queryPage.formatArrow", mime: "application/vnd.apache.arrow.stream" },
+  {
+    value: "arrow",
+    labelKey: "queryPage.formatArrow",
+    mime: "application/vnd.apache.arrow.stream",
+  },
   { value: "csv", labelKey: "queryPage.formatCsv", mime: "text/csv" },
   { value: "ndjson", labelKey: "queryPage.formatNdjson", mime: "application/x-ndjson" },
   { value: "json", labelKey: "queryPage.formatJson", mime: "application/json" },
@@ -520,7 +535,7 @@ function AutoRunFromNav({ query }: { query: string }) {
     queryEditor.setValue(query);
     const t = setTimeout(() => run(), 100);
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when queryEditor becomes available (guarded by didRun); other deps must not re-trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when queryEditor becomes available (guarded by didRun); other deps must not re-trigger
   }, [queryEditor]);
   return null;
 }
@@ -536,10 +551,10 @@ export function QueryPage() {
   const location = useLocation();
   const [domainSchema, setDomainSchema] = useState<GraphQLSchema | null>(null);
   // Frozen initial values — never updated so GraphiQL owns these states after mount.
-  const locationState = (location.state as { query?: string; autoRun?: boolean } | null);
+  const locationState = location.state as { query?: string; autoRun?: boolean } | null;
   const [initialQuery] = useState<string | undefined>(() => locationState?.query ?? undefined);
-  const [autoRunQuery] = useState<string | undefined>(
-    () => locationState?.autoRun && locationState.query ? locationState.query : undefined,
+  const [autoRunQuery] = useState<string | undefined>(() =>
+    locationState?.autoRun && locationState.query ? locationState.query : undefined,
   );
   const [initialVisiblePlugin] = useState<string | undefined>(
     () => localStorage.getItem("query:visiblePlugin") ?? undefined,
@@ -553,7 +568,9 @@ export function QueryPage() {
   const [redirectThreshold, setRedirectThreshold] = useState(
     () => localStorage.getItem("query:redirectThreshold") ?? "",
   );
-  const [statsEnabled, setStatsEnabled] = useState(() => localStorage.getItem("query:statsEnabled") === "true");
+  const [statsEnabled, setStatsEnabled] = useState(
+    () => localStorage.getItem("query:statsEnabled") === "true",
+  );
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
   const [redirectResult, setRedirectResult] = useState<RedirectInfo | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
@@ -809,7 +826,8 @@ export function QueryPage() {
     localStorage.setItem("query:statsEnabled", String(e.currentTarget.checked));
   }, []);
   const onPluginVisibilityChange = useCallback(
-    (plugin: { title: string } | null) => localStorage.setItem("query:visiblePlugin", plugin?.title ?? ""),
+    (plugin: { title: string } | null) =>
+      localStorage.setItem("query:visiblePlugin", plugin?.title ?? ""),
     [],
   );
 

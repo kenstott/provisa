@@ -21,7 +21,9 @@ export function OrgSwitcher() {
 
   useEffect(() => {
     if (!canSeeAllOrgs) return;
-    fetchOrgs().then(setAllOrgs).catch(() => {});
+    fetchOrgs()
+      .then(setAllOrgs)
+      .catch(() => {});
   }, [canSeeAllOrgs]);
 
   const orgs: Array<{ id: string; name: string }> = canSeeAllOrgs

@@ -48,7 +48,9 @@ export function ScheduledTasks() {
 
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
   useEffect(() => {
-    fetchActions().then((a) => setWebhooks(a.webhooks)).catch(() => {});
+    fetchActions()
+      .then((a) => setWebhooks(a.webhooks))
+      .catch(() => {});
   }, []);
 
   const [showForm, setShowForm] = useState(false);
@@ -108,9 +110,7 @@ export function ScheduledTasks() {
             cron: newCron.trim(),
             kind: "webhook",
             webhookName: newWebhookName,
-            argsJson: Object.keys(argValues).length
-              ? JSON.stringify(argValues)
-              : undefined,
+            argsJson: Object.keys(argValues).length ? JSON.stringify(argValues) : undefined,
           }
         : {
             id: newId.trim(),
@@ -337,7 +337,9 @@ export function ScheduledTasks() {
                           onClick={() => handleDelete(task.id)}
                           disabled={deleting === task.id}
                         >
-                          {deleting === task.id ? t("scheduledTasks.working") : t("scheduledTasks.delete")}
+                          {deleting === task.id
+                            ? t("scheduledTasks.working")
+                            : t("scheduledTasks.delete")}
                         </Button>
                       </Group>
                     </Table.Td>

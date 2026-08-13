@@ -78,7 +78,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/cache": "Cache",
   "/admin/scheduled-tasks": "Scheduler",
   "/admin/federation-engine": "Federation",
-  "/admin/org-engine": "Org Engine",  // REQ-1412: this org's engine lane
+  "/admin/org-engine": "Org Engine", // REQ-1412: this org's engine lane
   "/admin/system-health": "Health",
   "/admin/observability": "Observability",
   "/admin/mcp-server": "MCP Server",
@@ -86,8 +86,8 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/metadata-export": "Metadata Export",
   "/admin/tags": "Tags",
-  "/admin/reports": "Reports",  // REQ-1386: ops-domain management report viewer
-  "/admin/glossary": "Glossary",  // REQ-1387: business-glossary curation
+  "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
+  "/admin/glossary": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",

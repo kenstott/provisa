@@ -14,9 +14,9 @@
 //
 // Kept apart from DirectionSync so that component file exports components only,
 // which is what React Fast Refresh needs to swap it without a full reload.
-const RTL_BASE_LNGS = new Set(['he', 'ar', 'fa', 'ur', 'yi'])
+const RTL_BASE_LNGS = new Set(["he", "ar", "fa", "ur", "yi"]);
 
-export function dirForLanguage(lng: string): 'rtl' | 'ltr' {
-  const base = lng.toLowerCase().split('-')[0]
-  return RTL_BASE_LNGS.has(base) ? 'rtl' : 'ltr'
+export function dirForLanguage(lng: string): "rtl" | "ltr" {
+  const base = lng.toLowerCase().split("-")[0];
+  return RTL_BASE_LNGS.has(base) ? "rtl" : "ltr";
 }

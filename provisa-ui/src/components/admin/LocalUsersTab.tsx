@@ -79,7 +79,10 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
       setNewPassword("");
       setNewEmail("");
       setNewDisplayName("");
-      notifications.show({ color: "green", message: t("localUsers.created", { username: created }) });
+      notifications.show({
+        color: "green",
+        message: t("localUsers.created", { username: created }),
+      });
     } catch (e: unknown) {
       notifications.show({
         color: "red",

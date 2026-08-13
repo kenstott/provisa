@@ -77,7 +77,10 @@ vi.mock("graphiql-explorer", () => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
-  useCompileQuery: () => ({ compileQuery: vi.fn().mockResolvedValue({ queries: [] }), loading: false }),
+  useCompileQuery: () => ({
+    compileQuery: vi.fn().mockResolvedValue({ queries: [] }),
+    loading: false,
+  }),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────

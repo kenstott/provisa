@@ -9,7 +9,17 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, NumberInput, Radio, Select, Text, TextInput, Textarea } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Group,
+  NumberInput,
+  Radio,
+  Select,
+  Text,
+  TextInput,
+  Textarea,
+} from "@mantine/core";
 import { API_AUTH_TYPES } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
 
@@ -69,8 +79,16 @@ export function OpenApiFormSection({
         style={{ gridColumn: "1 / -1" }}
       >
         <Group mt="xs" gap="lg">
-          <Radio value="path" label={t("openApiFormSection.specModePath")} data-testid="openapi-spec-mode-path" />
-          <Radio value="inline" label={t("openApiFormSection.specModeInline")} data-testid="openapi-spec-mode-inline" />
+          <Radio
+            value="path"
+            label={t("openApiFormSection.specModePath")}
+            data-testid="openapi-spec-mode-path"
+          />
+          <Radio
+            value="inline"
+            label={t("openApiFormSection.specModeInline")}
+            data-testid="openapi-spec-mode-inline"
+          />
         </Group>
       </Radio.Group>
       {openapiSpecMode === "path" ? (
@@ -176,7 +194,9 @@ export function OpenApiFormSection({
           disabled={openapiSpecMode === "path" ? !openapiSpecPath : !openapiSpecInline}
           data-testid="openapi-preview-button"
         >
-          {openapiPreviewing ? t("openApiFormSection.previewLoading") : t("openApiFormSection.previewButton")}
+          {openapiPreviewing
+            ? t("openApiFormSection.previewLoading")
+            : t("openApiFormSection.previewButton")}
         </Button>
         {openapiPreviewError && (
           <Alert color="red" variant="light" py={4} px="sm" data-testid="openapi-preview-error">
@@ -185,18 +205,25 @@ export function OpenApiFormSection({
         )}
       </Group>
       {openapiPreview && (
-        <Text size="sm" c="dimmed" style={{ gridColumn: "1 / -1" }} data-testid="openapi-preview-summary">
+        <Text
+          size="sm"
+          c="dimmed"
+          style={{ gridColumn: "1 / -1" }}
+          data-testid="openapi-preview-summary"
+        >
           <Text component="strong" size="sm">
             {t("openApiFormSection.queriesCount", { count: openapiPreview.queries.length })}
           </Text>
           {": "}
-          {openapiPreview.queries.map((q) => q.operation_id).join(", ") || t("openApiFormSection.none")}
+          {openapiPreview.queries.map((q) => q.operation_id).join(", ") ||
+            t("openApiFormSection.none")}
           <br />
           <Text component="strong" size="sm">
             {t("openApiFormSection.mutationsCount", { count: openapiPreview.mutations.length })}
           </Text>
           {": "}
-          {openapiPreview.mutations.map((m) => m.operation_id).join(", ") || t("openApiFormSection.none")}
+          {openapiPreview.mutations.map((m) => m.operation_id).join(", ") ||
+            t("openApiFormSection.none")}
         </Text>
       )}
     </>

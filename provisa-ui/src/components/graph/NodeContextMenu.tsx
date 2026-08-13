@@ -115,7 +115,9 @@ export function NodeContextMenu({
         data-testid="node-ctx-exclude"
         disabled={!hasPk}
         aria-disabled={!hasPk}
-        title={hasPk ? t("nodeContextMenu.excludeTooltip") : t("nodeContextMenu.excludeDisabledTooltip")}
+        title={
+          hasPk ? t("nodeContextMenu.excludeTooltip") : t("nodeContextMenu.excludeDisabledTooltip")
+        }
         style={!hasPk ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
         onClick={() => {
           if (!hasPk) return;

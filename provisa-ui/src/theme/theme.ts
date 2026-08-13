@@ -33,8 +33,7 @@ export const theme = createTheme({
   // Index 6 in both schemes keeps filled-control label contrast >= AA.
   primaryShade: { light: 6, dark: 6 },
   colors: { brand },
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   headings: { fontWeight: "600" },
   defaultRadius: "md",
   cursorType: "pointer",

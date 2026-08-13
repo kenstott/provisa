@@ -51,7 +51,15 @@ export function CopyButton({ text, size = 11, className, title, children }: Copy
   );
 }
 
-export function CopySymbolButton({ text, className, title }: { text: string; className?: string; title?: string }) {
+export function CopySymbolButton({
+  text,
+  className,
+  title,
+}: {
+  text: string;
+  className?: string;
+  title?: string;
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 

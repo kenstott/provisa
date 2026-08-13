@@ -269,7 +269,9 @@ export function RelContextMenu({
         <SegmentedControl
           aria-label={t("graphContextMenus.lineStyle")}
           value={current.style}
-          onChange={(v) => onRelLineChange(menu.type, { ...current, style: v as RelLineOverride["style"] })}
+          onChange={(v) =>
+            onRelLineChange(menu.type, { ...current, style: v as RelLineOverride["style"] })
+          }
           data={LINE_STYLES.map((s) => ({ value: s, label: lineStyleLabels[s] }))}
         />
 

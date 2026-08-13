@@ -228,7 +228,13 @@ export function OssieInterchangePanel() {
         </Group>
       </Group>
       {error && (
-        <Alert color="red" mt="sm" withCloseButton onClose={() => setError("")} data-testid="ossie-error">
+        <Alert
+          color="red"
+          mt="sm"
+          withCloseButton
+          onClose={() => setError("")}
+          data-testid="ossie-error"
+        >
           {error}
         </Alert>
       )}
@@ -324,7 +330,11 @@ export function OssieInterchangePanel() {
               );
             })}
             <Group justify="flex-end" gap="sm" mt="sm">
-              <Button variant="default" onClick={() => setProposals(null)} data-testid="ossie-review-close">
+              <Button
+                variant="default"
+                onClick={() => setProposals(null)}
+                data-testid="ossie-review-close"
+              >
                 {Object.keys(results).length > 0 ? t("ossiePanel.close") : t("ossiePanel.cancel")}
               </Button>
               <Button

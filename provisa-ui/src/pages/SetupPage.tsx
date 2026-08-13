@@ -98,11 +98,7 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
       {step === 1 && (
         <Stack gap="md">
           <Title order={3}>{t("setupPage.deploymentModeHeading")}</Title>
-          <Radio.Group
-            value={mode}
-            onChange={(v) => setMode(v as "single" | "multi")}
-            name="mode"
-          >
+          <Radio.Group value={mode} onChange={(v) => setMode(v as "single" | "multi")} name="mode">
             <Stack gap="md">
               <Radio
                 value="single"
@@ -134,7 +130,9 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
           <Title order={3}>{t("setupPage.domainModelHeading")}</Title>
           <Radio.Group
             value={useDomains === false ? "simple" : useDomains === true ? "namespaced" : "legacy"}
-            onChange={(v) => setUseDomains(v === "simple" ? false : v === "namespaced" ? true : null)}
+            onChange={(v) =>
+              setUseDomains(v === "simple" ? false : v === "namespaced" ? true : null)
+            }
             name="domains"
           >
             <Stack gap="md">
@@ -327,7 +325,12 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
               </Alert>
             )}
             <Group>
-              <Button type="button" variant="default" data-testid="setup-back-3" onClick={() => setStep(2)}>
+              <Button
+                type="button"
+                variant="default"
+                data-testid="setup-back-3"
+                onClick={() => setStep(2)}
+              >
                 {t("setupPage.back")}
               </Button>
               <Button type="submit" data-testid="setup-submit" loading={loading}>

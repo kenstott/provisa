@@ -14,7 +14,11 @@ import { ActionIcon, Group, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { CopyButton } from "../CopyButton";
 
-export function FilterInput({ value, onChange, placeholder }: {
+export function FilterInput({
+  value,
+  onChange,
+  placeholder,
+}: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;

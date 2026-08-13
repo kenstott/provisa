@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.events import handlers, probes
+from provisa.events import probes
 from provisa.events.content_hash import content_hash
 from provisa.events.handlers import make_mv_generate, make_source_land
 from provisa.federation import store_writer

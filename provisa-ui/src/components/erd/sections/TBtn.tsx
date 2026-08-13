@@ -13,7 +13,10 @@ import { Button } from "@mantine/core";
 
 // ── small toolbar-button helper ───────────────────────────────────────────────
 export function TBtn({
-  onClick, title, active, children,
+  onClick,
+  title,
+  active,
+  children,
 }: {
   onClick: () => void;
   title?: string;

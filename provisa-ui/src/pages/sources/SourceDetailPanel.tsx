@@ -56,7 +56,10 @@ export function SourceDetailPanel({
             ["username", s.username || "—"],
           ] as [string, string | number][])),
     ["naming", s.gqlNamingConvention || t("sourceDetailPanel.namingInherit")],
-    ["cache", s.cacheEnabled ? t("sourceDetailPanel.cacheEnabled") : t("sourceDetailPanel.cacheDisabled")],
+    [
+      "cache",
+      s.cacheEnabled ? t("sourceDetailPanel.cacheEnabled") : t("sourceDetailPanel.cacheDisabled"),
+    ],
     ["cacheTtl", s.cacheTtl != null ? `${s.cacheTtl}s` : t("sourceDetailPanel.ttlInherit")],
     ["effectiveTtl", getEffectiveTtl(s)],
     [

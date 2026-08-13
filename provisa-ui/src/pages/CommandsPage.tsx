@@ -108,7 +108,9 @@ export function CommandsPage() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    fetchOrgRoles(orgId).then(setRoles).catch(() => {});
+    fetchOrgRoles(orgId)
+      .then(setRoles)
+      .catch(() => {});
   }, [orgId]);
 
   useEffect(() => {
@@ -427,7 +429,8 @@ export function CommandsPage() {
                       {fn.schemaName}.{fn.functionName}
                     </Table.Td>
                     <Table.Td>
-                      {fn.returns || (fn.returnSchema ? t("commandsPage.customSchema") : t("commandsPage.dash"))}
+                      {fn.returns ||
+                        (fn.returnSchema ? t("commandsPage.customSchema") : t("commandsPage.dash"))}
                     </Table.Td>
                     <Table.Td>{fn.arguments.length}</Table.Td>
                     <Table.Td>{fn.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
@@ -513,13 +516,17 @@ export function CommandsPage() {
                                   <Table.Td c="dimmed">
                                     <strong>{t("commandsPage.detailVisibleTo")}</strong>
                                   </Table.Td>
-                                  <Table.Td>{fn.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
+                                  <Table.Td>
+                                    {fn.visibleTo.join(", ") || t("commandsPage.all")}
+                                  </Table.Td>
                                 </Table.Tr>
                                 <Table.Tr>
                                   <Table.Td c="dimmed">
                                     <strong>{t("commandsPage.detailWritableBy")}</strong>
                                   </Table.Td>
-                                  <Table.Td>{fn.writableBy.join(", ") || t("commandsPage.all")}</Table.Td>
+                                  <Table.Td>
+                                    {fn.writableBy.join(", ") || t("commandsPage.all")}
+                                  </Table.Td>
                                 </Table.Tr>
                                 <Table.Tr>
                                   <Table.Td c="dimmed">
@@ -566,7 +573,9 @@ export function CommandsPage() {
                                 disabled={testing === fn.name}
                                 loading={testing === fn.name}
                               >
-                                {testing === fn.name ? t("commandsPage.testingButton") : t("commandsPage.testButton")}
+                                {testing === fn.name
+                                  ? t("commandsPage.testingButton")
+                                  : t("commandsPage.testButton")}
                               </Button>
                               <ConfirmDialog
                                 title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
@@ -581,7 +590,9 @@ export function CommandsPage() {
                                   <ActionIcon
                                     variant="subtle"
                                     color="red"
-                                    aria-label={t("commandsPage.deleteFunctionAria", { name: fn.name })}
+                                    aria-label={t("commandsPage.deleteFunctionAria", {
+                                      name: fn.name,
+                                    })}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       open();
@@ -667,13 +678,16 @@ export function CommandsPage() {
                       </Badge>
                     </Table.Td>
                     <Table.Td>{wh.domainId || t("commandsPage.dash")}</Table.Td>
-                    <Table.Td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <Table.Td
+                      style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
                       {wh.url}
                     </Table.Td>
                     <Table.Td>{wh.method}</Table.Td>
                     <Table.Td>{wh.timeoutMs}ms</Table.Td>
                     <Table.Td>
-                      {wh.returns || t("commandsPage.inlineReturns", { count: wh.inlineReturnType.length })}
+                      {wh.returns ||
+                        t("commandsPage.inlineReturns", { count: wh.inlineReturnType.length })}
                     </Table.Td>
                     <Table.Td>{wh.arguments.length}</Table.Td>
                     <Table.Td>{wh.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
@@ -774,7 +788,9 @@ export function CommandsPage() {
                                   <Table.Td c="dimmed">
                                     <strong>{t("commandsPage.detailVisibleTo")}</strong>
                                   </Table.Td>
-                                  <Table.Td>{wh.visibleTo.join(", ") || t("commandsPage.all")}</Table.Td>
+                                  <Table.Td>
+                                    {wh.visibleTo.join(", ") || t("commandsPage.all")}
+                                  </Table.Td>
                                 </Table.Tr>
                                 <Table.Tr>
                                   <Table.Td c="dimmed">
@@ -804,7 +820,9 @@ export function CommandsPage() {
                                       <strong>{t("commandsPage.detailInlineFields")}</strong>
                                     </Table.Td>
                                     <Table.Td>
-                                      {wh.inlineReturnType.map((f) => `${f.name}: ${f.type}`).join(", ")}
+                                      {wh.inlineReturnType
+                                        .map((f) => `${f.name}: ${f.type}`)
+                                        .join(", ")}
                                     </Table.Td>
                                   </Table.Tr>
                                 )}
@@ -831,7 +849,9 @@ export function CommandsPage() {
                                 disabled={testing === wh.name}
                                 loading={testing === wh.name}
                               >
-                                {testing === wh.name ? t("commandsPage.testingButton") : t("commandsPage.testButton")}
+                                {testing === wh.name
+                                  ? t("commandsPage.testingButton")
+                                  : t("commandsPage.testButton")}
                               </Button>
                               <ConfirmDialog
                                 title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
@@ -846,7 +866,9 @@ export function CommandsPage() {
                                   <ActionIcon
                                     variant="subtle"
                                     color="red"
-                                    aria-label={t("commandsPage.deleteWebhookAria", { name: wh.name })}
+                                    aria-label={t("commandsPage.deleteWebhookAria", {
+                                      name: wh.name,
+                                    })}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       open();
@@ -899,10 +921,18 @@ export function CommandsPage() {
       >
         {testResult && (
           <>
-            {!!(testResult.data && typeof testResult.data === "object" && "enforcement" in testResult.data) && (
+            {!!(
+              testResult.data &&
+              typeof testResult.data === "object" &&
+              "enforcement" in testResult.data
+            ) && (
               <Alert color="blue" mb="sm" title={t("commandsPage.governanceApplied")}>
                 <pre style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
-                  {JSON.stringify((testResult.data as Record<string, unknown>).enforcement, null, 2)}
+                  {JSON.stringify(
+                    (testResult.data as Record<string, unknown>).enforcement,
+                    null,
+                    2,
+                  )}
                 </pre>
               </Alert>
             )}

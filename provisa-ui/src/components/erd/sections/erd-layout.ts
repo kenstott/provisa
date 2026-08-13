@@ -39,7 +39,7 @@ export function resolveCompoundOverlaps(cy: CyInstance): void {
 
   for (let iter = 0; iter < MAX_ITER; iter++) {
     const bbs = domainArr.map((d) =>
-      (d as unknown as { boundingBox(o: object): BB }).boundingBox({ includeLabels: true })
+      (d as unknown as { boundingBox(o: object): BB }).boundingBox({ includeLabels: true }),
     );
     let moved = false;
 
@@ -52,7 +52,8 @@ export function resolveCompoundOverlaps(cy: CyInstance): void {
         if (overlapX <= 0 || overlapY <= 0) continue;
 
         // Push j away from i along the axis with the smaller overlap.
-        let dx = 0, dy = 0;
+        let dx = 0,
+          dy = 0;
         if (overlapX <= overlapY) {
           dx = b.x1 < a.x1 ? -overlapX : overlapX;
         } else {
@@ -84,7 +85,9 @@ export function packDomains(cy: CyInstance, aspectRatio: number): void {
   const domains: Array<{ node: ReturnType<typeof cy.nodes>[number]; bb: BB }> = [];
   cy.nodes(".erd-domain").forEach((d) => {
     if ((d.children() as unknown as { empty(): boolean }).empty()) return;
-    const bb = (d as unknown as { boundingBox(o: object): BB }).boundingBox({ includeLabels: true });
+    const bb = (d as unknown as { boundingBox(o: object): BB }).boundingBox({
+      includeLabels: true,
+    });
     domains.push({ node: d, bb });
   });
   if (domains.length < 2) return;
@@ -98,7 +101,9 @@ export function packDomains(cy: CyInstance, aspectRatio: number): void {
   // Shelf packing: tallest-first, greedily fill rows until the next box would
   // exceed targetW, then wrap to a new row.
   const ordered = [...domains].sort((a, b) => b.bb.h - a.bb.h);
-  let cursorX = 0, cursorY = 0, rowH = 0;
+  let cursorX = 0,
+    cursorY = 0,
+    rowH = 0;
   const placements = new Map<string, { x: number; y: number }>();
   for (const d of ordered) {
     if (cursorX > 0 && cursorX + d.bb.w > targetW) {
@@ -141,7 +146,8 @@ export function placeIsolatedGrid(
     const domainId = (domain as { id(): string }).id();
     const isolated: Array<{ id: string }> = [];
     domain.children().forEach((n) => {
-      if (isolatedIds.has((n as { id(): string }).id())) isolated.push({ id: (n as { id(): string }).id() });
+      if (isolatedIds.has((n as { id(): string }).id()))
+        isolated.push({ id: (n as { id(): string }).id() });
     });
     if (isolated.length === 0) return;
 
@@ -154,16 +160,18 @@ export function placeIsolatedGrid(
     const cols = Math.ceil(Math.sqrt(isolated.length));
     const rows = Math.ceil(isolated.length / cols);
     const colWidths = Array.from({ length: cols }, (_, c) =>
-      Math.max(...isolated.map((_, i) => i % cols === c ? sizes[i].w : 0))
+      Math.max(...isolated.map((_, i) => (i % cols === c ? sizes[i].w : 0))),
     );
     const rowHeights = Array.from({ length: rows }, (_, r) =>
-      Math.max(...isolated.map((_, i) => Math.floor(i / cols) === r ? sizes[i].h : 0))
+      Math.max(...isolated.map((_, i) => (Math.floor(i / cols) === r ? sizes[i].h : 0))),
     );
     const colX = colWidths.reduce<number[]>((acc, _w, i) => {
-      acc.push(i === 0 ? 0 : acc[i - 1] + colWidths[i - 1] + PAD); return acc;
+      acc.push(i === 0 ? 0 : acc[i - 1] + colWidths[i - 1] + PAD);
+      return acc;
     }, []);
     const rowY = rowHeights.reduce<number[]>((acc, _h, i) => {
-      acc.push(i === 0 ? 0 : acc[i - 1] + rowHeights[i - 1] + PAD); return acc;
+      acc.push(i === 0 ? 0 : acc[i - 1] + rowHeights[i - 1] + PAD);
+      return acc;
     }, []);
     const totalW = colX[cols - 1] + colWidths[cols - 1];
 

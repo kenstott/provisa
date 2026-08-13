@@ -67,125 +67,148 @@ export function useGraphLayout({
   const pendingNudgeFreeNodesRef = useRef<Set<string> | undefined>(undefined);
   const nudgeLayoutRef = useRef<(freeNodes?: Set<string>, aggressive?: boolean) => void>(() => {});
 
-  const runLayout = useCallback((mode?: LayoutMode) => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    if (layoutRunningRef.current) return;
-    layoutRunningRef.current = true;
-    const m = mode ?? layoutModeRef.current;
-    const anchored = anchoredRef.current;
-    cy.nodes().forEach((n) => {
-      if (anchored.has(n.id())) n.lock();
-    });
-    // For force mode with no edges, use grid — it fills the canvas rectangle optimally.
-    // For force mode with edges, use fcose — clusters connected components.
-    // For hierarchy mode, always use breadthfirst.
-    let opts: CyLayoutOptions;
-    if (cy.nodes().length === 0) {
-      opts = { name: "null" } as CyLayoutOptions;
-    } else if (m === "hierarchy") {
-      opts = LAYOUT_OPTIONS.hierarchy;
-    } else if (cy.edges().length === 0) {
-      // No relationships — grid sorted by label so same-type nodes occupy the same rows.
-      const labelOrder: string[] = [];
-      const labelCount: Record<string, number> = {};
+  const runLayout = useCallback(
+    (mode?: LayoutMode) => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      if (layoutRunningRef.current) return;
+      layoutRunningRef.current = true;
+      const m = mode ?? layoutModeRef.current;
+      const anchored = anchoredRef.current;
       cy.nodes().forEach((n) => {
-        const lbl = n.data("label") as string;
-        if (!(lbl in labelCount)) { labelOrder.push(lbl); labelCount[lbl] = 0; }
-        labelCount[lbl]++;
+        if (anchored.has(n.id())) n.lock();
       });
-      const maxPerLabel = Math.max(...Object.values(labelCount), 1);
-      const totalNodes = cy.nodes().length;
-      const sqrtCols = Math.ceil(Math.sqrt(totalNodes));
-      const cols = Math.min(maxPerLabel, sqrtCols);
-      opts = {
-        name: "grid",
-        animate: false,
-        fit: true,
-        padding: 30,
-        avoidOverlap: true,
-        avoidOverlapPadding: 12,
-        cols,
-        sort: (a: { data: (k: string) => string }, b: { data: (k: string) => string }) => {
-          const ai = labelOrder.indexOf(a.data("label"));
-          const bi = labelOrder.indexOf(b.data("label"));
-          return ai - bi;
-        },
-      } as CyLayoutOptions;
-    } else {
-      const inCluster = clusterLevelRef.current !== "none";
-      opts = {
-        ...LAYOUT_OPTIONS.force,
-        idealEdgeLength: () => edgeDistanceRef.current,
-        // In cluster mode: higher nestingFactor shortens ideal edge length within compounds,
-        // pulling cluster members together; higher repulsion spreads clusters apart.
-        ...(inCluster ? { nestingFactor: 0.1, nodeRepulsion: () => 25000 } : {}),
-      } as CyLayoutOptions;
-    }
-    const layout = cy.layout(opts);
-    activeLayoutRef.current = layout;
-    const applyStyles = () => {
-      try {
-        const labelSizeRange = computeLabelSizeRanges(cy, sizeByPropertyRef.current);
-        cy.batch(() => {
-          cy.nodes().forEach((node) => {
-            if (node.data("_cluster")) return;
-            if (node.data("_collapsed")) return;
-            if (node.data("_port")) return;
-            const lbl = node.data("label") as string;
-            const n = node.data("_node") as GNode | undefined;
-            const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
-            node.style("background-color", base);
-            applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
-            if (n) {
-              const prop = labelPropertyRef.current[n.label];
-              node.style(
-                "label",
-                prop
-                  ? String(n.properties[prop] ?? n.id)
-                  : resolveNodeLabel(n),
-              );
-            }
-            if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
-            else node.removeClass("pinned");
-          });
-        });
-      } catch {
-        /* cy may have been destroyed */
-      }
-    };
-    const releaseRun = () => {
-      try {
+      // For force mode with no edges, use grid — it fills the canvas rectangle optimally.
+      // For force mode with edges, use fcose — clusters connected components.
+      // For hierarchy mode, always use breadthfirst.
+      let opts: CyLayoutOptions;
+      if (cy.nodes().length === 0) {
+        opts = { name: "null" } as CyLayoutOptions;
+      } else if (m === "hierarchy") {
+        opts = LAYOUT_OPTIONS.hierarchy;
+      } else if (cy.edges().length === 0) {
+        // No relationships — grid sorted by label so same-type nodes occupy the same rows.
+        const labelOrder: string[] = [];
+        const labelCount: Record<string, number> = {};
         cy.nodes().forEach((n) => {
-          if (anchored.has(n.id())) n.unlock();
+          const lbl = n.data("label") as string;
+          if (!(lbl in labelCount)) {
+            labelOrder.push(lbl);
+            labelCount[lbl] = 0;
+          }
+          labelCount[lbl]++;
         });
-      } catch {
-        /* cy may have been destroyed */
+        const maxPerLabel = Math.max(...Object.values(labelCount), 1);
+        const totalNodes = cy.nodes().length;
+        const sqrtCols = Math.ceil(Math.sqrt(totalNodes));
+        const cols = Math.min(maxPerLabel, sqrtCols);
+        opts = {
+          name: "grid",
+          animate: false,
+          fit: true,
+          padding: 30,
+          avoidOverlap: true,
+          avoidOverlapPadding: 12,
+          cols,
+          sort: (a: { data: (k: string) => string }, b: { data: (k: string) => string }) => {
+            const ai = labelOrder.indexOf(a.data("label"));
+            const bi = labelOrder.indexOf(b.data("label"));
+            return ai - bi;
+          },
+        } as CyLayoutOptions;
+      } else {
+        const inCluster = clusterLevelRef.current !== "none";
+        opts = {
+          ...LAYOUT_OPTIONS.force,
+          idealEdgeLength: () => edgeDistanceRef.current,
+          // In cluster mode: higher nestingFactor shortens ideal edge length within compounds,
+          // pulling cluster members together; higher repulsion spreads clusters apart.
+          ...(inCluster ? { nestingFactor: 0.1, nodeRepulsion: () => 25000 } : {}),
+        } as CyLayoutOptions;
       }
-      layoutRunningRef.current = false;
-    };
+      const layout = cy.layout(opts);
+      activeLayoutRef.current = layout;
+      const applyStyles = () => {
+        try {
+          const labelSizeRange = computeLabelSizeRanges(cy, sizeByPropertyRef.current);
+          cy.batch(() => {
+            cy.nodes().forEach((node) => {
+              if (node.data("_cluster")) return;
+              if (node.data("_collapsed")) return;
+              if (node.data("_port")) return;
+              const lbl = node.data("label") as string;
+              const n = node.data("_node") as GNode | undefined;
+              const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
+              node.style("background-color", base);
+              applyNodeSize(
+                node,
+                lbl,
+                n,
+                sizeByPropertyRef.current,
+                sizeOverridesRef.current,
+                sizeMultiplierRef.current,
+                labelSizeRange,
+              );
+              if (n) {
+                const prop = labelPropertyRef.current[n.label];
+                node.style(
+                  "label",
+                  prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n),
+                );
+              }
+              if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
+              else node.removeClass("pinned");
+            });
+          });
+        } catch {
+          /* cy may have been destroyed */
+        }
+      };
+      const releaseRun = () => {
+        try {
+          cy.nodes().forEach((n) => {
+            if (anchored.has(n.id())) n.unlock();
+          });
+        } catch {
+          /* cy may have been destroyed */
+        }
+        layoutRunningRef.current = false;
+      };
 
-    const safetyTimer = setTimeout(() => {
-      applyStyles();
-      releaseRun();
-      try {
-        cy.fit(undefined, 40);
-      } catch {
-        /* cy may have been destroyed */
-      }
-    }, 1000);
-    layout.one("layoutstop", () => {
-      clearTimeout(safetyTimer);
-      applyStyles();
-      releaseRun();
-      try {
-        cy.fit(undefined, 40);
-      } catch {
-        /* cy may have been destroyed */
-      }
-    });
-    layout.run();
-  }, [cyRef, layoutRunningRef, activeLayoutRef, anchoredRef, clusterLevelRef, sizeByPropertyRef, colorOverridesRef, labelPropertyRef, sizeMultiplierRef, sizeOverridesRef]);
+      const safetyTimer = setTimeout(() => {
+        applyStyles();
+        releaseRun();
+        try {
+          cy.fit(undefined, 40);
+        } catch {
+          /* cy may have been destroyed */
+        }
+      }, 1000);
+      layout.one("layoutstop", () => {
+        clearTimeout(safetyTimer);
+        applyStyles();
+        releaseRun();
+        try {
+          cy.fit(undefined, 40);
+        } catch {
+          /* cy may have been destroyed */
+        }
+      });
+      layout.run();
+    },
+    [
+      cyRef,
+      layoutRunningRef,
+      activeLayoutRef,
+      anchoredRef,
+      clusterLevelRef,
+      sizeByPropertyRef,
+      colorOverridesRef,
+      labelPropertyRef,
+      sizeMultiplierRef,
+      sizeOverridesRef,
+    ],
+  );
 
   const nudgeLayout = useCallback(
     (freeNodes?: Set<string>, aggressive = false) => {
@@ -205,8 +228,12 @@ export function useGraphLayout({
           cy.nodes("[?_port]").remove(); // also removes attached port meta-edges
           const level = clusterLevelRef.current as Exclude<ClusterLevel, "none">;
           const layoutMeta = buildClusterMetaEdges(
-            nodesRef.current, edgesRef.current, level,
-            overlayEdgesRef.current, collapsedClustersRef.current, false,
+            nodesRef.current,
+            edgesRef.current,
+            level,
+            overlayEdgesRef.current,
+            collapsedClustersRef.current,
+            false,
           );
           if (layoutMeta.length > 0) cy.add(layoutMeta);
           portEdgesAddedRef.current = false;
@@ -257,14 +284,20 @@ export function useGraphLayout({
                 const n = node.data("_node") as GNode | undefined;
                 const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
                 node.style("background-color", base);
-                applyNodeSize(node, lbl, n, sizeByPropertyRef.current, sizeOverridesRef.current, sizeMultiplierRef.current, labelSizeRange);
+                applyNodeSize(
+                  node,
+                  lbl,
+                  n,
+                  sizeByPropertyRef.current,
+                  sizeOverridesRef.current,
+                  sizeMultiplierRef.current,
+                  labelSizeRange,
+                );
                 if (n) {
                   const prop = labelPropertyRef.current[n.label];
                   node.style(
                     "label",
-                    prop
-                      ? String(n.properties[prop] ?? n.id)
-                      : resolveNodeLabel(n),
+                    prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n),
                   );
                 }
                 if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
@@ -296,7 +329,9 @@ export function useGraphLayout({
             nudgeLayoutRef.current(pendingNudgeFreeNodesRef.current);
           } else {
             // layoutstop may fire before animation finishes; final realign after animation settles
-            setTimeout(() => { if (!layoutRunningRef.current) computeHullsRef.current(); }, animDuration + 50);
+            setTimeout(() => {
+              if (!layoutRunningRef.current) computeHullsRef.current();
+            }, animDuration + 50);
           }
         };
         const safetyTimerNudge = setTimeout(
@@ -316,7 +351,25 @@ export function useGraphLayout({
         layoutRunningRef.current = false;
       }
     },
-    [runLayout, cyRef, layoutRunningRef, activeLayoutRef, anchoredRef, portEdgesAddedRef, nodesRef, edgesRef, overlayEdgesRef, collapsedClustersRef, clusterLevelRef, sizeByPropertyRef, colorOverridesRef, labelPropertyRef, sizeMultiplierRef, sizeOverridesRef, computeHullsRef],
+    [
+      runLayout,
+      cyRef,
+      layoutRunningRef,
+      activeLayoutRef,
+      anchoredRef,
+      portEdgesAddedRef,
+      nodesRef,
+      edgesRef,
+      overlayEdgesRef,
+      collapsedClustersRef,
+      clusterLevelRef,
+      sizeByPropertyRef,
+      colorOverridesRef,
+      labelPropertyRef,
+      sizeMultiplierRef,
+      sizeOverridesRef,
+      computeHullsRef,
+    ],
   );
 
   // Keep ref in sync so the cytoscape "free" event always calls the latest nudgeLayout

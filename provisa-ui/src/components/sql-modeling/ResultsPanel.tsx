@@ -205,11 +205,7 @@ export function ResultsPanel({
                       position: "relative",
                     }}
                     aria-sort={
-                      sortEntry
-                        ? sortEntry.dir === "asc"
-                          ? "ascending"
-                          : "descending"
-                        : undefined
+                      sortEntry ? (sortEntry.dir === "asc" ? "ascending" : "descending") : undefined
                     }
                   >
                     <button
@@ -249,9 +245,7 @@ export function ResultsPanel({
                             color: "var(--primary)",
                           }}
                         >
-                          {sorts.length > 1 && (
-                            <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>
-                          )}
+                          {sorts.length > 1 && <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>}
                           <span
                             aria-label={
                               sortEntry.dir === "asc"

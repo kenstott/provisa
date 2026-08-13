@@ -11,7 +11,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Code, Collapse, Group, Paper, Text, TextInput, Title, Tooltip } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Code,
+  Collapse,
+  Group,
+  Paper,
+  Text,
+  TextInput,
+  Title,
+  Tooltip,
+} from "@mantine/core";
 import {
   MainContainer,
   ChatContainer,
@@ -187,8 +199,8 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
             ~/.config/Claude/claude_desktop_config.json
           </Text>
           <Text size="xs" c="dimmed" mt={6}>
-            Claude Desktop&apos;s <b>Add custom connector</b> (paste-a-URL) option can&apos;t reach a
-            local server — Anthropic connects to it from their servers, so it needs a public,
+            Claude Desktop&apos;s <b>Add custom connector</b> (paste-a-URL) option can&apos;t reach
+            a local server — Anthropic connects to it from their servers, so it needs a public,
             internet-reachable HTTPS endpoint. For a local install, use the config above.
           </Text>
         </Paper>

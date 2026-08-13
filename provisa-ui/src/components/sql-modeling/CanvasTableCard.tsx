@@ -15,7 +15,13 @@ import { useTranslation } from "react-i18next";
 import type { CanvasTableCardProps } from "./types";
 import { CARD_W, CARD_HEADER_H, COL_ROW_H } from "./types";
 
-export function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTableCardProps) {
+export function CanvasTableCard({
+  ct,
+  tbl,
+  onMove,
+  onRemove,
+  onStartConnect,
+}: CanvasTableCardProps) {
   const { t } = useTranslation();
   const dragRef = useRef<{
     startMouseX: number;
@@ -162,7 +168,9 @@ export function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: C
           {/* Right dot (connect handle) */}
           <button
             type="button"
-            aria-label={t("sqlModelingCanvasTableCard.connectColumn", { columnName: col.columnName })}
+            aria-label={t("sqlModelingCanvasTableCard.connectColumn", {
+              columnName: col.columnName,
+            })}
             data-testid={`canvas-table-card-connect-${col.columnName}`}
             onMouseDown={(e) => {
               e.preventDefault();

@@ -137,7 +137,12 @@ export function OpenApiPage() {
 
       const paramKeys = [...navParams.keys()];
       await waitFor(() =>
-        paramKeys.every((key) => !!block.querySelector(`tr[data-param-name="${key}"] input, tr[data-param-name="${key}"] select, tr[data-param-name="${key}"] textarea`)),
+        paramKeys.every(
+          (key) =>
+            !!block.querySelector(
+              `tr[data-param-name="${key}"] input, tr[data-param-name="${key}"] select, tr[data-param-name="${key}"] textarea`,
+            ),
+        ),
       );
 
       // REQ-1359: populate the try-it-out param inputs (e.g. aggregate/groupBy) from the
@@ -151,7 +156,9 @@ export function OpenApiPage() {
           | null;
         if (!input) return;
         const setter = Object.getOwnPropertyDescriptor(
-          input.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype,
+          input.tagName === "SELECT"
+            ? window.HTMLSelectElement.prototype
+            : window.HTMLInputElement.prototype,
           "value",
         )?.set;
         setter?.call(input, value);
@@ -165,14 +172,22 @@ export function OpenApiPage() {
       // wait for it to show every param before executing — otherwise execute can fire against
       // the pre-update state even though the inputs already display the right values.
       await waitFor(() => {
-        const curlText = block.querySelector(".curl-command, .opblock-body pre.curl, .curl")?.textContent ?? "";
-        return [...navParams.entries()].every(([key, value]) => curlText.includes(`${key}=${encodeURIComponent(value)}`));
+        const curlText =
+          block.querySelector(".curl-command, .opblock-body pre.curl, .curl")?.textContent ?? "";
+        return [...navParams.entries()].every(([key, value]) =>
+          curlText.includes(`${key}=${encodeURIComponent(value)}`),
+        );
       });
 
       await waitFor(() => !!block.querySelector(".btn.execute.opblock-control__btn"));
       (block.querySelector(".btn.execute.opblock-control__btn") as HTMLElement | null)?.click();
 
-      await waitFor(() => !!block.querySelector(".responses-wrapper .live-responses-table, .responses-wrapper .microlight"));
+      await waitFor(
+        () =>
+          !!block.querySelector(
+            ".responses-wrapper .live-responses-table, .responses-wrapper .microlight",
+          ),
+      );
       (block.querySelector(".responses-wrapper") as HTMLElement | null)?.scrollIntoView({
         behavior: "smooth",
         block: "start",

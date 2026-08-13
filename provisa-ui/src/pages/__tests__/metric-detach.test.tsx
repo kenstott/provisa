@@ -34,11 +34,7 @@ vi.mock("idb-keyval", () => ({
 // CodeMirror → plain textarea bound to value/onChange.
 vi.mock("@uiw/react-codemirror", () => ({
   default: ({ value, onChange }: { value: string; onChange?: (v: string) => void }) => (
-    <textarea
-      data-testid="sql-editor"
-      value={value}
-      onChange={(e) => onChange?.(e.target.value)}
-    />
+    <textarea data-testid="sql-editor" value={value} onChange={(e) => onChange?.(e.target.value)} />
   ),
 }));
 vi.mock("@codemirror/lang-sql", () => ({ sql: () => [], PostgreSQL: {} }));

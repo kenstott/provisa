@@ -28,13 +28,7 @@ export function LandingPage({ onLoginSuccess, authDisabled }: LandingPageProps) 
     <Center mih="100vh" p="md">
       <Stack align="center" gap="lg" style={{ width: "100%", maxWidth: 420 }}>
         <Group gap="sm" align="center">
-          <svg
-            viewBox="0 0 100 100"
-            width="40"
-            height="40"
-            role="img"
-            aria-hidden="true"
-          >
+          <svg viewBox="0 0 100 100" width="40" height="40" role="img" aria-hidden="true">
             <g fill="currentColor">
               <rect x="30" y="18" width="15" height="64" rx="7" />
               <circle cx="52" cy="35" r="22" />

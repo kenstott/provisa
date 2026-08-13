@@ -286,7 +286,9 @@ export function RelationshipRow({
                       ...new Set(tables.map((t2) => normalizeDomain(t2.domainId)).filter(Boolean)),
                     ].sort();
                     const filteredSrcTables = editingRel.sourceDomain
-                      ? tables.filter((t2) => normalizeDomain(t2.domainId) === editingRel.sourceDomain)
+                      ? tables.filter(
+                          (t2) => normalizeDomain(t2.domainId) === editingRel.sourceDomain,
+                        )
                       : tables;
                     return (
                       <Stack
@@ -322,7 +324,10 @@ export function RelationshipRow({
                           label={t("relationshipRow.tableLabel")}
                           data={[
                             { value: "", label: t("relationshipRow.selectPlaceholder") },
-                            ...filteredSrcTables.map((t2) => ({ value: t2.tableName, label: t2.tableName })),
+                            ...filteredSrcTables.map((t2) => ({
+                              value: t2.tableName,
+                              label: t2.tableName,
+                            })),
                           ]}
                           value={editingRel.sourceTableId}
                           onChange={(v) => setEditingRel({ ...editingRel, sourceTableId: v ?? "" })}
@@ -332,9 +337,10 @@ export function RelationshipRow({
                           label={t("relationshipRow.columnLabel")}
                           data={[
                             { value: "", label: t("relationshipRow.selectPlaceholder") },
-                            ...(tables.find((t2) => t2.tableName === editingRel.sourceTableId)?.columns ?? []).map(
-                              (c) => ({ value: c.columnName, label: c.columnName }),
-                            ),
+                            ...(
+                              tables.find((t2) => t2.tableName === editingRel.sourceTableId)
+                                ?.columns ?? []
+                            ).map((c) => ({ value: c.columnName, label: c.columnName })),
                           ]}
                           value={editingRel.sourceColumn}
                           onChange={(v) => setEditingRel({ ...editingRel, sourceColumn: v ?? "" })}
@@ -377,7 +383,9 @@ export function RelationshipRow({
                     {editingRel.targetType === "table" ? (
                       (() => {
                         const uniqueDomains = [
-                          ...new Set(tables.map((t2) => normalizeDomain(t2.domainId)).filter(Boolean)),
+                          ...new Set(
+                            tables.map((t2) => normalizeDomain(t2.domainId)).filter(Boolean),
+                          ),
                         ].sort();
                         const filteredTgtTables = editingRel.targetDomain
                           ? tables.filter(
@@ -408,10 +416,15 @@ export function RelationshipRow({
                               label={t("relationshipRow.tableLabel")}
                               data={[
                                 { value: "", label: t("relationshipRow.selectPlaceholder") },
-                                ...filteredTgtTables.map((t2) => ({ value: t2.tableName, label: t2.tableName })),
+                                ...filteredTgtTables.map((t2) => ({
+                                  value: t2.tableName,
+                                  label: t2.tableName,
+                                })),
                               ]}
                               value={editingRel.targetTableId}
-                              onChange={(v) => setEditingRel({ ...editingRel, targetTableId: v ?? "" })}
+                              onChange={(v) =>
+                                setEditingRel({ ...editingRel, targetTableId: v ?? "" })
+                              }
                               allowDeselect={false}
                             />
                             <Select
@@ -419,11 +432,14 @@ export function RelationshipRow({
                               data={[
                                 { value: "", label: t("relationshipRow.selectPlaceholder") },
                                 ...(
-                                  tables.find((t2) => t2.tableName === editingRel.targetTableId)?.columns ?? []
+                                  tables.find((t2) => t2.tableName === editingRel.targetTableId)
+                                    ?.columns ?? []
                                 ).map((c) => ({ value: c.columnName, label: c.columnName })),
                               ]}
                               value={editingRel.targetColumn}
-                              onChange={(v) => setEditingRel({ ...editingRel, targetColumn: v ?? "" })}
+                              onChange={(v) =>
+                                setEditingRel({ ...editingRel, targetColumn: v ?? "" })
+                              }
                               allowDeselect={false}
                             />
                           </>
@@ -438,13 +454,17 @@ export function RelationshipRow({
                             ...functions.map((f) => ({ value: f.name, label: f.name })),
                           ]}
                           value={editingRel.targetFunctionName}
-                          onChange={(v) => setEditingRel({ ...editingRel, targetFunctionName: v ?? "" })}
+                          onChange={(v) =>
+                            setEditingRel({ ...editingRel, targetFunctionName: v ?? "" })
+                          }
                           allowDeselect={false}
                         />
                         <TextInput
                           label={t("relationshipRow.functionArgLabel")}
                           value={editingRel.functionArg}
-                          onChange={(e) => setEditingRel({ ...editingRel, functionArg: e.target.value })}
+                          onChange={(e) =>
+                            setEditingRel({ ...editingRel, functionArg: e.target.value })
+                          }
                           placeholder={t("relationshipRow.functionArgPlaceholder")}
                         />
                       </>
@@ -460,7 +480,9 @@ export function RelationshipRow({
                         { value: "one-to-many", label: t("relationshipRow.cardinalityOneToMany") },
                       ]}
                       value={editingRel.cardinality}
-                      onChange={(v) => setEditingRel({ ...editingRel, cardinality: v ?? "many-to-one" })}
+                      onChange={(v) =>
+                        setEditingRel({ ...editingRel, cardinality: v ?? "many-to-one" })
+                      }
                       allowDeselect={false}
                       style={{ width: `${editingRel.cardinality.length + 6}ch` }}
                     />
@@ -468,7 +490,9 @@ export function RelationshipRow({
                   <Checkbox
                     label={t("relationshipRow.materializeCheckbox")}
                     checked={editingRel.materialize}
-                    onChange={(e) => setEditingRel({ ...editingRel, materialize: e.currentTarget.checked })}
+                    onChange={(e) =>
+                      setEditingRel({ ...editingRel, materialize: e.currentTarget.checked })
+                    }
                   />
                   <Checkbox
                     label={t("relationshipRow.excludeFromCypher")}

@@ -37,11 +37,7 @@ export function McpServerTab() {
       <Stack gap="xs" p="sm" style={{ border: "1px solid var(--text-muted)", borderRadius: 4 }}>
         <Group gap="xs">
           <Text span>{t("mcpServerTab.statusLabel")}:</Text>
-          <Badge
-            data-testid="mcp-status"
-            color={status.enabled ? "green" : "gray"}
-            variant="light"
-          >
+          <Badge data-testid="mcp-status" color={status.enabled ? "green" : "gray"} variant="light">
             {status.enabled ? t("mcpServerTab.statusEnabled") : t("mcpServerTab.statusDisabled")}
           </Badge>
         </Group>
@@ -96,7 +92,13 @@ export function McpServerTab() {
 
       <Title order={4}>{t("mcpServerTab.toolsHeading")}</Title>
       <Table.ScrollContainer minWidth={480}>
-        <Table data-testid="mcp-tools" striped highlightOnHover withTableBorder verticalSpacing="xs">
+        <Table
+          data-testid="mcp-tools"
+          striped
+          highlightOnHover
+          withTableBorder
+          verticalSpacing="xs"
+        >
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("mcpServerTab.colTool")}</Table.Th>

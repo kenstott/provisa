@@ -41,7 +41,11 @@ export const graphqlLoader = (): Plugin => {
         // Direct fragment spreads referenced anywhere under a node's selections.
         const directSpreads = (node: unknown): string[] => {
           const found: string[] = [];
-          const visit = (n: { kind?: string; name?: { value: string }; selectionSet?: { selections: unknown[] } }) => {
+          const visit = (n: {
+            kind?: string;
+            name?: { value: string };
+            selectionSet?: { selections: unknown[] };
+          }) => {
             if (!n || typeof n !== "object") return;
             if (n.kind === "FragmentSpread" && n.name) found.push(n.name.value);
             if (n.selectionSet) for (const s of n.selectionSet.selections) visit(s as typeof n);

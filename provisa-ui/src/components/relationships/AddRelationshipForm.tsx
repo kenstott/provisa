@@ -9,7 +9,17 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Button, Card, Checkbox, Group, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
+import {
+  Button,
+  Card,
+  Checkbox,
+  Group,
+  NumberInput,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import type { RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelForm } from "./relationship-types";

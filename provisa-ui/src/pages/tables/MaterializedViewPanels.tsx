@@ -4,7 +4,16 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { Alert, Checkbox, Group, NumberInput, Select, Text, Textarea, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Checkbox,
+  Group,
+  NumberInput,
+  Select,
+  Text,
+  Textarea,
+  TextInput,
+} from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { RegisteredTable } from "../../types/admin";
 import { useMaterializeStoreInfo } from "../../hooks/useAdminOpsQueries";

@@ -70,7 +70,6 @@ interface TableEditFormProps {
   updateEditCol: (i: number, key: string, value: string | string[] | boolean) => void;
 }
 
-
 export function TableEditForm({
   editingTable,
   setEditingTable,
@@ -355,9 +354,7 @@ export function TableEditForm({
           />
           <DescriptionField
             value={editingTable.description || ""}
-            onChange={(v) =>
-              setEditingTable({ ...editingTable, description: v || null })
-            }
+            onChange={(v) => setEditingTable({ ...editingTable, description: v || null })}
             placeholder={t("tableEditForm.descriptionPlaceholder")}
             rows={2}
             generating={generatingDesc}
@@ -374,11 +371,7 @@ export function TableEditForm({
         </div>
         {editingTable.viewSql && (
           <>
-            <Group
-              gap="xs"
-              wrap="nowrap"
-              style={{ gridColumn: "1 / -1" }}
-            >
+            <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
               <Checkbox
                 checked={editingTable.materialize}
                 onChange={(e) =>
@@ -491,8 +484,7 @@ export function TableEditForm({
           comboboxProps={{ withinPortal: true }}
           allowDeselect={false}
         />
-        {(editingTable.changeSignal === "ttl" ||
-          editingTable.changeSignal === "ttl_probe") &&
+        {(editingTable.changeSignal === "ttl" || editingTable.changeSignal === "ttl_probe") &&
           (() => {
             // A __derived__ view has no Cache TTL — its ttl cadence is the materialized view's
             // Refresh Interval. A non-materialized view can't honor ttl (nothing to refresh).
@@ -504,11 +496,7 @@ export function TableEditForm({
                   })}
                 </Text>
               ) : (
-                <Text
-                  style={{ gridColumn: "1 / -1" }}
-                  size="xs"
-                  c="var(--warning, #d19a00)"
-                >
+                <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
                   {t("tableEditForm.ttlViewNeedsMv")}{" "}
                   <strong>{t("tableEditForm.materializedViewLabel")}</strong>{" "}
                   {t("tableEditForm.ttlViewNeedsMvPost")}
@@ -528,11 +516,7 @@ export function TableEditForm({
             const effTtl = tableTtl ?? cs?.cacheTtl ?? null;
             const fromTable = tableTtl != null;
             return effTtl == null ? (
-              <Text
-                style={{ gridColumn: "1 / -1" }}
-                size="xs"
-                c="var(--warning, #d19a00)"
-              >
+              <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
                 {t("tableEditForm.ttlNeedsIntervalPre")}{" "}
                 <strong>{t("tableEditForm.cacheTtlLabel")}</strong>{" "}
                 {t("tableEditForm.ttlNeedsIntervalPost")}
@@ -548,8 +532,7 @@ export function TableEditForm({
               </Text>
             );
           })()}
-        {(editingTable.changeSignal === "debezium" ||
-          editingTable.changeSignal === "kafka") &&
+        {(editingTable.changeSignal === "debezium" || editingTable.changeSignal === "kafka") &&
           (() => {
             const cs = sources.find((s) => s.id === editingTable.sourceId);
             const hasCdc = !!cs?.cdc?.bootstrapServers;
@@ -566,36 +549,26 @@ export function TableEditForm({
                   <Text style={{ gridColumn: "1 / -1" }} size="xs" c="dimmed">
                     {t("tableEditForm.cdcTransportPre")}
                     {cs!.cdc!.bootstrapServers}
-                    {t("tableEditForm.cdcTransportMid")}{" "}
-                    <code>{topic}</code>. {t("tableEditForm.cdcTransportPost")}
+                    {t("tableEditForm.cdcTransportMid")} <code>{topic}</code>.{" "}
+                    {t("tableEditForm.cdcTransportPost")}
                   </Text>
                 ) : (
-                  <Text
-                    style={{ gridColumn: "1 / -1" }}
-                    size="xs"
-                    c="var(--warning, #d19a00)"
-                  >
+                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
                     {editingTable.changeSignal} {t("tableEditForm.cdcMissingPre")}{" "}
                     <strong>{t("tableEditForm.cdcMissingBold")}</strong>.{" "}
                     {t("tableEditForm.cdcMissingPost")}
                   </Text>
                 )}
                 {!hasPk && (
-                  <Text
-                    style={{ gridColumn: "1 / -1" }}
-                    size="xs"
-                    c="var(--warning, #d19a00)"
-                  >
-                    {t("tableEditForm.noPkPre")}{" "}
-                    <strong>{t("tableEditForm.noPkBold")}</strong>{" "}
+                  <Text style={{ gridColumn: "1 / -1" }} size="xs" c="var(--warning, #d19a00)">
+                    {t("tableEditForm.noPkPre")} <strong>{t("tableEditForm.noPkBold")}</strong>{" "}
                     {t("tableEditForm.noPkPost")}
                   </Text>
                 )}
               </>
             );
           })()}
-        {(editingTable.changeSignal === "probe" ||
-          editingTable.changeSignal === "ttl_probe") &&
+        {(editingTable.changeSignal === "probe" || editingTable.changeSignal === "ttl_probe") &&
           (() => {
             const src = sources.find((s) => s.id === editingTable.sourceId);
             const caps = sourceProbeTypes(src?.type);
@@ -632,8 +605,7 @@ export function TableEditForm({
               />
             );
           })()}
-        {(editingTable.changeSignal === "probe" ||
-          editingTable.changeSignal === "ttl_probe") && (
+        {(editingTable.changeSignal === "probe" || editingTable.changeSignal === "ttl_probe") && (
           <TextInput
             style={{ gridColumn: "1 / -1" }}
             label={
@@ -671,9 +643,7 @@ export function TableEditForm({
             presets={editingTable.columnPresets}
             columns={editingTable.columns.map((c) => c.columnName)}
             columnTypes={editingColumnTypes}
-            onChange={(presets) =>
-              setEditingTable({ ...editingTable, columnPresets: presets })
-            }
+            onChange={(presets) => setEditingTable({ ...editingTable, columnPresets: presets })}
           />
         ) : null;
       })()}
@@ -772,9 +742,7 @@ export function TableEditForm({
                     aria-label={t("tableEditForm.primaryKeyAria")}
                     title={t("tableEditForm.primaryKeyAria")}
                     checked={c.isPrimaryKey || false}
-                    onChange={(e) =>
-                      updateEditCol(i, "isPrimaryKey", e.currentTarget.checked)
-                    }
+                    onChange={(e) => updateEditCol(i, "isPrimaryKey", e.currentTarget.checked)}
                   />
                 </Table.Td>
                 <Table.Td>
@@ -782,10 +750,7 @@ export function TableEditForm({
                     aria-label={t("tableEditForm.dataTypeHeader")}
                     placeholder={t("tableEditForm.dataTypePlaceholder")}
                     data={Array.from(
-                      new Set([
-                        ...(c.dataType ? [toIrType(c.dataType)] : []),
-                        ...irTypes,
-                      ]),
+                      new Set([...(c.dataType ? [toIrType(c.dataType)] : []), ...irTypes]),
                     ).map((v) => ({ value: v, label: v }))}
                     value={c.dataType ? toIrType(c.dataType) : null}
                     onChange={(v) => updateEditCol(i, "dataType", v ?? "")}
@@ -798,9 +763,7 @@ export function TableEditForm({
                   <TextInput
                     aria-label={t("tableEditForm.sqlAliasHeader")}
                     value={c.alias || c.computedSqlAlias}
-                    onChange={(e) =>
-                      updateEditCol(i, "alias", e.target.value)
-                    }
+                    onChange={(e) => updateEditCol(i, "alias", e.target.value)}
                   />
                 </Table.Td>
                 <Table.Td>
@@ -813,16 +776,10 @@ export function TableEditForm({
                     onGenerate={async () => {
                       setGeneratingColDesc(c.columnName);
                       try {
-                        const desc = await generateColumnDescription(
-                          editingTable.id,
-                          c.columnName,
-                        );
+                        const desc = await generateColumnDescription(editingTable.id, c.columnName);
                         if (desc) updateEditCol(i, "description", desc);
                       } catch (err) {
-                        console.error(
-                          "generateColumnDescription failed:",
-                          err,
-                        );
+                        console.error("generateColumnDescription failed:", err);
                       } finally {
                         setGeneratingColDesc(null);
                       }
@@ -833,9 +790,7 @@ export function TableEditForm({
                   <MultiSelect
                     options={roleOptions}
                     value={c.visibleTo}
-                    onChange={(selected) =>
-                      updateEditCol(i, "visibleTo", selected)
-                    }
+                    onChange={(selected) => updateEditCol(i, "visibleTo", selected)}
                     ariaLabel={t("tableEditForm.visibleToHeader")}
                   />
                 </Table.Td>
@@ -843,9 +798,7 @@ export function TableEditForm({
                   <MultiSelect
                     options={roleOptions}
                     value={c.writableBy}
-                    onChange={(selected) =>
-                      updateEditCol(i, "writableBy", selected)
-                    }
+                    onChange={(selected) => updateEditCol(i, "writableBy", selected)}
                     ariaLabel={t("tableEditForm.writableByHeader")}
                   />
                 </Table.Td>
@@ -897,9 +850,7 @@ export function TableEditForm({
                         <TextInput
                           aria-label={t("tableEditForm.regexPatternPlaceholder")}
                           value={c.maskPattern || ""}
-                          onChange={(e) =>
-                            updateEditCol(i, "maskPattern", e.target.value)
-                          }
+                          onChange={(e) => updateEditCol(i, "maskPattern", e.target.value)}
                           placeholder={t("tableEditForm.regexPatternPlaceholder")}
                         />
                       </Table.Td>
@@ -907,9 +858,7 @@ export function TableEditForm({
                         <TextInput
                           aria-label={t("tableEditForm.regexReplacementPlaceholder")}
                           value={c.maskReplace || ""}
-                          onChange={(e) =>
-                            updateEditCol(i, "maskReplace", e.target.value)
-                          }
+                          onChange={(e) => updateEditCol(i, "maskReplace", e.target.value)}
                           placeholder={t("tableEditForm.regexReplacementPlaceholder")}
                         />
                       </Table.Td>
@@ -920,9 +869,7 @@ export function TableEditForm({
                       <TextInput
                         aria-label={t("tableEditForm.constantValuePlaceholder")}
                         value={c.maskValue || ""}
-                        onChange={(e) =>
-                          updateEditCol(i, "maskValue", e.target.value)
-                        }
+                        onChange={(e) => updateEditCol(i, "maskValue", e.target.value)}
                         placeholder={t("tableEditForm.constantValuePlaceholder")}
                       />
                     </Table.Td>
@@ -948,9 +895,7 @@ export function TableEditForm({
                     <MultiSelect
                       options={roleOptions}
                       value={c.unmaskedTo}
-                      onChange={(selected) =>
-                        updateEditCol(i, "unmaskedTo", selected)
-                      }
+                      onChange={(selected) => updateEditCol(i, "unmaskedTo", selected)}
                       label={t("tableEditForm.unmaskedToAria")}
                     />
                   </Table.Td>

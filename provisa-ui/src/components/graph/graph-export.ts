@@ -12,9 +12,15 @@ import type { CyInstance } from "./cytoscape-types";
 import type { GNode, GEdge } from "./graph-model";
 
 const _INTERNAL_NODE_PROPS = new Set([
-  "degIn", "degOut", "degTotal",
-  "scl1", "scl2", "scl3",
-  "l1Cluster", "l2Cluster", "l3Cluster",
+  "degIn",
+  "degOut",
+  "degTotal",
+  "scl1",
+  "scl2",
+  "scl3",
+  "l1Cluster",
+  "l2Cluster",
+  "l3Cluster",
 ]);
 
 function _toCypherLiteral(v: unknown): string {
@@ -33,22 +39,26 @@ export function buildCypherScript(nodes: GNode[], edges: GEdge[]): string {
   const lines: string[] = ["// Provisa Neo4j export", "// Nodes"];
   for (const n of nodes) {
     const props = _exportableProps(n.properties);
-    const setParts = Object.entries(props).map(([k, v]) => `${k}: ${_toCypherLiteral(v)}`).join(", ");
+    const setParts = Object.entries(props)
+      .map(([k, v]) => `${k}: ${_toCypherLiteral(v)}`)
+      .join(", ");
     const setStr = setParts ? ` SET n += {${setParts}}` : "";
     // Domain-union nodes omit tableLabel; reconstruct from compound label "Domain:Table"
-    const effectiveTable = n.tableLabel || (n.label.includes(":") ? n.label.split(":")[1] : n.label);
+    const effectiveTable =
+      n.tableLabel || (n.label.includes(":") ? n.label.split(":")[1] : n.label);
     const effectiveDomain = n.label.includes(":") ? n.label.split(":")[0] : "";
-    const labelStr = effectiveDomain && effectiveDomain !== effectiveTable
-      ? `\`${effectiveTable}\`:\`${effectiveDomain}\``
-      : `\`${effectiveTable}\``;
+    const labelStr =
+      effectiveDomain && effectiveDomain !== effectiveTable
+        ? `\`${effectiveTable}\`:\`${effectiveDomain}\``
+        : `\`${effectiveTable}\``;
     lines.push(`MERGE (n:${labelStr} {_provisa_id: ${n.id}})${setStr};`);
   }
   lines.push("", "// Relationships");
   for (const e of edges) {
     lines.push(
       `MATCH (a:\`${e.startNode.tableLabel}\` {_provisa_id: ${e.start}}), ` +
-      `(b:\`${e.endNode.tableLabel}\` {_provisa_id: ${e.end}}) ` +
-      `MERGE (a)-[:\`${e.type}\`]->(b);`,
+        `(b:\`${e.endNode.tableLabel}\` {_provisa_id: ${e.end}}) ` +
+        `MERGE (a)-[:\`${e.type}\`]->(b);`,
     );
   }
   return lines.join("\n");

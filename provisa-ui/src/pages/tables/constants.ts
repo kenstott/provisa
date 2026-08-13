@@ -23,7 +23,4 @@ export const CDC_TYPES = new Set(["postgresql", "mongodb", "kafka", "debezium"])
 // accepts server-side. UTC is pinned first as the default; the rest follow in database order.
 const _tzValues: string[] =
   typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["UTC"];
-export const IANA_TIME_ZONES: string[] = [
-  "UTC",
-  ..._tzValues.filter((z) => z !== "UTC"),
-];
+export const IANA_TIME_ZONES: string[] = ["UTC", ..._tzValues.filter((z) => z !== "UTC")];

@@ -86,15 +86,22 @@ function computeInstant(
   const hubEntries: { label: string; name: string; degree: number }[] = [];
   nodes.forEach((n) => {
     const d = degree.get(n.id) ?? 0;
-    const name =
-      (n.properties["name"] as string) ??
-      (n.properties["id"] as string) ??
-      String(n.id);
+    const name = (n.properties["name"] as string) ?? (n.properties["id"] as string) ?? String(n.id);
     hubEntries.push({ label: n.label, name: String(name).slice(0, 30), degree: d });
   });
   const topHubs = hubEntries.sort((a, b) => b.degree - a.degree).slice(0, 7);
 
-  return { nodeCount, edgeCount, nodesByLabel, edgesByType, density, avgDegree, maxDegree, isolatedCount, topHubs };
+  return {
+    nodeCount,
+    edgeCount,
+    nodesByLabel,
+    edgesByType,
+    density,
+    avgDegree,
+    maxDegree,
+    isolatedCount,
+    topHubs,
+  };
 }
 
 async function computeComponents(
@@ -197,7 +204,11 @@ interface Props {
 function StatRow({ label, tooltip, value }: { label: string; tooltip?: string; value: ReactNode }) {
   const labelNode = tooltip ? (
     <Tooltip label={tooltip} multiline w={260} withArrow>
-      <Text size="sm" c="dimmed" style={{ cursor: "help", borderBottom: "1px dotted var(--text-muted)" }}>
+      <Text
+        size="sm"
+        c="dimmed"
+        style={{ cursor: "help", borderBottom: "1px dotted var(--text-muted)" }}
+      >
         {label}
       </Text>
     </Tooltip>
@@ -236,8 +247,13 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
   const { t } = useTranslation();
   const qs = queryStats as QueryStats | undefined;
   const [instant, setInstant] = useState<ReturnType<typeof computeInstant> | null>(null);
-  const [components, setComponents] = useState<{ componentCount: number; largestComponentSize: number } | null>(null);
-  const [pathStats, setPathStats] = useState<{ diameter: number; avgPathLength: number } | null>(null);
+  const [components, setComponents] = useState<{
+    componentCount: number;
+    largestComponentSize: number;
+  } | null>(null);
+  const [pathStats, setPathStats] = useState<{ diameter: number; avgPathLength: number } | null>(
+    null,
+  );
   const [pathRunning, setPathRunning] = useState(true);
 
   useEffect(() => {
@@ -281,17 +297,37 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
       <Card withBorder padding="sm" radius="md">
         <CardTitle>{t("graphStatsPanel.size")}</CardTitle>
         <Stack gap={4}>
-          <StatRow label={t("graphStatsPanel.nodes")} tooltip={t("graphStatsPanel.tooltipNodes")} value={instant.nodeCount.toLocaleString()} />
-          <StatRow label={t("graphStatsPanel.edges")} tooltip={t("graphStatsPanel.tooltipEdges")} value={instant.edgeCount.toLocaleString()} />
-          <StatRow label={t("graphStatsPanel.density")} tooltip={t("graphStatsPanel.tooltipDensity")} value={instant.density.toExponential(2)} />
+          <StatRow
+            label={t("graphStatsPanel.nodes")}
+            tooltip={t("graphStatsPanel.tooltipNodes")}
+            value={instant.nodeCount.toLocaleString()}
+          />
+          <StatRow
+            label={t("graphStatsPanel.edges")}
+            tooltip={t("graphStatsPanel.tooltipEdges")}
+            value={instant.edgeCount.toLocaleString()}
+          />
+          <StatRow
+            label={t("graphStatsPanel.density")}
+            tooltip={t("graphStatsPanel.tooltipDensity")}
+            value={instant.density.toExponential(2)}
+          />
         </Stack>
       </Card>
 
       <Card withBorder padding="sm" radius="md">
         <CardTitle>{t("graphStatsPanel.degree")}</CardTitle>
         <Stack gap={4}>
-          <StatRow label={t("graphStatsPanel.average")} tooltip={t("graphStatsPanel.tooltipAverage")} value={instant.avgDegree.toFixed(2)} />
-          <StatRow label={t("graphStatsPanel.maximum")} tooltip={t("graphStatsPanel.tooltipMaximum")} value={instant.maxDegree} />
+          <StatRow
+            label={t("graphStatsPanel.average")}
+            tooltip={t("graphStatsPanel.tooltipAverage")}
+            value={instant.avgDegree.toFixed(2)}
+          />
+          <StatRow
+            label={t("graphStatsPanel.maximum")}
+            tooltip={t("graphStatsPanel.tooltipMaximum")}
+            value={instant.maxDegree}
+          />
           <StatRow
             label={t("graphStatsPanel.isolatedNodes")}
             tooltip={t("graphStatsPanel.tooltipIsolatedNodes")}
@@ -312,9 +348,11 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
             label={t("graphStatsPanel.largestComponent")}
             tooltip={t("graphStatsPanel.tooltipLargestComponent")}
             value={
-              components
-                ? `${components.largestComponentSize.toLocaleString()}${pct(components.largestComponentSize, instant.nodeCount)}`
-                : <Loader size="xs" />
+              components ? (
+                `${components.largestComponentSize.toLocaleString()}${pct(components.largestComponentSize, instant.nodeCount)}`
+              ) : (
+                <Loader size="xs" />
+              )
             }
           />
           <StatRow
@@ -325,20 +363,38 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
           <StatRow
             label={t("graphStatsPanel.avgPathLength")}
             tooltip={t("graphStatsPanel.tooltipAvgPathLength")}
-            value={pathRunning ? <Loader size="xs" /> : pathStats ? pathStats.avgPathLength.toFixed(2) : "—"}
+            value={
+              pathRunning ? (
+                <Loader size="xs" />
+              ) : pathStats ? (
+                pathStats.avgPathLength.toFixed(2)
+              ) : (
+                "—"
+              )
+            }
           />
         </Stack>
       </Card>
 
       <Card withBorder padding="sm" radius="md">
-        <CardTitle tooltip={t("graphStatsPanel.tooltipTopHubsByDegree")}>{t("graphStatsPanel.topHubsByDegree")}</CardTitle>
+        <CardTitle tooltip={t("graphStatsPanel.tooltipTopHubsByDegree")}>
+          {t("graphStatsPanel.topHubsByDegree")}
+        </CardTitle>
         <Stack gap={4}>
           {instant.topHubs.map((h, i) => (
             <Group key={i} justify="space-between" wrap="nowrap" gap="xs">
               <Text size="xs" c="dimmed">
                 {h.label}
               </Text>
-              <Text size="xs" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <Text
+                size="xs"
+                style={{
+                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {h.name}
               </Text>
               <Text size="xs" fw={500}>
@@ -350,7 +406,9 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
       </Card>
 
       <Card withBorder padding="sm" radius="md">
-        <CardTitle tooltip={t("graphStatsPanel.tooltipNodesByLabel")}>{t("graphStatsPanel.nodesByLabel")}</CardTitle>
+        <CardTitle tooltip={t("graphStatsPanel.tooltipNodesByLabel")}>
+          {t("graphStatsPanel.nodesByLabel")}
+        </CardTitle>
         <Stack gap={4}>
           {instant.nodesByLabel.map(([lbl, cnt]) => (
             <Group key={lbl} justify="space-between" gap="xs">
@@ -366,7 +424,9 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
       </Card>
 
       <Card withBorder padding="sm" radius="md">
-        <CardTitle tooltip={t("graphStatsPanel.tooltipEdgesByType")}>{t("graphStatsPanel.edgesByType")}</CardTitle>
+        <CardTitle tooltip={t("graphStatsPanel.tooltipEdgesByType")}>
+          {t("graphStatsPanel.edgesByType")}
+        </CardTitle>
         <Stack gap={4}>
           {instant.edgesByType.map(([type, cnt]) => (
             <Group key={type} justify="space-between" gap="xs">
@@ -386,7 +446,10 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
           <CardTitle>{t("graphStatsPanel.queryExecution")}</CardTitle>
           <Stack gap={4}>
             {qs.total_elapsed_ms !== undefined && (
-              <StatRow label={t("graphStatsPanel.total")} value={`${qs.total_elapsed_ms.toFixed(1)} ms`} />
+              <StatRow
+                label={t("graphStatsPanel.total")}
+                value={`${qs.total_elapsed_ms.toFixed(1)} ms`}
+              />
             )}
             {(qs.sources ?? []).map((s, i) => (
               <Stack key={i} gap={2} mt={i > 0 ? "xs" : undefined}>
@@ -426,7 +489,9 @@ export function GraphStatsPanel({ nodes, edges, queryStats }: Props) {
                     <Text size="xs" c="dimmed">
                       {t("graphStatsPanel.cache")}
                     </Text>
-                    <Text size="xs">{s.cache_hit ? t("graphStatsPanel.cacheHit") : t("graphStatsPanel.cacheMiss")}</Text>
+                    <Text size="xs">
+                      {s.cache_hit ? t("graphStatsPanel.cacheHit") : t("graphStatsPanel.cacheMiss")}
+                    </Text>
                   </Group>
                 )}
               </Stack>

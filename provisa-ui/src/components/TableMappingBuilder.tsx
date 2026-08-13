@@ -28,15 +28,25 @@ import {
 import { Plus, Trash2, X } from "lucide-react";
 
 const TRINO_TYPES = [
-  "VARCHAR", "INTEGER", "BIGINT", "SMALLINT", "TINYINT",
-  "DOUBLE", "REAL", "DECIMAL", "BOOLEAN", "DATE",
-  "TIMESTAMP", "VARBINARY", "JSON",
+  "VARCHAR",
+  "INTEGER",
+  "BIGINT",
+  "SMALLINT",
+  "TINYINT",
+  "DOUBLE",
+  "REAL",
+  "DECIMAL",
+  "BOOLEAN",
+  "DATE",
+  "TIMESTAMP",
+  "VARBINARY",
+  "JSON",
 ];
 
 interface ColumnDef {
   name: string;
   type: string;
-  field: string;      // Redis field mapping / ES dot-path / Mongo JSONPath
+  field: string; // Redis field mapping / ES dot-path / Mongo JSONPath
 }
 
 interface TableMappingBuilderProps {
@@ -71,7 +81,10 @@ function emptyColumn(): ColumnDef {
 }
 
 /** Redis: key pattern, key column, value type, column rows with field mapping */
-function RedisForm({ mapping, setMapping }: {
+function RedisForm({
+  mapping,
+  setMapping,
+}: {
   mapping: TableMapping;
   setMapping: (m: TableMapping) => void;
 }) {
@@ -108,7 +121,10 @@ function RedisForm({ mapping, setMapping }: {
 }
 
 /** MongoDB: collection name, discover toggle, column rows with JSONPath */
-function MongoForm({ mapping, setMapping }: {
+function MongoForm({
+  mapping,
+  setMapping,
+}: {
   mapping: TableMapping;
   setMapping: (m: TableMapping) => void;
 }) {
@@ -132,7 +148,10 @@ function MongoForm({ mapping, setMapping }: {
 }
 
 /** Elasticsearch: index pattern, column rows with dot-path */
-function ElasticsearchForm({ mapping, setMapping }: {
+function ElasticsearchForm({
+  mapping,
+  setMapping,
+}: {
   mapping: TableMapping;
   setMapping: (m: TableMapping) => void;
 }) {
@@ -156,7 +175,10 @@ function ElasticsearchForm({ mapping, setMapping }: {
 }
 
 /** Prometheus: metric name, label checkboxes, value column, time range */
-function PrometheusForm({ mapping, setMapping }: {
+function PrometheusForm({
+  mapping,
+  setMapping,
+}: {
   mapping: TableMapping;
   setMapping: (m: TableMapping) => void;
 }) {
@@ -217,7 +239,12 @@ function PrometheusForm({ mapping, setMapping }: {
             placeholder={t("tableMappingBuilder.labelPlaceholder")}
             w="10rem"
             aria-label={t("tableMappingBuilder.labelsAsColumns")}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLabel(); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addLabel();
+              }
+            }}
           />
           <Button onClick={addLabel} size="xs" variant="default">
             {t("tableMappingBuilder.addLabel")}
@@ -233,10 +260,14 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
 
   const fieldLabel = (st: string): string => {
     switch (st) {
-      case "redis": return t("tableMappingBuilder.fieldRedis");
-      case "mongodb": return t("tableMappingBuilder.fieldMongo");
-      case "elasticsearch": return t("tableMappingBuilder.fieldElasticsearch");
-      default: return t("tableMappingBuilder.fieldDefault");
+      case "redis":
+        return t("tableMappingBuilder.fieldRedis");
+      case "mongodb":
+        return t("tableMappingBuilder.fieldMongo");
+      case "elasticsearch":
+        return t("tableMappingBuilder.fieldElasticsearch");
+      default:
+        return t("tableMappingBuilder.fieldDefault");
     }
   };
 
@@ -284,11 +315,7 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
         <Title order={4} m={0}>
           {t("tableMappingBuilder.title", { sourceType })}
         </Title>
-        <ActionIcon
-          variant="subtle"
-          aria-label={t("tableMappingBuilder.close")}
-          onClick={onCancel}
-        >
+        <ActionIcon variant="subtle" aria-label={t("tableMappingBuilder.close")} onClick={onCancel}>
           <X size={16} />
         </ActionIcon>
       </Group>
@@ -304,8 +331,12 @@ export function TableMappingBuilder({ sourceType, onSave, onCancel }: TableMappi
 
         {sourceType === "redis" && <RedisForm mapping={mapping} setMapping={setMapping} />}
         {sourceType === "mongodb" && <MongoForm mapping={mapping} setMapping={setMapping} />}
-        {sourceType === "elasticsearch" && <ElasticsearchForm mapping={mapping} setMapping={setMapping} />}
-        {sourceType === "prometheus" && <PrometheusForm mapping={mapping} setMapping={setMapping} />}
+        {sourceType === "elasticsearch" && (
+          <ElasticsearchForm mapping={mapping} setMapping={setMapping} />
+        )}
+        {sourceType === "prometheus" && (
+          <PrometheusForm mapping={mapping} setMapping={setMapping} />
+        )}
       </SimpleGrid>
 
       {sourceType !== "prometheus" && (

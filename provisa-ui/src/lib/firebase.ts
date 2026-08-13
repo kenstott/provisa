@@ -27,12 +27,13 @@ type FirebaseWebConfig = { apiKey: string; authDomain: string; projectId: string
 // True only on a firebase deploy (config injected at runtime or baked at build time).
 // Used to decide whether there is a Firebase session to tear down on logout.
 function hasFirebaseConfig(): boolean {
-  const injected = (
-    window as unknown as { __PROVISA_FIREBASE__?: FirebaseWebConfig | null }
-  ).__PROVISA_FIREBASE__;
+  const injected = (window as unknown as { __PROVISA_FIREBASE__?: FirebaseWebConfig | null })
+    .__PROVISA_FIREBASE__;
   if (injected) return true;
   const env = (import.meta as unknown as Record<string, Record<string, string>>).env;
-  return Boolean(env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_PROJECT_ID);
+  return Boolean(
+    env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_AUTH_DOMAIN && env.VITE_FIREBASE_PROJECT_ID,
+  );
 }
 
 // The web config source: runtime-injected first, build-time env second (REQ-1266).
@@ -40,9 +41,8 @@ function hasFirebaseConfig(): boolean {
 // index.html loads before the app bundle — so one built image serves any Firebase
 // project. Local dev builds instead bake VITE_FIREBASE_* at vite build time.
 function resolveFirebaseConfig(): FirebaseWebConfig {
-  const injected = (
-    window as unknown as { __PROVISA_FIREBASE__?: FirebaseWebConfig | null }
-  ).__PROVISA_FIREBASE__;
+  const injected = (window as unknown as { __PROVISA_FIREBASE__?: FirebaseWebConfig | null })
+    .__PROVISA_FIREBASE__;
   if (injected) return injected;
 
   const env = (import.meta as unknown as Record<string, Record<string, string>>).env;

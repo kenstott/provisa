@@ -14,7 +14,13 @@ import { RecurrenceBuilder } from "../RecurrenceBuilder";
 function renderBuilder(value: string | null) {
   const onChange = vi.fn();
   render(
-    <RecurrenceBuilder value={value} onChange={onChange} label="Grain" placeholder="Select a grain" testId="mv-grain" />,
+    <RecurrenceBuilder
+      value={value}
+      onChange={onChange}
+      label="Grain"
+      placeholder="Select a grain"
+      testId="mv-grain"
+    />,
   );
   return onChange;
 }

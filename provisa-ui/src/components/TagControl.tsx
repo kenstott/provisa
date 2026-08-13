@@ -25,12 +25,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { Pencil, Tag as TagIcon } from "lucide-react";
 import type { Tag, TagAssignment, TagObjectType } from "../types/admin";
-import {
-  useAssignTag,
-  useTagAssignments,
-  useTags,
-  useUnassignTag,
-} from "../hooks/useAdminQueries";
+import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hooks/useAdminQueries";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by the five
 // taggable object surfaces (source, table, column, relationship, command).
@@ -260,7 +255,9 @@ export function TagControl({
                             size="xs"
                             label={t("tagControl.reasonLabel")}
                             required={reasonRequired}
-                            placeholder={reasonRequired ? t("tagControl.reasonRequired") : undefined}
+                            placeholder={
+                              reasonRequired ? t("tagControl.reasonRequired") : undefined
+                            }
                             value={reason}
                             onChange={(e) => setReason(e.currentTarget.value)}
                             data-testid={`tag-reason-${tag.id}`}
