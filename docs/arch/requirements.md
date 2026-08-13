@@ -15065,3 +15065,75 @@ The GKE cluster ([REQ-1447](#REQ-1447)) hosts Trino and nothing else. The contro
 **Code:** `provisa/federation/isolated_provisioner.py`, `provisa/api/org_runtime.py`, `terraform/gcp-saas/main.tf`
 
 **Tests:** —
+
+### REQ-1452 · Pricing & Tiering {#REQ-1452}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+The published price list is set by the comparables, not derived from cost. Starter bills $1.30 per ACTIVE HOUR with a $25/mo minimum and 25 GB of included egress -- the same rate AND the same meter shape as Hasura Cloud v2 Professional, which charges $1.30 per hour in which the project served at least one request and carries no base fee. Pro bills per ENGINE HOUR at three sizes: Pro S (4 vCPU / 32 GB) $1.50 with a $99/mo minimum and 50 GB included, Pro M (8/64) $2.75 with $199 and 100 GB, Pro L (16/128) $5.50 with $399 and 200 GB. The Pro anchor is Starburst Galaxy Pro at 6 credits x $0.50 = $3.00 per WORKER hour; because Galaxy bills per worker and its worker is about 8 vCPU, the like-for-like anchor is scaled to the size's vCPU (Galaxy-equivalent $1.50 / $3.00 / $6.00), which puts Provisa at parity on Pro S and 8% under on Pro M and Pro L. Enterprise (BYO engine) bills $75 per vCPU-MONTH of the capacity the CUSTOMER operates, with a $999/mo minimum and 100 GB included. It is deliberately not a flat platform fee: removing our compute cost does not remove the scale of what we govern, since a 500-vCPU bank runs every query through the same compiler, governance, catalog and event-listener path as an 8-vCPU team, so a flat fee would price the largest customer the platform will ever have identically to the smallest. The comp here is Starburst ENTERPRISE -- self-managed, licensed per vCPU of the customer's own cluster -- not Galaxy, which prices compute Provisa would be supplying. The rate is 30% of Pro's implied capacity price ($251/vCPU-mo at the Pro M rate): the discount IS the compute the customer brings, sized so that BYO is not the arbitrage every Pro customer takes. Capacity is READ from the customer's coordinator, never self-declared. Egress beyond a tier's included allowance is $0.48/GB, charged ON TOP OF the tier minimum rather than absorbed by it. The minimum floors the COMPUTE line only: a month whose compute falls under the minimum still pays for every gigabyte past the allowance, because the allowance is already the concession and letting the minimum swallow the overage would give away the one line with a real per-unit cost behind it. The allowance exists because Hasura's $0.13/GB parity rate clears only 8% against GCP's own $0.12/GB egress: matching the comp INSIDE the allowance keeps the published number credible while keeping the tier's blended margin intact, and $0.48 is the four-times markup that satisfies [REQ-1453](#REQ-1453) outside it. A minimum is charged on every tier even though neither comp has a base fee, because a signed-up org holds a share of the fixed floor whether or not it queries; the minimum, not the rate, is what makes an idle tenant carry its own weight.
+
+**Use case:** A prospect comparing Provisa against Hasura or Starburst finds the same meter shape at the same or a lower rate, and cannot argue the platform is priced above its category.
+
+**Code:** `pricing_model.py`
+
+**Tests:** —
+
+### REQ-1453 · Pricing & Tiering {#REQ-1453}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+
+Every tier must clear roughly 75% MARGINAL gross margin -- revenue minus the infrastructure cost that customer alone causes -- at the price [REQ-1452](#REQ-1452) publishes. Pro clears 78-89% at every size and usage point because an isolated engine's cost is one node pool attributable to one org. Starter does not clear it unconditionally: a lone Starter org on a shared shard pays for a whole node and clears 58%, while the same org at density 2 / 4 / 8 concurrent orgs clears 78% / 88% / 94%. Shared-cluster DENSITY is therefore the Starter margin lever, and it improves without touching the price, which is the commercial reason the shared lane ([REQ-1450](#REQ-1450)) is the default rather than a discount lane. FULLY-LOADED margin -- marginal cost plus that customer's share of the fixed platform floor -- is explicitly NOT required to hold at customer #1. The floor is about $117/mo live ($19/mo at zero customers, the difference being a warm control plane), and loading it entirely onto the first tenant would price that tenant out of the comparison [REQ-1452](#REQ-1452) has to win. Fully-loaded margin instead crosses 75% at a THRESHOLD: 5 orgs on Starter, 10 on Pro S or Pro M, 2 on Enterprise. A lone Starter clears 2% fully loaded, which is an accepted and bounded condition of the first months, not a defect. Keeping the shared pool scaled to zero when no org is active is what holds that threshold where it is: pinning one n2-highmem-8 above zero takes the floor from $117 to $499/mo and multiplies the org count needed at every tier by 4.3.
+
+**Use case:** Pricing decisions are checked against a rule that distinguishes the cost a customer causes from the cost the platform carries, so an early thin month is not mistaken for a mispriced tier.
+
+**Code:** `pricing_model.py`
+
+**Tests:** —
+
+### REQ-1454 · Pricing & Tiering {#REQ-1454}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Starter's billable unit is the ACTIVE HOUR: any clock hour in which the org submitted at least one query is billed once, regardless of how many queries it submitted or how long they ran. It is deliberately NOT a vCPU-hour, because on a shared shard the nodes host every Starter org at once and no per-org vCPU-hour exists to read; the active hour is the only unit the platform can report truthfully AND the customer can predict. The signal comes from the Trino event listener -- the same per-query attribution [REQ-1450](#REQ-1450) already requires for shared-lane fairness -- not from node-pool uptime, which is what the isolated lane meters ([REQ-1449](#REQ-1449)). Pro and Enterprise keep their own units: Pro bills engine hours read from its dedicated node pool's uptime, and Enterprise bills no compute at all. An hour with no query is not billable on any tier; the tier minimum, not a phantom hour, is what covers an idle month.
+
+**Use case:** A Starter customer's invoice can be reconciled against their own query log, and the platform can produce that invoice from a shared cluster it cannot partition.
+
+**Code:** `provisa/api/trino_setup.py`, `pricing_model.py`
+
+**Tests:** —
+
+### REQ-1455 · Pricing & Tiering {#REQ-1455}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Starter opens with a free evaluation period bounded on BOTH axes: 14 days, 40 active hours, and 25 GB of egress, whichever is reached first. Two bounds rather than one because either alone is open-ended in the other dimension -- a time box with no usage cap subsidises a load test, and a usage cap with no clock leaves a dormant trial holding a floor share indefinitely. The trial runs on the shared lane only; it never provisions an isolated engine. Worst-case acquisition cost is therefore a known number, $23.96 at density 1 falling to $5.62 at density 8, repaid by roughly four days of gross profit at density 4. A payment card is required AT SIGNUP, captured with a zero-dollar authorisation, and the trial ENDS BY CONVERTING to paid Starter rather than by suspending -- the Neon shape. The customer is warned at 80% of either cap and three days before expiry, and may cancel at any point before conversion. This is the opposite of [REQ-1064](#REQ-1064)'s enterprise trial, which auto-downgrades on expiry; the difference is deliberate, because a self-serve tier whose default outcome is suspension trains the customer to treat the platform as disposable. Billing consequence: because the subscription is created WITH a trial period at signup rather than at a deferred checkout, subscription_created fires before any revenue exists. Entitlement must key off subscription STATUS, never off a landed payment, or every trialling org reads as unpaid.
+
+**Use case:** A prospect can complete real due diligence on live data without a purchase order, and becomes a paying customer at the end of it without a second decision.
+
+**Code:** `pricing_model.py`, `provisa/api/billing.py`
+
+**Tests:** —
+
+### REQ-1456 · Pricing & Tiering {#REQ-1456}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Launch ships the SHARED lane and Starter alone. Pro and Enterprise are designed, priced and published, but presented as forthcoming: the marketing site and the in-product plan picker name both tiers with their [REQ-1452](#REQ-1452) rates and state that they are coming, and neither is orderable. Publishing the unshipped rates is the point rather than an oversight -- a lone entry tier with no visible ceiling reads as a toy, and a prospect who can see the isolated and BYO tiers priced at or under Starburst can size their own future spend before committing to Starter. The sequencing follows the cost structure: the shared lane is the only lane whose margin improves with each signup ([REQ-1453](#REQ-1453)), so it is the correct lane to carry the fixed floor first, and it is the lane the isolated tiers are built on top of rather than beside. An interest signal on either forthcoming tier routes to the sales inbox on the [REQ-1052](#REQ-1052) path; it must never provision, because the isolated node pool it implies does not exist at launch.
+
+**Use case:** A launch visitor sees the whole ladder, buys the one rung that exists, and registers interest in the rungs that do not.
+
+**Code:** `provisa-ui/src/pages`, `pricing_model.py`
+
+**Tests:** —
+
+### REQ-1457 · Deployment Topology {#REQ-1457}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+
+Every engine Provisa runs is the SAME container image. A shared shard's coordinator and workers ([REQ-1450](#REQ-1450)), a Pro org's dedicated coordinator at any of the three sizes ([REQ-1452](#REQ-1452)), and the engine an Enterprise customer operates themselves ([REQ-1412](#REQ-1412)) are one build, and the tiers are distinguished by pod count, machine size and configuration -- never by a different artifact. The permitted axes of variation are exactly three: the ROLE the process takes (coordinator versus worker, already the only difference between trino/etc/config.properties and trino/etc/worker/config.properties), the SIZE it is given (heap percentage and the query memory limits derived from it), and the DISCOVERY address it registers against. Anything that would require a second build -- a tier-only plugin, a tier-only patch, a fork for BYO -- is out of bounds, because the moment two images exist the tiers acquire independent release, upgrade and CVE timelines and a customer's engine can be behind the shared one in ways nobody planned. This is what lets [REQ-1452](#REQ-1452) price a linear ladder: n2 bills per vCPU and per GB, so Pro S, M and L cost exactly 1x, 2x and 4x, which is only true while the three sizes are one engine scaled by machine rather than three products. It is also what lets [REQ-1456](#REQ-1456) publish Pro before shipping it -- the engine already exists and runs in production on the shared lane; what does not exist yet is a node pool. One divergence exists today and must be closed by the move to GKE rather than preserved. The isolated provisioner's _JVM_CONFIG (provisa/federation/isolated_provisioner.py) deliberately omits the OpenTelemetry javaagent that trino/etc/jvm.config loads, because the jar reaches the shared cluster on a compose mount at /etc/trino/otel and a missing -javaagent jar aborts the JVM before Trino logs anything. That is a mount artifact, not a design difference: on GKE the agent ships INSIDE the image and the existing -Dotel.javaagent.enabled flag becomes the per-lane switch, so the two lanes stop differing in their JVM at all. Configuration divergence that remains must be deliberate and stated -- the shared cluster's fault-tolerant execution settings (retry-policy=TASK and the killer policy) are absent from a provisioned isolated coordinator, and each such gap is either a decision or a defect, never an accident of two files drifting. Memory limits in particular must be derived from the pod's OWN size and the pool's shape: query.max-memory-per-node fixed at a fraction of heap is wrong on a single-pod engine, where that one node IS the cluster, and the error grows with the size sold.
+
+**Use case:** An operator upgrades Trino once and every tier moves together, and a customer running the BYO engine is running the same binary the platform runs.
+
+**Code:** `provisa/federation/isolated_provisioner.py`, `trino/etc/config.properties`, `trino/etc/worker/config.properties`, `trino/etc/jvm.config`
+
+**Tests:** —

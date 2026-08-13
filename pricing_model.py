@@ -15,7 +15,7 @@ Topology priced here (REQ-1447/1448/1449/1450/1451):
   control plane   one VM + Cloud SQL, off the cluster        (REQ-1451)
   Starter         shared multi-tenant Trino, one GKE cluster (REQ-1450)
   Pro S/M/L       same manifests, single-tenant node pool     (REQ-1449)
-  BYO             customer's own engine, no compute meter
+  Enterprise      customer's own engine, metered on ITS capacity (vCPU)
 
 Three constraints, in priority order, because they pull against each other:
 
@@ -128,7 +128,43 @@ ZERO_CUSTOMER_MO = sum(c for _, c in zero_customer)
 # for a dashboard load. The shared node pool is NOT fixed cost: REQ-1450 scales it
 # to zero when no org is active, which makes it attributable usage.
 CONTROL_PLANE_WARM_MO = E2_STANDARD_4_HR * HOURS_MO
-FIXED_FLOOR_MO = ZERO_CUSTOMER_MO + CONTROL_PLANE_WARM_MO
+
+# Control-plane HA is BASELINE — it is in the shared floor, so Starter and Pro get it
+# without buying it. Availability of the control plane is not a tier feature: every
+# surface (UI, GraphQL, SQL, pgwire, Bolt, Flight) goes through it, so a control-plane
+# outage is a total outage for every org at once, including the ones paying $25. Making
+# it an upsell would mean deliberately operating a platform that is known to have a
+# single point of failure for most of its customers.
+# HA here means a PUBLISHED RECOVERY TIME, not zero downtime. The SLO is minutes, and
+# saying so is the product: an in-flight query dies on failover and the CLIENT RETRIES,
+# exactly as a client retries a database transaction that lost its connection. A customer
+# whose requirement is genuinely never-down runs BYO (REQ-1412) on their own infrastructure
+# and their own redundancy — Provisa does not sell that, and pretending to would be selling
+# an SLO the architecture cannot keep (OSS Trino has ONE coordinator; REQ-1451 keeps ONE
+# control-plane writer because OrgRegistry serialises org rebuilds on an in-process
+# asyncio.Lock, and active-active needs a distributed lock — a project, not a flag).
+#
+# Because the target is minutes and not seconds, there is NO warm standby VM in the floor.
+# An idle e2-standard-4 bills the full $97.82/mo whether it serves a request or not, and a
+# second region would add cross-region replication on top of that — nearly $100/mo of pure
+# insurance to turn a 2-5 minute recovery into a 30-second one nobody is paying for.
+# Nor is a dedicated standby the shape the design wants. MULTIPLE control planes already
+# exist as a first-class idea (REQ-1459 gives Enterprise its own), and REQ-1451's one-writer
+# rule is per ORG, not per fleet: each org is owned by exactly one control plane at a time.
+# So failover is REASSIGNMENT — a surviving plane takes ownership of the orphaned orgs and
+# rebuilds their runtimes — not promotion of an idle twin. The control plane is a stateless
+# process against Cloud SQL; recovery is a reschedule plus a runtime rebuild, minutes, at
+# ZERO idle compute, and the spare capacity is a plane that is already carrying paying work.
+# What money genuinely must buy is the DATABASE: an f1-micro's zone going down is a restore
+# measured in tens of minutes, so the baseline DB moves to a regional pair. Cloud SQL HA
+# cannot use db-f1-micro at all — shared-core tiers have no regional configuration — so it
+# lands on the smallest dedicated-core tier, billed in both zones.
+CLOUDSQL_HA_HR = 0.1400        # db-custom-1-3840, REGIONAL (both zones billed)
+CP_RECOVERY_MINUTES = 5        # published control-plane RTO: reschedule + warm start
+ENGINE_RECOVERY_MINUTES = 5    # published engine RTO without the Pro HA add-on (cold pod)
+ENGINE_HA_RECOVERY_SECONDS = 30  # with it: repoint to a running standby coordinator
+CONTROL_PLANE_HA_MO = (CLOUDSQL_HA_HR - CLOUDSQL_F1_MICRO_HR) * HOURS_MO
+FIXED_FLOOR_MO = ZERO_CUSTOMER_MO + CONTROL_PLANE_WARM_MO + CONTROL_PLANE_HA_MO
 
 # ------------------------- 2. PRICE LIST (set at/under the comps) -------------------------
 # Starter mirrors Hasura's SHAPE as well as its rate: active-hours, not vCPU-hours.
@@ -154,8 +190,83 @@ PRO = {
               "rate": 5.50, "egress": 0.13, "incl_units": 0, "incl_gb": 200,
               "minimum": 399.0},
 }
-BYO = {"label": "BYO", "unit": "none", "rate": 0.0, "egress": 0.13,
-       "incl_units": 0, "incl_gb": 100, "minimum": 299.0}
+# Enterprise (BYO engine) does NOT get a flat platform fee. Removing our compute
+# cost does not remove the scale of what we govern: a 500-vCPU customer runs every
+# query through the same compiler, governance, catalog and event-listener path as
+# an 8-vCPU one. A flat fee therefore prices the largest customer we will ever have
+# the same as the smallest — the one place the whole model leaks. The meter is the
+# capacity of the engine THEY operate, read from the coordinator (system.runtime.nodes),
+# not self-declared. Comp is Starburst ENTERPRISE (self-managed, licensed per vCPU of
+# the customer's own cluster), not Galaxy — Galaxy prices compute we would be selling.
+ENTERPRISE_VCPU_MO = 75.0
+BYO = {"label": "Enterprise", "unit": "vCPU-mo", "rate": ENTERPRISE_VCPU_MO, "egress": 0.13,
+       "incl_units": 0, "incl_gb": 100, "minimum": 999.0}
+
+# Pro's own implied capacity price, for calibration: it is what a customer pays us
+# per vCPU when we also supply the compute. Enterprise must land well under it, since
+# the customer supplies the machine — but not so far under that BYO becomes the
+# arbitrage everyone takes.
+PRO_VCPU_MO = PRO["Pro M"]["rate"] * HOURS_MO / PRO["Pro M"]["vcpu"]
+
+# Every self-serve tier has a CEILING. Past it the tier stops being a price list and
+# becomes a contract: the customer is not cut off, the meter keeps running at the
+# published rate, and a negotiated arrangement replaces it. The ceiling exists because
+# past these points the published price is either the wrong shape (a customer needing
+# HA, multi-region or a private VPC is buying an operational commitment, not hours) or
+# simply wrong (a 500-vCPU BYO customer at a self-serve rate is a discount nobody
+# asked for). Hitting one is a sales trigger, never a service interruption.
+CAPS = {
+    "Starter": {
+        "ceiling": "400 active-hr/mo, 1 shared shard, per-query caps of REQ-1044",
+        "converts_to": "Pro (self-serve upgrade, no negotiation)",
+    },
+    "Pro": {
+        "ceiling": "Pro L (16 vCPU), ONE engine, single region; the HA add-on is engine-only",
+        "converts_to": (
+            "negotiated: multi-engine, multi-region, private networking, "
+            "an SLA tighter than the published recovery targets"
+        ),
+    },
+    "Enterprise": {
+        "ceiling": "128 vCPU of customer-operated capacity",
+        "converts_to": "negotiated: capacity-band licence, SLA, support tier",
+    },
+}
+SELF_SERVE_VCPU_CEILING = 128
+ENT_EXAMPLE_VCPU = 64          # a mid-size customer-operated cluster
+
+# Enterprise may take its own CONTROL PLANE, not just its own engine — a dedicated
+# VM, a dedicated Cloud SQL, and its own GKE cluster, none of it shared with any other
+# tenant. Two things make this the natural top of the ladder rather than an exotic
+# option. It is the only configuration in which the customer shares NOTHING with
+# another org, which is the actual ask behind most enterprise security review; and it
+# lifts them clear of REQ-1451's single-replica control plane, so their org's runtime
+# rebuilds no longer queue behind anyone else's. Its cost is the whole platform floor
+# again, plus the GKE management fee, because the free-tier zonal cluster is already
+# spent on the shared one.
+DEDICATED_CP_MO = FIXED_FLOOR_MO + GKE_CLUSTER_HR * HOURS_MO
+DEDICATED_CP_PRICE_MO = round(DEDICATED_CP_MO * MARKUP, -1)
+
+# Pro HA is an ADD-ON, and it is straightforward for one specific reason: a Trino
+# coordinator holds no data, and its catalogs are reissued from the org's config on
+# every runtime build (isolated_provisioner.deprovision docstring). A standby is
+# therefore just a second pod plus a repoint — no replication, no state to move.
+# What it CANNOT be is zero-downtime. One coordinator means in-flight queries die on
+# failover, because OSS Trino has no multi-coordinator mode. The add-on sells RECOVERY
+# TIME (seconds instead of a cold pod start), not query survival, and it covers the
+# ENGINE only: a Pro org's control plane is still the shared single-replica one
+# (REQ-1451), so a control-plane outage is untouched by it. Selling it as "HA" without
+# those two sentences is selling something the engine cannot do.
+# The standby is pinned — a scale-to-zero standby is not a standby — so it costs a full
+# second node, and is therefore billed at the SAME published engine-hour rate as the
+# primary. That keeps the margin identical to a normal Pro engine and needs no separate
+# rate card.
+PRO_HA_MULTIPLIER = 2.0        # primary + pinned standby, both at the published rate
+
+# Enterprise's control plane is the same active-passive design as the baseline
+# (CONTROL_PLANE_HA_MO above), just dedicated to one tenant rather than shared.
+DEDICATED_CP_HA_MO = DEDICATED_CP_MO + CONTROL_PLANE_HA_MO
+DEDICATED_CP_HA_PRICE_MO = round(DEDICATED_CP_HA_MO * MARKUP, -1)
 
 # Egress beyond the included allowance leaves comp parity, because parity itself
 # only clears 8% on GCP egress. The allowance is sized so a normal customer never
@@ -171,8 +282,15 @@ EGRESS_OVERAGE = round(COST_EGRESS_GB * MARKUP, 2)
 TRIAL_DAYS = 14
 TRIAL_ACTIVE_HRS = 40
 TRIAL_EGRESS_GB = 25
-TRIAL_CARD_REQUIRED = False   # no card: maximises top-of-funnel, and the caps are
-                              # what bound the exposure instead of the card.
+TRIAL_CARD_REQUIRED = True    # card captured at signup with a $0 authorisation.
+# Conversion is Neon-shaped: the trial ends by EXPIRY or by CAP, whichever comes
+# first, and at that boundary the org AUTO-CONVERTS to paid Starter rather than
+# being suspended. The card is what makes that a continuation instead of a second
+# signup — hitting a wall mid-evaluation is the highest-drop-off moment there is.
+# The caps still exist with a card on file: they bound the trial's cost, and the
+# card bounds who can repeat it. One trial per card and per org.
+TRIAL_WARN_AT_CAP_FRACTION = 0.80
+TRIAL_WARN_DAYS_BEFORE_EXPIRY = 3
 
 # Shared-cluster density: how many Starter orgs are concurrently active on one
 # shared node. This divides the node cost per org and is the single largest driver
@@ -185,9 +303,13 @@ def starter_cost_hr(density):
 
 
 def bill(plan, units, gb):
+    # The minimum floors the COMPUTE line only. Egress overage is additive on top of it,
+    # never absorbed by it: the allowance is already the concession, and letting a
+    # below-minimum month swallow the overage hands out the one line that has a real
+    # per-GB cost behind it (COST_EGRESS_GB) for nothing.
     over_g = max(0, gb - plan["incl_gb"])
-    usage = units * plan["rate"] + over_g * EGRESS_OVERAGE
-    return max(plan["minimum"], usage)
+    compute = max(plan["minimum"], units * plan["rate"])
+    return compute + over_g * EGRESS_OVERAGE
 
 
 def marginal_cost(unit_cost_hr, units, gb):
@@ -225,10 +347,14 @@ rows = [STARTER] + [PRO[k] for k in ("Pro S", "Pro M", "Pro L")] + [BYO]
 for p in rows:
     if p["label"] == "Starter":
         anchor, delta = HASURA_ACTIVE_HR, p["rate"] / HASURA_ACTIVE_HR - 1
-    elif p["label"] == "BYO":
+    elif p["label"] == "Enterprise":
         anchor, delta = None, None
     else:
-        anchor, delta = GALAXY_WORKER_HR, p["rate"] / GALAXY_WORKER_HR - 1
+        # Galaxy bills per WORKER; its worker is ~8 vCPU. Compare like for like by
+        # scaling the anchor to the size's vCPU, or Pro L looks expensive when it is
+        # simply two workers' worth of engine.
+        anchor = GALAXY_WORKER_HR * p["vcpu"] / SHARED_NODE_VCPU
+        delta = p["rate"] / anchor - 1
     a = f"{anchor:.2f}" if anchor else "—"
     d = f"{delta:+.0%}" if delta is not None else "—"
     r = f"{p['rate']:.2f}" if p["unit"] != "none" else "—"
@@ -286,7 +412,7 @@ scenarios = [
     ("Starter @ 160 active-hr, density=N", None),
     ("Pro S @ 160 engine-hr", "Pro S"),
     ("Pro M @ 160 engine-hr", "Pro M"),
-    ("BYO", "BYO"),
+    ("Enterprise @ 64 vCPU", "BYO"),
 ]
 print(f"  {'N orgs':>7} " + " ".join(f"{s[0].split(' @')[0].split(',')[0]:>12}" for s in scenarios))
 crossover = {}
@@ -299,7 +425,8 @@ for n in (1, 2, 3, 5, 8, 10, 15, 25, 50):
             b = bill(STARTER, 160, STARTER["incl_gb"])
             c = marginal_cost(c_hr, 160, STARTER["incl_gb"]) + share
         elif key == "BYO":
-            b = bill(BYO, 0, BYO["incl_gb"])
+            b = bill(BYO, ENT_EXAMPLE_VCPU, BYO["incl_gb"])
+            # We supply no compute here; the marginal cost is egress plus the floor share.
             c = marginal_cost(0.0, 0, BYO["incl_gb"]) + share
         else:
             p = PRO[key]
@@ -326,16 +453,53 @@ print(f"  it is carrying the entire ${FIXED_FLOOR_MO:.0f}/mo floor by itself. Th
 print("  not mispricing: the price already clears 75% marginally at any real density.")
 print()
 print("  What the ramp actually needs is not a higher price, it is a denominator.")
-print(f"  The floor is small enough (${FIXED_FLOOR_MO:.0f}/mo) that a single Pro M or BYO org")
+print(f"  The floor is small enough (${FIXED_FLOOR_MO:.0f}/mo) that a single Pro M or Enterprise org")
 print("  covers it outright, so the crossover arrives at a customer count in single")
 print("  digits rather than at scale.")
 print()
 print(f"  Do NOT pin the shared node pool above zero. Pinned, it adds "
       f"${shared_node_hr * HOURS_MO:.0f}/mo of")
 print("  fixed cost with no customer to attribute it to, which pushes the crossover")
-print(f"  from single digits to roughly {int((FIXED_FLOOR_MO + shared_node_hr * HOURS_MO) / (FIXED_FLOOR_MO / max(1, crossover.get('Pro M @ 160 engine-hr', 1)))) or 1}x further out. This is why REQ-1450 was amended.")
+print(f"  from a ${FIXED_FLOOR_MO:.0f} floor to a ${FIXED_FLOOR_MO + shared_node_hr * HOURS_MO:.0f} one — "
+      f"{(FIXED_FLOOR_MO + shared_node_hr * HOURS_MO) / FIXED_FLOOR_MO:.1f}x the denominator")
+print("  needed at every tier. This is why REQ-1450 was amended.")
 
-rule("7. WHERE THE COMPS CONSTRAIN THE MARGIN RULE")
+rule("7. STARTER FREE TRIAL — bounded due-diligence window, not a free tier")
+print(f"  {TRIAL_DAYS} days, capped at {TRIAL_ACTIVE_HRS} active-hr and "
+      f"{TRIAL_EGRESS_GB} GB, shared lane only.")
+print(f"  card at signup: {'required ($0 auth)' if TRIAL_CARD_REQUIRED else 'not required'}")
+print(f"  ends on: expiry OR cap, whichever first -> AUTO-CONVERTS to paid Starter")
+print(f"  warnings: at {TRIAL_WARN_AT_CAP_FRACTION:.0%} of cap, and "
+      f"{TRIAL_WARN_DAYS_BEFORE_EXPIRY} days before expiry")
+print(f"  first paid month lands at the ${STARTER['minimum']:.0f} minimum if usage stays low")
+print()
+print(f"  {'density':>7} {'worst-case cost':>16} {'  = CAC per trial'}")
+for d in DENSITIES:
+    c = TRIAL_ACTIVE_HRS * starter_cost_hr(d) + TRIAL_EGRESS_GB * COST_EGRESS_GB
+    print(f"  {d:7d} {c:16.2f}")
+worst = TRIAL_ACTIVE_HRS * starter_cost_hr(1) + TRIAL_EGRESS_GB * COST_EGRESS_GB
+print()
+print(f"  Worst case is ${worst:.2f} per trial — a trialist alone on a shared node")
+print(f"  burning every capped hour. At $500/mo of trial budget that is "
+      f"{int(500 / worst)} concurrent")
+print("  trials; at realistic density it is several times more.")
+print()
+b160 = bill(STARTER, 160, STARTER["incl_gb"])
+print(f"  Payback: a converted Starter at ${b160:.0f}/mo repays the worst-case trial in")
+print(f"  {worst / (b160 - marginal_cost(starter_cost_hr(4), 160, STARTER['incl_gb'])) * 30:.1f} days of gross profit at density 4.")
+print()
+print("  The caps are the design, not the duration. An expiring window with no usage")
+print("  cap still lets one trialist run a shared node flat out for two weeks, which")
+print("  is the same unbounded subsidy a free tier would be — just shorter.")
+print()
+print("  Billing-side consequence: this is a Lemon Squeezy subscription created WITH a")
+print("  trial period at signup, not a checkout deferred until the trial ends. The")
+print("  subscription exists from day one, the card is on file from day one, and the")
+print("  conversion is LS moving it out of trial — no second checkout to drop off at.")
+print("  It also means the subscription_created webhook fires before any revenue, so")
+print("  entitlement must key off subscription STATUS, not off a payment having landed.")
+
+rule("8. WHERE THE COMPS CONSTRAIN THE MARGIN RULE")
 print(f"  Egress at Hasura parity (${HASURA_EGRESS_GB:.2f}/GB) clears only "
       f"{(HASURA_EGRESS_GB - COST_EGRESS_GB) / HASURA_EGRESS_GB:.0%} on GCP egress.")
 print(f"  It is priced at parity INSIDE the included allowance and at "
@@ -352,3 +516,92 @@ if pro_fail:
     print(f"  Pro marginal-margin failures: {pro_fail}")
 else:
     print("  Pro clears 75% marginally at every usage point tested, at every size.")
+
+rule("9. ENTERPRISE — capacity meter, not a flat fee")
+print(f"  Enterprise bills ${ENTERPRISE_VCPU_MO:.0f} per vCPU-month of the capacity the CUSTOMER")
+print(f"  operates, read from their coordinator (system.runtime.nodes), with a")
+print(f"  ${BYO['minimum']:.0f}/mo minimum. A flat platform fee was the model's one real leak:")
+print("  it priced a 500-vCPU bank the same as an 8-vCPU team, while both run every")
+print("  query through the same compiler, governance and catalog path.")
+print()
+print(f"  Pro's implied capacity price (we supply the compute) : ${PRO_VCPU_MO:,.0f}/vCPU-mo")
+print(f"  Enterprise capacity price (customer supplies compute): ${ENTERPRISE_VCPU_MO:,.0f}/vCPU-mo")
+print(f"  ratio: {ENTERPRISE_VCPU_MO / PRO_VCPU_MO:.0%} of Pro — the discount IS the compute they bring,")
+print("  and it is deliberately not so deep that BYO becomes the arbitrage everyone takes.")
+print()
+print(f"  {'customer vCPU':>14} {'$/mo':>10} {'$/yr':>12}  {'self-serve?':>12}")
+for v in (8, 16, 32, 64, 128, 256, 512):
+    m = max(BYO["minimum"], v * ENTERPRISE_VCPU_MO)
+    ok = "yes" if v <= SELF_SERVE_VCPU_CEILING else "NEGOTIATED"
+    print(f"  {v:14d} {m:10,.0f} {m * 12:12,.0f}  {ok:>12}")
+print()
+print(f"  Dedicated control plane (own VM, own Cloud SQL, own GKE cluster):")
+print(f"    cost ${DEDICATED_CP_MO:,.2f}/mo -> ${DEDICATED_CP_PRICE_MO:,.0f}/mo at the {MARKUP:.0f}x markup,")
+print("    ADDED to the capacity licence. It is the only configuration where the")
+print("    customer shares nothing with another org, and it lifts them clear of the")
+print("    REQ-1451 single-replica control plane, so their rebuilds queue behind nobody.")
+print(f"    Its own floor is a full platform floor plus ${GKE_CLUSTER_HR * HOURS_MO:.0f}/mo of GKE management,")
+print("    because the free-tier zonal cluster is already spent on the shared one.")
+print()
+print("  Dedicated control plane WITH the regional database (isolation, not a")
+print("  different availability class):")
+print(f"    cost ${DEDICATED_CP_HA_MO:,.2f}/mo -> ${DEDICATED_CP_HA_PRICE_MO:,.0f}/mo at the {MARKUP:.0f}x markup")
+print("    What Enterprise buys here is ISOLATION. Availability is already baseline,")
+print("    and the recovery target is the same one everybody else gets.")
+
+rule("9b. WHAT 'HA' MEANS HERE — a published recovery time, not zero downtime")
+print("  The SLO is stated in MINUTES and sold as minutes. Every tier gets it; none of")
+print("  it is an upsell, because a control-plane outage takes out every org at once.")
+print()
+print(f"  {'surface':<34} {'recovery target':>18}  who")
+print(f"  {'control plane (reassign + rebuild)':<34} {f'~{CP_RECOVERY_MINUTES} min':>18}  every tier, baseline")
+print(f"  {'admin DB (regional Cloud SQL)':<34} {'~1-2 min':>18}  every tier, baseline")
+print(f"  {'engine, no add-on (cold pod)':<34} {f'~{ENGINE_RECOVERY_MINUTES} min':>18}  Starter + Pro")
+print(f"  {'engine, Pro HA add-on (repoint)':<34} {f'~{ENGINE_HA_RECOVERY_SECONDS}s':>18}  Pro only")
+print()
+print("  Three things follow, and all three go in the literature rather than the")
+print("  footnotes, because an SLO nobody stated is an SLO the customer invents:")
+print("   1. A FAILOVER KILLS IN-FLIGHT QUERIES. HA does not mean a query cannot burp.")
+print("      The contract is the same one a database gives a client whose transaction")
+print("      lost its connection: the query fails cleanly and THE CLIENT RETRIES. Every")
+print("      surface we ship (GraphQL, SQL, pgwire, Bolt, Flight) is retry-safe on a")
+print("      read; committing to more would mean claiming an OSS Trino coordinator can")
+print("      hand off a running query, and it cannot.")
+print("   2. NEVER-DOWN IS BYO. A customer whose actual requirement is continuous")
+print("      availability runs Enterprise/BYO on their own engine, their own redundancy,")
+print("      their own operators. That is a real answer to a real requirement — and it")
+print("      is a better one than selling them a managed SLO we would have to break.")
+print("   3. Starter gets NO engine HA, deliberately. A shared shard is one coordinator;")
+print("      if it restarts, every Starter org on it takes a cold start. That is the")
+print("      right trade at a $25 minimum — the tier is SMBs and tinkerers, and a pinned")
+print("      standby shard would cost more than the orgs sitting on it pay.")
+print()
+print("  PRO HA is an ADD-ON that buys ONE thing: recovery time on the ENGINE, seconds")
+print("  instead of a cold pod start. It is simple to build — a coordinator holds no data")
+print("  and reissues its catalogs from the org's config on every runtime build, so a")
+print("  standby is a second pod plus a repoint, no replication, no state to move.")
+print(f"    price: {PRO_HA_MULTIPLIER:.0f}x the size's engine-hour rate (primary + PINNED standby),")
+print("           because a scale-to-zero standby is not a standby. Same rate, same margin.")
+for label, vcpu, gb in SIZES:
+    p_ = PRO[label]
+    print(f"      {label:6} ${p_['rate']:.2f}/hr -> ${p_['rate'] * PRO_HA_MULTIPLIER:.2f}/hr HA "
+          f"(${p_['rate'] * PRO_HA_MULTIPLIER * HOURS_MO:,.0f}/mo at 24x7)")
+print("    It does NOT shorten the control-plane target and does NOT stop a query from")
+print("    dying on failover. Marketing it as zero downtime is the one claim to refuse.")
+
+rule("10. CAPS — where the price list stops and a contract starts")
+print("  Every tier has a ceiling. Past it the customer is NOT cut off: the meter keeps")
+print("  running at the published rate and a negotiated arrangement replaces it. A cap")
+print("  is a sales trigger, never a service interruption — cutting off the largest")
+print("  customer at the moment they commit is the one outcome worth engineering against.")
+print()
+for tier, c in CAPS.items():
+    print(f"  {tier}")
+    print(f"    ceiling : {c['ceiling']}")
+    print(f"    becomes : {c['converts_to']}")
+print()
+print("  Starter's ceiling converts SELF-SERVE (to Pro) rather than to a negotiation,")
+print("  because a growing Starter org is the funnel working, not an exception to it.")
+print("  Pro's and Enterprise's ceilings convert to a contract, because past them the")
+print("  customer is buying an operational commitment — HA, regions, private networking,")
+print("  an SLA — which is not a thing an hourly rate can express.")
