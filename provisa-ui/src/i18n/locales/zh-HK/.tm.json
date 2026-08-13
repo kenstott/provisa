@@ -3103,5 +3103,15 @@
   "zh-HK/tablePreview.json::tablePreview.provEndpoint": "API endpoint",
   "zh-HK/tablePreview.json::tablePreview.provDefinition": "View definition",
   "zh-HK/tablePreview.json::tablePreview.provParams": "Parameters",
-  "zh-HK/tablePreview.json::tablePreview.provStatement": "Statement executed"
+  "zh-HK/tablePreview.json::tablePreview.provStatement": "Statement executed",
+  "zh-HK/tablesPage.json::tablesPage.runNow": "Run Now",
+  "zh-HK/tablesPage.json::tablesPage.runNowTitle": "Rebuild this table's data now, whether or not anything changed",
+  "zh-HK/tablesPage.json::tablesPage.runNowModalTitle": "Run {{table}} now",
+  "zh-HK/tablesPage.json::tablesPage.runNowReasonLabel": "Why",
+  "zh-HK/tablesPage.json::tablesPage.runNowReasonPlaceholder": "e.g. bad overnight load",
+  "zh-HK/tablesPage.json::tablesPage.runNowReasonHelp": "Recorded on the forced run so the estate's history says who rebuilt this, and why.",
+  "zh-HK/tablesPage.json::tablesPage.runNowSubmit": "Run now",
+  "zh-HK/tablesPage.json::tablesPage.runNowQueuing": "Queuing...",
+  "zh-HK/tablesPage.json::tablesPage.runNowQueued": "Run queued for {{table}}.",
+  "zh-HK/tablesPage.json::tablesPage.runNowCancel": "Cancel"
 }

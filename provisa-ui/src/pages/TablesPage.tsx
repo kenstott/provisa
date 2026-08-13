@@ -12,7 +12,18 @@ import { useState, useEffect, Fragment, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Network, ArrowUp, ArrowDown, ArrowUpDown, Layers, X } from "lucide-react";
-import { ActionIcon, Alert, Badge, Button, Group, Modal, Table, Text, Title } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Modal,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
 import { fetchSettings, profileTable, runSql } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
@@ -33,6 +44,7 @@ import {
   useUpdateTableNaming,
   useDeployViewToDb,
   useSuggestTableAlias,
+  useForceRegen,
   useAllRelationships,
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useInvalidateFileSource } from "../hooks/useAdminOpsQueries";
@@ -81,6 +93,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { invalidateFileSource } = useInvalidateFileSource();
+  const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
   const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
@@ -134,6 +147,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   >({});
   const [purging, setPurging] = useState<Record<number, boolean>>({});
   const [invalidating, setInvalidating] = useState<Record<number, boolean>>({});
+  // REQ-968 forced run: the table the operator is rebuilding, and the reason the server records on
+  // the event. The reason is asked for rather than defaulted — a forced rebuild with no why is the
+  // one the estate's history cannot explain later.
+  const [regenTable, setRegenTable] = useState<RegisteredTable | null>(null);
+  const [regenReason, setRegenReason] = useState("");
+  const [regenning, setRegenning] = useState(false);
+  const [regenQueued, setRegenQueued] = useState<string | null>(null);
   const [deploying, setDeploying] = useState<Record<number, boolean>>({});
   const [deployMsg, setDeployMsg] = useState<Record<number, { success: boolean; message: string }>>(
     {},
@@ -247,6 +267,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setInvalidating((prev) => ({ ...prev, [tableId]: false }));
+    }
+  };
+
+  const handleForceRegen = async () => {
+    if (regenTable === null) return;
+    const table = regenTable;
+    setRegenning(true);
+    setError(null);
+    try {
+      const result = await forceRegen(table.id, regenReason);
+      if (!result.success) throw new Error(result.message);
+      setRegenQueued(
+        translate("tablesPage.runNowQueued", {
+          table: `${table.schemaName}.${table.tableName}`,
+        }),
+      );
+      setRegenTable(null);
+      setRegenReason("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRegenning(false);
     }
   };
 
@@ -471,6 +513,17 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       {error && (
         <Alert color="red" mb="md" data-testid="tables-error">
           {error}
+        </Alert>
+      )}
+      {regenQueued && (
+        <Alert
+          color="blue"
+          mb="md"
+          withCloseButton
+          onClose={() => setRegenQueued(null)}
+          data-testid="tables-regen-queued"
+        >
+          {regenQueued}
         </Alert>
       )}
 
@@ -918,8 +971,27 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             srcType === "openapi" ||
                             srcType === "grpc_remote";
                           const isFileBacked = srcType === "sqlite";
+                          // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
+                          // The server derives that from the same policy resolution (REQ-1143) this
+                          // reads, so the button appears exactly where the mutation would accept it.
+                          const serving = t.refreshPolicySummary?.serving;
+                          const isLanded = serving === "scheduled" || serving === "frozen";
                           return (
                             <>
+                              {isLanded && (
+                                <Button
+                                  size="compact-xs"
+                                  variant="default"
+                                  title={translate("tablesPage.runNowTitle")}
+                                  onClick={() => {
+                                    setRegenReason("");
+                                    setRegenTable(t);
+                                  }}
+                                  data-testid={`tables-run-now-${t.tableName}`}
+                                >
+                                  {translate("tablesPage.runNow")}
+                                </Button>
+                              )}
                               {hasCacheable && (
                                 <Button
                                   size="compact-xs"
@@ -1097,6 +1169,37 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           }}
           onCancel={() => setShowModeling(false)}
         />
+      </Modal>
+      <Modal
+        opened={regenTable !== null}
+        onClose={() => setRegenTable(null)}
+        title={translate("tablesPage.runNowModalTitle", {
+          table: regenTable ? `${regenTable.schemaName}.${regenTable.tableName}` : "",
+        })}
+        data-testid="run-now-modal"
+      >
+        <TextInput
+          label={translate("tablesPage.runNowReasonLabel")}
+          placeholder={translate("tablesPage.runNowReasonPlaceholder")}
+          description={translate("tablesPage.runNowReasonHelp")}
+          value={regenReason}
+          onChange={(e) => setRegenReason(e.currentTarget.value)}
+          data-testid="run-now-reason"
+        />
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => setRegenTable(null)}>
+            {translate("tablesPage.runNowCancel")}
+          </Button>
+          <Button
+            onClick={handleForceRegen}
+            disabled={regenReason.trim() === "" || regenning}
+            data-testid="run-now-submit"
+          >
+            {regenning
+              ? translate("tablesPage.runNowQueuing")
+              : translate("tablesPage.runNowSubmit")}
+          </Button>
+        </Group>
       </Modal>
       {showErd && (
         <ErdModal

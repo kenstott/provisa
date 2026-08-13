@@ -1638,6 +1638,74 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             params={"table": table_id},
         )
 
+    # ── Admin: Forced Regen ──
+
+    @strawberry.mutation
+    async def force_regen(self, table_id: int, reason: str) -> MutationResult:  # REQ-968
+        """Recompute one table's landed rows ON DEMAND, bypassing the REQ-958/981 change gate.
+
+        THE SCOPE IS DERIVED, never asked of the operator: a derived view recomputes from its own SQL
+        (``node``) while a landed source re-lands and cascades to its dependents (``source``) — the
+        operator knows they want this table rebuilt, not which kind of node the event loop thinks it
+        is. A table that federates LIVE has no landed rows to regenerate, so it is refused rather than
+        given an event nothing will ever claim. The reason is REQ-968's audit why-tag and rides on the
+        posted event.
+        """
+        from provisa.api.app import state
+        from provisa.api.admin._refresh_summary import _resolve_engine
+        from provisa.events import injector
+        from provisa.federation.engine import UnreachableSource
+        from provisa.federation.strategy import Strategy, federate
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.schema_name,
+                        registered_tables.c.table_name,
+                        registered_tables.c.source_id,
+                    ).where(registered_tables.c.id == table_id)
+                )
+            ).fetchone()
+            if row is None:
+                return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
+            schema_name, table_name, source_id = row[0], row[1], row[2]
+            node = f"{schema_name}.{table_name}"
+            if state.mv_registry.get(f"view-{table_name}") is not None:
+                scope = "node"  # a derived view: recompute its SQL without re-landing its inputs
+            else:
+                scope = "source"
+                engine = _resolve_engine()
+                if engine is None:
+                    return MutationResult(success=False, message="Federation engine is not ready", code="schema.engine_not_ready", params={"table": node})
+                # The live config's own Source model — the same object the event loop classifies from,
+                # so this answer and the DAG's cannot disagree.
+                src = next(
+                    (s for s in (state.config.sources if state.config else []) if s.id == source_id),
+                    None,
+                )
+                if src is None:
+                    return MutationResult(success=False, message=f"Source {source_id!r} not found", code="schema.source_not_found", params={"source": source_id})
+                try:
+                    landed = federate(src, engine) is Strategy.MATERIALIZED
+                except UnreachableSource:
+                    # The source is down. Its replica is a frozen snapshot (REQ-1143), and a forced
+                    # re-land is exactly how an operator retries the load once it is back.
+                    landed = True
+                if not landed:
+                    return MutationResult(success=False, message=f"{node} federates live — it has no landed rows to regenerate", code="schema.table_not_landed", params={"table": node})
+            try:
+                event_id = await injector.force_regen(conn, scope=scope, node=node, reason=reason)
+            except ValueError as exc:  # REQ-968 refuses a missing reason / unknown scope, loudly
+                return MutationResult(success=False, message=str(exc), code="schema.regen_refused", params={"table": node})
+        return MutationResult(
+            success=True,
+            message=f"Regen queued for {node}",
+            code="schema.regen_queued",
+            params={"table": node, "scope": scope, "event": event_id},
+        )
+
     # ── Admin: MV Management ──
 
     @strawberry.mutation

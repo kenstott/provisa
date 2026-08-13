@@ -88,6 +88,7 @@ import {
   PurgeCache,
   UpdateSourceCache,
   UpdateTableCache,
+  ForceRegen,
   UpdateSourcePreferMaterialized,
   UpdateTablePreferMaterialized,
   UpdateSourceLoadProtection,
@@ -708,6 +709,19 @@ export function useUpdateTableCache() {
     updateTableCache: async (tableId: number, cacheTtl: number | null) => {
       const result = await updateTableCache({ variables: { tableId, cacheTtl } });
       return (result.data?.updateTableCache ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useForceRegen() {
+  // REQ-968: the reason is the audit why-tag the server records on the forced event, so it is a
+  // required argument here rather than an optional note the caller may omit.
+  const [forceRegen, { loading }] = useMutation<{ forceRegen: MutationResult }>(ForceRegen);
+  return {
+    forceRegen: async (tableId: number, reason: string) => {
+      const result = await forceRegen({ variables: { tableId, reason } });
+      return (result.data?.forceRegen ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };

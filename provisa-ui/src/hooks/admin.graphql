@@ -719,6 +719,12 @@ mutation UpdateTableCache($tableId: Int!, $cacheTtl: Int) {
   }
 }
 
+mutation ForceRegen($tableId: Int!, $reason: String!) {
+  forceRegen(tableId: $tableId, reason: $reason) {
+    ...MutationResult
+  }
+}
+
 mutation UpdateSourcePreferMaterialized($sourceId: String!, $preferMaterialized: Boolean!) {
   updateSourcePreferMaterialized(sourceId: $sourceId, preferMaterialized: $preferMaterialized) {
     ...MutationResult
