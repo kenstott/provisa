@@ -370,6 +370,12 @@ export default defineConfig({
         // Same values tests/conftest.py and tests/integration/isolated_server.py already export.
         PROVISA_ENGINE_CONTROL_PLANE_HOST: "postgres",
         PROVISA_ENGINE_CONTROL_PLANE_PORT: "5432",
+        // Same split for the object store: the app dials MinIO on a host-published port, while
+        // the Iceberg `otel` catalog spec is dialed by Trino from inside the compose network.
+        // Without this, seed_ops_trino's CREATE TABLE spends ~163 s retrying
+        // s3://provisa-otel/... against a localhost:9000 that does not exist in Trino's
+        // container, then fails ICEBERG_FILESYSTEM_ERROR and blows the 300 s webServer budget.
+        PROVISA_ENGINE_OTEL_S3_ENDPOINT: "http://minio:9000",
         ...controlPlaneEnv,
       },
       reuseExistingServer: !process.env.CI,

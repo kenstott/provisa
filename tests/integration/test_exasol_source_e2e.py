@@ -200,6 +200,24 @@ def _exaplus(container_id: str, statement: str, fingerprint: str) -> str:
     return proc.stdout
 
 
+def _wait_for_fingerprint(container_id: str, deadline: float) -> str:
+    """``tls_fingerprint`` once 8563 answers at all.
+
+    Compose reporting the container healthy only means the supervisor is up; the DB instance binds
+    8563 minutes later, and until it does exaplus exits with "java.net.ConnectException: Connection
+    refused" and no fingerprint to scrape. Probing once ahead of the DDL retry loop turned that
+    boot window into a failed run, so the probe shares the same deadline as the DDL it precedes.
+    """
+    last_err: RuntimeError | None = None
+    while time.monotonic() < deadline:
+        try:
+            return tls_fingerprint(container_id)
+        except RuntimeError as e:
+            last_err = e
+            time.sleep(3)
+    raise RuntimeError(f"exasol never offered a certificate fingerprint: {last_err}")
+
+
 def _seed_exasol() -> str:
     """Create the PROVISA.WIDGETS schema/table and insert 3 rows, retrying while the engine
     finishes booting right after the healthcheck first passes.
@@ -208,8 +226,8 @@ def _seed_exasol() -> str:
     ``Source`` — the engine reaches the same TLS listener over JDBC and pins the same certificate.
     """
     container_id = _exasol_container_id()
-    fingerprint = tls_fingerprint(container_id)
     deadline = time.monotonic() + 300
+    fingerprint = _wait_for_fingerprint(container_id, deadline)
     last_err: RuntimeError | None = None
     while time.monotonic() < deadline:
         try:

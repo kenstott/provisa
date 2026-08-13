@@ -6,9 +6,7 @@ WORKDIR /src
 # Fix: decodePeerIdentity crashes when password is empty (ArrayIndexOutOfBoundsException)
 # The token is base64("user:password") — when no password, split produces length 1
 COPY fix-decode-peer-identity.patch /tmp/
-RUN git apply /tmp/fix-decode-peer-identity.patch || \
-    sed -i 's/return new ImmutablePair<>(parts\[0\], parts\[1\]);/String password = parts.length > 1 ? parts[1] : ""; return new ImmutablePair<>(parts[0], password);/' \
-    src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
+RUN git apply /tmp/fix-decode-peer-identity.patch
 
 # Separate dependency download so it's cached independently of source changes
 RUN mvn dependency:go-offline -q

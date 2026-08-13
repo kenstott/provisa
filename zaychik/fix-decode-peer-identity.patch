@@ -1,6 +1,6 @@
 --- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
-@@ -94,7 +94,8 @@
+@@ -94,5 +94,6 @@
    public ImmutablePair<String, String> decodePeerIdentity(String token) {
      String[] parts =
          new String(Base64.getDecoder().decode(token), StandardCharsets.UTF_8).split(":");
