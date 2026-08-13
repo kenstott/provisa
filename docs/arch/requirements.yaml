@@ -44381,10 +44381,18 @@
     operator maintains beside it. The table edit surface gains a data-quality panel that builds the
     contract from the columns Provisa already knows: a check picker scoped to each column's actual
     type (missing/invalid/duplicate/range on a numeric, freshness on the watermark column, schema on
-    the table), a threshold editor, and a warn-vs-fail severity per check. The panel round-trips
-    against the raw contract text — a YAML/JSON editor with schema validation is always available and
-    is the source of truth — so an org with existing contracts pastes one in and the builder renders
-    it, and hand edits are never lost to the form. A dry-run action executes the contract against the
+    the table), a threshold editor, and a warn-vs-fail severity per check. The CONTRACT TEXT IS THE
+    DEFINITION and the panel's rows are a READ of it, so an org with existing contracts pastes one in
+    and the builder renders it, and an edit to a row is a rewrite of that text rather than a second
+    authored copy that can drift. SERIALIZATION IS SERVER-SIDE, so the dialect has exactly one
+    implementation and the browser cannot emit a shape the checker refuses. A ROW CARRIES THE CHECK'S
+    ARGUMENTS ALONE: the dialect's envelope (Soda's single key naming the check type, GX's
+    type/kwargs pair) is restated by the serializer on the one path that writes contract text,
+    because the envelope repeats the type the row already names and an operator cannot change it. The
+    keys GX's own serializer writes beside type/kwargs (id, meta, notes) are not editable and are
+    carried verbatim rather than dropped, so a pasted suite round-trips unchanged. A consumer reading
+    a published assertion wants the check as the checker runs it, so the export joins the arguments
+    and the envelope back together (clause 9). A dry-run action executes the contract against the
     live table and shows the outcomes without landing them, since the failure mode this prevents is a
     contract that lands nothing but passing rows because its dataset name resolved somewhere else.
 

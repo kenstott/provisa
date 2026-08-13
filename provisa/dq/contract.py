@@ -203,10 +203,20 @@ def _soda_check(check: Any, column_name: str) -> dict:
     check_type = next(iter(check))
     if not isinstance(check_type, str) or not check_type:
         raise ContractError(f"soda check type must be a non-empty string, got {check_type!r}")
+    body = check[check_type]
     return {
         "column_name": column_name,
         "check_type": check_type,
-        "definition": yaml.safe_dump(check, sort_keys=False, default_flow_style=False).strip(),
+        # The row carries the check's ARGS alone (REQ-1443 clause 7). Soda's wrapper — the single
+        # key naming the type — is the dialect's, restated by :func:`_check_body` on the way back
+        # out, so the editor never asks an operator to retype the type they already picked. A
+        # bodiless check (``- missing:``) has no args, hence the empty text.
+        "definition": (
+            ""
+            if body is None
+            else yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
+        ),
+        "extra": "",
     }
 
 
@@ -233,15 +243,51 @@ def _gx_checks(parsed: dict) -> list[dict]:
                 f"great_expectations expectation is missing its required 'type': {expectation!r}"
             )
         kwargs = expectation.get("kwargs")
-        column = kwargs.get("column") if isinstance(kwargs, dict) else None
+        if kwargs is None:
+            kwargs = {}
+        if not isinstance(kwargs, dict):
+            raise ContractError(
+                f"great_expectations expectation {check_type!r} 'kwargs' must be a mapping, "
+                f"got {type(kwargs).__name__}"
+            )
+        column = kwargs.get("column")
         checks.append(
             {
                 "column_name": column if isinstance(column, str) else "",
                 "check_type": check_type,
-                "definition": json.dumps(expectation, sort_keys=True),
+                # The row carries the expectation's ARGS alone (REQ-1443 clause 7); the
+                # ``type``/``kwargs`` envelope is GX's and is restated by :func:`_check_body`.
+                "definition": json.dumps(kwargs, sort_keys=True),
+                # Anything else the suite authored on the expectation — `id`, `meta`, `notes` as
+                # GX's own serializer emits them. Not editable, and kept verbatim rather than
+                # dropped, so a pasted suite still round-trips through the panel unchanged.
+                "extra": _gx_extra(expectation),
             }
         )
     return checks
+
+
+def _gx_extra(expectation: dict) -> str:
+    """The expectation's keys beside ``type`` and ``kwargs``, as JSON (``""`` when it has none)."""
+    extra = {k: v for k, v in expectation.items() if k not in ("type", "kwargs")}
+    return json.dumps(extra, sort_keys=True) if extra else ""
+
+
+def check_definition(check: dict, checker: str) -> str:
+    """One check row as its own text in ``checker``'s dialect — args and envelope together.
+
+    The row's ``definition`` is the ARGS alone, because that is all the panel's editor can change
+    (REQ-1443 clause 7). A catalog reading a published assertion wants the check as the checker runs
+    it, envelope included, so the two are joined back here rather than by each consumer.
+    """
+    if checker not in CHECKERS:
+        raise ContractError(
+            f"unknown data-quality checker {checker!r}; expected one of {sorted(CHECKERS)}"
+        )
+    body = _check_body(check, checker)
+    if checker == "soda":
+        return yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
+    return json.dumps(body, sort_keys=True)
 
 
 def check_severity(check: dict, checker: str) -> str:
@@ -291,13 +337,46 @@ def build_contract(checker: str, dataset: str, checks: list[dict]) -> str:
 
 
 def _check_body(check: dict, checker: str) -> Any:
-    """One check's authored body, parsed back out of its ``definition`` text."""
+    """One check's body in the dialect's own shape, rebuilt from the row's args.
+
+    A row holds the check's ARGS and its type separately (REQ-1443 clause 7) — the dialect's
+    envelope (soda's single key naming the type, GX's ``type``/``kwargs`` pair) is restated here, on
+    the one path that writes contract text, so the editor shows an operator the arguments alone and
+    never a wrapper they cannot change.
+    """
+    check_type = check.get("check_type")
+    if not isinstance(check_type, str) or not check_type:
+        raise ContractError(f"{checker} check row carries no check_type to serialize: {check!r}")
     definition = check.get("definition")
-    if not isinstance(definition, str) or not definition.strip():
+    if not isinstance(definition, str):
         raise ContractError(
-            f"{checker} check {check.get('check_type')!r} carries no definition text to serialize"
+            f"{checker} check {check_type!r} carries no definition text to serialize"
         )
-    return _parse_text(definition, checker)
+    args = _parse_args(definition, check_type, checker)
+    if checker == "soda":
+        return {check_type: args}
+    if args is None:
+        args = {}
+    if not isinstance(args, dict):
+        raise ContractError(
+            f"great_expectations check {check_type!r} args must be a mapping, "
+            f"got {type(args).__name__}"
+        )
+    extra = check.get("extra")
+    envelope = json.loads(extra) if isinstance(extra, str) and extra.strip() else {}
+    return {**envelope, "type": check_type, "kwargs": args}
+
+
+def _parse_args(definition: str, check_type: str, checker: str) -> Any:
+    """A row's args text as data. Empty text means the check takes no args (soda's ``- missing:``)."""
+    if not definition.strip():
+        return None
+    try:
+        return yaml.safe_load(definition)
+    except yaml.YAMLError as exc:
+        raise ContractError(
+            f"{checker} check {check_type!r} args are not parseable as YAML/JSON: {exc}"
+        ) from exc
 
 
 def _build_soda(dataset: str, checks: list[dict]) -> str:

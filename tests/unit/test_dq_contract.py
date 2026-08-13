@@ -162,6 +162,56 @@ def test_gx_expectation_without_a_type_is_rejected():
         contract_checks(suite, "great_expectations")
 
 
+def test_a_row_carries_the_checks_args_without_the_dialects_wrapper():
+    """The panel edits arguments, not envelopes (REQ-1443 clause 7). Soda's single key naming the
+    type and GX's ``type``/``kwargs`` pair restate the row's own Check column and cannot be changed
+    by an operator, so neither appears in the args a row hands the editor."""
+    soda = {c["check_type"]: c["definition"] for c in contract_checks(SODA_CONTRACT, "soda")}
+    assert soda["row_count"] == "must_be_greater_than: 0"
+    assert soda["missing"] == ""  # `- missing:` takes no arguments at all
+    gx = {c["check_type"]: c["definition"] for c in contract_checks(GX_SUITE, "great_expectations")}
+    assert json.loads(gx["expect_table_row_count_to_be_between"]) == {"min_value": 1}
+    assert json.loads(gx["expect_column_values_to_not_be_null"]) == {"column": "customer"}
+
+
+def test_a_gx_expectations_own_keys_survive_the_round_trip():
+    """GX's serializer writes `id`/`meta`/`notes` beside type and kwargs. They are not editable, so
+    they are carried out of the way rather than dropped — a suite pasted from a repo comes back the
+    same suite."""
+    suite = json.dumps(
+        {
+            "meta": {"dataset": "provisa/sales/orders"},
+            "expectations": [
+                {
+                    "type": "expect_column_values_to_not_be_null",
+                    "kwargs": {"column": "customer"},
+                    "id": "3f1a",
+                    "meta": {"owner": "sales"},
+                }
+            ],
+        }
+    )
+    rows = contract_checks(suite, "great_expectations")
+    assert json.loads(rows[0]["extra"]) == {"id": "3f1a", "meta": {"owner": "sales"}}
+    rebuilt = json.loads(build_contract("great_expectations", "provisa/sales/orders", rows))
+    assert rebuilt["expectations"] == [
+        {
+            "id": "3f1a",
+            "meta": {"owner": "sales"},
+            "type": "expect_column_values_to_not_be_null",
+            "kwargs": {"column": "customer"},
+        }
+    ]
+
+
+def test_a_gx_expectation_with_a_non_mapping_kwargs_is_rejected():
+    suite = json.dumps(
+        {"meta": {"dataset": "a/b/c"}, "expectations": [{"type": "expect_x", "kwargs": [1]}]}
+    )
+    with pytest.raises(ContractError, match="'kwargs' must be a mapping"):
+        contract_checks(suite, "great_expectations")
+
+
 def test_both_shipped_checkers_are_registered():
     assert CHECKERS == {"soda", "great_expectations"}
 

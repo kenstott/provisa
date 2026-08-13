@@ -315,13 +315,17 @@ def build_check_definition(
                 "great_expectations expectations carry no threshold block; the bound is the "
                 "expectation's own min_value / max_value / mostly kwargs"
             )
-        return json.dumps({"type": check_type, "kwargs": body}, sort_keys=True)
+        # Args alone — the ``type``/``kwargs`` envelope is restated by the contract serializer
+        # (REQ-1443 clause 7), so the panel's rows show what an operator can actually change.
+        return json.dumps(body, sort_keys=True)
     threshold = _soda_threshold(kind, comparator, threshold_value, metric, unit, level)
     if threshold:
         body["threshold"] = threshold
-    return yaml.safe_dump(
-        {check_type: body or None}, sort_keys=False, default_flow_style=False
-    ).strip()
+    # Args alone, as above: soda's wrapper is the single key naming the type, which the row already
+    # carries. A check with no args serializes to empty text.
+    if not body:
+        return ""
+    return yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
 
 
 def _soda_threshold(

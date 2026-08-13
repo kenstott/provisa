@@ -75,8 +75,10 @@ def test_a_soda_check_builds_the_text_a_person_would_have_typed():
         metric="percent",
         level="warn",
     )
+    # The args alone: the key naming the check type is soda's envelope, restated by the contract
+    # serializer (REQ-1443 clause 7), so it is not in the row the panel edits.
     assert yaml.safe_load(definition) == {
-        "missing": {"threshold": {"metric": "percent", "must_be_less_than": 5, "level": "warn"}}
+        "threshold": {"metric": "percent", "must_be_less_than": 5, "level": "warn"}
     }
 
 
@@ -85,7 +87,7 @@ def test_a_fail_level_is_left_unwritten_because_soda_already_defaults_to_it():
     definition = build_check_definition(
         "soda", "row_count", comparator="must_be_greater_than", threshold_value=0, level="fail"
     )
-    assert yaml.safe_load(definition) == {"row_count": {"threshold": {"must_be_greater_than": 0}}}
+    assert yaml.safe_load(definition) == {"threshold": {"must_be_greater_than": 0}}
 
 
 def test_a_gx_expectation_carries_its_column_in_kwargs():
@@ -95,9 +97,11 @@ def test_a_gx_expectation_carries_its_column_in_kwargs():
         column_name="tier",
         params={"value_set": ["gold", "silver"], "mostly": 0.99},
     )
+    # The kwargs alone — GX's type/kwargs envelope is the serializer's, not the row's.
     assert json.loads(definition) == {
-        "type": "expect_column_values_to_be_in_set",
-        "kwargs": {"column": "tier", "value_set": ["gold", "silver"], "mostly": 0.99},
+        "column": "tier",
+        "value_set": ["gold", "silver"],
+        "mostly": 0.99,
     }
 
 
@@ -114,7 +118,7 @@ def test_a_built_check_is_the_same_object_the_parser_reads_back():
     contract = yaml.safe_dump(
         {
             "dataset": "provisa/sales/orders",
-            "columns": [{"name": "order_id", "checks": [yaml.safe_load(definition)]}],
+            "columns": [{"name": "order_id", "checks": [{"duplicate": yaml.safe_load(definition)}]}],
         }
     )
     assert [(c["column_name"], c["check_type"]) for c in contract_checks(contract, "soda")] == [

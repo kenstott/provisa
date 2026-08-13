@@ -116,14 +116,30 @@ def test_serializing_against_a_two_part_dataset_comes_back_as_an_error():
     assert "must have exactly 3" in built["error"]
 
 
-def test_serializing_a_check_with_no_definition_comes_back_as_an_error():
+def test_a_check_with_no_args_serializes_to_sodas_bodiless_form():
+    """``- missing:`` takes no arguments, so an empty args cell is the check as authored, not a
+    half-written one — the type the row already names is what soda needs (REQ-1443 clause 7)."""
     built = serialize_contract(
         "soda",
         "provisa/sales/orders",
         [{"column_name": "customer", "check_type": "missing", "definition": ""}],
     )
+    assert built["error"] is None
+    assert yaml.safe_load(built["text"])["columns"] == [
+        {"name": "customer", "checks": [{"missing": None}]}
+    ]
+
+
+def test_serializing_a_check_with_no_type_comes_back_as_an_error():
+    """The type is the dialect's envelope and the row's own identity — a row without one cannot be
+    wrapped into any check at all."""
+    built = serialize_contract(
+        "soda",
+        "provisa/sales/orders",
+        [{"column_name": "customer", "check_type": "", "definition": "threshold: {must_be: 0}"}],
+    )
     assert built["text"] == ""
-    assert "carries no definition text" in built["error"]
+    assert "no check_type" in built["error"]
 
 
 class _Rows:
@@ -216,14 +232,14 @@ def test_the_editors_arguments_become_one_checks_definition_text():
     )
     assert built["error"] is None
     assert yaml.safe_load(built["definition"]) == {
-        "missing": {"threshold": {"metric": "percent", "must_be_less_than": 5, "level": "warn"}}
+        "threshold": {"metric": "percent", "must_be_less_than": 5, "level": "warn"}
     }
 
 
 def test_a_params_json_object_reaches_the_builder_as_the_checks_body():
     built = _build(check_type="invalid", params=json.dumps({"valid_values": ["gold", "silver"]}))
     assert built["error"] is None
-    assert yaml.safe_load(built["definition"]) == {"invalid": {"valid_values": ["gold", "silver"]}}
+    assert yaml.safe_load(built["definition"]) == {"valid_values": ["gold", "silver"]}
 
 
 def test_a_rejected_build_comes_back_as_an_error_not_an_exception():

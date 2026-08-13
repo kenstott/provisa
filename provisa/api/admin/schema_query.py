@@ -780,6 +780,7 @@ class Query:  # REQ-021, REQ-042
                     "column_name": c.column_name,
                     "check_type": c.check_type,
                     "definition": c.definition,
+                    "extra": c.extra,
                 }
                 for c in checks
             ],

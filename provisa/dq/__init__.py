@@ -29,6 +29,7 @@ nothing; the checker is an external prereq in the oracledb posture.
 from provisa.dq.contract import (
     CHECKERS,
     ContractError,
+    check_definition,
     contract_checks,
     contract_dataset,
     dataset_parts,
@@ -50,6 +51,7 @@ __all__ = [
     "CheckerError",
     "ContractError",
     "build_command",
+    "check_definition",
     "contract_checks",
     "contract_dataset",
     "dataset_parts",

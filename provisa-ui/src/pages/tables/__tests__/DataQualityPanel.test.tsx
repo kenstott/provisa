@@ -79,11 +79,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   parseContract.mockResolvedValue({
     dataset: "provisa/sales/orders",
-    checks: [{ columnName: "customer", checkType: "missing", definition: "missing:" }],
+    // Args alone — the key naming the check type is soda's envelope, restated server-side.
+    checks: [
+      {
+        columnName: "customer",
+        checkType: "missing",
+        definition: "threshold:\n  must_be_less_than: 5",
+        extra: "",
+      },
+    ],
     error: null,
   });
   checkCatalog.mockResolvedValue(CATALOG);
-  buildCheck.mockResolvedValue({ definition: "aggregate:\n  function: avg", error: null });
+  buildCheck.mockResolvedValue({ definition: "function: avg", error: null });
   buildContract.mockResolvedValue({ text: "REBUILT", error: null });
 });
 
@@ -91,7 +99,7 @@ describe("DataQualityPanel", () => {
   it("shows the dataset and each check's own args, so a hand-written contract survives being opened", async () => {
     renderPanel();
     expect(await screen.findByTestId("dq-dataset-input")).toHaveValue("provisa/sales/orders");
-    expect(screen.getByTestId("dq-args-0")).toHaveValue("missing:");
+    expect(screen.getByTestId("dq-args-0")).toHaveValue("threshold:\n  must_be_less_than: 5");
     expect(screen.queryByTestId("dq-contract-text")).not.toBeInTheDocument();
   });
 
@@ -99,7 +107,7 @@ describe("DataQualityPanel", () => {
     const onChange = renderPanel();
     await screen.findByTestId("dq-check-rows");
     const args = screen.getByTestId("dq-args-0");
-    fireEvent.change(args, { target: { value: "missing:\n  threshold: 0" } });
+    fireEvent.change(args, { target: { value: "threshold:\n  must_be_less_than: 9" } });
     fireEvent.blur(args);
 
     await waitFor(() =>
@@ -110,7 +118,8 @@ describe("DataQualityPanel", () => {
           {
             columnName: "customer",
             checkType: "missing",
-            definition: "missing:\n  threshold: 0",
+            definition: "threshold:\n  must_be_less_than: 9",
+            extra: "",
           },
         ],
       }),
@@ -128,7 +137,14 @@ describe("DataQualityPanel", () => {
       expect(buildContract).toHaveBeenCalledWith({
         checker: "soda",
         dataset: "provisa/sales/invoices",
-        checks: [{ columnName: "customer", checkType: "missing", definition: "missing:" }],
+        checks: [
+          {
+            columnName: "customer",
+            checkType: "missing",
+            definition: "threshold:\n  must_be_less_than: 5",
+            extra: "",
+          },
+        ],
       }),
     );
   });
@@ -190,8 +206,13 @@ describe("DataQualityPanel", () => {
       checker: "soda",
       dataset: "provisa/sales/orders",
       checks: [
-        { columnName: "customer", checkType: "missing", definition: "missing:" },
-        { columnName: "amount", checkType: "aggregate", definition: "aggregate:\n  function: avg" },
+        {
+          columnName: "customer",
+          checkType: "missing",
+          definition: "threshold:\n  must_be_less_than: 5",
+          extra: "",
+        },
+        { columnName: "amount", checkType: "aggregate", definition: "function: avg", extra: "" },
       ],
     });
   });

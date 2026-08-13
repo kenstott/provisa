@@ -59,6 +59,7 @@ from provisa.core.derived_tags import derived_tags_for_table
 from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignment
 from provisa.dq.contract import (
     CHECKERS,
+    check_definition,
     check_severity,
     contract_checks,
     contract_dataset,
@@ -402,7 +403,9 @@ def _dq_assertions(
                     asset=asset,
                     checker=checker,
                     check_type=check["check_type"],
-                    definition=check["definition"],
+                    # The check as the checker runs it — args plus the dialect's envelope. The row
+                    # carries the args alone (REQ-1443 clause 7); a consumer wants the whole check.
+                    definition=check_definition(check, checker),
                     severity=check_severity(check, checker),
                     results_table=results_ref,
                     outcome=dq_outcomes.get(

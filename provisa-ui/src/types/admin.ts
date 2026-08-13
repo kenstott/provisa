@@ -236,7 +236,9 @@ export interface ViewMetricsSpec {
 export interface DqCheck {
   columnName: string; // "" for a dataset-level check
   checkType: string;
-  definition: string; // the check's own authored text, not a normalized summary
+  definition: string; // the check's own args as authored, not a normalized summary
+  // Keys GX writes beside type/kwargs (id, meta, notes), kept verbatim; "" for soda.
+  extra: string;
 }
 
 export interface DqContract {

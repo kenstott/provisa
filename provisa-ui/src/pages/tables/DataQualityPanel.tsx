@@ -17,8 +17,12 @@
 // The contract text is still what registers and what the scan runs; it is serialized SERVER-side
 // from these rows (provisa.dq.contract.build_contract), so the checker's dialect has exactly one
 // implementation and the browser can never emit a shape the checker refuses. A row's args are the
-// check's own authored body rather than a normalized summary, so a contract pasted in from a repo
-// parses to rows and serializes back keeping every check body it arrived with.
+// check's own authored arguments rather than a normalized summary, so a contract pasted in from a
+// repo parses to rows and serializes back keeping every check body it arrived with.
+//
+// The args cell holds the ARGUMENTS alone. The dialect's envelope — soda's single key naming the
+// check type, GX's `type`/`kwargs` pair — is restated by the server serializer, because it repeats
+// what the row's own Check column already says and an operator cannot change it.
 //
 // The panel knows no check names. The picker offers what the server says this checker can express
 // against each column's actual type (provisa.dq.catalog), scoped by the dataset the CONTRACT names
@@ -167,7 +171,10 @@ export function DataQualityPanel({
       return;
     }
     setBuildError(null);
-    await rewrite([...checks, { columnName: column, checkType, definition: built.definition }]);
+    await rewrite([
+      ...checks,
+      { columnName: column, checkType, definition: built.definition, extra: "" },
+    ]);
   }, [
     buildCheck,
     checker,

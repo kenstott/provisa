@@ -603,13 +603,17 @@ class ViewMetricsInput:  # REQ-1318: declarative metric-composed view definition
 
 @strawberry.type
 class DqCheckType:  # REQ-1443: one check as the contract panel renders and edits it
-    """``definition`` is the check's OWN authored text (a soda single-key mapping, a GX expectation
-    object), not a normalized summary — which is what lets the panel round-trip a pasted contract
-    without dropping a threshold it has no editor for."""
+    """``definition`` is the check's own ARGS as authored (a soda check body, a GX expectation's
+    kwargs), not a normalized summary — which is what lets the panel round-trip a pasted contract
+    without dropping a threshold it has no editor for. The dialect's envelope is not in it: the
+    serializer restates it, so the row shows only what an operator can change. ``extra`` carries the
+    keys GX's own serializer writes beside ``type``/``kwargs`` (``id``, ``meta``, ``notes``) verbatim
+    so a pasted suite keeps them; it is empty for soda."""
 
     column_name: str  # "" for a dataset-level check
     check_type: str
     definition: str
+    extra: str = ""
 
 
 @strawberry.input
@@ -617,6 +621,7 @@ class DqCheckInput:  # REQ-1443
     column_name: str
     check_type: str
     definition: str
+    extra: str = ""
 
 
 @strawberry.type

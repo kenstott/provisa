@@ -249,6 +249,7 @@ query DqContractParse($checker: String!, $contractText: String!) {
       columnName
       checkType
       definition
+      extra
     }
   }
 }
