@@ -78,8 +78,9 @@ const RELS_ADD = '[data-tour="rels-add"]';
 // marker both modes paint past the loading state.
 const VIEWS_READY = '[data-tour="tables-header"]';
 
-// A complex-enough query over the same proven demo tables the SQL surface runs (`default.users`
-// JOIN `default.inquiries`), plus an UPPER() transform so the DAG shows a real source → transform →
+// A complex-enough query over the same proven demo tables the SQL surface runs. The schema is the
+// logical domain (`domain_to_sql_name("pet-store")` → `pet_store`), never the source's physical
+// schema. Plus an UPPER() transform so the DAG shows a real source → transform →
 // result trace. LineagePage auto-builds the statement graph from `?sql=` on mount (it only analyzes,
 // never runs), so deep-linking it avoids any click-timing race.
 const LINEAGE_DEMO_SQL =

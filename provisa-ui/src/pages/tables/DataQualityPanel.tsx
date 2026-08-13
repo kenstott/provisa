@@ -10,11 +10,15 @@
 
 // REQ-1443 clause 7: the data-quality contract builder on the table edit surface.
 //
-// The contract TEXT is the source of truth. Every editor here writes through it — the picker builds
-// a check, the server serializes the rows back to text, and the text is what registers. That is why
-// the raw editor is always open rather than a fallback for the picker: a contract hand-written or
-// pasted from a repo must survive being looked at, and a panel that held its own model of the
-// checks would silently discard whatever it could not represent.
+// The rows ARE the editor: one row per check, its args editable in place, plus the dataset the
+// contract observes. There is no raw-text pane — an editor that offered both left an operator
+// choosing between two representations of one contract.
+//
+// The contract text is still what registers and what the scan runs; it is serialized SERVER-side
+// from these rows (provisa.dq.contract.build_contract), so the checker's dialect has exactly one
+// implementation and the browser can never emit a shape the checker refuses. A row's args are the
+// check's own authored body rather than a normalized summary, so a contract pasted in from a repo
+// parses to rows and serializes back keeping every check body it arrived with.
 //
 // The panel knows no check names. The picker offers what the server says this checker can express
 // against each column's actual type (provisa.dq.catalog), scoped by the dataset the CONTRACT names
@@ -84,14 +88,21 @@ export function DataQualityPanel({
   const [level, setLevel] = useState<string>("fail");
   const [params, setParams] = useState<Record<string, string>>({});
 
-  // The text is the source of truth, so the rows follow it — including the rows that appear when an
-  // operator pastes a contract in whole.
+  // In-flight edits, keyed by row index and cleared whenever the registered contract comes back —
+  // so a row shows what was typed until the server has serialized it, then shows what registered.
+  const [argDrafts, setArgDrafts] = useState<Record<number, string>>({});
+  const [datasetDraft, setDatasetDraft] = useState("");
+
+  // The registered contract text is what the rows are read from — including the rows that appear
+  // when a contract arrives already written, pasted from a repo.
   useEffect(() => {
     let live = true;
     void parseContract({ checker, contractText }).then((parsed) => {
       if (!live || parsed === null) return;
       setDataset(parsed.dataset);
+      setDatasetDraft(parsed.dataset ?? "");
       setChecks(parsed.checks);
+      setArgDrafts({});
       setParseError(parsed.error);
     });
     return () => {
@@ -121,9 +132,10 @@ export function DataQualityPanel({
   const kind = kinds.find((k) => k.checkType === checkType) ?? null;
 
   const rewrite = useCallback(
-    async (next: DqCheck[]) => {
-      if (dataset === null) return;
-      const built = await buildContract({ checker, dataset, checks: next });
+    async (next: DqCheck[], nextDataset?: string) => {
+      const target = nextDataset ?? dataset;
+      if (target === null) return;
+      const built = await buildContract({ checker, dataset: target, checks: next });
       if (built === null) return;
       if (built.error !== null) {
         setBuildError(built.error);
@@ -190,19 +202,21 @@ export function DataQualityPanel({
       defaultOpen
     >
       <Stack gap="sm">
-        {/* The raw editor is the contract. Everything below writes through it. */}
+        {/* The dataset the contract observes. Committing on blur rather than per keystroke keeps a
+            half-typed path from being serialized and rejected on every character. */}
         <div>
           <FieldLabel
-            text={t("dataQualityPanel.contractLabel")}
-            help={t("dataQualityPanel.contractHelp")}
+            text={t("dataQualityPanel.datasetLabel")}
+            help={t("dataQualityPanel.datasetHelp")}
           />
-          <Textarea
-            data-testid="dq-contract-text"
-            aria-label={t("dataQualityPanel.contractLabel")}
-            value={contractText}
-            onChange={(e) => onChange(e.currentTarget.value)}
-            autosize
-            minRows={6}
+          <TextInput
+            data-testid="dq-dataset-input"
+            aria-label={t("dataQualityPanel.datasetLabel")}
+            value={datasetDraft}
+            onChange={(e) => setDatasetDraft(e.currentTarget.value)}
+            onBlur={() => {
+              if (datasetDraft !== (dataset ?? "")) void rewrite(checks, datasetDraft);
+            }}
             styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
           />
         </div>
@@ -238,7 +252,27 @@ export function DataQualityPanel({
                   <Table.Td>{c.columnName || t("dataQualityPanel.datasetScope")}</Table.Td>
                   <Table.Td>{c.checkType}</Table.Td>
                   <Table.Td>
-                    <code>{c.definition}</code>
+                    {/* The row IS the editor: the check's own args, committed on blur. A body that
+                        does not parse is refused by the server serializer, which reports it in
+                        dq-build-error and leaves the registered contract as it was. */}
+                    <Textarea
+                      data-testid={`dq-args-${i}`}
+                      aria-label={t("dataQualityPanel.definitionHeader")}
+                      value={argDrafts[i] ?? c.definition}
+                      onChange={(e) =>
+                        setArgDrafts({ ...argDrafts, [i]: e.currentTarget.value })
+                      }
+                      onBlur={() => {
+                        const edited = argDrafts[i];
+                        if (edited === undefined || edited === c.definition) return;
+                        void rewrite(
+                          checks.map((row, j) => (j === i ? { ...row, definition: edited } : row)),
+                        );
+                      }}
+                      autosize
+                      minRows={1}
+                      styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+                    />
                   </Table.Td>
                   <Table.Td>
                     <Button

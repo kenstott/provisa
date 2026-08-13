@@ -8,10 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1443 clause 7: the contract builder panel. What these hold is the panel's one claim — the raw
-// contract text is the source of truth and the builder is a view of it: the rows come from parsing
-// the text, the picker offers only what the server says a column's type supports, and adding a check
-// hands back new TEXT rather than a model the text would have to be reconciled with later.
+// REQ-1443 clause 7: the contract builder panel. What these hold is the panel's one claim — the rows
+// ARE the editor and the contract text is serialized from them server-side: the rows come from
+// parsing the registered text, editing a row's args or the dataset rewrites the whole contract, the
+// picker offers only what the server says a column's type supports, and adding a check hands back
+// new TEXT rather than a model the text would have to be reconciled with later.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../../../test-utils/render";
@@ -87,9 +88,57 @@ beforeEach(() => {
 });
 
 describe("DataQualityPanel", () => {
-  it("shows the contract text verbatim, so a hand-written contract survives being opened", async () => {
+  it("shows the dataset and each check's own args, so a hand-written contract survives being opened", async () => {
     renderPanel();
-    expect(await screen.findByTestId("dq-contract-text")).toHaveValue(SODA);
+    expect(await screen.findByTestId("dq-dataset-input")).toHaveValue("provisa/sales/orders");
+    expect(screen.getByTestId("dq-args-0")).toHaveValue("missing:");
+    expect(screen.queryByTestId("dq-contract-text")).not.toBeInTheDocument();
+  });
+
+  it("editing a row's args rewrites the contract from all the rows", async () => {
+    const onChange = renderPanel();
+    await screen.findByTestId("dq-check-rows");
+    const args = screen.getByTestId("dq-args-0");
+    fireEvent.change(args, { target: { value: "missing:\n  threshold: 0" } });
+    fireEvent.blur(args);
+
+    await waitFor(() =>
+      expect(buildContract).toHaveBeenCalledWith({
+        checker: "soda",
+        dataset: "provisa/sales/orders",
+        checks: [
+          {
+            columnName: "customer",
+            checkType: "missing",
+            definition: "missing:\n  threshold: 0",
+          },
+        ],
+      }),
+    );
+    expect(onChange).toHaveBeenCalledWith("REBUILT");
+  });
+
+  it("retyping the dataset re-aims the contract at another table", async () => {
+    renderPanel();
+    const input = await screen.findByTestId("dq-dataset-input");
+    fireEvent.change(input, { target: { value: "provisa/sales/invoices" } });
+    fireEvent.blur(input);
+
+    await waitFor(() =>
+      expect(buildContract).toHaveBeenCalledWith({
+        checker: "soda",
+        dataset: "provisa/sales/invoices",
+        checks: [{ columnName: "customer", checkType: "missing", definition: "missing:" }],
+      }),
+    );
+  });
+
+  it("leaving a row untouched rewrites nothing", async () => {
+    renderPanel();
+    await screen.findByTestId("dq-check-rows");
+    fireEvent.blur(screen.getByTestId("dq-args-0"));
+    fireEvent.blur(screen.getByTestId("dq-dataset-input"));
+    expect(buildContract).not.toHaveBeenCalled();
   });
 
   it("lists the checks the server parsed out of that text", async () => {
@@ -161,15 +210,16 @@ describe("DataQualityPanel", () => {
     expect(onChange).toHaveBeenCalledWith("REBUILT");
   });
 
-  it("keeps the operator's text and shows the message when it does not parse", async () => {
+  it("shows the message when the registered contract does not parse, and offers no rows to edit", async () => {
     parseContract.mockResolvedValue({
       dataset: null,
       checks: [],
       error: "contract is not parseable YAML",
     });
-    renderPanel(vi.fn(), "dataset: [unclosed");
+    const onChange = renderPanel(vi.fn(), "dataset: [unclosed");
     expect(await screen.findByTestId("dq-parse-error")).toHaveTextContent("not parseable");
-    expect(screen.getByTestId("dq-contract-text")).toHaveValue("dataset: [unclosed");
+    expect(screen.queryByTestId("dq-check-rows")).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("says so when the contract's dataset resolves to no governed table", async () => {

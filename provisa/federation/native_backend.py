@@ -279,62 +279,23 @@ class NativeEngineBackend(EngineBackend):
         DDL only: no data is landed (that is the refresh's job); an existing matching table is KEPT
         (survives restart), a drifted one RECREATED. Convergent + idempotent.
 
-        Drives off the control-plane REGISTERED tables — not the raw YAML config — because
-        registration is the design-time source of truth: it holds the sql-normalized physical names
-        (the same names the compiler emits) AND the resolved column types. A registered data column
-        with no type is a registration/config gap and the table is skipped (logged), never guessed.
-        Returns the (source_id, table_name) reconciled."""
-        from provisa.core.ir_types import to_ir
-        from provisa.federation.strategy import Strategy, federate
+        The work list (which registered tables land, with what shape) is the shared
+        ``landing_worklist``; what this adds is the native terminal — converge the store table and
+        expose the engine's read view over it. Returns the (source_id, table_name) reconciled."""
+        from provisa.federation.backend import landing_worklist
 
-        config = getattr(state, "config", None)
-        tdb = getattr(state, "tenant_db", None)
-        if config is None or tdb is None:
-            return []
         runtime = self._runtime_for(state)
         if not hasattr(runtime, "attach_landed_source"):
             return []  # this engine's runtime has no eager-landing terminal
-        from provisa.api.admin.db_queries import fetch_tables
-
-        async with tdb.acquire() as conn:
-            registered = await fetch_tables(conn)
-        sources = {s.id: s for s in config.sources}
         reconciled: list[tuple[str, str]] = []
-        for reg in registered:
-            src = sources.get(reg["source_id"])
-            if src is None:
-                continue
-            try:
-                if federate(src, self.engine) is not Strategy.MATERIALIZED:
-                    continue  # live/scan → attached live, not eager-landed
-            except UnreachableSource:
-                continue
-            # A PARAMETERIZED source — one with native-filter (query/path-param) columns — is a
-            # function f(args) -> rows with no unparameterized snapshot. It is fetched real-time at
-            # query time (never materialized), so it never lands a replica.
-            if any(c["native_filter_type"] is not None for c in reg["columns"]):
-                continue
-            # Native-filter columns are synthetic query args, not landed data — excluded from the
-            # landing shape (defensive: none remain past the guard above).
-            data_cols = [c for c in reg["columns"] if c["native_filter_type"] is None]
-            if any(c["data_type"] is None for c in data_cols):
-                _log.warning(
-                    "%s: skip eager reconcile of %s.%s — a registered column has no resolved type",
-                    self.engine.name,
-                    reg["schema_name"],
-                    reg["table_name"],
-                )
-                continue
-            columns = [(c["column_name"], to_ir(c["data_type"])) for c in data_cols]
-            pk_columns = [c["column_name"] for c in data_cols if c["is_primary_key"]]
+        for src, schema_name, table_name, columns, pk_columns in await landing_worklist(
+            self.engine, state
+        ):
             merged = SimpleNamespace(
-                id=src.id,
-                type=src.type,
-                schema_name=reg["schema_name"],
-                table_name=reg["table_name"],
+                id=src.id, type=src.type, schema_name=schema_name, table_name=table_name
             )
             await runtime.attach_landed_source(merged, columns, pk_columns=pk_columns)
-            reconciled.append((src.id, reg["table_name"]))
+            reconciled.append((src.id, table_name))
         return reconciled
 
     # -- store write face --------------------------------------------------

@@ -107,6 +107,7 @@ def test_table_input_maps_consistency():
         off_peak_window=None,  # REQ-1141
         off_peak_tz=None,  # REQ-1141
         view_sql="SELECT 1",
+        dq_contract=None,  # REQ-1443
         materialize=True,
         mv_refresh_interval=300,
         mv_debounce_quiet=0.0,

@@ -105,9 +105,19 @@ class TestTheSeedCarriesTheDescriptions:
 
         conn = AsyncMock()
         conn.upsert_returning = AsyncMock(return_value=7)
-        conn.reflect_columns = AsyncMock(
-            return_value=[{"column_name": "id", "data_type": "bigint", "is_primary_key": True}]
-        )
+        # Reflect the columns the relation actually exposes: a view-backed registration (derived_tags)
+        # has no surrogate id, so a fixed one-column stand-in would demand a description for a column
+        # the seed never writes.
+        exposed = _exposed_columns()
+
+        async def _reflect(name, schema=None):
+            del schema
+            return [
+                {"column_name": c, "data_type": "text", "is_primary_key": c == "id"}
+                for c in exposed.get(name, ["id"])
+            ]
+
+        conn.reflect_columns = AsyncMock(side_effect=_reflect)
         asyncio.run(seeder(conn, **kw))
         return (
             [c.args[1] for c in conn.upsert_returning.await_args_list],

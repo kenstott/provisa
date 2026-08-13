@@ -21,6 +21,7 @@ before traces ever got a turn, so trace rows stopped landing in Iceberg entirely
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import threading
 import types
 
@@ -150,8 +151,19 @@ async def test_a_chunk_fetches_its_objects_concurrently(monkeypatch):
     barrier = threading.Barrier(len(keys), timeout=10)
     monkeypatch.setattr(jobs, "_OTEL_FETCH_WORKERS", len(keys))
     monkeypatch.setattr("boto3.client", lambda *a, **k: _S3())
+    # traces.timestamp arrives from otlp2parquet as an arrow instant, not an epoch integer
+    # (REQ-1435) — an int64 here is refused by _instants_from_epoch_ints and the chunk never
+    # reaches the insert this asserts on.
     monkeypatch.setattr(
-        "pyarrow.parquet.read_table", lambda _buf: pa.table({"timestamp": [1], "span_name": ["s"]})
+        "pyarrow.parquet.read_table",
+        lambda _buf: pa.table(
+            {
+                "timestamp": pa.array(
+                    [dt.datetime(2026, 8, 11, 19, 0, 0)], type=pa.timestamp("us")
+                ),
+                "span_name": ["s"],
+            }
+        ),
     )
     inserted: list[int] = []
     monkeypatch.setattr(

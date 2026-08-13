@@ -34,6 +34,70 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+async def landing_worklist(
+    engine: Any, state: Any
+) -> list[tuple[Any, str, str, list[tuple[str, str]], list[str]]]:
+    """The MATERIALIZED registered tables that own a landed replica, as
+    ``(source, schema_name, table_name, columns, pk_columns)`` (REQ-846/932).
+
+    Drives off the control-plane REGISTERED tables — not the raw YAML config — because registration
+    is the design-time source of truth: it holds the sql-normalized physical names (the same names
+    the compiler emits) AND the resolved column types. A registered data column with no type is a
+    registration/config gap and the table is skipped (logged), never guessed.
+
+    Shared by every backend's ``reconcile_landed_tables`` so the native engines and Trino agree on
+    exactly which tables land — they differ only in what they do with each entry.
+    """
+    from provisa.api.admin.db_queries import fetch_tables
+    from provisa.core.ir_types import to_ir
+    from provisa.federation.engine import UnreachableSource
+    from provisa.federation.strategy import Strategy, federate
+
+    config = getattr(state, "config", None)
+    tdb = getattr(state, "tenant_db", None)
+    if config is None or tdb is None:
+        return []
+    async with tdb.acquire() as conn:
+        registered = await fetch_tables(conn)
+    sources = {s.id: s for s in config.sources}
+    work: list[tuple[Any, str, str, list[tuple[str, str]], list[str]]] = []
+    for reg in registered:
+        src = sources.get(reg["source_id"])
+        if src is None:
+            continue
+        try:
+            if federate(src, engine) is not Strategy.MATERIALIZED:
+                continue  # live/scan → attached live, not eager-landed
+        except UnreachableSource:
+            continue
+        # A PARAMETERIZED source — one with native-filter (query/path-param) columns — is a
+        # function f(args) -> rows with no unparameterized snapshot. It is fetched real-time at
+        # query time (never materialized), so it never lands a replica.
+        if any(c["native_filter_type"] is not None for c in reg["columns"]):
+            continue
+        # Native-filter columns are synthetic query args, not landed data — excluded from the
+        # landing shape (defensive: none remain past the guard above).
+        data_cols = [c for c in reg["columns"] if c["native_filter_type"] is None]
+        if any(c["data_type"] is None for c in data_cols):
+            _log.warning(
+                "%s: skip eager reconcile of %s.%s — a registered column has no resolved type",
+                engine.name,
+                reg["schema_name"],
+                reg["table_name"],
+            )
+            continue
+        work.append(
+            (
+                src,
+                reg["schema_name"],
+                reg["table_name"],
+                [(c["column_name"], to_ir(c["data_type"])) for c in data_cols],
+                [c["column_name"] for c in data_cols if c["is_primary_key"]],
+            )
+        )
+    return work
+
+
 class EngineBackend:
     """Default backend for native in-process engines (duckdb/pg/clickhouse/sqlalchemy).
 
@@ -82,9 +146,30 @@ class EngineBackend:
 
     async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
         """Schema-currency reconcile of MATERIALIZED landing tables (REQ-846/932). No-op on the base
-        / broad-federator engine; NativeEngineBackend overrides it to converge + attach."""
+        engine; NativeEngineBackend converges + attaches, TrinoBackend converges the store table the
+        engine's source catalog already resolves."""
         del state
         return []
+
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """Where a MATERIALIZED source table's replica lives in the materialization store.
+
+        The default is the mangled name under the store's landing schema (``mat``), keyed by source
+        id AND physical schema/table so a multi-table source does not collide on the source id. The
+        engine then exposes that replica at the catalog-physical name the compiler emits — the
+        runtime's ``_expose_landed`` view. An engine whose source catalog reads the store DIRECTLY by
+        physical name (Trino over the Postgres store) has no view layer to interpose and overrides
+        this to land at the registered address itself."""
+        del self, source_type
+        return store_schema, f"{source_id}__{schema_name}__{table_name}"
 
     async def land_source_table(
         self,
@@ -461,6 +546,73 @@ class TrinoBackend(EngineBackend):
         from provisa.transpiler.transpile import transpile_to_trino
 
         return transpile_to_trino(pg_sql)
+
+    # -- landing ---------------------------------------------------------------
+
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """An ADAPTER-PRODUCED source's replica lands at its REGISTERED address in the store.
+
+        Trino's catalog for such a source is PG-backed (``TrinoPgBackedConnector``): it points at the
+        Postgres materialization store and resolves ``<catalog>.<schema>.<table>`` straight to a PG
+        relation. There is no engine-side view layer to redirect a mangled ``mat`` name back to the
+        physical name the compiler emits, so for rows that exist ONLY as a landed replica — a
+        checker's scan results, an API's fetched pages — the landing address IS the physical address.
+
+        An engine-scannable source keeps the default internal name: its physical address already
+        holds the mirror the engine reads (a sqlite file is migrated into Postgres at registration),
+        and landing onto that same relation would make the node read and write one table.
+        """
+        from provisa.events.source_loader import is_adapter_fetched
+
+        if is_adapter_fetched(source_type):
+            return schema_name, table_name
+        return super().landing_target(
+            store_schema=store_schema,
+            source_id=source_id,
+            source_type=source_type,
+            schema_name=schema_name,
+            table_name=table_name,
+        )
+
+    async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
+        """Converge each MATERIALIZED source's store table to its registered shape (REQ-846/932).
+
+        DDL only — no rows (that is the refresh's job). Trino needs this for the same reason the
+        native engines do: a poll node probes its table's watermark BEFORE the first land, and an
+        unresolvable relation would fail the probe and so prevent the land that would have created
+        it. The store write face is ``store_writer`` against the engine's own store DSN, which is the
+        same Postgres the source catalogs read."""
+        from provisa.federation import store_writer
+        from provisa.federation.backend import landing_worklist
+
+        reconciled: list[tuple[str, str]] = []
+        for src, schema_name, table_name, columns, pk_columns in await landing_worklist(
+            self.engine, state
+        ):
+            schema, table = self.landing_target(
+                store_schema="mat",
+                source_id=src.id,
+                source_type=src.type,
+                schema_name=schema_name,
+                table_name=table_name,
+            )
+            await store_writer.reconcile_table(
+                self.engine.materialize_store(),
+                schema=schema,
+                table=table,
+                columns=columns,
+                pk_columns=pk_columns,
+            )
+            reconciled.append((src.id, table_name))
+        return reconciled
 
     # -- lifecycle -------------------------------------------------------------
 

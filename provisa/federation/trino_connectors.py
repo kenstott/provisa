@@ -148,12 +148,13 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
 
 
 class TrinoPgBackedConnector(_TrinoConnector):
-    """sqlite/openapi: their data is LANDED into the local Postgres (sqlite migrated at registration,
-    openapi responses cached) and Trino reads that PG replica. FETCH — Provisa materializes them
-    first, then Trino reads the replica — not an in-place ATTACH of the live source."""
+    """sqlite/openapi/data-quality checkers: their data is LANDED into the local Postgres (sqlite
+    migrated at registration, openapi responses cached, checker scans landed by the event loop) and
+    Trino reads that PG replica. FETCH — Provisa materializes them first, then Trino reads the
+    replica — not an in-place ATTACH of the live source."""
 
     trino_connector = "postgresql"
-    mechanism = Mechanism.FETCH  # Provisa lands sqlite/openapi into PG; Trino reads the replica
+    mechanism = Mechanism.FETCH  # Provisa lands the rows into PG; Trino reads the replica
 
     def details(self, source: Source) -> dict:
         import os
@@ -177,6 +178,19 @@ class TrinoSqliteConnector(TrinoPgBackedConnector):
 
 class TrinoOpenapiConnector(TrinoPgBackedConnector):
     source_type = "openapi"
+
+
+# REQ-1443: a checker has no remote table to federate against — its rows ARE one scan's results,
+# produced by running the contract and landed like any other produced dataset. Trino reads that
+# landed replica out of the Postgres store, so the checker's catalog is PG-backed exactly as
+# sqlite's and openapi's are. Without a connector here `create_catalog` skips the source entirely
+# and the compiler's emitted catalog name resolves to nothing (CATALOG_NOT_FOUND).
+class TrinoGreatExpectationsConnector(TrinoPgBackedConnector):
+    source_type = "great_expectations"
+
+
+class TrinoSodaConnector(TrinoPgBackedConnector):
+    source_type = "soda"
 
 
 class TrinoMongoConnector(_TrinoConnector):
@@ -576,6 +590,8 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoSqlServerConnector(),
         TrinoSqliteConnector(),
         TrinoOpenapiConnector(),
+        TrinoGreatExpectationsConnector(),
+        TrinoSodaConnector(),
         TrinoMongoConnector(),
         TrinoCassandraConnector(),
         TrinoPinotConnector(),

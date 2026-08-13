@@ -1,13 +1,11 @@
 {
   "dataQualityPanel": {
     "title": "Data quality contract",
-    "contractLabel": "Contract",
-    "contractHelp": "The checker's own contract text. This is what registers and what the scan runs — the editors below write through it, so hand edits are never discarded.",
     "dataset": "Observing {{dataset}}",
     "datasetScope": "whole table",
     "columnHeader": "Column",
     "checkHeader": "Check",
-    "definitionHeader": "Definition",
+    "definitionHeader": "Args",
     "outcomeHeader": "Outcome",
     "valueHeader": "Value",
     "failedRowsHeader": "Failed rows",
@@ -22,6 +20,10 @@
     "levelLabel": "Severity",
     "addCheck": "Add check",
     "dryRun": "Dry run",
-    "dryRunHelp": "Runs the contract against the live table and lands nothing."
+    "dryRunHelp": "Runs the contract against the live table and lands nothing.",
+    "datasetLabel": "Dataset",
+    "datasetHelp": "The table the checker observes, as '<data source>/<schema>/<table>'. It is resolved against the governed catalog, the same way the scan resolves it.",
+    "argsHelp": "Each row is one check. Edit its args in place — the checker's own contract text is serialized from these rows.",
+    "invalidRow": "This row's args did not parse; the previous value was kept."
   }
 }

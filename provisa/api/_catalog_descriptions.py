@@ -219,6 +219,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the tag asserts about the objects it is attached to",
         "applies_to": "Object kinds the tag may be attached to",
         "is_system": "Whether the tag is built in rather than defined by this deployment",
+        "derived": "Whether the tag is computed from an object's own registration rather than "
+        "assigned by a steward — a derived tag is read-only",
         "reason_policy": "Whether an assignment must carry a justification",
         "expires_policy": "Whether an assignment must carry a planned end date",
         "tenant_id": _TENANT,

@@ -179,11 +179,20 @@ def specs_from_config(
         except ValueError:
             continue  # a column's type is not yet resolved — reconcile skips it too
         node = f"{tbl.schema_name}.{tbl.table_name}"
-        mat_table = f"{src.id}__{tbl.schema_name}__{tbl.table_name}"  # matches _mat_table_name
+        # The engine owns the landing address: a native engine lands into the mangled ``mat`` name and
+        # exposes a physical-named view over it; Trino reads the store directly by physical name and so
+        # lands adapter-produced rows AT that name. Same address the backend's reconcile converges.
+        land_schema, land_table = engine.backend.landing_target(
+            store_schema=store_schema,
+            source_id=src.id,
+            source_type=src.type,
+            schema_name=tbl.schema_name,
+            table_name=tbl.table_name,
+        )
         handle = make_source_land(
             engine_runtime,
-            schema=store_schema,
-            table=mat_table,
+            schema=land_schema,
+            table=land_table,
             columns=args.columns,
             change_signal=args.change_signal,
             watermark_column=args.watermark_column,

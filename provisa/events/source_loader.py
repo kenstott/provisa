@@ -48,6 +48,20 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
 )
 
 
+def is_adapter_fetched(source_type: Any) -> bool:
+    """Whether a source type's rows are PRODUCED by its adapter rather than scanned from a relation
+    the engine can already reach.
+
+    The distinction decides where a landed replica has to live. An engine-scannable source is
+    mirrored at its physical address before the event loop ever runs (a sqlite file is migrated into
+    Postgres at registration), so its landing table is an internal copy and can be named anything.
+    An adapter-fetched source has no such mirror — the landed rows ARE the only copy, so on an engine
+    that reads the store directly by physical name they must land at that name (see
+    ``TrinoBackend.landing_target``). Accepts the enum member or the bare string."""
+    stype = source_type.value if hasattr(source_type, "value") else str(source_type)
+    return stype in _ADAPTER_FETCH_ONLY
+
+
 class UnsupportedSourceFetch(Exception):
     """A source type has no engine-scannable table; its adapter row-fetch is not yet wired."""
 
