@@ -24,10 +24,12 @@ import {
   ChevronRight,
   ChevronsRight,
   Filter,
+  FilterX,
   Layers,
 } from "lucide-react";
 import { COL_MIN, PAGE_SIZES } from "./types";
 import { formatCell } from "./formatCell";
+import { downloadXlsx, type ProvenanceEntry, type XlsxLabels } from "./exportXlsx";
 import type { ResultsGridState } from "./useResultsGrid";
 import { TraceDetailsModal } from "../../components/telemetry/TraceDetailsModal";
 import {
@@ -42,9 +44,20 @@ interface ResultsGridProps {
   totalRowCount: number;
   /** Show the per-column multi-level group-by toggles (default true). */
   groupable?: boolean;
+  /** REQ-1441: what produced these rows — the relation, its definition, the statement that ran.
+      Recorded on the workbook's provenance sheet alongside the reader's own grid choices. */
+  provenance?: ProvenanceEntry[];
+  /** Base name for the exported workbook, without extension (default "results"). */
+  exportName?: string;
 }
 
-export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGridProps) {
+export function ResultsGrid({
+  grid,
+  totalRowCount,
+  groupable = true,
+  provenance = [],
+  exportName = "results",
+}: ResultsGridProps) {
   const { t } = useTranslation();
   // Trace/span ids in any column drill down to the full span record.
   const [detail, setDetail] = useState<{ kind: TelemetryIdKind; id: string } | null>(null);
@@ -52,6 +65,8 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
     sorts,
     filters,
     setFilters,
+    hasFilters,
+    clearFilters,
     groupBy,
     toggleGroupBy,
     collapsedGroups,
@@ -77,6 +92,50 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
   } = grid;
   const canGoBack = page > 0;
   const canGoForward = serverPaged ? hasMore : page < totalPages - 1;
+
+  // REQ-1441: the caller's facts describe the relation; these describe this export of it. A
+  // server-paged viewer fetched one page, so the sheet holds that page and says so — a reader who
+  // opens the file later cannot otherwise tell a page from a whole relation.
+  const handleDownloadXlsx = () => {
+    const none = t("sqlResultsPanel.provNone");
+    const entries: ProvenanceEntry[] = [
+      ...provenance,
+      { label: t("sqlResultsPanel.provExportedAt"), value: new Date().toISOString() },
+      {
+        label: t("sqlResultsPanel.provScope"),
+        value: serverPaged
+          ? t("sqlResultsPanel.provScopePage", { page: page + 1, pageSize })
+          : t("sqlResultsPanel.provScopeAll"),
+      },
+      { label: t("sqlResultsPanel.provRowsExported"), value: String(displayRows.length) },
+      {
+        label: t("sqlResultsPanel.provFilters"),
+        value:
+          Object.entries(filters)
+            .filter(([, v]) => v !== "")
+            .map(([c, v]) => `${c} ~ "${v}"`)
+            .join("\n") || none,
+      },
+      {
+        label: t("sqlResultsPanel.provSort"),
+        value: sorts.map((s) => `${s.col} ${s.dir}`).join(", ") || none,
+      },
+      { label: t("sqlResultsPanel.provGroupBy"), value: groupBy.join(", ") || none },
+    ];
+    const labels: XlsxLabels = {
+      dataSheet: t("sqlResultsPanel.sheetData"),
+      provenanceSheet: t("sqlResultsPanel.sheetProvenance"),
+      fact: t("sqlResultsPanel.provFact"),
+      detail: t("sqlResultsPanel.provDetail"),
+      column: t("sqlResultsPanel.colColumn"),
+      writtenAs: t("sqlResultsPanel.provWrittenAs"),
+      columnsHeading: t("sqlResultsPanel.provColumnsHeading"),
+      typeNumber: t("sqlResultsPanel.provTypeNumber"),
+      typeDate: t("sqlResultsPanel.provTypeDate"),
+      typeText: t("sqlResultsPanel.provTypeText"),
+    };
+    void downloadXlsx(`${exportName}.xlsx`, displayColumns, displayRows, entries, labels);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -104,6 +163,15 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
         <Button
           variant="default"
           size="compact-xs"
+          onClick={handleDownloadXlsx}
+          title={t("sqlResultsPanel.downloadXlsxTitle")}
+          data-testid="download-xlsx-btn"
+        >
+          {t("sqlResultsPanel.downloadXlsx")}
+        </Button>
+        <Button
+          variant="default"
+          size="compact-xs"
           onClick={handleCopyResults}
           title={t("sqlResultsPanel.copyResultsTitle")}
           data-testid="copy-results-btn"
@@ -116,6 +184,19 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
           }
         >
           {copiedResults ? t("sqlResultsPanel.copied") : t("sqlResultsPanel.copy")}
+        </Button>
+        {/* REQ-1442: always on the toolbar, disabled when there is nothing to clear — the reader
+            who filtered several columns to nothing needs one control, not one per column. */}
+        <Button
+          variant="default"
+          size="compact-xs"
+          onClick={clearFilters}
+          disabled={!hasFilters}
+          title={t("sqlResultsPanel.clearFiltersTitle")}
+          data-testid="clear-filters-btn"
+          leftSection={<FilterX size={11} />}
+        >
+          {t("sqlResultsPanel.clearFilters")}
         </Button>
         <Text component="span" size="xs" c="dimmed">
           {t("sqlResultsPanel.rowCount", { count: displayRows.length })}
@@ -270,9 +351,7 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
                             color: "var(--primary)",
                           }}
                         >
-                          {sorts.length > 1 && (
-                            <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>
-                          )}
+                          {sorts.length > 1 && <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>}
                           <span>{sortEntry.dir === "asc" ? "▲" : "▼"}</span>
                         </span>
                       ) : (
@@ -419,11 +498,7 @@ export function ResultsGrid({ grid, totalRowCount, groupable = true }: ResultsGr
         </table>
       </div>
       {detail !== null && (
-        <TraceDetailsModal
-          kind={detail.kind}
-          id={detail.id}
-          onClose={() => setDetail(null)}
-        />
+        <TraceDetailsModal kind={detail.kind} id={detail.id} onClose={() => setDetail(null)} />
       )}
     </div>
   );

@@ -93,11 +93,7 @@ export function ResultsPanel({
                 }
                 rightSection={
                   count > 0 ? (
-                    <Badge
-                      size="xs"
-                      circle
-                      color={tab === "errors" ? "red" : "blue"}
-                    >
+                    <Badge size="xs" circle color={tab === "errors" ? "red" : "blue"}>
                       {count}
                     </Badge>
                   ) : undefined
@@ -148,10 +144,17 @@ export function ResultsPanel({
                 fontSize: "0.85rem",
               }}
             >
-              {sqlText.trim() ? t("sqlResultsPanel.noResults") : t("sqlResultsPanel.writeSqlPrompt")}
+              {sqlText.trim()
+                ? t("sqlResultsPanel.noResults")
+                : t("sqlResultsPanel.writeSqlPrompt")}
             </div>
           ) : (
-            <ResultsGrid grid={grid} totalRowCount={resultRows.length} />
+            <ResultsGrid
+              grid={grid}
+              totalRowCount={resultRows.length}
+              // REQ-1441: in the workbench the statement in the editor IS the construction.
+              provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
+            />
           ))}
 
         {resultTab === "profile" &&
@@ -192,21 +195,30 @@ export function ResultsPanel({
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{t("sqlResultsPanel.colColumn")}</Table.Th>
-                      <Table.Th title={t("sqlResultsPanel.colNullsTitle")}>{t("sqlResultsPanel.colNulls")}</Table.Th>
-                      <Table.Th title={t("sqlResultsPanel.colBlanksTitle")}>{t("sqlResultsPanel.colBlanks")}</Table.Th>
-                      <Table.Th title={t("sqlResultsPanel.colDistinctTitle")}>{t("sqlResultsPanel.colDistinct")}</Table.Th>
-                      <Table.Th title={t("sqlResultsPanel.colConstantTitle")}>{t("sqlResultsPanel.colConstant")}</Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colNullsTitle")}>
+                        {t("sqlResultsPanel.colNulls")}
+                      </Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colBlanksTitle")}>
+                        {t("sqlResultsPanel.colBlanks")}
+                      </Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colDistinctTitle")}>
+                        {t("sqlResultsPanel.colDistinct")}
+                      </Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colConstantTitle")}>
+                        {t("sqlResultsPanel.colConstant")}
+                      </Table.Th>
                       <Table.Th>{t("sqlResultsPanel.colMin")}</Table.Th>
                       <Table.Th>{t("sqlResultsPanel.colMax")}</Table.Th>
-                      <Table.Th title={t("sqlResultsPanel.colMeanTitle")}>{t("sqlResultsPanel.colMean")}</Table.Th>
+                      <Table.Th title={t("sqlResultsPanel.colMeanTitle")}>
+                        {t("sqlResultsPanel.colMean")}
+                      </Table.Th>
                       <Table.Th>{t("sqlResultsPanel.colTopValues")}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {profile.map((p) => {
                       const total = resultRows.length;
-                      const nullPct =
-                        total > 0 ? Math.round((p.nullCount / total) * 100) : 0;
+                      const nullPct = total > 0 ? Math.round((p.nullCount / total) * 100) : 0;
                       const isHighNull = nullPct >= 50;
                       const isConstant = p.constantValue !== undefined;
                       return (
@@ -258,14 +270,15 @@ export function ResultsPanel({
                           </Table.Td>
                           <Table.Td
                             style={{
-                              color:
-                                p.blankCount > 0 ? "var(--text)" : "var(--text-muted)",
+                              color: p.blankCount > 0 ? "var(--text)" : "var(--text-muted)",
                             }}
                           >
                             {p.blankCount > 0 ? (
                               p.blankCount
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
+                              <span style={{ color: "var(--text-muted)" }}>
+                                {t("sqlResultsPanel.dash")}
+                              </span>
                             )}
                           </Table.Td>
                           <Table.Td
@@ -277,48 +290,67 @@ export function ResultsPanel({
                           </Table.Td>
                           <Table.Td
                             style={{
-                              color: isConstant
-                                ? "var(--destructive)"
-                                : "var(--text-muted)",
+                              color: isConstant ? "var(--destructive)" : "var(--text-muted)",
                             }}
                           >
                             {isConstant ? (
                               <span title={String(p.constantValue)}>
-                                {t("sqlResultsPanel.constantYes", { value: String(p.constantValue).slice(0, 12) })}
+                                {t("sqlResultsPanel.constantYes", {
+                                  value: String(p.constantValue).slice(0, 12),
+                                })}
                               </span>
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
+                              <span style={{ color: "var(--text-muted)" }}>
+                                {t("sqlResultsPanel.dash")}
+                              </span>
                             )}
                           </Table.Td>
                           <Table.Td style={{ fontFamily: "monospace" }}>
                             {p.min !== null ? (
                               String(p.min).slice(0, 16)
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
+                              <span style={{ color: "var(--text-muted)" }}>
+                                {t("sqlResultsPanel.dash")}
+                              </span>
                             )}
                           </Table.Td>
                           <Table.Td style={{ fontFamily: "monospace" }}>
                             {p.max !== null ? (
                               String(p.max).slice(0, 16)
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
+                              <span style={{ color: "var(--text-muted)" }}>
+                                {t("sqlResultsPanel.dash")}
+                              </span>
                             )}
                           </Table.Td>
                           <Table.Td style={{ fontFamily: "monospace" }}>
                             {p.mean !== null ? (
                               p.mean.toFixed(2)
                             ) : (
-                              <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.dash")}</span>
+                              <span style={{ color: "var(--text-muted)" }}>
+                                {t("sqlResultsPanel.dash")}
+                              </span>
                             )}
                           </Table.Td>
                           <Table.Td>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "0.18rem", minWidth: 140 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "0.18rem",
+                                minWidth: 140,
+                              }}
+                            >
                               {p.topValues.map(({ value, count }) => {
-                                const barPct = p.topValues[0].count > 0
-                                  ? (count / p.topValues[0].count) * 100
-                                  : 0;
+                                const barPct =
+                                  p.topValues[0].count > 0
+                                    ? (count / p.topValues[0].count) * 100
+                                    : 0;
                                 return (
-                                  <div key={value} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                                  <div
+                                    key={value}
+                                    style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}
+                                  >
                                     <div
                                       style={{
                                         width: 52,
@@ -354,7 +386,14 @@ export function ResultsPanel({
                                     >
                                       {value.slice(0, 22)}
                                     </span>
-                                    <span style={{ color: "var(--text-muted)", fontSize: "0.65rem", marginInlineStart: "auto", flexShrink: 0 }}>
+                                    <span
+                                      style={{
+                                        color: "var(--text-muted)",
+                                        fontSize: "0.65rem",
+                                        marginInlineStart: "auto",
+                                        flexShrink: 0,
+                                      }}
+                                    >
                                       ×{count}
                                     </span>
                                   </div>
@@ -461,9 +500,7 @@ export function ResultsPanel({
                     <Table.Tr key={i} style={{ verticalAlign: "top" }}>
                       <Table.Td style={{ whiteSpace: "nowrap", color: "var(--text-muted)" }}>
                         <div>{timeLabel}</div>
-                        {!isToday && (
-                          <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>
-                        )}
+                        {!isToday && <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>}
                       </Table.Td>
                       <Table.Td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                         {h.role}
@@ -482,7 +519,11 @@ export function ResultsPanel({
                           color: h.error ? "var(--destructive)" : "var(--text)",
                         }}
                       >
-                        {h.error ? <span title={h.error}>{t("sqlResultsPanel.errorLabel")}</span> : h.rowCount}
+                        {h.error ? (
+                          <span title={h.error}>{t("sqlResultsPanel.errorLabel")}</span>
+                        ) : (
+                          h.rowCount
+                        )}
                       </Table.Td>
                       <Table.Td>
                         <pre
@@ -561,26 +602,39 @@ export function ResultsPanel({
                       }}
                     >
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsField")}</span>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {t("sqlResultsPanel.statsField")}
+                        </span>{" "}
                         {s.field}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsSource")}</span>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {t("sqlResultsPanel.statsSource")}
+                        </span>{" "}
                         {s.source}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsStrategy")}</span>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {t("sqlResultsPanel.statsStrategy")}
+                        </span>{" "}
                         {s.strategy}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsElapsed")}</span>{" "}
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {t("sqlResultsPanel.statsElapsed")}
+                        </span>{" "}
                         {t("sqlResultsPanel.statsElapsedMs", { ms: s.elapsed_ms })}
                       </span>
                       <span>
-                        <span style={{ color: "var(--text-muted)" }}>{t("sqlResultsPanel.statsRows")}</span> {s.rows}
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {t("sqlResultsPanel.statsRows")}
+                        </span>{" "}
+                        {s.rows}
                       </span>
                       {s.cache_hit && (
-                        <span style={{ color: "#4ade80" }}>{t("sqlResultsPanel.statsCacheHit")}</span>
+                        <span style={{ color: "#4ade80" }}>
+                          {t("sqlResultsPanel.statsCacheHit")}
+                        </span>
                       )}
                     </div>
                     {s.physical_sql && (

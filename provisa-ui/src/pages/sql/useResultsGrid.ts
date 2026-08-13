@@ -25,6 +25,10 @@ export interface ResultsGridState {
   sorts: { col: string; dir: "asc" | "desc" }[];
   filters: Record<string, string>;
   setFilters: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  /** REQ-1442: true when at least one column filter is narrowing the result. */
+  hasFilters: boolean;
+  /** REQ-1442: drop every column filter at once and return to the first page. */
+  clearFilters: () => void;
   /** Ordered multi-level grouping columns; empty = ungrouped. */
   groupBy: string[];
   toggleGroupBy: (col: string) => void;
@@ -218,6 +222,15 @@ export function useResultsGrid(
     setPage(0);
   }, []);
 
+  // REQ-1442: clearing filters one input at a time is the only way back from a filter that emptied
+  // the grid, and a reader who narrowed six columns has to find all six. This drops them together.
+  const hasFilters = useMemo(() => Object.values(filters).some((f) => f !== ""), [filters]);
+
+  const clearFilters = useCallback(() => {
+    setFilters({});
+    setPage(0);
+  }, []);
+
   const toggleGroupBy = useCallback((col: string) => {
     setGroupBy((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]));
     setCollapsedGroups(new Set());
@@ -274,8 +287,7 @@ export function useResultsGrid(
         : s;
     };
     const lines = [displayColumns.map(escape).join(",")];
-    for (const row of displayRows)
-      lines.push(displayColumns.map((c) => escape(row[c])).join(","));
+    for (const row of displayRows) lines.push(displayColumns.map((c) => escape(row[c])).join(","));
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -356,6 +368,8 @@ export function useResultsGrid(
     sorts,
     filters,
     setFilters,
+    hasFilters,
+    clearFilters,
     groupBy,
     toggleGroupBy,
     collapsedGroups,

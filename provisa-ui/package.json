@@ -67,7 +67,8 @@
     "rolldown": "^1.0.3",
     "rrule": "^2.8.1",
     "sql-formatter": "^15.8.0",
-    "vite-plugin-monaco-editor": "^1.1.0"
+    "vite-plugin-monaco-editor": "^1.1.0",
+    "write-excel-file": "^2.3.10"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",

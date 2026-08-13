@@ -3,6 +3,14 @@
     "noRows": "沒有資料列。",
     "run": "執行",
     "paramsRequired": "此資料表需要參數。請填寫必填欄位並按下執行。",
-    "refresh": "重新整理"
+    "refresh": "重新整理",
+    "provRelation": "關係",
+    "provRegistered": "註冊為",
+    "provSource": "數據來源",
+    "provDescription": "說明",
+    "provEndpoint": "API 端點",
+    "provDefinition": "檢視定義",
+    "provParams": "參數",
+    "provStatement": "已執行的陳述式"
   }
 }

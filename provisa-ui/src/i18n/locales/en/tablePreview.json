@@ -3,6 +3,14 @@
     "noRows": "No rows.",
     "run": "Run",
     "paramsRequired": "This table requires parameters. Fill in the required fields and press Run.",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "provRelation": "Relation",
+    "provRegistered": "Registered as",
+    "provSource": "Source",
+    "provDescription": "Description",
+    "provEndpoint": "API endpoint",
+    "provDefinition": "View definition",
+    "provParams": "Parameters",
+    "provStatement": "Statement executed"
   }
 }

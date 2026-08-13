@@ -24,6 +24,7 @@ import { RefreshCw } from "lucide-react";
 import { runSql } from "../api/admin";
 import type { RegisteredTable } from "../types/admin";
 import { ResultsGrid } from "../pages/sql/ResultsGrid";
+import type { ProvenanceEntry } from "../pages/sql/exportXlsx";
 import { useResultsGrid } from "../pages/sql/useResultsGrid";
 import {
   optionalParamColumns,
@@ -107,6 +108,36 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
     // eslint-disable-next-line react-hooks/exhaustive-deps -- queryKey is the serialized form of every input that must trigger a refetch
   }, [table, queryKey]);
 
+  // REQ-1441: what the exported workbook records about this relation. The statement is the one that
+  // actually fetched the rows in the grid — same call, same arguments — not a reconstruction.
+  const provenanceFor = (params: Record<string, string>): ProvenanceEntry[] => {
+    const entries: ProvenanceEntry[] = [
+      {
+        label: t("tablePreview.provRelation"),
+        value: `${table.domainId}.${table.alias || table.tableName}`,
+      },
+      { label: t("tablePreview.provRegistered"), value: `${table.schemaName}.${table.tableName}` },
+      { label: t("tablePreview.provSource"), value: table.sourceId },
+    ];
+    if (table.description)
+      entries.push({ label: t("tablePreview.provDescription"), value: table.description });
+    if (table.apiEndpoint)
+      entries.push({ label: t("tablePreview.provEndpoint"), value: table.apiEndpoint });
+    if (table.viewSql)
+      entries.push({ label: t("tablePreview.provDefinition"), value: table.viewSql });
+    const supplied = Object.entries(params).filter(([, v]) => v !== "");
+    if (supplied.length > 0)
+      entries.push({
+        label: t("tablePreview.provParams"),
+        value: supplied.map(([k, v]) => `${k} = ${v}`).join("\n"),
+      });
+    entries.push({
+      label: t("tablePreview.provStatement"),
+      value: pagedViewerSql(table, params, filters, sorts, groupBy, page, pageSize),
+    });
+    return entries;
+  };
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {showTitle && (
@@ -185,7 +216,12 @@ export function GovernedTableViewer({ table, showTitle = false }: GovernedTableV
         </Text>
       ) : result != null ? (
         <div style={{ flex: 1, overflow: "hidden", opacity: loading ? 0.6 : 1 }}>
-          <ResultsGrid grid={grid} totalRowCount={result.rows.length} />
+          <ResultsGrid
+            grid={grid}
+            totalRowCount={result.rows.length}
+            provenance={provenanceFor(activeParams)}
+            exportName={table.alias || table.tableName}
+          />
         </div>
       ) : null}
     </div>

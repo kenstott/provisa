@@ -3,6 +3,14 @@
     "noRows": "אין שורות.",
     "run": "הרצה",
     "paramsRequired": "טבלה זו דורשת פרמטרים. יש למלא את שדות החובה וללחוץ על הרצה.",
-    "refresh": "רענון"
+    "refresh": "רענון",
+    "provRelation": "רלציה",
+    "provRegistered": "רשום כ",
+    "provSource": "מקור",
+    "provDescription": "תיאור",
+    "provEndpoint": "נקודת קצה של API",
+    "provDefinition": "הגדרת התצוגה (View)",
+    "provParams": "פרמטרים",
+    "provStatement": "המשפט שהורץ"
   }
 }

@@ -3,6 +3,14 @@
     "noRows": "Nessuna riga.",
     "run": "Esegui",
     "paramsRequired": "Questa tabella richiede parametri. Compila i campi obbligatori e premi Esegui.",
-    "refresh": "Aggiorna"
+    "refresh": "Aggiorna",
+    "provRelation": "Relazione",
+    "provRegistered": "Registrata come",
+    "provSource": "Origine",
+    "provDescription": "Descrizione",
+    "provEndpoint": "Endpoint API",
+    "provDefinition": "Definizione della vista",
+    "provParams": "Parametri",
+    "provStatement": "Istruzione eseguita"
   }
 }

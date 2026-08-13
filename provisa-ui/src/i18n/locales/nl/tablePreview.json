@@ -3,6 +3,14 @@
     "noRows": "Geen rijen.",
     "run": "Uitvoeren",
     "paramsRequired": "Deze tabel vereist parameters. Vul de verplichte velden in en klik op Uitvoeren.",
-    "refresh": "Vernieuwen"
+    "refresh": "Vernieuwen",
+    "provRelation": "Relatie",
+    "provRegistered": "Geregistreerd als",
+    "provSource": "Bron",
+    "provDescription": "Beschrijving",
+    "provEndpoint": "API-endpoint",
+    "provDefinition": "Viewdefinitie",
+    "provParams": "Parameters",
+    "provStatement": "Uitgevoerde instructie"
   }
 }

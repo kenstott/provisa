@@ -3,6 +3,14 @@
     "noRows": "行がありません。",
     "run": "実行",
     "paramsRequired": "このテーブルにはパラメーターが必要です。必須フィールドを入力して実行を押してください。",
-    "refresh": "更新"
+    "refresh": "更新",
+    "provRelation": "リレーション",
+    "provRegistered": "登録名",
+    "provSource": "ソース",
+    "provDescription": "説明",
+    "provEndpoint": "API エンドポイント",
+    "provDefinition": "ビュー定義",
+    "provParams": "パラメーター",
+    "provStatement": "実行したステートメント"
   }
 }

@@ -3,6 +3,14 @@
     "noRows": "Нет строк.",
     "run": "Выполнить",
     "paramsRequired": "Для этой таблицы требуются параметры. Заполните обязательные поля и нажмите «Выполнить».",
-    "refresh": "Обновить"
+    "refresh": "Обновить",
+    "provRelation": "Отношение",
+    "provRegistered": "Зарегистрировано как",
+    "provSource": "Источник",
+    "provDescription": "Описание",
+    "provEndpoint": "Конечная точка API",
+    "provDefinition": "Определение представления",
+    "provParams": "Параметры",
+    "provStatement": "Выполненный запрос"
   }
 }

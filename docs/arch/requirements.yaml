@@ -44205,3 +44205,95 @@
   related_reqs:
   - REQ-1386
   - REQ-1266
+- id: REQ-1440
+  status: complete
+  since: 2026-08
+  group: 06. User Interface & Experience
+  category: UI
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Any grid of results - a report, a table or view preview, a workbench result - exports to an Excel
+    workbook alongside the CSV. Each column is written with the type it actually holds rather than as
+    text: a column whose every non-null value is a number is written as numbers, a column whose every
+    non-null value parses as an instant is written as dates carrying the same wall clock the grid
+    displays, formatted yyyy-mm-dd hh:mm:ss or yyyy-mm-dd when the value has no time part. A column
+    that disagrees with itself is written as text, because writing part of it as a date would
+    silently reinterpret the rest. A null cell is left empty rather than filled with the word null.
+  use_case: >-
+    An analyst opens an exported report in Excel and sorts by date and sums a measure without first
+    re-typing either column.
+  code:
+  - provisa-ui/src/pages/sql/exportXlsx.ts
+  - provisa-ui/src/pages/sql/formatCell.ts
+  - provisa-ui/src/pages/sql/ResultsGrid.tsx
+  tests:
+  - provisa-ui/src/pages/sql/__tests__/exportXlsx.test.ts
+  scenario: |-
+    Given a report holding a numeric column and a timestamp column
+    When the reader downloads it as XLSX
+    Then the numeric cells are numbers and the timestamp cells are formatted dates
+  related_reqs:
+  - REQ-1386
+  - REQ-1441
+- id: REQ-1441
+  status: complete
+  since: 2026-08
+  group: 06. User Interface & Experience
+  category: UI
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    An exported workbook carries a second sheet recording how the first was produced. For a report or
+    a table/view preview that is the relation and the name it is registered under, its source,
+    description, API endpoint and view definition where those exist, the parameter values supplied,
+    and the governed statement that actually fetched the rows; for a workbench result it is the
+    statement in the editor. To those the grid adds the facts of this particular export: the export
+    time in UTC, whether the sheet holds the whole result or one page of a server-paged relation and
+    which page at what size, the row count, and the reader's own column filters, sort and grouping.
+    The sheet closes with the type every column was written as, so a reader opening the file later
+    can tell a page from a whole relation and knows what shaped it.
+  use_case: >-
+    A reviewer receives an exported report months later and reads off the exact statement, page and
+    filters that produced it.
+  code:
+  - provisa-ui/src/pages/sql/exportXlsx.ts
+  - provisa-ui/src/pages/sql/ResultsGrid.tsx
+  - provisa-ui/src/components/GovernedTableViewer.tsx
+  - provisa-ui/src/pages/sql/ResultsPanel.tsx
+  tests:
+  - provisa-ui/src/pages/sql/__tests__/exportXlsx.test.ts
+  scenario: |-
+    Given a server-paged report narrowed by a column filter
+    When the reader downloads it as XLSX
+    Then the provenance sheet names the statement, the page and page size, and the filter applied
+  related_reqs:
+  - REQ-1386
+  - REQ-1440
+- id: REQ-1442
+  status: complete
+  since: 2026-08
+  group: 06. User Interface & Experience
+  category: UI
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The results toolbar carries a clear-filters control on every grid, disabled while no column
+    filter is set. Clearing drops every column filter at once and returns the reader to the first
+    page. A reader who narrowed several columns until the grid emptied has one control to undo it
+    rather than one per column.
+  use_case: >-
+    An admin filters four columns of a report down to no rows and restores the full result in one
+    click.
+  code:
+  - provisa-ui/src/pages/sql/useResultsGrid.ts
+  - provisa-ui/src/pages/sql/ResultsGrid.tsx
+  tests:
+  - provisa-ui/src/pages/sql/__tests__/ResultsGrid.clearFilters.test.tsx
+  scenario: |-
+    Given a grid with two column filters that match no rows
+    When the reader clicks clear filters
+    Then every filter is dropped, the grid shows the first page, and the control is disabled again
+  related_reqs:
+  - REQ-1386
+  - REQ-1436

@@ -3,6 +3,14 @@
     "noRows": "Keine Zeilen.",
     "run": "Ausführen",
     "paramsRequired": "Diese Tabelle erfordert Parameter. Füllen Sie die Pflichtfelder aus und klicken Sie auf Ausführen.",
-    "refresh": "Aktualisieren"
+    "refresh": "Aktualisieren",
+    "provRelation": "Relation",
+    "provRegistered": "Registriert als",
+    "provSource": "Quelle",
+    "provDescription": "Beschreibung",
+    "provEndpoint": "API-Endpunkt",
+    "provDefinition": "Sichtdefinition",
+    "provParams": "Parameter",
+    "provStatement": "Ausgeführte Anweisung"
   }
 }

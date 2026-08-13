@@ -3,6 +3,14 @@
     "noRows": "Aucune ligne.",
     "run": "Exécuter",
     "paramsRequired": "Cette table requiert des paramètres. Renseignez les champs obligatoires puis cliquez sur Exécuter.",
-    "refresh": "Actualiser"
+    "refresh": "Actualiser",
+    "provRelation": "Relation",
+    "provRegistered": "Enregistrée sous",
+    "provSource": "Source",
+    "provDescription": "Description",
+    "provEndpoint": "Endpoint d'API",
+    "provDefinition": "Définition de la vue",
+    "provParams": "Paramètres",
+    "provStatement": "Instruction exécutée"
   }
 }

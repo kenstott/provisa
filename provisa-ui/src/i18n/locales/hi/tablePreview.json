@@ -3,6 +3,14 @@
     "noRows": "कोई पंक्तियाँ नहीं।",
     "run": "चलाएँ",
     "paramsRequired": "इस तालिका के लिए पैरामीटर आवश्यक हैं। अनिवार्य फ़ील्ड भरें और चलाएँ दबाएँ।",
-    "refresh": "रिफ़्रेश करें"
+    "refresh": "रिफ़्रेश करें",
+    "provRelation": "रिलेशन",
+    "provRegistered": "पंजीकृत नाम",
+    "provSource": "स्रोत",
+    "provDescription": "विवरण",
+    "provEndpoint": "API एंडपॉइंट",
+    "provDefinition": "व्यू परिभाषा",
+    "provParams": "पैरामीटर",
+    "provStatement": "निष्पादित स्टेटमेंट"
   }
 }

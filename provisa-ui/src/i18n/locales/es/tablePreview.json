@@ -3,6 +3,14 @@
     "noRows": "Sin filas.",
     "run": "Ejecutar",
     "paramsRequired": "Esta tabla requiere parámetros. Complete los campos obligatorios y pulse Ejecutar.",
-    "refresh": "Actualizar"
+    "refresh": "Actualizar",
+    "provRelation": "Relación",
+    "provRegistered": "Registrada como",
+    "provSource": "Origen",
+    "provDescription": "Descripción",
+    "provEndpoint": "Endpoint de API",
+    "provDefinition": "Definición de la vista",
+    "provParams": "Parámetros",
+    "provStatement": "Sentencia ejecutada"
   }
 }

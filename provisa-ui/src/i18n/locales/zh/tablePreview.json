@@ -3,6 +3,14 @@
     "noRows": "没有行。",
     "run": "运行",
     "paramsRequired": "此表需要参数。请填写必填字段并点击运行。",
-    "refresh": "刷新"
+    "refresh": "刷新",
+    "provRelation": "关系",
+    "provRegistered": "注册为",
+    "provSource": "数据源",
+    "provDescription": "说明",
+    "provEndpoint": "API 终结点",
+    "provDefinition": "视图定义",
+    "provParams": "参数",
+    "provStatement": "已执行的语句"
   }
 }
