@@ -44784,8 +44784,19 @@
     resource-group changes propagate more slowly than they do today. Worker count is an HPA scaling
     on queued queries rather than the instance-level signal the current regional autoscaler uses
     (terraform/gcp-saas/main.tf:401,421), and scale-in must drain per REQ-1448. The shared pool
-    never scales to zero: it is always serving someone, so idle-to-zero belongs to the isolated
-    lane alone. This deployment replaces the google_compute_instance coordinator plus worker MIG.
+    scales to zero when no org is active on the shard, on the same node-pool mechanism and wake
+    path the isolated lane uses (REQ-1448); it is not exempt from idle-to-zero, it simply reaches
+    that state far less often, because the idle window has to be quiet for EVERY org on the shard
+    at once rather than for one. The distinction matters most at the two ends. Before the first
+    paying org the shard has no tenant at all, and a pool pinned above zero there is the platform's
+    single largest idle line -- one n2-highmem-8 held 24x7 is roughly $383/mo against a
+    zero-customer floor near $19/mo, so pinning it would multiply the floor twentyfold to serve
+    nobody. Once a shard carries real traffic the pool effectively never reaches zero on its own,
+    which is the correct outcome to arrive at by observation rather than by configuration. The
+    Starter wake cost is the REQ-1448 node-provision latency on a cold first query, which is
+    acceptable on the entry tier and is the same latency the isolated lane already accepts. Idle
+    policy is therefore a per-shard setting -- minimum node count and idle window -- not a property
+    of the lane. This deployment replaces the google_compute_instance coordinator plus worker MIG.
     Capacity is added by growing the worker node pool on the SAME cluster, keeping one coordinator;
     workers in a separate cluster could join over flat VPC-native networking but would put a
     cluster boundary in every exchange for no gain. That path ends at the coordinator, not the

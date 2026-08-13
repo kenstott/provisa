@@ -8,238 +8,347 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Provisa cost-to-serve + pricing model.
+"""Provisa SaaS cost-to-serve + pricing, on the settled topology.
 
-Goal: back out free-band thresholds (egress GB, vCPU-hrs) that sit safely
-under break-even, and size platform fee + overage rates for a target margin.
+Topology priced here (REQ-1447/1448/1449/1450/1451):
 
-All costs are GCP us-central1 list/spot as of 2026-07. Adjust ASSUMPTIONS.
+  control plane   one VM + Cloud SQL, off the cluster        (REQ-1451)
+  Starter         shared multi-tenant Trino, one GKE cluster (REQ-1450)
+  Pro S/M/L       same manifests, single-tenant node pool     (REQ-1449)
+  BYO             customer's own engine, no compute meter
+
+Three constraints, in priority order, because they pull against each other:
+
+  1. PRICE IS SET BY THE COMPS, not by cost-plus. Starter must look like Hasura
+     Cloud v2 (per-active-hour, per-GB, no meaningful base fee); Pro must look
+     like Starburst Galaxy (per-hour compute, no base fee). A cost-plus number
+     that lands above either comp is not a price, it is a reason to lose.
+
+  2. MARGINAL margin >= 75% on every customer. Marginal = revenue minus the cost
+     that customer causes (engine hours, egress). This is the line that must hold
+     for essentially everyone, because it is what makes each additional customer
+     worth having.
+
+  3. FULLY-LOADED margin >= 75% at a THRESHOLD org count, not at customer #1.
+     Fully-loaded adds that customer's share of the fixed floor. With the floor
+     divided by one customer the margin is poor by arithmetic, not by mispricing;
+     it improves as the denominator grows. The model reports the crossover count
+     rather than pretending it is 1.
+
+Starter's marginal margin is additionally a function of shared-cluster DENSITY:
+one org alone on a shared node pays for the whole node, four concurrent orgs pay
+a quarter each. Starter is the tier where constraint 2 is also a ramp.
+
+All costs are GCP us-central1 list as of 2026-08. Adjust ASSUMPTIONS.
 """
 
-# ------------------------- ASSUMPTIONS (edit these) -------------------------
-# Marginal (per-unit) cash costs to serve — what you owe GCP.
-SPOT_NODE_HR = 0.080          # e2-standard-8 (8 vCPU) on Spot, $/hr
-ONDEMAND_NODE_HR = 0.268      # e2-standard-8 on-demand, $/hr (warm pool)
-VCPU_PER_NODE = 8
-COST_VCPU_HR = SPOT_NODE_HR / VCPU_PER_NODE   # $/vCPU-hr  -> 0.010
+HOURS_MO = 730
 
-# Warm pool: min=N on-demand workers held hot for interactive latency.
-# Its cost is FIXED (always-on), amortized per paying org like the floor.
-# Set to 0 to rely purely on scale-to-zero + resume-minimum billing.
-WARM_POOL_NODES = 0
-WARM_POOL_MO = WARM_POOL_NODES * ONDEMAND_NODE_HR * 730   # $/mo always-on
-
-# ── MPP ongoing warm cost (the structural delta vs Hasura's single instance) ──
-# Trino is multi-instance MPP: a warm coordinator (planner + persistent-protocol
-# listeners; node-scheduler.include-coordinator=false so it can't execute) is a
-# REQUIRED always-on box, and interactive zero-cold-start needs a warm worker too.
-# Hasura's warm surface is one instance (~$0.005/hr). So Provisa's warm-hour COGS
-# is structurally higher, not at parity — the active-hour margin below reflects it.
-COORD_HR = 0.134              # e2-standard-4 coordinator on-demand, $/hr
-CUD_DISCOUNT = 0.37           # 1-yr committed-use discount on always-on warm instances
-SHUFFLE_GB_PER_ACTIVE_HR = 2  # cross-zone intra-cluster shuffle on multi-worker joins
-COST_XZONE_GB = 0.01          # GCP cross-zone egress, $/GB (same-zone is free)
-ACTIVE_HOUR_PRICE = 3.25      # Hasura parity + small premium, $/active-hr
-
-# ── Two anchors: Provisa is a mix of Hasura (warm low-latency API, active-hour)
-# and Starburst Galaxy (analytical MPP, worker-hour). Galaxy is Trino-as-a-service
-# — the true comp for the analytical lane. It bills 6 credits/worker-hr at
-# $0.50/credit (Pro) = $3.00/worker-hr, autoscaled, regardless of underlying Spot
-# (~$0.08/worker-hr). That is the software-rent price the analytical lane should
-# anchor to — NOT cost/(1-margin) over Spot, which underprices it ~9x.
-GALAXY_CREDIT = 0.50          # Pro tier, $/credit (AWS us-east); Ent $0.75, MC $1.00
+# ------------------------- COMPETITIVE ANCHORS (hard ceilings) -------------------------
+# Hasura Cloud v2 Professional: usage-priced, no base fee — $/active-hour (an hour
+# in which the project served at least one request) plus $/GB data pass-through.
+HASURA_ACTIVE_HR = 1.30
+HASURA_EGRESS_GB = 0.13
+# Starburst Galaxy Pro: 6 credits/worker-hour at $0.50/credit, no base fee. Note
+# this is PER WORKER — a Galaxy cluster is a coordinator plus N workers, so the
+# comparable Provisa number is the whole engine against one Galaxy worker.
+GALAXY_CREDIT = 0.50
 GALAXY_CREDITS_PER_WORKER_HR = 6
-GALAXY_WORKER_HR = GALAXY_CREDIT * GALAXY_CREDITS_PER_WORKER_HR   # $3.00/worker-hr Pro
-WORKER_HR_PRICE = 2.50        # Provisa analytical lane, $/worker-hr (just under Galaxy Pro)
+GALAXY_WORKER_HR = GALAXY_CREDIT * GALAXY_CREDITS_PER_WORKER_HR
 
-# Egress. Our ONLY egress cost is result bytes leaving GCP to the consumer.
-# The source-cloud (AWS/Azure) egress a query triggers is billed to the account
-# that OWNS the source — the customer — not us; bytes arriving at GCP are free
-# ingress. So no source leg on our books. Result sets are the small, filtered/
-# aggregated output, not the raw scan (which never leaves the source's cloud on
-# our bill).
-COST_EGRESS_GB = 0.12         # GCP internet egress on result bytes, $/GB
+# ------------------------- GCP UNIT PRICES (us-central1) -------------------------
+# n2 bills per-vCPU + per-GB linearly — which is why REQ-1449 scales Pro vertically
+# instead of out: the three sizes cost exactly 1x/2x/4x, no discount lost.
+N2_VCPU_HR = 0.031611
+N2_GB_HR = 0.004237
+SPOT_DISCOUNT = 0.72
+CUD_1YR_DISCOUNT = 0.37
 
-# Fixed floor — shared, unconditional. Cloud Run site (min=1) + Cloud SQL f1-micro.
-# The ONLY fixed cost with no matching usage meter, so it must stay small and be
-# covered by the flat-fee minimum (fee >= floor / paying_orgs). Everything warm beyond
-# the site is rented by the active-hour (warm add-on), so cost<->revenue are welded.
-CONTROL_PLANE_MO = 19.0       # Cloud Run min=1 (~$10) + Cloud SQL f1-micro (~$9)
-FLOOR_TOTAL_MO = CONTROL_PLANE_MO + WARM_POOL_MO   # control plane + hot worker(s)
-PAYING_ORGS = 10              # conservative early denominator
-FLOOR_PER_ORG_MO = FLOOR_TOTAL_MO / PAYING_ORGS
+E2_MICRO_HR = 0.0             # always-free tier, 1 per billing account (us-central1)
+E2_STANDARD_4_HR = 0.134      # control-plane VM when running
 
-# Cold start: waking a scaled-to-zero worker burns boot time you can't query on.
-# Bill a per-resume minimum (Snowflake charges 60s) to cover it.
-BOOT_SECONDS = 90            # time to provision+warm a fresh worker
-MIN_BILLED_SECONDS = 90      # minimum cluster-seconds billed per resume
-RESUMES_PER_MO = {           # cold wakes/mo by profile (pool misses)
-    "Light / interactive": 40,
-    "Team / analytics":    120,
-    "Heavy / batch":       30,   # long jobs -> fewer, longer sessions
+GKE_CLUSTER_HR = 0.10
+GKE_FREE_ZONAL_CLUSTERS = 1
+
+CLOUDSQL_F1_MICRO_HR = 0.0105
+CLOUDSQL_STORAGE_GB_MO = 0.17
+CLOUDSQL_DISK_GB = 20
+
+PD_STANDARD_GB_MO = 0.04      # a retained boot disk on a STOPPED VM still bills
+CONTROL_PLANE_DISK_GB = 100
+FRONT_DOOR_DISK_GB = 10
+
+COST_EGRESS_GB = 0.12         # result bytes leaving GCP. The source-cloud leg is
+                              # billed to whoever owns the source — the customer.
+OBSERVABILITY_MO = 3.0
+REGISTRY_MO = 0.5
+
+TARGET_GROSS_MARGIN = 0.75
+MARKUP = 1 / (1 - TARGET_GROSS_MARGIN)
+
+# ------------------------- ENGINE SIZES (REQ-1449) -------------------------
+SIZES = [("Pro S", 4, 32), ("Pro M", 8, 64), ("Pro L", 16, 128)]
+SHARED_NODE_VCPU, SHARED_NODE_GB = 8, 64
+
+
+def node_hr(vcpu, gb, spot=False, cud=False):
+    base = vcpu * N2_VCPU_HR + gb * N2_GB_HR
+    if spot:
+        return base * (1 - SPOT_DISCOUNT)
+    if cud:
+        return base * (1 - CUD_1YR_DISCOUNT)
+    return base
+
+
+shared_node_hr = node_hr(SHARED_NODE_VCPU, SHARED_NODE_GB)
+
+# ------------------------- 1. ZERO-CUSTOMER FLOOR -------------------------
+# Held near zero by three choices, each a real constraint:
+#   a. EXACTLY ONE zonal GKE cluster -> management fee is free-tier credited. The
+#      second shard (shared_2) is the first $73/mo step, not the first customer.
+#   b. Shared node pool min=0 with no active org (REQ-1450, as amended).
+#   c. Control-plane VM idle-stops behind the front door; only its disk bills.
+zero_customer = [
+    ("GKE cluster management (1 zonal, free tier)",
+     max(0, 1 - GKE_FREE_ZONAL_CLUSTERS) * GKE_CLUSTER_HR * HOURS_MO),
+    ("Shared Trino node pool (min=0, no orgs)", 0.0),
+    ("Isolated node pools (none provisioned)", 0.0),
+    ("Front door e2-micro (always-free tier)", E2_MICRO_HR * HOURS_MO),
+    ("  front door boot disk", FRONT_DOOR_DISK_GB * PD_STANDARD_GB_MO),
+    ("Control-plane VM (idle-stopped)", 0.0),
+    ("  control-plane boot disk (retained)", CONTROL_PLANE_DISK_GB * PD_STANDARD_GB_MO),
+    ("Cloud SQL db-f1-micro (always on)", CLOUDSQL_F1_MICRO_HR * HOURS_MO),
+    ("  Cloud SQL storage", CLOUDSQL_DISK_GB * CLOUDSQL_STORAGE_GB_MO),
+    ("Artifact Registry", REGISTRY_MO),
+    ("Logging / monitoring", OBSERVABILITY_MO),
+]
+ZERO_CUSTOMER_MO = sum(c for _, c in zero_customer)
+
+# Once any customer exists the control plane is warm — nobody waits on a VM boot
+# for a dashboard load. The shared node pool is NOT fixed cost: REQ-1450 scales it
+# to zero when no org is active, which makes it attributable usage.
+CONTROL_PLANE_WARM_MO = E2_STANDARD_4_HR * HOURS_MO
+FIXED_FLOOR_MO = ZERO_CUSTOMER_MO + CONTROL_PLANE_WARM_MO
+
+# ------------------------- 2. PRICE LIST (set at/under the comps) -------------------------
+# Starter mirrors Hasura's SHAPE as well as its rate: active-hours, not vCPU-hours.
+# An active hour is one in which the org ran at least one query — readable from the
+# same Trino event listener REQ-1450 already requires, and the only per-org unit the
+# shared cluster can honestly report.
+STARTER = {
+    "label": "Starter", "unit": "active-hr",
+    "rate": 1.30,            # exact Hasura v2 parity
+    "egress": 0.13,          # exact Hasura v2 parity
+    "incl_units": 0, "incl_gb": 25,
+    "minimum": 25.0,         # monthly minimum, CREDITED against usage
 }
+# Pro sits under Galaxy per engine-hour, and Galaxy's number is per WORKER.
+PRO = {
+    "Pro S": {"label": "Pro S", "unit": "engine-hr", "vcpu": 4, "gb": 32,
+              "rate": 1.50, "egress": 0.13, "incl_units": 0, "incl_gb": 50,
+              "minimum": 99.0},
+    "Pro M": {"label": "Pro M", "unit": "engine-hr", "vcpu": 8, "gb": 64,
+              "rate": 2.75, "egress": 0.13, "incl_units": 0, "incl_gb": 100,
+              "minimum": 199.0},
+    "Pro L": {"label": "Pro L", "unit": "engine-hr", "vcpu": 16, "gb": 128,
+              "rate": 5.50, "egress": 0.13, "incl_units": 0, "incl_gb": 200,
+              "minimum": 399.0},
+}
+BYO = {"label": "BYO", "unit": "none", "rate": 0.0, "egress": 0.13,
+       "incl_units": 0, "incl_gb": 100, "minimum": 299.0}
 
-# Business targets.
-TARGET_GROSS_MARGIN = 0.75    # 75% gross margin on metered usage (SaaS norm)
-FREE_TIER_MAX_MARGINAL_SPEND = 3.00  # $/free-user/mo you'll tolerate as CAC
+# Egress beyond the included allowance leaves comp parity, because parity itself
+# only clears 8% on GCP egress. The allowance is sized so a normal customer never
+# reaches this rate; a customer who does is genuinely expensive to serve.
+EGRESS_OVERAGE = round(COST_EGRESS_GB * MARKUP, 2)
 
-# Overage price = cost / (1 - margin).
-def price(cost):
-    return cost / (1 - TARGET_GROSS_MARGIN)
+# Starter free trial — a due-diligence window, not a free tier. It is compatible
+# with the every-customer margin rule precisely because it is BOUNDED on both
+# axes: it expires, and it caps usage, so its worst case is a known CAC number
+# rather than an open-ended subsidy. It runs on the shared lane only; a trial
+# never provisions a dedicated node pool, because a dedicated pool's cost is not
+# divided by anyone.
+TRIAL_DAYS = 14
+TRIAL_ACTIVE_HRS = 40
+TRIAL_EGRESS_GB = 25
+TRIAL_CARD_REQUIRED = False   # no card: maximises top-of-funnel, and the caps are
+                              # what bound the exposure instead of the card.
 
-PRICE_VCPU_HR = price(COST_VCPU_HR)
-PRICE_EGRESS_GB = price(COST_EGRESS_GB)
+# Shared-cluster density: how many Starter orgs are concurrently active on one
+# shared node. This divides the node cost per org and is the single largest driver
+# of Starter's margin.
+DENSITIES = [1, 2, 4, 8]
 
-# ------------------------- EGRESS RECONCILIATION -------------------------
-# Egress is priced to Hasura parity ($0.13/GB). Our only cost is the GCP result-
-# egress leg ($0.12), so parity clears +8% — no loss, but below the 75% target.
-# A bundled-egress provider (Hetzner/OVH) zeroes that leg, taking parity to ~99%.
-HASURA_EGRESS = 0.13
-egress_scenarios = [
-    ("GCP result egress (current)", 0.12),
-    ("Bundled-egress infra (Hetzner/OVH)", 0.0013),
+
+def starter_cost_hr(density):
+    return shared_node_hr / density
+
+
+def bill(plan, units, gb):
+    over_g = max(0, gb - plan["incl_gb"])
+    usage = units * plan["rate"] + over_g * EGRESS_OVERAGE
+    return max(plan["minimum"], usage)
+
+
+def marginal_cost(unit_cost_hr, units, gb):
+    return units * unit_cost_hr + gb * COST_EGRESS_GB
+
+
+def rule(title):
+    print()
+    print("=" * 78)
+    print(title)
+    print("=" * 78)
+
+
+rule("1. ZERO-CUSTOMER OPERATING COST  (nobody signed up)")
+for label, cost in zero_customer:
+    print(f"  {label:52} {cost:8.2f}")
+print(f"  {'-' * 52} {'-' * 8}")
+print(f"  {'TOTAL':52} {ZERO_CUSTOMER_MO:8.2f} /mo   "
+      f"({ZERO_CUSTOMER_MO / 30:.2f}/day)")
+print()
+print(f"  live fixed floor (control plane warm, >=1 customer): "
+      f"${FIXED_FLOOR_MO:.2f}/mo  (${FIXED_FLOOR_MO / 30:.2f}/day)")
+print(f"  each ADDITIONAL shared shard (shared_2, ...): "
+      f"+${GKE_CLUSTER_HR * HOURS_MO:.0f}/mo, no free tier")
+
+rule("2. PRICE VS COMPETITIVE ANCHOR")
+print(f"  Hasura Cloud v2 Professional : ${HASURA_ACTIVE_HR:.2f}/active-hr + "
+      f"${HASURA_EGRESS_GB:.2f}/GB, no base fee")
+print(f"  Starburst Galaxy Pro         : {GALAXY_CREDITS_PER_WORKER_HR} credits x "
+      f"${GALAXY_CREDIT:.2f} = ${GALAXY_WORKER_HR:.2f}/worker-hr, no base fee")
+print()
+print(f"  {'tier':9} {'unit':>11} {'rate':>7} {'anchor':>8} {'vs anchor':>10} "
+      f"{'min/mo':>8} {'incl GB':>8}")
+rows = [STARTER] + [PRO[k] for k in ("Pro S", "Pro M", "Pro L")] + [BYO]
+for p in rows:
+    if p["label"] == "Starter":
+        anchor, delta = HASURA_ACTIVE_HR, p["rate"] / HASURA_ACTIVE_HR - 1
+    elif p["label"] == "BYO":
+        anchor, delta = None, None
+    else:
+        anchor, delta = GALAXY_WORKER_HR, p["rate"] / GALAXY_WORKER_HR - 1
+    a = f"{anchor:.2f}" if anchor else "—"
+    d = f"{delta:+.0%}" if delta is not None else "—"
+    r = f"{p['rate']:.2f}" if p["unit"] != "none" else "—"
+    print(f"  {p['label']:9} {p['unit']:>11} {r:>7} {a:>8} {d:>10} "
+          f"{p['minimum']:8.0f} {p['incl_gb']:8d}")
+print(f"  egress: ${STARTER['egress']:.2f}/GB at Hasura parity inside the allowance, "
+      f"${EGRESS_OVERAGE:.2f}/GB beyond it")
+print("  Galaxy's rate is PER WORKER; Provisa's is the whole engine, so Pro M at")
+print(f"  ${PRO['Pro M']['rate']:.2f} undercuts a 1-worker Galaxy cluster and is a fraction of a real one.")
+
+rule("3. ENGINE COST TO SERVE (REQ-1449)")
+print(f"  {'size':10} {'vCPU':>5} {'GB':>5} {'$/hr':>8} {'$/mo 24x7':>11} {'$/mo CUD':>10}")
+for label, vcpu, gb in SIZES:
+    hr = node_hr(vcpu, gb)
+    print(f"  {label:10} {vcpu:5d} {gb:5d} {hr:8.4f} {hr * HOURS_MO:11.0f} "
+          f"{node_hr(vcpu, gb, cud=True) * HOURS_MO:10.0f}")
+print(f"  {'shared':10} {SHARED_NODE_VCPU:5d} {SHARED_NODE_GB:5d} {shared_node_hr:8.4f}"
+      f" {shared_node_hr * HOURS_MO:11.0f} {node_hr(SHARED_NODE_VCPU, SHARED_NODE_GB, cud=True) * HOURS_MO:10.0f}")
+
+rule("4. MARGINAL MARGIN — must hold >= 75% for essentially every customer")
+print("  Pro (dedicated node pool, cost is the org's own engine hours):")
+print(f"    {'tier':8} {'hrs':>5} {'GB':>5} {'bill':>9} {'cost':>8} {'gross':>9} {'margin':>7}")
+pro_fail = []
+for key in ("Pro S", "Pro M", "Pro L"):
+    p = PRO[key]
+    c_hr = node_hr(p["vcpu"], p["gb"])
+    for units, gb in [(40, 20), (160, p["incl_gb"]), (400, 150), (730, 400)]:
+        b = bill(p, units, gb)
+        c = marginal_cost(c_hr, units, gb)
+        m = (b - c) / b
+        flag = "" if m >= TARGET_GROSS_MARGIN else "  <-- BELOW"
+        if m < TARGET_GROSS_MARGIN:
+            pro_fail.append((key, units, gb, m))
+        print(f"    {key:8} {units:5d} {gb:5d} {b:9.2f} {c:8.2f} {b - c:9.2f} "
+              f"{m:7.0%}{flag}")
+print()
+print("  Starter (shared node, cost divided by how many orgs are concurrently active):")
+print(f"    {'density':>7} {'$/hr cost':>10} {'160hr bill':>11} {'cost':>8} "
+      f"{'gross':>9} {'margin':>7}")
+for d in DENSITIES:
+    c_hr = starter_cost_hr(d)
+    units, gb = 160, STARTER["incl_gb"]
+    b = bill(STARTER, units, gb)
+    c = marginal_cost(c_hr, units, gb)
+    m = (b - c) / b
+    flag = "" if m >= TARGET_GROSS_MARGIN else "  <-- BELOW"
+    print(f"    {d:7d} {c_hr:10.4f} {b:11.2f} {c:8.2f} {b - c:9.2f} {m:7.0%}{flag}")
+print("  Density is the Starter lever: the first Starter alone on a node is thin,")
+print("  and every additional concurrent org improves it without changing the price.")
+
+rule("5. FULLY-LOADED MARGIN RAMP — floor divided across N paying orgs")
+print(f"  fixed floor ${FIXED_FLOOR_MO:.2f}/mo spread over N orgs, at typical usage")
+print()
+scenarios = [
+    ("Starter @ 160 active-hr, density=N", None),
+    ("Pro S @ 160 engine-hr", "Pro S"),
+    ("Pro M @ 160 engine-hr", "Pro M"),
+    ("BYO", "BYO"),
 ]
-
-# Cold-start economics, per resume.
-resume_cost = (BOOT_SECONDS / 3600) * SPOT_NODE_HR                 # boot compute burned
-resume_billed_vcpu_hr = (MIN_BILLED_SECONDS / 3600) * VCPU_PER_NODE
-resume_revenue = resume_billed_vcpu_hr * PRICE_VCPU_HR            # minimum billed to customer
-
-# ------------------------- WORKLOAD PROFILES -------------------------
-# (name, vCPU-hrs/mo, egress GB/mo)
-profiles = [
-    ("Light / interactive",  20,   5),
-    ("Team / analytics",    200,  60),
-    ("Heavy / batch",      2000, 800),
-]
-
-def marginal_cost(vcpu_hr, egress_gb):
-    return vcpu_hr * COST_VCPU_HR + egress_gb * COST_EGRESS_GB
-
-def revenue(vcpu_hr, egress_gb):
-    return vcpu_hr * PRICE_VCPU_HR + egress_gb * PRICE_EGRESS_GB
-
-print("=" * 68)
-print("UNIT ECONOMICS")
-print("=" * 68)
-print(f"  cost  compute : ${COST_VCPU_HR:.4f}/vCPU-hr   "
-      f"(node ${SPOT_NODE_HR:.3f}/hr / {VCPU_PER_NODE} vCPU, Spot burst)")
-print(f"  cost  egress  : ${COST_EGRESS_GB:.3f}/GB   "
-      f"(GCP result-egress only; source-cloud leg is the customer's bill)")
-print(f"  warm pool     : ${WARM_POOL_MO:.0f}/mo  "
-      f"({WARM_POOL_NODES}x on-demand ${ONDEMAND_NODE_HR:.3f}/hr, always-on)")
-print(f"  price compute : ${PRICE_VCPU_HR:.4f}/vCPU-hr   "
-      f"(cost / (1-{TARGET_GROSS_MARGIN:.0%}))")
-print(f"  price egress  : ${PRICE_EGRESS_GB:.4f}/GB")
-print(f"  fixed floor   : ${FLOOR_TOTAL_MO:.0f}/mo total, "
-      f"${FLOOR_PER_ORG_MO:.0f}/org @ {PAYING_ORGS} orgs")
-
+print(f"  {'N orgs':>7} " + " ".join(f"{s[0].split(' @')[0].split(',')[0]:>12}" for s in scenarios))
+crossover = {}
+for n in (1, 2, 3, 5, 8, 10, 15, 25, 50):
+    share = FIXED_FLOOR_MO / n
+    cells = []
+    for name, key in scenarios:
+        if key is None:
+            c_hr = starter_cost_hr(min(n, 8))     # density tracks org count, capped
+            b = bill(STARTER, 160, STARTER["incl_gb"])
+            c = marginal_cost(c_hr, 160, STARTER["incl_gb"]) + share
+        elif key == "BYO":
+            b = bill(BYO, 0, BYO["incl_gb"])
+            c = marginal_cost(0.0, 0, BYO["incl_gb"]) + share
+        else:
+            p = PRO[key]
+            b = bill(p, 160, p["incl_gb"])
+            c = marginal_cost(node_hr(p["vcpu"], p["gb"]), 160, p["incl_gb"]) + share
+        m = (b - c) / b
+        cells.append(f"{m:11.0%} ")
+        if m >= TARGET_GROSS_MARGIN and name not in crossover:
+            crossover[name] = n
+    print(f"  {n:7d} " + " ".join(cells))
 print()
-print("=" * 68)
-print(f"EGRESS @ HASURA PARITY (${HASURA_EGRESS:.2f}/GB) — margin by infra/source")
-print("=" * 68)
-max_cost_at_target = HASURA_EGRESS * (1 - TARGET_GROSS_MARGIN)
-print(f"  to clear {TARGET_GROSS_MARGIN:.0%} at ${HASURA_EGRESS:.2f}/GB, egress cost must be "
-      f"<= ${max_cost_at_target:.4f}/GB")
-print(f"  {'scenario':38} {'cost':>8} {'margin@$0.13':>12} {'75% price':>10}")
-for label, cost in egress_scenarios:
-    m = (HASURA_EGRESS - cost) / HASURA_EGRESS
-    p = cost / (1 - TARGET_GROSS_MARGIN)
-    flag = "OK" if cost <= max_cost_at_target else "MISS"
-    print(f"  {label:38} {cost:8.4f} {m:11.0%} {flag:>4} {p:9.3f}")
+for name, _ in scenarios:
+    n = crossover.get(name)
+    print(f"  {name:38} crosses {TARGET_GROSS_MARGIN:.0%} fully-loaded at "
+          f"{'N = ' + str(n) if n else 'not on this grid'}")
 
+rule("6. THE THRESHOLD, STATED PLAINLY")
+share1 = FIXED_FLOOR_MO
+b = bill(STARTER, 160, STARTER["incl_gb"])
+c1 = marginal_cost(starter_cost_hr(1), 160, STARTER["incl_gb"]) + share1
+print(f"  Customer #1 (a lone Starter) is fully-loaded {(b - c1) / b:.0%} margin on a "
+      f"${b:.0f} bill —")
+print(f"  it is carrying the entire ${FIXED_FLOOR_MO:.0f}/mo floor by itself. That is arithmetic,")
+print("  not mispricing: the price already clears 75% marginally at any real density.")
 print()
-print("=" * 68)
-print(f"ACTIVE-HOUR MARGIN  (warm SKU @ ${ACTIVE_HOUR_PRICE:.2f}/active-hr)")
-print("=" * 68)
-print("  Not Hasura-parity COGS: MPP keeps a coordinator warm (+ a worker for zero")
-print("  cold-start) vs Hasura's one small GQL-only instance (~$0.005/hr). Higher")
-print("  warm cost buys a heavier/broader workload class; margin still clears.")
-shuffle_hr = SHUFFLE_GB_PER_ACTIVE_HR * COST_XZONE_GB
-active_scenarios = [
-    ("coordinator only (listeners warm)",      COORD_HR),
-    ("coordinator only, 1yr CUD",              COORD_HR * (1 - CUD_DISCOUNT)),
-    ("coordinator + warm worker (0 cold-start)", COORD_HR + ONDEMAND_NODE_HR),
-    ("coordinator + warm worker, 1yr CUD",     (COORD_HR + ONDEMAND_NODE_HR) * (1 - CUD_DISCOUNT)),
-]
-print(f"  {'scenario':40} {'cost/hr':>8} {'margin':>7}")
-for label, warm in active_scenarios:
-    c = warm + shuffle_hr
-    m = (ACTIVE_HOUR_PRICE - c) / ACTIVE_HOUR_PRICE
-    print(f"  {label:40} {c:8.3f} {m:7.0%}")
-print(f"  (+ ${shuffle_hr:.3f}/hr cross-zone shuffle on multi-worker joins; "
-      f"same-zone placement = free)")
-
+print("  What the ramp actually needs is not a higher price, it is a denominator.")
+print(f"  The floor is small enough (${FIXED_FLOOR_MO:.0f}/mo) that a single Pro M or BYO org")
+print("  covers it outright, so the crossover arrives at a customer count in single")
+print("  digits rather than at scale.")
 print()
-print("=" * 68)
-print(f"ANALYTICAL LANE — GALAXY ANCHOR (worker-hour, MPP compute uptime)")
-print("=" * 68)
-print(f"  Starburst Galaxy (Trino SaaS): {GALAXY_CREDITS_PER_WORKER_HR} credits/worker-hr "
-      f"x ${GALAXY_CREDIT:.2f} = ${GALAXY_WORKER_HR:.2f}/worker-hr (Pro)")
-for tier, cr in [("Pro", 0.50), ("Enterprise", 0.75), ("Mission Critical", 1.00)]:
-    print(f"    {tier:16} ${cr*GALAXY_CREDITS_PER_WORKER_HR:.2f}/worker-hr")
-print(f"  Provisa analytical lane : ${WORKER_HR_PRICE:.2f}/worker-hr (just under Galaxy Pro)")
-for label, cost_hr in [("Spot e2-standard-8", SPOT_NODE_HR), ("on-demand e2-standard-8", ONDEMAND_NODE_HR)]:
-    m = (WORKER_HR_PRICE - cost_hr) / WORKER_HR_PRICE
-    print(f"    on {label:24} cost ${cost_hr:.3f}/hr -> margin {m:.0%}")
-print(f"  vs current cost+margin price: ${PRICE_VCPU_HR*VCPU_PER_NODE:.2f}/worker-hr "
-      f"({PRICE_VCPU_HR*VCPU_PER_NODE/WORKER_HR_PRICE-1:+.0%} vs Galaxy anchor) "
-      f"-> underpriced ~{WORKER_HR_PRICE/(PRICE_VCPU_HR*VCPU_PER_NODE):.0f}x")
+print(f"  Do NOT pin the shared node pool above zero. Pinned, it adds "
+      f"${shared_node_hr * HOURS_MO:.0f}/mo of")
+print("  fixed cost with no customer to attribute it to, which pushes the crossover")
+print(f"  from single digits to roughly {int((FIXED_FLOOR_MO + shared_node_hr * HOURS_MO) / (FIXED_FLOOR_MO / max(1, crossover.get('Pro M @ 160 engine-hr', 1)))) or 1}x further out. This is why REQ-1450 was amended.")
 
+rule("7. WHERE THE COMPS CONSTRAIN THE MARGIN RULE")
+print(f"  Egress at Hasura parity (${HASURA_EGRESS_GB:.2f}/GB) clears only "
+      f"{(HASURA_EGRESS_GB - COST_EGRESS_GB) / HASURA_EGRESS_GB:.0%} on GCP egress.")
+print(f"  It is priced at parity INSIDE the included allowance and at "
+      f"${EGRESS_OVERAGE:.2f}/GB beyond it,")
+print("  so the headline matches the comp and only genuinely egress-heavy customers")
+print("  pay the real rate. Getting parity to clear 75% on the headline means leaving")
+print("  GCP egress rates, not discounting.")
 print()
-print("=" * 68)
-print("COLD START  (per resume, scale-to-zero)")
-print("=" * 68)
-print(f"  boot time      : {BOOT_SECONDS}s   min billed: {MIN_BILLED_SECONDS}s "
-      f"({MIN_BILLED_SECONDS}s x {VCPU_PER_NODE} vCPU)")
-print(f"  cost / resume  : ${resume_cost:.4f}  (boot compute burned)")
-print(f"  revenue/resume : ${resume_revenue:.4f}  (minimum billed)")
-print(f"  net / resume   : ${resume_revenue - resume_cost:+.4f}  "
-      f"-> minimum {'COVERS' if resume_revenue >= resume_cost else 'MISSES'} boot cost")
-
+print(f"  Starter's ${STARTER['minimum']:.0f}/mo minimum is what stops a signed-up-but-idle org")
+print("  from consuming a floor share for free. Both comps use $0 base fees; a")
+print("  credited minimum keeps the usage-priced shape while refusing that hole.")
 print()
-print("=" * 68)
-print("PROFILE P&L  (metered usage + resumes, before platform fee)")
-print("=" * 68)
-print(f"{'profile':22} {'resumes':>7} {'cost':>8} {'revenue':>9} {'gross$':>8} {'margin':>7}")
-for name, cpu, eg in profiles:
-    n = RESUMES_PER_MO[name]
-    c = marginal_cost(cpu, eg) + n * resume_cost
-    r = revenue(cpu, eg) + n * resume_revenue
-    gm = (r - c) / r
-    print(f"{name:22} {n:7d} {c:8.2f} {r:9.2f} {r-c:8.2f} {gm:7.0%}")
-
-# ------------------------- FREE-BAND THRESHOLDS -------------------------
-# Free band must keep a free user's marginal cost <= FREE_TIER_MAX_MARGINAL_SPEND.
-# Split the CAC budget across compute vs egress. Egress is the abuse vector,
-# so cap it tighter: give egress 1/3 of the budget, compute 2/3.
-budget = FREE_TIER_MAX_MARGINAL_SPEND
-egress_budget = budget / 3
-compute_budget = budget - egress_budget
-
-free_egress_gb = egress_budget / COST_EGRESS_GB
-free_vcpu_hr   = compute_budget / COST_VCPU_HR
-free_node_hr   = free_vcpu_hr / VCPU_PER_NODE
-
-print()
-print("=" * 68)
-print(f"FREE-BAND THRESHOLDS  (hard cap, <= ${budget:.2f}/user/mo marginal)")
-print("=" * 68)
-print(f"  compute free band : {free_vcpu_hr:6.0f} vCPU-hr/mo "
-      f"(= {free_node_hr:.0f} node-hr on 8-vCPU)  costs ${compute_budget:.2f}")
-print(f"  egress  free band : {free_egress_gb:6.0f} GB/mo"
-      f"                       costs ${egress_budget:.2f}")
-print("  -> at max: THROTTLE/SUSPEND data plane; card required to convert to overage")
-
-# ------------------------- PLATFORM FEE FLOOR CHECK -------------------------
-# Platform fee must cover fixed floor per org + desired base margin.
-platform_fee = FLOOR_PER_ORG_MO / (1 - TARGET_GROSS_MARGIN)
-print()
-print("=" * 68)
-print("PLATFORM FEE (covers fixed floor at target margin)")
-print("=" * 68)
-print(f"  min platform fee : ${platform_fee:.0f}/org/mo "
-      f"(floor ${FLOOR_PER_ORG_MO:.0f} / (1-{TARGET_GROSS_MARGIN:.0%}))")
-print(f"  suggested tiers  : Starter ${platform_fee*4:.0f}  |  "
-      f"Team ${platform_fee*20:.0f}  |  Scale ${platform_fee*50:.0f}")
-print("  (bake the free-band allowance into each paid tier; meter overage above)")
+if pro_fail:
+    print(f"  Pro marginal-margin failures: {pro_fail}")
+else:
+    print("  Pro clears 75% marginally at every usage point tested, at every size.")
