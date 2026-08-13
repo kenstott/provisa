@@ -529,7 +529,20 @@ async def _compute_and_store_clusters(conn: "Connection") -> int:  # REQ-510
 
 
 async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
-    """Register ops tables/views in PG registered_tables + table_columns (idempotent)."""
+    """Register ops tables/views in PG registered_tables + table_columns (idempotent).
+
+    The rows point at ``provisa-otel`` / schema ``signals`` — the ``otel`` Iceberg catalog, which
+    only the Trino engine has (EngineBackend.has_otel_catalog). On a native engine they name a
+    catalog the engine cannot reach, so registering them there advertises unreachable labels: an
+    unlabeled Cypher ``MATCH (n)`` unions every label and compiled ``FROM "otel"."signals"."traces"``,
+    failing the whole query with ``Catalog "otel" does not exist``. This seed is the only writer of
+    those rows, so on an engine without the catalog it removes them — a deployment re-pinned from
+    trino to a native engine carries them forward otherwise."""
+    if not state.federation_engine.has_otel_catalog:
+        await conn.execute_core(
+            _delete(_registered_tables_t).where(_registered_tables_t.c.source_id == "provisa-otel")
+        )
+        return
 
     async def _seed_cols(table_id: Any, table_name: str, cols: list) -> None:
         for col_name, pg_type, is_pk in cols:

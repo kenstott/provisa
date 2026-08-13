@@ -68,8 +68,8 @@ test("file connector: add northwind source and query customers", async ({ page }
   await page.getByRole("button", { name: /\+ Source/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
 
-  await page.locator(".form-card label").filter({ hasText: /^ID/ }).locator("input").fill(SOURCE_ID);
-  await page.locator(".form-card label").filter({ hasText: /^Type/ }).locator("select").selectOption("files");
+  await page.getByTestId("sources-id-input").fill(SOURCE_ID);
+  await page.getByTestId("sources-type-select").selectOption("files");
   await page.waitForSelector('label:has-text("Directory Glob")', { timeout: 5000 });
 
   await page.locator("label").filter({ hasText: /Directory Glob/ }).locator("input").fill(GLOB);

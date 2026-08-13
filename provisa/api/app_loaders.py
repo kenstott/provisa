@@ -212,7 +212,10 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
 
     # Seed system source catalogs (never org-prefixed — one physical catalog shared across orgs).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
-    state.source_catalogs["provisa-otel"] = "otel"
+    # `otel` is a Trino dynamic catalog; a native engine has no such catalog (see
+    # EngineBackend.has_otel_catalog), and startup_seed registers no provisa-otel tables there.
+    if state.federation_engine.has_otel_catalog:
+        state.source_catalogs["provisa-otel"] = "otel"
 
     _fixed_catalog = fixed_catalog_for_engine(state)
 

@@ -33,6 +33,16 @@ def _config(*sources: Source) -> ProvisaConfig:
     return ProvisaConfig(sources=list(sources), domains=[], tables=[], roles=[])
 
 
+class _NativeEngine:
+    """Stand-in for the EngineRuntime that is bound before the catalog-name loader runs.
+
+    _populate_source_catalog_names reads the otel-catalog capability off it, so the stub carries
+    the native answer (no `otel` catalog) rather than leaving the slot empty.
+    """
+
+    has_otel_catalog = False
+
+
 @pytest.fixture()
 def state(monkeypatch):
     from provisa.api.app import state as app_state
@@ -42,7 +52,7 @@ def state(monkeypatch):
     monkeypatch.setattr(app_state, "source_dialects", {}, raising=False)
     monkeypatch.setattr(app_state, "source_cache", {}, raising=False)
     monkeypatch.setattr(app_state, "source_federation_hints", {}, raising=False)
-    monkeypatch.setattr(app_state, "federation_engine", None, raising=False)
+    monkeypatch.setattr(app_state, "federation_engine", _NativeEngine(), raising=False)
     monkeypatch.setattr(app_state, "org_id", "default", raising=False)
     return app_state
 
@@ -99,6 +109,7 @@ def test_fixed_catalog_warehouse_pins_every_source_to_the_warehouse_database(sta
 
     class _FederationEngine:
         engine = _Engine()
+        has_otel_catalog = False
 
     monkeypatch.setattr(state, "federation_engine", _FederationEngine(), raising=False)
     monkeypatch.setenv("SYNAPSE_DATABASE", "provisa_syn")

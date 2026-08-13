@@ -331,7 +331,11 @@ export default defineConfig({
         ...controlPlaneEnvFor(b.dataDir),
       },
       reuseExistingServer: !process.env.CI,
-      timeout: 30000,
+      // All CORE_BACKENDS boot at once and each one stands up its own flight/MinIO/results
+      // infra, so the slowest backend's startup grows with the worker count — that phase alone
+      // measured 25s of the 30s budget on a 4-worker run. The budget scales with the fleet
+      // instead of being a fixed number that a wider lane silently outgrows.
+      timeout: 30000 * CORE_BACKENDS.length,
     })),
     // Trino-backed backend for sharepoint/splunk tests.  sharepoint/splunk require
     // TrinoBackend.register_source() to create a Trino catalog; NativeBackend (DuckDB) is a

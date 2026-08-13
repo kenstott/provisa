@@ -84,6 +84,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         the single seam generic callers use instead of hardcoding a specific engine's dialect."""
         return self._backend.transpile_physical(pg_sql)
 
+    @property
+    def has_otel_catalog(self) -> bool:
+        """Whether the bound engine exposes the ``otel`` telemetry catalog — the seam the ops
+        seeding and catalog-name map use instead of branching on the engine name."""
+        return self._backend.has_otel_catalog
+
     # -- capability introspection (REQ-825): consumer-side features gate on these -----------
 
     @property

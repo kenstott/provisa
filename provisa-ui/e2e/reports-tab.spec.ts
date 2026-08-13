@@ -40,7 +40,10 @@ for (const reportName of STANDARD_REPORTS) {
     await expect(page.getByTestId("table-preview-error")).toHaveCount(0, { timeout: 15000 });
     const grid = page.getByTestId("download-csv-btn");
     const noRowsText = page.getByText("No rows", { exact: false });
-    await expect(grid.or(noRowsText)).toBeVisible({ timeout: 15000 });
+    // A zero-row report renders BOTH: the results panel keeps its download button and shows
+    // "No rows." beside it, so the union locator matches two elements and strict mode rejects it.
+    // Either one being visible is the pass condition.
+    await expect(grid.or(noRowsText).first()).toBeVisible({ timeout: 15000 });
   });
 }
 

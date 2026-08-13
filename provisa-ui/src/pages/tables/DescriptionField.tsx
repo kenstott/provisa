@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Sparkles, X } from "lucide-react";
 import { ActionIcon, Group, Stack, Textarea, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -31,21 +31,42 @@ export function DescriptionField({
 }) {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
+  // The focused editor is 300px tall; growing it in flow moved every sibling laid out
+  // below or beside it — including an adjacent Save button, which collapse-on-blur then
+  // yanked out from under the pointer between mousedown and mouseup, so no click event
+  // ever fired and the edit could not be saved. The slot keeps the collapsed height it
+  // measured on first paint and the focused editor is lifted out of flow to overlay the
+  // page, so nothing around it moves.
+  const [slotHeight, setSlotHeight] = useState<number | null>(null);
+  const measureSlot = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (el !== null && slotHeight === null) setSlotHeight(el.offsetHeight);
+    },
+    [slotHeight],
+  );
   return (
     <Stack gap={4} className="desc-field">
-      <Textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        styles={{
-          input: focused
-            ? { height: 300, transition: "height 0.15s ease" }
-            : { transition: "height 0.15s ease" },
-        }}
-      />
+      <div
+        ref={measureSlot}
+        style={{ position: "relative", height: slotHeight ?? undefined }}
+      >
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={rows}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          styles={{
+            root: focused
+              ? { position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 5 }
+              : {},
+            input: focused
+              ? { height: 300, transition: "height 0.15s ease" }
+              : { transition: "height 0.15s ease" },
+          }}
+        />
+      </div>
       <Group gap={4} justify="flex-end" className="desc-field-toolbar">
         <CopyButton text={value} size={11} />
         {onGenerate && (

@@ -5,6 +5,13 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect } from "./coverage";
+import { TOUR_STEPS } from "../src/tour/tourSteps";
+
+// driver.js renders "Next (n/N)" from the 1-based position in TOUR_STEPS, and the saved
+// progress value is an index into the same list. Both are derived here so inserting a step
+// re-points the test instead of silently walking it onto the wrong surface.
+const TOTAL_STEPS = TOUR_STEPS.length;
+const RELATIONSHIPS_STEP = TOUR_STEPS.findIndex((s) => s.route === "/relationships");
 
 // The guided tour hops between surfaces faster than a step's own destination can pay its
 // first-visit chunk fetch/data load, which used to show a step's popover over a page still
@@ -42,7 +49,7 @@ test("tour does not show a step's popover over a page still loading its data", a
     // compiling and querying at the same time. The default 5s expect timeout covers none of that
     // reliably. Once step0's popover is up, every later step is an in-app transition and 5s is
     // ample, so the extra budget is spent only where the work actually is.
-    await expect(nextBtn).toHaveText(`Next (${n}/30)`, { timeout: n === 1 ? 60000 : 5000 });
+    await expect(nextBtn).toHaveText(`Next (${n}/${TOTAL_STEPS})`, { timeout: n === 1 ? 60000 : 5000 });
     if (n < 4) await nextBtn.click();
   }
   await nextBtn.click(); // enters step4: navigates to /tables, highlights nav-tables
@@ -55,14 +62,15 @@ test("tour does not show a step's popover over a page still loading its data", a
   // `expect()` polls each carry their own IPC round-trip and would let the 1s query delay
   // elapse between them, hiding the very race this test exists to catch.
   const state = await page.waitForFunction(
-    () => {
+    (total: number) => {
       const nextBtnEl = document.querySelector(".driver-popover-next-btn");
-      if (nextBtnEl?.textContent?.trim() !== "Next (5/30)") return null;
+      if (nextBtnEl?.textContent?.trim() !== `Next (5/${total})`) return null;
       const loading = Array.from(document.querySelectorAll(".page")).some(
         (el) => el.textContent?.trim() === "Loading tables...",
       );
       return { loading };
     },
+    TOTAL_STEPS,
     { timeout: 5000 },
   );
   const { loading } = await state.jsonValue();
@@ -75,15 +83,15 @@ test("tour does not show a step's popover over a page still loading its data", a
 test("tour does not show the relationships step popover over a page still loading its data", async ({
   page,
 }) => {
-  // Resume straight into step15 (the first Relationships step, TOUR_STEPS[15] in tourSteps.ts)
+  // Resume straight into the first Relationships step (index derived from TOUR_STEPS)
   // instead of clicking through the spine/divider steps ahead of it — those involve executing
   // real demo queries across several surfaces, which is unrelated to what this test verifies.
   // Mark the tour "seen" so TourAutoStart's fresh-profile path (App.tsx) doesn't force a
   // restart-from-0 ahead of us; the navbar tour button's plain startTour() honors the saved step.
-  await page.addInitScript(() => {
+  await page.addInitScript((step: number) => {
     localStorage.setItem("provisa_tour_seen", "true");
-    localStorage.setItem("provisa_tour_progress", "15");
-  });
+    localStorage.setItem("provisa_tour_progress", String(step));
+  }, RELATIONSHIPS_STEP);
   await page.goto("/sources");
   await page.locator(".navbar-tour-btn").click();
 

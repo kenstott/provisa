@@ -102,7 +102,7 @@ test.describe("REQ-1387 glossary curation", () => {
       await expect(list.getByText(RENAMED_EMPLOYEE, { exact: true })).toBeVisible();
     }
 
-    await page.getByTestId("glossary-definition-input").fill(EMPLOYEE_DEFINITION);
+    await page.getByTestId("glossary-definition-input").getByRole("textbox").fill(EMPLOYEE_DEFINITION);
     await page.getByTestId("glossary-definition-save-btn").click();
     // act() reloads the detail after the mutation; the save button re-disables
     // because the textarea now matches the stored definition.
@@ -111,7 +111,7 @@ test.describe("REQ-1387 glossary curation", () => {
     await page.reload();
     await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 60000 });
     await selectTerm(page, RENAMED_EMPLOYEE);
-    await expect(page.getByTestId("glossary-definition-input")).toHaveValue(
+    await expect(page.getByTestId("glossary-definition-input").getByRole("textbox")).toHaveValue(
       EMPLOYEE_DEFINITION,
     );
   });

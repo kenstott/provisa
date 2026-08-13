@@ -125,6 +125,19 @@ class EngineBackend:
 
         return transpile(pg_sql, self.dialect)
 
+    @property
+    def has_otel_catalog(self) -> bool:
+        """Whether the engine exposes the ``otel`` telemetry catalog (``otel.signals.*``).
+
+        ``otel`` is a Trino dynamic catalog — an Iceberg catalog over object storage with a JDBC
+        metastore (core/trino_system_catalogs.py). A native engine has no such catalog: its
+        telemetry lands in the dedicated ops store instead. Seeding the ops signals tables anyway
+        put ``otel.signals.traces`` (and the rest) into every role's compilation context on the
+        native tier, so an unlabeled Cypher ``MATCH (n)`` — which unions every label — and a plain
+        ``SELECT * FROM ops.traces`` both compiled to a catalog the engine does not have and failed
+        with ``Catalog "otel" does not exist``. Registration follows this flag."""
+        return False
+
     # -- lifecycle -------------------------------------------------------------
 
     def is_connected(self, state: Any) -> bool:
@@ -541,6 +554,12 @@ class TrinoBackend(EngineBackend):
     @property
     def dialect(self) -> str:
         return "trino"
+
+    @property
+    def has_otel_catalog(self) -> bool:
+        """Trino owns the ``otel`` catalog — ensure_system_catalogs registers it on the
+        coordinator (provision/reseed_ops), so ``otel.signals.*`` resolves."""
+        return True
 
     def transpile_physical(self, pg_sql: str) -> str:
         from provisa.transpiler.transpile import transpile_to_trino

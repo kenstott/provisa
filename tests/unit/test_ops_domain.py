@@ -247,12 +247,23 @@ _REPORT_VIEW_NAMES = {
 }
 
 
+class _OtelEngine:
+    """Stands in for the EngineRuntime the seed reads its otel-catalog capability from."""
+
+    def __init__(self, has_otel_catalog: bool) -> None:
+        self.has_otel_catalog = has_otel_catalog
+
+
 class TestOpsStewardGrant:
     """REQ-1386: ops is a lockdown domain — a column with no grant is in no role's schema."""
 
-    def test_telemetry_columns_seeded_visible_to_steward(self):
+    def test_telemetry_columns_seeded_visible_to_steward(self, monkeypatch):
+        from provisa.api import startup_seed
         from provisa.api.startup_seed import _seed_ops_pg
 
+        # The rows name the `otel` Iceberg catalog, which only an engine carrying it can reach
+        # (EngineBackend.has_otel_catalog), so the seed runs behind that capability.
+        monkeypatch.setattr(startup_seed.state, "federation_engine", _OtelEngine(True))
         conn = AsyncMock()
         conn.upsert_returning = AsyncMock(return_value=7)
 
@@ -262,6 +273,22 @@ class TestOpsStewardGrant:
         for call in conn.upsert.await_args_list:
             payload = call.args[1]
             assert payload["visible_to"] == ["org_admin"], payload["column_name"]
+
+    def test_engine_without_otel_catalog_drops_the_rows(self, monkeypatch):
+        # An engine with no `otel` catalog would advertise unreachable tables: an unlabeled
+        # Cypher MATCH (n) unions every label and compiled `FROM "otel"."signals"."traces"`.
+        # The seed owns those rows, so it removes any a previous engine pinning left behind.
+        from provisa.api import startup_seed
+        from provisa.api.startup_seed import _seed_ops_pg
+
+        monkeypatch.setattr(startup_seed.state, "federation_engine", _OtelEngine(False))
+        conn = AsyncMock()
+        conn.upsert_returning = AsyncMock(return_value=7)
+
+        asyncio.run(_seed_ops_pg(conn))
+
+        assert not conn.upsert.await_args_list, "ops rows seeded on an engine without otel"
+        assert conn.execute_core.await_args_list, "stale provisa-otel rows not deleted"
 
     def test_existing_columns_converge_on_steward_grant(self):
         # A column seeded before the grant existed gains org_admin; grants made to other
