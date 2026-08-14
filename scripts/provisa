@@ -60,8 +60,16 @@ IMAGE_SOURCE="$(read_config image_source build)"
 DEPLOY_ENGINE="$(read_config engine duckdb)"
 ENGINE_URL="$(read_config engine_url "")"
 MATERIALIZE_URL="$(read_config materialize_url "")"
-TRINO_HOST="$(read_config trino_host "")"
-TRINO_PORT="$(read_config trino_port "")"
+# Engine addressing on the control-plane role lives in the systemd env file, not in
+# config.yaml (REQ-1451): the shard a control plane dials is a deployment fact Terraform
+# writes, and config.yaml deliberately names no shard. Those variables arrive here already
+# in the environment via EnvironmentFile, so defaulting to "" clobbered them — and because
+# the control-plane base compose declares TRINO_HOST required, every boot died with
+# "required variable TRINO_HOST is missing a value" before a container started. config.yaml
+# still wins where it sets them (the desktop/primary tiers); the environment is the default.
+TRINO_HOST="$(read_config trino_host "${TRINO_HOST:-}")"
+TRINO_PORT="$(read_config trino_port "${TRINO_PORT:-}")"
+export TRINO_HOST TRINO_PORT
 OBS_MODE="$(read_config obs_mode none)"
 OTLP_ENDPOINT="$(read_config otlp_endpoint "")"
 DEMO="$(read_config demo false)"
