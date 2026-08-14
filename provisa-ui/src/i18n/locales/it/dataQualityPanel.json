@@ -22,6 +22,7 @@
     "levelLabel": "Gravità",
     "addCheck": "Aggiungi controllo",
     "dryRun": "Esecuzione di prova",
-    "dryRunHelp": "Esegue il contratto sulla tabella reale senza scrivere nulla."
+    "dryRunHelp": "Esegue il contratto sulla tabella reale senza scrivere nulla.",
+    "dryRunNoResponse": "L'esecuzione di prova non ha restituito alcuna risposta."
   }
 }

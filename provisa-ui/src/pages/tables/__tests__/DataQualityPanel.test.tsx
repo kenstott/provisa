@@ -295,4 +295,24 @@ describe("DataQualityPanel", () => {
     expect(result).toHaveTextContent("pass");
     expect(dryRunContract).toHaveBeenCalledWith({ sourceId: "dq", contractText: SODA });
   });
+
+  it("reports a dry run that failed in transport rather than rendering nothing", async () => {
+    dryRunContract.mockRejectedValue(new Error("Failed to fetch"));
+    renderPanel();
+    await screen.findByTestId("dq-check-rows");
+    fireEvent.click(screen.getByTestId("dq-dry-run"));
+
+    expect(await screen.findByTestId("dq-dry-run-result")).toHaveTextContent("Failed to fetch");
+  });
+
+  it("reports a dry run whose mutation carried no payload", async () => {
+    dryRunContract.mockResolvedValue(null);
+    renderPanel();
+    await screen.findByTestId("dq-check-rows");
+    fireEvent.click(screen.getByTestId("dq-dry-run"));
+
+    expect(await screen.findByTestId("dq-dry-run-result")).toHaveTextContent(
+      "The dry run returned no response.",
+    );
+  });
 });

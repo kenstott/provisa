@@ -22,6 +22,7 @@
     "levelLabel": "嚴重級別",
     "addCheck": "新增檢查",
     "dryRun": "試執行",
-    "dryRunHelp": "對實時表執行契約，不寫入任何數據。"
+    "dryRunHelp": "對實時表執行契約，不寫入任何數據。",
+    "dryRunNoResponse": "試執行沒有回應。"
   }
 }

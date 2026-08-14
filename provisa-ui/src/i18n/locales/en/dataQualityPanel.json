@@ -21,6 +21,7 @@
     "addCheck": "Add check",
     "dryRun": "Dry run",
     "dryRunHelp": "Runs the contract against the live table and lands nothing.",
+    "dryRunNoResponse": "The dry run returned no response.",
     "datasetLabel": "Dataset",
     "datasetHelp": "The table the checker observes, as '<data source>/<schema>/<table>'. It is resolved against the governed catalog, the same way the scan resolves it.",
     "argsHelp": "Each row is one check. Edit its args in place — the checker's own contract text is serialized from these rows.",

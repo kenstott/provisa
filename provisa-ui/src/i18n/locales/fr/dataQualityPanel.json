@@ -22,6 +22,7 @@
     "levelLabel": "Gravité",
     "addCheck": "Ajouter un contrôle",
     "dryRun": "Exécution à blanc",
-    "dryRunHelp": "Exécute le contrat sur la table réelle sans rien écrire."
+    "dryRunHelp": "Exécute le contrat sur la table réelle sans rien écrire.",
+    "dryRunNoResponse": "L'exécution à blanc n'a renvoyé aucune réponse."
   }
 }

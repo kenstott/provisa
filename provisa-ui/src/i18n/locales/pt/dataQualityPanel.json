@@ -22,6 +22,7 @@
     "levelLabel": "Severidade",
     "addCheck": "Adicionar verificação",
     "dryRun": "Execução de teste",
-    "dryRunHelp": "Executa o contrato sobre a tabela real sem escrever nada."
+    "dryRunHelp": "Executa o contrato sobre a tabela real sem escrever nada.",
+    "dryRunNoResponse": "A execução de teste não devolveu resposta."
   }
 }

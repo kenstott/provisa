@@ -16,7 +16,8 @@ neither checker installed — these tests feed it the envelope the worker emits.
 
 from __future__ import annotations
 
-import importlib.util
+import io
+import json
 import sys
 from datetime import UTC, datetime
 
@@ -31,13 +32,6 @@ from provisa.dq.results import (
 from provisa.dq.runner import CheckerError, build_command, parse_results, run_contract
 
 SCAN_TIME = datetime(2026, 8, 13, 9, 30, tzinfo=UTC)
-
-# A minimal well-formed contract per dialect: enough for the runner's own dataset checks to pass so
-# the run reaches the subprocess, which is what these tests are about.
-_CONTRACTS = {
-    "soda": "dataset: provisa/sales/orders\ncolumns: []\n",
-    "great_expectations": "meta:\n  dataset: provisa/sales/orders\nexpectations: []\n",
-}
 
 
 def _envelope(**overrides) -> dict:
@@ -174,25 +168,37 @@ async def test_a_contract_naming_a_different_data_source_is_reported_not_correct
         )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("checker", "extra"), [("great_expectations", "gx"), ("soda", "soda")]
 )
-async def test_an_uninstalled_checker_reports_the_extra_that_supplies_it(checker, extra):
+def test_an_uninstalled_checker_names_the_extra_that_supplies_it(checker: str, extra: str):
     """A checker is acquired on operator selection, so "not installed" is an ordinary operator state
     and the failure has to name its own remedy rather than surface the checker's import traceback."""
-    if importlib.util.find_spec("great_expectations" if extra == "gx" else "soda_core"):
-        pytest.skip(f"the {extra} extra is installed in this environment")
-    with pytest.raises(CheckerError, match=f"pip install 'provisa\\[{extra}\\]'"):
-        await run_contract(
-            checker=checker,
-            contract_text=_CONTRACTS[checker],
-            connection={},
-            data_source_name="provisa",
-            scan_id="s",
-            scan_time=SCAN_TIME,
-            target_table="sales.orders",
-        )
+    from provisa.dq.worker import _require
+
+    with pytest.raises(ModuleNotFoundError) as raised:
+        _require(checker, ModuleNotFoundError("no module", name=checker))
+    assert f"pip install 'provisa[{extra}]'" in str(raised.value)
+
+
+def test_a_missing_checker_exits_the_worker_with_its_message_not_a_traceback(monkeypatch, tmp_path):
+    """The parent surfaces the child's stderr verbatim, so the install command has to travel as the
+    message rather than as the last line of an import traceback."""
+    from provisa.dq import worker
+
+    monkeypatch.setattr(
+        worker,
+        "run_gx",
+        lambda _payload: worker._require(
+            "great_expectations", ModuleNotFoundError("x", name="great_expectations")
+        ),
+    )
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text(json.dumps({"checker": "great_expectations"}), encoding="utf-8")
+    stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    assert worker.main(["worker", str(payload_path)]) == 2
+    assert "pip install 'provisa[gx]'" in stderr.getvalue()
 
 
 def test_the_shipped_schema_is_what_parse_results_emits():

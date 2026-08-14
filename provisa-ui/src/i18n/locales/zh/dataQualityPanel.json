@@ -22,6 +22,7 @@
     "levelLabel": "严重级别",
     "addCheck": "添加检查",
     "dryRun": "试运行",
-    "dryRunHelp": "针对实时表运行契约，不写入任何数据。"
+    "dryRunHelp": "针对实时表运行契约，不写入任何数据。",
+    "dryRunNoResponse": "试运行未返回任何响应。"
   }
 }

@@ -1242,6 +1242,19 @@ main {
   overflow-y: auto;
 }
 
+/* A loading Button's spinner is centred by the transform its Transition applies inline
+ * (translate(-50%, -50%) against the .mantine-Button-loader's left/top: 50%). Under the OS
+ * reduced-motion setting the theme's respectReducedMotion drives Transition's duration to 0, and
+ * Transition then renders its child with NO styles at all — so the spinner keeps left/top: 50% with
+ * nothing pulling it back, and sits half its own size down and right of the button's centre. The
+ * centring is layout, not motion, so it is restated here for that case; the inline transform still
+ * wins whenever the transition does run. */
+@media (prefers-reduced-motion: reduce) {
+  .mantine-Button-loader {
+    transform: translate(-50%, -50%);
+  }
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }

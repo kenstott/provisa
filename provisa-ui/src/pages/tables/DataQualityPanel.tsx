@@ -193,11 +193,30 @@ export function DataQualityPanel({
   const runNow = useCallback(async () => {
     setRunning(true);
     try {
-      setDryRun(await dryRunContract({ sourceId, contractText }));
+      const result = await dryRunContract({ sourceId, contractText });
+      // A rejected mutation and a mutation that returned no payload both arrive here as null, and a
+      // null dry run renders NOTHING — the operator watches the button stop spinning and is told
+      // neither an outcome nor a reason. The transport failure IS the dry run's result, so it is
+      // reported as one.
+      setDryRun(
+        result ?? {
+          success: false,
+          message: t("dataQualityPanel.dryRunNoResponse"),
+          checkerVersion: null,
+          checks: [],
+        },
+      );
+    } catch (error) {
+      setDryRun({
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+        checkerVersion: null,
+        checks: [],
+      });
     } finally {
       setRunning(false);
     }
-  }, [contractText, dryRunContract, sourceId]);
+  }, [contractText, dryRunContract, sourceId, t]);
 
   return (
     // REQ-1358: `tourId` marks the whole section, not just its header, so the tour step highlights

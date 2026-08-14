@@ -22,6 +22,7 @@
     "levelLabel": "Ernst",
     "addCheck": "Controle toevoegen",
     "dryRun": "Proefrun",
-    "dryRunHelp": "Voert het contract uit op de echte tabel en schrijft niets weg."
+    "dryRunHelp": "Voert het contract uit op de echte tabel en schrijft niets weg.",
+    "dryRunNoResponse": "De testuitvoering gaf geen antwoord."
   }
 }
