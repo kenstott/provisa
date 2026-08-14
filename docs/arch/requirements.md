@@ -15187,3 +15187,17 @@ The cold-shard wake is reconciled with the executor's retry budget by ORDERING, 
 **Code:** `provisa/pgwire/_pipeline.py`, `provisa/federation/engine_wake.py`
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1462 · SaaS Infrastructure {#REQ-1462}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The front door's idle clock is bounded by the coordinator's own uptime, read from the instance's lastStartTimestamp: a box cannot have been idle for longer than it has been up. The boot grace of [REQ-1333](#REQ-1333) keys on _last_start_call, which only the front door's own wake sets, so a start from any other source -- an operator running `gcloud compute instances start` or `reset` for a deploy -- left _last_activity at its pre-stop value and the reaper stopped the coordinator on its next tick, mid startup script. The uptime bound covers every start regardless of who issued it, and does not latch: a box up longer than idle_stop_minutes with no traffic is still stopped.
+
+**Use case:** An operator restarts the coordinator to roll a release and it stays up long enough to install and start, instead of being reaped a minute into its startup script.
+
+**Code:** `terraform/gcp-saas/front-door/proxy.py`
+
+**Tests:** `tests/unit/test_front_door_wake_idle.py`

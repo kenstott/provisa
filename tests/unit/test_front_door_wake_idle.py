@@ -23,6 +23,7 @@ socket plumbing around them is what the deployed lane exercises.
 
 from __future__ import annotations
 
+import datetime
 import importlib.util
 import json
 import sys
@@ -69,15 +70,22 @@ def proxy(tmp_path, monkeypatch):
 
     calls: list[tuple[str, str]] = []
     status = {"value": "RUNNING"}
+    # Uptime is read off the instance's own lastStartTimestamp, in wall-clock time, so the
+    # fixture holds how long the box has been up and renders the timestamp from it.
+    uptime = {"seconds": 10 * 24 * 3600.0}
 
     def _compute_api(method, path):
         calls.append((method, path))
-        return {"status": status["value"]}
+        started = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            seconds=uptime["seconds"]
+        )
+        return {"status": status["value"], "lastStartTimestamp": started.isoformat()}
 
     monkeypatch.setattr(module, "_compute_api", _compute_api)
     module.calls = calls  # pyright: ignore[reportAttributeAccessIssue]
     module.set_status = lambda v: status.update(value=v)  # pyright: ignore[reportAttributeAccessIssue]
-    module._status_cache = ("", 0.0)
+    module.set_uptime = lambda s: uptime.update(seconds=s)  # pyright: ignore[reportAttributeAccessIssue]
+    module._status_cache = ("", 0.0)  # pyright: ignore[reportAttributeAccessIssue]
     return module
 
 
@@ -243,6 +251,30 @@ def test_a_box_still_inside_its_boot_grace_is_not_stopped(proxy, monkeypatch):
     proxy._last_start_call = 100_000.0 - proxy.BOOT_GRACE_SECONDS + 10
 
     assert proxy.idle_stop_due() is None
+
+
+def test_a_box_started_outside_the_front_door_is_not_stopped_at_boot(proxy, monkeypatch):
+    """An operator deploying with `gcloud compute instances start` leaves _last_start_call and
+    _last_activity untouched, so the box was already past the idle window the moment it came up
+    and the reaper stopped it mid startup script. Uptime bounds how long it can have been idle."""
+    _clock(monkeypatch, proxy, 100_000.0)
+    proxy._last_activity = 0.0
+    proxy._active_conns = 0
+    proxy._last_start_call = 0.0
+    proxy.set_uptime(30.0)
+
+    assert proxy.idle_stop_due() is None
+
+
+def test_a_box_up_longer_than_the_idle_window_is_still_stopped(proxy, monkeypatch):
+    """The uptime bound must not become a latch that keeps a genuinely idle box billing."""
+    _clock(monkeypatch, proxy, 100_000.0)
+    proxy._last_activity = 100_000.0 - proxy.IDLE_STOP_SECONDS - 1
+    proxy._active_conns = 0
+    proxy._last_start_call = 0.0
+    proxy.set_uptime(proxy.IDLE_STOP_SECONDS + 60)
+
+    assert proxy.idle_stop_due() is not None
 
 
 def test_a_coordinator_that_is_already_stopped_is_not_stopped_again(proxy, monkeypatch):

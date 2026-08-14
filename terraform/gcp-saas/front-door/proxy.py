@@ -21,6 +21,7 @@ stdlib only (python3.10 / ubuntu 22.04); thread-per-connection is deliberate —
 this box fronts dev-scale traffic, not the data plane.
 """
 
+import datetime
 import json
 import logging
 import select
@@ -99,6 +100,20 @@ def coordinator_status(fresh: bool = False) -> str:
     status = _compute_api("GET", f"instances/{INSTANCE}")["status"]
     _status_cache = (status, time.monotonic())
     return status
+
+
+def coordinator_uptime_seconds() -> float:
+    """Seconds since the coordinator last started, from the instance itself.
+
+    The boot grace has to cover every start, not only the ones this proxy issued: an operator
+    running `gcloud compute instances start` or `reset` for a deploy leaves _last_start_call
+    untouched and _last_activity at its pre-stop value, so the reaper stopped the box on its
+    next tick — mid startup script. lastStartTimestamp is the instance's own record of when it
+    came up, so a start from any source counts.
+    """
+    started = _compute_api("GET", f"instances/{INSTANCE}")["lastStartTimestamp"]
+    delta = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(started)
+    return delta.total_seconds()
 
 
 def trigger_wake() -> None:
@@ -348,6 +363,12 @@ def idle_stop_due() -> float | None:
     with _state_lock:
         if time.monotonic() - _last_start_call < BOOT_GRACE_SECONDS:
             return None
+    # A box cannot have been idle for longer than it has been up. Without this the counter
+    # kept running across the stop, so a start from anywhere but this proxy — an operator
+    # deploying with `gcloud compute instances start` or `reset` — was already past the idle
+    # threshold at boot and got stopped on the next tick, mid startup script.
+    if coordinator_uptime_seconds() < IDLE_STOP_SECONDS:
+        return None
     return idle_for
 
 
