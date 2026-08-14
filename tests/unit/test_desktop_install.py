@@ -187,3 +187,47 @@ class TestREQ1005NativeNextSteps:
         assert "install-container.ps1" in native or "Provisa-Container-" in block
         assert "Requires the container tier" in block
         assert "Requires Core + Obs" in block
+
+
+# ---------------------------------------------------------------------------
+# REQ-1468: a packaged demo deploy ships every upstream the demo config names,
+#           including the three mock backends it serves itself.
+# ---------------------------------------------------------------------------
+
+
+class TestREQ1468DemoBackendsShip:
+    """REQ-1468"""
+
+    def test_demo_overlay_declares_all_three_mock_backends(self):
+        # REQ-1468 — the packaged tiers never see docker-compose.demo.yml (scripts/provisa
+        # composes core+app+airgap+obs+extensions), so the generated demo overlay is the only
+        # place these services can come from.
+        overlay = (PKG / "linux" / "first-launch.sh").read_text()
+        block = overlay[overlay.index("write_demo_overlay()") :]
+        block = block[: block.index("\nYAML")]
+        for svc in ("petstore-mock:", "graphql-demo:", "grpc-demo:"):
+            assert svc in block, f"demo overlay must declare {svc}"
+        assert block.count("image: provisa/provisa:local") == 3, (
+            "mocks run off the application image — no extra image is pulled, built or released"
+        )
+        assert 'DEMO_GRPC_TARGET: "grpc-demo:50071"' in block, (
+            "the config's native localhost default is wrong inside compose"
+        )
+
+    def test_image_bakes_mock_sources_outside_the_bind_mount(self):
+        # REQ-1468 — /app/demo is bind-mounted by docker-compose.app.yml and would shadow
+        # anything baked there, so the mock sources live under /app/config/demo/servers.
+        dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+        assert "./config/demo/servers/petstore/" in dockerfile
+        assert "./config/demo/servers/graphql/" in dockerfile
+        assert "./config/demo/servers/grpc/" in dockerfile
+        assert "COPY demo/petstore_server/server.py demo/petstore_server/openapi.json" in dockerfile
+        app_compose = (REPO_ROOT / "docker-compose.app.yml").read_text()
+        assert "./demo:/app/demo:ro" in app_compose, "the shadowing bind-mount this avoids"
+
+    def test_overlay_working_dirs_match_the_baked_paths(self):
+        # REQ-1468 — `uvicorn server:app` / `python server.py` resolve out of the working dir,
+        # so a baked path and its service's working_dir must not drift apart.
+        overlay = (PKG / "linux" / "first-launch.sh").read_text()
+        for name in ("petstore", "graphql", "grpc"):
+            assert f"working_dir: /app/config/demo/servers/{name}" in overlay

@@ -43,6 +43,15 @@ COPY config/capabilities.yaml config/pg_extension_catalog.yaml config/custom_con
      config/provisa-install.yaml config/provisa-install-base.yaml ./config/
 COPY config/pgbouncer/ ./config/pgbouncer/
 COPY demo/files/pet_store.sqlite demo/files/inquiries.sqlite ./config/demo/files/
+# Every demo source in provisa-install.yaml must resolve on a demo deploy, and two of them are
+# served by Provisa's own mock backends (petstore-mock:8080, graphql-demo:4000). Their only
+# runtime deps — starlette/uvicorn/strawberry — are already in this image, so the compose demo
+# overlay runs them from this same image rather than pulling two more. Staged under
+# /app/config/demo/servers for the same reason as the sample data: /app/demo is bind-mounted
+# by docker-compose.app.yml and would shadow whatever is baked there.
+COPY demo/petstore_server/server.py demo/petstore_server/openapi.json ./config/demo/servers/petstore/
+COPY demo/graphql_server/server.py ./config/demo/servers/graphql/
+COPY demo/grpc_server/server.py ./config/demo/servers/grpc/
 # The shared lane's queue policy. k8s_provisioner.shared_resource_groups() reads this exact
 # file and writes it into the shard's ConfigMap (REQ-1450), so the control-plane image needs
 # it even though this node runs no Trino of its own; without it the boot wake dies with

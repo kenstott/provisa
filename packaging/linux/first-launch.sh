@@ -482,6 +482,35 @@ services:
       PROVISA_CONFIG: "/app/config/provisa-install.yaml"
       PROVISA_DEMO: "1"
       PROVISA_DEMO_DIR: "/app/config/demo/files"
+      # The demo's grpc-kind commands (enrich_grpc_set, random_grpc_set) default their target to
+      # localhost:50071 — correct for a native run, wrong inside compose, where the demo server
+      # is its own service. Point them at it.
+      DEMO_GRPC_TARGET: "grpc-demo:50071"
+    depends_on:
+      - petstore-mock
+      - graphql-demo
+      - grpc-demo
+  # The demo config registers an OpenAPI source at http://petstore-mock:8080/api/v3 and a
+  # GraphQL source at http://graphql-demo:4000/graphql (config/provisa-install.yaml:278-300).
+  # A demo deploy that ships neither leaves those sources unresolvable, so both mocks run as
+  # first-class services. They use the provisa image — their deps (starlette, uvicorn,
+  # strawberry) are already installed there and the sources are baked at
+  # /app/config/demo/servers — so no extra image is pulled or built.
+  petstore-mock:
+    image: provisa/provisa:local
+    restart: unless-stopped
+    working_dir: /app/config/demo/servers/petstore
+    command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080"]
+  graphql-demo:
+    image: provisa/provisa:local
+    restart: unless-stopped
+    working_dir: /app/config/demo/servers/graphql
+    command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "4000"]
+  grpc-demo:
+    image: provisa/provisa:local
+    restart: unless-stopped
+    working_dir: /app/config/demo/servers/grpc
+    command: ["python", "server.py"]
 YAML
   ok "Demo overlay written: ${file}"
 }

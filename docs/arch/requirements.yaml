@@ -45607,3 +45607,40 @@
   - REQ-1375
   - REQ-1377
   - REQ-1443
+- id: REQ-1468
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: Docker Compose Organization
+  priority: MUST
+  type: infrastructure
+  description: >-
+    A packaged demo deploy ships every upstream the demo config names, not only the file-backed
+    ones. Three of the demo's sources are served by Provisa's own mock backends -- the OpenAPI
+    petstore at petstore-mock:8080, the GraphQL shelter at graphql-demo:4000, and the gRPC
+    enrichment/random command server at grpc-demo:50071 -- and a deploy that stages the SQLite
+    files alone leaves those three unresolvable, so the demo lands half-federated. The packaged
+    tiers build nothing and never see docker-compose.demo.yml's build contexts, so the mock
+    sources are baked into the application image under /app/config/demo/servers (NOT /app/demo,
+    which docker-compose.app.yml bind-mounts and would shadow) and the generated demo overlay runs
+    them as services off that same image -- their only runtime dependencies, starlette, uvicorn,
+    strawberry and grpcio, are already installed there, so no additional image is pulled, built or
+    released. The gRPC target is repointed at the service, since the config's native default of
+    localhost is wrong inside compose.
+  use_case: >-
+    An operator installs the demo on a fresh SaaS node; the pet, shelter, and enrichment sources
+    federate on first boot with no manually started mock servers.
+  tests:
+  - tests/unit/test_desktop_install.py
+  code:
+  - Dockerfile
+  - packaging/linux/first-launch.sh
+  - config/provisa-install.yaml
+  scenario: |
+    Given a packaged install that selected the demo
+    Then the demo overlay declares petstore-mock, graphql-demo and grpc-demo off the provisa image
+    And the application image carries their sources under /app/config/demo/servers
+    And the app container's gRPC target names the grpc-demo service rather than localhost
+  related_reqs:
+  - REQ-816
+  - REQ-831
