@@ -55,11 +55,6 @@ output "engine_cluster_name" {
   value       = local.engine_cluster_name
 }
 
-output "shared_shard_endpoint" {
-  description = "host:port the control plane dials for the shared (Starter) shard, as Cloud DNS publishes it VPC-wide."
-  value       = "trino-shared-1.${local.engine_hostname_suffix}:8080"
-}
-
 output "service_account_email" {
   description = "Service account email used by Provisa SaaS nodes."
   value       = google_service_account.provisa.email

@@ -319,3 +319,21 @@ async def test_the_reaper_start_seeds_the_boot_shard(fake_k8s, monkeypatch):
         st._engine_reaper_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await st._engine_reaper_task
+
+
+# ── boot order ──────────────────────────────────────────────────────────────────
+
+
+def test_boot_wakes_the_shard_before_anything_asks_for_its_address():
+    """A shard's address exists only between a wake and the next idle-to-zero, so every boot step
+    that reads it must come after the wake. The seed of the built-in sources reads it first — it
+    writes the engine's endpoint into the source rows — and when the wake sat below it the hosted
+    control plane died on startup with "shard shared_1 has no address" (REQ-1448)."""
+    import inspect
+
+    from provisa.api import app as app_module
+
+    src = inspect.getsource(app_module._load_and_build)
+    wake = src.index("ensure_shard_awake(boot_shard())")
+    for reader in ("_seed_built_in_sources(pg_host", "_apply_server_and_engine_config(raw_config)"):
+        assert wake < src.index(reader), f"{reader} runs before the wake"

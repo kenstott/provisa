@@ -5,10 +5,9 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
-    # gke.tf — the engine cluster only. dns_config.additive_vpc_scope_dns_domain is beta-only in
-    # provider v5, and Autopilot supports no other way to publish a headless Service into the VPC
-    # (REQ-1464), so the cluster resource is declared against google-beta while everything else
-    # stays on GA.
+    # gke.tf — the engine cluster only, which is declared against google-beta so that Autopilot
+    # settings still landing in beta (cluster_autoscaling's auto_provisioning_defaults, REQ-1464)
+    # are available on the one resource that needs them. Everything else stays on GA.
     google-beta = {
       source  = "hashicorp/google-beta"
       version = "~> 5.0"
@@ -60,8 +59,8 @@ resource "google_compute_subnetwork" "nodes" {
 
   # REQ-1447: the engine cluster is VPC-native, so pods and services are ALIAS ranges on this
   # same subnet rather than a route-based overlay. Flat pod addressing is what lets the
-  # control-plane VM reach a coordinator Service directly, which is the whole reason
-  # PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE can keep naming a hostname and nothing else changes.
+  # control-plane VM reach a shard's POD directly — the address the provisioner reads off
+  # the Kubernetes API on each wake, with no cluster DNS and no load balancer in the path.
   secondary_ip_range {
     range_name    = "pods"
     ip_cidr_range = var.pods_cidr
@@ -314,14 +313,12 @@ locals {
     export CONFIG_DB_PASSWORD='${random_password.db.result}'
   SHELL
 
-  # Engine-cluster env (REQ-1447/1450/1451). Two separable things, and the split is
-  # deliberate: the CLUSTER_* + IMAGE settings say this process may CREATE an engine
-  # (k8s_provisioner.provisioner_settings), while the HOST_TEMPLATE and TRINO_HOST
-  # say where engines are DIALED — a deployment can route to engines it does not
-  # operate. Service names resolve VPC-wide through the cluster's Cloud DNS domain,
-  # so no load balancer stands between the control plane and a shard.
-  engine_hostname_suffix = "${kubernetes_namespace.engines.metadata[0].name}.svc.${var.engine_cluster_dns_domain}"
-
+  # Engine-cluster env (REQ-1447/1450/1451). The CLUSTER_* + IMAGE settings say this
+  # process may CREATE an engine (k8s_provisioner.provisioner_settings). Nothing here
+  # says where a shard is DIALED: a shard is a pod that exists only between a wake and
+  # the next idle-to-zero, so its address is read from the Kubernetes API on each wake
+  # rather than written once by terraform. See the dns_config note in gke.tf for why
+  # there is no resolvable name to write.
   engine_cluster_exports = <<-SHELL
     export PROVISA_ENGINE_CLUSTER_PROJECT="${var.project}"
     export PROVISA_ENGINE_CLUSTER_LOCATION="${local.engine_cluster_location}"
@@ -334,17 +331,14 @@ locals {
     # without this a pod can come up in a zone the control-plane VM is not in and
     # every byte between them is billed as cross-zone egress (REQ-1465).
     export PROVISA_ENGINE_CLUSTER_ZONE="${var.zone}"
-    export PROVISA_ENGINE_CLUSTER_DNS_DOMAIN="${var.engine_cluster_dns_domain}"
     export PROVISA_ENGINE_NAMESPACE="${kubernetes_namespace.engines.metadata[0].name}"
     export PROVISA_ENGINE_IMAGE="${var.engine_image}"
-    export TRINO_HOST="trino-shared-1.${local.engine_hostname_suffix}"
-    export TRINO_PORT=8080
-    # TRINO_HOST says where the control plane's own shard answers; this says WHICH shard that is,
-    # which is what the provisioner needs to bring it back up when boot finds it at zero replicas
-    # (REQ-1448). The two are written together so they can never disagree.
+    # WHICH shard the control plane's own terminal is bound to. There is no matching TRINO_HOST:
+    # the provisioner brings this shard up when boot finds it at zero replicas and reads the
+    # resulting pod's address from the cluster, so a written-down host could only ever disagree
+    # with it (REQ-1448).
     export PROVISA_ENGINE_SHARD="shared_1"
-    export PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE="trino-{org_id}.${local.engine_hostname_suffix}"
-    export PROVISA_ISOLATED_ENGINE_PORT=8080
+    export PROVISA_ENGINE_PORT=8080
     # The OTel Iceberg tables live in this node's MinIO, and the engine reads them itself.
     # "http://minio:9000" is a compose service name that exists only on this VM, so the shard
     # resolved nothing and every ops query failed with UnknownHostException: minio. The engine
@@ -373,8 +367,8 @@ locals {
 }
 
 # There is no private zone here any more. It existed so worker VMs could find the
-# coordinator by name; engine DNS is now the cluster's own, published VPC-wide by
-# Cloud DNS under var.engine_cluster_dns_domain (gke.tf).
+# coordinator by name; nothing resolves an engine by name now — a shard is dialed at
+# its pod IP, read from the Kubernetes API on each wake (see gke.tf's dns_config note).
 
 # ── Control plane — app tier, TCP listeners, stateful singletons ─────────────────
 # Runs the Provisa API, the UI, and the in-process protocol listeners, and NOTHING

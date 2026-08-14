@@ -70,8 +70,7 @@ variable "coordinator_internal_ip" {
 # ── Engine cluster (REQ-1447) ───────────────────────────────────────────────────
 # The pod and service ranges are ALIAS ranges on the node subnet, not a separate
 # network. Pods therefore hold routable VPC addresses, which is what lets the
-# control-plane VM dial a coordinator Service by name and leaves
-# PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE the only thing that changes.
+# control-plane VM dial a shard's pod directly from outside the cluster.
 variable "pods_cidr" {
   description = "Secondary range on the node subnet for GKE pod IPs."
   type        = string
@@ -157,23 +156,6 @@ variable "shared_shards" {
   EOT
   type        = list(string)
   default     = ["shared_1"]
-}
-
-variable "engine_cluster_dns_domain" {
-  description = <<-EOT
-    DNS domain the cluster's Services are published under, VPC-wide. The control
-    plane is a VM, not a pod, so it cannot resolve the in-cluster default
-    (svc.cluster.local) at all; GKE's Cloud DNS publishes the Service records into
-    the VPC instead, under a domain unique to this cluster. A shard is then dialed
-    at trino-shared-1.provisa-engines.svc.<this domain> with no load balancer and
-    so no forwarding-rule hours on the zero-customer floor (REQ-1451, REQ-1453).
-
-    Set as ADDITIVE vpc scope on autopilot and as VPC_SCOPE on standard — Autopilot
-    supports only the additive form (gke.tf) — and it can only be set when the cluster
-    is created, in either mode.
-  EOT
-  type        = string
-  default     = "provisa-saas-engine.internal"
 }
 
 variable "engine_image" {

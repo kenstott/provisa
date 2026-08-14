@@ -127,11 +127,6 @@ def provisioner_settings() -> dict[str, str]:
         "location": "PROVISA_ENGINE_CLUSTER_LOCATION",
         "cluster": "PROVISA_ENGINE_CLUSTER_NAME",
         "image": "PROVISA_ENGINE_IMAGE",
-        # Required, not defaulted to cluster.local: the control plane is a VM, not a pod, and a VM
-        # cannot resolve the in-cluster domain at all. GKE publishes the Service records VPC-wide
-        # under a domain unique to the cluster (Cloud DNS, additive VPC scope), and getting it wrong
-        # yields engines that come up healthy and that nothing can dial (REQ-1451).
-        "dns_domain": "PROVISA_ENGINE_CLUSTER_DNS_DOMAIN",
         # Required, not inferred from the location: an Autopilot cluster is REGIONAL (the API
         # refuses a zonal one), so without an explicit zone the scheduler may place a shard pod in
         # a zone the control-plane VM is not in and every byte of every result set is billed as
@@ -340,13 +335,62 @@ def shard_workload_name(shard: str) -> str:
     return f"trino-{shard.replace('_', '-')}"
 
 
-def shard_endpoint(shard: str) -> tuple[str, int]:
-    """``(host, port)`` the control plane dials for a shard, as Cloud DNS publishes it VPC-wide."""
+# The address last observed for each shard's ready pod. Written by the two calls that ask the
+# cluster about a shard (_await_ready, shard_status) and cleared by the one that takes it away
+# (scale_shard_to_zero), so what it holds is always the cluster's own last word.
+_pod_ips: dict[str, str] = {}
+
+
+async def _resolve_pod_ip(shard: str) -> str:
+    """The IP of the shard's ready pod, asked of the Kubernetes API.
+
+    The address is a pod IP rather than the Service's DNS name because the control plane is a VM
+    inside the VPC but OUTSIDE the cluster, and it has no way to resolve ``<svc>.<ns>.svc.<domain>``.
+    GKE can publish those records VPC-wide (Cloud DNS additive VPC scope), but on an Autopilot
+    cluster the setting is creation-only AND ``google_container_cluster.dns_config`` carries
+    ``DiffSuppressFunc: suppressDiffForAutopilot`` in the terraform provider (still present at
+    v7.44.0), so the create request never contains it and the API refuses to add it afterwards.
+    Pod IPs need none of that: they are VPC-native alias ranges, routable VPC-wide, and identical in
+    both cluster topologies — which also takes a creation-time constraint off the Autopilot↔Standard
+    cutover (REQ-1451, REQ-1465).
+    """
     settings = provisioner_settings()
-    return (
-        f"{shard_workload_name(shard)}.{settings['namespace']}.svc.{settings['dns_domain']}",
-        _int_env("PROVISA_ENGINE_PORT", 8080),
+    resp = await _k8s(
+        "GET",
+        f"/api/v1/namespaces/{settings['namespace']}/pods"
+        f"?labelSelector=provisa.dev%2Fshard%3D{shard}",
     )
+    if resp.status_code >= 400:
+        raise K8sProvisioningError(f"listing pods for shard {shard} failed: {gcp_error_detail(resp)}")
+    for pod in resp.json().get("items", []):
+        status = pod.get("status", {})
+        ready = any(
+            c.get("type") == "Ready" and c.get("status") == "True"
+            for c in status.get("conditions", [])
+        )
+        ip = status.get("podIP")
+        if ready and ip:
+            _pod_ips[shard] = ip
+            return ip
+    raise K8sProvisioningError(f"shard {shard} has no ready pod with an address")
+
+
+def shard_endpoint(shard: str) -> tuple[str, int]:
+    """``(host, port)`` the control plane dials for a shard.
+
+    Synchronous, and answers from what the last cluster call observed: every dial is preceded by a
+    wake (``engine_wake.ensure_shard_awake``), and both the cold path and the warm path record the
+    ready pod's address on the way through. A shard with nothing recorded has not been woken, and
+    saying so is the point — a guessed address is an engine that comes up healthy and that nothing
+    can reach (REQ-1448).
+    """
+    ip = _pod_ips.get(shard)
+    if not ip:
+        raise K8sProvisioningError(
+            f"shard {shard} has no address: it has not been woken in this process, so the pod "
+            "serving it is unknown (REQ-1448)"
+        )
+    return ip, _int_env("PROVISA_ENGINE_PORT", 8080)
 
 
 # ── Manifests ───────────────────────────────────────────────────────────────────
@@ -550,8 +594,8 @@ def _service_manifest(shard: str) -> dict:
 # ── Readiness ───────────────────────────────────────────────────────────────────
 
 
-async def _await_ready(shard: str) -> None:
-    """Wait until the Deployment reports a ready replica.
+async def _await_ready(shard: str) -> str:
+    """Wait until the Deployment reports a ready replica, and return that replica's address.
 
     NOT a poll of the coordinator's ``/v1/info``. That endpoint reports ``starting=false`` as soon
     as the process answers, which on a cluster is true before the engine is whole; ``readyReplicas``
@@ -569,7 +613,9 @@ async def _await_ready(shard: str) -> None:
         if resp.status_code == 200:
             status = resp.json().get("status", {})
             if int(status.get("readyReplicas", 0)) >= 1:
-                return
+                # Resolved here rather than by the caller: the pod that just passed its readiness
+                # gate is the one this wake produced, and its IP is what the caller will dial.
+                return await _resolve_pod_ip(shard)
             last = f"readyReplicas={status.get('readyReplicas', 0)}"
         else:
             last = gcp_error_detail(resp)
@@ -612,10 +658,8 @@ async def ensure_shard_running(
         f"{shard_workload_name(shard)}",
         _deployment_manifest(shard, lane, resource_groups),
     )
-    await _await_ready(shard)
-
-    host, port = shard_endpoint(shard)
-    return {"shard": shard, "host": host, "port": port}
+    host = await _await_ready(shard)
+    return {"shard": shard, "host": host, "port": _int_env("PROVISA_ENGINE_PORT", 8080)}
 
 
 async def ensure_shared_shard(shard: str) -> dict:
@@ -672,6 +716,7 @@ async def scale_shard_to_zero(shard: str) -> dict:
             )
         await asyncio.sleep(5.0)
 
+    _pod_ips.pop(shard, None)
     log.info("engine shard %s scaled to zero", shard)
     return {"shard": shard, "state": "stopped"}
 
@@ -687,6 +732,14 @@ async def shard_status(shard: str) -> dict:
         raise K8sProvisioningError(f"reading {name} failed: {gcp_error_detail(resp)}")
     body = resp.json()
     ready = int(body.get("status", {}).get("readyReplicas", 0))
+    if ready >= 1:
+        # The warm path through ensure_shard_awake ends here and dials without going near
+        # ensure_shard_running, so this is where a warm shard's address is refreshed. A pod that was
+        # replaced under us (eviction, node repair) comes back with a different IP and the same
+        # ready Deployment, and reusing the old one would dial an address nothing answers on.
+        await _resolve_pod_ip(shard)
+    else:
+        _pod_ips.pop(shard, None)
     # Desired replicas, not node count: on Autopilot a shard at zero replicas has no node by
     # construction, and one with a replica that is not ready yet is a node being provisioned.
     desired = int(body.get("spec", {}).get("replicas", 0))

@@ -597,6 +597,19 @@ async def _load_and_build(
     _mark("pg-pool")
     _mark("schema-init")
 
+    # REQ-1448: the wake precedes every use of the engine's address, and the seed below is the
+    # first — it writes the endpoint into the built-in source rows. A shard's address exists only
+    # between a wake and the next idle-to-zero (the provisioner reads it from the ready pod), so
+    # asking for it before the wake asks for an address nothing holds. On any deployment that does
+    # not provision engines — desktop, self-hosted, tests — this is a no-op.
+    from provisa.federation.engine_wake import boot_shard, ensure_shard_awake
+    from provisa.federation.k8s_provisioner import provisioning_available
+
+    if provisioning_available():
+        await ensure_shard_awake(boot_shard())
+
+    _mark("engine-wake")
+
     await _seed_built_in_sources(pg_host, pg_port, pg_database, pg_user)
 
     _mark("pg+schema+seed")
@@ -608,16 +621,9 @@ async def _load_and_build(
     with open(path) as f:
         raw_config = yaml.safe_load(f)
 
-    # REQ-1448: _apply_server_and_engine_config CONNECTS the terminal (trino_lifecycle.provision
-    # opens a dbapi connection and seeds the ops catalogs), so unlike a query it cannot be served by
-    # a shard that is at zero replicas. Boot therefore wakes its own shard first. On any
-    # deployment that does not provision engines — desktop, self-hosted, tests — this is a no-op.
-    from provisa.federation.engine_wake import boot_shard, ensure_shard_awake
-    from provisa.federation.k8s_provisioner import provisioning_available
-
-    if provisioning_available():
-        await ensure_shard_awake(boot_shard())
-
+    # The shard was woken above, before the seed that first asked for its address;
+    # _apply_server_and_engine_config CONNECTS the terminal (trino_lifecycle.provision opens a
+    # dbapi connection and seeds the ops catalogs), so it depends on that same wake (REQ-1448).
     _apply_server_and_engine_config(raw_config)
 
     _mark("engine-connect")

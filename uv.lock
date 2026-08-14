@@ -3451,6 +3451,9 @@ all-drivers = [
 azure = [
     { name = "azure-keyvault-keys" },
 ]
+demo = [
+    { name = "great-expectations", extra = ["postgresql"] },
+]
 desktop = [
     { name = "mcp-proxy" },
 ]
@@ -3578,6 +3581,7 @@ requires-dist = [
     { name = "google-cloud-kms", marker = "extra == 'kms-all'" },
     { name = "google-cloud-storage" },
     { name = "graphql-core", specifier = ">=3.2" },
+    { name = "great-expectations", extras = ["postgresql"], marker = "extra == 'demo'" },
     { name = "great-expectations", extras = ["postgresql"], marker = "extra == 'gx'" },
     { name = "greenlet" },
     { name = "greenlet", marker = "extra == 'dev'" },
@@ -3652,7 +3656,7 @@ requires-dist = [
     { name = "uvicorn" },
     { name = "websockets", specifier = ">=11.0" },
 ]
-provides-extras = ["embedded", "telemetry-pg", "desktop", "docs", "mysql", "sqlserver", "oracle", "all-drivers", "soda", "gx", "govdata", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
+provides-extras = ["embedded", "telemetry-pg", "desktop", "docs", "mysql", "sqlserver", "oracle", "all-drivers", "soda", "gx", "demo", "govdata", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
 
 [[package]]
 name = "provisa-duckdb-ext"

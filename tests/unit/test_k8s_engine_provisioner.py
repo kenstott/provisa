@@ -68,7 +68,6 @@ def configured(monkeypatch):
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_PROJECT", "provisa-saas")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_LOCATION", "us-central1-a")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_NAME", "provisa-saas-engine")
-    monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_DNS_DOMAIN", "provisa-saas-engine.internal")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_ZONE", "us-central1-a")
     monkeypatch.setenv("PROVISA_ENGINE_IMAGE", "gcr.io/provisa/trino-engine:v1")
     monkeypatch.setenv("PROVISA_ENGINE_NAMESPACE", "provisa-engines")
@@ -77,6 +76,29 @@ def configured(monkeypatch):
     monkeypatch.setenv("PROVISA_ENGINE_DRAIN_SECONDS", "0")
     monkeypatch.setattr(prov, "_cluster_cache", {})
     monkeypatch.setattr(prov, "_token_cache", ("stub-token", 1 << 40))
+    monkeypatch.setattr(prov, "_pod_ips", {})
+
+
+# The pod list every wake reads the shard's address out of. Answered here rather than in each
+# handler because it is not what any of these tests is about — they assert the Deployment sequence,
+# and the address is what the sequence produces (REQ-1448).
+_POD_IP = "10.20.3.7"
+
+
+def _pod_list() -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "items": [
+                {
+                    "status": {
+                        "podIP": _POD_IP,
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                    }
+                }
+            ]
+        },
+    )
 
 
 def _mock_api(monkeypatch, handler):
@@ -85,6 +107,8 @@ def _mock_api(monkeypatch, handler):
 
     def record(request: httpx.Request) -> httpx.Response:
         calls.append(request)
+        if request.url.path.endswith("/pods"):
+            return _pod_list()
         return handler(request)
 
     def fake_client(verify=True) -> httpx.AsyncClient:
@@ -117,13 +141,13 @@ def test_missing_settings_name_themselves(monkeypatch, configured):
     assert "PROVISA_ENGINE_CLUSTER_NAME" in str(excinfo.value)
 
 
-def test_dns_domain_is_required_not_defaulted(monkeypatch, configured):
-    """The control plane is a VM, so falling back to svc.cluster.local would resolve nowhere. An
-    unset domain must fail loudly instead of producing an engine nothing can dial (REQ-1451)."""
-    monkeypatch.delenv("PROVISA_ENGINE_CLUSTER_DNS_DOMAIN")
+def test_an_unwoken_shard_has_no_address(configured):
+    """The control plane is a VM outside the cluster and resolves no Service names at all: a shard's
+    address is the pod IP the last cluster call observed. Nothing observed means nothing to dial, and
+    saying so beats handing back a name that resolves nowhere (REQ-1448, REQ-1451)."""
     with pytest.raises(prov.K8sProvisioningError) as excinfo:
         prov.shard_endpoint("shared_1")
-    assert "PROVISA_ENGINE_CLUSTER_DNS_DOMAIN" in str(excinfo.value)
+    assert "has no address" in str(excinfo.value)
 
 
 # ---- naming is one derivation ------------------------------------------------
@@ -134,10 +158,6 @@ def test_shard_names_translate_once(configured):
     The two spellings must differ by exactly this translation, or the control plane dials a Service
     that does not exist."""
     assert prov.shard_workload_name("shared_1") == "trino-shared-1"
-    assert prov.shard_endpoint("shared_1") == (
-        "trino-shared-1.provisa-engines.svc.provisa-saas-engine.internal",
-        8080,
-    )
 
 
 # ---- the pod cannot contend with anything else --------------------------------
@@ -428,7 +448,7 @@ async def test_wake_applies_config_then_service_then_deployment(monkeypatch, con
 
     assert result == {
         "shard": "shared_1",
-        "host": "trino-shared-1.provisa-engines.svc.provisa-saas-engine.internal",
+        "host": _POD_IP,
         "port": 8080,
     }
     assert not [c for c in calls if c.url.path.endswith(":setSize")]
@@ -501,3 +521,113 @@ async def test_errors_carry_the_api_message(monkeypatch, configured):
     with pytest.raises(prov.K8sProvisioningError) as excinfo:
         await prov.shard_status("shared_1")
     assert "deployments.apps is forbidden" in str(excinfo.value)
+
+
+# ---- the address is the pod's, and it is re-read every time -------------------
+
+
+@pytest.mark.asyncio
+async def test_wake_records_the_ready_pods_address(monkeypatch, configured):
+    """The control plane is a VM outside the cluster: it cannot resolve
+    <svc>.<ns>.svc.<domain> at all, and on Autopilot the cluster cannot be given a DNS config that
+    would publish it. The pod IP is what it dials, and the wake is where that is learned."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/deployments/" in request.url.path and request.method == "GET":
+            return httpx.Response(200, json={"status": {"readyReplicas": 1}})
+        if request.method == "PATCH":
+            return httpx.Response(200, json={})
+        return _cluster_get()
+
+    calls = _mock_api(monkeypatch, handler)
+    monkeypatch.setattr(prov.asyncio, "sleep", _no_sleep)
+
+    await prov.ensure_shard_running("shared_1")
+    assert prov.shard_endpoint("shared_1") == (_POD_IP, 8080)
+
+    pods = [c for c in calls if c.url.path.endswith("/pods")]
+    assert pods and "provisa.dev%2Fshard%3Dshared_1" in str(pods[0].url)
+
+
+@pytest.mark.asyncio
+async def test_a_pod_that_is_not_ready_is_not_an_address(monkeypatch, configured):
+    """A pod with an IP but no Ready condition is one that is still starting, and dialing it is the
+    same mistake as trusting /v1/info."""
+
+    def record(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/pods"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "status": {
+                                "podIP": "10.20.3.9",
+                                "conditions": [{"type": "Ready", "status": "False"}],
+                            }
+                        }
+                    ]
+                },
+            )
+        return _cluster_get()
+
+    monkeypatch.setattr(prov, "_client", lambda verify=True: httpx.AsyncClient(
+        transport=httpx.MockTransport(record)
+    ))
+    with pytest.raises(prov.K8sProvisioningError) as excinfo:
+        await prov._resolve_pod_ip("shared_1")
+    assert "no ready pod" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_the_warm_path_re_reads_the_address(monkeypatch, configured):
+    """ensure_shard_awake's warm path ends at shard_status and dials without ever calling
+    ensure_shard_running. A pod replaced under us — eviction, node repair — comes back with a
+    different IP behind the same ready Deployment, so the sighting has to be refreshed here or the
+    control plane keeps dialing an address nothing answers on."""
+    ip = ["10.20.3.7"]
+
+    def record(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/pods"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {"status": {"podIP": ip[0], "conditions": [{"type": "Ready", "status": "True"}]}}
+                    ]
+                },
+            )
+        if "/deployments/" in request.url.path:
+            return httpx.Response(200, json={"spec": {"replicas": 1}, "status": {"readyReplicas": 1}})
+        return _cluster_get()
+
+    monkeypatch.setattr(prov, "_client", lambda verify=True: httpx.AsyncClient(
+        transport=httpx.MockTransport(record)
+    ))
+
+    assert (await prov.shard_status("shared_1"))["state"] == "ready"
+    assert prov.shard_endpoint("shared_1")[0] == "10.20.3.7"
+
+    ip[0] = "10.20.4.2"
+    await prov.shard_status("shared_1")
+    assert prov.shard_endpoint("shared_1")[0] == "10.20.4.2"
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_shard_forgets_its_address(monkeypatch, configured):
+    """The pod is gone and its IP goes back to the pool. Holding it would let the next wake dial
+    whatever landed on that address next."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/scale"):
+            return httpx.Response(200, json={})
+        if "/deployments/" in path and request.method == "GET":
+            return httpx.Response(200, json={"status": {"replicas": 0}})
+        return _cluster_get()
+
+    _mock_api(monkeypatch, handler)
+    prov._pod_ips["shared_1"] = "10.20.3.7"
+    await prov.scale_shard_to_zero("shared_1")
+    with pytest.raises(prov.K8sProvisioningError):
+        prov.shard_endpoint("shared_1")

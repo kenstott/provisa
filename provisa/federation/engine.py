@@ -1334,8 +1334,21 @@ def configured_materialize_url() -> str | None:
 
 def configured_engine_endpoint() -> tuple[str, int]:
     """The engine coordinator host/port (Trino): ``$TRINO_HOST``/``$TRINO_PORT`` env then the
-    persisted ``federation_engine_host``/``federation_engine_port`` config fields."""
+    persisted ``federation_engine_host``/``federation_engine_port`` config fields.
+
+    On a deployment that provisions its own engines the shard's address comes from the cluster
+    instead, because there is nothing static to name: the coordinator is a pod that is created on
+    wake and destroyed on idle, and the control-plane VM sits outside the cluster so it cannot
+    resolve the Service's DNS name (REQ-1448, REQ-1451). The provisioner records the ready pod's IP
+    on every wake, and that record is the address."""
     import os
+
+    from provisa.federation import k8s_provisioner as k8s
+
+    if k8s.provisioning_available():
+        from provisa.federation.engine_wake import boot_shard
+
+        return k8s.shard_endpoint(boot_shard())
 
     cfg = _engine_config()
     host = os.environ.get("TRINO_HOST") or cfg.get("federation_engine_host") or "localhost"

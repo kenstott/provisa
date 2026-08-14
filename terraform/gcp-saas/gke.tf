@@ -58,9 +58,6 @@ locals {
 resource "google_container_cluster" "engine_autopilot" {
   count = local.autopilot ? 1 : 0
 
-  # google-beta, for one field: dns_config.additive_vpc_scope_dns_domain below is
-  # not in the GA provider's schema at v5, and it is the only DNS scope Autopilot
-  # accepts.
   provider = google-beta
 
   name = "provisa-saas-engine"
@@ -95,9 +92,10 @@ resource "google_container_cluster" "engine_autopilot" {
   network    = google_compute_network.main.id
   subnetwork = google_compute_subnetwork.nodes.id
 
-  # VPC-native: pods hold routable VPC addresses from the subnet's alias ranges,
-  # so the control-plane VM reaches a coordinator Service directly and
-  # PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE stays the only routing knob.
+  # VPC-native, and this is what the control plane's reachability rests on: pods
+  # hold routable VPC addresses out of the subnet's alias ranges, so the
+  # control-plane VM dials a shard's POD directly. There is no cluster DNS in that
+  # path and none is configured — see the dns_config note below.
   networking_mode = "VPC_NATIVE"
   ip_allocation_policy {
     cluster_secondary_range_name  = "pods"
@@ -108,24 +106,29 @@ resource "google_container_cluster" "engine_autopilot" {
     channel = var.engine_release_channel
   }
 
-  # The control plane is a VM, not a pod, so it cannot resolve kube-dns at all —
-  # svc.cluster.local means nothing outside the cluster. Cloud DNS publishes the
-  # shard's Service record into this VPC under a domain unique to the cluster,
-  # which is what lets PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE keep naming a
-  # hostname and nothing else change (REQ-1451).
+  # NO dns_config, deliberately, and it is not an oversight to be corrected later.
   #
-  # ADDITIVE vpc scope, not VPC_SCOPE: "VPC scope is not supported on Autopilot
-  # clusters; only cluster scope is supported. If you need to resolve headless
-  # Service names that run in GKE Autopilot clusters, you must use additive VPC
-  # scope." A shard's Service is headless by design (clusterIP: None — pod IPs are
-  # VPC-native and route VPC-wide, a ClusterIP does not), so additive scope covers
-  # exactly the records this dials, under the same
-  # <service>.<namespace>.svc.<domain> name. Creation-time only.
-  dns_config {
-    cluster_dns                   = "CLOUD_DNS"
-    cluster_dns_scope             = "CLUSTER_SCOPE"
-    additive_vpc_scope_dns_domain = var.engine_cluster_dns_domain
-  }
+  # The control plane is a VM, not a pod, so svc.cluster.local means nothing to it.
+  # The intended answer was Cloud DNS additive VPC scope, which publishes the
+  # shard's headless Service record VPC-wide. It cannot be had on Autopilot:
+  #   * `dns_config` on google_container_cluster carries
+  #     `DiffSuppressFunc: suppressDiffForAutopilot`, which returns true whenever
+  #     enable_autopilot is set — so the block never enters the diff, the create
+  #     request's networkConfig arrives as {"enableIntraNodeVisibility": true}, and
+  #     the cluster comes up with no DNS config at all. Confirmed by TF_LOG=DEBUG on
+  #     the create, and still present in the provider at v7.44.0 — a version bump is
+  #     not a fix.
+  #   * Setting it afterwards is refused by the API: "Changing DNSConfig is not
+  #     supported in Autopilot clusters." Google documents additive VPC scope as
+  #     creation-only there, and `gcloud container clusters create-auto` exposes no
+  #     flag for it either.
+  #
+  # So the control plane does not resolve names. It reads the ready pod's IP from
+  # the Kubernetes API on every wake and dials that (k8s_provisioner._resolve_pod_ip);
+  # pod IPs are VPC-native alias ranges and route VPC-wide. That path is identical in
+  # both topologies, which takes a creation-time constraint off the Autopilot↔Standard
+  # cutover (REQ-1451, REQ-1465), and it needs no load balancer — forwarding-rule
+  # hours would not fit under the zero-customer floor (REQ-1453).
 
   # Nodes carry public addresses. Private nodes would need Cloud NAT, which bills
   # by the hour whether or not a node exists — a fixed line on the zero-customer
@@ -188,16 +191,12 @@ resource "google_container_cluster" "engine_standard" {
     channel = var.engine_release_channel
   }
 
-  # VPC_SCOPE, which standard supports and autopilot does not: it publishes every
-  # Service — headless or not — into this VPC under the cluster's own domain, so
-  # the control-plane VM resolves the same
-  # <service>.<namespace>.svc.<domain> name it resolves on autopilot.
-  # Creation-time only, which is half of why switching replaces the cluster.
-  dns_config {
-    cluster_dns        = "CLOUD_DNS"
-    cluster_dns_scope  = "VPC_SCOPE"
-    cluster_dns_domain = var.engine_cluster_dns_domain
-  }
+  # No dns_config here either. Standard would accept VPC_SCOPE, but the control
+  # plane no longer resolves Service names in either topology — it dials the ready
+  # pod's IP, read from the Kubernetes API on each wake. Keeping the two clusters
+  # identical on this point is deliberate: the cutover (REQ-1465) then changes only
+  # the pod's placement stanza, and a mode with an extra creation-time setting is a
+  # mode the cutover can get wrong.
 
   deletion_protection = false
 
