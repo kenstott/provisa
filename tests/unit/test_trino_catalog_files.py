@@ -116,7 +116,10 @@ class TestKafka:
                         "value_format": "json",
                         "columns": [
                             {"name": "order_id", "data_type": "BIGINT"},
-                            {"name": "payload", "is_complex": True},
+                            # REQ-1426: every topic column declares its type, complex ones
+                            # included — is_complex only decides how the record is read
+                            # (the whole object as one VARCHAR field), not what the column is.
+                            {"name": "payload", "data_type": "JSONB", "is_complex": True},
                         ],
                     }
                 ],

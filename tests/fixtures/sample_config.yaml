@@ -133,10 +133,15 @@ kafka_sources:
         domain_id: sales-analytics
         description: "Inbound support tickets"
         default_window: 1h
+        # REQ-1426: a topic column carries its design-time type like any other registered column —
+        # the loader carries what the YAML declares and nothing infers a type later.
         columns:
           - name: ticket_id
+            data_type: varchar
           - name: subject
+            data_type: varchar
           - name: status
+            data_type: varchar
 
 rls_rules:
   - table_id: orders

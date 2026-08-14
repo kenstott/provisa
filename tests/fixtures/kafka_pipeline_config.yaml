@@ -55,7 +55,11 @@ kafka_sources:
         domain_id: kafka_e2e
         description: Orders produced by the Kafka pipeline e2e test
         columns:
+          # REQ-1426: a topic column carries its design-time type like any other registered
+          # column — the loader carries what the YAML declares and nothing infers a type later.
           - name: order_id
+            data_type: varchar
             visible_to: [org_admin, analyst]
           - name: sku
+            data_type: varchar
             visible_to: [org_admin, analyst]

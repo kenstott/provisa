@@ -221,7 +221,9 @@ def _kafka_source_config(kafka_source: dict):
             columns=[
                 KafkaColumn(
                     name=c["name"],
-                    data_type=c.get("data_type", "VARCHAR"),
+                    # REQ-1426: the declared type is the design; defaulting it to VARCHAR here
+                    # would write a table description that disagrees with the registered column.
+                    data_type=c["data_type"],
                     is_complex=c.get("is_complex", False),
                 )
                 for c in t.get("columns", [])

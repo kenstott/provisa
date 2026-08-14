@@ -163,6 +163,10 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
                 "columns": [
                     {
                         "name": col.get("name", col) if isinstance(col, dict) else col,
+                        # REQ-1426: the topic's declared type is the design-time type of the
+                        # registered column. Dropping it here made the table repository refuse the
+                        # synthesized table, since nothing downstream infers a type.
+                        "data_type": col.get("data_type") if isinstance(col, dict) else None,
                         "visible_to": col.get("visible_to", ["admin", "analyst"])
                         if isinstance(col, dict)
                         else ["admin", "analyst"],
