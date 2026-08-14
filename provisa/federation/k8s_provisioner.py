@@ -479,6 +479,15 @@ def _service_manifest(shard: str) -> dict:
             "labels": {"provisa.dev/shard": shard},
         },
         "spec": {
+            # Headless. The client is the control-plane VM, which sits in the VPC but OUTSIDE the
+            # cluster, and a ClusterIP is only routable from inside it: DNS answered
+            # trino-shared-1.provisa-engines.svc.<domain> with 10.24.6.12 and every connect timed
+            # out, while the pod IP answered /v1/info immediately. Pod IPs are VPC-native alias
+            # ranges and route VPC-wide, so clusterIP: None publishes the address that actually
+            # works — and a shard is one pod, so the record it publishes is unambiguous. The
+            # alternative, an internal load balancer per shard, bills by the hour against a
+            # zero-customer floor that must stay at $18.96/mo (REQ-1447).
+            "clusterIP": "None",
             "selector": {"provisa.dev/shard": shard},
             "ports": [{"name": "http", "port": port, "targetPort": port}],
         },

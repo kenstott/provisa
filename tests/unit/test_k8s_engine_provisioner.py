@@ -188,6 +188,13 @@ def test_query_memory_fits_under_the_heap_headroom(configured):
     assert per_node + heap * 0.3 <= heap
 
 
+def test_the_shard_service_is_headless(configured):
+    """The control plane dials a shard from a VM in the VPC but outside the cluster, and a ClusterIP
+    routes only inside it: the name resolved to 10.24.6.12 and every connect timed out while the pod
+    IP served /v1/info. Headless publishes the VPC-routable pod IP instead."""
+    assert prov._service_manifest("shared_1")["spec"]["clusterIP"] == "None"
+
+
 def test_a_shard_can_schedule_its_own_splits(configured):
     """A shard is a single pod. With ``include-coordinator=false`` there is no node in the cluster
     willing to take a split and every query queues forever — the setting that was a co-tenancy
