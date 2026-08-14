@@ -117,11 +117,13 @@ def _make_config(spec_path: str) -> dict:
                 "schema": "default",
                 "table": "find_pets_by_status",
                 "alias": "pet_by_status",
+                # REQ-1426: a data type is design-time metadata the YAML carries — the loader
+                # assigns none, and the table repository refuses an untyped column.
                 "columns": [
-                    {"name": "id", "visible_to": ["admin"]},
-                    {"name": "name", "visible_to": ["admin"]},
-                    {"name": "status", "visible_to": ["admin"]},
-                    {"name": "photoUrls", "visible_to": ["admin"]},
+                    {"name": "id", "data_type": "integer", "visible_to": ["admin"]},
+                    {"name": "name", "data_type": "varchar", "visible_to": ["admin"]},
+                    {"name": "status", "data_type": "varchar", "visible_to": ["admin"]},
+                    {"name": "photoUrls", "data_type": "json", "visible_to": ["admin"]},
                 ],
             }
         ],

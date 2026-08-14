@@ -243,6 +243,39 @@ class TestMatStoreRows:
         assert values_cte_entries["pets"].rows == [{"id": 1, "name": "Fido"}]
         assert cache_rewrites == {}
 
+    async def test_inlined_row_keys_are_snake_cased_to_match_column_names(self):
+        """The CTE reads row[c] for c in column_names, and those names are snake_case — raw
+        camelCase keys would inline NULL for every camelCase field."""
+        engine = MagicMock()
+        engine.isolated_sync = _fake_isolated_sync
+        values_cte_entries: dict = {}
+        loc = CacheLocation("cat", "sch", "relational")
+
+        with (
+            patch("provisa.api_source.engine_cache.create_and_insert"),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+        ):
+            _mat_store_rows(
+                "pets",
+                [{"id": 1, "photoUrls": '["a"]'}],
+                ["id", "photoUrls"],
+                loc,
+                "r_abc",
+                500,
+                None,
+                [_col("id"), _col("photoUrls")],
+                engine,
+                300,
+                MagicMock(),
+                {},
+                values_cte_entries,
+                all_ep_col_names=["id", "photo_urls"],
+            )
+
+        entry = values_cte_entries["pets"]
+        assert entry.column_names == ["id", "photo_urls"]
+        assert entry.rows == [{"id": 1, "photo_urls": '["a"]'}]
+
     async def test_large_result_uses_cache_rewrite_not_inline(self):
         engine = MagicMock()
         engine.isolated_sync = _fake_isolated_sync
@@ -362,8 +395,10 @@ def _ep(columns):
     return SimpleNamespace(source_id="src", table_name="pets", ttl=60, columns=columns)
 
 
-def _col(name, param_type=None):
-    return ApiColumn(name=name, type=ApiColumnType.string, param_type=param_type)
+def _col(name, param_type=None, param_only=False):
+    return ApiColumn(
+        name=name, type=ApiColumnType.string, param_type=param_type, param_only=param_only
+    )
 
 
 class TestMatApiEpTable:
@@ -376,7 +411,9 @@ class TestMatApiEpTable:
             response_cache_default_ttl=300,
             tenant_db=None,
         )
-        ep = _ep([_col("id", param_type="path")])
+        # param_only: a path param that does NOT also appear in the response, so the endpoint
+        # projects nothing and materialization has to skip it.
+        ep = _ep([_col("id", param_type="path", param_only=True)])
         cache_rewrites: dict = {}
         values_cte_entries: dict = {}
         with (
@@ -444,6 +481,36 @@ class TestMatApiEpTable:
             )
         assert "pets" in values_cte_entries
         assert values_cte_entries["pets"].rows == [{"id": 1}]
+
+    async def test_merged_param_and_response_column_is_still_projected(self):
+        """A query param whose name collides with a response field is merged into one column
+        carrying both. It holds a response value, so it must be selected from the PG cache."""
+        conn = AsyncMock(fetch=AsyncMock(return_value=[{"id": 1, "status": "sold"}]))
+        state = SimpleNamespace(
+            api_sources={},
+            org_id="default",
+            federation_engine=MagicMock(),
+            source_cache={},
+            response_cache_default_ttl=300,
+            tenant_db=SimpleNamespace(acquire=lambda: _FakeAcquireCtx(conn)),
+        )
+        ep = _ep([_col("id"), _col("status", param_type="query")])
+        values_cte_entries: dict = {}
+        loc = CacheLocation("cat", "sch", "relational")
+        with (
+            patch("provisa.api_source.engine_cache.cache_location", return_value=loc),
+            patch("provisa.api_source.engine_cache.cache_table_name", return_value="r_x"),
+            patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+            patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+            patch("provisa.api_source.engine_cache.table_exists", return_value=False),
+            patch("provisa.api_source.engine_cache.create_and_insert"),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
+        ):
+            await _mat_api_ep_table("pets", ep, state, None, 500, set(), {}, values_cte_entries)
+
+        # The PG read is SELECT *; the projection is the col_set filter in _mat_fetch_rows_from_pg,
+        # which dropped `status` while the response set was keyed on param_type.
+        assert values_cte_entries["pets"].rows == [{"id": 1, "status": "sold"}]
 
     async def test_cache_hit_promotes_when_hot_mgr_and_tenant_db(self):
         conn = AsyncMock()

@@ -63,6 +63,24 @@ async def test_petstore_serves_seed_data(petstore_app):
     assert isinstance(pets, list) and pets, "seed pets must be served"
 
 
+async def test_petstore_find_by_status_honors_repeated_params(petstore_app):
+    """The spec declares status as style: form, explode: true, so Provisa sends the enum as
+    repeated params. Reading only the last value returned the 'sold' pets alone."""
+    transport = httpx.ASGITransport(app=petstore_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://demo") as c:
+        resp = await c.get(
+            "/api/v3/pet/findByStatus",
+            params=[("status", "available"), ("status", "pending"), ("status", "sold")],
+        )
+        available = await c.get("/api/v3/pet/findByStatus", params={"status": "available"})
+        missing = await c.get("/api/v3/pet/findByStatus")
+    assert resp.status_code == 200
+    statuses = {p["status"] for p in resp.json()}
+    assert statuses == {"available", "pending", "sold"}
+    assert len(resp.json()) > len(available.json())
+    assert missing.status_code == 400
+
+
 async def test_graphql_demo_answers_query(graphql_app):
     transport = httpx.ASGITransport(app=graphql_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://demo") as c:
