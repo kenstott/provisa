@@ -23,7 +23,22 @@ PROJECT_NAME = "provisa"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = PROJECT_ROOT / ".canary_registry.json"
 SITE_DIR = Path(os.environ["CANARY_SITE_DIR"]).expanduser()
-EXCLUDE_DIRS = {".venv", "venv", ".git", ".eggs", "canary-site", "__pycache__", "node_modules"}
+EXCLUDE_DIRS = {
+    ".venv",
+    "venv",
+    ".git",
+    ".eggs",
+    "canary-site",
+    "__pycache__",
+    "node_modules",
+    # Build outputs and agent worktrees are copies of tracked sources: they carry the
+    # original's canary header, so stamping them yields duplicate uuids that collapse in
+    # the uuid-keyed registry (10,174 files stamped -> 2,164 entries) and leave a fresh
+    # batch of orphaned site files every time a worktree or build dir is regenerated.
+    "build",
+    "dist",
+    "worktrees",
+}
 
 # Python/shell style
 PY_COPYRIGHT_HEADER = """\
@@ -137,6 +152,27 @@ def stamp_file(path: Path) -> str:
     return stamp_py_file(path, content)
 
 
+def reissue_canary(path: Path) -> str:
+    """Replace an already-claimed canary with a fresh one.
+
+    Splitting a module copies its header into the new file, so two paths end up sharing a
+    uuid. That is the one thing the canary cannot tolerate: a leaked file must resolve to a
+    single path, and the uuid-keyed registry keeps only the last writer besides. The first
+    path to claim a uuid (walk order is sorted, so the choice is stable) keeps it; every
+    later claimant is reissued here.
+    """
+    content = path.read_text(encoding="utf-8")
+    is_ts = path.suffix in TS_EXTENSIONS
+    canary_re = TS_CANARY_RE if is_ts else PY_CANARY_RE
+    prefix = "//" if is_ts else "#"
+    canary_id = str(uuid.uuid4())
+    content, count = canary_re.subn(f"{prefix} Canary: {canary_id}", content, count=1)
+    if count != 1:
+        raise RuntimeError(f"{path}: canary line vanished between read and reissue")
+    path.write_text(content, encoding="utf-8")
+    return canary_id
+
+
 def build_registry(file_canaries: dict[str, str]) -> dict:
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -164,15 +200,38 @@ def write_site(registry: dict) -> None:
         site_file = SITE_DIR / f"{canary_id}.json"
         site_file.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
 
+    # Drop entries for canary ids the registry no longer carries — a renamed, deleted or
+    # re-stamped source leaves its old id behind, and the orphans accumulate without bound.
+    # Cloudflare Pages rejects a deployment over 20,000 files, which is what the unpruned
+    # directory reached (20,587 files against a 10,174-file registry).
+    live = {f"{canary_id}.json" for canary_id in registry["files"]}
+    removed = 0
+    for stale in SITE_DIR.glob("*.json"):
+        if stale.name not in live:
+            stale.unlink()
+            removed += 1
+    if removed:
+        print(f"Pruned {removed} stale site entries")
+
 
 def main() -> None:
     source_files = find_source_files()
     file_canaries: dict[str, str] = {}
 
+    claimed: dict[str, str] = {}
+    reissued = 0
+
     for path in source_files:
         rel = str(path.relative_to(PROJECT_ROOT))
         canary_id = stamp_file(path)
+        if canary_id in claimed:
+            canary_id = reissue_canary(path)
+            reissued += 1
+        claimed[canary_id] = rel
         file_canaries[rel] = canary_id
+
+    if reissued:
+        print(f"Reissued {reissued} duplicate canaries")
 
     registry = build_registry(file_canaries)
     REGISTRY_PATH.write_text(json.dumps(registry, indent=2) + "\n", encoding="utf-8")
