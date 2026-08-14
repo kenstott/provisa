@@ -50,6 +50,12 @@ variable "network_cidr" {
   default     = "10.10.0.0/16"
 }
 
+variable "object_store_disk_gb" {
+  description = "Size of the coordinator's object-store data disk, which holds the OTel Iceberg warehouse."
+  type        = number
+  default     = 100
+}
+
 variable "coordinator_internal_ip" {
   description = <<-DESC
     Fixed internal address for the coordinator, inside network_cidr. The engine pods read the

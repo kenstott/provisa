@@ -332,6 +332,21 @@ locals {
     export PROVISA_ENGINE_OTEL_S3_ENDPOINT="http://${google_compute_address.coordinator_internal.address}:9000"
   SHELL
 
+  # Mount the object-store disk before the app starts. mkfs runs only on a blank device
+  # (--nodiscard is for the first format; `blkid` returning nothing is the only condition
+  # under which this formats anything), so a re-boot or an instance replacement reattaches
+  # the existing warehouse instead of erasing it.
+  object_store_mount = <<-SHELL
+    dev=/dev/disk/by-id/google-provisa-object-store
+    if ! blkid "$dev" >/dev/null 2>&1; then
+      mkfs.ext4 -m 0 -E lazy_itable_init=0,lazy_journal_init=0,discard "$dev"
+    fi
+    mkdir -p /var/lib/provisa-object-store
+    grep -q "^$dev " /etc/fstab || echo "$dev /var/lib/provisa-object-store ext4 discard,defaults,nofail 0 2" >> /etc/fstab
+    mountpoint -q /var/lib/provisa-object-store || mount /var/lib/provisa-object-store
+    export PROVISA_OBJECT_STORE_DIR=/var/lib/provisa-object-store
+  SHELL
+
   metadata_ssh = var.ssh_public_key != "" ? { ssh-keys = var.ssh_public_key } : {}
 }
 
@@ -366,6 +381,24 @@ resource "google_compute_address" "coordinator_internal" {
   address = var.coordinator_internal_ip
 }
 
+# The object store's data, on a disk with its own lifetime. The Iceberg metastore for the
+# `otel` catalog is a table in Cloud SQL, which outlives any single coordinator, while the
+# warehouse it points at was a docker named volume on the boot disk, which does not: after
+# the instance was replaced, every iceberg_tables row named a metadata object that no longer
+# existed and every ops query failed with ICEBERG_MISSING_METADATA. A metastore that survives
+# an instance must point at a warehouse that survives one too.
+resource "google_compute_disk" "coordinator_data" {
+  name = "provisa-saas-coordinator-data"
+  zone = var.zone
+  size = var.object_store_disk_gb
+  type = "pd-balanced"
+  # Telemetry accumulates here; losing it to a terraform-initiated instance replacement is
+  # the failure this disk exists to prevent.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "google_compute_instance" "coordinator" {
   name         = "provisa-saas-coordinator"
   machine_type = var.coordinator_machine_type
@@ -381,6 +414,11 @@ resource "google_compute_instance" "coordinator" {
       # only (no scan spill) and pd-ssd IOPS buys nothing.
       type = "pd-balanced"
     }
+  }
+
+  attached_disk {
+    source      = google_compute_disk.coordinator_data.id
+    device_name = "provisa-object-store"
   }
 
   network_interface {
@@ -405,6 +443,7 @@ resource "google_compute_instance" "coordinator" {
       ${local.base_startup}
       ${local.external_db_exports}
       ${local.engine_cluster_exports}
+      ${local.object_store_mount}
       /opt/Provisa.AppImage \
         --non-interactive \
         --role control-plane \

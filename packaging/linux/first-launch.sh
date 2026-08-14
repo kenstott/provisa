@@ -830,7 +830,13 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
     volumes:
-      - minio_data:/data
+      # A host path, not a named volume: the Iceberg metastore for otel/results is a table in
+      # the external control DB, which outlives this VM, so the warehouse it points at has to
+      # outlive it too. A named volume sits on the boot disk and dies with the instance, and
+      # every iceberg_tables row then names a metadata object that no longer exists
+      # (ICEBERG_MISSING_METADATA on every ops query). The deployment mounts a disk of its own
+      # here and passes the path.
+      - "\${PROVISA_OBJECT_STORE_DIR:?the object store's data directory}:/data"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -879,7 +885,6 @@ services:
 
 volumes:
   redis_data:
-  minio_data:
 YAML
   ok "Control-plane base compose written: ${file}"
 }
@@ -950,7 +955,7 @@ install_systemd() {
              PROVISA_ENGINE_CLUSTER_PROJECT PROVISA_ENGINE_CLUSTER_LOCATION \
              PROVISA_ENGINE_CLUSTER_NAME PROVISA_ENGINE_CLUSTER_DNS_DOMAIN \
              PROVISA_ENGINE_NAMESPACE PROVISA_ENGINE_IMAGE PROVISA_ENGINE_SHARD \
-             PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT \
+             PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT PROVISA_OBJECT_STORE_DIR \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do
     if [ -n "${!var:-}" ]; then
