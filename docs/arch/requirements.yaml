@@ -45365,3 +45365,32 @@
   related_reqs:
   - REQ-1333
   - REQ-1334
+- id: REQ-1463
+  status: complete
+  since: 2026-08
+  group: 13. Multi-Tenancy & Organizations
+  category: Federation Engine
+  priority: MUST
+  type: behavioral
+  description: >-
+    The engine idle reaper seeds the boot shard's activity clock when it starts, so a shard whose
+    node is up survives a control-plane restart by exactly one idle window rather than forever.
+    _last_activity is process state written by ensure_shard_awake; after a restart it is empty and
+    the reaper iterates nothing, so a shard that no query touches was never a reap candidate and
+    its GKE node billed indefinitely -- the cost the idle-to-zero design of REQ-1448 exists to
+    remove. Seeding at reaper start restarts the window at the restart instead of disabling it.
+  use_case: >-
+    A control plane restarted for a release does not leave the shared shard's node billing until
+    the next query happens to arrive.
+  tests:
+  - tests/unit/test_engine_wake.py
+  code:
+  - provisa/federation/engine_wake.py
+  scenario: |
+    Given a control plane that provisions engines on Kubernetes
+    When the idle reaper starts
+    Then the boot shard has an activity timestamp
+    And an untouched shard is released one idle window later
+  related_reqs:
+  - REQ-1448
+  - REQ-1450

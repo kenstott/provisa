@@ -15201,3 +15201,17 @@ The front door's idle clock is bounded by the coordinator's own uptime, read fro
 **Code:** `terraform/gcp-saas/front-door/proxy.py`
 
 **Tests:** `tests/unit/test_front_door_wake_idle.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1463 · Federation Engine {#REQ-1463}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The engine idle reaper seeds the boot shard's activity clock when it starts, so a shard whose node is up survives a control-plane restart by exactly one idle window rather than forever. _last_activity is process state written by ensure_shard_awake; after a restart it is empty and the reaper iterates nothing, so a shard that no query touches was never a reap candidate and its GKE node billed indefinitely -- the cost the idle-to-zero design of [REQ-1448](#REQ-1448) exists to remove. Seeding at reaper start restarts the window at the restart instead of disabling it.
+
+**Use case:** A control plane restarted for a release does not leave the shared shard's node billing until the next query happens to arrive.
+
+**Code:** `provisa/federation/engine_wake.py`
+
+**Tests:** `tests/unit/test_engine_wake.py`

@@ -14,6 +14,8 @@ happens when a query lands in the middle of a stop.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+
 from types import SimpleNamespace
 
 import pytest
@@ -301,3 +303,19 @@ def test_reaper_not_started_without_a_provisioner(monkeypatch):
     st = SimpleNamespace()
     engine_wake.start_idle_reaper(st)
     assert not hasattr(st, "_engine_reaper_task")
+
+
+async def test_the_reaper_start_seeds_the_boot_shard(fake_k8s, monkeypatch):
+    """_last_activity is process state. After a control plane restart it is empty, so a shard whose
+    node is up but which no query touches was never a reap candidate and billed forever."""
+    monkeypatch.setenv("PROVISA_ENGINE_SHARD", "shared_1")
+    engine_wake._last_activity.clear()
+    st = SimpleNamespace()
+
+    engine_wake.start_idle_reaper(st)
+    try:
+        assert "shared_1" in engine_wake._last_activity
+    finally:
+        st._engine_reaper_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await st._engine_reaper_task

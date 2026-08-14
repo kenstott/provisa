@@ -245,5 +245,10 @@ def start_idle_reaper(state: Any) -> None:
     """Start the reaper, on deployments that can actually release a node."""
     if not k8s.provisioning_available():
         return
+    # The reaper measures idleness from _last_activity, which is process state: after a control
+    # plane restart it is empty, so a shard whose node is up but which no query touches was never
+    # considered for release and billed indefinitely. Seeding the boot shard here starts its idle
+    # window at the restart, so an untouched shard is released one window later (REQ-1463).
+    note_activity(boot_shard())
     state._engine_reaper_task = asyncio.create_task(idle_reaper())
     log.info("engine idle reaper started")
