@@ -333,6 +333,10 @@ locals {
     export PROVISA_ENGINE_CLUSTER_ZONE="${var.zone}"
     export PROVISA_ENGINE_NAMESPACE="${kubernetes_namespace.engines.metadata[0].name}"
     export PROVISA_ENGINE_IMAGE="${var.engine_image}"
+    # The Arrow Flight SQL proxy, which rides in the shard pod beside the coordinator
+    # rather than on this VM: it holds a JDBC connection to Trino, so it must live and
+    # die with the engine whose address exists only while that engine is awake (REQ-1448).
+    export PROVISA_ZAYCHIK_IMAGE="${var.zaychik_image}"
     # WHICH shard the control plane's own terminal is bound to. There is no matching TRINO_HOST:
     # the provisioner brings this shard up when boot finds it at zero replicas and reads the
     # resulting pod's address from the cluster, so a written-down host could only ever disagree

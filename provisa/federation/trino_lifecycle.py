@@ -179,8 +179,20 @@ async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171
     async def _connect_flight() -> None:
         from provisa.executor.trino_flight import create_flight_connection
 
-        zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
-        zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
+        from provisa.federation.k8s_provisioner import provisioning_available
+
+        if provisioning_available():
+            # On a provisioning deployment the proxy is a sidecar in the shard's pod, so its
+            # address is the shard's — and it exists only after the wake that boot performs
+            # before this runs. Every other deployment (desktop, self-hosted, tests) runs it
+            # beside the control plane, where the compose service name is the address.
+            from provisa.federation.engine_wake import boot_shard
+            from provisa.federation.k8s_provisioner import shard_flight_endpoint
+
+            zaychik_host, zaychik_port = shard_flight_endpoint(boot_shard())
+        else:
+            zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
+            zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
         state.flight_client = await asyncio.to_thread(
             create_flight_connection, host=zaychik_host, port=zaychik_port
         )

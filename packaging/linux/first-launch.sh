@@ -782,8 +782,10 @@ services:
       # when it is found at zero replicas, and the port its coordinator listens on.
       PROVISA_ENGINE_SHARD: "\${PROVISA_ENGINE_SHARD:-}"
       PROVISA_ENGINE_PORT: "\${PROVISA_ENGINE_PORT:-8080}"
-      ZAYCHIK_HOST: zaychik
-      ZAYCHIK_PORT: 8480
+      # No ZAYCHIK_HOST/ZAYCHIK_PORT on this role: the Flight SQL proxy runs as a
+      # sidecar in the shard's own pod, so the control plane reads its address off
+      # the same ready pod it dials for HTTP (shard_flight_endpoint, REQ-1448).
+      PROVISA_ZAYCHIK_IMAGE: "\${PROVISA_ZAYCHIK_IMAGE:-}"
       FLIGHT_PORT: "8815"
       REDIS_URL: "redis://redis:6379"
       PROVISA_OTEL_S3_ENDPOINT: "http://minio:9000"
@@ -872,38 +874,10 @@ services:
         mc mb --ignore-existing local/provisa-results &&
         mc mb --ignore-existing local/provisa-hive-s3
       "
-  # The Arrow Flight SQL proxy fronts the engine, so it follows the engine to the
-  # cluster shard. No depends_on: the shard scales to zero when idle (REQ-1448), so
-  # gating this container on Trino's health would keep it down until a query wakes
-  # the engine it is supposed to carry.
-  zaychik:
-    restart: unless-stopped
-    # The tarball tag, not core's build tag: this base is standalone, so
-    # docker-compose.airgap.yml — which is what rewrites zaychik:latest to the
-    # loaded image elsewhere — is never merged, and compose would try to pull
-    # zaychik:latest from Docker Hub.
-    image: provisa/zaychik:local
-    environment:
-      # KNOWN GAP on the cluster role: zaychik dials Trino itself, and a shard's
-      # address now exists only between a wake and the next idle-to-zero, so there is
-      # no host to hand it here. It starts and reports unhealthy rather than blocking
-      # the stack; Flight SQL on this role needs zaychik to resolve the shard the way
-      # the control plane does before it serves (REQ-1448).
-      TF_TRINO_HOST: "\${TRINO_HOST:-}"
-      TF_TRINO_PORT: "\${TRINO_PORT:-8080}"
-      TF_TRINO_SSL: "false"
-      TF_FLIGHT_HOST: 0.0.0.0
-      TF_FLIGHT_PORT: 8480
-      TF_FLIGHT_SSL: "false"
-      TF_FLIGHT_AUTH_TYPE: trino
-      TF_FLIGHT_BATCH_SIZE: 10000
-    healthcheck:
-      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/8480' || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 24
-      start_period: 20s
-      start_interval: 2s
+  # No zaychik service on this role. The Arrow Flight SQL proxy holds a JDBC
+  # connection to Trino, so it belongs to the engine's lifetime, not this one: it runs
+  # as a sidecar in the shard pod, where it is created, woken and destroyed with the
+  # coordinator it fronts and reaches it at localhost (k8s_provisioner, REQ-1448).
 
 volumes:
   redis_data:

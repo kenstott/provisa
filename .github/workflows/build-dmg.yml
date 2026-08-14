@@ -1254,3 +1254,35 @@ jobs:
             PROVISA_VERSION=${{ github.ref_name }}
             GITHUB_REPO=${{ github.repository }}
           tags: ghcr.io/${{ github.repository_owner }}/provisa-trino-engine:${{ github.ref_name }}
+
+  publish-zaychik-image:
+    name: Publish Arrow Flight SQL proxy image
+    runs-on: ubuntu-latest
+    # Only metadata is needed: the image is the upstream proxy at a pinned commit
+    # plus a local patch, and it carries nothing out of the release.
+    needs:
+      - metadata
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 only, and for the same reason as the engine image: this runs as a
+      # sidecar in the engine's own pod (REQ-1448), so it lands wherever that lands.
+      - name: Build and push zaychik image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./zaychik
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ghcr.io/${{ github.repository_owner }}/provisa-zaychik:${{ github.ref_name }}

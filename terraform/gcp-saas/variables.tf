@@ -168,6 +168,15 @@ variable "engine_image" {
   type        = string
 }
 
+variable "zaychik_image" {
+  description = <<-EOT
+    Arrow Flight SQL proxy image (zaychik/Dockerfile), run as a sidecar in every
+    engine pod. Flight is a protocol the engine speaks, not a service of its own, so
+    the proxy shares the coordinator's pod, address and lifetime (REQ-045, REQ-1448).
+  EOT
+  type        = string
+}
+
 # ── Coordinator (planner + TCP listeners + stateful singletons) ─────────────────
 variable "coordinator_machine_type" {
   description = <<-EOT

@@ -70,6 +70,7 @@ def configured(monkeypatch):
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_NAME", "provisa-saas-engine")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_ZONE", "us-central1-a")
     monkeypatch.setenv("PROVISA_ENGINE_IMAGE", "gcr.io/provisa/trino-engine:v1")
+    monkeypatch.setenv("PROVISA_ZAYCHIK_IMAGE", "gcr.io/provisa/zaychik:v1")
     monkeypatch.setenv("PROVISA_ENGINE_NAMESPACE", "provisa-engines")
     monkeypatch.setenv("PROVISA_ENGINE_PORT", "8080")
     monkeypatch.setenv("PROVISA_ENGINE_MEMORY_GIB", "24")
@@ -247,6 +248,37 @@ def test_the_shard_service_is_headless(configured):
     routes only inside it: the name resolved to 10.24.6.12 and every connect timed out while the pod
     IP served /v1/info. Headless publishes the VPC-routable pod IP instead."""
     assert prov._service_manifest("shared_1")["spec"]["clusterIP"] == "None"
+
+
+def test_flight_sql_rides_in_the_shard_pod(configured):
+    """The Flight proxy holds a JDBC connection to Trino, so a proxy outside the pod either outlives
+    the address it is connected to or is started before that address exists. As a sidecar it reaches
+    the coordinator at localhost and is created, woken and destroyed with it (REQ-045, REQ-1448)."""
+    spec = prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]
+    sidecar = next(c for c in spec["containers"] if c["name"] == "zaychik")
+    env = {e["name"]: e["value"] for e in sidecar["env"]}
+    assert sidecar["image"] == "gcr.io/provisa/zaychik:v1"
+    assert env["TF_TRINO_HOST"] == "localhost"
+    assert env["TF_TRINO_PORT"] == "8080"
+    # TCP, not HTTP: gRPC answers no GET. Readiness matters because pod-Ready is what
+    # _await_ready waits for, and the control plane connects Flight during boot.
+    assert sidecar["readinessProbe"]["tcpSocket"]["port"] == 8480
+    assert sidecar["resources"]["requests"] == sidecar["resources"]["limits"]
+
+
+def test_the_flight_endpoint_is_the_shard_endpoint(configured):
+    """Same pod, second port."""
+    prov._pod_ips["shared_1"] = "10.20.0.3"
+    try:
+        assert prov.shard_endpoint("shared_1") == ("10.20.0.3", 8080)
+        assert prov.shard_flight_endpoint("shared_1") == ("10.20.0.3", 8480)
+    finally:
+        prov._pod_ips.pop("shared_1", None)
+
+
+def test_the_shard_service_publishes_the_flight_port(configured):
+    ports = {p["name"]: p["port"] for p in prov._service_manifest("shared_1")["spec"]["ports"]}
+    assert ports == {"http": 8080, "flight": 8480}
 
 
 def test_a_shard_can_schedule_its_own_splits(configured):

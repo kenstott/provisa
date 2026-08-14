@@ -127,6 +127,12 @@ def provisioner_settings() -> dict[str, str]:
         "location": "PROVISA_ENGINE_CLUSTER_LOCATION",
         "cluster": "PROVISA_ENGINE_CLUSTER_NAME",
         "image": "PROVISA_ENGINE_IMAGE",
+        # The Arrow Flight SQL proxy, which runs beside the coordinator in the same pod rather than
+        # on the control plane: it holds a JDBC connection to Trino, so a proxy that outlives the
+        # shard holds a connection to an address that no longer exists, and one started before the
+        # shard has no address to be given. In the pod it is created, woken and destroyed with the
+        # engine it fronts, and reaches it at localhost (REQ-045, REQ-1448).
+        "zaychik_image": "PROVISA_ZAYCHIK_IMAGE",
         # Required, not inferred from the location: an Autopilot cluster is REGIONAL (the API
         # refuses a zonal one), so without an explicit zone the scheduler may place a shard pod in
         # a zone the control-plane VM is not in and every byte of every result set is billed as
@@ -393,6 +399,17 @@ def shard_endpoint(shard: str) -> tuple[str, int]:
     return ip, _int_env("PROVISA_ENGINE_PORT", 8080)
 
 
+def shard_flight_endpoint(shard: str) -> tuple[str, int]:
+    """``(host, port)`` for the shard's Arrow Flight SQL proxy.
+
+    Same pod, same address, second port: the proxy runs as a sidecar beside the coordinator it
+    fronts, so it is created, woken and destroyed with the engine and never outlives the address
+    it holds a JDBC connection to (REQ-045, REQ-1448).
+    """
+    ip, _ = shard_endpoint(shard)
+    return ip, _int_env("PROVISA_ENGINE_FLIGHT_PORT", 8480)
+
+
 # ── Manifests ───────────────────────────────────────────────────────────────────
 
 
@@ -492,6 +509,7 @@ def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = No
     settings = provisioner_settings()
     name = shard_workload_name(shard)
     port = _int_env("PROVISA_ENGINE_PORT", 8080)
+    flight_port = _int_env("PROVISA_ENGINE_FLIGHT_PORT", 8480)
     memory = _memory_gib()
     revision = _config_revision(_config_data(resource_groups))
     return {
@@ -551,7 +569,47 @@ def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = No
                                 "periodSeconds": 5,
                                 "failureThreshold": 60,
                             },
-                        }
+                        },
+                        {
+                            # Flight SQL for this shard. Its readiness gate is part of the pod's,
+                            # so the address _await_ready hands back is an address on which BOTH
+                            # protocols answer — the control plane connects Flight during boot's
+                            # provision_infra and fails the whole startup if it cannot (REQ-045).
+                            "name": "zaychik",
+                            "image": settings["zaychik_image"],
+                            "ports": [{"containerPort": flight_port, "name": "flight"}],
+                            "env": [
+                                {"name": "TF_TRINO_HOST", "value": "localhost"},
+                                {"name": "TF_TRINO_PORT", "value": str(port)},
+                                {"name": "TF_TRINO_SSL", "value": "false"},
+                                {"name": "TF_FLIGHT_HOST", "value": "0.0.0.0"},
+                                {"name": "TF_FLIGHT_PORT", "value": str(flight_port)},
+                                {"name": "TF_FLIGHT_SSL", "value": "false"},
+                                {"name": "TF_FLIGHT_AUTH_TYPE", "value": "trino"},
+                                {"name": "TF_FLIGHT_BATCH_SIZE", "value": "10000"},
+                            ],
+                            "resources": {
+                                # A proxy, not an engine: it streams Arrow batches through and
+                                # holds no working set. Requests equal limits here too, because
+                                # Autopilot bills the request and a burstable sidecar would let
+                                # the pod's QoS class drop below Guaranteed.
+                                "requests": {
+                                    "memory": os.environ.get("PROVISA_ZAYCHIK_MEMORY", "1Gi"),
+                                    "cpu": os.environ.get("PROVISA_ZAYCHIK_CPU", "1"),
+                                },
+                                "limits": {
+                                    "memory": os.environ.get("PROVISA_ZAYCHIK_MEMORY", "1Gi"),
+                                    "cpu": os.environ.get("PROVISA_ZAYCHIK_CPU", "1"),
+                                },
+                            },
+                            "readinessProbe": {
+                                # TCP, not HTTP: the port speaks gRPC, which answers no GET.
+                                "tcpSocket": {"port": flight_port},
+                                "initialDelaySeconds": 10,
+                                "periodSeconds": 5,
+                                "failureThreshold": 60,
+                            },
+                        },
                     ],
                     "volumes": [
                         {"name": "config", "configMap": {"name": f"{name}-config"}},
@@ -567,6 +625,7 @@ def _service_manifest(shard: str) -> dict:
     settings = provisioner_settings()
     name = shard_workload_name(shard)
     port = _int_env("PROVISA_ENGINE_PORT", 8080)
+    flight_port = _int_env("PROVISA_ENGINE_FLIGHT_PORT", 8480)
     return {
         "apiVersion": "v1",
         "kind": "Service",
@@ -586,7 +645,10 @@ def _service_manifest(shard: str) -> dict:
             # zero-customer floor that must stay at $18.96/mo (REQ-1447).
             "clusterIP": "None",
             "selector": {"provisa.dev/shard": shard},
-            "ports": [{"name": "http", "port": port, "targetPort": port}],
+            "ports": [
+                {"name": "http", "port": port, "targetPort": port},
+                {"name": "flight", "port": flight_port, "targetPort": flight_port},
+            ],
         },
     }
 
