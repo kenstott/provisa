@@ -15,7 +15,7 @@ from __future__ import annotations
 import hmac
 
 from provisa.auth.models import AuthIdentity
-from provisa.security.rights import PLATFORM_ADMIN_ROLE
+from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from provisa.core.secrets import resolve_secrets
 
 # Requirements: REQ-125
@@ -61,7 +61,11 @@ def check_superuser(  # REQ-125
             user_id=su_user,
             email=None,
             display_name="Superuser",
-            roles=[PLATFORM_ADMIN_ROLE],
+            # Both planes: platform_admin administers the deployment, org_admin is what lets it
+            # read a table (REQ-1327 generates no data schema for a control-plane role). The
+            # middleware overwrites this list from the assignments it builds; it is set here so a
+            # caller using check_superuser directly gets the same two.
+            roles=[PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE],
             raw_claims={"superuser": True},
         )
     return None

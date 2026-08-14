@@ -576,6 +576,10 @@ services:
       PROVISA_IDP: "\${PROVISA_IDP:-}"
       FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
       FIREBASE_SERVICE_ACCOUNT_KEY: "\${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
+      # REQ-125: break-glass superuser. The auth.superuser block written by
+      # _auto_configure_idp resolves these by \${env:...}, so they must be in the container.
+      PROVISA_SUPERUSER_USERNAME: "\${PROVISA_SUPERUSER_USERNAME:-}"
+      PROVISA_SUPERUSER_PASSWORD: "\${PROVISA_SUPERUSER_PASSWORD:-}"
       # REQ-1266: multitenant onboarding gate. setup_router._auto_configure_idp reads
       # PROVISA_MULTITENANCY at first config to promote the deployment from single-admin
       # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
@@ -675,6 +679,10 @@ services:
       PROVISA_IDP: "\${PROVISA_IDP:-}"
       FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
       FIREBASE_SERVICE_ACCOUNT_KEY: "\${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
+      # REQ-125: break-glass superuser. The auth.superuser block written by
+      # _auto_configure_idp resolves these by \${env:...}, so they must be in the container.
+      PROVISA_SUPERUSER_USERNAME: "\${PROVISA_SUPERUSER_USERNAME:-}"
+      PROVISA_SUPERUSER_PASSWORD: "\${PROVISA_SUPERUSER_PASSWORD:-}"
   provisa-ui:
     restart: unless-stopped
     image: provisa/provisa:local
@@ -800,6 +808,10 @@ services:
       PROVISA_IDP: "\${PROVISA_IDP:-}"
       FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
       FIREBASE_SERVICE_ACCOUNT_KEY: "\${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
+      # REQ-125: break-glass superuser. The auth.superuser block written by
+      # _auto_configure_idp resolves these by \${env:...}, so they must be in the container.
+      PROVISA_SUPERUSER_USERNAME: "\${PROVISA_SUPERUSER_USERNAME:-}"
+      PROVISA_SUPERUSER_PASSWORD: "\${PROVISA_SUPERUSER_PASSWORD:-}"
       PROVISA_MAIL_PROVIDER: "\${PROVISA_MAIL_PROVIDER:-}"
       PROVISA_EMAIL_API_KEY: "\${PROVISA_EMAIL_API_KEY:-}"
       PROVISA_MAIL_FROM: "\${PROVISA_MAIL_FROM:-}"
@@ -937,7 +949,11 @@ install_systemd() {
   # here points the coordinator's control plane at the managed DB instead of the
   # bundled postgres. Absent (enterprise), the compose defaults resolve to the
   # in-stack postgres service.
+  # PROVISA_SUPERUSER_*: REQ-125 break-glass account. The config's auth.superuser block
+  # references these by ${env:...}, so they must reach the container's environment or the
+  # placeholder resolves to nothing and the account cannot authenticate.
   for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
+             PROVISA_SUPERUSER_USERNAME PROVISA_SUPERUSER_PASSWORD \
              VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \

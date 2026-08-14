@@ -158,6 +158,42 @@ def _keep_edited_description(column: Any, seeded: str | None) -> dict[str, Any]:
     return {"description": _sa_func.coalesce(_sa_func.nullif(column, ""), _sa_literal(seeded))}
 
 
+# REQ-1467: the starter entity types for the `entity` tag. Seeded once, then owned by the org —
+# the list is maintainer-editable and this seed never runs again against a non-empty list, so a
+# type a maintainer deleted stays deleted and one they added is not competing with code.
+_ENTITY_TAG_STARTER_VALUES: tuple[tuple[str, str], ...] = (
+    ("account", "A held account — the party a balance or contract belongs to"),
+    ("counterparty", "The other side of a trade, contract, or settlement"),
+    ("customer", "A party that buys"),
+    ("employee", "A person employed by the organization"),
+    ("location", "A named place — site, facility, region"),
+    ("organization", "A company or institution in no more specific role"),
+    ("person", "A named individual in no more specific role"),
+    ("product", "A sold or manufactured item"),
+    ("project", "A named body of work"),
+    ("vendor", "A party that supplies"),
+)
+
+
+async def _seed_tag_param_values(conn: "Connection") -> None:  # REQ-1467
+    """Seed the starter parameter values for parameterized system tags, first install only.
+
+    Values are data, not definition: `entity` stays code-defined and unstored like every other
+    system tag, while which entity types the org recognises lives in tag_param_values and is
+    theirs to edit. Skipping a tag that already has any row is what keeps this a seed rather
+    than a redefinition — re-upserting on every boot would resurrect deleted types.
+    """
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.core.models import TagParamValue
+
+    if await tag_repo.list_param_values(conn, "entity"):
+        return
+    for value, description in _ENTITY_TAG_STARTER_VALUES:
+        await tag_repo.upsert_param_value(
+            conn, TagParamValue(tag_id="entity", value=value, description=description)
+        )
+
+
 async def _seed_meta_domain(
     conn: "Connection", org_id: str = "default"
 ) -> None:  # REQ-012, REQ-016, REQ-695
@@ -761,6 +797,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # seed is the only writer either id ever had — so retiring the row here is the rename
         # finishing, not a data migration.
         await _conn.execute_core(_delete(_sources_t).where(_sources_t.c.id == "__provisa__"))
+        await _seed_tag_param_values(_conn)  # REQ-1467
         await _seed_meta_domain(_conn, org_id=eff_org)
         await _seed_ops_pg(_conn)
         await _seed_ops_domain(_conn, org_id=eff_org)  # REQ-884

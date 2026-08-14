@@ -388,6 +388,7 @@ async def test_report_views_functional(uri):
             await conn.execute_core(
                 insert(tag_assignments).values(
                     tag_id="deprecated",
+                    base_tag_id="deprecated",
                     object_type="table",
                     table_id=1,
                     object_key="table:1",
@@ -397,6 +398,7 @@ async def test_report_views_functional(uri):
             await conn.execute_core(
                 insert(tag_assignments).values(
                     tag_id="pii",
+                    base_tag_id="pii",
                     object_type="column",
                     table_id=2,
                     column_name="email",

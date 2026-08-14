@@ -17,6 +17,7 @@ import {
   Checkbox,
   Group,
   Popover,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -25,7 +26,8 @@ import {
 import { notifications } from "@mantine/notifications";
 import { Pencil, Tag as TagIcon } from "lucide-react";
 import type { Tag, TagAssignment, TagObjectType } from "../types/admin";
-import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hooks/useAdminQueries";
+import { TAG_PARAM_SEPARATOR, baseTagId, tagParam } from "../types/admin";
+import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hooks/useTagQueries";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by the five
 // taggable object surfaces (source, table, column, relationship, command).
@@ -73,6 +75,8 @@ export function TagControl({
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [expiresOn, setExpiresOn] = useState("");
+  // REQ-1467: the chosen parameter value for a parameterized tag, e.g. "customer" for `entity`.
+  const [paramValue, setParamValue] = useState<string | null>(null);
 
   const matches = (a: TagAssignment): boolean => {
     if (a.objectType !== objectType) return false;
@@ -102,7 +106,10 @@ export function TagControl({
             : commandName;
 
   const objectAssignments = tagAssignments.filter(matches);
-  const assignmentByTagId = new Map(objectAssignments.map((a) => [a.tagId, a]));
+  // REQ-1467: keyed by base id — an assignment's tagId carries its parameter ("entity:customer"),
+  // and the registry tag it belongs to is the base. (base_tag_id, object) is unique server-side,
+  // so one object never has two entries under one key.
+  const assignmentByTagId = new Map(objectAssignments.map((a) => [baseTagId(a.tagId), a]));
   const assignedTags = tags.filter((tag) => assignmentByTagId.has(tag.id));
   // REQ-1443: a derived tag reports what the object's own registration already says, so there is
   // nothing to check or clear — the server refuses the assignment and offering it would put a
@@ -123,12 +130,14 @@ export function TagControl({
     setEditingTagId(null);
     setReason("");
     setExpiresOn("");
+    setParamValue(null);
   };
 
   const openForm = (tagId: string, existing?: TagAssignment) => {
     setEditingTagId(tagId);
     setReason(existing?.reason ?? "");
     setExpiresOn(existing?.expiresOn ?? "");
+    setParamValue(existing ? tagParam(existing.tagId) : null);
   };
 
   const handleUnassign = async (tagId: string) => {
@@ -147,7 +156,11 @@ export function TagControl({
     if (assignmentByTagId.has(tag.id)) void handleUnassign(tag.id);
   };
 
-  const handleApply = async (tagId: string) => {
+  const handleApply = async (tag: Tag) => {
+    // REQ-1467: a `required` policy means the assignment names the parameter, never the bare tag —
+    // the Apply button stays disabled until a value is picked, so paramValue is set by here.
+    const tagId =
+      tag.paramPolicy === "required" ? `${tag.id}${TAG_PARAM_SEPARATOR}${paramValue}` : tag.id;
     const result = await assignTag({
       ...buildInput(tagId),
       reason: reason || null,
@@ -197,7 +210,9 @@ export function TagControl({
               color={pillColor(tag)}
               data-testid={`tag-pill-${tag.id}`}
             >
-              {tag.id}
+              {/* REQ-1467: the assignment's id carries the parameter ("entity:customer"); the
+                  registry id alone would show every parameterized pill as the same word. */}
+              {assignment?.tagId ?? tag.id}
             </Badge>
           </Tooltip>
         );
@@ -253,6 +268,22 @@ export function TagControl({
                     </Group>
                     {isEditing && (
                       <Stack gap="0.25rem" pl="1.5rem">
+                        {tag.paramPolicy === "required" && (
+                          <Select
+                            size="xs"
+                            required
+                            label={t("tagControl.paramLabel")}
+                            placeholder={t("tagControl.paramPlaceholder")}
+                            comboboxProps={{ withinPortal: true, transitionProps: { duration: 0 } }}
+                            data={tag.paramValues.map((v) => ({
+                              value: v.value,
+                              label: v.description ? `${v.value} — ${v.description}` : v.value,
+                            }))}
+                            value={paramValue}
+                            onChange={setParamValue}
+                            data-testid={`tag-param-${tag.id}`}
+                          />
+                        )}
                         {tag.reasonPolicy !== "hidden" && (
                           <TextInput
                             size="xs"
@@ -282,9 +313,10 @@ export function TagControl({
                             size="compact-xs"
                             disabled={
                               (reasonRequired && reason.trim() === "") ||
-                              (expiresRequired && expiresOn.trim() === "")
+                              (expiresRequired && expiresOn.trim() === "") ||
+                              (tag.paramPolicy === "required" && !paramValue)
                             }
-                            onClick={() => void handleApply(tag.id)}
+                            onClick={() => void handleApply(tag)}
                             data-testid={`tag-apply-${tag.id}`}
                           >
                             {t("tagControl.apply")}

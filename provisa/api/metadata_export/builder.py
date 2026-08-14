@@ -285,7 +285,8 @@ def _model_tags(
     for assignment in config.tag_assignments:
         common = {
             "tag_id": assignment.tag_id,
-            "is_system": assignment.tag_id in SYSTEM_TAG_IDS,
+            # base id: "entity:customer" is the system `entity` tag carrying a parameter (REQ-1467).
+            "is_system": assignment.base_tag_id() in SYSTEM_TAG_IDS,
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,
         }
@@ -316,16 +317,20 @@ def _model_tags(
     return tags
 
 
-def _checker_tables(config: ProvisaConfig) -> list[Table]:
-    """Registered tables whose source is a checker and which carry a contract (REQ-1443).
+def _checker_tables(config: ProvisaConfig) -> list[tuple[Table, str]]:
+    """Registered tables whose source is a checker, paired with their contract (REQ-1443).
 
     This is the same pair of facts :func:`provisa.core.derived_tags.derived_tags_for_table` reads
     for the ``data_quality`` tag, so a table cannot publish assertions without also publishing the
     tag that says where they came from.
+
+    The contract travels with the table because carrying it is the filter — returning the tables
+    alone would leave every caller re-reading an optional field this function has already proved
+    is set.
     """
     checker_sources = {source.id for source in config.sources if source.type.value in CHECKERS}
     return [
-        table
+        (table, table.dq_contract)
         for table in config.tables
         if table.source_id in checker_sources and table.dq_contract
     ]
@@ -373,17 +378,17 @@ def _dq_assertions(
     ``never_run``, which is a state a catalog should show, not an absence it should hide.
     """
     assertions: list[DataQualityAssertion] = []
-    for results in _checker_tables(config):
+    for results, contract in _checker_tables(config):
         results_ref = table_ref(results)
         if results_ref.parts not in keep:
             continue
         checker = next(s.type.value for s in config.sources if s.id == results.source_id)
-        dataset = contract_dataset(results.dq_contract, checker)
+        dataset = contract_dataset(contract, checker)
         observed = resolve_contract_target(dataset, config.tables)
         observed_table_ref = table_ref(observed)
         if observed_table_ref.parts not in keep:
             continue
-        for check in contract_checks(results.dq_contract, checker):
+        for check in contract_checks(contract, checker):
             if check["column_name"]:
                 asset = column_ref(observed, check["column_name"])
                 if asset.parts not in published_columns:

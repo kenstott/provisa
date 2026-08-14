@@ -1141,6 +1141,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                     is_system=bool(r["is_system"]),
                     reason_policy=r["reason_policy"],
                     expires_policy=r["expires_policy"],
+                    param_policy=r["param_policy"],  # REQ-1467
                 )
                 for r in await _tag_repo.list_all(_pg)
             ]

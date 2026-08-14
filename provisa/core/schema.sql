@@ -269,7 +269,24 @@ CREATE TABLE IF NOT EXISTS tags (
     -- Per-tag field policy for assignments: whether the picker shows the field and
     -- whether the mutation demands it.
     reason_policy  TEXT NOT NULL DEFAULT 'optional' CHECK (reason_policy IN ('hidden', 'optional', 'required')),
-    expires_policy TEXT NOT NULL DEFAULT 'optional' CHECK (expires_policy IN ('hidden', 'optional', 'required'))
+    expires_policy TEXT NOT NULL DEFAULT 'optional' CHECK (expires_policy IN ('hidden', 'optional', 'required')),
+    -- REQ-1467: whether assignments of this tag carry a "{tag}:{value}" parameter. No
+    -- 'optional': a bare `entity` beside `entity:customer` would need a reading, and the only
+    -- reading available is a guessed entity type.
+    param_policy   TEXT NOT NULL DEFAULT 'none' CHECK (param_policy IN ('none', 'required'))
+);
+
+-- REQ-1467: the permitted parameter values for a parameterized tag. Its own table rather than a
+-- column on `tags` because the tag that motivates it — `entity` — is a system tag, and system
+-- tags are code-defined with no row in `tags` at all. The list is CLOSED: assignment refuses a
+-- value that is not here, because an open list accepts `entity:custmoer` and a misspelt entity
+-- type reads downstream as an entity that is simply absent from the corpus. tag_id is the BASE
+-- id ('entity'), never an assigned 'entity:customer'.
+CREATE TABLE IF NOT EXISTS tag_param_values (
+    tag_id      TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (tag_id, value)
 );
 
 DO $$ BEGIN
@@ -286,6 +303,9 @@ END $$;
 CREATE TABLE IF NOT EXISTS tag_assignments (
     id              SERIAL PRIMARY KEY,
     tag_id          TEXT NOT NULL,
+    -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
+    -- rather than derived at read time because the uniqueness rule below is stated over it.
+    base_tag_id     TEXT NOT NULL,
     object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
@@ -300,7 +320,10 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- ISO date the assignment stops being intended: for 'deprecated' the planned removal
     -- date, queryable for management reporting (typed on purpose — never buried in prose).
     expires_on      TEXT,
-    UNIQUE (tag_id, object_key)
+    -- REQ-1467: over the BASE id, so one column carries one entity type. A UNIQUE over the full
+    -- tag_id would accept entity:customer and entity:employee on the same column, which is a
+    -- contradiction — the column's values are entity names of ONE type.
+    UNIQUE (base_tag_id, object_key)
 );
 
 DO $$ BEGIN
@@ -777,6 +800,7 @@ DO $$ BEGIN
     ALTER TABLE roles ADD COLUMN IF NOT EXISTS tenant_id UUID;
     ALTER TABLE tags ADD COLUMN IF NOT EXISTS tenant_id UUID;
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE tag_param_values ADD COLUMN IF NOT EXISTS tenant_id UUID;  -- REQ-1467
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

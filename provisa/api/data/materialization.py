@@ -423,7 +423,9 @@ def _mat_store_rows(
             catalog=_cache_loc.catalog,
             schema=_cache_loc.schema,
             pk_column=col_names[0] if col_names else "id",
-            rows=rows,
+            # _snake_rows, not rows: the CTE reads row[c] for c in column_names, and those
+            # names are snake_case. Raw camelCase keys would silently inline NULL.
+            rows=_snake_rows,
             column_names=hot_col_names,
             is_api=True,
         )
@@ -475,7 +477,9 @@ async def _mat_api_ep_table(
     )
     from provisa.compiler.naming import apply_sql_name
 
-    response_cols = [c for c in ep.columns if c.param_type is None]
+    # param_only, not param_type: a query/path param whose name collides with a response field is
+    # merged into one column that carries BOTH. Excluding it on param_type would drop its value.
+    response_cols = [c for c in ep.columns if not c.param_only]
     col_names = [c.name for c in response_cols]
     all_ep_col_names = [apply_sql_name(c.name) for c in ep.columns]
     redirect_config = RedirectConfig.from_env()

@@ -23,6 +23,8 @@ declare module "*.graphql" {
   export const DeleteTag: DocumentNode;
   export const AssignTag: DocumentNode;
   export const UnassignTag: DocumentNode;
+  export const UpsertTagParamValue: DocumentNode;
+  export const DeleteTagParamValue: DocumentNode;
   export const RefreshPolicyPreview: DocumentNode;
   export const MetricsQuery: DocumentNode;
   export const UpsertMetric: DocumentNode;
@@ -107,6 +109,8 @@ declare module "*.gql" {
   export const DeleteTag: DocumentNode;
   export const AssignTag: DocumentNode;
   export const UnassignTag: DocumentNode;
+  export const UpsertTagParamValue: DocumentNode;
+  export const DeleteTagParamValue: DocumentNode;
   export const RefreshPolicyPreview: DocumentNode;
   export const MetricsQuery: DocumentNode;
   export const UpsertMetric: DocumentNode;

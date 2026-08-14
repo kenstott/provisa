@@ -68,6 +68,7 @@ def _make_app(provider=None, mapping_rules=None, default_role="analyst", superus
         return {
             "user_id": request.state.identity.user_id,
             "role": request.state.role,
+            "assignments": [a.role_id for a in (getattr(request.state, "assignments", None) or [])],
         }
 
     return app
@@ -179,15 +180,31 @@ def _basic(username: str, password: str) -> str:
     return f"Basic {raw}"
 
 
-def test_superuser_basic_grants_platform_admin_with_bearer_provider():
-    # Works even though a bearer IdP is configured.
+def test_superuser_basic_grants_both_planes_with_bearer_provider():
+    # Works even though a bearer IdP is configured. The break-glass account holds the control
+    # plane AND the data plane; the ACTING role is the data-plane one, because REQ-1327 keeps a
+    # control-plane role off the data surfaces (they answer "No schema for role platform_admin").
     app = _make_app(provider=MockProvider(), superuser=_SU)
     client = TestClient(app)
     resp = client.get("/test", headers={"Authorization": _basic("root", "s3cr3t")})
     assert resp.status_code == 200
     data = resp.json()
     assert data["user_id"] == "root"
-    assert data["role"] == "platform_admin"  # REQ-1297
+    assert data["role"] == "org_admin"  # REQ-1327
+    assert data["assignments"] == ["platform_admin", "org_admin"]  # REQ-125/REQ-1297
+
+
+def test_superuser_role_header_cannot_select_the_control_plane_role():
+    # REQ-1327: the acting role stays the data-plane one. The break-glass account holds exactly
+    # one role per plane, so no header can put a control-plane role on the data surfaces.
+    app = _make_app(provider=MockProvider(), superuser=_SU)
+    client = TestClient(app)
+    resp = client.get(
+        "/test",
+        headers={"Authorization": _basic("root", "s3cr3t"), "X-Provisa-Role": "platform_admin"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "org_admin"
 
 
 def test_superuser_wrong_password_falls_through_to_provider():
@@ -231,7 +248,7 @@ def test_superuser_password_from_env_secret(monkeypatch):
     client = TestClient(app)
     resp = client.get("/test", headers={"Authorization": _basic("root", "env-pass")})
     assert resp.status_code == 200
-    assert resp.json()["role"] == "platform_admin"  # REQ-1297
+    assert resp.json()["role"] == "org_admin"  # REQ-1327
 
 
 def test_resolve_superuser_config_fails_fast_on_unset_secret(monkeypatch):

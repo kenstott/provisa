@@ -45547,3 +45547,63 @@
   related_reqs:
   - REQ-1337
   - REQ-1465
+- id: REQ-1467
+  status: complete
+  since: 2026-08
+  group: 1. Access Governance & Security
+  category: Data Governance
+  priority: MUST
+  type: behavioral
+  description: >-
+    A tag may take a parameter, assigned as "{tag_id}:{value}" -- `entity:customer` on a column
+    says the column holds names of customers, not merely that it holds entity names. The GraphRAG
+    extractor needs the entity TYPE to build a vocabulary, and the bare `entity` tag of REQ-1375
+    cannot supply one, so the type travels in the assignment id rather than in a second tag. The
+    id is split on the leftmost colon, matching how provisa.auth.role_mapping parses
+    "role_id:domain_id"; unlike that parser, the bare form yields None rather than a wildcard,
+    because whether a missing parameter is legal belongs to the tag's param_policy and not to the
+    parser. param_policy is "none" or "required" and deliberately has no "optional" value -- a bare
+    `entity` standing beside `entity:customer` would need a reading, and the only reading available
+    is a guessed entity type. Assignments store the base id alongside the full one and the
+    uniqueness rule is stated over (base_tag_id, object_key), so one column carries exactly one
+    entity type: `entity:customer` and `entity:employee` on the same column is a contradiction, and
+    uniqueness over the full id would accept both. Every read, count, and removal resolves through
+    the base id, so the registry row a parameterized assignment belongs to is always findable and
+    an in-use tag is never reported as unused. The permitted values are a CLOSED list held in
+    tag_param_values, maintainer-editable through the admin UI even for a code-defined system tag
+    like `entity`, which owns no row of its own; an open list would accept `entity:custmoer`, and a
+    misspelt entity type reads downstream as an entity that simply is not in the corpus. Starter
+    entity types are seeded once at first boot rather than upserted on every boot, since
+    re-upserting would resurrect types a maintainer deleted, and a value still carried by an
+    assignment cannot be deleted.
+  use_case: >-
+    A steward marks CUSTOMER.NAME as `entity:customer` and SALES_REP.NAME as `entity:employee`;
+    the GraphRAG loader issues one vocabulary query per entity type instead of one undifferentiated
+    entity query, and the extracted graph distinguishes a customer named Mercury from an employee
+    of the same name.
+  tests:
+  - tests/unit/test_tag_params.py
+  - provisa-ui/src/__tests__/TagControl.test.tsx
+  - provisa-ui/src/__tests__/TagsTab.test.tsx
+  code:
+  - provisa/core/models.py
+  - provisa/core/schema_org.py
+  - provisa/core/repositories/tag.py
+  - provisa/api/startup_seed.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_query.py
+  - provisa-ui/src/components/TagControl.tsx
+  - provisa-ui/src/components/admin/TagsTab.tsx
+  scenario: |
+    Given the `entity` tag requires a parameter and its value list holds customer and employee
+    When a steward assigns it to a column without picking a value
+    Then the assignment cannot be applied
+    When the steward assigns entity:customer and then entity:employee to that same column
+    Then the column carries only entity:employee
+    And the tag registry reports the `entity` tag as in use rather than unused
+    When a maintainer deletes a value that no assignment carries
+    Then it leaves the value list and does not return on the next boot
+  related_reqs:
+  - REQ-1375
+  - REQ-1377
+  - REQ-1443

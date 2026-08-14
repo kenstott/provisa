@@ -63,6 +63,10 @@ class ApiColumn(BaseModel):  # REQ-299, REQ-599
     filterable: bool = True
     param_type: ParamType | None = None
     param_name: str | None = None
+    # A param whose name collides with a response field is merged into one entry carrying both
+    # param_type and the response value. param_only marks the entries that carry NO response value,
+    # so param_type alone must never be read as "not in the response".
+    param_only: bool = False
     object_fields: list[dict] = []
     description: str | None = None
 

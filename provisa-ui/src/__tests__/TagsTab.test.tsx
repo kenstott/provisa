@@ -18,18 +18,22 @@ const t = i18n.getFixedT("en");
 
 const upsertSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 const deleteSpy = vi.fn(async () => ({ success: true, message: "ok" }));
+const upsertValueSpy = vi.fn(async () => ({ success: true, message: "ok" }));
+const deleteValueSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 
 let mockTags: Tag[] = [];
 let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files (see ScheduledTasks.test.tsx).
-vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useTags: () => ({ tags: mockTags, loading: false, refetch: vi.fn() }),
   useTagAssignments: () => ({ tagAssignments: mockAssignments, loading: false }),
   useUpsertTag: () => ({ upsertTag: upsertSpy, loading: false }),
   useDeleteTag: () => ({ deleteTag: deleteSpy, loading: false }),
+  useUpsertTagParamValue: () => ({ upsertTagParamValue: upsertValueSpy, loading: false }),
+  useDeleteTagParamValue: () => ({ deleteTagParamValue: deleteValueSpy, loading: false }),
 }));
 
 const SYSTEM_TAG: Tag = {
@@ -40,6 +44,8 @@ const SYSTEM_TAG: Tag = {
   derived: false,
   reasonPolicy: "optional",
   expiresPolicy: "optional",
+  paramPolicy: "none",
+  paramValues: [],
 };
 const USER_TAG: Tag = {
   id: "finance",
@@ -49,6 +55,8 @@ const USER_TAG: Tag = {
   derived: false,
   reasonPolicy: "required",
   expiresPolicy: "hidden",
+  paramPolicy: "none",
+  paramValues: [],
 };
 // REQ-1443: computed off each table's own registration, so it carries no stored assignments.
 const DERIVED_TAG: Tag = {
@@ -59,6 +67,23 @@ const DERIVED_TAG: Tag = {
   derived: true,
   reasonPolicy: "hidden",
   expiresPolicy: "hidden",
+  paramPolicy: "none",
+  paramValues: [],
+};
+// REQ-1467: a system tag whose definition is fixed but whose value list the maintainer owns.
+const ENTITY_TAG: Tag = {
+  id: "entity",
+  description: "Names the entity type this column holds",
+  appliesTo: ["column"],
+  isSystem: true,
+  derived: false,
+  reasonPolicy: "hidden",
+  expiresPolicy: "hidden",
+  paramPolicy: "required",
+  paramValues: [
+    { value: "customer", description: "A buying party" },
+    { value: "vendor", description: "" },
+  ],
 };
 const COMMAND_TAG: Tag = {
   id: "audit",
@@ -68,6 +93,8 @@ const COMMAND_TAG: Tag = {
   derived: false,
   reasonPolicy: "optional",
   expiresPolicy: "optional",
+  paramPolicy: "none",
+  paramValues: [],
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
@@ -89,7 +116,9 @@ describe("TagsTab", () => {
   beforeEach(() => {
     upsertSpy.mockClear();
     deleteSpy.mockClear();
-    mockTags = [USER_TAG, SYSTEM_TAG, COMMAND_TAG, DERIVED_TAG];
+    upsertValueSpy.mockClear();
+    deleteValueSpy.mockClear();
+    mockTags = [USER_TAG, SYSTEM_TAG, COMMAND_TAG, DERIVED_TAG, ENTITY_TAG];
     mockAssignments = [
       { tagId: "pii", objectType: "column", tableId: 1, columnName: "ssn" },
       { tagId: "pii", objectType: "column", tableId: 1, columnName: "email" },
@@ -170,6 +199,7 @@ describe("TagsTab", () => {
         ["source", "column"],
         "optional",
         "optional",
+        "none",
       ),
     );
   });
@@ -184,7 +214,7 @@ describe("TagsTab", () => {
     await pickPolicy("tags-expires-policy", t("tagsTab.policy_hidden"));
     fireEvent.click(screen.getByRole("button", { name: t("tagsTab.createButton") }));
     await waitFor(() =>
-      expect(upsertSpy).toHaveBeenCalledWith("gdpr", "", ["source"], "required", "hidden"),
+      expect(upsertSpy).toHaveBeenCalledWith("gdpr", "", ["source"], "required", "hidden", "none"),
     );
   });
 
@@ -220,6 +250,71 @@ describe("TagsTab", () => {
     );
     expect(screen.getByTestId("tags-reason-policy")).toHaveValue(t("tagsTab.policy_required"));
     expect(screen.getByTestId("tags-expires-policy")).toHaveValue(t("tagsTab.policy_hidden"));
+  });
+
+  // REQ-1467: the value list is the closed set an assignment must name a member of.
+  it("edits the value list of a system tag, whose own definition stays locked", async () => {
+    render(<TagsTab />);
+    const bar = screen.getByTestId("tags-scope-bar");
+    fireEvent.click(within(bar).getByLabelText(t("tagsTab.scope_column")));
+    const row = screen.getByTestId("tags-row-entity");
+    expect(within(row).queryByLabelText(t("tagsTab.editTag", { id: "entity" }))).toBeNull();
+
+    fireEvent.click(screen.getByTestId("tags-values-entity"));
+    const editor = await screen.findByTestId("tags-values-row-entity");
+    expect(within(editor).getByText("customer")).toBeTruthy();
+    expect(within(editor).getByText("vendor")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("tags-new-value-entity"), {
+      target: { value: "employee" },
+    });
+    fireEvent.change(screen.getByTestId("tags-new-value-desc-entity"), {
+      target: { value: "A person on payroll" },
+    });
+    fireEvent.click(screen.getByTestId("tags-add-value-entity"));
+    await waitFor(() =>
+      expect(upsertValueSpy).toHaveBeenCalledWith("entity", "employee", "A person on payroll"),
+    );
+
+    fireEvent.click(screen.getByTestId("tags-value-delete-entity-vendor"));
+    await waitFor(() => expect(deleteValueSpy).toHaveBeenCalledWith("entity", "vendor"));
+  });
+
+  it("offers no value editor for a tag that takes no parameter", () => {
+    render(<TagsTab />);
+    expect(screen.queryByTestId("tags-values-finance")).toBeNull();
+  });
+
+  it("counts assignments by base id, so parameterized uses are not reported as unused", () => {
+    mockAssignments = [
+      { tagId: "entity:customer", objectType: "column", tableId: 1, columnName: "name" },
+      { tagId: "entity:vendor", objectType: "column", tableId: 2, columnName: "supplier" },
+    ];
+    render(<TagsTab />);
+    fireEvent.click(
+      within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_column")),
+    );
+    expect(within(screen.getByTestId("tags-row-entity")).getByText("2")).toBeTruthy();
+  });
+
+  it("carries the chosen paramPolicy into upsertTag", async () => {
+    render(<TagsTab />);
+    fireEvent.click(screen.getByTestId("tags-create-button"));
+    fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+      target: { value: "lifecycle" },
+    });
+    await pickPolicy("tags-param-policy", t("tagsTab.paramPolicy_required"));
+    fireEvent.click(screen.getByText(t("tagsTab.createButton")));
+    await waitFor(() =>
+      expect(upsertSpy).toHaveBeenCalledWith(
+        "lifecycle",
+        "",
+        ["source"],
+        "optional",
+        "optional",
+        "required",
+      ),
+    );
   });
 
   it("deletes a tag after window.confirm", async () => {

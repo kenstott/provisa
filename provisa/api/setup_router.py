@@ -51,6 +51,17 @@ async def _auto_configure_idp(provider: str, pool) -> None:
         "assignments_source": "provisa",
     }
 
+    # REQ-125: break-glass superuser. Written whenever the deployment supplies both vars, for any
+    # provider — an operator locked out of a hosted IdP still has to reach the deployment. Stored as
+    # ${env:...} placeholders so the secret stays in the systemd env file, never in the config.
+    if os.environ.get("PROVISA_SUPERUSER_USERNAME") and os.environ.get(
+        "PROVISA_SUPERUSER_PASSWORD"
+    ):
+        auth_section["superuser"] = {
+            "username": "${env:PROVISA_SUPERUSER_USERNAME}",
+            "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
+        }
+
     # PROVISA_MULTITENANCY promotes the deployment from single-admin bootstrap to multitenant
     # onboarding: the first authenticated user still claims the platform superadmin slot, but later
     # identities are admitted (not denied) and join an org by redeeming an invite. Off by default so

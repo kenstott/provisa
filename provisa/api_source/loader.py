@@ -47,6 +47,14 @@ def _resolve_param_type(c: dict) -> str | None:
     return None
 
 
+def _resolve_param_only(c: dict) -> bool:
+    """A column carries no response value when the writer marked it param_only, or when it is
+    encoded as native-filter machinery (the `_nf_` columns, which never exist in the payload)."""
+    if "param_only" in c:
+        return bool(c["param_only"])
+    return c.get("native_filter_type") is not None
+
+
 async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     conn: "Connection",
     tables: list[dict],
@@ -98,6 +106,7 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
                 if _resolve_param_type(c) is not None
                 else None,
                 param_name=c.get("param_name"),
+                param_only=_resolve_param_only(c),
                 object_fields=c.get("object_fields", []),
             )
             for c in cols_raw

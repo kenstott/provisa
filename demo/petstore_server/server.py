@@ -204,10 +204,12 @@ async def openapi(_: Request) -> Response:
 async def find_by_status(request: Request) -> Response:
     # `status` is required: true in the spec — the reference server 400s when
     # omitted rather than defaulting. Provisa always passes the enum values.
-    status = request.query_params.get("status")
-    if status is None:
+    # The spec declares style: form, explode: true, so multiple values arrive as
+    # repeated `status=` params; getlist keeps them all (get would keep only the last).
+    values = request.query_params.getlist("status")
+    if not values:
         return PlainTextResponse("No status provided. Try again?", status_code=400)
-    wanted = status.split(",")
+    wanted = [w for v in values for w in v.split(",")]
     return JSONResponse([p for p in _PETS.values() if p["status"] in wanted])
 
 

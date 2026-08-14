@@ -306,6 +306,8 @@ tags = Table(
     # Per-tag assignment-field policy: hidden | optional | required.
     Column("reason_policy", Text, nullable=False, server_default="optional"),
     Column("expires_policy", Text, nullable=False, server_default="optional"),
+    # REQ-1467: whether assignments carry a "{tag}:{value}" parameter.
+    Column("param_policy", Text, nullable=False, server_default="none"),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
@@ -315,6 +317,24 @@ tags = Table(
         "expires_policy IN ('hidden', 'optional', 'required')",
         name="tags_expires_policy_check",
     ),
+    CheckConstraint(
+        "param_policy IN ('none', 'required')",
+        name="tags_param_policy_check",
+    ),
+)
+
+# REQ-1467: the permitted parameter values for a parameterized tag, maintainer-editable.
+# Its own table rather than a column on `tags` because the parameterized tag that motivates it
+# — `entity` — is a system tag, and system tags are code-defined with no row here (see the
+# comment on SYSTEM_TAGS). This keeps that invariant while still giving the mutable half a home.
+# tag_id is the BASE id ("entity"), never an assigned "entity:customer".
+tag_param_values = Table(
+    "tag_param_values",
+    metadata,
+    Column("tag_id", Text, primary_key=True),
+    Column("value", Text, primary_key=True),
+    Column("description", Text, nullable=False, server_default=""),
+    Column("tenant_id", Uuid),
 )
 
 # REQ-1377: tag assignments to sources/tables/columns/relationships. object_key is the
@@ -325,6 +345,11 @@ tag_assignments = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     # No FK: system tags are code-defined (models.SYSTEM_TAGS) with no row to reference.
     Column("tag_id", Text, nullable=False),
+    # REQ-1467: tag_id with the parameter stripped ("entity:customer" -> "entity"). Stored, not
+    # derived at read time, because the uniqueness rule below is stated over it: one column's
+    # values are entity names of ONE type, so entity:customer and entity:employee on the same
+    # column is a contradiction, and a UNIQUE over the full tag_id accepts both.
+    Column("base_tag_id", Text, nullable=False),
     Column("object_type", Text, nullable=False),
     Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE")),
     Column("table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
@@ -335,7 +360,7 @@ tag_assignments = Table(
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
     Column("tenant_id", Uuid),
-    UniqueConstraint("tag_id", "object_key"),
+    UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
         "object_type IN ('source', 'table', 'column', 'relationship', 'command')",
         name="tag_assignments_object_type_check",

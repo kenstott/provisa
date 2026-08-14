@@ -66,6 +66,7 @@ from provisa.api.admin.types import (
     SourceType,
     SystemHealthType,
     TagAssignmentType,
+    TagParamValueType,
     TagType,
 )
 
@@ -290,6 +291,14 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await tag_repo.list_all(cast("Connection", conn))
+            # REQ-1467: one read for every tag's values, grouped here — a per-tag read would be a
+            # query per row to serve a table that holds a handful of values in total.
+            param_rows = await tag_repo.list_all_param_values(cast("Connection", conn))
+        by_tag: dict[str, list[TagParamValueType]] = {}
+        for p in param_rows:
+            by_tag.setdefault(p["tag_id"], []).append(
+                TagParamValueType(value=p["value"], description=p["description"])
+            )
         return [
             TagType(
                 id=r["id"],
@@ -299,6 +308,8 @@ class Query:  # REQ-021, REQ-042
                 reason_policy=r["reason_policy"],
                 expires_policy=r["expires_policy"],
                 derived=bool(r["derived"]),
+                param_policy=r["param_policy"],
+                param_values=by_tag.get(r["id"], []),
             )
             for r in rows
         ]

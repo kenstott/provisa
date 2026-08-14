@@ -237,6 +237,7 @@ async def upsert_table(  # REQ-316, REQ-320
                     "filterable": False,
                     "param_type": "path",
                     "param_name": p["name"],
+                    "param_only": True,
                 }
             )
     for p in query.query_params:
@@ -254,6 +255,7 @@ async def upsert_table(  # REQ-316, REQ-320
                     "filterable": False,
                     "param_type": "query",
                     "param_name": p["name"],
+                    "param_only": True,
                 }
             )
 

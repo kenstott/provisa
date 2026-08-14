@@ -60,6 +60,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1394: the SCRAM verifier pgwire's SASL exchange reads. Keyed to the platform user
     # registry it sits beside, so portable metadata only.
     "scram_credentials",
+    # REQ-1466: the deployment-wide maintenance notice, a control-plane singleton beside the
+    # platform registry. Portable metadata only.
+    "platform_notice",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

@@ -21,7 +21,7 @@ let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files (see ScheduledTasks.test.tsx).
-vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useTags: () => ({ tags: mockTags, loading: false }),
   useTagAssignments: () => ({ tagAssignments: mockAssignments, refetch: vi.fn() }),
@@ -42,6 +42,8 @@ describe("TagControl", () => {
         derived: false,
         reasonPolicy: "required",
         expiresPolicy: "optional",
+        paramPolicy: "none",
+        paramValues: [],
       },
       {
         id: "pii",
@@ -51,6 +53,8 @@ describe("TagControl", () => {
         derived: false,
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
+        paramPolicy: "none",
+        paramValues: [],
       },
       {
         id: "finance",
@@ -60,6 +64,8 @@ describe("TagControl", () => {
         derived: false,
         reasonPolicy: "hidden",
         expiresPolicy: "required",
+        paramPolicy: "none",
+        paramValues: [],
       },
       {
         id: "beta",
@@ -69,6 +75,8 @@ describe("TagControl", () => {
         derived: false,
         reasonPolicy: "optional",
         expiresPolicy: "optional",
+        paramPolicy: "none",
+        paramValues: [],
       },
       {
         id: "data_quality",
@@ -78,6 +86,22 @@ describe("TagControl", () => {
         derived: true,
         reasonPolicy: "hidden",
         expiresPolicy: "hidden",
+        paramPolicy: "none",
+        paramValues: [],
+      },
+      {
+        id: "entity",
+        description: "Names the entity type this column holds",
+        appliesTo: ["column"],
+        isSystem: true,
+        derived: false,
+        reasonPolicy: "hidden",
+        expiresPolicy: "hidden",
+        paramPolicy: "required",
+        paramValues: [
+          { value: "customer", description: "A buying party" },
+          { value: "vendor", description: "" },
+        ],
       },
     ];
     mockAssignments = [
@@ -92,6 +116,7 @@ describe("TagControl", () => {
       { tagId: "pii", objectType: "column", tableId: 7, columnName: "email" },
       { tagId: "deprecated", objectType: "source", sourceId: "pg", reason: "Legacy source" },
       { tagId: "beta", objectType: "command", commandName: "send_email" },
+      { tagId: "entity:customer", objectType: "column", tableId: 7, columnName: "cust_name" },
     ];
   });
 
@@ -287,6 +312,60 @@ describe("TagControl", () => {
   it("command objectType: renders the pill for its own assignment", () => {
     render(<TagControl objectType="command" commandName="send_email" />);
     expect(screen.getByTestId("tag-pill-beta")).toBeInTheDocument();
+  });
+
+  // REQ-1467: a parameterized tag is assigned as "entity:customer" — the parameter is part of the
+  // assignment, and the registry row it belongs to is the base id.
+  it("pill shows the assignment's parameter, not the bare registry id", () => {
+    render(<TagControl objectType="column" tableId={7} columnName="cust_name" />);
+    expect(screen.getByTestId("tag-pill-entity")).toHaveTextContent("entity:customer");
+  });
+
+  it("required paramPolicy gates Apply until a value is picked, then sends the parameterized id", async () => {
+    render(<TagControl objectType="column" tableId={7} columnName="supplier" />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    fireEvent.click(await screen.findByTestId("tag-option-entity"));
+    const apply = screen.getByTestId("tag-apply-entity");
+    expect(apply).toBeDisabled();
+    fireEvent.click(screen.getByTestId("tag-param-entity"));
+    fireEvent.click(await screen.findByRole("option", { name: "vendor" }));
+    expect(apply).not.toBeDisabled();
+    fireEvent.click(apply);
+    expect(assignSpy).toHaveBeenCalledWith({
+      tagId: "entity:vendor",
+      objectType: "column",
+      sourceId: undefined,
+      tableId: 7,
+      columnName: "supplier",
+      relationshipId: undefined,
+      commandName: undefined,
+      reason: null,
+      expiresOn: null,
+    });
+  });
+
+  it("editing an existing parameterized assignment seeds the picked value", async () => {
+    render(<TagControl objectType="column" tableId={7} columnName="cust_name" />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    fireEvent.click(await screen.findByTestId("tag-edit-entity"));
+    expect(screen.getByTestId("tag-param-entity")).toHaveValue("customer — A buying party");
+  });
+
+  it("unassigning a parameterized tag sends the base id, which the server matches on", async () => {
+    render(<TagControl objectType="column" tableId={7} columnName="cust_name" />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    const option = await screen.findByTestId("tag-option-entity");
+    expect(option).toBeChecked();
+    fireEvent.click(option);
+    expect(unassignSpy).toHaveBeenCalledWith({
+      tagId: "entity",
+      objectType: "column",
+      sourceId: undefined,
+      tableId: 7,
+      columnName: "cust_name",
+      relationshipId: undefined,
+      commandName: undefined,
+    });
   });
 
   it("readOnly renders pills without a picker icon", () => {

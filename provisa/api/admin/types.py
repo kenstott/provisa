@@ -88,6 +88,12 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
+class TagParamValueType:  # REQ-1467
+    value: str
+    description: str
+
+
+@strawberry.type
 class TagType:  # REQ-1373, REQ-1375
     id: str
     description: str
@@ -98,6 +104,11 @@ class TagType:  # REQ-1373, REQ-1375
     # REQ-1443: computed from the object's own registration, so it is read-only everywhere —
     # the picker must not offer it and assignTag refuses it.
     derived: bool = False
+    # REQ-1467: "none" or "required". A required parameter is assigned as "{id}:{value}" and
+    # the value must be one of param_values — the list is closed, because an open one would
+    # accept "entity:custmoer" and the misspelt type then reads downstream as absence.
+    param_policy: str = "none"
+    param_values: list[TagParamValueType] = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -401,6 +412,20 @@ class TagInput:  # REQ-1373
     applies_to: list[str] = strawberry.field(default_factory=list)
     reason_policy: str = "optional"  # hidden | optional | required
     expires_policy: str = "optional"
+    param_policy: str = "none"  # REQ-1467: none | required
+
+
+@strawberry.input
+class TagParamValueInput:  # REQ-1467
+    """One permitted parameter value for a parameterized tag.
+
+    ``tag_id`` is the base id ("entity"), never an assigned "entity:customer" — a value belongs
+    to the tag, not to another value.
+    """
+
+    tag_id: str
+    value: str
+    description: str = ""
 
 
 @strawberry.input

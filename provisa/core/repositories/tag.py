@@ -30,8 +30,15 @@ from provisa.core.models import (
     SYSTEM_TAGS,
     Tag,
     TagAssignment,
+    TagParamValue,
+    base_tag_id,
 )
-from provisa.core.schema_org import registered_tables, tag_assignments, tags
+from provisa.core.schema_org import (
+    registered_tables,
+    tag_assignments,
+    tag_param_values,
+    tags,
+)
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -46,6 +53,7 @@ def _code_tag_row(tag: Tag) -> dict:
         "derived": tag.derived,
         "reason_policy": tag.reason_policy,
         "expires_policy": tag.expires_policy,
+        "param_policy": tag.param_policy,
     }
 
 
@@ -65,17 +73,30 @@ async def upsert(conn: "Connection", tag: Tag) -> None:
             "is_system": tag.is_system,
             "reason_policy": tag.reason_policy,
             "expires_policy": tag.expires_policy,
+            "param_policy": tag.param_policy,
         },
         index_elements=["id"],
-        update_columns=["description", "applies_to", "reason_policy", "expires_policy"],
+        update_columns=[
+            "description",
+            "applies_to",
+            "reason_policy",
+            "expires_policy",
+            "param_policy",
+        ],
     )
 
 
 async def get(conn: "Connection", tag_id: str) -> dict | None:
+    """Look up the registry tag *tag_id* names, accepting an assigned parameterized id.
+
+    REQ-1467: callers hold ids in assigned form ("entity:customer"), and the registry is
+    keyed by the base id — resolving here keeps every caller from having to split first.
+    """
+    base = base_tag_id(tag_id)
     for code_tag in SYSTEM_TAGS + DERIVED_TAGS:
-        if code_tag.id == tag_id:
+        if code_tag.id == base:
             return _code_tag_row(code_tag)
-    result = await conn.execute_core(select(tags).where(tags.c.id == tag_id))
+    result = await conn.execute_core(select(tags).where(tags.c.id == base))
     row = result.fetchone()
     return _user_tag_row(row) if row is not None else None
 
@@ -88,17 +109,25 @@ async def list_all(conn: "Connection") -> list[dict]:
 
 
 async def delete(conn: "Connection", tag_id: str) -> bool:
-    """Delete a user tag and its assignments (no FK carries this: system tags have no row)."""
-    result = await conn.execute_core(_delete(tags).where(tags.c.id == tag_id))
+    """Delete a user tag, its assignments, and its parameter values.
+
+    No FK carries any of this: system tags are code-defined with no row to reference.
+    """
+    base = base_tag_id(tag_id)
+    result = await conn.execute_core(_delete(tags).where(tags.c.id == base))
     if (result.rowcount or 0) == 0:
         return False
-    await conn.execute_core(_delete(tag_assignments).where(tag_assignments.c.tag_id == tag_id))
+    # base_tag_id, not tag_id: a parameterized tag's assignments are stored in "{tag}:{value}"
+    # form, so matching on tag_id would leave every one of them orphaned (REQ-1467).
+    await conn.execute_core(_delete(tag_assignments).where(tag_assignments.c.base_tag_id == base))
+    await conn.execute_core(_delete(tag_param_values).where(tag_param_values.c.tag_id == base))
     return True
 
 
 async def assignment_count(conn: "Connection", tag_id: str) -> int:
+    """How many objects carry this tag, counting every parameter value (REQ-1467)."""
     result = await conn.execute_core(
-        select(tag_assignments.c.id).where(tag_assignments.c.tag_id == tag_id)
+        select(tag_assignments.c.id).where(tag_assignments.c.base_tag_id == base_tag_id(tag_id))
     )
     return len(result.fetchall())
 
@@ -108,6 +137,7 @@ async def assign(conn: "Connection", assignment: TagAssignment) -> None:
         tag_assignments,
         {
             "tag_id": assignment.tag_id,
+            "base_tag_id": assignment.base_tag_id(),
             "object_type": assignment.object_type,
             "source_id": assignment.source_id,
             "table_id": assignment.table_id,
@@ -118,15 +148,73 @@ async def assign(conn: "Connection", assignment: TagAssignment) -> None:
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,
         },
-        index_elements=["tag_id", "object_key"],
-        update_columns=["object_type", "reason", "expires_on"],
+        index_elements=["base_tag_id", "object_key"],
+        # tag_id updates: re-assigning entity:employee where entity:customer sat is a
+        # correction of the parameter, which is the only way to change one (REQ-1467).
+        update_columns=["tag_id", "object_type", "reason", "expires_on"],
     )
 
 
 async def unassign(conn: "Connection", tag_id: str, object_key: str) -> bool:
+    # Matched on the base id so removing "the entity tag" from a column succeeds whether the
+    # caller names the parameter or not; (base_tag_id, object_key) is unique, so it is exact.
     result = await conn.execute_core(
         _delete(tag_assignments).where(
-            (tag_assignments.c.tag_id == tag_id) & (tag_assignments.c.object_key == object_key)
+            (tag_assignments.c.base_tag_id == base_tag_id(tag_id))
+            & (tag_assignments.c.object_key == object_key)
+        )
+    )
+    return (result.rowcount or 0) > 0
+
+
+# ---------------------------------------------------------------------------
+# Parameter values (REQ-1467)
+# ---------------------------------------------------------------------------
+
+
+async def list_param_values(conn: "Connection", tag_id: str) -> list[dict]:
+    result = await conn.execute_core(
+        select(tag_param_values)
+        .where(tag_param_values.c.tag_id == base_tag_id(tag_id))
+        .order_by(tag_param_values.c.value)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def list_all_param_values(conn: "Connection") -> list[dict]:
+    result = await conn.execute_core(
+        select(tag_param_values).order_by(tag_param_values.c.tag_id, tag_param_values.c.value)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def upsert_param_value(conn: "Connection", param: TagParamValue) -> None:
+    await conn.upsert(
+        tag_param_values,
+        {
+            "tag_id": base_tag_id(param.tag_id),
+            "value": param.value,
+            "description": param.description,
+        },
+        index_elements=["tag_id", "value"],
+        update_columns=["description"],
+    )
+
+
+async def param_value_assignment_count(conn: "Connection", tag_id: str, value: str) -> int:
+    """Assignments carrying exactly this parameter value — the delete guard (REQ-1467)."""
+    base = base_tag_id(tag_id)
+    result = await conn.execute_core(
+        select(tag_assignments.c.id).where(tag_assignments.c.tag_id == f"{base}:{value}")
+    )
+    return len(result.fetchall())
+
+
+async def delete_param_value(conn: "Connection", tag_id: str, value: str) -> bool:
+    result = await conn.execute_core(
+        _delete(tag_param_values).where(
+            (tag_param_values.c.tag_id == base_tag_id(tag_id))
+            & (tag_param_values.c.value == value)
         )
     )
     return (result.rowcount or 0) > 0

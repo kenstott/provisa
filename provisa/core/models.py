@@ -307,6 +307,39 @@ TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command")
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
 
 
+# REQ-1467: a parameterized tag is assigned as "{base_id}:{value}" — the parameter is part of
+# the assignment, not a second tag. "none" is every tag that existed before; "required" refuses
+# a bare assignment. There is deliberately no "optional": a tag that sometimes carries a
+# parameter would need a reading for the bare form, and for `entity` that reading is a guessed
+# entity type — the failure this design exists to prevent.
+TAG_PARAM_POLICIES = ("none", "required")
+
+TAG_PARAM_SEPARATOR = ":"
+
+
+def split_tag_id(tag_id: str) -> tuple[str, str | None]:
+    """Split an assigned tag id into ``(base_id, parameter)``.
+
+    ``"entity:customer"`` → ``("entity", "customer")``; ``"pii"`` → ``("pii", None)``.
+    Mirrors :func:`provisa.auth.role_mapping.resolve_assignments`, which parses
+    ``"role_id:domain_id"`` the same way — one split, leftmost separator wins, so a
+    parameter may itself contain a colon.
+
+    Unlike the role parser this returns ``None``, not a wildcard, for the bare form:
+    whether a missing parameter is legal is the tag's ``param_policy`` to decide, and
+    substituting a default here would put that decision in the wrong place.
+    """
+    base, sep, parameter = tag_id.partition(TAG_PARAM_SEPARATOR)
+    if not sep:
+        return tag_id, None
+    return base, parameter
+
+
+def base_tag_id(tag_id: str) -> str:
+    """The registry id an assigned tag id refers to, parameter stripped."""
+    return split_tag_id(tag_id)[0]
+
+
 class Tag(BaseModel):  # REQ-1373, REQ-1375
     id: str
     description: str = ""
@@ -321,6 +354,10 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # shows reason/expires_on and whether the assign mutation demands them.
     reason_policy: str = "optional"
     expires_policy: str = "optional"
+    # REQ-1467: whether assignments of this tag carry a parameter (see TAG_PARAM_POLICIES).
+    # The permitted parameter values are not here — they are maintainer-editable data in the
+    # tag_param_values table, so a code-defined tuple would be a second, stale source.
+    param_policy: str = "none"
 
 
 # REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never
@@ -361,8 +398,8 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
     Tag(
         id="entity",
         description=(
-            "Column values are entity names — the distinct values become retrieval "
-            "vocabulary for entity matching"
+            "Column values are entity names of the named type — the distinct values become "
+            "retrieval vocabulary for entity matching"
         ),
         # Column-only: a vocabulary is drawn from one column's values, and there is no
         # table-level reading of "these rows are entity names".
@@ -370,6 +407,11 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         is_system=True,
         reason_policy="hidden",  # the tag states its own purpose
         expires_policy="hidden",  # a declaration about the column, not a countdown
+        # REQ-1467: the parameter is the entity type — "entity:customer", "entity:employee".
+        # Retrieval identity is (type, name), so an untyped assignment cannot be indexed
+        # without inventing a type, and the invented one silently mislabels every value in
+        # the column while entity-type filters keep returning rows.
+        param_policy="required",
     ),
     Tag(
         id="natural_language",
@@ -430,6 +472,24 @@ DERIVED_TAGS: tuple[Tag, ...] = (
 DERIVED_TAG_IDS = tuple(tag.id for tag in DERIVED_TAGS)
 
 
+class TagParamValue(BaseModel):  # REQ-1467
+    """One permitted parameter value for a parameterized tag.
+
+    Maintainer-editable data, not part of the tag definition: `entity` is code-defined and
+    unstored like every system tag, but which entity types an org recognises is theirs to
+    extend. Keeping the list here rather than on Tag is what lets a system tag have an
+    editable part without the tag itself acquiring a row.
+
+    The list is closed — assignment refuses a value that is not in it. An open list would
+    accept `entity:custmoer`, and a misspelt entity type reads downstream as an entity that
+    simply is not in the corpus.
+    """
+
+    tag_id: str  # base id; a parameter value belongs to the tag, not to another parameter
+    value: str
+    description: str = ""
+
+
 class TagAssignment(BaseModel):  # REQ-1377
     tag_id: str
     object_type: str  # one of TAG_OBJECT_TYPES
@@ -448,6 +508,14 @@ class TagAssignment(BaseModel):  # REQ-1377
     # the export builder (TableIndex resolves names, not DB serials). Filled from a DB join on
     # hydration; a YAML config may provide it instead of table_id and the loader resolves it.
     table_ref: str | None = None
+
+    def base_tag_id(self) -> str:
+        """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
+        return base_tag_id(self.tag_id)
+
+    def tag_param(self) -> str | None:
+        """The parameter this assignment carries, or None for an unparameterized tag."""
+        return split_tag_id(self.tag_id)[1]
 
     def object_key(self) -> str:
         """Canonical dedup identity for the tagged object."""

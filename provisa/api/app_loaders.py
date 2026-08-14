@@ -1090,6 +1090,7 @@ _META_TABLES = [
     "tracked_functions",
     "tags",  # REQ-1373: the tag registry (system tags unioned in by the view)
     "tag_assignments",  # REQ-1377
+    "tag_param_values",  # REQ-1467: the closed value list a parameterized tag accepts
     "tag_expiry",  # REQ-1375: expiring/expired assignments report (view-only, like roles_domain_access)
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
 ]
@@ -1109,6 +1110,7 @@ _RLS_TENANT_TABLES = [
     "roles",
     "tags",  # carries tenant_id (schema.sql tenant block)
     "tag_assignments",
+    "tag_param_values",  # REQ-1467
 ]
 
 

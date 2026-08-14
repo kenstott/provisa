@@ -59,6 +59,18 @@ export type TagObjectType = "source" | "table" | "column" | "relationship" | "co
 
 export type TagFieldPolicy = "hidden" | "optional" | "required";
 
+// REQ-1467: "none" is every tag that existed before; "required" refuses a bare assignment.
+// There is deliberately no "optional" — a bare form would need a reading, and for `entity`
+// that reading is a guessed entity type.
+export type TagParamPolicy = "none" | "required";
+
+// REQ-1467: one permitted parameter value. The list is closed and maintainer-owned: an open
+// one would accept a misspelt entity type, and the type nothing queries then reads as absence.
+export interface TagParamValue {
+  value: string;
+  description: string;
+}
+
 export interface Tag {
   id: string;
   description: string;
@@ -70,6 +82,23 @@ export interface Tag {
   // Whether the picker shows reason/expiresOn for this tag, and whether they're demanded.
   reasonPolicy: TagFieldPolicy;
   expiresPolicy: TagFieldPolicy;
+  // REQ-1467: a parameterized tag is assigned as "{id}:{value}", e.g. "entity:customer".
+  paramPolicy: TagParamPolicy;
+  paramValues: TagParamValue[];
+}
+
+// REQ-1467: the registry id an assigned tag id refers to. Mirrors provisa.core.models.
+// split_tag_id — leftmost separator wins, so a value may itself contain a colon.
+export const TAG_PARAM_SEPARATOR = ":";
+
+export function baseTagId(tagId: string): string {
+  const at = tagId.indexOf(TAG_PARAM_SEPARATOR);
+  return at === -1 ? tagId : tagId.slice(0, at);
+}
+
+export function tagParam(tagId: string): string | null {
+  const at = tagId.indexOf(TAG_PARAM_SEPARATOR);
+  return at === -1 ? null : tagId.slice(at + 1);
 }
 
 // REQ-1377: one tag on one object; exactly the fields implied by objectType are set.

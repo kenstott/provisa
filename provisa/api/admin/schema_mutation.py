@@ -55,6 +55,7 @@ from provisa.api.admin.types import (
     TableInput,
     TagAssignmentInput,
     TagInput,
+    TagParamValueInput,
 )
 
 from provisa.api.admin.schema_helpers import (
@@ -229,6 +230,7 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             derived=bool(r["derived"]),
             reason_policy=r["reason_policy"],
             expires_policy=r["expires_policy"],
+            param_policy=r["param_policy"],  # REQ-1467
         )
         for r in tag_rows
     ]
@@ -693,10 +695,25 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             SYSTEM_TAG_IDS,
             TAG_FIELD_POLICIES,
             TAG_OBJECT_TYPES,
+            TAG_PARAM_POLICIES,
+            TAG_PARAM_SEPARATOR,
             Tag as TagModel,
         )
         from provisa.core.repositories import tag as tag_repo
 
+        # REQ-1467: a registry id is a base id. Accepting "entity:customer" here would define a
+        # tag whose id parses as the system `entity` tag carrying a parameter, and every base-id
+        # comparison downstream would then resolve the user tag to the intrinsic.
+        if TAG_PARAM_SEPARATOR in input.id:
+            return MutationResult(
+                success=False,
+                message=(
+                    f"Tag id {input.id!r} may not contain {TAG_PARAM_SEPARATOR!r} — "
+                    "the separator introduces a parameter value on an assignment"
+                ),
+                code="schema.tag_id_has_separator",
+                params={"tag": input.id},
+            )
         # REQ-1443: a derived tag is code-defined like a system tag, so it is reserved the same way.
         if input.id in SYSTEM_TAG_IDS + DERIVED_TAG_IDS:
             return MutationResult(
@@ -721,12 +738,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.tag_bad_policy",
                     params={"tag": input.id, "policy": policy},
                 )
+        if input.param_policy not in TAG_PARAM_POLICIES:  # REQ-1467
+            return MutationResult(
+                success=False,
+                message=f"Parameter policy must be one of {list(TAG_PARAM_POLICIES)}",
+                code="schema.tag_bad_param_policy",
+                params={"tag": input.id, "policy": input.param_policy},
+            )
         model = TagModel(
             id=input.id,
             description=input.description,
             applies_to=list(input.applies_to),
             reason_policy=input.reason_policy,
             expires_policy=input.expires_policy,
+            param_policy=input.param_policy,
         )
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -741,10 +766,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def delete_tag(self, id: str) -> MutationResult:  # REQ-1373, REQ-1375
-        from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
+        from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS, base_tag_id
         from provisa.core.repositories import tag as tag_repo
 
-        if id in SYSTEM_TAG_IDS + DERIVED_TAG_IDS:
+        # REQ-1467: on the base id, so "entity:customer" is refused as the system tag it names
+        # rather than looked up as a user tag, found missing, and reported as not found.
+        if base_tag_id(id) in SYSTEM_TAG_IDS + DERIVED_TAG_IDS:
             return MutationResult(
                 success=False,
                 message=f"Tag {id!r} is a system tag and cannot be deleted",
@@ -845,6 +872,46 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         code="schema.tag_field_hidden",
                         params={"tag": input.tag_id, "field": field_name},
                     )
+            # REQ-1467: the parameter is part of the assignment, and the permitted values are a
+            # closed maintainer-owned list. An unlisted value is refused rather than stored: a
+            # misspelt "entity:custmoer" indexes the column's values under a type nothing
+            # queries, and the empty result reads as absence rather than as the typo it is.
+            param = model.tag_param()
+            if tag_row["param_policy"] == "required":
+                if param is None:
+                    return MutationResult(
+                        success=False,
+                        message=(
+                            f"Tag {input.tag_id!r} must be assigned with a value, "
+                            f"as {input.tag_id}:<value>"
+                        ),
+                        code="schema.tag_param_required",
+                        params={"tag": input.tag_id},
+                    )
+                permitted = {
+                    p["value"]
+                    for p in await tag_repo.list_param_values(
+                        cast("Connection", conn), input.tag_id
+                    )
+                }
+                if param not in permitted:
+                    return MutationResult(
+                        success=False,
+                        message=(
+                            f"{param!r} is not a permitted value for tag "
+                            f"{model.base_tag_id()!r} — choose one of {sorted(permitted)} "
+                            "or add it to the tag's value list"
+                        ),
+                        code="schema.tag_param_unknown",
+                        params={"tag": model.base_tag_id(), "value": param},
+                    )
+            elif param is not None:
+                return MutationResult(
+                    success=False,
+                    message=f"Tag {model.base_tag_id()!r} does not take a value",
+                    code="schema.tag_param_not_allowed",
+                    params={"tag": model.base_tag_id(), "value": param},
+                )
             if input.object_type not in list(tag_row["applies_to"] or []):
                 return MutationResult(
                     success=False,
@@ -898,6 +965,97 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Tag {input.tag_id!r} unassigned",
             code="schema.tag_unassigned",
             params={"tag": input.tag_id, "objectKey": model.object_key()},
+        )
+
+    @strawberry.mutation
+    async def upsert_tag_param_value(self, input: TagParamValueInput) -> MutationResult:  # REQ-1467
+        """Add or re-describe a permitted parameter value for a parameterized tag.
+
+        The value list is data, not definition — it is editable on a system tag, whose definition
+        is not. An org that trades in vessels adds ``entity:vessel`` here; nothing in code has to
+        know the word.
+        """
+        from provisa.core.models import TAG_PARAM_SEPARATOR, TagParamValue
+        from provisa.core.repositories import tag as tag_repo
+
+        value = input.value.strip()
+        if not value or TAG_PARAM_SEPARATOR in value:
+            return MutationResult(
+                success=False,
+                message=(
+                    f"Parameter value {input.value!r} must be non-empty and may not contain "
+                    f"{TAG_PARAM_SEPARATOR!r}"
+                ),
+                code="schema.tag_param_value_invalid",
+                params={"tag": input.tag_id, "value": input.value},
+            )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            tag_row = await tag_repo.get(cast("Connection", conn), input.tag_id)
+            if tag_row is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Tag {input.tag_id!r} not found",
+                    code="schema.tag_not_found",
+                    params={"tag": input.tag_id},
+                )
+            if tag_row["param_policy"] == "none":
+                return MutationResult(
+                    success=False,
+                    message=f"Tag {input.tag_id!r} does not take values",
+                    code="schema.tag_param_not_allowed",
+                    params={"tag": input.tag_id, "value": value},
+                )
+            await tag_repo.upsert_param_value(
+                cast("Connection", conn),
+                TagParamValue(
+                    tag_id=input.tag_id, value=value, description=input.description.strip()
+                ),
+            )
+        return MutationResult(
+            success=True,
+            message=f"Value {value!r} saved for tag {input.tag_id!r}",
+            code="schema.tag_param_value_saved",
+            params={"tag": input.tag_id, "value": value},
+        )
+
+    @strawberry.mutation
+    async def delete_tag_param_value(self, tag_id: str, value: str) -> MutationResult:  # REQ-1467
+        """Remove a permitted value, refusing while any assignment still carries it.
+
+        Deleting a value in use would leave those assignments naming a type the list no longer
+        admits — legal in the database, unreachable from the picker, and silently unfixable.
+        """
+        from provisa.core.repositories import tag as tag_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            in_use = await tag_repo.param_value_assignment_count(
+                cast("Connection", conn), tag_id, value
+            )
+            if in_use:
+                return MutationResult(
+                    success=False,
+                    message=(
+                        f"Value {value!r} is carried by {in_use} assignment(s) — "
+                        "unassign them first"
+                    ),
+                    code="schema.tag_param_value_in_use",
+                    params={"tag": tag_id, "value": value, "count": str(in_use)},
+                )
+            deleted = await tag_repo.delete_param_value(cast("Connection", conn), tag_id, value)
+        if not deleted:
+            return MutationResult(
+                success=False,
+                message=f"Tag {tag_id!r} has no value {value!r}",
+                code="schema.tag_param_value_not_found",
+                params={"tag": tag_id, "value": value},
+            )
+        return MutationResult(
+            success=True,
+            message=f"Value {value!r} removed from tag {tag_id!r}",
+            code="schema.tag_param_value_deleted",
+            params={"tag": tag_id, "value": value},
         )
 
     @strawberry.mutation

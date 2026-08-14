@@ -377,10 +377,22 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     )
                 su_identity = check_superuser(su_username, su_password, self._superuser)
                 if su_identity is not None:
-                    su_assignments = [RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*")]
+                    # REQ-125/REQ-1327: the break-glass account holds BOTH planes. platform_admin
+                    # is the control plane and generates no data schema, so on its own the
+                    # superuser could reach every admin surface and no table — an operator locked
+                    # out of the data plane of the deployment they administer. org_admin rides
+                    # alongside as the DATA-plane assignment, and it is the ACTING role for the
+                    # same reason the provider path picks _data_plane_roles[0] below: a
+                    # control-plane role is never the acting data role.
+                    su_assignments = [
+                        RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
+                        RoleAssignment(role_id=ORG_ADMIN_ROLE, domain_id="*"),
+                    ]
                     su_identity.roles = _assignments_to_claims(su_assignments)
                     request.state.identity = su_identity
-                    request.state.role = PLATFORM_ADMIN_ROLE
+                    # X-Provisa-Role is not consulted: the break-glass account holds exactly one
+                    # role per plane, and the acting role is the data-plane one either way.
+                    request.state.role = ORG_ADMIN_ROLE
                     request.state.assignments = su_assignments
                     request.state.active_org_id = self._default_org_id
                     return None

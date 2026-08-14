@@ -41,7 +41,8 @@ def _system_tag_rows_sql() -> str:
             f"'{applies}' AS applies_to, TRUE AS is_system, "
             f"{'TRUE' if tag.derived else 'FALSE'} AS derived, "
             f"'{tag.reason_policy}' AS reason_policy, "
-            f"'{tag.expires_policy}' AS expires_policy, NULL AS tenant_id"
+            f"'{tag.expires_policy}' AS expires_policy, "
+            f"'{tag.param_policy}' AS param_policy, NULL AS tenant_id"  # REQ-1467
         )
     return "\n        UNION ALL\n        ".join(rows)
 
@@ -63,7 +64,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         {_system_tag_rows_sql()}
         UNION ALL
         SELECT id, description, CAST(applies_to AS TEXT) AS applies_to, is_system,
-               FALSE AS derived, reason_policy, expires_policy,
+               FALSE AS derived, reason_policy, expires_policy, param_policy,
                CAST(tenant_id AS TEXT) AS tenant_id
         FROM tags
     """,
@@ -88,7 +89,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
-        SELECT id, tag_id, object_type, source_id, table_id, column_name,
+        SELECT id, tag_id, base_tag_id, object_type, source_id, table_id, column_name,
                relationship_id, command_name, object_key, reason, expires_on, tenant_id
         FROM tag_assignments
     """,

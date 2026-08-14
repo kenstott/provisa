@@ -153,7 +153,8 @@ async def _execute_with_api(
     # Materialize every API-backed table into its the engine cache slot.
     cache_rewrites: dict[str, tuple] = {}  # physical table name → (CacheLocation, cache_tbl)
     for table_name, endpoint in api_endpoints_in_sql:
-        _response_cols = [c for c in endpoint.columns if c.param_type is None]
+        # param_only, not param_type — a param that shares a response field's name carries both.
+        _response_cols = [c for c in endpoint.columns if not c.param_only]
         if not _response_cols:
             from provisa.compiler.nf_extractor import drop_union_branches_for_table
 

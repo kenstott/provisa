@@ -46,6 +46,8 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "catalog objects, including the built-in system tags",
     "tag_assignments": "Every tag attached to a catalog object, with its justification and "
     "planned end date",
+    "tag_param_values": "The closed set of values a parameterized tag accepts — an assignment "
+    "naming a value outside this set is refused",
     "tag_expiry": "Tag assignments carrying a planned end date, with expiring/expired state "
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
@@ -223,11 +225,20 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "assigned by a steward — a derived tag is read-only",
         "reason_policy": "Whether an assignment must carry a justification",
         "expires_policy": "Whether an assignment must carry a planned end date",
+        "param_policy": "Whether assignments carry a parameter, attached as 'tag:value' — "
+        "'entity:customer' names the entity type the column's values are",
+        "tenant_id": _TENANT,
+    },
+    "tag_param_values": {
+        "tag_id": "Parameterized tag the value belongs to",
+        "value": "A permitted parameter value, e.g. customer for the entity tag",
+        "description": "What the value means, shown to the steward choosing it",
         "tenant_id": _TENANT,
     },
     "tag_assignments": {
         "id": "Assignment identifier",
-        "tag_id": "Tag attached",
+        "tag_id": "Tag attached, with its parameter when it has one (e.g. entity:customer)",
+        "base_tag_id": "Tag attached, parameter stripped — the registry id",
         "object_type": "Kind of object tagged (table, column, relationship, command)",
         "source_id": "Source of the tagged object",
         "table_id": "Tagged table, or the table owning the tagged column",

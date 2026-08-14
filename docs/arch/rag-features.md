@@ -13,11 +13,18 @@ knobs, nothing a user has to learn twice.
 
 | Input | Where the user sets it | What it produces in chonk |
 | --- | --- | --- |
-| `entity` column tag | Tag registry (REQ-1414) | `NerPipeline.add_from_db` vocabulary query |
+| `entity:{type}` column tag | Tag registry (REQ-1414, REQ-1467) | one `NerPipeline.add_from_db` vocabulary query per entity type |
 | `natural_language` column tag | Tag registry (REQ-1414) | `loader.load_from_db` per-row documents |
 | Document folder URN | Sources page, `kind = documents` | a crawled source in the namespace build |
 | Store / loader / index / interval | Admin tab | `ChonkConfig.store`, `.loader`, `.index`, refresher interval |
 | Embedding model | Existing `/admin/ai-models` tab | `EmbedConfig.model` |
+
+The entity types themselves are not a separate surface: they are the value list
+the `entity` tag carries in the tag registry, editable on the Tags tab even
+though `entity` is a system tag with no row of its own (REQ-1467). The list is
+closed, so a steward picks a type rather than typing one — a misspelt
+`entity:custmoer` would reach chonk as a real type and produce a graph whose
+customers are silently split in two.
 
 `ChonkConfig.sources` and `ChonkConfig.namespaces` are **derived and read-only** —
 they are computed from the registered document URNs and the org's domains. The
@@ -72,10 +79,22 @@ field on the Admin tab.
 
 The column tag *is* the registration. Nothing extra is entered anywhere.
 
-**`entity` tag** → an entity-vocabulary query. Single column, no primary key,
-`SELECT DISTINCT`. Fed to `NerPipeline.add_from_db`, which accumulates into
-`self._data_terms` in memory (`chonk/ner/_schema_vocab.py:406-409`) and never
-persists. Only *matched* entities are written
+**`entity:{type}` tag** → one entity-vocabulary query *per entity type*. Single
+column, no primary key, `SELECT DISTINCT`. The tag carries its parameter
+(REQ-1467): `entity:customer` on `CUSTOMER.NAME` and `entity:employee` on
+`SALES_REP.NAME` are two types, and the columns of each type group into one
+query. That grouping is what `add_from_db` takes — its `queries` argument is a
+`dict[entity_type, sql]` (`chonk/ner/_schema_vocab.py:412-453`), so the loader
+passes `{"customer": …, "employee": …}` and chonk labels every match with the
+type the query came from. The types are the values the maintainer holds on the
+`entity` tag; the ids chonk mints are `{type}:{slug}`, which is why a customer
+named Mercury and an employee named Mercury stay distinct entities. Without the
+parameter every value would arrive under the default type `term` and the graph
+would merge them.
+
+The query results accumulate into `self._data_terms` in memory
+(`chonk/ner/_schema_vocab.py:406-409`) and never
+persist. Only *matched* entities are written
 (`chonk/ner/_build.py:206-246`), and a match requires the text to already be in
 that namespace — so the vocabulary itself discloses nothing. It is rebuilt live
 at every namespace build.

@@ -309,6 +309,7 @@ def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
                 "filterable": False,
                 "param_type": "path",
                 "param_name": p["name"],
+                "param_only": True,
             }
         )
     for p in match.query_params:
@@ -326,6 +327,7 @@ def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
                     "filterable": False,
                     "param_type": "query",
                     "param_name": p["name"],
+                    "param_only": True,
                 }
             )
     return api_columns, resp_col_names
@@ -672,10 +674,12 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # 6.6 Tags (REQ-1373/REQ-1377): registry rows then assignments — tables and relationships
     # must exist first so assignment FKs resolve. System tags are code-defined intrinsics
     # (models.SYSTEM_TAGS) and never stored, so a config naming one upserts nothing.
-    from provisa.core.models import SYSTEM_TAG_IDS
+    from provisa.core.models import SYSTEM_TAG_IDS, base_tag_id
 
     for tg in config.tags:
-        if tg.id in SYSTEM_TAG_IDS:
+        # base id: a config naming "entity:customer" still names the code-defined `entity`
+        # tag, and storing it would shadow the intrinsic with a user row (REQ-1467).
+        if base_tag_id(tg.id) in SYSTEM_TAG_IDS:
             continue
         await tag_repo.upsert(conn, tg)
     for ta in config.tag_assignments:
