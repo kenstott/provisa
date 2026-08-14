@@ -15173,3 +15173,17 @@ A regional standby of the SHARED LANE is ASYMMETRIC: the control plane and its d
 **Code:** `pricing_model.py`, `terraform/gcp-saas/main.tf`
 
 **Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1461 · Federation Engine {#REQ-1461}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+The cold-shard wake is reconciled with the executor's retry budget by ORDERING, not by widening the budget. A node provision is roughly 90-120s (k8s_provisioner._await_operation, bounded by PROVISA_ENGINE_NODE_TIMEOUT=420) while a statement's retry budget is 30s (_retry_budget/PROVISA_RETRY_BUDGET_SECS), so a query that discovered an absent shard from inside its retry loop could never wait the wake out -- it would exhaust the budget and fail on a shard that was seconds from ready. The wake therefore runs BEFORE the terminal call, at the top of _execute_plan and ahead of _run_plan_terminal, so the wait for capacity is not spent from the retry budget at all and the budget keeps its intended meaning: transient failures of a shard that is already up. Raising PROVISA_RETRY_BUDGET_SECS to cover a cold start is explicitly REJECTED -- it would make every genuinely failing query on a warm shard hang for minutes. Because _execute_plan is the one terminal seam every surface routes through ([REQ-1386](#REQ-1386)), no protocol server carries a wake of its own.
+
+**Use case:** A query that arrives at a shard whose node pool is at zero waits out the node provision and then executes, instead of failing after 30 seconds against an engine that is still coming up.
+
+**Code:** `provisa/pgwire/_pipeline.py`, `provisa/federation/engine_wake.py`
+
+**Tests:** —
