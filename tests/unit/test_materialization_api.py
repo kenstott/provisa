@@ -71,6 +71,7 @@ class TestLookupGqlRemoteTable:
         state = SimpleNamespace(graphql_remote_sources={"gh": reg})
         found_reg, found_tbl = _lookup_gql_remote_table(state, "pets")
         assert found_reg is reg
+        assert found_tbl is not None
         assert found_tbl["sql_name"] == "pets"
 
     def test_no_match(self):
@@ -633,6 +634,7 @@ class TestMatApiEpTable:
                 nf_args={"petId": "1"},
             )
         assert values_cte_entries["pets"].rows == [{"id": 1}]
+        assert m_handle.await_args is not None
         assert m_handle.await_args.args[1] == {"petId": "1"}
 
     async def test_rest_already_cached_returns_without_storing(self):
