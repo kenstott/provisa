@@ -128,8 +128,12 @@ _build_compose_files() {
     # The control plane is the same shape for a different reason: no local postgres
     # (Cloud SQL) and no local trino (every engine is a pod on the GKE cluster), so it
     # also gets a standalone base rather than core+app.
+    # --project-directory: a standalone base lives in PROVISA_HOME, so compose would
+    # otherwise resolve every relative bind mount — and the project name — against
+    # that directory instead of the compose dir the extensions were written for
+    # (./observability/prometheus.yml and friends live under PROJECT_DIR).
     if [ "$ROLE_CFG" = "control-plane" ] && [ -f "${PROVISA_HOME}/compose-control-plane.yml" ]; then
-        local files="-f ${PROVISA_HOME}/compose-control-plane.yml"
+        local files="--project-directory ${PROJECT_DIR} -f ${PROVISA_HOME}/compose-control-plane.yml"
         local ext_dir="${PROVISA_HOME}/extensions"
         if [ -d "$ext_dir" ]; then
             for ext_compose in "${ext_dir}"/*/docker-compose.*.yml; do
@@ -140,7 +144,7 @@ _build_compose_files() {
         return
     fi
     if [ "$ROLE_CFG" = "secondary" ] && [ -f "${PROVISA_HOME}/compose-secondary.yml" ]; then
-        local files="-f ${PROVISA_HOME}/compose-secondary.yml"
+        local files="--project-directory ${PROJECT_DIR} -f ${PROVISA_HOME}/compose-secondary.yml"
         local ext_dir="${PROVISA_HOME}/extensions"
         if [ -d "$ext_dir" ]; then
             for ext_compose in "${ext_dir}"/*/docker-compose.*.yml; do
@@ -463,8 +467,16 @@ cmd_start() {
         $(get_compose) $COMPOSE_FILES down -v >/dev/null 2>&1 || true
     fi
 
+    # A failed `up` used to be discarded, so a compose error (an unresolvable
+    # required variable, a service with no image) surfaced only as the generic
+    # "some services may still be starting" after the health timeout, with the
+    # actual message gone. Keep stdout quiet, keep stderr, and stop here.
+    local up_err
     # shellcheck disable=SC2086
-    $(get_compose) $COMPOSE_FILES up -d $scale_arg >/dev/null 2>&1 || true
+    if ! up_err="$($(get_compose) $COMPOSE_FILES up -d $scale_arg 2>&1 >/dev/null)"; then
+        printf "${RED}[provisa]${NC} Failed to start services:\n%s\n" "$up_err" >&2
+        exit 1
+    fi
 
     if wait_for_healthy 120; then
         printf "\n${GREEN}${BOLD}Provisa is running.${NC}\n"

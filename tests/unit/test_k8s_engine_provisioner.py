@@ -168,6 +168,26 @@ def test_cpu_is_bounded(configured):
     assert container["resources"]["limits"]["memory"] == "24Gi"
 
 
+def test_query_memory_fits_under_the_heap_headroom(configured):
+    """Trino refuses to start when max query memory per node plus its 30% heap headroom exceeds
+    the heap, and the heap is only 70% of the pod limit (-XX:MaxRAMPercentage=70). Budgeting 0.6 of
+    the POD limit shipped a 24 GiB shard asking 14 GB against a 16.8 GiB heap, and every wake
+    crash-looped with "Invalid memory configuration"."""
+    config = prov._config_manifest("shared_1", None)["data"]["config.properties"]
+    per_node = int(
+        next(
+            line.split("=", 1)[1] for line in config.splitlines() if line.startswith("query.max-memory-per-node=")
+        ).removesuffix("GB")
+    )
+    pod_gib = int(
+        prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]["containers"][0][
+            "resources"
+        ]["limits"]["memory"].removesuffix("Gi")
+    )
+    heap = pod_gib * 0.7
+    assert per_node + heap * 0.3 <= heap
+
+
 def test_a_shard_can_schedule_its_own_splits(configured):
     """A shard is a single pod. With ``include-coordinator=false`` there is no node in the cluster
     willing to take a split and every query queues forever — the setting that was a co-tenancy

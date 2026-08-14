@@ -106,9 +106,16 @@ variable "shared_shard_machine_type" {
   description = <<-EOT
     Machine type backing the shared (Starter) Trino shard. Every Starter org runs
     on this shard, so memory is the binding dimension, not core count.
+
+    e2-highmem-8 (8 vCPU / 64 GiB), not the n2 of the same shape: every n2 and n2d
+    highmem size in us-central1-a returned ZONE_RESOURCE_POOL_EXHAUSTED, so a wake
+    scaled the pool up and the autoscaler reported "GCE out of resources" while the
+    pod stayed Pending. Same memory, lower price, and it is the family with capacity
+    in this zone. A shard is one pod that both coordinates and executes, so a scale-up
+    that cannot land is a lane outage — machine family follows availability here.
   EOT
   type        = string
-  default     = "n2-highmem-8"
+  default     = "e2-highmem-8"
 }
 
 variable "shared_shard_max_nodes" {

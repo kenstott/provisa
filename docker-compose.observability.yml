@@ -95,13 +95,11 @@ services:
       - prometheus
       - tempo
 
-  trino:
-    environment:
-      JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
-
-  trino-worker:
-    environment:
-      JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
+# trino/trino-worker carry JAVA_TOOL_OPTIONS in docker-compose.core.yml, where the
+# services are defined. Repeating them here made this file unmergeable anywhere core
+# is absent: the control-plane node runs no local Trino (every engine is a pod on the
+# GKE cluster, REQ-1451), so compose rejected the whole project with "service trino
+# has neither an image nor a build context".
 
 volumes:
   prometheus_data:

@@ -43,6 +43,11 @@ COPY config/capabilities.yaml config/pg_extension_catalog.yaml config/custom_con
      config/provisa-install.yaml config/provisa-install-base.yaml ./config/
 COPY config/pgbouncer/ ./config/pgbouncer/
 COPY demo/files/pet_store.sqlite demo/files/inquiries.sqlite ./config/demo/files/
+# The shared lane's queue policy. k8s_provisioner.shared_resource_groups() reads this exact
+# file and writes it into the shard's ConfigMap (REQ-1450), so the control-plane image needs
+# it even though this node runs no Trino of its own; without it the boot wake dies with
+# FileNotFoundError before the app finishes starting.
+COPY trino/etc/resource-groups.json ./trino/etc/resource-groups.json
 
 EXPOSE 8000 3000
 

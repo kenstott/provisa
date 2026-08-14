@@ -844,7 +844,11 @@ services:
   # the engine it is supposed to carry.
   zaychik:
     restart: unless-stopped
-    image: zaychik:latest
+    # The tarball tag, not core's build tag: this base is standalone, so
+    # docker-compose.airgap.yml — which is what rewrites zaychik:latest to the
+    # loaded image elsewhere — is never merged, and compose would try to pull
+    # zaychik:latest from Docker Hub.
+    image: provisa/zaychik:local
     environment:
       TF_TRINO_HOST: "\${TRINO_HOST:?the shared shard's hostname}"
       TF_TRINO_PORT: "\${TRINO_PORT:-8080}"

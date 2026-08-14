@@ -124,13 +124,15 @@ resource "google_container_node_pool" "shared_1" {
       "provisa.dev/shard" = "shared_1"
     })
 
-    # Nothing but the shard's own pods lands here. Without the taint, any workload
-    # tolerating a general pool would land on a highmem node sized for Trino.
-    taint {
-      key    = "provisa.dev/shard"
-      value  = "shared_1"
-      effect = "NO_SCHEDULE"
-    }
+    # No taint. The pod's nodeSelector on provisa.dev/shard is what places a shard,
+    # and it is sufficient: every pool in this cluster is a shard pool, so there is
+    # no general workload to keep off a highmem node. A NO_SCHEDULE taint here left
+    # every kube-system *Deployment* — kube-dns, konnectivity-agent, metrics-server,
+    # event-exporter — Pending forever, because DaemonSets tolerate arbitrary taints
+    # and Deployments do not. With konnectivity down, even `kubectl logs` against a
+    # crash-looping shard returned "No agent available", so the taint took out the
+    # one tool for diagnosing the pod it was protecting. Node pools floor at zero, so
+    # the addons are Pending only while the cluster is genuinely empty.
 
     tags = ["provisa-saas-engine"]
 
@@ -229,10 +231,18 @@ resource "kubernetes_namespace" "engines" {
   }
 }
 
-# GKE presents an IAM service account to Kubernetes RBAC as a User whose name is
-# the account's email, so that — not a ServiceAccount subject — is what binds.
+# GKE presents an IAM service account to Kubernetes RBAC as a User — not a
+# ServiceAccount subject — but which name it presents depends on how the token was
+# minted. A token from the VM's metadata server carries the account's numeric
+# unique ID, and the API server reported exactly that: `User "106253682883156708989"
+# cannot list resource "nodes"`. Tokens minted from the email (gcloud, terraform)
+# present the email. Bind both names: either is the same identity, and binding one
+# alone leaves the other unauthorized.
 locals {
-  control_plane_rbac_user = google_service_account.provisa.email
+  control_plane_rbac_users = [
+    google_service_account.provisa.email,
+    google_service_account.provisa.unique_id,
+  ]
 }
 
 resource "kubernetes_role" "engine_operator" {
@@ -275,10 +285,13 @@ resource "kubernetes_role_binding" "engine_operator" {
     name      = kubernetes_role.engine_operator.metadata[0].name
   }
 
-  subject {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "User"
-    name      = local.control_plane_rbac_user
+  dynamic "subject" {
+    for_each = local.control_plane_rbac_users
+    content {
+      api_group = "rbac.authorization.k8s.io"
+      kind      = "User"
+      name      = subject.value
+    }
   }
 }
 
@@ -309,10 +322,13 @@ resource "kubernetes_cluster_role_binding" "engine_nodes" {
     name      = kubernetes_cluster_role.engine_nodes.metadata[0].name
   }
 
-  subject {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "User"
-    name      = local.control_plane_rbac_user
+  dynamic "subject" {
+    for_each = local.control_plane_rbac_users
+    content {
+      api_group = "rbac.authorization.k8s.io"
+      kind      = "User"
+      name      = subject.value
+    }
   }
 }
 

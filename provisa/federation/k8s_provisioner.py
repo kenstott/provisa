@@ -317,12 +317,20 @@ def _config_data(resource_groups: str | None) -> dict[str, str]:
     otlp_endpoint = os.environ.get("PROVISA_ENGINE_OTLP_ENDPOINT", "").strip()
     config = _CONFIG_PROPERTIES.format(
         port=port,
-        # Trino rejects a max-memory above the heap, and the JVM takes 70% of the pod limit. A
-        # shard is one pod, so the cluster bound and the per-node bound are the same bound;
+        # A shard is one pod, so the cluster bound and the per-node bound are the same bound;
         # splitting them 60/30 would leave a query rejected for exceeding a limit no other node
         # is there to absorb.
-        query_max_memory=f"{max(1, int(heap * 0.6))}GB",
-        query_max_memory_per_node=f"{max(1, int(heap * 0.6))}GB",
+        #
+        # The budget is a fraction of the JVM HEAP, not of the pod limit. -XX:MaxRAMPercentage=70
+        # above gives the heap 70% of the limit, and Trino reserves a further 30% of the heap as
+        # memory.heap-headroom-per-node, so the ceiling a query may claim is 0.7 × 0.7 = 0.49 of
+        # the pod's memory. Taking 0.6 of the pod limit blew straight through it: a 24 GiB pod
+        # asked for 14 GB per node against a 16.8 GiB heap with 5.0 GiB of headroom, and Trino
+        # refused to start — "The sum of max query memory per node and heap headroom cannot be
+        # larger than the available heap memory". 0.7 heap × 0.5 leaves the default headroom
+        # intact with room to spare.
+        query_max_memory=f"{max(1, int(heap * 0.7 * 0.5))}GB",
+        query_max_memory_per_node=f"{max(1, int(heap * 0.7 * 0.5))}GB",
     )
     jvm = _JVM_CONFIG
     if otlp_endpoint:
