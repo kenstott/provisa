@@ -24,7 +24,9 @@ SPA deep-link refreshes (e.g. /admin/overview) resolve correctly.
 # Requirements: REQ-057, REQ-058, REQ-559
 
 import json
+import logging
 import os
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -57,6 +59,13 @@ API_BASE_URL = os.environ.get("PROVISA_API_URL", "http://provisa:8000")
 # trust boundary (REQ-1226); verify is disabled only for this proxy leg — the
 # browser->UI leg is unaffected.
 _API_VERIFY = not API_BASE_URL.startswith("https://")
+
+# Upstream read budget for the proxy leg. A request that outlives it is reported as a 504
+# naming the method, path and elapsed seconds, so the offending endpoint is identifiable
+# from the log alone — the bare httpx.ReadTimeout traceback carries no request path.
+_PROXY_TIMEOUT_S = float(os.environ.get("PROVISA_UI_PROXY_TIMEOUT", "120"))
+
+_log = logging.getLogger("provisa.ui_server")
 
 # Paths that are always served from static files (never proxied).
 # /docs-site/ holds the bundled MkDocs Material site (served same-origin so the
@@ -189,7 +198,8 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
         k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
     }
 
-    async with httpx.AsyncClient(timeout=120, verify=_API_VERIFY) as client:
+    started = time.monotonic()
+    async with httpx.AsyncClient(timeout=_PROXY_TIMEOUT_S, verify=_API_VERIFY) as client:
         try:
             upstream = await client.request(
                 method=request.method,
@@ -199,6 +209,27 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
             )
         except httpx.ConnectError:
             return HTMLResponse("API unavailable", status_code=502)
+        except httpx.TimeoutException as exc:
+            # The upstream accepted the connection but did not finish in the budget. Left
+            # unhandled this escapes as an ASGI 500 whose traceback names only httpx frames,
+            # so the slow endpoint is unidentifiable. Log the request line and hand the
+            # browser a 504 that names it too.
+            elapsed = time.monotonic() - started
+            _log.error(
+                "proxy timeout after %.1fs (%s): %s %s",
+                elapsed,
+                type(exc).__name__,
+                request.method,
+                target,
+            )
+            return Response(
+                content=(
+                    f"Upstream API did not respond within {elapsed:.0f}s "
+                    f"({type(exc).__name__}): {request.method} /{full_path}"
+                ),
+                status_code=504,
+                media_type="text/plain",
+            )
 
     # The API is reachable to the browser only through this proxy's own origin.
     # FastAPI's trailing-slash and other redirects emit an absolute Location on the

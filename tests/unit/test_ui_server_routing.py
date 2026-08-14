@@ -75,3 +75,29 @@ def test_spa_shell_is_never_cached(tmp_path, monkeypatch):
         resp = client.get("/admin/ai-models", headers={"sec-fetch-dest": "document"})
     assert resp.status_code == 200
     assert resp.headers["cache-control"] == "no-store"
+
+
+def test_upstream_timeout_returns_504_naming_the_path(tmp_path, monkeypatch, caplog):
+    # A slow upstream previously escaped as httpx.ReadTimeout -> ASGI 500, whose traceback
+    # contains only httpx frames: the slow endpoint could not be identified from the log.
+    import httpx
+    from fastapi.testclient import TestClient
+
+    import provisa.ui_server as ui_server
+
+    (tmp_path / "index.html").write_text("<!doctype html><title>provisa</title>")
+    monkeypatch.setattr(ui_server, "STATIC_DIR", tmp_path)
+
+    async def _timeout(self, **kwargs):
+        raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", _timeout)
+
+    with TestClient(ui_server.app) as client:
+        resp = client.get("/admin/discovery/run", headers={"sec-fetch-dest": "empty"})
+
+    assert resp.status_code == 504
+    assert "GET /admin/discovery/run" in resp.text
+    assert "ReadTimeout" in resp.text
+    logged = [r.getMessage() for r in caplog.records]
+    assert any("proxy timeout" in m and "/admin/discovery/run" in m for m in logged), logged
