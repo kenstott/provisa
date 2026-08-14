@@ -2,7 +2,8 @@
 # Multi-tenant, on-demand SaaS deployment of Provisa. Distinct from the enterprise
 # module (terraform/gcp), which is a fixed single-tenant N-node cluster with postgres
 # in the coordinator's compose stack. This module offloads the control plane to
-# Cloud SQL and autoscales Trino workers in a Spot MIG. See
+# Cloud SQL and runs every federation engine on a GKE cluster (gke.tf) instead of on
+# VMs -- there is no Trino on the control-plane VM and no worker MIG. See
 # docs/deployment/gcp-saas-infra-plan.md. Multitenancy is forced on (not a variable).
 
 variable "project" {
@@ -17,7 +18,7 @@ variable "region" {
 }
 
 variable "zone" {
-  description = "GCP zone for the coordinator VM"
+  description = "GCP zone for the control-plane VM and the (zonal) engine cluster"
   type        = string
   default     = "us-central1-a"
 }
@@ -25,8 +26,8 @@ variable "zone" {
 variable "provisa_version" {
   description = <<-EOT
     Provisa release version (e.g. v0.1.0-alpha.289). Must match a published GitHub
-    release. The coordinator and each worker curl the matching AppImage, core-images
-    zip and trino-plugins tarball directly from that release at boot.
+    release. The control-plane VM curls the matching AppImage, core-images zip and
+    trino-plugins tarball directly from that release at boot.
   EOT
   type        = string
 }
@@ -38,7 +39,7 @@ variable "github_repo" {
 }
 
 variable "disk_gb" {
-  description = "Boot disk size in GB per VM (coordinator and workers)."
+  description = "Boot disk size in GB for the control-plane VM."
   type        = number
   default     = 100
 }
@@ -47,6 +48,92 @@ variable "network_cidr" {
   description = "CIDR block for the SaaS subnet."
   type        = string
   default     = "10.10.0.0/16"
+}
+
+# ── Engine cluster (REQ-1447) ───────────────────────────────────────────────────
+# The pod and service ranges are ALIAS ranges on the node subnet, not a separate
+# network. Pods therefore hold routable VPC addresses, which is what lets the
+# control-plane VM dial a coordinator Service by name and leaves
+# PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE the only thing that changes.
+variable "pods_cidr" {
+  description = "Secondary range on the node subnet for GKE pod IPs."
+  type        = string
+  default     = "10.20.0.0/14"
+}
+
+variable "services_cidr" {
+  description = "Secondary range on the node subnet for GKE service (ClusterIP) addresses."
+  type        = string
+  default     = "10.24.0.0/20"
+}
+
+variable "engine_release_channel" {
+  description = "GKE release channel for the engine cluster."
+  type        = string
+  default     = "REGULAR"
+
+  validation {
+    condition     = contains(["RAPID", "REGULAR", "STABLE"], var.engine_release_channel)
+    error_message = "engine_release_channel must be RAPID, REGULAR or STABLE."
+  }
+}
+
+variable "engine_cluster_dns_domain" {
+  description = <<-EOT
+    DNS domain the cluster's Services are published under, VPC-wide. The control
+    plane is a VM, not a pod, so it cannot resolve the in-cluster default
+    (svc.cluster.local) at all; GKE's Cloud DNS in VPC_SCOPE publishes Service
+    records into the VPC instead, and that requires a domain unique to this
+    cluster. A shard is then dialed at
+    trino-shared-1.provisa-engines.svc.<this domain> with no load balancer and so
+    no forwarding-rule hours on the zero-customer floor (REQ-1451, REQ-1453).
+  EOT
+  type        = string
+  default     = "provisa-saas-engine.internal"
+}
+
+variable "engine_image" {
+  description = <<-EOT
+    Trino image every engine pod runs (docker/trino-engine.Dockerfile: Trino plus
+    the Provisa connector plugins and the OpenTelemetry agent). One image serves
+    both lanes — shared and Pro differ by placement and size, never by image
+    (REQ-1447).
+  EOT
+  type        = string
+}
+
+variable "shared_shard_machine_type" {
+  description = <<-EOT
+    Machine type backing the shared (Starter) Trino shard. Every Starter org runs
+    on this shard, so memory is the binding dimension, not core count.
+  EOT
+  type        = string
+  default     = "n2-highmem-8"
+}
+
+variable "shared_shard_max_nodes" {
+  description = <<-EOT
+    Ceiling on the shared shard's node pool. The floor is fixed at zero and is not
+    configurable: an empty pool bills nothing, and holding the zero-customer cost
+    at ~$19/mo depends on it (REQ-1448).
+  EOT
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.shared_shard_max_nodes >= 1
+    error_message = "shared_shard_max_nodes must be >= 1."
+  }
+}
+
+variable "shared_shard_use_spot" {
+  description = <<-EOT
+    Run the shared shard on Spot nodes. Off by default: a preemption kills every
+    Starter org's in-flight query at once, which is a different blast radius than
+    preempting one org's dedicated workers.
+  EOT
+  type        = bool
+  default     = false
 }
 
 # ── Coordinator (planner + TCP listeners + stateful singletons) ─────────────────
@@ -101,55 +188,11 @@ variable "front_door_status_port" {
   default     = 9443
 }
 
-# ── Data plane (autoscaled Trino workers) ───────────────────────────────────────
-variable "worker_machine_type" {
-  description = "Machine type for Trino worker VMs (the autoscaled MIG). Memory-optimized recommended."
-  type        = string
-  default     = "n2-highmem-8"
-}
-
-variable "worker_min_nodes" {
-  description = <<-EOT
-    Minimum worker count. 0 = pure scale-to-zero (customer eats first-query cold
-    start; cheapest idle). ≥1 = a warm worker pool (paid always-warm upsell).
-  EOT
-  type        = number
-  default     = 0
-  validation {
-    condition     = var.worker_min_nodes >= 0
-    error_message = "worker_min_nodes must be >= 0."
-  }
-}
-
-variable "worker_max_nodes" {
-  description = "Maximum worker count the autoscaler may scale the MIG up to."
-  type        = number
-  default     = 4
-  validation {
-    condition     = var.worker_max_nodes >= 1
-    error_message = "worker_max_nodes must be >= 1."
-  }
-}
-
-variable "worker_use_spot" {
-  description = <<-EOT
-    Run workers as Spot (preemptible) VMs — the metered, scale-to-zero data plane.
-    Set false only for a guaranteed-warm worker SLA (an always-on paid add-on cannot
-    ride a preemptible instance).
-  EOT
-  type        = bool
-  default     = true
-}
-
-variable "autoscale_cpu_target" {
-  description = "Target average CPU utilization (0.0–1.0) that drives worker MIG autoscaling."
-  type        = number
-  default     = 0.6
-  validation {
-    condition     = var.autoscale_cpu_target > 0 && var.autoscale_cpu_target <= 1
-    error_message = "autoscale_cpu_target must be in (0, 1]."
-  }
-}
+# ── Data plane ──────────────────────────────────────────────────────────────────
+# There is no worker MIG. Query execution is the cluster's (REQ-1447): a shard is a
+# pod on its own node pool, and capacity is added by shards and by nodes in a pool,
+# never by VMs joining the control plane's Trino. The autoscaled MIG, its instance
+# template and its regional autoscaler are gone with the GCE engine tier.
 
 # ── Cloud SQL (managed control plane) ───────────────────────────────────────────
 variable "cloudsql_tier" {

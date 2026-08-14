@@ -36,7 +36,10 @@ fi
 PROVISA_VERSION="${PROVISA_VERSION:-$(cat "${APPDIR}/VERSION" 2>/dev/null || true)}"
 
 # Globals set during setup
-ROLE=""          # "primary" | "secondary"
+# control-plane is the hosted SaaS role (REQ-1451): the app tier plus redis/minio,
+# with the control-plane DB on Cloud SQL and every query engine a pod on the GKE
+# cluster. It is set by terraform, never offered by the interactive prompt.
+ROLE=""          # "primary" | "secondary" | "control-plane"
 PRIMARY_IP=""    # set when ROLE=secondary
 TRINO_WORKERS=0
 
@@ -69,6 +72,10 @@ done
 # ── Role selection ────────────────────────────────────────────────────────────
 ask_role() {
   if [ -n "$CLI_ROLE" ]; then
+    case "$CLI_ROLE" in
+      primary|secondary|control-plane) ;;
+      *) err "Unknown --role ${CLI_ROLE} (primary|secondary|control-plane)."; exit 1 ;;
+    esac
     ROLE="$CLI_ROLE"
     ok "Role: ${ROLE} (from --role flag)"
     return
@@ -272,29 +279,40 @@ load_images() {
     # loop below already loads from.
     local trino="provisa-trino-image-amd64-${PROVISA_VERSION}.tar.gz"
     local trino_src=""
-    for cand in "${appdir_parent}/${trino}" "${HOME}/Downloads/${trino}" "${PWD}/${trino}"; do
-      [ -f "$cand" ] && { trino_src="$cand"; break; }
-    done
-    if [ -z "$trino_src" ] && [ -n "$PROVISA_VERSION" ]; then
-      info "Downloading Trino engine image (${trino})..."
-      if curl -fL --retry 3 --retry-delay 5 -o "${PROVISA_HOME}/${trino}" \
-           "https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/${trino}"; then
-        trino_src="${PROVISA_HOME}/${trino}"
+    # The control plane runs no Trino at all — every engine is a pod on the GKE
+    # cluster (REQ-1451). Downloading a 1.5 GiB engine image it will never start
+    # would also make a missing asset fatal for a node that does not need it.
+    if [ "$ROLE" = "control-plane" ]; then
+      trino=""
+    fi
+    if [ -n "$trino" ]; then
+      for cand in "${appdir_parent}/${trino}" "${HOME}/Downloads/${trino}" "${PWD}/${trino}"; do
+        [ -f "$cand" ] && { trino_src="$cand"; break; }
+      done
+      if [ -z "$trino_src" ] && [ -n "$PROVISA_VERSION" ]; then
+        info "Downloading Trino engine image (${trino})..."
+        if curl -fL --retry 3 --retry-delay 5 -o "${PROVISA_HOME}/${trino}" \
+             "https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/${trino}"; then
+          trino_src="${PROVISA_HOME}/${trino}"
+        fi
       fi
+      if [ -z "$trino_src" ]; then
+        err "Trino engine image not found. Place ${trino} beside the AppImage (airgap) or connect to the network, then re-run."
+        exit 1
+      fi
+      tar -xzf "$trino_src" -C "$staged"
+      [ "$trino_src" = "${PROVISA_HOME}/${trino}" ] && rm -f "$trino_src"
     fi
-    if [ -z "$trino_src" ]; then
-      err "Trino engine image not found. Place ${trino} beside the AppImage (airgap) or connect to the network, then re-run."
-      exit 1
-    fi
-    tar -xzf "$trino_src" -C "$staged"
-    [ "$trino_src" = "${PROVISA_HOME}/${trino}" ] && rm -f "$trino_src"
     printf '%s' "$PROVISA_VERSION" > "$marker"
     [ "$src" = "${PROVISA_HOME}/${zip}" ] && rm -f "$src"
   fi
 
-  # Secondary nodes skip database/store images — they don't run them.
+  # Secondary nodes skip database/store images — they don't run them. The control
+  # plane keeps redis/minio (it runs both) but never postgres — Cloud SQL holds the
+  # control plane — and never Trino, which is the cluster's (REQ-1451).
   local skip_pattern=""
   [ "$ROLE" = "secondary" ] && skip_pattern="postgres|pgbouncer|minio|redis"
+  [ "$ROLE" = "control-plane" ] && skip_pattern="postgres|pgbouncer|trino"
 
   local count=0
   for tar_file in "${staged}"/*.tar.gz; do
@@ -340,6 +358,12 @@ stage_compose() {
 # every mount resolves. Discovery mirrors load_images: local-first for airgap, else
 # download from the pinned release.
 load_trino_plugins() {
+  # The control plane runs no Trino; the connector plugins are baked into the engine
+  # image the cluster pulls (docker/trino-engine.Dockerfile), not mounted here.
+  if [ "$ROLE" = "control-plane" ]; then
+    ok "Control plane runs no Trino — plugins are baked into the engine image."
+    return
+  fi
   local dest="${COMPOSE_DIR}/trino/plugins"
   # Idempotent: the AppImage never ships this dir, so its presence means a prior run
   # already extracted the plugins.
@@ -672,6 +696,179 @@ YAML
   ok "Secondary base compose written: ${file}"
 }
 
+# ── Control-plane base compose (standalone) ───────────────────────────────────
+# The hosted SaaS role (REQ-1451). It runs the app tier plus the two stateful
+# singletons that stay on this VM (redis, minio) and the Flight proxy, and NOTHING
+# of the query engine: every coordinator is a pod on the GKE cluster, dialed by
+# name through the cluster's VPC-scoped Cloud DNS domain. The control-plane
+# database is Cloud SQL, reached over the PSA-peered VPC, so postgres and pgbouncer
+# are absent too.
+#
+# Standalone rather than an overlay for the same reason as the secondary: compose
+# unions depends_on rather than removing it, so app.yml's `trino: service_healthy`
+# would survive any overlay and hold the app down forever on a node that has no
+# trino service at all.
+write_control_plane_compose() {
+  local file="${PROVISA_HOME}/compose-control-plane.yml"
+  if [ "$ROLE" != "control-plane" ]; then
+    rm -f "$file" 2>/dev/null || true
+    return
+  fi
+  # Every ${...} below is escaped: these resolve at `provisa start` from the 600
+  # systemd env_file, not here. CONFIG_DB_* names Cloud SQL and TRINO_HOST names the
+  # shared shard; both are required (`:?`) rather than defaulted — a control plane
+  # that silently fell back to a local postgres or a local trino would come up
+  # healthy against the wrong data plane, which is the failure nothing catches.
+  cat > "$file" <<YAML
+# Auto-generated by first-launch.sh — control-plane node (REQ-1451).
+# Control plane (PostgreSQL) is Cloud SQL; every query engine is a pod on the GKE
+# engine cluster. This node runs the API, the UI, redis, minio and the Flight proxy.
+services:
+  provisa:
+    restart: unless-stopped
+    image: provisa/provisa:local
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key"]
+    ports:
+      - "8000:8000"
+      - "8815:8815"
+    volumes:
+      - ${CERT_DIR}:/app/certs:ro
+    environment:
+      PROVISA_ROLE: "control-plane"
+      PROVISA_TLS_CERT: "/app/certs/provisa.crt"
+      PROVISA_TLS_KEY: "/app/certs/provisa.key"
+      PROVISA_MCP_TLS: "1"
+      PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:?the SaaS control plane is multitenant}"
+      # Cloud SQL over the PSA-peered VPC.
+      PG_HOST: "\${CONFIG_DB_HOST:?Cloud SQL private IP}"
+      PG_PORT: "\${CONFIG_DB_PORT:-5432}"
+      PG_DATABASE: "\${CONFIG_DB_NAME:-provisa}"
+      PG_USER: "\${CONFIG_DB_USER:-provisa}"
+      PG_PASSWORD: "\${CONFIG_DB_PASSWORD:?Cloud SQL password}"
+      TENANT_DATABASE_URL: "postgresql+asyncpg://\${CONFIG_DB_USER:-provisa}:\${CONFIG_DB_PASSWORD}@\${CONFIG_DB_HOST}:\${CONFIG_DB_PORT:-5432}/\${CONFIG_DB_NAME:-provisa}"
+      PLATFORM_DATABASE_URL: "postgresql+asyncpg://\${CONFIG_DB_USER:-provisa}:\${CONFIG_DB_PASSWORD}@\${CONFIG_DB_HOST}:\${CONFIG_DB_PORT:-5432}/\${CONFIG_DB_NAME:-provisa}"
+      PROVISA_EXTERNAL_CONTROL_DB: "\${PROVISA_EXTERNAL_CONTROL_DB:-1}"
+      # The engine every Starter org queries: the shared shard's Service, published
+      # VPC-wide by the cluster's Cloud DNS.
+      PROVISA_ENGINE: "trino"
+      TRINO_HOST: "\${TRINO_HOST:?the shared shard's hostname}"
+      TRINO_PORT: "\${TRINO_PORT:-8080}"
+      # Where an isolated (Pro) engine is dialed, and — separately — what this
+      # process needs to CREATE one on the cluster (k8s_provisioner).
+      PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE: "\${PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE:-}"
+      PROVISA_ISOLATED_ENGINE_PORT: "\${PROVISA_ISOLATED_ENGINE_PORT:-8080}"
+      PROVISA_ENGINE_CLUSTER_PROJECT: "\${PROVISA_ENGINE_CLUSTER_PROJECT:-}"
+      PROVISA_ENGINE_CLUSTER_LOCATION: "\${PROVISA_ENGINE_CLUSTER_LOCATION:-}"
+      PROVISA_ENGINE_CLUSTER_NAME: "\${PROVISA_ENGINE_CLUSTER_NAME:-}"
+      PROVISA_ENGINE_CLUSTER_DNS_DOMAIN: "\${PROVISA_ENGINE_CLUSTER_DNS_DOMAIN:-}"
+      PROVISA_ENGINE_NAMESPACE: "\${PROVISA_ENGINE_NAMESPACE:-provisa-engines}"
+      PROVISA_ENGINE_IMAGE: "\${PROVISA_ENGINE_IMAGE:-}"
+      # Which shard TRINO_HOST names, so boot can wake it when its node pool is at zero.
+      PROVISA_ENGINE_SHARD: "\${PROVISA_ENGINE_SHARD:-}"
+      ZAYCHIK_HOST: zaychik
+      ZAYCHIK_PORT: 8480
+      FLIGHT_PORT: "8815"
+      REDIS_URL: "redis://redis:6379"
+      PROVISA_OTEL_S3_ENDPOINT: "http://minio:9000"
+      PROVISA_OTEL_S3_ACCESS_KEY: "minioadmin"
+      PROVISA_OTEL_S3_SECRET_KEY: "minioadmin"
+      PROVISA_OTEL_BUCKET: "\${PROVISA_OTEL_BUCKET:-provisa-otel}"
+      PROVISA_IDP: "\${PROVISA_IDP:-}"
+      FIREBASE_PROJECT_ID: "\${FIREBASE_PROJECT_ID:-}"
+      FIREBASE_SERVICE_ACCOUNT_KEY: "\${FIREBASE_SERVICE_ACCOUNT_KEY:-}"
+      PROVISA_MAIL_PROVIDER: "\${PROVISA_MAIL_PROVIDER:-}"
+      PROVISA_EMAIL_API_KEY: "\${PROVISA_EMAIL_API_KEY:-}"
+      PROVISA_MAIL_FROM: "\${PROVISA_MAIL_FROM:-}"
+      PROVISA_MAIL_BASE_URL: "\${PROVISA_MAIL_BASE_URL:-}"
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+  provisa-ui:
+    restart: unless-stopped
+    image: provisa/provisa:local
+    command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000", "--ssl-certfile", "/app/certs/provisa.crt", "--ssl-keyfile", "/app/certs/provisa.key"]
+    ports:
+      - "\${UI_PORT:-3000}:3000"
+    volumes:
+      - ${CERT_DIR}:/app/certs:ro
+    environment:
+      PROVISA_API_URL: "https://provisa:8000"
+      VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
+      VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
+      VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
+    depends_on:
+      - provisa
+  redis:
+    restart: unless-stopped
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  minio:
+    restart: unless-stopped
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/\${PROVISA_OTEL_BUCKET:-provisa-otel} &&
+        mc mb --ignore-existing local/provisa-results &&
+        mc mb --ignore-existing local/provisa-hive-s3
+      "
+  # The Arrow Flight SQL proxy fronts the engine, so it follows the engine to the
+  # cluster shard. No depends_on: the shard scales to zero when idle (REQ-1448), so
+  # gating this container on Trino's health would keep it down until a query wakes
+  # the engine it is supposed to carry.
+  zaychik:
+    restart: unless-stopped
+    image: zaychik:latest
+    environment:
+      TF_TRINO_HOST: "\${TRINO_HOST:?the shared shard's hostname}"
+      TF_TRINO_PORT: "\${TRINO_PORT:-8080}"
+      TF_TRINO_SSL: "false"
+      TF_FLIGHT_HOST: 0.0.0.0
+      TF_FLIGHT_PORT: 8480
+      TF_FLIGHT_SSL: "false"
+      TF_FLIGHT_AUTH_TYPE: trino
+      TF_FLIGHT_BATCH_SIZE: 10000
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/8480' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+      start_interval: 2s
+
+volumes:
+  redis_data:
+  minio_data:
+YAML
+  ok "Control-plane base compose written: ${file}"
+}
+
 # ── Ask hostname ──────────────────────────────────────────────────────────────
 ask_hostname() {
   local default
@@ -734,7 +931,12 @@ install_systemd() {
              PROVISA_ENGINE PROVISA_ENGINE_URL PROVISA_MATERIALIZE_URL \
              PROVISA_MAIL_PROVIDER PROVISA_EMAIL_API_KEY PROVISA_MAIL_FROM PROVISA_MAIL_BASE_URL \
              PROVISA_EXTERNAL_CONTROL_DB \
-             CONFIG_DB_HOST CONFIG_DB_PORT CONFIG_DB_NAME CONFIG_DB_USER CONFIG_DB_PASSWORD; do
+             CONFIG_DB_HOST CONFIG_DB_PORT CONFIG_DB_NAME CONFIG_DB_USER CONFIG_DB_PASSWORD \
+             PROVISA_ENGINE_CLUSTER_PROJECT PROVISA_ENGINE_CLUSTER_LOCATION \
+             PROVISA_ENGINE_CLUSTER_NAME PROVISA_ENGINE_CLUSTER_DNS_DOMAIN \
+             PROVISA_ENGINE_NAMESPACE PROVISA_ENGINE_IMAGE PROVISA_ENGINE_SHARD \
+             TRINO_HOST TRINO_PORT \
+             PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do
     if [ -n "${!var:-}" ]; then
       printf '%s=%s\n' "$var" "${!var}" >> "$env_file"
     fi
@@ -1017,6 +1219,36 @@ demo: ${demo_flag}
 dq_checker: ${DQ_CHECKER:-none}
 YAML
 
+  elif [ "$ROLE" = "control-plane" ]; then
+    cat > "${PROVISA_HOME}/config.yaml" <<YAML
+# Provisa configuration — control-plane node (hosted SaaS, REQ-1451)
+#
+# This node runs the API, the UI, Redis, MinIO and the Flight proxy. It does NOT
+# run PostgreSQL (Cloud SQL holds the control plane) and it does NOT run Trino:
+# every federation engine is a pod on the GKE engine cluster, dialed by Service
+# name through the cluster's VPC-scoped Cloud DNS domain. Engine addressing lives
+# in the systemd env file, not here — nothing in this file selects a shard.
+
+role: control-plane
+hostname: ${hostname}
+api_port: ${api_port}
+ui_port: ${ui_port}
+runtime: ${runtime}
+${img_src_line}
+docker_host: "unix://${DOCKER_SOCKET}"
+project_dir: "${COMPOSE_DIR}"
+# No local query engine: federation_workers is the count of Trino workers this node
+# starts, and it starts none.
+federation_workers: 0
+engine: trino
+engine_url: "${ENGINE_URL:-}"
+materialize_url: "${MATERIALIZE_URL:-}"
+obs_mode: ${OBS_MODE:-none}
+otlp_endpoint: "${OTLP_ENDPOINT:-}"
+demo: ${demo_flag}
+dq_checker: ${DQ_CHECKER:-none}
+YAML
+
   else
     cat > "${PROVISA_HOME}/config.yaml" <<YAML
 # Provisa configuration — secondary node
@@ -1132,8 +1364,8 @@ main() {
     # The native tier is single-node. A multi-node deploy (Terraform passes
     # --role secondary) only makes sense on the Trino/Docker tier, so fail loud
     # rather than silently degrading a secondary into a standalone primary.
-    if [ "$CLI_ROLE" = "secondary" ]; then
-      err "engine=${DEPLOY_ENGINE} runs the single-node native tier, which has no secondary role."
+    if [ "$CLI_ROLE" = "secondary" ] || [ "$CLI_ROLE" = "control-plane" ]; then
+      err "engine=${DEPLOY_ENGINE} runs the single-node native tier, which has no ${CLI_ROLE} role."
       err "For a multi-node cluster set PROVISA_ENGINE=trino (the Docker tier)."
       exit 1
     fi
@@ -1178,6 +1410,7 @@ main() {
   ensure_tls_certs
   write_node_overlay
   write_secondary_compose
+  write_control_plane_compose
   write_config
   install_cli
 
@@ -1197,6 +1430,10 @@ main() {
     printf "\n${GREEN}${BOLD}Provisa primary node is ready.${NC}\n"
     printf "Run: ${BOLD}provisa start${NC}\n"
     print_lb_guidance
+  elif [ "$ROLE" = "control-plane" ]; then
+    printf "\n${GREEN}${BOLD}Provisa control plane is ready.${NC}\n"
+    printf "Run: ${BOLD}provisa start${NC}\n\n"
+    printf "Control-plane database: Cloud SQL. Query engines: the GKE engine cluster.\n\n"
   else
     printf "\n${GREEN}${BOLD}Provisa secondary node is ready.${NC}\n"
     printf "Run: ${BOLD}provisa start${NC}\n\n"

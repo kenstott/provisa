@@ -1213,3 +1213,44 @@ jobs:
             gh release edit "$TAG" --draft=false --prerelease --latest=false
           fi
           echo "Published $TAG with all ${#required[@]} required installers."
+
+  # ── SaaS federation-engine image ─────────────────────────────────────────────
+
+  publish-engine-image:
+    name: Publish federation-engine image
+    runs-on: ubuntu-latest
+    # After publish-release, not in parallel with it: the Dockerfile curls the
+    # plugins tarball from the release's public download URL, and a draft's assets
+    # are not served there. Building earlier 404s.
+    needs:
+      - metadata
+      - publish-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR, not Artifact Registry: public packages are free to host and pull, so
+      # the engine image adds nothing to the zero-customer floor (REQ-1447).
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # amd64 only — every GKE engine node pool runs amd64 (terraform/gcp-saas/gke.tf).
+      - name: Build and push engine image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/trino-engine.Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            PROVISA_VERSION=${{ github.ref_name }}
+            GITHUB_REPO=${{ github.repository }}
+          tags: ghcr.io/${{ github.repository_owner }}/provisa-trino-engine:${{ github.ref_name }}

@@ -334,12 +334,16 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
     # per-org lock — REQ-1322 — rather than invalidating and letting the next request race.
     from provisa.api.app import _read_org_flags
 
-    seeded_demo = (await _read_org_flags(org_id)).seeded_demo
+    lane = await _read_org_flags(org_id)
     await state.org_registry.rebuild(
         org_id,
         lambda oid: build_org_runtime(
             oid,
-            include_demo=seeded_demo,
+            include_demo=lane.seeded_demo,
+            # REQ-1450: an org keeps its shard placement across a lane change — moving to the
+            # isolated or external lane does not release the shared shard row, and moving back has
+            # to land on the same one.
+            shard=lane.shard,
             isolated_engine=(mode == ISOLATED),
             external_engine=(host, port) if mode == EXTERNAL and host and port else None,
             engine_kind=kind if mode == EXTERNAL else None,

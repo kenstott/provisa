@@ -719,6 +719,14 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
+    # REQ-1448: the shard this org queries may have had its node released while idle. Waking it HERE
+    # — before the terminal, not inside the executor's retry loop — is what makes a cold start
+    # survivable: a node is ~90-120s to provision and the retry budget is 30s, so a query that
+    # discovers the absence at dispatch time could never wait it out. This is also the one seam every
+    # surface reaches, so no protocol server needs a wake of its own.
+    from provisa.federation.engine_wake import ensure_engine_awake
+
+    await ensure_engine_awake(state)
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.
     try:

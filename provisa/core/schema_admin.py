@@ -96,6 +96,12 @@ orgs = Table(
     # engine. Chosen at org creation (pre-billing surface: the onboarding create-org checkbox);
     # the org-runtime builder reads it to bind a dedicated EngineRuntime.
     Column("isolated_engine", Boolean, nullable=False, server_default=false()),
+    # REQ-1450: which shared shard a pooled-lane org queries. The shared lane is not one
+    # coordinator but a set of them ("shared_1", "shared_2", …), each a Deployment on its own node
+    # pool; the org row is what says which. Meaningless when isolated_engine is true — that org has
+    # a coordinator of its own and no shard to be placed on. server_default is the first shard, so
+    # an org that predates sharding is on it rather than on nothing (V1 re-runs create_all).
+    Column("shard", Text, nullable=False, server_default="shared_1"),
     # REQ-1412: an org may instead point its federation at a coordinator IT operates (bring your
     # own engine). Set means EXTERNAL: the org's runtime binds a terminal at this host/port rather
     # than the shared coordinator or a SaaS-dedicated one. NULL means the mode is decided by

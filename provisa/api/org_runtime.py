@@ -84,6 +84,13 @@ class OrgRuntime:
     # (``state.active_engine_url``) exactly as ``engine_endpoint`` already is.
     engine_kind: str | None = None
     engine_url: str | None = None
+    # REQ-1448/REQ-1450: which shared-lane shard answers this org (``orgs.shard``), and the
+    # generation of that shard the org's ``CREATE CATALOG`` statements were issued to. A shard whose
+    # node pool was released and rebuilt comes back with an empty dynamic catalog store, so a stamp
+    # older than the shard's current generation means this runtime's catalogs are on a coordinator
+    # that no longer exists and the runtime has to be rebuilt before the next query dispatches.
+    shard: str = ""
+    engine_generation: int = 0
     federation_engine: Any = None
     engine_conn: Any = None
     engine_conn_kwargs: dict = field(default_factory=dict)

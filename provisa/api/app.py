@@ -608,6 +608,16 @@ async def _load_and_build(
     with open(path) as f:
         raw_config = yaml.safe_load(f)
 
+    # REQ-1448: _apply_server_and_engine_config CONNECTS the terminal (trino_lifecycle.provision
+    # opens a dbapi connection and seeds the ops catalogs), so unlike a query it cannot be served by
+    # a shard whose node pool is at zero. Boot therefore wakes its own shard first. On any
+    # deployment that does not provision engines — desktop, self-hosted, tests — this is a no-op.
+    from provisa.federation.engine_wake import boot_shard, ensure_shard_awake
+    from provisa.federation.k8s_provisioner import provisioning_available
+
+    if provisioning_available():
+        await ensure_shard_awake(boot_shard())
+
     _apply_server_and_engine_config(raw_config)
 
     _mark("engine-connect")
@@ -653,7 +663,9 @@ async def _load_and_build(
     from provisa.core.db import apply_tenancy_role_grants as _apply_tenancy_role_grants
 
     assert state.tenant_db is not None
-    await _apply_tenancy_role_grants(state.tenant_db, state.org_id, multitenancy=config.multitenancy)
+    await _apply_tenancy_role_grants(
+        state.tenant_db, state.org_id, multitenancy=config.multitenancy
+    )
     if config.multitenancy:
         from provisa.core.tenant_context import TenantContextCache
 
@@ -806,6 +818,7 @@ class OrgLane(NamedTuple):
     external_engine: tuple[str, int] | None
     engine_kind: str | None
     engine_url: str | None
+    shard: str
 
 
 async def _read_org_flags(org_id: str) -> OrgLane:
@@ -816,7 +829,9 @@ async def _read_org_flags(org_id: str) -> OrgLane:
     demo sources; ``isolated_engine`` whether to bind a dedicated federation engine
     (REQ-1043/REQ-1067); ``external_engine`` is the org's own coordinator when it runs an external
     engine (REQ-1412); ``engine_kind``/``engine_url`` are that engine's kind and DSN when the org
-    runs a kind of its own (REQ-1418) — no defaults, the row is authoritative."""
+    runs a kind of its own (REQ-1418) — no defaults, the row is authoritative; ``shard`` names the
+    shared-lane engine shard that answers this org (REQ-1450), which is what the query-path wake
+    brings back up when its node pool has been released."""
     from sqlalchemy import select as _select
 
     from provisa.core.schema_admin import orgs as _orgs
@@ -831,11 +846,14 @@ async def _read_org_flags(org_id: str) -> OrgLane:
                 _orgs.c.external_engine_port,
                 _orgs.c.engine_kind,
                 _orgs.c.engine_url_enc,
+                _orgs.c.shard,
             ).where(_orgs.c.id == org_id)
         )
         row = result.fetchone()
     if row is None:
-        raise KeyError(f"org {org_id!r} not found in the admin plane — cannot route a request to it")
+        raise KeyError(
+            f"org {org_id!r} not found in the admin plane — cannot route a request to it"
+        )
     external = (row[2], int(row[3])) if row[2] else None
     # REQ-1418: the DSN is stored encrypted; it is decrypted once here, at build time, rather than
     # per query — the same treatment source DSNs already get on the runtime.
@@ -844,7 +862,7 @@ async def _read_org_flags(org_id: str) -> OrgLane:
         from provisa.encryption.runtime import encryption_service
 
         engine_url = encryption_service().decrypt(bytes(row[5])).decode("utf-8")
-    return OrgLane(bool(row[0]), bool(row[1]), external, row[4], engine_url)
+    return OrgLane(bool(row[0]), bool(row[1]), external, row[4], engine_url, row[6])
 
 
 async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
@@ -865,6 +883,7 @@ async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
             external_engine=lane.external_engine,
             engine_kind=lane.engine_kind,
             engine_url=lane.engine_url,
+            shard=lane.shard,
         )
 
     return await state.org_registry.get_or_build(org_id, _builder)
@@ -878,6 +897,7 @@ async def build_org_runtime(
     external_engine: tuple[str, int] | None = None,
     engine_kind: str | None = None,
     engine_url: str | None = None,
+    shard: str = "",
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -901,6 +921,14 @@ async def build_org_runtime(
     from provisa.audit.query_log import init_audit_schema
 
     rt = OrgRuntime(org_id=org_id)
+    # REQ-1448: sampled BEFORE the CREATE CATALOG statements below are issued, not after. A shard
+    # that restarts part-way through this build must leave the runtime stamped with the OLD
+    # generation, so the next query rebuilds it; stamping afterwards would record the new
+    # coordinator as holding catalogs that were issued to the one it replaced.
+    from provisa.federation.engine_wake import generation as _engine_generation
+
+    rt.shard = shard
+    rt.engine_generation = _engine_generation(shard)
     state.org_registry.set(org_id, rt)
     token = set_current_org(org_id)
     try:
@@ -951,7 +979,9 @@ async def build_org_runtime(
         # A not-schema-capable backend (SQLite/DuckDB) puts each org in its own FILE, so there the
         # engine genuinely is per-org and a shared one would read the wrong database.
         shared_engine = state.tenant_engine
-        assert shared_engine is not None, "tenant engine not built; _init_control_planes must run first"
+        assert shared_engine is not None, (
+            "tenant engine not built; _init_control_planes must run first"
+        )
         if Capabilities.for_dialect(shared_engine.dialect.name).schemas:
             tenant_engine = shared_engine
         else:
@@ -962,7 +992,9 @@ async def build_org_runtime(
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
         if not schema_sql_path.exists():
-            raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
+            raise RuntimeError(
+                f"control-plane schema.sql missing from the package: {schema_sql_path}"
+            )
         await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
         await apply_tenancy_role_grants(state.tenant_db, org_id, multitenancy=state.multitenancy)
@@ -1114,13 +1146,14 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                     table_id=r["table_id"],
                     column_name=r["column_name"],
                     relationship_id=r["relationship_id"],
-            command_name=r["command_name"],
+                    command_name=r["command_name"],
                     table_ref=r["table_ref"],
                     reason=r["reason"],
                     expires_on=r["expires_on"],
                 )
                 for r in _assignment_rows
             ]
+
         # REQ-1375: annotate table/column/relationship rows with the deprecation text the
         # GraphQL schema emits as the standard @deprecated(reason:) directive. "No longer
         # supported" is the GraphQL spec's own directive default, used only for legacy

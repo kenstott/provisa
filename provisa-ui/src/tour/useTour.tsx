@@ -335,9 +335,9 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // finished loading its data, which would otherwise show the popover over a page still
         // stuck on its own "Loading…" state.
         if (step.readySelector) {
-          await waitForElement(step.readySelector);
+          await waitForElement(step.readySelector, step.waitMs);
         }
-        const element = await waitForElement(step.element);
+        const element = await waitForElement(step.element, step.waitMs);
         if (cancelled || !driverRef.current) return;
         // Expand a native <select> into an inline list box so its options and
         // <optgroup> headers are visible (a dropdown can't be opened

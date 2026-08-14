@@ -144,23 +144,33 @@ CONTROL_PLANE_WARM_MO = E2_STANDARD_4_HR * HOURS_MO
 # control-plane writer because OrgRegistry serialises org rebuilds on an in-process
 # asyncio.Lock, and active-active needs a distributed lock — a project, not a flag).
 #
-# Because the target is minutes and not seconds, there is NO warm standby VM in the floor.
-# An idle e2-standard-4 bills the full $97.82/mo whether it serves a request or not, and a
-# second region would add cross-region replication on top of that — nearly $100/mo of pure
-# insurance to turn a 2-5 minute recovery into a 30-second one nobody is paying for.
-# Nor is a dedicated standby the shape the design wants. MULTIPLE control planes already
-# exist as a first-class idea (REQ-1459 gives Enterprise its own), and REQ-1451's one-writer
-# rule is per ORG, not per fleet: each org is owned by exactly one control plane at a time.
-# So failover is REASSIGNMENT — a surviving plane takes ownership of the orphaned orgs and
-# rebuilds their runtimes — not promotion of an idle twin. The control plane is a stateless
-# process against Cloud SQL; recovery is a reschedule plus a runtime rebuild, minutes, at
-# ZERO idle compute, and the spare capacity is a plane that is already carrying paying work.
-# What money genuinely must buy is the DATABASE: an f1-micro's zone going down is a restore
+# There is NO warm standby VM in the floor AT LAUNCH, and the two halves of control-plane
+# HA are separated because they are not the same purchase.
+# A standby VM buys AVAILABILITY: without it a zone loss costs minutes. Single-zone is the
+# market default at this price point — Cloud SQL, RDS and Neon all charge extra for regional,
+# and neither comp (Hasura Cloud, Starburst Galaxy) offers a $25 customer a zone guarantee;
+# they publish ~99.9% and so can we. Minutes of stated recovery is inside what customers
+# already tolerate, so $97.82/mo of idle e2-standard-4 is insurance bought ahead of the
+# expectation it covers. It is DEFERRED, not rejected: the standby goes in when the first Pro
+# or Enterprise account lands, which is both the month it pays for itself and the month a
+# contract starts asking about it.
+# Recovery without it is a reschedule plus a runtime rebuild — minutes, at zero idle compute —
+# and it gets better on its own as the fleet grows, because MULTIPLE control planes are already
+# a first-class idea (REQ-1459 gives Enterprise its own) and REQ-1451's one-writer rule is per
+# ORG rather than per fleet: once a second plane exists carrying paying work, failover is
+# REASSIGNMENT of the orphaned orgs to it rather than a boot.
+# The REGIONAL DATABASE is kept, and it is the half that is not optional, because it buys
+# against DATA LOSS rather than downtime. Losing the admin database's zone on a single f1-micro
+# is a restore from backup: org config, users, compiled models and governance rules recovered
+# to a point in time, with everything written since then gone. That is not an outage, it is a
+# customer redoing work they already did — the one failure the market does not forgive.
+# What money must ALSO buy is the DATABASE: an f1-micro's zone going down is a restore
 # measured in tens of minutes, so the baseline DB moves to a regional pair. Cloud SQL HA
 # cannot use db-f1-micro at all — shared-core tiers have no regional configuration — so it
 # lands on the smallest dedicated-core tier, billed in both zones.
 CLOUDSQL_HA_HR = 0.1400        # db-custom-1-3840, REGIONAL (both zones billed)
-CP_RECOVERY_MINUTES = 5        # published control-plane RTO: reschedule + warm start
+CP_RECOVERY_MINUTES = 5        # published control-plane RTO: reschedule + runtime rebuild
+CP_HA_DEFERRED_MO = E2_STANDARD_4_HR * HOURS_MO + CONTROL_PLANE_DISK_GB * PD_STANDARD_GB_MO
 ENGINE_RECOVERY_MINUTES = 5    # published engine RTO without the Pro HA add-on (cold pod)
 ENGINE_HA_RECOVERY_SECONDS = 30  # with it: repoint to a running standby coordinator
 CONTROL_PLANE_HA_MO = (CLOUDSQL_HA_HR - CLOUDSQL_F1_MICRO_HR) * HOURS_MO
@@ -454,8 +464,11 @@ print("  not mispricing: the price already clears 75% marginally at any real den
 print()
 print("  What the ramp actually needs is not a higher price, it is a denominator.")
 print(f"  The floor is small enough (${FIXED_FLOOR_MO:.0f}/mo) that a single Pro M or Enterprise org")
-print("  covers it outright, so the crossover arrives at a customer count in single")
-print("  digits rather than at scale.")
+_cx = lambda label: crossover.get(next(n for n, _ in scenarios if n.startswith(label)))
+print(f"  covers it outright. Starter crosses at {_cx('Starter')} orgs, "
+      f"Pro M at {_cx('Pro M')}, Pro S at {_cx('Pro S')} —")
+print("  the mix matters more than the count: one Enterprise account clears the")
+print(f"  whole floor on its own, at customer #{_cx('Enterprise')}.")
 print()
 print(f"  Do NOT pin the shared node pool above zero. Pinned, it adds "
       f"${shared_node_hr * HOURS_MO:.0f}/mo of")
@@ -554,10 +567,20 @@ print("  The SLO is stated in MINUTES and sold as minutes. Every tier gets it; n
 print("  it is an upsell, because a control-plane outage takes out every org at once.")
 print()
 print(f"  {'surface':<34} {'recovery target':>18}  who")
-print(f"  {'control plane (reassign + rebuild)':<34} {f'~{CP_RECOVERY_MINUTES} min':>18}  every tier, baseline")
+print(f"  {'control plane (reschedule + rebuild)':<38} {f'~{CP_RECOVERY_MINUTES} min':>14}  every tier, baseline")
 print(f"  {'admin DB (regional Cloud SQL)':<34} {'~1-2 min':>18}  every tier, baseline")
 print(f"  {'engine, no add-on (cold pod)':<34} {f'~{ENGINE_RECOVERY_MINUTES} min':>18}  Starter + Pro")
 print(f"  {'engine, Pro HA add-on (repoint)':<34} {f'~{ENGINE_HA_RECOVERY_SECONDS}s':>18}  Pro only")
+print()
+print(f"  A WARM STANDBY control plane (${CP_HA_DEFERRED_MO:,.0f}/mo) is DEFERRED, not refused. It would take")
+print(f"  the control-plane target from ~{CP_RECOVERY_MINUTES} min to ~1 min, which is a zone-outage")
+print("  guarantee neither comp offers a $25 customer and the market does not yet expect.")
+print("  It goes in when the first Pro or Enterprise account lands — the month it pays for")
+print("  itself and the month a contract starts asking. The REGIONAL DATABASE is not")
+print("  deferred: it buys against DATA LOSS, not downtime. A zone loss on a single")
+print("  f1-micro is a restore from backup — org config, users, compiled models and")
+print("  governance rules rolled back to a point in time — which is a customer redoing")
+print("  work they already did. Downtime is forgiven; that is not.")
 print()
 print("  Three things follow, and all three go in the literature rather than the")
 print("  footnotes, because an SLO nobody stated is an SLO the customer invents:")
@@ -588,6 +611,18 @@ for label, vcpu, gb in SIZES:
           f"(${p_['rate'] * PRO_HA_MULTIPLIER * HOURS_MO:,.0f}/mo at 24x7)")
 print("    It does NOT shorten the control-plane target and does NOT stop a query from")
 print("    dying on failover. Marketing it as zero downtime is the one claim to refuse.")
+print()
+print("  FAILURE DOMAIN — what the standby does NOT cover:")
+print("  Everything above is ZONE-level. The warm standby plane, the regional Cloud SQL")
+print("  pair and the shared shard all live in ONE REGION, so a region-wide outage takes")
+print("  the control plane and every engine down together and no standby inside it helps.")
+print("  That is a deliberate scope, and the number to publish is a separate one: regional")
+print("  recovery is a RESTORE somewhere else, measured in HOURS, from cross-region backups.")
+print("  Buying past it means a second region — a standby plane at full price again, a")
+print("  cross-region Cloud SQL replica, and continuous replication egress — which is a")
+print("  NEGOTIATED Enterprise item (REQ-1458), not a line on the shared floor. A customer")
+print("  who cannot accept hours of regional recovery is, again, a BYO customer: their")
+print("  engine, their regions, their redundancy.")
 
 rule("10. CAPS — where the price list stops and a contract starts")
 print("  Every tier has a ceiling. Past it the customer is NOT cut off: the meter keeps")
@@ -605,3 +640,71 @@ print("  because a growing Starter org is the funnel working, not an exception t
 print("  Pro's and Enterprise's ceilings convert to a contract, because past them the")
 print("  customer is buying an operational commitment — HA, regions, private networking,")
 print("  an SLA — which is not a thing an hourly rate can express.")
+
+# ------------------------- 11. FULL WARM STANDBY OF THE SHARED LANE -------------------------
+# The question this answers: what if the whole shared lane — control plane AND engine —
+# must have a warm twin in a SECOND REGION, so a regional outage is a repoint rather than
+# a restore. Priced as an OPTION, deliberately not folded into the floor, because the
+# numbers below are what decide whether it can be.
+#
+# GCP charges the same n2/e2/Cloud SQL list rates in the major US regions, so a second
+# region costs what the first one does — the expense is duplication, not geography. The
+# standby control-plane VM is billed IN FULL here: the floor carries no standby at all
+# (section 9b deferred it), so there is nothing to relocate and region B's plane is net
+# new spend rather than a move.
+CROSS_REGION_EGRESS_GB = 0.02          # same-continent inter-region
+DR_WAL_GB_MO = 50                      # admin-DB change volume shipped to the replica
+CLOUDSQL_REPLICA_HR = CLOUDSQL_HA_HR / 2   # cross-region replica: one zone, not a pair
+
+DR_WARM_CP = [
+    ("Standby control-plane VM in region B", CP_HA_DEFERRED_MO),  # net new: no standby in the floor
+    ("Cross-region Cloud SQL replica", CLOUDSQL_REPLICA_HR * HOURS_MO),
+    ("  its storage", CLOUDSQL_DISK_GB * CLOUDSQL_STORAGE_GB_MO),
+    ("  replication egress", DR_WAL_GB_MO * CROSS_REGION_EGRESS_GB),
+    ("Second GKE cluster (free zonal tier already spent)", GKE_CLUSTER_HR * HOURS_MO),
+]
+DR_WARM_CP_MO = sum(c for _, c in DR_WARM_CP)
+DR_WARM_ENGINE_MO = shared_node_hr * HOURS_MO      # a PINNED shard node; min=0 is not warm
+DR_FULL_MO = DR_WARM_CP_MO + DR_WARM_ENGINE_MO
+
+rule("11. FULL WARM STANDBY OF THE SHARED LANE (second region)")
+for label, cost in DR_WARM_CP:
+    print(f"  {label:<52} {cost:8,.2f}")
+print(f"  {'-' * 52} {'-' * 8}")
+print(f"  {'warm control plane + replicated DB in region B':<52} {DR_WARM_CP_MO:8,.2f} /mo")
+print(f"  {'PINNED warm shared shard node in region B':<52} {DR_WARM_ENGINE_MO:8,.2f} /mo")
+print(f"  {'FULL warm standby of the lane':<52} {DR_FULL_MO:8,.2f} /mo")
+print()
+print(f"  live floor today                  ${FIXED_FLOOR_MO:8,.2f}/mo")
+print(f"  + warm CP/DB only (engine cold)    ${FIXED_FLOOR_MO + DR_WARM_CP_MO:8,.2f}/mo   "
+      f"({(FIXED_FLOOR_MO + DR_WARM_CP_MO) / FIXED_FLOOR_MO:.1f}x)")
+print(f"  + FULL warm lane                   ${FIXED_FLOOR_MO + DR_FULL_MO:8,.2f}/mo   "
+      f"({(FIXED_FLOOR_MO + DR_FULL_MO) / FIXED_FLOOR_MO:.1f}x)")
+print()
+print("  The split is the whole answer: the CONTROL PLANE half is cheap and the ENGINE")
+print(f"  half is not. Warming the plane and its database costs ${DR_WARM_CP_MO:,.0f}/mo — a standby VM")
+print(f"  (${CP_HA_DEFERRED_MO:,.0f}, net new since the floor carries none), a cross-region replica and a")
+print(f"  second cluster fee. Warming the SHARD costs ${DR_WARM_ENGINE_MO:,.0f}/mo,")
+print(f"  {DR_WARM_ENGINE_MO / DR_WARM_CP_MO:.1f}x more, because a node pool at min=0 is not a standby — and pinning one")
+print("  in region B is exactly the fixed cost REQ-1450 was amended to refuse in region A.")
+print()
+print("  What each buys, stated as the recovery target it changes:")
+print(f"    region outage today                    hours (restore from backup)")
+print(f"    with warm CP/DB, cold engine           ~{ENGINE_RECOVERY_MINUTES + CP_RECOVERY_MINUTES} min "
+      f"(plane repoints, shard scales 0->1)")
+print(f"    with the FULL warm lane                ~{CP_RECOVERY_MINUTES} min (repoint only)")
+print()
+print("  So the recommendation is the ASYMMETRIC standby: warm plane, warm replicated")
+print("  database, second cluster present, node pool at min=0. It turns a multi-hour")
+print(f"  restore into a ~{ENGINE_RECOVERY_MINUTES + CP_RECOVERY_MINUTES}-minute recovery for {DR_WARM_CP_MO / DR_FULL_MO:.0%} of the cost, and the")
+print(f"  {ENGINE_RECOVERY_MINUTES} extra minutes it concedes are a cold shard start — which is exactly what")
+print("  Starter already accepts every day under REQ-1450's scale-to-zero.")
+print()
+n_needed_cp = (DR_WARM_CP_MO * MARKUP) / (STARTER["minimum"])
+n_needed_full = (DR_FULL_MO * MARKUP) / (STARTER["minimum"])
+print("  Who pays for it, if it is not sold separately:")
+print(f"    warm CP/DB, recovered at the {MARKUP:.0f}x markup, needs {n_needed_cp:,.0f} Starter minimums")
+print(f"    the FULL warm lane needs {n_needed_full:,.0f} Starter minimums")
+print("  That is the argument for pricing regional standby as a NEGOTIATED Enterprise")
+print("  item rather than a floor line: the shared lane cannot absorb the engine half,")
+print("  and the customers who need it are not the ones on the $25 minimum.")

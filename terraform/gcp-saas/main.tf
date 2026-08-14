@@ -15,6 +15,13 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 4.0"
     }
+    # gke.tf — the engine namespace and the RBAC that scopes the control plane to it. The
+    # provisioner creates Deployments at query time but must never be able to create the Role that
+    # lets it; that grant is made here, once, by the operator running terraform.
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.30"
+    }
   }
 }
 
@@ -36,6 +43,20 @@ resource "google_compute_subnetwork" "nodes" {
   region        = var.region
   network       = google_compute_network.main.id
   ip_cidr_range = var.network_cidr
+
+  # REQ-1447: the engine cluster is VPC-native, so pods and services are ALIAS ranges on this
+  # same subnet rather than a route-based overlay. Flat pod addressing is what lets the
+  # control-plane VM reach a coordinator Service directly, which is the whole reason
+  # PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE can keep naming a hostname and nothing else changes.
+  secondary_ip_range {
+    range_name    = "pods"
+    ip_cidr_range = var.pods_cidr
+  }
+
+  secondary_ip_range {
+    range_name    = "services"
+    ip_cidr_range = var.services_cidr
+  }
 }
 
 # ── Firewall (reused verbatim) ──────────────────────────────────────────────────
@@ -183,8 +204,8 @@ locals {
   ))
 
   # Common boot prefix (installs Docker + gcloud, pulls the release assets, exports
-  # the deployment env). Role-specific env (external DB for the coordinator, primary
-  # IP for workers) and the AppImage launch line are appended per resource below.
+  # the deployment env). The external-DB and engine-cluster env and the AppImage
+  # launch line are appended below. One VM boots from this now that engines are pods.
   # Reproduced from the enterprise module with the SaaS delta: PROVISA_MULTITENANCY
   # is forced true (this module IS the multitenant control plane).
   base_startup = <<-SHELL
@@ -263,36 +284,47 @@ locals {
     export CONFIG_DB_PASSWORD='${random_password.db.result}'
   SHELL
 
+  # Engine-cluster env (REQ-1447/1450/1451). Two separable things, and the split is
+  # deliberate: the CLUSTER_* + IMAGE settings say this process may CREATE an engine
+  # (k8s_provisioner.provisioner_settings), while the HOST_TEMPLATE and TRINO_HOST
+  # say where engines are DIALED — a deployment can route to engines it does not
+  # operate. Service names resolve VPC-wide through the cluster's Cloud DNS domain,
+  # so no load balancer stands between the control plane and a shard.
+  engine_hostname_suffix = "${kubernetes_namespace.engines.metadata[0].name}.svc.${var.engine_cluster_dns_domain}"
+
+  engine_cluster_exports = <<-SHELL
+    export PROVISA_ENGINE_CLUSTER_PROJECT="${var.project}"
+    export PROVISA_ENGINE_CLUSTER_LOCATION="${google_container_cluster.engine.location}"
+    export PROVISA_ENGINE_CLUSTER_NAME="${google_container_cluster.engine.name}"
+    export PROVISA_ENGINE_CLUSTER_DNS_DOMAIN="${var.engine_cluster_dns_domain}"
+    export PROVISA_ENGINE_NAMESPACE="${kubernetes_namespace.engines.metadata[0].name}"
+    export PROVISA_ENGINE_IMAGE="${var.engine_image}"
+    export TRINO_HOST="trino-shared-1.${local.engine_hostname_suffix}"
+    export TRINO_PORT=8080
+    # TRINO_HOST says where the control plane's own shard answers; this says WHICH shard that is,
+    # which is what the provisioner needs to bring its node pool back up when boot finds it at zero
+    # (REQ-1448). The two are written together so they can never disagree.
+    export PROVISA_ENGINE_SHARD="shared_1"
+    export PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE="trino-{org_id}.${local.engine_hostname_suffix}"
+    export PROVISA_ISOLATED_ENGINE_PORT=8080
+  SHELL
+
   metadata_ssh = var.ssh_public_key != "" ? { ssh-keys = var.ssh_public_key } : {}
 }
 
-# ── Private DNS (coordinator is the workers' reachable control/query endpoint) ───
+# There is no private zone here any more. It existed so worker VMs could find the
+# coordinator by name; engine DNS is now the cluster's own, published VPC-wide by
+# Cloud DNS under var.engine_cluster_dns_domain (gke.tf).
 
-resource "google_dns_managed_zone" "internal" {
-  name        = "provisa-saas-internal"
-  dns_name    = "provisa-saas.internal."
-  description = "Private zone for intra-cluster DNS (SaaS)"
-  visibility  = "private"
-
-  private_visibility_config {
-    networks {
-      network_url = google_compute_network.main.id
-    }
-  }
-}
-
-resource "google_dns_record_set" "coordinator" {
-  name         = "coordinator.provisa-saas.internal."
-  managed_zone = google_dns_managed_zone.internal.name
-  type         = "A"
-  ttl          = 30
-  rrdatas      = [google_compute_instance.coordinator.network_interface[0].network_ip]
-}
-
-# ── Coordinator — Trino coordinator + TCP listeners + stateful singletons ────────
-# Runs the app tier, the query planner, and the in-process protocol listeners.
-# The control-plane DB is offloaded to Cloud SQL (external_db_exports); redis/minio
-# ride the coordinator at low scale (see the plan doc's service-placement table).
+# ── Control plane — app tier, TCP listeners, stateful singletons ─────────────────
+# Runs the Provisa API, the UI, and the in-process protocol listeners, and NOTHING
+# of the query engine: every coordinator is a pod on the GKE cluster (REQ-1451), so
+# this VM's role is `control-plane` rather than the Trino-bearing `primary`. The
+# control-plane DB is offloaded to Cloud SQL (external_db_exports); redis/minio ride
+# this VM at low scale (see the plan doc's service-placement table).
+#
+# The resource keeps its `coordinator` name: it is the same instance, and renaming
+# it would destroy and recreate the live control plane for a label.
 
 resource "google_compute_instance" "coordinator" {
   name         = "provisa-saas-coordinator"
@@ -305,8 +337,8 @@ resource "google_compute_instance" "coordinator" {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2204-lts"
       size  = var.disk_gb
-      # pd-balanced: with include-coordinator=false this disk is boot/images/logs
-      # only (no scan spill), so pd-ssd IOPS buys nothing here.
+      # pd-balanced: no query runs here at all, so this disk is boot/images/logs
+      # only (no scan spill) and pd-ssd IOPS buys nothing.
       type = "pd-balanced"
     }
   }
@@ -331,107 +363,13 @@ resource "google_compute_instance" "coordinator" {
     startup-script = <<-SHELL
       ${local.base_startup}
       ${local.external_db_exports}
+      ${local.engine_cluster_exports}
       /opt/Provisa.AppImage \
         --non-interactive \
-        --role primary \
+        --role control-plane \
         --ram-gb 0
     SHELL
   })
-}
-
-# ── Worker MIG — autoscaled Trino workers (Spot, min→max) ────────────────────────
-# Data plane: metered compute that scales to zero at idle. Workers are NOT in the
-# LB; they reach the coordinator's query engine + control plane over the VPC.
-
-resource "google_compute_instance_template" "worker" {
-  name_prefix  = "provisa-saas-worker-"
-  machine_type = var.worker_machine_type
-  tags         = ["provisa-saas-node"]
-  labels       = merge(local.all_labels, { role = "worker" })
-
-  disk {
-    source_image = "ubuntu-os-cloud/ubuntu-2204-lts"
-    disk_size_gb = var.disk_gb
-    disk_type    = "pd-ssd"
-    boot         = true
-    auto_delete  = true
-  }
-
-  network_interface {
-    subnetwork = google_compute_subnetwork.nodes.id
-    access_config {}
-  }
-
-  service_account {
-    email  = google_service_account.provisa.email
-    scopes = ["cloud-platform"]
-  }
-
-  # Spot for the metered scale-to-zero data plane (worker_use_spot=false only for a
-  # guaranteed-warm SLA, which cannot ride a preemptible instance).
-  dynamic "scheduling" {
-    for_each = var.worker_use_spot ? [1] : []
-    content {
-      provisioning_model          = "SPOT"
-      preemptible                 = true
-      automatic_restart           = false
-      instance_termination_action = "STOP"
-    }
-  }
-
-  metadata = merge(local.metadata_ssh, {
-    startup-script = <<-SHELL
-      ${local.base_startup}
-      ${local.external_db_exports}
-      /opt/Provisa.AppImage \
-        --non-interactive \
-        --role secondary \
-        --primary-ip coordinator.provisa-saas.internal \
-        --ram-gb 0
-    SHELL
-  })
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  depends_on = [google_compute_instance.coordinator]
-}
-
-resource "google_compute_region_instance_group_manager" "workers" {
-  name               = "provisa-saas-workers"
-  region             = var.region
-  base_instance_name = "provisa-saas-worker"
-
-  version {
-    instance_template = google_compute_instance_template.worker.id
-  }
-
-  # Autoscaler owns the running count; keep the MIG target unset so a min=0 idle
-  # deployment truly scales to zero.
-  dynamic "named_port" {
-    for_each = local.enabled_protocols
-    content {
-      name = named_port.key
-      port = named_port.value.port
-    }
-  }
-}
-
-resource "google_compute_region_autoscaler" "workers" {
-  name   = "provisa-saas-workers"
-  region = var.region
-  target = google_compute_region_instance_group_manager.workers.id
-
-  autoscaling_policy {
-    min_replicas    = var.worker_min_nodes
-    max_replicas    = var.worker_max_nodes
-    cooldown_period = 60
-
-    cpu_utilization {
-      target = var.autoscale_cpu_target
-    }
-  }
 }
 
 # ── Front door — always-free e2-micro owning the shared IP ──────────────────────
@@ -494,7 +432,11 @@ locals {
     project      = var.project
     zone         = var.zone
     instance     = google_compute_instance.coordinator.name
-    backend_host = trimsuffix(google_dns_record_set.coordinator.name, ".")
+    # The control plane's internal address, not a name: the private zone that used to
+    # publish one existed only so worker VMs could find the coordinator, and it went
+    # with them. The front door is on this same VPC, so the VM's primary internal IP
+    # is what it dials.
+    backend_host = google_compute_instance.coordinator.network_interface[0].network_ip
     ports = {
       for k, v in local.enabled_protocols : tostring(v.port) => {
         wake_style = k == "ui" ? "html" : (k == "api" ? "json" : "raw")

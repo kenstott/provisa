@@ -44781,9 +44781,18 @@
     unchanged, and the per-query caps of REQ-1044 remain the Starter-side limit since one org's
     query CAN degrade its neighbours here. Operators must know that ConfigMap updates reach pods on
     the kubelet sync interval, roughly 60s, rather than on Trino's file-watch interval, so
-    resource-group changes propagate more slowly than they do today. Worker count is an HPA scaling
-    on queued queries rather than the instance-level signal the current regional autoscaler uses
-    (terraform/gcp-saas/main.tf:401,421), and scale-in must drain per REQ-1448. The shared pool
+    resource-group changes propagate more slowly than they do today. Amended: a ConfigMap key is
+    mounted by subPath so that mounting it cannot hide the rest of /etc/trino, and a subPath mount
+    is never refreshed by the kubelet at all -- so the pod template carries a digest of the rendered
+    config and a resource-group change takes effect by rolling the pod, not by waiting out a sync
+    interval. Amended: a shard is ONE pod that both coordinates and executes, not a coordinator
+    plus an HPA-scaled worker set. Trino's include-coordinator inverts on a dedicated node pool --
+    it was a co-tenancy hazard only because the Docker provisioner ran the container on the control
+    plane's own host, and with it false a single-pod shard has no node willing to take a split, so
+    every query queues forever. Capacity is therefore added by shards, which this requirement
+    already names as the answer past one coordinator, and the worker HPA is deferred to the Pro
+    sizes where a shard serves one org and its size is a purchased entitlement. Scale-in must drain
+    per REQ-1448. The shared pool
     scales to zero when no org is active on the shard, on the same node-pool mechanism and wake
     path the isolated lane uses (REQ-1448); it is not exempt from idle-to-zero, it simply reaches
     that state far less often, because the idle window has to be quiet for EVERY org on the shard
@@ -44820,6 +44829,8 @@
   code:
   - trino/etc/resource-groups.json
   - provisa/api/trino_setup.py
+  - provisa/federation/k8s_provisioner.py
+  - terraform/gcp-saas/gke.tf
   - terraform/gcp-saas/main.tf
   scenario: |
     Given several Starter orgs on the shared lane
@@ -44929,15 +44940,18 @@
     without touching the price, which is the commercial reason the shared lane (REQ-1450) is the
     default rather than a discount lane.
     FULLY-LOADED margin -- marginal cost plus that customer's share of the fixed platform floor --
-    is explicitly NOT required to hold at customer #1. The floor is about $211/mo live ($19/mo at
-    zero customers; the difference is a warm control plane at $98/mo and the regional admin
-    database REQ-1459 makes baseline at $95/mo), and loading it entirely onto the first tenant would
-    price that tenant out of the comparison REQ-1452 has to win. Fully-loaded margin instead crosses
-    75% at a THRESHOLD: 8 orgs on Starter, 25 on Pro S, 15 on Pro M, 1 on Enterprise. A lone Starter
-    clears -43% fully loaded, which is an accepted and bounded condition of the first months, not a
-    defect -- it is one org carrying a whole platform. Keeping the shared pool scaled to zero when no
-    org is active is what holds that threshold where it is: pinning one n2-highmem-8 above zero takes
-    the floor from $211 to $594/mo and multiplies the org count needed at every tier by 2.8.
+    is explicitly NOT required to hold at customer #1. The floor is about $211/mo live against
+    $19/mo at zero customers, the difference being the two things a live platform must carry: a
+    warm control plane ($98/mo) and the REGIONAL admin database ($95/mo) that is all REQ-1459 makes
+    baseline. There is no standby control plane in the floor; REQ-1459 defers it. Loading that floor
+    entirely onto the first tenant would price that tenant out of the comparison REQ-1452 has to
+    win. Fully-loaded margin instead crosses 75% at a THRESHOLD: 8 orgs on Starter, 25 on Pro S, 15
+    on Pro M, and 1 on Enterprise. The MIX matters more than the count -- a single Enterprise
+    account clears the whole floor at customer #1 -- and a lone Starter clears -43% fully loaded,
+    which is an accepted and bounded condition of the first months rather than a defect, since it is
+    one org carrying an entire platform. Keeping the shared pool scaled to zero when no org is
+    active is what holds that threshold where it is: pinning one n2-highmem-8 above zero takes the
+    floor from $211 to $594/mo and multiplies the org count needed at every tier by 2.8.
   use_case: >-
     Pricing decisions are checked against a rule that distinguishes the cost a customer causes from
     the cost the platform carries, so an early thin month is not mistaken for a mispriced tier.
@@ -45160,21 +45174,34 @@
     not a per-tenant component: every surface (UI, GraphQL, SQL, pgwire, Bolt, Flight) routes
     through it, so a control-plane outage is a total outage for every org at once, including the
     ones paying the $25 Starter minimum. The published targets are: control plane about 5 minutes
-    (reassign the orphaned orgs to a surviving plane and rebuild their runtimes); admin database
-    1-2 minutes (regional Cloud SQL); engine about 5 minutes without the Pro add-on (a cold pod);
-    engine about 30 seconds with it (repoint to a running standby coordinator).
-    There is deliberately NO warm standby VM in the floor. An idle e2-standard-4 bills its full
-    $98/mo whether it serves a request or not, and a second region adds cross-region replication on
-    top -- close to $100/mo of insurance to turn a 5-minute recovery into a 30-second one nobody
-    asked for. Nor is a dedicated twin the shape the design wants: MULTIPLE control planes are
-    already a first-class idea here, and REQ-1451's one-writer rule is per ORG rather than per
-    fleet, so failover is REASSIGNMENT of an orphaned org's ownership to a plane that is already
-    carrying paying work, not the promotion of an idle standby. The control plane is a stateless
-    process against Cloud SQL, so recovery is a reschedule plus a runtime rebuild. What money must
-    genuinely buy is the DATABASE: losing an f1-micro's zone is a restore measured in tens of
-    minutes, so the baseline admin database is a regional pair. Cloud SQL HA cannot use db-f1-micro
-    at all -- shared-core tiers have no regional configuration -- so it lands on the smallest
-    dedicated-core tier billed in two zones, about $95/mo, which is the entire baseline HA cost.
+    (reschedule the plane, then rebuild the org runtimes); admin database 1-2 minutes (regional
+    Cloud SQL); engine about 5 minutes without the Pro add-on (a cold pod); engine about 30 seconds
+    with it (repoint to a running standby coordinator).
+    THE TWO HALVES OF CONTROL-PLANE HA ARE NOT THE SAME PURCHASE, and only one is baseline at
+    launch. A standby VM buys AVAILABILITY -- losing the zone costs minutes rather than a
+    reschedule -- and single-zone is the MARKET DEFAULT at this price point: Cloud SQL, RDS Multi-AZ
+    and Neon all charge extra for regional, and neither comp (Hasura Cloud, Starburst Galaxy) gives
+    a $25 customer a zone guarantee; they publish about 99.9% and so can this platform. The standby
+    is therefore DEFERRED, not rejected: it goes in when the first Pro or Enterprise account lands,
+    at $98/mo plus $4 of disk, and it stops being idle capacity at that point because MULTIPLE
+    control planes are already a first-class idea here and REQ-1451's one-writer rule is per ORG
+    rather than per fleet -- so the second plane takes live org ownership and failover becomes
+    reassignment between two warm planes. The REGIONAL DATABASE is the half that is NOT optional,
+    because it buys against DATA LOSS rather than downtime: losing an f1-micro's zone rolls org
+    config, users, compiled models and governance rules back to a backup, which is the failure the
+    market does not forgive. Cloud SQL HA cannot use db-f1-micro at all -- shared-core tiers have no
+    regional configuration -- so it lands on the smallest dedicated-core tier billed in two zones,
+    about $95/mo. Baseline HA therefore costs about $95/mo and takes the live floor to $211/mo
+    (REQ-1453); it does not change the zero-customer cost of $19/mo, because the regional database
+    is provisioned at the first customer rather than before one exists.
+    THE FAILURE DOMAIN IS THE ZONE, NOT THE REGION, and this must be published as plainly as the
+    recovery targets. The control plane, the regional Cloud SQL pair and the shared shard all
+    live in ONE region, so a region-wide outage takes the control plane and every engine down
+    together and no standby inside that region helps. Regional recovery is a RESTORE somewhere else
+    from cross-region backups, measured in HOURS, and that is the number to state. Buying past it
+    means a second region -- a standby plane at full price again, a cross-region Cloud SQL replica,
+    and continuous replication egress -- which is a NEGOTIATED Enterprise item under REQ-1458 and
+    never a line on the shared floor.
     THE EXPECTATIONS ARE PART OF THE PRODUCT AND MUST BE PUBLISHED, not buried. A failover KILLS
     IN-FLIGHT QUERIES: HA does not mean a query cannot burp. The contract is exactly the one a
     database gives a client whose transaction lost its connection -- the query fails cleanly and THE
@@ -45223,3 +45250,52 @@
   - REQ-1458
   - REQ-1412
   - REQ-1450
+- id: REQ-1460
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Deployment Topology
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    A regional standby of the SHARED LANE is ASYMMETRIC: the control plane and its database are
+    warm in a second region, and the engine is not. The split is forced by the cost, which is
+    lopsided. Warming the plane and its database costs about $230/mo: a standby VM at its full
+    $98/mo plus $4 of disk -- net new spend, since REQ-1459 defers the standby and the floor
+    therefore carries none to relocate -- a cross-region Cloud SQL replica (about $51/mo plus
+    storage and replication egress) and a second GKE cluster management fee ($73/mo, since the free
+    zonal tier is already spent on the primary). Warming the SHARED SHARD costs about $383/mo on
+    its own, 1.7x more, because a node pool at min=0 is not a standby and pinning one in region B is
+    precisely the fixed cost REQ-1450 was amended to refuse in region A. Full warm standby of the
+    lane is therefore about $613/mo, taking the live floor from $211 to $824/mo (3.9x); the
+    asymmetric form takes it to $442/mo (2.1x).
+    What each buys is stated as the recovery target it changes. Today a regional outage is a
+    restore from cross-region backups measured in HOURS. With a warm plane and a cold engine it is
+    about 10 minutes -- the plane reschedules and rebuilds, the shard scales 0 to 1. With the full
+    warm lane it is about 5 minutes, the plane alone. The asymmetric form buys most of the benefit
+    for 38% of the cost, and the roughly 5 minutes it concedes are a cold shard start, which is
+    exactly what Starter already accepts every day under REQ-1450's scale-to-zero.
+    Regional standby is NOT folded into the shared floor and is sold as a NEGOTIATED Enterprise
+    item under REQ-1458. Recovered at the 4x markup, the asymmetric form needs 37 Starter minimums
+    to pay for itself and the full warm lane needs 98; the shared lane cannot absorb the engine
+    half, and the customers who require regional continuity are not the ones on the $25 minimum. A
+    customer who needs better than the asymmetric target runs BYO (REQ-1412) -- their engine, their
+    regions, their redundancy.
+  use_case: >-
+    An operator can state what a regional outage costs in recovery time at each of three spend
+    levels, and sell the standby to the accounts that need it instead of taxing every Starter org
+    for it.
+  code:
+  - pricing_model.py
+  - terraform/gcp-saas/main.tf
+  scenario: |
+    Given the asymmetric regional standby is provisioned and region A fails
+    When the control plane in region B takes ownership of the orphaned orgs
+    Then service resumes within the published regional target once the region-B shard node pool
+    scales from zero, and no data is restored from backup
+  related_reqs:
+  - REQ-1459
+  - REQ-1458
+  - REQ-1450
+  - REQ-1453
+  - REQ-1412

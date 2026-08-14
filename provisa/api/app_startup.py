@@ -282,6 +282,13 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
 
     state._stale_check_task = asyncio.create_task(_sqlite_stale_loop())
 
+    # REQ-1448: release the node under any engine shard that stops being queried. Started here with
+    # the other background loops; it returns immediately on a deployment that does not provision its
+    # own engines, where there is no node to release.
+    from provisa.federation.engine_wake import start_idle_reaper
+
+    start_idle_reaper(state)
+
 
 def _evaluate_licensing(_log: logging.Logger) -> None:
     """Evaluate the offline trial/license once at startup; install state + shell banner (REQ-1137).

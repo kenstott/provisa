@@ -125,6 +125,20 @@ _build_compose_files() {
     # shares the primary's control plane. first-launch emits a standalone base
     # (compose-secondary.yml) with every endpoint repointed at the primary; use it
     # in place of core+app+airgap. Extensions (demo, protocols) still layer on.
+    # The control plane is the same shape for a different reason: no local postgres
+    # (Cloud SQL) and no local trino (every engine is a pod on the GKE cluster), so it
+    # also gets a standalone base rather than core+app.
+    if [ "$ROLE_CFG" = "control-plane" ] && [ -f "${PROVISA_HOME}/compose-control-plane.yml" ]; then
+        local files="-f ${PROVISA_HOME}/compose-control-plane.yml"
+        local ext_dir="${PROVISA_HOME}/extensions"
+        if [ -d "$ext_dir" ]; then
+            for ext_compose in "${ext_dir}"/*/docker-compose.*.yml; do
+                [ -f "$ext_compose" ] && files="${files} -f ${ext_compose}"
+            done
+        fi
+        echo "$files"
+        return
+    fi
     if [ "$ROLE_CFG" = "secondary" ] && [ -f "${PROVISA_HOME}/compose-secondary.yml" ]; then
         local files="-f ${PROVISA_HOME}/compose-secondary.yml"
         local ext_dir="${PROVISA_HOME}/extensions"

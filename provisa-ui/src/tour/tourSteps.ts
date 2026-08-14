@@ -69,6 +69,12 @@ export interface TourStep {
    * popover over a destination page that's still loading its own data.
    */
   readySelector?: string;
+  /**
+   * Overrides the default 15s anchor wait for steps whose target only mounts after a backend
+   * round-trip the tour cannot prefetch. Not a leniency knob: an anchor that never appears still
+   * aborts the tour, this only sets how long "never" takes to establish.
+   */
+  waitMs?: number;
 }
 
 const SOURCES_ADD = '[data-tour="sources-add"]';
@@ -260,6 +266,11 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: `/lineage?sql=${encodeURIComponent(LINEAGE_DEMO_SQL)}`,
     element: '[data-testid="lineage-dag"]',
+    // The DAG mounts only once LineagePage's deep-link effect has finished analyzing the statement
+    // server-side; nothing paints it before that, so this step's anchor is bounded by the backend,
+    // not by rendering. A cold analysis outruns the 15s default and the tour ends while the page is
+    // still working — exactly the "tour stalled on the lineage page" symptom.
+    waitMs: 60000,
     key: "step22",
   },
   {

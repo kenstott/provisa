@@ -29,14 +29,9 @@ output "front_door_status_token" {
   sensitive   = true
 }
 
-output "coordinator_public_ip" {
-  description = "Public IP of the coordinator (SSH access, TCP protocol origin)."
+output "control_plane_public_ip" {
+  description = "Public IP of the control-plane VM (SSH access, TCP protocol origin)."
   value       = google_compute_instance.coordinator.network_interface[0].access_config[0].nat_ip
-}
-
-output "coordinator_dns" {
-  description = "Private DNS name for the coordinator (workers' control/query endpoint)."
-  value       = trimsuffix(google_dns_record_set.coordinator.name, ".")
 }
 
 output "cloudsql_instance" {
@@ -55,14 +50,14 @@ output "cloudsql_password" {
   sensitive   = true
 }
 
-output "worker_min_nodes" {
-  description = "Minimum autoscaled worker count (0 = scale-to-zero)."
-  value       = var.worker_min_nodes
+output "engine_cluster_name" {
+  description = "GKE cluster every federation engine runs on."
+  value       = google_container_cluster.engine.name
 }
 
-output "worker_max_nodes" {
-  description = "Maximum autoscaled worker count."
-  value       = var.worker_max_nodes
+output "shared_shard_endpoint" {
+  description = "host:port the control plane dials for the shared (Starter) shard, as Cloud DNS publishes it VPC-wide."
+  value       = "trino-shared-1.${local.engine_hostname_suffix}:8080"
 }
 
 output "service_account_email" {

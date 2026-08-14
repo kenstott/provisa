@@ -117,7 +117,9 @@ class OrgPolicyBody(BaseModel):
     auto_join_role: str | None = None
 
 
-def _validate_org_policy(email_rule: str | None, auto_join: bool, auto_join_role: str | None) -> None:
+def _validate_org_policy(
+    email_rule: str | None, auto_join: bool, auto_join_role: str | None
+) -> None:
     """Reject an uncompilable email rule (REQ-1268) or auto_join without a role (REQ-1269)."""
     if email_rule is not None:
         try:
@@ -127,9 +129,7 @@ def _validate_org_policy(email_rule: str | None, auto_join: bool, auto_join_role
                 400, "orgs.invalid_email_rule", f"Invalid email rule: {exc}", error=str(exc)
             ) from exc
     if auto_join and not auto_join_role:
-        raise ApiError(
-            400, "orgs.auto_join_requires_role", "auto_join requires auto_join_role"
-        )
+        raise ApiError(400, "orgs.auto_join_requires_role", "auto_join requires auto_join_role")
 
 
 # REQ-1309: the pattern lives in provisa.core.org_ids, because the hostname readers (REQ-1234,
@@ -258,11 +258,17 @@ async def _provision_org_task(
         # through ensure_org_runtime. Two concurrent builds both replay the seeding DDL, the
         # second CREATE VIEW collides on pg_type, and provisioning fails with the org half-seeded
         # — the "parts of the demo data, and no meta/ops domains" failure.
+        # REQ-1450: the shard placement is decided by the admin-plane row (server_default on
+        # insert), so it is read back rather than assumed here — the shared lane is several shards
+        # and a new org is not always on the first one.
+        from provisa.api.app import _read_org_flags
+
+        shard = (await _read_org_flags(org_id)).shard
         rt = await _app_state.org_registry.rebuild(
             org_id,
             lambda oid: build_org_runtime(
-                oid, include_demo=include_demo, isolated_engine=isolated_engine
-            )
+                oid, include_demo=include_demo, isolated_engine=isolated_engine, shard=shard
+            ),
         )
         # The creator's org_admin role assignment lands in the org's own schema — possible only now
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.
@@ -301,9 +307,7 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
     if created_by == "anonymous":
         created_by = None
     if identity is not None and created_by is None:
-        raise ApiError(
-            401, "orgs.auth_required_create", "Authentication required to create an org"
-        )
+        raise ApiError(401, "orgs.auth_required_create", "Authentication required to create an org")
 
     _validate_new_org_id(body.id)
     _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
