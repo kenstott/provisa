@@ -11,9 +11,24 @@
 # floor that must stay at ~$19/mo with no customers. Engine availability is bought
 # back by rescheduling onto a new node, not by a standing hot spare (REQ-1459).
 
+# The GCE-only topology this replaces never touched container.googleapis.com, so a
+# project that has only ever run the old stack has the API off and the cluster below
+# fails with SERVICE_DISABLED. Enabled here rather than by hand so the stack applies
+# from a clean project.
+resource "google_project_service" "container" {
+  project = var.project
+  service = "container.googleapis.com"
+
+  # Leave the API on if the stack is torn down: disabling it would take down any
+  # other cluster in the project.
+  disable_on_destroy = false
+}
+
 resource "google_container_cluster" "engine" {
   name     = "provisa-saas-engine"
   location = var.zone
+
+  depends_on = [google_project_service.container]
 
   # The cluster is created with a default pool only so it can be destroyed
   # immediately: every node here belongs to an explicitly-managed pool whose floor
@@ -175,9 +190,10 @@ resource "google_project_iam_custom_role" "engine_operator" {
   permissions = [
     "container.clusters.get",
     "container.clusters.getCredentials",
-    "container.nodePools.get",
-    "container.nodePools.list",
-    "container.nodePools.update",
+    # Resizing a node pool is a cluster verb, not a node-pool one: GKE exposes no
+    # container.nodePools.* permission to custom roles, so setSize on a pool is
+    # authorized by container.clusters.update.
+    "container.clusters.update",
     "container.operations.get",
   ]
 }
