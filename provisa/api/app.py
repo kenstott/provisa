@@ -602,11 +602,11 @@ async def _load_and_build(
     # between a wake and the next idle-to-zero (the provisioner reads it from the ready pod), so
     # asking for it before the wake asks for an address nothing holds. On any deployment that does
     # not provision engines — desktop, self-hosted, tests — this is a no-op.
-    from provisa.federation.engine_wake import boot_shard, ensure_shard_awake
+    from provisa.federation.engine_wake import converge_boot_shard
     from provisa.federation.k8s_provisioner import provisioning_available
 
     if provisioning_available():
-        await ensure_shard_awake(boot_shard())
+        await converge_boot_shard()
 
     _mark("engine-wake")
 

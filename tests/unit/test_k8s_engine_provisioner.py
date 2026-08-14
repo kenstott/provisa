@@ -366,6 +366,20 @@ def test_shared_lane_carries_its_resource_groups(configured):
 # ---- readiness is the cluster's word, not the coordinator's ------------------
 
 
+def _rolled_out(*, ready: int, generation: int = 1) -> dict:
+    """A Deployment status with the roll finished: the cluster has observed the applied spec and
+    every replica it reports is one the current pod template produced."""
+    return {
+        "metadata": {"generation": generation},
+        "status": {
+            "observedGeneration": generation,
+            "replicas": 1,
+            "updatedReplicas": 1,
+            "readyReplicas": ready,
+        },
+    }
+
+
 @pytest.mark.asyncio
 async def test_ready_waits_for_readyreplicas(monkeypatch, configured):
     """/v1/info answers ``starting=false`` as soon as the process is up, which on a cluster is true
@@ -377,7 +391,7 @@ async def test_ready_waits_for_readyreplicas(monkeypatch, configured):
         if "/deployments/" in request.url.path:
             seen.append(1)
             ready = 1 if len(seen) >= 3 else 0
-            return httpx.Response(200, json={"status": {"readyReplicas": ready}})
+            return httpx.Response(200, json=_rolled_out(ready=ready))
         return _cluster_get()
 
     _mock_api(monkeypatch, handler)
@@ -392,13 +406,58 @@ async def test_ready_times_out_rather_than_releasing_a_query(monkeypatch, config
 
     def handler(request: httpx.Request) -> httpx.Response:
         if "/deployments/" in request.url.path:
-            return httpx.Response(200, json={"status": {"readyReplicas": 0}})
+            return httpx.Response(200, json=_rolled_out(ready=0))
         return _cluster_get()
 
     _mock_api(monkeypatch, handler)
     with pytest.raises(prov.K8sProvisioningError) as excinfo:
         await prov._await_ready("shared_1")
-    assert "readyReplicas=0" in str(excinfo.value)
+    assert "ready=0" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_ready_ignores_the_previous_releases_pod(monkeypatch, configured):
+    """During a roll the OLD pod is ready and is what _resolve_pod_ip would return, so a boot that
+    stopped at readyReplicas>=1 connected to the coordinator the new manifest exists to replace —
+    which is how a control plane carrying the Flight sidecar dialed the sidecar-less pod and got
+    ECONNREFUSED. observedGeneration and replicas==updatedReplicas are what exclude it."""
+    seen: list[dict] = []
+    rolling = {"metadata": {"generation": 4}, "status": {
+        "observedGeneration": 4, "replicas": 2, "updatedReplicas": 1, "readyReplicas": 1}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/deployments/" in request.url.path:
+            seen.append(rolling)
+            body = rolling if len(seen) < 3 else _rolled_out(ready=1, generation=4)
+            return httpx.Response(200, json=body)
+        return _cluster_get()
+
+    _mock_api(monkeypatch, handler)
+    monkeypatch.setattr(prov.asyncio, "sleep", _no_sleep)
+    await prov._await_ready("shared_1")
+    assert len(seen) == 3
+
+
+@pytest.mark.asyncio
+async def test_ready_waits_for_the_cluster_to_observe_the_applied_manifest(monkeypatch, configured):
+    """A Deployment answers the GET that follows its own PATCH with the PREVIOUS status: the roll
+    has not started, so replicas==updatedReplicas and readyReplicas==1 all still describe the pod
+    being replaced. Only observedGeneration says whether the cluster has seen the new spec."""
+    seen: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/deployments/" in request.url.path:
+            seen.append(1)
+            observed = 4 if len(seen) >= 2 else 3
+            body = _rolled_out(ready=1, generation=4)
+            body["status"]["observedGeneration"] = observed
+            return httpx.Response(200, json=body)
+        return _cluster_get()
+
+    _mock_api(monkeypatch, handler)
+    monkeypatch.setattr(prov.asyncio, "sleep", _no_sleep)
+    await prov._await_ready("shared_1")
+    assert len(seen) == 2
 
 
 async def _no_sleep(_seconds: float) -> None:

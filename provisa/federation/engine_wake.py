@@ -157,6 +157,25 @@ async def ensure_shard_awake(shard: str) -> bool:
         return True
 
 
+async def converge_boot_shard() -> str:
+    """Apply this control plane's shard manifests and wait for it to serve. Returns the shard.
+
+    Boot APPLIES where the query path probes. The shard's manifests ship with the control plane —
+    engine image, the Flight sidecar, Trino config — so a release that changes them has to roll the
+    pod, and the warm path's "it is already ready, return" would leave the previous release's
+    coordinator serving until something else happened to restart it. A boot whose manifests match
+    what is running is a no-op apply plus the ready check the wake would have done anyway.
+    """
+    shard = boot_shard()
+    async with _lock_for(shard):
+        log.info("converging engine shard %s on boot", shard)
+        await k8s.ensure_shared_shard(shard)
+        _generation[shard] = _generation.get(shard, 0) + 1
+        _ready_seen[shard] = time.monotonic()
+        note_activity(shard)
+    return shard
+
+
 async def ensure_engine_awake(state: Any) -> None:
     """The query path's wake: the active org's shard is serving, and its catalogs are on it.
 

@@ -522,6 +522,17 @@ def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = No
         },
         "spec": {
             "replicas": 1,
+            # Take the old pod down before the new one comes up. A shard is ONE coordinator: a surge
+            # pod is a second engine that holds none of the first one's catalogs, is billed at the
+            # full Guaranteed request for the length of the roll, and — because the old pod stays
+            # ready throughout — is not the pod a client would be handed. Expressed as a zero-surge
+            # RollingUpdate rather than `type: Recreate` because the apiserver defaults a
+            # rollingUpdate block onto this object, and a server-side apply that switches the type
+            # is rejected for carrying it (`may not be specified when strategy type is Recreate`).
+            "strategy": {
+                "type": "RollingUpdate",
+                "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1},
+            },
             "selector": {"matchLabels": {"provisa.dev/shard": shard}},
             "template": {
                 "metadata": {
@@ -590,16 +601,20 @@ def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = No
                             ],
                             "resources": {
                                 # A proxy, not an engine: it streams Arrow batches through and
-                                # holds no working set. Requests equal limits here too, because
-                                # Autopilot bills the request and a burstable sidecar would let
-                                # the pod's QoS class drop below Guaranteed.
+                                # holds no working set. The Helm chart that has run this proxy in
+                                # Kubernetes since REQ-143 asks for 100m/256Mi; this is that shape
+                                # with headroom, not the engine-sized slice a sidecar looks like it
+                                # deserves — every core requested here is a core Autopilot bills for
+                                # the whole time the shard is awake (REQ-1464). Requests equal
+                                # limits because a burstable sidecar would drop the pod's QoS class
+                                # below Guaranteed.
                                 "requests": {
                                     "memory": os.environ.get("PROVISA_ZAYCHIK_MEMORY", "1Gi"),
-                                    "cpu": os.environ.get("PROVISA_ZAYCHIK_CPU", "1"),
+                                    "cpu": os.environ.get("PROVISA_ZAYCHIK_CPU", "500m"),
                                 },
                                 "limits": {
                                     "memory": os.environ.get("PROVISA_ZAYCHIK_MEMORY", "1Gi"),
-                                    "cpu": os.environ.get("PROVISA_ZAYCHIK_CPU", "1"),
+                                    "cpu": os.environ.get("PROVISA_ZAYCHIK_CPU", "500m"),
                                 },
                             },
                             "readinessProbe": {
@@ -608,6 +623,16 @@ def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = No
                                 "initialDelaySeconds": 10,
                                 "periodSeconds": 5,
                                 "failureThreshold": 60,
+                            },
+                            "livenessProbe": {
+                                # The proxy holds a JDBC connection to the coordinator beside it. If
+                                # it wedges, the pod stays Ready on Trino's probe alone and every
+                                # Arrow client hangs against a shard that looks healthy — restarting
+                                # the container is the only thing that reopens that connection.
+                                "tcpSocket": {"port": flight_port},
+                                "initialDelaySeconds": 30,
+                                "periodSeconds": 10,
+                                "failureThreshold": 6,
                             },
                         },
                     ],
@@ -673,12 +698,27 @@ async def _await_ready(shard: str) -> str:
     while True:
         resp = await _k8s("GET", path)
         if resp.status_code == 200:
-            status = resp.json().get("status", {})
-            if int(status.get("readyReplicas", 0)) >= 1:
+            body = resp.json()
+            status = body.get("status", {})
+            generation = int(body.get("metadata", {}).get("generation", 0))
+            observed = int(status.get("observedGeneration", 0))
+            replicas = int(status.get("replicas", 0))
+            updated = int(status.get("updatedReplicas", 0))
+            ready = int(status.get("readyReplicas", 0))
+            # Not readyReplicas alone. During a roll the PREVIOUS release's pod is ready and its
+            # address is the one _resolve_pod_ip would hand back, so boot would connect to the
+            # coordinator the new manifest exists to replace — which is exactly how a control plane
+            # carrying a new Flight sidecar dialed the old sidecar-less pod and got ECONNREFUSED.
+            # observedGeneration proves the cluster has seen the manifest just applied, and
+            # replicas == updatedReplicas proves no pod from the previous one is left.
+            if observed >= generation and replicas == updated and ready >= 1:
                 # Resolved here rather than by the caller: the pod that just passed its readiness
                 # gate is the one this wake produced, and its IP is what the caller will dial.
                 return await _resolve_pod_ip(shard)
-            last = f"readyReplicas={status.get('readyReplicas', 0)}"
+            last = (
+                f"generation={generation} observed={observed} "
+                f"replicas={replicas} updated={updated} ready={ready}"
+            )
         else:
             last = gcp_error_detail(resp)
         if asyncio.get_running_loop().time() >= deadline:

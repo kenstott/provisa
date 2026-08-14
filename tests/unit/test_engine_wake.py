@@ -334,6 +334,6 @@ def test_boot_wakes_the_shard_before_anything_asks_for_its_address():
     from provisa.api import app as app_module
 
     src = inspect.getsource(app_module._load_and_build)
-    wake = src.index("ensure_shard_awake(boot_shard())")
+    wake = src.index("converge_boot_shard()")
     for reader in ("_seed_built_in_sources(pg_host", "_apply_server_and_engine_config(raw_config)"):
         assert wake < src.index(reader), f"{reader} runs before the wake"
