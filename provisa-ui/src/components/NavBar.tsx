@@ -44,7 +44,7 @@ export function NavBar() {
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode, authEnabled, capabilities } = useAuth();
-  const { startTour, canResume } = useTour();
+  const { startTour, canResume, status: tourStatus } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -243,6 +243,9 @@ export function NavBar() {
               size="lg"
               aria-label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}
               className="navbar-tour-btn"
+              // The launch prefetch can run for seconds on a loaded machine; the button itself has
+              // to show that the click landed, or it gets clicked again while the tour is starting.
+              loading={tourStatus?.kind === "preparing"}
               onClick={() => startTour()}
             >
               <Compass size={16} aria-hidden />

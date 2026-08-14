@@ -24,9 +24,11 @@ import { useTranslation } from "react-i18next";
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
-import { TOUR_STEPS, stepRoute, type TourStep } from "./tourSteps";
+import { TOUR_STEPS, stepRoute, LINEAGE_DEMO_SQL, type TourStep } from "./tourSteps";
 import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
+import { prefetchSettings } from "../api/admin";
+import { prefetchLineageGraph } from "../api/lineage";
 
 const TOUR_SEEN_KEY = "provisa_tour_seen";
 
@@ -203,6 +205,27 @@ function cleanupPrep(): void {
 // up where the user left off. Cleared on completion (Done on the last step).
 const TOUR_PROGRESS_KEY = "provisa_tour_progress";
 
+// Marks a browser session as already reset. sessionStorage, not localStorage: "once per demo
+// session" is exactly a tab's lifetime, and a new visitor on a kiosk browser gets a fresh one.
+const DEMO_RESET_KEY = "provisa_tour_demo_reset";
+
+/**
+ * Clear the tour's own persisted state once per browser session on a demo server.
+ *
+ * A demo deployment is walked by a new visitor each time, and the previous visitor's seen-flag and
+ * half-finished progress index turn the auto-start off or drop the next visitor into the middle of
+ * the tour. Only the tour's keys are cleared — the session's bearer (`provisa_token`) and the NL
+ * backup a running tour may be holding are not the tour's to discard.
+ */
+export function resetTourStateForDemoSession(): void {
+  if (sessionStorage.getItem(DEMO_RESET_KEY) === "true") return;
+  sessionStorage.setItem(DEMO_RESET_KEY, "true");
+  // Hand back anything a tour interrupted by a reload still had stashed before dropping the keys.
+  cleanupPrep();
+  localStorage.removeItem(TOUR_SEEN_KEY);
+  localStorage.removeItem(TOUR_PROGRESS_KEY);
+}
+
 /** True once the guided tour has been completed or dismissed on this browser. */
 export function hasSeenTour(): boolean {
   return localStorage.getItem(TOUR_SEEN_KEY) === "true";
@@ -219,12 +242,54 @@ export function tourResumeStep(): number | null {
   return Number.isInteger(n) && n > 0 && n < TOUR_STEPS.length ? n : null;
 }
 
+/**
+ * Warm-ups named by `TourStep.prefetch`. Each starts the one uncached backend call the step's
+ * anchor waits on, so the request is in flight before the route mounts instead of after.
+ *
+ * The start-up prefetch covers route chunks and the shared GraphQL queries; these are the REST
+ * reads outside that set — `/admin/settings`, which gates TablesPage's (and /views') loading
+ * state, and the lineage analysis, which the DAG step cannot paint without.
+ */
+export const PREFETCH_ACTIONS: Record<string, () => void> = {
+  settings: () => prefetchSettings(),
+  lineageDemo: () => prefetchLineageGraph(LINEAGE_DEMO_SQL),
+};
+
+/**
+ * Fire the warm-up declared by step `index`, if any. Called both on entering a step (so a resume
+ * straight into it still beats the page's own request) and one step early from the preceding
+ * popover; every warm-up is idempotent, so the second call is a no-op while the first is unconsumed.
+ */
+function warmStep(index: number): void {
+  const name = TOUR_STEPS[index]?.prefetch;
+  if (!name) return;
+  const warm = PREFETCH_ACTIONS[name];
+  if (!warm) throw new Error(`Tour: step ${index} names unknown prefetch "${name}"`);
+  warm();
+}
+
+/**
+ * What the tour is doing while no popover is on screen.
+ *
+ * Every one of these states used to be invisible: the launch click sat silent through the start-up
+ * prefetch, a step waiting on a slow page looked identical to a finished one, and an anchor that
+ * never arrived simply ended the tour. On a loaded machine those gaps are seconds to tens of
+ * seconds long, which reads as a dead button. `null` = a popover is showing, or nothing is running.
+ */
+export type TourStatus =
+  | { kind: "preparing"; resuming: boolean }
+  | { kind: "waiting"; step: number }
+  | { kind: "stuck"; step: number }
+  | null;
+
 interface TourContextValue {
   /** Launch the guided feature tour. Resumes from saved progress unless { restart: true }. */
   startTour: (opts?: { restart?: boolean }) => void;
   running: boolean;
   /** True when an earlier session was dismissed mid-tour and can be resumed. */
   canResume: boolean;
+  /** Non-null while the tour is working with no popover up — drives the overlay and the navbar spinner. */
+  status: TourStatus;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
@@ -237,8 +302,18 @@ const TourContext = createContext<TourContextValue | null>(null);
  * The window is generous because each step may navigate to a lazily-loaded
  * route whose chunk is compiled/fetched on first visit; a short cap would abort
  * the whole tour on a cold chunk (observed killing it at the NL step in dev).
+ * {@link ANCHOR_WAIT_MS} is sized for a machine under heavy load, where a page's
+ * own render and its data round-trip both stretch; the wait is now visible while
+ * it runs and recoverable when it expires, so a long one costs the visitor
+ * nothing but a spinner.
  */
-function waitForElement(selector: string, timeoutMs = 15000): Promise<HTMLElement> {
+const ANCHOR_WAIT_MS = 45000;
+
+// How long an advance may take before the visitor is told the tour is waiting. Short enough that a
+// stall never reads as a dead click, long enough that a normal advance shows no spinner at all.
+const WAITING_HINT_MS = 1200;
+
+function waitForElement(selector: string, timeoutMs = ANCHOR_WAIT_MS): Promise<HTMLElement> {
   const existing = document.querySelector<HTMLElement>(selector);
   if (existing) return Promise.resolve(existing);
   return new Promise((resolve, reject) => {
@@ -267,17 +342,23 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // effect having pre-assigned a callback ref (which caused auto-start to no-op,
   // since child effects run before the parent's).
   const [activeStep, setActiveStep] = useState<number | null>(null);
+  // Bumped by Retry so the runner effect re-enters the same step index.
+  const [attempt, setAttempt] = useState(0);
+  const [status, setStatus] = useState<TourStatus>(null);
   const prefetchTourData = useTourPrefetch();
   const driverRef = useRef<Driver | null>(null);
   const currentPathRef = useRef<string>("");
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
   const activeStepRef = useRef<number | null>(null);
 
-  // End the tour. "completed" (Done on the last step) clears saved progress; "dismissed" (X / Esc)
-  // saves the current step so the next launch resumes there. "failed" — the step's anchor never
-  // appeared — also clears it: re-saving an index that could not render leaves the launch button
-  // dead, since every later click would enter the same step and abort the same way.
-  const endTour = useCallback((how: "completed" | "dismissed" | "failed") => {
+  // End the tour. "completed" (Done on the last step) clears saved progress; "dismissed" (X / Esc,
+  // and the Exit choice on a stuck step) saves the current step so the next launch resumes there.
+  //
+  // A step whose anchor never arrives no longer ends the tour at all — it raises the "stuck" status
+  // and offers Retry / Skip / Exit. Ending on it used to discard the saved index too, so one slow
+  // page cost the visitor their whole position and the next Resume silently restarted at step 0.
+  const endTour = useCallback((how: "completed" | "dismissed") => {
+    setStatus(null);
     localStorage.setItem(TOUR_SEEN_KEY, "true");
     if (how !== "dismissed") {
       localStorage.removeItem(TOUR_PROGRESS_KEY);
@@ -303,12 +384,19 @@ export function TourProvider({ children }: { children: ReactNode }) {
     const i = activeStep;
     activeStepRef.current = i;
     let cancelled = false;
+    // An advance that resolves promptly should not flash a spinner; one that doesn't must say so.
+    const waitingTimer = setTimeout(() => {
+      if (!cancelled) setStatus({ kind: "waiting", step: i });
+    }, WAITING_HINT_MS);
     (async () => {
       try {
         // Indices only ever advance within range (step 0 has no Back button and
         // the last step calls finish() instead of advancing), so TOUR_STEPS[i]
         // is always defined here; a bad index would throw into the catch below.
         const step: TourStep = TOUR_STEPS[i];
+        // Before navigating, so the destination page's own call adopts this request rather than
+        // opening a second one. Already in flight when the preceding step warmed it.
+        warmStep(i);
         if (step.prep) PREP_ACTIONS[step.prep]?.();
         // The step's own route, or the one it inherits from an earlier step (see stepRoute) — a
         // resume can enter at any index, including one that omits `route` because it continues on
@@ -339,6 +427,9 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }
         const element = await waitForElement(step.element, step.waitMs);
         if (cancelled || !driverRef.current) return;
+        // The anchor is here; whatever the visitor was told to wait for is done.
+        clearTimeout(waitingTimer);
+        setStatus(null);
         // Expand a native <select> into an inline list box so its options and
         // <optgroup> headers are visible (a dropdown can't be opened
         // programmatically). The form is torn down on leave, so no restore.
@@ -401,17 +492,25 @@ export function TourProvider({ children }: { children: ReactNode }) {
             },
           },
         });
+        // The popover is on screen and the visitor is reading it — the idle window in which the
+        // next step's backend work can run for free. Without this the request only starts when
+        // Next is clicked, which is the delay that makes an advance feel dead on a loaded machine.
+        warmStep(i + 1);
       } catch {
-        // Anchor never appeared (layout changed / gated by permission) — end
-        // gracefully, saving progress so the user can resume rather than being
-        // trapped behind an overlay.
-        endTour("failed");
+        // The anchor never appeared: the page is still working, or this step's target is gone
+        // (layout changed / gated by permission). The two are indistinguishable from here, so
+        // hand the choice to the visitor — Retry re-enters the step, Skip moves past it, Exit
+        // leaves with the position saved. The tour is not ended and progress is not discarded.
+        if (cancelled) return;
+        setStatus({ kind: "stuck", step: i });
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(waitingTimer);
     };
-  }, [activeStep, navigate, endTour, t]);
+    // `attempt` is the Retry trigger: it re-runs this effect on the same step index.
+  }, [activeStep, attempt, navigate, endTour, t]);
 
   // Start the tour. Resumes from saved progress by default; pass { restart: true } to force step 0.
   //
@@ -421,45 +520,136 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // page stuck on its own "Loading…" state. Awaiting every page chunk before the first step removes
   // that source of the race; the in-flight guard (`driverRef.current` set immediately) still blocks
   // a double-start from a second click during the wait.
-  const startTour = useCallback((opts?: { restart?: boolean }) => {
-    if (driverRef.current) return;
-    currentPathRef.current = "";
-    driverRef.current = driver({
-      allowClose: true,
-      overlayColor: "rgba(10, 12, 20, 0.7)",
-      stagePadding: 6,
-      stageRadius: 8,
-      disableActiveInteraction: true,
-      onDestroyed: () => {
-        // Covers backdrop clicks / Esc, which bypass onCloseClick — treat as an early
-        // dismissal and save the current step so the next launch resumes there.
-        if (driverRef.current) {
-          localStorage.setItem(TOUR_SEEN_KEY, "true");
-          if (activeStepRef.current != null) {
-            localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
+  const startTour = useCallback(
+    (opts?: { restart?: boolean }) => {
+      if (driverRef.current) return;
+      const resuming = !opts?.restart && tourResumeStep() !== null;
+      // The prefetch below is seconds of work on a loaded machine and the button gives no feedback
+      // of its own; without this the click looks ignored and gets clicked again.
+      setStatus({ kind: "preparing", resuming });
+      currentPathRef.current = "";
+      driverRef.current = driver({
+        allowClose: true,
+        overlayColor: "rgba(10, 12, 20, 0.7)",
+        stagePadding: 6,
+        stageRadius: 8,
+        disableActiveInteraction: true,
+        onDestroyed: () => {
+          // Covers backdrop clicks / Esc, which bypass onCloseClick — treat as an early
+          // dismissal and save the current step so the next launch resumes there.
+          if (driverRef.current) {
+            localStorage.setItem(TOUR_SEEN_KEY, "true");
+            if (activeStepRef.current != null) {
+              localStorage.setItem(TOUR_PROGRESS_KEY, String(activeStepRef.current));
+            }
+            cleanupPrep();
+            driverRef.current = null;
+            setStatus(null);
+            setActiveStep(null);
           }
-          cleanupPrep();
-          driverRef.current = null;
-          setActiveStep(null);
+        },
+      });
+      // Both halves of "the destination is ready": its chunk is compiled and its queries are in the
+      // cache. Waiting for the data too is what keeps a step from landing on a page still painting
+      // its own "Loading…" state.
+      void Promise.all([prefetchAllPageChunks(), prefetchTourData()]).then(() => {
+        // The wait may have outlasted a dismissal (e.g. immediate Esc) — don't resurrect it.
+        if (!driverRef.current) {
+          setStatus(null);
+          return;
         }
-      },
-    });
-    // Both halves of "the destination is ready": its chunk is compiled and its queries are in the
-    // cache. Waiting for the data too is what keeps a step from landing on a page still painting
-    // its own "Loading…" state.
-    void Promise.all([prefetchAllPageChunks(), prefetchTourData()]).then(() => {
-      // The wait may have outlasted a dismissal (e.g. immediate Esc) — don't resurrect it.
-      if (!driverRef.current) return;
-      setActiveStep(opts?.restart ? 0 : (tourResumeStep() ?? 0));
-    });
-  }, [prefetchTourData]);
+        // The step's own runner takes over the status from here: it clears it when the anchor
+        // lands, or replaces it with waiting/stuck.
+        setActiveStep(opts?.restart ? 0 : (tourResumeStep() ?? 0));
+      });
+    },
+    [prefetchTourData],
+  );
 
   return (
     <TourContext.Provider
-      value={{ startTour, running: activeStep !== null, canResume: tourResumeStep() !== null }}
+      value={{
+        startTour,
+        running: activeStep !== null,
+        canResume: tourResumeStep() !== null,
+        status,
+      }}
     >
       {children}
+      <TourStatusOverlay
+        status={status}
+        onRetry={() => {
+          setStatus(null);
+          setAttempt((n) => n + 1);
+        }}
+        onSkip={() => {
+          const i = activeStepRef.current;
+          if (i === null) return;
+          setStatus(null);
+          if (i + 1 < TOUR_STEPS.length) setActiveStep(i + 1);
+          else endTour("completed");
+        }}
+        onExit={() => endTour("dismissed")}
+      />
     </TourContext.Provider>
+  );
+}
+
+/**
+ * The tour's own progress surface, shown whenever the tour is working with no popover on screen.
+ *
+ * It sits above driver.js's backdrop so a visitor waiting on a slow page sees what is being waited
+ * for instead of a dimmed, unresponsive screen; on a stuck step it is also the only way out that
+ * keeps the saved position.
+ */
+function TourStatusOverlay({
+  status,
+  onRetry,
+  onSkip,
+  onExit,
+}: {
+  status: TourStatus;
+  onRetry: () => void;
+  onSkip: () => void;
+  onExit: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!status) return null;
+  const stuck = status.kind === "stuck";
+  const message =
+    status.kind === "preparing"
+      ? status.resuming
+        ? t("tour.status.resuming")
+        : t("tour.status.starting")
+      : status.kind === "waiting"
+        ? t("tour.status.waiting")
+        : t("tour.status.stuck");
+  return (
+    <div className="tour-status-overlay" role="status" aria-live="polite">
+      <div className="tour-status-card">
+        {!stuck && <div className="tour-status-spinner" aria-hidden />}
+        <p className="tour-status-message">{message}</p>
+        {stuck ? (
+          <div className="tour-status-actions">
+            <button type="button" className="tour-status-btn primary" onClick={onRetry}>
+              {t("tour.status.retry")}
+            </button>
+            <button type="button" className="tour-status-btn" onClick={onSkip}>
+              {t("tour.status.skip")}
+            </button>
+            <button type="button" className="tour-status-btn" onClick={onExit}>
+              {t("tour.status.exit")}
+            </button>
+          </div>
+        ) : (
+          <div className="tour-status-actions">
+            <button type="button" className="tour-status-btn" onClick={onExit}>
+              {t("tour.status.cancel")}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -128,6 +128,16 @@
         "title": "A living business glossary",
         "description": "📖 Every term links back to the columns that carry it — curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps: <strong>✨ Definitions</strong> drafts only the terms still missing one, and <strong>✨ Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
       }
+    },
+    "status": {
+      "starting": "Starting the tour. Please wait…",
+      "resuming": "Working on resuming. Please wait…",
+      "waiting": "Waiting for this page to finish loading…",
+      "stuck": "This step is taking longer than expected. The page may still be loading.",
+      "retry": "Retry",
+      "skip": "Skip this step",
+      "exit": "Exit tour",
+      "cancel": "Cancel"
     }
   }
 }

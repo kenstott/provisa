@@ -48,11 +48,49 @@ export interface LineageGraphData {
   cycles?: LineageCycle[];
 }
 
+/**
+ * Analyses started ahead of the page that will consume them, keyed by `dialect\nsql`.
+ *
+ * /admin/lineage/graph reads the view registry and parses the statement on every call — there is
+ * no server-side cache — so a cold analysis is seconds of work that LineagePage only starts once
+ * it has mounted. The guided tour knows one step early which statement is coming and calls
+ * {@link prefetchLineageGraph}; by the time the page mounts the request is in flight or done, and
+ * its own fetchLineageGraph call adopts that promise instead of starting a second analysis.
+ *
+ * An entry is consumed exactly once and only by an identical (sql, dialect) pair, so a later
+ * Analyze click on the same statement re-queries the server and cannot be served something stale.
+ */
+const prefetched = new Map<string, Promise<LineageGraphData>>();
+
+const lineageKey = (sql: string, dialect: string) => `${dialect}\n${sql}`;
+
+/**
+ * Start the analysis for `sql` now so a later {@link fetchLineageGraph} for the same statement
+ * resolves without waiting. A rejection is held in the map and surfaces when the real caller
+ * adopts the promise — the error is delivered to the page that asked for the graph, never dropped.
+ */
+export function prefetchLineageGraph(sql: string, dialect = "postgres"): void {
+  const key = lineageKey(sql, dialect);
+  if (prefetched.has(key)) return;
+  const inflight = fetchLineageGraph(sql, dialect);
+  prefetched.set(key, inflight);
+  // An unadopted rejection would surface as an unhandled promise rejection; attaching a no-op
+  // handler marks it handled without discarding it — the stored promise still rejects for whoever
+  // adopts it below.
+  inflight.catch(() => undefined);
+}
+
 // REQ-1160: full column-level DAG for a single SQL statement.
 export async function fetchLineageGraph(
   sql: string,
   dialect = "postgres",
 ): Promise<LineageGraphData> {
+  const key = lineageKey(sql, dialect);
+  const warm = prefetched.get(key);
+  if (warm) {
+    prefetched.delete(key);
+    return warm;
+  }
   const resp = await fetch(`${API_BASE}/admin/lineage/graph`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

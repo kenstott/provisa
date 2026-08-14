@@ -50,6 +50,15 @@ export interface TourStep {
    * the branch to the explorer's state key. Only meaningful with a `route`.
    */
   openBranch?: "sql" | "graphql" | "cypher" | "grpc" | "jsonapi" | "openapi";
+  /**
+   * Named warm-up for *this* step's backend work, resolved by the runner's prefetch registry and
+   * fired one step early (while the previous popover is on screen). The start-up prefetch only
+   * covers page chunks and the shared GraphQL queries; a step whose anchor waits on its own REST
+   * round-trip — the lineage analysis, the platform settings that gate TablesPage's loading state —
+   * otherwise pays that latency at the moment Next is clicked, which is what makes an advance feel
+   * dead on a loaded machine.
+   */
+  prefetch?: string;
   /** Key into the `tour.steps` i18n namespace for this step's title/description. */
   key: string;
   /**
@@ -70,7 +79,7 @@ export interface TourStep {
    */
   readySelector?: string;
   /**
-   * Overrides the default 15s anchor wait for steps whose target only mounts after a backend
+   * Overrides the runner's default anchor wait for steps whose target only mounts after a backend
    * round-trip the tour cannot prefetch. Not a leniency knob: an anchor that never appears still
    * aborts the tour, this only sets how long "never" takes to establish.
    */
@@ -89,7 +98,8 @@ const VIEWS_READY = '[data-tour="tables-header"]';
 // schema. Plus an UPPER() transform so the DAG shows a real source → transform →
 // result trace. LineagePage auto-builds the statement graph from `?sql=` on mount (it only analyzes,
 // never runs), so deep-linking it avoids any click-timing race.
-const LINEAGE_DEMO_SQL =
+// Exported so the runner's `lineageDemo` prefetch warms the exact statement this step deep-links.
+export const LINEAGE_DEMO_SQL =
   "SELECT users.name, UPPER(users.name) AS name_upper, COUNT(inquiries.id) AS inquiry_count " +
   'FROM "pet_store"."inquiries" JOIN "pet_store"."users" ON inquiries.user_id = users.id ' +
   "GROUP BY users.name";
@@ -98,12 +108,14 @@ export const TOUR_STEPS: TourStep[] = [
   // ─── SPINE: the five-minute core (register a source → expose tables → query it eight ways) ───
   {
     route: "/sources",
+    prefetch: "settings",
     element: ".navbar-tour-btn",
     readySelector: SOURCES_ADD,
     key: "step0",
   },
   {
     route: "/sources",
+    prefetch: "settings",
     element: '[data-tour="nav-sources"]',
     readySelector: SOURCES_ADD,
     key: "step1",
@@ -121,6 +133,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/tables",
+    prefetch: "settings",
     element: '[data-tour="nav-tables"]',
     // nav-tables lives in the always-mounted NavBar, so it resolves the instant navigation
     // happens — before TablesPage has finished loading. Gate on tables-add (page content,
@@ -133,6 +146,7 @@ export const TOUR_STEPS: TourStep[] = [
     // Own the route so Back from the first surface (/sql) returns here instead of hanging on
     // clickBefore (the tables-add button only exists on /tables).
     route: "/tables",
+    prefetch: "settings",
     element: '[data-tour="tables-form"]',
     key: "step5",
     clickBefore: TABLES_ADD,
@@ -143,6 +157,7 @@ export const TOUR_STEPS: TourStep[] = [
     // collapse it again on Next. Rows render past the loading state, so the
     // clickBefore await also gates on page readiness.
     route: "/tables",
+    prefetch: "settings",
     element: '[data-testid="table-read-view-preview"]',
     key: "stepPreview",
     clickBefore: ".data-table tbody tr.clickable",
@@ -239,6 +254,7 @@ export const TOUR_STEPS: TourStep[] = [
     // contract is edited where every other table setting is. `?source=` seeds the filter box, so
     // the first row is the checker's results table — expand it and its edit control appears.
     route: "/tables?source=dq-checker",
+    prefetch: "settings",
     element: '[data-testid="table-read-view-edit"]',
     key: "stepQualityTable",
     clickBefore: ".data-table tbody tr.clickable",
@@ -253,18 +269,21 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/views",
+    prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
     key: "step20",
   },
   {
     route: "/views",
+    prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
     key: "step21",
   },
   {
     route: `/lineage?sql=${encodeURIComponent(LINEAGE_DEMO_SQL)}`,
+    prefetch: "lineageDemo",
     element: '[data-testid="lineage-dag"]',
     // The DAG mounts only once LineagePage's deep-link effect has finished analyzing the statement
     // server-side; nothing paints it before that, so this step's anchor is bounded by the backend,
@@ -294,6 +313,7 @@ export const TOUR_STEPS: TourStep[] = [
   // ─── CLOSE ───
   {
     route: "/sources",
+    prefetch: "settings",
     element: '[data-tour="sources-add"]',
     key: "step24",
   },

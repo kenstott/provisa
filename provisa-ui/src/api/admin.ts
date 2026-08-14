@@ -680,7 +680,39 @@ export interface PlatformSettings {
   };
 }
 
+/**
+ * A settings read started ahead of the page that will consume it.
+ *
+ * TablesPage (and its viewsOnly twin, /views) holds its loading state until this call returns, so
+ * on a loaded machine the whole page waits on one uncached round-trip that only begins once the
+ * route has mounted. The guided tour knows one step early that such a page is next and calls
+ * {@link prefetchSettings}; the page's own fetchSettings then adopts that promise.
+ *
+ * The entry is consumed exactly once, so a later read — a save on the Admin page, a manual
+ * refresh — always re-queries the server and can never be served a stale snapshot.
+ */
+let prefetchedSettings: Promise<PlatformSettings> | null = null;
+
+/**
+ * Start the settings read now so a later {@link fetchSettings} resolves without waiting. A
+ * rejection is held until the real caller adopts it, so the error still reaches the page that
+ * asked for settings.
+ */
+export function prefetchSettings(): void {
+  if (prefetchedSettings) return;
+  const inflight = fetchSettings();
+  prefetchedSettings = inflight;
+  // An unadopted rejection would surface as an unhandled promise rejection; a no-op handler marks
+  // it handled without discarding it — the stored promise still rejects for whoever adopts it.
+  inflight.catch(() => undefined);
+}
+
 export async function fetchSettings(): Promise<PlatformSettings> {
+  const warm = prefetchedSettings;
+  if (warm) {
+    prefetchedSettings = null;
+    return warm;
+  }
   const resp = await fetch(`${API_BASE_RAW}/admin/settings`);
   if (!resp.ok) throw new Error(requestFailed("Settings fetch", resp.status));
   return resp.json();

@@ -30,7 +30,12 @@ import { PageLoading } from "./components/PageLoading";
 import { OnboardGate } from "./components/OnboardGate";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { fetchSetupStatus } from "./api/setup";
-import { TourProvider, useTour, hasSeenTour } from "./tour/useTour";
+import {
+  TourProvider,
+  useTour,
+  hasSeenTour,
+  resetTourStateForDemoSession,
+} from "./tour/useTour";
 import { prefetchPageChunksOnIdle } from "./pageChunks";
 import "./App.css";
 
@@ -133,7 +138,12 @@ function TourAutoStart({ demoMode }: { demoMode: boolean }) {
       startTour({ restart: true });
       return;
     }
-    if (demoMode && !hasSeenTour()) startTour({ restart: true });
+    if (!demoMode) return;
+    // Each visit to a demo server is a new visitor: drop the previous one's seen-flag and
+    // half-finished progress before deciding whether to auto-start, so the tour opens at step 0
+    // rather than resuming someone else's session or not opening at all.
+    resetTourStateForDemoSession();
+    if (!hasSeenTour()) startTour({ restart: true });
   }, [tourParam, demoMode, startTour, setSearchParams]);
   return null;
 }
