@@ -50,6 +50,17 @@ variable "network_cidr" {
   default     = "10.10.0.0/16"
 }
 
+variable "coordinator_internal_ip" {
+  description = <<-DESC
+    Fixed internal address for the coordinator, inside network_cidr. The engine pods read the
+    OTel Iceberg tables from this node's MinIO, so the endpoint they are handed must be stable
+    across a stop/start and must be known before the instance is created — its own startup
+    script carries the endpoint, and an instance cannot reference its own assigned network_ip.
+  DESC
+  type        = string
+  default     = "10.10.0.4"
+}
+
 # ── Engine cluster (REQ-1447) ───────────────────────────────────────────────────
 # The pod and service ranges are ALIAS ranges on the node subnet, not a separate
 # network. Pods therefore hold routable VPC addresses, which is what lets the

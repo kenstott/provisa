@@ -360,6 +360,10 @@ resource "google_compute_address" "coordinator_internal" {
   region       = var.region
   subnetwork   = google_compute_subnetwork.nodes.id
   address_type = "INTERNAL"
+  # Pinned to the address the coordinator already holds: reserving it converts the
+  # existing ephemeral lease rather than moving the node onto a new IP, which GCE
+  # cannot do while the instance runs.
+  address = var.coordinator_internal_ip
 }
 
 resource "google_compute_instance" "coordinator" {
