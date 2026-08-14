@@ -770,6 +770,11 @@ services:
       FLIGHT_PORT: "8815"
       REDIS_URL: "redis://redis:6379"
       PROVISA_OTEL_S3_ENDPOINT: "http://minio:9000"
+      # The same store as Trino sees it. The engine reads the OTel Iceberg tables itself,
+      # from pods in the GKE cluster where the compose service name "minio" resolves to
+      # nothing (UnknownHostException: minio), so the catalog it is handed carries the
+      # coordinator's VPC address instead (engine_visible_s3_endpoint, REQ-1451).
+      PROVISA_ENGINE_OTEL_S3_ENDPOINT: "\${PROVISA_ENGINE_OTEL_S3_ENDPOINT:?the coordinator's VPC address for MinIO}"
       PROVISA_OTEL_S3_ACCESS_KEY: "minioadmin"
       PROVISA_OTEL_S3_SECRET_KEY: "minioadmin"
       PROVISA_OTEL_BUCKET: "\${PROVISA_OTEL_BUCKET:-provisa-otel}"
@@ -814,6 +819,12 @@ services:
   minio:
     restart: unless-stopped
     image: minio/minio:latest
+    # Published, but only on the VPC address: the engine pods run outside this VM and read
+    # the OTel Iceberg tables straight from here, so the port has to leave the compose
+    # network. Binding to the node's internal IP rather than 0.0.0.0 keeps it off the
+    # external interface, and the firewall admits only the cluster's pod range.
+    ports:
+      - "\${PROVISA_MINIO_BIND_IP:?the node's VPC-internal address}:9000:9000"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -939,6 +950,7 @@ install_systemd() {
              PROVISA_ENGINE_CLUSTER_PROJECT PROVISA_ENGINE_CLUSTER_LOCATION \
              PROVISA_ENGINE_CLUSTER_NAME PROVISA_ENGINE_CLUSTER_DNS_DOMAIN \
              PROVISA_ENGINE_NAMESPACE PROVISA_ENGINE_IMAGE PROVISA_ENGINE_SHARD \
+             PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do
     if [ -n "${!var:-}" ]; then

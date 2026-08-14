@@ -86,6 +86,22 @@ resource "google_compute_firewall" "intra_cluster" {
   target_tags = ["provisa-saas-node"]
 }
 
+# The engine reads the OTel Iceberg tables from the coordinator's MinIO, and the pods that
+# do it live in the GKE cluster, not on this VM: the intra_cluster rule matches by network
+# tag and the pod alias ranges carry none, so the traffic arrives untagged from pods_cidr.
+resource "google_compute_firewall" "minio_from_pods" {
+  name    = "provisa-saas-allow-minio-from-pods"
+  network = google_compute_network.main.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["9000"]
+  }
+
+  source_ranges = [var.pods_cidr]
+  target_tags   = ["provisa-saas-node"]
+}
+
 resource "google_compute_firewall" "ssh" {
   count   = var.ssh_public_key != "" && var.admin_cidr != "" ? 1 : 0
   name    = "provisa-saas-allow-ssh"
@@ -307,6 +323,13 @@ locals {
     export PROVISA_ENGINE_SHARD="shared_1"
     export PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE="trino-{org_id}.${local.engine_hostname_suffix}"
     export PROVISA_ISOLATED_ENGINE_PORT=8080
+    # The OTel Iceberg tables live in this node's MinIO, and the engine reads them itself.
+    # "http://minio:9000" is a compose service name that exists only on this VM, so the shard
+    # resolved nothing and every ops query failed with UnknownHostException: minio. The engine
+    # gets the VPC address instead (engine_visible_s3_endpoint), and the compose file binds
+    # MinIO's published port to that same address so it is reachable but not public.
+    export PROVISA_MINIO_BIND_IP="${google_compute_address.coordinator_internal.address}"
+    export PROVISA_ENGINE_OTEL_S3_ENDPOINT="http://${google_compute_address.coordinator_internal.address}:9000"
   SHELL
 
   metadata_ssh = var.ssh_public_key != "" ? { ssh-keys = var.ssh_public_key } : {}
@@ -325,6 +348,19 @@ locals {
 #
 # The resource keeps its `coordinator` name: it is the same instance, and renaming
 # it would destroy and recreate the live control plane for a label.
+
+# A reserved internal address, not the ephemeral one GCE hands out. The engine pods
+# read the OTel Iceberg tables straight from this node's MinIO, so the S3 endpoint they
+# are given has to be an address that outlives a stop/start of the coordinator — and it
+# has to be known BEFORE the instance is created, because the instance's own startup
+# script is what carries the endpoint to the app (a reference to the instance's assigned
+# network_ip from inside its own metadata is a dependency cycle).
+resource "google_compute_address" "coordinator_internal" {
+  name         = "provisa-saas-coordinator-internal"
+  region       = var.region
+  subnetwork   = google_compute_subnetwork.nodes.id
+  address_type = "INTERNAL"
+}
 
 resource "google_compute_instance" "coordinator" {
   name         = "provisa-saas-coordinator"
@@ -345,6 +381,7 @@ resource "google_compute_instance" "coordinator" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.nodes.id
+    network_ip = google_compute_address.coordinator_internal.address
     access_config {}
   }
 
