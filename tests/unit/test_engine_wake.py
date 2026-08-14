@@ -56,7 +56,7 @@ class _FakeK8s:
 
     async def shard_status(self, shard: str) -> dict:
         self.status_calls += 1
-        return {"shard": shard, "state": self.state, "ready_replicas": 0, "nodes": 0}
+        return {"shard": shard, "state": self.state, "ready_replicas": 0, "replicas": 0}
 
     async def ensure_shared_shard(self, shard: str) -> None:
         self.wakes.append(shard)
@@ -258,7 +258,7 @@ async def test_bound_org_without_a_runtime_raises(fake_k8s):
 # ── reaper ──────────────────────────────────────────────────────────────────────
 
 
-async def test_reaper_releases_the_node_after_the_idle_window(fake_k8s, monkeypatch):
+async def test_reaper_scales_to_zero_after_the_idle_window(fake_k8s, monkeypatch):
     monkeypatch.setenv("PROVISA_ENGINE_IDLE_CHECK_SECONDS", "0")
     monkeypatch.setenv("PROVISA_ENGINE_IDLE_SECONDS", "0")
     await engine_wake.ensure_shard_awake("shared_1")
@@ -307,7 +307,7 @@ def test_reaper_not_started_without_a_provisioner(monkeypatch):
 
 async def test_the_reaper_start_seeds_the_boot_shard(fake_k8s, monkeypatch):
     """_last_activity is process state. After a control plane restart it is empty, so a shard whose
-    node is up but which no query touches was never a reap candidate and billed forever."""
+    pod is up but which no query touches was never a reap candidate and billed forever."""
     monkeypatch.setenv("PROVISA_ENGINE_SHARD", "shared_1")
     engine_wake._last_activity.clear()
     st = SimpleNamespace()

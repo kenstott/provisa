@@ -10,26 +10,26 @@
 
 """REQ-1448: idle-to-zero for the engine shards, and the wake a query pays for.
 
-A shard's node pool sits at zero while nobody is querying it, because a GKE node bills in full
-whether or not a pod is on it. That resting state is what keeps the zero-customer floor where it is;
-it also means the coordinator a query needs may not exist when the query arrives, and this module is
-the seam that reconciles the two.
+A shard's Deployment sits at zero replicas while nobody is querying it, and Autopilot bills pod
+requests, so a shard with no pod costs nothing (REQ-1464). That resting state is what keeps the
+zero-customer floor where it is; it also means the coordinator a query needs may not exist when the
+query arrives, and this module is the seam that reconciles the two.
 
 Three things follow from a shard that can be absent, and all three are handled here rather than at
 any call site:
 
 * **The wake happens BEFORE the terminal is dispatched, not as a retry.** ``execute_trino``'s retry
   budget is 30s (``PROVISA_RETRY_BUDGET_SECS``) and a cold shard is ~90-120s of node provision plus
-  Trino start. A wake left to the retry loop therefore cannot succeed — the budget expires while the
-  node is still being created. :func:`ensure_engine_awake` runs at the top of ``_execute_plan``, so
+  Trino start. A wake left to the retry loop therefore cannot succeed — the budget expires while
+  Autopilot is still bringing a node up for the pod. :func:`ensure_engine_awake` runs at the top of ``_execute_plan``, so
   the query waits on the wake and then dispatches once, with its full retry budget intact for the
   failures retries are actually for.
 * **A resumed shard has NO catalogs.** It runs ``catalog.management=dynamic`` over an ``emptyDir``,
   so the ``CREATE CATALOG`` statements an org's runtime issued are gone with the old pod. Every cold
   start bumps that shard's generation; an org runtime stamped with an older generation is rebuilt
   before its query runs, which is what reissues them.
-* **The reaper and the wake race by construction.** A stop is a drain plus a pool resize, minutes
-  long, and a query can arrive in the middle of it. The wake CANCELS an in-flight stop rather than
+* **The reaper and the wake race by construction.** A stop is a drain plus the scale-down that
+  follows it, minutes long, and a query can arrive in the middle of it. The wake CANCELS an in-flight stop rather than
   waiting it out, and then treats the shard as cold — the pod may already be gone.
 
 Everything here no-ops unless the deployment can actually provision (``provisioning_available``),
@@ -218,11 +218,11 @@ async def _stop_shard(shard: str) -> None:
 
 
 async def idle_reaper() -> None:
-    """Release the node under any shard that has not served traffic for the idle window.
+    """Scale to zero any shard that has not served traffic for the idle window.
 
-    The DEPLOYMENT scaling to zero saves nothing: an empty node bills exactly as much as a busy one.
-    ``scale_shard_to_zero`` drains the pod and then takes the node, and taking the node is the part
-    that stops the meter (REQ-1448).
+    ``scale_shard_to_zero`` patches the Deployment to zero replicas and waits for the pod to go, and
+    the pod going is what stops the meter — Autopilot bills pod requests, so a shard with no pod is
+    free and Autopilot removes the node it had provisioned for it (REQ-1448, REQ-1464).
     """
     interval = _int_env("PROVISA_ENGINE_IDLE_CHECK_SECONDS", 60)
     idle_after = _int_env("PROVISA_ENGINE_IDLE_SECONDS", 900)
@@ -237,16 +237,16 @@ async def idle_reaper() -> None:
             if lock.locked():
                 # A wake is in progress; this shard is about to be busy by definition.
                 continue
-            log.info("engine shard %s idle for %ds — releasing its node", shard, idle_after)
+            log.info("engine shard %s idle for %ds — scaling it to zero", shard, idle_after)
             _stop_tasks[shard] = asyncio.create_task(_stop_shard(shard))
 
 
 def start_idle_reaper(state: Any) -> None:
-    """Start the reaper, on deployments that can actually release a node."""
+    """Start the reaper, on deployments that can actually scale a shard down."""
     if not k8s.provisioning_available():
         return
     # The reaper measures idleness from _last_activity, which is process state: after a control
-    # plane restart it is empty, so a shard whose node is up but which no query touches was never
+    # plane restart it is empty, so a shard whose pod is up but which no query touches was never
     # considered for release and billed indefinitely. Seeding the boot shard here starts its idle
     # window at the restart, so an untouched shard is released one window later (REQ-1463).
     note_activity(boot_shard())

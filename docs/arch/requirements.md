@@ -15180,9 +15180,9 @@ A regional standby of the SHARED LANE is ASYMMETRIC: the control plane and its d
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-The cold-shard wake is reconciled with the executor's retry budget by ORDERING, not by widening the budget. A node provision is roughly 90-120s (k8s_provisioner._await_operation, bounded by PROVISA_ENGINE_NODE_TIMEOUT=420) while a statement's retry budget is 30s (_retry_budget/PROVISA_RETRY_BUDGET_SECS), so a query that discovered an absent shard from inside its retry loop could never wait the wake out -- it would exhaust the budget and fail on a shard that was seconds from ready. The wake therefore runs BEFORE the terminal call, at the top of _execute_plan and ahead of _run_plan_terminal, so the wait for capacity is not spent from the retry budget at all and the budget keeps its intended meaning: transient failures of a shard that is already up. Raising PROVISA_RETRY_BUDGET_SECS to cover a cold start is explicitly REJECTED -- it would make every genuinely failing query on a warm shard hang for minutes. Because _execute_plan is the one terminal seam every surface routes through ([REQ-1386](#REQ-1386)), no protocol server carries a wake of its own.
+The cold-shard wake is reconciled with the executor's retry budget by ORDERING, not by widening the budget. A cold start is roughly 90-120s of Autopilot node provision plus Trino start (k8s_provisioner._await_ready, bounded by PROVISA_ENGINE_READY_TIMEOUT) while a statement's retry budget is 30s (_retry_budget/PROVISA_RETRY_BUDGET_SECS), so a query that discovered an absent shard from inside its retry loop could never wait the wake out -- it would exhaust the budget and fail on a shard that was seconds from ready. The wake therefore runs BEFORE the terminal call, at the top of _execute_plan and ahead of _run_plan_terminal, so the wait for capacity is not spent from the retry budget at all and the budget keeps its intended meaning: transient failures of a shard that is already up. Raising PROVISA_RETRY_BUDGET_SECS to cover a cold start is explicitly REJECTED -- it would make every genuinely failing query on a warm shard hang for minutes. Because _execute_plan is the one terminal seam every surface routes through ([REQ-1386](#REQ-1386)), no protocol server carries a wake of its own.
 
-**Use case:** A query that arrives at a shard whose node pool is at zero waits out the node provision and then executes, instead of failing after 30 seconds against an engine that is still coming up.
+**Use case:** A query that arrives at a shard that is at zero replicas waits out the cold start and then executes, instead of failing after 30 seconds against an engine that is still coming up.
 
 **Code:** `provisa/pgwire/_pipeline.py`, `provisa/federation/engine_wake.py`
 
@@ -15215,3 +15215,39 @@ The engine idle reaper seeds the boot shard's activity clock when it starts, so 
 **Code:** `provisa/federation/engine_wake.py`
 
 **Tests:** `tests/unit/test_engine_wake.py`
+
+### REQ-1464 · Federation Engine {#REQ-1464}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+The engine cluster runs in GKE AUTOPILOT mode, and idle-to-zero is a Deployment REPLICA count rather than a node-pool size. The Standard topology of [REQ-1447](#REQ-1447)/[REQ-1448](#REQ-1448) could not actually rest at zero: with the default pool removed, GKE's own system workloads (kube-dns, metrics-server, konnectivity-agent, event-exporter, kube-state-metrics, gmp-operator) are Deployments rather than DaemonSets, so the shard pool was the only place left to schedule them; scaling it to zero left them Pending and the cluster autoscaler rebuilt a node within seconds, so the shared lane billed an e2-highmem-8 around the clock whether or not anybody queried it. Autopilot bills POD REQUESTS, makes the system workloads Google's, and holds no nodes when nothing runs, so a shard with zero replicas costs nothing. The $0.10/hr cluster fee and its free-tier credit are identical in both modes, so the zero-customer floor of [REQ-1448](#REQ-1448) is unchanged. Running COSTS about 6.5% more (a 6 vCPU / 24 GiB pod is $0.3851/hr of requests against $0.3616/hr for the e2-highmem-8 that carried it, us-central1 list); break-even against keeping a Spot system pool is roughly 460 shard-hours a month, so this is the cheaper shape until the shared lane is busy most of the day. Consequences that follow and are part of this requirement -- shard isolation is the pod's Guaranteed QoS (requests == limits) plus the control plane living outside the cluster, NOT a nodeSelector or taint, which Autopilot has no pools to honour; the control plane's IAM role drops container.clusters.update (it authorized nodePools:setSize) and its cluster-scoped node read, leaving container.clusters.get/getCredentials plus the namespaced RBAC; shard_status derives stopped/starting/ready from spec.replicas and status.readyReplicas rather than from a node count; scale_shard_to_zero patches the scale subresource to zero and WAITS for the Deployment to observe zero replicas, bounded by PROVISA_ENGINE_DRAIN_SECONDS, so a shard is never reported stopped while its pod is still draining and still billing; and Cloud DNS uses ADDITIVE VPC scope rather than VPC_SCOPE, which Autopilot does not support, valid because a shard's Service is headless and resolvable under the same <service>.<namespace>.svc.<domain> name the control plane already dials.
+
+**Use case:** With no customers querying, the shared engine lane bills nothing at all, instead of an always-on node kept alive by the cluster's own system pods.
+
+**Code:** `terraform/gcp-saas/gke.tf`, `provisa/federation/k8s_provisioner.py`, `provisa/federation/engine_wake.py`
+
+**Tests:** `tests/unit/test_k8s_engine_provisioner.py`, `tests/unit/test_engine_wake.py`
+
+### REQ-1465 · Federation Engine {#REQ-1465}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+Both engine-cluster topologies are selectable and exercised, chosen by var.engine_cluster_mode: "autopilot" builds the REGIONAL Autopilot cluster of [REQ-1464](#REQ-1464), and "standard" builds a zonal Standard cluster carrying a small always-on Spot system pool plus one node pool per shard that autoscales 0..1 and is tainted provisa.dev/shard=<shard>:NoSchedule. The two shapes are a UTILIZATION crossover rather than a dev/prod split -- Autopilot rests at zero but bills about 6.5% more while running, so Standard becomes cheaper past roughly 460 shard-hours a month -- and the platform must be able to move between them on evidence after the first two or three customers, not rewrite for it. What makes one control-plane code path serve both: the shard pod tolerates only its own shard's taint, so the SAME replica patch drives node lifecycle in either mode, and only the pod's placement stanza differs. Autopilot must be regional (the API refuses a zonal Autopilot cluster), which lets the scheduler place a shard pod outside the control-plane VM's zone and bill every result-set byte as cross-zone egress; so PROVISA_ENGINE_CLUSTER_ZONE is REQUIRED, never inferred from the location, and every shard pod pins topology.kubernetes.io/zone to it in both modes. Switching modes REPLACES the cluster -- enable_autopilot and dns_config are creation-time only -- so the cutover destroys every shard and is announced through the maintenance notice of [REQ-1466](#REQ-1466). DNS differs by what each mode supports: Autopilot uses CLUSTER_SCOPE plus additive_vpc_scope_dns_domain, Standard uses VPC_SCOPE plus cluster_dns_domain.
+
+**Use case:** Once real utilization is known, the operator moves the shared lane to whichever topology is cheaper by changing one variable, having already run the platform on both.
+
+**Code:** `terraform/gcp-saas/gke.tf`, `terraform/gcp-saas/variables.tf`, `terraform/gcp-saas/main.tf`, `provisa/federation/k8s_provisioner.py`, `packaging/linux/first-launch.sh`
+
+**Tests:** `tests/unit/test_k8s_engine_provisioner.py`
+
+### REQ-1466 · Platform Administration {#REQ-1466}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A platform_admin turns a deployment-wide scheduled-maintenance notice on and off, and every signed-in user sees it as a banner above the whole application on every route until it is cleared. Planned work that replaces the engine cluster -- the topology switch of [REQ-1465](#REQ-1465) is the case that forces this -- fails queries for minutes, which is indistinguishable from the product being broken unless the deployment says otherwise. The wording is composed by the SERVER, so one deployment says one thing on every surface and an administrator with nothing special to say supplies nothing; a supplied message overrides it. started_at is stamped by the transition into active rather than supplied, so re-arming an open window (longer end time, corrected wording) does not restart its clock and turning the notice off clears the stamp. An omitted end time is stated as such rather than implying an imminent return. The banner is not dismissible, because a query issued after dismissing it fails exactly the same way. Reading the notice needs only authentication -- the people it is for are not administrators -- while writing it requires platform_settings, since a false maintenance banner is itself an outage. The same control exists as `provisa maintenance on|off|status` so a deploy script can raise the banner before the work and clear it after without a browser; the CLI is a thin client of the same endpoints and never composes its own wording.
+
+**Use case:** Before switching the engine cluster's topology, the operator raises the banner from the deploy script; users who query during the window are told it is scheduled work, not a failure.
+
+**Code:** `provisa/api/admin/maintenance_router.py`, `provisa/core/schema_admin.py`, `provisa/cli.py`, `provisa-ui/src/components/MaintenanceBanner.tsx`, `provisa-ui/src/components/admin/MaintenanceTab.tsx`, `provisa-ui/src/api/maintenance.ts`
+
+**Tests:** `tests/unit/test_maintenance_router.py`, `tests/unit/test_cli_maintenance.py`, `provisa-ui/src/__tests__/MaintenanceNotice.test.tsx`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`

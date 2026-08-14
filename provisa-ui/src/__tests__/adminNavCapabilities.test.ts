@@ -67,6 +67,9 @@ const DEPLOYMENT_WIDE = [
   "/admin/encryption",
   "/admin/auth",
   "/admin/security",
+  // REQ-1466: the scheduled-downtime banner speaks for the whole deployment; one org's admin must
+  // not be able to tell every other org's users that the platform is down.
+  "/admin/maintenance",
 ];
 
 describe("admin surface capabilities", () => {

@@ -52,7 +52,7 @@ output "cloudsql_password" {
 
 output "engine_cluster_name" {
   description = "GKE cluster every federation engine runs on."
-  value       = google_container_cluster.engine.name
+  value       = local.engine_cluster_name
 }
 
 output "shared_shard_endpoint" {

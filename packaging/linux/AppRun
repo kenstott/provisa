@@ -11,6 +11,13 @@ BAKED_VERSION="$(cat "${APPDIR}/VERSION" 2>/dev/null || true)"
 RECORDED_VERSION="$(cat "$SENTINEL" 2>/dev/null || true)"
 if [ ! -f "$SENTINEL" ] || [ "$BAKED_VERSION" != "$RECORDED_VERSION" ]; then
   "${APPDIR}/first-launch.sh" "$@"
+elif [[ " $* " =~ " --non-interactive " ]]; then
+  # Same version, cloud invocation: skip the re-provision but still rewrite the systemd
+  # EnvironmentFile from the environment the startup-script exported. Terraform changes
+  # settings that carry no version bump — the engine cluster's location, mode and zone
+  # (REQ-1465) — and the node reads those only from that file, so skipping it entirely
+  # leaves the coordinator dialing a cluster that no longer exists.
+  "${APPDIR}/first-launch.sh" --refresh-env "$@"
 fi
 
 # Non-interactive (Terraform/cloud-init): systemd manages startup — exit cleanly.

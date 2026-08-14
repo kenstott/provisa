@@ -610,7 +610,7 @@ async def _load_and_build(
 
     # REQ-1448: _apply_server_and_engine_config CONNECTS the terminal (trino_lifecycle.provision
     # opens a dbapi connection and seeds the ops catalogs), so unlike a query it cannot be served by
-    # a shard whose node pool is at zero. Boot therefore wakes its own shard first. On any
+    # a shard that is at zero replicas. Boot therefore wakes its own shard first. On any
     # deployment that does not provision engines — desktop, self-hosted, tests — this is a no-op.
     from provisa.federation.engine_wake import boot_shard, ensure_shard_awake
     from provisa.federation.k8s_provisioner import provisioning_available
@@ -831,7 +831,7 @@ async def _read_org_flags(org_id: str) -> OrgLane:
     engine (REQ-1412); ``engine_kind``/``engine_url`` are that engine's kind and DSN when the org
     runs a kind of its own (REQ-1418) — no defaults, the row is authoritative; ``shard`` names the
     shared-lane engine shard that answers this org (REQ-1450), which is what the query-path wake
-    brings back up when its node pool has been released."""
+    brings back up when it has been released."""
     from sqlalchemy import select as _select
 
     from provisa.core.schema_admin import orgs as _orgs
@@ -1767,6 +1767,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.orgs_router import router as orgs_router
 
     app.include_router(orgs_router)
+    from provisa.api.admin.maintenance_router import router as maintenance_router  # REQ-1466
+
+    app.include_router(maintenance_router)
     from provisa.api.admin.invites_router import router as invites_router
 
     app.include_router(invites_router)

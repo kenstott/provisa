@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from typing import Any
+from typing import Any, NoReturn
 
 # Which diagnostic metric counts the FAILING rows, per soda check type. Explicit rather than
 # pattern-matched on "*_count": several types carry more than one count (an invalidity check reports
@@ -46,6 +46,21 @@ _SODA_FAILED_ROWS: dict[str, str] = {
 
 # The rows-considered metric soda attaches to every check.
 _SODA_ROWS_TESTED = "check_rows_tested"
+
+
+# The pyproject extra that supplies each checker. A checker is acquired on operator selection
+# (runner.py), so "not installed" is an ordinary operator state and has to name its own remedy —
+# the alternative is an ImportError traceback from a module the operator never invoked by name.
+_CHECKER_EXTRAS: dict[str, str] = {"soda": "soda", "great_expectations": "gx"}
+
+
+def _require(checker: str, exc: ModuleNotFoundError) -> NoReturn:
+    """Re-raise a missing-checker import as the install command that fixes it."""
+    raise ModuleNotFoundError(
+        f"data-quality checker {checker!r} is not installed in {sys.executable}: "
+        f"no module {exc.name!r}. Install it with: "
+        f"{sys.executable} -m pip install 'provisa[{_CHECKER_EXTRAS[checker]}]'"
+    ) from exc
 
 
 def _configure_logging() -> None:
@@ -65,12 +80,18 @@ def main(argv: list[str]) -> int:
     with open(argv[1], encoding="utf-8") as f:
         payload = json.load(f)
     checker = payload["checker"]
-    if checker == "soda":
-        envelope = run_soda(payload)
-    elif checker == "great_expectations":
-        envelope = run_gx(payload)
-    else:
-        print(f"unknown data-quality checker {checker!r}", file=sys.stderr)
+    try:
+        if checker == "soda":
+            envelope = run_soda(payload)
+        elif checker == "great_expectations":
+            envelope = run_gx(payload)
+        else:
+            print(f"unknown data-quality checker {checker!r}", file=sys.stderr)
+            return 2
+    except ModuleNotFoundError as exc:
+        # The one failure the operator can act on directly, so it travels as the message the parent
+        # surfaces rather than as a traceback through a checker's own import chain.
+        print(str(exc), file=sys.stderr)
         return 2
     json.dump(envelope, sys.stdout, default=str)
     return 0
@@ -107,11 +128,14 @@ def _soda_data_source_yaml(name: str, connection: dict) -> str:
 def run_soda(payload: dict) -> dict:
     from importlib.metadata import version
 
-    from soda_core.common.yaml import ContractYamlSource, DataSourceYamlSource
-    from soda_core.contracts.contract_verification import (
-        CheckCollectionStatus,
-        ContractVerificationSession,
-    )
+    try:
+        from soda_core.common.yaml import ContractYamlSource, DataSourceYamlSource
+        from soda_core.contracts.contract_verification import (
+            CheckCollectionStatus,
+            ContractVerificationSession,
+        )
+    except ModuleNotFoundError as exc:
+        _require("soda", exc)
 
     session_result = ContractVerificationSession.execute(
         contract_yaml_sources=[ContractYamlSource.from_str(payload["contract_text"])],
@@ -168,10 +192,14 @@ def _soda_check_row(check_result: Any) -> dict:
 def run_gx(payload: dict) -> dict:
     from importlib.metadata import version
 
-    import great_expectations as gx
     import yaml
-    from great_expectations.core import ExpectationSuite
-    from great_expectations.core.validation_definition import ValidationDefinition
+
+    try:
+        import great_expectations as gx
+        from great_expectations.core import ExpectationSuite
+        from great_expectations.core.validation_definition import ValidationDefinition
+    except ModuleNotFoundError as exc:
+        _require("great_expectations", exc)
 
     suite_document = yaml.safe_load(payload["contract_text"])
     _, schema, table_name = suite_document["meta"]["dataset"].split("/")

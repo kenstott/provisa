@@ -5,6 +5,14 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    # gke.tf — the engine cluster only. dns_config.additive_vpc_scope_dns_domain is beta-only in
+    # provider v5, and Autopilot supports no other way to publish a headless Service into the VPC
+    # (REQ-1464), so the cluster resource is declared against google-beta while everything else
+    # stays on GA.
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.0"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.0"
@@ -26,6 +34,12 @@ terraform {
 }
 
 provider "google" {
+  project = var.project
+  region  = var.region
+  zone    = var.zone
+}
+
+provider "google-beta" {
   project = var.project
   region  = var.region
   zone    = var.zone
@@ -310,15 +324,23 @@ locals {
 
   engine_cluster_exports = <<-SHELL
     export PROVISA_ENGINE_CLUSTER_PROJECT="${var.project}"
-    export PROVISA_ENGINE_CLUSTER_LOCATION="${google_container_cluster.engine.location}"
-    export PROVISA_ENGINE_CLUSTER_NAME="${google_container_cluster.engine.name}"
+    export PROVISA_ENGINE_CLUSTER_LOCATION="${local.engine_cluster_location}"
+    export PROVISA_ENGINE_CLUSTER_NAME="${local.engine_cluster_name}"
+    # Which of the two topologies was built. The provisioner reads it to decide
+    # whether a shard pod carries a nodeSelector and toleration, which is the only
+    # thing that differs between them (REQ-1465).
+    export PROVISA_ENGINE_CLUSTER_MODE="${var.engine_cluster_mode}"
+    # The zone a shard pod must land in. An autopilot cluster is regional, so
+    # without this a pod can come up in a zone the control-plane VM is not in and
+    # every byte between them is billed as cross-zone egress (REQ-1465).
+    export PROVISA_ENGINE_CLUSTER_ZONE="${var.zone}"
     export PROVISA_ENGINE_CLUSTER_DNS_DOMAIN="${var.engine_cluster_dns_domain}"
     export PROVISA_ENGINE_NAMESPACE="${kubernetes_namespace.engines.metadata[0].name}"
     export PROVISA_ENGINE_IMAGE="${var.engine_image}"
     export TRINO_HOST="trino-shared-1.${local.engine_hostname_suffix}"
     export TRINO_PORT=8080
     # TRINO_HOST says where the control plane's own shard answers; this says WHICH shard that is,
-    # which is what the provisioner needs to bring its node pool back up when boot finds it at zero
+    # which is what the provisioner needs to bring it back up when boot finds it at zero replicas
     # (REQ-1448). The two are written together so they can never disagree.
     export PROVISA_ENGINE_SHARD="shared_1"
     export PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE="trino-{org_id}.${local.engine_hostname_suffix}"
@@ -509,9 +531,9 @@ resource "google_project_iam_member" "front_door" {
 
 locals {
   front_door_config = jsonencode({
-    project      = var.project
-    zone         = var.zone
-    instance     = google_compute_instance.coordinator.name
+    project  = var.project
+    zone     = var.zone
+    instance = google_compute_instance.coordinator.name
     # The control plane's internal address, not a name: the private zone that used to
     # publish one existed only so worker VMs could find the coordinator, and it went
     # with them. The front door is on this same VPC, so the VM's primary internal IP

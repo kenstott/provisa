@@ -29,6 +29,7 @@ import { CredentialCheck } from "./components/CredentialCheck";
 import { PageLoading } from "./components/PageLoading";
 import { OnboardGate } from "./components/OnboardGate";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
+import { MaintenanceBanner } from "./components/MaintenanceBanner"; // REQ-1466
 import { fetchSetupStatus } from "./api/setup";
 import {
   TourProvider,
@@ -251,6 +252,10 @@ function App() {
                       {/* REQ-1294: the sign-in that claims the platform-admin slot lands here; this is
                     where the user is told what they now are and how to invite anyone else. */}
                       <PlatformAdminWelcomeModal />
+                      {/* REQ-1466: above the nav, on every route — planned work that replaces the
+                    engine cluster (REQ-1465) fails queries everywhere, so the notice cannot be
+                    the property of any one page. */}
+                      <MaintenanceBanner />
                       <NavBar />
                       <main>
                         <Suspense fallback={<PageLoading />}>
@@ -530,6 +535,7 @@ function App() {
                                 ["/admin/reports", "observability"], // REQ-1386
                                 ["/admin/glossary", "org_settings"], // REQ-1387
                                 ["/admin/security", "platform_settings"],
+                                ["/admin/maintenance", "platform_settings"], // REQ-1466
                               ] as const
                             ).map(([path, capability]) => (
                               <Route

@@ -16,11 +16,11 @@ container bounds ``Memory`` but never ``NanoCpus``, and it runs with
 ``node-scheduler.include-coordinator=true``, so an org's scan executes on the node the control plane
 is serving every other org from.
 
-Here an engine is a Deployment on a node pool that hosts Trino and nothing else. The SHARED (Starter)
-lane and the ISOLATED (Pro) lane are the same manifests from the same image; they differ only in
-tenancy and in which pool they schedule onto. This module currently implements the shared lane —
-:func:`ensure_shard_running` and its shard vocabulary — and the isolated lane lands on the same
-primitives by passing a per-org shard name and pool.
+Here an engine is a Deployment on an Autopilot cluster, where a node is provisioned to fit the pod
+and removed when the pod goes. The SHARED (Starter) lane and the ISOLATED (Pro) lane are the same
+manifests from the same image; they differ only in tenancy and in size. This module currently
+implements the shared lane — :func:`ensure_shard_running` and its shard vocabulary — and the isolated
+lane lands on the same primitives by passing a per-org shard name.
 
 Two things are deliberately not the way the Docker provisioner did them:
 
@@ -32,8 +32,9 @@ Two things are deliberately not the way the Docker provisioner did them:
   Trino's own SHUTTING_DOWN drain can finish it; a pod killed at the default 30s cuts it.
 
 Authentication is the VM's attached service account, read from the GCE metadata server. The
-control-plane VM is the only caller, and its IAM role carries exactly the container verbs it needs
-(``terraform/gcp-saas/gke.tf``) — a narrower grant than the mounted Docker socket it replaces.
+control-plane VM is the only caller, and its IAM role is read-only at the GKE API — everything it
+changes it changes through the Kubernetes API under a namespaced RBAC Role
+(``terraform/gcp-saas/gke.tf``), a narrower grant than the mounted Docker socket it replaces.
 """
 
 from __future__ import annotations
@@ -63,7 +64,7 @@ _METADATA_TOKEN_URL = (
 # include-coordinator is TRUE. It is false on the deployment's multi-node cluster, and it was false
 # in the Docker provisioner for one reason: the container ran on the control plane's own node, so a
 # tenant scan executing on the coordinator executed on the node serving every other org. On a
-# dedicated node pool that reason is gone, and the setting inverts: a shard is a single pod, so with
+# dedicated node that reason is gone, and the setting inverts: a shard is a single pod, so with
 # it false there is no node in the cluster willing to take a split and every query would sit
 # queued forever. Growing the shared lane adds shards, not workers.
 _CONFIG_PROPERTIES = """coordinator=true
@@ -127,10 +128,16 @@ def provisioner_settings() -> dict[str, str]:
         "cluster": "PROVISA_ENGINE_CLUSTER_NAME",
         "image": "PROVISA_ENGINE_IMAGE",
         # Required, not defaulted to cluster.local: the control plane is a VM, not a pod, and a VM
-        # cannot resolve the in-cluster domain at all. GKE publishes Service records VPC-wide under
-        # a domain unique to the cluster (Cloud DNS, VPC_SCOPE), and getting it wrong yields engines
-        # that come up healthy and that nothing can dial (REQ-1451).
+        # cannot resolve the in-cluster domain at all. GKE publishes the Service records VPC-wide
+        # under a domain unique to the cluster (Cloud DNS, additive VPC scope), and getting it wrong
+        # yields engines that come up healthy and that nothing can dial (REQ-1451).
         "dns_domain": "PROVISA_ENGINE_CLUSTER_DNS_DOMAIN",
+        # Required, not inferred from the location: an Autopilot cluster is REGIONAL (the API
+        # refuses a zonal one), so without an explicit zone the scheduler may place a shard pod in
+        # a zone the control-plane VM is not in and every byte of every result set is billed as
+        # cross-zone egress. On a Standard cluster the location IS the zone and this restates it
+        # (REQ-1465).
+        "zone": "PROVISA_ENGINE_CLUSTER_ZONE",
     }
     found = {key: os.environ.get(env) for key, env in names.items()}
     missing = sorted(names[key] for key, value in found.items() if not value)
@@ -141,7 +148,61 @@ def provisioner_settings() -> dict[str, str]:
         )
     settings = {key: value for key, value in found.items() if value is not None}
     settings["namespace"] = os.environ.get("PROVISA_ENGINE_NAMESPACE", "provisa-engines")
+    settings["mode"] = cluster_mode()
     return settings
+
+
+def cluster_mode() -> str:
+    """Which cluster topology this control plane is driving: ``autopilot`` or ``standard``.
+
+    Both are supported, and the switch between them is planned rather than hypothetical: Autopilot
+    is cheaper while the shared lane is idle most of the day, and a Standard cluster with a small
+    always-on system pool is cheaper once it is busy — the crossover is about 460 shard-hours a
+    month (REQ-1465). Everything the control plane does is IDENTICAL in both modes except the pod's
+    placement stanza: a Standard shard pool autoscales 0↔1 because this pod is the only thing that
+    tolerates its taint, so the same replica patch that starts a pod also brings the node, and the
+    same patch to zero takes it away.
+
+    Defaulted to autopilot because that is what terraform's own default builds
+    (var.engine_cluster_mode); a value that is neither raises rather than being treated as one of
+    them, because a mis-set mode yields pods that stay Pending on a Standard cluster.
+    """
+    mode = os.environ.get("PROVISA_ENGINE_CLUSTER_MODE", "autopilot")
+    if mode not in ("autopilot", "standard"):
+        raise K8sProvisioningError(
+            f"PROVISA_ENGINE_CLUSTER_MODE={mode!r} is not a cluster topology; "
+            "expected 'autopilot' or 'standard'"
+        )
+    return mode
+
+
+def _placement(shard: str, zone: str) -> dict:
+    """Where this shard's pod may land, which is the ONLY thing that differs between the modes.
+
+    Autopilot has no pools to select between: the scheduler provisions a node sized to the pod's
+    requests and puts nothing else on it beyond GKE's own agents, so a nodeSelector for a custom
+    label would leave the pod unschedulable. The one selector it does carry is the well-known
+    ``topology.kubernetes.io/zone``, because an Autopilot cluster is regional and a pod in another
+    zone than the control-plane VM turns every result set into cross-zone egress.
+
+    Standard puts each shard on its own pool, autoscaling from zero and tainted so that GKE's system
+    Deployments cannot hold it up — those land on the small always-on system pool instead. The
+    toleration is what lets this pod onto the tainted pool; the selector is what keeps it off any
+    other (REQ-1465).
+    """
+    if cluster_mode() == "autopilot":
+        return {"nodeSelector": {"topology.kubernetes.io/zone": zone}}
+    return {
+        "nodeSelector": {"topology.kubernetes.io/zone": zone, "provisa.dev/shard": shard},
+        "tolerations": [
+            {
+                "key": "provisa.dev/shard",
+                "operator": "Equal",
+                "value": shard,
+                "effect": "NoSchedule",
+            }
+        ],
+    }
 
 
 def provisioning_available() -> bool:
@@ -194,7 +255,7 @@ def _client(verify: ssl.SSLContext | bool = True) -> httpx.AsyncClient:
 
 
 async def _container_api(method: str, path: str, body: dict | None = None) -> dict:
-    """A call against the GKE control-plane API (clusters, node pools, operations)."""
+    """A call against the GKE control-plane API — reading the cluster's endpoint and CA."""
     settings = provisioner_settings()
     base = (
         f"https://container.googleapis.com/v1/projects/{settings['project']}"
@@ -277,11 +338,6 @@ def shard_workload_name(shard: str) -> str:
     underscore, so the two spellings differ by exactly this translation and nowhere else.
     """
     return f"trino-{shard.replace('_', '-')}"
-
-
-def shard_node_pool(shard: str) -> str:
-    """The node pool a shard schedules onto — one pool per shard, named the same way."""
-    return shard.replace("_", "-")
 
 
 def shard_endpoint(shard: str) -> tuple[str, int]:
@@ -411,17 +467,14 @@ def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = No
                     "annotations": {"provisa.dev/config-revision": revision},
                 },
                 "spec": {
-                    # The whole point of the move: this pod lands on a pool that hosts Trino and
-                    # nothing else, so a tenant scan cannot contend with the control plane.
-                    "nodeSelector": {"provisa.dev/shard": shard},
-                    "tolerations": [
-                        {
-                            "key": "provisa.dev/shard",
-                            "operator": "Equal",
-                            "value": shard,
-                            "effect": "NoSchedule",
-                        }
-                    ],
+                    # Placement is mode-dependent and nothing else is: on Autopilot the scheduler
+                    # sizes a node for this pod and puts nothing else on it (REQ-1464); on Standard
+                    # the selector and toleration below pin it to its own pool (REQ-1465). What
+                    # keeps a tenant scan off the control plane in either mode is that the control
+                    # plane is not in this cluster at all, and what keeps one shard off another's
+                    # CPU is the Guaranteed QoS below.
+                    **_placement(shard, settings["zone"]),
+                    #
                     # Trino drains on SIGTERM (SHUTTING_DOWN) and finishes what is running. The
                     # grace period must therefore outlast the longest query the engine will accept;
                     # at the default 30s a scale-in cuts queries mid-flight.
@@ -494,64 +547,6 @@ def _service_manifest(shard: str) -> dict:
     }
 
 
-# ── Node pool ───────────────────────────────────────────────────────────────────
-
-
-async def node_pool_size(shard: str) -> int:
-    """How many Ready nodes the shard currently has.
-
-    Counted from the cluster's node list rather than read off the node pool's ``initialNodeCount``:
-    that field records what the pool was last SET to, and the autoscaler moves the real count
-    underneath it. The wake path needs the count that determines whether a pod can be placed.
-
-    Zero is the resting state, not an error: an empty pool bills nothing, while a node with no pods
-    on it bills in full — which is why idle-to-zero scales the POOL and not the Deployment.
-    """
-    resp = await _k8s("GET", f"/api/v1/nodes?labelSelector=provisa.dev%2Fshard%3D{shard}")
-    if resp.status_code >= 400:
-        raise K8sProvisioningError(f"listing nodes for {shard} failed: {gcp_error_detail(resp)}")
-    ready = 0
-    for node in resp.json().get("items", []):
-        conditions = node.get("status", {}).get("conditions", [])
-        if any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions):
-            ready += 1
-    return ready
-
-
-async def set_node_pool_size(shard: str, size: int) -> None:
-    """Resize the shard's pool and wait for GKE to finish the operation."""
-    settings = provisioner_settings()
-    pool = shard_node_pool(shard)
-    op = await _container_api(
-        "POST",
-        f"clusters/{settings['cluster']}/nodePools/{pool}:setSize",
-        {"nodeCount": size},
-    )
-    await _await_operation(op["name"])
-    log.info("engine node pool %s resized to %d", pool, size)
-
-
-async def _await_operation(name: str) -> None:
-    """Poll a GKE operation to completion.
-
-    Node provision is ~90-120s, which is why this is minutes-scale and not seconds-scale.
-    """
-    timeout = _int_env("PROVISA_ENGINE_NODE_TIMEOUT", 420)
-    deadline = asyncio.get_running_loop().time() + timeout
-    while True:
-        op = await _container_api("GET", f"operations/{name.rsplit('/', 1)[-1]}")
-        if op.get("status") == "DONE":
-            if op.get("error"):
-                raise K8sProvisioningError(f"GKE operation {name} failed: {op['error']}")
-            return
-        if asyncio.get_running_loop().time() >= deadline:
-            raise K8sProvisioningError(
-                f"GKE operation {name} did not finish within {timeout}s "
-                f"(last status {op.get('status')!r})"
-            )
-        await asyncio.sleep(5.0)
-
-
 # ── Readiness ───────────────────────────────────────────────────────────────────
 
 
@@ -593,19 +588,19 @@ async def ensure_shard_running(
 ) -> dict:
     """Bring a shard's engine up and return its endpoint once it can actually serve.
 
-    Idempotent, and cheap when the shard is already warm: a pool that already holds a node and a
-    Deployment that already has a ready replica reduce this to two GETs.
+    Idempotent, and cheap when the shard is already warm: applying manifests that already match is a
+    no-op, and a Deployment that already has a ready replica returns on the first GET.
 
-    The caller must hold the org registry's lock. A wake is a coupled sequence — pool up, replica
-    ready, org runtime rebuilt so its ``CREATE CATALOG`` statements are reissued — and a resumed
-    engine boots with ``catalog.management=dynamic`` and NO catalogs, so a query released before the
-    rebuild fails against an engine that is running perfectly (REQ-1448).
+    There is no node step. Applying the Deployment at one replica is the whole wake: Autopilot
+    provisions a node to fit the pod's requests, which is the ~90-120s ``PROVISA_ENGINE_READY_TIMEOUT``
+    covers (REQ-1464).
+
+    The caller must hold the org registry's lock. A wake is a coupled sequence — replica ready, org
+    runtime rebuilt so its ``CREATE CATALOG`` statements are reissued — and a resumed engine boots
+    with ``catalog.management=dynamic`` and NO catalogs, so a query released before the rebuild fails
+    against an engine that is running perfectly (REQ-1448).
     """
     settings = provisioner_settings()
-    if await node_pool_size(shard) < 1:
-        log.info("waking engine shard %s: node pool is at zero", shard)
-        await set_node_pool_size(shard, 1)
-
     ns = f"/api/v1/namespaces/{settings['namespace']}"
     await _k8s_apply(
         f"{ns}/configmaps/{shard_workload_name(shard)}-config",
@@ -636,27 +631,47 @@ async def ensure_shared_shard(shard: str) -> dict:
 
 
 async def scale_shard_to_zero(shard: str) -> dict:
-    """Drain the shard's engine and release its node.
+    """Drain the shard's engine, which is what releases its node.
 
-    Deployment first, then the pool: deleting the pod under a drain lets Trino finish what is
-    running, whereas dropping the node out from under a live pod does not. The pool is what actually
-    stops the billing.
+    On Autopilot the replica count IS the bill: pods are charged on their requests and a cluster
+    with no running workloads scales to zero nodes, so taking the Deployment to zero is the whole
+    stop — there is no pool left to size afterwards (REQ-1464).
+
+    The pod is not gone when the PATCH returns: Trino drains on SIGTERM (SHUTTING_DOWN) and finishes
+    what is running, for up to ``terminationGracePeriodSeconds``. This waits for the Deployment to
+    observe zero replicas so the returned state is the cluster's word rather than ours, and so a
+    wake arriving behind a stop is not racing a pod that is still terminating.
     """
     settings = provisioner_settings()
     name = shard_workload_name(shard)
+    path = f"/apis/apps/v1/namespaces/{settings['namespace']}/deployments/{name}"
     resp = await _k8s(
         "PATCH",
-        f"/apis/apps/v1/namespaces/{settings['namespace']}/deployments/{name}/scale"
-        "?fieldManager=provisa-control-plane",
+        f"{path}/scale?fieldManager=provisa-control-plane",
         {"spec": {"replicas": 0}},
         content_type="application/merge-patch+json",
     )
     if resp.status_code >= 400:
         raise K8sProvisioningError(f"scaling {name} to zero failed: {gcp_error_detail(resp)}")
 
-    # The pod's grace period has to elapse before the node is taken, or the drain is pointless.
-    await asyncio.sleep(_int_env("PROVISA_ENGINE_DRAIN_SECONDS", 600))
-    await set_node_pool_size(shard, 0)
+    # The drain window bounds how long a pod may take to go; a wait shorter than it would report a
+    # shard stopped while it is still billing.
+    timeout = _int_env("PROVISA_ENGINE_DRAIN_SECONDS", 600)
+    deadline = asyncio.get_running_loop().time() + timeout
+    while True:
+        resp = await _k8s("GET", path)
+        if resp.status_code >= 400:
+            raise K8sProvisioningError(f"reading {name} failed: {gcp_error_detail(resp)}")
+        status = resp.json().get("status", {})
+        if int(status.get("replicas", 0)) == 0:
+            break
+        if asyncio.get_running_loop().time() >= deadline:
+            raise K8sProvisioningError(
+                f"engine {name} still had {status.get('replicas')} replica(s) {timeout}s after "
+                "being scaled to zero"
+            )
+        await asyncio.sleep(5.0)
+
     log.info("engine shard %s scaled to zero", shard)
     return {"shard": shard, "state": "stopped"}
 
@@ -666,18 +681,20 @@ async def shard_status(shard: str) -> dict:
     settings = provisioner_settings()
     name = shard_workload_name(shard)
     resp = await _k8s("GET", f"/apis/apps/v1/namespaces/{settings['namespace']}/deployments/{name}")
-    nodes = await node_pool_size(shard)
     if resp.status_code == 404:
-        return {"shard": shard, "state": "absent", "nodes": nodes}
+        return {"shard": shard, "state": "absent", "ready_replicas": 0}
     if resp.status_code >= 400:
         raise K8sProvisioningError(f"reading {name} failed: {gcp_error_detail(resp)}")
-    status = resp.json().get("status", {})
-    ready = int(status.get("readyReplicas", 0))
+    body = resp.json()
+    ready = int(body.get("status", {}).get("readyReplicas", 0))
+    # Desired replicas, not node count: on Autopilot a shard at zero replicas has no node by
+    # construction, and one with a replica that is not ready yet is a node being provisioned.
+    desired = int(body.get("spec", {}).get("replicas", 0))
     return {
         "shard": shard,
-        "state": "ready" if ready >= 1 else ("stopped" if nodes == 0 else "starting"),
+        "state": "ready" if ready >= 1 else ("stopped" if desired == 0 else "starting"),
         "ready_replicas": ready,
-        "nodes": nodes,
+        "replicas": desired,
     }
 
 

@@ -134,6 +134,13 @@ soda = ["soda-postgres"]
 # pgwire target — the difference is the contract dialect (GX expectation suite vs Soda checks YAML)
 # and the licence: Apache 2.0 carries no hosted-service bar, so this extra IS cloud-eligible.
 gx = ["great-expectations[postgresql]"]
+# REQ-1443: the bundled demo (`provisa run --demo`, config/provisa-install.yaml) registers a
+# great_expectations checker source and a suite over the pet inventory, so the demo's quality
+# scorecard is empty and its scan exits with ModuleNotFoundError unless GX is present. The demo
+# names GX rather than soda because Apache 2.0 carries no hosted-service bar — the same demo config
+# is valid in the cloud plane. `pip install provisa[embedded,demo]` is the pip route to the demo the
+# installers already build (their apply_demo_checker_default picks gx for the same reason).
+demo = ["great-expectations[postgresql]"]
 govdata = ["askamerica[engine]"]
 firebase = ["firebase-admin"]
 # Local embedding provider for catalog search (REQ-1008, provisa/vector/providers.py

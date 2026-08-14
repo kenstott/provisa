@@ -12,9 +12,9 @@
 
 The Docker provisioner put a tenant's coordinator on the same machine the control plane serves every
 other org from, with no CPU bound and with the coordinator itself executing splits. What is asserted
-here is that the replacement does not: the pod is pinned to a shard's own node pool, it is only
-declared usable once the CLUSTER says a replica is ready, and a scale-in drains before the node goes
-away.
+here is that the replacement does not: the pod is Guaranteed-QoS on a node Autopilot provisions for
+it alone, it is only declared usable once the CLUSTER says a replica is ready, and a stop waits for
+the drain to finish rather than reporting a shard free while it is still billing.
 
 Both the GKE and the Kubernetes APIs are replaced by an httpx MockTransport that records requests,
 so the calls are asserted against the real API shapes without a cluster.
@@ -69,6 +69,7 @@ def configured(monkeypatch):
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_LOCATION", "us-central1-a")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_NAME", "provisa-saas-engine")
     monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_DNS_DOMAIN", "provisa-saas-engine.internal")
+    monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_ZONE", "us-central1-a")
     monkeypatch.setenv("PROVISA_ENGINE_IMAGE", "gcr.io/provisa/trino-engine:v1")
     monkeypatch.setenv("PROVISA_ENGINE_NAMESPACE", "provisa-engines")
     monkeypatch.setenv("PROVISA_ENGINE_PORT", "8080")
@@ -133,21 +134,45 @@ def test_shard_names_translate_once(configured):
     The two spellings must differ by exactly this translation, or the control plane dials a Service
     that does not exist."""
     assert prov.shard_workload_name("shared_1") == "trino-shared-1"
-    assert prov.shard_node_pool("shared_1") == "shared-1"
     assert prov.shard_endpoint("shared_1") == (
         "trino-shared-1.provisa-engines.svc.provisa-saas-engine.internal",
         8080,
     )
 
 
-# ---- the pod cannot land on the control plane --------------------------------
+# ---- the pod cannot contend with anything else --------------------------------
 
 
-def test_pod_is_pinned_to_the_shard_pool(configured):
-    """The co-tenancy being retired: without both the selector and the toleration the coordinator
-    schedules onto whatever node has room, which is the shared-host problem again."""
+def test_pod_is_guaranteed_qos(configured):
+    """The co-tenancy being retired: on Autopilot there is no pool to select between, so what keeps
+    one shard off another's CPU is requests equal to limits — a Guaranteed pod Autopilot sizes a
+    node for (REQ-1464). Best-effort or burstable here is the shared-host problem again."""
     spec = prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]
-    assert spec["nodeSelector"] == {"provisa.dev/shard": "shared_1"}
+    resources = spec["containers"][0]["resources"]
+    assert resources["requests"] == resources["limits"]
+
+
+def test_autopilot_pins_the_zone_and_selects_no_pool(configured):
+    """An Autopilot cluster is REGIONAL — the API refuses a zonal one — so an unpinned pod can be
+    placed in a zone the control-plane VM is not in and every result set is billed as cross-zone
+    egress. The zone selector is the whole placement stanza: a custom pool label would leave the
+    pod unschedulable, because Autopilot has no pools to select between (REQ-1465)."""
+    spec = prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]
+    assert spec["nodeSelector"] == {"topology.kubernetes.io/zone": "us-central1-a"}
+    assert "tolerations" not in spec
+
+
+def test_standard_pins_the_pod_to_its_own_shard_pool(monkeypatch, configured):
+    """The other topology (REQ-1465). Each shard owns a pool autoscaling 0..1, tainted so GKE's
+    system Deployments cannot hold the node up; the toleration is what lets this pod onto it and
+    the selector is what keeps it off any other. Nothing else about provisioning changes — the same
+    replica patch that starts the pod is what brings the node."""
+    monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_MODE", "standard")
+    spec = prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]
+    assert spec["nodeSelector"] == {
+        "topology.kubernetes.io/zone": "us-central1-a",
+        "provisa.dev/shard": "shared_1",
+    }
     assert spec["tolerations"] == [
         {
             "key": "provisa.dev/shard",
@@ -156,6 +181,15 @@ def test_pod_is_pinned_to_the_shard_pool(configured):
             "effect": "NoSchedule",
         }
     ]
+
+
+def test_an_unknown_cluster_mode_is_not_guessed_at(monkeypatch, configured):
+    """A mis-set mode yields pods that stay Pending forever on a Standard cluster — the failure
+    that looks like a slow wake rather than a misconfiguration. It fails at settings time instead."""
+    monkeypatch.setenv("PROVISA_ENGINE_CLUSTER_MODE", "autopilo")
+    with pytest.raises(prov.K8sProvisioningError) as excinfo:
+        prov.provisioner_settings()
+    assert "autopilo" in str(excinfo.value)
 
 
 def test_cpu_is_bounded(configured):
@@ -319,54 +353,68 @@ async def _no_sleep(_seconds: float) -> None:
     return None
 
 
-# ---- node count is the real one ----------------------------------------------
+# ---- status is the Deployment's word -----------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_node_count_counts_ready_nodes(monkeypatch, configured):
-    """Read from the node list, not from the pool's ``initialNodeCount``: that field records what
-    the pool was last SET to, and the autoscaler moves the real count underneath it."""
+async def test_status_reads_state_off_the_deployment(monkeypatch, configured):
+    """No node count anywhere: on Autopilot a shard at zero replicas has no node by construction, so
+    what separates stopped from starting is spec.replicas, and ready is readyReplicas (REQ-1464)."""
+
+    body = {"spec": {"replicas": 0}, "status": {}}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v1/nodes":
-            return httpx.Response(
-                200,
-                json={
-                    "items": [
-                        {"status": {"conditions": [{"type": "Ready", "status": "True"}]}},
-                        {"status": {"conditions": [{"type": "Ready", "status": "False"}]}},
-                    ]
-                },
-            )
+        if "/deployments/" in request.url.path:
+            return httpx.Response(200, json=body)
         return _cluster_get()
 
     calls = _mock_api(monkeypatch, handler)
-    assert await prov.node_pool_size("shared_1") == 1
-    selector = [c for c in calls if c.url.path == "/api/v1/nodes"][0].url.params["labelSelector"]
-    assert selector == "provisa.dev/shard=shared_1"
+
+    assert await prov.shard_status("shared_1") == {
+        "shard": "shared_1",
+        "state": "stopped",
+        "ready_replicas": 0,
+        "replicas": 0,
+    }
+
+    body["spec"]["replicas"] = 1
+    assert (await prov.shard_status("shared_1"))["state"] == "starting"
+
+    body["status"]["readyReplicas"] = 1
+    assert (await prov.shard_status("shared_1"))["state"] == "ready"
+
+    assert not [c for c in calls if c.url.path == "/api/v1/nodes"]
+
+
+@pytest.mark.asyncio
+async def test_status_of_a_shard_that_was_never_applied(monkeypatch, configured):
+    """A 404 is a shard that has never existed, which is not an error — it is what the first wake
+    for a newly-provisioned lane sees."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/deployments/" in request.url.path:
+            return httpx.Response(404, json={"kind": "Status", "message": "not found"})
+        return _cluster_get()
+
+    _mock_api(monkeypatch, handler)
+    assert await prov.shard_status("shared_1") == {
+        "shard": "shared_1",
+        "state": "absent",
+        "ready_replicas": 0,
+    }
 
 
 # ---- the wake sequence -------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_wake_scales_the_pool_before_applying_the_engine(monkeypatch, configured):
-    """An empty pool bills nothing; a node with no pods on it bills in full. Idle-to-zero therefore
-    scales the POOL, and a wake has to put a node back before a pod has anywhere to land."""
-    state = {"nodes": 0}
+async def test_wake_applies_config_then_service_then_deployment(monkeypatch, configured):
+    """There is no pool to size first — Autopilot provisions a node to fit the pod. What still has
+    to hold is the apply ORDER: the coordinator reads its config from the ConfigMap at start, so a
+    Deployment applied ahead of it would boot against the previous generation's config."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
-        if path == "/api/v1/nodes":
-            items = [{"status": {"conditions": [{"type": "Ready", "status": "True"}]}}] * state[
-                "nodes"
-            ]
-            return httpx.Response(200, json={"items": items})
-        if path.endswith(":setSize"):
-            state["nodes"] = json.loads(request.content)["nodeCount"]
-            return httpx.Response(200, json={"name": "op/1"})
-        if "/operations/" in path:
-            return httpx.Response(200, json={"status": "DONE"})
         if "/deployments/" in path and request.method == "GET":
             return httpx.Response(200, json={"status": {"readyReplicas": 1}})
         if request.method == "PATCH":
@@ -383,10 +431,7 @@ async def test_wake_scales_the_pool_before_applying_the_engine(monkeypatch, conf
         "host": "trino-shared-1.provisa-engines.svc.provisa-saas-engine.internal",
         "port": 8080,
     }
-    order = [c.url.path for c in calls]
-    sized = next(i for i, p in enumerate(order) if p.endswith(":setSize"))
-    applied = next(i for i, (p, c) in enumerate(zip(order, calls)) if c.method == "PATCH")
-    assert sized < applied, "the node pool must be up before the engine is applied"
+    assert not [c for c in calls if c.url.path.endswith(":setSize")]
 
     kinds = [
         json.loads(c.content)["kind"] for c in calls if c.method == "PATCH" and b"kind" in c.content
@@ -395,51 +440,49 @@ async def test_wake_scales_the_pool_before_applying_the_engine(monkeypatch, conf
 
 
 @pytest.mark.asyncio
-async def test_a_warm_shard_is_not_rescaled(monkeypatch, configured):
-    """The wake runs on the query path under the registry lock, so the already-warm case has to be
-    cheap — and resizing a pool that already has its node would be a several-minute no-op."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path == "/api/v1/nodes":
-            return httpx.Response(
-                200,
-                json={"items": [{"status": {"conditions": [{"type": "Ready", "status": "True"}]}}]},
-            )
-        if "/deployments/" in path and request.method == "GET":
-            return httpx.Response(200, json={"status": {"readyReplicas": 1}})
-        if request.method == "PATCH":
-            return httpx.Response(200, json={})
-        return _cluster_get()
-
-    calls = _mock_api(monkeypatch, handler)
-    await prov.ensure_shard_running("shared_1")
-    assert not [c for c in calls if c.url.path.endswith(":setSize")]
-
-
-@pytest.mark.asyncio
-async def test_scale_to_zero_drains_before_taking_the_node(monkeypatch, configured):
-    """Deployment first, then the pool. Dropping the node out from under a live pod does not let
-    Trino finish what is running; scaling the pod down does."""
-    order: list[str] = []
+async def test_scale_to_zero_waits_for_the_pod_to_go(monkeypatch, configured):
+    """The PATCH returns immediately, but Trino drains on SIGTERM and finishes what is running. A
+    stop that returned there would report a shard free while its pod — and so its node — is still
+    billing, and would let a wake race a terminating pod."""
+    monkeypatch.setenv("PROVISA_ENGINE_DRAIN_SECONDS", "600")
+    observed = [2, 1, 0]
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("/scale"):
-            order.append("scale-pod")
+            assert json.loads(request.content) == {"spec": {"replicas": 0}}
             return httpx.Response(200, json={})
-        if path.endswith(":setSize"):
-            order.append("scale-pool")
-            assert json.loads(request.content)["nodeCount"] == 0
-            return httpx.Response(200, json={"name": "op/1"})
-        if "/operations/" in path:
-            return httpx.Response(200, json={"status": "DONE"})
+        if "/deployments/" in path and request.method == "GET":
+            return httpx.Response(200, json={"status": {"replicas": observed.pop(0)}})
+        return _cluster_get()
+
+    calls = _mock_api(monkeypatch, handler)
+    monkeypatch.setattr(prov.asyncio, "sleep", _no_sleep)
+
+    result = await prov.scale_shard_to_zero("shared_1")
+    assert result["state"] == "stopped"
+    assert observed == []
+    assert not [c for c in calls if c.url.path.endswith(":setSize")]
+
+
+@pytest.mark.asyncio
+async def test_scale_to_zero_fails_rather_than_calling_a_live_shard_stopped(monkeypatch, configured):
+    """PROVISA_ENGINE_DRAIN_SECONDS bounds how long a pod may take to go. Past it the shard is still
+    billing, and saying otherwise would hand the reaper a stop it never got."""
+    monkeypatch.setenv("PROVISA_ENGINE_DRAIN_SECONDS", "0")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/scale"):
+            return httpx.Response(200, json={})
+        if "/deployments/" in path and request.method == "GET":
+            return httpx.Response(200, json={"status": {"replicas": 1}})
         return _cluster_get()
 
     _mock_api(monkeypatch, handler)
-    result = await prov.scale_shard_to_zero("shared_1")
-    assert order == ["scale-pod", "scale-pool"]
-    assert result["state"] == "stopped"
+    with pytest.raises(prov.K8sProvisioningError) as excinfo:
+        await prov.scale_shard_to_zero("shared_1")
+    assert "still had 1 replica" in str(excinfo.value)
 
 
 # ---- failures say what the API said ------------------------------------------

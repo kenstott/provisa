@@ -1,15 +1,33 @@
 # Copyright (c) 2026 Kenneth Stott
 #
-# Engine cluster (REQ-1447, REQ-1450, REQ-1451).
+# Engine cluster (REQ-1447, REQ-1450, REQ-1451, REQ-1464, REQ-1465).
 #
 # One GKE cluster runs Trino and nothing else. The control plane stays on its own
 # VM with Cloud SQL — it serializes org-runtime rebuilds on an in-process lock, so
 # it is deliberately not a scheduled workload (REQ-1451).
 #
-# The cluster is ZONAL. A regional control plane bills the same $0.10/hr fee that
-# the free tier covers exactly once, so a second zone would put a fixed line on a
-# floor that must stay at ~$19/mo with no customers. Engine availability is bought
-# back by rescheduling onto a new node, not by a standing hot spare (REQ-1459).
+# TWO topologies are declared here and var.engine_cluster_mode picks one. Both are
+# maintained, because which is cheaper depends on duty cycle and the duty cycle is
+# not known until real customers are querying (REQ-1465):
+#
+#   autopilot — no node pools at all. Billing is per pod REQUEST, so a shard at
+#     zero replicas bills nothing and GKE's system Deployments are Google's
+#     problem. ~$0.3851/hr per running 6 vCPU / 24 GiB shard.
+#   standard  — a small always-on Spot system pool (~$11/mo) carries the system
+#     Deployments, and each shard owns a pool autoscaling 0..1, tainted so nothing
+#     else can hold it up. ~$0.3616/hr per running shard.
+#
+# Crossover is ~460 shard-hours a month. Autopilot is the launch shape because with
+# no customers the floor is what matters; standard wins once the shared lane runs
+# more than about fifteen hours a day. This is a utilization crossover, not a
+# dev/prod split.
+#
+# Switching REPLACES the cluster — enable_autopilot and dns_config are both
+# immutable — so the switch is a scheduled maintenance window, announced by the
+# control plane's maintenance banner, not a rolling change (REQ-1466).
+#
+# The $0.10/hr cluster fee is identical in both modes and the free tier covers
+# exactly one cluster, which is why there is one.
 
 # The GCE-only topology this replaces never touched container.googleapis.com, so a
 # project that has only ever run the old stack has the API off and the cluster below
@@ -24,17 +42,55 @@ resource "google_project_service" "container" {
   disable_on_destroy = false
 }
 
-resource "google_container_cluster" "engine" {
-  name     = "provisa-saas-engine"
-  location = var.zone
+locals {
+  autopilot = var.engine_cluster_mode == "autopilot"
+
+  # Everything downstream reads the cluster through these four, so nothing else in
+  # the stack has to know which of the two topologies was built.
+  engine_cluster_name     = local.autopilot ? google_container_cluster.engine_autopilot[0].name : google_container_cluster.engine_standard[0].name
+  engine_cluster_location = local.autopilot ? google_container_cluster.engine_autopilot[0].location : google_container_cluster.engine_standard[0].location
+  engine_cluster_endpoint = local.autopilot ? google_container_cluster.engine_autopilot[0].endpoint : google_container_cluster.engine_standard[0].endpoint
+  engine_cluster_ca       = local.autopilot ? google_container_cluster.engine_autopilot[0].master_auth[0].cluster_ca_certificate : google_container_cluster.engine_standard[0].master_auth[0].cluster_ca_certificate
+}
+
+# ── autopilot: the launch shape (REQ-1464) ──────────────────────────────────────
+
+resource "google_container_cluster" "engine_autopilot" {
+  count = local.autopilot ? 1 : 0
+
+  # google-beta, for one field: dns_config.additive_vpc_scope_dns_domain below is
+  # not in the GA provider's schema at v5, and it is the only DNS scope Autopilot
+  # accepts.
+  provider = google-beta
+
+  name = "provisa-saas-engine"
+
+  # REGIONAL, because the API refuses a zonal Autopilot cluster outright
+  # ("Autopilot clusters must be regional clusters"). That costs nothing extra
+  # here: the $0.10/hr fee is per cluster either way and there are no standing
+  # per-zone nodes to replicate, which is the reason a regional STANDARD cluster
+  # would have been rejected below. It does mean a pod can be placed in a zone the
+  # control-plane VM is not in, so the provisioner pins shard pods to
+  # PROVISA_ENGINE_CLUSTER_ZONE and cross-zone bytes stay off the bill.
+  location = var.region
 
   depends_on = [google_project_service.container]
 
-  # The cluster is created with a default pool only so it can be destroyed
-  # immediately: every node here belongs to an explicitly-managed pool whose floor
-  # is zero, and a default pool would hold nodes that no shard accounts for.
-  remove_default_node_pool = true
-  initial_node_count       = 1
+  # AUTOPILOT, and the reason is the zero-customer floor (REQ-1448, REQ-1464).
+  #
+  # The standard block below could not rest at zero without its own system pool.
+  # With the default pool removed, GKE's own system workloads — kube-dns,
+  # metrics-server, konnectivity-agent, event-exporter, kube-state-metrics,
+  # gmp-operator — are *Deployments*, not DaemonSets, so the shard pool was the
+  # only place left to schedule them. Scaling that pool to zero left them Pending
+  # and the cluster autoscaler rebuilt a node within seconds (`TriggeredScaleUp
+  # ... gmp-operator ... shared-1 1->2`), so the shared lane billed an
+  # e2-highmem-8 around the clock whether or not anybody queried it.
+  #
+  # Autopilot has no node pools to hold: billing is per POD REQUEST, the system
+  # workloads are Google's problem rather than ours, and a cluster with no running
+  # workloads scales to zero nodes and zero cost above the cluster fee.
+  enable_autopilot = true
 
   network    = google_compute_network.main.id
   subnetwork = google_compute_subnetwork.nodes.id
@@ -53,36 +109,42 @@ resource "google_container_cluster" "engine" {
   }
 
   # The control plane is a VM, not a pod, so it cannot resolve kube-dns at all —
-  # svc.cluster.local means nothing outside the cluster. Cloud DNS in VPC_SCOPE
-  # publishes every Service record into this VPC under a domain unique to the
-  # cluster, which is what lets PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE keep naming a
-  # hostname and nothing else change (REQ-1451). An internal load balancer would be
-  # the alternative and would put forwarding-rule hours back on the zero-customer
-  # floor (REQ-1453).
+  # svc.cluster.local means nothing outside the cluster. Cloud DNS publishes the
+  # shard's Service record into this VPC under a domain unique to the cluster,
+  # which is what lets PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE keep naming a
+  # hostname and nothing else change (REQ-1451).
+  #
+  # ADDITIVE vpc scope, not VPC_SCOPE: "VPC scope is not supported on Autopilot
+  # clusters; only cluster scope is supported. If you need to resolve headless
+  # Service names that run in GKE Autopilot clusters, you must use additive VPC
+  # scope." A shard's Service is headless by design (clusterIP: None — pod IPs are
+  # VPC-native and route VPC-wide, a ClusterIP does not), so additive scope covers
+  # exactly the records this dials, under the same
+  # <service>.<namespace>.svc.<domain> name. Creation-time only.
   dns_config {
-    cluster_dns        = "CLOUD_DNS"
-    cluster_dns_scope  = "VPC_SCOPE"
-    cluster_dns_domain = var.engine_cluster_dns_domain
-  }
-
-  workload_identity_config {
-    workload_pool = "${var.project}.svc.id.goog"
+    cluster_dns                   = "CLOUD_DNS"
+    cluster_dns_scope             = "CLUSTER_SCOPE"
+    additive_vpc_scope_dns_domain = var.engine_cluster_dns_domain
   }
 
   # Nodes carry public addresses. Private nodes would need Cloud NAT, which bills
   # by the hour whether or not a node exists — a fixed line on the zero-customer
   # floor, which must hold at ~$19/mo (REQ-1453). Reachability is closed off at
   # the firewall instead: the node tag below is default-deny inbound, and Trino is
-  # dialed only from inside the VPC.
-  node_config {
-    tags = ["provisa-saas-engine"]
+  # dialed only from inside the VPC. Autopilot creates the nodes, so the tag is
+  # set on the auto-provisioning defaults rather than on a pool we declare.
+  node_pool_auto_config {
+    network_tags {
+      tags = ["provisa-saas-engine"]
+    }
   }
 
-  # Kubernetes' own idle cost is the control plane; the addons that bill per node
-  # are left off so an empty cluster is genuinely free.
-  addons_config {
-    http_load_balancing {
-      disabled = true
+  # An engine node runs untrusted tenant SQL, so it gets telemetry write and image
+  # pull and nothing else — the same separation the standard node pools have.
+  cluster_autoscaling {
+    auto_provisioning_defaults {
+      service_account = google_service_account.engine_node.email
+      oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
     }
   }
 
@@ -91,53 +153,115 @@ resource "google_container_cluster" "engine" {
   resource_labels = var.labels
 }
 
-# ── Shared shard (Starter lane, REQ-1450) ───────────────────────────────────────
-# Every Starter org queries this shard. Its floor is zero nodes: an empty pool
-# costs nothing, while a node with no pods on it bills in full — which is why
-# idle-to-zero scales the POOL and not the Deployment (REQ-1448).
+# ── standard: the post-launch shape (REQ-1465) ──────────────────────────────────
 
-resource "google_container_node_pool" "shared_1" {
-  name     = "shared-1"
+resource "google_container_cluster" "engine_standard" {
+  count = local.autopilot ? 0 : 1
+
+  name = "provisa-saas-engine"
+
+  # ZONAL. A regional control plane bills the same $0.10/hr fee the free tier
+  # covers exactly once, so a second zone would put a fixed line on the floor, and
+  # a regional standard cluster would also replicate every node pool per zone.
+  # Engine availability is bought back by rescheduling onto a new node, not by a
+  # standing hot spare (REQ-1459).
   location = var.zone
-  cluster  = google_container_cluster.engine.name
 
-  # Left unset at create so the autoscaler owns the count from the first apply
-  # onward; a fixed initial_node_count would restore a node on every plan.
-  initial_node_count = 0
+  depends_on = [google_project_service.container]
+
+  # The default pool is removed and replaced by the two pools below: one small
+  # always-on pool for GKE's system Deployments, and one autoscaling 0..1 pool per
+  # shard. That split is the entire reason this topology can rest near zero.
+  remove_default_node_pool = true
+  initial_node_count       = 1
+
+  network    = google_compute_network.main.id
+  subnetwork = google_compute_subnetwork.nodes.id
+
+  networking_mode = "VPC_NATIVE"
+  ip_allocation_policy {
+    cluster_secondary_range_name  = "pods"
+    services_secondary_range_name = "services"
+  }
+
+  release_channel {
+    channel = var.engine_release_channel
+  }
+
+  # VPC_SCOPE, which standard supports and autopilot does not: it publishes every
+  # Service — headless or not — into this VPC under the cluster's own domain, so
+  # the control-plane VM resolves the same
+  # <service>.<namespace>.svc.<domain> name it resolves on autopilot.
+  # Creation-time only, which is half of why switching replaces the cluster.
+  dns_config {
+    cluster_dns        = "CLOUD_DNS"
+    cluster_dns_scope  = "VPC_SCOPE"
+    cluster_dns_domain = var.engine_cluster_dns_domain
+  }
+
+  deletion_protection = false
+
+  resource_labels = var.labels
+}
+
+# GKE's system Deployments live here and nowhere else. UNTAINTED on purpose:
+# kube-dns and the rest carry no tolerations of ours, so a taint would leave them
+# Pending forever and the autoscaler would fight it. Spot, because a system pod
+# rescheduling on preemption costs nothing that matters, and small, because it
+# carries no query work.
+resource "google_container_node_pool" "system" {
+  count = local.autopilot ? 0 : 1
+
+  name     = "system"
+  cluster  = google_container_cluster.engine_standard[0].id
+  location = google_container_cluster.engine_standard[0].location
+
+  node_count = 1
+
+  node_config {
+    machine_type    = var.engine_system_pool_machine_type
+    spot            = true
+    disk_size_gb    = 32
+    disk_type       = "pd-standard"
+    service_account = google_service_account.engine_node.email
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+    tags            = ["provisa-saas-engine"]
+  }
+}
+
+# One pool per shard, autoscaling from ZERO. The taint is what makes zero
+# reachable: only that shard's own pod tolerates it, so nothing GKE schedules can
+# hold the node up and the pool drops back to no nodes as soon as the Deployment
+# goes to zero replicas. The control plane never resizes this pool — the same
+# replica patch that works on autopilot drives it, through the cluster autoscaler,
+# which is why the provisioner differs between the two modes by nothing but the
+# pod's nodeSelector and toleration (REQ-1465).
+resource "google_container_node_pool" "shard" {
+  for_each = local.autopilot ? toset([]) : toset(var.shared_shards)
+
+  name     = replace(each.value, "_", "-")
+  cluster  = google_container_cluster.engine_standard[0].id
+  location = google_container_cluster.engine_standard[0].location
 
   autoscaling {
     min_node_count = 0
-    max_node_count = var.shared_shard_max_nodes
+    max_node_count = 1
   }
 
   node_config {
-    machine_type = var.shared_shard_machine_type
-    spot         = var.shared_shard_use_spot
-
+    machine_type    = var.shared_shard_machine_type
+    disk_size_gb    = 100
+    disk_type       = "pd-balanced"
     service_account = google_service_account.engine_node.email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+    tags            = ["provisa-saas-engine"]
 
-    # The shard identity a Trino pod is scheduled by. `orgs.shard` names one of
-    # these, and the pod's nodeSelector carries it back.
-    labels = merge(var.labels, {
-      "provisa.dev/lane"  = "shared"
-      "provisa.dev/shard" = "shared_1"
-    })
+    labels = { "provisa.dev/shard" = each.value }
 
-    # No taint. The pod's nodeSelector on provisa.dev/shard is what places a shard,
-    # and it is sufficient: every pool in this cluster is a shard pool, so there is
-    # no general workload to keep off a highmem node. A NO_SCHEDULE taint here left
-    # every kube-system *Deployment* — kube-dns, konnectivity-agent, metrics-server,
-    # event-exporter — Pending forever, because DaemonSets tolerate arbitrary taints
-    # and Deployments do not. With konnectivity down, even `kubectl logs` against a
-    # crash-looping shard returned "No agent available", so the taint took out the
-    # one tool for diagnosing the pod it was protecting. Node pools floor at zero, so
-    # the addons are Pending only while the cluster is genuinely empty.
-
-    tags = ["provisa-saas-engine"]
-
-    workload_metadata_config {
-      mode = "GKE_METADATA"
+    taint {
+      key    = "provisa.dev/shard"
+      value  = each.value
+      effect = "NO_SCHEDULE"
     }
   }
 
@@ -145,19 +269,17 @@ resource "google_container_node_pool" "shared_1" {
     auto_repair  = true
     auto_upgrade = true
   }
-
-  # A scale-in must not cut a running query. Trino drains on SIGTERM via
-  # SHUTTING_DOWN; the pod's terminationGracePeriodSeconds covers the longest
-  # permitted query, and this window lets the node wait for it.
-  upgrade_settings {
-    max_surge       = 1
-    max_unavailable = 0
-  }
-
-  lifecycle {
-    ignore_changes = [initial_node_count]
-  }
 }
+
+# ── Shared shard (Starter lane, REQ-1450) ───────────────────────────────────────
+# A shard is a Deployment the control plane applies
+# (provisa/federation/k8s_provisioner.py). On autopilot that is the whole story: a
+# node is provisioned to fit the pod's requests and removed when the Deployment
+# goes to zero replicas. On standard the same replica patch drives that shard's
+# 0..1 pool through the cluster autoscaler. Either way idle-to-zero is a REPLICA
+# count, never a pool resize (REQ-1464, REQ-1465). Isolation is the pod's
+# Guaranteed QoS — requests equal limits — plus the control plane living outside
+# the cluster entirely.
 
 # ── Node identity ───────────────────────────────────────────────────────────────
 # Separate from the control-plane VM's account: an engine node runs untrusted
@@ -182,21 +304,20 @@ resource "google_project_iam_member" "engine_node" {
 
 # ── Control-plane access to the cluster ─────────────────────────────────────────
 # The control plane creates and scales engines in-band on the query path, so its
-# VM's service account needs the Kubernetes and node-pool verbs directly — this is
-# what replaces the mounted Docker socket the co-tenant provisioner used.
+# VM's service account needs the cluster-read verbs directly — this is what
+# replaces the mounted Docker socket the co-tenant provisioner used.
 
 resource "google_project_iam_custom_role" "engine_operator" {
   role_id     = "provisaSaasEngineOperator"
   title       = "Provisa SaaS Engine Operator"
-  description = "Resize engine node pools and read cluster credentials for in-band provisioning."
+  description = "Read engine cluster credentials for in-band provisioning."
+  # READ ONLY at the GKE control-plane API: everything the provisioner changes it
+  # changes through the Kubernetes API, authorized by the namespaced RBAC below.
+  # container.clusters.update was here to authorize nodePools:setSize, and Autopilot
+  # has no pool to size (REQ-1464).
   permissions = [
     "container.clusters.get",
     "container.clusters.getCredentials",
-    # Resizing a node pool is a cluster verb, not a node-pool one: GKE exposes no
-    # container.nodePools.* permission to custom roles, so setSize on a pool is
-    # authorized by container.clusters.update.
-    "container.clusters.update",
-    "container.operations.get",
   ]
 }
 
@@ -219,9 +340,9 @@ resource "google_project_iam_member" "engine_operator" {
 data "google_client_config" "current" {}
 
 provider "kubernetes" {
-  host                   = "https://${google_container_cluster.engine.endpoint}"
+  host                   = "https://${local.engine_cluster_endpoint}"
   token                  = data.google_client_config.current.access_token
-  cluster_ca_certificate = base64decode(google_container_cluster.engine.master_auth[0].cluster_ca_certificate)
+  cluster_ca_certificate = base64decode(local.engine_cluster_ca)
 }
 
 resource "kubernetes_namespace" "engines" {
@@ -295,42 +416,10 @@ resource "kubernetes_role_binding" "engine_operator" {
   }
 }
 
-# Nodes are cluster-scoped, and the wake path counts READY nodes to decide whether
-# a pod can be placed at all — initialNodeCount only records what the pool was last
-# set to. Read-only, and nodes only: this is the one thing the namespaced Role
-# cannot express.
-resource "kubernetes_cluster_role" "engine_nodes" {
-  metadata {
-    name = "provisa-engine-node-reader"
-  }
-
-  rule {
-    api_groups = [""]
-    resources  = ["nodes"]
-    verbs      = ["get", "list", "watch"]
-  }
-}
-
-resource "kubernetes_cluster_role_binding" "engine_nodes" {
-  metadata {
-    name = "provisa-engine-node-reader"
-  }
-
-  role_ref {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "ClusterRole"
-    name      = kubernetes_cluster_role.engine_nodes.metadata[0].name
-  }
-
-  dynamic "subject" {
-    for_each = local.control_plane_rbac_users
-    content {
-      api_group = "rbac.authorization.k8s.io"
-      kind      = "User"
-      name      = subject.value
-    }
-  }
-}
+# No cluster-scoped node grant. The Standard wake counted READY nodes in the
+# shard's pool to decide whether a pod could be placed; on Autopilot placement is
+# the scheduler's business and readiness is readyReplicas, so the namespaced Role
+# above is the whole grant (REQ-1464).
 
 resource "google_compute_firewall" "engine_internal" {
   name    = "provisa-saas-engine-internal"

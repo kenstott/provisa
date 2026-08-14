@@ -553,6 +553,8 @@ dq_checker: none        # none | soda | gx
 
 Installing the demo dataset raises `none` to `gx` and says so, because the demo config registers a Great Expectations suite over `pet_store.pets` and its quality scorecard would otherwise have nothing to show. Naming `soda` keeps `soda`.
 
+Reaching the demo through pip rather than an installer skips that wizard step, so the `demo` extra carries the same checker: `pip install 'provisa[embedded,demo]'` is what `provisa run --demo` needs for its scan to run. Without it the scan reports `data-quality checker 'great_expectations' is not installed`, naming the install command.
+
 Any other value stops the launcher rather than starting without the checker the operator asked for. The `soda` extra pulls `soda-postgres`; `gx` pulls `great-expectations[postgresql]`. Soda Core is Elastic License 2.0 — `config/capabilities.yaml` marks the option `cloud_eligible: false`, and the hosted plane refuses it.
 
 ## Domains

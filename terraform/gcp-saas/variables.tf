@@ -95,15 +95,82 @@ variable "engine_release_channel" {
   }
 }
 
+variable "engine_cluster_mode" {
+  description = <<-EOT
+    Which engine-cluster topology to build: "autopilot" or "standard" (REQ-1465).
+
+    autopilot — no node pools at all. Billing is per pod REQUEST, so a shard at zero
+    replicas costs nothing, and GKE's own system Deployments are Google's problem
+    rather than a node we keep alive. This is the launch shape: with nobody querying,
+    the shared lane bills $0.
+
+    standard — a small always-on Spot system pool carries GKE's system Deployments,
+    and each shard gets its own pool autoscaling 0..1, tainted so nothing but that
+    shard's pod can hold it up. Running is ~6% cheaper per shard-hour than Autopilot,
+    against a fixed ~$11/mo for the system pool: the crossover is about 460 shard-hours
+    a month (~15 hours a day). Switch after launch, once real duty cycle is known.
+
+    Switching REPLACES the cluster — enable_autopilot is immutable, and so is
+    dns_config. Both modes are applied and exercised the same way; the control plane
+    itself changes only PROVISA_ENGINE_CLUSTER_MODE, which decides whether a shard pod
+    carries a nodeSelector and toleration.
+  EOT
+  type        = string
+  default     = "autopilot"
+
+  validation {
+    condition     = contains(["autopilot", "standard"], var.engine_cluster_mode)
+    error_message = "engine_cluster_mode must be autopilot or standard."
+  }
+}
+
+variable "engine_system_pool_machine_type" {
+  description = <<-EOT
+    standard mode only: the machine carrying GKE's system Deployments (kube-dns,
+    metrics-server, konnectivity-agent, event-exporter, kube-state-metrics,
+    gmp-operator). They are Deployments, not DaemonSets, so without a pool of their
+    own they schedule onto a shard pool and keep it — and its bill — alive around the
+    clock, which is exactly what made the first Standard build unable to rest at zero
+    (REQ-1464). Spot, because a system pod rescheduling on preemption costs nothing
+    that matters.
+  EOT
+  type        = string
+  default     = "e2-small"
+}
+
+variable "shared_shard_machine_type" {
+  description = <<-EOT
+    standard mode only: the machine a shared-lane shard's pod lands on. Must fit the
+    pod's requests (PROVISA_ENGINE_CPU / PROVISA_ENGINE_MEMORY_GIB, 6 vCPU / 24 GiB)
+    with room for GKE's per-node agents.
+  EOT
+  type        = string
+  default     = "e2-highmem-8"
+}
+
+variable "shared_shards" {
+  description = <<-EOT
+    standard mode only: the shared-lane shards to build pools for. Each gets a pool
+    autoscaling 0..1, tainted and labelled provisa.dev/shard=<shard>, which is what the
+    control plane's pod selector matches. Autopilot needs no equivalent — a shard there
+    is only a Deployment.
+  EOT
+  type        = list(string)
+  default     = ["shared_1"]
+}
+
 variable "engine_cluster_dns_domain" {
   description = <<-EOT
     DNS domain the cluster's Services are published under, VPC-wide. The control
     plane is a VM, not a pod, so it cannot resolve the in-cluster default
-    (svc.cluster.local) at all; GKE's Cloud DNS in VPC_SCOPE publishes Service
-    records into the VPC instead, and that requires a domain unique to this
-    cluster. A shard is then dialed at
-    trino-shared-1.provisa-engines.svc.<this domain> with no load balancer and so
-    no forwarding-rule hours on the zero-customer floor (REQ-1451, REQ-1453).
+    (svc.cluster.local) at all; GKE's Cloud DNS publishes the Service records into
+    the VPC instead, under a domain unique to this cluster. A shard is then dialed
+    at trino-shared-1.provisa-engines.svc.<this domain> with no load balancer and
+    so no forwarding-rule hours on the zero-customer floor (REQ-1451, REQ-1453).
+
+    Set as ADDITIVE vpc scope on autopilot and as VPC_SCOPE on standard — Autopilot
+    supports only the additive form (gke.tf) — and it can only be set when the cluster
+    is created, in either mode.
   EOT
   type        = string
   default     = "provisa-saas-engine.internal"
@@ -117,47 +184,6 @@ variable "engine_image" {
     (REQ-1447).
   EOT
   type        = string
-}
-
-variable "shared_shard_machine_type" {
-  description = <<-EOT
-    Machine type backing the shared (Starter) Trino shard. Every Starter org runs
-    on this shard, so memory is the binding dimension, not core count.
-
-    e2-highmem-8 (8 vCPU / 64 GiB), not the n2 of the same shape: every n2 and n2d
-    highmem size in us-central1-a returned ZONE_RESOURCE_POOL_EXHAUSTED, so a wake
-    scaled the pool up and the autoscaler reported "GCE out of resources" while the
-    pod stayed Pending. Same memory, lower price, and it is the family with capacity
-    in this zone. A shard is one pod that both coordinates and executes, so a scale-up
-    that cannot land is a lane outage — machine family follows availability here.
-  EOT
-  type        = string
-  default     = "e2-highmem-8"
-}
-
-variable "shared_shard_max_nodes" {
-  description = <<-EOT
-    Ceiling on the shared shard's node pool. The floor is fixed at zero and is not
-    configurable: an empty pool bills nothing, and holding the zero-customer cost
-    at ~$19/mo depends on it (REQ-1448).
-  EOT
-  type        = number
-  default     = 3
-
-  validation {
-    condition     = var.shared_shard_max_nodes >= 1
-    error_message = "shared_shard_max_nodes must be >= 1."
-  }
-}
-
-variable "shared_shard_use_spot" {
-  description = <<-EOT
-    Run the shared shard on Spot nodes. Off by default: a preemption kills every
-    Starter org's in-flight query at once, which is a different blast radius than
-    preempting one org's dedicated workers.
-  EOT
-  type        = bool
-  default     = false
 }
 
 # ── Coordinator (planner + TCP listeners + stateful singletons) ─────────────────
@@ -214,9 +240,9 @@ variable "front_door_status_port" {
 
 # ── Data plane ──────────────────────────────────────────────────────────────────
 # There is no worker MIG. Query execution is the cluster's (REQ-1447): a shard is a
-# pod on its own node pool, and capacity is added by shards and by nodes in a pool,
-# never by VMs joining the control plane's Trino. The autoscaled MIG, its instance
-# template and its regional autoscaler are gone with the GCE engine tier.
+# pod Autopilot sizes a node for, and capacity is added by shards, never by VMs
+# joining the control plane's Trino. The autoscaled MIG, its instance template and
+# its regional autoscaler are gone with the GCE engine tier.
 
 # ── Cloud SQL (managed control plane) ───────────────────────────────────────────
 variable "cloudsql_tier" {

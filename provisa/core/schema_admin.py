@@ -288,6 +288,29 @@ org_config = Table(
 )
 
 
+# REQ-1466: the deployment-wide maintenance notice. One row, id ``current``, written only by a
+# holder of ``platform_settings`` and read by every signed-in client so a planned outage — the
+# engine-cluster topology switch is the one that forces it, since flipping
+# ``var.engine_cluster_mode`` REPLACES the cluster — reads as scheduled work rather than as the
+# product being broken. Registry-resident rather than an env var because it is turned on and off
+# while the control plane is running, and it must survive the restart it often accompanies.
+platform_notice = Table(
+    "platform_notice",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("active", Boolean, nullable=False, server_default=false()),
+    # NULL means the deployment's standard wording, composed by the API from ``ends_at``. A
+    # platform_admin overrides it only when there is something specific to say.
+    Column("message", Text, nullable=True),
+    # When the work is expected to be over. NULL means "no estimate", which the banner says in as
+    # many words rather than inventing one.
+    Column("ends_at", DateTime(timezone=True), nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=True),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text, nullable=True),
+)
+
+
 # The org/user/invite registry. ``org_config`` is bootstrapped separately by the billing
 # module, so it is excluded here.
 REGISTRY_TABLES = [
@@ -300,6 +323,7 @@ REGISTRY_TABLES = [
     superadmin_bootstrap,
     personal_access_tokens,
     scram_credentials,
+    platform_notice,
 ]
 
 

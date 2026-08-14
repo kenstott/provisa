@@ -58,9 +58,16 @@ NON_INTERACTIVE=false
 CLI_ROLE=""
 CLI_PRIMARY_IP=""
 CLI_RAM_GB=""
+# --refresh-env: rewrite the systemd EnvironmentFile from the environment this script was
+# invoked with, then restart the stack — no image load, no compose restage. AppRun uses it on
+# the same-version fast path, because settings that terraform can change without a release
+# (the engine cluster's location/mode/zone, REQ-1465) reach the node only through that file.
+# Without it a metadata edit is invisible until the next version bump.
+REFRESH_ENV=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --refresh-env)     REFRESH_ENV=true; shift ;;
     --non-interactive) NON_INTERACTIVE=true; shift ;;
     --role)            CLI_ROLE="$2"; shift 2 ;;
     --primary-ip)      CLI_PRIMARY_IP="$2"; shift 2 ;;
@@ -761,6 +768,11 @@ services:
       PROVISA_ENGINE_CLUSTER_LOCATION: "\${PROVISA_ENGINE_CLUSTER_LOCATION:-}"
       PROVISA_ENGINE_CLUSTER_NAME: "\${PROVISA_ENGINE_CLUSTER_NAME:-}"
       PROVISA_ENGINE_CLUSTER_DNS_DOMAIN: "\${PROVISA_ENGINE_CLUSTER_DNS_DOMAIN:-}"
+      # Which cluster topology is deployed (autopilot|standard) and the zone a shard
+      # pod must land in — an autopilot cluster is regional, so the zone is not
+      # implied by the location (REQ-1465).
+      PROVISA_ENGINE_CLUSTER_MODE: "\${PROVISA_ENGINE_CLUSTER_MODE:-}"
+      PROVISA_ENGINE_CLUSTER_ZONE: "\${PROVISA_ENGINE_CLUSTER_ZONE:-}"
       PROVISA_ENGINE_NAMESPACE: "\${PROVISA_ENGINE_NAMESPACE:-provisa-engines}"
       PROVISA_ENGINE_IMAGE: "\${PROVISA_ENGINE_IMAGE:-}"
       # Which shard TRINO_HOST names, so boot can wake it when its node pool is at zero.
@@ -954,6 +966,7 @@ install_systemd() {
              CONFIG_DB_HOST CONFIG_DB_PORT CONFIG_DB_NAME CONFIG_DB_USER CONFIG_DB_PASSWORD \
              PROVISA_ENGINE_CLUSTER_PROJECT PROVISA_ENGINE_CLUSTER_LOCATION \
              PROVISA_ENGINE_CLUSTER_NAME PROVISA_ENGINE_CLUSTER_DNS_DOMAIN \
+             PROVISA_ENGINE_CLUSTER_MODE PROVISA_ENGINE_CLUSTER_ZONE \
              PROVISA_ENGINE_NAMESPACE PROVISA_ENGINE_IMAGE PROVISA_ENGINE_SHARD \
              PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT PROVISA_OBJECT_STORE_DIR \
              TRINO_HOST TRINO_PORT \
@@ -1389,6 +1402,16 @@ main() {
   printf "═══════════════════════════════════════════\n\n"
 
   mkdir -p "$PROVISA_HOME"
+
+  # Env-only refresh: the node is already provisioned at this version, so the only thing that
+  # can have changed is the environment the caller exported. Rewriting the EnvironmentFile and
+  # restarting is the whole job.
+  if [ "$REFRESH_ENV" = true ]; then
+    install_systemd
+    ok "Environment refreshed from the current startup environment."
+    return
+  fi
+
   resolve_deployment   # sets DEPLOY_ENGINE OBS_MODE INSTALL_DEMO DEMO_MODE NEEDS_DOCKER
 
   # ── Native tier (default): a Python venv, no Docker ──

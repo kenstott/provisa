@@ -213,9 +213,7 @@ async def _announce_ready(
         print(f"\nProvisa is running — open {url} in your browser (announce: {exc}).", flush=True)
 
 
-async def _serve(
-    host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool
-) -> None:
+async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool) -> None:
     import uvicorn
 
     from provisa.api.app import create_app
@@ -228,9 +226,7 @@ async def _serve(
     api = uvicorn.Server(
         uvicorn.Config(create_app, factory=True, host=host, port=api_port, log_level="info")
     )
-    ui = uvicorn.Server(
-        uvicorn.Config(ui_server.app, host=host, port=ui_port, log_level="warning")
-    )
+    ui = uvicorn.Server(uvicorn.Config(ui_server.app, host=host, port=ui_port, log_level="warning"))
     await asyncio.gather(
         api.serve(),
         ui.serve(),
@@ -308,6 +304,79 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     for err in payload["errors"]:
         print(f"  ! {err['asset']}: {err['message']}", file=sys.stderr)
     return 0 if ok else 1
+
+
+def _maintenance_request(args: argparse.Namespace, body: dict | None) -> dict:
+    """One call to /admin/platform/maintenance. GET when ``body`` is None, PUT otherwise.
+
+    A thin client, like ``metadata export``: the server owns the wording, the ``started_at`` stamp
+    and the ``platform_settings`` gate, so the CLI and the admin tab produce the same notice
+    (REQ-1466).
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    api = args.api or os.environ.get("PROVISA_API_URL", "http://127.0.0.1:8000")
+    token = args.token or os.environ.get("PROVISA_API_TOKEN", "")
+    url = f"{api.rstrip('/')}/admin/platform/maintenance"
+    if body is None:
+        req = urllib.request.Request(url, method="GET")
+    else:
+        req = urllib.request.Request(
+            url,
+            method="PUT",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(
+            f"maintenance request failed: HTTP {exc.code} — {exc.read().decode(errors='replace')}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"cannot reach the Provisa API at {api}: {exc.reason}") from exc
+
+
+def _print_notice(notice: dict) -> None:
+    if not notice["active"]:
+        print("Maintenance notice: OFF")
+        return
+    print("Maintenance notice: ON")
+    print(f"  Message:  {notice['message']}")
+    print(f"  Since:    {notice['started_at'] or 'unknown'}")
+    print(f"  Ends at:  {notice['ends_at'] or 'no estimate given'}")
+
+
+def _cmd_maintenance_on(args: argparse.Namespace) -> int:
+    """`provisa maintenance on` — raise the scheduled-downtime banner (REQ-1466).
+
+    The command an operator runs first when planned work takes the data plane down — switching
+    ``var.engine_cluster_mode`` replaces the engine cluster and every shard on it (REQ-1465), so
+    queries fail for the duration and the failure has to read as scheduled.
+    """
+    _print_notice(
+        _maintenance_request(
+            args, {"active": True, "message": args.message, "ends_at": args.ends_at}
+        )
+    )
+    return 0
+
+
+def _cmd_maintenance_off(args: argparse.Namespace) -> int:
+    """`provisa maintenance off` — clear the banner once the work is done (REQ-1466)."""
+    _print_notice(_maintenance_request(args, {"active": False, "message": None, "ends_at": None}))
+    return 0
+
+
+def _cmd_maintenance_status(args: argparse.Namespace) -> int:
+    """`provisa maintenance status` — what the banner is currently saying (REQ-1466)."""
+    _print_notice(_maintenance_request(args, None))
+    return 0
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -400,7 +469,9 @@ def main(argv: list[str] | None = None) -> int:
     lic_apply = lic_sub.add_parser("apply", help="Verify and install a license file")
     lic_apply.add_argument("file", help="Path to the license.json issued by provisa.dev")
     lic_apply.set_defaults(func=_cmd_license_apply)
-    lic_status = lic_sub.add_parser("status", help="Show machine id, trial state, and license status")
+    lic_status = lic_sub.add_parser(
+        "status", help="Show machine id, trial state, and license status"
+    )
     lic_status.set_defaults(func=_cmd_license_status)
 
     meta = sub.add_parser("metadata", help="Governed-metadata operations")
@@ -426,6 +497,46 @@ def main(argv: list[str] | None = None) -> int:
         "--timeout", type=int, default=300, help="Publish timeout in seconds (default: 300)"
     )
     meta_export.set_defaults(func=_cmd_metadata_export)
+
+    # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
+    # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,
+    # and neither step should need a browser.
+    maint = sub.add_parser(
+        "maintenance", help="Raise or clear the deployment's scheduled-maintenance banner"
+    )
+    maint_sub = maint.add_subparsers(dest="maintenance_command", required=True)
+    maint_on = maint_sub.add_parser("on", help="Show the scheduled-maintenance banner")
+    maint_on.add_argument(
+        "--message",
+        default=None,
+        help="Override the deployment's standard wording (default: the server's standard message)",
+    )
+    maint_on.add_argument(
+        "--ends-at",
+        default=None,
+        help="ISO-8601 instant the work is expected to end, e.g. 2026-08-14T22:30:00Z "
+        "(default: state that no estimate is being offered)",
+    )
+    maint_on.set_defaults(func=_cmd_maintenance_on)
+    maint_off = maint_sub.add_parser("off", help="Clear the scheduled-maintenance banner")
+    maint_off.set_defaults(func=_cmd_maintenance_off)
+    maint_status = maint_sub.add_parser("status", help="Show the current maintenance notice")
+    maint_status.set_defaults(func=_cmd_maintenance_status)
+    for p in (maint_on, maint_off, maint_status):
+        p.add_argument(
+            "--api",
+            default=None,
+            help="Provisa API base URL (default: $PROVISA_API_URL or http://127.0.0.1:8000)",
+        )
+        p.add_argument(
+            "--token",
+            default=None,
+            help="Bearer token for an identity holding platform_settings "
+            "(default: $PROVISA_API_TOKEN)",
+        )
+        p.add_argument(
+            "--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)"
+        )
 
     args = parser.parse_args(argv)
     return args.func(args)

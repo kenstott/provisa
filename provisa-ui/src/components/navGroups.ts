@@ -107,6 +107,13 @@ export const NAV_GROUPS: NavGroup[] = [
         capability: "org_settings",
       },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
+      // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
+      // platform_settings — the same right that gates the engine topology switch it announces.
+      {
+        to: "/admin/maintenance",
+        labelKey: "navBar.itemMaintenance",
+        capability: "platform_settings",
+      },
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {

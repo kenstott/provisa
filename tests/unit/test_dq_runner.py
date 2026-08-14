@@ -16,6 +16,7 @@ neither checker installed — these tests feed it the envelope the worker emits.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from datetime import UTC, datetime
 
@@ -30,6 +31,13 @@ from provisa.dq.results import (
 from provisa.dq.runner import CheckerError, build_command, parse_results, run_contract
 
 SCAN_TIME = datetime(2026, 8, 13, 9, 30, tzinfo=UTC)
+
+# A minimal well-formed contract per dialect: enough for the runner's own dataset checks to pass so
+# the run reaches the subprocess, which is what these tests are about.
+_CONTRACTS = {
+    "soda": "dataset: provisa/sales/orders\ncolumns: []\n",
+    "great_expectations": "meta:\n  dataset: provisa/sales/orders\nexpectations: []\n",
+}
 
 
 def _envelope(**overrides) -> dict:
@@ -158,6 +166,27 @@ async def test_a_contract_naming_a_different_data_source_is_reported_not_correct
         await run_contract(
             checker="soda",
             contract_text="dataset: elsewhere/sales/orders",
+            connection={},
+            data_source_name="provisa",
+            scan_id="s",
+            scan_time=SCAN_TIME,
+            target_table="sales.orders",
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("checker", "extra"), [("great_expectations", "gx"), ("soda", "soda")]
+)
+async def test_an_uninstalled_checker_reports_the_extra_that_supplies_it(checker, extra):
+    """A checker is acquired on operator selection, so "not installed" is an ordinary operator state
+    and the failure has to name its own remedy rather than surface the checker's import traceback."""
+    if importlib.util.find_spec("great_expectations" if extra == "gx" else "soda_core"):
+        pytest.skip(f"the {extra} extra is installed in this environment")
+    with pytest.raises(CheckerError, match=f"pip install 'provisa\\[{extra}\\]'"):
+        await run_contract(
+            checker=checker,
+            contract_text=_CONTRACTS[checker],
             connection={},
             data_source_name="provisa",
             scan_id="s",
