@@ -1151,8 +1151,20 @@ setup_native_venv() {
 # ── Write config ───────────────────────────────────────────────────────────────
 write_config() {
   mkdir -p "$PROVISA_HOME"
+  # An existing config is kept only while it describes the same role this run was
+  # told to install. A node re-installed as --role control-plane over an earlier
+  # primary install kept `role: primary` here, and the CLI then started the whole
+  # primary stack — local Trino, local postgres, TRINO_HOST: trino — while the
+  # systemd env file named a GKE shard the app never dialed (REQ-1451). Role is
+  # deployment identity, so a mismatch rewrites rather than silently persisting.
   if [ -f "${PROVISA_HOME}/config.yaml" ]; then
-    return
+    local existing_role
+    existing_role="$(awk '$1 == "role:" {print $2; exit}' "${PROVISA_HOME}/config.yaml")"
+    if [ "$existing_role" = "$ROLE" ]; then
+      return
+    fi
+    warn "config.yaml says role: ${existing_role}, installing role: ${ROLE} — rewriting."
+    mv "${PROVISA_HOME}/config.yaml" "${PROVISA_HOME}/config.yaml.bak-${existing_role}"
   fi
 
   local hostname api_port ui_port
