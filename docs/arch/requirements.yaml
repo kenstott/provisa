@@ -45299,3 +45299,38 @@
   - REQ-1450
   - REQ-1453
   - REQ-1412
+- id: REQ-1461
+  status: proposed
+  target: 2026-Q4
+  group: 13. Multi-Tenancy & Organizations
+  category: Federation Engine
+  priority: MUST
+  type: behavioral
+  description: >-
+    The cold-shard wake is reconciled with the executor's retry budget by ORDERING, not by widening
+    the budget. A node provision is roughly 90-120s (k8s_provisioner._await_operation, bounded by
+    PROVISA_ENGINE_NODE_TIMEOUT=420) while a statement's retry budget is 30s
+    (_retry_budget/PROVISA_RETRY_BUDGET_SECS), so a query that discovered an absent shard from
+    inside its retry loop could never wait the wake out -- it would exhaust the budget and fail on a
+    shard that was seconds from ready. The wake therefore runs BEFORE the terminal call, at the top
+    of _execute_plan and ahead of _run_plan_terminal, so the wait for capacity is not spent from the
+    retry budget at all and the budget keeps its intended meaning: transient failures of a shard
+    that is already up. Raising PROVISA_RETRY_BUDGET_SECS to cover a cold start is explicitly
+    REJECTED -- it would make every genuinely failing query on a warm shard hang for minutes. Because
+    _execute_plan is the one terminal seam every surface routes through (REQ-1386), no protocol
+    server carries a wake of its own.
+  use_case: >-
+    A query that arrives at a shard whose node pool is at zero waits out the node provision and then
+    executes, instead of failing after 30 seconds against an engine that is still coming up.
+  code:
+  - provisa/pgwire/_pipeline.py
+  - provisa/federation/engine_wake.py
+  scenario: |
+    Given an org whose shard has been scaled to zero
+    When the org issues a query
+    Then the shard is woken and the org runtime rebuilt before the statement reaches the terminal
+    And the statement's retry budget is not consumed by the wake
+  related_reqs:
+  - REQ-1448
+  - REQ-1450
+  - REQ-1386
