@@ -15,35 +15,40 @@
 #     -t us-central1-docker.pkg.dev/$PROJECT/provisa/trino-engine:v0.1.0 .
 
 ARG TRINO_VERSION=481
-FROM trinodb/trino:${TRINO_VERSION}
+
+# Fetching happens in a stage of its own because trinodb/trino carries no package
+# manager at all — its RHEL 10 base has neither microdnf nor gzip, so an unpack in
+# the final stage cannot install what it needs. Nothing here reaches the shipped
+# image except the two artifacts copied below.
+FROM alpine:3.21 AS fetch
 
 ARG PROVISA_VERSION
 ARG GITHUB_REPO=kenstott/provisa
 ARG OTEL_AGENT_VERSION=v2.11.0
 
-USER root
+RUN apk add --no-cache curl tar
 
 # The connectors Provisa adds to Trino. They ship as a release asset rather than
 # living in the tree, which is the same source packaging/linux/first-launch.sh
 # pulls from — the image and the desktop install therefore carry identical
 # plugin builds instead of two independently-assembled sets.
 RUN set -eux; \
-    microdnf install -y tar gzip; \
+    mkdir -p /out/plugin; \
     curl -fSL --retry 5 --retry-all-errors \
       "https://github.com/${GITHUB_REPO}/releases/download/${PROVISA_VERSION}/provisa-trino-plugins-${PROVISA_VERSION}.tar.gz" \
       -o /tmp/plugins.tar.gz; \
-    tar -xzf /tmp/plugins.tar.gz -C /usr/lib/trino/plugin; \
-    rm /tmp/plugins.tar.gz; \
-    microdnf clean all
+    tar -xzf /tmp/plugins.tar.gz -C /out/plugin; \
+    rm /tmp/plugins.tar.gz
 
 # Pinned, not "latest": an engine image that resolves a different agent build on
 # every rebuild produces spans whose attributes drift without any change here.
 RUN set -eux; \
-    mkdir -p /etc/trino/otel; \
+    mkdir -p /out/otel; \
     curl -fSL --retry 5 --retry-all-errors \
       "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar" \
-      -o /etc/trino/otel/opentelemetry-javaagent.jar
+      -o /out/otel/opentelemetry-javaagent.jar
 
-RUN chown -R trino:trino /usr/lib/trino/plugin /etc/trino/otel
+FROM trinodb/trino:${TRINO_VERSION}
 
-USER trino
+COPY --from=fetch --chown=trino:trino /out/plugin/ /usr/lib/trino/plugin/
+COPY --from=fetch --chown=trino:trino /out/otel/ /etc/trino/otel/
