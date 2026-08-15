@@ -39,6 +39,7 @@
         <a href="#interfaces">Interfaces</a>
         <a href="#governance">Governance</a>
         <a href="#sources">Sources</a>
+        <a href="#ecosystem">Ecosystem</a>
         <a href="#deploy">Deploy</a>
         <a class="nav-cta" href="#download">Download</a>
       </nav>
@@ -296,6 +297,64 @@
           Governance still applies to every derived dataset: an MV is a governed table
           like any other, so RLS, masking, and relationship rules hold all the way up
           the graph.
+        </p>
+      </div>
+    </section>
+
+    <!-- Ecosystem: catalog export, data quality, dereferenceable addresses -->
+    <section id="ecosystem" class="section">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Fits your stack</p>
+          <h2>It feeds the catalog you already bought.</h2>
+          <p class="section-sub">
+            Provisa is not another place your metadata goes to die. The model that
+            governs your queries publishes outward to the tools your organization
+            already runs — and addresses every governed value it holds.
+          </p>
+        </header>
+
+        <div class="grid grid-3">
+          <div class="card">
+            <h4>Publishes to your catalog</h4>
+            <p>
+              One registration, six destinations: <strong>OpenMetadata</strong>,
+              <strong>DataHub</strong>, <strong>Collibra</strong>,
+              <strong>Atlan</strong>, <strong>Apache Atlas</strong>, and
+              <strong>OpenLineage</strong>. Tables, columns, tags, classifications,
+              and lineage flow out as first-class catalog assets — from the admin
+              console or from <code>provisa metadata export</code> on a cron.
+            </p>
+          </div>
+          <div class="card">
+            <h4>Lineage that survives re-platforming</h4>
+            <p>
+              Assets are stitched on <strong>business identity</strong>, not physical
+              location. Move a table from Oracle to Postgres and its catalog entry,
+              lineage, and history follow the business entity instead of shattering —
+              so a migration doesn't reset your catalog to zero.
+            </p>
+          </div>
+          <div class="card">
+            <h4>Data quality, without a second engine</h4>
+            <p>
+              Point <strong>Soda</strong> at a governed table and register the contract
+              as a source. You get scan history, a quality scorecard, and lineage from
+              each failing check back to the table it guards — scans triggered by
+              <strong>change</strong>, not by a cron guess. Provisa ships no DQ engine
+              and doesn't ask you to retire yours.
+            </p>
+          </div>
+        </div>
+
+        <p class="section-note">
+          <strong>Every value has an address.</strong> A governed value is addressable
+          as <code>provisa://&lt;org&gt;/&lt;domain&gt;/&lt;table&gt;/pk=&lt;id&gt;/&lt;column&gt;</code>
+          and resolves over REST or MCP — optionally <em>as of</em> a point in time.
+          Exported documents, lineage nodes, audit records, and AI-agent citations
+          carry links that resolve back to the live governed value, under the same
+          policy as any other read. Only semantic addresses dereference; physical URIs
+          are refused, so a citation can never leak a location.
         </p>
       </div>
     </section>
