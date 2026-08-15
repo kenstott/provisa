@@ -30502,17 +30502,33 @@
   type: constraint
   target: 2026-Q4
   description: 'Hard query-cost caps as a monetization gate: each org tier enforces ceilings on query
-    cost (CPU time, peak memory, bytes scanned, execution time). Queries exceeding the tier''s ceiling
-    are REJECTED with an explanatory error message indicating the operation requires a higher tier/premium
-    SKU. Enforced via Trino resource-group limits and per-query guards (query.max-memory-per-node, query.max-execution-time,
-    query.max-scan-physical-bytes) keyed to org entitlement. Free/standard tiers carry restrictive caps;
-    expensive queries require acquiring a premium SKU.'
+    cost (CPU time, peak memory, bytes scanned, execution time) AND on OUTPUT ROWS returned. Queries
+    exceeding the tier''s ceiling are REJECTED with an explanatory error message indicating the operation
+    requires a higher tier/premium SKU. The first four are scan-side ceilings enforced via Trino resource-group
+    limits and per-query guards (query.max-memory-per-node, query.max-execution-time, query.max-scan-physical-bytes)
+    keyed to org entitlement; they bound the massive-aggregate case, where a query reads a warehouse to
+    return one number, and the cost lands on compute. The output-row cap is the egress-side ceiling and
+    is a SEPARATE exposure the scan-side four do not catch: a full-table SELECT * over a modest table
+    passes every scan guard while shipping gigabytes, and the cost lands on the egress line ($0.48/GB
+    past the tier allowance, REQ-1452). Trino exposes no output-row property, so the cap is enforced by
+    Provisa on the result path rather than by the engine. It is a PLAN ENTITLEMENT and is distinct from
+    the REQ-005 per-role max_rows, which is an org-authored governance knob that truncates by injecting
+    LIMIT: the tier cap REJECTS instead, because a silently truncated result makes the tier boundary invisible
+    to the customer hitting it and forfeits the conversion the cap exists to drive. Where both apply the
+    stricter bound wins, and only the tier bound raises a tier error. The cap is also what makes the REQ-1454
+    active-hour meter safe: that meter charges occupancy and is deliberately blind to volume, so without
+    an output ceiling an org can drain the estate inside one $1.30 hour. Free/standard tiers carry restrictive
+    caps; expensive queries require acquiring a premium SKU.'
   use_case: 'Primary monetization lever: caps are hard rejections, not silent degradation. Prevents free-tier
-    abuse (e.g., scanning the entire data warehouse). Drives tier-upgrade conversion when users hit caps.
-    Project rule: rejection must be explicit, never a silent cap-and-continue.'
+    abuse in both directions — scanning the entire data warehouse (scan-side) and downloading it (egress-side).
+    Drives tier-upgrade conversion when users hit caps. Project rule: rejection must be explicit, never
+    a silent cap-and-continue.'
   relates_to:
+  - REQ-005
   - REQ-1017
   - REQ-1040
+  - REQ-1452
+  - REQ-1454
 - id: REQ-1045
   status: proposed
   group: 11. Platform, Infrastructure & Delivery
