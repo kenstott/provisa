@@ -248,6 +248,15 @@ def prewarm_engine(state: Any, org_id: str | None) -> None:
     if not k8s.provisioning_available():
         return
 
+    # /auth/me reports the deployment's own org by NAME, but _OrgRoutingMiddleware binds
+    # current_org only for a non-default org (auth/middleware.py:601-604) — unset IS the default
+    # org, and ensure_engine_awake's unset branch is the one that serves it. Binding the name here
+    # instead sent the default org down the tenant branch, which invalidates the registry entry and
+    # rebuilds the runtime; that rebuild replaced the org's compiled state with a build the boot
+    # path had assembled differently, and every surface answered "No schema available for role".
+    if org_id == state.org_id:
+        org_id = None
+
     async def _run() -> None:
         from provisa.api.org_runtime import reset_current_org, set_current_org
 

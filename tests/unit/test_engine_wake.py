@@ -518,6 +518,28 @@ async def test_prewarm_binds_the_org_it_was_given(fake_k8s, monkeypatch):
     assert "shared_2" in fake_k8s.wakes
 
 
+async def test_prewarm_does_not_bind_the_deployments_own_org(fake_k8s, monkeypatch):
+    """/auth/me reports the default org by NAME, but the routing middleware leaves current_org
+    unset for it. Binding the name sends it down the tenant branch, which invalidates the registry
+    entry and rebuilds the runtime — and every data surface then answers "No schema available"."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    rebuilt: list[str] = []
+    state = _state_with(None, rebuilt, default=default)
+
+    async def _boom(oid: str) -> None:
+        raise AssertionError("the default org's runtime must not be rebuilt by a prewarm")
+
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _boom, raising=False)
+
+    engine_wake.prewarm_engine(state, "default")
+    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+
+    assert fake_k8s.wakes == ["shared_1"]
+    assert rebuilt == []
+
+
 async def test_prewarm_does_not_start_a_second_wake_for_the_same_org(fake_k8s):
     from provisa.api.org_runtime import OrgRuntime
 
