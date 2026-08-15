@@ -15251,3 +15251,43 @@ A platform_admin turns a deployment-wide scheduled-maintenance notice on and off
 **Code:** `provisa/api/admin/maintenance_router.py`, `provisa/core/schema_admin.py`, `provisa/cli.py`, `provisa-ui/src/components/MaintenanceBanner.tsx`, `provisa-ui/src/components/admin/MaintenanceTab.tsx`, `provisa-ui/src/api/maintenance.ts`
 
 **Tests:** `tests/unit/test_maintenance_router.py`, `tests/unit/test_cli_maintenance.py`, `provisa-ui/src/__tests__/MaintenanceNotice.test.tsx`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
+
+## 1. Access Governance & Security
+
+### REQ-1467 · Data Governance {#REQ-1467}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A tag may take a parameter, assigned as "{tag_id}:{value}" -- `entity:customer` on a column says the column holds names of customers, not merely that it holds entity names. The GraphRAG extractor needs the entity TYPE to build a vocabulary, and the bare `entity` tag of [REQ-1375](#REQ-1375) cannot supply one, so the type travels in the assignment id rather than in a second tag. The id is split on the leftmost colon, matching how provisa.auth.role_mapping parses "role_id:domain_id"; unlike that parser, the bare form yields None rather than a wildcard, because whether a missing parameter is legal belongs to the tag's param_policy and not to the parser. param_policy is "none" or "required" and deliberately has no "optional" value -- a bare `entity` standing beside `entity:customer` would need a reading, and the only reading available is a guessed entity type. Assignments store the base id alongside the full one and the uniqueness rule is stated over (base_tag_id, object_key), so one column carries exactly one entity type: `entity:customer` and `entity:employee` on the same column is a contradiction, and uniqueness over the full id would accept both. Every read, count, and removal resolves through the base id, so the registry row a parameterized assignment belongs to is always findable and an in-use tag is never reported as unused. The permitted values are a CLOSED list held in tag_param_values, maintainer-editable through the admin UI even for a code-defined system tag like `entity`, which owns no row of its own; an open list would accept `entity:custmoer`, and a misspelt entity type reads downstream as an entity that simply is not in the corpus. Starter entity types are seeded once at first boot rather than upserted on every boot, since re-upserting would resurrect types a maintainer deleted, and a value still carried by an assignment cannot be deleted.
+
+**Use case:** A steward marks CUSTOMER.NAME as `entity:customer` and SALES_REP.NAME as `entity:employee`; the GraphRAG loader issues one vocabulary query per entity type instead of one undifferentiated entity query, and the extracted graph distinguishes a customer named Mercury from an employee of the same name.
+
+**Code:** `provisa/core/models.py`, `provisa/core/schema_org.py`, `provisa/core/repositories/tag.py`, `provisa/api/startup_seed.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/components/TagControl.tsx`, `provisa-ui/src/components/admin/TagsTab.tsx`
+
+**Tests:** `tests/unit/test_tag_params.py`, `provisa-ui/src/__tests__/TagControl.test.tsx`, `provisa-ui/src/__tests__/TagsTab.test.tsx`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1468 · Docker Compose Organization {#REQ-1468}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+A packaged demo deploy ships every upstream the demo config names, not only the file-backed ones. Three of the demo's sources are served by Provisa's own mock backends -- the OpenAPI petstore at petstore-mock:8080, the GraphQL shelter at graphql-demo:4000, and the gRPC enrichment/random command server at grpc-demo:50071 -- and a deploy that stages the SQLite files alone leaves those three unresolvable, so the demo lands half-federated. The packaged tiers build nothing and never see docker-compose.demo.yml's build contexts, so the mock sources are baked into the application image under /app/config/demo/servers (NOT /app/demo, which docker-compose.app.yml bind-mounts and would shadow) and the generated demo overlay runs them as services off that same image -- their only runtime dependencies, starlette, uvicorn, strawberry and grpcio, are already installed there, so no additional image is pulled, built or released. The gRPC target is repointed at the service, since the config's native default of localhost is wrong inside compose.
+
+**Use case:** An operator installs the demo on a fresh SaaS node; the pet, shelter, and enrichment sources federate on first boot with no manually started mock servers.
+
+**Code:** `Dockerfile`, `packaging/linux/first-launch.sh`, `config/provisa-install.yaml`
+
+**Tests:** `tests/unit/test_desktop_install.py`
+
+### REQ-1469 · SaaS Billing {#REQ-1469}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A Starter org signs itself up with a credit card and can answer, without asking anyone, what it owes right now and when the card will be charged. Three surfaces, all of them org-scoped and all reading the same numbers the invoice will carry. (1) SIGN-UP: an org with no subscription is sent to the Lemon Squeezy hosted checkout of [REQ-1075](#REQ-1075) -- the card is entered at the merchant of record and never reaches Provisa, which is the whole reason the MoR is there -- and the subscription is linked to the org by the webhook, not by the browser's return trip, so a closed tab still lands the plan. (2) CURRENT BILL: the org sees its month-to-date charge broken into the plan's fixed monthly fee and whatever metered usage has accrued against it, dated so it is clear which period is being shown. A bill assembled from Provisa's own meter rather than from the MoR would disagree with the invoice the customer receives, so the fixed component comes from the subscription and the metered component from the usage records Provisa has already posted -- never from an estimate computed a third way. (3) NEXT CHARGE: the renewal date and the amount expected on it are stated explicitly, because the complaint a card charge generates is always that it was a surprise. Cancelled and past-due subscriptions say so on the same panel rather than showing a next charge that will not happen. Payment method changes, invoice history and cancellation are handed to the Lemon Squeezy customer portal instead of rebuilt.
+
+**Use case:** A Starter customer signs up at $18/mo with a card, opens Billing a fortnight later, sees the month-to-date amount and the date the card renews, and needs no support ticket to learn either.
+
+**Code:** —
+
+**Tests:** —

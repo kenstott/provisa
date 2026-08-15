@@ -45644,3 +45644,33 @@
   related_reqs:
   - REQ-816
   - REQ-831
+- id: REQ-1469
+  status: proposed
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Billing
+  priority: MUST
+  type: behavioral
+  description: >-
+    A Starter org signs itself up with a credit card and can answer, without asking anyone, what it
+    owes right now and when the card will be charged. Three surfaces, all of them org-scoped and all
+    reading the same numbers the invoice will carry. (1) SIGN-UP: an org with no subscription is sent
+    to the Lemon Squeezy hosted checkout of REQ-1075 -- the card is entered at the merchant of
+    record and never reaches Provisa, which is the whole reason the MoR is there -- and the
+    subscription is linked to the org by the webhook, not by the browser's return trip, so a closed
+    tab still lands the plan. (2) CURRENT BILL: the org sees its month-to-date charge broken into
+    the plan's fixed monthly fee and whatever metered usage has accrued against it, dated so it is
+    clear which period is being shown. A bill assembled from Provisa's own meter rather than from
+    the MoR would disagree with the invoice the customer receives, so the fixed component comes from
+    the subscription and the metered component from the usage records Provisa has already posted --
+    never from an estimate computed a third way. (3) NEXT CHARGE: the renewal date and the amount
+    expected on it are stated explicitly, because the complaint a card charge generates is always
+    that it was a surprise. Cancelled and past-due subscriptions say so on the same panel rather
+    than showing a next charge that will not happen. Payment method changes, invoice history and
+    cancellation are handed to the Lemon Squeezy customer portal instead of rebuilt.
+  use_case: >-
+    A Starter customer signs up at $18/mo with a card, opens Billing a fortnight later, sees the
+    month-to-date amount and the date the card renews, and needs no support ticket to learn either.
+  related_reqs:
+  - REQ-1075
+  - REQ-1447
+  - REQ-1288
