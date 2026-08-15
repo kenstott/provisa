@@ -825,6 +825,14 @@ services:
       PROVISA_ZAYCHIK_IMAGE: "\${PROVISA_ZAYCHIK_IMAGE:-}"
       FLIGHT_PORT: "8815"
       REDIS_URL: "redis://redis:6379"
+      # This base REPLACES docker-compose.app.yml, so the collector endpoint app.yml declares
+      # has to be declared again here or it never reaches the container: scripts/provisa
+      # exports it when the resolved compose set includes an observability overlay, but an
+      # env var only enters a service that names it. Without these two lines the control
+      # plane exported no telemetry at all and every ops report read zero rows while the
+      # collector on the same node sat idle. Empty default = telemetry stays local.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "\${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_SERVICE_NAME: "\${OTEL_SERVICE_NAME:-provisa}"
       PROVISA_OTEL_S3_ENDPOINT: "http://minio:9000"
       # The same store as Trino sees it. The engine reads the OTel Iceberg tables itself,
       # from pods in the GKE cluster where the compose service name "minio" resolves to
