@@ -292,6 +292,9 @@ CREATE TABLE IF NOT EXISTS tag_param_values (
 DO $$ BEGIN
     ALTER TABLE tags ADD COLUMN IF NOT EXISTS reason_policy TEXT NOT NULL DEFAULT 'optional';
     ALTER TABLE tags ADD COLUMN IF NOT EXISTS expires_policy TEXT NOT NULL DEFAULT 'optional';
+    -- REQ-1467: tags_meta unions this column in, so a database created before REQ-1467 fails
+    -- every startup at the meta-view DDL until the column exists.
+    ALTER TABLE tags ADD COLUMN IF NOT EXISTS param_policy TEXT NOT NULL DEFAULT 'none';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
