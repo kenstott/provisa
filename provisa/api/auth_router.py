@@ -31,6 +31,7 @@ from provisa.core.schema_admin import (
     user_profiles,
 )
 from provisa.core.org_membership import email_matches_rule
+from provisa.core.secrets import resolve_secrets
 from provisa.core.schema_org import roles
 from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
@@ -128,6 +129,41 @@ async def me(request: Request):
         "org_memberships": [{"org_id": r["org_id"], "org_name": r["org_name"]} for r in org_rows],
         "assignments": assignments,
     }
+
+
+class SuperuserLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/superuser-login")  # REQ-125, REQ-1472
+async def superuser_login(body: SuperuserLoginRequest):
+    """Exchange the break-glass credentials for a browser session token.
+
+    Mounted for every provider, unlike ``/auth/login`` (basic only): the operator account is
+    the deployment's own credential, not an IdP account, so on a Firebase or OIDC deployment
+    this is the only sign-in it has. The same throttle guards it as every other password check.
+    """
+    from provisa.api.app import state
+    from provisa.auth.superuser import issue_superuser_session, resolve_superuser_config
+    from provisa.auth.throttle import LockedOut, login_attempt
+
+    auth_cfg = getattr(state, "auth_config", None)
+    if not auth_cfg:
+        raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
+    su_config = resolve_superuser_config(auth_cfg.get("superuser"))
+    if su_config is None:
+        raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
+    raw_secret = auth_cfg.get("jwt_secret")
+    secret = resolve_secrets(raw_secret) if raw_secret else None
+    try:
+        with login_attempt(body.username, body.password):
+            token = issue_superuser_session(body.username, body.password, su_config, secret)
+    except LockedOut as locked:
+        raise ApiError(429, "auth.too_many_attempts", str(locked))
+    except ValueError as exc:
+        raise ApiError(401, "auth.invalid_credentials", str(exc))
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @router.get("/provider-type")  # REQ-120

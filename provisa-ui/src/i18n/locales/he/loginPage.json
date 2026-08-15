@@ -28,6 +28,9 @@
     "loggingIn": "מתחבר...",
     "passwordsDoNotMatch": "הסיסמאות אינן תואמות",
     "registrationFailed": "ההרשמה נכשלה",
-    "firebaseSignInFailed": "הכניסה עם Firebase נכשלה"
+    "firebaseSignInFailed": "הכניסה עם Firebase נכשלה",
+    "operatorSignIn": "כניסת מפעיל",
+    "operatorSignInTitle": "כניסת מפעיל",
+    "backToSignIn": "חזרה לכניסה"
   }
 }

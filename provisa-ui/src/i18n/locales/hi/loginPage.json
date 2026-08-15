@@ -28,6 +28,9 @@
     "loggingIn": "लॉगिन हो रहा है...",
     "passwordsDoNotMatch": "पासवर्ड मेल नहीं खाते",
     "registrationFailed": "पंजीकरण विफल",
-    "firebaseSignInFailed": "Firebase साइन-इन विफल"
+    "firebaseSignInFailed": "Firebase साइन-इन विफल",
+    "operatorSignIn": "ऑपरेटर साइन-इन",
+    "operatorSignInTitle": "ऑपरेटर साइन-इन",
+    "backToSignIn": "साइन-इन पर वापस जाएँ"
   }
 }

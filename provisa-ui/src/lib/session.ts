@@ -10,6 +10,7 @@
 
 import { clearPersistedAdminCache } from "../apolloClient";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "./domainFilterKeys";
+import { SUPERUSER_TOKEN_KEY } from "./sessionToken";
 
 /**
  * Remembers the last submenu item visited within each nav group. Lives here rather than in NavBar
@@ -20,6 +21,7 @@ export const LAST_SUBNAV_KEY = "provisa_nav_last_item";
 /** localStorage keys that scope client state to ONE signed-in session. */
 export const SESSION_KEYS = [
   "provisa_token",
+  SUPERUSER_TOKEN_KEY,
   "provisa_org",
   "provisa_role",
   // REQ-1349: the remembered subnav item is one identity's preference. Two people sharing a browser
@@ -53,4 +55,10 @@ export function clearSessionState(): void {
 export function startSession(token: string): void {
   clearSessionState();
   localStorage.setItem("provisa_token", token);
+}
+
+/** REQ-1472: begin a break-glass session — same clearing, stored under the key Firebase does not own. */
+export function startSuperuserSession(token: string): void {
+  clearSessionState();
+  localStorage.setItem(SUPERUSER_TOKEN_KEY, token);
 }

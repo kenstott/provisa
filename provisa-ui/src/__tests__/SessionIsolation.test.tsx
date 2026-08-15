@@ -30,7 +30,13 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
 }));
 
 import { fetchMe } from "../api/admin";
-import { clearSessionState, startSession, SESSION_KEYS } from "../lib/session";
+import {
+  clearSessionState,
+  startSession,
+  startSuperuserSession,
+  SESSION_KEYS,
+} from "../lib/session";
+import { SUPERUSER_TOKEN_KEY, storedToken } from "../lib/sessionToken";
 
 const mockFetchMe = vi.mocked(fetchMe);
 
@@ -72,6 +78,23 @@ describe("session-scoped client state (REQ-1326)", () => {
     expect(localStorage.getItem("provisa_role")).toBeNull();
     expect(localStorage.getItem("apollo-cache")).toBeNull();
     expect(localStorage.getItem("admin-schema-version")).toBeNull();
+  });
+
+  // REQ-1472: the operator session is not stored where Firebase's token sync can delete it.
+  // installFirebaseTokenSync removes `provisa_token` whenever onIdTokenChanged reports no user,
+  // which is what happens at boot on every Firebase deployment nobody is signed into — and that
+  // deleted the break-glass session before the first request left the page.
+  it("keeps a break-glass session under a key the Firebase sync does not own", () => {
+    startSuperuserSession("operator-token");
+
+    expect(localStorage.getItem(SUPERUSER_TOKEN_KEY)).toBe("operator-token");
+    expect(localStorage.getItem("provisa_token")).toBeNull();
+    expect(storedToken()).toBe("operator-token");
+
+    // What lib/firebase does at boot with no signed-in user.
+    localStorage.removeItem("provisa_token");
+
+    expect(storedToken()).toBe("operator-token");
   });
 
   it("clearSessionState leaves nothing behind for the next identity", () => {

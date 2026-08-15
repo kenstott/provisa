@@ -28,6 +28,9 @@
     "loggingIn": "ログイン中...",
     "passwordsDoNotMatch": "パスワードが一致しません",
     "registrationFailed": "登録に失敗しました",
-    "firebaseSignInFailed": "Firebaseサインインに失敗しました"
+    "firebaseSignInFailed": "Firebaseサインインに失敗しました",
+    "operatorSignIn": "オペレーターサインイン",
+    "operatorSignInTitle": "オペレーターサインイン",
+    "backToSignIn": "サインインに戻る"
   }
 }

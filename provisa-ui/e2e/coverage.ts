@@ -7,6 +7,7 @@
 
 import { test as base, expect, type Page } from "playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { TOUR_SEEN_KEY, TOUR_DEMO_RESET_KEY } from "../src/tour/tourKeys";
 
 export { expect } from "playwright/test";
 
@@ -24,16 +25,29 @@ export { expect } from "playwright/test";
 // parallel index is bounded by the worker count and stable across retries (a retry spawns a
 // replacement worker with a fresh workerIndex and the same parallelIndex). Indexing the port
 // list by workerIndex would run off the end on the first retry.
+// REQ-1472: the same specs run against two targets. `local` is the self-provisioned harness
+// described above — one backend process per worker on its own port. `cloud` is a deployment that
+// already exists and that this run does not own: one origin serves both the SPA and the API, there
+// are no per-worker backends to index, and nothing here may start or seed a server.
+export const TARGET = process.env.PROVISA_E2E_TARGET ?? "local";
+if (!["local", "cloud"].includes(TARGET)) {
+  throw new Error(`PROVISA_E2E_TARGET must be local|cloud, got: ${TARGET}`);
+}
+const CLOUD_URL = process.env.PROVISA_E2E_CLOUD_URL ?? "";
+if (TARGET === "cloud" && !CLOUD_URL) {
+  throw new Error("PROVISA_E2E_TARGET=cloud requires PROVISA_E2E_CLOUD_URL");
+}
+
 const BACKEND_PORTS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "8901").split(",");
 const PARALLEL_INDEX = Number(process.env.TEST_PARALLEL_INDEX ?? "0");
-if (!BACKEND_PORTS[PARALLEL_INDEX]) {
+if (TARGET === "local" && !BACKEND_PORTS[PARALLEL_INDEX]) {
   throw new Error(
     `No backend for parallel index ${PARALLEL_INDEX} in PROVISA_E2E_BACKEND_PORTS=` +
       `${BACKEND_PORTS.join(",")} — playwright.config.ts must start one backend per worker.`,
   );
 }
 export const BACKEND_PORT = BACKEND_PORTS[PARALLEL_INDEX];
-export const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+export const BACKEND_URL = TARGET === "cloud" ? CLOUD_URL : `http://localhost:${BACKEND_PORT}`;
 
 // UI dev server port — matches playwright.config.ts's E2E_UI_PORT.
 // The Apollo client uses relative URLs (/admin/graphql) so the browser sends
@@ -41,7 +55,7 @@ export const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 // Tests that redirect API traffic (e.g. sharepoint/splunk) must intercept at
 // this origin, not at the backend port.
 export const UI_PORT = process.env.PROVISA_E2E_UI_PORT ?? "3901";
-export const UI_URL = `http://localhost:${UI_PORT}`;
+export const UI_URL = TARGET === "cloud" ? CLOUD_URL : `http://localhost:${UI_PORT}`;
 
 // Trino-backed backend URL for sharepoint/splunk specs.  These tests redirect the UI's
 // API calls to this backend (via page.route()) so that register_source() creates a real
@@ -96,6 +110,22 @@ export const test = base.extend<{
   // illegal outside a spec/describe body, and this module is imported by every spec.
   extraHTTPHeaders: [{ "x-e2e-worker": String(PARALLEL_INDEX) }, { option: true }],
   page: async ({ page, allowedBrowserErrors }, use) => {
+    // The cloud deployment runs in demo mode, where App.tsx calls resetTourStateForDemoSession()
+    // once per browser session: it deletes the "already offered the tour" flag so each visitor is
+    // shown the guided tour, and the tour then drives the page away from wherever the spec
+    // navigated. The reset is spent by a sessionStorage marker, which Playwright's storageState
+    // cannot carry — so it is written here, before any page script runs, together with the seen
+    // flag it would otherwise erase. tour-page-preload.spec.ts opts back in with ?tour=1, which
+    // starts the tour regardless of the flag.
+    if (TARGET === "cloud") {
+      await page.addInitScript(
+        ([seenKey, resetKey]) => {
+          sessionStorage.setItem(resetKey, "true");
+          localStorage.setItem(seenKey, "true");
+        },
+        [TOUR_SEEN_KEY, TOUR_DEMO_RESET_KEY],
+      );
+    }
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
     page.on("console", (msg) => {

@@ -48,6 +48,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
         # deployment configured before the operator supplied the two vars keeps an auth block
         # with no superuser, and nothing else ever writes one. Reconcile that one key and
         # leave the rest of the configured block exactly as it stands.
+        changed = False
         if (
             "superuser" not in cfg["auth"]
             and os.environ.get("PROVISA_SUPERUSER_USERNAME")
@@ -57,6 +58,14 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                 "username": "${env:PROVISA_SUPERUSER_USERNAME}",
                 "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
             }
+            changed = True
+        # REQ-1472: the same reconcile for the signing key. A deployment configured under an
+        # external IdP before this existed has no jwt_secret, and the break-glass browser
+        # sign-in refuses to issue a session without one.
+        if "jwt_secret" not in cfg["auth"]:
+            cfg["auth"]["jwt_secret"] = secrets.token_urlsafe(48)
+            changed = True
+        if changed:
             write_config(cfg_path, cfg)
             from provisa.api.app import _load_and_build
 
@@ -103,10 +112,11 @@ async def _auto_configure_idp(provider: str, pool) -> None:
         # basic and every other IdP: the configured principal is the admin.
         auth_section["default_assignments"] = [{"role_id": "admin", "domain_id": "*"}]
 
-    if provider == "basic":
-        # REQ-124: same signing key the wizard writes — PROVISA_IDP=basic skips the wizard
-        # entirely, and without a secret the browser's /auth/login answers 503.
-        auth_section["jwt_secret"] = secrets.token_urlsafe(48)
+    # REQ-124: same signing key the wizard writes — PROVISA_IDP=basic skips the wizard entirely,
+    # and without a secret the browser's /auth/login answers 503. REQ-1472: written for every
+    # provider, not just basic, because the break-glass browser session signs with the same key
+    # and an external-IdP deployment is exactly where that sign-in is needed.
+    auth_section["jwt_secret"] = secrets.token_urlsafe(48)
 
     if provider == "basic" and pool:
         async with pool.acquire() as conn:

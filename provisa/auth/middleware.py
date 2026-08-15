@@ -26,7 +26,7 @@ from starlette.responses import JSONResponse
 from provisa.audit.context import audit_identity_scope
 from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
-from provisa.auth.superuser import check_superuser
+from provisa.auth.superuser import check_superuser, validate_superuser_session
 from provisa.auth.throttle import LockedOut, throttled
 from provisa.core.schema_admin import (
     superadmin_bootstrap,
@@ -108,6 +108,11 @@ _SKIP_PATHS = {
     "/data/openapi/redoc",
     "/data/openapi/openapi.json",
     "/auth/login",
+    # REQ-1472: the break-glass credential exchange. Like /auth/login it is the call that
+    # PRODUCES a token, so it cannot be behind the bearer gate. Unlike /auth/login it is mounted
+    # for every provider, which is what gives the operator account a browser sign-in on a
+    # deployment fronted by an IdP.
+    "/auth/superuser-login",
     # REQ-1267: the login page fetches this BEFORE the user has a token, to decide which
     # sign-in UI to render (firebase Google button vs. basic form). It only reveals the
     # configured provider name — public info — so it must bypass the bearer gate.
@@ -188,6 +193,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         multitenancy: bool = False,
         default_org_id: str = "root",
         superuser: dict | None = None,
+        superuser_session_secret: str | None = None,
         bootstrap_superadmin: bool = False,
         config_resolver=None,
     ) -> None:
@@ -204,6 +210,9 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         self._multitenancy = multitenancy
         self._default_org_id = default_org_id
         self._superuser = superuser
+        # REQ-1472: signs and verifies the break-glass browser session. Distinct from the basic
+        # provider's own session secret only in purpose — both are auth.jwt_secret.
+        self._superuser_session_secret = superuser_session_secret
         self._bootstrap_superadmin = bootstrap_superadmin
         # Lazy wiring: when the middleware is installed at create_app (before the lifespan has loaded
         # auth_config and the control-plane pools), config_resolver returns the settings from live
@@ -244,6 +253,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             self._multitenancy = s["multitenancy"]
             self._default_org_id = s["default_org_id"]
             self._superuser = s["superuser"]
+            self._superuser_session_secret = s["superuser_session_secret"]
             self._bootstrap_superadmin = s["bootstrap_superadmin"]
             self._resolved = True
             self._resolved_generation = gen
@@ -365,6 +375,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # provider validation so it functions even when an IdP (bearer) is configured.
         if self._superuser:
             auth_header = request.headers.get("authorization")
+            su_identity = None
             if auth_header and auth_header.startswith("Basic "):
                 try:
                     decoded = base64.b64decode(auth_header[len("Basic ") :]).decode("utf-8")
@@ -376,26 +387,36 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                         content={"detail": "Malformed Basic Authorization header"},
                     )
                 su_identity = check_superuser(su_username, su_password, self._superuser)
-                if su_identity is not None:
-                    # REQ-125/REQ-1327: the break-glass account holds BOTH planes. platform_admin
-                    # is the control plane and generates no data schema, so on its own the
-                    # superuser could reach every admin surface and no table — an operator locked
-                    # out of the data plane of the deployment they administer. org_admin rides
-                    # alongside as the DATA-plane assignment, and it is the ACTING role for the
-                    # same reason the provider path picks _data_plane_roles[0] below: a
-                    # control-plane role is never the acting data role.
-                    su_assignments = [
-                        RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
-                        RoleAssignment(role_id=ORG_ADMIN_ROLE, domain_id="*"),
-                    ]
-                    su_identity.roles = _assignments_to_claims(su_assignments)
-                    request.state.identity = su_identity
-                    # X-Provisa-Role is not consulted: the break-glass account holds exactly one
-                    # role per plane, and the acting role is the data-plane one either way.
-                    request.state.role = ORG_ADMIN_ROLE
-                    request.state.assignments = su_assignments
-                    request.state.active_org_id = self._default_org_id
-                    return None
+            elif auth_header and auth_header.startswith("Bearer "):
+                # REQ-1472: the browser's presentation of the same account. Every provider that
+                # takes a bearer credential shares this scheme, so a token that is not one of ours
+                # returns None and falls through to the provider below — the IdP, not this branch,
+                # decides its own tokens.
+                su_identity = validate_superuser_session(
+                    auth_header[len("Bearer ") :],
+                    self._superuser,
+                    self._superuser_session_secret,
+                )
+            if su_identity is not None:
+                # REQ-125/REQ-1327: the break-glass account holds BOTH planes. platform_admin
+                # is the control plane and generates no data schema, so on its own the
+                # superuser could reach every admin surface and no table — an operator locked
+                # out of the data plane of the deployment they administer. org_admin rides
+                # alongside as the DATA-plane assignment, and it is the ACTING role for the
+                # same reason the provider path picks _data_plane_roles[0] below: a
+                # control-plane role is never the acting data role.
+                su_assignments = [
+                    RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
+                    RoleAssignment(role_id=ORG_ADMIN_ROLE, domain_id="*"),
+                ]
+                su_identity.roles = _assignments_to_claims(su_assignments)
+                request.state.identity = su_identity
+                # X-Provisa-Role is not consulted: the break-glass account holds exactly one
+                # role per plane, and the acting role is the data-plane one either way.
+                request.state.role = ORG_ADMIN_ROLE
+                request.state.assignments = su_assignments
+                request.state.active_org_id = self._default_org_id
+                return None
 
         # A provider may accept more than one credential presentation (REQ-124: the basic
         # provider takes HTTP Basic from API clients and a session JWT from the browser).

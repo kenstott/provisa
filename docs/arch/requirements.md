@@ -15305,3 +15305,17 @@ A shard that has idled to zero begins its cold start at SIGN-IN, not at the firs
 **Code:** `provisa/federation/engine_wake.py`, `provisa/api/auth_router.py`
 
 **Tests:** —
+
+## 2. Authentication & Identity
+
+### REQ-1472 · Authentication {#REQ-1472}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+The break-glass superuser of [REQ-125](#REQ-125) can sign in from a browser under any auth provider. The credential is a username and password, but a deployment fronted by an external IdP -- Firebase requires an email address as the username, and issues no token for an account it does not hold -- has no path by which that account reaches the UI, so the operator's only recourse when the IdP is misconfigured is the very console the misconfiguration locks them out of. POST /auth/superuser-login is mounted for every provider and exchanges the configured credentials for a session token signed with auth.jwt_secret, carrying a type claim that distinguishes it from a user session the basic provider signed with the same key. The middleware checks that token ahead of the configured provider and falls through to the provider when the bearer is not one of ours, so an IdP token keeps working unchanged. Without auth.jwt_secret there is no signing key and the exchange refuses with 503 rather than issuing a token under a default key. The login page offers the operator path as a secondary affordance, which is also the sign-in an end-to-end suite uses when it runs against a deployment whose provider is an external IdP.
+
+**Use case:** An operator whose Firebase tenant is misconfigured signs in to the console with the break-glass account and repairs it; a Playwright run against the cloud deployment authenticates the same way.
+
+**Code:** `provisa/auth/superuser.py`, `provisa/auth/middleware.py`, `provisa/auth/wiring.py`, `provisa/api/auth_router.py`, `provisa/api/setup_router.py`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/playwright.cloud.config.ts`, `provisa-ui/e2e/cloud-setup.ts`
+
+**Tests:** —

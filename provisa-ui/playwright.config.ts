@@ -210,6 +210,12 @@ function resolveControlPlanePort(): string {
   // container is evicted by Docker VM memory pressure mid-run. The port is immutable for
   // the lifetime of a run (container binding is set at compose startup and never changes).
   const portCacheFile = path.resolve(E2E_DATA_DIR, "pg-port");
+  // The cache is scoped to ONE run. The runner process discards any file an earlier run left
+  // behind before its own resolve, because docker assigns the host port at compose startup: a
+  // container that has since been recreated is listening somewhere else, and a stale file turns
+  // "the postgres container is not running" into a backend that starts, dials a dead port, and
+  // fails in startup_seed with a connection error naming a port nothing in this run ever chose.
+  if (IS_RUNNER && fs.existsSync(portCacheFile)) fs.rmSync(portCacheFile);
   try {
     const output = execFileSync(
       "docker",

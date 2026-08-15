@@ -29,8 +29,8 @@ import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
 import { prefetchSettings } from "../api/admin";
 import { prefetchLineageGraph } from "../api/lineage";
+import { TOUR_SEEN_KEY, TOUR_DEMO_RESET_KEY } from "./tourKeys";
 
-const TOUR_SEEN_KEY = "provisa_tour_seen";
 
 // localStorage keys owned by NlPage — mirrored here so the tour can seed a
 // canned result (NL needs an external LLM key, which a demo visitor lacks).
@@ -207,7 +207,7 @@ const TOUR_PROGRESS_KEY = "provisa_tour_progress";
 
 // Marks a browser session as already reset. sessionStorage, not localStorage: "once per demo
 // session" is exactly a tab's lifetime, and a new visitor on a kiosk browser gets a fresh one.
-const DEMO_RESET_KEY = "provisa_tour_demo_reset";
+const DEMO_RESET_KEY = TOUR_DEMO_RESET_KEY;
 
 /**
  * Clear the tour's own persisted state once per browser session on a demo server.

@@ -28,6 +28,9 @@
     "loggingIn": "Выполняется вход...",
     "passwordsDoNotMatch": "Пароли не совпадают",
     "registrationFailed": "Не удалось зарегистрироваться",
-    "firebaseSignInFailed": "Не удалось войти через Firebase"
+    "firebaseSignInFailed": "Не удалось войти через Firebase",
+    "operatorSignIn": "Вход оператора",
+    "operatorSignInTitle": "Вход оператора",
+    "backToSignIn": "Назад ко входу"
   }
 }

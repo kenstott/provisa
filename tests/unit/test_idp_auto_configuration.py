@@ -97,11 +97,29 @@ async def test_multitenancy_is_off_unless_the_deploy_asks_for_it(tmp_path, monke
 @pytest.mark.asyncio
 async def test_an_already_configured_deployment_is_left_alone(tmp_path, monkeypatch):
     """A redeploy re-runs this. Rewriting the auth section would reset how everyone signs in."""
-    existing = {"auth": {"provider": "keycloak", "assignments_source": "provisa"}}
+    existing = {
+        "auth": {
+            "provider": "keycloak",
+            "assignments_source": "provisa",
+            "jwt_secret": "already-set",
+        }
+    }
 
     written = await _auto_configure("firebase", tmp_path, monkeypatch, existing=existing)
 
     assert written is None, "auto-configuration overwrote a configured deployment"
+
+
+@pytest.mark.asyncio
+async def test_a_configured_deployment_without_a_signing_key_gets_one(tmp_path, monkeypatch):
+    """REQ-1472: additive reconcile — the break-glass browser session has nothing to sign with."""
+    existing = {"auth": {"provider": "keycloak", "assignments_source": "provisa"}}
+
+    written = await _auto_configure("firebase", tmp_path, monkeypatch, existing=existing)
+
+    assert written["auth"]["provider"] == "keycloak", "reconcile changed how everyone signs in"
+    assert written["auth"]["assignments_source"] == "provisa"
+    assert written["auth"]["jwt_secret"]
 
 
 async def _auto_configure(provider, tmp_path, monkeypatch, existing=None):

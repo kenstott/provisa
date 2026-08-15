@@ -24,7 +24,8 @@ import {
 import type { InviteInfo } from "../api/admin";
 import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
-import { startSession } from "../lib/session";
+import { startSession, startSuperuserSession } from "../lib/session";
+import { storedToken } from "../lib/sessionToken";
 import { isOrgSubdomainHost } from "../lib/authHost";
 import { nextParam, redirectToControlPlaneLogin } from "../lib/crossSubdomainAuth";
 
@@ -56,6 +57,9 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  // REQ-1472: the deployment's break-glass account. It is not an IdP account, so under a
+  // provider like firebase there is no button that can sign it in — this reveals its own form.
+  const [operatorMode, setOperatorMode] = useState(false);
 
   // REQ-1348: no sign-in form is reachable on an org subdomain — the identity provider only
   // authorizes the control-plane host, so rendering one here offers a button that cannot work.
@@ -64,7 +68,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     if (!isOrgSubdomainHost()) return;
     // A session that survived (the subdomain relay already borrowed a bearer) means this page was
     // reached with nothing to sign in to; go back to the app rather than out to the control plane.
-    if (localStorage.getItem("provisa_token")) navigate("/", { replace: true });
+    if (storedToken()) navigate("/", { replace: true });
     else redirectToControlPlaneLogin();
   }, [navigate]);
 
@@ -153,6 +157,31 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     if (firstLogin) {
       await claimAndRecord();
     }
+    setLoading(false);
+    finishLogin(data.access_token);
+  };
+
+  // REQ-1472: the break-glass exchange. Mounted for every provider, so this form works on a
+  // deployment whose users sign in through an IdP.
+  const handleOperatorLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    const resp = await fetch(`${API_BASE}/auth/superuser-login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+      setError(serverMessage(body, requestFailed("Login", resp.status)));
+      setLoading(false);
+      return;
+    }
+    const data = await resp.json();
+    // REQ-1326: a sign-in starts a session, so the previous one's org/role/cache go first.
+    // REQ-1472: under the operator key — see lib/sessionToken for why it is not `provisa_token`.
+    startSuperuserSession(data.access_token);
     setLoading(false);
     finishLogin(data.access_token);
   };
@@ -262,6 +291,61 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     </Alert>
   ) : null;
 
+  // REQ-1472: the operator form, reachable from any provider's sign-in page. Rendered as its own
+  // view rather than inline so the IdP buttons above it cannot be mistaken for the credential
+  // this form takes — the break-glass account exists only in this deployment's own config.
+  if (operatorMode) {
+    return (
+      <div className="page">
+        <Title order={2}>{t("loginPage.operatorSignInTitle")}</Title>
+        <form onSubmit={handleOperatorLogin} style={{ maxWidth: 360 }}>
+          <Stack gap="md">
+            <TextInput
+              label={t("loginPage.username")}
+              value={username}
+              onChange={(e) => setUsername(e.currentTarget.value)}
+              required
+              withAsterisk={false}
+              autoComplete="username"
+              data-testid="operator-username-input"
+            />
+            <PasswordInput
+              label={t("loginPage.password")}
+              value={password}
+              onChange={(e) => setPassword(e.currentTarget.value)}
+              required
+              withAsterisk={false}
+              autoComplete="current-password"
+              data-testid="operator-password-input"
+            />
+            {error && (
+              <Alert color="red" data-testid="login-error">
+                {error}
+              </Alert>
+            )}
+            <div>
+              <Button type="submit" disabled={loading} data-testid="operator-login-button">
+                {loading ? t("loginPage.signingIn") : t("loginPage.operatorSignIn")}
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                ml="xs"
+                onClick={() => {
+                  setOperatorMode(false);
+                  setError(null);
+                }}
+                data-testid="operator-back-button"
+              >
+                {t("loginPage.backToSignIn")}
+              </Button>
+            </div>
+          </Stack>
+        </form>
+      </div>
+    );
+  }
+
   if (provider === "firebase") {
     return (
       <div className="page">
@@ -349,6 +433,17 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
               </Button>
             </Stack>
           </form>
+          <Button
+            variant="subtle"
+            size="compact-sm"
+            data-testid="operator-signin-toggle"
+            onClick={() => {
+              setError(null);
+              setOperatorMode(true);
+            }}
+          >
+            {t("loginPage.operatorSignIn")}
+          </Button>
         </Stack>
       </div>
     );

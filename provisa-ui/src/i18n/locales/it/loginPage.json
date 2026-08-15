@@ -28,6 +28,9 @@
     "loggingIn": "Accesso in corso...",
     "passwordsDoNotMatch": "Le password non corrispondono",
     "registrationFailed": "Registrazione non riuscita",
-    "firebaseSignInFailed": "Accesso Firebase non riuscito"
+    "firebaseSignInFailed": "Accesso Firebase non riuscito",
+    "operatorSignIn": "Accesso operatore",
+    "operatorSignInTitle": "Accesso operatore",
+    "backToSignIn": "Torna all'accesso"
   }
 }

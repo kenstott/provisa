@@ -28,6 +28,9 @@
     "loggingIn": "Entrando...",
     "passwordsDoNotMatch": "As senhas não coincidem",
     "registrationFailed": "Falha no registro",
-    "firebaseSignInFailed": "Falha no login com Firebase"
+    "firebaseSignInFailed": "Falha no login com Firebase",
+    "operatorSignIn": "Início de sessão do operador",
+    "operatorSignInTitle": "Início de sessão do operador",
+    "backToSignIn": "Voltar ao início de sessão"
   }
 }

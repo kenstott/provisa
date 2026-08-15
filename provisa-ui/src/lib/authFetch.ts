@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { currentFirebaseToken } from "./firebase";
+import { storedToken } from "./sessionToken";
 
 // REQ-1267: on an auth-enforced deploy (firebase/basic) the bearer token lives in
 // localStorage and must ride on EVERY same-origin request. The Apollo link already adds it
@@ -33,11 +34,13 @@ export const ORG_HEADER = "X-Org-Provisa";
  * holds has expired. Deployments without one (basic auth; an org subdomain holding a copy borrowed
  * from the control plane, refreshed on its own interval by crossSubdomainAuth) keep the stored
  * token as their only bearer — this is the whole set of token sources, not a guess at one.
+ * REQ-1472 adds one more: a break-glass operator session, which `storedToken` prefers over
+ * `provisa_token` because it is an explicit override of whatever else the browser is holding.
  */
 export async function currentBearer(): Promise<string | null> {
   const live = await currentFirebaseToken();
   if (live !== null) return live;
-  return localStorage.getItem("provisa_token");
+  return storedToken();
 }
 
 /** Wrap window.fetch to attach `Authorization: Bearer <provisa_token>` to same-origin requests. */

@@ -18,6 +18,7 @@ from fastapi import FastAPI
 
 from provisa.auth.models import AuthProvider
 from provisa.auth.superuser import resolve_superuser_config
+from provisa.core.secrets import resolve_secrets
 
 # Requirements: REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125
 
@@ -160,6 +161,7 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
         "multitenancy": multitenancy,
         "default_org_id": default_org_id,
         "superuser": None,
+        "superuser_session_secret": None,
         "bootstrap_superadmin": False,
     }
     if auth_config is None:
@@ -181,6 +183,11 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
         "assignments_source": auth_config.get("assignments_source", "claims"),
         "default_assignments": auth_config.get("default_assignments", []),
         "superuser": resolve_superuser_config(auth_config.get("superuser")),
+        # REQ-1472: signs the break-glass browser session. Unset here is not a defect — the
+        # exchange endpoint raises 503 rather than signing with a guessable key.
+        "superuser_session_secret": resolve_secrets(auth_config["jwt_secret"])
+        if auth_config.get("jwt_secret")
+        else None,
         "bootstrap_superadmin": auth_config.get("bootstrap_superadmin", False),
     }
 
@@ -238,6 +245,9 @@ def wire_auth(
         multitenancy=multitenancy,
         default_org_id=default_org_id,
         superuser=resolve_superuser_config(auth_config.get("superuser")),
+        superuser_session_secret=(
+            resolve_secrets(auth_config["jwt_secret"]) if auth_config.get("jwt_secret") else None
+        ),  # REQ-1472
         bootstrap_superadmin=auth_config.get("bootstrap_superadmin", False),
     )
 

@@ -108,8 +108,16 @@ test.describe("REQ-1387 glossary curation", () => {
       await expect(list.getByText(RENAMED_EMPLOYEE, { exact: true })).toBeVisible();
     }
 
-    await page.getByTestId("glossary-definition-input").getByRole("textbox").fill(EMPLOYEE_DEFINITION);
-    await page.getByTestId("glossary-definition-save-btn").click();
+    // Same argument as the rename above, and the same reason it matters on the cloud target: the
+    // deployment keeps what an earlier run wrote. Saving is only possible when the textarea differs
+    // from the stored definition — the button is disabled otherwise — so a re-run against a
+    // deployment that already holds this definition has nothing to save, and the reload assertion
+    // below is what proves persistence either way.
+    const definition = page.getByTestId("glossary-definition-input").getByRole("textbox");
+    if ((await definition.inputValue()) !== EMPLOYEE_DEFINITION) {
+      await definition.fill(EMPLOYEE_DEFINITION);
+      await page.getByTestId("glossary-definition-save-btn").click();
+    }
     // act() reloads the detail after the mutation; the save button re-disables
     // because the textarea now matches the stored definition.
     await expect(page.getByTestId("glossary-definition-save-btn")).toBeDisabled();
@@ -155,8 +163,12 @@ test.describe("REQ-1387 glossary curation", () => {
 
     // The inverse direction is visible from the rooted term.
     await selectTerm(page, DERIVED_SPECIES);
-    const incoming = page.locator('[data-testid^="glossary-edge-in-"][data-testid$="-KIND_OF"]');
-    await expect(incoming).toContainText(abstractName);
+    // One incoming edge per run of this test survives on a deployment this suite does not own, so
+    // the assertion is that THIS run's abstract term is among them, not that it is the only one.
+    const incoming = page
+      .locator('[data-testid^="glossary-edge-in-"][data-testid$="-KIND_OF"]')
+      .filter({ hasText: abstractName });
+    await expect(incoming).toHaveCount(1);
   });
 
   test("an expert attaches to a term and shows in its detail", async ({ page }) => {

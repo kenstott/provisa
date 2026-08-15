@@ -38,6 +38,7 @@ import {
   resetTourStateForDemoSession,
 } from "./tour/useTour";
 import { prefetchPageChunksOnIdle } from "./pageChunks";
+import { storedToken } from "./lib/sessionToken";
 import "./App.css";
 
 const SourcesPage = lazy(() =>
@@ -153,7 +154,7 @@ function TourAutoStart({ demoMode }: { demoMode: boolean }) {
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { authEnabled } = useAuth();
-  const token = localStorage.getItem("provisa_token");
+  const token = storedToken();
   if (authEnabled && !token && location.pathname !== "/login") {
     return <Navigate to="/login" replace />;
   }
@@ -193,7 +194,7 @@ function App() {
   // Read on every render (handleLoginSuccess bumps authVersion → re-render → re-read) so the
   // public/shell split flips the moment a token is stored. Signed-out visitors get the
   // standalone LandingPage instead of the app chrome (REQ-1266).
-  const token = localStorage.getItem("provisa_token");
+  const token = storedToken();
 
   return (
     <BrowserRouter>

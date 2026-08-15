@@ -15,6 +15,7 @@ import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { fetchBootstrapStatus } from "../api/admin";
 import { clearSessionState } from "../lib/session";
+import { storedToken } from "../lib/sessionToken";
 import { PageLoading } from "./PageLoading";
 
 const OnboardOrgPage = lazy(() =>
@@ -44,7 +45,7 @@ export function OnboardGate({
     identityErrorStatus,
     refresh,
   } = useAuth();
-  const token = localStorage.getItem("provisa_token");
+  const token = storedToken();
   // REQ-1286: an unresolved identity has two causes that must NOT share a screen.
   //
   //   /auth/me returned 5xx (or never reached the server) -> the deployment is failing. Telling
@@ -146,6 +147,18 @@ export function OnboardGate({
     // The effect above cleared the credential and asked App to re-render sign-in, where the
     // first-login disclosure lives. Render nothing rather than flashing org onboarding.
     return null;
+  }
+  // The shell may not be mounted on an unsettled identity. Every branch below keys off `userId`,
+  // and rendering children while /auth/me is still in flight mounts the whole app only to tear it
+  // down the moment the answer arrives — taking with it anything the shell had already started.
+  // REQ-1472: that remount is what killed a tour launched by ?tour=1; its provider was unmounted
+  // mid-step and the query param that would have restarted it was already consumed.
+  if (authEnabled && loading) {
+    return (
+      <div className="page">
+        <PageLoading />
+      </div>
+    );
   }
   if (authEnabled && userId && slotUnclaimed === null) {
     // The admin-slot answer decides which screen this is; do not guess it.

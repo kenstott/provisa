@@ -696,7 +696,11 @@ SWAGGER_UI_HTML = """\
         requestInterceptor: (req) => {
           const role = urlRole || localStorage.getItem("provisa_role");
           if (role) req.headers["x-provisa-role"] = role;
-          const token = localStorage.getItem("provisa_token");
+          // REQ-1472: a break-glass operator session is stored under its own key, because the
+          // Firebase token sync deletes `provisa_token` whenever it sees no signed-in user. This
+          // page runs in its own srcdoc document with no access to the app's fetch interceptor, so
+          // it repeats the same preference order the app's storedToken() uses.
+          const token = localStorage.getItem("provisa_su_token") || localStorage.getItem("provisa_token");
           if (token && !req.headers["Authorization"]) req.headers["Authorization"] = "Bearer " + token;
           const orgId = localStorage.getItem("provisa_org");
           if (orgId && !req.headers["X-Org-Provisa"]) req.headers["X-Org-Provisa"] = orgId;

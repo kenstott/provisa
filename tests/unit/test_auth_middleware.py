@@ -37,7 +37,13 @@ class MockProvider(AuthProvider):
         raise ValueError("Invalid token")
 
 
-def _make_app(provider=None, mapping_rules=None, default_role="analyst", superuser=None):
+def _make_app(
+    provider=None,
+    mapping_rules=None,
+    default_role="analyst",
+    superuser=None,
+    superuser_session_secret=None,
+):
     app = FastAPI()
     app.add_middleware(
         AuthMiddleware,
@@ -45,6 +51,7 @@ def _make_app(provider=None, mapping_rules=None, default_role="analyst", superus
         mapping_rules=mapping_rules,
         default_role=default_role,
         superuser=superuser,
+        superuser_session_secret=superuser_session_secret,
     )
 
     @app.get("/health")
@@ -227,6 +234,76 @@ def test_bearer_token_still_works_when_superuser_configured():
     assert resp.json()["user_id"] == "user1"
 
 
+# --- REQ-1472: the break-glass BROWSER session ------------------------------
+
+_SU_SECRET = "unit-test-superuser-session-secret-padded!"
+
+
+def test_superuser_session_token_grants_both_planes_under_an_idp():
+    # The browser's presentation of the same account: an IdP is configured and owns the bearer
+    # scheme, yet the operator's own session token is accepted ahead of it.
+    from provisa.auth.superuser import issue_superuser_session
+
+    token = issue_superuser_session("root", "s3cr3t", _SU, _SU_SECRET)
+    app = _make_app(provider=MockProvider(), superuser=_SU, superuser_session_secret=_SU_SECRET)
+    client = TestClient(app)
+    resp = client.get("/test", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["user_id"] == "root"
+    assert data["role"] == "org_admin"  # REQ-1327
+    assert data["assignments"] == ["platform_admin", "org_admin"]
+
+
+def test_provider_bearer_token_still_works_when_the_session_secret_is_configured():
+    # A token this deployment did not mint must reach the provider, not be refused by the
+    # superuser branch — otherwise configuring the secret would lock every IdP user out.
+    app = _make_app(provider=MockProvider(), superuser=_SU, superuser_session_secret=_SU_SECRET)
+    client = TestClient(app)
+    resp = client.get("/test", headers={"Authorization": "Bearer valid-token"})
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == "user1"
+
+
+def test_superuser_session_token_signed_with_another_key_is_not_accepted():
+    from provisa.auth.superuser import issue_superuser_session
+
+    forged = issue_superuser_session("root", "s3cr3t", _SU, "a-different-key-of-adequate-length!")
+    app = _make_app(provider=MockProvider(), superuser=_SU, superuser_session_secret=_SU_SECRET)
+    client = TestClient(app)
+    resp = client.get("/test", headers={"Authorization": f"Bearer {forged}"})
+    assert resp.status_code == 401
+
+
+def test_a_basic_provider_session_jwt_cannot_pose_as_the_superuser():
+    # Same signing key, different issuer: providers/basic.py mints user sessions with
+    # auth.jwt_secret too. Only a token carrying the superuser type claim counts.
+    import datetime
+
+    import jwt
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    user_session = jwt.encode(
+        {"sub": "root", "username": "root", "iat": now, "exp": now + datetime.timedelta(hours=1)},
+        _SU_SECRET,
+        algorithm="HS256",
+    )
+    app = _make_app(provider=MockProvider(), superuser=_SU, superuser_session_secret=_SU_SECRET)
+    client = TestClient(app)
+    resp = client.get("/test", headers={"Authorization": f"Bearer {user_session}"})
+    assert resp.status_code == 401
+
+
+def test_superuser_session_is_refused_when_no_secret_is_configured():
+    from provisa.auth.superuser import issue_superuser_session
+
+    token = issue_superuser_session("root", "s3cr3t", _SU, _SU_SECRET)
+    app = _make_app(provider=MockProvider(), superuser=_SU)
+    client = TestClient(app)
+    resp = client.get("/test", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
+
+
 def test_superuser_not_configured_no_short_circuit():
     app = _make_app(provider=MockProvider())
     client = TestClient(app)
@@ -284,6 +361,7 @@ def _resolver_settings(provider):
         "multitenancy": False,
         "default_org_id": "root",
         "superuser": None,
+        "superuser_session_secret": None,
         "bootstrap_superadmin": False,
     }
 

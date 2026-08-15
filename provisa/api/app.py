@@ -1422,8 +1422,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # an unsecured admin window until the UI happens to call /setup/status.
     from provisa.api.setup_router import _auto_configure_idp, _idp_override
 
+    # REQ-1472: the call is made whenever PROVISA_IDP names a provider, not only when the auth
+    # section is absent. An already-configured deployment takes the function's reconcile path,
+    # which fills in keys a deploy predating them never wrote (the break-glass account and its
+    # signing key) and leaves everything else exactly as configured.
     _idp = _idp_override()
-    if _idp and state.admin_db is not None and state.auth_config is None:
+    if _idp and state.admin_db is not None:
         await _auto_configure_idp(_idp, state.admin_db)
 
     _prewarm_govdata_jvm(_log)

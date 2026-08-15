@@ -28,6 +28,9 @@
     "loggingIn": "Logging in...",
     "passwordsDoNotMatch": "Passwords do not match",
     "registrationFailed": "Registration failed",
-    "firebaseSignInFailed": "Firebase sign-in failed"
+    "firebaseSignInFailed": "Firebase sign-in failed",
+    "operatorSignIn": "Operator sign-in",
+    "operatorSignInTitle": "Operator sign-in",
+    "backToSignIn": "Back to sign-in"
   }
 }

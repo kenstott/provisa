@@ -28,6 +28,9 @@
     "loggingIn": "Connexion en cours…",
     "passwordsDoNotMatch": "Les mots de passe ne correspondent pas",
     "registrationFailed": "Échec de l'inscription",
-    "firebaseSignInFailed": "Échec de la connexion Firebase"
+    "firebaseSignInFailed": "Échec de la connexion Firebase",
+    "operatorSignIn": "Connexion opérateur",
+    "operatorSignInTitle": "Connexion opérateur",
+    "backToSignIn": "Retour à la connexion"
   }
 }

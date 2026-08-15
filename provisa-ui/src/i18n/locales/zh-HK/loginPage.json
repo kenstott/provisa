@@ -28,6 +28,9 @@
     "loggingIn": "正在登入...",
     "passwordsDoNotMatch": "兩次輸入的密碼不相符",
     "registrationFailed": "註冊失敗",
-    "firebaseSignInFailed": "Firebase 登入失敗"
+    "firebaseSignInFailed": "Firebase 登入失敗",
+    "operatorSignIn": "運維人員登入",
+    "operatorSignInTitle": "運維人員登入",
+    "backToSignIn": "返回登入"
   }
 }

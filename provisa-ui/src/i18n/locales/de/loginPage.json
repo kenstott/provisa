@@ -28,6 +28,9 @@
     "loggingIn": "Anmeldung läuft...",
     "passwordsDoNotMatch": "Passwörter stimmen nicht überein",
     "registrationFailed": "Registrierung fehlgeschlagen",
-    "firebaseSignInFailed": "Firebase-Anmeldung fehlgeschlagen"
+    "firebaseSignInFailed": "Firebase-Anmeldung fehlgeschlagen",
+    "operatorSignIn": "Operator-Anmeldung",
+    "operatorSignInTitle": "Operator-Anmeldung",
+    "backToSignIn": "Zurück zur Anmeldung"
   }
 }
