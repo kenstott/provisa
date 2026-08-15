@@ -74,6 +74,9 @@ def fake_k8s(monkeypatch):
     monkeypatch.setattr(engine_wake.k8s, "ensure_shared_shard", fake.ensure_shared_shard)
     monkeypatch.setattr(engine_wake.k8s, "scale_shard_to_zero", fake.scale_shard_to_zero)
     monkeypatch.setattr(engine_wake.k8s, "provisioning_available", lambda: True)
+    # The shared terminal's shard: the query path reads it to decide whether the coordinator it is
+    # connected to is still the one serving.
+    monkeypatch.setenv("PROVISA_ENGINE_SHARD", "shared_1")
     return fake
 
 
@@ -155,12 +158,45 @@ async def test_wake_cancels_an_in_flight_stop(fake_k8s):
 # ── ensure_engine_awake ─────────────────────────────────────────────────────────
 
 
-def _state_with(runtime, rebuilt: list):
-    registry = SimpleNamespace(
-        get=lambda oid: runtime,
-        invalidate=lambda oid: rebuilt.append(oid),
+class _FakeEngine:
+    """The engine-lifecycle surface restore_shared_terminal drives."""
+
+    def __init__(self):
+        self.provisions = 0
+        self.infra = 0
+        self.reconciles = 0
+
+    def provision(self, ops_views, retention):
+        self.provisions += 1
+
+    async def provision_infra(self):
+        self.infra += 1
+
+    async def reconcile_landed_tables(self):
+        self.reconciles += 1
+        return []
+
+
+def _state_with(runtime, rebuilt: list, default=None):
+    """A state whose default org owns the shared terminal, as AppState._engine_runtime arranges."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    if default is None:
+        # Stamped with the generation boot leaves behind, so a warm shard reads as unchanged.
+        default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+
+    def _get(oid):
+        return default if oid == "default" else runtime
+
+    registry = SimpleNamespace(get=_get, invalidate=lambda oid: rebuilt.append(oid))
+    return SimpleNamespace(
+        org_registry=registry,
+        org_id="default",
+        federation_engine=_FakeEngine(),
+        engine_conn=object(),
+        config=None,
+        tenant_db=None,
     )
-    return SimpleNamespace(org_registry=registry)
 
 
 async def test_non_provisioning_deployment_does_nothing(monkeypatch):
@@ -253,6 +289,74 @@ async def test_bound_org_without_a_runtime_raises(fake_k8s):
             await engine_wake.ensure_engine_awake(_state_with(None, []))
     finally:
         current_org.reset(token)
+
+
+async def test_default_org_query_wakes_and_restores_the_shared_terminal(fake_k8s):
+    """The deployment's own org is NOT bound by the routing middleware, so its queries arrive with
+    current_org unset. Treating that as "boot handles it" left the shared lane asleep and the
+    terminal dialing a released pod IP: the first query worked and every one after the idle reaper
+    ran timed out at the old address (REQ-1448)."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    state = _state_with(None, [], default=default)
+
+    await engine_wake.ensure_engine_awake(state)
+
+    assert fake_k8s.wakes == ["shared_1"]
+    assert state.federation_engine.provisions == 1  # reconnected at the new coordinator
+    assert state.federation_engine.infra == 1
+    # Materialized sources are unreadable until their landing tables are back (REQ-846/932).
+    assert state.federation_engine.reconciles == 1
+    assert state.engine_conn is None
+    assert default.engine_generation == engine_wake.generation("shared_1")
+
+
+async def test_default_org_query_on_a_warm_shard_leaves_the_terminal_alone(fake_k8s):
+    """A coordinator that never went away still holds the terminal's catalogs."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    fake_k8s.state = "ready"
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    state = _state_with(None, [], default=default)
+
+    await engine_wake.ensure_engine_awake(state)
+
+    assert fake_k8s.wakes == []
+    assert state.federation_engine.provisions == 0
+
+
+async def test_tenant_cold_start_restores_the_shared_terminal_before_reissuing_catalogs(
+    fake_k8s, monkeypatch
+):
+    """A pooled org has no engine of its own — its CREATE CATALOG statements go through the shared
+    terminal, which is still connected to the pod that just went away."""
+    from provisa.api.org_runtime import OrgRuntime, current_org
+
+    order: list[str] = []
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    rt = OrgRuntime(org_id="acme", shard="shared_1", engine_generation=0)
+    state = _state_with(rt, [], default=default)
+
+    async def _ensure(oid: str):
+        order.append(f"rebuild:{oid}")
+
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
+
+    class _Recording(_FakeEngine):
+        def provision(self, ops_views, retention):
+            super().provision(ops_views, retention)
+            order.append("restore")
+
+    state.federation_engine = _Recording()
+
+    token = current_org.set("acme")
+    try:
+        await engine_wake.ensure_engine_awake(state)
+    finally:
+        current_org.reset(token)
+
+    assert order == ["restore", "rebuild:acme"]
 
 
 # ── reaper ──────────────────────────────────────────────────────────────────────

@@ -7,6 +7,13 @@
 # Compile local source and push it straight into the running cloud.provisa.dev
 # containers, skipping the image rebuild + terraform re-provision cycle.
 #
+# TOPOLOGY (REQ-1447..1451): the node is the control plane ONLY. It runs the app, the UI proxy,
+# the observability tier and the demo mock backends; it runs no Trino of its own. Every query is
+# dispatched to a Trino shard the control plane provisions on GKE (provisa-saas-engine,
+# namespace provisa-engines) and scales to zero when idle, and the control plane's registry lives
+# on Cloud SQL, not in a container on this node. That is why this script no longer installs the
+# Docker-socket isolated-engine overlay and no longer expects a postgres container.
+#
 # Both compose-provisa-1 (API) and compose-provisa-ui-1 (UI proxy) run the full
 # application image and each serve their own copy of /app/static, /app/provisa and
 # /app/config, so every target is patched in both or the two disagree about what is
@@ -19,17 +26,17 @@
 #   scripts/deploy-cloud.sh reset  # accounts/orgs -> none, demo data re-seeded
 #   scripts/deploy-cloud.sh patch  # like all, but KEEPS accounts and orgs
 #
-# Every arm that pushes first ensures the observability and isolated-engine overlays are installed
-# on the node — the ops reports over the OTLP parquet store (traces, queries, metrics, logs) are
-# empty without a collector, and no org can take a dedicated coordinator without the isolated-engine
-# overlay. Both are one-time installs; once present the checks are no-ops.
+# Every arm that pushes first ensures the observability and demo overlays are installed on the
+# node — the ops reports over the OTLP parquet store (traces, queries, metrics, logs) are empty
+# without a collector, and the demo config's OpenAPI/GraphQL/gRPC sources are unresolvable without
+# the mock backends (REQ-1468). Both are content-compared; already-current is a no-op.
 #
 # api/all/reset also wipe the control plane back to the first-start state (no
 # claimed super-admin, no accounts, no tenant orgs) and let the restart re-seed
 # the bootstrap org's demo data set from the deployment config. Use `patch` when
 # a sign-in session or a hand-built org under test has to survive the deploy.
 #
-# Env overrides: NODE, ZONE, PROJECT, CONTAINERS, SITE, DB_CONTAINER.
+# Env overrides: NODE, ZONE, PROJECT, CONTAINERS, SITE, SQL_IMAGE.
 set -euo pipefail
 
 NODE="${NODE:-provisa-saas-coordinator}"
@@ -37,9 +44,10 @@ ZONE="${ZONE:-us-central1-a}"
 PROJECT="${PROJECT:-provisa-test-473}"
 CONTAINERS="${CONTAINERS:-compose-provisa-1 compose-provisa-ui-1}"
 SITE="${SITE:-https://cloud.provisa.dev}"
-# The control plane lives on Cloud SQL, not in this container; it is only the psql client that
-# can reach it from inside the VPC. Its own database holds the demo tables (db/init.sql).
-DB_CONTAINER="${DB_CONTAINER:-compose-postgres-1}"
+# The control plane lives on Cloud SQL. Nothing on the node holds it and no container is a
+# long-lived psql client, so SQL runs in a throwaway container joined to the app's own network —
+# which is the network that reaches the private Cloud SQL address.
+SQL_IMAGE="${SQL_IMAGE:-postgres:16}"
 API_CONTAINER="${API_CONTAINER:-compose-provisa-1}"
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,6 +62,48 @@ esac
 
 ssh_node() { gcloud compute ssh "$NODE" --zone "$ZONE" --project "$PROJECT" --command "$1"; }
 scp_node() { gcloud compute scp "$1" "$NODE:$2" --zone "$ZONE" --project "$PROJECT"; }
+
+# The engine contract this node must satisfy before anything is pushed. The control plane runs no
+# engine locally: provisioner_settings() (provisa/federation/k8s_provisioner.py:124-141) raises
+# unless every one of these is set, provisioning_available() then reports false, and the node
+# silently degrades to "routes to an engine somebody else operates" — i.e. no engine at all. Read
+# from the RUNNING container, not from provisa.env: the container's environment is what the code
+# sees, and a provisa.env edit that was never applied by a stack recreate is exactly the gap this
+# is here to catch. PROVISA_ENGINE_SHARD is separate from the provisioner settings —
+# engine_wake.boot_shard() (provisa/federation/engine_wake.py:86) raises without it, so boot dies
+# after the app is already listening.
+ENGINE_KEYS="PROVISA_ENGINE_CLUSTER_PROJECT PROVISA_ENGINE_CLUSTER_LOCATION \
+PROVISA_ENGINE_CLUSTER_NAME PROVISA_ENGINE_CLUSTER_ZONE PROVISA_ENGINE_IMAGE \
+PROVISA_ZAYCHIK_IMAGE PROVISA_ENGINE_SHARD"
+
+# The SaaS node runs Trino — terraform/gcp-saas pins it and nothing else is supported here, so the
+# engine is asserted rather than discovered. Reading the pin and keeping the shipped value when it
+# came back empty is what once put duckdb on the node: a regenerated provisa.env dropped
+# PROVISA_ENGINE, the read returned nothing, and the deploy quietly shipped the desktop default.
+ENGINE_PIN="trino"
+
+preflight_engine() {
+  echo "== engine preflight"
+  local env_dump running missing=""
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(PROVISA_ENGINE|PROVISA_ZAYCHIK)' || true" | tr -d '\r')"
+  running="$(printf '%s\n' "$env_dump" | sed -n 's/^PROVISA_ENGINE=//p')"
+  if [ "$running" != "$ENGINE_PIN" ]; then
+    echo "$API_CONTAINER runs PROVISA_ENGINE='${running:-<unset>}', expected '$ENGINE_PIN'." >&2
+    echo "Fix the node's /root/.provisa/provisa.env and recreate the containers, then re-run." >&2
+    exit 1
+  fi
+  for k in $ENGINE_KEYS; do
+    printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
+  done
+  if [ -n "$missing" ]; then
+    echo "$API_CONTAINER is missing engine settings:$missing" >&2
+    echo "Without them the control plane provisions no shard and every query fails." >&2
+    exit 1
+  fi
+  printf '%s\n' "$env_dump" \
+    | grep -E '^(PROVISA_ENGINE|PROVISA_ENGINE_SHARD|PROVISA_ENGINE_IMAGE|PROVISA_ZAYCHIK_IMAGE|PROVISA_ENGINE_CLUSTER_NAME|PROVISA_ENGINE_CLUSTER_MODE)=' \
+    | sed 's/^/   /'
+}
 
 build_ui() {
   echo "== building UI"
@@ -120,23 +170,9 @@ push_cfg() {
   # (terraform/gcp-saas/main.tf:224 exports it) rather than shipped as a second SaaS config file.
   # The pin already decides which engine boots; without this the persisted selection stayed at the
   # shipped desktop default (duckdb) and /admin/federation-engine reported a saved selection that
-  # disagreed with the running engine on every page load.
-  #
-  # The SaaS node runs Trino — terraform/gcp-saas/main.tf:217 pins it and nothing else is
-  # supported here, so the engine is asserted rather than discovered. Reading the pin and
-  # keeping the shipped value when it came back empty is what put duckdb on the node: a
-  # regenerated provisa.env dropped PROVISA_ENGINE, the read returned nothing, and the deploy
-  # quietly shipped the desktop default. An engine the node does not agree with is a broken
-  # node, not a deploy-time choice.
-  local pin="trino"
-  local running
-  running="$(ssh_node "sudo docker exec $API_CONTAINER printenv PROVISA_ENGINE || true" | tr -d '\r\n')"
-  if [ "$running" != "$pin" ]; then
-    echo "$API_CONTAINER runs PROVISA_ENGINE='${running:-<unset>}', expected '$pin'." >&2
-    echo "Fix the node's /root/.provisa/provisa.env and recreate the containers, then re-run." >&2
-    exit 1
-  fi
-  echo "== engine pin: $pin"
+  # disagreed with the running engine on every page load. preflight_engine has already asserted the
+  # node agrees with this value, so it is written, not discovered.
+  local pin="$ENGINE_PIN"
   for c in $CONTAINERS; do
     ssh_node "sudo docker cp /tmp/provisa-cfg-deploy.tgz $c:/app/config/cfg.tgz \
       && sudo docker exec $c sh -c 'cd /app/config && tar xzf cfg.tgz && rm cfg.tgz \
@@ -145,20 +181,28 @@ push_cfg() {
   done
 }
 
-# Runs SQL against the control plane. The DSN is read out of the API container's env inside the
-# remote shell and never echoed, so the password stays out of the transcript. The +driver part of
-# the SQLAlchemy URL is stripped because libpq rejects it.
+# Runs SQL against the control plane, which is Cloud SQL — there is no database container on the
+# node to exec into. A throwaway psql container is joined to the API container's own network,
+# because that network is what carries the route to the private Cloud SQL address; the DSN is read
+# out of the API container's env inside the remote shell and passed by file, so the password stays
+# out of both the transcript and the node's process list. The +driver part of the SQLAlchemy URL is
+# stripped because libpq rejects it.
 run_sql() {
   local sql_file="$1" label="$2"
   local b64
   b64="$(base64 < "$sql_file" | tr -d '\n')"
   ssh_node "set -e
     echo $b64 | base64 -d | sudo tee /tmp/provisa-$label.sql >/dev/null
-    sudo docker cp /tmp/provisa-$label.sql $DB_CONTAINER:/tmp/provisa-$label.sql >/dev/null
+    NET=\$(sudo docker inspect -f '{{range \$k, \$v := .NetworkSettings.Networks}}{{\$k}}{{end}}' $API_CONTAINER)
+    [ -n \"\$NET\" ] || { echo 'cannot resolve the network of $API_CONTAINER' >&2; exit 1; }
     DSN=\$(sudo docker exec $API_CONTAINER printenv PLATFORM_DATABASE_URL | sed -E 's|^([a-z]+)\+[a-z0-9]+://|\1://|')
     # ORG_ID names the bootstrap org's schema (provisa/api/app.py:216 — 'default' when unset).
     BOOT=\$(sudo docker exec $API_CONTAINER sh -c 'echo \${ORG_ID:-default}')
-    sudo docker exec -i $DB_CONTAINER psql \"\$DSN\" -v ON_ERROR_STOP=1 -v boot=\"\$BOOT\" -f /tmp/provisa-$label.sql"
+    # The DSN is expanded INSIDE the container, not by the node's shell: as a command-line
+    # argument it would stand in the node's process list for the life of the query.
+    sudo docker run --rm -i --network \"\$NET\" -e PGDSN=\"\$DSN\" -e BOOT=\"\$BOOT\" \
+      -v /tmp/provisa-$label.sql:/tmp/q.sql:ro --entrypoint sh $SQL_IMAGE \
+      -c 'psql \"\$PGDSN\" -v ON_ERROR_STOP=1 -v boot=\"\$BOOT\" -f /tmp/q.sql'"
 }
 
 reset_state() {
@@ -294,39 +338,51 @@ push_app() {
   ssh_node "sudo systemctl restart provisa"
 }
 
-# REQ-1416/REQ-1418: the isolated engine lane. The provisioner ships in the image, but the org
-# engine tab greys the Isolated radio out unless PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE is set in
-# the process, and that variable exists only in docker-compose.isolated-engine.yml — so on a node
-# without the overlay a SaaS org can never take a dedicated coordinator. Installed the same way
-# observability is: dropped into ${PROVISA_HOME}/extensions, picked up by scripts/provisa's
-# COMPOSE_FILES enumeration, and therefore also BEFORE the pushes (it recreates the stack).
-ISO_EXT="/root/.provisa/extensions/isolated-engine/docker-compose.isolated-engine.yml"
+# REQ-1468: the demo overlay, which is what makes the demo sources part of the deployment rather
+# than something started by hand. Three of the demo config's sources are served by Provisa's own
+# mock backends — petstore-mock:8080 (OpenAPI), graphql-demo:4000 (GraphQL) and grpc-demo:50071 —
+# and a node whose overlay predates them registers three sources nothing answers. That is precisely
+# how this node ended up with two hand-started containers outside compose: they were not in the
+# generated overlay, so nothing recreated them and nothing would have restarted them.
+#
+# The overlay is generated, not shipped: write_demo_overlay() in packaging/linux/first-launch.sh
+# holds the only copy, so the expected content is extracted from that heredoc rather than
+# duplicated here — two copies would drift and the installed node would be right by accident.
+# Recreates the stack when it changes, so it runs BEFORE the pushes, like the other overlays.
+DEMO_EXT="/root/.provisa/extensions/demo/docker-compose.demo.yml"
 
-push_isolated() {
-  if ssh_node "sudo test -f $ISO_EXT" 2>/dev/null; then
-    echo "== isolated engine: already installed"
+push_demo() {
+  awk '/^  cat > "\$file" <<.YAML.$/{f=1;next} f&&/^YAML$/{exit} f' \
+    "$REPO/packaging/linux/first-launch.sh" > "$STAGE/docker-compose.demo.yml"
+  # An empty extraction means write_demo_overlay was restructured and this awk no longer matches;
+  # installing nothing would take the mocks off the node.
+  grep -q 'petstore-mock:' "$STAGE/docker-compose.demo.yml" \
+    || { echo "cannot extract the demo overlay from first-launch.sh" >&2; exit 1; }
+  local want have
+  want="$(shasum -a 256 "$STAGE/docker-compose.demo.yml" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $DEMO_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)"
+  if [ "$want" = "$have" ]; then
+    echo "== demo overlay: up to date"
     return
   fi
-  echo "== isolated engine: installing overlay"
-  # The overlay requires PROVISA_ISOLATED_ENGINE_NETWORK with no default, on purpose: a coordinator
-  # attached to the wrong network starts healthy and is unreachable from the app. Read the network
-  # the API container is actually on rather than assuming the project name — that IS the answer to
-  # "which network reaches the app", and an empty read is a stop, not a guess.
-  local net
-  net="$(ssh_node "sudo docker inspect -f '{{range \$k, \$v := .NetworkSettings.Networks}}{{\$k}}{{end}}' $API_CONTAINER" | tr -d '\r' | tail -1)"
-  [ -n "$net" ] || { echo "cannot resolve the network of $API_CONTAINER" >&2; exit 1; }
-  echo "== isolated engine: network $net"
-  scp_node "$REPO/docker-compose.isolated-engine.yml" /tmp/docker-compose.isolated-engine.yml
-  # provisa.env is the systemd EnvironmentFile `provisa start` runs under, so it is what compose
-  # interpolates the overlay's variables from — the same file that carries the PROVISA_ENGINE pin.
-  ssh_node "sudo mkdir -p $(dirname $ISO_EXT) \
-    && sudo cp /tmp/docker-compose.isolated-engine.yml $ISO_EXT \
-    && sudo sed -i '/^PROVISA_ISOLATED_ENGINE_NETWORK=/d' /root/.provisa/provisa.env \
-    && echo 'PROVISA_ISOLATED_ENGINE_NETWORK=$net' | sudo tee -a /root/.provisa/provisa.env >/dev/null"
-  echo "== isolated engine: recreating stack"
+  echo "== demo overlay: installing"
+  scp_node "$STAGE/docker-compose.demo.yml" /tmp/docker-compose.demo.yml
+  ssh_node "sudo mkdir -p $(dirname $DEMO_EXT) && sudo cp /tmp/docker-compose.demo.yml $DEMO_EXT"
+  # Any hand-started mock is removed first. Compose names its own containers
+  # <project>-<service>-1, so a bare `petstore-mock` on the same network does not collide by
+  # container name — it collides by DNS: both answer to the service alias the demo config's source
+  # URL resolves, and which one a request reaches is then arbitrary.
+  for svc in petstore-mock graphql-demo grpc-demo; do
+    ssh_node "sudo docker rm -f $svc >/dev/null 2>&1 || true"
+  done
+  echo "== demo overlay: recreating stack"
   ssh_node "sudo systemctl restart provisa"
-  ssh_node "sudo docker exec $API_CONTAINER printenv PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE" \
-    | grep -q . || { echo "isolated-engine overlay installed but the app has no host template" >&2; exit 1; }
+  # The mocks are what the demo config's sources resolve to, so their absence is a broken deploy,
+  # not a cosmetic gap. Compose names them <project>-<service>-1; match on the service name.
+  for svc in petstore-mock graphql-demo grpc-demo; do
+    ssh_node "sudo docker ps --filter name=$svc --format '{{.Names}} {{.Status}}'" | grep -q . \
+      || { echo "demo overlay installed but $svc is not running" >&2; exit 1; }
+  done
 }
 
 # The demo data set is not pushed by this script: startup rebuilds the bootstrap org from the
@@ -396,24 +452,52 @@ verify_api() {
   return 1
 }
 
+# The end-to-end signal for this topology: /health only proves the app started, and the app starts
+# whether or not it can reach a shard. A query is what wakes the shard, re-establishes the shared
+# terminal on the coordinator that answers (REQ-1448), and therefore proves the whole path — control
+# plane, GKE provisioner, Trino shard — is live. It runs against the public site with the
+# superuser's basic-auth credentials from the repo .env, which is where they live; a query that has
+# to cold-start a shard takes north of a minute, so the timeout is generous by design.
+verify_engine() {
+  echo "== verifying the engine path (cold start may take ~90s)"
+  # Read the two keys rather than sourcing .env: .env also carries names this script uses
+  # (PROJECT, ZONE), and sourcing it would silently redirect the deploy at another node.
+  local su_user su_pass
+  su_user="${PROVISA_SUPERUSER_USERNAME:-$(sed -n 's/^PROVISA_SUPERUSER_USERNAME=//p' "$REPO/.env" 2>/dev/null | tail -1)}"
+  su_pass="${PROVISA_SUPERUSER_PASSWORD:-$(sed -n 's/^PROVISA_SUPERUSER_PASSWORD=//p' "$REPO/.env" 2>/dev/null | tail -1)}"
+  if [ -z "$su_user" ] || [ -z "$su_pass" ]; then
+    echo "PROVISA_SUPERUSER_USERNAME/PASSWORD are not set (repo .env), so the engine path" >&2
+    echo "cannot be exercised. Set them and re-run." >&2
+    exit 1
+  fi
+  local body
+  body="$(curl -s --max-time 240 -u "$su_user:$su_pass" \
+    -H 'Content-Type: application/json' -d '{"sql":"SELECT 1 AS ok"}' "$SITE/data/sql")" || {
+      echo "the engine query never returned" >&2; exit 1; }
+  case "$body" in
+    *'"ok":1'*) echo "$SITE/data/sql -> $body" ;;
+    *) echo "$SITE/data/sql -> $body" >&2; exit 1 ;;
+  esac
+}
+
 case "$TARGET" in
   ui)
     build_ui; push_ui; verify ;;
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    build_api; push_app; push_obs; push_obs_config; push_isolated; push_api; reset_state; restart; verify; verify_api; verify_demo ;;
+    preflight_engine; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    build_cfg; push_app; push_obs; push_obs_config; push_isolated; push_cfg; restart; verify ;;
+    preflight_engine; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine ;;
   all)
-    build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_isolated; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo ;;
+    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    reset_state; restart; verify; verify_api; verify_demo ;;
+    preflight_engine; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_isolated; push_ui; push_api; push_cfg; restart; verify ;;
+    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_cfg; restart; verify; verify_api; verify_engine ;;
 esac
 echo "== deployed $TARGET"

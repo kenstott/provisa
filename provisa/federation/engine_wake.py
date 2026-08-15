@@ -176,6 +176,59 @@ async def converge_boot_shard() -> str:
     return shard
 
 
+async def restore_shared_terminal(state: Any, shard: str) -> None:
+    """Re-establish on ``shard``'s new coordinator everything the old one held for the shared lane.
+
+    Boot builds the shared terminal in three steps and a cold start voids all three: the dbapi
+    connection points at a pod IP that is now unrouted, the system catalogs (``provisa_admin``,
+    ``otel``, ``results``) and Flight/object-store wiring live in the coordinator's dynamic catalog
+    over an ``emptyDir``, and so do the default org's source catalogs. ``provision`` re-resolves the
+    endpoint through :func:`k8s.shard_endpoint` — which is why the wake must precede this — and
+    reconnects; the source catalogs are reissued from ``state.config``, exactly as boot issues them.
+
+    Every org on the shared lane dispatches through THIS terminal (``AppState._engine_runtime``
+    hands out the default org's engine to anyone without a dedicated one), so a tenant org's own
+    runtime rebuild is not enough on its own — without this its catalogs are reissued over a
+    connection to the pod that is gone.
+    """
+    from provisa.api.startup_seed import _OPS_VIEWS
+    from provisa.core.config_loader import load_config
+
+    log.info("re-establishing the shared engine terminal: shard %s restarted", shard)
+    state.engine_conn = None
+    state.federation_engine.provision(
+        _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
+    )
+    await state.federation_engine.provision_infra()
+
+    default = state.org_registry.get(state.org_id)
+    if default is None:
+        raise RuntimeError(
+            "the default org has no built runtime, so the shared terminal cannot be restored "
+            "after shard %s restarted (REQ-1448)" % shard
+        )
+    config = getattr(state, "config", None)
+    if config is not None:
+        async with state.tenant_db.acquire() as conn:
+            await load_config(
+                config,
+                conn,
+                state.federation_engine,
+                replace=False,
+                catalog_names=default.source_catalogs,
+            )
+    # Materialized sources read through landing tables in the materialization store, and their
+    # schemas and read views are dynamic catalog state too — a resumed coordinator answers
+    # "Schema 'org_default' does not exist" for every materialized table until this reconvenes them
+    # (REQ-846/932). Boot swallows a failure here so a store hiccup cannot brick startup; a query
+    # cannot, because the query is what would then fail.
+    landed = await state.federation_engine.reconcile_landed_tables()
+    if landed:
+        log.info("reconciled %d landed table(s) after shard %s restarted", len(landed), shard)
+
+    default.engine_generation = generation(shard)
+
+
 async def ensure_engine_awake(state: Any) -> None:
     """The query path's wake: the active org's shard is serving, and its catalogs are on it.
 
@@ -189,8 +242,22 @@ async def ensure_engine_awake(state: Any) -> None:
 
     org_id = current_org.get()
     if org_id is None:
-        # Boot and background paths run before an org is bound; the shard they use is the control
-        # plane's own, woken once in _load_and_build rather than per statement.
+        # NOT only boot and background: _OrgRoutingMiddleware binds current_org only when a
+        # NON-default org is selected, so the deployment's own org — the one a single-tenant
+        # install and every unselected request queries — arrives here. It is served by the control
+        # plane's own shard, and it owns the shared terminal, so both the wake and the restore are
+        # this branch's to do. Treating it as "boot already handled it" is what left the terminal
+        # dialing a pod IP that had been released hours earlier.
+        shard = boot_shard()
+        await ensure_shard_awake(shard)
+        default = state.org_registry.get(state.org_id)
+        if default is None:
+            raise RuntimeError(
+                "the default org has no built runtime, so the engine this query dispatches to "
+                "cannot be resolved (REQ-1448)"
+            )
+        if default.engine_generation != generation(shard):
+            await restore_shared_terminal(state, shard)
         return
 
     runtime = state.org_registry.get(org_id)
@@ -218,6 +285,15 @@ async def ensure_engine_awake(state: Any) -> None:
     # per-org lock is what reissues them; a query released before that runs against an engine that
     # is perfectly healthy and has never heard of the org's sources.
     from provisa.api.app import ensure_org_runtime
+
+    # This org has no engine of its own, so it dispatches through the shared terminal — which is
+    # still connected to the pod that just went away. Restoring it first is what makes the CREATE
+    # CATALOG statements below reach the new coordinator instead of timing out at the old address.
+    # The shared terminal is bound to the control plane's OWN shard (configured_engine_endpoint),
+    # which is the shard a pooled org is placed on, so that is the generation to compare.
+    boot = boot_shard()
+    if state.org_registry.get(state.org_id).engine_generation != generation(boot):
+        await restore_shared_terminal(state, boot)
 
     state.org_registry.invalidate(org_id)
     log.info("rebuilding org %s runtime: engine shard %s restarted", org_id, shard)

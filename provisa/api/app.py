@@ -606,7 +606,16 @@ async def _load_and_build(
     from provisa.federation.k8s_provisioner import provisioning_available
 
     if provisioning_available():
-        await converge_boot_shard()
+        shard = await converge_boot_shard()
+        # Stamp the default runtime with the coordinator this boot is about to load the shared
+        # terminal onto. The query path compares the two to decide whether the coordinator holding
+        # the terminal's catalogs is still the one it connected to (REQ-1448); an unstamped default
+        # runtime reads as "restarted" on the first query of every process.
+        from provisa.federation.engine_wake import generation as _boot_generation
+
+        default_rt = state._default_runtime()
+        default_rt.shard = shard
+        default_rt.engine_generation = _boot_generation(shard)
 
     _mark("engine-wake")
 
