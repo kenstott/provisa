@@ -933,6 +933,23 @@ async def build_org_runtime(
     # coordinator as holding catalogs that were issued to the one it replaced.
     from provisa.federation.engine_wake import generation as _engine_generation
 
+    # REQ-1448: every use of a shard's address is preceded by a wake, and this build has two —
+    # _seed_built_in_sources below resolves the engine endpoint to write it into the org's built-in
+    # source rows, and the catalog statements dial it. The address is recorded only between a wake
+    # and the next idle-to-zero, so an org built after the shared lane was released — the first
+    # sign-in of a session — resolves nothing unless the shard comes back first. Boot does exactly
+    # this for the default org (_load_and_build); nothing else covers an org built later. The wake
+    # precedes the generation sample below so the runtime is stamped with the coordinator that
+    # actually receives its catalogs. An org on its own coordinator (REQ-1412/1418) is not served
+    # by a shard this control plane operates, so there is nothing here to wake.
+    if external_engine is None and engine_url is None:
+        from provisa.federation.k8s_provisioner import provisioning_available
+
+        if provisioning_available():
+            from provisa.federation.engine_wake import boot_shard, ensure_shard_awake
+
+            await ensure_shard_awake(shard or boot_shard())
+
     rt.shard = shard
     rt.engine_generation = _engine_generation(shard)
     state.org_registry.set(org_id, rt)

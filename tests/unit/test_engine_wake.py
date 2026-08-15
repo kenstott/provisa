@@ -337,3 +337,18 @@ def test_boot_wakes_the_shard_before_anything_asks_for_its_address():
     wake = src.index("converge_boot_shard()")
     for reader in ("_seed_built_in_sources(pg_host", "_apply_server_and_engine_config(raw_config)"):
         assert wake < src.index(reader), f"{reader} runs before the wake"
+
+
+def test_org_build_wakes_the_shard_before_anything_asks_for_its_address():
+    """Boot's wake covers the default org only. An org built later — the first sign-in after the
+    idle reaper released the shared lane — reads the address too: its built-in source rows carry
+    the engine endpoint, and its catalogs are issued to the coordinator. Without a wake of its own
+    that sign-in 500'd with "shard shared_1 has no address" (REQ-1448)."""
+    import inspect
+
+    from provisa.api import app as app_module
+
+    src = inspect.getsource(app_module.build_org_runtime)
+    wake = src.index("ensure_shard_awake(")
+    assert wake < src.index("_engine_generation(shard)"), "the generation is sampled before the wake"
+    assert wake < src.index("_seed_built_in_sources("), "the seed runs before the wake"
