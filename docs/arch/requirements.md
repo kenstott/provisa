@@ -15316,6 +15316,6 @@ The break-glass superuser of [REQ-125](#REQ-125) can sign in from a browser unde
 
 **Use case:** An operator whose Firebase tenant is misconfigured signs in to the console with the break-glass account and repairs it; a Playwright run against the cloud deployment authenticates the same way.
 
-**Code:** `provisa/auth/superuser.py`, `provisa/auth/middleware.py`, `provisa/auth/wiring.py`, `provisa/api/auth_router.py`, `provisa/api/setup_router.py`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/playwright.cloud.config.ts`, `provisa-ui/e2e/cloud-setup.ts`
+**Code:** `provisa/auth/superuser.py`, `provisa/auth/middleware.py`, `provisa/auth/wiring.py`, `provisa/api/auth_router.py`, `provisa/api/setup_router.py`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/playwright.cloud.config.ts`, `provisa-ui/e2e/cloud-setup.ts`, `provisa-ui/src/lib/sessionToken.ts`, `provisa-ui/src/components/OnboardGate.tsx`, `provisa/api/rest/openapi_spec.py`
 
 **Tests:** —
