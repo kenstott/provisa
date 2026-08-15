@@ -58,6 +58,9 @@ _ready_seen: dict[str, float] = {}
 _generation: dict[str, int] = {}
 _last_activity: dict[str, float] = {}
 _stop_tasks: dict[str, asyncio.Task] = {}
+# Per org (None = the deployment's own org): the in-flight sign-in prewarm, so a second sign-in
+# does not start one alongside it. REQ-1471.
+_prewarm_tasks: dict[str | None, asyncio.Task] = {}
 
 
 def _int_env(name: str, default: int) -> int:
@@ -227,6 +230,49 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
         log.info("reconciled %d landed table(s) after shard %s restarted", len(landed), shard)
 
     default.engine_generation = generation(shard)
+
+
+def prewarm_engine(state: Any, org_id: str | None) -> None:
+    """REQ-1471: start the shard's cold start at SIGN-IN, so the first query does not pay for it.
+
+    A cold start is ~90-120s of Autopilot node provision plus Trino start, and the query path pays
+    every second of it inside the request. Signing in is the earliest moment the platform knows
+    which shard a session is about to use, and it is followed by seconds-to-minutes of the operator
+    reading schemas and composing a query — which is exactly the window the node needs. This kicks
+    the same wake off there and returns immediately: ``/auth/me`` must not block on a node.
+
+    The work is the query path's own :func:`ensure_engine_awake`, so a cold start reissues catalogs
+    here exactly as it would there, and the per-shard lock means a query that arrives mid-warm waits
+    on this one rather than starting a second.
+    """
+    if not k8s.provisioning_available():
+        return
+
+    async def _run() -> None:
+        from provisa.api.org_runtime import reset_current_org, set_current_org
+
+        # ensure_engine_awake reads the active org off the ContextVar, and this task does not
+        # inherit the request's binding — the middleware resets it before the response. None is
+        # meaningful there (the deployment's own org), so it is passed through, not defaulted.
+        token = set_current_org(org_id) if org_id is not None else None
+        try:
+            await ensure_engine_awake(state)
+        except Exception:
+            # A prewarm is an optimization on a path that has its own wake: swallowing here costs
+            # the session nothing but the head start, whereas raising would fail a sign-in over an
+            # engine the user has not yet asked for. The query path re-runs the same wake and
+            # surfaces whatever this hit, so the failure is reported where it can be acted on.
+            log.exception("prewarming the engine for org %r failed", org_id)
+        finally:
+            if token is not None:
+                reset_current_org(token)
+            _prewarm_tasks.pop(org_id, None)
+
+    if _prewarm_tasks.get(org_id) is not None:
+        return
+    # Held in module state for the task's lifetime: a bare create_task is only weakly referenced by
+    # the loop, so an unheld prewarm can be garbage-collected mid-wake.
+    _prewarm_tasks[org_id] = asyncio.create_task(_run())
 
 
 async def ensure_engine_awake(state: Any) -> None:

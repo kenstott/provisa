@@ -15291,3 +15291,17 @@ A Starter org signs itself up with a credit card and can answer, without asking 
 **Code:** —
 
 **Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1471 · Federation Engine {#REQ-1471}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A shard that has idled to zero begins its cold start at SIGN-IN, not at the first query. The node provision [REQ-1448](#REQ-1448) accepts is roughly 90-120s, and charging it to the first query puts the whole of it inside a request the operator is watching. Sign-in is the earliest moment the platform knows which shard the session will use, and it is followed by however long the operator spends reading a screen and composing a question -- time the wake can run in. The IdP owns login, so there is no server-side login POST; the sign-in seam is the first authenticated call of the session, GET /auth/me, and the org it reports is the org to warm. The prewarm must not block that call: /auth/me returns while the wake runs behind it, so a session over a shard the user never queries costs nothing but a scheduled pod. A query arriving mid-warm waits on the wake already in flight rather than starting a second one, and a prewarm that fails is reported where the query path can act on it rather than failing a sign-in over an engine the user has not yet asked for.
+
+**Use case:** An operator signs in, spends a minute reading the schema browser, runs a query and gets an answer without waiting on a node that has been coming up the whole time.
+
+**Code:** `provisa/federation/engine_wake.py`, `provisa/api/auth_router.py`
+
+**Tests:** —

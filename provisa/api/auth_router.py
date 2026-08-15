@@ -110,6 +110,13 @@ async def me(request: Request):
     # onboarding, before redeem-invite). That is a legitimate state on this platform-plane endpoint —
     # /me reports null active org + empty memberships so the UI can route to invite redemption.
     active_org_id = getattr(request.state, "active_org_id", None)
+    # REQ-1471: the IdP owns login, so this is the first authenticated call of a session and the
+    # earliest point the platform knows which shard that session will query. Starting the shard's
+    # cold start here — not blocking on it — spends the operator's read-and-compose time on the
+    # ~90-120s node provision the first query would otherwise pay for inside the request.
+    from provisa.federation.engine_wake import prewarm_engine
+
+    prewarm_engine(state, active_org_id)
     return {
         "user_id": identity.user_id,
         "email": identity.email,

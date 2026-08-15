@@ -955,9 +955,29 @@ async def build_org_runtime(
         from provisa.federation.k8s_provisioner import provisioning_available
 
         if provisioning_available():
-            from provisa.federation.engine_wake import boot_shard, ensure_shard_awake
+            from provisa.federation.engine_wake import (
+                boot_shard,
+                ensure_shard_awake,
+                restore_shared_terminal,
+            )
 
             await ensure_shard_awake(shard or boot_shard())
+            # REQ-1448: the wake brought a NEW coordinator up, and this build's own CREATE CATALOG
+            # statements go out over the SHARED terminal — which is still connected to the pod that
+            # was released while the lane sat idle. ensure_engine_awake restores it, but that runs
+            # at _execute_plan, after this build; without the restore here the build itself dials
+            # the released pod IP and every source registration times out before any query is ever
+            # dispatched. The terminal belongs to the control plane's own shard, so that is the
+            # generation to compare. The default org owns the terminal and is stamped by boot, so
+            # it is not restored from inside its own rebuild.
+            boot = boot_shard()
+            default_rt = state.org_registry.get(state.org_id)
+            if (
+                org_id != state.org_id
+                and default_rt is not None
+                and default_rt.engine_generation != _engine_generation(boot)
+            ):
+                await restore_shared_terminal(state, boot)
 
     rt.shard = shard
     rt.engine_generation = _engine_generation(shard)

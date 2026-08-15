@@ -32,6 +32,7 @@ def _clean_module_state():
         engine_wake._generation,
         engine_wake._last_activity,
         engine_wake._stop_tasks,
+        engine_wake._prewarm_tasks,
     ):
         d.clear()
     yield
@@ -41,6 +42,7 @@ def _clean_module_state():
         engine_wake._generation,
         engine_wake._last_activity,
         engine_wake._stop_tasks,
+        engine_wake._prewarm_tasks,
     ):
         d.clear()
 
@@ -175,6 +177,10 @@ class _FakeEngine:
     async def reconcile_landed_tables(self):
         self.reconciles += 1
         return []
+
+
+async def _noop_rebuild(oid: str) -> None:
+    """Stands in for ensure_org_runtime: a cold start rebuilds the org, which needs a database."""
 
 
 def _state_with(runtime, rebuilt: list, default=None):
@@ -456,3 +462,106 @@ def test_org_build_wakes_the_shard_before_anything_asks_for_its_address():
     wake = src.index("ensure_shard_awake(")
     assert wake < src.index("_engine_generation(shard)"), "the generation is sampled before the wake"
     assert wake < src.index("_seed_built_in_sources("), "the seed runs before the wake"
+
+
+def test_org_build_restores_the_shared_terminal_before_issuing_its_catalogs():
+    """The wake brings up a NEW coordinator; the shared terminal this build issues its CREATE
+    CATALOG statements over is still connected to the released pod. ensure_engine_awake restores it
+    at _execute_plan, which is AFTER this build — so without a restore here the build itself dialed
+    the dead pod IP and every tenant sign-in ended in a connect timeout at /v1/statement while
+    schemas (read from Postgres) loaded normally (REQ-1448)."""
+    import inspect
+
+    from provisa.api import app as app_module
+
+    src = inspect.getsource(app_module.build_org_runtime)
+    restore = src.index("restore_shared_terminal(state,")
+    assert src.index("ensure_shard_awake(") < restore, "the terminal is restored before the wake"
+    assert restore < src.index("_seed_built_in_sources("), "the seed runs before the restore"
+    # The default org OWNS the terminal and is stamped by boot: restoring from inside its own
+    # rebuild would re-enter the build it is already in.
+    assert "org_id != state.org_id" in src
+
+
+# ── prewarm (sign-in) ───────────────────────────────────────────────────────────
+
+
+async def test_prewarm_wakes_the_shard_without_blocking_the_caller(fake_k8s):
+    """REQ-1471: sign-in starts the cold start; it does not wait on it. The caller is /auth/me, and
+    a node is ~90-120s away."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    state = _state_with(None, [], default=default)
+
+    engine_wake.prewarm_engine(state, None)
+    assert fake_k8s.wakes == []  # returned before the wake ran
+
+    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+    assert fake_k8s.wakes == ["shared_1"]
+
+
+async def test_prewarm_binds_the_org_it_was_given(fake_k8s, monkeypatch):
+    """The task does not inherit the request's ContextVar — the middleware resets it before the
+    response — so the org has to be bound inside the task or the tenant's shard is never the one
+    woken."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    rt = OrgRuntime(org_id="acme", shard="shared_2", engine_generation=0)
+    state = _state_with(rt, [], default=default)
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _noop_rebuild, raising=False)
+
+    engine_wake.prewarm_engine(state, "acme")
+    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+
+    assert "shared_2" in fake_k8s.wakes
+
+
+async def test_prewarm_does_not_start_a_second_wake_for_the_same_org(fake_k8s):
+    from provisa.api.org_runtime import OrgRuntime
+
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    state = _state_with(None, [], default=default)
+
+    engine_wake.prewarm_engine(state, None)
+    engine_wake.prewarm_engine(state, None)
+    assert len(engine_wake._prewarm_tasks) == 1
+
+    await asyncio.gather(*engine_wake._prewarm_tasks.values())
+    assert fake_k8s.wakes == ["shared_1"]
+
+
+async def test_prewarm_failure_does_not_reach_the_caller(fake_k8s, monkeypatch):
+    """Sign-in must not fail over an engine the user has not asked for yet; the query path runs the
+    same wake and surfaces the failure where it can be acted on."""
+
+    async def _boom(shard: str) -> None:
+        raise RuntimeError("no node available")
+
+    monkeypatch.setattr(engine_wake.k8s, "ensure_shared_shard", _boom)
+    from provisa.api.org_runtime import OrgRuntime
+
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    state = _state_with(None, [], default=default)
+
+    engine_wake.prewarm_engine(state, None)
+    await asyncio.gather(*engine_wake._prewarm_tasks.values())  # does not raise
+    assert engine_wake._prewarm_tasks == {}
+
+
+def test_prewarm_is_a_no_op_without_a_provisioner(monkeypatch):
+    monkeypatch.setattr(engine_wake.k8s, "provisioning_available", lambda: False)
+    engine_wake.prewarm_engine(SimpleNamespace(), None)
+    assert engine_wake._prewarm_tasks == {}
+
+
+def test_sign_in_prewarms_the_engine():
+    """/auth/me is the first authenticated call of a session — the IdP owns login — so it is the
+    earliest point the platform knows which shard the session will query (REQ-1471)."""
+    import inspect
+
+    from provisa.api import auth_router
+
+    src = inspect.getsource(auth_router.me)
+    assert "prewarm_engine(state, active_org_id)" in src
