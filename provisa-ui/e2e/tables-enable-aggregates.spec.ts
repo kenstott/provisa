@@ -33,8 +33,10 @@ test("pets table edit shows enableAggregates and enableGroupBy checked", async (
   await editBtn.waitFor({ timeout: 5000 });
   await editBtn.click();
 
-  // Wait for edit form with checkboxes
-  await page.waitForSelector("input[type='checkbox']", { timeout: 5000 });
+  // Wait for the edit form's own checkbox. A bare input[type='checkbox'] wait resolves to the
+  // first of ~10 on the page — the table's row-selection controls, which sit inside a collapsed
+  // container and are therefore never "visible" — so it timed out while the form was already open.
+  await page.getByLabel(/Enable Aggregates/i).waitFor({ state: "attached", timeout: 15000 });
 
   // Enable Aggregates checkbox must be checked
   await expect(page.getByLabel(/Enable Aggregates/i)).toBeChecked();

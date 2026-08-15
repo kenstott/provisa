@@ -72,8 +72,14 @@ done
 export LIBRARY_PATH="${LP#:}${LIBRARY_PATH:+:$LIBRARY_PATH}"
 echo "LIBRARY_PATH=$LIBRARY_PATH"
 # -j: build DuckDB + pg_duckdb; this is the ~20-30 min step.
-make -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" PG_CONFIG="$PGC" > "$CACHE/pgduckdb-build.log" 2>&1
-make install PG_CONFIG="$PGC" >> "$CACHE/pgduckdb-build.log" 2>&1
+# The compiler output goes to a file because it is tens of thousands of lines. Under `set -e` a
+# failing make then exited with the whole diagnosis still on the runner's disk and nothing in the
+# CI log but the exit code — so every failure has to print its own tail before it propagates.
+run_make() { "$@" >> "$CACHE/pgduckdb-build.log" 2>&1 || {
+  echo "FAIL: $* (exit $?) — last 80 lines of $CACHE/pgduckdb-build.log:"; tail -80 "$CACHE/pgduckdb-build.log"; exit 1; }; }
+: > "$CACHE/pgduckdb-build.log"
+run_make make -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)" PG_CONFIG="$PGC"
+run_make make install PG_CONFIG="$PGC"
 
 echo "== 3. verify artifacts installed into the cached prefix =="
 PKGLIB="$("$PGC" --pkglibdir)"; EXT="$("$PGC" --sharedir)/extension"
