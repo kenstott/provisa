@@ -398,6 +398,23 @@ variable "install_demo" {
   default     = false
 }
 
+# REQ-125: break-glass superuser. The IdP owns every ordinary login on this deployment, so
+# without this account there is no credential that reaches the API when the IdP is unreachable
+# or a token cannot be minted — and no way for the deploy script to prove the engine path.
+# Blank leaves the account unconfigured, which is the enterprise default.
+variable "superuser_username" {
+  description = "Break-glass superuser name (REQ-125). Blank leaves the account off."
+  type        = string
+  default     = ""
+}
+
+variable "superuser_password" {
+  description = "Break-glass superuser password (REQ-125). Blank leaves the account off."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # REQ-1330: outbound transactional mail (org invites). SaaS-only; delivered through
 # the EmailSender port's Resend adapter, sending as mail_from_address with SPF/DKIM
 # on its domain. Inbound MX for the domain stays with the operator's mailbox host.

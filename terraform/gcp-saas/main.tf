@@ -281,6 +281,10 @@ locals {
     export PROVISA_EMAIL_API_KEY='${var.email_api_key}'
     export PROVISA_MAIL_FROM="${var.mail_from_address}"
     export PROVISA_MAIL_BASE_URL="${var.mail_base_url}"
+    # REQ-125: break-glass superuser. first-launch persists these into the systemd
+    # EnvironmentFile and the config's auth.superuser block resolves them by ${"$"}{env:...}.
+    export PROVISA_SUPERUSER_USERNAME='${var.superuser_username}'
+    export PROVISA_SUPERUSER_PASSWORD='${var.superuser_password}'
     export FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export FIREBASE_SERVICE_ACCOUNT_KEY='${var.firebase_service_account_key}'
     export VITE_FIREBASE_API_KEY="${var.firebase_web_api_key}"

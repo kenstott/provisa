@@ -44,6 +44,23 @@ async def _auto_configure_idp(provider: str, pool) -> None:
     cfg_path = config_path()
     cfg = read_config_for_setup()
     if "auth" in cfg and cfg["auth"].get("provider") not in (None, "none"):
+        # REQ-125: the provider is settled, but the break-glass account may not be — a
+        # deployment configured before the operator supplied the two vars keeps an auth block
+        # with no superuser, and nothing else ever writes one. Reconcile that one key and
+        # leave the rest of the configured block exactly as it stands.
+        if (
+            "superuser" not in cfg["auth"]
+            and os.environ.get("PROVISA_SUPERUSER_USERNAME")
+            and os.environ.get("PROVISA_SUPERUSER_PASSWORD")
+        ):
+            cfg["auth"]["superuser"] = {
+                "username": "${env:PROVISA_SUPERUSER_USERNAME}",
+                "password": "${env:PROVISA_SUPERUSER_PASSWORD}",
+            }
+            write_config(cfg_path, cfg)
+            from provisa.api.app import _load_and_build
+
+            await _load_and_build(str(cfg_path))
         return  # already configured
 
     auth_section: dict = {

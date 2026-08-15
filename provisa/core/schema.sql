@@ -336,6 +336,19 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-1467: base_tag_id on a table that predates it. Added nullable and backfilled from the
+-- stored tag_id before the NOT NULL is asserted, because the column carries no default and a
+-- bare NOT NULL ADD COLUMN fails outright on a table that already holds assignments. The
+-- uniqueness rule is stated over the base id, so the index goes on in the same step.
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS base_tag_id TEXT;
+    UPDATE tag_assignments SET base_tag_id = split_part(tag_id, ':', 1) WHERE base_tag_id IS NULL;
+    ALTER TABLE tag_assignments ALTER COLUMN base_tag_id SET NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS tag_assignments_base_tag_object_key
+        ON tag_assignments (base_tag_id, object_key);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- REQ-1385/REQ-1389: vendor-side identity bindings captured at publish time. One row per
 -- (provider, published asset): vendor_ref is the catalog's own id for the asset (Atlas guid,
 -- OpenMetadata entity UUID, Collibra asset UUID, DataHub dataset URN) and physical_key is
