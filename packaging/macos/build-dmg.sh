@@ -1,26 +1,36 @@
 #!/usr/bin/env bash
-# Build the macOS DMG. Native tier ships a bare python-build-standalone interpreter
-# + a macOS arm64 wheelhouse (venv built at first-launch); Docker tier runs on the
-# user's own Docker (no Lima/VM).
-# Requires: docker (build host only), hdiutil, codesign, xcrun, python3
+# Build the macOS DMG. One script, two editions — the same split Windows ships:
+#
+#   core      (build-sfx.ps1)      native tier only: a python-build-standalone interpreter
+#                                  with provisa + deps ALREADY pip-installed into it.
+#                                  No compose, no observability, no container images.
+#   container (build-container.ps1) Docker tier only: the compose tree (compose YAMLs,
+#                                  config, db, trino minus plugins, observability + the
+#                                  OTel Java agent). Images are fetched on demand.
+#
+# Select with PROVISA_EDITION=core|container.
+# Requires: hdiutil, codesign, xcrun, python3
 set -euo pipefail
+
+EDITION="${PROVISA_EDITION:-core}"
+case "$EDITION" in
+  core|container) ;;
+  *) printf 'PROVISA_EDITION must be core or container (got %s)\n' "$EDITION" >&2; exit 1 ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${SCRIPT_DIR}/dist"
 APP_BUNDLE="${SCRIPT_DIR}/Provisa.app"
-IMAGES_DIR="${SCRIPT_DIR}/images"
-DMG_NAME="Provisa.dmg"
+if [ "$EDITION" = "container" ]; then
+  DMG_NAME="Provisa-Container.dmg"
+else
+  DMG_NAME="Provisa.dmg"
+fi
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
-
-# Core service images only — obs images ship in the separate Obs DMG
-IMAGES=(
-  "python:3.12-slim"
-  "postgres:16"
-  "edoburu/pgbouncer:latest"
-  "redis:7-alpine"
-  "trinodb/trino:481"
-)
+# LZMA-compressed DMG. The default UDZO (zlib) leaves ~40% on the table over a tree of
+# many small Python files; ULMO is what gets the DMG to Inno Setup's lzma2/ultra64 class.
+DMG_FORMAT="${DMG_FORMAT:-ULMO}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info() { printf "${CYAN}[build-dmg]${NC} %s\n" "$*"; }
@@ -78,10 +88,11 @@ generate_assets() {
   ok "Icon and background generated."
 }
 
-# ── Download OTel Java agent for Trino (bundled for airgapped install) ───────
+# ── Download OTel Java agent for Trino (container edition only) ──────────────
 # Downloaded at build time (network available on build host); bundled in Resources
 # so first-launch.sh can copy it into ~/.provisa/compose/observability/trino-otel/
-# without any network access at install time.
+# without any network access at install time. The core edition runs no Trino, so it
+# ships no agent — same as the Windows native installer.
 download_otel_agent() {
   local dest="${APP_BUNDLE}/Contents/Resources/observability/trino-otel"
   local jar="${dest}/opentelemetry-javaagent.jar"
@@ -97,59 +108,10 @@ download_otel_agent() {
   ok "OTel Java agent bundled ($(du -sh "$jar" | cut -f1))."
 }
 
-# ── Save service images as tarballs ──────────────────────────────────────────
-# Images are saved as .tar.gz (gzip -9) to fit under GitHub's 2 GB per-asset
-# limit. Trino:481 is ~1.5 GB uncompressed but ~600 MB gzipped. `docker load`
-# handles gzip streams transparently.
-save_images() {
-  mkdir -p "$IMAGES_DIR"
-  local count
-  count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
-  # In CI the tarballs are pre-populated from the ubuntu image-pull job and the macOS
-  # runner has no Docker, so skip when the core set is already present. The app-image
-  # tarballs (provisa/provisa-ui) are added by the same ubuntu job for airgapped Docker;
-  # they are only built here on a local build host that has Docker.
-  if [ "$count" -ge 6 ]; then
-    info "Images pre-populated (${count} tarballs) — skipping docker pull."
-    return
-  fi
-  if ! command -v docker &>/dev/null; then
-    err "docker not found and images not pre-populated in ${IMAGES_DIR}"
-    exit 1
-  fi
-  info "Saving service images (gzip compressed)..."
-  for img in "${IMAGES[@]}"; do
-    local tag="${img##*/}"
-    tag="${tag//:/-}"
-    tag="${tag//\//-}"
-    local out="${IMAGES_DIR}/${tag}.tar.gz"
-    if [ -f "$out" ]; then
-      info "  Skipping (cached): ${img}"
-      continue
-    fi
-    info "  Pulling + saving: ${img}"
-    docker pull --platform linux/arm64 "$img"
-    docker save "$img" | gzip -9 > "$out"
-    ok "  Saved: ${out}"
-  done
-  # Build and save zaychik (custom image, arm64)
-  info "  Building + saving zaychik..."
-  docker build --platform linux/arm64 -t provisa/zaychik:local "${REPO_ROOT}/zaychik"
-  docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
-  ok "  Saved zaychik."
-
-  # The airgapped Docker tier loads the app images via `docker load` on the host
-  # (no in-VM build). Build provisa/provisa:local from the repo Dockerfile and save
-  # it plus the provisa-ui image (same build, retagged) as tarballs.
-  info "  Building + saving provisa/provisa:local..."
-  docker build --platform linux/arm64 -t provisa/provisa:local "${REPO_ROOT}"
-  docker save provisa/provisa:local | gzip -9 > "${IMAGES_DIR}/provisa-local.tar.gz"
-  docker tag provisa/provisa:local provisa/provisa-ui:local
-  docker save provisa/provisa-ui:local | gzip -9 > "${IMAGES_DIR}/provisa-ui-local.tar.gz"
-  ok "  Saved provisa + provisa-ui."
-}
-
-# ── Embed compose files and config ───────────────────────────────────────────
+# ── Embed the compose tree (container edition only) ──────────────────────────
+# Mirrors packaging/windows/build-container.ps1: the Docker tier's compose YAMLs and
+# config live in the installer; the images are fetched on demand. The core edition
+# ships none of this — it has no Docker tier, exactly like build-sfx.ps1.
 embed_compose() {
   local res="${APP_BUNDLE}/Contents/Resources"
   mkdir -p "$res"
@@ -158,76 +120,82 @@ embed_compose() {
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${res}/docker-compose.airgap.yml"
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"
-  # Copy trino WITHOUT plugins/ — plugins ship as hidden DMG content (trino-plugins/)
-  # to avoid pushing the app bundle over the 2 GB GitHub release-asset limit.
+  # Copy trino WITHOUT plugins/ — plugins ship as a separate release asset
+  # (provisa-trino-plugins-*.tar.gz), same as the Windows container installer.
   mkdir -p "${res}/trino"
   rsync -a --exclude='plugins/' "${REPO_ROOT}/trino/" "${res}/trino/"
   cp -r "${REPO_ROOT}/observability" "${res}/observability"
+  ok "Compose files, config, and observability embedded."
+}
+
+# ── Build the React UI ───────────────────────────────────────────────────────
+# bundle_native_payload stages provisa-ui/dist into the runtime's site-packages (the
+# native tier's ui_server serves it). The prebuild renders the offline MkDocs docs
+# site; point it at the build venv's mkdocs so no global install is needed.
+build_ui() {
+  local res="${APP_BUNDLE}/Contents/Resources"
+  mkdir -p "$res"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"
   chmod +x "${res}/provisa-cli"
-  # Build the React UI so bundle_native_payload can stage it into the venv (the
-  # native tier's ui_server serves it). The prebuild renders the offline MkDocs
-  # docs site; point it at the build venv's mkdocs so no global install is needed.
-  # NOTE: the Docker tier docker-loads prebuilt image tarballs (it does not host-build
-  # from source), so the old provisa-source/ + Linux wheelhouse are no longer bundled.
   info "Building React UI..."
   local venv="${SCRIPT_DIR}/.build-venv"
   "${venv}/bin/pip" install mkdocs-material pymdown-extensions mkdocs-static-i18n --quiet --upgrade
   (cd "${REPO_ROOT}/provisa-ui" \
     && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" \
        npm ci --silent && MKDOCS_BIN="${venv}/bin/mkdocs" PYTHON_BIN="${venv}/bin/python3" npm run build)
-  ok "React UI built. Compose files, config, and observability embedded."
+  ok "React UI built."
 }
 
-# ── Stage the native venv payload (REQ-979) ──────────────────────────────────
-# The native (no-Docker) tier builds its own Python venv at first launch from a
-# bundled bare interpreter + a macOS arm64 wheelhouse. We stage THREE dirs as
-# HIDDEN DMG content (create_dmg copies them to the DMG root); first-launch.sh
-# finds them at /Volumes/*/{python-base,wheels,ui-dist}:
-#   python-base/  bare python-build-standalone CPython (NOT pip-installed)
-#   wheels/       macOS arm64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)
-#   ui-dist/      built provisa-ui/dist (ui_server resolves STATIC_DIR from it)
+# ── Stage the native runtime payload (REQ-979) ───────────────────────────────
+# The native (no-Docker) tier runs a python-build-standalone interpreter that already
+# HAS provisa installed: we pip-install into it here, at build time, exactly like the
+# Windows installer (build-sfx.ps1). first-launch.sh copies the tree to
+# ~/.provisa/venv and runs it — no venv creation, no pip, no PyPI at install time.
+#
+# Shipping a wheelhouse instead cost the DMG roughly double: every dependency rode
+# along twice (as a .whl AND as the interpreter that would unpack it), and wheels are
+# already-deflated zips that neither UDZO nor LZMA can compress a second time.
+#
+# The tree ships as HIDDEN DMG content (create_dmg copies it to the DMG root, outside
+# the notarized .app); first-launch.sh finds it at /Volumes/*/runtime.
 #
 # Pins are overridable so the builder can bump CPython without editing this file.
 PBS_RELEASE="${PBS_RELEASE:-20250612}"
 PBS_PYTHON="${PBS_PYTHON:-3.12.11}"
 NATIVE_PAYLOAD_DIR="${SCRIPT_DIR}/native-payload"   # staged OUTSIDE the .app (hidden DMG content)
 bundle_native_payload() {
-  local base="${NATIVE_PAYLOAD_DIR}/python-base"
-  local wheels="${NATIVE_PAYLOAD_DIR}/wheels"
-  local ui="${NATIVE_PAYLOAD_DIR}/ui-dist"
+  local runtime="${NATIVE_PAYLOAD_DIR}/runtime"
 
-  # ── 1. Bare python-build-standalone interpreter (no provisa install) ──
-  if [ -x "${base}/bin/python3" ]; then
-    info "python-base already staged — skipping download."
-  else
-    rm -rf "$base"; mkdir -p "$(dirname "$base")"
-    local tarball="cpython-${PBS_PYTHON}+${PBS_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
-    local url="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${tarball}"
-    local tmp="${SCRIPT_DIR}/tmp-pbs"
-    rm -rf "$tmp"; mkdir -p "$tmp"
+  # ── 1. python-build-standalone interpreter ──
+  rm -rf "$runtime"; mkdir -p "$NATIVE_PAYLOAD_DIR"
+  local tarball="cpython-${PBS_PYTHON}+${PBS_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
+  local url="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${tarball}"
+  local tmp="${SCRIPT_DIR}/tmp-pbs"
+  local cached="${SCRIPT_DIR}/.pbs-cache/${tarball}"
+  mkdir -p "$(dirname "$cached")"
+  if [ ! -f "$cached" ]; then
     info "Downloading python-build-standalone ${PBS_PYTHON} (macOS arm64)..."
-    curl_retry "$url" "${tmp}/${tarball}"
-    tar -xzf "${tmp}/${tarball}" -C "$tmp"        # extracts to ${tmp}/python/
-    if [ ! -x "${tmp}/python/bin/python3" ]; then
-      err "python-build-standalone extraction failed (no bin/python3)"
-      exit 1
-    fi
-    mv "${tmp}/python" "$base"
-    rm -rf "$tmp"
-    ok "python-base staged (bare interpreter, $(du -sh "$base" | cut -f1))."
+    curl_retry "$url" "$cached"
   fi
+  rm -rf "$tmp"; mkdir -p "$tmp"
+  tar -xzf "$cached" -C "$tmp"                    # extracts to ${tmp}/python/
+  if [ ! -x "${tmp}/python/bin/python3" ]; then
+    err "python-build-standalone extraction failed (no bin/python3)"
+    exit 1
+  fi
+  mv "${tmp}/python" "$runtime"
+  rm -rf "$tmp"
+  local py="${runtime}/bin/python3"
 
-  # ── 2. macOS arm64 wheelhouse ──
+  # ── 2. Build the provisa wheel and install it INTO the runtime ──
   info "Building the provisa wheel (macOS)..."
-  # Build with the bundled python-base (the runner's default python may lack `build`;
-  # the provisa wheel is pure-python so the interpreter version doesn't matter).
-  "${base}/bin/python3" -m pip install --quiet build
+  "$py" -m pip install --quiet --upgrade pip
+  "$py" -m pip install --quiet build
   # embed_compose already built provisa-ui/dist; reuse it (no re-run of vite).
   if [ -x "${REPO_ROOT}/scripts/build-wheel.sh" ]; then
-    PROVISA_SKIP_UI_BUILD=1 PYTHON="${base}/bin/python3" "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
+    PROVISA_SKIP_UI_BUILD=1 PYTHON="$py" "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
   else
-    ( cd "$REPO_ROOT" && "${base}/bin/python3" -m build --wheel )
+    ( cd "$REPO_ROOT" && "$py" -m build --wheel )
   fi
   local built_wheel
   built_wheel="$(ls -t "${REPO_ROOT}/dist"/provisa-*.whl 2>/dev/null | head -1)"
@@ -235,20 +203,36 @@ bundle_native_payload() {
     err "provisa wheel not found in ${REPO_ROOT}/dist after build."
     exit 1
   fi
-  rm -rf "$wheels"; mkdir -p "$wheels"
-  info "Downloading macOS arm64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)..."
+  info "Installing provisa[embedded] + deps into the native runtime..."
+  # `embedded` is the base extra set. The data-quality checker (REQ-1443) is NOT baked in:
+  # soda-core is Elastic License 2.0 and is never vendored, so first-launch installs the
+  # operator's chosen checker on top of this tree.
   # mcp-proxy (REQ-1104): Node-free stdio<->Streamable-HTTP bridge for the Claude Desktop connector.
-  "${base}/bin/python3" -m pip download --dest "$wheels" "${built_wheel}[embedded]" uvicorn mcp-proxy
-  ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
+  "$py" -m pip install --quiet "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # Fail the build loudly if a critical native-tier dep did not land (mirrors build-sfx.ps1).
+  "$py" -c "import provisa, aiosqlite, mcp_proxy" || {
+    err "native runtime is missing provisa/aiosqlite/mcp_proxy after install."
+    exit 1
+  }
+  # `build` is a build-host tool — it has no business in the shipped tree.
+  "$py" -m pip uninstall --quiet --yes build
 
-  # ── 3. Built UI (embed_compose built provisa-ui/dist earlier in the pipeline) ──
+  # ── 3. Built UI → <site-packages>/static, where ui_server resolves it ──
   if [ ! -d "${REPO_ROOT}/provisa-ui/dist" ]; then
     err "provisa-ui/dist not found — embed_compose must build the UI before bundle_native_payload."
     exit 1
   fi
-  rm -rf "$ui"; mkdir -p "$ui"
-  cp -r "${REPO_ROOT}/provisa-ui/dist/." "$ui/"
-  ok "ui-dist staged."
+  local site; site="$("$py" -c 'import sysconfig;print(sysconfig.get_paths()["purelib"])')"
+  mkdir -p "${site}/static"
+  cp -R "${REPO_ROOT}/provisa-ui/dist/." "${site}/static/"
+
+  # Drop build-time noise that only inflates the DMG: bytecode is regenerated on first
+  # import, and pip's http cache is not part of the runtime.
+  find "$runtime" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  rm -rf "${runtime}/lib/python"*/site-packages/pip/_vendor/certifi/__pycache__ 2>/dev/null || true
+
+  printf '%s' "${VERSION:-dev}" > "${runtime}/.runtime-version"
+  ok "Native runtime staged ($(du -sh "$runtime" | cut -f1), provisa installed)."
 }
 
 # ── Build SwiftUI launcher and embed binary ───────────────────────────────────
@@ -493,22 +477,22 @@ create_dmg() {
   # acquire_addon from the published provisa-core-images-<version>.tar.gz (or a copy
   # pre-staged beside the installer for airgapped installs).
 
-  # Native tier payload (hidden): first-launch.sh builds the venv from these.
-  # python-base = bare interpreter, wheels = macOS arm64 wheelhouse, ui-dist = built UI.
-  for d in python-base wheels ui-dist; do
-    if [ ! -d "${NATIVE_PAYLOAD_DIR}/${d}" ]; then
-      err "Native payload dir missing: ${NATIVE_PAYLOAD_DIR}/${d} — bundle_native_payload must run first."
+  if [ "$EDITION" = "core" ]; then
+    # Native tier payload (hidden): the interpreter with provisa already installed.
+    # first-launch.sh copies it to ~/.provisa/venv — it neither builds a venv nor pips.
+    if [ ! -x "${NATIVE_PAYLOAD_DIR}/runtime/bin/python3" ]; then
+      err "Native runtime missing at ${NATIVE_PAYLOAD_DIR}/runtime — bundle_native_payload must run first."
       exit 1
     fi
-    cp -R "${NATIVE_PAYLOAD_DIR}/${d}" "${tmp_dmg}/${d}"
-    chflags hidden "${tmp_dmg}/${d}"
-  done
+    cp -R "${NATIVE_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
+    chflags hidden "${tmp_dmg}/runtime"
+  fi
 
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
 
   create-dmg \
-    --volname "Provisa" \
+    --volname "$([ "$EDITION" = "container" ] && echo "Provisa Container" || echo "Provisa")" \
     --volicon "${SCRIPT_DIR}/Provisa.icns" \
     --background "${SCRIPT_DIR}/dmg-background.png" \
     --window-pos 200 120 \
@@ -517,6 +501,7 @@ create_dmg() {
     --icon "Provisa.app" 165 230 \
     --hide-extension "Provisa.app" \
     --app-drop-link 495 230 \
+    --format "${DMG_FORMAT}" \
     "${DMG_PATH}" \
     "${tmp_dmg}/"
 
@@ -532,10 +517,13 @@ main() {
   check_prereqs
 
   generate_assets
-  save_images
-  embed_compose        # copies observability/ from repo; builds provisa-ui/dist; before download_otel_agent
-  download_otel_agent  # adds opentelemetry-javaagent.jar into Resources/observability/trino-otel/
-  bundle_native_payload # bare interpreter + macOS wheelhouse + ui-dist (uses provisa-ui/dist from embed_compose)
+  build_ui             # provisa-ui/dist + provisa-cli (both editions)
+  if [ "$EDITION" = "container" ]; then
+    embed_compose        # compose YAMLs, config, db, trino, observability
+    download_otel_agent  # opentelemetry-javaagent.jar into Resources/observability/trino-otel/
+  else
+    bundle_native_payload # interpreter with provisa[embedded] + UI installed
+  fi
   build_launcher       # compile SwiftUI launcher and embed binary
   embed_scripts
   bake_version         # write Contents/Resources/VERSION before signing seals the bundle

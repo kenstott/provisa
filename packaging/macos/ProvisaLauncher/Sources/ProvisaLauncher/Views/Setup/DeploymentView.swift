@@ -24,7 +24,9 @@ struct DeploymentView: View {
 
                 Picker("", selection: $config.engine) {
                     Text("Embedded Desktop (recommended)").tag(FederationEngineChoice.duckdb)
-                    Text("Federation Engine - Docker").tag(FederationEngineChoice.trino)
+                    if SetupConfig.hasContainerTier {
+                        Text("Federation Engine - Docker").tag(FederationEngineChoice.trino)
+                    }
                     Text("External engine").tag(FederationEngineChoice.external)
                 }
                 .pickerStyle(.radioGroup)
@@ -52,7 +54,9 @@ struct DeploymentView: View {
 
                 Picker("", selection: $config.obsMode) {
                     Text("Built-in only").tag(ObsMode.none)
-                    Text("Bundled Grafana/Prometheus demo (Docker)").tag(ObsMode.docker)
+                    if SetupConfig.hasContainerTier {
+                        Text("Bundled Grafana/Prometheus demo (Docker)").tag(ObsMode.docker)
+                    }
                     Text("Export to my collector").tag(ObsMode.collector)
                 }
                 .pickerStyle(.radioGroup)

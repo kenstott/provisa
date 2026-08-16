@@ -21,6 +21,15 @@ enum DqChecker: String {
 }
 
 final class SetupConfig: ObservableObject {
+    /// True in the Container DMG, false in the core (native) DMG. The container edition is the
+    /// only one carrying the compose tree, so it is the only one that can offer a Docker tier —
+    /// the same split as Windows, where build-sfx.ps1's wizard lists no Docker options at all.
+    static let hasContainerTier: Bool = {
+        guard let res = Bundle.main.resourceURL else { return false }
+        return FileManager.default.fileExists(
+            atPath: res.appendingPathComponent("docker-compose.core.yml").path)
+    }()
+
     @Published var installDir: URL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".provisa")
     @Published var hostname: String = "localhost"

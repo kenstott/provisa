@@ -21,6 +21,7 @@ jobs:
       channel: ${{ steps.meta.outputs.channel }}
       dmg_name: ${{ steps.meta.outputs.dmg_name }}
       dmg_obs_name: ${{ steps.meta.outputs.dmg_obs_name }}
+      dmg_container_name: ${{ steps.meta.outputs.dmg_container_name }}
       dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
       linux_name: ${{ steps.meta.outputs.linux_name }}
       windows_name: ${{ steps.meta.outputs.windows_name }}
@@ -61,6 +62,7 @@ jobs:
           echo "channel=$CHANNEL"                                          >> "$GITHUB_OUTPUT"
           echo "dmg_name=Provisa-${TAG}-macOS.dmg"                        >> "$GITHUB_OUTPUT"
           echo "dmg_obs_name=Provisa-Obs-${TAG}-macOS.dmg"                >> "$GITHUB_OUTPUT"
+          echo "dmg_container_name=Provisa-Container-${TAG}-macOS.dmg"    >> "$GITHUB_OUTPUT"
           echo "dmg_demo_name=Provisa-Demo-${TAG}-macOS.dmg"              >> "$GITHUB_OUTPUT"
           echo "linux_name=Provisa-${TAG}-linux-x86_64.AppImage"          >> "$GITHUB_OUTPUT"
           echo "windows_name=Provisa-${TAG}-windows-x64.exe"              >> "$GITHUB_OUTPUT"
@@ -532,22 +534,13 @@ jobs:
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-14
-    needs: [metadata, pull-images-core, download-plugins]
+    # Native tier only — no compose, no observability, no container images, the same
+    # payload the Windows native installer ships (packaging/windows/build-sfx.ps1).
+    # The Docker tier lives in the Container DMG (build-macos-container).
+    needs: [metadata]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Download core image tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-images-core
-          path: packaging/macos/images/
-
-      - name: Download Calcite plugins
-        uses: actions/download-artifact@v4
-        with:
-          name: trino-plugins
-          path: trino/plugins/
 
       - name: Import Apple signing certificate
         env:
@@ -602,6 +595,72 @@ jobs:
         with:
           name: macos-core-dist
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+          retention-days: 1
+
+  build-macos-container:
+    name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
+    runs-on: macos-14
+    # Docker tier only: the compose tree + observability config. Images are fetched on
+    # demand (provisa-core-images-<version>.tar.gz), mirroring build-container.ps1.
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import Apple signing certificate
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
+            echo "No Apple signing certificate configured — skipping import"
+            exit 0
+          fi
+          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > /tmp/signing.p12
+          security create-keychain -p "" build.keychain
+          security unlock-keychain -p "" build.keychain
+          security list-keychains -d user -s build.keychain \
+            $(security list-keychains -d user | tr -d '"' | tr '\n' ' ')
+          security import /tmp/signing.p12 \
+            -k build.keychain \
+            -P "$APPLE_CERT_P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/xcrun
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "" build.keychain
+          rm /tmp/signing.p12
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Build Container DMG
+        env:
+          PROVISA_EDITION: container
+          VERSION: ${{ github.ref_name }}
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
+        run: |
+          chmod +x packaging/macos/build-dmg.sh
+          packaging/macos/build-dmg.sh
+
+      - name: Rename DMG with version + channel
+        run: |
+          mv packaging/macos/dist/Provisa-Container.dmg \
+             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
+
+      - name: Upload Container DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-container-dist
+          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
           retention-days: 1
 
   build-macos-obs:
@@ -988,6 +1047,7 @@ jobs:
     needs:
       - metadata
       - build-macos-core
+      - build-macos-container
       - build-macos-obs
       - build-macos-demo
       - build-linux
@@ -1093,6 +1153,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release-assets/${{ needs.metadata.outputs.dmg_name }}
+            release-assets/${{ needs.metadata.outputs.dmg_container_name }}
             release-assets/${{ needs.metadata.outputs.dmg_obs_name }}
             release-assets/${{ needs.metadata.outputs.dmg_demo_name }}
             release-assets/${{ needs.metadata.outputs.linux_name }}
@@ -1113,6 +1174,7 @@ jobs:
             | Asset | Platform / Use |
             |-------|----------------|
             | `${{ needs.metadata.outputs.dmg_name }}` | macOS Core (Apple Silicon) |
+            | `${{ needs.metadata.outputs.dmg_container_name }}` | macOS Container tier (Trino/Docker) |
             | `${{ needs.metadata.outputs.dmg_obs_name }}` | macOS Observability extension |
             | `${{ needs.metadata.outputs.dmg_demo_name }}` | macOS Demo extension (requires Obs) |
             | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (core, airgapped AppImage; obs ships separately) |

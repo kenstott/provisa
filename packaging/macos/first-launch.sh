@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# First-launch setup. Native tier: build a Python venv from the bundled interpreter
-# + wheelhouse (online: PyPI; airgapped: bundled wheels). Docker tier: bring up the
-# stack on the user's own Docker (Docker Desktop / colima) — no VM.
+# First-launch setup. Native tier: stage the prebuilt runtime shipped on the DMG (a
+# python-build-standalone interpreter with provisa already installed) — a copy, fully
+# offline. Docker tier: bring up the stack on the user's own Docker (Docker Desktop /
+# colima) — no VM.
 # Called by provisa-launcher on first run only.
 set -euo pipefail
 
@@ -204,6 +205,13 @@ ask_flight_port() {
 # The Docker tier runs `docker compose -f ~/.provisa/compose/...` on the user's
 # own Docker; the compose files + observability/ config live here (project_dir).
 stage_compose() {
+  # The compose tree ships in the Container DMG only (PROVISA_EDITION=container), the
+  # same split as Windows: build-sfx.ps1 has no Docker tier, build-container.ps1 owns it.
+  if [ ! -f "${RESOURCES}/docker-compose.core.yml" ]; then
+    err "This is the native Provisa installer — it carries no Docker tier."
+    err "Install Provisa-Container-<version>-macOS.dmg to run the Trino engine or the Docker observability/demo stacks."
+    exit 1
+  fi
   local dest="${PROVISA_HOME}/compose"
   mkdir -p "$dest"
   # Always overwrite compose YAMLs — never allow stale files from a prior install
@@ -356,18 +364,6 @@ resolve_deployment() {
   ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER} dq=${DQ_CHECKER}"
 }
 
-# ── The pyproject extra set for the native venv (REQ-1443) ───────────────────
-# The checker the operator chose is installed alongside the base extras. `none` adds nothing, so a
-# default install acquires no checker at all — soda-core is Elastic License 2.0 and is never vendored.
-_native_extras() {
-  case "${DQ_CHECKER:-none}" in
-    soda) printf 'embedded,soda' ;;
-    gx)   printf 'embedded,gx' ;;
-    none) printf 'embedded' ;;
-    *) err "Unknown data-quality checker '${DQ_CHECKER}' (expected none|soda|gx)."; exit 1 ;;
-  esac
-}
-
 # ── Acquire an add-on image set: local-first, download last (airgap seam) ─────
 # Discovery order — the first four are OFFLINE. An enterprise builds a fully
 # airgapped install by pre-staging the tarball beside the installer:
@@ -459,12 +455,9 @@ install_addons() {
   fi
 }
 
-# ── Network check (online vs airgapped) ──────────────────────────────────────
-_online() { curl -fsI --max-time 8 https://pypi.org/simple/ >/dev/null 2>&1; }
-
 # ── Locate a bundled hidden-DMG payload dir by name (next to .app or on a volume) ─
-# The bare interpreter, wheelhouse, and UI ship as hidden DMG content (like images/):
-# discovered beside the .app (running from the mounted DMG) or on any mounted volume.
+# The prebuilt native runtime ships as hidden DMG content (like images/): discovered
+# beside the .app (running from the mounted DMG) or on any mounted volume.
 _find_payload() {
   local name="$1" test_glob="$2" bundle_parent cand
   bundle_parent="$(dirname "$BUNDLE_DIR")"
@@ -477,61 +470,87 @@ _find_payload() {
   return 1
 }
 
-# ── Native tier: build a Python venv from the bundled interpreter + wheelhouse ─
-# Online → pip install provisa[embedded] from PyPI (pinned to the release). Airgapped →
-# --no-index --find-links against the bundled wheelhouse (always pre-staged on disk).
-# The bare interpreter (python-base/), wheelhouse (wheels/) and built UI (ui-dist/)
-# ship as hidden DMG payload; the standalone runtime DMG is gone.
-setup_native_venv() {
+# ── Native tier: stage the prebuilt runtime (REQ-979) ────────────────────────
+# The DMG ships `runtime/` — a python-build-standalone interpreter with provisa[embedded],
+# uvicorn, mcp-proxy, and the built UI ALREADY installed (build-dmg.sh does the pip work).
+# Install here is a copy: no venv creation, no pip, no PyPI. Mirrors the Windows installer
+# (packaging/windows/first-launch-native.ps1 Stage-Runtime).
+#
+# It lands at ~/.provisa/venv — the path scripts/provisa resolves bin/python3 from.
+stage_native_runtime() {
   local venv="${PROVISA_HOME}/venv"
-  if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -c "import provisa" 2>/dev/null; then
+  local bundle_ver="${PROVISA_VERSION:-dev}"
+  local staged_ver=""
+  [ -f "${venv}/.runtime-version" ] && staged_ver="$(cat "${venv}/.runtime-version")"
+
+  # Up to date: a working runtime at the bundle's version -> keep it. A version mismatch
+  # ALWAYS restages: an install that shipped a fixed dependency has to actually take.
+  if [ -x "${venv}/bin/python3" ] \
+     && "${venv}/bin/python3" -c "import provisa" 2>/dev/null \
+     && [ "$staged_ver" = "$bundle_ver" ]; then
+    ok "Native runtime already staged (${staged_ver})."
     return 0
   fi
 
-  local base_src
-  base_src="$(_find_payload python-base bin/python3)" || {
-    err "Bundled Python interpreter not found. Keep the Provisa DMG mounted and re-open Provisa.app."
+  local src
+  src="$(_find_payload runtime bin/python3)" || {
+    err "Bundled Python runtime not found. Keep the Provisa DMG mounted and re-open Provisa.app."
     exit 1
   }
 
-  # Stage + de-quarantine + ad-hoc sign the interpreter so Gatekeeper lets it run.
-  local base="${PROVISA_HOME}/python-base"
-  if [ ! -x "${base}/bin/python3" ]; then
-    info "Staging Python interpreter..."
-    mkdir -p "$base"; cp -R "$base_src"/. "$base/"
-    xattr -dr com.apple.quarantine "$base" 2>/dev/null || true
-    codesign --force --deep --sign - "${base}/bin/python3" 2>/dev/null || true
-  fi
+  info "Staging Python runtime..."
+  rm -rf "$venv"
+  mkdir -p "$venv"
+  cp -R "$src"/. "${venv}/"
+  # Gatekeeper: everything copied off a downloaded DMG carries com.apple.quarantine, and a
+  # quarantined .dylib/.so inside the runtime is refused at load time, not just at launch.
+  xattr -dr com.apple.quarantine "$venv" 2>/dev/null || true
+  codesign --force --sign - "${venv}/bin/python3" 2>/dev/null || true
+  printf '%s' "$bundle_ver" > "${venv}/.runtime-version"
 
-  info "Creating Python environment..."
-  "${base}/bin/python3" -m venv "$venv"
-  local pip="${venv}/bin/pip"
-  "$pip" install --quiet --upgrade pip 2>/dev/null || true
+  install_dq_checker
+  ok "Native runtime ready."
+}
 
-  local pin=""
-  [ -n "$PROVISA_VERSION" ] && pin="==${PROVISA_VERSION#v}"
-  local wheels; wheels="$(_find_payload wheels '*.whl' || true)"
-  # REQ-1443: the operator's chosen data-quality checker rides in as a pyproject extra.
-  local extras; extras="$(_native_extras)"
+# ── REQ-1443: the operator's chosen data-quality checker ─────────────────────
+# Not baked into the shipped runtime: soda-core is Elastic License 2.0 and is never
+# vendored. `none` (the default) installs nothing, so a default install is fully offline.
+# We install the extra's own requirements rather than `provisa[soda]` so pip cannot swap
+# the bundled build for a PyPI one.
+install_dq_checker() {
+  local extra
+  case "${DQ_CHECKER:-none}" in
+    none) return 0 ;;
+    soda) extra="soda" ;;
+    gx)   extra="gx" ;;
+    *) err "Unknown data-quality checker '${DQ_CHECKER}' (expected none|soda|gx)."; exit 1 ;;
+  esac
 
-  if _online; then
-    info "Installing Provisa from PyPI..."
-    "$pip" install --quiet "provisa[${extras}]${pin}" uvicorn mcp-proxy
-  elif [ -n "$wheels" ]; then
-    info "Installing Provisa from bundled wheels (offline)..."
-    "$pip" install --quiet --no-index --find-links "$wheels" "provisa[${extras}]" uvicorn mcp-proxy
-  else
-    err "No network and no bundled wheels found. Keep the Provisa DMG mounted and re-open Provisa.app."
+  local py="${PROVISA_HOME}/venv/bin/python3"
+  # Requires-Dist lines carry the extra in their environment marker:
+  #   soda-core-postgres>=3.3; extra == "soda"
+  local script='
+import re, sys
+from importlib.metadata import requires
+want = sys.argv[1]
+pat = re.compile("extra\\s*==\\s*[\x27\"]%s[\x27\"]" % re.escape(want))
+for spec in requires("provisa") or []:
+    head, _, marker = spec.partition(";")
+    if marker and pat.search(marker):
+        print(head.strip())
+'
+  local reqs
+  reqs="$("$py" -c "$script" "$extra")"
+  if [ -z "$reqs" ]; then
+    err "The '${extra}' extra declares no requirements in the installed provisa metadata."
     exit 1
   fi
-
-  # Place the built UI where ui_server resolves it (<site-packages>/static).
-  local ui_src; ui_src="$(_find_payload ui-dist '' || true)"
-  if [ -n "$ui_src" ]; then
-    local site; site="$("${venv}/bin/python3" -c 'import sysconfig;print(sysconfig.get_paths()["purelib"])')"
-    mkdir -p "${site}/static"; cp -R "$ui_src"/. "${site}/static/"
-  fi
-  ok "Native environment ready."
+  info "Installing the ${extra} data-quality checker..."
+  # shellcheck disable=SC2086 — one requirement per line, none contain spaces.
+  "$py" -m pip install --quiet $reqs || {
+    err "Could not install the ${extra} checker. It is not bundled (Elastic License 2.0) and needs network access."
+    exit 1
+  }
 }
 
 # ── Docker tier helpers (user's own Docker — no VM) ──────────────────────────
@@ -580,7 +599,16 @@ main() {
     # Already set up — update bundle, CLI, and compose YAMLs to latest version
     echo "PROGRESS:staging"
     install_to_applications
-    stage_compose
+    # Each DMG refreshes only the tier it carries: the Container DMG the compose tree,
+    # the core DMG the native runtime. An upgrade re-opens a NEWER DMG over an existing
+    # install, and the staged copy stays on the old release until this restages it
+    # (no-op when the versions already match).
+    if [ -f "${RESOURCES}/docker-compose.core.yml" ]; then
+      stage_compose
+    fi
+    if [ -d "${PROVISA_HOME}/venv" ]; then
+      DQ_CHECKER=none stage_native_runtime
+    fi
     echo "PROGRESS:finalize"
     install_cli
     exit 0
@@ -599,7 +627,7 @@ main() {
     IMAGE_SOURCE=build
     write_config
     echo "PROGRESS:staging"
-    setup_native_venv       # bundled interpreter + venv + pip (online: PyPI, offline: wheelhouse)
+    stage_native_runtime    # copy the prebuilt interpreter (provisa already installed) to ~/.provisa/venv
     install_to_applications # self-installs to /Applications if running from DMG
     echo "PROGRESS:extensions"
     install_addons          # native demo (host mock servers) needs no images; no-op unless selected
