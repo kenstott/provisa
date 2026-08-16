@@ -133,6 +133,26 @@ def enforce_output_cap(result: "ResultStream", caps: Any, plan: str) -> "ResultS
     return plugin.enforce_output_cap(result, caps, plan)
 
 
+# --- trial eligibility ----------------------------------------------------------------------- #
+
+
+async def bind_member_to_org_trial(pool: Any, org_id: str, email: str | None) -> None:
+    """Record that ``email`` has used the free trial, if the org they just joined is on one.
+
+    Called from every seam where a person becomes a member of an org they did not create — invite
+    redemption at registration, invite redemption by an existing account, and REQ-1269 auto-join.
+    The trial belongs to the org, so everyone working inside a trialling org has had their free
+    evaluation; recording it is what stops an org from minting fresh trials by inviting alternate
+    accounts that later go off and create orgs of their own.
+
+    No-op without the plugin: a self-hosted deployment has no trial to spend.
+    """
+    plugin = load()
+    if plugin is None:
+        return
+    await plugin.bind_member_to_trial(pool, org_id, email)
+
+
 # --- wiring ---------------------------------------------------------------------------------- #
 
 

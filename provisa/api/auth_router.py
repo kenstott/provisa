@@ -456,6 +456,7 @@ async def register(body: RegisterRequest):
             invite = dict(fetched._mapping) if fetched is not None else None
             if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
                 raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
+            joined_org_id = invite["org_id"]
             await conn.upsert(
                 user_org_memberships,
                 {"user_id": user_id, "org_id": invite["org_id"]},
@@ -480,6 +481,15 @@ async def register(body: RegisterRequest):
             rt = await ensure_org_runtime(invite["org_id"])
             assert rt.tenant_db is not None
             await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
+    if body.invite_token:
+        # REQ-1474: the invitee works under the org's trial if one is running, so the free
+        # evaluation is spent for them as well as for the buyer — otherwise an org could mint an
+        # endless supply of trials by inviting accounts that later go and create orgs of their own.
+        # Outside the transaction above, which holds the only admin-plane connection this request
+        # has: the seam opens its own.
+        from provisa.core.commerce import bind_member_to_org_trial
+
+        await bind_member_to_org_trial(admin_db, joined_org_id, body.email)
     # REQ-1394: registration is the third moment a plaintext password exists, so the account can
     # negotiate SCRAM over pgwire from the start rather than after a password change.
     await write_verifier(admin_db, user_id, body.username, body.password)
@@ -569,6 +579,11 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
     rt = await ensure_org_runtime(invite["org_id"])
     assert rt.tenant_db is not None
     await grant_org_role(rt.tenant_db, user_id, role_id)
+    # REQ-1474: see /register — redeeming an invite into a trialling org spends this account's own
+    # free evaluation, because from here on they are working inside one.
+    from provisa.core.commerce import bind_member_to_org_trial
+
+    await bind_member_to_org_trial(admin_db, invite["org_id"], identity.email)
     return {"user_id": user_id, "org_id": invite["org_id"], "role_id": role_id}
 
 

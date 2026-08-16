@@ -853,6 +853,18 @@ services:
       PROVISA_EMAIL_API_KEY: "\${PROVISA_EMAIL_API_KEY:-}"
       PROVISA_MAIL_FROM: "\${PROVISA_MAIL_FROM:-}"
       PROVISA_MAIL_BASE_URL: "\${PROVISA_MAIL_BASE_URL:-}"
+      # REQ-1455/REQ-1474: the merchant of record. This base REPLACES docker-compose.app.yml
+      # and forwards no variable it does not name, so the commercial plugin's credentials have
+      # to be listed here or they never enter the container — provisa.env holding them is not
+      # enough. LEMONSQUEEZY_MODE selects the store: "test" reads TEST_LEMONSQUEEZY_API_KEY,
+      # anything else the live key, so both are forwarded and the mode decides which is read.
+      LEMONSQUEEZY_MODE: "\${LEMONSQUEEZY_MODE:-}"
+      LEMONSQUEEZY_API_KEY: "\${LEMONSQUEEZY_API_KEY:-}"
+      TEST_LEMONSQUEEZY_API_KEY: "\${TEST_LEMONSQUEEZY_API_KEY:-}"
+      LEMONSQUEEZY_STORE_ID: "\${LEMONSQUEEZY_STORE_ID:-}"
+      LEMONSQUEEZY_VARIANT_STARTER: "\${LEMONSQUEEZY_VARIANT_STARTER:-}"
+      LEMONSQUEEZY_VARIANT_PRO: "\${LEMONSQUEEZY_VARIANT_PRO:-}"
+      LEMONSQUEEZY_SIGNING_SECRET: "\${LEMONSQUEEZY_SIGNING_SECRET:-}"
     depends_on:
       redis:
         condition: service_healthy

@@ -562,6 +562,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             ):
                 from provisa.api.app import ensure_org_runtime
                 from provisa.api.org_runtime import reset_current_org, set_current_org
+                from provisa.core.commerce import bind_member_to_org_trial
                 from provisa.core.org_membership import (
                     grant_membership,
                     grant_org_role,
@@ -573,6 +574,11 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 )
                 for auto_org_id, auto_role in auto:
                     await grant_membership(self._admin_pool, identity.user_id, auto_org_id)
+                    # REQ-1474: an auto-joined member works under the org's trial if it is running,
+                    # so the trial is spent for them too.
+                    await bind_member_to_org_trial(
+                        self._admin_pool, auto_org_id, identity.email
+                    )
                     rt = await ensure_org_runtime(auto_org_id)
                     if rt.tenant_db is not None:
                         org_token = set_current_org(auto_org_id)

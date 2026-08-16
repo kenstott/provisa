@@ -45830,3 +45830,113 @@
   related_reqs:
   - REQ-125
   - REQ-124
+- id: REQ-1474
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Pricing & Tiering
+  priority: MUST
+  type: behavioral
+  description: >-
+    The REQ-1455 free evaluation period is offered once per PERSON, and the record of it outlives
+    the org that consumed it. orgs.trial_started_at enforces "once per org" and is exactly as
+    durable as the org row, which REQ-1300 lets an org_admin delete: delete the org, create
+    another, sign up again, and the same account draws a second free 14 days, repeatable forever,
+    each one holding a share of the shared lane and each one ending in a zero-dollar authorisation
+    instead of revenue. Eligibility therefore lives in trial_grants, a control-plane table with no
+    foreign key to orgs and nothing cascading to it -- org_id is kept as evidence of which org
+    consumed the grant and may name an org that no longer exists. A person is recognised by two
+    independent identities, either of which refuses the next trial: the authenticated account's
+    normalized email, and the Lemon Squeezy customer id, which a customer who changes address keeps
+    because the merchant of record matches a returning buyer to the customer record it holds.
+    Normalization is narrow and only folds spellings the mail host itself treats as one mailbox --
+    case, surrounding space, sub-addressing tags, and Gmail's dot-insensitivity -- because refusing
+    a first trial to someone who has not had one is the more expensive mistake. An address that is
+    not an address raises rather than becoming a key that matches nothing.
+    Enforced at the webhook, not only at the checkout: POST /billing/trial/start refuses an
+    ineligible account with 409 billing.trial_already_used and requires a signed-in identity with an
+    email (401 otherwise, since an anonymous request cannot be held to a once-per-person rule), but
+    a minted checkout URL can be reached again and Lemon Squeezy will create a second trialling
+    subscription for it. subscription_created is the point every route to a subscription passes
+    through, so open_trial decides eligibility there. An ineligible signup is NOT refused -- the
+    customer keeps the subscription they just authorised and it starts PAID Starter: the provider is
+    charged first (end_trial_at), then the plan and status are written, and trial_started_at stays
+    NULL so the REQ-1455 sweep never sees it. Refusing at the webhook would leave a trialling
+    subscription live at the merchant of record with no trial recorded in Provisa, which is the one
+    outcome that costs money and entitles nothing.
+    The trial belongs to the ORG, so the grant is spent by everyone working inside a trialling org,
+    not only by the buyer: joining one -- by redeeming an invite at registration, by redeeming one
+    with an existing account, or by REQ-1269 auto-join -- records the joiner's grant against that
+    org. Without it an org on trial could mint an unlimited supply of fresh evaluation periods by
+    inviting alternate accounts that each walk away still holding an unspent one. Bound only while
+    the org is actually trialling (trial_started_at set, converted_at still NULL): someone invited
+    into an org that already converted joined a paying customer and consumed no free evaluation.
+    A principal carrying no email address identifies no person and binds nothing; a non-empty value
+    that is not an address raises, because that is a broken identity claim rather than an anonymous
+    one. The core reaches this through provisa.core.commerce (REQ-1473) and it no-ops entirely on a
+    self-hosted deployment, which has no trial to spend.
+    A refusal is recoverable, not a dead end: billing.trial_already_used names both readings of the
+    refusal -- bought a trial before, or joined an org that was trialling -- and gives an address to
+    write to for a reset, because the person who only ever accepted an invite spent nothing they
+    knew about and a lost prospect costs more than the trial being refused. The reset is the
+    deletion of one trial_grants row.
+  use_case: >-
+    A customer whose trial ended deletes their org and signs up again; they get the Starter plan
+    they were going to be billed for, not another free evaluation period.
+  code:
+  - provisa_commercial/trial_eligibility.py
+  - provisa_commercial/trial.py
+  - provisa_commercial/router.py
+  - provisa_commercial/schema.py
+  - provisa/core/commerce.py
+  - provisa/api/auth_router.py
+  - provisa/auth/middleware.py
+  scenario: |
+    Given an account that has already been granted the trial on an org it has since deleted
+    When it creates a new org and starts a Starter signup checkout
+    Then POST /billing/trial/start refuses with billing.trial_already_used
+    And a subscription created anyway begins on paid Starter with no trial window
+    And the grant is still recorded against that account after the original org is deleted
+    And an account invited into an org while its trial was running is refused one of its own
+  related_reqs:
+  - REQ-1300
+  - REQ-1455
+  - REQ-1473
+  - REQ-1355
+- id: REQ-1475
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Pricing & Tiering
+  priority: MUST
+  type: behavioral
+  description: >-
+    A Lemon Squeezy store sells more than one product, and it delivers EVERY subscription event to
+    EVERY webhook configured on it, each one signed with that webhook's own secret. A sibling
+    product's subscription therefore reaches POST /billing/webhook with a signature that verifies,
+    and the payload carries no marker saying which product it belongs to except the variant id. The
+    variant is the test: plan_for_variant_id resolves only the variants this deployment sells, so an
+    event naming a variant it does not recognise is not Provisa's and is answered 200 with
+    {"received": true, "ignored": "foreign_variant"} before any org is resolved or any row written.
+    The no-op is a SUCCESS rather than a rejection because Lemon Squeezy records a 4xx as a failed
+    delivery, retries it, and disables a webhook whose failures persist -- so refusing the other
+    product's traffic would eventually take Provisa's own events down with it. Answering 200 also
+    keeps the remaining 400s meaning what they should: a Provisa subscription with a broken payload,
+    not routine cross-product noise. An event carrying no variant id at all is deliberately NOT
+    filtered here, because that is a payload this deployment cannot interpret rather than one it can
+    attribute elsewhere, and billing.webhook_missing_variant still refuses it.
+  code:
+  - provisa_commercial/router.py
+  - provisa_commercial/models.py
+  scenario: |
+    Given a Lemon Squeezy store that sells both Provisa Starter and another product
+    When a subscription event for the other product's variant is delivered with a valid signature
+    Then the webhook answers 200 and writes nothing
+    And an event for the configured Provisa variant is handled normally
+    And an event carrying no variant id is still refused with billing.webhook_missing_variant
+  related_reqs:
+  - REQ-1075
+  - REQ-1455
+  - REQ-1456
