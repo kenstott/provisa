@@ -135,6 +135,26 @@ async def write_audit(pending: PendingAudit | None, status_code: int, state: Any
         duration_ms=int((time.monotonic() - pending.started) * 1000),
         encryption=encryption_service(),
     )
+    await _meter_active_hour(state)
+
+
+async def _meter_active_hour(state: Any) -> None:
+    """Mark the org's current clock hour active (REQ-1454).
+
+    Placed on the audit seam, and after its ``pending is None`` guard, so the meter inherits the
+    audit's definition of a user query exactly: every protocol reaches this point through
+    ``finalize_audit``, and no new surface can be added that executes governed SQL and bills
+    nothing. The bill counts hours, so N statements in an hour collapse to one row.
+    """
+    from provisa.api.org_runtime import current_org
+    from provisa.core.commerce import meter_op
+
+    pool = state.admin_db
+    if pool is None:
+        # Single-tenant / desktop: no control plane, so no org registry, no subscription and
+        # nothing to meter. The SaaS deployment always has one.
+        return
+    await meter_op(pool, current_org.get() or state.org_id)
 
 
 async def write_denial(

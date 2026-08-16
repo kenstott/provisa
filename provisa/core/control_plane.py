@@ -34,8 +34,11 @@ async def bring_up_platform(
         create_engine_from_url(url, pool_size=pool_size, max_overflow=max(pool_size - pool_min, 0)),
         name="platform",
     )
-    await init_registry_schema(db, org_id)
-    from provisa.api.billing.org_db import init_billing_schema
+    # Loaded BEFORE the registry pass: the commercial plugin attaches its billing columns and its
+    # meter table to the registry metadata at import time, and init_registry_schema is what creates
+    # and back-fills them. A deployment without the plugin gets the open-source registry alone.
+    from provisa.core.commerce import load as load_commerce
 
-    await init_billing_schema(db)
+    load_commerce()
+    await init_registry_schema(db, org_id)
     return db

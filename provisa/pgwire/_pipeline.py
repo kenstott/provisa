@@ -100,6 +100,13 @@ class _Plan:
     # (_govern_and_route / _govern_and_route_compiled); _execute_plan refuses any plan lacking a
     # valid one, so an un-governed / side-door plan can never be executed.
     stamp: str | None = field(default=None)
+    # REQ-1044: the org's tier ceilings and the plan name they came from, resolved once when this
+    # plan was minted. Attached at the top of the pipeline — the one place every surface passes
+    # through — so the scan-side hints are already in `session_hints` no matter which terminal
+    # runs the statement, and the terminal has what it needs to bound egress and to restate an
+    # engine-side kill as a tier error. None when the deployment has no billing subject.
+    tier_caps: Any | None = field(default=None)
+    tier_plan: str | None = field(default=None)
 
 
 # --------------------------------------------------------------------------- #
@@ -336,7 +343,59 @@ def _plan_span_attrs(
     return span_attrs_from_semantic_sql(semantic_sql, role_id, query_text, no_table_label="sql")
 
 
+async def _attach_tier_caps(plan: _Plan, state: Any) -> _Plan:
+    """Bind the org's REQ-1044 ceilings to ``plan`` and hand the scan-side ones to the engine.
+
+    Applied to every plan the pipeline mints, so the caps travel WITH the plan rather than with
+    the terminal that happens to run it: the govern-then-stream surfaces (pgwire's socketserver,
+    Flight SQL, airport, gRPC) never reach ``_execute_plan``, and a cap enforced only there would
+    be a cap every streaming protocol skips.
+
+    A deployment with no billing subject — self-hosted, or any build without the commercial plugin
+    — resolves no caps and the plan runs as authored; the tier gate is a SaaS monetization boundary,
+    not a safety limit.
+    """
+    from provisa.api.org_runtime import current_org
+    from provisa.core.commerce import caps_for_org, tier_session_hints
+
+    resolved = await caps_for_org(state, current_org.get() or getattr(state, "org_id", None))
+    if resolved is None:
+        return plan
+    caps, tier = resolved
+    plan.tier_caps, plan.tier_plan = caps, tier
+    hints = tier_session_hints(caps)
+    if hints:
+        # The plan's own hints win: they are correctness settings the planner chose for this
+        # statement (e.g. retry_policy=NONE), not cost policy, and a tier must not silently
+        # rewrite them.
+        plan.session_hints = {**hints, **(plan.session_hints or {})}
+    return plan
+
+
 async def _govern_and_route(
+    sql: str,
+    role_id: str,
+    *,
+    session_vars: dict[str, str] | None = None,
+    as_of: str | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
+) -> _Plan:
+    """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044)."""
+    from provisa.api.app import state
+
+    plan = await _govern_and_route_planned(
+        sql,
+        role_id,
+        session_vars=session_vars,
+        as_of=as_of,
+        deliver=deliver,
+        buffered=buffered,
+    )
+    return await _attach_tier_caps(plan, state)
+
+
+async def _govern_and_route_planned(
     sql: str,
     role_id: str,
     *,
@@ -731,11 +790,45 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     # written here rather than in each transport, so no surface can omit it.
     try:
         result = await _run_plan_terminal(plan, state)
-    except Exception:
+    except Exception as exc:
+        # REQ-1044: the engine kills a query that breached a scan-side ceiling with its own
+        # EXCEEDED_* error, which says nothing about the customer's plan. Restate it as the tier
+        # boundary it is — 402, not 500 — and audit it as such.
+        tier_error = _translate_tier_error(plan, exc)
+        if tier_error is not None:
+            await finalize_audit(plan, 402, state)
+            raise tier_error from exc
         await finalize_audit(plan, 500, state)
+        raise
+    try:
+        result = _apply_output_cap(plan, result)
+    except Exception:
+        # REQ-1044/REQ-1454: an egress rejection is an OUTCOME of this statement, not an absence of
+        # one. It is audited at 402 and metered like any other submitted statement — the shard ran
+        # the query to produce the rows it then refused to ship, and a rejection that recorded
+        # nothing would leave the customer's own audit log unable to explain the error they saw.
+        await finalize_audit(plan, 402, state)
         raise
     await finalize_audit(plan, 200, state)
     return result
+
+
+def _translate_tier_error(plan: _Plan, exc: BaseException) -> Exception | None:
+    """The tier restatement of an engine-side ceiling kill, or None when ``exc`` is unrelated."""
+    if plan.tier_caps is None or plan.tier_plan is None:
+        return None
+    from provisa.core.commerce import translate_engine_error
+
+    return translate_engine_error(exc, plan.tier_caps, plan.tier_plan)
+
+
+def _apply_output_cap(plan: _Plan, result: QueryResult) -> QueryResult:
+    """Bound the result at the tier's egress ceiling (REQ-1044) — a rejection, never a truncation."""
+    if plan.tier_caps is None or plan.tier_plan is None:
+        return result
+    from provisa.core.commerce import enforce_output_cap
+
+    return enforce_output_cap(result, plan.tier_caps, plan.tier_plan)
 
 
 async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028
@@ -923,7 +1016,32 @@ async def govern_batch_final_plan(
     return await _govern_and_route(statements[-1], role_id, session_vars=session_vars)
 
 
-async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266  # pyright: ignore[reportUnusedFunction]
+async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ-1044
+    sql: str,
+    role_id: str,
+    *,
+    exec_params: list | None = None,
+    state: Any | None = None,
+    api_args: dict | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
+) -> _Plan:
+    """Governance + routing for already-physical SQL, with the org's tier ceilings bound."""
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
+    plan = await _govern_and_route_compiled_planned(
+        sql,
+        role_id,
+        exec_params=exec_params,
+        state=state,
+        api_args=api_args,
+        deliver=deliver,
+        buffered=buffered,
+    )
+    return await _attach_tier_caps(plan, state)
+
+
+async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-266
     sql: str,
     role_id: str,
     *,

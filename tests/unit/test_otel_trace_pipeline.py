@@ -718,7 +718,13 @@ class TestNonEngineTerminalsAreReported:
 
         from provisa.pgwire import _pipeline
 
-        for fn in (_pipeline._govern_and_route, _pipeline._govern_and_route_compiled):
+        # The planners, not their REQ-1044 wrappers: _govern_and_route and
+        # _govern_and_route_compiled now only bind the org's tier ceilings onto the plan these two
+        # produce, so the branches that mint span attributes live here.
+        for fn in (
+            _pipeline._govern_and_route_planned,
+            _pipeline._govern_and_route_compiled_planned,
+        ):
             src = inspect.getsource(fn)
             assert src.count("span_attrs=_plan_span_attrs(") == 2, fn.__name__
 

@@ -632,6 +632,11 @@ def _start_scheduler(_log: logging.Logger) -> None:
             name="engine:watcher",
             replace_existing=True,
         )
+        # The commercial plugin's own scheduled billing work (the REQ-1455 trial sweep). A
+        # deployment without the plugin registers nothing.
+        from provisa.core.commerce import schedule_jobs
+
+        schedule_jobs(scheduler)
 
         scheduler.start()
         state._scheduler = scheduler

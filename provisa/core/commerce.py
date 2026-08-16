@@ -1,0 +1,152 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2422fca0-95f2-4f59-a6e7-e0a6e0c58241
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The seam between Provisa and its commercial plugin.
+
+Metering, tier ceilings, plans and the merchant-of-record integration are SaaS operations, not
+product behaviour. They live in a separate distribution (``provisa_commercial``) that only the
+hosted deployment installs, so the open-source wheel and the demo build ship neither the pricing
+model nor the code that charges for it.
+
+Every core call site goes through this module and NOTHING here fails when the plugin is absent:
+the meter records nothing, no tier caps resolve, no billing routes mount, no trial sweep is
+scheduled. That is the correct behaviour for a self-hosted deployment — there is no subscription to
+enforce and no invoice to produce — and it is why the seam returns "no caps apply" rather than a
+default set of ceilings. Guessing a tier for a deployment that has no billing subject would impose
+a paywall on software the customer already owns.
+
+Load order matters in one place: :func:`load` must run before the control-plane registry schema is
+initialised, because the plugin attaches its columns and its meter table to that registry's
+metadata at import time. ``bring_up_platform`` calls it there.
+"""
+
+# Requirements: REQ-1044, REQ-1355, REQ-1452, REQ-1454, REQ-1455
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from provisa.executor.result import ResultStream
+
+log = logging.getLogger(__name__)
+
+_PLUGIN: Any = None
+_LOADED = False
+
+
+def load() -> Any:
+    """Import the commercial plugin, or return None when it is not installed.
+
+    Resolved once per process. An ImportError is the ordinary state of the open-source and demo
+    distributions, so it is recorded at debug and never raised; any OTHER exception from the
+    plugin's import is a broken commercial install and propagates, because a hosted deployment that
+    silently ran unmetered would be billing nobody.
+    """
+    global _PLUGIN, _LOADED
+    if _LOADED:
+        return _PLUGIN
+    try:
+        import provisa_commercial
+    except ImportError:
+        _PLUGIN = None
+        log.debug("commercial plugin not installed — billing, metering and tier caps are off")
+    else:
+        _PLUGIN = provisa_commercial
+        log.info("commercial plugin loaded: billing, metering and tier caps are active")
+    _LOADED = True
+    return _PLUGIN
+
+
+def enabled() -> bool:
+    """Whether this deployment is a commercial one."""
+    return load() is not None
+
+
+def reset_for_tests() -> None:
+    """Drop the memoized resolution so a test can install or remove the plugin mid-process."""
+    global _PLUGIN, _LOADED
+    _PLUGIN, _LOADED = None, False
+
+
+# --- metering -------------------------------------------------------------------------------- #
+
+
+async def meter_op(pool: Any, org_id: str) -> None:
+    """Meter one submitted statement against ``org_id``'s current billing bucket.
+
+    Called from the ONE audit seam, after its ``pending is None`` guard, so the meter inherits the
+    audit's definition of a user query exactly and no protocol can be added that executes governed
+    SQL and records nothing.
+    """
+    plugin = load()
+    if plugin is None:
+        return
+    await plugin.record_op(pool, org_id)
+
+
+# --- tier ceilings --------------------------------------------------------------------------- #
+
+
+async def caps_for_org(state: Any, org_id: str | None) -> tuple[Any, str] | None:
+    """The ``(caps, plan)`` in force for ``org_id``, or None when no tier applies.
+
+    None on a self-hosted deployment (no plugin) and on a plugin deployment whose control plane
+    holds no ``orgs`` row for the id — in both cases there is no subscription, so there is no
+    ceiling to impose.
+    """
+    plugin = load()
+    if plugin is None:
+        return None
+    return await plugin.caps_for_org(state, org_id)
+
+
+def tier_session_hints(caps: Any) -> dict[str, str]:
+    """The engine session properties that enforce ``caps``'s scan-side ceilings."""
+    plugin = load()
+    if plugin is None:
+        return {}
+    return plugin.tier_session_hints(caps)
+
+
+def translate_engine_error(exc: BaseException, caps: Any, plan: str) -> Exception | None:
+    """The tier restatement of an engine-side ceiling kill, or None when ``exc`` is unrelated."""
+    plugin = load()
+    if plugin is None:
+        return None
+    return plugin.translate_engine_error(exc, caps, plan)
+
+
+def enforce_output_cap(result: "ResultStream", caps: Any, plan: str) -> "ResultStream":
+    """Bound ``result`` at the tier's egress ceiling — a rejection, never a truncation."""
+    plugin = load()
+    if plugin is None:
+        return result
+    return plugin.enforce_output_cap(result, caps, plan)
+
+
+# --- wiring ---------------------------------------------------------------------------------- #
+
+
+def include_routes(app: Any) -> None:
+    """Mount the billing API, if this deployment has one."""
+    plugin = load()
+    if plugin is None:
+        return
+    plugin.include_routes(app)
+
+
+def schedule_jobs(scheduler: Any) -> None:
+    """Register the plugin's scheduled billing work (the REQ-1455 trial sweep)."""
+    plugin = load()
+    if plugin is None:
+        return
+    plugin.schedule_jobs(scheduler)

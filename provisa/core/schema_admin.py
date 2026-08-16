@@ -19,13 +19,17 @@ Contents (shared across all orgs, single logical location):
 
 - Org registry and membership: ``orgs``, ``user_profiles``,
   ``user_org_memberships``, ``local_users``, ``org_invites``
-- SaaS billing: the plan/limit/Lemon-Squeezy/KMS columns on ``orgs`` (REQ-1355 —
-  the org is the billing subject; there is no separate ``tenants`` row), plus the
-  per-org encrypted config in ``org_config``
+- Per-org encrypted config: ``org_config``
+
+The SaaS billing facts are NOT here. The plan/limit/Lemon-Squeezy/KMS columns on ``orgs`` and the
+``org_usage_hour`` meter belong to the commercial plugin, which attaches them to this module's
+``metadata`` and ``REGISTRY_TABLES`` when it loads (``provisa.core.commerce``). A deployment without
+the plugin has no billing subject and no meter, which is the correct shape for the open-source and
+demo distributions.
 
 Mirrors the post-migration shape of the corresponding tables in
-``provisa/core/schema.sql`` and ``provisa/api/billing/org_db.py`` with
-portable types (see ``provisa/core/schema_org.py`` for the type mapping).
+``provisa/core/schema.sql`` with portable types (see ``provisa/core/schema_org.py``
+for the type mapping).
 
 Cross-model references to the per-org ``roles`` table (``org_invites.role_id``)
 are kept as plain columns, not ForeignKeys, since the org model may live in a
@@ -121,17 +125,6 @@ orgs = Table(
     # which of the two an org fills is decided by the chosen kind's ENGINE_REGISTRY config_fields,
     # never by sniffing the value.
     Column("engine_url_enc", LargeBinary),
-    # REQ-1355: the org IS the billing subject. These columns were the ``tenants`` table, whose
-    # UUID pk duplicated the org and forced every billing call site to carry a second identifier.
-    # The externally-visible billing key is now the org slug.
-    Column("plan", Text, nullable=False, server_default="trial"),
-    Column("source_limit", Integer, nullable=False, server_default="2"),
-    Column("ls_customer_id", Text),  # Lemon Squeezy customer id (REQ-1075)
-    Column("ls_subscription_id", Text),  # Lemon Squeezy subscription id (REQ-1075)
-    # Nullable, unlike the NOT NULL ``tenants.kms_key_arn``: an org created through onboarding
-    # exists before billing initializes it, and there is no key to invent for it (REQ-693 rejects
-    # client-side decrypt when this is unset, which is the correct state for such an org).
-    Column("kms_key_arn", Text),
 )
 
 user_profiles = Table(
@@ -321,6 +314,7 @@ REGISTRY_TABLES = [
     local_users,
     org_invites,
     superadmin_bootstrap,
+    org_config,
     personal_access_tokens,
     scram_credentials,
     platform_notice,

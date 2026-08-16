@@ -30518,7 +30518,11 @@
     stricter bound wins, and only the tier bound raises a tier error. The cap is also what makes the REQ-1454
     active-hour meter safe: that meter charges occupancy and is deliberately blind to volume, so without
     an output ceiling an org can drain the estate inside one $1.30 hour. Free/standard tiers carry restrictive
-    caps; expensive queries require acquiring a premium SKU.'
+    caps; expensive queries require acquiring a premium SKU. The confirmed per-tier ceilings are: Trial
+    — 100,000 output rows, 10 GB scanned, 8 GB peak memory, 120s execution; Starter — 1,000,000 output
+    rows, 100 GB scanned, 32 GB peak memory, 300s execution; Pro — uncapped on all four, because a Pro
+    org runs on its own engine and its ceiling is its own hardware. Each tier admits strictly more than
+    the one below it, so the upgrade a rejection names always runs the query it was rejected for.'
   use_case: 'Primary monetization lever: caps are hard rejections, not silent degradation. Prevents free-tier
     abuse in both directions — scanning the entire data warehouse (scan-side) and downloading it (egress-side).
     Drives tier-upgrade conversion when users hit caps. Project rule: rejection must be explicit, never
@@ -45011,7 +45015,7 @@
   - REQ-1449
   - REQ-1281
 - id: REQ-1455
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Pricing & Tiering
@@ -45035,12 +45039,24 @@
     than at a deferred checkout, subscription_created fires before any revenue exists. Entitlement
     must key off subscription STATUS, never off a landed payment, or every trialling org reads as
     unpaid.
+    IMPLEMENTATION STATE: the day and active-hour bounds are enforced; the 25 GB EGRESS bound is
+    NOT. The platform has no egress byte meter -- org_usage_hour deliberately records none, because
+    a streaming result is finalized before it is drained and any byte count written at that seam
+    would be a number the meter could not stand behind. Until that meter exists the trial is bounded
+    by days and active hours alone, and the published bound must say so.
+    The clock is Provisa's, not the provider's: Lemon Squeezy can express 14 days and nothing else,
+    and the active-hour bound is a fact only the REQ-1454 meter can see. Conversion is forced on the
+    provider by moving its trial_ends_at to now, which is what makes it charge the first period. The
+    provider is moved FIRST -- an org recorded as converted whose merchant of record never billed it
+    is a paying customer who is never invoiced.
   use_case: >-
     A prospect can complete real due diligence on live data without a purchase order, and becomes a
     paying customer at the end of it without a second decision.
   code:
   - pricing_model.py
-  - provisa/api/billing.py
+  - provisa_commercial/trial.py
+  - provisa_commercial/lemonsqueezy_client.py
+  - provisa_commercial/router.py
   scenario: |
     Given a Starter signup with a card captured under a zero-dollar authorisation
     When the org reaches 40 active hours on day nine
@@ -45050,6 +45066,51 @@
   - REQ-1454
   - REQ-1064
   - REQ-594
+  - REQ-1473
+- id: REQ-1473
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Pricing & Tiering
+  priority: MUST
+  type: structural
+  description: >-
+    Plans, tier ceilings, the active-hour meter and the merchant-of-record integration ship as a
+    SEPARATE distribution (provisa_commercial) that only the hosted deployment installs. The
+    open-source wheel and the demo build carry neither the pricing model nor the code that charges
+    for it. Provisa core never names that package: provisa.core.commerce is the one seam, it
+    resolves the import once per process, and every hook through it degrades to a no-op when the
+    import fails -- nothing is metered, no ceiling resolves, no /billing routes mount, no trial
+    sweep is scheduled. That is the CORRECT behaviour for a self-hosted deployment rather than a
+    degraded one: there is no subscription to enforce, so the seam returns "no caps apply" instead
+    of a default set of ceilings, because guessing a tier for a deployment with no billing subject
+    would paywall software the customer already owns. An ImportError is therefore recorded at debug
+    and never raised, while any OTHER exception from the plugin's import propagates -- a hosted node
+    that silently ran unmetered would be billing nobody.
+    The commercial control-plane schema follows the same rule: the billing columns on orgs and the
+    org_usage_hour meter are attached to the core registry metadata at plugin import time, so
+    init_registry_schema creates and back-fills them through the same portable create_all +
+    add_missing_columns path as every other registry column and no migration exists. This is why the
+    seam must load before the registry pass; bring_up_platform owns that ordering.
+  use_case: >-
+    An open-source or demo install runs the whole product unmetered and unbilled, and the hosted
+    deployment is the only build that carries how Provisa charges.
+  code:
+  - provisa/core/commerce.py
+  - provisa/core/control_plane.py
+  - provisa_commercial/__init__.py
+  - provisa_commercial/schema.py
+  scenario: |
+    Given a Provisa install with no commercial plugin
+    When an org submits a governed statement
+    Then it executes with no tier ceiling and nothing is metered, and the app exposes no /billing routes
+  related_reqs:
+  - REQ-1044
+  - REQ-1452
+  - REQ-1454
+  - REQ-1455
+  - REQ-1355
 - id: REQ-1456
   status: proposed
   target: 2026-Q4

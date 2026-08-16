@@ -56,6 +56,10 @@ class _CapturingState:
     def __init__(self, org_id: str = "default") -> None:
         self.tenant_db = object()
         self.org_id = org_id
+        # REQ-1454: the audit seam meters the active hour against the control plane. None is the
+        # single-tenant/desktop shape — no org registry, so nothing to meter — which is what these
+        # tests exercise; the metering itself has its own suite.
+        self.admin_db = None
 
 
 @pytest.fixture

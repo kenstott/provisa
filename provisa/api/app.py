@@ -1873,9 +1873,12 @@ def create_app() -> FastAPI:
     except ImportError:
         pass
 
-    from provisa.api.billing.router import router as billing_router
+    # The billing API belongs to the commercial plugin (provisa.core.commerce). An open-source or
+    # demo deployment has no plugin and therefore no /billing routes — there is no subscription to
+    # manage and no merchant of record to talk to.
+    from provisa.core.commerce import include_routes
 
-    app.include_router(billing_router, prefix="/billing", tags=["billing"])
+    include_routes(app)
 
     # REQ-1355: included unconditionally. The former `if state.multitenancy:` guard read the flag
     # before _load_and_build assigns it, so it was always False and the router never mounted —

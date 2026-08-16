@@ -109,6 +109,9 @@ class TestAuthMiddlewareSkipPaths:
             "/data/openapi/redoc",
             "/data/openapi/openapi.json",
             "/auth/login",
+            # REQ-1472: the break-glass credential exchange. Like /auth/login it PRODUCES a token,
+            # so it cannot sit behind the bearer gate it is meant to fill.
+            "/auth/superuser-login",
             "/auth/provider-type",
             "/auth/bootstrap-status",
             "/setup/status",

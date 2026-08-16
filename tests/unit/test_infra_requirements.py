@@ -987,8 +987,14 @@ class TestREQ633ExtensionModel:
         assert "bundle_native_payload" in content, (
             "Core DMG must stage the native payload (interpreter + wheelhouse)"
         )
-        assert "docker save" in content and "docker-compose.airgap.yml" in content, (
-            "Core DMG must save service images for `docker load` on the user's own Docker"
+        # The core images are NOT saved into the DMG (REQ-979): bundling them put the default
+        # native install over GitHub's 2 GB asset limit once the interpreter is included. The DMG
+        # ships the airgap compose file and first-launch acquires the image tarball.
+        assert "docker save" not in content, (
+            "Core DMG must stay under the release asset limit — images are acquired at first launch"
+        )
+        assert "docker-compose.airgap.yml" in content, (
+            "Core DMG must ship the compose file the Docker tier runs the loaded images with"
         )
 
     def test_windows_obs_builder_writes_extension_files(self):
