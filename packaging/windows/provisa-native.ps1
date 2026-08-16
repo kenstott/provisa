@@ -175,15 +175,17 @@ function Start-Native {
   foreach ($k in $baseEnv.Keys) { Set-Item -Path "Env:$k" -Value $baseEnv[$k] }
 
   # CWD = {app}: the demo config references ./demo/files/*.sqlite relative to the working dir.
+  # -u: stdout/stderr are redirected to files here, so without it the logs lag the live process and
+  # a still-booting API reads as a hung one when you tail them.
   $api = Start-Process -FilePath $RuntimePy -WorkingDirectory $ScriptDir `
-    -ArgumentList @('-m','uvicorn','provisa.api.app:create_app','--factory','--host','0.0.0.0','--port',"$ApiPort") `
+    -ArgumentList @('-u','-m','uvicorn','provisa.api.app:create_app','--factory','--host','0.0.0.0','--port',"$ApiPort") `
     -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $LogDir 'native-api.log') `
     -RedirectStandardError  (Join-Path $LogDir 'native-api.err.log')
 
   $env:PROVISA_API_URL = "http://localhost:$ApiPort"
   $ui = Start-Process -FilePath $RuntimePy -WorkingDirectory $ScriptDir `
-    -ArgumentList @('-m','uvicorn','provisa.ui_server:app','--host','0.0.0.0','--port',"$UiPort") `
+    -ArgumentList @('-u','-m','uvicorn','provisa.ui_server:app','--host','0.0.0.0','--port',"$UiPort") `
     -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $LogDir 'native-ui.log') `
     -RedirectStandardError  (Join-Path $LogDir 'native-ui.err.log')
@@ -261,8 +263,13 @@ function Open-Native {
   # lifespan startup (the heavy demo config-load) completes, so this waits for a genuinely
   # usable API. The UI proxy binds near-instantly and would otherwise open the browser onto a
   # still-loading API whose calls 502 - which is exactly why the demo "final step" looked stuck.
-  if (-not (Wait-HttpReady "http://localhost:$ApiPort/health" 120)) {
-    Write-Err "API did not become ready on port $ApiPort within 120s; opening anyway."
+  #
+  # 300s, not 120s: the boot phases alone (load_config, reconcile landed tables, rebuild_schemas)
+  # run ~45s on an idle machine, and the interpreter start plus the cold import of the app sits on
+  # top of that. On a loaded box the total crossed 120s and the launcher reported a startup failure
+  # for an API that came up fine moments later.
+  if (-not (Wait-HttpReady "http://localhost:$ApiPort/health" 300)) {
+    Write-Err "API did not become ready on port $ApiPort within 300s; opening anyway."
   } elseif (-not (Wait-HttpReady "http://localhost:$UiPort/" 40)) {
     Write-Err "UI did not become ready on port $UiPort within 40s; opening anyway."
   }
