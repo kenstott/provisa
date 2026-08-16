@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Materialized views — analytics you declare — Provisa</title>
+  <meta name="description" content="Layered materialized views with recorded transforms, freshness-driven refresh, and transparent query rewrite — a declarative dependency graph instead of an orchestration DAG." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/why/materialized-views" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Materialized views</span></p>
+        <h1>Analytics datasets you declare, not pipelines you orchestrate.</h1>
+        <p class="lead">
+          Build a materialized view over a view, a source, or another MV — a dependency
+          graph of derived datasets from raw source to final analytics table. There is no
+          orchestration DAG to write or babysit.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <h2>Where the imperative code comes from</h2>
+        <p>
+          Almost nobody writes a pipeline because they wanted a program. They write one
+          because the data arrived in a shape SQL couldn't address — a nested JSON
+          response, a document with an array of sub-documents, a directory of files, a
+          graph, an event stream — and shaping it took code. That first shaping step is
+          where the procedure enters, and once a procedure is in the path, everything
+          downstream inherits it.
+        </p>
+        <p>
+          Our premise is that the shaping step doesn't need code, because non-relational
+          data is not infinitely various. It falls into a modest set of structure types,
+          and each one has a short declarative rule for projecting it into rows and
+          columns: the path to the collection in a response and the fields to lift out of
+          it, the sampled document schema for a collection with the steward's explicit
+          types overriding what was inferred, the crawl of a location that registers each
+          CSV, Parquet, or SQLite file it finds. That is a declaration per source type, not
+          a program per dataset.
+        </p>
+        <p>
+          Once everything is two-dimensional, the rest is SQL. Which is the whole point:
+          SQL is a language a machine can read back, so lineage, governance, rewriting, and
+          audit become properties of the definition. Determinism is still on you — SQL
+          gives you enough rope, and this system will refuse the parts of that rope it can
+          detect. After SQL, the only remaining problem is timing.
+        </p>
+
+        <h2>An imperative pipeline is already a hole</h2>
+        <p>
+          Most derived data is produced by a program: a script, a notebook, a job in an
+          orchestrator. It runs, it writes a table, and the only durable record of what
+          happened is the table plus a log line. Everything you later need to know has to
+          be reconstructed by reading code and hoping it's the version that ran.
+        </p>
+        <ul>
+          <li><strong>How do you audit it?</strong> By reading the transform. The audit surface is a program, so auditing it is code review, repeated every time anyone changes it.</li>
+          <li><strong>What did it actually do?</strong> Whatever the code said on the day it ran. Which columns fed which output is a question you answer by tracing the source by hand.</li>
+          <li><strong>When did it do it?</strong> You get the job's start time, which is when the machine woke up — not the point-in-time of the data it consumed. Those differ by however long the upstream was late.</li>
+          <li><strong>What does the result mean?</strong> The name someone typed on the output table, and a wiki page written at a different time by a different person.</li>
+        </ul>
+        <p>
+          None of that is fixable with better discipline, because the artifact is a
+          procedure. A procedure can only be understood by simulating it. Declared datasets
+          invert that: the definition is the artifact, and every one of those four
+          questions is answered by reading the model instead of the code.
+        </p>
+
+        <h2>The four questions, answered from the definition</h2>
+        <ul>
+          <li><strong>What it did</strong> — column-level lineage is resolved statically from the definition: every output column back to the leaf source columns it derives from, with the intermediate CTEs and joins preserved as a graph. Each edge carries a <em>named</em> transform, matched against SQL operators, engine built-ins, and registered commands, so a derivation reads as <code>concat → geocode</code> rather than as a blob of SQL you have to parse yourself.</li>
+          <li><strong>When it did it</strong> — every refresh stamps two versions. A <em>definition</em> version, which is a content hash of the MV's logic, so you can tell whether two runs used the same rules. And an <em>input</em> version, captured at the strongest fidelity the source offers: an Iceberg snapshot id, else a relational watermark, else a freshness token, else the refresh clock. The fidelity kind is recorded alongside the value, so a lineage query knows whether it is looking at a precise data version or a wall-clock guess.</li>
+          <li><strong>How you audit it</strong> — those stamps land in the refresh ledger and the trace, which are queryable tables. Point-in-time lineage is a query you write, joined against the business data it describes, rather than a report a separate tool renders.</li>
+          <li><strong>What it means</strong> — a dataset is declared as an entity or a fact, with a key, a grain, and history, and that declaration lowers to the underlying view machinery. Meaning lives in the model that produced the table rather than in the name on it.</li>
+        </ul>
+        <p>
+          The declarative form also lets the system refuse definitions that could not be
+          audited. A distributed MV whose SQL calls <code>now()</code> or
+          <code>random()</code>, or takes a <code>LIMIT</code> with no total ordering, is
+          rejected outright: two copies computing from the same sources would never agree,
+          and a number nobody can reproduce is not a metric.
+        </p>
+
+        <h2>Layered by design</h2>
+        <p>
+          MVs stack on views and on other MVs, so your whole analytics layer becomes one
+          declarative graph — expressed in the same model that describes and governs your
+          data, not in a second tool with its own scheduler and its own idea of what your
+          tables mean.
+        </p>
+
+        <h2>Recorded transforms</h2>
+        <p>
+          Each MV records the SQL or join that built it, plus the input signals it read —
+          an Iceberg snapshot id, a relational watermark. Because the transform is
+          recorded rather than merely executed, queries against the underlying tables are
+          transparently rewritten onto a fresh MV when one covers them, partial join
+          matches included. Nobody has to know the MV exists to benefit from it.
+        </p>
+
+        <h2>Refresh by freshness</h2>
+        <p>
+          An MV rebuilds only when an upstream input actually changed, and a change fans
+          out through the graph to its dependents. Refresh is demand-driven rather than
+          recompute-everything, which is where the compute bill for a derived layer
+          usually goes.
+        </p>
+
+        <h2>Refresh by calendar</h2>
+        <p>
+          Or on a TTL or interval, when time rather than data is the trigger — a daily
+          close, a monthly snapshot. Freshness and calendars are the only two knobs; there
+          is no hand-maintained schedule to drift out of sync with the model.
+        </p>
+
+        <h2>Still governed, all the way up</h2>
+        <p>
+          An MV is a governed table like any other. Row-level security, masking, and
+          relationship rules hold on every derived dataset, so a materialization can never
+          become the quiet path around a policy — which is the usual failure mode when the
+          derived layer lives in a separate system.
+        </p>
+
+        <h2>Promotion carries data, too</h2>
+        <p>
+          Where a release also has to move data, a materialized view can carry the
+          transform and land its output into a real source table, not just the internal
+          store. True data migrations may still call for imperative scripts outside
+          Provisa — the model promotes cleanly; the heavy data movement is yours to run.
+        </p>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/governance">How governance reaches derived tables</a>
+        <a class="more" href="/why/catalog">Publishing lineage outward</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coming from Hasura v2 — Provisa</title>
+  <meta name="description" content="The v2 idea, continued. Point the converter at your Hasura v2 metadata directory and get a Provisa config: tables, permissions, relationships, remote schemas, actions, and triggers — keep the per-role GraphQL API, gain SQL, Cypher, and eight more protocols." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/vs/hasura" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Coming from Hasura</span></p>
+        <h1>Where the v2 idea kept going.</h1>
+        <p class="lead">
+          Instant, per-role, metadata-driven APIs over your own databases was the right
+          idea. Provisa takes it further rather than sideways — same premise, more
+          languages, more ways in, and governance that holds on all of them. Bring your
+          metadata with you: the converter reads a Hasura v2 metadata directory and emits
+          a Provisa config, tables, permissions, relationships, remote schemas, actions,
+          and triggers included.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <h2>One command</h2>
+        <div class="dist-terminal" role="img" aria-label="Convert a Hasura v2 metadata directory to a Provisa config">
+          <div class="term-bar"><span></span><span></span><span></span></div>
+          <pre><code><span class="c-comment"># Read a Hasura v2 metadata directory, write a Provisa config</span>
+<span class="c-cmd">python</span> -m provisa.hasura_v2 ./hasura/metadata <span class="c-flag">-o</span> provisa.yaml
+
+<span class="c-comment"># Validate without writing, map schemas onto domains, override connections</span>
+<span class="c-cmd">python</span> -m provisa.hasura_v2 ./hasura/metadata <span class="c-flag">--dry-run</span>
+<span class="c-cmd">python</span> -m provisa.hasura_v2 ./hasura/metadata <span class="c-flag">--domain-map</span> public=sales billing=finance</code></pre>
+        </div>
+
+        <h2>What converts</h2>
+        <ul>
+          <li><strong>Sources</strong> — Postgres, Citus, MySQL, MS SQL, and BigQuery connections map to Provisa sources.</li>
+          <li><strong>Tables and columns</strong> — with per-role select permissions becoming column visibility.</li>
+          <li><strong>Row permissions</strong> — Hasura boolean expressions convert to SQL row-level security rules.</li>
+          <li><strong>Relationships</strong> — object and array relationships become registered, governed relationships.</li>
+          <li><strong>Remote schemas</strong> — mapped to GraphQL remote sources.</li>
+          <li><strong>Actions</strong> — HTTP-handler actions become webhooks; others land as function placeholders.</li>
+          <li><strong>Event triggers and cron triggers</strong> — carried across as event and scheduled triggers.</li>
+          <li><strong>Roles and rate limits</strong> — preserved as Provisa roles.</li>
+        </ul>
+        <p>
+          Anything the converter can't map cleanly is reported as a warning rather than
+          silently dropped, so the gaps are a list you work through, not a surprise you
+          find in production.
+        </p>
+
+        <h2>What you keep</h2>
+        <p>
+          A per-role GraphQL API over your database, generated from metadata, with
+          permissions enforced at query time. That model was right, and Provisa keeps it:
+          per-role schemas, field-level visibility, cursor pagination, aggregates, and
+          Apollo Automatic Persisted Queries. No new modeling universe to learn first, no
+          rewrite as the price of admission.
+        </p>
+
+        <h2>What you gain</h2>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>&nbsp;</th><th>Hasura v2</th><th>Provisa</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>Query languages</th>
+                <td>GraphQL</td>
+                <td class="is-us">GraphQL, SQL, and Cypher over the same schema</td>
+              </tr>
+              <tr>
+                <th>Ways in</th>
+                <td>HTTP GraphQL</td>
+                <td class="is-us">pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, MCP</td>
+              </tr>
+              <tr>
+                <th>Sources</th>
+                <td>Relational databases, plus remote schemas</td>
+                <td class="is-us">52 source types — graph, RDF, files, SharePoint, Splunk, and API endpoints as governed tables</td>
+              </tr>
+              <tr>
+                <th>Analytics</th>
+                <td>Aggregates over the source</td>
+                <td class="is-us">Cross-source federation and layered materialized views with recorded transforms</td>
+              </tr>
+              <tr>
+                <th>AI access</th>
+                <td>—</td>
+                <td class="is-us">An MCP server where the OAuth token maps to a role, so agents inherit the same governance</td>
+              </tr>
+              <tr>
+                <th>Deployment</th>
+                <td>Container</td>
+                <td class="is-us">Desktop installer, a single wheel for airgaps, Helm, or Terraform</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>On staying put</h2>
+        <p>
+          Provisa is a handful of primitives compiled deterministically — domains, tables,
+          relationships, masking, views. Your model is portable declarative config and the
+          SQL it compiles is yours to read and export, so the next migration, whenever it
+          comes and wherever it goes, starts from a file you already own.
+        </p>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/no-lock-in">Our position on lock-in</a>
+        <a class="more" href="/#download">Download Provisa</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

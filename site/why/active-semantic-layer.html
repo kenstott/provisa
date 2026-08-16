@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Active Semantic Layer — Provisa</title>
+  <meta name="description" content="A passive semantic layer describes your data and hopes something else honors it. An active semantic layer executes the query, enforces the governance, and writes the audit trail from that same description — at query time, on every protocol." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/why/active-semantic-layer" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>The Active Semantic Layer</span></p>
+        <h1>A semantic layer that runs the query.</h1>
+        <p class="lead">
+          Semantic layers are normally descriptions. They define what a customer is, which
+          tables join to which, and who ought to see what — and then hand that definition
+          to something else to honor. An <em>active</em> semantic layer honors it itself,
+          at query time, on every path in.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <h2>Every enterprise is a data museum</h2>
+        <p>
+          Wing after wing of systems from different eras, each built by people who are
+          mostly gone, each correct in its own period. The mainframe extract nobody dares
+          retire, the warehouse from the last re-platforming, the SaaS app finance bought
+          in 2019, the lake somebody filled and left. You are not going to demolish it.
+          Consolidation programs are attempts to demolish the museum, and they run for
+          years, cost a fortune, and end with one more wing.
+        </p>
+        <p>
+          The job is navigation. Which room holds what, which corridors actually connect,
+          which doors you're allowed through, and a guide who walks you rather than handing
+          you a floor plan and wishing you luck. Get that right and the age of the
+          collection stops mattering — a 1994 system reachable by a legal, governed path is
+          more useful than a modern one nobody can find.
+        </p>
+
+        <h2>"Business terms" is not a layer</h2>
+        <p>
+          The usual defense of a semantic layer is that it expresses data in business
+          terms. If that's the whole value, what you actually have is badly named tables.
+          There is no law of physics preventing a column from being called
+          <code>customer_lifetime_value</code> and carrying an accurate description of what
+          it means, how it's calculated, and when it's wrong. Comments and column
+          descriptions have existed in every database for decades. A layer whose job is
+          renaming <code>cust_dim_x</code> and writing the sentence that should have been
+          there already is a rename script with a license fee.
+        </p>
+        <p>
+          The things that genuinely can't live in a name or a description are the ones
+          worth building a layer for: which joins are legal and which are nonsense, whose
+          row this is and whether you may see it, which physical copy answers this question
+          fastest, and what happened when someone asked. A description tells you what a
+          column means. It cannot refuse a query.
+        </p>
+        <p>
+          So this isn't a proposal to rename the collection. Nobody is going to rename
+          forty years of tables, and the systems that hold them would not survive the
+          attempt. We build the card catalog — every holding registered where it stands,
+          under a name a person recognizes, with the paths between them written down and
+          the doors marked. The artifacts stay in their wings. What changes is that you can
+          find them, walk between them legally, and ask a question without first knowing
+          which era answered it.
+        </p>
+
+        <h2>"That sounds like an impossible amount of work"</h2>
+        <p>
+          It would be, done by hand — and by hand is the only way it has ever been offered.
+          Nobody has ever argued against knowing what data you have, what it means, and who
+          may see it. That part was never controversial. What made it a joke was the
+          method: a two-year cataloging program staffed by people typing descriptions into
+          a tool that couldn't act on them, obsolete before it was finished. The philosophy
+          was fine. The tooling asked humans to do the machine's half of the job.
+        </p>
+        <p>So most of this catalog isn't written by people.</p>
+        <ul>
+          <li><strong>Structure is read, not typed.</strong> Register a source and its tables and columns are discovered from the source itself. For files, you register a <em>location</em> — a folder, a bucket, a SharePoint site — and the crawl registers what it finds.</li>
+          <li><strong>Foreign keys become corridors automatically.</strong> Existing FK constraints register as relationships in both directions, named for the concept rather than the constraint.</li>
+          <li><strong>Where the FKs were never declared, they're proposed.</strong> Claude reads the schema and suggests the missing relationships with cardinality, a confidence score, and its reasoning.</li>
+          <li><strong>People approve, they don't author.</strong> Those suggestions land as <em>candidates</em>, not live edges. A steward accepts or rejects. Reviewing a proposed join is a minute's work; discovering it from scratch is an afternoon's.</li>
+        </ul>
+        <p>
+          The other half of the answer is that you never catalog the museum. You catalog
+          the wing that has a question waiting on it. Domains register independently, so
+          one team can put its corner under a governed API this month without a program to
+          boil the estate first — and the corridors between wings get registered when
+          someone actually needs to walk one.
+        </p>
+
+        <h2>Infrastructure never gets budgeted</h2>
+        <p>
+          It gets deferred, every year, by people who agree it matters. What gets funded is
+          a project with a name and a number attached — the customer portal, the regulatory
+          filing, the churn model. Any approach that requires a standalone platform budget
+          before it returns anything is going to lose that argument, and should. So the
+          catalog has to arrive as a side effect of work someone already agreed to pay for:
+          register the four sources this quarter's project needs, ship the project, and
+          keep the registrations.
+        </p>
+        <p>
+          Which makes evolution the actual requirement. Not a migration path — an amendment
+          path. The U.S. Constitution is the useful model here: a small set of rules deep
+          enough that the argument stays inside them, plus a defined way to change those
+          rules so that revision is a procedure rather than a coup. Registering a new
+          source, a new relationship, a new masking rule is an addition to a declarative
+          config, not a re-modeling of everything already in it. A steward's explicit
+          definition overrides a discovered one, so correcting the machine is an edit, not
+          an escalation. Nothing about a wing you catalog in year three requires you to
+          have anticipated it in year one.
+        </p>
+        <p>
+          Do that ten times and the museum has a card catalog — assembled by ten funded
+          projects, none of which had to be a cataloging program.
+        </p>
+
+        <h2>Passive and active</h2>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>&nbsp;</th><th>Passive semantic layer</th><th>Active semantic layer</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>What it produces</th>
+                <td>Definitions, metrics, and documentation for other tools to consume</td>
+                <td class="is-us">The running system — the API, the plan, the policy, and the audit trail</td>
+              </tr>
+              <tr>
+                <th>Who executes</th>
+                <td>A BI tool, a warehouse, or an application, each with its own copy of the rules</td>
+                <td class="is-us">The layer itself compiles and executes; there is no copy to drift</td>
+              </tr>
+              <tr>
+                <th>Governance</th>
+                <td>Documented in the model, enforced downstream — or not, depending on the path</td>
+                <td class="is-us">Compiled into every query plan on every protocol, with no bypass path</td>
+              </tr>
+              <tr>
+                <th>Coverage</th>
+                <td>The tools that were integrated with it</td>
+                <td class="is-us">Anything that speaks a supported wire protocol, including AI agents</td>
+              </tr>
+              <tr>
+                <th>Drift</th>
+                <td>Model and reality diverge quietly between releases</td>
+                <td class="is-us">Impossible by construction — the description is the implementation</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>What "active" has to mean</h2>
+        <p>
+          The word only earns its place if the layer does four things from one
+          description, at the moment a query runs.
+        </p>
+        <ul>
+          <li><strong>It serves.</strong> The GraphQL schema, the SQL catalog, and the graph model are generated from the registration, not maintained beside it.</li>
+          <li><strong>It plans.</strong> Joins and traversals compile against registered relationships, so an illegal path isn't rejected later — it never compiles.</li>
+          <li><strong>It enforces.</strong> Six governance layers apply inside the plan: introspection filtering, public and domain access, row-level security, column masking, and a pre-execution predicate guard.</li>
+          <li><strong>It records.</strong> Every query is traced and compacted into queryable tables, so the audit trail is data you can join to the business data it describes.</li>
+        </ul>
+        <p>
+          Take any one of those away and you are back to a description plus a promise. The
+          usual failure isn't a bad model; it's a good model that four systems interpret
+          four different ways, and a governance rule that holds in the BI tool and not in
+          the notebook.
+        </p>
+
+        <h2>Why it matters on the protocol level</h2>
+        <p>
+          A semantic layer reachable only through its own API governs only the traffic that
+          chooses to use it. Provisa is reachable over pgwire, Bolt, Arrow Flight, gRPC,
+          JDBC, REST, WebSocket, Airport, and MCP — and every one of those lands in the same
+          compiler and the same six layers. An analyst on psql, a dashboard on JDBC, and an
+          agent on MCP get the same answer under the same policy, because there is one path
+          underneath all of them.
+        </p>
+        <p>
+          That is also the part that makes AI access tractable. An agent's OAuth token maps
+          to a role, and the role is governed exactly as a person's would be. There is no
+          second policy engine for agents to keep in sync, and no service account quietly
+          holding wider rights than the human it answers for.
+        </p>
+
+        <h2>What it is not</h2>
+        <p>
+          An active semantic layer is not a metrics definition language. It is not data
+          federation. It is not attribute-based access control. Those are three good
+          categories with good products in them, and several of them deserve to exist on
+          their own — we're not arguing anyone should stop building them.
+        </p>
+        <p>
+          They are also, each on their own, inert. A metric definition that the engine
+          doesn't enforce is a document. Federation that doesn't know what the data means
+          is a join. Access control that applies at one door is not access control. The
+          expected value of all three only appears when they agree at one instant, and the
+          instant is query execution.
+        </p>
+        <p>
+          The usual way to make them agree is an integration project — wire the metrics
+          tool to the query engine, the query engine to the policy service, and maintain
+          the seams forever. That is the part that never works, because each product
+          releases on its own schedule and the seams are where the drift lives.
+        </p>
+        <p>
+          So the coordination here isn't integration, it's <em>derivation</em>. The
+          published API, the legal join paths, and the policy all come out of one
+          registration. There is no syncing because there are not three artifacts to sync.
+          And the coordination point has to be the execution point: anything sitting beside
+          the engine can only advise, and advisory governance is precisely the kind that
+          gets routed around. Three vendors' products cannot compile into one query plan.
+        </p>
+        <p>
+          The other half of it is leverage. Today the coordination usually happens inside
+          somebody's product — your metric definitions in their model, your join paths in
+          their catalog, your policies in their engine — and whoever holds the coordination
+          holds you, because leaving means re-deriving all three. When the coordinating
+          artifact is a declarative config you own, none of the underlying products is the
+          center of gravity. Each one goes back to being a component you can put out to
+          bid. <a href="/why/no-lock-in">More on that here.</a>
+        </p>
+
+        <h2>The claim, stated plainly</h2>
+        <p>
+          Plenty of products model your data. Plenty of engines execute queries. The
+          category we're describing is the one where those are the same artifact — where
+          the thing that describes your data is the thing that runs, governs, and audits
+          every query against it, across three languages and nine protocols.
+        </p>
+        <p>
+          If you find another one, we'd like to know. That's not rhetoric: the comparison
+          would sharpen the category, and the category is more useful to us than being
+          alone in it.
+        </p>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/governance">The six governance layers</a>
+        <a class="more" href="/why/interfaces">Three languages, nine protocols</a>
+        <a class="more" href="/#download">Try it</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">The Active Semantic Layer. Business Source License 1.1.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/active-semantic-layer">Active Semantic Layer</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

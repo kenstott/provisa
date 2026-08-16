@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No lock-in — engine, source, or us — Provisa</title>
+  <meta name="description" content="Your semantics live above the infrastructure: swap engines and re-point sources without rewriting a query or a policy — and take your declarative model with you if you leave Provisa." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/why/no-lock-in" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Vendor leverage</span></p>
+        <h1>Locked-in ecosystems become replaceable execution engines.</h1>
+        <p class="lead">
+          Provisa front-ends your disparate systems so your semantics live with
+          <em>you</em>, not your vendors — turning the platforms you're currently stuck
+          inside into components you can swap without rewriting a query or a policy.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <h2>No lock-in to an engine or a source</h2>
+        <p>
+          Your model, semantics, and governance live <em>above</em> the infrastructure
+          rather than inside it, which insulates your data consumers from infrastructure
+          churn. Swap the engine — embedded, to Trino, to your warehouse; new CTO, new
+          strategy, switch it to Databricks — and the queries and policies don't change.
+          Re-point a table from Oracle to Postgres, or MongoDB to Snowflake, and consumers
+          never see it move.
+        </p>
+        <p>
+          That turns <strong>data modernization</strong> into an incremental effort instead
+          of a big-bang cutover. Migrate sources table by table behind a stable governed
+          API, with one uniform governance model applying to legacy and modern sources
+          alike throughout the transition — which is the part that usually kills these
+          programs, since the interim state normally means two governance models and a
+          spreadsheet reconciling them.
+        </p>
+        <p>
+          Your warehouse should be a replaceable component, not a place you get stranded.
+          When your semantics live above the engine, vendors compete for your workloads
+          instead of holding them hostage.
+        </p>
+
+        <h2>We don't lock you in either</h2>
+        <p>
+          Provisa is a handful of primitives — domains, tables, relationships, masking,
+          views — compiled deterministically. There is no proprietary modeling universe to
+          learn and no black box: your model is portable declarative config, and the SQL it
+          compiles is yours to read, export, and keep.
+        </p>
+        <p>
+          Use it as scaffolding in dev if that's all you want. The semantics you write
+          don't die with the tool, because they were never trapped inside it. A vendor that
+          argues you should be able to leave its dependencies has to be willing to let you
+          leave it, too.
+        </p>
+
+        <h2>Physical fragmentation, logical coherence</h2>
+        <p>
+          Performance needs fragmentation: the right engine per workload, materialized
+          copies at the right granularity. Consumers need one coherent model. The old cost
+          of fragmenting the physical was fragmenting the <em>logical</em> too — a pile of
+          models with clashing objectives and granularity, physical detail bleeding into
+          logical design.
+        </p>
+        <p>
+          Provisa splits them. Specialized engines and materialized views underneath, one
+          governed logical model on top, and the physical never bleeds into the contract
+          your consumers see. The knobs that fragment for speed live in the same
+          declarative model that keeps you coherent, so going faster never spawns a second
+          modeling mess.
+        </p>
+
+        <h2>Domains as products — delegated, not centralized</h2>
+        <p>
+          Give a domain its own owner and scoped rights to build it: register sources,
+          publish tables, wire relationships, ship views — all inside their domain, none of
+          it reaching another. Central policy still governs every query. Authorship is
+          federated; enforcement stays absolute. It's optional — off by default, on when
+          you need it.
+        </p>
+
+        <h2>Promote config like code</h2>
+        <p>
+          Analysts and developers work freely in a dev lane: register sources, publish
+          tables, wire relationships. Their changes export as a unified-diff config patch
+          that flows to test, then prod, reviewed in git like any pull request. Because the
+          estate is declarative, promotion is a <em>diff</em>, not a migration.
+        </p>
+
+        <h2>The economic takeaway — you set the compute bill</h2>
+        <p>
+          Pair semantic governance with intelligent query routing and the value shifts from
+          merely <em>managing access</em> to actively optimizing compute economics. Provisa
+          becomes a single point of leverage to optimize execution speed, minimize network
+          egress, and dictate exactly how much you pay vendor compute engines on any given
+          query.
+        </p>
+        <p>
+          Single-source queries bypass federation entirely and route direct to the driver.
+          Hot lookups inline as VALUES CTEs. Queries rewrite onto a fresh materialized view
+          when one covers them. Each of those is a decision about whose meter is running,
+          made in one place instead of in every team's query.
+        </p>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/governance">The governance that travels with the model</a>
+        <a class="more" href="/#download">Download Provisa</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Provisa and Denodo — Provisa</title>
+  <meta name="description" content="Both are data virtualization with unified semantics and governance. Provisa differs on the way in — GraphQL, Cypher, and nine wire protocols — on engine choice, and on how small the smallest deployment is." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/vs/denodo" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>vs Denodo</span></p>
+        <h1>Same category. Different center of gravity.</h1>
+        <p class="lead">
+          Denodo and Provisa agree on the premise: unified semantics and governed access
+          over distributed data, without duplicating it. They differ on how you get in,
+          what runs the query, and how small the smallest useful deployment is.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <h2>Where they agree</h2>
+        <p>
+          Both are data virtualization rather than another warehouse. Both put a semantic
+          layer over heterogeneous sources, govern access centrally, and optimize queries
+          so that leaving data in place doesn't mean paying for it in latency. If you are
+          evaluating Denodo, you have already accepted the argument Provisa makes.
+        </p>
+
+        <h2>Where they differ</h2>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>&nbsp;</th><th>Denodo</th><th>Provisa</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>Query languages</th>
+                <td>SQL, with REST and GraphQL publication</td>
+                <td class="is-us">GraphQL, SQL, and Cypher as peers over one schema — Cypher and graph traversal are first-class, not published views</td>
+              </tr>
+              <tr>
+                <th>Ways in</th>
+                <td>JDBC/ODBC, REST, OData, GraphQL</td>
+                <td class="is-us">pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, and MCP</td>
+              </tr>
+              <tr>
+                <th>Execution</th>
+                <td>Its own optimizer and execution engine</td>
+                <td class="is-us">The engine is yours to choose — Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks, BigQuery, or the embedded engine</td>
+              </tr>
+              <tr>
+                <th>Graph and RDF sources</th>
+                <td>Available as sources</td>
+                <td class="is-us">First-class in the model — Neo4j and SPARQL participate in the same relationship registry and traversals</td>
+              </tr>
+              <tr>
+                <th>AI access</th>
+                <td>Platform AI features</td>
+                <td class="is-us">An MCP server where the OAuth token maps to a role, so agents get the same six governance layers and no bypass</td>
+              </tr>
+              <tr>
+                <th>Smallest deployment</th>
+                <td>Platform install or managed cloud</td>
+                <td class="is-us"><code>pip install "provisa[embedded]"</code> — one wheel, no Docker, no JVM, no root</td>
+              </tr>
+              <tr>
+                <th>Model portability</th>
+                <td>Platform-native modeling</td>
+                <td class="is-us">Declarative config in git, promoted as a diff; the compiled SQL is yours to read and export</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>The evaluation that separates them</h2>
+        <p>
+          Ask what happens on a Tuesday afternoon. Can an analyst point psql at it and get
+          a governed answer? Can a developer query the same model in GraphQL without a
+          publication step? Can an agent connect and inherit the analyst's policy rather
+          than a service account's? Can you run the whole thing on a laptop to try
+          something, and in an airgap without mirroring a container registry?
+        </p>
+        <p>
+          Those are the questions Provisa is built to answer yes to. On the classic
+          enterprise virtualization checklist — breadth of connectors, optimizer maturity,
+          a support organization with two decades behind it — Denodo is the incumbent, and
+          that deserves real weight in your evaluation.
+        </p>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/interfaces">Every way in</a>
+        <a class="more" href="/#download">Try it on a laptop</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

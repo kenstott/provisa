@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Provisa and Starburst — Provisa</title>
+  <meta name="description" content="Starburst is a federated query engine. Provisa is a governed semantic layer that can run on Starburst, Trino, or the engine of your choice — adding GraphQL and Cypher, writes, and query-time governance." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/vs/starburst" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>vs Starburst</span></p>
+        <h1>Provisa and Starburst solve different halves.</h1>
+        <p class="lead">
+          Starburst is a Trino-based query engine and lakehouse platform. Provisa is a
+          governed semantic layer that sits <em>above</em> an engine — including Starburst.
+          The real comparison is not head-to-head; it's which layer you're missing.
+        </p>
+      </div>
+
+      <div class="doc-body">
+        <h2>Where they overlap</h2>
+        <p>
+          Both federate queries across heterogeneous sources without moving the data, and
+          both make a strong argument against copying everything into one warehouse first.
+          If your problem is "SQL analytics over many systems at scale," Starburst solves
+          it well, and Provisa is happy to use it as the execution engine.
+        </p>
+
+        <h2>Where they differ</h2>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>&nbsp;</th><th>Starburst</th><th>Provisa</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>What it is</th>
+                <td>A query engine and lakehouse platform</td>
+                <td class="is-us">A semantic and governance layer over an engine you choose</td>
+              </tr>
+              <tr>
+                <th>Query languages</th>
+                <td>SQL</td>
+                <td class="is-us">SQL, GraphQL, and Cypher over one schema</td>
+              </tr>
+              <tr>
+                <th>Ways in</th>
+                <td>JDBC/ODBC, REST, client drivers</td>
+                <td class="is-us">pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, MCP</td>
+              </tr>
+              <tr>
+                <th>Writes</th>
+                <td>Analytical, engine-mediated</td>
+                <td class="is-us">Transactional writes routed direct to the driver, sub-100ms</td>
+              </tr>
+              <tr>
+                <th>The engine</th>
+                <td>Is the product</td>
+                <td class="is-us">Is a swappable component — Trino, Starburst, DuckDB, ClickHouse, Postgres, Snowflake, Databricks, BigQuery</td>
+              </tr>
+              <tr>
+                <th>Smallest deployment</th>
+                <td>Cloud service or a cluster</td>
+                <td class="is-us"><code>pip install "provisa[embedded]"</code> — no Docker, no JVM, no root</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>Use both</h2>
+        <p>
+          If you already run Starburst, Provisa registers it as the federation engine and
+          adds what an engine does not provide: per-role GraphQL schemas, Cypher over the
+          same model, governed relationships that constrain which joins are legal, six
+          layers of query-time governance on every transport, and an MCP server that gives
+          AI agents the same governed access as a human — with no bypass.
+        </p>
+        <p>
+          The engine keeps doing what it is good at. What changes is that your semantics
+          and policy stop living inside it, which is what makes the engine replaceable
+          later.
+        </p>
+
+        <h2>Choose Provisa alone when</h2>
+        <ul>
+          <li>You need GraphQL or Cypher, not only SQL.</li>
+          <li>You have transactional and application traffic, not just analytics.</li>
+          <li>Governance must hold identically across every API and protocol, agents included.</li>
+          <li>You need to run in an airgap from a wheel, or on a laptop, without a cluster.</li>
+          <li>You want the freedom to change engines later without rewriting queries or policy.</li>
+        </ul>
+
+        <h2>Choose Starburst alone when</h2>
+        <ul>
+          <li>Your workload is large-scale SQL analytics and nothing else.</li>
+          <li>You want a managed lakehouse with its own storage architecture and support contract.</li>
+          <li>Your governance needs are met by engine-level access control.</li>
+        </ul>
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/no-lock-in">Why the engine should be replaceable</a>
+        <a class="more" href="/#download">Try Provisa on your own engine</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Provisa — The Active Semantic Layer (TASL)</title>
-  <meta name="description" content="A single governed API over 46 heterogeneous data sources. Query with GraphQL, Cypher, or SQL; reach it over pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, or an MCP server. Governance is on the path, not bolted on." />
+  <title>Provisa — Query all your data in 3 languages and 9 protocols</title>
+  <meta name="description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher — from psql, Tableau, Neo4j Browser, or an AI agent. Governance is compiled into every query plan, so there is no way in that goes around it." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 
-  <meta property="og:title" content="Provisa — The Active Semantic Layer (TASL)" />
-  <meta property="og:description" content="One governed API over 46 data sources. GraphQL, Cypher, and SQL over pgwire, Bolt, gRPC, REST, Arrow Flight, and JDBC — governance compiled into every query plan." />
+  <meta property="og:title" content="Provisa — Query all your data in 3 languages and 9 protocols" />
+  <meta property="og:description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher over nine wire protocols — psql, Neo4j Browser, Tableau, or an AI agent. Governance no one can go around." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://provisa.dev" />
   <link rel="canonical" href="https://provisa.dev/" />
@@ -39,7 +39,7 @@
         <a href="#interfaces">Interfaces</a>
         <a href="#governance">Governance</a>
         <a href="#sources">Sources</a>
-        <a href="#ecosystem">Ecosystem</a>
+        <a href="/vs/starburst">Compare</a>
         <a href="#deploy">Deploy</a>
         <a class="nav-cta" href="#download">Download</a>
       </nav>
@@ -51,18 +51,11 @@
     <section class="hero">
       <div class="container hero-inner">
         <span class="hero-badge"><span class="hero-badge-dot"></span>In preview — general availability coming soon</span>
-        <p class="eyebrow">The Active Semantic Layer (TASL)</p>
-        <h1>Connect your databases.<br />Query with any API or protocol in 5 minutes.</h1>
+        <h1>Query all your data<br />in 3 languages and 9 protocols.<br />In 5 minutes.</h1>
         <p class="lead">
-          Query <strong>46 heterogeneous data sources</strong> with
-          <strong>GraphQL, Cypher, SQL, gRPC, or MCP</strong> — all over the same federated
-          schema, on <em>the engine you choose</em>: <strong>Trino, DuckDB, ClickHouse,
-          Postgres, Snowflake, Databricks, or BigQuery</strong>, or the embedded
-          Trino-compatible engine that ships in the box. Cross-source joins fan out
-          through federation; single-source reads and writes route direct to the
-          driver, transactional and sub-100ms. Reach it over <strong>pgwire, Bolt,
-          Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, or an MCP server</strong>
-          — the same governed schema, every way in, one governed way out.
+          Connect your databases once. Then query them in <strong>GraphQL, SQL, or
+          Cypher</strong> — from psql, Tableau, Neo4j Browser, or an AI agent. Governance
+          is compiled into the query plan, so there's no way in that goes around it.
         </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#download">Download</a>
@@ -82,6 +75,11 @@
 <span class="c-kw">WHERE</span> o.total &gt; 1000;
 <span class="c-comment"># RLS, masking, and approval already applied. Nothing to remember.</span></code></pre>
         </div>
+
+        <ul class="stats" aria-label="Provisa at a glance">
+          <li><span class="stat-n">52</span><span class="stat-l">source types, one schema</span></li>
+          <li><span class="stat-n">6</span><span class="stat-l">governance layers, every path</span></li>
+        </ul>
       </div>
     </section>
 
@@ -89,12 +87,18 @@
     <section class="whatis">
       <div class="container">
         <p>
-          <em>Semantic compilation</em>, from logical design to physical execution: the
-          instant API, the legal join paths, the governance rules, and the telemetry that
-          audits every query all fall out of one model — the registration that describes
-          your data is the same one that operates, governs, and audits it. The federation
-          engine and the data sources beneath are yours to choose.
+          You describe your data once — sources, tables, relationships, who may see what.
+          Everything else is generated from that one description: the APIs, the legal join
+          paths, the governance, and the audit trail. <em>There is no second place to keep
+          in sync.</em>
         </p>
+        <p class="whatis-name">We call this an Active Semantic Layer.</p>
+        <p class="whatis-def">
+          Every other semantic layer is a <em>description</em> — a model something else has
+          to honor. This one runs the query, enforces the policy, and writes the audit
+          trail itself, at query time, on every protocol.
+        </p>
+        <a class="more" href="/why/active-semantic-layer">Active vs. passive — what the word has to mean</a>
       </div>
     </section>
 
@@ -111,17 +115,16 @@
       <article class="pillar">
         <h3>Read and write</h3>
         <p>
-          Provisa carries analytical <em>and</em> transactional flows through the same
-          governed API: cross-source reads fan out through federation; writes and
-          single-source reads route direct to the driver — transactional and sub-100ms.
+          Analytical <em>and</em> transactional flows through the same governed API:
+          cross-source reads fan out through federation; writes and single-source reads
+          route direct to the driver, sub-100ms.
         </p>
       </article>
       <article class="pillar">
-        <h3>Smart routing &amp; recorded transforms</h3>
+        <h3>Smart routing</h3>
         <p>
-          Single-source queries bypass federation entirely. Materialized views record
-          the transform that built them, so queries are transparently rewritten onto a
-          fresh MV — partial join matches included. Hot lookups inline as VALUES CTEs.
+          Single-source queries bypass federation entirely. Materialized views record the
+          transform that built them, so queries rewrite transparently onto a fresh MV.
         </p>
       </article>
     </section>
@@ -133,26 +136,29 @@
           <p class="eyebrow">Query interfaces &amp; wire protocols</p>
           <h2>Write in three languages. Connect over nine protocols.</h2>
           <p class="section-sub">
-            The query language and the wire protocol are independent choices, and the
-            same governance reaches every entry point — your applications, BI tools, and
-            AI agents alike.
+            From columnar Arrow batches streamed over gRPC to plain HTTP JSON — pick the
+            transport your workload actually wants. The query language and the wire
+            protocol are independent choices, and the same governance reaches every entry
+            point.
           </p>
         </header>
 
         <div class="grid grid-3">
-          <div class="card"><h4>GraphQL</h4><p>Per-role schemas with field-level visibility, cursor pagination, and aggregates. Schema-constrained to registered relationships — valid by construction. Apollo APQ included.</p></div>
-          <div class="card"><h4>SQL</h4><p>Full SQL over federated data — correlated subqueries and all. Single-source queries bypass federation entirely for sub-100ms latency.</p></div>
-          <div class="card"><h4>Cypher</h4><p>Graph queries over the same federated schema. Traverse relationships as edges, union sources, walk variable-length paths — identical governance.</p></div>
-          <div class="card"><h4>pgwire</h4><p>Any Postgres client (psql, DBeaver, DataGrip, pandas <code>read_sql</code>) connects on port 5439. <code>pg_catalog</code> answered in-memory so schema browsers just work.</p></div>
-          <div class="card"><h4>Bolt (Neo4j)</h4><p>Neo4j Browser, Bloom, and official drivers run Cypher over Bolt. Each role surfaces as a <code>provisa_&lt;role&gt;</code> database.</p></div>
-          <div class="card"><h4>Arrow Flight</h4><p>High-throughput columnar streaming over gRPC; accepts GraphQL or SQL. Unbounded result sets, no server-side materialization.</p></div>
-          <div class="card"><h4>gRPC model API</h4><p>Auto-generated <code>.proto</code> from the registered schema — typed query and insert RPCs per table, streamed responses.</p></div>
-          <div class="card"><h4>JDBC &amp; REST</h4><p>BI tools (Tableau, Power BI, DBeaver) over JDBC; JSON:API 1.1 at <code>/data/jsonapi/{table}</code> with sparse fieldsets and filter expressions.</p></div>
-          <div class="card"><h4>Natural language</h4><p>NL→SQL/Cypher/GraphQL powered by Claude, with an interactive validation loop before anything executes.</p></div>
-          <div class="card"><h4>MCP server</h4><p>A Model Context Protocol server — stdio and remote Streamable HTTP — lets AI agents like Claude query your governed, federated data as tools. The OAuth token maps to a role, so every call is governed; agents get no bypass.</p></div>
-          <div class="card"><h4>Airport (DuckDB)</h4><p>Any DuckDB client attaches Provisa as a database — <code>ATTACH 'grpc://host' AS p (TYPE AIRPORT)</code> — and queries the governed federated schema. Filters and projection push down; writes update by primary key.</p></div>
-          <div class="card"><h4>WebSocket &amp; SSE</h4><p>Subscriptions stream near-real-time change events. Backends: Postgres native, MongoDB native, CDC, or polling — also fanned out over Kafka.</p></div>
+          <div class="card"><h4>GraphQL</h4><p>Per-role schemas with field-level visibility, constrained to registered relationships — valid by construction.</p></div>
+          <div class="card"><h4>SQL</h4><p>Full SQL over federated data. Single-source queries bypass federation entirely for sub-100ms latency.</p></div>
+          <div class="card"><h4>Cypher</h4><p>Graph traversals over the same federated schema, under identical governance.</p></div>
+          <div class="card"><h4>pgwire</h4><p>Any Postgres client connects on port 5439. <code>pg_catalog</code> is answered in-memory, so schema browsers just work.</p></div>
+          <div class="card"><h4>Bolt (Neo4j)</h4><p>Neo4j Browser, Bloom, and the official drivers run Cypher against the federated graph.</p></div>
+          <div class="card"><h4>Arrow Flight</h4><p>Arrow record batches streamed over gRPC — columnar all the way out, no row-by-row serialization. Accepts GraphQL or SQL.</p></div>
+          <div class="card"><h4>gRPC model API</h4><p>A <code>.proto</code> generated from your schema — typed query and insert RPCs per table.</p></div>
+          <div class="card"><h4>JDBC &amp; REST</h4><p>Tableau, Power BI, and DBeaver over JDBC; JSON:API 1.1 for applications.</p></div>
+          <div class="card"><h4>Airport (DuckDB)</h4><p>Any DuckDB client attaches Provisa as a database and pushes filters down.</p></div>
+          <div class="card"><h4>WebSocket &amp; SSE</h4><p>Subscriptions stream change events — Postgres native, MongoDB native, CDC, or polling.</p></div>
+          <div class="card"><h4>MCP server</h4><p>AI agents query your governed data as tools. The OAuth token maps to a role, so agents get no bypass.</p></div>
+          <div class="card"><h4>Natural language</h4><p>NL→SQL, Cypher, or GraphQL powered by Claude, with a validation loop before anything runs.</p></div>
         </div>
+
+        <a class="more" href="/why/interfaces">Every interface in detail</a>
 
         <figure class="shot">
           <div class="shot-frame">
@@ -187,21 +193,12 @@
         </ol>
 
         <p class="section-note">
-          <strong>Relationships are governed too — explore with guardrails.</strong>
-          A JOIN, or a graph traversal, is legal only if it matches a registered,
-          approved relationship; unapproved paths are rejected and logged. So the query
-          and graph explorers let people roam the model freely — and let AI agents
-          discover what connects to what — while every path stays inside the edges
-          policy sanctioned. Each relationship carries a human- and agent-readable
-          reason for why the traversal exists.
+          <strong>Relationships are governed too.</strong> A JOIN or a graph traversal is
+          legal only if it matches a registered, approved relationship — so people and
+          agents can roam the model freely while every path stays inside what policy
+          sanctioned. It's a per-role flag: trusted roles can turn it off.
         </p>
-        <p class="section-note">
-          And it's a <strong>per-role capability</strong>: the guardrail is a single
-          flag on the role. Leave it on for analysts and agents who should stay on the
-          rails; take the training wheels off for a trusted role and it writes
-          unconstrained JOINs across the whole federated schema — same governed path,
-          just without the relationship guard.
-        </p>
+        <a class="more" href="/why/governance">How each layer works</a>
       </div>
     </section>
 
@@ -210,11 +207,11 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Data sources</p>
-          <h2>46 source types through one API.</h2>
+          <h2>52 source types through one API.</h2>
           <p class="section-sub">
-            Graph and RDF sources are first-class, not adapters. Register REST,
-            GraphQL, gRPC, WebSocket, or RSS endpoints as governed tables — federated
-            joins across API and relational sources work transparently.
+            Graph and RDF sources are first-class, not adapters. Register REST, GraphQL,
+            gRPC, WebSocket, or RSS endpoints as governed tables — federated joins across
+            API and relational sources work transparently.
           </p>
         </header>
 
@@ -236,22 +233,12 @@
           <div>
             <h3>An instant data lake — governed on arrival</h3>
             <p>
-              You don't register files — you register a <em>location</em>. Point Provisa
-              at a folder, a bucket, or a SharePoint site and it crawls the whole tree
-              recursively, discovers every file, and registers each as a governed table.
-              Not just CSV and Parquet — <strong>Excel workbooks</strong>, and even
-              <strong>Word, PowerPoint, HTML, and Markdown documents</strong> converted to
-              tables. Over local disk, <code>s3://</code>, <code>ftp://</code>,
-              <code>sftp://</code>, or SharePoint.
-            </p>
-            <p>
-              Connect <strong>SharePoint</strong> and its lists enumerate as schemas you
-              can query. Run a <strong>Splunk</strong> search and the results come back as
-              a table you can JOIN to your business data. A live <strong>Google
-              Sheet</strong> is just another table. Each lands under the same RLS,
-              masking, and relationship rules as everything else — a data lake that's
+              You don't register files, you register a <em>location</em>: point Provisa at
+              a folder, a bucket, or a SharePoint site and it crawls the tree, discovers
+              every file, and registers each as a governed table. A data lake that's
               governed the moment it exists, not months later.
             </p>
+            <a class="more" href="/why/sources">What it crawls, and what else registers</a>
           </div>
         </div>
 
@@ -263,117 +250,66 @@
           </div>
           <figcaption>The same federated schema, explorable as a live graph — domains, node labels, and relationships across every source.</figcaption>
         </figure>
-
-        <p class="section-note">
-          <strong>Observability as data.</strong> Traces, metrics, and logs are
-          collected via OpenTelemetry, compacted into Iceberg, and registered as
-          queryable tables — join <code>customers</code> to <code>queries</code> to
-          see who ran what and how long it took.
-        </p>
       </div>
     </section>
 
-    <!-- Analytics / materialized views -->
+    <!-- Analytics / materialized views + ecosystem -->
     <section id="analytics" class="section section-alt">
       <div class="container">
         <header class="section-head">
-          <p class="eyebrow">Materialized views</p>
-          <h2>Analytics datasets you declare, not pipelines you orchestrate.</h2>
-          <p class="section-sub">
-            Build a materialized view over a view, a source, or another MV — a
-            dependency graph of derived datasets from raw source to final analytics
-            table. No orchestration DAG to write or babysit.
-          </p>
-        </header>
-
-        <div class="grid grid-4">
-          <div class="card"><h4>Layered by design</h4><p>MVs stack on views and other MVs. Your whole analytics layer becomes one declarative graph — the same model that describes and governs your data.</p></div>
-          <div class="card"><h4>Recorded transforms</h4><p>Each MV records the SQL or join that built it and the input signals it read (Iceberg snapshot, RDB watermark). Queries transparently rewrite onto a fresh MV — partial-join matches included.</p></div>
-          <div class="card"><h4>Refresh by freshness</h4><p>An MV rebuilds only when an upstream input actually changed. A change fans out through the graph to its dependents — demand-driven, not recompute-everything.</p></div>
-          <div class="card"><h4>Refresh by calendar</h4><p>Or on a TTL / interval when time, not data, is the trigger. Freshness and calendars are the only knobs — no hand-maintained schedule.</p></div>
-        </div>
-
-        <p class="section-note">
-          Governance still applies to every derived dataset: an MV is a governed table
-          like any other, so RLS, masking, and relationship rules hold all the way up
-          the graph.
-        </p>
-      </div>
-    </section>
-
-    <!-- Ecosystem: catalog export, data quality, dereferenceable addresses -->
-    <section id="ecosystem" class="section">
-      <div class="container">
-        <header class="section-head">
-          <p class="eyebrow">Fits your stack</p>
-          <h2>It feeds the catalog you already bought.</h2>
-          <p class="section-sub">
-            Provisa is not another place your metadata goes to die. The model that
-            governs your queries publishes outward to the tools your organization
-            already runs — and addresses every governed value it holds.
-          </p>
+          <p class="eyebrow">Derived data &amp; your existing stack</p>
+          <h2>Declare the analytics layer. Publish it outward.</h2>
         </header>
 
         <div class="grid grid-3">
           <div class="card">
-            <h4>Publishes to your catalog</h4>
+            <h4>Declared datasets, not pipelines</h4>
             <p>
-              One registration, six destinations: <strong>OpenMetadata</strong>,
-              <strong>DataHub</strong>, <strong>Collibra</strong>,
-              <strong>Atlan</strong>, <strong>Apache Atlas</strong>, and
-              <strong>OpenLineage</strong>. Tables, columns, tags, classifications,
-              and lineage flow out as first-class catalog assets — from the admin
-              console or from <code>provisa metadata export</code> on a cron.
+              A pipeline is a program that ran; to audit one you read code. Declare the
+              dataset instead and the definition is the record — column-level lineage,
+              the data version consumed, the rules that produced it. No orchestration DAG.
             </p>
           </div>
           <div class="card">
-            <h4>Lineage that survives re-platforming</h4>
+            <h4>Feeds the catalog you bought</h4>
             <p>
-              Assets are stitched on <strong>business identity</strong>, not physical
-              location. Move a table from Oracle to Postgres and its catalog entry,
-              lineage, and history follow the business entity instead of shattering —
-              so a migration doesn't reset your catalog to zero.
+              One registration publishes to OpenMetadata, DataHub, Collibra, Atlan, Apache
+              Atlas, and OpenLineage — with lineage stitched on business identity, so
+              re-platforming doesn't reset it.
             </p>
           </div>
           <div class="card">
-            <h4>Data quality, without a second engine</h4>
+            <h4>Every value has an address</h4>
             <p>
-              Point <strong>Soda</strong> at a governed table and register the contract
-              as a source. You get scan history, a quality scorecard, and lineage from
-              each failing check back to the table it guards — scans triggered by
-              <strong>change</strong>, not by a cron guess. Provisa ships no DQ engine
-              and doesn't ask you to retire yours.
+              Governed values resolve over REST or MCP at a semantic address, optionally as
+              of a point in time. Physical URIs are refused, so a citation can't leak a
+              location.
             </p>
           </div>
         </div>
 
-        <p class="section-note">
-          <strong>Every value has an address.</strong> A governed value is addressable
-          as <code>provisa://&lt;org&gt;/&lt;domain&gt;/&lt;table&gt;/pk=&lt;id&gt;/&lt;column&gt;</code>
-          and resolves over REST or MCP — optionally <em>as of</em> a point in time.
-          Exported documents, lineage nodes, audit records, and AI-agent citations
-          carry links that resolve back to the live governed value, under the same
-          policy as any other read. Only semantic addresses dereference; physical URIs
-          are refused, so a citation can never leak a location.
-        </p>
+        <div class="doc-next" style="margin-top:34px;padding-top:0;border:0">
+          <a class="more" href="/why/materialized-views" style="margin-top:0">Materialized views in depth</a>
+          <a class="more" href="/why/catalog" style="margin-top:0">Catalog, lineage, and data quality</a>
+        </div>
       </div>
     </section>
 
-    <!-- Distribution / airgap -->
-    <section id="distribution" class="section section-alt">
+    <!-- Distribution -->
+    <section id="distribution" class="section">
       <div class="container dist-inner">
         <div class="dist-copy">
           <p class="eyebrow">Enterprise-ready</p>
           <h2>Airgap-ready. Installs from your own Artifactory.</h2>
           <p class="section-sub">
-            The embedded profile ships the entire runnable system — precompiled UI and
-            all — as a single Python wheel. Regulated and airgapped orgs already trust
+            The embedded profile ships the entire runnable system — precompiled UI and all
+            — as a single Python wheel. Regulated and airgapped orgs already trust
             Artifactory-as-PyPI, so there's no new supply chain to approve: no Docker
             registry to mirror, no JVM, no root.
           </p>
           <ul class="ticks">
             <li>SQLite control plane + embedded DuckDB engine — no Docker, no daemon</li>
-            <li>Bring your own engine: Trino, Databricks, Snowflake, Postgres, ClickHouse, Oracle — whatever works, one env var</li>
+            <li>Bring your own engine: Trino, Databricks, Snowflake, Postgres, ClickHouse, Oracle — one env var</li>
             <li>Reproducible and hash-pinned; passes the same CVE gate as every wheel</li>
           </ul>
         </div>
@@ -390,17 +326,6 @@
         </div>
       </div>
 
-      <div class="container lockin-intro">
-        <p class="eyebrow">Vendor leverage</p>
-        <h2>Locked-in ecosystems become replaceable execution engines.</h2>
-        <p class="section-sub">
-          Provisa gives you leverage over your vendors. It front-ends your disparate
-          systems so your semantics live with <em>you</em>, not your vendors — turning
-          locked-in ecosystems into replaceable execution engines you can swap without
-          rewriting a query or a policy.
-        </p>
-      </div>
-
       <div class="container lockin">
         <div class="lockin-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -408,132 +333,18 @@
           </svg>
         </div>
         <div>
-          <h3>No lock-in — engine or source</h3>
+          <h3>Locked-in ecosystems become replaceable execution engines</h3>
           <p>
-            Insulate your data consumers from infrastructure churn: your model,
-            semantics, and governance live <em>above</em> the infrastructure, not inside
-            it. Swap the engine — embedded to Trino to your
-            warehouse; new CTO, new strategy, switch it to Databricks — the queries and
-            policies don't change. Re-point a table from Oracle to Postgres, or MongoDB
-            to Snowflake, and consumers never see it move.
+            Your model, semantics, and governance live <em>above</em> the infrastructure,
+            not inside it. Swap the engine — embedded to Trino to your warehouse; new CTO,
+            switch it to Databricks — and the queries and policies don't change. Re-point a
+            table from Oracle to Postgres and consumers never see it move.
           </p>
           <p>
-            That turns <em>data modernization</em> into an incremental effort instead of
-            a big-bang cutover: migrate sources table by table behind a stable governed
-            API, with one uniform governance model applying to legacy and modern sources
-            alike throughout the transition.
+            We don't lock you in either: your model is portable declarative config, and the
+            SQL it compiles is yours to read, export, and keep.
           </p>
-          <p>
-            Your warehouse should be a replaceable component, not a place you get
-            stranded — when your semantics live <em>above</em> the engine, vendors
-            compete for your workloads instead of holding them hostage.
-          </p>
-        </div>
-      </div>
-
-      <div class="container lockin">
-        <div class="lockin-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="4" y="10.5" width="16" height="10" rx="2" /><path d="M8 10.5V7a4 4 0 0 1 7.5-2" /><path d="M12 14.5v2.5" />
-          </svg>
-        </div>
-        <div>
-          <h3>We don't lock you in either</h3>
-          <p>
-            Provisa is a handful of primitives — domains, tables, relationships, masking,
-            views — compiled deterministically. No proprietary modeling universe to learn,
-            no black box: your model is portable declarative config, and the SQL it
-            compiles is yours to read, export, and keep.
-          </p>
-          <p>
-            Use it as scaffolding in dev if you want. The semantics you write don't die
-            with the tool — because they were never trapped inside it.
-          </p>
-        </div>
-      </div>
-
-      <div class="container lockin">
-        <div class="lockin-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2 2 7l10 5 10-5-10-5z" /><path d="m2 12 10 5 10-5" /><path d="m2 17 10 5 10-5" />
-          </svg>
-        </div>
-        <div>
-          <h3>Physical fragmentation, logical coherence</h3>
-          <p>
-            Performance needs fragmentation — the right engine per workload, materialized
-            copies at the right granularity. Consumers need one coherent model. The old
-            cost of fragmenting the physical was fragmenting the <em>logical</em> too: a
-            pile of models with clashing objectives and granularity, physical detail
-            bleeding into logical design.
-          </p>
-          <p>
-            Provisa splits them. Specialized engines and materialized views underneath,
-            one governed logical model on top — and the physical never bleeds into the
-            contract your consumers see. The knobs that fragment for speed live in the
-            same declarative model that keeps you coherent, so going faster never spawns
-            a second modeling mess.
-          </p>
-        </div>
-      </div>
-
-      <div class="container lockin">
-        <div class="lockin-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" />
-          </svg>
-        </div>
-        <div>
-          <h3>Domains as products — delegated, not centralized</h3>
-          <p>
-            Give a domain its own owner and scoped rights to build it: register sources,
-            publish tables, wire relationships, ship views — all inside their domain,
-            none of it reaching another. Central policy still governs every query;
-            authorship is federated, enforcement stays absolute. Optional — off by
-            default, on when you need it.
-          </p>
-        </div>
-      </div>
-
-      <div class="container lockin">
-        <div class="lockin-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="6" cy="6" r="2.5" /><circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="9" r="2.5" /><path d="M6 8.5v7" /><path d="M18 11.5c0 4-6 1.5-6 6.5" />
-          </svg>
-        </div>
-        <div>
-          <h3>Promote config like code</h3>
-          <p>
-            Analysts and developers work freely in a dev lane — register sources, publish
-            tables, wire relationships. Their changes export as a unified-diff config
-            patch that flows to test, then prod, reviewed in git like any pull request.
-            Because the estate is declarative, promotion is a <em>diff</em>, not a
-            migration.
-          </p>
-          <p>
-            Where a release also moves data, a materialized view can carry the transform —
-            and land its output into a real source table, not just the internal store.
-            True data migrations may still call for imperative scripts outside Provisa —
-            the model promotes cleanly; the heavy data movement is yours to run.
-          </p>
-        </div>
-      </div>
-
-      <div class="container lockin">
-        <div class="lockin-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-          </svg>
-        </div>
-        <div>
-          <h3>The economic takeaway — you set the compute bill</h3>
-          <p>
-            Pair semantic governance with intelligent query routing and the value shifts
-            from just <em>managing access</em> to actively optimizing compute economics.
-            Provisa becomes a single point of leverage to optimize execution speed,
-            minimize network egress, and dictate exactly how much you pay vendor compute
-            engines on any given query.
-          </p>
+          <a class="more" href="/why/no-lock-in">The full argument — including domains as products, config promotion, and the compute bill</a>
         </div>
       </div>
     </section>
@@ -590,10 +401,6 @@
               The whole runnable system — precompiled UI included — as a single wheel.
               Airgap-ready over an Artifactory PyPI mirror: no Docker, no JVM, no root.
             </p>
-            <p class="pip-note">
-              Federate against your own engine any time with
-              <code>TRINO_HOST</code>/<code>TRINO_PORT</code>.
-            </p>
           </div>
           <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
             <div class="term-bar"><span></span><span></span><span></span></div>
@@ -614,29 +421,105 @@
         <header class="section-head">
           <p class="eyebrow">Deploy anywhere</p>
           <h2>From a laptop to a cluster — same platform.</h2>
-          <p class="section-sub">
-            Double-click on your desktop, <code>pip install</code> in an airgap, or
-            provision a cluster with the tooling your ops team already runs.
-          </p>
         </header>
 
         <div class="grid grid-4">
           <div class="card">
             <h4>Desktop installers</h4>
-            <p>Signed <strong>macOS</strong>, <strong>Windows</strong>, and <strong>Linux</strong> installers — each with a one-click demo build that boots a sample stack you can query immediately.</p>
+            <p>Signed macOS, Windows, and Linux installers — each with a one-click demo build that boots a sample stack.</p>
           </div>
           <div class="card">
             <h4>Python wheel</h4>
-            <p><code>pip install "provisa[embedded]"</code> — the whole runnable system, precompiled UI included. Airgap-ready over Artifactory. No Docker, no JVM, no root.</p>
+            <p><code>pip install "provisa[embedded]"</code> — the whole system, precompiled UI included. Airgap-ready.</p>
           </div>
           <div class="card">
             <h4>Kubernetes · Helm</h4>
-            <p>A production Helm chart deploys the control plane, workers, and engine to any cluster — scale the federation tier horizontally behind one governed API.</p>
+            <p>A production chart deploys the control plane, workers, and engine — scale the federation tier horizontally.</p>
           </div>
           <div class="card">
             <h4>Cloud &amp; VM · Terraform</h4>
-            <p>Terraform modules for <strong>AWS</strong>, <strong>Azure</strong>, and <strong>GCP</strong> stand up a VM or cluster deployment end to end.</p>
+            <p>Modules for AWS, Azure, and GCP stand up a VM or cluster deployment end to end.</p>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="section section-alt">
+      <div class="container">
+        <header class="section-head">
+          <p class="eyebrow">Questions</p>
+          <h2>Frequently asked</h2>
+        </header>
+
+        <div class="faq">
+          <details>
+            <summary>Is Provisa a database, or does it replace my warehouse?</summary>
+            <p>
+              Neither. Provisa is a semantic and governance layer that runs on an engine
+              you choose — Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks,
+              BigQuery, or the embedded Trino-compatible engine in the box. Your warehouse
+              becomes a replaceable execution engine rather than the place your semantics
+              live.
+            </p>
+            <a class="more" href="/why/no-lock-in">Why that matters</a>
+          </details>
+
+          <details>
+            <summary>How is this different from Starburst or Denodo?</summary>
+            <p>
+              Starburst is a query engine; Provisa sits above one and can use Starburst as
+              its engine. Denodo is the closest comparison — same category, different
+              center of gravity: Provisa adds GraphQL and Cypher as peers to SQL, nine wire
+              protocols including pgwire and Bolt, engine choice, and a deployment that
+              starts at one <code>pip install</code>.
+            </p>
+            <a class="more" href="/vs/starburst">Provisa and Starburst</a>
+          </details>
+
+          <details>
+            <summary>I'm on Hasura v2. Can I migrate?</summary>
+            <p>
+              Yes. Point the converter at your Hasura v2 metadata directory and it emits a
+              Provisa config: sources, tables, per-role permissions as row-level security,
+              relationships, remote schemas, actions, event triggers, and cron triggers.
+              Anything it can't map cleanly is reported as a warning rather than dropped.
+            </p>
+            <a class="more" href="/vs/hasura">The migration path</a>
+          </details>
+
+          <details>
+            <summary>Can AI agents query my data safely?</summary>
+            <p>
+              An MCP server — stdio and remote Streamable HTTP — exposes governed tables as
+              tools. The OAuth token maps to a role, so every agent call passes the same six
+              governance layers as a human query, and traversals are limited to registered
+              relationships. Agents get no bypass and there's no second policy to keep in
+              sync.
+            </p>
+            <a class="more" href="/why/governance">How governance applies</a>
+          </details>
+
+          <details>
+            <summary>Does it work in an airgap?</summary>
+            <p>
+              The embedded profile ships the entire runnable system, precompiled UI
+              included, as a single Python wheel. Regulated orgs already trust
+              Artifactory-as-PyPI, so there's no Docker registry to mirror, no JVM, and no
+              root required. Builds are reproducible and hash-pinned.
+            </p>
+          </details>
+
+          <details>
+            <summary>What happens to my model if I stop using Provisa?</summary>
+            <p>
+              You keep it. Provisa is a handful of primitives — domains, tables,
+              relationships, masking, views — compiled deterministically. The model is
+              portable declarative config held in git, and the SQL it compiles is yours to
+              read and export. The semantics you write don't die with the tool.
+            </p>
+            <a class="more" href="/why/no-lock-in">Our position on lock-in</a>
+          </details>
         </div>
       </div>
     </section>
@@ -681,11 +564,19 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <p class="footer-note">The Active Semantic Layer. Business Source License 1.1.</p>
       <nav class="footer-links" aria-label="Footer">
-        <a href="#interfaces">Interfaces</a>
-        <a href="#governance">Governance</a>
-        <a href="#distribution">Distribution</a>
+        <a href="/why/active-semantic-layer">Active Semantic Layer</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/docs">Docs</a>
       </nav>
     </div>
   </footer>
@@ -744,7 +635,8 @@
         } catch {
           status.textContent = 'Network error. Try again.';
           status.classList.add('is-error');
-        } finally {
+        }
+        finally {
           btn.disabled = false;
         }
       });

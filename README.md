@@ -102,7 +102,7 @@ These are the connection protocols. SQL, GraphQL, and Cypher ride over them — 
 
 ### Data Sources
 
-- **46 source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
+- **52 source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
 - **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through the federation layer — bring your own cluster or use the embedded workers
 - **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included; federated joins across API sources and relational sources work transparently
 - **Remote schema introspection** — Point at any GraphQL, OpenAPI, or gRPC endpoint; documented operations are automatically surfaced as queryable tables, graph nodes, and edges with full governance applied on top
