@@ -163,6 +163,22 @@ build_cfg() {
   tar czf "$STAGE/cfg.tgz" -C "$REPO/config" $CONFIG_FILES pgbouncer
 }
 
+# Distributions that are not part of this source tree but that the deployed node runs on top of it.
+# provisa.core.commerce is the ONE seam they bind to (REQ-1473) and every hook there no-ops when the
+# import fails, so a checkout without them deploys a node that runs — it just has no billing. The
+# hook is sourced rather than executed: it patches the same containers through ssh_node/scp_node and
+# has no business re-deriving the node, the zone or the container list.
+push_plugins() {
+  local hook="$REPO/.claude/commercial/deploy-plugin.sh"
+  if [ ! -f "$hook" ]; then
+    echo "== no private plugins in this checkout; the node deploys without them"
+    return 0
+  fi
+  # shellcheck source=/dev/null
+  . "$hook"
+  push_commercial
+}
+
 push_cfg() {
   echo "== pushing configs ($(du -h "$STAGE/cfg.tgz" | cut -f1))"
   scp_node "$STAGE/cfg.tgz" /tmp/provisa-cfg-deploy.tgz
@@ -486,18 +502,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
     preflight_engine; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine ;;
   all)
-    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_cfg; restart; verify; verify_api; verify_engine ;;
+    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine ;;
 esac
 echo "== deployed $TARGET"
