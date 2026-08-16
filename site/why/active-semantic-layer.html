@@ -122,6 +122,32 @@
           someone actually needs to walk one.
         </p>
 
+        <h2>The argument infrastructure already had</h2>
+        <p>
+          Servers used to be provisioned by scripts, and everyone accepted it, because the
+          script was how the thing got built. Then Terraform and Kubernetes moved the
+          artifact: you declare what should exist, the system works out how to get there,
+          and "what is actually deployed" becomes a question you answer by reading state
+          rather than by re-running a program and watching. Nobody defends the shell script
+          now. The argument that won it wasn't that scripts were bad — plenty of them were
+          fine. It was that a declaration can be diffed, reviewed, and queried, and a
+          procedure can only be executed.
+        </p>
+        <p>
+          Data never had that moment. A pipeline is still a deploy script, and the estate
+          is still described by whatever ran last night. The semantic layer is where the
+          same move applies: declare the sources, the relationships, the meaning, and the
+          policy, and let those be state you can query rather than a program you re-run to
+          find out.
+        </p>
+        <p>
+          The comparison is also candid about the escape hatch. Terraform has
+          <code>local-exec</code>. Everyone knows what it means when they see one, it shows
+          up in state like everything else, and it did not sink the model — because a
+          labeled exception inside a declared graph is a thing you can find. That is exactly
+          the arrangement here.
+        </p>
+
         <h2>Infrastructure never gets budgeted</h2>
         <p>
           It gets deferred, every year, by people who agree it matters. What gets funded is

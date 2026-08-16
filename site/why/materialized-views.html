@@ -151,6 +151,40 @@
           and a number nobody can reproduce is not a metric.
         </p>
 
+        <h2>What happens when the source changes</h2>
+        <p>
+          Schema drift is the standing objection to any declarative model, and it deserves
+          four separate answers rather than one.
+        </p>
+        <ul>
+          <li><strong>A column is added.</strong> Nothing happens. A definition names the columns it uses, and one it never named isn't referenced. On the landing side, incoming rows are mapped to target columns by name and extra keys are dropped, so additive drift is a non-event.</li>
+          <li><strong>A column is removed.</strong> If a definition referenced it, the refresh fails — loudly, at that node, rather than quietly producing a NULL column three hops downstream. If the fraction of expected columns present in the incoming data collapses, the land is refused outright rather than writing a mangled table. A schema check on the contract catches it independently of any refresh.</li>
+          <li><strong>A column changes type.</strong> The schema check is a direct hit: the declared type no longer matches the observed one, which is that check's whole job.</li>
+          <li><strong>A column changes meaning.</strong> This is the hard one, and no system reads intent. But anything consequential enough to change your numbers moves a distribution, and the checks sitting on that distribution — invalid, missing, duplicate, aggregate — fire when it does.</li>
+        </ul>
+        <p>
+          Where detection genuinely ends, the graph takes over. Ask what derives from a
+          column and you get the answer at column granularity, across every view and MV
+          that consumes it. The question stops being "did something break," which is
+          unanswerable, and becomes "here are the eleven things affected." That is also the
+          question a pipeline estate cannot answer at all without reading every job.
+        </p>
+        <p>
+          And most of this lands in dev, where it should. Source schema changes arrive as
+          releases, so the refresh that fails and the checks that fire do it in a lower
+          environment against the same declared model, before anything reaches production.
+          The objection assumes schema drift is something that happens to you in the night.
+          Usually it is something a team shipped, and shipping is a thing you can stage.
+        </p>
+        <p>
+          When the change comes from outside — a vendor feed, a partner's export, an API
+          that shifted under you — nobody can solve that, and we won't claim to. What a
+          system can do is give you the hygiene: checks that fire on the first bad batch,
+          a refresh that fails instead of landing garbage, and a list of exactly what is
+          downstream. You still get woken up. You just get woken up early, with the answer
+          attached.
+        </p>
+
         <h2>Layered by design</h2>
         <p>
           MVs stack on views and on other MVs, so your whole analytics layer becomes one
@@ -199,12 +233,22 @@
           materialization that quietly outranks the policy that produced it.
         </p>
 
-        <h2>Promotion carries data, too</h2>
+        <h2>"But we still have to move the data"</h2>
         <p>
-          Where a release also has to move data, a materialized view can carry the
-          transform and land its output into a real source table, not just the internal
-          store. True data migrations may still call for imperative scripts outside
-          Provisa — the model promotes cleanly; the heavy data movement is yours to run.
+          Sometimes, and for good reasons. Data lands in a backend-for-frontend because
+          something has to put it in front of eyeballs. It gets cached closer to a workload
+          for a performance reason somebody measured. It goes to another organization
+          entirely. These are all real, and they all have the same answer: three query
+          languages across nine wire protocols. That is what the right-hand edge is
+          <em>for</em>. Connect the way you already connect, read a governed dataset, keep a
+          faithful copy if you need one.
+        </p>
+        <p>
+          What you don't do is build something inside your own organization that sits
+          outside the graph. A copy that reads from the published edge is downstream of the
+          model, and you can trace it back. A copy assembled by its own job isn't downstream
+          of anything — it just exists, and now two numbers disagree with no way to say
+          which one is wrong.
         </p>
 
         <h2>"But ours is mostly declarative"</h2>
@@ -251,6 +295,17 @@
           across it. That's the difference from a graveyard of stored procedures nobody
           can inventory. This is a live graph, and every exception in it is a labeled
           node you can go and look at.
+        </p>
+        <p>
+          The comparison flatters the procedure, anyway. A stored procedure declares a
+          <em>signature</em> — scalar arguments, maybe an untyped result set — and most of
+          the real data flow doesn't pass through it at all: it reads whatever tables it
+          likes and writes wherever it wants, none of which appears in the declaration. A
+          signature tells you how to call something. A contract names the datasets going in
+          and the dataset coming out, which is a statement about data flow, and data flow is
+          what lineage is made of. You can derive edges from one and nothing from the other
+          — which is why tracing a procedure estate means parsing bodies to guess, and why
+          the guess is always partial.
         </p>
 
         <h2>What you end up with</h2>
