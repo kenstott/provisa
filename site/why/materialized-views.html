@@ -45,9 +45,11 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Materialized views</span></p>
         <h1>Analytics datasets you declare, not pipelines you orchestrate.</h1>
         <p class="lead">
-          Build a materialized view over a view, a source, or another MV — a dependency
-          graph of derived datasets from raw source to final analytics table. There is no
-          orchestration DAG to write or babysit.
+          A pipeline is not a data product. It is a program, and it inherits everything
+          that comes with code. Declare the dataset instead: a materialized view over a
+          view, a source, or another MV, stacking into a graph of derived datasets from raw
+          source to final analytics table. There is no orchestration DAG to write or
+          babysit.
         </p>
       </div>
 
@@ -79,6 +81,40 @@
           detect. After SQL, the only remaining problem is timing.
         </p>
 
+        <h2>The other reason: getting data from A to B</h2>
+        <p>
+          The rest of the pipelines exist because something in one system was needed in
+          another. That sounds like plumbing, and it isn't. Writing it forces a developer
+          to settle questions that were never theirs to settle: which copy is now
+          authoritative, how stale is acceptable, what happens when the pull fails, where a
+          write is supposed to land. Those are policy decisions, and they get made in a
+          script, one at a time, by whoever drew the ticket — then they harden, because the
+          answer is now a program somebody depends on.
+        </p>
+        <p>
+          Here data movement is a property of the system rather than something you do.
+          Registering a source resolves how it joins the query surface: reached live
+          through a connector, read in place as a file, or landed into a store because it
+          has no live representation at all. Nobody chooses that; it follows from what the
+          source can do and what the engine can do, and the same source can resolve
+          differently on a different engine without anyone rewriting anything.
+        </p>
+        <p>
+          The questions that used to land on a developer are settled once, as rules. A
+          pull that fails with no fresh cached data is an error, not a silent serve of
+          yesterday's numbers — stale is served only where a freshness policy explicitly
+          says it may be. A write goes to the upstream system of record and invalidates the
+          cached copy, because a cache is never allowed to act like the source of truth. A
+          store the engine cannot read back is rejected at registration rather than
+          discovered later.
+        </p>
+        <p>
+          Which is why re-pointing is uneventful. Move the source from Oracle to Postgres,
+          move the target to a different store, switch the engine underneath — the strategy
+          re-resolves and the movement follows. There is no pipeline to rewrite, because
+          there was never a pipeline; there was a registration, and you changed it.
+        </p>
+
         <h2>An imperative pipeline is already a hole</h2>
         <p>
           Most derived data is produced by a program: a script, a notebook, a job in an
@@ -89,14 +125,15 @@
         <ul>
           <li><strong>How do you audit it?</strong> By reading the transform. The audit surface is a program, so auditing it is code review, repeated every time anyone changes it.</li>
           <li><strong>What did it actually do?</strong> Whatever the code said on the day it ran. Which columns fed which output is a question you answer by tracing the source by hand.</li>
-          <li><strong>When did it do it?</strong> You get the job's start time, which is when the machine woke up — not the point-in-time of the data it consumed. Those differ by however long the upstream was late.</li>
+          <li><strong>When did it do it?</strong> You get the job's start time, which is incidental — when the machine woke up — rather than semantic: the version of the data it consumed. Those two differ by however late the upstream was, and the log records the one that doesn't matter.</li>
           <li><strong>What does the result mean?</strong> The name someone typed on the output table, and a wiki page written at a different time by a different person.</li>
         </ul>
         <p>
           None of that is fixable with better discipline, because the artifact is a
           procedure. A procedure can only be understood by simulating it. Declared datasets
           invert that: the definition is the artifact, and every one of those four
-          questions is answered by reading the model instead of the code.
+          questions is answered by reading the model instead of the code. A pipeline tells
+          you how a number was computed. A definition tells you what the number is.
         </p>
 
         <h2>The four questions, answered from the definition</h2>
@@ -146,12 +183,20 @@
           is no hand-maintained schedule to drift out of sync with the model.
         </p>
 
-        <h2>Still governed, all the way up</h2>
+        <h2>A pipeline is a hole in your governance</h2>
         <p>
-          An MV is a governed table like any other. Row-level security, masking, and
-          relationship rules hold on every derived dataset, so a materialization can never
-          become the quiet path around a policy — which is the usual failure mode when the
-          derived layer lives in a separate system.
+          A pipeline is a policy bypass. It reads governed data and writes a
+          new table somewhere else, and that new table is outside the policy model — same
+          numbers, no row filter, no masking, no record of who may see it. Every rule you
+          wrote upstream stops at the write. So the derived layer becomes the reliable way
+          around the controls, built by the team that was asked to make data more
+          available, and nobody involved intended a bypass.
+        </p>
+        <p>
+          Declared datasets close it, because the derived table never leaves the model.
+          Row-level security, masking, and relationship rules hold on an MV exactly as they
+          hold on a source table. There is no second copy to govern separately, and no
+          materialization that quietly outranks the policy that produced it.
         </p>
 
         <h2>Promotion carries data, too</h2>
@@ -160,6 +205,69 @@
           transform and land its output into a real source table, not just the internal
           store. True data migrations may still call for imperative scripts outside
           Provisa — the model promotes cleanly; the heavy data movement is yours to run.
+        </p>
+
+        <h2>"But ours is mostly declarative"</h2>
+        <p>
+          Often true. Plenty of orchestrators spend most of their runtime shuttling data
+          between declarative SQL transforms, and the SQL in them is fine. The trouble is
+          that the surrounding thing can still do anything, and what a system <em>can</em>
+          do is what you have to audit it for. A mostly-declarative pipeline has to be
+          reviewed as a program, because proving it stayed inside the declarative part
+          means reading it — which is the cost you were trying to avoid.
+        </p>
+        <p>
+          And it never stays inside. The escape hatch is right there, the deadline is real,
+          and one custom step is always the fastest way through — so the model gets a hook,
+          then a macro that writes SQL, then a step that calls out to a script nobody
+          revisits. Nobody decides to make the layer untrustworthy. It happens one
+          reasonable exception at a time, and afterward you cannot tell by looking which
+          datasets went through the clean path.
+        </p>
+        <p>
+          A closed vocabulary is the difference. When the only thing you can declare is a
+          definition the system can read back, "is this reproducible" stops being a
+          question about the team's discipline. It becomes a property the system can check
+          — which is why a definition that reaches for <code>now()</code> or
+          <code>random()</code> where reproducibility is required gets refused rather than
+          reviewed.
+        </p>
+
+        <h2>Custom logic is fine. Undeclared custom logic isn't.</h2>
+        <p>
+          Real work needs code the model can't express: text pulled out of a PDF, an
+          embedding from a model endpoint, a third-party API with its own rate limits and
+          its own bad days. Banning that would be a fantasy, and it isn't the rule here.
+        </p>
+        <p>
+          The price of admission is a two-dimensional transform: models in, a model out,
+          with data quality checked on both sides. Most of the ones you need already ship
+          as declarations — that's what the source shaping rules are. What's left is the
+          rare case, and it enters the same way everything else does.
+        </p>
+        <p>
+          Which means the result is always a DAG of models. Lineage isn't something a
+          command interrupts; the call is a node with real edges, so the trace closes
+          across it. That's the difference from a graveyard of stored procedures nobody
+          can inventory. This is a live graph, and every exception in it is a labeled
+          node you can go and look at.
+        </p>
+
+        <h2>What you end up with</h2>
+        <p>
+          None of this is a productivity feature. Writing the transform was never the
+          expensive part; living with it was. A procedure has to be re-read every time
+          someone asks what a number means, re-audited every time it changes, and worked
+          around every time it turns out to hold data that policy says a person shouldn't
+          see. That cost compounds per dataset, and it is why derived layers end as a pile
+          of tables nobody fully trusts.
+        </p>
+        <p>
+          Declared datasets pay it once. The lineage is in the definition, the data version
+          is stamped on the refresh, the policy is the same policy that governs the source,
+          and the decision about whether to move data at all belongs to the system. What
+          you have at the end is not a set of output tables and the scripts that made them.
+          It is a model — and a model is a thing you can ask questions of.
         </p>
       </div>
 
