@@ -1,11 +1,10 @@
 {
-  "extraPaths": ["vendor/buenavista", ".", "provisa-client"],
+  "extraPaths": ["vendor/buenavista", ".", "provisa-client", ".claude/commercial"],
   "include": ["provisa"],
   "exclude": ["provisa/proto", "**/__pycache__", "**/node_modules", "**/.*", ".venv", "tests", "**/tests"],
   "venvPath": ".",
   "venv": ".venv",
   "reportPrivateImportUsage": "none",
-  "reportUnusedParameter": "none",
   "reportUnusedVariable": "none",
   "reportUnusedFunction": "none"
 }
