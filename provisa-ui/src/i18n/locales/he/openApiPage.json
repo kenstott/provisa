@@ -1,5 +1,6 @@
 {
   "openApiPage": {
-    "frameTitle": "OpenAPI / Swagger UI"
+    "frameTitle": "OpenAPI / Swagger UI",
+    "loadError": "לא ניתן לטעון את תיעוד ה-OpenAPI: {{error}}"
   }
 }

@@ -89,12 +89,12 @@
         "description": "🔎 Uma vez que as funções existam, vá mais a fundo — restrinja quais <strong>linhas</strong> cada função vê com predicados baseados em atributos:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Orientado por dados e aplicado por linha — em todas as fontes e protocolos.</p>"
       },
       "stepQualityTable": {
-        "title": "Um verificador de qualidade é só mais uma fonte",
-        "description": "🧪 Um verificador de qualidade de dados — Soda ou Great Expectations — registra-se como <strong>fonte</strong>. Ele varre pelo próprio endpoint postgres do Provisa, então um único dialeto de contrato cobre igualmente uma tabela Snowflake, uma Iceberg e uma coleção Mongo. Os resultados chegam como uma tabela comum: expanda a linha e abra como qualquer outra."
+        "title": "Um verificador de qualidade é apenas uma fonte",
+        "description": "🧪 Um verificador de qualidade de dados — Soda ou Great Expectations — é registrado como <strong>fonte</strong>. Ele faz a varredura de volta pelo próprio endpoint postgres do Provisa, de modo que um único dialeto de contrato cobre igualmente uma tabela do Snowflake, uma tabela Iceberg e uma coleção do Mongo. Os resultados chegam como uma tabela comum: expanda a linha e abra-a como qualquer outra."
       },
       "stepQualityPanel": {
         "title": "Monte um contrato de qualidade",
-        "description": "✅ Escreva o contrato à mão ou monte as verificações coluna a coluna — nulos, contagem de linhas, faixas, atualidade — e faça uma <strong>execução de teste</strong> antes de salvar. Cada varredura é anexada, então esta tabela <em>é</em> o histórico de qualidade: represente em gráfico, alerte, junte com o que quiser."
+        "description": "✅ Escreva o contrato à mão ou construa verificações coluna por coluna — taxas de nulos, contagens de linhas, faixas, atualidade — e faça uma <strong>execução de teste</strong> antes de salvar. Cada varredura acrescenta linhas, então esta tabela <em>é</em> o histórico de qualidade: represente-a em gráficos, crie alertas sobre ela, junte-a a qualquer coisa."
       },
       "step20": {
         "title": "Construa seu pipeline de entrega",
@@ -128,6 +128,16 @@
         "title": "Um glossário de negócio vivo",
         "description": "📖 Cada termo remete às colunas que o carregam — cure nomes, definições e relações tipadas (tipo de, parte de, sinônimo de) manualmente, ou deixe a IA preencher as lacunas: <strong>✨ Definições</strong> rascunha apenas os termos que ainda não têm uma, e <strong>✨ Relações</strong> propõe vínculos em todo o glossário. Marque um termo como <strong>excluído da exportação</strong> para mantê-lo fora dos metadados publicados."
       }
+    },
+    "status": {
+      "starting": "Iniciando o tour. Aguarde…",
+      "resuming": "Retomando. Aguarde…",
+      "waiting": "Aguardando esta página terminar de carregar…",
+      "stuck": "Esta etapa está demorando mais do que o esperado. A página pode ainda estar carregando.",
+      "retry": "Tentar de novo",
+      "skip": "Pular esta etapa",
+      "exit": "Sair do tour",
+      "cancel": "Cancelar"
     }
   }
 }

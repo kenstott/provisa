@@ -5,6 +5,8 @@
     "reasonLabel": "कारण",
     "reasonRequired": "इस टैग के लिए कारण आवश्यक है",
     "expiresLabel": "नियोजित हटाने की तिथि",
+    "paramLabel": "मान",
+    "paramPlaceholder": "मान चुनें",
     "apply": "लागू करें",
     "cancel": "रद्द करें",
     "editAssignment": "असाइनमेंट संपादित करें",

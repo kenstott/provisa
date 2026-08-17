@@ -33,9 +33,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
-
-from provisa.core.schema_admin import user_org_memberships
+from provisa.core.org_membership import bindable_memberships
 
 
 class OrgResolutionError(Exception):
@@ -61,11 +59,7 @@ async def resolve_session_org(
     member_org_ids: list[str] = []
     if user_id is not None and state.admin_db is not None:
         async with state.admin_db.acquire() as conn:
-            result = await conn.execute_core(
-                select(user_org_memberships.c.org_id).where(
-                    user_org_memberships.c.user_id == user_id
-                )
-            )
+            result = await conn.execute_core(bindable_memberships(user_id))
             member_org_ids = [dict(r._mapping)["org_id"] for r in result.fetchall()]
 
     if requested_org is not None:

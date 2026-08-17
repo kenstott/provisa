@@ -27,6 +27,7 @@
     "createFailed": "無法建立機構",
     "provisionFailed": "佈建失敗",
     "provisionTimeout": "佈建未能於時限內完成",
+    "egressCheckoutFailed": "無法開啟數據傳輸訂閱的結帳頁面。可稍後於「帳單」中新增。",
     "welcomeTitle": "歡迎使用 {{name}}！",
     "welcomeAdmin": "恭喜——您的機構已就緒，而您是它的管理員。",
     "welcomeInviteHeading": "邀請其他人",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "前往工作區",
     "pendingInvitesTitle": "您有一個邀請",
     "pendingInvitesBody": "有人邀請您加入機構。接受邀請即可加入，或在下方建立您自己的機構。",
-    "acceptInvite": "接受"
+    "acceptInvite": "接受",
+    "signUpButton": "註冊",
+    "signUpDesc": "建立機構即開始您的 Starter 試用。我們現在記錄您的信用卡；在試用轉為訂閱之前不會扣款。",
+    "openingCheckout": "正在開啟安全結帳...",
+    "finishingSetup": "已收到付款。正在建立您的機構...",
+    "checkoutFailed": "無法開啟結帳頁面",
+    "resumeTitle": "完成註冊",
+    "resumeBody": "您已開始註冊 {{name}}，但未完成結帳。該名稱會保留至 {{expires}}。",
+    "resumeButton": "繼續結帳"
   }
 }

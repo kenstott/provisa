@@ -29,6 +29,8 @@
     "columnsLabel": "Spalten",
     "columnsLoading": "(wird geladen...)",
     "colHeaderColumn": "Spalte",
+    "colHeaderDataType": "Datentyp",
+    "dataTypePlaceholder": "Typ zuweisen...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Sichtbar für (Lesen)",
     "colHeaderWritableBy": "Schreibbar durch (R/W)",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "Primärschlüssel: {{name}}",
     "submitButton": "+ Tabelle",
     "errorRequiredFields": "Quelle, Schema und Tabellenname sind erforderlich.",
-    "errorNoColumnsSelected": "Mindestens eine Spalte muss ausgewählt sein."
+    "errorNoColumnsSelected": "Mindestens eine Spalte muss ausgewählt sein.",
+    "errorUntypedColumns": "Jede Spalte braucht einen Datentyp. Weisen Sie einen zu für: {{columns}}"
   }
 }

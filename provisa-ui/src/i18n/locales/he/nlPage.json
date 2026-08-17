@@ -19,6 +19,11 @@
     "notApplicable": "לא רלוונטי לסוג שאילתה זה",
     "noQueryGenerated": "לא הופקה שאילתה",
     "noRowsReturned": "לא הוחזרו שורות",
-    "showingRows": "מוצגות {{shown}} מתוך {{total}} שורות"
+    "showingRows": "מוצגות {{shown}} מתוך {{total}} שורות",
+    "strictMode": "קפדני",
+    "strictModeTooltip": "כל היצירה מעוגנת בביטוי GraphQL: תחילה נוצר GraphQL ומאומת מול הסכמה, אחר כך מהודר ל-SQL, ואז ל-Cypher. כבוי: SQL ו-GraphQL נוצרים באופן עצמאי ו-Cypher נגזר מתוצאת ה-SQL.",
+    "questionTooltip": "שאלו בשפה רגילה תוך שימוש בשמות הטבלאות, העמודות והקשרים שלכם. Enter שולח, Shift+Enter מוסיף שורה.",
+    "generateTooltip": "יצירת שאילתה לכל ממשק — GraphQL, SQL ו-Cypher — עבור שאלה זו, לפי הסכמה הגלויה לתפקיד הנוכחי שלכם.",
+    "mcpChatTooltip": "העברת השאלה לעוזר MCP: הוא יחקור את הקטלוג ויריץ עבורכם את השאילתה, ולא רק ייצר אותה."
   }
 }

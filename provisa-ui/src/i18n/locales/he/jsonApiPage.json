@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "צבירה",
     "groupByColumns": "קיבוץ לפי עמודות",
     "aggregateFunctions": "פונקציות צבירה",
-    "selectAtLeastOneFunc": "יש לבחור לפחות פונקציית צבירה אחת"
+    "selectAtLeastOneFunc": "יש לבחור לפחות פונקציית צבירה אחת",
+    "includeNodes": "כלול צמתים"
   }
 }

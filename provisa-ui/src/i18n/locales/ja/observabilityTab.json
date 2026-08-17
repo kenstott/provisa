@@ -64,25 +64,25 @@
     "failed": "失敗",
     "restarted": "再起動しました: {{container}}",
     "clustered": "{{count}} 個のテーブルをクラスタリングしました。",
-    "subsystemsTitle": "Subsystem traces",
-    "subsystemsIntro": "Which subsystems emit spans. Applies on restart.",
+    "subsystemsTitle": "サブシステムのトレース",
+    "subsystemsIntro": "スパンを出力するサブシステム。再起動後に反映されます。",
     "subsystem": {
       "http_api": "HTTP API",
-      "outbound_http": "Outbound HTTP calls",
-      "catalog_database": "Catalog database",
-      "result_cache": "Result cache",
-      "document_sources": "Document sources",
-      "search_sources": "Search sources",
-      "grpc_services": "gRPC services"
+      "outbound_http": "送信 HTTP 呼び出し",
+      "catalog_database": "カタログデータベース",
+      "result_cache": "結果キャッシュ",
+      "document_sources": "ドキュメントソース",
+      "search_sources": "検索ソース",
+      "grpc_services": "gRPC サービス"
     },
     "subsystemHelp": {
-      "http_api": "Requests served by the platform API.",
-      "outbound_http": "Requests the platform makes to REST and GraphQL sources.",
-      "catalog_database": "Metadata reads and writes. Off by default: every catalog lookup is one, and they bury the query traces.",
-      "result_cache": "Cache reads and writes.",
-      "document_sources": "Queries against document stores.",
-      "search_sources": "Queries against search indexes.",
-      "grpc_services": "The gRPC query surface, inbound and outbound."
+      "http_api": "プラットフォーム API が処理したリクエスト。",
+      "outbound_http": "プラットフォームが REST および GraphQL のソースに対して行うリクエスト。",
+      "catalog_database": "メタデータの読み書き。既定ではオフです。カタログ参照のたびに発生し、クエリのトレースが埋もれてしまうためです。",
+      "result_cache": "キャッシュの読み書き。",
+      "document_sources": "ドキュメントストアに対するクエリ。",
+      "search_sources": "検索インデックスに対するクエリ。",
+      "grpc_services": "gRPC のクエリサーフェス (受信および送信)。"
     }
   }
 }

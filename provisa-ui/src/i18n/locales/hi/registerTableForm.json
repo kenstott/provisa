@@ -29,6 +29,8 @@
     "columnsLabel": "कॉलम",
     "columnsLoading": "(लोड हो रहा है...)",
     "colHeaderColumn": "कॉलम",
+    "colHeaderDataType": "डेटा प्रकार",
+    "dataTypePlaceholder": "प्रकार असाइन करें...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "किसे दिखेगा (पढ़ना)",
     "colHeaderWritableBy": "कौन लिख सकता है (R/W)",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "प्राथमिक कुंजी: {{name}}",
     "submitButton": "+ टेबल",
     "errorRequiredFields": "स्रोत, स्कीमा और टेबल नाम आवश्यक हैं।",
-    "errorNoColumnsSelected": "कम से कम एक कॉलम चुनना आवश्यक है।"
+    "errorNoColumnsSelected": "कम से कम एक कॉलम चुनना आवश्यक है।",
+    "errorUntypedColumns": "हर कॉलम को डेटा प्रकार चाहिए। इनके लिए असाइन करें: {{columns}}"
   }
 }

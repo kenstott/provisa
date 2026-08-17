@@ -14,6 +14,6 @@
     "deleteConfirm": "¿Eliminar el informe {{name}}?",
     "deleted": "Informe {{name}} eliminado.",
     "empty": "No hay informes registrados en el dominio ops.",
-    "resize": "Cambiar el ancho de la lista de informes"
+    "resize": "Cambiar el tamaño de la lista de informes"
   }
 }

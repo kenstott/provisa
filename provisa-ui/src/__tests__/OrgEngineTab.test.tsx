@@ -40,6 +40,7 @@ function state(overrides: Partial<OrgEngineState> = {}): OrgEngineState {
       },
     ],
     isolated_available: false,
+    isolated_entitled: true,
     engine_name: "trino",
     ...overrides,
   };
@@ -108,6 +109,22 @@ describe("OrgEngineTab", () => {
     // Null, not an empty string: the server reads "unchanged" and keeps the DSN it holds, which
     // the tab could not resend — the GET never returns a value carrying a warehouse token.
     expect(mockSet.mock.calls[0][0].external_url).toBeNull();
+  });
+
+  // REQ-1412: the isolated lane is a coordinator the platform runs and bills for, so a plan that
+  // does not include one cannot select it — refused at the choice, not at the save.
+  it("disables the isolated lane when the org's plan does not include it", async () => {
+    mockFetch.mockResolvedValue(state({ isolated_available: true, isolated_entitled: false }));
+    render(<OrgEngineTab />);
+    const isolated = await screen.findByTestId("org-engine-mode-isolated");
+    expect(isolated).toBeDisabled();
+    expect(screen.getByText(/part of the Pro plan/)).toBeInTheDocument();
+  });
+
+  it("offers the isolated lane when the plan includes it", async () => {
+    mockFetch.mockResolvedValue(state({ isolated_available: true, isolated_entitled: true }));
+    render(<OrgEngineTab />);
+    expect(await screen.findByTestId("org-engine-mode-isolated")).not.toBeDisabled();
   });
 
   it("blocks saving an external lane with no engine kind chosen", async () => {

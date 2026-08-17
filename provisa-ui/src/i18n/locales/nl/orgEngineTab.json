@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "Bezig met laden…",
+    "intro": "Kies op welke query-engine deze organisatie draait. De installatie draait {{engine}}; deze organisatie kan die delen, een toegewijde engine nemen, of een eigen engine draaien.",
+    "modeLabel": "Engine",
+    "modeShared": "Gedeeld — de gepoolde engine die Provisa beheert",
+    "modeSharedHelp": "De standaard. Uw query's draaien op de multi-tenant coördinator, geïsoleerd per catalogus en rol.",
+    "modeIsolated": "Geïsoleerd — een toegewijde engine die Provisa voor deze organisatie beheert",
+    "modeIsolatedHelp": "Een coördinator die alleen voor deze organisatie is gereserveerd. Geen enkele andere tenant deelt de resources ervan.",
+    "modeIsolatedUnavailable": "Deze installatie kan geen toegewijde coördinator inrichten, dus een geïsoleerde engine is hier niet beschikbaar.",
+    "modeIsolatedNotEntitled": "Een toegewijde engine hoort bij het Pro-abonnement. Werk het abonnement van deze organisatie bij om die te kiezen.",
+    "modeExternal": "Extern — een engine die u zelf beheert",
+    "modeExternalHelp": "Richt Provisa op een engine die u zelf draait — elk ondersteund type, niet alleen de {{engine}} van de installatie. Planning en governance blijven in Provisa; de uitvoering gebeurt op uw cluster.",
+    "kindLabel": "Type engine",
+    "kindHelp": "Welke engine deze organisatie gebruikt. Een organisatie kan draaien op haar eigen Databricks, Snowflake, BigQuery, ClickHouse, Trino of vrijwel elke relationele database.",
+    "urlLabel": "Engine-URL",
+    "urlHelp": "De verbindings-URL van deze engine, inclusief de inloggegevens.",
+    "urlStored": "Er is een URL opgeslagen. Laat leeg om die te behouden; voer een nieuwe in om die te vervangen.",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "Host van de coördinator",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "Poort van de coördinator",
+    "applyNote": "Opslaan bouwt de runtime van deze organisatie onmiddellijk opnieuw op. Lopende query's worden op de vorige engine afgerond.",
+    "saveButton": "Engine opslaan",
+    "saved": "Engine bijgewerkt.",
+    "currentSuffix": " (huidig)"
+  }
+}

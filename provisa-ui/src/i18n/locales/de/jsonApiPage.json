@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "Aggregation",
     "groupByColumns": "Gruppierungsspalten",
     "aggregateFunctions": "Aggregatfunktionen",
-    "selectAtLeastOneFunc": "Wählen Sie mindestens eine Aggregatfunktion aus"
+    "selectAtLeastOneFunc": "Wählen Sie mindestens eine Aggregatfunktion aus",
+    "includeNodes": "Knoten einbeziehen"
   }
 }

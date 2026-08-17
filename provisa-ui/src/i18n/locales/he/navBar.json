@@ -31,12 +31,19 @@
     "itemCache": "מטמון",
     "itemScheduler": "מתזמן",
     "itemFederation": "פדרציה",
+    "itemOrgEngine": "מנוע הארגון",
+    "itemMaintenance": "תחזוקה",
+    "itemBilling": "חיוב",
     "itemExplore": "MCP",
     "itemEncryption": "הצפנה",
     "itemSecurity": "אבטחה",
     "itemAuthentication": "אימות",
     "itemAiModels": "מודלי AI",
     "itemMetadataExport": "ייצוא מטא-נתונים",
+    "itemImport": "ייבוא תצורת Hasura",
+    "itemTags": "תגיות",
+    "itemReports": "דוחות",
+    "itemGlossary": "מילון מונחים",
     "itemHealth": "תקינות",
     "itemObservability": "Observability",
     "itemMcpServer": "שרת MCP",
@@ -51,9 +58,6 @@
     "profile": "פרופיל",
     "settings": "הגדרות",
     "logout": "התנתקות",
-    "dev": "DEV",
-    "itemTags": "תגיות",
-    "itemReports": "דוחות",
-    "itemGlossary": "מילון מונחים"
+    "dev": "DEV"
   }
 }

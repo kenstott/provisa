@@ -41,12 +41,20 @@ async def read_message(reader: BoltReader) -> bytes:
     return b"".join(parts)
 
 
-def write_message(writer: BoltWriter, data: bytes) -> None:
-    """Write one complete Bolt message as chunks followed by end marker."""
+def write_message(writer: BoltWriter, data: bytes) -> int:
+    """Write one complete Bolt message as chunks followed by end marker.
+
+    Returns the number of bytes put on the wire, framing included — the egress meter (REQ-1452)
+    bills what the socket carried, and for a chunked result set the framing is not a rounding
+    error.
+    """
     offset = 0
+    written = 0
     while offset < len(data):
         chunk = data[offset : offset + _CHUNK_SIZE]
         writer.write(struct.pack("!H", len(chunk)))
         writer.write(chunk)
+        written += len(chunk) + 2
         offset += len(chunk)
     writer.write(b"\x00\x00")
+    return written + 2

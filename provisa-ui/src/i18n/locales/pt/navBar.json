@@ -31,12 +31,19 @@
     "itemCache": "Cache",
     "itemScheduler": "Agendador",
     "itemFederation": "Federação",
+    "itemOrgEngine": "Motor da organização",
+    "itemMaintenance": "Manutenção",
+    "itemBilling": "Faturamento",
     "itemExplore": "MCP",
     "itemEncryption": "Criptografia",
     "itemSecurity": "Segurança",
     "itemAuthentication": "Autenticação",
     "itemAiModels": "Modelos de IA",
     "itemMetadataExport": "Exportação de metadados",
+    "itemImport": "Importar configuração do Hasura",
+    "itemTags": "Tags",
+    "itemReports": "Relatórios",
+    "itemGlossary": "Glossário",
     "itemHealth": "Integridade",
     "itemObservability": "Observabilidade",
     "itemMcpServer": "Servidor MCP",
@@ -51,9 +58,6 @@
     "profile": "Perfil",
     "settings": "Configurações",
     "logout": "Sair",
-    "dev": "DEV",
-    "itemTags": "Tags",
-    "itemReports": "Relatórios",
-    "itemGlossary": "Glossário"
+    "dev": "DEV"
   }
 }

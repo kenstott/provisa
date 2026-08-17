@@ -151,6 +151,7 @@
       "already_exists": "Organizzazione già esistente",
       "auth_required_create": "Autenticazione richiesta per creare un'organizzazione",
       "auth_required_leave": "Autenticazione richiesta per lasciare un'organizzazione",
+      "auto_join_public_domain": "auto_join richiede una regola e-mail limitata a un dominio che controlli: questa corrisponde a {{domain}}.",
       "auto_join_requires_role": "auto_join richiede auto_join_role",
       "cannot_delete_root": "Impossibile eliminare l'organizzazione root",
       "delete_confirm_required": "L'eliminazione di '{{org}}' distrugge definitivamente tutti i suoi dati — nessuno, nemmeno un amministratore della piattaforma, può recuperarli. Ripetere l'id dell'organizzazione nel parametro 'confirm' per procedere.",

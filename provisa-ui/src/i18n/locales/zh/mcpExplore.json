@@ -7,6 +7,11 @@
     "thinking": "助手正在处理…",
     "emptyState": "询问您的数据——例如\"哪些表包含客户电子邮件？\"、\"按金额排名前 10 的订单\"或\"orders 表是什么样的？\"",
     "inputPlaceholder": "询问您的目录或数据…",
-    "clear": "清除输入"
+    "clear": "清除输入",
+    "clearTooltip": "清除草稿问题且不发送。上方的对话会保留。",
+    "roleNoteTooltip": "助手执行的每一次数据目录查找和查询都以该角色运行，因此它只能看到该角色被授权的表、列和行。",
+    "toolRunningTooltip": "{{name}} 正在运行。",
+    "toolDoneTooltip": "{{name}} 已完成，结果已返回给助手。",
+    "toolErrorTooltip": "{{name}} 失败。助手已收到该错误，可能会改用其他参数重试。"
   }
 }

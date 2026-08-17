@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 91c4e7a2-0f36-4d58-b1a9-6e83d2c50f47
+# Canary: f96945b0-1762-4264-bfe7-ea6b40af4ba4
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -84,3 +84,105 @@ def test_policy_rejects_auto_join_without_role():
         _validate_org_policy(None, True, None)
     assert exc.value.status_code == 400
     assert "auto_join_role" in exc.value.detail
+
+
+# ---------------------------------------------------------------------------
+# REQ-1477: auto-join may not rest on a consumer mailbox domain
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        r"@gmail\.com$",
+        r"@outlook\.com$",
+        # Unanchored, so it admits every address that merely contains the domain.
+        r"gmail",
+        # A rule broad enough to admit anything admits consumer mailboxes too.
+        r"@",
+        # No rule at all: auto_join would take every address that ever signs in.
+        None,
+    ],
+)
+def test_policy_rejects_auto_join_on_a_public_domain(rule):
+    with pytest.raises(HTTPException) as exc:
+        _validate_org_policy(rule, True, "analyst")
+    assert exc.value.status_code == 400
+    assert exc.value.code == "orgs.auto_join_public_domain"
+
+
+def test_a_public_domain_rule_is_allowed_when_auto_join_is_off():
+    """The rule alone only bounds who may redeem an invite — an invite is still a human decision."""
+    _validate_org_policy(r"@gmail\.com$", False, None)
+
+
+def test_a_corporate_domain_that_merely_contains_a_public_name_is_allowed():
+    _validate_org_policy(r"@gmail-partners\.com$", True, "analyst")
+
+
+@pytest.mark.asyncio
+async def test_a_stored_public_domain_rule_never_auto_joins(monkeypatch):
+    """Rows predating the guard, or edited straight into the table, are refused at read time."""
+    from provisa.core import org_membership as mod
+
+    class _Result:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
+
+    class _Row:
+        def __init__(self, mapping):
+            self._mapping = mapping
+
+        def __getitem__(self, i):
+            return list(self._mapping.values())[i]
+
+    class _Conn:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute_core(self, stmt):
+            self.calls += 1
+            if self.calls == 1:
+                return _Result(
+                    [
+                        _Row(
+                            {
+                                "id": "openhouse",
+                                "email_rule": r"@gmail\.com$",
+                                "auto_join_role": "analyst",
+                            }
+                        ),
+                        _Row(
+                            {
+                                "id": "acme",
+                                "email_rule": r"@acme\.com$",
+                                "auto_join_role": "analyst",
+                            }
+                        ),
+                    ]
+                )
+            return _Result([])
+
+    class _Db:
+        def __init__(self):
+            self.conn = _Conn()
+
+        def acquire(self):
+            conn = self.conn
+
+            class _Ctx:
+                async def __aenter__(self_inner):
+                    return conn
+
+                async def __aexit__(self_inner, *exc):
+                    return False
+
+            return _Ctx()
+
+    assert await mod.resolve_auto_join_orgs(_Db(), "mallory@gmail.com", "mallory") == []
+    assert await mod.resolve_auto_join_orgs(_Db(), "alice@acme.com", "alice") == [
+        ("acme", "analyst")
+    ]

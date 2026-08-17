@@ -572,6 +572,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
+        from apscheduler.triggers.interval import IntervalTrigger
 
         scheduler = AsyncIOScheduler()
         _cfg_triggers = []
@@ -631,6 +632,20 @@ def _start_scheduler(_log: logging.Logger) -> None:
             id="engine_watch",
             name="engine:watcher",
             replace_existing=True,
+        )
+        # REQ-1452/REQ-1455: drain the in-memory egress reports into the meter. Registered here
+        # rather than by the plugin because the transports that report bytes are core code, and
+        # the drain no-ops without the plugin (``meter_egress`` is a plugin passthrough).
+        from provisa.core.egress import DRAIN_INTERVAL_SECONDS, drain_job
+
+        scheduler.add_job(
+            drain_job,
+            trigger=IntervalTrigger(seconds=DRAIN_INTERVAL_SECONDS),
+            id="egress_drain",
+            name="billing:egress_drain",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
         # The commercial plugin's own scheduled billing work (the REQ-1455 trial sweep). A
         # deployment without the plugin registers nothing.

@@ -64,25 +64,25 @@
     "failed": "विफल",
     "restarted": "रीस्टार्ट हुआ: {{container}}",
     "clustered": "{{count}} टेबल क्लस्टर की गईं।",
-    "subsystemsTitle": "Subsystem traces",
-    "subsystemsIntro": "Which subsystems emit spans. Applies on restart.",
+    "subsystemsTitle": "सबसिस्टम ट्रेसिंग",
+    "subsystemsIntro": "कौन-से सबसिस्टम स्पैन भेजते हैं। पुनः आरंभ के बाद लागू होता है।",
     "subsystem": {
       "http_api": "HTTP API",
-      "outbound_http": "Outbound HTTP calls",
-      "catalog_database": "Catalog database",
-      "result_cache": "Result cache",
-      "document_sources": "Document sources",
-      "search_sources": "Search sources",
-      "grpc_services": "gRPC services"
+      "outbound_http": "आउटबाउंड HTTP कॉल",
+      "catalog_database": "कैटलॉग डेटाबेस",
+      "result_cache": "परिणाम कैश",
+      "document_sources": "दस्तावेज़ स्रोत",
+      "search_sources": "खोज स्रोत",
+      "grpc_services": "gRPC सेवाएँ"
     },
     "subsystemHelp": {
-      "http_api": "Requests served by the platform API.",
-      "outbound_http": "Requests the platform makes to REST and GraphQL sources.",
-      "catalog_database": "Metadata reads and writes. Off by default: every catalog lookup is one, and they bury the query traces.",
-      "result_cache": "Cache reads and writes.",
-      "document_sources": "Queries against document stores.",
-      "search_sources": "Queries against search indexes.",
-      "grpc_services": "The gRPC query surface, inbound and outbound."
+      "http_api": "प्लेटफ़ॉर्म API द्वारा दिए गए अनुरोध।",
+      "outbound_http": "वे अनुरोध जो प्लेटफ़ॉर्म REST और GraphQL स्रोतों को भेजता है।",
+      "catalog_database": "मेटाडेटा पढ़ना और लिखना। डिफ़ॉल्ट रूप से बंद: हर कैटलॉग लुकअप ऐसा स्पैन बनाता है और वे क्वेरी ट्रेस को दबा देते हैं।",
+      "result_cache": "कैश पढ़ना और लिखना।",
+      "document_sources": "दस्तावेज़ स्टोर की क्वेरी।",
+      "search_sources": "खोज इंडेक्स की क्वेरी।",
+      "grpc_services": "gRPC क्वेरी इंटरफ़ेस, इनबाउंड और आउटबाउंड।"
     }
   }
 }

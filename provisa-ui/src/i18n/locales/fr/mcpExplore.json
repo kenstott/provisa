@@ -7,6 +7,11 @@
     "thinking": "L'assistant travaille…",
     "emptyState": "Interrogez vos données — p. ex. « quelles tables contiennent l'e-mail client ? », « les 10 plus grosses commandes par montant » ou « à quoi ressemble la table orders ? »",
     "inputPlaceholder": "Interrogez votre catalogue ou vos données…",
-    "clear": "Effacer la saisie"
+    "clear": "Effacer la saisie",
+    "clearTooltip": "Efface le brouillon de la question sans l'envoyer. La conversation ci-dessus est conservée.",
+    "roleNoteTooltip": "Chaque consultation du catalogue et chaque requête exécutée par l'assistant s'exécutent sous ce rôle : il voit donc exactement les tables, colonnes et lignes accordées à ce rôle.",
+    "toolRunningTooltip": "{{name}} est en cours d'exécution.",
+    "toolDoneTooltip": "{{name}} est terminé. Son résultat a été renvoyé à l'assistant.",
+    "toolErrorTooltip": "{{name}} a échoué. L'assistant a reçu l'erreur et peut réessayer avec d'autres arguments."
   }
 }

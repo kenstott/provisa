@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "Wird geladen…",
+    "intro": "Wählen Sie, auf welcher Abfrage-Engine diese Organisation läuft. Die Installation betreibt {{engine}}; diese Organisation kann sie mitnutzen, eine dedizierte erhalten oder eine eigene Engine betreiben.",
+    "modeLabel": "Engine",
+    "modeShared": "Gemeinsam — die gepoolte Engine, die Provisa betreibt",
+    "modeSharedHelp": "Die Standardeinstellung. Ihre Abfragen laufen auf dem mandantenfähigen Koordinator, isoliert durch Katalog und Rolle.",
+    "modeIsolated": "Isoliert — eine dedizierte Engine, die Provisa für diese Organisation betreibt",
+    "modeIsolatedHelp": "Ein Koordinator, der allein dieser Organisation vorbehalten ist. Kein anderer Mandant teilt sich dessen Ressourcen.",
+    "modeIsolatedUnavailable": "Diese Installation kann keinen dedizierten Koordinator bereitstellen, daher ist hier keine isolierte Engine verfügbar.",
+    "modeIsolatedNotEntitled": "Eine dedizierte Engine gehört zum Pro-Tarif. Führen Sie ein Upgrade des Abonnements dieser Organisation durch, um sie zu wählen.",
+    "modeExternal": "Extern — eine Engine, die Sie betreiben",
+    "modeExternalHelp": "Richten Sie Provisa auf eine Engine, die Sie selbst betreiben — jede unterstützte Art, nicht nur das {{engine}} der Installation. Planung und Governance bleiben in Provisa; die Ausführung findet auf Ihrem Cluster statt.",
+    "kindLabel": "Engine-Art",
+    "kindHelp": "Welche Engine diese Organisation nutzt. Eine Organisation kann auf ihrem eigenen Databricks, Snowflake, BigQuery, ClickHouse, Trino oder nahezu jeder relationalen Datenbank laufen.",
+    "urlLabel": "Engine-URL",
+    "urlHelp": "Die Verbindungs-URL dieser Engine, einschließlich ihrer Anmeldedaten.",
+    "urlStored": "Eine URL ist gespeichert. Leer lassen, um sie beizubehalten; eine neue eingeben, um sie zu ersetzen.",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "Koordinator-Host",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "Koordinator-Port",
+    "applyNote": "Das Speichern baut die Laufzeitumgebung dieser Organisation sofort neu auf. Laufende Abfragen werden auf der bisherigen Engine beendet.",
+    "saveButton": "Engine speichern",
+    "saved": "Engine aktualisiert.",
+    "currentSuffix": " (aktuell)"
+  }
+}

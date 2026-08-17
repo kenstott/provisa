@@ -13,6 +13,7 @@
     "delete": "Excluir relatório",
     "deleteConfirm": "Excluir o relatório {{name}}?",
     "deleted": "Relatório {{name}} excluído.",
-    "empty": "Nenhum relatório registrado no domínio ops."
+    "empty": "Nenhum relatório registrado no domínio ops.",
+    "resize": "Redimensionar a lista de relatórios"
   }
 }

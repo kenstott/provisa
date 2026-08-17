@@ -17,6 +17,7 @@ import { fetchBootstrapStatus } from "../api/admin";
 import { clearSessionState } from "../lib/session";
 import { storedToken } from "../lib/sessionToken";
 import { PageLoading } from "./PageLoading";
+import { JoinNotice } from "./JoinNotice";
 
 const OnboardOrgPage = lazy(() =>
   import("../pages/OnboardOrgPage").then((m) => ({ default: m.OnboardOrgPage })),
@@ -196,5 +197,12 @@ export function OnboardGate({
       </Suspense>
     );
   }
-  return <>{children}</>;
+  // REQ-1478: a membership the user did not create is explained here, above the shell, on the first
+  // sign-in after it was granted.
+  return (
+    <>
+      <JoinNotice />
+      {children}
+    </>
+  );
 }

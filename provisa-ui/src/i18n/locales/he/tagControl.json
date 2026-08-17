@@ -5,6 +5,8 @@
     "reasonLabel": "סיבה",
     "reasonRequired": "תגית זו מחייבת סיבה",
     "expiresLabel": "תאריך הסרה מתוכנן",
+    "paramLabel": "ערך",
+    "paramPlaceholder": "בחרו ערך",
     "apply": "החלה",
     "cancel": "ביטול",
     "editAssignment": "עריכת שיוך",

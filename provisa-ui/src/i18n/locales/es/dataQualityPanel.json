@@ -1,28 +1,30 @@
 {
   "dataQualityPanel": {
     "title": "Contrato de calidad de datos",
-    "contractLabel": "Contrato",
-    "contractHelp": "El texto del contrato del verificador. Es lo que se registra y lo que ejecuta el escaneo: los editores de abajo escriben a través de él, así que las ediciones manuales nunca se descartan.",
     "dataset": "Observando {{dataset}}",
     "datasetScope": "tabla completa",
     "columnHeader": "Columna",
     "checkHeader": "Comprobación",
-    "definitionHeader": "Definición",
+    "definitionHeader": "Argumentos",
     "outcomeHeader": "Resultado",
     "valueHeader": "Valor",
     "failedRowsHeader": "Filas fallidas",
-    "removeCheck": "Eliminar comprobación",
+    "removeCheck": "Quitar comprobación",
     "columnLabel": "Columna",
     "checkLabel": "Comprobación",
-    "checkPlaceholder": "— elige una comprobación —",
+    "checkPlaceholder": "— elija una comprobación —",
     "metricLabel": "Métrica",
     "comparatorLabel": "Comparar",
     "thresholdLabel": "Umbral",
     "unitLabel": "Unidad",
-    "levelLabel": "Severidad",
+    "levelLabel": "Gravedad",
     "addCheck": "Añadir comprobación",
     "dryRun": "Ejecución de prueba",
-    "dryRunHelp": "Ejecuta el contrato sobre la tabla real sin escribir nada.",
-    "dryRunNoResponse": "La ejecución de prueba no devolvió respuesta."
+    "dryRunHelp": "Ejecuta el contrato contra la tabla en vivo y no guarda nada.",
+    "dryRunNoResponse": "La ejecución de prueba no devolvió ninguna respuesta.",
+    "datasetLabel": "Conjunto de datos",
+    "datasetHelp": "La tabla que observa el verificador, como «<fuente de datos>/<esquema>/<tabla>». Se resuelve contra el catálogo gobernado, igual que lo resuelve el escaneo.",
+    "argsHelp": "Cada fila es una comprobación. Edite sus argumentos aquí mismo: el texto del contrato del verificador se serializa a partir de estas filas.",
+    "invalidRow": "No se pudieron analizar los argumentos de esta fila; se conservó el valor anterior."
   }
 }

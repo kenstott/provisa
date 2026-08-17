@@ -91,11 +91,15 @@ class BoltSession:
     def _send(self, data: bytes) -> None:
         import logging as _logging
         from provisa.bolt.framing import write_message
+        from provisa.core.egress import report
 
         _logging.getLogger("uvicorn.error").warning(
             "[BOLT] send tag=0x%02X len=%d", data[1] if len(data) >= 2 else 0, len(data)
         )
-        write_message(self.writer, data)
+        # REQ-1452/REQ-1455: metered here rather than at the socket because this is the one seam
+        # both Bolt transports (raw TCP and the WebSocket surface) pass through, so neither can be
+        # counted twice or missed. Pre-auth messages report no org and are dropped by the meter.
+        report(self.org_id, write_message(self.writer, data))
 
     def send_success(self, meta: dict | None = None) -> None:
         self._send(pack_message(msg.SUCCESS, meta or {}))

@@ -64,25 +64,25 @@
     "failed": "Mislukt",
     "restarted": "Herstart: {{container}}",
     "clustered": "{{count}} tabellen geclusterd.",
-    "subsystemsTitle": "Subsystem traces",
-    "subsystemsIntro": "Which subsystems emit spans. Applies on restart.",
+    "subsystemsTitle": "Subsysteem-traces",
+    "subsystemsIntro": "Welke subsystemen spans versturen. Geldt na een herstart.",
     "subsystem": {
-      "http_api": "HTTP API",
-      "outbound_http": "Outbound HTTP calls",
-      "catalog_database": "Catalog database",
-      "result_cache": "Result cache",
-      "document_sources": "Document sources",
-      "search_sources": "Search sources",
-      "grpc_services": "gRPC services"
+      "http_api": "HTTP-API",
+      "outbound_http": "Uitgaande HTTP-aanroepen",
+      "catalog_database": "Catalogusdatabase",
+      "result_cache": "Resultatencache",
+      "document_sources": "Documentbronnen",
+      "search_sources": "Zoekbronnen",
+      "grpc_services": "gRPC-services"
     },
     "subsystemHelp": {
-      "http_api": "Requests served by the platform API.",
-      "outbound_http": "Requests the platform makes to REST and GraphQL sources.",
-      "catalog_database": "Metadata reads and writes. Off by default: every catalog lookup is one, and they bury the query traces.",
-      "result_cache": "Cache reads and writes.",
-      "document_sources": "Queries against document stores.",
-      "search_sources": "Queries against search indexes.",
-      "grpc_services": "The gRPC query surface, inbound and outbound."
+      "http_api": "Verzoeken die door de platform-API worden afgehandeld.",
+      "outbound_http": "Verzoeken die het platform naar REST- en GraphQL-bronnen stuurt.",
+      "catalog_database": "Metadata die wordt gelezen en geschreven. Standaard uit: elke catalogusopvraging is er één, en ze bedelven de query-traces.",
+      "result_cache": "Lees- en schrijfacties in de cache.",
+      "document_sources": "Query's op documentopslag.",
+      "search_sources": "Query's op zoekindexen.",
+      "grpc_services": "Het gRPC-queryoppervlak, inkomend en uitgaand."
     }
   }
 }

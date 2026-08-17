@@ -30,7 +30,11 @@ from provisa.core.schema_admin import (
     user_org_memberships,
     user_profiles,
 )
-from provisa.core.org_membership import email_matches_rule
+from provisa.core.org_membership import (
+    JOINED_VIA_INVITE,
+    email_matches_rule,
+    membership_values,
+)
 from provisa.core.secrets import resolve_secrets
 from provisa.core.schema_org import roles
 from provisa.security.rights import PLATFORM_ADMIN_ROLE
@@ -59,6 +63,11 @@ async def me(request: Request):
     # username. Unsecured mode honors X-Provisa-Role, so the username IS the selected role (not
     # "anonymous"); every configured role is exposed with wildcard domain access so all are selectable.
     unsecured = getattr(state, "auth_config", None) is None
+    # REQ-1469: whether /billing exists at all. The routes are mounted by the commercial plugin, so
+    # a self-hosted deployment has no billing surface and the UI must not offer one.
+    from provisa.core.commerce import enabled as billing_enabled
+
+    billing = billing_enabled()
     if unsecured or identity is None:
         uid = identity.user_id if identity is not None else "anonymous"
         return {
@@ -66,11 +75,21 @@ async def me(request: Request):
             "email": None,
             "display_name": uid,
             "dev_mode": True,
+            "billing": billing,
             # REQ-1286: the dev principal's org is the control plane's resolved org_id — the same
             # value that names the org_<id> tenant schema. A literal here names an org whose
             # schema was never created, and every runtime resolution for it fails.
             "active_org_id": state.org_id,
-            "org_memberships": [{"org_id": state.org_id, "org_name": "Enterprise"}],
+            "org_memberships": [
+                # REQ-1478: the dev principal's membership is a property of the deployment, not
+                # something that happened to a person, so there is nothing to announce.
+                {
+                    "org_id": state.org_id,
+                    "org_name": "Enterprise",
+                    "joined_via": None,
+                    "acknowledged": True,
+                }
+            ],
             "assignments": [{"role_id": rid, "domain_id": "*"} for rid in sorted(all_role_ids)],
         }
 
@@ -91,13 +110,9 @@ async def me(request: Request):
     admin_db = state.admin_db
     assert admin_db is not None
     async with admin_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(user_org_memberships.c.org_id, orgs.c.name.label("org_name"))
-            .select_from(
-                user_org_memberships.join(orgs, orgs.c.id == user_org_memberships.c.org_id)
-            )
-            .where(user_org_memberships.c.user_id == identity.user_id)
-        )
+        from provisa.core.org_membership import bindable_memberships
+
+        result = await conn.execute_core(bindable_memberships(identity.user_id))
         org_rows = [dict(r._mapping) for r in result.fetchall()]
         # given_name/family_name are user-owned (PATCH /auth/profile), not carried by the IdP token.
         prof_result = await conn.execute_core(
@@ -123,12 +138,46 @@ async def me(request: Request):
         "email": identity.email,
         "display_name": identity.display_name,
         "dev_mode": False,
+        "billing": billing,
         "active_org_id": active_org_id,
         "given_name": prof.given_name if prof is not None else None,
         "family_name": prof.family_name if prof is not None else None,
-        "org_memberships": [{"org_id": r["org_id"], "org_name": r["org_name"]} for r in org_rows],
+        # REQ-1478: joined_via/acknowledged travel with each membership so the UI can tell a person
+        # they were joined to an org by their email address, or by an invitation they accepted,
+        # rather than leaving an unexplained org in their switcher.
+        "org_memberships": [
+            {
+                "org_id": r["org_id"],
+                "org_name": r["org_name"],
+                "joined_via": r["joined_via"],
+                "acknowledged": r["acknowledged_at"] is not None,
+            }
+            for r in org_rows
+        ],
         "assignments": assignments,
     }
+
+
+class AcknowledgeJoinRequest(BaseModel):
+    org_id: str
+
+
+@router.post("/acknowledge-join")  # REQ-1478
+async def acknowledge_join(body: AcknowledgeJoinRequest, request: Request):
+    """Record that the caller has seen how they came to belong to ``org_id``.
+
+    Only the member can acknowledge their own membership, so the row is addressed by the
+    authenticated user id — the org id in the body selects which of their memberships it is.
+    """
+    from provisa.api.app import state
+    from provisa.core.org_membership import acknowledge_membership
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None:
+        raise ApiError(401, "auth.required", "Authentication required")
+    assert state.admin_db is not None
+    await acknowledge_membership(state.admin_db, identity.user_id, body.org_id)
+    return {"org_id": body.org_id, "acknowledged": True}
 
 
 class SuperuserLoginRequest(BaseModel):
@@ -272,11 +321,16 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     membership row and the ``org_<id>`` schema the assignment lands in can never name different orgs.
     """
     from provisa.api.app import state
-    from provisa.core.org_membership import grant_membership, grant_org_role
+    from provisa.core.org_membership import (
+        JOINED_VIA_CREATED,
+        grant_membership,
+        grant_org_role,
+    )
     from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 
     assert state.admin_db is not None
-    await grant_membership(state.admin_db, user_id, state.org_id)
+    # Claiming the bootstrap slot is the claimant's own act, so the membership needs no explaining.
+    await grant_membership(state.admin_db, user_id, state.org_id, joined_via=JOINED_VIA_CREATED)
     # current_org is unbound on this request, so the tenant_db shim resolves the default (bootstrap)
     # org's runtime — the same org the membership names.
     tenant_db = state.tenant_db
@@ -459,7 +513,7 @@ async def register(body: RegisterRequest):
             joined_org_id = invite["org_id"]
             await conn.upsert(
                 user_org_memberships,
-                {"user_id": user_id, "org_id": invite["org_id"]},
+                membership_values(user_id, invite["org_id"], JOINED_VIA_INVITE),
                 index_elements=["user_id", "org_id"],
                 update_columns=[],
             )
@@ -560,7 +614,7 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
         await conn.upsert(
             user_org_memberships,
-            {"user_id": user_id, "org_id": invite["org_id"]},
+            membership_values(user_id, invite["org_id"], JOINED_VIA_INVITE),
             index_elements=["user_id", "org_id"],
             update_columns=[],
         )
@@ -679,9 +733,7 @@ async def delete_account(request: Request, confirm: str | None = None):
     admin_db = _admin_pool()
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
-            select(user_org_memberships.c.org_id).where(
-                user_org_memberships.c.user_id == user_id
-            )
+            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == user_id)
         )
         member_org_ids = sorted(r[0] for r in result.fetchall())
 

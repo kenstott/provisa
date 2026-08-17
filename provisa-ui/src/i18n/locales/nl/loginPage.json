@@ -29,8 +29,8 @@
     "passwordsDoNotMatch": "Wachtwoorden komen niet overeen",
     "registrationFailed": "Registratie mislukt",
     "firebaseSignInFailed": "Aanmelden bij Firebase mislukt",
-    "operatorSignIn": "Operator-aanmelding",
-    "operatorSignInTitle": "Operator-aanmelding",
+    "operatorSignIn": "Aanmelden als operator",
+    "operatorSignInTitle": "Aanmelden als operator",
     "backToSignIn": "Terug naar aanmelden"
   }
 }

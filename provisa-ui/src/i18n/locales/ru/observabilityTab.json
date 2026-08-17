@@ -64,25 +64,25 @@
     "failed": "Не удалось",
     "restarted": "Перезапущено: {{container}}",
     "clustered": "Кластеризовано таблиц: {{count}}.",
-    "subsystemsTitle": "Subsystem traces",
-    "subsystemsIntro": "Which subsystems emit spans. Applies on restart.",
+    "subsystemsTitle": "Трассировка подсистем",
+    "subsystemsIntro": "Какие подсистемы отправляют спаны. Применяется после перезапуска.",
     "subsystem": {
       "http_api": "HTTP API",
-      "outbound_http": "Outbound HTTP calls",
-      "catalog_database": "Catalog database",
-      "result_cache": "Result cache",
-      "document_sources": "Document sources",
-      "search_sources": "Search sources",
-      "grpc_services": "gRPC services"
+      "outbound_http": "Исходящие вызовы HTTP",
+      "catalog_database": "База данных каталога",
+      "result_cache": "Кеш результатов",
+      "document_sources": "Документные источники",
+      "search_sources": "Поисковые источники",
+      "grpc_services": "Службы gRPC"
     },
     "subsystemHelp": {
-      "http_api": "Requests served by the platform API.",
-      "outbound_http": "Requests the platform makes to REST and GraphQL sources.",
-      "catalog_database": "Metadata reads and writes. Off by default: every catalog lookup is one, and they bury the query traces.",
-      "result_cache": "Cache reads and writes.",
-      "document_sources": "Queries against document stores.",
-      "search_sources": "Queries against search indexes.",
-      "grpc_services": "The gRPC query surface, inbound and outbound."
+      "http_api": "Запросы, обслуженные API платформы.",
+      "outbound_http": "Запросы, которые платформа отправляет источникам REST и GraphQL.",
+      "catalog_database": "Чтение и запись метаданных. Выключено по умолчанию: каждое обращение к каталогу создаёт такой спан, и они погребают под собой трассировки запросов.",
+      "result_cache": "Чтение и запись кеша.",
+      "document_sources": "Запросы к документным хранилищам.",
+      "search_sources": "Запросы к поисковым индексам.",
+      "grpc_services": "Интерфейс запросов gRPC, входящий и исходящий."
     }
   }
 }

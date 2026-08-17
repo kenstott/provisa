@@ -27,6 +27,7 @@
     "createFailed": "Impossibile creare l'organizzazione",
     "provisionFailed": "Provisioning non riuscito",
     "provisionTimeout": "Il provisioning non è stato completato in tempo",
+    "egressCheckoutFailed": "Non è stato possibile aprire il pagamento dell'abbonamento al trasferimento dati. Puoi aggiungerlo in seguito da Fatturazione.",
     "welcomeTitle": "Benvenuto in {{name}}!",
     "welcomeAdmin": "Congratulazioni — l'organizzazione è pronta e il suo amministratore è stato assegnato a questo account.",
     "welcomeInviteHeading": "Invita altre persone",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "Vai all'area di lavoro",
     "pendingInvitesTitle": "È presente un invito",
     "pendingInvitesBody": "Qualcuno ha inviato un invito a unirsi a un'organizzazione. Accettarlo per entrare, oppure creare una propria organizzazione qui sotto.",
-    "acceptInvite": "Accetta"
+    "acceptInvite": "Accetta",
+    "signUpButton": "Registrati",
+    "signUpDesc": "La creazione di un'organizzazione avvia la tua prova Starter. Registriamo la tua carta ora; nulla viene addebitato finché la prova non si converte in abbonamento.",
+    "openingCheckout": "Apertura del pagamento sicuro...",
+    "finishingSetup": "Pagamento ricevuto. Creazione della tua organizzazione...",
+    "checkoutFailed": "Non è stato possibile aprire il pagamento",
+    "resumeTitle": "Completa la registrazione",
+    "resumeBody": "Hai iniziato a registrare {{name}} ma non hai completato il pagamento. Il nome resta riservato fino al {{expires}}.",
+    "resumeButton": "Riprendi il pagamento"
   }
 }

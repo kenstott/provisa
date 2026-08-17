@@ -234,10 +234,16 @@ def _bolt(cred: Credential, secret: str) -> str:
 def _pgwire(cred: Credential, secret: str) -> str:
     """pgwire carries a username and one cleartext secret; what the secret IS picks the
     presentation, so the adapter simply hands it over as the startup packet does."""
+    import io
+
+    from provisa.core.egress import CountingWriter
     from provisa.pgwire.server import ProvisaHandler
 
     errors: list[tuple] = []
     handler = object.__new__(ProvisaHandler)
+    # socketserver's setup() is bypassed by object.__new__, so the connection's writer is supplied
+    # here as setup() builds it (REQ-1452): admitting the connection binds the session's org onto it.
+    handler.wfile = CountingWriter(io.BytesIO(), None)
     handler._send_pg_error = lambda severity, sqlstate, message: errors.append(
         (severity, sqlstate, message)
     )

@@ -7,6 +7,11 @@
     "thinking": "O assistente está trabalhando…",
     "emptyState": "Pergunte sobre os dados — ex.: \"quais tabelas têm e-mail de cliente?\", \"10 maiores pedidos por valor\" ou \"como é a tabela de pedidos?\"",
     "inputPlaceholder": "Pergunte sobre o catálogo ou os dados…",
-    "clear": "Limpar entrada"
+    "clear": "Limpar entrada",
+    "clearTooltip": "Descarta o rascunho da pergunta sem enviá-lo. A conversa acima é mantida.",
+    "roleNoteTooltip": "Toda consulta ao catálogo e toda consulta que o assistente executa rodam sob este papel — portanto ele vê exatamente as tabelas, colunas e linhas concedidas a esse papel.",
+    "toolRunningTooltip": "{{name}} está em execução.",
+    "toolDoneTooltip": "{{name}} terminou. O resultado foi devolvido ao assistente.",
+    "toolErrorTooltip": "{{name}} falhou. O assistente recebeu o erro e pode tentar de novo com outros argumentos."
   }
 }

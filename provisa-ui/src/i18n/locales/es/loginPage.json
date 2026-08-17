@@ -29,8 +29,8 @@
     "passwordsDoNotMatch": "Las contraseñas no coinciden",
     "registrationFailed": "Error en el registro",
     "firebaseSignInFailed": "Error al iniciar sesión con Firebase",
-    "operatorSignIn": "Inicio de sesión de operador",
-    "operatorSignInTitle": "Inicio de sesión de operador",
+    "operatorSignIn": "Acceso de operador",
+    "operatorSignInTitle": "Acceso de operador",
     "backToSignIn": "Volver al inicio de sesión"
   }
 }

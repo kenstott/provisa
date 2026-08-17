@@ -18,6 +18,8 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
+from sqlalchemy.sql.selectable import Join
+
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.models import AuthIdentity, AuthProvider
 
@@ -101,7 +103,11 @@ class _Conn:
         return False
 
     async def execute_core(self, stmt):
-        table = stmt.get_final_froms()[0].name
+        source = stmt.get_final_froms()[0]
+        # REQ-1476: bindable_memberships selects from a join, so walk down to the driving table.
+        while isinstance(source, Join):
+            source = source.left
+        table = source.name
         # REQ-1290: the middleware READS this table and never writes it, so the claimant is just
         # another preconfigured row — an unclaimed deployment is the empty list.
         if table == "superadmin_bootstrap":

@@ -64,25 +64,25 @@
     "failed": "נכשל",
     "restarted": "הופעל מחדש: {{container}}",
     "clustered": "בוצע אשכול של {{count}} טבלאות.",
-    "subsystemsTitle": "מעקבים לפי תת-מערכת",
-    "subsystemsIntro": "אילו תת-מערכות מפיקות span. חל לאחר הפעלה מחדש.",
+    "subsystemsTitle": "מעקב תת-מערכות",
+    "subsystemsIntro": "אילו תת-מערכות שולחות ספאנים. חל לאחר הפעלה מחדש.",
     "subsystem": {
-      "http_api": "‏API‏ ‎HTTP",
+      "http_api": "HTTP API",
       "outbound_http": "קריאות HTTP יוצאות",
-      "catalog_database": "מסד הנתונים של הקטלוג",
-      "result_cache": "מטמון תוצאות",
+      "catalog_database": "מסד נתוני הקטלוג",
+      "result_cache": "מטמון התוצאות",
       "document_sources": "מקורות מסמכים",
       "search_sources": "מקורות חיפוש",
       "grpc_services": "שירותי gRPC"
     },
     "subsystemHelp": {
-      "http_api": "בקשות שה-API של הפלטפורמה משרת.",
+      "http_api": "בקשות שנענו על ידי ה-API של הפלטפורמה.",
       "outbound_http": "בקשות שהפלטפורמה שולחת למקורות REST ו-GraphQL.",
-      "catalog_database": "קריאות וכתיבות של מטא-נתונים. כבוי כברירת מחדל: כל פנייה לקטלוג יוצרת אחת, והן מטביעות את מעקבי השאילתות.",
-      "result_cache": "קריאות וכתיבות במטמון.",
-      "document_sources": "שאילתות אל מאגרי מסמכים.",
-      "search_sources": "שאילתות אל אינדקסי חיפוש.",
-      "grpc_services": "משטח השאילתות של gRPC, נכנס ויוצא."
+      "catalog_database": "קריאות וכתיבות של מטא-נתונים. כבוי כברירת מחדל: כל חיפוש בקטלוג יוצר ספאן כזה, והם קוברים את מעקבי השאילתות.",
+      "result_cache": "קריאות וכתיבות מטמון.",
+      "document_sources": "שאילתות למאגרי מסמכים.",
+      "search_sources": "שאילתות לאינדקסי חיפוש.",
+      "grpc_services": "ממשק השאילתות gRPC, נכנס ויוצא."
     }
   }
 }

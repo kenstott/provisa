@@ -538,6 +538,7 @@ function App() {
                                 ["/admin/glossary", "org_settings"], // REQ-1387
                                 ["/admin/security", "platform_settings"],
                                 ["/admin/maintenance", "platform_settings"], // REQ-1466
+                                ["/admin/billing", "org_settings"], // REQ-1469
                               ] as const
                             ).map(([path, capability]) => (
                               <Route

@@ -89,12 +89,12 @@
         "description": "🔎 Une fois les rôles définis, allez plus loin — restreignez les <strong>lignes</strong> visibles par chaque rôle avec des prédicats basés sur des attributs :<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Piloté par les données et appliqué ligne par ligne — sur toutes les sources et tous les protocoles.</p>"
       },
       "stepQualityTable": {
-        "title": "Un contrôleur qualité n'est qu'une source",
-        "description": "🧪 Un contrôleur de qualité des données — Soda ou Great Expectations — s'enregistre comme <strong>source</strong>. Il analyse via le propre point d'accès postgres de Provisa : un seul dialecte de contrat couvre aussi bien une table Snowflake, une table Iceberg qu'une collection Mongo. Les résultats arrivent comme une table ordinaire : dépliez la ligne et ouvrez-la comme les autres."
+        "title": "Un vérificateur de qualité n'est qu'une source",
+        "description": "🧪 Un vérificateur de qualité des données — Soda ou Great Expectations — s'enregistre comme <strong>source</strong>. Il analyse en repassant par le point de terminaison postgres de Provisa, si bien qu'un seul dialecte de contrat couvre aussi bien une table Snowflake, une table Iceberg qu'une collection Mongo. Ses résultats arrivent sous forme de table ordinaire : dépliez la ligne et ouvrez-la comme n'importe quelle autre."
       },
       "stepQualityPanel": {
-        "title": "Construire un contrat qualité",
-        "description": "✅ Écrivez le contrat à la main ou composez les contrôles colonne par colonne — taux de valeurs nulles, nombre de lignes, plages, fraîcheur — puis lancez un <strong>essai à blanc</strong> avant d'enregistrer. Chaque analyse s'ajoute : cette table <em>est</em> l'historique qualité — à tracer, à alerter, à joindre à tout."
+        "title": "Créer un contrat de qualité",
+        "description": "✅ Rédigez le contrat à la main ou construisez les contrôles colonne par colonne — taux de valeurs nulles, nombres de lignes, plages, fraîcheur — et lancez une <strong>exécution à blanc</strong> avant d'enregistrer. Chaque analyse s'ajoute aux précédentes : cette table <em>est</em> donc l'historique de qualité — représentez-la, déclenchez des alertes dessus, joignez-la à ce que vous voulez."
       },
       "step20": {
         "title": "Construisez votre pipeline de livraison",
@@ -128,6 +128,16 @@
         "title": "Un glossaire métier vivant",
         "description": "📖 Chaque terme est relié aux colonnes qui le portent — gérez les noms, les définitions et les relations typées (type de, partie de, synonyme de) à la main, ou laissez l'IA combler les lacunes : <strong>✨ Définitions</strong> ne rédige que les termes qui n'en ont pas encore, et <strong>✨ Relations</strong> propose des liens sur l'ensemble du glossaire. Marquez un terme comme <strong>exclu de l'export</strong> pour le tenir hors des métadonnées publiées."
       }
+    },
+    "status": {
+      "starting": "Démarrage de la visite. Veuillez patienter…",
+      "resuming": "Reprise en cours. Veuillez patienter…",
+      "waiting": "En attente du chargement complet de cette page…",
+      "stuck": "Cette étape prend plus de temps que prévu. La page est peut-être encore en cours de chargement.",
+      "retry": "Réessayer",
+      "skip": "Ignorer cette étape",
+      "exit": "Quitter la visite",
+      "cancel": "Annuler"
     }
   }
 }

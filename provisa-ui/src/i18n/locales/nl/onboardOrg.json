@@ -27,6 +27,7 @@
     "createFailed": "Kon de organisatie niet aanmaken",
     "provisionFailed": "Inrichting mislukt",
     "provisionTimeout": "Inrichting is niet op tijd voltooid",
+    "egressCheckoutFailed": "De checkout voor het abonnement op gegevensoverdracht kon niet worden geopend. U kunt het later toevoegen via Facturering.",
     "welcomeTitle": "Welkom bij {{name}}!",
     "welcomeAdmin": "Gefeliciteerd — de organisatie is klaar en u bent de beheerder.",
     "welcomeInviteHeading": "Anderen uitnodigen",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "Naar werkruimte",
     "pendingInvitesTitle": "Er staat een uitnodiging klaar",
     "pendingInvitesBody": "Iemand heeft een uitnodiging gestuurd om aan te sluiten bij een organisatie. Accepteer deze om toe te treden, of maak hieronder een eigen organisatie aan.",
-    "acceptInvite": "Accepteren"
+    "acceptInvite": "Accepteren",
+    "signUpButton": "Aanmelden",
+    "signUpDesc": "Het aanmaken van een organisatie start uw Starter-proefperiode. We leggen uw kaart nu vast; er wordt niets in rekening gebracht tot de proefperiode overgaat in een abonnement.",
+    "openingCheckout": "Beveiligde checkout wordt geopend...",
+    "finishingSetup": "Betaling ontvangen. Uw organisatie wordt opgebouwd...",
+    "checkoutFailed": "Checkout kon niet worden geopend",
+    "resumeTitle": "Aanmelding afronden",
+    "resumeBody": "U bent begonnen met aanmelden voor {{name}} maar hebt de checkout niet afgerond. De naam blijft gereserveerd tot {{expires}}.",
+    "resumeButton": "Checkout hervatten"
   }
 }

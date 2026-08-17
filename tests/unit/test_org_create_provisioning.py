@@ -60,12 +60,18 @@ class _Conn:
         if text.startswith("SELECT count"):
             return _Result([(self._plane.owned_count,)])
         if text.startswith("SELECT orgs.id"):
-            return _Result([(self._plane.existing_id,)] if self._plane.existing_id else [])
+            if not self._plane.existing_id:
+                return _Result([])
+            return _Result([_Row(self._plane.existing_row)])
         if text.startswith("INSERT INTO orgs"):
             values = self._plane.inserted
             return _Result([_Row(values)])
         if text.startswith("UPDATE orgs"):
             self._plane.updates.append(text)
+            self._plane.update_params.append(stmt.compile().params)
+            if self._plane.updated_rows:
+                row = self._plane.updated_rows.pop(0)
+                return _Result([row] if row is not None else [])
         return _Result([])
 
     async def upsert(self, table, values, *, index_elements, update_columns):
@@ -89,6 +95,19 @@ class _Pool:
         return _Ctx()
 
 
+@pytest.fixture(autouse=True)
+def self_hosted(monkeypatch):
+    """The default deployment shape for this suite: no commercial plugin, so create provisions.
+
+    Pinned rather than inherited, because whether ``provisa_commercial`` happens to be importable is
+    a property of the developer's PYTHONPATH, not of the behaviour under test.
+    """
+    import provisa.core.commerce as commerce
+
+    monkeypatch.setattr(commerce, "_PLUGIN", None)
+    monkeypatch.setattr(commerce, "_LOADED", True)
+
+
 @pytest.fixture
 def plane(monkeypatch):
     """A recorded admin plane, with the background provisioning task never started."""
@@ -97,9 +116,17 @@ def plane(monkeypatch):
     state = types.SimpleNamespace(
         statements=[],
         updates=[],
+        update_params=[],
+        updated_rows=[],
         memberships=[],
         owned_count=0,
         existing_id=None,
+        existing_row={
+            "id": "carolco",
+            "name": "Carolco",
+            "created_by": "someone-else",
+            "provisioning_state": "ready",
+        },
         inserted={
             "id": "carolco",
             "name": "Carolco",
@@ -157,7 +184,14 @@ async def test_the_creator_owns_the_org_before_the_response_returns(plane):
 
     await create_org(_body(), _request("carol"))
 
-    assert plane.memberships == [{"user_id": "carol", "org_id": "carolco"}]
+    assert len(plane.memberships) == 1
+    row = plane.memberships[0]
+    assert row["user_id"] == "carol"
+    assert row["org_id"] == "carolco"
+    # REQ-1478: creating the org is the creator's own act, so the membership is born acknowledged
+    # and no sign-in notice is raised for it.
+    assert row["joined_via"] == "created"
+    assert row["acknowledged_at"] is not None
 
 
 @pytest.mark.asyncio
@@ -226,3 +260,102 @@ async def test_provisioning_failure_is_written_to_the_row_the_poller_reads(plane
 
     assert plane.updates, "the failure never reached the orgs row"
     assert "provisioning_state" in plane.updates[-1]
+
+
+# ---------------------------------------------------------------------------
+# REQ-1476: where the org is sold, create reserves and the subscription builds
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def gated(monkeypatch, self_hosted):
+    """A deployment with the commercial plugin present, without importing it."""
+    import provisa.core.commerce as commerce
+
+    monkeypatch.setattr(commerce, "_PLUGIN", types.SimpleNamespace(), raising=False)
+    monkeypatch.setattr(commerce, "_LOADED", True, raising=False)
+
+
+@pytest.mark.asyncio
+async def test_a_gated_create_reserves_the_id_and_builds_nothing(plane, gated, monkeypatch):
+    """The subscription is what pays for the schema, so nothing is built before it exists."""
+    import provisa.core.commerce as commerce
+    from provisa.api.admin.orgs_router import create_org
+
+    async def _no_sweep(conn):
+        return None
+
+    monkeypatch.setattr(commerce, "sweep_org_reservations", _no_sweep)
+    plane.inserted = {**plane.inserted, "provisioning_state": "awaiting_checkout"}
+
+    body = await create_org(_body(), _request("carol"))
+
+    assert body["provisioning_state"] == "awaiting_checkout"
+    assert plane.provisioned == []
+    insert_sql = next(s for s in plane.statements if s.startswith("INSERT INTO orgs"))
+    assert "awaiting_checkout" not in insert_sql  # bound as a parameter, not inlined
+
+
+@pytest.mark.asyncio
+async def test_the_creator_returning_to_their_reservation_gets_it_back(plane, gated, monkeypatch):
+    """The id is already theirs, so a second create is the resume of an abandoned checkout."""
+    import provisa.core.commerce as commerce
+    from provisa.api.admin.orgs_router import create_org
+
+    async def _no_sweep(conn):
+        return None
+
+    monkeypatch.setattr(commerce, "sweep_org_reservations", _no_sweep)
+    plane.existing_id = "carolco"
+    plane.existing_row = {
+        "id": "carolco",
+        "name": "Carolco",
+        "created_by": "carol",
+        "provisioning_state": "awaiting_checkout",
+    }
+
+    body = await create_org(_body(), _request("carol"))
+
+    assert body["provisioning_state"] == "awaiting_checkout"
+    assert plane.provisioned == []
+    assert not any(s.startswith("INSERT INTO orgs") for s in plane.statements)
+
+
+@pytest.mark.asyncio
+async def test_someone_elses_reservation_is_a_taken_id(plane, gated, monkeypatch):
+    import provisa.core.commerce as commerce
+    from provisa.api.admin.orgs_router import create_org
+
+    async def _no_sweep(conn):
+        return None
+
+    monkeypatch.setattr(commerce, "sweep_org_reservations", _no_sweep)
+    plane.existing_id = "carolco"
+    plane.existing_row = {
+        "id": "carolco",
+        "name": "Carolco",
+        "created_by": "dave",
+        "provisioning_state": "awaiting_checkout",
+    }
+
+    with pytest.raises(ApiError) as exc:
+        await create_org(_body(), _request("carol"))
+
+    assert exc.value.code == "orgs.already_exists"
+
+
+@pytest.mark.asyncio
+async def test_begin_provisioning_builds_the_reservation_once(plane):
+    """The webhook can be redelivered; the second delivery must not build the org twice."""
+    from provisa.api.admin.orgs_router import begin_provisioning
+
+    plane.updated_rows = [
+        _Row({"seeded_demo": True, "created_by": "carol", "isolated_engine": False}),
+        None,
+    ]
+
+    assert await begin_provisioning("carolco") is True
+    assert plane.provisioned == ["started"]
+    assert await begin_provisioning("carolco") is False
+    assert plane.provisioned == ["started"]
+    assert "awaiting_checkout" in plane.update_params[0].values()

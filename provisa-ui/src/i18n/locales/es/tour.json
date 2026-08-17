@@ -89,12 +89,12 @@
         "description": "🔎 Una vez que existen los roles, puedes ir más fino — restringir qué <strong>filas</strong> ve cada rol mediante predicados basados en atributos:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Basado en datos y aplicado fila por fila — en todos los orígenes y protocolos.</p>"
       },
       "stepQualityTable": {
-        "title": "Un verificador de calidad es una fuente más",
-        "description": "🧪 Un verificador de calidad de datos — Soda o Great Expectations — se registra como <strong>fuente</strong>. Escanea a través del propio endpoint postgres de Provisa, así que un mismo dialecto de contrato cubre por igual una tabla de Snowflake, una de Iceberg y una colección de Mongo. Sus resultados llegan como una tabla normal: despliega la fila y ábrela como cualquier otra."
+        "title": "Un verificador de calidad no es más que una fuente",
+        "description": "🧪 Un verificador de calidad de datos —Soda o Great Expectations— se registra como <strong>fuente</strong>. Escanea de vuelta a través del propio endpoint postgres de Provisa, de modo que un solo dialecto de contrato cubre por igual una tabla de Snowflake, una tabla Iceberg y una colección de Mongo. Sus resultados llegan como una tabla corriente: despliegue la fila y ábrala como cualquier otra."
       },
       "stepQualityPanel": {
-        "title": "Construye un contrato de calidad",
-        "description": "✅ Escribe el contrato a mano o crea comprobaciones columna a columna — nulos, recuento de filas, rangos, frescura — y haz una <strong>ejecución de prueba</strong> antes de guardar. Cada escaneo se añade, así que esta tabla <em>es</em> el historial de calidad: grafícala, alerta sobre ella, únela con lo que quieras."
+        "title": "Cree un contrato de calidad",
+        "description": "✅ Escriba el contrato a mano o construya comprobaciones columna por columna —tasas de nulos, recuentos de filas, rangos, actualidad— y haga una <strong>ejecución de prueba</strong> antes de guardar. Cada escaneo se añade, así que esta tabla <em>es</em> el historial de calidad: represéntela, cree alertas sobre ella, únala con lo que quiera."
       },
       "step20": {
         "title": "Construye tu pipeline de entrega",
@@ -128,6 +128,16 @@
         "title": "Un glosario de negocio vivo",
         "description": "📖 Cada término remite a las columnas que lo contienen — cure nombres, definiciones y relaciones tipadas (tipo de, parte de, sinónimo de) a mano, o deje que la IA complete los huecos: <strong>✨ Definiciones</strong> redacta únicamente los términos que aún no tienen una, y <strong>✨ Relaciones</strong> propone enlaces en todo el glosario. Marque un término como <strong>excluido de la exportación</strong> para mantenerlo fuera de los metadatos publicados."
       }
+    },
+    "status": {
+      "starting": "Iniciando el recorrido. Espere…",
+      "resuming": "Reanudando. Espere…",
+      "waiting": "Esperando a que esta página termine de cargarse…",
+      "stuck": "Este paso está tardando más de lo esperado. Puede que la página aún se esté cargando.",
+      "retry": "Reintentar",
+      "skip": "Omitir este paso",
+      "exit": "Salir del recorrido",
+      "cancel": "Cancelar"
     }
   }
 }

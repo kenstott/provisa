@@ -27,6 +27,7 @@
     "createFailed": "Could not create the organization",
     "provisionFailed": "Provisioning failed",
     "provisionTimeout": "Provisioning did not complete in time",
+    "egressCheckoutFailed": "Could not open the data transfer subscription checkout. Add it later from Billing.",
     "welcomeTitle": "Welcome to {{name}}!",
     "welcomeAdmin": "Congratulations — your organization is ready and you are its administrator.",
     "welcomeInviteHeading": "Invite others",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "Go to workspace",
     "pendingInvitesTitle": "You have an invitation",
     "pendingInvitesBody": "Someone invited you to join an organization. Accept it to get in, or create your own organization below.",
-    "acceptInvite": "Accept"
+    "acceptInvite": "Accept",
+    "signUpButton": "Sign up",
+    "signUpDesc": "Creating an organization starts your Starter trial. We take your card now; nothing is charged until the trial converts.",
+    "openingCheckout": "Opening secure checkout...",
+    "finishingSetup": "Payment received. Building your organization...",
+    "checkoutFailed": "Could not open checkout",
+    "resumeTitle": "Finish signing up",
+    "resumeBody": "You started signing up for {{name}} but did not finish checkout. The name is held until {{expires}}.",
+    "resumeButton": "Resume checkout"
   }
 }

@@ -5,6 +5,8 @@
     "reasonLabel": "原因",
     "reasonRequired": "此标签需要填写原因",
     "expiresLabel": "计划移除日期",
+    "paramLabel": "值",
+    "paramPlaceholder": "选择一个值",
     "apply": "应用",
     "cancel": "取消",
     "editAssignment": "编辑分配",

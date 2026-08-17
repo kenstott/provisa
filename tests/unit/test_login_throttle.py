@@ -304,6 +304,9 @@ def _pgwire_attempt(auth_config: dict, password: str) -> list[tuple]:
         (severity, sqlstate, message)
     )
     handler.send_authentication_ok = lambda: None
+    # A real handler's wfile is the CountingWriter that meters egress; a successful auth binds the
+    # org onto it (REQ-1452), so the double has to carry it.
+    handler.wfile = cast(Any, SimpleNamespace(bind_org=lambda _org_id: None))
     handler.handle_post_auth = lambda ctx: None  # noqa: ARG005 — signature match
     ctx = cast(
         Any, SimpleNamespace(params={"user": _USERNAME}, session=SimpleNamespace(org_id=None))

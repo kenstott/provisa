@@ -27,6 +27,7 @@
     "createFailed": "No se pudo crear la organización",
     "provisionFailed": "Error en el aprovisionamiento",
     "provisionTimeout": "El aprovisionamiento no se completó a tiempo",
+    "egressCheckoutFailed": "No se pudo abrir el pago de la suscripción de transferencia de datos. Puede añadirla más tarde desde Facturación.",
     "welcomeTitle": "¡Bienvenido a {{name}}!",
     "welcomeAdmin": "Felicitaciones — la organización está lista y usted es su administrador.",
     "welcomeInviteHeading": "Invitar a otros",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "Ir al espacio de trabajo",
     "pendingInvitesTitle": "Tiene una invitación",
     "pendingInvitesBody": "Alguien le invitó a unirse a una organización. Acéptela para entrar, o cree su propia organización abajo.",
-    "acceptInvite": "Aceptar"
+    "acceptInvite": "Aceptar",
+    "signUpButton": "Registrarse",
+    "signUpDesc": "Crear una organización inicia su prueba de Starter. Tomamos su tarjeta ahora; no se cobra nada hasta que la prueba se convierta en suscripción.",
+    "openingCheckout": "Abriendo el pago seguro...",
+    "finishingSetup": "Pago recibido. Creando su organización...",
+    "checkoutFailed": "No se pudo abrir el pago",
+    "resumeTitle": "Complete su registro",
+    "resumeBody": "Comenzó a registrar {{name}} pero no completó el pago. El nombre queda reservado hasta {{expires}}.",
+    "resumeButton": "Reanudar el pago"
   }
 }

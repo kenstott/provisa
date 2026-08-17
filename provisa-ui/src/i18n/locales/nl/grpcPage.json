@@ -17,6 +17,8 @@
     "waiting": "Wachten op antwoord…",
     "sendPrompt": "Verzend een aanvraag om het antwoord te zien.",
     "groupByColumns": "Groeperen op kolommen",
+    "includeNodes": "Knooppunten opnemen",
+    "includeFields": "Velden opnemen (relatie, relatie.kolom of kolom)",
     "aggregateFunctions": "Aggregatiefuncties",
     "selectAtLeastOneFunc": "Selecteer minstens één aggregatiefunctie"
   }

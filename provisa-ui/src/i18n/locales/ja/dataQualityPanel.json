@@ -1,28 +1,30 @@
 {
   "dataQualityPanel": {
     "title": "データ品質コントラクト",
-    "contractLabel": "コントラクト",
-    "contractHelp": "チェッカーのコントラクト本文です。登録され、スキャンが実行するのはこれで、下のエディタはこの本文を書き換えるため、手書きの編集が失われることはありません。",
-    "dataset": "{{dataset}} を観測",
+    "dataset": "{{dataset}} を監視中",
     "datasetScope": "テーブル全体",
     "columnHeader": "列",
     "checkHeader": "チェック",
-    "definitionHeader": "定義",
+    "definitionHeader": "引数",
     "outcomeHeader": "結果",
     "valueHeader": "値",
-    "failedRowsHeader": "失敗行数",
+    "failedRowsHeader": "失敗した行",
     "removeCheck": "チェックを削除",
     "columnLabel": "列",
     "checkLabel": "チェック",
     "checkPlaceholder": "— チェックを選択 —",
-    "metricLabel": "メトリック",
+    "metricLabel": "メトリクス",
     "comparatorLabel": "比較",
     "thresholdLabel": "しきい値",
     "unitLabel": "単位",
     "levelLabel": "重大度",
     "addCheck": "チェックを追加",
     "dryRun": "ドライラン",
-    "dryRunHelp": "実テーブルに対してコントラクトを実行し、何も書き込みません。",
-    "dryRunNoResponse": "ドライランから応答がありませんでした。"
+    "dryRunHelp": "実テーブルに対してコントラクトを実行し、結果は保存しません。",
+    "dryRunNoResponse": "ドライランからレスポンスが返りませんでした。",
+    "datasetLabel": "データセット",
+    "datasetHelp": "チェッカーが監視するテーブルを「<データソース>/<スキーマ>/<テーブル>」の形式で指定します。スキャンと同じ方法で、ガバナンス下のカタログに対して解決されます。",
+    "argsHelp": "各行が 1 つのチェックです。引数はこの場で編集できます。チェッカー自身のコントラクト本文は、これらの行からシリアライズされます。",
+    "invalidRow": "この行の引数を解析できなかったため、直前の値を保持しました。"
   }
 }

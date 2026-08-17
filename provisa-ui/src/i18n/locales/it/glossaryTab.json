@@ -45,7 +45,7 @@
     "rel_PART_OF_reverse": "Contiene",
     "rel_SYNONYM_OF": "Sinonimo di",
     "rel_VALID_VALUE_OF": "Valore valido di",
-    "rel_VALID_VALUE_OF_reverse": "Ha valore valido",
+    "rel_VALID_VALUE_OF_reverse": "Ha come valore valido",
     "rel_DERIVED_FROM": "Derivato da",
     "rel_DERIVED_FROM_reverse": "Base per",
     "rel_REPLACES": "Sostituisce",

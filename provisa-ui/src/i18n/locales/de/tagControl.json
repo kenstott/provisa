@@ -5,6 +5,8 @@
     "reasonLabel": "Begründung",
     "reasonRequired": "Für dieses Tag ist eine Begründung erforderlich",
     "expiresLabel": "Geplantes Entfernungsdatum",
+    "paramLabel": "Wert",
+    "paramPlaceholder": "Wert wählen",
     "apply": "Übernehmen",
     "cancel": "Abbrechen",
     "editAssignment": "Zuweisung bearbeiten",

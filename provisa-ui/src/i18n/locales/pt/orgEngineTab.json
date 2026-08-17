@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "Carregando…",
+    "intro": "Escolha em qual motor de consultas esta organização roda. A instalação executa {{engine}}; esta organização pode compartilhá-lo, ter um dedicado ou rodar um motor próprio.",
+    "modeLabel": "Motor",
+    "modeShared": "Compartilhado — o motor agrupado que o Provisa opera",
+    "modeSharedHelp": "O padrão. Suas consultas rodam no coordenador multi-inquilino, isoladas por catálogo e papel.",
+    "modeIsolated": "Isolado — um motor dedicado que o Provisa opera para esta organização",
+    "modeIsolatedHelp": "Um coordenador reservado só para esta organização. Nenhum outro inquilino divide seus recursos.",
+    "modeIsolatedUnavailable": "Esta instalação não consegue provisionar um coordenador dedicado, então o motor isolado não está disponível aqui.",
+    "modeIsolatedNotEntitled": "O motor dedicado faz parte do plano Pro. Faça upgrade da assinatura desta organização para selecioná-lo.",
+    "modeExternal": "Externo — um motor que você opera",
+    "modeExternalHelp": "Aponte o Provisa para um motor que você mesmo executa — de qualquer tipo compatível, não apenas o {{engine}} da instalação. O planejamento e a governança permanecem no Provisa; a execução acontece no seu cluster.",
+    "kindLabel": "Tipo de motor",
+    "kindHelp": "Qual motor esta organização usa. Uma organização pode rodar no seu próprio Databricks, Snowflake, BigQuery, ClickHouse, Trino ou em quase qualquer banco de dados relacional.",
+    "urlLabel": "URL do motor",
+    "urlHelp": "A URL de conexão deste motor, incluindo suas credenciais.",
+    "urlStored": "Há uma URL armazenada. Deixe em branco para mantê-la; digite outra para substituí-la.",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "Host do coordenador",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "Porta do coordenador",
+    "applyNote": "Salvar reconstrói o ambiente de execução desta organização imediatamente. As consultas em andamento terminam no motor anterior.",
+    "saveButton": "Salvar motor",
+    "saved": "Motor atualizado.",
+    "currentSuffix": " (atual)"
+  }
+}

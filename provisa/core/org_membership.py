@@ -22,11 +22,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, update
 
 from provisa.core.schema_admin import (
+    AWAITING_CHECKOUT,
     org_auto_join_optouts,
     orgs,
     user_org_memberships,
@@ -58,19 +60,124 @@ def email_matches_rule(email: str | None, rule: str | None) -> bool:
         return False
 
 
-async def grant_membership(admin_db: "Database", user_id: str, org_id: str) -> None:
+# REQ-1477: consumer mailbox providers. An address at one of these says nothing about who the
+# person works for, so a rule that matches one is not an identity claim — it would hand membership
+# of someone's org to any stranger who signs up with the right provider.
+PUBLIC_EMAIL_DOMAINS = frozenset(
+    {
+        "aol.com",
+        "gmail.com",
+        "googlemail.com",
+        "hotmail.co.uk",
+        "hotmail.com",
+        "icloud.com",
+        "live.com",
+        "mail.com",
+        "me.com",
+        "msn.com",
+        "outlook.com",
+        "pm.me",
+        "proton.me",
+        "protonmail.com",
+        "yahoo.co.uk",
+        "yahoo.com",
+        "ymail.com",
+        "yandex.com",
+        "zoho.com",
+    }
+)
+
+
+def public_domain_matched_by(rule: str | None) -> str | None:  # REQ-1477
+    """The first consumer-mailbox domain an auto-join ``rule`` would admit, or None.
+
+    Probed by matching the rule against a sample address at each domain rather than by reading the
+    regex, so a rule reaches the same verdict here as it will at sign-in. A NULL rule matches every
+    address, so it reports the first domain in the set: auto-join with no rule admits consumer
+    mailboxes just as surely as one naming them.
+    """
+    for domain in sorted(PUBLIC_EMAIL_DOMAINS):
+        if email_matches_rule(f"someone@{domain}", rule):
+            return domain
+    return None
+
+
+def bindable_memberships(user_id: str):  # REQ-1476
+    """The orgs ``user_id`` belongs to AND can work in, as a select of (org_id, org_name).
+
+    Every session-binding path reads membership through this one statement so a reservation — an org
+    that exists only as a claimed id awaiting its subscription — is never bound, never offered as an
+    active org and never reported as a membership.
+    """
+    return (
+        select(
+            user_org_memberships.c.org_id,
+            orgs.c.name.label("org_name"),
+            user_org_memberships.c.joined_via,
+            user_org_memberships.c.acknowledged_at,
+        )
+        .select_from(user_org_memberships.join(orgs, orgs.c.id == user_org_memberships.c.org_id))
+        .where(
+            user_org_memberships.c.user_id == user_id,
+            orgs.c.provisioning_state != AWAITING_CHECKOUT,
+        )
+    )
+
+
+# REQ-1478: how a membership came about. CREATED and INVITE are acts the user performed; AUTO_JOIN
+# and ADMIN happen to them, which is what the sign-in notice exists to explain.
+JOINED_VIA_CREATED = "created"
+JOINED_VIA_INVITE = "invite"
+JOINED_VIA_AUTO_JOIN = "auto_join"
+JOINED_VIA_ADMIN = "admin"
+
+
+def membership_values(user_id: str, org_id: str, joined_via: str) -> dict:  # REQ-1478
+    """The membership row to upsert, for the paths that write it on their own transaction's
+    connection rather than through ``grant_membership``.
+
+    A membership created by the user's own act needs no announcement, so it is born acknowledged;
+    one that happened to them is left unacknowledged until they see the notice.
+    """
+    row: dict[str, object] = {"user_id": user_id, "org_id": org_id, "joined_via": joined_via}
+    if joined_via == JOINED_VIA_CREATED:
+        row["acknowledged_at"] = datetime.now(timezone.utc)
+    return row
+
+
+async def grant_membership(
+    admin_db: "Database", user_id: str, org_id: str, *, joined_via: str
+) -> None:
     """Record the admin-plane membership row (user belongs to org). Idempotent.
 
     The membership is the org-ownership fact the middleware's active-org gate reads; granting it
     synchronously lets a creator own their org the instant it is registered, before the tenant
     schema finishes provisioning.
+
+    ``joined_via`` is not updated on a re-grant: the first way in is the one that needs explaining,
+    and re-announcing an org the member already acknowledged would be noise.
     """
     async with admin_db.acquire() as conn:
         await conn.upsert(
             user_org_memberships,
-            {"user_id": user_id, "org_id": org_id},
+            membership_values(user_id, org_id, joined_via),
             index_elements=["user_id", "org_id"],
             update_columns=[],
+        )
+
+
+async def acknowledge_membership(  # REQ-1478
+    admin_db: "Database", user_id: str, org_id: str
+) -> None:
+    """Mark that ``user_id`` has been shown how they came to be in ``org_id``."""
+    async with admin_db.acquire() as conn:
+        await conn.execute_core(
+            update(user_org_memberships)
+            .where(
+                user_org_memberships.c.user_id == user_id,
+                user_org_memberships.c.org_id == org_id,
+            )
+            .values(acknowledged_at=datetime.now(timezone.utc))
         )
 
 
@@ -92,11 +199,11 @@ async def grant_org_role(tenant_db: "Database", user_id: str, role_id: str) -> N
 
 
 async def grant_org_admin(
-    admin_db: "Database", tenant_db: "Database", user_id: str, org_id: str
+    admin_db: "Database", tenant_db: "Database", user_id: str, org_id: str, *, joined_via: str
 ) -> None:
     """Make ``user_id`` the org_admin of ``org_id``: membership (admin plane) + org_admin role
     assignment (tenant plane, scoped to the org's schema)."""
-    await grant_membership(admin_db, user_id, org_id)
+    await grant_membership(admin_db, user_id, org_id, joined_via=joined_via)
     await grant_org_role(tenant_db, user_id, "org_admin")
 
 
@@ -115,23 +222,31 @@ async def resolve_auto_join_orgs(
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
             select(orgs.c.id, orgs.c.email_rule, orgs.c.auto_join_role).where(
-                orgs.c.auto_join == True  # noqa: E712 — SQLAlchemy boolean column comparison
+                orgs.c.auto_join == True,  # noqa: E712 — SQLAlchemy boolean column comparison
+                # REQ-1476: a reservation has no schema and no roles, so joining someone to it
+                # would grant a role in a schema that does not exist.
+                orgs.c.provisioning_state != AWAITING_CHECKOUT,
             )
         )
         rows = [dict(r._mapping) for r in result.fetchall()]
         opted_out_result = await conn.execute_core(
-            select(org_auto_join_optouts.c.org_id).where(
-                org_auto_join_optouts.c.user_id == user_id
-            )
+            select(org_auto_join_optouts.c.org_id).where(org_auto_join_optouts.c.user_id == user_id)
         )
         opted_out = {r[0] for r in opted_out_result.fetchall()}
-    return [
-        (r["id"], r["auto_join_role"])
-        for r in rows
-        if r["auto_join_role"]
-        and r["id"] not in opted_out
-        and email_matches_rule(email, r["email_rule"])
-    ]
+    joined = []
+    for r in rows:
+        if not r["auto_join_role"] or r["id"] in opted_out:
+            continue
+        if not email_matches_rule(email, r["email_rule"]):
+            continue
+        # REQ-1477: refused at the point the policy is set, and again here — a rule written before
+        # that rule existed, or edited straight into the table, must not admit a consumer mailbox.
+        domain = public_domain_matched_by(r["email_rule"])
+        if domain is not None:
+            log.warning("org %s auto-joins %s addresses; refusing the join", r["id"], domain)
+            continue
+        joined.append((r["id"], r["auto_join_role"]))
+    return joined
 
 
 async def suppress_auto_join(admin_db: "Database", user_id: str, org_id: str) -> None:  # REQ-1306

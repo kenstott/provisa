@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "Caricamento…",
+    "intro": "Scegli su quale motore di query gira questa organizzazione. L'installazione esegue {{engine}}; questa organizzazione può condividerlo, averne uno dedicato oppure eseguire un motore proprio.",
+    "modeLabel": "Motore",
+    "modeShared": "Condiviso: il motore in pool gestito da Provisa",
+    "modeSharedHelp": "L'impostazione predefinita. Le tue query girano sul coordinatore multi-tenant, isolate per catalogo e ruolo.",
+    "modeIsolated": "Isolato: un motore dedicato che Provisa gestisce per questa organizzazione",
+    "modeIsolatedHelp": "Un coordinatore riservato a questa sola organizzazione. Nessun altro tenant ne condivide le risorse.",
+    "modeIsolatedUnavailable": "Questa installazione non può effettuare il provisioning di un coordinatore dedicato, quindi qui il motore isolato non è disponibile.",
+    "modeIsolatedNotEntitled": "Il motore dedicato fa parte del piano Pro. Aggiorna l'abbonamento di questa organizzazione per selezionarlo.",
+    "modeExternal": "Esterno: un motore gestito da te",
+    "modeExternalHelp": "Punta Provisa a un motore che gestisci tu, di qualsiasi tipo supportato, non solo il {{engine}} dell'installazione. Pianificazione e governance restano in Provisa; l'esecuzione avviene sul tuo cluster.",
+    "kindLabel": "Tipo di motore",
+    "kindHelp": "Quale motore usa questa organizzazione. Un'organizzazione può girare sul proprio Databricks, Snowflake, BigQuery, ClickHouse, Trino o quasi qualsiasi database relazionale.",
+    "urlLabel": "URL del motore",
+    "urlHelp": "L'URL di connessione di questo motore, credenziali comprese.",
+    "urlStored": "È memorizzato un URL. Lascia vuoto per mantenerlo; inseriscine uno nuovo per sostituirlo.",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "Host del coordinatore",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "Porta del coordinatore",
+    "applyNote": "Il salvataggio ricostruisce immediatamente l'ambiente di esecuzione di questa organizzazione. Le query in corso terminano sul motore precedente.",
+    "saveButton": "Salva motore",
+    "saved": "Motore aggiornato.",
+    "currentSuffix": " (attuale)"
+  }
+}

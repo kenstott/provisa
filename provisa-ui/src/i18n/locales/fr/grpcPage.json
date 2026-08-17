@@ -17,6 +17,8 @@
     "waiting": "En attente de la réponse…",
     "sendPrompt": "Envoyez une requête pour voir la réponse.",
     "groupByColumns": "Colonnes de regroupement",
+    "includeNodes": "Inclure les nœuds",
+    "includeFields": "Inclure les champs (relation, relation.colonne ou colonne)",
     "aggregateFunctions": "Fonctions d'agrégation",
     "selectAtLeastOneFunc": "Sélectionnez au moins une fonction d'agrégation"
   }

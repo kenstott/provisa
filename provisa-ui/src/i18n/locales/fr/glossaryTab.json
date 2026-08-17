@@ -50,7 +50,7 @@
     "rel_DERIVED_FROM_reverse": "Base de",
     "rel_REPLACES": "Remplace",
     "rel_REPLACES_reverse": "Remplacé par",
-    "rel_PREFERRED_TERM_FOR": "Terme préféré pour",
+    "rel_PREFERRED_TERM_FOR": "Terme privilégié pour",
     "rel_PREFERRED_TERM_FOR_reverse": "Déconseillé au profit de",
     "rel_TRANSLATION_OF": "Traduction de",
     "rel_TRANSLATION_OF_reverse": "Traduit par",

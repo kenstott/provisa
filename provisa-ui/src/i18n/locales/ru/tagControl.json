@@ -5,6 +5,8 @@
     "reasonLabel": "Причина",
     "reasonRequired": "Для этого тега требуется причина",
     "expiresLabel": "Плановая дата удаления",
+    "paramLabel": "Значение",
+    "paramPlaceholder": "Выберите значение",
     "apply": "Применить",
     "cancel": "Отмена",
     "editAssignment": "Изменить назначение",

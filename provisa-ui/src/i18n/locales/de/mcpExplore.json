@@ -7,6 +7,11 @@
     "thinking": "Assistent arbeitet…",
     "emptyState": "Fragen Sie zu Ihren Daten — z. B. \"welche Tabellen enthalten Kunden-E-Mails?\", \"Top 10 Bestellungen nach Betrag\" oder \"wie sieht die Tabelle orders aus?\"",
     "inputPlaceholder": "Fragen Sie zu Ihrem Katalog oder Ihren Daten…",
-    "clear": "Eingabe leeren"
+    "clear": "Eingabe leeren",
+    "clearTooltip": "Den Frageentwurf verwerfen, ohne ihn zu senden. Die Unterhaltung darüber bleibt erhalten.",
+    "roleNoteTooltip": "Jede Katalogabfrage und jede Abfrage, die der Assistent ausführt, läuft unter dieser Rolle — er sieht also genau die Tabellen, Spalten und Zeilen, für die diese Rolle berechtigt ist.",
+    "toolRunningTooltip": "{{name}} läuft.",
+    "toolDoneTooltip": "{{name}} ist abgeschlossen. Das Ergebnis wurde an den Assistenten zurückgegeben.",
+    "toolErrorTooltip": "{{name}} ist fehlgeschlagen. Der Assistent hat den Fehler erhalten und versucht es möglicherweise mit anderen Argumenten erneut."
   }
 }

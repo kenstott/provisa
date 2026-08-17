@@ -19,6 +19,11 @@
     "notApplicable": "Für diesen Abfragetyp nicht anwendbar",
     "noQueryGenerated": "Keine Abfrage generiert",
     "noRowsReturned": "Keine Zeilen zurückgegeben",
-    "showingRows": "{{shown}} von {{total}} Zeilen angezeigt"
+    "showingRows": "{{shown}} von {{total}} Zeilen angezeigt",
+    "strictMode": "Strikt",
+    "strictModeTooltip": "Die gesamte Generierung basiert strikt auf dem GraphQL-Ausdruck: Zuerst wird GraphQL erzeugt und gegen das Schema validiert, dann zu SQL und schließlich zu Cypher kompiliert. Aus: SQL und GraphQL werden unabhängig erzeugt und Cypher wird aus dem SQL-Ergebnis abgeleitet.",
+    "questionTooltip": "Fragen Sie in normaler Sprache mit Ihren eigenen Tabellen-, Spalten- und Beziehungsnamen. Enter sendet; Umschalt+Enter fügt eine Zeile hinzu.",
+    "generateTooltip": "Erzeugt aus dieser Frage eine Abfrage für jede Oberfläche — GraphQL, SQL und Cypher — auf Basis des Schemas, das Ihre aktuelle Rolle sehen darf.",
+    "mcpChatTooltip": "Übergibt diese Frage an den MCP-Assistenten, der den Katalog erkundet und die Abfrage für Sie ausführt, statt sie nur zu erzeugen."
   }
 }

@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "読み込み中…",
+    "intro": "この組織が使用するクエリエンジンを選択します。このデプロイは {{engine}} を実行しています。組織はこれを共有するか、専有エンジンを使うか、自前のエンジンを実行できます。",
+    "modeLabel": "エンジン",
+    "modeShared": "共有 — Provisa が運用するプール型エンジン",
+    "modeSharedHelp": "既定です。クエリはマルチテナントのコーディネーターで実行され、カタログとロールによって分離されます。",
+    "modeIsolated": "分離 — この組織のために Provisa が運用する専有エンジン",
+    "modeIsolatedHelp": "この組織専用に確保されたコーディネーターです。他のテナントの処理がリソースを共有することはありません。",
+    "modeIsolatedUnavailable": "このデプロイでは専有コーディネーターをプロビジョニングできないため、分離エンジンは利用できません。",
+    "modeIsolatedNotEntitled": "専有エンジンは Pro プランに含まれます。選択するには、この組織のサブスクリプションをアップグレードしてください。",
+    "modeExternal": "外部 — 自分で運用するエンジン",
+    "modeExternalHelp": "自分で運用するエンジンを Provisa に指定します。デプロイの {{engine}} に限らず、対応する任意の種類を利用できます。プランニングとガバナンスは Provisa に残り、実行は自分のクラスターで行われます。",
+    "kindLabel": "エンジンの種類",
+    "kindHelp": "この組織が使用するエンジン。組織は自前の Databricks、Snowflake、BigQuery、ClickHouse、Trino、またはほぼあらゆるリレーショナルデータベース上で実行できます。",
+    "urlLabel": "エンジン URL",
+    "urlHelp": "資格情報を含む、このエンジンの接続 URL。",
+    "urlStored": "URL は保存済みです。空欄のままにすると保持され、新しい値を入力すると置き換わります。",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "コーディネーターのホスト",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "コーディネーターのポート",
+    "applyNote": "保存すると、この組織のランタイムが直ちに再構築されます。実行中のクエリは以前のエンジンで完了します。",
+    "saveButton": "エンジンを保存",
+    "saved": "エンジンを更新しました。",
+    "currentSuffix": "（現在）"
+  }
+}

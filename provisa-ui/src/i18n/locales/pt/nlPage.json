@@ -19,6 +19,11 @@
     "notApplicable": "Não aplicável para este tipo de consulta",
     "noQueryGenerated": "Nenhuma consulta gerada",
     "noRowsReturned": "Nenhuma linha retornada",
-    "showingRows": "Mostrando {{shown}} de {{total}} linhas"
+    "showingRows": "Mostrando {{shown}} de {{total}} linhas",
+    "strictMode": "Estrito",
+    "strictModeTooltip": "Toda a geração se baseia estritamente na expressão GraphQL: primeiro o GraphQL é gerado e validado contra o esquema, depois compilado para SQL e então para Cypher. Desativado: SQL e GraphQL são gerados de forma independente e o Cypher é derivado do resultado SQL.",
+    "questionTooltip": "Pergunte em linguagem natural usando seus próprios nomes de tabelas, colunas e relações. Enter envia; Shift+Enter adiciona uma linha.",
+    "generateTooltip": "Gera uma consulta para cada superfície — GraphQL, SQL e Cypher — a partir desta pergunta, usando o esquema que seu papel atual pode ver.",
+    "mcpChatTooltip": "Entrega esta pergunta ao assistente MCP, que explora o catálogo e executa a consulta para você em vez de apenas gerá-la."
   }
 }

@@ -13,6 +13,7 @@
     "delete": "刪除報表",
     "deleteConfirm": "確定刪除報表 {{name}} 嗎？",
     "deleted": "已刪除報表 {{name}}。",
-    "empty": "ops 網域中未註冊任何報表。"
+    "empty": "ops 網域中未註冊任何報表。",
+    "resize": "調整報表清單大小"
   }
 }

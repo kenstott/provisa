@@ -31,11 +31,19 @@
     "itemCache": "缓存",
     "itemScheduler": "调度器",
     "itemFederation": "联邦",
+    "itemOrgEngine": "组织引擎",
+    "itemMaintenance": "维护",
+    "itemBilling": "账单",
     "itemExplore": "MCP",
     "itemEncryption": "加密",
     "itemSecurity": "安全",
     "itemAuthentication": "身份验证",
     "itemAiModels": "AI 模型",
+    "itemMetadataExport": "元数据导出",
+    "itemImport": "导入 Hasura 配置",
+    "itemTags": "标签",
+    "itemReports": "报表",
+    "itemGlossary": "术语表",
     "itemHealth": "运行状况",
     "itemObservability": "可观测性",
     "itemMcpServer": "MCP 服务器",
@@ -50,10 +58,6 @@
     "profile": "个人资料",
     "settings": "设置",
     "logout": "退出登录",
-    "dev": "DEV",
-    "itemMetadataExport": "元数据导出",
-    "itemTags": "标签",
-    "itemReports": "报表",
-    "itemGlossary": "术语表"
+    "dev": "DEV"
   }
 }

@@ -31,6 +31,14 @@ import {
 import { PartyPopper, ShieldCheck, UserPlus } from "lucide-react";
 import type { PendingInvite } from "../api/admin";
 import { createOrg, fetchMyInvites, fetchOrgStatus, redeemInvite } from "../api/admin";
+import type { OrgReservation } from "../api/billing";
+import {
+  fetchMyReservation,
+  openCheckout,
+  reconcileCheckout,
+  startEgressSubscription,
+  startTrial,
+} from "../api/billing";
 import { useAuth } from "../context/AuthContext";
 
 // REQ-1266: a member-less authenticated user either self-creates an org OR joins an existing one
@@ -39,7 +47,7 @@ import { useAuth } from "../context/AuthContext";
 // Both then refetch identity (so the new membership clears the onboarding gate) and route in.
 export function OnboardOrgPage() {
   const { t } = useTranslation();
-  const { selectOrg, refresh } = useAuth();
+  const { billing, selectOrg, refresh } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"create" | "join">("create");
   const [id, setId] = useState("");
@@ -52,7 +60,12 @@ export function OnboardOrgPage() {
   const [autoJoinRole, setAutoJoinRole] = useState("");
   const [invite, setInvite] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"form" | "provisioning" | "joining" | "welcome">("form");
+  const [phase, setPhase] = useState<"form" | "checkout" | "provisioning" | "joining" | "welcome">(
+    "form",
+  );
+  // REQ-1476: a reservation this account left behind — the id is held, so the way back in is the
+  // checkout it abandoned, not a second create.
+  const [reservation, setReservation] = useState<OrgReservation | null>(null);
   // REQ-1287: an invited user should be TOLD they were invited, not asked to produce a token they
   // may never have kept. Invites addressed to this identity's email are offered as one-click joins;
   // the token field stays for link invites, which are addressed to nobody.
@@ -75,6 +88,22 @@ export function OnboardOrgPage() {
     };
   }, []);
 
+  // REQ-1476: only a commercial deployment reserves ids, so /billing/reservation exists only there.
+  useEffect(() => {
+    if (!billing) return;
+    let cancelled = false;
+    fetchMyReservation()
+      .then((held) => {
+        if (!cancelled) setReservation(held);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [billing, t]);
+
   const acceptInvite = async (token: string) => {
     setError(null);
     setPhase("joining");
@@ -87,6 +116,61 @@ export function OnboardOrgPage() {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
     }
+  };
+
+  // Bounded poll — the background provisioning task flips the row.
+  const waitForReady = async (orgId: string, from: string) => {
+    let state = from;
+    for (let i = 0; i < 300 && state === "provisioning"; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const status = await fetchOrgStatus(orgId);
+      state = status.provisioning_state;
+      if (state === "failed") {
+        throw new Error(status.provisioning_error || t("onboardOrg.provisionFailed"));
+      }
+    }
+    if (state !== "ready") throw new Error(t("onboardOrg.provisionTimeout"));
+    // Bind the new org + refresh identity so the org_admin grant resolves BEFORE the welcome
+    // screen offers links into /team (user_management) and /security/roles (access_config).
+    selectOrg(orgId);
+    await refresh();
+    setPhase("welcome");
+  };
+
+  // REQ-1476: the subscription is what builds the org, so the checkout overlay is the rest of the
+  // create. The webhook normally provisions before the overlay closes; reconcile covers the case
+  // where it has not arrived, and the poll then runs the same way for both.
+  const runCheckout = async (orgId: string) => {
+    setPhase("checkout");
+    const url = await startTrial(orgId, window.location.href);
+    await openCheckout(url, () => {
+      void (async () => {
+        setPhase("provisioning");
+        try {
+          const status = await fetchOrgStatus(orgId);
+          let state = status.provisioning_state;
+          if (state === "awaiting_checkout") {
+            state = (await reconcileCheckout(orgId)).state;
+          }
+          await waitForReady(orgId, state);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+          setPhase("form");
+          return;
+        }
+        // REQ-1482: the transfer subscription is a second checkout — one Lemon Squeezy variant
+        // carries one usage-based price, and the plan's is the active hour. Ordered after the org
+        // is built, which is when its billing row exists to bind the subscription to. A failure
+        // here is reported over the welcome screen: the org is provisioned and the create is done.
+        try {
+          await openCheckout(await startEgressSubscription(orgId, window.location.href), () => {
+            // The webhook binds the subscription; nothing on this page reads it.
+          });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : t("onboardOrg.egressCheckoutFailed"));
+        }
+      })();
+    });
   };
 
   const handleCreate = async (e: FormEvent) => {
@@ -105,24 +189,25 @@ export function OnboardOrgPage() {
         },
         isolatedEngine,
       );
-      let state = created.provisioning_state;
-      // Bounded poll — the background provisioning task flips the row.
-      for (let i = 0; i < 300 && state === "provisioning"; i++) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const status = await fetchOrgStatus(id);
-        state = status.provisioning_state;
-        if (state === "failed") {
-          throw new Error(status.provisioning_error || t("onboardOrg.provisionFailed"));
-        }
+      if (created.provisioning_state === "awaiting_checkout") {
+        await runCheckout(id);
+        return;
       }
-      if (state !== "ready") throw new Error(t("onboardOrg.provisionTimeout"));
-      // Bind the new org + refresh identity so the org_admin grant resolves BEFORE the welcome
-      // screen offers links into /team (user_management) and /security/roles (access_config).
-      selectOrg(id);
-      await refresh();
-      setPhase("welcome");
+      await waitForReady(id, created.provisioning_state);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+      setPhase("form");
+    }
+  };
+
+  const handleResume = async (held: OrgReservation) => {
+    setError(null);
+    setId(held.org_id);
+    setName(held.name);
+    try {
+      await runCheckout(held.org_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("onboardOrg.checkoutFailed"));
       setPhase("form");
     }
   };
@@ -221,10 +306,15 @@ export function OnboardOrgPage() {
         {t("onboardOrg.subtitle")}
       </Text>
 
-      {phase === "provisioning" ? (
+      {phase === "checkout" ? (
+        <Stack gap="md" align="center" data-testid="onboard-org-checkout">
+          <Loader />
+          <Text>{t("onboardOrg.openingCheckout")}</Text>
+        </Stack>
+      ) : phase === "provisioning" ? (
         <Stack gap="md" align="center" data-testid="onboard-org-provisioning">
           <Loader />
-          <Text>{t("onboardOrg.provisioning")}</Text>
+          <Text>{billing ? t("onboardOrg.finishingSetup") : t("onboardOrg.provisioning")}</Text>
         </Stack>
       ) : phase === "joining" ? (
         <Stack gap="md" align="center" data-testid="onboard-org-joining">
@@ -233,6 +323,32 @@ export function OnboardOrgPage() {
         </Stack>
       ) : (
         <Stack gap="lg">
+          {reservation && (
+            <Alert
+              variant="light"
+              color="yellow"
+              title={t("onboardOrg.resumeTitle")}
+              data-testid="onboard-reservation"
+            >
+              <Stack gap="sm">
+                <Text size="sm">
+                  {t("onboardOrg.resumeBody", {
+                    name: reservation.name,
+                    expires: new Date(reservation.expires_at).toLocaleTimeString(),
+                  })}
+                </Text>
+                <Group>
+                  <Button
+                    size="xs"
+                    data-testid="onboard-resume-checkout"
+                    onClick={() => void handleResume(reservation)}
+                  >
+                    {t("onboardOrg.resumeButton")}
+                  </Button>
+                </Group>
+              </Stack>
+            </Alert>
+          )}
           {pendingInvites.length > 0 && (
             <Alert
               variant="light"
@@ -342,8 +458,15 @@ export function OnboardOrgPage() {
                     {error}
                   </Alert>
                 )}
+                {/* REQ-1476: on a commercial deployment this button opens a checkout — the org is
+                    created by the subscription, so it says what it does. */}
+                {billing && (
+                  <Text size="sm" c="dimmed" data-testid="onboard-org-signup-desc">
+                    {t("onboardOrg.signUpDesc")}
+                  </Text>
+                )}
                 <Button type="submit" data-testid="onboard-org-submit">
-                  {t("onboardOrg.createButton")}
+                  {billing ? t("onboardOrg.signUpButton") : t("onboardOrg.createButton")}
                 </Button>
               </Stack>
             </form>

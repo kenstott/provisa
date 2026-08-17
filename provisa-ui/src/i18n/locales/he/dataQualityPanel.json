@@ -1,20 +1,18 @@
 {
   "dataQualityPanel": {
     "title": "חוזה איכות נתונים",
-    "contractLabel": "חוזה",
-    "contractHelp": "טקסט החוזה של הבודק. זה מה שנרשם ומה שהסריקה מריצה — העורכים שלמטה כותבים דרכו, ולכן עריכות ידניות לעולם אינן נמחקות.",
-    "dataset": "צופה ב-{{dataset}}",
+    "dataset": "מנטר את {{dataset}}",
     "datasetScope": "הטבלה כולה",
     "columnHeader": "עמודה",
     "checkHeader": "בדיקה",
-    "definitionHeader": "הגדרה",
+    "definitionHeader": "ארגומנטים",
     "outcomeHeader": "תוצאה",
     "valueHeader": "ערך",
     "failedRowsHeader": "שורות שנכשלו",
-    "removeCheck": "הסרת בדיקה",
+    "removeCheck": "הסרת הבדיקה",
     "columnLabel": "עמודה",
     "checkLabel": "בדיקה",
-    "checkPlaceholder": "— בחר בדיקה —",
+    "checkPlaceholder": "— בחרו בדיקה —",
     "metricLabel": "מדד",
     "comparatorLabel": "השוואה",
     "thresholdLabel": "סף",
@@ -22,7 +20,11 @@
     "levelLabel": "חומרה",
     "addCheck": "הוספת בדיקה",
     "dryRun": "הרצת ניסיון",
-    "dryRunHelp": "מריץ את החוזה מול הטבלה החיה ואינו כותב דבר.",
-    "dryRunNoResponse": "הרצת הניסיון לא החזירה תגובה."
+    "dryRunHelp": "מריץ את החוזה על הטבלה החיה ואינו כותב דבר.",
+    "dryRunNoResponse": "הרצת הניסיון לא החזירה תשובה.",
+    "datasetLabel": "ערכת נתונים",
+    "datasetHelp": "הטבלה שהבודק מנטר, בצורה «<מקור נתונים>/<סכמה>/<טבלה>». היא נפתרת מול הקטלוג המנוהל באותו אופן שבו הסריקה פותרת אותה.",
+    "argsHelp": "כל שורה היא בדיקה אחת. הארגומנטים שלה נערכים כאן: טקסט החוזה של הבודק נבנה מהשורות האלה.",
+    "invalidRow": "לא ניתן היה לפענח את הארגומנטים של שורה זו; הערך הקודם נשמר."
   }
 }

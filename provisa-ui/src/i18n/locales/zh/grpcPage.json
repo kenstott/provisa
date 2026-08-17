@@ -17,6 +17,8 @@
     "waiting": "等待响应…",
     "sendPrompt": "发送请求以查看响应。",
     "groupByColumns": "分组列",
+    "includeNodes": "包含节点",
+    "includeFields": "包含字段（关系、关系.列或列）",
     "aggregateFunctions": "聚合函数",
     "selectAtLeastOneFunc": "请至少选择一个聚合函数"
   }

@@ -17,6 +17,8 @@
     "waiting": "ממתין לתגובה…",
     "sendPrompt": "יש לשלוח בקשה כדי לראות את התגובה.",
     "groupByColumns": "קיבוץ לפי עמודות",
+    "includeNodes": "כלול צמתים",
+    "includeFields": "כלול שדות (קשר, קשר.עמודה או עמודה)",
     "aggregateFunctions": "פונקציות צבירה",
     "selectAtLeastOneFunc": "יש לבחור לפחות פונקציית צבירה אחת"
   }

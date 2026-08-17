@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "Cargando…",
+    "intro": "Elija en qué motor de consultas se ejecuta esta organización. La instalación ejecuta {{engine}}; esta organización puede compartirlo, tomar uno dedicado o ejecutar un motor propio.",
+    "modeLabel": "Motor",
+    "modeShared": "Compartido: el motor agrupado que opera Provisa",
+    "modeSharedHelp": "La opción predeterminada. Sus consultas se ejecutan en el coordinador multiinquilino, aisladas por catálogo y rol.",
+    "modeIsolated": "Aislado: un motor dedicado que Provisa opera para esta organización",
+    "modeIsolatedHelp": "Un coordinador reservado exclusivamente para esta organización. Ningún otro inquilino comparte sus recursos.",
+    "modeIsolatedUnavailable": "Esta instalación no puede aprovisionar un coordinador dedicado, por lo que aquí no hay motor aislado disponible.",
+    "modeIsolatedNotEntitled": "El motor dedicado forma parte del plan Pro. Actualice la suscripción de esta organización para seleccionarlo.",
+    "modeExternal": "Externo: un motor que usted opera",
+    "modeExternalHelp": "Apunte Provisa a un motor que usted ejecute, de cualquier tipo compatible, no solo el {{engine}} de la instalación. La planificación y la gobernanza siguen en Provisa; la ejecución ocurre en su clúster.",
+    "kindLabel": "Tipo de motor",
+    "kindHelp": "Qué motor ejecuta esta organización. Una organización puede ejecutarse sobre su propio Databricks, Snowflake, BigQuery, ClickHouse, Trino o casi cualquier base de datos relacional.",
+    "urlLabel": "URL del motor",
+    "urlHelp": "La URL de conexión de este motor, incluidas sus credenciales.",
+    "urlStored": "Hay una URL almacenada. Déjelo en blanco para conservarla; escriba una nueva para reemplazarla.",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "Host del coordinador",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "Puerto del coordinador",
+    "applyNote": "Al guardar se reconstruye de inmediato el entorno de ejecución de esta organización. Las consultas en curso terminan en el motor anterior.",
+    "saveButton": "Guardar motor",
+    "saved": "Motor actualizado.",
+    "currentSuffix": " (actual)"
+  }
+}

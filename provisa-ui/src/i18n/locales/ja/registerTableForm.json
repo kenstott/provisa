@@ -29,6 +29,8 @@
     "columnsLabel": "列",
     "columnsLoading": "（読み込み中...）",
     "colHeaderColumn": "列",
+    "colHeaderDataType": "データ型",
+    "dataTypePlaceholder": "型を割り当て...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "参照可能（読み取り）",
     "colHeaderWritableBy": "書き込み可能（読み書き）",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "主キー: {{name}}",
     "submitButton": "+ テーブル",
     "errorRequiredFields": "ソース、スキーマ、テーブル名は必須です。",
-    "errorNoColumnsSelected": "少なくとも 1 つの列を選択してください。"
+    "errorNoColumnsSelected": "少なくとも 1 つの列を選択してください。",
+    "errorUntypedColumns": "すべての列にデータ型が必要です。次の列に割り当ててください: {{columns}}"
   }
 }

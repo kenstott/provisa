@@ -1,20 +1,18 @@
 {
   "dataQualityPanel": {
     "title": "Contrat de qualité des données",
-    "contractLabel": "Contrat",
-    "contractHelp": "Le texte du contrat du vérificateur. C'est ce qui est enregistré et ce que l'analyse exécute : les éditeurs ci-dessous écrivent à travers lui, les modifications manuelles ne sont donc jamais perdues.",
-    "dataset": "Observe {{dataset}}",
+    "dataset": "Observation de {{dataset}}",
     "datasetScope": "table entière",
     "columnHeader": "Colonne",
     "checkHeader": "Contrôle",
-    "definitionHeader": "Définition",
+    "definitionHeader": "Arguments",
     "outcomeHeader": "Résultat",
     "valueHeader": "Valeur",
     "failedRowsHeader": "Lignes en échec",
     "removeCheck": "Supprimer le contrôle",
     "columnLabel": "Colonne",
     "checkLabel": "Contrôle",
-    "checkPlaceholder": "— choisir un contrôle —",
+    "checkPlaceholder": "— choisissez un contrôle —",
     "metricLabel": "Métrique",
     "comparatorLabel": "Comparer",
     "thresholdLabel": "Seuil",
@@ -22,7 +20,11 @@
     "levelLabel": "Gravité",
     "addCheck": "Ajouter un contrôle",
     "dryRun": "Exécution à blanc",
-    "dryRunHelp": "Exécute le contrat sur la table réelle sans rien écrire.",
-    "dryRunNoResponse": "L'exécution à blanc n'a renvoyé aucune réponse."
+    "dryRunHelp": "Exécute le contrat sur la table en production et n'enregistre rien.",
+    "dryRunNoResponse": "L'exécution à blanc n'a renvoyé aucune réponse.",
+    "datasetLabel": "Jeu de données",
+    "datasetHelp": "La table observée par le vérificateur, sous la forme « <source de données>/<schéma>/<table> ». Elle est résolue sur le catalogue gouverné, de la même façon que lors du scan.",
+    "argsHelp": "Chaque ligne est un contrôle. Modifiez ses arguments directement — le texte du contrat du vérificateur est sérialisé à partir de ces lignes.",
+    "invalidRow": "Les arguments de cette ligne n'ont pas pu être analysés ; la valeur précédente a été conservée."
   }
 }

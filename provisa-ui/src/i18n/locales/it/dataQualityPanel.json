@@ -1,16 +1,14 @@
 {
   "dataQualityPanel": {
     "title": "Contratto di qualità dei dati",
-    "contractLabel": "Contratto",
-    "contractHelp": "Il testo del contratto del checker. È ciò che viene registrato ed eseguito dalla scansione: gli editor sottostanti scrivono attraverso di esso, quindi le modifiche manuali non vengono mai perse.",
-    "dataset": "Osserva {{dataset}}",
+    "dataset": "Osservazione di {{dataset}}",
     "datasetScope": "intera tabella",
     "columnHeader": "Colonna",
     "checkHeader": "Controllo",
-    "definitionHeader": "Definizione",
+    "definitionHeader": "Argomenti",
     "outcomeHeader": "Esito",
     "valueHeader": "Valore",
-    "failedRowsHeader": "Righe fallite",
+    "failedRowsHeader": "Righe non conformi",
     "removeCheck": "Rimuovi controllo",
     "columnLabel": "Colonna",
     "checkLabel": "Controllo",
@@ -22,7 +20,11 @@
     "levelLabel": "Gravità",
     "addCheck": "Aggiungi controllo",
     "dryRun": "Esecuzione di prova",
-    "dryRunHelp": "Esegue il contratto sulla tabella reale senza scrivere nulla.",
-    "dryRunNoResponse": "L'esecuzione di prova non ha restituito alcuna risposta."
+    "dryRunHelp": "Esegue il contratto sulla tabella in produzione senza scrivere nulla.",
+    "dryRunNoResponse": "L'esecuzione di prova non ha restituito alcuna risposta.",
+    "datasetLabel": "Dataset",
+    "datasetHelp": "La tabella osservata dal verificatore, nella forma «<origine dati>/<schema>/<tabella>». Viene risolta sul catalogo governato, allo stesso modo della scansione.",
+    "argsHelp": "Ogni riga è un controllo. Modificane gli argomenti direttamente qui: il testo del contratto del verificatore viene serializzato da queste righe.",
+    "invalidRow": "Non è stato possibile analizzare gli argomenti di questa riga; è stato mantenuto il valore precedente."
   }
 }

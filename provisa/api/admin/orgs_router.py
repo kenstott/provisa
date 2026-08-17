@@ -25,7 +25,17 @@ from sqlalchemy import delete as _delete, func, select, update
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
 from provisa.core.org_ids import is_org_id
-from provisa.core.schema_admin import orgs, user_org_memberships, user_profiles
+from provisa.core.org_membership import (
+    JOINED_VIA_ADMIN,
+    JOINED_VIA_CREATED,
+    membership_values,
+)
+from provisa.core.schema_admin import (
+    AWAITING_CHECKOUT,
+    orgs,
+    user_org_memberships,
+    user_profiles,
+)
 from provisa.security.rights import has_platform_bypass
 
 log = logging.getLogger(__name__)
@@ -130,6 +140,20 @@ def _validate_org_policy(
             ) from exc
     if auto_join and not auto_join_role:
         raise ApiError(400, "orgs.auto_join_requires_role", "auto_join requires auto_join_role")
+    if auto_join:
+        # REQ-1477: auto-join treats a matching address as proof of belonging, which only holds for
+        # a domain the org controls. A consumer mailbox is issued to anyone who asks for one.
+        from provisa.core.org_membership import public_domain_matched_by
+
+        domain = public_domain_matched_by(email_rule)
+        if domain is not None:
+            raise ApiError(
+                400,
+                "orgs.auto_join_public_domain",
+                f"auto_join needs an email rule limited to a domain you control — this one "
+                f"matches {domain}.",
+                domain=domain,
+            )
 
 
 # REQ-1309: the pattern lives in provisa.core.org_ids, because the hostname readers (REQ-1234,
@@ -325,9 +349,17 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
                 "an org a dedicated federation engine (REQ-1043)",
             )
 
+    # REQ-1476: a commercial deployment sells the org — it is reserved here and built by the
+    # subscription webhook. A self-hosted deployment has nothing to charge for, so it provisions
+    # immediately, as it always has.
+    from provisa.core.commerce import enabled as commerce_enabled, sweep_org_reservations
+
+    gated = commerce_enabled()
+
     # Register the org immediately as "provisioning" and grant the creator membership synchronously
     # (admin plane) so they own it at once; the schema + data plane build in the background task.
     async with _admin_pool().acquire() as conn:
+        await sweep_org_reservations(conn)
         if created_by is not None:
             # REQ-1311: cap creation per user. Deleted orgs are gone from the registry so they
             # cannot count; failed orgs are excluded explicitly (REQ-1315 — they hold no data and
@@ -348,8 +380,22 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
                     ),
                     limit=_MAX_ORGS_PER_USER,
                 )
-        exists = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == body.id))
-        if exists.fetchone() is not None:
+        exists = await conn.execute_core(
+            select(orgs.c.id, orgs.c.name, orgs.c.created_by, orgs.c.provisioning_state).where(
+                orgs.c.id == body.id
+            )
+        )
+        existing = exists.fetchone()
+        if existing is not None:
+            # REQ-1476: the creator coming back to a reservation of their own gets it back, so the
+            # UI can resume the checkout it abandoned. Any other row is a taken id.
+            record = dict(existing._mapping)
+            if (
+                record["provisioning_state"] == AWAITING_CHECKOUT
+                and created_by is not None
+                and record["created_by"] == created_by
+            ):
+                return record
             raise ApiError(409, "orgs.already_exists", "Org already exists")
         result = await conn.execute_core(
             orgs.insert()
@@ -357,7 +403,7 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
                 id=body.id,
                 name=body.name,
                 created_by=created_by,
-                provisioning_state="provisioning",
+                provisioning_state=AWAITING_CHECKOUT if gated else "provisioning",
                 seeded_demo=body.include_demo,
                 email_rule=body.email_rule,
                 auto_join=body.auto_join,
@@ -370,17 +416,49 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
         if created_by is not None:
             await conn.upsert(
                 user_org_memberships,
-                {"user_id": created_by, "org_id": body.id},
+                membership_values(created_by, body.id, JOINED_VIA_CREATED),
                 index_elements=["user_id", "org_id"],
                 update_columns=[],
             )
 
+    if not gated:
+        _spawn_provisioning(body.id, body.include_demo, created_by, body.isolated_engine)
+    return dict(row._mapping)
+
+
+def _spawn_provisioning(
+    org_id: str, include_demo: bool, created_by: str | None, isolated_engine: bool
+) -> None:
     task = asyncio.create_task(
-        _provision_org_task(body.id, body.include_demo, created_by, body.isolated_engine)
+        _provision_org_task(org_id, include_demo, created_by, isolated_engine)
     )
     _provisioning_tasks.add(task)
     task.add_done_callback(_provisioning_tasks.discard)
-    return dict(row._mapping)
+
+
+async def begin_provisioning(org_id: str) -> bool:  # REQ-1476
+    """Build a reserved org, now that it has been paid for.
+
+    The commercial plugin's subscription webhook is the only caller: on a gated deployment this is
+    the single path from a reservation to a built org. Returns False when the row is not a
+    reservation — a webhook redelivery, or an org that some other path already built — so the
+    caller can treat the second delivery as the no-op it is.
+    """
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            update(orgs)
+            .where(orgs.c.id == org_id, orgs.c.provisioning_state == AWAITING_CHECKOUT)
+            .values(provisioning_state="provisioning", provisioning_error=None)
+            .returning(orgs.c.seeded_demo, orgs.c.created_by, orgs.c.isolated_engine)
+        )
+        row = result.fetchone()
+    if row is None:
+        return False
+    record = dict(row._mapping)
+    _spawn_provisioning(
+        org_id, bool(record["seeded_demo"]), record["created_by"], bool(record["isolated_engine"])
+    )
+    return True
 
 
 @router.get("/{org_id}/status")
@@ -656,7 +734,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ
             raise ApiError(404, "orgs.not_found", "Org not found")
         await conn.upsert(
             user_org_memberships,
-            {"user_id": body.user_id, "org_id": org_id},
+            membership_values(body.user_id, org_id, JOINED_VIA_ADMIN),
             index_elements=["user_id", "org_id"],
             update_columns=[],
         )
@@ -765,7 +843,7 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
         if exists.fetchone() is None:
             raise ApiError(404, "orgs.not_found", "Org not found")
     tenant_db = await _org_tenant_db(org_id)
-    await grant_org_admin(_admin_pool(), tenant_db, user_id, org_id)
+    await grant_org_admin(_admin_pool(), tenant_db, user_id, org_id, joined_via=JOINED_VIA_ADMIN)
     await record_admin_action(
         tenant_db,
         action="grant_org_admin",

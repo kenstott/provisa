@@ -89,12 +89,12 @@
         "description": "🔎 Sobald Rollen existieren, noch feiner werden — einschränken, welche <strong>Zeilen</strong> jede Rolle sieht, mit attributbasierten Prädikaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datengetrieben und pro Zeile erzwungen — über jede Quelle und jedes Protokoll hinweg.</p>"
       },
       "stepQualityTable": {
-        "title": "Ein Qualitätsprüfer ist einfach eine Quelle",
-        "description": "🧪 Ein Datenqualitätsprüfer — Soda oder Great Expectations — wird als <strong>Quelle</strong> registriert. Er prüft über Provisas eigenen Postgres-Endpunkt, sodass ein Vertragsdialekt für eine Snowflake-Tabelle, eine Iceberg-Tabelle und eine Mongo-Collection gleichermaßen gilt. Die Ergebnisse landen als gewöhnliche Tabelle: Zeile aufklappen und wie jede andere öffnen."
+        "title": "Ein Qualitäts-Checker ist einfach eine Quelle",
+        "description": "🧪 Ein Datenqualitäts-Checker — Soda oder Great Expectations — wird als <strong>Quelle</strong> registriert. Er scannt zurück über den eigenen Postgres-Endpunkt von Provisa, sodass ein Vertragsdialekt eine Snowflake-Tabelle, eine Iceberg-Tabelle und eine Mongo-Collection gleichermaßen abdeckt. Seine Ergebnisse landen als gewöhnliche Tabelle: Zeile aufklappen und wie jede andere öffnen."
       },
       "stepQualityPanel": {
         "title": "Einen Qualitätsvertrag erstellen",
-        "description": "✅ Schreiben Sie den Vertrag selbst oder bauen Sie Prüfungen Spalte für Spalte — Null-Quoten, Zeilenzahlen, Wertebereiche, Aktualität — und führen Sie vor dem Speichern einen <strong>Testlauf</strong> aus. Jeder Scan wird angehängt, diese Tabelle <em>ist</em> also die Qualitätshistorie: visualisieren, alarmieren, mit allem verknüpfen."
+        "description": "✅ Schreiben Sie den Vertrag von Hand oder bauen Sie Prüfungen Spalte für Spalte auf — Null-Raten, Zeilenzahlen, Wertebereiche, Aktualität — und führen Sie vor dem Speichern einen <strong>Testlauf</strong> aus. Jeder Scan hängt an, daher <em>ist</em> diese Tabelle die Qualitätshistorie: stellen Sie sie dar, alarmieren Sie darauf, verknüpfen Sie sie mit allem."
       },
       "step20": {
         "title": "Ihre Delivery-Pipeline aufbauen",
@@ -128,6 +128,16 @@
         "title": "Ein lebendiges Fachglossar",
         "description": "📖 Jeder Begriff verweist zurück auf die Spalten, die ihn tragen — pflegen Sie Namen, Definitionen und typisierte Beziehungen (Art von, Teil von, Synonym von) von Hand, oder lassen Sie die KI die Lücken füllen: <strong>✨ Definitionen</strong> entwirft nur Begriffe, denen noch eine fehlt, und <strong>✨ Beziehungen</strong> schlägt Verknüpfungen im gesamten Glossar vor. Markieren Sie einen Begriff als <strong>vom Export ausgeschlossen</strong>, damit er nicht in den veröffentlichten Metadaten erscheint."
       }
+    },
+    "status": {
+      "starting": "Die Tour wird gestartet. Bitte warten…",
+      "resuming": "Wird fortgesetzt. Bitte warten…",
+      "waiting": "Warten, bis diese Seite fertig geladen ist…",
+      "stuck": "Dieser Schritt dauert länger als erwartet. Die Seite wird möglicherweise noch geladen.",
+      "retry": "Erneut versuchen",
+      "skip": "Diesen Schritt überspringen",
+      "exit": "Tour beenden",
+      "cancel": "Abbrechen"
     }
   }
 }

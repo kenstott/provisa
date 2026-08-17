@@ -5,6 +5,6 @@
     "loading": "Cargando telemetría…",
     "notFound": "No hay telemetría registrada para este id.",
     "spanIndex": "Span {{index}} de {{total}}",
-    "openDetails": "Mostrar todos los detalles de telemetría"
+    "openDetails": "Ver todos los detalles de telemetría"
   }
 }

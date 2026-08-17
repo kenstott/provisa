@@ -3,8 +3,8 @@
     "traceTitle": "トレース {{id}}",
     "spanTitle": "スパン {{id}}",
     "loading": "テレメトリを読み込み中…",
-    "notFound": "この ID のテレメトリは記録されていません。",
+    "notFound": "この ID に記録されたテレメトリはありません。",
     "spanIndex": "スパン {{index}} / {{total}}",
-    "openDetails": "テレメトリの全詳細を表示"
+    "openDetails": "テレメトリの詳細をすべて表示"
   }
 }

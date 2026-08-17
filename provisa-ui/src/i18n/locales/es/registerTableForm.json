@@ -29,6 +29,8 @@
     "columnsLabel": "Columnas",
     "columnsLoading": "(cargando...)",
     "colHeaderColumn": "Columna",
+    "colHeaderDataType": "Tipo de dato",
+    "dataTypePlaceholder": "Asignar tipo...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Visible para (lectura)",
     "colHeaderWritableBy": "Escribible por (L/E)",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "Clave primaria: {{name}}",
     "submitButton": "+ Tabla",
     "errorRequiredFields": "El origen, el esquema y el nombre de la tabla son obligatorios.",
-    "errorNoColumnsSelected": "Debe seleccionarse al menos una columna."
+    "errorNoColumnsSelected": "Debe seleccionarse al menos una columna.",
+    "errorUntypedColumns": "Cada columna necesita un tipo de dato. Asigne uno para: {{columns}}"
   }
 }

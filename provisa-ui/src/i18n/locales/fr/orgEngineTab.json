@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "Chargement…",
+    "intro": "Choisissez le moteur de requête sur lequel cette organisation s'exécute. L'installation exécute {{engine}} ; cette organisation peut le partager, disposer d'un moteur dédié, ou exécuter son propre moteur.",
+    "modeLabel": "Moteur",
+    "modeShared": "Partagé — le moteur mutualisé exploité par Provisa",
+    "modeSharedHelp": "L'option par défaut. Vos requêtes s'exécutent sur le coordinateur multi-locataire, isolées par catalogue et par rôle.",
+    "modeIsolated": "Isolé — un moteur dédié que Provisa exploite pour cette organisation",
+    "modeIsolatedHelp": "Un coordinateur réservé à cette seule organisation. Aucun autre locataire ne partage ses ressources.",
+    "modeIsolatedUnavailable": "Cette installation ne peut pas provisionner de coordinateur dédié ; aucun moteur isolé n'est donc disponible ici.",
+    "modeIsolatedNotEntitled": "Le moteur dédié fait partie de l'offre Pro. Mettez à niveau l'abonnement de cette organisation pour le sélectionner.",
+    "modeExternal": "Externe — un moteur que vous exploitez",
+    "modeExternalHelp": "Faites pointer Provisa vers un moteur que vous exploitez — de tout type pris en charge, pas seulement le {{engine}} de l'installation. La planification et la gouvernance restent dans Provisa ; l'exécution a lieu sur votre cluster.",
+    "kindLabel": "Type de moteur",
+    "kindHelp": "Le moteur sur lequel cette organisation s'exécute. Une organisation peut fonctionner sur son propre Databricks, Snowflake, BigQuery, ClickHouse, Trino ou presque n'importe quelle base de données relationnelle.",
+    "urlLabel": "URL du moteur",
+    "urlHelp": "L'URL de connexion de ce moteur, identifiants compris.",
+    "urlStored": "Une URL est enregistrée. Laissez vide pour la conserver ; saisissez-en une nouvelle pour la remplacer.",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "Hôte du coordinateur",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "Port du coordinateur",
+    "applyNote": "L'enregistrement reconstruit immédiatement l'environnement d'exécution de cette organisation. Les requêtes en cours se terminent sur le moteur précédent.",
+    "saveButton": "Enregistrer le moteur",
+    "saved": "Moteur mis à jour.",
+    "currentSuffix": " (actuel)"
+  }
+}

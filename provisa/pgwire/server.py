@@ -45,6 +45,7 @@ from buenavista.postgres import (
     ServerResponse,
 )
 
+from provisa.core.egress import CountingWriter
 from provisa.executor.result import ResultStream
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
@@ -504,6 +505,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     _sasl_offered: bool = False
     _sasl: "ScramExchange | None" = None
 
+    def setup(self) -> None:
+        # REQ-1452/REQ-1455: meter what this connection writes to its client. Wrapping the socket
+        # writer is the only truthful place to count a pgwire result set — the rows are streamed
+        # DataRow by DataRow long after the query was finalized, so the audit seam never sees the
+        # byte total. Starts unattributed and is bound to an org once auth resolves one; the bytes
+        # of the startup and auth exchange belong to no org and are dropped rather than guessed.
+        super().setup()
+        self.wfile = CountingWriter(self.wfile, None)
+
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
         buf = BVBuffer()
         for field, value in (
@@ -560,7 +570,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.wfile.flush()
                 self.request = ssl_ctx.wrap_socket(self.request, server_side=True)
                 self.rfile = self.request.makefile("rb")
-                self.wfile = self.request.makefile("wb", 0)
+                # Re-wrap: the TLS upgrade replaces the socket, and with it the writer setup()
+                # metered. Leaving it unwrapped would silently stop metering every TLS pgwire
+                # session, i.e. all of them on the hosted deployment.
+                self.wfile = CountingWriter(self.request.makefile("wb", 0), None)
                 self.r = BVBuffer(self.rfile)
             else:
                 self.wfile.write(b"N")
@@ -952,6 +965,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             except OrgResolutionError as exc:
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")
                 return
+        # REQ-1452: attribute this connection's writes from here on.
+        self.wfile.bind_org(getattr(ctx.session, "org_id", None))
         ctx.session.role_id = role  # type: ignore[attr-defined]
         ctx.session.user_id = identity.user_id  # type: ignore[attr-defined]  # REQ-074
         self.send_authentication_ok()

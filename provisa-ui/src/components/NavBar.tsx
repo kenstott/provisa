@@ -24,6 +24,7 @@ import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { clearSessionState } from "../lib/session";
 import { NAV_GROUPS, entryItem, writeLastSubnav } from "./navGroups";
+import { hasCapability } from "../lib/capabilities";
 
 function activeGroupId(pathname: string): string | null {
   for (const group of NAV_GROUPS) {
@@ -43,7 +44,7 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled, capabilities } = useAuth();
+  const { displayName, email, devMode, authEnabled, capabilities, billing } = useAuth();
   const { startTour, canResume, status: tourStatus } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
@@ -291,6 +292,19 @@ export function NavBar() {
                 {adminEntry && (
                   <Menu.Item onClick={() => navigate(adminEntry.to)}>
                     {t("navBar.settings")}
+                  </Menu.Item>
+                )}
+                {/* REQ-1469: the plan, the running bill and the next charge are the org's
+                    commercial relationship, not an operational setting, so they sit with the
+                    account rather than under Admin. Shown only where the deployment mounts
+                    /billing (`billing` on /auth/me) — the right exists in every deployment, the
+                    routes do not — and only to the org right that owns the subscription. */}
+                {billing && hasCapability(capabilities, "org_settings") && (
+                  <Menu.Item
+                    onClick={() => navigate("/admin/billing")}
+                    data-testid="navbar-billing"
+                  >
+                    {t("navBar.itemBilling")}
                   </Menu.Item>
                 )}
                 {authEnabled && (

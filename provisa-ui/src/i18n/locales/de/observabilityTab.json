@@ -65,7 +65,7 @@
     "restarted": "Neu gestartet: {{container}}",
     "clustered": "{{count}} Tabellen geclustert.",
     "subsystemsTitle": "Subsystem-Traces",
-    "subsystemsIntro": "Welche Subsysteme Spans erzeugen. Wird beim Neustart übernommen.",
+    "subsystemsIntro": "Welche Subsysteme Spans senden. Gilt nach einem Neustart.",
     "subsystem": {
       "http_api": "HTTP-API",
       "outbound_http": "Ausgehende HTTP-Aufrufe",
@@ -76,13 +76,13 @@
       "grpc_services": "gRPC-Dienste"
     },
     "subsystemHelp": {
-      "http_api": "Vom Plattform-API bediente Anfragen.",
-      "outbound_http": "Anfragen der Plattform an REST- und GraphQL-Quellen.",
-      "catalog_database": "Metadaten-Lese- und Schreibvorgänge. Standardmäßig aus: Jede Katalogabfrage erzeugt einen Span und überdeckt die Abfrage-Traces.",
-      "result_cache": "Cache-Lese- und Schreibvorgänge.",
+      "http_api": "Anfragen, die von der Plattform-API bedient werden.",
+      "outbound_http": "Anfragen, die die Plattform an REST- und GraphQL-Quellen stellt.",
+      "catalog_database": "Lese- und Schreibvorgänge auf Metadaten. Standardmäßig aus: jede Katalogabfrage ist einer davon, und sie überdecken die Abfrage-Traces.",
+      "result_cache": "Lese- und Schreibvorgänge im Cache.",
       "document_sources": "Abfragen an Dokumentspeicher.",
       "search_sources": "Abfragen an Suchindizes.",
-      "grpc_services": "Die gRPC-Abfrageschnittstelle, eingehend und ausgehend."
+      "grpc_services": "Die gRPC-Abfrageoberfläche, eingehend und ausgehend."
     }
   }
 }

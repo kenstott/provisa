@@ -31,12 +31,19 @@
     "itemCache": "कैश",
     "itemScheduler": "शेड्यूलर",
     "itemFederation": "फ़ेडरेशन",
+    "itemOrgEngine": "संगठन इंजन",
+    "itemMaintenance": "रखरखाव",
+    "itemBilling": "बिलिंग",
     "itemExplore": "MCP",
     "itemEncryption": "एन्क्रिप्शन",
     "itemSecurity": "सुरक्षा",
     "itemAuthentication": "प्रमाणीकरण",
     "itemAiModels": "AI मॉडल",
     "itemMetadataExport": "मेटाडेटा निर्यात",
+    "itemImport": "Hasura कॉन्फ़िग आयात",
+    "itemTags": "टैग",
+    "itemReports": "रिपोर्टें",
+    "itemGlossary": "शब्दावली",
     "itemHealth": "हेल्थ",
     "itemObservability": "ऑब्ज़र्वेबिलिटी",
     "itemMcpServer": "MCP सर्वर",
@@ -51,9 +58,6 @@
     "profile": "प्रोफ़ाइल",
     "settings": "सेटिंग्स",
     "logout": "लॉगआउट",
-    "dev": "DEV",
-    "itemTags": "टैग",
-    "itemReports": "रिपोर्टें",
-    "itemGlossary": "शब्दावली"
+    "dev": "DEV"
   }
 }

@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "集計",
     "groupByColumns": "グループ化するカラム",
     "aggregateFunctions": "集計関数",
-    "selectAtLeastOneFunc": "集計関数を少なくとも1つ選択してください"
+    "selectAtLeastOneFunc": "集計関数を少なくとも1つ選択してください",
+    "includeNodes": "ノードを含める"
   }
 }

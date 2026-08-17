@@ -31,11 +31,19 @@
     "itemCache": "キャッシュ",
     "itemScheduler": "スケジューラー",
     "itemFederation": "フェデレーション",
+    "itemOrgEngine": "組織のエンジン",
+    "itemMaintenance": "メンテナンス",
+    "itemBilling": "請求",
     "itemExplore": "MCP",
     "itemEncryption": "暗号化",
     "itemSecurity": "セキュリティ",
     "itemAuthentication": "認証",
     "itemAiModels": "AIモデル",
+    "itemMetadataExport": "メタデータエクスポート",
+    "itemImport": "Hasura 構成のインポート",
+    "itemTags": "タグ",
+    "itemReports": "レポート",
+    "itemGlossary": "用語集",
     "itemHealth": "ヘルス",
     "itemObservability": "オブザーバビリティ",
     "itemMcpServer": "MCPサーバー",
@@ -50,10 +58,6 @@
     "profile": "プロフィール",
     "settings": "設定",
     "logout": "ログアウト",
-    "dev": "DEV",
-    "itemMetadataExport": "メタデータエクスポート",
-    "itemTags": "タグ",
-    "itemReports": "レポート",
-    "itemGlossary": "用語集"
+    "dev": "DEV"
   }
 }

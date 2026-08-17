@@ -13,6 +13,7 @@
     "delete": "Elimina report",
     "deleteConfirm": "Eliminare il report {{name}}?",
     "deleted": "Report {{name}} eliminato.",
-    "empty": "Nessun report registrato nel dominio ops."
+    "empty": "Nessun report registrato nel dominio ops.",
+    "resize": "Ridimensiona l'elenco dei report"
   }
 }

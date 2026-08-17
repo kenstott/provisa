@@ -1,10 +1,10 @@
 {
   "traceDetails": {
     "traceTitle": "追蹤 {{id}}",
-    "spanTitle": "跨度 {{id}}",
-    "loading": "正在載入遙測資料…",
-    "notFound": "此 ID 沒有記錄遙測資料。",
-    "spanIndex": "跨度 {{index}} / {{total}}",
-    "openDetails": "顯示全部遙測詳情"
+    "spanTitle": "Span {{id}}",
+    "loading": "正在載入遙測數據…",
+    "notFound": "此 ID 沒有記錄任何遙測數據。",
+    "spanIndex": "第 {{index}} 個 Span，共 {{total}} 個",
+    "openDetails": "顯示完整遙測詳情"
   }
 }

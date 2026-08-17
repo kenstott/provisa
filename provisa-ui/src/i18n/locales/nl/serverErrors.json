@@ -151,6 +151,7 @@
       "already_exists": "Organisatie bestaat al",
       "auth_required_create": "Verificatie vereist om een organisatie te maken",
       "auth_required_leave": "Verificatie vereist om een organisatie te verlaten",
+      "auto_join_public_domain": "auto_join vereist een e-mailregel die beperkt is tot een domein dat u beheert — deze komt overeen met {{domain}}.",
       "auto_join_requires_role": "auto_join vereist auto_join_role",
       "cannot_delete_root": "De root-organisatie kan niet worden verwijderd",
       "delete_confirm_required": "Het verwijderen van '{{org}}' vernietigt alle bijbehorende gegevens permanent — niemand, ook geen platformbeheerder, kan ze herstellen. Herhaal de organisatie-id in de parameter 'confirm' om door te gaan.",

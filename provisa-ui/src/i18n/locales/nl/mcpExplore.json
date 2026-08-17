@@ -7,6 +7,11 @@
     "thinking": "Assistent is bezig…",
     "emptyState": "Stel een vraag over de data — bijv. \"welke tabellen bevatten klant-e-mail?\", \"top 10 orders op bedrag\" of \"hoe ziet de tabel orders eruit?\"",
     "inputPlaceholder": "Stel een vraag over de catalogus of data…",
-    "clear": "Invoer wissen"
+    "clear": "Invoer wissen",
+    "clearTooltip": "Wist het concept van de vraag zonder deze te versturen. Het gesprek hierboven blijft behouden.",
+    "roleNoteTooltip": "Elke catalogusopvraging en elke query die de assistent uitvoert, draait onder deze rol — hij ziet dus precies de tabellen, kolommen en rijen waarvoor die rol rechten heeft.",
+    "toolRunningTooltip": "{{name}} wordt uitgevoerd.",
+    "toolDoneTooltip": "{{name}} is klaar. Het resultaat is aan de assistent teruggegeven.",
+    "toolErrorTooltip": "{{name}} is mislukt. De assistent heeft de fout ontvangen en probeert het mogelijk opnieuw met andere argumenten."
   }
 }

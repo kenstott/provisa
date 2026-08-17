@@ -207,7 +207,9 @@ def test_active_engine_url_is_the_orgs_own_dsn(databricks_org):
         reset_current_org(token)
 
 
-def test_configured_engine_url_prefers_the_orgs_dsn_over_the_deployment(databricks_org, monkeypatch):
+def test_configured_engine_url_prefers_the_orgs_dsn_over_the_deployment(
+    databricks_org, monkeypatch
+):
     """The org's DSN is the more specific statement: it says which warehouse ITS queries run on,
     which is what lets one org run Databricks while the deployment runs Trino."""
     from provisa.federation.engine import configured_engine_url
@@ -263,3 +265,31 @@ def test_endpoints_are_gated_on_org_settings():
         src = inspect.getsource(fn)
         assert "require_org_settings(request)" in src
         assert "require_platform_settings" not in src
+
+
+# ---- the entitlement gate ----------------------------------------------------
+
+
+def test_the_lane_is_entitlement_checked_before_anything_is_written():
+    """REQ-1412: the isolated lane is platform-run compute, so on a hosted deployment it belongs to
+    a plan. The check has to precede the write and the provisioning, or a refused org still gets a
+    coordinator stood up for it."""
+    import inspect
+
+    from provisa.api.admin import org_engine_router as mod
+
+    src = inspect.getsource(mod.set_org_engine)
+    gate = src.index("require_lane_entitlement")
+    assert gate < src.index("update(orgs)")
+    assert gate < src.index("state.org_registry.rebuild")
+    assert "lane_entitled(state, org_id, ISOLATED)" in inspect.getsource(mod.get_org_engine)
+
+
+async def test_a_deployment_without_the_commercial_plugin_gates_no_lane():
+    """A self-hosted deployment has no subscription, so every lane is open to it."""
+    from provisa.core import commerce
+
+    commerce.reset_for_tests()
+    assert commerce.load() is None
+    assert await commerce.lane_entitled(state, "acme", "isolated") is True
+    await commerce.require_lane_entitlement(state, "acme", "isolated")

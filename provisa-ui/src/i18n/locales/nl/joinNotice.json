@@ -1,0 +1,11 @@
+{
+  "joinNotice": {
+    "title": "U bent toegevoegd aan {{org}}",
+    "auto_join": "Uw e-mailadres komt overeen met de aanmeldregel van deze organisatie, daarom bent u bij het aanmelden automatisch aan {{org}} toegevoegd.",
+    "invite": "U hebt een uitnodiging voor {{org}} geaccepteerd en bent nu lid.",
+    "admin": "Een beheerder heeft u aan {{org}} toegevoegd.",
+    "ack": "Begrepen",
+    "leave": "Dit is niet mijn organisatie",
+    "leaveError": "Kon de organisatie niet verlaten."
+  }
+}

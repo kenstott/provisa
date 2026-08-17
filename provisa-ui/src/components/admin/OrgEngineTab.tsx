@@ -126,15 +126,17 @@ export function OrgEngineTab() {
           />
           <Radio
             value="isolated"
-            disabled={!state.isolated_available}
+            disabled={!state.isolated_available || !state.isolated_entitled}
             label={
               t("orgEngineTab.modeIsolated") +
               (state.mode === "isolated" ? t("orgEngineTab.currentSuffix") : "")
             }
             description={
-              state.isolated_available
-                ? t("orgEngineTab.modeIsolatedHelp")
-                : t("orgEngineTab.modeIsolatedUnavailable")
+              !state.isolated_available
+                ? t("orgEngineTab.modeIsolatedUnavailable")
+                : state.isolated_entitled
+                  ? t("orgEngineTab.modeIsolatedHelp")
+                  : t("orgEngineTab.modeIsolatedNotEntitled")
             }
             data-testid="org-engine-mode-isolated"
           />

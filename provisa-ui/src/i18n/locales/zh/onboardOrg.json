@@ -27,6 +27,7 @@
     "createFailed": "无法创建该组织",
     "provisionFailed": "预配失败",
     "provisionTimeout": "预配未在规定时间内完成",
+    "egressCheckoutFailed": "无法打开数据传输订阅的结账页面。可稍后在“账单”中添加。",
     "welcomeTitle": "欢迎来到 {{name}}！",
     "welcomeAdmin": "恭喜——您的组织已就绪，您是它的管理员。",
     "welcomeInviteHeading": "邀请他人",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "前往工作区",
     "pendingInvitesTitle": "您有一份邀请",
     "pendingInvitesBody": "有人邀请您加入一个组织。接受邀请即可加入，或在下方创建您自己的组织。",
-    "acceptInvite": "接受"
+    "acceptInvite": "接受",
+    "signUpButton": "注册",
+    "signUpDesc": "创建组织即开始您的 Starter 试用。我们现在记录您的银行卡；在试用转为订阅之前不会扣费。",
+    "openingCheckout": "正在打开安全结账...",
+    "finishingSetup": "已收到付款。正在创建您的组织...",
+    "checkoutFailed": "无法打开结账页面",
+    "resumeTitle": "完成注册",
+    "resumeBody": "您已开始注册 {{name}}，但尚未完成结账。该名称将保留至 {{expires}}。",
+    "resumeButton": "继续结账"
   }
 }

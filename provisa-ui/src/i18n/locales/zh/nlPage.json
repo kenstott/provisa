@@ -19,6 +19,11 @@
     "notApplicable": "不适用于此查询类型",
     "noQueryGenerated": "未生成查询",
     "noRowsReturned": "未返回任何行",
-    "showingRows": "显示 {{total}} 行中的 {{shown}} 行"
+    "showingRows": "显示 {{total}} 行中的 {{shown}} 行",
+    "strictMode": "严格",
+    "strictModeTooltip": "全部生成严格基于 GraphQL 表达：先生成 GraphQL 并针对架构校验，再编译为 SQL，然后编译为 Cypher。关闭时：SQL 和 GraphQL 各自独立生成，Cypher 由 SQL 结果推导得出。",
+    "questionTooltip": "用您自己的表名、列名和关系名以自然语言提问。Enter 提交，Shift+Enter 换行。",
+    "generateTooltip": "使用当前角色可见的架构，根据此问题为每个接口（GraphQL、SQL 和 Cypher）生成查询。",
+    "mcpChatTooltip": "把这个问题交给 MCP 助手，它会探索数据目录并替您执行查询，而不仅仅是生成查询。"
   }
 }

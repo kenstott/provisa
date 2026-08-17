@@ -89,12 +89,12 @@
         "description": "🔎 Zodra rollen bestaan, ga je fijnmaziger — beperk welke <strong>rijen</strong> elke rol ziet met attribuutgebaseerde predicaten:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Datagedreven en per rij afgedwongen — over elke bron en elk protocol.</p>"
       },
       "stepQualityTable": {
-        "title": "Een kwaliteitscontroleur is gewoon een bron",
-        "description": "🧪 Een datakwaliteitscontroleur — Soda of Great Expectations — registreer je als <strong>bron</strong>. Hij scant via Provisa's eigen postgres-endpoint, dus één contractdialect dekt een Snowflake-tabel, een Iceberg-tabel en een Mongo-collectie even goed. De resultaten komen binnen als gewone tabel: klap de rij uit en open hem als elke andere."
+        "title": "Een kwaliteitschecker is gewoon een bron",
+        "description": "🧪 Een datakwaliteitschecker — Soda of Great Expectations — wordt geregistreerd als <strong>bron</strong>. Hij scant terug via het eigen postgres-eindpunt van Provisa, waardoor één contractdialect zowel een Snowflake-tabel als een Iceberg-tabel en een Mongo-collectie dekt. De resultaten belanden als een gewone tabel: klap de rij uit en open die zoals elke andere."
       },
       "stepQualityPanel": {
-        "title": "Bouw een kwaliteitscontract",
-        "description": "✅ Schrijf het contract zelf of bouw controles kolom voor kolom — lege waarden, rijaantallen, bereiken, versheid — en doe een <strong>proefrun</strong> voor je opslaat. Elke scan wordt toegevoegd, dus deze tabel <em>is</em> de kwaliteitshistorie: visualiseer, alarmeer, koppel aan alles."
+        "title": "Een kwaliteitscontract opstellen",
+        "description": "✅ Schrijf het contract met de hand of bouw controles kolom voor kolom op — null-percentages, rijaantallen, bereiken, actualiteit — en doe vóór het opslaan een <strong>proefrun</strong>. Elke scan wordt toegevoegd, dus deze tabel <em>is</em> de kwaliteitshistorie: zet die in een grafiek, stel er waarschuwingen op in, koppel die aan wat u wilt."
       },
       "step20": {
         "title": "Bouw je opleveringspipeline",
@@ -128,6 +128,16 @@
         "title": "Een levend bedrijfsglossarium",
         "description": "📖 Elke term verwijst terug naar de kolommen die hem dragen — beheer namen, definities en getypeerde relaties (soort van, onderdeel van, synoniem van) handmatig, of laat AI de leemtes opvullen: <strong>✨ Definities</strong> stelt alleen concepten op voor termen die er nog geen hebben, en <strong>✨ Relaties</strong> stelt koppelingen voor in het hele glossarium. Markeer een term als <strong>uitgesloten van export</strong> om hem buiten de gepubliceerde metadata te houden."
       }
+    },
+    "status": {
+      "starting": "De rondleiding wordt gestart. Even geduld…",
+      "resuming": "Bezig met hervatten. Even geduld…",
+      "waiting": "Wachten tot deze pagina volledig is geladen…",
+      "stuck": "Deze stap duurt langer dan verwacht. De pagina wordt mogelijk nog geladen.",
+      "retry": "Opnieuw proberen",
+      "skip": "Deze stap overslaan",
+      "exit": "Rondleiding beëindigen",
+      "cancel": "Annuleren"
     }
   }
 }

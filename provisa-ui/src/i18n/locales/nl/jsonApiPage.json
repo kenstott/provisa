@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "Aggregatie",
     "groupByColumns": "Groeperen op kolommen",
     "aggregateFunctions": "Aggregatiefuncties",
-    "selectAtLeastOneFunc": "Selecteer minstens één aggregatiefunctie"
+    "selectAtLeastOneFunc": "Selecteer minstens één aggregatiefunctie",
+    "includeNodes": "Knooppunten opnemen"
   }
 }

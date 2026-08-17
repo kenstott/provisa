@@ -19,6 +19,11 @@
     "notApplicable": "このクエリ種類には適用されません",
     "noQueryGenerated": "クエリは生成されませんでした",
     "noRowsReturned": "行は返されませんでした",
-    "showingRows": "{{total}} 行中 {{shown}} 行を表示"
+    "showingRows": "{{total}} 行中 {{shown}} 行を表示",
+    "strictMode": "厳密",
+    "strictModeTooltip": "すべての生成を GraphQL 表現に厳密に基づいて行います。まず GraphQL を生成してスキーマに対して検証し、次に SQL、続いて Cypher へコンパイルします。オフの場合、SQL と GraphQL は独立に生成され、Cypher は SQL の結果から導出されます。",
+    "questionTooltip": "自分のテーブル名、列名、リレーション名を使って自然文で質問できます。Enter で送信、Shift+Enter で改行します。",
+    "generateTooltip": "現在のロールで参照できるスキーマを使い、この質問から GraphQL、SQL、Cypher の各サーフェス向けのクエリを生成します。",
+    "mcpChatTooltip": "この質問を MCP アシスタントに渡します。アシスタントはクエリを生成するだけでなく、カタログを探索してクエリを実行します。"
   }
 }

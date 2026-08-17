@@ -17,6 +17,8 @@
     "waiting": "Esperando respuesta…",
     "sendPrompt": "Envíe una solicitud para ver la respuesta.",
     "groupByColumns": "Columnas de agrupación",
+    "includeNodes": "Incluir nodos",
+    "includeFields": "Incluir campos (relación, relación.columna o columna)",
     "aggregateFunctions": "Funciones de agregación",
     "selectAtLeastOneFunc": "Seleccione al menos una función de agregación"
   }

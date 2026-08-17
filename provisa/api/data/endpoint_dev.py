@@ -292,7 +292,9 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
     # (REQ-1163) is a query-shaping param threaded in.
     if role_id not in state.schemas:
-        raise ApiError(400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id)
+        raise ApiError(
+            400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
     role = state.roles.get(role_id)
     _check_sql_capabilities(role)
     from provisa.pgwire._pipeline import execute_sql_batch
@@ -304,9 +306,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     # error response. Converting a bad query to an error RESPONSE (not crashing the request) is the
     # documented boundary contract, not silent error handling.
     try:
-        result = await execute_sql_batch(
-            request.sql, role_id, state, as_of=_as_of
-        )
+        result = await execute_sql_batch(request.sql, role_id, state, as_of=_as_of)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except HTTPException:
@@ -745,12 +745,16 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
     if role_id not in state.contexts:
-        raise ApiError(400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id)
+        raise ApiError(
+            400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
 
     if request.strict:
         from provisa.nl.runner import _generate_graphql_sql_from_nl
 
-        _graphql, sql, cypher, error = await _generate_graphql_sql_from_nl(request.question, role_id, state)
+        _graphql, sql, cypher, error = await _generate_graphql_sql_from_nl(
+            request.question, role_id, state
+        )
         if error:
             raise ApiError(
                 422,
@@ -838,11 +842,19 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
     raw_request: Request,
     request: QueryRequest,
     x_provisa_role: str | None = Header(None),
+    accept: str | None = Header(None),
+    x_provisa_stats: str | None = Header(None),
+    x_provisa_as_of: str | None = Header(None),
 ):
     """Execute a GraphQL, SQL, or Cypher query; auto-detected from syntax.
 
     Returns { columns, rows } for Cypher/SQL.
     Returns { data } for GraphQL (native format).
+
+    The three targets are called as plain functions, so FastAPI resolves no parameter of theirs:
+    every header they declare has to be declared here and passed by keyword, or the callee receives
+    the ``Header(...)`` default object itself — a Query default is truthy and an Accept default is
+    not a string, which is what produced the 410 on Cypher and the 500 on SQL (issue #104).
     """
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
@@ -853,15 +865,33 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
         from provisa.api.rest.cypher_router import CypherRequest, cypher_query
 
         body = CypherRequest(query=request.query, params=request.params)
-        return await cypher_query(body, raw_request)
+        return await cypher_query(body, raw_request, query_id=None, x_provisa_stats=x_provisa_stats)
 
     if target == "graphql":
         from provisa.api.data.endpoint import graphql_endpoint
         from provisa.api.data.endpoint import GraphQLRequest as GQLRequest
 
         gql_req = GQLRequest(query=request.query, variables=request.variables, role=role_id)
-        return await graphql_endpoint(raw_request, gql_req)
+        return await graphql_endpoint(
+            raw_request,
+            gql_req,
+            x_provisa_role=x_provisa_role,
+            accept=accept,
+            x_provisa_redirect=None,
+            x_provisa_redirect_threshold=None,
+            x_provisa_redirect_format=None,
+            x_provisa_stats=x_provisa_stats,
+            x_provisa_normalized=None,
+            x_provisa_as_of=x_provisa_as_of,
+        )
 
     # SQL
     sql_req = SQLRequest(sql=request.query, role=role_id)
-    return await sql_endpoint(raw_request, sql_req, x_provisa_role=x_provisa_role)
+    return await sql_endpoint(
+        raw_request,
+        sql_req,
+        x_provisa_role=x_provisa_role,
+        accept=accept,
+        x_provisa_stats=x_provisa_stats,
+        x_provisa_as_of=x_provisa_as_of,
+    )

@@ -151,6 +151,7 @@
       "already_exists": "組織は既に存在します",
       "auth_required_create": "組織を作成するには認証が必要です",
       "auth_required_leave": "組織を離れるには認証が必要です",
+      "auto_join_public_domain": "auto_join には、自分が管理するドメインに限定したメール規則が必要です。この規則は {{domain}} に一致します。",
       "auto_join_requires_role": "auto_join には auto_join_role が必要です",
       "cannot_delete_root": "ルート組織は削除できません",
       "delete_confirm_required": "「{{org}}」を削除すると、そのすべてのデータが完全に破棄されます。プラットフォーム管理者を含め、誰も復元できません。続行するには「confirm」パラメータに組織IDを再入力してください。",

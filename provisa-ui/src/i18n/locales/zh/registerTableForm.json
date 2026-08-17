@@ -29,6 +29,8 @@
     "columnsLabel": "列",
     "columnsLoading": "（加载中...）",
     "colHeaderColumn": "列",
+    "colHeaderDataType": "数据类型",
+    "dataTypePlaceholder": "指定类型...",
     "colHeaderPk": "主键",
     "colHeaderVisibleTo": "可见对象（读）",
     "colHeaderWritableBy": "可写对象（读/写）",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "主键：{{name}}",
     "submitButton": "+ 表",
     "errorRequiredFields": "数据源、架构和表名为必填项。",
-    "errorNoColumnsSelected": "必须至少选择一列。"
+    "errorNoColumnsSelected": "必须至少选择一列。",
+    "errorUntypedColumns": "每一列都需要数据类型。请为以下列指定：{{columns}}"
   }
 }

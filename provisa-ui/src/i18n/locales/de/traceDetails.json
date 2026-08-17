@@ -3,8 +3,8 @@
     "traceTitle": "Trace {{id}}",
     "spanTitle": "Span {{id}}",
     "loading": "Telemetrie wird geladen…",
-    "notFound": "Für diese ID ist keine Telemetrie aufgezeichnet.",
+    "notFound": "Für diese ID wurde keine Telemetrie aufgezeichnet.",
     "spanIndex": "Span {{index}} von {{total}}",
-    "openDetails": "Alle Telemetriedetails anzeigen"
+    "openDetails": "Vollständige Telemetriedetails anzeigen"
   }
 }

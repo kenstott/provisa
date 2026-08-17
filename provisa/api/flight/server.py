@@ -131,6 +131,33 @@ def _is_cypher(query: str) -> bool:
     return bool(_CYPHER_PREFIX.match(query))
 
 
+def _report_table(table: "pa.Table") -> None:
+    """Meter a materialized Flight result as egress (REQ-1452).
+
+    ``nbytes`` is the Arrow buffer size, not the IPC frame size: pyarrow's writer exposes no Python
+    byte seam, so this is an approximation missing framing metadata.
+    """
+    from provisa.api.org_runtime import current_org
+    from provisa.core.egress import report
+
+    report(current_org.get(), table.nbytes)
+
+
+def _metered_batches(batches):
+    """Meter a lazy Flight result batch by batch (REQ-1452).
+
+    The org is captured eagerly because pyarrow drains this generator after ``do_get`` returned and
+    reset the ticket's org.
+    """
+    from provisa.api.org_runtime import current_org
+    from provisa.core.egress import report
+
+    org_id = current_org.get()
+    for batch in batches:
+        report(org_id, batch.nbytes)
+        yield batch
+
+
 _WHERE_PRED_RE = re.compile(
     r"(\w+)\s*=\s*(?:'([^']*)'|([-]?\d+\.\d+)|([-]?\d+))",
     re.IGNORECASE,
@@ -571,11 +598,15 @@ class ProvisaFlightServer(
             # Return schema info for a specific table as rows
             for t in tables:
                 if t.domain_id == domain and t.table_name == table_name:
-                    return flight.RecordBatchStream(self._build_columns_table(t))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    _catalog = self._build_columns_table(t)
+                    _report_table(_catalog)
+                    return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             raise flight.FlightServerError(f"Table not found: {domain}.{table_name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         # Return all tables as rows
-        return flight.RecordBatchStream(self._build_catalog_table(tables, domain))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        _catalog = self._build_catalog_table(tables, domain)
+        _report_table(_catalog)
+        return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     @staticmethod
     def _build_catalog_table(
@@ -776,7 +807,9 @@ class ProvisaFlightServer(
         if not serialized:
             columns = list(graph_vars.keys()) if graph_vars else []
             empty = {col: pa.array([], type=pa.utf8()) for col in columns}
-            return flight.RecordBatchStream(pa.table(empty))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            _catalog = pa.table(empty)
+            _report_table(_catalog)
+            return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         col_names = list(serialized[0].keys())
         col_data: dict[str, list[object]] = {c: [] for c in col_names}
@@ -784,7 +817,9 @@ class ProvisaFlightServer(
             for col in col_names:
                 val = row.get(col)
                 col_data[col].append(json.dumps(val) if isinstance(val, (dict, list)) else val)
-        return flight.RecordBatchStream(pa.table(col_data))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        _catalog = pa.table(col_data)
+        _report_table(_catalog)
+        return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _execute_query(
         self, request: dict[str, object]
@@ -800,6 +835,7 @@ class ProvisaFlightServer(
     def _license_stream(self, table: "pa.Table", role_id: str):  # REQ-1137
         """Return a Flight stream for ``table``, attaching the license nag as app_metadata on the
         first batch when nagging (out-of-band — the row data is untouched). Once per role/session."""
+        _report_table(table)
         try:
             from provisa.licensing import emit as _lic_emit
 
@@ -832,10 +868,11 @@ class ProvisaFlightServer(
         except Exception:
             text = None
         meta = pa.py_buffer(text.replace("\n", " ").encode("utf-8")) if text else None
+        counted = _metered_batches(batch_gen)
 
         def _gen():
             first = True
-            for batch in batch_gen:
+            for batch in counted:
                 if first and meta is not None:
                     first = False
                     yield (batch, meta)  # app_metadata rides the first chunk

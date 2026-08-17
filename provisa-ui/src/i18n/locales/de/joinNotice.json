@@ -1,0 +1,11 @@
+{
+  "joinNotice": {
+    "title": "Sie wurden zu {{org}} hinzugefügt",
+    "auto_join": "Ihre E-Mail-Adresse entspricht der Anmelderegel dieser Organisation, daher wurden Sie bei der Anmeldung automatisch zu {{org}} hinzugefügt.",
+    "invite": "Sie haben eine Einladung zu {{org}} angenommen und sind nun Mitglied.",
+    "admin": "Ein Administrator hat Sie zu {{org}} hinzugefügt.",
+    "ack": "Verstanden",
+    "leave": "Das ist nicht meine Organisation",
+    "leaveError": "Die Organisation konnte nicht verlassen werden."
+  }
+}

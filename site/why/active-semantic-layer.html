@@ -47,8 +47,8 @@
         <p class="lead">
           Semantic layers are normally descriptions. They define what a customer is, which
           tables join to which, and who ought to see what — and then hand that definition
-          to something else to honor. An <em>active</em> semantic layer honors it itself,
-          at query time, on every path in.
+          to something else to honor. An <em>active</em> semantic layer honors the
+          description at execution time, regardless of the path in.
         </p>
       </div>
 
@@ -80,6 +80,22 @@
           descriptions have existed in every database for decades. A layer whose job is
           renaming <code>cust_dim_x</code> and writing the sentence that should have been
           there already is a rename script with a license fee.
+        </p>
+        <p>
+          We do provide that, for what it's worth, because the estate you actually have is
+          full of tables that are badly named, badly shaped and barely described. A better
+          business term or a clearer description can be aliased over a source, and where
+          that helps, use it. But it isn't the requirement, and it isn't the point. In a
+          well-run estate the sources entering the semantic layer would already be well
+          shaped, well named and well described — and the layer would still be worth having.
+        </p>
+        <p>
+          The minimum for admission is low: a two-dimensional dataset. That's the bar. But
+          if a table arrives badly named and undescribed, it does need fixing, and the work
+          is assisted rather than manual — a glossary of terms normalized from the physical
+          field names, relationships proposed by a model with cardinality and reasoning
+          attached, table search that ranks on meaning instead of string matching. A steward
+          reviews and overrides. Nobody sits down to type four thousand descriptions.
         </p>
         <p>
           The things that genuinely can't live in a name or a description are the ones

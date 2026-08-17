@@ -36,6 +36,7 @@ export async function fetchMe(): Promise<{
   given_name: string | null;
   family_name: string | null;
   dev_mode: boolean;
+  billing: boolean; // REQ-1469
   active_org_id: string | null;
   org_memberships: OrgMembership[];
   assignments: RoleAssignment[];
@@ -133,7 +134,9 @@ export async function fetchOrgs(): Promise<Org[]> {
 export interface OrgProvisioning {
   id: string;
   name: string;
-  provisioning_state: "provisioning" | "ready" | "failed";
+  // REQ-1476: on a commercial deployment an org is reserved as "awaiting_checkout" and only leaves
+  // that state when its subscription exists.
+  provisioning_state: "awaiting_checkout" | "provisioning" | "ready" | "failed";
   provisioning_error?: string | null;
 }
 
@@ -253,6 +256,20 @@ export async function leaveOrg(orgId: string): Promise<void> {
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(serverMessage(data, requestFailed("leaveOrg", res.status)));
+  }
+}
+
+// REQ-1478: record that the user has been told how they came to belong to this org, so the notice
+// is shown once rather than on every sign-in.
+export async function acknowledgeJoin(orgId: string): Promise<void> {
+  const res = await fetch(`/auth/acknowledge-join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ org_id: orgId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("acknowledgeJoin", res.status)));
   }
 }
 
@@ -801,6 +818,8 @@ export interface OrgEngineState {
   external_kinds: OrgEngineKind[];
   /** False when the deployment cannot resolve a dedicated coordinator, so the option is unusable. */
   isolated_available: boolean;
+  /** REQ-1412: false when the org's plan does not include a coordinator of its own. */
+  isolated_entitled: boolean;
   /** The engine kind the deployment runs — the default for an org that picks none of its own. */
   engine_name: string;
 }

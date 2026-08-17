@@ -5,6 +5,8 @@
     "reasonLabel": "原因",
     "reasonRequired": "此標籤需要填寫原因",
     "expiresLabel": "計劃移除日期",
+    "paramLabel": "值",
+    "paramPlaceholder": "選擇一個值",
     "apply": "套用",
     "cancel": "取消",
     "editAssignment": "編輯指派",

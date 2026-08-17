@@ -8,6 +8,7 @@
     "modeIsolated": "Isolated — a dedicated engine Provisa operates for this organization",
     "modeIsolatedHelp": "A coordinator reserved for this organization alone. No other tenant's work shares its resources.",
     "modeIsolatedUnavailable": "This deployment cannot provision a dedicated coordinator, so an isolated engine is not available here.",
+    "modeIsolatedNotEntitled": "A dedicated engine is part of the Pro plan. Upgrade this organization's subscription to select it.",
     "modeExternal": "External — an engine you operate",
     "modeExternalHelp": "Point Provisa at an engine you run — any supported kind, not only the deployment's {{engine}}. Planning and governance stay in Provisa; execution lands on your cluster.",
     "kindLabel": "Engine kind",

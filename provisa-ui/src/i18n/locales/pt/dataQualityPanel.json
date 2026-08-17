@@ -1,28 +1,30 @@
 {
   "dataQualityPanel": {
     "title": "Contrato de qualidade de dados",
-    "contractLabel": "Contrato",
-    "contractHelp": "O texto do contrato do verificador. É o que é registado e o que a análise executa — os editores abaixo escrevem através dele, por isso as edições manuais nunca são descartadas.",
-    "dataset": "A observar {{dataset}}",
+    "dataset": "Observando {{dataset}}",
     "datasetScope": "tabela inteira",
     "columnHeader": "Coluna",
     "checkHeader": "Verificação",
-    "definitionHeader": "Definição",
+    "definitionHeader": "Argumentos",
     "outcomeHeader": "Resultado",
     "valueHeader": "Valor",
-    "failedRowsHeader": "Linhas com falha",
+    "failedRowsHeader": "Linhas reprovadas",
     "removeCheck": "Remover verificação",
     "columnLabel": "Coluna",
     "checkLabel": "Verificação",
     "checkPlaceholder": "— escolha uma verificação —",
     "metricLabel": "Métrica",
     "comparatorLabel": "Comparar",
-    "thresholdLabel": "Limiar",
+    "thresholdLabel": "Limite",
     "unitLabel": "Unidade",
     "levelLabel": "Severidade",
     "addCheck": "Adicionar verificação",
     "dryRun": "Execução de teste",
-    "dryRunHelp": "Executa o contrato sobre a tabela real sem escrever nada.",
-    "dryRunNoResponse": "A execução de teste não devolveu resposta."
+    "dryRunHelp": "Executa o contrato na tabela em produção e não grava nada.",
+    "dryRunNoResponse": "A execução de teste não devolveu resposta.",
+    "datasetLabel": "Conjunto de dados",
+    "datasetHelp": "A tabela que o verificador observa, no formato «<fonte de dados>/<esquema>/<tabela>». Ela é resolvida no catálogo governado, do mesmo modo que a varredura a resolve.",
+    "argsHelp": "Cada linha é uma verificação. Edite os argumentos dela aqui mesmo — o texto do contrato do verificador é serializado a partir destas linhas.",
+    "invalidRow": "Não foi possível analisar os argumentos desta linha; o valor anterior foi mantido."
   }
 }

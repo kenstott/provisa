@@ -5,6 +5,8 @@
     "reasonLabel": "Reden",
     "reasonRequired": "Voor deze tag is een reden verplicht",
     "expiresLabel": "Geplande verwijderdatum",
+    "paramLabel": "Waarde",
+    "paramPlaceholder": "Kies een waarde",
     "apply": "Toepassen",
     "cancel": "Annuleren",
     "editAssignment": "Toewijzing bewerken",

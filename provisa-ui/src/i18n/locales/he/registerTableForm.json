@@ -29,6 +29,8 @@
     "columnsLabel": "עמודות",
     "columnsLoading": "(טוען...)",
     "colHeaderColumn": "עמודה",
+    "colHeaderDataType": "סוג נתונים",
+    "dataTypePlaceholder": "הקצאת סוג...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "גלוי עבור (קריאה)",
     "colHeaderWritableBy": "ניתן לכתיבה על ידי (R/W)",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "מפתח ראשי: {{name}}",
     "submitButton": "+ טבלה",
     "errorRequiredFields": "מקור, סכמה ושם טבלה הם שדות חובה.",
-    "errorNoColumnsSelected": "יש לבחור לפחות עמודה אחת."
+    "errorNoColumnsSelected": "יש לבחור לפחות עמודה אחת.",
+    "errorUntypedColumns": "כל עמודה זקוקה לסוג נתונים. הקצו סוג עבור: {{columns}}"
   }
 }

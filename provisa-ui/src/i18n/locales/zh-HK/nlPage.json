@@ -19,6 +19,11 @@
     "notApplicable": "不適用於此查詢類型",
     "noQueryGenerated": "未產生查詢",
     "noRowsReturned": "未傳回任何數據列",
-    "showingRows": "顯示 {{total}} 列中的 {{shown}} 列"
+    "showingRows": "顯示 {{total}} 列中的 {{shown}} 列",
+    "strictMode": "嚴格",
+    "strictModeTooltip": "所有產生皆嚴格依據 GraphQL 運算式：先產生 GraphQL 並對結構描述驗證，再編譯為 SQL，然後編譯為 Cypher。關閉時：SQL 與 GraphQL 各自獨立產生，Cypher 則由 SQL 結果推導而來。",
+    "questionTooltip": "使用您自己的表名、欄名與關聯名稱，以日常語言提問。Enter 送出，Shift+Enter 換行。",
+    "generateTooltip": "使用目前角色可見的結構描述，依此問題為每個介面（GraphQL、SQL 與 Cypher）產生查詢。",
+    "mcpChatTooltip": "把這個問題交給 MCP 助理，它會探索數據目錄並代您執行查詢，而不只是產生查詢。"
   }
 }

@@ -64,25 +64,25 @@
     "failed": "失败",
     "restarted": "已重启：{{container}}",
     "clustered": "已聚类 {{count}} 个表。",
-    "subsystemsTitle": "Subsystem traces",
-    "subsystemsIntro": "Which subsystems emit spans. Applies on restart.",
+    "subsystemsTitle": "子系统追踪",
+    "subsystemsIntro": "哪些子系统发出 span。重启后生效。",
     "subsystem": {
       "http_api": "HTTP API",
-      "outbound_http": "Outbound HTTP calls",
-      "catalog_database": "Catalog database",
-      "result_cache": "Result cache",
-      "document_sources": "Document sources",
-      "search_sources": "Search sources",
-      "grpc_services": "gRPC services"
+      "outbound_http": "出站 HTTP 调用",
+      "catalog_database": "数据目录数据库",
+      "result_cache": "结果缓存",
+      "document_sources": "文档数据源",
+      "search_sources": "搜索数据源",
+      "grpc_services": "gRPC 服务"
     },
     "subsystemHelp": {
-      "http_api": "Requests served by the platform API.",
-      "outbound_http": "Requests the platform makes to REST and GraphQL sources.",
-      "catalog_database": "Metadata reads and writes. Off by default: every catalog lookup is one, and they bury the query traces.",
-      "result_cache": "Cache reads and writes.",
-      "document_sources": "Queries against document stores.",
-      "search_sources": "Queries against search indexes.",
-      "grpc_services": "The gRPC query surface, inbound and outbound."
+      "http_api": "由平台 API 处理的请求。",
+      "outbound_http": "平台向 REST 和 GraphQL 数据源发出的请求。",
+      "catalog_database": "元数据读写。默认关闭：每次数据目录查找都会产生一条，会淹没查询追踪。",
+      "result_cache": "缓存读写。",
+      "document_sources": "针对文档存储的查询。",
+      "search_sources": "针对搜索索引的查询。",
+      "grpc_services": "gRPC 查询接口，包括入站和出站。"
     }
   }
 }

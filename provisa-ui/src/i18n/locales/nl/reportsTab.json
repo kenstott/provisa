@@ -13,6 +13,7 @@
     "delete": "Rapport verwijderen",
     "deleteConfirm": "Rapport {{name}} verwijderen?",
     "deleted": "Rapport {{name}} verwijderd.",
-    "empty": "Geen rapporten geregistreerd in het ops-domein."
+    "empty": "Geen rapporten geregistreerd in het ops-domein.",
+    "resize": "Grootte van de rapportlijst aanpassen"
   }
 }

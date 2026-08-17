@@ -67,6 +67,13 @@ if TYPE_CHECKING:
 metadata = MetaData()
 
 
+# REQ-1476: the provisioning_state a commercial deployment registers an org in before its
+# subscription exists. It holds the id and the creator's membership and nothing else — no schema, no
+# engine, no demo seed — so an org in this state is not somewhere anyone can work: it is excluded
+# from session bindings, from /auth/me's memberships and from auto-join.
+AWAITING_CHECKOUT = "awaiting_checkout"
+
+
 orgs = Table(
     "orgs",
     metadata,
@@ -149,6 +156,13 @@ user_org_memberships = Table(
     Column("user_id", Text, nullable=False),
     Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-1478: how the membership came about, and whether the member has been told about it. A
+    # person can be joined to an org by an email-rule match or by an administrator — neither is an
+    # act they performed — so the membership carries what to say when they next sign in. NULL
+    # joined_via is a membership written before this column existed; it explains nothing and is
+    # announced as nothing.
+    Column("joined_via", Text),
+    Column("acknowledged_at", DateTime(timezone=True)),
     PrimaryKeyConstraint("user_id", "org_id"),
 )
 

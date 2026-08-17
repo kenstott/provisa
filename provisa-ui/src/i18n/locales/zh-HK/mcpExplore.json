@@ -7,6 +7,11 @@
     "thinking": "助理處理中…",
     "emptyState": "查詢你的數據——例如「哪些資料表包含客戶電郵？」、「按金額排列的前 10 張訂單」，或「orders 資料表的結構是怎樣的？」",
     "inputPlaceholder": "查詢你的目錄或數據…",
-    "clear": "清除輸入"
+    "clear": "清除輸入",
+    "clearTooltip": "清除草擬中的問題但不傳送。上方的對話會保留。",
+    "roleNoteTooltip": "助理執行的每一次數據目錄查詢與查詢作業都以此角色執行，因此它只會看到該角色獲授權的表、欄與列。",
+    "toolRunningTooltip": "{{name}} 正在執行。",
+    "toolDoneTooltip": "{{name}} 已完成，結果已交回助理。",
+    "toolErrorTooltip": "{{name}} 失敗。助理已收到該錯誤，可能會改用其他引數重試。"
   }
 }

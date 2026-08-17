@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "聚合",
     "groupByColumns": "分组列",
     "aggregateFunctions": "聚合函数",
-    "selectAtLeastOneFunc": "请至少选择一个聚合函数"
+    "selectAtLeastOneFunc": "请至少选择一个聚合函数",
+    "includeNodes": "包含节点"
   }
 }

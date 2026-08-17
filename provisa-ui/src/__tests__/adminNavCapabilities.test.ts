@@ -58,6 +58,9 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external
   // coordinator) is the org's decision. The engine KIND stays deployment-wide, below.
   "/admin/org-engine": "org_settings",
+  // REQ-1469: the org's plan, running bill and next charge. Billing is the org's own commercial
+  // relationship, so an org_admin owns it without holding anything deployment-wide.
+  "/admin/billing": "org_settings",
 };
 
 // Deployment-wide surfaces. A multitenant org_admin does not hold `platform_settings`
@@ -129,6 +132,8 @@ describe("admin surface capabilities", () => {
     for (const [path, capability] of Object.entries(ORG_SCOPED)) {
       // The glossary's nav entry is the top-level NavBar link, asserted below.
       if (path === "/admin/glossary") continue;
+      // REQ-1469: billing's nav entry is the account-menu item in NavBar.tsx, asserted below.
+      if (path === "/admin/billing") continue;
       expect(nav[path], path).toBe(capability);
     }
   });
@@ -141,5 +146,17 @@ describe("admin surface capabilities", () => {
     expect(linkAt).toBeGreaterThan(-1);
     const gate = source.slice(Math.max(0, linkAt - 200), linkAt);
     expect(gate).toContain('capability="org_settings"');
+  });
+
+  it("shows billing in the account menu gated on the deployment flag and its route's right", () => {
+    // REQ-1469: billing sits in the person pulldown, not the Admin group. The item must be gated
+    // both on `billing` (self-hosted deployments do not mount the routes) and on the same right
+    // the /admin/billing route requires, or the link 404s or hides the surface.
+    const source = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
+    const itemAt = source.indexOf('data-testid="navbar-billing"');
+    expect(itemAt).toBeGreaterThan(-1);
+    const gate = source.slice(Math.max(0, itemAt - 300), itemAt);
+    expect(gate).toContain("billing &&");
+    expect(gate).toContain('hasCapability(capabilities, "org_settings")');
   });
 });

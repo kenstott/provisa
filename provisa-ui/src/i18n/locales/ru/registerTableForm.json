@@ -29,6 +29,8 @@
     "columnsLabel": "Столбцы",
     "columnsLoading": "(загрузка...)",
     "colHeaderColumn": "Столбец",
+    "colHeaderDataType": "Тип данных",
+    "dataTypePlaceholder": "Назначить тип...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Видимость (чтение)",
     "colHeaderWritableBy": "Запись (R/W)",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "Первичный ключ: {{name}}",
     "submitButton": "+ Таблица",
     "errorRequiredFields": "Источник, схема и имя таблицы обязательны.",
-    "errorNoColumnsSelected": "Необходимо выбрать хотя бы один столбец."
+    "errorNoColumnsSelected": "Необходимо выбрать хотя бы один столбец.",
+    "errorUntypedColumns": "Каждому столбцу нужен тип данных. Назначьте его для: {{columns}}"
   }
 }

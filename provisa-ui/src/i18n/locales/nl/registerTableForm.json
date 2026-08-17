@@ -29,6 +29,8 @@
     "columnsLabel": "Kolommen",
     "columnsLoading": "(laden...)",
     "colHeaderColumn": "Kolom",
+    "colHeaderDataType": "Gegevenstype",
+    "dataTypePlaceholder": "Type toewijzen...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "Zichtbaar voor (lezen)",
     "colHeaderWritableBy": "Schrijfbaar door (R/W)",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "Primaire sleutel: {{name}}",
     "submitButton": "+ Tabel",
     "errorRequiredFields": "Bron, schema en tabelnaam zijn vereist.",
-    "errorNoColumnsSelected": "Er moet minstens één kolom geselecteerd zijn."
+    "errorNoColumnsSelected": "Er moet minstens één kolom geselecteerd zijn.",
+    "errorUntypedColumns": "Elke kolom heeft een gegevenstype nodig. Wijs er een toe voor: {{columns}}"
   }
 }

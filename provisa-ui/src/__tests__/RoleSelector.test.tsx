@@ -72,6 +72,7 @@ function makeAuthValue(overrides: {
     authEnabled: false,
     identityErrorStatus: null,
     multitenancy: false,
+    billing: false,
   };
 }
 

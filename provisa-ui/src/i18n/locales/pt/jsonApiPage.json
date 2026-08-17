@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "Agregação",
     "groupByColumns": "Colunas de agrupamento",
     "aggregateFunctions": "Funções de agregação",
-    "selectAtLeastOneFunc": "Selecione pelo menos uma função de agregação"
+    "selectAtLeastOneFunc": "Selecione pelo menos uma função de agregação",
+    "includeNodes": "Incluir nós"
   }
 }

@@ -89,12 +89,12 @@
         "description": "🔎 Una volta definiti i ruoli, vai più a fondo — limita quali <strong>righe</strong> ogni ruolo può vedere con predicati basati sugli attributi:<p><code>region = user.region AND status != 'archived'</code></p><p>📐 Basato sui dati e applicato per riga — su ogni sorgente e protocollo.</p>"
       },
       "stepQualityTable": {
-        "title": "Un controllo qualità è solo una sorgente",
-        "description": "🧪 Un controllore di qualità dei dati — Soda o Great Expectations — si registra come <strong>sorgente</strong>. Analizza tramite l'endpoint postgres di Provisa, quindi un solo dialetto di contratto copre allo stesso modo una tabella Snowflake, una Iceberg e una collection Mongo. I risultati arrivano come tabella ordinaria: espandi la riga e aprila come qualsiasi altra."
+        "title": "Un verificatore di qualità è semplicemente un'origine",
+        "description": "🧪 Un verificatore di qualità dei dati — Soda o Great Expectations — si registra come <strong>origine</strong>. Esegue la scansione ripassando dall'endpoint postgres di Provisa, così un unico dialetto di contratto copre allo stesso modo una tabella Snowflake, una tabella Iceberg e una collection Mongo. I suoi risultati arrivano come una normale tabella: espandi la riga e aprila come qualsiasi altra."
       },
       "stepQualityPanel": {
-        "title": "Costruisci un contratto di qualità",
-        "description": "✅ Scrivi il contratto a mano oppure componi i controlli colonna per colonna — valori nulli, conteggio righe, intervalli, freschezza — ed esegui una <strong>prova a vuoto</strong> prima di salvare. Ogni scansione si accoda, quindi questa tabella <em>è</em> lo storico della qualità: grafica, allerta, unisci a qualsiasi cosa."
+        "title": "Crea un contratto di qualità",
+        "description": "✅ Scrivi il contratto a mano oppure costruisci i controlli colonna per colonna — percentuali di valori nulli, conteggi di righe, intervalli, freschezza — e fai un'<strong>esecuzione di prova</strong> prima di salvare. Ogni scansione si aggiunge alle precedenti, perciò questa tabella <em>è</em> lo storico della qualità: rappresentala in un grafico, imposta avvisi, uniscila a qualsiasi altra cosa."
       },
       "step20": {
         "title": "Costruisci la tua pipeline di delivery",
@@ -128,6 +128,16 @@
         "title": "Un glossario aziendale vivo",
         "description": "📖 Ogni termine rimanda alle colonne che lo portano — curate nomi, definizioni e relazioni tipizzate (tipo di, parte di, sinonimo di) a mano, oppure lasciate che l'IA colmi le lacune: <strong>✨ Definizioni</strong> redige solo i termini ancora privi di una definizione, e <strong>✨ Relazioni</strong> propone collegamenti in tutto il glossario. Contrassegnate un termine come <strong>escluso dall'esportazione</strong> per tenerlo fuori dai metadati pubblicati."
       }
+    },
+    "status": {
+      "starting": "Avvio del tour. Attendi…",
+      "resuming": "Ripresa in corso. Attendi…",
+      "waiting": "In attesa che questa pagina finisca di caricarsi…",
+      "stuck": "Questo passaggio sta richiedendo più tempo del previsto. La pagina potrebbe essere ancora in caricamento.",
+      "retry": "Riprova",
+      "skip": "Salta questo passaggio",
+      "exit": "Esci dal tour",
+      "cancel": "Annulla"
     }
   }
 }

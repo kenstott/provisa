@@ -5,6 +5,8 @@
     "reasonLabel": "Motivo",
     "reasonRequired": "Esta etiqueta requiere un motivo",
     "expiresLabel": "Fecha prevista de eliminación",
+    "paramLabel": "Valor",
+    "paramPlaceholder": "Elija un valor",
     "apply": "Aplicar",
     "cancel": "Cancelar",
     "editAssignment": "Editar asignación",

@@ -57,9 +57,13 @@ export interface RoleAssignment {
   domain_id: string;
 }
 
+// REQ-1478: how the membership came about ("created" | "invite" | "auto_join" | "admin"), and
+// whether the member has been shown that explanation. null joined_via predates the column.
 export interface OrgMembership {
   org_id: string;
   org_name: string;
+  joined_via?: string | null;
+  acknowledged?: boolean;
 }
 
 export interface AuthState {

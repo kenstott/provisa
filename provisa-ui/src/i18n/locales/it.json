@@ -25,7 +25,7 @@
     "all": "Tutti",
     "role": "Ruolo: {{role}}",
     "dev": "DEV",
-    "checking": "Verifica…"
+    "checking": "Verifica in corso…"
   },
   "localUsers": {
     "colUsername": "Nome utente",

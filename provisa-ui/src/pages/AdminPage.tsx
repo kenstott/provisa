@@ -60,6 +60,7 @@ import { ObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import { MaintenanceTab } from "../components/admin/MaintenanceTab"; // REQ-1466
+import { BillingTab } from "../components/admin/BillingTab"; // REQ-1469
 import { McpServerTab } from "../components/admin/McpServerTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
@@ -82,6 +83,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/federation-engine": "Federation",
   "/admin/org-engine": "Org Engine", // REQ-1412: this org's engine lane
   "/admin/maintenance": "Maintenance", // REQ-1466: the scheduled-downtime banner
+  "/admin/billing": "Billing", // REQ-1469: plan, current bill, next charge
   "/admin/system-health": "Health",
   "/admin/observability": "Observability",
   "/admin/mcp-server": "MCP Server",
@@ -790,6 +792,7 @@ export function AdminPage() {
         {activeTab === "Federation" && <FederationEngineTab />}
         {activeTab === "Org Engine" && <OrgEngineTab />}
         {activeTab === "Maintenance" && <MaintenanceTab />}
+        {activeTab === "Billing" && <BillingTab />}
         {activeTab === "Security" && (
           <SecurityManager
             allRoles={allRoles}

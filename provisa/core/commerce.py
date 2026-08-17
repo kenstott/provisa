@@ -93,6 +93,20 @@ async def meter_op(pool: Any, org_id: str) -> None:
     await plugin.record_op(pool, org_id)
 
 
+async def meter_egress(pool: Any, org_id: str, n_bytes: int) -> None:
+    """Meter ``n_bytes`` delivered to ``org_id``'s clients against its current billing bucket.
+
+    Called from the transport write seams (``provisa.core.egress``) rather than the audit seam,
+    because egress is the count of what actually left the socket and a streaming result is
+    finalized before it is drained. REQ-1452 bills this line separately from the active hour, and
+    REQ-1455 bounds the trial on it.
+    """
+    plugin = load()
+    if plugin is None:
+        return
+    await plugin.record_egress(pool, org_id, n_bytes)
+
+
 # --- tier ceilings --------------------------------------------------------------------------- #
 
 
@@ -133,6 +147,28 @@ def enforce_output_cap(result: "ResultStream", caps: Any, plan: str) -> "ResultS
     return plugin.enforce_output_cap(result, caps, plan)
 
 
+async def require_lane_entitlement(state: Any, org_id: str | None, mode: str) -> None:
+    """Refuse a federation-engine lane the org's plan does not include (REQ-1412).
+
+    The isolated lane is a coordinator the PLATFORM runs for one org, so on a hosted deployment it
+    belongs to a tier. No-op without the plugin: a self-hosted deployment operates its own engines
+    and has no subscription to check.
+    """
+    plugin = load()
+    if plugin is None:
+        return
+    await plugin.require_lane(state, org_id, mode)
+
+
+async def lane_entitled(state: Any, org_id: str | None, mode: str) -> bool:
+    """Whether ``org_id`` may select the ``mode`` lane. True without the plugin — an unbilled
+    deployment gates nothing."""
+    plugin = load()
+    if plugin is None:
+        return True
+    return await plugin.lane_entitled(state, org_id, mode)
+
+
 # --- trial eligibility ----------------------------------------------------------------------- #
 
 
@@ -151,6 +187,23 @@ async def bind_member_to_org_trial(pool: Any, org_id: str, email: str | None) ->
     if plugin is None:
         return
     await plugin.bind_member_to_trial(pool, org_id, email)
+
+
+# --- org checkout gate ----------------------------------------------------------------------- #
+
+
+async def sweep_org_reservations(conn) -> None:
+    """Release org reservations whose checkout window has closed (REQ-1476).
+
+    A reservation exists only where the org is sold, so both the state and its expiry are the
+    plugin's policy; core calls this at the head of the create path so an expired reservation frees
+    its id before the next creator is told the name is taken. No-op without the plugin — a
+    self-hosted deployment provisions on create and never reserves.
+    """
+    plugin = load()
+    if plugin is None:
+        return
+    await plugin.release_expired_reservations(conn)
 
 
 # --- wiring ---------------------------------------------------------------------------------- #

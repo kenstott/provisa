@@ -1,5 +1,6 @@
 {
   "openApiPage": {
-    "frameTitle": "OpenAPI / Swagger UI"
+    "frameTitle": "OpenAPI / Swagger UI",
+    "loadError": "OpenAPI दस्तावेज़ लोड नहीं हो सका: {{error}}"
   }
 }

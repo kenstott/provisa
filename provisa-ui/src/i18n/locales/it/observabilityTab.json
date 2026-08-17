@@ -64,25 +64,25 @@
     "failed": "Non riuscito",
     "restarted": "Riavviato: {{container}}",
     "clustered": "Cluster creati per {{count}} tabelle.",
-    "subsystemsTitle": "Subsystem traces",
-    "subsystemsIntro": "Which subsystems emit spans. Applies on restart.",
+    "subsystemsTitle": "Trace dei sottosistemi",
+    "subsystemsIntro": "Quali sottosistemi emettono span. Si applica al riavvio.",
     "subsystem": {
-      "http_api": "HTTP API",
-      "outbound_http": "Outbound HTTP calls",
-      "catalog_database": "Catalog database",
-      "result_cache": "Result cache",
-      "document_sources": "Document sources",
-      "search_sources": "Search sources",
-      "grpc_services": "gRPC services"
+      "http_api": "API HTTP",
+      "outbound_http": "Chiamate HTTP in uscita",
+      "catalog_database": "Database del catalogo",
+      "result_cache": "Cache dei risultati",
+      "document_sources": "Origini documentali",
+      "search_sources": "Origini di ricerca",
+      "grpc_services": "Servizi gRPC"
     },
     "subsystemHelp": {
-      "http_api": "Requests served by the platform API.",
-      "outbound_http": "Requests the platform makes to REST and GraphQL sources.",
-      "catalog_database": "Metadata reads and writes. Off by default: every catalog lookup is one, and they bury the query traces.",
-      "result_cache": "Cache reads and writes.",
-      "document_sources": "Queries against document stores.",
-      "search_sources": "Queries against search indexes.",
-      "grpc_services": "The gRPC query surface, inbound and outbound."
+      "http_api": "Richieste servite dall'API della piattaforma.",
+      "outbound_http": "Richieste che la piattaforma invia a origini REST e GraphQL.",
+      "catalog_database": "Letture e scritture di metadati. Disattivato per impostazione predefinita: ogni consultazione del catalogo ne è una e finiscono per seppellire le trace delle query.",
+      "result_cache": "Letture e scritture nella cache.",
+      "document_sources": "Query verso archivi di documenti.",
+      "search_sources": "Query verso indici di ricerca.",
+      "grpc_services": "La superficie di query gRPC, in entrata e in uscita."
     }
   }
 }

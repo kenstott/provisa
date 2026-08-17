@@ -64,8 +64,8 @@
     "failed": "Échec",
     "restarted": "Redémarré : {{container}}",
     "clustered": "{{count}} tables regroupées.",
-    "subsystemsTitle": "Traces par sous-système",
-    "subsystemsIntro": "Quels sous-systèmes émettent des spans. Prise en compte au redémarrage.",
+    "subsystemsTitle": "Traces des sous-systèmes",
+    "subsystemsIntro": "Quels sous-systèmes émettent des spans. S'applique au redémarrage.",
     "subsystem": {
       "http_api": "API HTTP",
       "outbound_http": "Appels HTTP sortants",
@@ -76,10 +76,10 @@
       "grpc_services": "Services gRPC"
     },
     "subsystemHelp": {
-      "http_api": "Requêtes servies par l'API de la plateforme.",
-      "outbound_http": "Requêtes de la plateforme vers les sources REST et GraphQL.",
-      "catalog_database": "Lectures et écritures de métadonnées. Désactivé par défaut : chaque consultation du catalogue en produit une, et elles noient les traces de requête.",
-      "result_cache": "Lectures et écritures du cache.",
+      "http_api": "Requêtes traitées par l'API de la plateforme.",
+      "outbound_http": "Requêtes que la plateforme adresse aux sources REST et GraphQL.",
+      "catalog_database": "Lectures et écritures de métadonnées. Désactivé par défaut : chaque consultation du catalogue en est une, et elles noient les traces de requête.",
+      "result_cache": "Lectures et écritures dans le cache.",
       "document_sources": "Requêtes vers les magasins de documents.",
       "search_sources": "Requêtes vers les index de recherche.",
       "grpc_services": "La surface de requête gRPC, entrante et sortante."

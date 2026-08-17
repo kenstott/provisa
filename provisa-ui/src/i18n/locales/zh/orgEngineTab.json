@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "正在加载…",
+    "intro": "选择本组织运行所使用的查询引擎。本部署运行的是 {{engine}}；组织可以共享它、独占一个，或运行自有引擎。",
+    "modeLabel": "引擎",
+    "modeShared": "共享——由 Provisa 运维的共用引擎",
+    "modeSharedHelp": "默认选项。您的查询在多租户协调器上执行，按数据目录和角色隔离。",
+    "modeIsolated": "独占——由 Provisa 为本组织运维的专用引擎",
+    "modeIsolatedHelp": "仅为本组织保留的协调器。没有其他租户的作业会共用其资源。",
+    "modeIsolatedUnavailable": "本部署无法预配专用协调器，因此此处无法使用独占引擎。",
+    "modeIsolatedNotEntitled": "专用引擎属于 Pro 套餐。请升级本组织的订阅后再选择。",
+    "modeExternal": "外部——由您自行运维的引擎",
+    "modeExternalHelp": "将 Provisa 指向您自行运行的引擎——支持的任意类型，不限于本部署的 {{engine}}。规划与治理仍留在 Provisa，执行则落在您的集群上。",
+    "kindLabel": "引擎类型",
+    "kindHelp": "本组织运行的引擎。组织可以运行在自有的 Databricks、Snowflake、BigQuery、ClickHouse、Trino 或几乎任何关系型数据库上。",
+    "urlLabel": "引擎 URL",
+    "urlHelp": "该引擎的连接 URL，包含其凭据。",
+    "urlStored": "已保存一个 URL。留空表示保留；输入新值则替换。",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "协调器主机",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "协调器端口",
+    "applyNote": "保存后会立即重建本组织的运行时。进行中的查询将在原引擎上完成。",
+    "saveButton": "保存引擎",
+    "saved": "引擎已更新。",
+    "currentSuffix": "（当前）"
+  }
+}

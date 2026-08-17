@@ -7,6 +7,11 @@
     "thinking": "L'assistente sta lavorando…",
     "emptyState": "Porre una domanda sui dati — es. \"quali tabelle contengono email dei clienti?\", \"i 10 ordini più alti per importo\" o \"com'è fatta la tabella orders?\"",
     "inputPlaceholder": "Domande sul catalogo o sui dati…",
-    "clear": "Cancella input"
+    "clear": "Cancella input",
+    "clearTooltip": "Cancella la bozza della domanda senza inviarla. La conversazione sopra viene mantenuta.",
+    "roleNoteTooltip": "Ogni consultazione del catalogo e ogni query eseguita dall'assistente vengono eseguite con questo ruolo, quindi vede esattamente le tabelle, le colonne e le righe concesse a quel ruolo.",
+    "toolRunningTooltip": "{{name}} è in esecuzione.",
+    "toolDoneTooltip": "{{name}} è terminato. Il risultato è stato restituito all'assistente.",
+    "toolErrorTooltip": "{{name}} non è riuscito. L'assistente ha ricevuto l'errore e potrebbe riprovare con argomenti diversi."
   }
 }

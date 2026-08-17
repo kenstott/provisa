@@ -182,6 +182,8 @@ async def get_org_engine(request: Request):  # REQ-1412
     require_org_settings(request)
     from provisa.api.app import state
 
+    from provisa.core import commerce
+
     org_id = require_active_org_id(request)
     row = await _read_row(org_id)
     return {
@@ -196,6 +198,10 @@ async def get_org_engine(request: Request):  # REQ-1412
         "external_url_set": row[4] is not None,
         "external_kinds": _external_kinds(),
         "isolated_available": _isolated_available(),
+        # REQ-1412: whether the org's PLAN includes a coordinator of its own, as distinct from
+        # whether the deployment can resolve one. The tab disables the lane it cannot buy instead of
+        # letting the save fail with a 402.
+        "isolated_entitled": await commerce.lane_entitled(state, org_id, ISOLATED),
         # REQ-1416: whether moving onto the isolated lane also CREATES the coordinator here.
         "isolated_provisioned_here": _isolated_provisioned_here(),
         "isolated_engine": await _isolated_engine_status(org_id),
@@ -229,6 +235,11 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
             "this deployment has no PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, so it cannot resolve a "
             "dedicated coordinator for an org (REQ-1043)",
         )
+    # REQ-1412: the isolated lane is platform-run compute, so on a hosted deployment it is part of
+    # a plan. Checked before anything is written or provisioned.
+    from provisa.core import commerce
+
+    await commerce.require_lane_entitlement(state, org_id, mode)
     host: str | None = None
     port: int | None = None
     kind: str | None = None

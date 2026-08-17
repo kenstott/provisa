@@ -98,6 +98,9 @@ interface AuthContextValue extends AuthState {
   // is not valid, anything else means the deployment is broken — two different screens.
   identityErrorStatus: number | null;
   devMode: boolean;
+  // REQ-1469: whether this deployment mounts /billing at all. Reported by /auth/me from the
+  // commercial plugin seam; a self-hosted deployment has no billing surface to offer.
+  billing: boolean;
   // Runtime auth-enforcement flag from /setup/status (REQ-1267). Drives the login gate
   // and logout affordance instead of a build-time constant.
   authEnabled: boolean;
@@ -136,6 +139,7 @@ export function AuthProvider({
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [allDomainsList, setAllDomainsList] = useState<string[]>([]);
   const [devMode, setDevMode] = useState(false);
+  const [billing, setBilling] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<string | null>(() =>
@@ -171,6 +175,7 @@ export function AuthProvider({
       try {
         const me = await fetchMe();
         isDev = me.dev_mode;
+        setBilling(me.billing);
         userAssignments = me.assignments;
         setOrgMemberships(me.org_memberships);
         setUserId(me.user_id);
@@ -209,6 +214,7 @@ export function AuthProvider({
         // removed) resolves to userId=null — the signal OnboardGate uses to treat the stored
         // token as a dead session rather than a live, member-less onboarding state.
         setUserId(null);
+        setBilling(false);
         setOrgMemberships([]);
         setEmail(null);
         setDisplayName(null);
@@ -362,6 +368,7 @@ export function AuthProvider({
         availableDomains,
         assignments,
         devMode,
+        billing,
         loading,
         error,
         activeOrgId,

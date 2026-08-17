@@ -27,6 +27,7 @@
     "createFailed": "組織を作成できませんでした",
     "provisionFailed": "プロビジョニングに失敗しました",
     "provisionTimeout": "プロビジョニングが時間内に完了しませんでした",
+    "egressCheckoutFailed": "データ転送サブスクリプションのチェックアウトを開けませんでした。後から請求ページで追加できます。",
     "welcomeTitle": "{{name}} へようこそ！",
     "welcomeAdmin": "おめでとうございます — 組織の準備が整い、あなたがその管理者です。",
     "welcomeInviteHeading": "他のメンバーを招待",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "ワークスペースへ",
     "pendingInvitesTitle": "招待が届いています",
     "pendingInvitesBody": "組織への招待が届いています。承諾して参加するか、下で自分の組織を作成してください。",
-    "acceptInvite": "承諾"
+    "acceptInvite": "承諾",
+    "signUpButton": "サインアップ",
+    "signUpDesc": "組織を作成すると Starter のトライアルが開始します。カード情報はここで登録されますが、トライアルが有料に移行するまで請求は発生しません。",
+    "openingCheckout": "安全なチェックアウトを開いています...",
+    "finishingSetup": "支払いを受け付けました。組織を作成しています...",
+    "checkoutFailed": "チェックアウトを開けませんでした",
+    "resumeTitle": "サインアップを完了する",
+    "resumeBody": "{{name}} のサインアップを開始しましたが、チェックアウトが完了していません。この名前は {{expires}} まで確保されます。",
+    "resumeButton": "チェックアウトを再開"
   }
 }

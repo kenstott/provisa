@@ -25,7 +25,7 @@
     "all": "सभी",
     "role": "भूमिका: {{role}}",
     "dev": "DEV",
-    "checking": "जाँच जारी…"
+    "checking": "जाँच की जा रही है…"
   },
   "localUsers": {
     "colUsername": "उपयोगकर्ता नाम",

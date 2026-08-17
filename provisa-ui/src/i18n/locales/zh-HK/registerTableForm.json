@@ -29,6 +29,8 @@
     "columnsLabel": "欄位",
     "columnsLoading": "（載入中...）",
     "colHeaderColumn": "欄位",
+    "colHeaderDataType": "數據類型",
+    "dataTypePlaceholder": "指派類型...",
     "colHeaderPk": "PK",
     "colHeaderVisibleTo": "可見對象（讀取）",
     "colHeaderWritableBy": "可寫入者（讀寫）",
@@ -59,6 +61,7 @@
     "primaryKeyAriaLabel": "主索引鍵：{{name}}",
     "submitButton": "+ 表格",
     "errorRequiredFields": "數據來源、結構描述及表格名稱為必填。",
-    "errorNoColumnsSelected": "必須至少選取一個欄位。"
+    "errorNoColumnsSelected": "必須至少選取一個欄位。",
+    "errorUntypedColumns": "每一欄都需要數據類型。請為以下各欄指派：{{columns}}"
   }
 }

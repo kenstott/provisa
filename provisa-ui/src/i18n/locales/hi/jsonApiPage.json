@@ -48,6 +48,7 @@
     "aggregateSectionTitle": "एग्रीगेट",
     "groupByColumns": "ग्रुप बाय कॉलम",
     "aggregateFunctions": "एग्रीगेट फ़ंक्शन",
-    "selectAtLeastOneFunc": "कम से कम एक एग्रीगेट फ़ंक्शन चुनें"
+    "selectAtLeastOneFunc": "कम से कम एक एग्रीगेट फ़ंक्शन चुनें",
+    "includeNodes": "नोड शामिल करें"
   }
 }

@@ -1,0 +1,28 @@
+{
+  "orgEngineTab": {
+    "loading": "正在載入…",
+    "intro": "選擇本組織執行時所用的查詢引擎。本部署執行的是 {{engine}}；組織可以共用它、取得專用引擎，或執行自有引擎。",
+    "modeLabel": "引擎",
+    "modeShared": "共用——由 Provisa 營運的共用引擎",
+    "modeSharedHelp": "預設選項。您的查詢在多租用戶協調器上執行，並按數據目錄與角色隔離。",
+    "modeIsolated": "隔離——由 Provisa 為本組織營運的專用引擎",
+    "modeIsolatedHelp": "僅為本組織保留的協調器。不會有其他租用戶的作業共用其資源。",
+    "modeIsolatedUnavailable": "本部署無法佈建專用協調器，因此此處無法使用隔離引擎。",
+    "modeIsolatedNotEntitled": "專用引擎屬於 Pro 方案。請先升級本組織的訂閱，再行選取。",
+    "modeExternal": "外部——由您自行營運的引擎",
+    "modeExternalHelp": "將 Provisa 指向您自行執行的引擎——支援的任何類型，不限於本部署的 {{engine}}。規劃與治理仍留在 Provisa，執行則落在您的叢集上。",
+    "kindLabel": "引擎類型",
+    "kindHelp": "本組織所執行的引擎。組織可以在自有的 Databricks、Snowflake、BigQuery、ClickHouse、Trino 或幾乎任何關聯式資料庫上執行。",
+    "urlLabel": "引擎 URL",
+    "urlHelp": "此引擎的連線 URL，包含其認證資料。",
+    "urlStored": "已儲存一個 URL。留空即保留；輸入新值則取代。",
+    "urlPlaceholder": "databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/xxxx",
+    "hostLabel": "協調器主機",
+    "hostPlaceholder": "trino.internal.example.com",
+    "portLabel": "協調器連接埠",
+    "applyNote": "儲存後會立即重建本組織的執行階段。進行中的查詢會在先前的引擎上完成。",
+    "saveButton": "儲存引擎",
+    "saved": "引擎已更新。",
+    "currentSuffix": "（目前）"
+  }
+}

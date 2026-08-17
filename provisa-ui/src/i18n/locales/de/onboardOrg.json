@@ -27,6 +27,7 @@
     "createFailed": "Organisation konnte nicht erstellt werden",
     "provisionFailed": "Bereitstellung fehlgeschlagen",
     "provisionTimeout": "Bereitstellung wurde nicht rechtzeitig abgeschlossen",
+    "egressCheckoutFailed": "Der Checkout für das Datentransfer-Abonnement konnte nicht geöffnet werden. Sie können es später unter „Abrechnung“ hinzufügen.",
     "welcomeTitle": "Willkommen bei {{name}}!",
     "welcomeAdmin": "Herzlichen Glückwunsch — Ihre Organisation ist bereit und Sie sind ihr Administrator.",
     "welcomeInviteHeading": "Andere einladen",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "Zum Arbeitsbereich",
     "pendingInvitesTitle": "Sie haben eine Einladung",
     "pendingInvitesBody": "Jemand hat Sie eingeladen, einer Organisation beizutreten. Nehmen Sie sie an, um beizutreten, oder erstellen Sie unten Ihre eigene Organisation.",
-    "acceptInvite": "Annehmen"
+    "acceptInvite": "Annehmen",
+    "signUpButton": "Registrieren",
+    "signUpDesc": "Mit dem Erstellen einer Organisation beginnt Ihre Starter-Testphase. Wir erfassen jetzt Ihre Karte; es wird nichts berechnet, bis die Testphase in ein Abonnement übergeht.",
+    "openingCheckout": "Sicherer Checkout wird geöffnet...",
+    "finishingSetup": "Zahlung erhalten. Ihre Organisation wird erstellt...",
+    "checkoutFailed": "Checkout konnte nicht geöffnet werden",
+    "resumeTitle": "Registrierung abschließen",
+    "resumeBody": "Sie haben die Registrierung für {{name}} begonnen, den Checkout aber nicht abgeschlossen. Der Name wird bis {{expires}} reserviert.",
+    "resumeButton": "Checkout fortsetzen"
   }
 }

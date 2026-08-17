@@ -17,6 +17,8 @@
     "waiting": "Warten auf Antwort…",
     "sendPrompt": "Senden Sie eine Anfrage, um die Antwort zu sehen.",
     "groupByColumns": "Gruppierungsspalten",
+    "includeNodes": "Knoten einbeziehen",
+    "includeFields": "Felder einbeziehen (Beziehung, Beziehung.Spalte oder Spalte)",
     "aggregateFunctions": "Aggregatfunktionen",
     "selectAtLeastOneFunc": "Wählen Sie mindestens eine Aggregatfunktion aus"
   }

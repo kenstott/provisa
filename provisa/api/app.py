@@ -1687,6 +1687,13 @@ def create_app() -> FastAPI:
     # fresh on this app's own first request, after this app's own lifespan has run.
     wire_auth(app, None, db_pool=ActiveOrgPool(), admin_pool=state.admin_db)
 
+    # REQ-1452/REQ-1455: the egress byte meter. Registered LAST so it is the OUTERMOST middleware —
+    # every response body, including the ones auth itself produces, passes through its `send`. It
+    # reads the org out of scope state at flush time, so being outside auth costs it no attribution.
+    from provisa.core.egress import EgressMeterMiddleware
+
+    app.add_middleware(EgressMeterMiddleware)
+
     app.include_router(data_router)
     app.include_router(redirect_unwrap_router)
     app.include_router(dev_router)

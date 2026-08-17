@@ -89,12 +89,12 @@
         "description": "🔎 有了角色之後，可以再細緻一點——用屬性型判斷式限制每個角色可以看到哪些<strong>資料列</strong>：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 由數據驅動，並按資料列逐一強制執行——涵蓋每個數據來源與每種協定。</p>"
       },
       "stepQualityTable": {
-        "title": "質量檢查器也只是一個資料來源",
-        "description": "🧪 資料質量檢查器（Soda 或 Great Expectations）以<strong>資料來源</strong>的方式註冊。它透過 Provisa 自己的 postgres 端點掃描，所以同一套契約語法可以同樣覆蓋 Snowflake 表、Iceberg 表和 Mongo 集合。掃描結果以普通表的形式落地：展開該行，像打開其他表一樣打開它。"
+        "title": "品質檢查器也只是一個數據來源",
+        "description": "🧪 數據品質檢查器（Soda 或 Great Expectations）會註冊為一個<strong>數據來源</strong>。它透過 Provisa 本身的 postgres 端點回頭掃描，因此同一套合約方言可以同等地涵蓋 Snowflake 表、Iceberg 表與 Mongo 集合。其結果會以普通表的形式寫入：展開該列，即可像開啟其他表一樣開啟它。"
       },
       "stepQualityPanel": {
-        "title": "建立質量契約",
-        "description": "✅ 可以直接撰寫契約，也可以逐欄建立檢查 — 空值率、行數、數值範圍、新鮮度 — 並在儲存前先做一次<strong>試跑</strong>。每次掃描都是追加，所以這張表本身就是質量歷史：可以畫圖、告警，也可以與任何資料關聯。"
+        "title": "建立品質合約",
+        "description": "✅ 手寫合約，或逐欄建立檢查——空值率、列數、範圍、新鮮度——並在儲存前<strong>試執行</strong>。每次掃描都會追加，因此這張表<em>就是</em>品質歷史：可以繪製圖表、設定警示，也可以與任何數據聯結。"
       },
       "step20": {
         "title": "建構你的交付管線",
@@ -128,6 +128,16 @@
         "title": "一部鮮活的業務術語表",
         "description": "📖 每個術語都會關聯回攜帶它的欄位——手動維護名稱、定義和類型化關係(是一種、是其一部分、同義詞),或者讓 AI 來補全空白:<strong>✨ 定義</strong>只為尚無定義的術語起草內容,<strong>✨ 關係</strong>在整個術語表範圍內提出關聯建議。將某個術語標記為<strong>從匯出中排除</strong>,即可使其不出現在已發佈的中繼資料中。"
       }
+    },
+    "status": {
+      "starting": "正在開始導覽，請稍候…",
+      "resuming": "正在恢復，請稍候…",
+      "waiting": "正在等待此頁面載入完成…",
+      "stuck": "此步驟耗時比預期長，頁面可能仍在載入。",
+      "retry": "重試",
+      "skip": "略過此步驟",
+      "exit": "結束導覽",
+      "cancel": "取消"
     }
   }
 }

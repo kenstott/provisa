@@ -2,9 +2,9 @@
   "traceDetails": {
     "traceTitle": "Trace {{id}}",
     "spanTitle": "Span {{id}}",
-    "loading": "Telemetrie laden…",
-    "notFound": "Geen telemetrie vastgelegd voor dit id.",
+    "loading": "Telemetrie wordt geladen…",
+    "notFound": "Voor deze id is geen telemetrie vastgelegd.",
     "spanIndex": "Span {{index}} van {{total}}",
-    "openDetails": "Alle telemetriedetails tonen"
+    "openDetails": "Volledige telemetriedetails tonen"
   }
 }

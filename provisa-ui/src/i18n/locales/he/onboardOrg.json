@@ -27,6 +27,7 @@
     "createFailed": "לא ניתן היה ליצור את הארגון",
     "provisionFailed": "ההקצאה נכשלה",
     "provisionTimeout": "ההקצאה לא הושלמה בזמן",
+    "egressCheckoutFailed": "לא ניתן היה לפתוח את התשלום עבור מנוי העברת הנתונים. אפשר להוסיף אותו מאוחר יותר דרך חיוב.",
     "welcomeTitle": "ברוכים הבאים ל-{{name}}!",
     "welcomeAdmin": "ברכות — הארגון שלך מוכן ואתה מנהל הארגון שלו.",
     "welcomeInviteHeading": "הזמנת אחרים",
@@ -40,6 +41,14 @@
     "welcomeContinueButton": "מעבר לסביבת העבודה",
     "pendingInvitesTitle": "יש לך הזמנה",
     "pendingInvitesBody": "מישהו הזמין אותך להצטרף לארגון. אפשר לקבל את ההזמנה כדי להיכנס, או ליצור ארגון משלך למטה.",
-    "acceptInvite": "קבלה"
+    "acceptInvite": "קבלה",
+    "signUpButton": "הרשמה",
+    "signUpDesc": "יצירת ארגון מתחילה את תקופת הניסיון של Starter. אנו קולטים את הכרטיס שלך כעת; לא נגבה דבר עד שתקופת הניסיון תהפוך למנוי.",
+    "openingCheckout": "פותח תשלום מאובטח...",
+    "finishingSetup": "התשלום התקבל. בונים את הארגון שלך...",
+    "checkoutFailed": "לא ניתן היה לפתוח את התשלום",
+    "resumeTitle": "השלמת ההרשמה",
+    "resumeBody": "התחלת להירשם עבור {{name}} אך לא השלמת את התשלום. השם שמור עד {{expires}}.",
+    "resumeButton": "המשך לתשלום"
   }
 }

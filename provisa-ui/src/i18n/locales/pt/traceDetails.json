@@ -1,9 +1,9 @@
 {
   "traceDetails": {
-    "traceTitle": "Rastreio {{id}}",
+    "traceTitle": "Trace {{id}}",
     "spanTitle": "Span {{id}}",
-    "loading": "A carregar telemetria…",
-    "notFound": "Nenhuma telemetria registada para este id.",
+    "loading": "Carregando telemetria…",
+    "notFound": "Nenhuma telemetria registrada para este id.",
     "spanIndex": "Span {{index}} de {{total}}",
     "openDetails": "Mostrar todos os detalhes de telemetria"
   }

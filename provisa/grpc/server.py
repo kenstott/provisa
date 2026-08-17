@@ -216,6 +216,20 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return typed_command_handler
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
 
+    def _meter_msg(self, msg):
+        """Meter one outbound proto message as egress and return it (REQ-1452).
+
+        ``ByteSize()`` is the serialized payload, not the HTTP/2 frame: an approximation missing
+        framing. Must be called inside the handler's org binding.
+        """
+        if msg is None:
+            return msg
+        from provisa.api.org_runtime import current_org
+        from provisa.core.egress import report
+
+        report(current_org.get(), msg.ByteSize())
+        return msg
+
     def _emit_license_nag(self, context) -> None:
         """Attach the REQ-1137 license nag to the RPC's trailing metadata, once per peer.
 
@@ -291,8 +305,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 return
             self._emit_license_nag(context)  # REQ-1137
             if fn.get("kind") == "mutation":
-                return self._pb2.MutationResponse(affected_rows=len(rows))
-            return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+                return self._meter_msg(self._pb2.MutationResponse(affected_rows=len(rows)))
+            return self._meter_msg(
+                self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+            )
         finally:
             if _org_token is not None:
                 from provisa.api.org_runtime import reset_current_org
@@ -335,7 +351,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
             except PermissionError as exc:
                 await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
                 return
-            return self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+            return self._meter_msg(
+                self._pb2.CommandResponse(rows_json=json.dumps(rows, default=str))
+            )
         finally:
             if _org_token is not None:
                 from provisa.api.org_runtime import reset_current_org
@@ -367,7 +385,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         try:
             async for _m in self._handle_query_bound(request, context, type_name, role_id):
-                yield _m
+                yield self._meter_msg(_m)
         finally:
             if _org_token is not None:
                 from provisa.api.org_runtime import reset_current_org
@@ -521,7 +539,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return None
         try:
-            return await self._handle_query_aggregate_bound(request, context, type_name, role_id)
+            return self._meter_msg(
+                await self._handle_query_aggregate_bound(request, context, type_name, role_id)
+            )
         finally:
             if _org_token is not None:
                 from provisa.api.org_runtime import reset_current_org
@@ -590,8 +610,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
-            async for _m in self._handle_query_group_by_bound(request, context, type_name, role_id):
-                yield _m
+            async for _m in self._handle_query_group_by_bound(
+                request, context, type_name, role_id
+            ):
+                yield self._meter_msg(_m)
         finally:
             if _org_token is not None:
                 from provisa.api.org_runtime import reset_current_org

@@ -1,0 +1,11 @@
+{
+  "joinNotice": {
+    "title": "You've been added to {{org}}",
+    "auto_join": "Your email address matches this organization's sign-in rule, so you were added to {{org}} automatically when you signed in.",
+    "invite": "You accepted an invitation to {{org}}, so you are now a member.",
+    "admin": "An administrator added you to {{org}}.",
+    "ack": "Got it",
+    "leave": "This isn't my organization",
+    "leaveError": "Could not leave the organization."
+  }
+}

@@ -30,7 +30,6 @@ from provisa.auth.superuser import check_superuser, validate_superuser_session
 from provisa.auth.throttle import LockedOut, throttled
 from provisa.core.schema_admin import (
     superadmin_bootstrap,
-    user_org_memberships,
     user_profiles,
 )
 from provisa.core.schema_org import user_directory, user_role_assignments
@@ -542,12 +541,10 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             )
             member_org_ids: list[str] = []
             if self._admin_pool is not None:
+                from provisa.core.org_membership import bindable_memberships
+
                 async with self._admin_pool.acquire() as conn:
-                    result = await conn.execute_core(
-                        select(user_org_memberships.c.org_id).where(
-                            user_org_memberships.c.user_id == identity.user_id
-                        )
-                    )
+                    result = await conn.execute_core(bindable_memberships(identity.user_id))
                     member_org_ids = [dict(r._mapping)["org_id"] for r in result.fetchall()]
 
             # REQ-1269: auto-join. A just-authenticated user who belongs to no org yet is granted
@@ -564,6 +561,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 from provisa.api.org_runtime import reset_current_org, set_current_org
                 from provisa.core.commerce import bind_member_to_org_trial
                 from provisa.core.org_membership import (
+                    JOINED_VIA_AUTO_JOIN,
                     grant_membership,
                     grant_org_role,
                     resolve_auto_join_orgs,
@@ -573,12 +571,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     self._admin_pool, identity.email, identity.user_id
                 )
                 for auto_org_id, auto_role in auto:
-                    await grant_membership(self._admin_pool, identity.user_id, auto_org_id)
+                    await grant_membership(
+                        self._admin_pool,
+                        identity.user_id,
+                        auto_org_id,
+                        joined_via=JOINED_VIA_AUTO_JOIN,
+                    )
                     # REQ-1474: an auto-joined member works under the org's trial if it is running,
                     # so the trial is spent for them too.
-                    await bind_member_to_org_trial(
-                        self._admin_pool, auto_org_id, identity.email
-                    )
+                    await bind_member_to_org_trial(self._admin_pool, auto_org_id, identity.email)
                     rt = await ensure_org_runtime(auto_org_id)
                     if rt.tenant_db is not None:
                         org_token = set_current_org(auto_org_id)

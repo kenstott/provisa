@@ -1,13 +1,11 @@
 {
   "dataQualityPanel": {
     "title": "Datenqualitätsvertrag",
-    "contractLabel": "Vertrag",
-    "contractHelp": "Der Vertragstext des Prüfers. Er wird registriert und vom Scan ausgeführt — die Editoren unten schreiben durch ihn hindurch, handschriftliche Änderungen gehen also nie verloren.",
     "dataset": "Beobachtet {{dataset}}",
     "datasetScope": "gesamte Tabelle",
     "columnHeader": "Spalte",
     "checkHeader": "Prüfung",
-    "definitionHeader": "Definition",
+    "definitionHeader": "Argumente",
     "outcomeHeader": "Ergebnis",
     "valueHeader": "Wert",
     "failedRowsHeader": "Fehlgeschlagene Zeilen",
@@ -21,8 +19,12 @@
     "unitLabel": "Einheit",
     "levelLabel": "Schweregrad",
     "addCheck": "Prüfung hinzufügen",
-    "dryRun": "Probelauf",
-    "dryRunHelp": "Führt den Vertrag gegen die reale Tabelle aus und schreibt nichts.",
-    "dryRunNoResponse": "Der Probelauf lieferte keine Antwort."
+    "dryRun": "Testlauf",
+    "dryRunHelp": "Führt den Vertrag gegen die Live-Tabelle aus und schreibt nichts.",
+    "dryRunNoResponse": "Der Testlauf lieferte keine Antwort.",
+    "datasetLabel": "Dataset",
+    "datasetHelp": "Die Tabelle, die der Checker beobachtet, als „<Datenquelle>/<Schema>/<Tabelle>“. Sie wird gegen den gesteuerten Katalog aufgelöst, genau wie beim Scan.",
+    "argsHelp": "Jede Zeile ist eine Prüfung. Bearbeiten Sie ihre Argumente direkt — der Vertragstext des Checkers wird aus diesen Zeilen serialisiert.",
+    "invalidRow": "Die Argumente dieser Zeile ließen sich nicht parsen; der vorherige Wert wurde beibehalten."
   }
 }

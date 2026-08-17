@@ -31,11 +31,19 @@
     "itemCache": "Cache",
     "itemScheduler": "Planner",
     "itemFederation": "Federatie",
+    "itemOrgEngine": "Organisatie-engine",
+    "itemMaintenance": "Onderhoud",
+    "itemBilling": "Facturering",
     "itemExplore": "MCP",
     "itemEncryption": "Versleuteling",
     "itemSecurity": "Beveiliging",
     "itemAuthentication": "Authenticatie",
     "itemAiModels": "AI-modellen",
+    "itemMetadataExport": "Metadata-export",
+    "itemImport": "Hasura-configuratie importeren",
+    "itemTags": "Tags",
+    "itemReports": "Rapporten",
+    "itemGlossary": "Begrippenlijst",
     "itemHealth": "Status",
     "itemObservability": "Observability",
     "itemMcpServer": "MCP-server",
@@ -50,10 +58,6 @@
     "profile": "Profiel",
     "settings": "Instellingen",
     "logout": "Afmelden",
-    "dev": "DEV",
-    "itemMetadataExport": "Metadata-export",
-    "itemTags": "Tags",
-    "itemReports": "Rapporten",
-    "itemGlossary": "Begrippenlijst"
+    "dev": "DEV"
   }
 }

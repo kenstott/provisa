@@ -1,6 +1,6 @@
 {
   "traceDetails": {
-    "traceTitle": "Traccia {{id}}",
+    "traceTitle": "Trace {{id}}",
     "spanTitle": "Span {{id}}",
     "loading": "Caricamento della telemetria…",
     "notFound": "Nessuna telemetria registrata per questo id.",
