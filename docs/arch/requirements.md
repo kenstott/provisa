@@ -10268,19 +10268,19 @@ Sandbox and free-tier orgs receive the tightest resource-group and query-cost ce
 
 ### REQ-1046 · Storage Management & Quotas {#REQ-1046}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Per-tier storage quotas: each org tier enforces a hard ceiling on platform-side storage footprint (Postgres schema bytes for landed/materialized rows, MV output size, and R2 object bytes attributable to the org). Sandbox/free tiers receive the tightest ceilings; paid tiers larger; enforced and metered per org.
+Per-tier storage quotas: each org tier enforces a hard ceiling on the org's footprint in the platform's relational materialization store — the per-org schemas holding landed rows, MV outputs, and the API/GraphQL result caches. Redirect result objects are outside the ceiling: they are written under a per-query prefix and TTL-deleted, so they are a rate rather than an accumulation, and the egress meter ([REQ-1452](#REQ-1452)) prices them. Free tiers receive the tightest ceilings; paid tiers larger; enforced and metered per org.
 
 **Use case:** Tiered storage model parallels query-cost caps ([REQ-1044](#REQ-1044)) as a primary monetization and resource-isolation lever. Platform storage (Postgres schema data, materialized rows, MV outputs, R2 object bytes) is the metered resource; federation keeps most source data external. Free tiers get tight bounds to prevent abuse accumulation; premium tiers permit larger workloads. Storage must be explicitly capped and enforced at ingestion/materialization time, never silently evicted.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_storage_quota.py`, `.claude/commercial/tests/test_storage_allowance.py`, `tests/unit/test_org_storage_router.py`
 
 ### REQ-1047 · Storage Management & Quotas {#REQ-1047}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Explicit rejection on storage-cap breach: operations that would push an org past its storage ceiling (MV materialization, landing/ingest, result persistence) are REJECTED with an explanatory error indicating a higher SKU or bring-your-own (BYO) storage is required — never silently truncated or evicted.
 
@@ -10288,31 +10288,31 @@ Explicit rejection on storage-cap breach: operations that would push an org past
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_storage_quota.py`
 
 ### REQ-1048 · Storage Management & Quotas {#REQ-1048}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Bring-your-own storage (BYO): premium/enterprise orgs may point their platform-side object storage (MV persistence, Trino exchange/spill, landing/results) at their own S3-compatible bucket (their cloud account, their bill), configured per org. Their bytes never count against platform storage and never reside on platform-owned R2. Org's BYO bucket credentials are scoped to that org only.
+Bring-your-own storage (BYO): an org may register its own materialization store (their cloud account, their bill), configured per org and stored encrypted at rest. Once registered it outranks the deployment's configured store for every MV output and landed table the org writes — a precedence, not a fallback. Their bytes never count against platform storage and are neither metered ([REQ-1049](#REQ-1049)) nor capped ([REQ-1046](#REQ-1046)). The org's store credentials are scoped to that org only and are never returned by any read surface.
 
 **Use case:** Enables premium customers with large or unpredictable storage needs to avoid platform quota limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost). Reduces platform resource strain from whales/large enterprises.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_storage_quota.py`, `tests/unit/test_org_storage_router.py`
 
 ### REQ-1049 · Storage Management & Quotas {#REQ-1049}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Per-org storage metering/accounting: platform meters storage consumption per org (Postgres schema bytes + attributable R2 object bytes) to drive quota enforcement ([REQ-1046](#REQ-1046)), tier upgrade prompts, and billing.
+Per-org storage metering/accounting: platform meters each org's footprint in the relational materialization store — measured on demand off the live store rather than accumulated in a counter, so the figure tracks the disk the operator is billed for — to drive quota enforcement ([REQ-1046](#REQ-1046)), tier upgrade prompts, and billing. Recorded as a LEVEL per hour (the last observation replaces the previous), not a running total.
 
 **Use case:** Storage metering is the storage analog of per-query cost accounting behind [REQ-1044](#REQ-1044). Enables accurate billing per org (platform storage), identifies orgs approaching quota limits (triggering upgrade nudges), and feeds resource-capacity planning (platform storage forecasting). BYO orgs ([REQ-1048](#REQ-1048)) exclude their external bytes from platform metering.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_storage_quota.py`
 
 ### REQ-1050 · Marketing & Presence {#REQ-1050}
 
@@ -15415,3 +15415,17 @@ The Hasura v2 and DDN converters ([REQ-417](#REQ-417), [REQ-183](#REQ-183)) exis
 **Code:** `provisa/api/admin/import_router.py`, `provisa/import_shared/upload.py`, `provisa/hasura_v2/parser.py`, `provisa-ui/src/components/admin/ImportTab.tsx`, `provisa-ui/src/api/importer.ts`
 
 **Tests:** `tests/unit/test_hasura_import_router.py`, `provisa-ui/src/__tests__/ImportTab.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1484 · Federation-Wide Provenance Graph {#REQ-1484}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A column carries two names and they answer different questions. The SQL and GraphQL surface only ever shows the EXPOSED name -- table_columns.alias falling back to apply_sql_name(column_name) -- so views, materialized views, metric expressions, RLS predicates, DQ contracts, metric-view grains and MV row keys are authored against it and break when it is RENAMED as well as when the column goes. Relationships, glossary bindings, tag assignments, the watermark column and column presets store the PHYSICAL column_name, which survives the table upsert's wholesale column replace, so they break only on a REMOVAL. Nothing in the table-edit mutation path checked either. columnDependents(tableId, renamed, removed) answers what a pending edit would break: the downstream views and MVs come from slicing the federation lineage graph ([REQ-1160](#REQ-1160)/[REQ-1161](#REQ-1161)) at the column's exposed name, and the artifacts that graph does not cover come from a direct registry scan. The query is asked BEFORE the save, because a renamed column is still located by the exposed name it currently carries. The warning is ADVISORY -- the dialog lists the affected artifacts and the administrator decides -- because the estate's consumers cannot all be reached and a block would strand the edit. Free-SQL-text scans match the column as an identifier token rather than resolving scope: over-reporting is the safe direction for a warning.
+
+**Use case:** An administrator renaming a column's SQL alias or dropping a column is told, before the save lands, which views, materialized views, metrics, policies and bindings name that column -- and saves anyway if that is the intent.
+
+**Code:** `provisa/lineage/dependents.py`, `provisa/api/admin/column_dependents.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/pages/tables/columnDiff.ts`, `provisa-ui/src/pages/TablesPage.tsx`
+
+**Tests:** `tests/unit/test_column_dependents.py`, `provisa-ui/src/__tests__/columnDiff.test.ts`
