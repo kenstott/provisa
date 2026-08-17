@@ -1217,7 +1217,27 @@ Provisa בוחרת OTLP/HTTP או OTLP/gRPC לפי סכימת ה-URL של נקו
 | `bigquery` | BigQuery | BigQuery | כן | טבלאות חיצוניות / BigLake של BigQuery | `GOOGLE_APPLICATION_CREDENTIALS` |
 | `fabric` | Microsoft Fabric | T-SQL | כן | OneLake shortcuts ← OPENROWSET | Azure AD (`az login` או זהות מנוהלת) |
 | `synapse` | Azure Synapse | T-SQL | כן | ADLS OPENROWSET / טבלאות חיצוניות | Azure AD |
-| `sqlalchemy` | SQLAlchemy (כל RDB) | לפי-דיאלקט | לא | אין (land-only) | אישורים לפי-דיאלקט |
+| `mysql` | MySQL | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `mariadb` | MariaDB | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `oracle` | Oracle Database | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `mssql` | Microsoft SQL Server | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `db2` | IBM Db2 | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `redshift` | Amazon Redshift | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `greenplum` | Greenplum | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `cockroachdb` | CockroachDB | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `yugabytedb` | YugabyteDB | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `opengauss` | openGauss | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `tidb` | TiDB | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `singlestore` | SingleStore | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `vertica` | Vertica | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `exasol` | Exasol | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `teradata` | Teradata Vantage | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `saphana` | SAP HANA | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `sapase` | SAP ASE (Sybase) | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `sqlanywhere` | SAP SQL Anywhere | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `monetdb` | MonetDB | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `firebird` | Firebird | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
+| `sqlalchemy` | מסד נתונים רלציוני אחר (לפי כתובת חיבור) | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 
 ### רפרנס מנוע
 
@@ -1417,6 +1437,8 @@ sources:
 | `PROVISA_MTLS_MODE` | `required` לאחר שהוגדרה רשות אישורים | `required` או `optional`; כל ערך אחר מסרב לעלות (REQ-1228) |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | דורש שה-common name של התעודה יהיה זהה לשם המשתמש המאמת (REQ-1228) |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | אתרים מופרדים בפסיקים המורשים לפתוח WebSocket של Bolt מדפדפן; ללא הגדרה נדחה כל מקור דפדפן (REQ-802) |
+| `PROVISA_EXTRAS` | `firebase,vector` | Extras של pyproject האפויים לתוך תמונת האפליקציה; `scripts/provisa` גוזר אותו מ-`dq_checker` ב-`~/.provisa/config.yaml` (REQ-1443) |
+| `PROVISA_DQ_CHECKER` | `none` | למתקין בלבד: `none`/`soda`/`gx`, נקרא על ידי `first-launch.sh` במצב לא-אינטראקטיבי ונכתב ל-`config.yaml` בתור `dq_checker` (REQ-1443) |
 | `ANTHROPIC_API_KEY` | — | מפתח API של Claude (גילוי) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | דורס את `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | דורס את `observability.service_name` |
@@ -1424,4 +1446,3 @@ sources:
 | `OTEL_COMPACT_BATCH_SIZE` | `10` | דורס את `observability.compact_batch_size` |
 | `OTEL_SPAN_EXPORT_DELAY_MILLIS` | `1000` | עיכוב flush של batch span processor |
 | `PROVISA_SUPPORT_OTLP_ENDPOINT` | — | דורס את `observability.support_endpoint` |
-</content>
