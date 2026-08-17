@@ -1,33 +1,33 @@
-# Quellentypen
+# Quelltypen
 
 ## Ausführungsmodell
 
-Jede Abfrage wird letztlich über die Föderations-Engine ausgeführt, die die Föderation über alle Quellen hinweg bereitstellt. Quellen fallen anhand ihrer Konnektivität in drei Kategorien. [tool-verified: `provisa/core/models.py` Zeilen 84–132] (REQ-550)
+Letztlich läuft jede Abfrage durch die Föderations-Engine, die Föderation über alle Quellen bereitstellt. Quellen fallen basierend auf ihrer Konnektivität in drei Kategorien. [tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
 
 | Kategorie | Hat direkten Treiber | Hat föderierten Connector | Beispiele |
 | --- | --- | --- | --- |
 | **Direktfähig** | Ja | Ja | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
-| **Nur Föderation** | Nein | Ja | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-gestützt) |
+| **Nur Föderation** | Nein | Ja | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-basiert) |
 | **Direktlesend (Replika)** | Ja | Ja | Snowflake, Databricks, ClickHouse — Treiber liest Daten und legt eine Replika an; Abfragen laufen gegen die Replika in der aktiven Engine |
-| **Materialisieren → Föderation** | Nein | Nein | REST/OpenAPI, Remote-GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (Push-Receiver), GovData, SharePoint, Splunk |
+| **Materialisieren → Föderation** | Nein | Nein | REST/OpenAPI, entferntes GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (Push-Empfänger), GovData, SharePoint, Splunk |
 
-**Direktfähige** Quellen führen Einzelquellen-Abfragen über ihren nativen Treiber aus (unter 100 ms) und umgehen die Föderations-Engine (REQ-027, REQ-229). Sie behalten volle Connector-Unterstützung und nehmen an der Föderation teil, wenn sie mit anderen Quellen verbunden werden (REQ-028).
+**Direktfähige** Quellen führen Einzelquellen-Abfragen über ihren nativen Treiber aus (unter 100 ms) und umgehen die Föderations-Engine (REQ-027, REQ-229). Sie behalten vollständige Connector-Unterstützung und nehmen an der Föderation teil, wenn sie mit anderen Quellen gejoint werden (REQ-028).
 
-**Nur-Föderation**-Quellen werden immer über die Föderationsschicht abgefragt. Es existiert kein direkter Treiber (REQ-229).
+**Nur-Föderations**-Quellen werden immer durch die Föderationsschicht abgefragt. Es existiert kein direkter Treiber (REQ-229).
 
-**Direktlesende (Replika)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (wo verfügbar Arrow-nativ), eine Replika im Materialisierungs-Store der aktiven Engine anlegt, und Abfragen laufen dann gegen diese Replika. Siehe [Warehouses als benannte Quellen](#warehouses-als-benannte-quellen).
+**Direktlesende (Replika)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (wo verfügbar Arrow-nativ), eine Replika im Materialisierungsspeicher der aktiven Engine anlegt, und anschließend laufen Abfragen gegen diese Replika. Siehe [Warehouses als benannte Quellen](#warehouses-as-named-sources).
 
-**Materialisieren**-Quellen haben keinen föderierten Connector. Provisa ruft ihre Daten ab (beim Start oder zum Abfragezeitpunkt) und cacht sie als Parquet in S3 oder in PostgreSQL, wodurch sie für die Föderations-Engine bei quellenübergreifenden Abfragen erreichbar werden (REQ-309).
+**Materialisieren**-Quellen haben keinen föderierten Connector. Provisa ruft ihre Daten ab (beim Start oder zur Abfragezeit) und cacht sie als Parquet in S3 oder in PostgreSQL, wodurch sie für quellübergreifende Abfragen durch die Föderations-Engine erreichbar werden (REQ-309).
 
 ---
 
 ## Alle Quellen
 
-Referenz für jeden von Provisa unterstützten Quellentyp. „Direkter Treiber" bedeutet, dass Einzelquellen-Abfragen nativ gegen die Quelle ausgeführt werden (unter 100 ms) (REQ-027). „Connector-Name" ist der föderierte Connector, der verwendet wird, wenn die Quelle an mehrquellen-JOINs teilnimmt (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
+Referenz für jeden von Provisa unterstützten Quelltyp. „Direkter Treiber" bedeutet, dass Einzelquellen-Abfragen nativ gegen die Quelle ausgeführt werden (unter 100 ms) (REQ-027). „Connector Name" ist der föderierte Connector, der genutzt wird, wenn die Quelle an quellübergreifenden JOINs teilnimmt (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
 ### RDBMS
 
-| Quellentyp | Direkter Treiber | Connector-Name | Dialekt | Mutationen |
+| Quelltyp | Direkter Treiber | Connector-Name | Dialekt | Mutationen |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- |
 | `postgresql` | asyncpg | postgresql | postgres | Ja |
 | `mysql` | aiomysql | mysql | mysql | Ja |
@@ -41,52 +41,52 @@ Referenz für jeden von Provisa unterstützten Quellentyp. „Direkter Treiber" 
 | `greenplum` | asyncpg (pg wire) | postgresql | postgres | Ja |
 | `tidb` | aiomysql (mysql wire) | mysql | mysql | Ja |
 
-Wire-kompatible Datenbanken nutzen den JDBC-Treiber, nativen asynchronen Treiber und Dialekt eines Basis-Protokolls wieder — CockroachDB, YugabyteDB und Greenplum nutzen das PostgreSQL-Wire-Protokoll; TiDB nutzt das MySQL-Wire-Protokoll. Sie benötigen nur Registrierungseinträge, keinen neuen Connector-Code. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
+Wire-kompatible Datenbanken nutzen den JDBC-Treiber, nativen asynchronen Treiber und Dialekt eines Basis-Wire-Protokolls wieder — CockroachDB, YugabyteDB und Greenplum reiten auf dem PostgreSQL-Wire; TiDB reitet auf dem MySQL-Wire. Sie benötigen nur Registry-Einträge, keinen neuen Connector-Code. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
-`firebird` (Firebird 3/4/5) und `airport` (Arrow-Flight-Server) sind registrierte Quellentypen, die über DuckDB-Community-Extensions direkt erreicht werden, wenn DuckDB die aktive Engine ist — kein direkter Treiber, kein föderierter Connector. [tool-verified: `provisa/core/models.py` Zeilen 44, 93] (REQ-899)
+`firebird` (Firebird 3/4/5) und `airport` (Arrow-Flight-Server) sind registrierte Quelltypen, die über DuckDB-Community-Extensions in place erreicht werden, wenn DuckDB die aktive Engine ist — kein direkter Treiber, kein föderierter Connector. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
 
 ### Cloud Data Warehouses
 
 [tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`, `executor/drivers/registry.py`]
 
-| Quellentyp | Direkter Treiber | Connector-Name | Dialekt | Mutationen | Hinweise |
+| Quelltyp | Direkter Treiber | Connector-Name | Dialekt | Mutationen | Anmerkungen |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `snowflake` | SnowflakeDriver | snowflake | snowflake | Föderiert | Liest über snowflake-connector-python; legt Replika an; `account`/`warehouse`/`role` in `federation_hints` (REQ-988) |
+| `snowflake` | SnowflakeDriver | snowflake | snowflake | Föderiert | Liest via snowflake-connector-python; legt Replika an; `account`/`warehouse`/`role` in `federation_hints` (REQ-988) |
 | `bigquery` | — | bigquery | bigquery | Föderiert | Kein DirectDriver; erreicht über Föderations-Engine oder BigQuery-Engine-ATTACH |
-| `databricks` | DatabricksDriver | delta_lake | databricks | Föderiert | Liest über databricks-sql-connector (Cloud Fetch, Arrow); legt Replika an; `http_path` in `federation_hints` erforderlich (REQ-987) |
+| `databricks` | DatabricksDriver | delta_lake | databricks | Föderiert | Liest via databricks-sql-connector (Cloud Fetch, Arrow); legt Replika an; `http_path` erforderlich in `federation_hints` (REQ-987) |
 | `redshift` | — | redshift | redshift | Föderiert | — |
 | `fabric` | MssqlWarehouseDriver | — | tsql | Föderiert | Microsoft Fabric Warehouse; T-SQL über TDS, Azure-AD-Auth; legt Replika an (REQ-995) |
 | `synapse` | MssqlWarehouseDriver | — | tsql | Föderiert | Azure Synapse SQL; T-SQL über TDS, Azure-AD-Auth; legt Replika an (REQ-995) |
-| `trino` | SQLAlchemyDriver | — | — | Föderiert | Remote-Trino/Presto-Coordinator gelesen über den SQLAlchemy-Trino-Dialekt; legt Replika auf jeder Engine an (REQ-994) |
+| `trino` | SQLAlchemyDriver | — | — | Föderiert | Entfernter Trino/Presto-Koordinator, gelesen über den SQLAlchemy-Trino-Dialekt; legt Replika auf jeder Engine an (REQ-994) |
 
 ### Analytics / OLAP
 
 [tool-verified: `executor/drivers/clickhouse.py`]
 
-| Quellentyp | Direkter Treiber | Connector-Name | Dialekt | Mutationen | Hinweise |
+| Quelltyp | Direkter Treiber | Connector-Name | Dialekt | Mutationen | Anmerkungen |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Föderiert | Liest über clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` für TLS (REQ-986) |
+| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Föderiert | Liest via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` für TLS (REQ-986) |
 | `druid` | — | druid | druid | Nein | — |
 | `exasol` | — | exasol | exasol | Nein | — |
 | `elasticsearch` | — | elasticsearch | — | Nein | Connector-Eigenschaften stammen aus der Mapping-DSL des Typs [tool-verified: `trino_connectors.py:309`] |
 | `pinot` | — | pinot | — | Nein | Trino-`pinot`-Connector; `pinot.controller-urls` = host:port des Pinot-Controllers [tool-verified: `trino_connectors.py:199`] |
 
-### Data Lake / Offene Tabellenformate
+### Data Lake / offene Tabellenformate
 
-Diese Quellentypen sind Nur-Föderation — kein direkter Treiber, kein Dialekt. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
+Diese Quelltypen sind reine Föderationsquellen — kein direkter Treiber, kein Dialekt. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
 
-| Quellentyp | Connector-Name | Time Travel | Hinweise |
+| Quelltyp | Connector-Name | Time Travel | Anmerkungen |
 | ------------ | ----------------- | ------------- | ------- |
-| `iceberg` | iceberg | Ja (Argument `as_of`, REQ-372) | — |
-| `delta_lake` | delta_lake | Ja (Argument `as_of`, REQ-372) | — |
+| `iceberg` | iceberg | Ja (`as_of`-Argument, REQ-372) | — |
+| `delta_lake` | delta_lake | Ja (`as_of`-Argument, REQ-372) | — |
 | `hive` | hive | Nein | — |
-| `hive_s3` | hive | Nein | S3-gestütztes Hive |
+| `hive_s3` | hive | Nein | S3-basiertes Hive |
 
 ### NoSQL
 
-`mongodb`, `cassandra` und `redis` haben Trino-Connectoren (`redis` baut seine Eigenschaften aus der Mapping-DSL des Typs). [tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
+`mongodb`, `cassandra` und `redis` haben Trino-Connectors (`redis` baut seine Eigenschaften aus der Mapping-DSL des Typs). [tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
 
-| Quellentyp | Connector-Name | Mutationen |
+| Quelltyp | Connector-Name | Mutationen |
 | ------------ | ----------------- | ----------- |
 | `mongodb` | mongodb | Nein |
 | `cassandra` | cassandra | Nein |
@@ -94,32 +94,32 @@ Diese Quellentypen sind Nur-Föderation — kein direkter Treiber, kein Dialekt.
 
 ### Streaming
 
-| Quellentyp | Mechanismus | Mutationen |
+| Quelltyp | Mechanismus | Mutationen |
 | ------------ | ----------- | ----------- |
 | `kafka` | Föderierter Kafka-Connector; Schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manuelle Definition oder Sample-Inferenz (REQ-147, REQ-150) | Nur Sink (REQ-176) |
-| `websocket` | Externer WebSocket-Feed — verbinden, abonnieren, Ereignisse empfangen; Ergebnisse materialisiert (REQ-338) | Nein |
+| `websocket` | Externer WebSocket-Feed — verbinden, abonnieren, Events empfangen; Ergebnisse materialisiert (REQ-338) | Nein |
 | `rss` | RSS-2.0-/Atom-Feed — pollen, Watermark nach pubDate/updated; Ergebnisse materialisiert (REQ-342, REQ-343) | Nein |
 
-### Push-Receiver
+### Push-Empfänger
 
-| Quellentyp | Mechanismus | Mutationen |
+| Quelltyp | Mechanismus | Mutationen |
 | ------------ | ----------- | ----------- |
-| `ingest` | Externe Dienste senden JSON-Ereignisse per POST; Ergebnisse materialisiert (REQ-331, REQ-335) | Nein |
+| `ingest` | Externe Dienste senden JSON-Events per POST; Ergebnisse materialisiert (REQ-331, REQ-335) | Nein |
 
-### Graph & Semantic
+### Graph & Semantik
 
-| Quellentyp | Mechanismus | Mutationen |
+| Quelltyp | Mechanismus | Mutationen |
 | ------------ | ----------- | ----------- |
 | `neo4j` | Cypher über HTTP-API, Ergebnisse in PostgreSQL gecacht (REQ-295) | Nein |
 | `sparql` | SPARQL-1.1-POST, Ergebnisse in PostgreSQL gecacht (REQ-297) | Nein |
 
 ### Dateibasiert
 
-Zwei Mechanismen decken Dateien ab. Beide verwenden das Feld `path` anstelle von `host`/`port`. [tool-verified: `provisa/core/models.py`] (REQ-553)
+Zwei Mechanismen decken Dateien ab. Beide verwenden das Feld `path` statt `host`/`port`. [tool-verified: `provisa/core/models.py`] (REQ-553)
 
 **Einzeldatei-Quellen** — `sqlite`, `csv`, `parquet` verweisen mit `path` auf eine Datei.
 
-| Quellentyp | Transporte | Mutationen |
+| Quelltyp | Transporte | Mutationen |
 | --- | --- | --- |
 | `sqlite` | lokal | Ja |
 | `csv` | lokal | Nein |
@@ -127,11 +127,11 @@ Zwei Mechanismen decken Dateien ab. Beide verwenden das Feld `path` anstelle von
 
 Private Buckets benötigen Anmeldedaten (AWS-Region und Schlüssel aus der Umgebung). Für CSV über `s3://` oder `http(s)://`, oder um viele Dateien auf einmal zu registrieren, verwenden Sie die Quelle `files`. [tool-verified: `provisa/file_source/source.py`]
 
-**Quelle `files`** — verweist mit `path` auf einen Glob, durchsucht ihn rekursiv und registriert das Verzeichnis als föderierten Katalog von Tabellen. Sie liest viele Formate über viele Transporte; die untenstehenden Mengen stammen vom File-Connector (kenstott/calcite-Fork). [tool-verified: `provisa/core/catalog.py` Zweig `files` und `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; Format- und Transportlisten aus dem calcite-`file`-Adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
+**`files`-Quelle** — `path` verweist auf ein Glob, durchläuft es rekursiv und registriert das Verzeichnis als föderierten Katalog von Tabellen. Es liest viele Formate über viele Transporte; die untenstehenden Mengen stammen vom File-Connector (kenstott/calcite-Fork). [tool-verified: `provisa/core/catalog.py` `files`-Zweig und `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; Format- und Transportlisten vom calcite-`file`-Adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
 
 | Formate | Transporte |
 | --- | --- |
-| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow und in Tabellen konvertierte Dokumente — HTML, Markdown, DOCX, PPTX | Lokales Dateisystem, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST und Microsoft Graph) |
+| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow und in Tabellen umgewandelte Dokumente — HTML, Markdown, DOCX, PPTX | Lokales Dateisystem, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST und Microsoft Graph) |
 
 ```yaml
 - id: sales_files
@@ -139,24 +139,24 @@ Private Buckets benötigen Anmeldedaten (AWS-Region und Schlüssel aus der Umgeb
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
-### Observability & Sonstiges
+### Observability & Sonstige
 
-`prometheus` hat einen Trino-Connector (Eigenschaften aus der Mapping-DSL des Typs gebaut). `google_sheets` ist ein registrierter Quellentyp ohne Trino-Connector und materialisiert über die API-Cache-Pipeline. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` Zeilen 87–88]
+`prometheus` hat einen Trino-Connector (Eigenschaften aus der Mapping-DSL des Typs gebaut). `google_sheets` ist ein registrierter Quelltyp ohne Trino-Connector und materialisiert über die API-Cache-Pipeline. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
 
-| Quellentyp | Connector-Name | Mutationen |
+| Quelltyp | Connector-Name | Mutationen |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materialisiert) | Nein |
 | `prometheus` | prometheus | Nein |
 
-### SaaS-Connectoren für Unternehmen
+### Enterprise-SaaS-Connectors
 
-SharePoint und Splunk registrieren sich über Apache-Calcite-Connectoren (kenstott/calcite-Fork). Keiner hat einen direkten Treiber — Provisa materialisiert ihre Zeilen, indem der mitgelieferte Calcite-pgwire-Server des Connectors gestartet wird (`pgwire-sharepoint`, `pgwire-splunk`), sich als generischer PostgreSQL-Endpunkt damit verbindet und die Zeilen im Materialisierungs-Store für die Föderation ablegt (REQ-954). Beide Connectoren aktivieren immer den Groß-/Kleinschreibungs-unabhängigen Namensabgleich, entsprechend der eigenen groß-/kleinschreibungsunabhängigen Semantik des jeweiligen Produkts (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` Zeilen 99–100; `provisa/federation/trino_connectors.py` Zeilen 223–286]
+SharePoint und Splunk registrieren sich über Apache-Calcite-Connectors (kenstott/calcite-Fork). Keiner hat einen direkten Treiber — Provisa materialisiert ihre Zeilen, indem es den mitgelieferten Calcite-pgwire-Server des Connectors startet (`pgwire-sharepoint`, `pgwire-splunk`), sich als generischen PostgreSQL-Endpunkt daran verbindet und die Zeilen im Materialisierungsspeicher für die Föderation anlegt (REQ-954). Beide Connectors aktivieren immer Case-insensitive-Namensabgleich, passend zur eigenen case-insensitiven Semantik des jeweiligen Produkts (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
-SharePoint-Listen werden als Schemas aufgezählt und als abfragbare Tabellen bereitgestellt (REQ-726, REQ-731). Zwei Auth-Methoden: `CLIENT_CREDENTIALS` (Standard) und zertifikatsbasiert über ein PFX-Zertifikat (REQ-727). Geheimwerte in `mapping` werden über die Secrets-Engine aufgelöst, bevor sie den Connector erreichen (REQ-729). [tool-verified: `provisa/federation/trino_connectors.py` Zeilen 230–252]
+SharePoint-Listen werden als Schemas aufgezählt und als abfragbare Tabellen exponiert (REQ-726, REQ-731). Zwei Auth-Methoden: `CLIENT_CREDENTIALS` (Standard) und zertifikatsbasiert über ein PFX-Zertifikat (REQ-727). Geheime Werte in `mapping` werden vor Erreichen des Connectors über die Secrets-Engine aufgelöst (REQ-729). [tool-verified: `provisa/federation/trino_connectors.py` lines 230–252]
 
-| Quellfeld | Connector-Eigenschaft | Hinweise |
+| Quellfeld | Connector-Eigenschaft | Anmerkungen |
 | --- | --- | --- |
 | `base_url` oder `host` | `site-url` | SharePoint-Site-URL |
 | `username` | `client-id` | Azure-App-Client-ID |
@@ -166,7 +166,7 @@ SharePoint-Listen werden als Schemas aufgezählt und als abfragbare Tabellen ber
 | `mapping.certificate_path` | `certificate-path` | PFX-Pfad, wenn `auth_type: CERTIFICATE` |
 | `mapping.certificate_password` | `certificate-password` | PFX-Passwort |
 
-Wenn der Connector `information_schema.columns` nicht offenlegt, registrieren Sie die Tabelle mit expliziten Spaltendefinitionen (ermittelt über die Microsoft-Graph-API) über die Mutation `registerTable` (REQ-732).
+Wenn der Connector `information_schema.columns` nicht exponiert, registrieren Sie die Tabelle mit expliziten Spaltendefinitionen (aus der Microsoft-Graph-API bezogen) über die Mutation `registerTable` (REQ-732).
 
 ```yaml
 - id: hr-sharepoint
@@ -181,15 +181,15 @@ Wenn der Connector `information_schema.columns` nicht offenlegt, registrieren Si
 
 #### `splunk`
 
-Splunk-Suchergebnisse sind als Tabellen abfragbar (z. B. `internal_server`) (REQ-721). Die Connector-URL stammt aus `base_url`, oder wird als `https://{host}:{port}` mit einem Standardport von `8089` konstruiert (REQ-722). Auth: Wenn `mapping.use_token` auf `true` steht (Standard), wird `password` als API-Token übergeben; wenn `false`, werden `username` und `password` als separate Anmeldedaten übergeben (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` Zeilen 262–286]
+Splunk-Suchergebnisse sind als Tabellen abfragbar (z. B. `internal_server`) (REQ-721). Die Connector-URL stammt aus `base_url`, oder wird als `https://{host}:{port}` mit einem Standardport von `8089` konstruiert (REQ-722). Auth: Wenn `mapping.use_token` `true` ist (Standard), wird `password` als API-Token übergeben; wenn `false`, werden `username` und `password` als separate Anmeldedaten übergeben (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
 
-| Quellfeld | Connector-Eigenschaft | Hinweise |
+| Quellfeld | Connector-Eigenschaft | Anmerkungen |
 | --- | --- | --- |
-| `base_url` / `host` + `port` | `url` | `base_url`, sonst `https://host:port` (Port-Standard 8089) |
+| `base_url` / `host` + `port` | `url` | `base_url`, sonst `https://host:port` (Standardport 8089) |
 | `password` | `token` oder `password` | Token, wenn `use_token: true` |
-| `username` | `user` | nur, wenn `use_token: false` |
+| `username` | `user` | nur wenn `use_token: false` |
 | `database` | `app` | auf eine Splunk-App beschränken |
-| `mapping.datamodel_filter` | `datamodel-filter` | auf ein Data Model filtern |
+| `mapping.datamodel_filter` | `datamodel-filter` | auf ein Datenmodell filtern |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | für selbstsignierte Zertifikate (REQ-724) |
 
 ```yaml
@@ -207,23 +207,23 @@ Splunk-Suchergebnisse sind als Tabellen abfragbar (z. B. `internal_server`) (REQ
 
 Registrieren Sie jeden HTTP-Endpunkt als abfragbare Tabelle. [tool-verified: `provisa/core/models.py` `SourceType`-Enum] (REQ-314, REQ-307, REQ-322)
 
-| API-Typ | Erkennung | Spalten-Inferenz |
+| API-Typ | Discovery | Spaltenableitung |
 | --------- | ----------- | ----------------- |
-| `openapi` | OpenAPI-Spezifikationsanalyse (REQ-314, REQ-316) | Primitive → nativ, Objekte → JSONB |
+| `openapi` | OpenAPI-Spec-Parsing (REQ-314, REQ-316) | Primitive → nativ, Objekte → JSONB |
 | `graphql_remote` | Schema-Introspektion (REQ-307, REQ-308) | Primitive → nativ, Objekte → JSONB |
-| `grpc_remote` | Server-Reflection (REQ-322, REQ-325) | Primitive → nativ, Objekte → JSONB |
+| `grpc_remote` | Server Reflection (REQ-322, REQ-325) | Primitive → nativ, Objekte → JSONB |
 
-API-Antworten werden abgerufen, in PostgreSQL gecacht (konfigurierbare TTL) und als GraphQL-Typen bereitgestellt (REQ-309, REQ-318, REQ-327). Gecachte Tabellen nehmen an föderierten Abfragen wie jede andere Quelle teil (REQ-313).
+API-Antworten werden abgerufen, in PostgreSQL gecacht (konfigurierbare TTL) und als GraphQL-Typen exponiert (REQ-309, REQ-318, REQ-327). Gecachte Tabellen nehmen wie jede andere Quelle an föderierten Abfragen teil (REQ-313).
 
-**JSONB-Regeln**: Komplexe Spalten (Objekte, Arrays), die als JSONB gespeichert sind, sind nicht filterbar (REQ-119). Der Zugriff auf Unterfelder nutzt `->>`-Extraktion in SQL (REQ-151). Beziehungen werden zwischen Tabellen anhand skalarer FK-Spalten deklariert — JSONB-Blob-Spalten sind keine JOIN-Ziele. Verwenden Sie JSONB-Promotion, um verschachtelte Felder in native skalare Spalten umzuwandeln, wenn Filtern oder Joinen auf ihnen benötigt wird (REQ-119).
+**JSONB-Regeln**: Komplexe, als JSONB gespeicherte Spalten (Objekte, Arrays) sind nicht filterbar (REQ-119). Der Zugriff auf Unterfelder nutzt `->>`-Extraktion in SQL (REQ-151). Beziehungen werden zwischen Tabellen mittels skalarer FK-Spalten deklariert — JSONB-Blob-Spalten sind keine Join-Ziele. Verwenden Sie JSONB-Promotion, um verschachtelte Felder in native Skalarspalten umzuwandeln, wenn Filtern oder Joinen darauf erforderlich ist (REQ-119).
 
 ### GovData
 
-US-amerikanische offene Regierungsdaten. Der Zugriff ist nach Subject-Gruppierung partitioniert. [tool-verified: `provisa/core/models.py` Zeilen 543–609]
+US-amerikanische offene Regierungsdaten. Der Zugriff ist nach Themengruppierung partitioniert. [tool-verified: `provisa/core/models.py` lines 543–609]
 
-Jede `govdata`-Quelle wählt ein Subject aus. Dieses Subject bestimmt, welche GovData-Schemas offengelegt werden. Die Schemas `ref` und `geo` sind immer als Linker-Schemas enthalten — sie sind nicht pro Subject aufgeführt, aber immer vorhanden. [tool-verified: `provisa/core/models.py` Zeile 562–563 Kommentar]
+Jede `govdata`-Quelle wählt ein Thema. Dieses Thema bestimmt, welche GovData-Schemas exponiert werden. Die Schemas `ref` und `geo` sind immer als Linker-Schemas enthalten — sie werden nicht pro Thema aufgeführt, sind aber immer vorhanden. [tool-verified: `provisa/core/models.py` line 562–563 Kommentar]
 
-| Subject | Offengelegte Schemas |
+| Thema | Exponierte Schemas |
 | --------- | ----------------- |
 | `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ` |
@@ -249,19 +249,92 @@ sources:
 | Feld | Erforderlich | Standard | Beschreibung |
 | ------- | ---------- | --------- | ------------- |
 | `id` | Ja | — | Eindeutiger Bezeichner |
-| `subject` | Ja | — | Einer der obigen Subject-Werte |
+| `subject` | Ja | — | Einer der obigen Themenwerte |
 | `domain_id` | Ja | — | Domäne, zu der diese Quelle gehört |
 | `description` | Nein | `""` | Menschenlesbare Beschreibung |
 
+### Data-Quality-Checker (REQ-1443)
+
+Ein Data-Quality-Checker ist ein Quelltyp, kein Subsystem. Seine Scan-Ausgabe ist Daten: Ein Prüfergebnis ist eine Beobachtung, landet also über den gewöhnlichen Quellpfad und erbt Kadenz, Aktualität, Events, Lineage, Governance, RLS, Grid und Export von jeder anderen Quelle. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
+
+Zwei werden unterstützt, und die Wahl ist ebenso eine Lizenzfrage wie eine Funktionsfrage.
+
+| Quelltyp | Contract-Dialekt | Extra | Lizenz | Gehostete Cloud-Ebene |
+| ------------ | ----------------- | ------- | --------- | -------------------- |
+| `soda` | Soda-Contract-YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Verweigert — siehe unten |
+| `great_expectations` | Expectation-Suite-JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Erlaubt |
+
+Die Elastic License 2.0 verbietet es, die Software Dritten als gehosteten oder verwalteten Dienst bereitzustellen, und Soda innerhalb der SaaS-Ebene im Namen eines Mandanten laufen zu lassen ist genau das. `config/capabilities.yaml` trägt die Trennung als `cloud_eligible: false` an der `soda`-Option, und die gehostete Ebene liest dieses Flag. Ein gehostetes Deployment, das Soda möchte, erreicht einen vom Betreiber bereitgestellten Soda-Endpunkt, den der Betreiber selbst betreibt. [tool-verified: `config/capabilities.yaml` lines 197–203]
+
+Provisa vendort und linkt nichts. Der Scan läuft in einem Child-Interpreter (`python -m provisa.dq.worker`), der einzige Ort, an dem `soda_core` oder `great_expectations` importiert wird, sodass ein source-available Checker nie den Serverprozess erreicht und ein Checker-Crash einen Subprozess statt der Event-Loop tötet. [tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
+
+**Die Quelle verweist auf Provisas eigenen pgwire-Endpunkt.** Das ermöglicht es einem einzigen Postgres-Treiber, eine Snowflake- oder Iceberg-gestützte Tabelle zu prüfen: Der Checker scannt die föderierte Sicht, nicht das darunterliegende System. Weil Richtlinien auf diese Verbindung angewendet werden, wird die Scan-Identität deklariert statt geerbt — eine gefilterte Zeilenmenge darf niemals eine still bestehende Prüfung erzeugen.
+
+```yaml
+sources:
+
+  - id: dq
+    type: soda
+    domain_id: sales-analytics
+    description: Soda contract scans over the governed estate
+    mapping:
+      host: localhost
+      port: 5439          # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner    # the scan identity, declared explicitly
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+**Eine Ergebnistabelle pro Contract, und der Contract ist die gesamte Registrierung.** Die Tabelle trägt `dq_contract` — den Contract-Text wortwörtlich — und sonst nichts über ihre Form. Spalten, Watermark und Promotions sind alle abgeleitet. [tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
+
+```yaml
+tables:
+
+  - source_id: dq
+    schema_name: quality
+    table_name: orders_scan
+    domain_id: sales-analytics
+    change_signal: ttl_probe
+    cache_ttl: 3600
+    columns:
+      - name: scan_id          # declared only to carry visible_to; replaced at parse
+        visible_to: [analyst, admin]
+    dq_contract: |
+      dataset: provisa/sales/orders
+      columns:
+        - name: customer_id
+          checks:
+            - missing:
+                threshold:
+                  metric: percent
+                  must_be_less_than: 1
+      checks:
+        - row_count:
+            must_be_greater_than: 0
+```
+
+Was die Registrierung aus diesem Text ableitet:
+
+- **Lineage.** Der Contract benennt bereits sein Ziel-Dataset, sodass die Registrierung ihn so parst, wie `extract_inputs` SQL parst (REQ-939), und ihn zur regulierten Tabelle auflöst. Eine Definition, keine zweite Kopie, die abdriften kann. Ein Contract, der ein nicht reguliertes Dataset benennt, schlägt laut bei der Registrierung fehl, statt Zeilen zu landen, die niemand angefordert hat.
+- **Spalten.** Die Ergebnishülle gehört dem Checker, nicht dem Betreiber — 16 mitgelieferte Spalten von `scan_id` bis `diagnostics`. Deklarierte Spalten werden nur für ihr `visible_to` gelesen, das einstimmig sein muss, und dann ersetzt. [tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
+- **Watermark.** `scan_time` wird zur Watermark, was das Landen zu einem Append macht (REQ-982). Scan-Historie akkumuliert ohne separates Historie-Subsystem.
+- **Promotions.** `freshness_max_timestamp` und `dataset_rows_tested` werden aus dem `diagnostics`-jsonb als typisierte Spalten promotet (REQ-119). Weitere hinzuzufügen funktioniert wie bei jeder anderen jsonb-Spalte. [tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
+
+Timing führt keine neuen Felder ein. `change_signal` plus `cache_ttl` geben die Poll-Kadenz vor; `mv_debounce_quiet` und `mv_debounce_max_delay` fassen einen vorgelagerten Burst zu einem Scan zusammen (REQ-963); eine Kalendergranularität macht ihn periodisch (REQ-962); `expected_events` hält den Scan zurück, bis seine Eingaben über das Fenster hinweg aktuell sind (REQ-961). Die Poll-Schleife ist der Scan-Scheduler.
+
+`outcome` ist eines von `pass`, `fail`, `warn`, `error`, `skipped`. Keines davon ist ein Urteil — Durchsetzung, falls gewünscht, ist eine separate, spätere Deklaration: ein Preflight oder eine MV über den gelandeten Ergebnissen. Weil eine gelandete Beobachtung keine Determinismus-Verpflichtung trägt (REQ-964), sind hier nicht-deterministische Prüfungen zulässig, die auf einem Preflight-Gate nie stehen könnten — Anomalie-Score, Trailing-Window-Änderung, Aktualität gegen jetzt.
+
+Der Contract wird in der UI autorisiert, im Data-Quality-Panel der Tabellenbearbeitungsoberfläche, und der rohe Contract-Text dort ist immer die Source of Truth. Ein Dry Run führt den Contract gegen die Live-Tabelle aus und zeigt die Ergebnisse, ohne sie zu landen — so fangen Sie einen Contract ab, dessen Dataset-Name unerwartet aufgelöst wurde und andernfalls nichts als bestehende Zeilen landen würde.
+
 ---
 
-## Benutzerdefinierte Connectoren (REQ-1177)
+## Benutzerdefinierte Connectors (REQ-1177)
 
-Die nativen Föderations-Engines — Postgres, DuckDB und ClickHouse — erhalten Erreichbarkeit für einen neuen Quellentyp, wenn ein Operator einen Connector dafür in `config/custom_connectors.yaml` deklariert. Es ist kein Code erforderlich. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
+Die nativen Föderations-Engines — Postgres, DuckDB und ClickHouse — erlangen Erreichbarkeit zu einem neuen Quelltyp, wenn ein Betreiber einen Connector dafür in `config/custom_connectors.yaml` deklariert. Kein Code erforderlich. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
 
-Connector-Erweiterbarkeit an sich geht dem voraus. Die Trino-Engine ist auf ihrer eigenen Schicht seit Langem erweiterbar — ein generischer JDBC-Connector, parametrisiert pro Quellentyp, ein Katalog-`.properties`-Body pro Typ, und Provisas eigene benutzerdefinierte Trino-Connector-Plugins (Splunk, SharePoint, Calcite). [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 bringt dieselbe konfigurationsgetriebene Erweiterbarkeit zu den beiden nativen, clusterlosen Engines, die zuvor einen festen Connector-Satz hatten.
+Connector-Erweiterbarkeit als solche existierte schon vorher. Die Trino-Engine ist auf ihrer eigenen Ebene seit langem erweiterbar — ein generischer JDBC-Connector, parametrisiert pro Quelltyp, ein Katalog-`.properties`-Body pro Typ, sowie Provisas eigene benutzerdefinierte Trino-Connector-Plugins (Splunk, SharePoint, Calcite). [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 bringt dieselbe konfigurationsgetriebene Erweiterbarkeit zu den zwei nativen, clusterlosen Engines, die zuvor einen festen Connector-Satz trugen.
 
-Die Konfiguration wird leer ausgeliefert. Eingebaute Connectoren decken die Erreichbarkeit von Haus aus ab; alles in dieser Datei ist vom Operator verfasst. [tool-verified: `config/custom_connectors.yaml` Zeile 52: `connectors: []`] Setzen Sie `PROVISA_CUSTOM_CONNECTORS`, um auf einen anderen Pfad zu verweisen (nützlich für Tests).
+Die Konfiguration wird leer ausgeliefert. Eingebaute Connectors decken die Reichweite ab Werk ab; alles in dieser Datei ist vom Betreiber autorisiert. [tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] Setzen Sie `PROVISA_CUSTOM_CONNECTORS`, um auf einen anderen Pfad zu verweisen (nützlich für Tests).
 
 ### Descriptor-Arten
 
@@ -269,40 +342,40 @@ Die Konfiguration wird leer ausgeliefert. Eingebaute Connectoren decken die Erre
 | --- | --- | --- | --- |
 | `postgres` | `pg_fdw` | SQL/MED (ISO-Standard) | `extension`, `server_options`, `user_mapping`, `supports_import`, `table_options`, `remote_schema` |
 | `duckdb` | `duckdb_attach` | INSTALL/LOAD + ATTACH | `extension`, `probe_symbol`, `attach_template`, `remote_schema` |
-| `duckdb` | `duckdb_scan` | INSTALL/LOAD + Scanner-Sicht | `extension`, `probe_symbol`, `scan_template` |
-| `clickhouse` | `clickhouse_database` | `CREATE DATABASE ENGINE=…` (legt automatisch jede Remote-Tabelle offen) | `ch_engine`, `engine_template` |
+| `duckdb` | `duckdb_scan` | INSTALL/LOAD + Scanner-View | `extension`, `probe_symbol`, `scan_template` |
+| `clickhouse` | `clickhouse_database` | `CREATE DATABASE ENGINE=…` (exponiert automatisch jede entfernte Tabelle) | `ch_engine`, `engine_template` |
 | `clickhouse` | `clickhouse_table` | pro-Tabelle `CREATE TABLE ENGINE=…` (Spalten aus der Registry) | `ch_engine`, `engine_template` (kann `{table}` tragen) |
 | `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse leitet das Schema ab | `ch_engine`, `engine_template` |
 
-**Postgres ist generisch.** SQL/MED ist ein ISO-Standard, daher teilt sich jeder konforme FDW dieselbe DDL-Form: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, optionales `CREATE USER MAPPING`, dann entweder `IMPORT FOREIGN SCHEMA` (wenn `supports_import: true`) oder eine explizite `CREATE FOREIGN TABLE` pro Tabelle (wenn `false`). Ein `pg_fdw`-Descriptor liefert nur die Pro-FDW-Varianz — Extension-Name, Server-Options-Schlüssel, User-Mapping-Schlüssel, Import-Flag, Tabellen-Optionen. Jeder standardkonforme FDW ist daher allein aus der Konfiguration steuerbar. [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` Zeilen 98–125]
+**Postgres ist generisch.** SQL/MED ist ein ISO-Standard, sodass jeder konforme FDW dieselbe DDL-Form teilt: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, optional `CREATE USER MAPPING`, dann entweder `IMPORT FOREIGN SCHEMA` (wenn `supports_import: true`) oder ein explizites `CREATE FOREIGN TABLE` pro Tabelle (wenn `false`). Ein `pg_fdw`-Descriptor liefert nur die Pro-FDW-Varianz — Extension-Name, Server-Options-Schlüssel, User-Mapping-Schlüssel, Import-Flag, Table-Options. Jeder standardkonforme FDW ist daher allein aus der Konfiguration ansteuerbar. [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
 
-**DuckDB unterstützt zwei Mechanismen.** Eine Extension, die einen Katalog über ATTACH offenlegt, verwendet `duckdb_attach`; eine, die eine lesende Table-Function offenlegt, verwendet `duckdb_scan`. Eine Extension, die zu keinem Muster passt, wird nicht unterstützt. [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
+**DuckDB unterstützt zwei Mechanismen.** Eine Extension, die einen Katalog via ATTACH exponiert, nutzt `duckdb_attach`; eine, die eine lesende Table-Funktion exponiert, nutzt `duckdb_scan`. Eine Extension, die zu keinem Muster passt, wird nicht unterstützt. [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
 
-**ClickHouse unterstützt drei Mechanismen**, einen pro Integration-Engine-Form: eine relationale DATABASE-Engine, die automatisch jede Remote-Tabelle offenlegt (`clickhouse_database`, z. B. Redis/MySQL), eine Pro-Tabelle-Engine, deren Spalten die Registry liefert (`clickhouse_table`, z. B. die JDBC-/ODBC-Brücke — die `engine_template` kann einen `{table}`-Platzhalter tragen, den die Laufzeit bindet), und eine Datei-/Lake-/URL-Engine, deren Schema ClickHouse ableitet (`clickhouse_scan`, z. B. HDFS/URL). SQLite (DATABASE-Engine, Datei, kein Server) und Hudi (Lakehouse, Zero-Copy) werden von Haus aus ausgeliefert. [tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
+**ClickHouse unterstützt drei Mechanismen**, einen pro Integrations-Engine-Form: eine relationale DATABASE-Engine, die automatisch jede entfernte Tabelle exponiert (`clickhouse_database`, z. B. Redis/MySQL), eine Pro-Tabelle-Engine, deren Spalten die Registry liefert (`clickhouse_table`, z. B. die JDBC/ODBC-Brücke — das `engine_template` kann einen `{table}`-Platzhalter tragen, den die Runtime bindet), und eine Datei-/Lake-/URL-Engine, deren Schema ClickHouse ableitet (`clickhouse_scan`, z. B. HDFS/URL). SQLite (DATABASE-Engine, Datei, kein Server) und Hudi (Lakehouse, Zero-Copy) werden ab Werk ausgeliefert. [tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
 
-Ein unbekannter `kind`-Wert schlägt beim Start laut fehl — ein Tippfehler im Descriptor darf einen Quellentyp nicht still unerreichbar machen. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` Zeilen 178–197]
+Ein unbekannter `kind`-Wert schlägt beim Start laut fehl — ein Tippfehler im Descriptor darf einen Quelltyp nicht still unerreichbar lassen. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
 
 ### Probe-Gating
 
-Die Verfügbarkeit wird beim Attach-Zeitpunkt gegen den Standard-Erkennungskatalog jeder Engine verifiziert:
+Verfügbarkeit wird zur Attach-Zeit gegen den Standard-Discovery-Katalog jeder Engine verifiziert:
 
-- **Postgres** — prüft `pg_extension`, dann `pg_available_extensions`. [tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` Zeilen 333–344]
-- **DuckDB** — führt `INSTALL`/`LOAD` aus und prüft `duckdb_functions()` auf das deklarierte `probe_symbol`. [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` Zeilen 160–180]
-- **ClickHouse** — prüft `system.table_engines` auf die deklarierte `ch_engine`; Fehlen im Build schlägt laut fehl. [tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
+- **Postgres** — prüft `pg_extension`, dann `pg_available_extensions`. [tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` lines 333–344]
+- **DuckDB** — führt `INSTALL`/`LOAD` aus und prüft `duckdb_functions()` auf das deklarierte `probe_symbol`. [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
+- **ClickHouse** — prüft `system.table_engines` auf die deklarierte `ch_engine`; fehlt sie im Build, schlägt es laut fehl. [tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
 
-Eine deklarierte Extension, die nicht installierbar ist, schlägt laut fehl. Kein stilles Überspringen, kein Fallback. Ein Connector, dessen Probe fehlschlägt, ist für diese Bereitstellung schlicht nicht aktiv.
+Eine deklarierte Extension, die nicht installierbar ist, schlägt laut fehl. Kein stiller Skip, kein Fallback. Ein Connector, dessen Probe fehlschlägt, ist für dieses Deployment schlicht nicht aktiv.
 
 ### Template-Variablen
 
-Jeder `server_options`-Wert, `user_mapping`-Wert, `attach_template` und `scan_template` kann `{field}`-Platzhalter verwenden. Verfügbare Felder: [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` Zeilen 53–63]
+Jeder `server_options`-Wert, `user_mapping`-Wert, `attach_template` und `scan_template` kann `{field}`-Platzhalter verwenden. Verfügbare Felder: [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
 
 `{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus jeder Schlüssel aus `federation_hints`. DuckDB-Attach-Templates erhalten zusätzlich `{alias}` — den internen Katalog-Alias, den Provisa der angehängten Datenbank zuweist.
 
-Ein Template, das auf ein unbekanntes Feld verweist, schlägt beim Attach-Zeitpunkt laut fehl und deckt eine Descriptor-/Quellen-Diskrepanz auf, bevor fehlerhaftes DDL die Engine erreicht.
+Ein Template, das auf ein unbekanntes Feld verweist, schlägt zur Attach-Zeit laut fehl und deckt eine Descriptor-/Quell-Fehlpassung auf, bevor defektes DDL die Engine erreicht.
 
 ### Beispiele
 
-**Postgres — MongoDB über `mongo_fdw` (kein Schema-Import; Spalten pro Tabelle geliefert)**
+**Postgres — MongoDB via `mongo_fdw` (kein Schema-Import; Spalten pro Tabelle geliefert)**
 
 ```yaml
 # config/custom_connectors.yaml
@@ -324,7 +397,7 @@ connectors:
       collection: "{table_name}"
 ```
 
-**DuckDB — Excel-Dateien über `read_xlsx` (Scan-Table-Function)**
+**DuckDB — Excel-Dateien via `read_xlsx` (Scan-Table-Funktion)**
 
 ```yaml
   - engine: duckdb
@@ -336,19 +409,19 @@ connectors:
     scan_template: "read_xlsx('{path}')"
 ```
 
-[tool-verified: `config/custom_connectors.yaml` auskommentierte Beispiele, Zeilen 26–50]
+[tool-verified: `config/custom_connectors.yaml` commented examples, lines 26–50]
 
-Mit einem der beiden Descriptoren an Ort und Stelle routet die Registrierung einer Quelle mit dem deklarierten `source_type` über den benutzerdefinierten Connector, vorbehaltlich einer erfolgreichen Probe. Keine weitere Konfigurationsänderung ist nötig.
+Mit einem der beiden Descriptors an Ort und Stelle routet die Registrierung einer Quelle mit dem deklarierten `source_type` durch den benutzerdefinierten Connector, vorbehaltlich einer erfolgreichen Probe. Keine weitere Konfigurationsänderung ist nötig.
 
 ---
 
 ## Warehouses als benannte Quellen
 
-Snowflake, Databricks und ClickHouse können als benannte Quellen registriert werden, unabhängig davon, welche Föderations-Engine aktiv ist. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
+Snowflake, Databricks und ClickHouse können unabhängig davon, welche Föderations-Engine aktiv ist, als benannte Quellen registriert werden. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
 
-Bei der Registrierung liest Provisa das Warehouse über den DirectDriver der Quelle und legt eine Replika im Materialisierungs-Store der aktiven Engine an. Die Abfrage läuft dann gegen diese Replika. Dies unterscheidet sich vom traditionellen direktfähigen Pfad (asyncpg, aiomysql), bei dem die Engine vollständig umgangen wird — hier führt die Engine die Abfrage weiterhin aus, aber gegen eine lokale Replika statt bei jeder Anfrage über die Leitung zum Warehouse.
+Bei Registrierung liest Provisa das Warehouse über den DirectDriver der Quelle und legt eine Replika im Materialisierungsspeicher der aktiven Engine an. Die Abfrage läuft dann gegen diese Replika. Dies unterscheidet sich vom traditionellen direktfähigen Pfad (asyncpg, aiomysql), bei dem die Engine vollständig umgangen wird — hier führt die Engine die Abfrage weiterhin aus, aber gegen eine lokale Replika statt bei jeder Anfrage über das Wire zum Warehouse.
 
-Lesevorgänge sind dort Arrow-nativ, wo das Warehouse dies unterstützt: Databricks nutzt Cloud Fetch, Snowflake nutzt `fetch_arrow_table`, und ClickHouse nutzt die native spaltenorientierte HTTP-Schnittstelle.
+Lesevorgänge sind Arrow-nativ, wo das Warehouse dies unterstützt: Databricks nutzt Cloud Fetch, Snowflake nutzt `fetch_arrow_table`, und ClickHouse nutzt die native Columnar-HTTP-Schnittstelle.
 
 Erweiterte Verbindungsparameter, die die Standardfelder `host`/`port`/`username`/`password` nicht tragen können, kommen in `federation_hints`:
 
@@ -382,9 +455,9 @@ sources:
       secure: "true"              # optional — enables TLS on the HTTP interface
 ```
 
-Die Registrierung als benannte Quelle ist unabhängig davon, ob dasselbe Warehouse als Föderations-Engine gewählt wurde. Eine Snowflake-Quelle auf einer DuckDB-Engine legt eine Replika in DuckDB an, nicht in Snowflake.
+Die Registrierung als benannte Quelle ist unabhängig davon, dasselbe Warehouse als Föderations-Engine auszuwählen. Eine Snowflake-Quelle auf einer DuckDB-Engine legt eine Replika in DuckDB an, nicht in Snowflake.
 
-Cloud-Objekt-/Lake-Daten (Parquet-, CSV-, Iceberg-, Delta-Lake-Dateien auf S3 / GCS / R2) sind ein separater Quellentyp, der direkt angehängt wird, wenn die aktive Engine einen ATTACH-Connector für diesen Typ hat. Es wird keine Replika angelegt — die Engine scannt den Objektspeicher direkt. Anmeldedaten für diese Quellen kommen ebenfalls in `federation_hints`:
+Cloud-Objekt-/Lake-Daten (Parquet-, CSV-, Iceberg-, Delta-Lake-Dateien auf S3 / GCS / R2) sind ein separater Quelltyp, der in place anhängt, wenn die aktive Engine einen ATTACH-Connector für diesen Typ hat. Keine Replika wird angelegt — die Engine scannt den Objektspeicher direkt. Anmeldedaten für diese Quellen kommen ebenfalls in `federation_hints`:
 
 ```yaml
 sources:
@@ -399,19 +472,19 @@ sources:
 
 ---
 
-## Quellenkonfigurationsfelder
+## Quellkonfigurationsfelder
 
-Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/core/models.py` Klasse `Source`, Zeilen 138–204]
+Alle Quellen teilen sich eine gemeinsame Menge von Feldern. [tool-verified: `provisa/core/models.py` `Source`-Klasse, lines 138–204]
 
 | Feld | Erforderlich | Standard | Beschreibung |
 | ------- | ---------- | --------- | ------------- |
 | `id` | Ja | — | Eindeutiger Bezeichner; alphanumerisch mit Bindestrichen/Unterstrichen |
-| `type` | Ja | — | Quellentyp (siehe obige Tabellen) |
+| `type` | Ja | — | Quelltyp (siehe obige Tabellen) |
 | `host` | Nein | `""` | Hostname oder IP |
 | `port` | Nein | `0` | Portnummer |
 | `database` | Nein | `""` | Datenbankname |
 | `username` | Nein | `""` | Benutzername |
-| `password` | Nein | `""` | Passwort; verwenden Sie `${env:VAR}` für Secret-Auflösung |
+| `password` | Nein | `""` | Passwort; `${env:VAR}` für Secret-Auflösung verwenden |
 | `path` | Nein | `null` | Dateipfad oder Cloud-URI für dateibasierte und Objekt-/Lake-Quellen |
 | `base_url` | Nein | `null` | Basis-URL für OpenAPI-Quellen |
 | `pool_min` | Nein | `1` | Minimale Connection-Pool-Größe (REQ-052) |
@@ -420,10 +493,10 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | `pgbouncer_port` | Nein | `6432` | PgBouncer-Port (REQ-053) |
 | `cache_enabled` | Nein | `true` | API-Antwort-Caching aktivieren |
 | `cache_ttl` | Nein | `null` | Cache-TTL in Sekunden; erbt den globalen Standard, wenn null |
-| `cache_catalog` | Nein | `null` | Föderierter Katalog für API-Cache; Standard ist der eigene Katalog der Quelle |
+| `cache_catalog` | Nein | `null` | Föderierter Katalog für API-Cache; standardmäßig der eigene Katalog der Quelle |
 | `cache_schema` | Nein | `api_cache` | Schema innerhalb des Cache-Katalogs |
 | `naming_convention` | Nein | `null` | Globale Namenskonvention für diese Quelle überschreiben (REQ-194) |
-| `federation_hints` | Nein | `{}` | Sitzungseigenschaften, die an die Föderations-Engine übergeben werden, sowie erweiterte Verbindungsparameter für Warehouse-Quellen (REQ-278, REQ-281) |
+| `federation_hints` | Nein | `{}` | Sitzungseigenschaften, die an die Föderations-Engine übergeben werden, und erweiterte Verbindungsparameter für Warehouse-Quellen (REQ-278, REQ-281) |
 | `mapping` | Nein | `{}` | Typspezifische Connector-Einstellungen für NoSQL- und SaaS-Quellen (z. B. SharePoint `auth_type`, Splunk `use_token`) (REQ-251) |
 | `allowed_domains` | Nein | `[]` | Quelle auf bestimmte Domänen beschränken; leer = uneingeschränkt |
 | `description` | Nein | `""` | Menschenlesbare Beschreibung |
@@ -432,7 +505,7 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 
 ## Kafka-Quellen
 
-Kafka-Topics werden separat unter `kafka_sources` konfiguriert, verschlüsselt nach der Quellen-`id` einer registrierten `kafka`-Quelle. [tool-verified: `config/provisa.yaml` Zeilen 138–151] (REQ-147)
+Kafka-Topics werden separat unter `kafka_sources` konfiguriert, verschlüsselt nach der Quell-`id` einer registrierten `kafka`-Quelle. [tool-verified: `config/provisa.yaml` lines 138–151] (REQ-147)
 
 ```yaml
 kafka_sources:
@@ -460,14 +533,14 @@ kafka_sources:
 | `topics[].topic` | Kafka-Topic-Name |
 | `topics[].domain_id` | Domäne, zu der dieses Topic gehört |
 | `topics[].description` | Menschenlesbare Beschreibung |
-| `topics[].default_window` | Standard-Zeitfenster für fensterbasierte Abfragen (z. B. `1h`) (REQ-148) |
+| `topics[].default_window` | Standard-Zeitfenster für gefensterte Abfragen (z. B. `1h`) (REQ-148) |
 | `topics[].columns` | Spaltendefinitionen für das Topic-Schema (REQ-150) |
 
 ---
 
 ## Spaltensichtbarkeit
 
-Das Feld `visible_to` an jeder Spalte ist eine Liste von Rollen-IDs, die diese Spalte sehen können. [tool-verified: `provisa/core/models.py` Klasse `Column` Zeile 248; `config/provisa.yaml` Zeilen 39–51]
+Das Feld `visible_to` an jeder Spalte ist eine Liste von Rollen-IDs, die diese Spalte sehen können. [tool-verified: `provisa/core/models.py` `Column`-Klasse Zeile 248; `config/provisa.yaml` lines 39–51]
 
 ```yaml
 columns:
@@ -479,13 +552,13 @@ columns:
     visible_to: [admin, analyst]  # both roles see this column
 ```
 
-Spalten, die aus der `visible_to`-Liste einer Rolle ausgelassen wurden, erscheinen nicht im GraphQL-Schema dieser Rolle und können nicht abgefragt oder in Filtern referenziert werden (REQ-039).
+Spalten, die in der `visible_to`-Liste einer Rolle fehlen, erscheinen nicht im GraphQL-Schema dieser Rolle und können nicht abgefragt oder in Filtern referenziert werden (REQ-039).
 
 ---
 
 ## Beziehungen
 
-Beziehungen verbinden zwei registrierte Tabellen und erscheinen als verschachtelte Felder in GraphQL. [tool-verified: `provisa/core/models.py` Klasse `Relationship` Zeilen 323–343; `config/provisa.yaml` Zeilen 103–110] (REQ-019)
+Beziehungen verbinden zwei registrierte Tabellen und erscheinen als verschachtelte Felder in GraphQL. [tool-verified: `provisa/core/models.py` `Relationship`-Klasse lines 323–343; `config/provisa.yaml` lines 103–110] (REQ-019)
 
 ```yaml
 relationships:
@@ -502,29 +575,29 @@ relationships:
 | ------- | ---------- | ------------- |
 | `id` | Ja | Eindeutiger Bezeichner für diese Beziehung |
 | `source_table_id` | Ja | Tabelle, die den Fremdschlüssel hält |
-| `target_table_id` | Ja | Referenzierte Tabelle; leer bei berechneten Beziehungen |
+| `target_table_id` | Ja | Referenzierte Tabelle; leer für berechnete Beziehungen |
 | `source_column` | Ja | Spalte auf der Quelltabelle |
-| `target_column` | Ja | Spalte auf der Zieltabelle; leer bei berechneten Beziehungen |
+| `target_column` | Ja | Spalte auf der Zieltabelle; leer für berechnete Beziehungen |
 | `cardinality` | Ja | `many-to-one` oder `one-to-many` (REQ-019) |
-| `materialize` | Nein | Automatisch eine materialisierte Sicht für quellenübergreifende Joins erstellen (REQ-158) |
+| `materialize` | Nein | Automatisch eine materialisierte Sicht für quellübergreifende Joins erzeugen (REQ-158) |
 | `refresh_interval` | Nein | MV-Aktualisierungsintervall in Sekunden (Standard: 300) |
 | `target_function_name` | Nein | DB-Funktionsname für berechnete Beziehungen |
 | `function_arg` | Nein | Welches Funktionsargument den Quellspaltenwert erhält |
 | `alias` | Nein | Menschenlesbarer Beziehungstyp (z. B. `WORKS_FOR`) |
-| `graphql_alias` | Nein | Benennt das SDL-Feld, das diese Beziehung auf dem übergeordneten Typ offenlegt. Wenn nicht vorhanden, wird der Name aus dem `field_name` der Zieltabelle und der Beziehungskardinalität abgeleitet. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
-| `disable_cypher` | Nein | Wenn `true`, wird diese Beziehung von Cypher-Graphkanten ausgeschlossen |
-| `source_json_key` | Nein | Extrahiert diesen Schlüssel aus der Quellspalte als JSON-Objekt vor dem JOIN |
+| `graphql_alias` | Nein | Benennt das SDL-Feld, das diese Beziehung am übergeordneten Typ exponiert. Wenn abwesend, wird der Name aus dem `field_name` der Zieltabelle und der Beziehungskardinalität abgeleitet. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
+| `disable_cypher` | Nein | Wenn `true`, diese Beziehung von Cypher-Graph-Kanten ausschließen |
+| `source_json_key` | Nein | Diesen Schlüssel aus der Quellspalte als JSON-Objekt extrahieren, vor dem JOIN |
 
-Kardinalitätswerte [tool-verified: `provisa/core/models.py` `Cardinality`-Enum, Zeilen 79–81]:
+Kardinalitätswerte [tool-verified: `provisa/core/models.py` `Cardinality`-Enum, lines 79–81]:
 
-- `many-to-one` — jede Quellzeile bildet auf eine Zielzeile ab (FK auf PK)
-- `one-to-many` — jede Quellzeile bildet auf mehrere Zielzeilen ab (Umkehrung des Obigen)
+- `many-to-one` — jede Quellzeile ordnet sich einer Zielzeile zu (FK zu PK)
+- `one-to-many` — jede Quellzeile ordnet sich mehreren Zielzeilen zu (Umkehrung des obigen)
 
 ---
 
-## Row-Level-Security-Regeln
+## Regeln für Sicherheit auf Zeilenebene
 
-RLS-Regeln injizieren zum Abfragezeitpunkt `WHERE`-Klauseln, geltend für eine Rolle und optional für eine Tabelle oder Domäne. [tool-verified: `provisa/core/models.py` Klasse `RLSRule` Zeilen 391–395; `config/provisa.yaml` Zeilen 128–131] (REQ-041)
+RLS-Regeln injizieren `WHERE`-Klauseln zur Abfragezeit, geltend für eine Rolle und optional für eine Tabelle oder Domäne. [tool-verified: `provisa/core/models.py` `RLSRule`-Klasse lines 391–395; `config/provisa.yaml` lines 128–131] (REQ-041)
 
 ```yaml
 rls_rules:
@@ -538,14 +611,14 @@ rls_rules:
     filter: "tenant_id = current_setting('provisa.tenant_id')"
 ```
 
-Wenn sowohl eine Domänen-Ebene- als auch eine Tabellen-Ebene-Regel für dieselbe Rolle existieren, hat die Tabellen-Ebene-Regel Vorrang (REQ-403).
+Wenn sowohl eine domänenweite als auch eine tabellenspezifische Regel für dieselbe Rolle existieren, hat die tabellenspezifische Regel Vorrang (REQ-403).
 
 | Feld | Erforderlich | Beschreibung |
 | ------- | ---------- | ------------- |
-| `table_id` | Bedingt | Tabelle, auf die die Regel angewendet wird; schließt sich gegenseitig mit `domain_id` aus |
+| `table_id` | Bedingt | Tabelle, auf die die Regel angewendet wird; schließt sich mit `domain_id` gegenseitig aus |
 | `domain_id` | Bedingt | Domäne, auf die die Regel angewendet wird; gilt für alle Tabellen in der Domäne (REQ-402) |
 | `role_id` | Ja | Rolle, für die diese Regel gilt |
-| `filter` | Ja | SQL-Prädikat, injiziert in `WHERE`; kann Sitzungsvariablen referenzieren (REQ-041) |
+| `filter` | Ja | SQL-Prädikat, injiziert in `WHERE`; kann auf Sitzungsvariablen verweisen (REQ-041) |
 
 ---
 
@@ -553,9 +626,9 @@ Wenn sowohl eine Domänen-Ebene- als auch eine Tabellen-Ebene-Regel für dieselb
 
 ### DB-Funktionen
 
-Verfolgen Sie eine Datenbankfunktion und legen Sie sie als GraphQL-Abfrage oder -Mutation offen. [tool-verified: `provisa/core/models.py` Klasse `Function` Zeilen 423–438; `config/provisa.yaml` Zeilen 152–164] (REQ-205)
+Tracken Sie eine Datenbankfunktion und exponieren Sie sie als GraphQL-Query oder -Mutation. [tool-verified: `provisa/core/models.py` `Function`-Klasse lines 423–438; `config/provisa.yaml` lines 152–164] (REQ-205)
 
-Datenbankquellen können auch ihre gespeicherten Prozeduren und Funktionen aus dem Herstellerkatalog automatisch erkennen (`pg_proc`, `information_schema.routines` oder Herstelläquivalente), wodurch die manuelle Registrierung jeder einzelnen entfällt. Die Erkennung liest `prokind` und `provolatile`: Immutable/Stable-Funktionen registrieren sich als parametrisierte Relationen (Prozedurargumente werden zu Abfrageparametern, dieselbe Form wie OpenAPI-GET-Tabellen), und volatile Prozeduren registrieren sich als Mutationen/verfolgte Funktionen. Erkannte Routinen durchlaufen dieselbe Stage-2-Governance-Pipeline wie manuell registrierte. [tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
+Datenbankquellen können auch ihre gespeicherten Prozeduren und Funktionen automatisch aus dem Hersteller-Katalog entdecken (`pg_proc`, `information_schema.routines`, oder Hersteller-Äquivalente), wodurch die Notwendigkeit entfällt, jede einzeln von Hand zu registrieren. Discovery liest `prokind` und `provolatile`: immutable/stable Funktionen registrieren sich als parametrisierte Relationen (Prozedurargumente werden zu Abfrageparametern, dieselbe Form wie OpenAPI-GET-Tabellen), und volatile Prozeduren registrieren sich als Mutationen/getrackte Funktionen. Entdeckte Routinen durchlaufen die Stage-2-Governance identisch zu von Hand registrierten. [tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
 
 ```yaml
 functions:
@@ -591,7 +664,7 @@ functions:
 
 ### Webhooks
 
-Legen Sie einen externen HTTP-Endpunkt als GraphQL-Abfrage oder -Mutation offen. [tool-verified: `provisa/core/models.py` Klasse `Webhook` Zeilen 441–455; `config/provisa.yaml` Zeilen 166–178] (REQ-209)
+Exponieren Sie einen externen HTTP-Endpunkt als GraphQL-Query oder -Mutation. [tool-verified: `provisa/core/models.py` `Webhook`-Klasse lines 441–455; `config/provisa.yaml` lines 166–178] (REQ-209)
 
 ```yaml
 webhooks:
@@ -628,13 +701,13 @@ webhooks:
 
 ## Authentifizierung
 
-Auth wird unter dem Schlüssel `auth` konfiguriert. [tool-verified: `provisa/core/models.py` Klasse `AuthConfig` Zeilen 467–477] (REQ-120)
+Auth wird unter dem Schlüssel `auth` konfiguriert. [tool-verified: `provisa/core/models.py` `AuthConfig`-Klasse lines 467–477] (REQ-120)
 
 | Provider | Beschreibung |
 | ---------- | ------------- |
 | `none` | Keine Authentifizierung; alle Anfragen werden als `default_role` behandelt |
-| `firebase` | Firebase Authentication; erfordert `project_id` und `service_account_key` (REQ-121) |
-| `keycloak` | Keycloak-OIDC (REQ-122) |
+| `firebase` | Firebase Authentication; benötigt `project_id` und `service_account_key` (REQ-121) |
+| `keycloak` | Keycloak OIDC (REQ-122) |
 | `oauth` | Generisches OAuth 2.0 (REQ-123) |
 | `simple` | Benutzername/Passwort ohne externen Provider (REQ-124) |
 
@@ -652,27 +725,27 @@ auth:
     service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT_KEY}
 ```
 
-`assignments_source: claims` liest Rollenzuweisungen aus JWT-Claims. `assignments_source: provisa` liest sie aus Provisas eigenem Zuweisungs-Store. [tool-verified: `provisa/core/models.py` Zeile 476] (REQ-551)
+`assignments_source: claims` liest Rollenzuweisungen aus JWT-Claims. `assignments_source: provisa` liest sie aus Provisas eigenem Zuweisungsspeicher. [tool-verified: `provisa/core/models.py` line 476] (REQ-551)
 
 ---
 
-## Ausführungs-Routing
+## Ausführungsrouting
 
 **Direkte Ausführung** — Einzelquellen-RDBMS-Abfragen routen zum nativen Treiber für Latenz unter 100 ms (REQ-027). Quellen benötigen sowohl einen `SOURCE_TO_DIALECT`-Eintrag als auch einen `SOURCE_TO_CONNECTOR`-Eintrag, um diesen Pfad zu unterstützen (REQ-229).
 
-**Föderierte Ausführung** — Mehrquellen-Abfragen und Quellen ohne direkten Treiber routen über die Föderations-Engine (REQ-028). Provisa enthält eine eingebettete Föderations-Engine; verweisen Sie auf Ihren eigenen kompatiblen Cluster für Deployments in großem Maßstab (REQ-226).
+**Föderierte Ausführung** — Quellübergreifende Abfragen und Quellen ohne direkten Treiber routen durch die Föderations-Engine (REQ-028). Provisa enthält eine eingebettete Föderations-Engine; verweisen Sie für großskalige Deployments auf Ihren eigenen kompatiblen Cluster (REQ-226).
 
-**Statistiken** — Bei der Registrierung führt Provisa `ANALYZE` gegen jede veröffentlichte Tabelle aus, um den kostenbasierten Optimierer vorzubereiten (Zeilenanzahl, Null-Anteil, eindeutige Werte, Min/Max). Fehler werden protokolliert und blockieren die Registrierung nicht (REQ-275).
+**Statistiken** — Bei der Registrierung führt Provisa `ANALYZE` gegen jede veröffentlichte Tabelle aus, um den kostenbasierten Optimizer zu grundieren (Zeilenanzahlen, Null-Anteil, distinkte Werte, Min/Max). Fehler werden protokolliert und blockieren die Registrierung nicht (REQ-275).
 
 ---
 
-## Graph- und semantische Quellen
+## Graph- & Semantik-Quellen
 
 ### Neo4j
 
-Registrieren Sie eine Neo4j-Graphdatenbank als abfragbare Quelle. Data Stewards verfassen Cypher-Abfragen, die skalare Werte projizieren; Provisa cacht Ergebnisse und legt sie als GraphQL-Typen offen (REQ-295).
+Registrieren Sie eine Neo4j-Graphdatenbank als abfragbare Quelle. Data Stewards autorisieren Cypher-Abfragen, die skalare Werte projizieren; Provisa cacht Ergebnisse und exponiert sie als GraphQL-Typen (REQ-295).
 
-Cypher-Abfragen müssen Property-Accessoren in der `RETURN`-Klausel verwenden (`RETURN n.id AS id, n.name AS name`) — die Rückgabe von Node-Objekten wird bei der Registrierung abgelehnt (REQ-296).
+Cypher-Abfragen müssen Property-Accessoren in der `RETURN`-Klausel verwenden (`RETURN n.id AS id, n.name AS name`) — die Rückgabe von Node-Objekten wird zur Registrierungszeit abgelehnt (REQ-296).
 
 ```bash
 # Register via admin API (no YAML config required)
@@ -697,7 +770,7 @@ Der Preview-Endpunkt (`POST /admin/sources/neo4j/{id}/preview`) gibt Beispielzei
 
 ### SPARQL
 
-Registrieren Sie jeden SPARQL-1.1-konformen Triple-Store (Apache Jena Fuseki, Virtuoso, Stardog usw.) als abfragbare Quelle (REQ-297).
+Registrieren Sie jeden SPARQL-1.1-konformen Triplestore (Apache Jena Fuseki, Virtuoso, Stardog usw.) als abfragbare Quelle (REQ-297).
 
 Abfragen müssen `SELECT`-Abfragen sein. Variablennamen in der `SELECT`-Klausel werden automatisch zu Spaltennamen (REQ-297).
 
@@ -719,7 +792,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-Beide Connectoren verwenden die API-Quellen-Cache-Pipeline — Ergebnisse werden in PostgreSQL mit konfigurierbarer TTL gespeichert, wodurch sie für quellenübergreifende föderierte JOINs verfügbar werden (REQ-295, REQ-297, REQ-299).
+Beide Connectors nutzen die API-Quellen-Cache-Pipeline — Ergebnisse werden in PostgreSQL mit konfigurierbarer TTL gespeichert, wodurch sie für quellübergreifende föderierte JOINs verfügbar sind (REQ-295, REQ-297, REQ-299).
 
 ---
 
@@ -775,7 +848,7 @@ Beide Connectoren verwenden die API-Quellen-Cache-Pipeline — Ergebnisse werden
   password: ""
 ```
 
-### Quellenübergreifende Abfrage
+### Quellübergreifende Abfrage
 
 ```graphql
 {
@@ -794,4 +867,4 @@ Beide Connectoren verwenden die API-Quellen-Cache-Pipeline — Ergebnisse werden
 }
 ```
 
-Einzelquellen-Anteile routen direkt (REQ-027). Quellenübergreifende JOINs föderieren mit automatischer Typkonvertierung (REQ-028, REQ-552).
+Einzelquellen-Anteile routen direkt (REQ-027). Quellübergreifende JOINs föderieren mit automatischer Typkonvertierung (REQ-028, REQ-552).

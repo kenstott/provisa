@@ -37,7 +37,7 @@ trust 模式（`provider: none`，或驗證中介軟件未啟用）是例外：�
 
 **SCRAM-SHA-256。** 在 `provider: basic` 且 `auth.scram: true` 時，伺服器會公告帶 `SCRAM-SHA-256` 的 SASL（驗證代碼 10），密碼以證明方式驗證而非傳送。（REQ-1394）不提供 `SCRAM-SHA-256-PLUS`。對於尚未寫入驗證子的用戶——驗證子無法從 bcrypt 雜湊推導——伺服器會以模擬交換作答，使連線上看不出誰已遷移；該用戶會透過 TLS 上的明文密碼進行驗證，直到下次輸入密碼時寫入驗證子為止。關閉 `auth.scram` 時，伺服器使用 PG 驗證類型 3（明文密碼）。兩種情況下都不支援 MD5。
 
-**客戶端憑證。** 設定 `PROVISA_MTLS_CLIENT_CA` 後，伺服器會在交握期間、檢查任何憑證之前驗證客戶端憑證。（REQ-1228）啟用 `PROVISA_MTLS_BIND_PRINCIPAL` 時，憑證的 common name 必須與該連接隨後用於驗證的 `user` 相同。參見[設定](configuration.md#mutual-tls)。
+**客戶端憑證。** 設定 `PROVISA_MTLS_CLIENT_CA` 後，伺服器會在交握期間、檢查任何憑證之前驗證客戶端憑證。（REQ-1228）啟用 `PROVISA_MTLS_BIND_PRINCIPAL` 時，憑證的 common name 必須與該連接隨後用於驗證的 `user` 相同。參見[設定](configuration.md#tls)。
 
 **失敗嘗試會被計數。** 五分鐘內五次失敗會將帳戶鎖定十五分鐘，且該計數器與 HTTP 和 Bolt 共用——在任一介面上招致的鎖定，在所有介面上都生效。（REQ-1393）
 

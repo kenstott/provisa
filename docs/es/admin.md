@@ -22,7 +22,7 @@ Un token de acceso personal se acepta en todos los sitios donde se acepta un tok
 | `GET /auth/tokens` | Los tokens activos de quien llama en esta organización: prefijo de visualización, nombre, marcas de tiempo del ciclo de vida y el hash que identifica un token para revocarlo. Nunca una credencial utilizable |
 | `DELETE /auth/tokens/{token_hash}` | Revoca uno de los tokens de quien llama. 404 cuando no es suyo o ya está revocado |
 
-Omitir `role_id` deja que el token se resuelva al rol que tenga su propietario; nombrar uno estrecha el token por debajo de su propietario. La revocación también ocurre de forma implícita: retirar la pertenencia de un usuario a una organización revoca sus tokens para esa organización. Para la credencial en sí, consulte [Modelo de seguridad](security.md#personal-access-tokens).
+Omitir `role_id` deja que el token se resuelva al rol que tenga su propietario; nombrar uno estrecha el token por debajo de su propietario. La revocación también ocurre de forma implícita: retirar la pertenencia de un usuario a una organización revoca sus tokens para esa organización. Para la credencial en sí, consulte [Modelo de seguridad](security.md#tokens-de-acceso-personal).
 
 ## Capacidades
 
@@ -141,6 +141,27 @@ query {
   }
 }
 ```
+
+### Verificación de dependencias de columnas (REQ-1484)
+
+Antes de guardar una edición de tabla que renombra el alias SQL de una columna o elimina una
+columna, pregunte qué más la referencia:
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+Renombrar un alias rompe todo artefacto creado a partir del nombre expuesto: vistas, vistas
+materializadas, expresiones de métricas, predicados de RLS, contratos de DQ. Eliminar una columna
+rompe esos más los artefactos que almacenan el `column_name` físico: relaciones, vínculos de
+glosario, asignaciones de etiquetas. `breaksOn` indica cuáles. La página Tablas ejecuta esta
+verificación al guardar y muestra el resultado como un diálogo consultivo. Consulte
+[Linaje](lineage.md) para saber qué cubre la consulta y qué no puede cubrir.
 
 ### Gestión de Vistas
 

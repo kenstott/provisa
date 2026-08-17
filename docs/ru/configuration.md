@@ -105,6 +105,9 @@ sources:
 | `splunk` | `host`/`port` или `base_url` + `mapping` | |
 | **GovData** | | |
 | `govdata` | subject + `domain_id` | Отдельная модель `GovDataSource`; см. §GovData ниже |
+| **Контроль качества данных** | | |
+| `soda` | host/port, нацеленные на pgwire Provisa | Требует extra `soda`; Elastic License 2.0, только self-hosted (REQ-1443) |
+| `great_expectations` | host/port, нацеленные на pgwire Provisa | Требует extra `gx`; Apache 2.0 (REQ-1443) |
 
 ### Справочник типов источников
 
@@ -513,6 +516,47 @@ sources:
       disable_ssl_validation: false
 ```
 
+#### Средства контроля качества данных (soda / great_expectations)
+
+[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
+
+Источник-проверка указывает на собственный эндпоинт pgwire Provisa, так что один драйвер postgres сканирует федеративное представление таблицы, обеспеченной Snowflake или Iceberg. Идентичность сканирования декларируется, а не наследуется — политика применяется к этому соединению, и отфильтрованный набор строк не должен приводить к бесшумно проходящей проверке. Ключи соединения берутся из `mapping`: `host`, `port`, `database`, `user`, `password`.
+
+```yaml
+sources:
+  - id: dq
+    type: soda                 # or great_expectations
+    domain_id: sales-analytics
+    mapping:
+      host: localhost
+      port: 5439               # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+Каждая таблица результатов несёт `dq_contract` — контракт Soda в YAML или набор Great Expectations в JSON, дословно. Столбцы, водяной знак (watermark) и продвижения выводятся из него; полный вывод см. в [Средствах контроля качества данных](sources.md#req-1443).
+
+**Выбор на этапе установки.** Проверяющее средство не подключается статически — сканирование выполняется в дочернем интерпретаторе, и библиотека устанавливается только тогда, когда оператор её называет. Каждый путь установщика (`install.sh`, `packaging/linux/first-launch.sh` и мастер macOS через `PROVISA_DQ_CHECKER`) записывает выбор в `~/.provisa/config.yaml`:
+
+```yaml
+dq_checker: none        # none | soda | gx
+```
+
+`scripts/provisa` читает этот ключ и экспортирует `PROVISA_EXTRAS`, который `docker-compose.app.yml` передаёт как build-аргумент в `ARG PROVISA_EXTRAS` из `Dockerfile`: [tool-verified: `scripts/provisa:69-79`]
+
+| `dq_checker` | `PROVISA_EXTRAS` (уровень Docker) | Установка в нативном venv |
+| -------------- | -------------------------------- | --------------------- |
+| `none` | `firebase,vector` | `provisa[embedded]` |
+| `soda` | `firebase,vector,soda` | `provisa[embedded,soda]` |
+| `gx` | `firebase,vector,gx` | `provisa[embedded,gx]` |
+
+Установка демонстрационного набора данных повышает `none` до `gx` и сообщает об этом, поскольку демонстрационная конфигурация регистрирует набор Great Expectations поверх `pet_store.pets`, и иначе его карточке качества нечего было бы показать. Указание `soda` оставляет `soda` как есть.
+
+Обращение к демо через pip, минуя установщик, пропускает этот шаг мастера, поэтому extra `demo` несёт то же проверяющее средство: `pip install 'provisa[embedded,demo]'` — это то, что нужно `provisa run --demo` для запуска своего сканирования. Без этого сканирование сообщает `data-quality checker 'great_expectations' is not installed`, называя команду установки.
+
+Любое другое значение останавливает запуск вместо старта без проверяющего средства, которое запросил оператор. Extra `soda` подтягивает `soda-postgres`; `gx` подтягивает `great-expectations[postgresql]`. Soda Core распространяется по Elastic License 2.0 — `config/capabilities.yaml` помечает опцию как `cloud_eligible: false`, и облачная плоскость (hosted plane) отклоняет её.
+
 ## Домены
 
 ```yaml
@@ -908,7 +952,7 @@ auth:
 
 ### Персональные токены доступа
 
-PAT не требуют блока конфигурации — они принимаются всегда, а хранилище создаётся вместе с остальной схемой управляющего слоя. (REQ-1263) Настраивается срок действия, который пользователь может запросить при выпуске: от 1 до 366 дней либо без срока для бессрочного токена. См. [Модель безопасности](security.md#personal-access-tokens).
+PAT не требуют блока конфигурации — они принимаются всегда, а хранилище создаётся вместе с остальной схемой управляющего слоя. (REQ-1263) Настраивается срок действия, который пользователь может запросить при выпуске: от 1 до 366 дней либо без срока для бессрочного токена. См. [Модель безопасности](security.md#_16).
 
 ### Взаимный TLS
 
@@ -1163,7 +1207,7 @@ Provisa выбирает OTLP/HTTP или OTLP/gRPC на основе схемы
 | Ключ движка | Метка | Диалект | MPP | Механизм внешней связи | Аутентификация |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
 | `trino` | Provisa Federation Engine | Trino SQL | Да | Каталоги Trino (широкий набор коннекторов) | Учётные данные JDBC |
-| `trino-byo` | Trino (bring-your-own) | Trino SQL | Да | То же, что и `trino`; неуправляемый координатор | Учётные данные JDBC |
+| `trino-byo` | Trino | Trino SQL | Да | То же, что и `trino`; неуправляемый координатор | Учётные данные JDBC |
 | `pg` | PostgreSQL | PostgreSQL | Нет | FDW / pg_duckdb | Учётные данные PostgreSQL |
 | `duckdb` | DuckDB | DuckDB | Нет | Нативный ATTACH расширения | Нет (в процессе) |
 | `clickhouse` | ClickHouse (встроенный) | ClickHouse | Да | Табличные движки S3 / IcebergS3 / DeltaLake | chdb (в процессе, без аутентификации) |
@@ -1173,7 +1217,27 @@ Provisa выбирает OTLP/HTTP или OTLP/gRPC на основе схемы
 | `bigquery` | BigQuery | BigQuery | Да | Внешние / BigLake таблицы BigQuery | `GOOGLE_APPLICATION_CREDENTIALS` |
 | `fabric` | Microsoft Fabric | T-SQL | Да | Ярлыки OneLake → OPENROWSET | Azure AD (`az login` или управляемая идентичность) |
 | `synapse` | Azure Synapse | T-SQL | Да | ADLS OPENROWSET / внешние таблицы | Azure AD |
-| `sqlalchemy` | SQLAlchemy (любая РСУБД) | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `mysql` | MySQL | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `mariadb` | MariaDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `oracle` | Oracle Database | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `mssql` | Microsoft SQL Server | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `db2` | IBM Db2 | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `redshift` | Amazon Redshift | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `greenplum` | Greenplum | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `cockroachdb` | CockroachDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `yugabytedb` | YugabyteDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `opengauss` | openGauss | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `tidb` | TiDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `singlestore` | SingleStore | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `vertica` | Vertica | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `exasol` | Exasol | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `teradata` | Teradata Vantage | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `saphana` | SAP HANA | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `sapase` | SAP ASE (Sybase) | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `sqlanywhere` | SAP SQL Anywhere | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `monetdb` | MonetDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `firebird` | Firebird | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `sqlalchemy` | Другая реляционная база данных (по URL соединения) | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
 
 ### Справочник движков
 
@@ -1271,13 +1335,13 @@ PROVISA_ENGINE=synapse
 
 Хранилище материализации по умолчанию — `TENANT_DATABASE_URL`.
 
-#### sqlalchemy
+#### Движки реляционных баз данных (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) и `sqlalchemy`
 
-Общий движок РСУБД только для загрузки (без федерации к внешним источникам). Используйте для развёртываний с единым хранилищем или для тестирования.
+По одному ключу на каждую доступную по сети реляционную базу данных, все — на одном и том же режиме исполнения только-загрузка (без федерации к внешним источникам): каждый источник загружается в хранилище и опрашивается там же. Ключ выбирает базу данных; `PROVISA_ENGINE_URL` несёт DSN, который принимает её диалект. `sqlalchemy` — универсальный вариант для базы данных без собственного ключа. Встроенные файловые хранилища (SQLite, Access) не предлагаются — сервер должен быть доступен по сети.
 
 ```bash
-PROVISA_ENGINE=sqlalchemy
-PROVISA_ENGINE_URL="postgresql+psycopg2://user:pass@host/db"
+PROVISA_ENGINE=mysql
+PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
 
 Хранилище материализации по умолчанию — `TENANT_DATABASE_URL`.
@@ -1342,7 +1406,7 @@ sources:
 | `PG_DATABASE` | `provisa` | База данных PostgreSQL |
 | `PG_USER` | `provisa` | Пользователь PostgreSQL |
 | `PG_PASSWORD` | `provisa` | Пароль PostgreSQL |
-| `PROVISA_ENGINE` | `duckdb` | Ключ движка федерации (REQ-989) |
+| `PROVISA_ENGINE` | `duckdb` | Ключ движка федерации (REQ-989, REQ-916) |
 | `PROVISA_ENGINE_URL` | — | URL соединения для движков, управляемых URL (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
 | `PROVISA_MATERIALIZE_URL` | — | Переопределяет DSN хранилища материализации (по умолчанию — заявленное значение движка) |
 | `PROVISA_DATA_DIR` | `~/.provisa` | Каталог данных для встроенного хранилища DuckDB (REQ-989) |
@@ -1373,6 +1437,8 @@ sources:
 | `PROVISA_MTLS_MODE` | `required`, как только задан УЦ | `required` или `optional`; любое другое значение приводит к отказу от запуска (REQ-1228) |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Требует, чтобы common name сертификата совпадал с аутентифицирующимся именем пользователя (REQ-1228) |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Разделённый запятыми список сайтов, которым разрешено открывать Bolt-WebSocket из браузера; если не задана, отклоняется любой браузерный origin (REQ-802) |
+| `PROVISA_EXTRAS` | `firebase,vector` | Extras Pyproject, запечённые в образ приложения; `scripts/provisa` выводит его из `dq_checker` в `~/.provisa/config.yaml` (REQ-1443) |
+| `PROVISA_DQ_CHECKER` | `none` | Только для установщика: `none`/`soda`/`gx`, читается `first-launch.sh` в неинтерактивном режиме и записывается в `config.yaml` как `dq_checker` (REQ-1443) |
 | `ANTHROPIC_API_KEY` | — | API-ключ Claude (обнаружение) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Переопределяет `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Переопределяет `observability.service_name` |

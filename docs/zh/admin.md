@@ -22,7 +22,7 @@ Authorization: Bearer <token>
 | `GET /auth/tokens` | 调用者在本组织中的有效令牌——显示前缀、名称、生命周期时间戳，以及用于吊销的令牌标识哈希。绝不返回可用凭据 |
 | `DELETE /auth/tokens/{token_hash}` | 吊销调用者的某个令牌。若不属于调用者或已被吊销则返回 404 |
 
-省略 `role_id` 时，令牌解析为其所有者持有的角色；指定角色则把令牌收窄到低于其所有者。吊销也会隐式发生：移除用户在某组织中的成员资格会吊销其针对该组织的所有令牌。凭据本身参见[安全模型](security.md#personal-access-tokens)。
+省略 `role_id` 时，令牌解析为其所有者持有的角色；指定角色则把令牌收窄到低于其所有者。吊销也会隐式发生：移除用户在某组织中的成员资格会吊销其针对该组织的所有令牌。凭据本身参见[安全模型](security.md#_17)。
 
 ## 功能
 
@@ -141,6 +141,21 @@ query {
   }
 }
 ```
+
+### 列依赖检查（REQ-1484）
+
+在保存会重命名某列的 SQL 别名或删除某列的表编辑之前，先查询还有哪些内容引用了它：
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+重命名别名会破坏所有针对暴露名称编写的构件——视图、MV、指标表达式、RLS 谓词、DQ 合约。删除列除了破坏这些之外，还会破坏存储物理 `column_name` 的构件：关系、术语表绑定、标签分配。`breaksOn` 会说明是哪一种。Tables 页面会在保存时运行该查询，并以提示对话框展示结果。查询覆盖的范围及其局限性参见[血缘](lineage.md)。
 
 ### 视图管理
 

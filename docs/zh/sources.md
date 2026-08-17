@@ -253,6 +253,79 @@ sources:
 | `domain_id` | 是 | — | 该数据源所属的域 |
 | `description` | 否 | `""` | 人类可读的描述 |
 
+### 数据质量检查器（REQ-1443）
+
+数据质量检查器是一种数据源类型，而不是一个子系统。它的扫描输出就是数据：一个检查结果就是一次观测，因此它会经由普通的数据源路径落地，并从其他任何数据源那里继承节奏、新鲜度、事件、血缘、治理、RLS、表格和导出。[tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
+
+支持两种，选择既是许可证的选择，也是特性的选择。
+
+| 数据源类型 | 合约方言 | Extra | 许可证 | 托管云平面 |
+| ------------ | ----------------- | ------- | --------- | -------------------- |
+| `soda` | Soda contract YAML | `pip install .[soda]`（`soda-postgres`） | Elastic License 2.0 | 拒绝——见下文 |
+| `great_expectations` | Expectation suite JSON | `pip install .[gx]`（`great-expectations[postgresql]`） | Apache 2.0 | 允许 |
+
+Elastic License 2.0 禁止将该软件以托管或托管式服务的形式提供给第三方，而在 SaaS 平面内代租户运行 Soda 恰恰属于这种情形。`config/capabilities.yaml` 用 `soda` 选项上的 `cloud_eligible: false` 承载了这一区分，托管平面读取该标志。想要使用 Soda 的托管部署会连接运营方自行运行的 Soda 端点。[tool-verified: `config/capabilities.yaml` lines 197–203]
+
+Provisa 不 vendor 也不链接任何东西。扫描运行在一个子解释器中（`python -m provisa.dq.worker`），这是唯一导入 `soda_core` 或 `great_expectations` 的地方，因此一个仅 source-available 的检查器永远不会进入服务器进程，检查器崩溃只会杀死一个子进程，而不会杀死事件循环。[tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
+
+**该数据源指向 Provisa 自身的 pgwire 终结点。** 这正是一个 postgres 驱动能够检查 Snowflake 或 Iceberg 支撑的表的原因：检查器扫描的是联邦视图，而非底层系统。由于策略适用于该连接，扫描身份是显式声明的，而非继承而来——一个被过滤掉的行集绝不能悄无声息地产生一个通过的检查。
+
+```yaml
+sources:
+
+  - id: dq
+    type: soda
+    domain_id: sales-analytics
+    description: Soda contract scans over the governed estate
+    mapping:
+      host: localhost
+      port: 5439          # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner    # the scan identity, declared explicitly
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+**每个合约对应一张结果表，合约本身就是全部的注册内容。** 该表携带 `dq_contract`——原样保留的合约文本——除此之外不携带任何关于其形状的信息。列、水位和提升字段全部是派生出来的。[tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
+
+```yaml
+tables:
+
+  - source_id: dq
+    schema_name: quality
+    table_name: orders_scan
+    domain_id: sales-analytics
+    change_signal: ttl_probe
+    cache_ttl: 3600
+    columns:
+      - name: scan_id          # declared only to carry visible_to; replaced at parse
+        visible_to: [analyst, admin]
+    dq_contract: |
+      dataset: provisa/sales/orders
+      columns:
+        - name: customer_id
+          checks:
+            - missing:
+                threshold:
+                  metric: percent
+                  must_be_less_than: 1
+      checks:
+        - row_count:
+            must_be_greater_than: 0
+```
+
+注册过程从这段文本派生出的内容：
+
+- **血缘。** 合约本身已经命名了其目标数据集，因此注册过程会像 `extract_inputs` 解析 SQL 那样解析它（REQ-939），并将其解析到受治理的表。只有一份定义，没有可能漂移的第二份副本。若合约命名了一个未受治理的数据集，会在注册时立即失败，而不会落地任何无人请求过的行。
+- **列。** 结果信封是检查器自己的，而非运维方定义的——从 `scan_id` 到 `diagnostics` 共 16 个内置列。已声明的列仅其 `visible_to` 会被读取（必须一致），随后会被替换。[tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
+- **水位。** `scan_time` 成为水位，这使得落地成为一次追加（REQ-982）。扫描历史得以累积，无需任何历史子系统。
+- **提升字段。** `freshness_max_timestamp` 和 `dataset_rows_tested` 会从 `diagnostics` jsonb 中作为类型化列被提升出来（REQ-119）。可以像在任何其他 jsonb 列上那样添加更多。[tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
+
+时机不会引入任何新字段。`change_signal` 加上 `cache_ttl` 给出轮询节奏；`mv_debounce_quiet` 和 `mv_debounce_max_delay` 把上游的一次突发收拢为一次扫描（REQ-963）；日历粒度使其成为周期性的（REQ-962）；`expected_events` 会让扫描等到其输入在窗口内变得新鲜为止（REQ-961）。轮询循环就是扫描调度器。
+
+`outcome` 取值之一为 `pass`、`fail`、`warn`、`error`、`skipped`。它们都不是裁定结果——如果需要强制执行，那是稍后另行声明的事情：一个 preflight，或是一个针对已落地结果的 MV。由于一次已落地的观测不携带任何确定性义务（REQ-964），这里可以接受一些永远无法出现在 preflight 门控上的非确定性检查——异常分数、滚动窗口变化、相对当前时间的新鲜度。
+
+合约在 UI 中编写，位于表编辑界面的数据质量面板中，那里的原始合约文本永远是唯一真相来源。试运行会针对实时表执行该合约，并展示结果而不落地——这正是你发现某个合约的数据集名称解析到了意料之外的地方、否则只会落地一堆全部通过的行的方式。
+
 ---
 
 ## 自定义连接器（REQ-1177）

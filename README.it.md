@@ -102,7 +102,7 @@ Questi sono i protocolli di connessione. SQL, GraphQL e Cypher vi transitano sop
 
 ### Origini dati
 
-- **46 tipi di origine** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestore SPARQL, Kafka, Google Sheets e altre tramite un'unica API; le origini grafo e RDF sono di prima classe, non adattatori
+- **52 tipi di origine** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestore SPARQL, Kafka, Google Sheets e altre tramite un'unica API; le origini grafo e RDF sono di prima classe, non adattatori
 - **Routing intelligente** — Le query su singola origine bypassano la federazione (sub-100ms); le query multi-origine vengono instradate attraverso il layer di federazione — porta il tuo cluster o usa i worker integrati
 - **Origini API** — Registra endpoint REST, GraphQL, gRPC, WebSocket o RSS come tabelle interrogabili; helper SPARQL inclusi; i join federati tra origini API e origini relazionali funzionano in modo trasparente
 - **Introspezione degli schemi remoti** — Punta a qualsiasi endpoint GraphQL, OpenAPI o gRPC; le operazioni documentate vengono automaticamente esposte come tabelle interrogabili, nodi e archi del grafo con governance completa applicata sopra

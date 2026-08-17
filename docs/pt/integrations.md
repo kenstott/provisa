@@ -58,7 +58,7 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 O campo `password` do pacote de inicialização carrega a credencial, e *o que* a credencial é determina o método: um token de acesso pessoal, um token bearer OIDC ou uma senha contra o provedor configurado. Sob o provedor `basic` com `auth.scram: true`, a senha é provada por SCRAM-SHA-256 em vez de enviada. Certificados de cliente são suportados. No modo trust (`none`), o nome de usuário mapeia diretamente para uma função e a senha é ignorada.
 
-A tabela completa de interface × método está no [Modelo de segurança](security.md#surfaces-and-credentials). MD5 não é suportado; habilite TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) ao rodar sobre uma rede não confiável.
+A tabela completa de interface × método está no [Modelo de segurança](security.md#superficies-e-credenciais). MD5 não é suportado; habilite TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) ao rodar sobre uma rede não confiável.
 
 ### Limitações
 
@@ -144,7 +144,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-O Flight carrega sua credencial no payload JSON, como um campo `token` — um token bearer do provedor ou um token de acesso pessoal. Tanto o handshake quanto cada ticket o aceitam, e ambos o validam do mesmo modo, então um cliente que se autenticou no handshake ainda apresenta o token em cada `do_get`. Um campo `role` ao lado *solicita* uma função; o servidor deriva as funções permitidas da identidade e substitui pelo valor autorizado, de modo que uma string de função em um ticket nunca é a identidade. (REQ-1263) Veja [Modelo de segurança](security.md#surfaces-and-credentials).
+O Flight carrega sua credencial no payload JSON, como um campo `token` — um token bearer do provedor ou um token de acesso pessoal. Tanto o handshake quanto cada ticket o aceitam, e ambos o validam do mesmo modo, então um cliente que se autenticou no handshake ainda apresenta o token em cada `do_get`. Um campo `role` ao lado *solicita* uma função; o servidor deriva as funções permitidas da identidade e substitui pelo valor autorizado, de modo que uma string de função em um ticket nunca é a identidade. (REQ-1263) Veja [Modelo de segurança](security.md#superficies-e-credenciais).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -203,7 +203,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 Use `grpc_server_reflection` para descobrir o esquema programaticamente.
 
-Todo RPC deve carregar uma credencial na chave de metadados `authorization` — um token do provedor ou um token de acesso pessoal. `x-provisa-role` solicita uma função do conjunto permitido da identidade; não é uma credencial e nunca foi. Certificados de cliente são suportados. Veja [Modelo de segurança](security.md#surfaces-and-credentials).
+Todo RPC deve carregar uma credencial na chave de metadados `authorization` — um token do provedor ou um token de acesso pessoal. `x-provisa-role` solicita uma função do conjunto permitido da identidade; não é uma credencial e nunca foi. Certificados de cliente são suportados. Veja [Modelo de segurança](security.md#superficies-e-credenciais).
 
 Consultas em streaming emitem uma mensagem por linha; mutações são unárias.
 
@@ -282,6 +282,27 @@ Veja [docs/import.md](import.md) para migração do Hasura para o Provisa.
 ## Kafka
 
 Veja [docs/sources.md](sources.md#fontes-kafka) para configuração de tópico Kafka como tabelas somente leitura e sinks de resultado de consulta.
+
+---
+
+## Verificadores de Qualidade de Dados (REQ-1443)
+
+Soda Core e Great Expectations se conectam ao Provisa da mesma forma que qualquer outro cliente postgres — através do pgwire. Essa é toda a integração: o verificador mantém um driver postgres e varre a exibição federada, de modo que uma tabela Snowflake, uma tabela Iceberg e uma coleção Mongo são todas verificadas pelo mesmo dialeto de contrato, sem verificador por sistema. [tool-verified: `provisa/events/source_loader.py` `make_dq_loader`]
+
+A varredura roda em um interpretador filho — `python -m provisa.dq.worker` — que é o único lugar onde `soda_core` ou `great_expectations` é importado. Nada é vinculado ao processo do servidor, e uma falha do verificador derruba um subprocesso em vez do loop de eventos. [tool-verified: `provisa/dq/runner.py` `build_command`]
+
+Os resultados da varredura chegam como linhas de fonte comuns, então cadência, atualidade, eventos, linhagem, governança, RLS, a grade e exportação se aplicam todos sem um segundo mecanismo. A autoria de contrato, o envelope de resultado e o registro derivado são cobertos em [docs/sources.md](sources.md#verificadores-de-qualidade-de-dados-req-1443).
+
+### Instalando um verificador
+
+Nenhuma das bibliotecas vem instalada por padrão. O instalador pergunta qual você quer, e a resposta se torna `dq_checker: none|soda|gx` em `~/.provisa/config.yaml`. No nível Docker, `scripts/provisa` transforma isso no argumento de build `PROVISA_EXTRAS`; no nível nativo, `first-launch.sh` instala o extra pyproject correspondente no venv. [tool-verified: `scripts/provisa:69-79`, `packaging/linux/first-launch.sh` `_native_extras`]
+
+| `dq_checker` | Biblioteca | Licença | Plano cloud hospedado |
+| -------------- | --------- | --------- | -------------------- |
+| `soda` | `soda-postgres` | Elastic License 2.0 | Recusado (`cloud_eligible: false`) |
+| `gx` | `great-expectations[postgresql]` | Apache 2.0 | Permitido |
+
+O Elastic License 2.0 proíbe fornecer o software a terceiros como um serviço hospedado, que é o que rodar o Soda dentro do plano SaaS em nome de um locatário seria. Uma implantação hospedada que deseja Soda aponta para um endpoint Soda que o operador roda por conta própria. Veja [docs/configuration.md](configuration.md#verificadores-de-qualidade-de-dados-soda-great_expectations) para as chaves de conexão.
 
 ---
 

@@ -58,7 +58,7 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 启动包的 `password` 字段承载凭据，而凭据*是什么*决定了采用哪种方法：个人访问令牌、OIDC bearer 令牌，或是针对已配置提供程序的密码。在 `basic` 提供程序且 `auth.scram: true` 之下，密码通过 SCRAM-SHA-256 加以证明，而非发送。支持客户端证书。在信任模式（`none`）下，用户名直接映射到角色，密码被忽略。
 
-完整的接口 × 方法对照表见[安全模型](security.md#surfaces-and-credentials)。不支持 MD5；在不受信任的网络上运行时，请启用 TLS（`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`）。
+完整的接口 × 方法对照表见[安全模型](security.md#_16)。不支持 MD5；在不受信任的网络上运行时，请启用 TLS（`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`）。
 
 ### 限制
 
@@ -144,7 +144,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight 在 JSON 负载中以 `token` 字段承载凭据——可以是提供程序 bearer 令牌或个人访问令牌。握手与每个票据都接受它，且两者的校验方式相同，因此在握手时已完成认证的客户端在每次 `do_get` 时仍需出示该令牌。与之并列的 `role` 字段是*请求*一个角色；服务器会推导该身份获准的角色集合并替换为已授权的取值，因此票据中的角色字符串绝不是身份本身。(REQ-1263) 参见[安全模型](security.md#surfaces-and-credentials)。
+Flight 在 JSON 负载中以 `token` 字段承载凭据——可以是提供程序 bearer 令牌或个人访问令牌。握手与每个票据都接受它，且两者的校验方式相同，因此在握手时已完成认证的客户端在每次 `do_get` 时仍需出示该令牌。与之并列的 `role` 字段是*请求*一个角色；服务器会推导该身份获准的角色集合并替换为已授权的取值，因此票据中的角色字符串绝不是身份本身。(REQ-1263) 参见[安全模型](security.md#_16)。
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -203,7 +203,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 使用 `grpc_server_reflection` 以编程方式发现架构。
 
-每次 RPC 都必须在 `authorization` 元数据键中携带凭据——提供程序令牌或个人访问令牌。`x-provisa-role` 是从该身份获准的集合中请求一个角色；它不是凭据，而且从来都不是。支持客户端证书。参见[安全模型](security.md#surfaces-and-credentials)。
+每次 RPC 都必须在 `authorization` 元数据键中携带凭据——提供程序令牌或个人访问令牌。`x-provisa-role` 是从该身份获准的集合中请求一个角色；它不是凭据，而且从来都不是。支持客户端证书。参见[安全模型](security.md#_16)。
 
 流式查询会逐行发出消息；变更操作（mutation）则为一元操作。
 
@@ -282,6 +282,27 @@ Provisa 会响应 `_entities` 查询，以进行跨子图连接。任何具有�
 ## Kafka
 
 有关将 Kafka 主题配置为只读表及查询结果接收端，请参阅 [docs/sources.md](sources.md#kafka)。
+
+---
+
+## 数据质量检查器（REQ-1443）
+
+Soda Core 和 Great Expectations 连接 Provisa 的方式与任何其他 postgres 客户端相同——通过 pgwire。这就是全部的集成方式：检查器只持有一个 postgres 驱动，并扫描联邦视图，因此 Snowflake 表、Iceberg 表和 Mongo 集合都由同一种合约方言检查，无需针对每个系统单独编写检查器。[tool-verified: `provisa/events/source_loader.py` `make_dq_loader`]
+
+扫描运行在一个子解释器中——`python -m provisa.dq.worker`——这是唯一导入 `soda_core` 或 `great_expectations` 的地方。两者都不会链接进服务器进程，检查器崩溃只会拖垮一个子进程，而不会拖垮事件循环。[tool-verified: `provisa/dq/runner.py` `build_command`]
+
+扫描结果落地为普通的数据源行，因此节奏、新鲜度、事件、血缘、治理、RLS、表格和导出全部无需第二套机制即可适用。合约编写、结果信封和派生注册在 [docs/sources.md](sources.md#req-1443) 中有说明。
+
+### 安装检查器
+
+两个库默认都不随附。安装程序会询问你想要哪一个，答案会成为 `~/.provisa/config.yaml` 中的 `dq_checker: none|soda|gx`。在 Docker 层，`scripts/provisa` 会把它转换为 `PROVISA_EXTRAS` 构建参数；在原生层，`first-launch.sh` 会把对应的 pyproject extra 安装进 venv。[tool-verified: `scripts/provisa:69-79`, `packaging/linux/first-launch.sh` `_native_extras`]
+
+| `dq_checker` | 库 | 许可证 | 托管云平面 |
+| -------------- | --------- | --------- | -------------------- |
+| `soda` | `soda-postgres` | Elastic License 2.0 | 拒绝（`cloud_eligible: false`） |
+| `gx` | `great-expectations[postgresql]` | Apache 2.0 | 允许 |
+
+Elastic License 2.0 禁止将该软件以托管服务的形式提供给第三方，而在 SaaS 平面内代租户运行 Soda 恰恰就是这种情形。想要使用 Soda 的托管部署应指向运营方自行运行的 Soda 端点。连接密钥参见 [docs/configuration.md](configuration.md#soda-great_expectations)。
 
 ---
 

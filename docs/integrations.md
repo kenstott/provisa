@@ -302,7 +302,7 @@ Neither library ships by default. The installer asks which one you want, and the
 | `soda` | `soda-postgres` | Elastic License 2.0 | Refused (`cloud_eligible: false`) |
 | `gx` | `great-expectations[postgresql]` | Apache 2.0 | Allowed |
 
-Elastic License 2.0 bars providing the software to third parties as a hosted service, which is what running Soda inside the SaaS plane on a tenant's behalf would be. A hosted deployment that wants Soda points at a Soda endpoint the operator runs themselves. See [docs/configuration.md](configuration.md#data-quality-checkers-soda--great_expectations) for the connection keys.
+Elastic License 2.0 bars providing the software to third parties as a hosted service, which is what running Soda inside the SaaS plane on a tenant's behalf would be. A hosted deployment that wants Soda points at a Soda endpoint the operator runs themselves. See [docs/configuration.md](configuration.md#data-quality-checkers-soda-great_expectations) for the connection keys.
 
 ---
 

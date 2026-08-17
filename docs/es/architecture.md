@@ -170,7 +170,7 @@ La redirección CTAS usa un conector Iceberg (catálogo `results`) respaldado po
 
 ## Motores de federación
 
-Provisa selecciona un motor de federación en el arranque mediante la variable de entorno `PROVISA_ENGINE`, la configuración persistida de la UI de administración, o el valor predeterminado. Cuando no se configura nada, DuckDB es el predeterminado: totalmente en proceso, sin servicio externo (REQ-989). Consulte [Configuración](configuration.md#federation-engine) para conocer los detalles de selección.
+Provisa selecciona un motor de federación en el arranque mediante la variable de entorno `PROVISA_ENGINE`, la configuración persistida de la UI de administración, o el valor predeterminado. Cuando no se configura nada, DuckDB es el predeterminado: totalmente en proceso, sin servicio externo (REQ-989). Consulte [Configuración](configuration.md#motor-de-federacion) para conocer los detalles de selección.
 
 Cada motor es una instancia de `FederationEngine` definida en `provisa/federation/engine.py`. La instancia posee una colección de conectores que determina qué tipos de origen puede leer el motor en vivo (ATTACH) frente a cuáles deben aterrizar primero en el almacén de materialización del motor. [tool-verified: `engine.py` `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`]
 
@@ -455,6 +455,40 @@ La API GraphQL de administración de Strawberry está montada en `/admin/graphql
 | View management | Register and manage materialized view definitions |
 
 (REQ-164, REQ-165, REQ-166, REQ-167)
+
+## Configuración de modelos de IA
+
+`GET /admin/ai-models` y `PUT /admin/ai-models` configuran el pipeline de LLM para cada organización. (REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349)
+
+La configuración tiene **alcance de organización**: las elecciones de cada organización se superponen a la configuración del despliegue y surten efecto en la siguiente solicitud, sin necesidad de reiniciar. (REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
+
+**Asignaciones de modelo por operación.** Cinco operaciones de lenguaje natural (NL) tienen cada una un proveedor y una cadena de modelo configurables:
+
+| Operation | What it drives |
+| --------- | -------------- |
+| `table_description` | Descripciones de tabla generadas por LLM |
+| `column_description` | Descripciones de columna generadas por LLM |
+| `relationship_inference` | Descubrimiento de candidatos de clave foránea |
+| `sql_generation` | Generación de NL → SQL |
+| `table_selection` | Elección de qué tablas incluir en el prompt de NL |
+
+El campo de proveedor acepta cualquier proveedor compatible con `aisuite` (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, entre otros) o un endpoint local (`ollama`, `lmstudio`). Una cadena de modelo en blanco elimina la anulación de la organización y revierte al valor predeterminado del despliegue. [tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
+
+**Límite de tasa de NL.** Un tope opcional de solicitudes por período aplicado por rol. Las solicitudes que exceden el límite devuelven `429` con `Retry-After`. [tool-verified: `provisa-ui/src/components/admin/AiModelsTab.tsx:306-313`]
+
+**Registro de modelos vectoriales.** Una lista de modelos de embedding (campos: `id`, `provider`, `dimensions`, opcionalmente `api_key_env` y `base_url`, indicador `enabled`). Reemplazo de lista completa: cada entrada debe tener `id`, `provider` y `dimensions`, o la escritura se rechaza con `400`. [tool-verified: `provisa/api/admin/ai_models_router.py:122-131`]
+
+**Claves de API.** Las claves de API de LLM por proveedor se almacenan cifradas mediante `provisa.core.org_secrets` (véase más abajo). La respuesta de `GET` solo informa si hay una clave configurada para cada proveedor; el valor nunca se devuelve. Enviar una cadena en blanco para un proveedor borra esa clave, revirtiendo las llamadas LLM de ese proveedor a la credencial de variable de entorno del despliegue. (REQ-1395, REQ-1398) [tool-verified: `provisa/api/admin/ai_models_router.py:76-78`, `provisa/api/admin/ai_models_router.py:149-165`]
+
+## Secretos cifrados por organización
+
+`provisa/core/org_secrets.py` almacena credenciales que nunca deben aparecer en texto plano en la base de datos. Actualmente restringido a las claves de API de proveedores de LLM (`{vendor}_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
+
+Los valores se cifran mediante el `encryption_service` a nivel de proceso de `provisa.encryption.runtime`, el mismo mecanismo que `api_sources.auth`. [tool-verified: `provisa/core/org_secrets.py:16-17`]
+
+Se admiten doce proveedores compatibles con `aisuite`: `anthropic`, `openai`, `cohere`, `groq`, `mistral`, `xai`, `deepseek`, `together`, `fireworks`, `nebius`, `sambanova` e `inception`. Google, AWS y Azure quedan excluidos porque requieren configuración más allá de una simple clave de API (IDs de proyecto, roles de IAM, región). Los proveedores de endpoint local (`ollama`, `lmstudio`) no tienen clave y quedan excluidos por la misma razón. [tool-verified: `provisa/core/org_secrets.py:33-53`]
+
+Pasar `value=None` a `write_org_secret` elimina la fila. Los llamadores que leen un secreto lo consumen de inmediato (p. ej., para construir un cliente LLM) y no deben reflejarlo en ninguna respuesta de la API. [tool-verified: `provisa/core/org_secrets.py:97-117`]
 
 ## Endpoints REST y JSON:API autogenerados
 

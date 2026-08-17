@@ -181,6 +181,52 @@ A resposta tem o mesmo formato do grafo de declaração, com um campo `cycles` a
 }
 ```
 
+## O que uma renomeação ou remoção de coluna quebraria (REQ-1484)
+
+Uma coluna carrega dois nomes, e cada um é armazenado por um conjunto diferente de artefatos.
+
+O **nome exposto** é o que as superfícies SQL e GraphQL mostram: `table_columns.alias`, recaindo
+para o padrão snake_case quando nenhum alias está definido [tool-verified: `computed_sql_alias` at
+`schema_helpers.py:317`]. Views, views materializadas, expressões de métrica, predicados RLS,
+contratos DQ, grãos de metric-view e chaves de linha de MV são todos definidos contra esse nome,
+então **renomear um alias os quebra tão certamente quanto excluir a coluna**.
+
+O **nome físico** é `table_columns.column_name`, a identidade que sobrevive à substituição
+completa de colunas do upsert de tabela. Relacionamentos, vínculos de glossário, atribuições de
+tag, a coluna de watermark e os presets de coluna armazenam este, então eles só quebram quando a
+coluna é **removida**.
+
+`columnDependents` reporta ambos. Views e MVs a jusante vêm de fatiar o grafo de federação no nome
+exposto da coluna; os artefatos que esse grafo não cobre vêm de uma varredura direta do registro
+[tool-verified: `graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
+`provisa/api/admin/column_dependents.py`].
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+`breaksOn` é `rename` para uma referência de nome exposto e `remove` para uma de nome físico, então
+quem chama consegue identificar qual metade da edição cada artefato está reagindo.
+
+Faça essa pergunta **antes** de salvar. Uma coluna renomeada é localizada pelo nome exposto que
+ainda carrega no registro; uma vez que o alias foi aplicado, o nome antigo se foi e a consulta não
+encontra nada.
+
+A página Tables roda a consulta automaticamente quando uma edição pendente muda um alias ou reduz
+o conjunto de colunas, e lista o que encontra [tool-verified: `diffEditedColumns` in
+`provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]. O aviso é consultivo:
+nomeia os artefatos afetados e o administrador decide. Ele não bloqueia o salvamento, porque nem
+todos os consumidores do estado podem ser alcançados — um dashboard externo ou uma aplicação
+cliente que consulta a coluna pelo nome está além do conhecimento do registro. Pela mesma razão,
+varreduras sobre texto SQL livre casam a coluna como um token identificador em vez de resolver
+escopo, o que pode nomear um artefato que acaba não usando a coluna. Superestimar é a direção
+segura para um aviso.
+
 ## Usando lineage para governar contratos de command
 
 Como o fechamento de contaminação conecta toda coluna de entrada declarada a toda coluna de saída

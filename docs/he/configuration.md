@@ -105,6 +105,9 @@ sources:
 | `splunk` | `host`/`port` או `base_url` + `mapping` | |
 | **GovData** | | |
 | `govdata` | subject + `domain_id` | מודל `GovDataSource` נפרד; ראו §GovData למטה |
+| **Data Quality** | | |
+| `soda` | host/port המכוונים ל-pgwire של Provisa | דורש את התוסף `soda`; Elastic License 2.0, אירוח עצמי בלבד (REQ-1443) |
+| `great_expectations` | host/port המכוונים ל-pgwire של Provisa | דורש את התוסף `gx`; Apache 2.0 (REQ-1443) |
 
 ### רפרנס סוג מקור
 
@@ -513,6 +516,47 @@ sources:
       disable_ssl_validation: false
 ```
 
+#### בודקי איכות נתונים (soda / great_expectations)
+
+[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
+
+מקור בודק מצביע על נקודת הקצה pgwire של Provisa עצמה, כך שמנהל התקן postgres אחד סורק את התצוגה המפודררת של טבלה מגובית Snowflake או Iceberg. זהות הסריקה מוצהרת, לעולם לא נירשת — המדיניות חלה על אותו חיבור, וקבוצת שורות מסוננת אסור שתגרום לבדיקה שעוברת בשקט. מפתחות החיבור מגיעים מ-`mapping`: `host`, `port`, `database`, `user`, `password`.
+
+```yaml
+sources:
+  - id: dq
+    type: soda                 # or great_expectations
+    domain_id: sales-analytics
+    mapping:
+      host: localhost
+      port: 5439               # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+כל טבלת תוצאות נושאת `dq_contract` — YAML של חוזה Soda או JSON של סוויטת Great Expectations, כלשונו. עמודות, watermark וקידומים נגזרים ממנו; ראו [בודקי איכות נתונים](sources.md#req-1443) לגזירה המלאה.
+
+**בחירה בזמן התקנה.** הבודק אינו מקושר-פנימה — הסריקה רצה בפרשן-ילד, והספרייה מותקנת רק כשמפעיל מציין אותה בשם. כל נתיב מתקין (`install.sh`, `packaging/linux/first-launch.sh`, ואשף macOS דרך `PROVISA_DQ_CHECKER`) כותב את הבחירה ל-`~/.provisa/config.yaml`:
+
+```yaml
+dq_checker: none        # none | soda | gx
+```
+
+`scripts/provisa` קורא מפתח זה ומייצא `PROVISA_EXTRAS`, אותו `docker-compose.app.yml` מעביר כארגומנט build ל-`ARG PROVISA_EXTRAS` של ה-`Dockerfile`: [tool-verified: `scripts/provisa:69-79`]
+
+| `dq_checker` | `PROVISA_EXTRAS` (שכבת Docker) | התקנת venv מקומית |
+| -------------- | -------------------------------- | --------------------- |
+| `none` | `firebase,vector` | `provisa[embedded]` |
+| `soda` | `firebase,vector,soda` | `provisa[embedded,soda]` |
+| `gx` | `firebase,vector,gx` | `provisa[embedded,gx]` |
+
+התקנת מערך הדגמה מעלה את `none` ל-`gx` ומודיעה על כך, כיוון שתצורת ההדגמה רושמת סוויטת Great Expectations על `pet_store.pets` וכרטיס האיכות שלה לא היה לו מה להציג אחרת. ציון `soda` בשם משאיר `soda`.
+
+הגעה להדגמה דרך pip ולא דרך מתקין מדלגת על שלב האשף הזה, כך שהתוסף `demo` נושא את אותו בודק: `pip install 'provisa[embedded,demo]'` הוא מה ש-`provisa run --demo` צריך כדי שהסריקה שלו תרוץ. בלעדיו הסריקה מדווחת `data-quality checker 'great_expectations' is not installed`, ומציינת את פקודת ההתקנה.
+
+כל ערך אחר עוצר את המשגר במקום להתחיל בלי הבודק שהמפעיל ביקש. התוסף `soda` מושך את `soda-postgres`; `gx` מושך את `great-expectations[postgresql]`. Soda Core היא Elastic License 2.0 — `config/capabilities.yaml` מסמן את האפשרות `cloud_eligible: false`, והמישור המתארח דוחה אותה.
+
 ## דומיינים
 
 ```yaml
@@ -908,7 +952,7 @@ auth:
 
 ### אסימוני גישה אישיים
 
-PAT אינם דורשים בלוק תצורה — הם מתקבלים תמיד, והמאגר נוצר יחד עם שאר סכמת מישור הבקרה. (REQ-1263) מה שניתן להגדרה הוא תוקף התפוגה שמשתמש רשאי לבקש בעת ההנפקה: 1 עד 366 ימים, או ללא תפוגה עבור אסימון שאינו פג. ראו [מודל אבטחה](security.md#personal-access-tokens).
+PAT אינם דורשים בלוק תצורה — הם מתקבלים תמיד, והמאגר נוצר יחד עם שאר סכמת מישור הבקרה. (REQ-1263) מה שניתן להגדרה הוא תוקף התפוגה שמשתמש רשאי לבקש בעת ההנפקה: 1 עד 366 ימים, או ללא תפוגה עבור אסימון שאינו פג. ראו [מודל אבטחה](security.md#_13).
 
 ### TLS הדדי
 
@@ -1271,13 +1315,13 @@ PROVISA_ENGINE=synapse
 
 מאגר המימוש ברירת מחדל `TENANT_DATABASE_URL`.
 
-#### sqlalchemy
+#### מנועי מסדי נתונים יחסיים (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) ו-`sqlalchemy`
 
-מנוע RDBMS גנרי land-only (ללא פדרציה למקורות חיצוניים). לשימוש לפריסות warehouse-יחיד או בדיקות.
+מפתח אחד לכל מסד נתונים יחסי הניתן לכתובת ברשת, כולם על אותו runtime land-only (ללא פדרציה למקורות חיצוניים): כל מקור נוחת (lands) לתוך המאגר ונשאל שם. המפתח בוחר את מסד הנתונים; `PROVISA_ENGINE_URL` נושא את ה-DSN שהדיאלקט שלו מצפה לו. `sqlalchemy` הוא הכל-כולל למסד נתונים ללא מפתח משלו. מאגרים מוטמעי-קובץ (SQLite, Access) אינם מוצעים — השרת חייב להיות ניתן להשגה ברשת.
 
 ```bash
-PROVISA_ENGINE=sqlalchemy
-PROVISA_ENGINE_URL="postgresql+psycopg2://user:pass@host/db"
+PROVISA_ENGINE=mysql
+PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
 
 מאגר המימוש ברירת מחדל `TENANT_DATABASE_URL`.

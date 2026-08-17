@@ -22,7 +22,7 @@ Um token de acesso pessoal é aceito em qualquer lugar onde um token bearer seja
 | `GET /auth/tokens` | Os tokens ativos de quem chama nesta organização — prefixo de exibição, nome, marcas temporais do ciclo de vida e o hash que identifica um token para revogação. Nunca uma credencial utilizável |
 | `DELETE /auth/tokens/{token_hash}` | Revoga um dos tokens de quem chama. 404 quando não é seu ou já foi revogado |
 
-Omitir `role_id` deixa o token resolver para a função que o proprietário possui; nomear uma função restringe o token abaixo do seu proprietário. A revogação também acontece implicitamente: remover a participação de um usuário em uma organização revoga seus tokens para aquela organização. Para a credencial em si, veja o [modelo de segurança](security.md#personal-access-tokens).
+Omitir `role_id` deixa o token resolver para a função que o proprietário possui; nomear uma função restringe o token abaixo do seu proprietário. A revogação também acontece implicitamente: remover a participação de um usuário em uma organização revoga seus tokens para aquela organização. Para a credencial em si, veja o [modelo de segurança](security.md#tokens-de-acesso-pessoal).
 
 ## Capacidades
 
@@ -141,6 +141,26 @@ query {
   }
 }
 ```
+
+### Verificação de dependência de coluna (REQ-1484)
+
+Antes de salvar uma edição de tabela que renomeia o alias SQL de uma coluna ou remove uma coluna,
+pergunte o que mais referencia essa coluna:
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+Renomear um alias quebra todo artefato definido contra o nome exposto — views, MVs, expressões de
+métrica, predicados RLS, contratos DQ. Remover uma coluna quebra esses mais os artefatos que
+armazenam o `column_name` físico: relacionamentos, vínculos de glossário, atribuições de tag.
+`breaksOn` indica qual. A página Tables executa isso ao salvar e mostra o resultado como um diálogo
+consultivo. Veja [Lineage](lineage.md) para o que a consulta cobre e o que ela não cobre.
 
 ### Gerenciamento de View
 

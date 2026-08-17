@@ -37,7 +37,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 **SCRAM-SHA-256.** תחת `provider: basic` עם `auth.scram: true` השרת מכריז על SASL (קוד אימות 10) עם `SCRAM-SHA-256`, והסיסמה מוכחת במקום להישלח. (REQ-1394) `SCRAM-SHA-256-PLUS` אינו מוצע. משתמש שה-verifier שלו טרם נכתב — לא ניתן לגזור verifier מגיבובי bcrypt — מקבל חילופי דברים מדומים, כך שהתקשורת אינה חושפת מי כבר עבר; משתמש כזה מתאמת בסיסמת cleartext מעל TLS עד שהזנת הסיסמה הבאה שלו תכתוב verifier. כאשר `auth.scram` כבוי, השרת משתמש בסוג אימות PG 3 (סיסמת cleartext). MD5 אינו נתמך בשני המקרים.
 
-**תעודות לקוח.** הגדירו `PROVISA_MTLS_CLIENT_CA` והשרת יאמת תעודת לקוח במהלך ה-handshake, לפני בחינת כל אישור. (REQ-1228) עם `PROVISA_MTLS_BIND_PRINCIPAL` ה-common name של התעודה חייב להיות זהה ל-`user` שהחיבור מתאמת בשמו לאחר מכן. ראו [תצורה](configuration.md#mutual-tls).
+**תעודות לקוח.** הגדירו `PROVISA_MTLS_CLIENT_CA` והשרת יאמת תעודת לקוח במהלך ה-handshake, לפני בחינת כל אישור. (REQ-1228) עם `PROVISA_MTLS_BIND_PRINCIPAL` ה-common name של התעודה חייב להיות זהה ל-`user` שהחיבור מתאמת בשמו לאחר מכן. ראו [תצורה](configuration.md#tls).
 
 **ניסיונות כושלים נספרים.** חמישה כשלונות בחמש דקות נועלים את החשבון לחמש-עשרה דקות, והמונה משותף עם HTTP ועם Bolt — נעילה שהושגה בכל אחת מהממשקים חלה על כולם. (REQ-1393)
 

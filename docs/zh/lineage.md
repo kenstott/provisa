@@ -156,6 +156,34 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
+## 列重命名或删除会破坏什么（REQ-1484）
+
+一列拥有两个名称，且每个名称由不同的一组构件存储。
+
+**暴露名称**是SQL和GraphQL界面所展示的名称：`table_columns.alias`，若未设置别名则回退到snake_case默认名称[tool-verified: `computed_sql_alias` at
+`schema_helpers.py:317`]。视图、物化视图、指标表达式、RLS谓词、DQ合约、指标视图粒度和MV行键都是针对该名称编写的，因此**重命名别名与删除该列一样，同样会破坏它们**。
+
+**物理名称**是`table_columns.column_name`，即在表upsert整体列替换后仍然保留的身份标识。关系、术语表绑定、标签分配、水位列和列预设都存储这一个名称，因此只有在列被**移除**时它们才会被破坏。
+
+`columnDependents`会同时报告两者。下游视图和MV的信息来自在该列的暴露名称处切分联邦图；该图未覆盖的构件则来自对注册表的直接扫描[tool-verified: `graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
+`provisa/api/admin/column_dependents.py`]。
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+对于引用暴露名称的构件，`breaksOn`为`rename`；对于引用物理名称的构件，则为`remove`，因此调用方可以判断每个构件是对这次编辑的哪一半作出反应。
+
+请在保存**之前**提出此查询。已重命名的列是通过它在注册表中仍然携带的暴露名称来定位的；一旦别名已经落地，旧名称便不复存在，查询将一无所获。
+
+当一次待处理的编辑更改了别名或缩减了列集时，Tables页面会自动运行该查询，并列出其发现的结果[tool-verified: `diffEditedColumns` in
+`provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]。该警告仅供参考：它列出受影响的构件，由管理员自行决定。它不会阻止保存，因为该资产的全部消费方无法尽数触达——注册表之外的仪表板或按名称查询该列的客户端应用，均超出了注册表的知晓范围。出于同样的原因，对自由SQL文本的扫描是将该列作为标识符token进行匹配，而非解析作用域，因此可能会指出某个实际上并未使用该列的构件。对于警告而言，宁可多报也不要漏报。
+
 ## 利用血缘治理命令合约
 
 由于taint closure会将每个已声明的输入列连接到每个已声明的输出列，该closure的广度完全取决于你声明了什么。

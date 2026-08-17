@@ -456,6 +456,40 @@ Strawberry GraphQL Admin API 挂载于 `/admin/graphql`（HTTP 端口 8001）。
 
 (REQ-164, REQ-165, REQ-166, REQ-167)
 
+## AI 模型配置
+
+`GET /admin/ai-models` 和 `PUT /admin/ai-models` 用于配置每个组织的 LLM 流水线。(REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349)
+
+配置是**组织范围**的：每个组织的选择叠加在部署配置之上，并在下一次请求时生效——无需重启。(REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
+
+**按操作分配模型。** 五种 NL 操作各自拥有可配置的供应商与模型字符串：
+
+| 操作 | 作用 |
+| --------- | -------------- |
+| `table_description` | LLM 生成的表描述 |
+| `column_description` | LLM 生成的列描述 |
+| `relationship_inference` | FK 候选发现 |
+| `sql_generation` | NL → SQL 生成 |
+| `table_selection` | 选择哪些表纳入 NL 提示词 |
+
+供应商字段接受任何与 `aisuite` 兼容的供应商（`anthropic`、`openai`、`groq`、`mistral`、`cohere` 等）或本地端点（`ollama`、`lmstudio`）。留空模型字符串会移除该组织的覆盖设置，恢复为部署默认值。[tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
+
+**NL 速率限制。** 一个可选的按角色应用的单位时间请求数上限。超出的请求返回 `429`，附带 `Retry-After`。[tool-verified: `provisa-ui/src/components/admin/AiModelsTab.tsx:306-313`]
+
+**向量模型注册表。** 嵌入模型列表（字段：`id`、`provider`、`dimensions`，可选 `api_key_env` 与 `base_url`、`enabled` 标志）。整表替换：每条记录都必须包含 `id`、`provider` 和 `dimensions`，否则写入被拒绝，返回 `400`。[tool-verified: `provisa/api/admin/ai_models_router.py:122-131`]
+
+**API 密钥。** 每个供应商的 LLM API 密钥通过 `provisa.core.org_secrets` 加密存储（见下文）。`GET` 响应仅报告每个供应商是否已设置密钥——密钥值永远不会被返回。为某供应商发送空字符串会清除该密钥，使该供应商的 LLM 调用回退到部署的环境变量凭据。(REQ-1395, REQ-1398) [tool-verified: `provisa/api/admin/ai_models_router.py:76-78`, `provisa/api/admin/ai_models_router.py:149-165`]
+
+## 按组织加密的密钥
+
+`provisa/core/org_secrets.py` 存储那些绝不能以明文形式出现在数据库中的凭据。目前仅限于 LLM 供应商 API 密钥（`{vendor}_api_key`）。(REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
+
+密钥值通过进程级的 `encryption_service`（来自 `provisa.encryption.runtime`）加密——与 `api_sources.auth` 使用的机制相同。[tool-verified: `provisa/core/org_secrets.py:16-17`]
+
+支持十二个与 `aisuite` 兼容的供应商：`anthropic`、`openai`、`cohere`、`groq`、`mistral`、`xai`、`deepseek`、`together`、`fireworks`、`nebius`、`sambanova` 和 `inception`。Google、AWS 和 Azure 被排除在外，因为它们需要超出普通 API 密钥的配置（项目 ID、IAM 角色、区域）。本地端点供应商（`ollama`、`lmstudio`）没有密钥，同样被排除。[tool-verified: `provisa/core/org_secrets.py:33-53`]
+
+向 `write_org_secret` 传入 `value=None` 会删除该记录。读取密钥的调用方应立即消费它（例如用于构造 LLM 客户端），且不得在任何 API 响应中回显它。[tool-verified: `provisa/core/org_secrets.py:97-117`]
+
 ## 自动生成的 REST 与 JSON:API 端点
 
 已注册的表除 GraphQL 接口外，还会以 REST 和 JSON:API 端点的形式公开。(REQ-256, REQ-257)

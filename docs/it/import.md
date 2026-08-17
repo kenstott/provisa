@@ -2,6 +2,20 @@
 
 Provisa può convertire i metadati Hasura esistenti in un `config.yaml` Provisa, preservando tabelle tracciate, relazioni, permessi, e schemi remoti.
 
+## Importazione interattiva (Admin → Importa configurazione Hasura)
+
+La superficie di amministrazione esegue gli stessi convertitori, quindi un'importazione non richiede accesso alla shell né un giro di andata e ritorno del file di config. Richiede la capability `org_settings`; l'importazione viene applicata all'organizzazione in cui opera la sessione.
+
+1. **Caricamento.** Scegli una directory di metadati Hasura v2 compressa in zip, un progetto DDN compresso in zip, un export di metadati consolidato (`.yaml`/`.json`, incluso l'involucro `{resource_version, metadata}` restituito dall'API dei metadati), o un singolo `.hml`. Lascia il formato su *Rileva automaticamente* a meno che il caricamento non sia ambiguo.
+2. **Mappa i domini** (opzionale). Ogni coppia mappa uno schema v2 o un subgraph DDN a un dominio Provisa; ciò che non viene mappato mantiene il nome originale.
+3. **Converti e anteprima.** Il server converte e restituisce i conteggi, gli avvisi del convertitore e la configurazione generata. In questo passaggio non viene scritto nulla.
+4. **Rivedi e modifica.** La configurazione è modificabile sul posto — dettagli di connessione, nomi dei domini, nomi dei ruoli. Ciò che applichi è ciò che viene mostrato.
+5. **Applica.** *Sostituisci il livello semantico esistente* elimina ogni origine, tabella, ruolo e regola assente dalla configurazione; se disattivato, l'importazione viene unita a ciò che l'organizzazione già possiede. L'applicazione carica la configurazione e ricostruisce gli schemi dell'organizzazione.
+
+Endpoint: `POST /admin/import/hasura/preview` e `POST /admin/import/hasura/apply`.
+
+---
+
 ## Hasura v2
 
 ### Esportazione dei metadati

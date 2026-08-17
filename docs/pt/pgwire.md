@@ -62,7 +62,7 @@ próxima digitação de senha escreva um. Com `auth.scram` desligado, o servidor
 **Certificados de cliente.** Defina `PROVISA_MTLS_CLIENT_CA` e o servidor verifica um certificado de
 cliente durante o handshake, antes de qualquer credencial ser examinada. (REQ-1228) Com
 `PROVISA_MTLS_BIND_PRINCIPAL` o common name do certificado deve ser igual ao `user` com que a
-conexão então se autentica. Veja [Configuração](configuration.md#mutual-tls).
+conexão então se autentica. Veja [Configuração](configuration.md#tls-mutuo).
 
 **Tentativas falhas são contadas.** Cinco falhas em cinco minutos bloqueiam a conta por quinze
 minutos, e o contador é compartilhado com HTTP e Bolt — um bloqueio conquistado em qualquer

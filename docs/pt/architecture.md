@@ -456,6 +456,40 @@ A API GraphQL Strawberry de administração é montada em `/admin/graphql` (port
 
 (REQ-164, REQ-165, REQ-166, REQ-167)
 
+## Configuração de Modelos de IA
+
+`GET /admin/ai-models` e `PUT /admin/ai-models` configuram o pipeline de LLM para cada organização. (REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349)
+
+As configurações têm **escopo por organização**: as escolhas de cada organização se sobrepõem à config de implantação e entram em vigor na próxima requisição — sem necessidade de reinício. (REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
+
+**Atribuições de modelo por operação.** Cinco operações de NL têm cada uma um fornecedor e uma string de modelo configuráveis:
+
+| Operação | O que ela controla |
+| --------- | -------------- |
+| `table_description` | Descrições de tabela geradas por LLM |
+| `column_description` | Descrições de coluna geradas por LLM |
+| `relationship_inference` | Descoberta de candidatos a FK |
+| `sql_generation` | Geração de NL → SQL |
+| `table_selection` | Escolha de quais tabelas incluir no prompt de NL |
+
+O campo de fornecedor aceita qualquer fornecedor compatível com `aisuite` (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, entre outros) ou um endpoint local (`ollama`, `lmstudio`). Uma string de modelo em branco remove o override da organização e reverte para o padrão da implantação. [tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
+
+**Limite de taxa de NL.** Um limite opcional de requisições por período aplicado por função. Requisições em excesso retornam `429` com `Retry-After`. [tool-verified: `provisa-ui/src/components/admin/AiModelsTab.tsx:306-313`]
+
+**Registro de modelos vetoriais.** Uma lista de modelos de embedding (campos: `id`, `provider`, `dimensions`, opcionais `api_key_env` e `base_url`, flag `enabled`). Substituição de lista completa: toda entrada deve ter `id`, `provider`, e `dimensions`, ou a escrita é rejeitada com `400`. [tool-verified: `provisa/api/admin/ai_models_router.py:122-131`]
+
+**Chaves de API.** Chaves de API de LLM por fornecedor são armazenadas de forma criptografada via `provisa.core.org_secrets` (veja abaixo). A resposta do `GET` reporta apenas se uma chave está definida para cada fornecedor — o valor nunca é retornado. Enviar uma string em branco para um fornecedor limpa aquela chave, revertendo as chamadas de LLM para aquele fornecedor para a credencial de variável de ambiente da implantação. (REQ-1395, REQ-1398) [tool-verified: `provisa/api/admin/ai_models_router.py:76-78`, `provisa/api/admin/ai_models_router.py:149-165`]
+
+## Segredos Criptografados por Organização
+
+`provisa/core/org_secrets.py` armazena credenciais que nunca devem aparecer como texto plano no banco de dados. Atualmente restrito a chaves de API de fornecedores de LLM (`{vendor}_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
+
+Os valores são criptografados via o `encryption_service` de escopo de processo de `provisa.encryption.runtime` — o mesmo mecanismo usado por `api_sources.auth`. [tool-verified: `provisa/core/org_secrets.py:16-17`]
+
+Doze fornecedores compatíveis com `aisuite` são suportados: `anthropic`, `openai`, `cohere`, `groq`, `mistral`, `xai`, `deepseek`, `together`, `fireworks`, `nebius`, `sambanova`, e `inception`. Google, AWS e Azure são excluídos porque exigem configuração além de uma simples chave de API (IDs de projeto, funções IAM, região). Fornecedores de endpoint local (`ollama`, `lmstudio`) não têm chave e são excluídos pelo mesmo motivo. [tool-verified: `provisa/core/org_secrets.py:33-53`]
+
+Passar `value=None` para `write_org_secret` exclui a linha. Chamadores que leem um segredo o consomem imediatamente (ex.: para construir um cliente LLM) e não devem ecoá-lo em nenhuma resposta de API. [tool-verified: `provisa/core/org_secrets.py:97-117`]
+
 ## Endpoints REST e JSON:API Auto-Gerados
 
 Tabelas registradas são expostas como endpoints REST e JSON:API junto com a interface GraphQL. (REQ-256, REQ-257)

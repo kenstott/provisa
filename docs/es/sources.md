@@ -253,6 +253,79 @@ sources:
 | `domain_id` | Sí | — | Dominio al que pertenece este origen |
 | `description` | No | `""` | Descripción legible por humanos |
 
+### Verificadores de calidad de datos (REQ-1443)
+
+Un verificador de calidad de datos es un tipo de origen, no un subsistema. Su resultado de escaneo es dato: un resultado de verificación es una observación, así que ingresa por la ruta ordinaria de origen y hereda cadencia, frescura, eventos, linaje, gobierno, RLS, grid y exportación de cualquier otro origen. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
+
+Se soportan dos, y la elección es tanto una elección de licencia como una elección de funcionalidad.
+
+| Tipo de origen | Dialecto del contrato | Extra | Licencia | Plano cloud alojado |
+| ------------ | ----------------- | ------- | --------- | -------------------- |
+| `soda` | YAML de contrato Soda | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Rechazado — ver más abajo |
+| `great_expectations` | JSON de suite de expectativas | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Permitido |
+
+Elastic License 2.0 prohíbe ofrecer el software a terceros como servicio alojado o gestionado, y ejecutar Soda dentro del plano SaaS en nombre de un inquilino es exactamente eso. `config/capabilities.yaml` lleva esa división como `cloud_eligible: false` en la opción `soda`, y el plano alojado lee ese indicador. Un despliegue alojado que quiera Soda accede a un endpoint Soda provisto por el operador, que el operador mismo ejecuta. [tool-verified: `config/capabilities.yaml` lines 197–203]
+
+Provisa no empaqueta ni enlaza nada. El escaneo se ejecuta en un intérprete hijo (`python -m provisa.dq.worker`), que es el único lugar donde se importa `soda_core` o `great_expectations`, de modo que un verificador source-available nunca llega al proceso del servidor y un fallo del verificador mata un subproceso en lugar del bucle de eventos. [tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
+
+**El origen apunta al propio endpoint pgwire de Provisa.** Eso es lo que permite que un solo controlador de postgres verifique una tabla respaldada por Snowflake o Iceberg: el verificador escanea la vista federada, no el sistema subyacente. Como la política se aplica a esa conexión, la identidad de escaneo se declara en lugar de heredarse — un conjunto de filas filtrado nunca debe producir una verificación que pase en silencio.
+
+```yaml
+sources:
+
+  - id: dq
+    type: soda
+    domain_id: sales-analytics
+    description: Soda contract scans over the governed estate
+    mapping:
+      host: localhost
+      port: 5439          # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner    # the scan identity, declared explicitly
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+**Una tabla de resultados por contrato, y el contrato es todo el registro.** La tabla lleva `dq_contract` — el texto del contrato tal cual — y nada más sobre su forma. Las columnas, la marca de agua y las promociones son todas derivadas. [tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
+
+```yaml
+tables:
+
+  - source_id: dq
+    schema_name: quality
+    table_name: orders_scan
+    domain_id: sales-analytics
+    change_signal: ttl_probe
+    cache_ttl: 3600
+    columns:
+      - name: scan_id          # declared only to carry visible_to; replaced at parse
+        visible_to: [analyst, admin]
+    dq_contract: |
+      dataset: provisa/sales/orders
+      columns:
+        - name: customer_id
+          checks:
+            - missing:
+                threshold:
+                  metric: percent
+                  must_be_less_than: 1
+      checks:
+        - row_count:
+            must_be_greater_than: 0
+```
+
+Lo que el registro deriva de ese texto:
+
+- **Linaje.** El contrato ya nombra su conjunto de datos destino, así que el registro lo analiza de la misma forma en que `extract_inputs` analiza SQL (REQ-939) y lo resuelve a la tabla gobernada. Una sola definición, sin una segunda copia que pueda divergir. Un contrato que nombra un conjunto de datos no gobernado falla de forma ruidosa en el registro en lugar de dejar filas que nadie pidió.
+- **Columnas.** El sobre de resultados es del verificador, no del operador — 16 columnas incluidas, desde `scan_id` hasta `diagnostics`. Las columnas declaradas se leen solo por su `visible_to`, que debe ser unánime, y luego se reemplazan. [tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
+- **Marca de agua.** `scan_time` se convierte en la marca de agua, lo que hace que el aterrizaje sea un append (REQ-982). El historial de escaneos se acumula sin ningún subsistema de historial.
+- **Promociones.** `freshness_max_timestamp` y `dataset_rows_tested` se promueven desde el jsonb `diagnostics` como columnas tipadas (REQ-119). Agregue más de la misma forma en que lo haría en cualquier otra columna jsonb. [tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
+
+La temporización no introduce campos nuevos. `change_signal` junto con `cache_ttl` dan la cadencia de sondeo; `mv_debounce_quiet` y `mv_debounce_max_delay` colapsan una ráfaga ascendente en un solo escaneo (REQ-963); un grano de calendario lo vuelve periódico (REQ-962); `expected_events` retiene el escaneo hasta que sus entradas estén frescas dentro de la ventana (REQ-961). El bucle de sondeo es el programador de escaneos.
+
+`outcome` es uno de `pass`, `fail`, `warn`, `error`, `skipped`. Ninguno de ellos es un veredicto — la aplicación (enforcement), si se desea, es una declaración separada posterior: un preflight o una vista materializada sobre los resultados aterrizados. Como una observación aterrizada no lleva ninguna obligación de determinismo (REQ-964), aquí son admisibles verificaciones no deterministas que nunca podrían estar en una puerta de preflight — puntuación de anomalía, cambio de ventana móvil, frescura contra el momento actual.
+
+El contrato se redacta en la UI, en el panel de calidad de datos de la superficie de edición de tabla, y el texto crudo del contrato ahí es siempre la fuente de verdad. Una ejecución en seco (dry run) ejecuta el contrato contra la tabla en vivo y muestra los resultados sin aterrizarlos — así es como se detecta un contrato cuyo nombre de conjunto de datos se resolvió en un lugar inesperado y que de otro modo no aterrizaría más que filas que pasan.
+
 ---
 
 ## Conectores personalizados (REQ-1177)

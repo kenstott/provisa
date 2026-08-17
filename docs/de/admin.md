@@ -28,52 +28,52 @@ Wird `role_id` weggelassen, löst das Token auf die Rolle auf, die sein Eigentü
 
 ### Konfigurationsverwaltung
 
-Laden Sie die aktuell laufende Konfiguration herunter (REQ-164):
+Die aktuell laufende Konfiguration herunterladen (REQ-164):
 
 ```http
 GET /admin/config
 ```
 
-Gibt die vollständige `config.yaml` als YAML-Datei zurück. Laden Sie eine neue Konfiguration hoch (REQ-164):
+Liefert die vollständige `config.yaml` als YAML-Datei. Eine neue Konfiguration hochladen (REQ-164):
 
 ```http
 PUT /admin/config
 ```
 
-Provisa validiert das YAML, lädt die Kataloge neu und generiert die Schemas neu (REQ-012, REQ-253). Kein Neustart erforderlich.
+Provisa validiert das YAML, lädt die Kataloge neu und regeneriert die Schemas (REQ-012, REQ-253). Kein Neustart erforderlich.
 
 ### Laufzeiteinstellungen
 
-Lesen und schreiben Sie Laufzeit-Plattformeinstellungen, ohne die Konfigurationsdatei zu bearbeiten (REQ-165):
+Laufzeit-Plattformeinstellungen lesen und schreiben, ohne die Konfigurationsdatei zu bearbeiten (REQ-165):
 
 ```http
 GET  /admin/settings
 PUT  /admin/settings
 ```
 
-Die Einstellungsoberfläche umfasst die Umleitung großer Ergebnisse, das Standard-Sampling und das Zeilenlimit, die TTL des Antwort-Caches, die Namenskonvention, das automatische Nachverfolgen von Fremdschlüssel-Beziehungen, den DSN des Materialisierungsspeichers, den Arbeitsspeicher der Federation-Engine (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`) sowie die gesamte Tuning-Oberfläche der OpenTelemetry-Tracing-Pipeline (REQ-1082). Auch die Limits für den entfernten GraphQL-Traversal sowie die Einstellungen für Warm-Tier/Lese-Cache werden bereitgestellt (REQ-1081, REQ-1083).
+Die Einstellungsoberfläche umfasst die Umleitung großer Ergebnisse, Standard-Sampling und Zeilenlimit, Response-Cache-TTL, Namenskonvention, automatische FK-Erkennung für Relationships, Materialisierungsspeicher-DSN, Föderations-Engine-Speicher (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`) sowie die gesamte Tuning-Oberfläche der OpenTelemetry-Tracing-Pipeline (REQ-1082). Remote-GraphQL-Traversierungslimits sowie Warm-Tier-/Read-Cache-Einstellungen werden ebenfalls exponiert (REQ-1081, REQ-1083).
 
-Sicherheitsstatus — `security.mode` (`standard` | `high`) — wird beim Neustart angewendet (REQ-1079):
+Sicherheitshaltung — `security.mode` (`standard` | `high`) — wird beim Neustart angewendet (REQ-1079):
 
 ```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
-KI-Modellzuweisungen, die Registry der Embedding-/Vektor-Modelle und das NL-Ratenlimit — werden beim Neustart angewendet (REQ-1080):
+KI-Modellzuweisungen, die Embedding-/Vektor-Modell-Registry und das NL-Rate-Limit — werden beim Neustart angewendet (REQ-1080):
 
 ```http
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
 
-Der Verschlüsselungs-Tab im Admin-Bereich leitet seine Anbieterliste live aus der Verschlüsselungs-Registry ab; nicht verfügbare Anbieter werden angezeigt, sind aber nicht auswählbar (REQ-1091).
+Der Admin-Tab für Verschlüsselung leitet seine Anbieterliste live aus der Verschlüsselungs-Registry ab; nicht verfügbare Anbieter erscheinen, sind aber nicht auswählbar (REQ-1091).
 
-`GET`/`HEAD /health` und `GET /setup/status` sind immer unauthentifiziert erreichbar — sie umgehen die Anforderung `Authorization: Bearer` auch dann, wenn ein Auth-Provider konfiguriert ist (REQ-539).
+`GET`/`HEAD /health` und `GET /setup/status` sind immer unauthentifiziert — sie umgehen die Anforderung `Authorization: Bearer` selbst dann, wenn ein Auth-Provider konfiguriert ist (REQ-539).
 
-### Beziehungs-Editor
+### Relationship-Editor
 
-Beziehungen auflisten (REQ-166):
+Relationships auflisten (REQ-166):
 
 ```graphql
 query {
@@ -89,7 +89,7 @@ query {
 }
 ```
 
-Eine Beziehung erstellen (REQ-019):
+Eine Relationship erstellen (REQ-019):
 
 ```graphql
 mutation {
@@ -106,9 +106,9 @@ mutation {
 }
 ```
 
-### KI-gestützte Beziehungserkennung
+### KI-gestützte Relationship-Erkennung
 
-Lösen Sie die Claude-gestützte Fremdschlüsselanalyse über REST aus (REQ-167, REQ-018):
+Claude-gestützte FK-Analyse über REST auslösen (REQ-167, REQ-018):
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -116,7 +116,7 @@ curl -X POST http://localhost:8001/admin/discover/relationships \
   -d '{"scope": "domain", "domain_id": "sales"}'
 ```
 
-Gibt Fremdschlüssel-Kandidaten sortiert nach Konfidenz zurück. Einen Kandidaten akzeptieren:
+Liefert FK-Kandidaten, nach Konfidenz sortiert. Einen Kandidaten annehmen:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
@@ -126,7 +126,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
 
 ### Schema-Introspektion
 
-Durchsuchen Sie veröffentlichte Tabellen über alle Quellen hinweg (REQ-008):
+Veröffentlichte Tabellen über alle Quellen hinweg durchsuchen (REQ-008):
 
 ```graphql
 query {
@@ -142,9 +142,30 @@ query {
 }
 ```
 
-### Sichtenverwaltung
+### Spaltenabhängigkeitsprüfung (REQ-1484)
 
-Registrieren Sie eine materialisierte Sicht (REQ-133, REQ-135):
+Bevor Sie eine Tabellenänderung speichern, die den SQL-Alias einer Spalte umbenennt oder eine
+Spalte löscht, fragen Sie ab, was noch darauf verweist:
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+Das Umbenennen eines Alias bricht jedes Artefakt, das gegen den exponierten Namen geschrieben
+wurde — Views, MVs, Metrik-Ausdrücke, RLS-Prädikate, DQ-Contracts. Das Löschen einer Spalte
+bricht diese sowie die Artefakte, die den physischen `column_name` speichern: Relationships,
+Glossar-Bindungen, Tag-Zuweisungen. `breaksOn` gibt an, welches. Die Tables-Seite führt dies
+beim Speichern aus und zeigt das Ergebnis als beratenden Dialog. Siehe [Lineage](lineage.md)
+dazu, was die Abfrage abdeckt und was nicht.
+
+### View-Verwaltung
+
+Eine materialisierte View registrieren (REQ-133, REQ-135):
 
 ```graphql
 mutation {
@@ -205,32 +226,32 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
   -d '{"table_name": "products", "sparql_query": "SELECT ?name ?category WHERE { ?p a :Product ; :name ?name ; :category ?category . }", "ttl": 600}'
 ```
 
-Nach der Registrierung erscheinen die Tabellen im GraphQL-Schema und sind wie jede andere Quelle abfragbar (REQ-016).
+Nach der Registrierung erscheinen Tabellen im GraphQL-Schema und sind wie jede andere Quelle abfragbar (REQ-016).
 
 ## GraphiQL
 
-Die Admin API liefert GraphiQL unter `GET /admin/graphql` im Browser mit (REQ-622). Nutzen Sie es, um das vollständige Admin-Schema interaktiv zu erkunden.
+Die Admin API wird mit GraphiQL unter `GET /admin/graphql` im Browser ausgeliefert (REQ-622). Nutzen Sie es, um das vollständige Admin-Schema interaktiv zu erkunden.
 
-## Verwaltungssichten der Ops-Domäne (REQ-1386)
+## Verwaltungsviews der Ops-Domäne (REQ-1386)
 
-Bei jeder Installation werden acht SQL-Sichten in die eingebaute Domäne `ops` eingespielt. [tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] Sie legen das Query-Audit-Log als regierte Tabellen offen — abfragbar über SQL (pgwire), GraphQL und Cypher, unter denselben Domänenzugriffs-, RLS- und Maskierungsregeln wie jede Geschäftstabelle.
+Acht SQL-Views werden bei jeder Installation in die integrierte `ops`-Domäne eingebracht. [tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] Sie exponieren das Query-Audit-Log als governte Tabellen — abfragbar über SQL (pgwire), GraphQL und Cypher unter denselben Domänenzugriffs-, RLS- und Maskierungsregeln wie jede geschäftliche Tabelle.
 
-`org_admin` wird beim Seeding als Steward der Ops-Domäne eingesetzt, damit die Domäne nie als Governance-Lücke in `stale_metadata` auftaucht. [tool-verified: `startup_seed.py:326-331`]
+`org_admin` wird zum Zeitpunkt des Seedings als Steward der Ops-Domäne festgelegt, sodass die Domäne nie als Governance-Lücke in `stale_metadata` erscheint. [tool-verified: `startup_seed.py:326-331`]
 
-| Sicht | Welche Frage sie beantwortet |
+| View | Was sie beantwortet |
 | --- | --- |
-| `usage_ranking` | Abfragezahl und eindeutige Benutzer je registrierter Tabelle; Tabellen ohne Treffer treten als Kandidaten zur Abkündigung hervor |
-| `deprecated_usage` | Jeder Zugriff auf eine Tabelle oder Spalte mit dem Tag `deprecated` — die aktiven Konsumenten, die eine gefahrlose Entfernung blockieren |
-| `pii_access` | Jeder Zugriff auf eine Tabelle oder Spalte mit dem Tag `pii`: wer abgefragt hat, unter welcher Rolle, über welche Oberfläche |
+| `usage_ranking` | Abfrageanzahl und eindeutige Nutzer pro registrierter Tabelle; Tabellen ohne Treffer erscheinen als Kandidaten für die Entfernung |
+| `deprecated_usage` | Jeder Zugriff auf eine Tabelle oder Spalte mit dem Tag `deprecated` — die aktiven Konsumenten, die eine gefahrlose Entfernung verhindern |
+| `pii_access` | Jeder Zugriff auf eine Tabelle oder Spalte mit dem Tag `pii`: wer hat abgefragt, unter welcher Rolle, über welche Oberfläche |
 | `policy_denials` | Alle Zugriffsversuche, die die Governance abgelehnt hat (HTTP 401/403) |
-| `surface_mix` | Tägliche Abfragezahl und eindeutige Benutzer je Protokolloberfläche (SQL, GraphQL, Cypher, gRPC usw.) |
-| `query_health` | Tägliche Fehlerzahl sowie durchschnittliche und maximale Latenz je Oberfläche |
+| `surface_mix` | Tägliche Abfrageanzahl und eindeutige Nutzer pro Protokolloberfläche (SQL, GraphQL, Cypher, gRPC usw.) |
+| `query_health` | Tägliche Fehleranzahl und durchschnittliche/maximale Latenz pro Oberfläche |
 | `stale_metadata` | Tabellen und Spalten ohne Beschreibung; Domänen ohne Steward |
 | `join_hotspots` | Am häufigsten gemeinsam abgefragte Tabellenpaare — Kandidaten für Materialisierung oder Caching |
 
-Heute gelten zwei Einschränkungen. Die Granularität liegt auf Tabellenebene — das Audit-Log erfasst `table_ids`, nicht die einzeln abgerufenen Spalten. Der Abfragetext ist verschlüsselt (REQ-689) und aus jeder Sicht hier ausgeschlossen; er ist nur über den autorisierten Admin-Entschlüsselungspfad zugänglich. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+Zwei Einschränkungen gelten derzeit. Die Granularität liegt auf Tabellenebene — das Audit-Log erfasst `table_ids`, nicht einzelne abgerufene Spalten. Der Abfragetext ist verschlüsselt (REQ-689) und in keiner der hier gezeigten Views enthalten; er ist nur über den autorisierten Admin-Entschlüsselungspfad zugänglich. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
 
-Eine Rolle benötigt Zugriff auf die Domäne `ops`, bevor diese Sichten sichtbar werden. Erteilen Sie ihn genauso wie den Zugriff auf jede andere Domäne.
+Eine Rolle benötigt Zugriff auf die `ops`-Domäne, damit diese Views sichtbar sind. Gewähren Sie ihn genauso wie den Zugriff auf jede andere Domäne.
 
 ```sql
 -- Which tables have never been queried?
@@ -250,34 +271,34 @@ FROM ops.surface_mix
 ORDER BY day DESC, query_count DESC;
 ```
 
-Dieselben Abfragen laufen als GraphQL oder Cypher über jeden regierten Transport — pgwire, Arrow Flight oder Bolt. [inferred from governed-surface design]
+Dieselben Abfragen laufen als GraphQL oder Cypher über jeden governten Transport — pgwire, Arrow Flight oder Bolt. [inferred from governed-surface design]
 
-## Berichtsansicht (REQ-1390)
+## Reports-Viewer (REQ-1390)
 
-Die Berichtsansicht liegt unter `/admin/reports`. Rollen ohne die Capability `observability` erreichen sie nicht.
+Der Reports-Viewer befindet sich unter `/admin/reports`. Rollen ohne die Capability `observability` können ihn nicht erreichen.
 
-Die linke Leiste listet jede registrierte Tabelle der Domäne `ops`, nach Alias sortiert. [tool-verified: `ReportsTab.tsx:46-52` — filters `tables` to `domainId === "ops"`] Die acht eingespielten Verwaltungssichten erscheinen dort automatisch. Ein Klick auf einen Bericht lädt ihn rechts im regierten Datenbetrachter.
+Das linke Panel listet jede registrierte Tabelle in der `ops`-Domäne, sortiert nach Alias. [tool-verified: `ReportsTab.tsx:46-52` — filters `tables` to `domainId === "ops"`] Die acht eingebrachten Verwaltungsviews erscheinen dort automatisch. Klicken Sie auf einen Report, um ihn im governten Datenviewer rechts zu laden.
 
-**Einen eigenen Bericht hinzufügen.** Die Schaltfläche „Bericht hinzufügen" öffnet einen Dialog. Geben Sie einen Namen, optional eine Beschreibung und eine SELECT-Anweisung an. Beim Speichern wird die Sicht als regierte abgeleitete Tabelle in der Domäne `ops` registriert — katalogisiert, zugriffskontrolliert und über jede Oberfläche abfragbar, neben den eingespielten Sichten. [tool-verified: `ReportsTab.tsx:70-96` — `registerTable` called with `sourceId: DERIVED_SOURCE_ID, domainId: "ops"`]
+**Einen benutzerdefinierten Report hinzufügen.** Die Schaltfläche „Add report" öffnet einen Dialog. Geben Sie einen Namen, eine optionale Beschreibung und ein SELECT-Statement an. Beim Speichern wird die View als governte, abgeleitete Tabelle in der `ops`-Domäne registriert — katalogisiert, zugriffsgesteuert und über jede Oberfläche neben den eingebrachten Views abfragbar. [tool-verified: `ReportsTab.tsx:70-96` — `registerTable` called with `sourceId: DERIVED_SOURCE_ID, domainId: "ops"`]
 
-**Löschen.** Das Papierkorbsymbol erscheint nur bei eigenen Berichten. Eingespielte Verwaltungssichten lassen sich über diese Oberfläche nicht löschen. [tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
+**Löschen.** Das Papierkorb-Symbol erscheint nur bei benutzerdefinierten Reports. Eingebrachte Verwaltungsviews können über diese Oberfläche nicht gelöscht werden. [tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
 
 ## Tabellenvorschau (REQ-1392)
 
-Klappen Sie auf der Tabellenseite eine beliebige Tabellenzeile auf. Die Schaltfläche **Vorschau** öffnet ein Modal mit 90 % Breite und den regierten Livedaten der Tabelle. [tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
+Klappen Sie auf der Tables-Seite eine beliebige Tabellenzeile auf. Die Schaltfläche **Preview** öffnet ein Modal mit 90 % Breite und den live governten Daten der Tabelle. [tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
 
-Tabellen, die auf APIs mit erforderlichen Pfadparametern beruhen, sperren die Vorschau, bis diese Werte vorliegen. Ein eingebettetes Formular erfasst jeden erforderlichen Parameter, bevor die erste Abfrage läuft; optionale Query-Parameter erscheinen im selben Formular. [tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
+Tabellen, die auf APIs mit erforderlichen Pfadparametern basieren, blockieren die Vorschau, bis diese Werte angegeben werden. Ein Inline-Formular sammelt jeden erforderlichen Parameter, bevor die erste Abfrage läuft; optionale Query-Parameter erscheinen im selben Formular. [tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
 
-## Regierter Datenbetrachter (REQ-1391)
+## Governter Datenviewer (REQ-1391)
 
-Dieselbe Betrachterkomponente treibt das Vorschau-Modal und die Berichtsansicht an. Ihr Verhalten ist in beiden Kontexten identisch.
+Dieselbe Viewer-Komponente treibt sowohl das Vorschau-Modal als auch den Reports-Viewer an. Ihr Verhalten ist in beiden Kontexten identisch.
 
-**Serverseitiges Blättern.** Jede Seite ist ein eigenes regiertes `SELECT *` mit `LIMIT 101 OFFSET n`. Pro Seite erscheinen 100 Zeilen; die 101. zeigt an, ob es weitere gibt. Der vollständige Datenbestand wird nie in den Browser geladen. [tool-verified: `nativeParams.ts:72` — `LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`; `types.ts:74` — `PAGE_SIZE = 100`]
+**Serverseitiges Paging.** Jede Seite ist ein eigenes governtes `SELECT *` mit `LIMIT 101 OFFSET n`. 100 Zeilen erscheinen pro Seite; die 101. zeigt an, ob weitere existieren. Der vollständige Datensatz wird nie in den Browser geladen. [tool-verified: `nativeParams.ts:72` — `LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`; `types.ts:74` — `PAGE_SIZE = 100`]
 
-**Heruntergedrückte Filter und Sortierungen.** Jede Spaltenüberschrift hat ein Filterfeld. Filterbegriffe werden zu Prädikaten `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`; Sortierklicks erzeugen `ORDER BY`-Klauseln. Beides geht an die Datenbank — ein Filter auf einer Tabelle mit einer Milliarde Zeilen durchsucht die Quelle, nicht die 100 Zeilen vor Ihnen. [tool-verified: `nativeParams.ts:53-70`]
+**Pushed-Down-Filter und -Sortierungen.** Jede Spaltenüberschrift hat ein Filterfeld. Filterbegriffe werden zu `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`-Prädikaten; Sortierklicks erzeugen `ORDER BY`-Klauseln. Beide gehen an die Datenbank — ein Filter auf einer Tabelle mit einer Milliarde Zeilen durchsucht die Quelle, nicht die 100-Zeilen-Seite vor Ihnen. [tool-verified: `nativeParams.ts:53-70`]
 
-**Mehrstufiges Gruppieren.** Das Ebenen-Symbol in einer Spaltenüberschrift nimmt diese Spalte in die Gruppierung auf. Gruppenspalten stehen im `ORDER BY` vorn, damit Gruppenmitglieder über Seitengrenzen hinweg auf derselben Seite wie ihre Kopfzeile landen. Primärschlüsselspalten werden als stabiler Gleichstandsbrecher angehängt. [tool-verified: `nativeParams.ts:61-70` — group columns first, then explicit sorts, then PKs] Gruppenkopfzeilen lassen sich einklappen; das Einklappen blendet Mitglieder aus, ohne eine neue Abfrage abzusetzen. [tool-verified: `useResultsGrid.ts:150-171` — `collapsedGroups` set gates the `build()` recursion]
+**Mehrstufiges Group-by.** Das Layers-Symbol in jeder Spaltenüberschrift schaltet diese Spalte in die Gruppierung ein. Gruppenspalten führen die `ORDER BY`-Klausel an, sodass Gruppenmitglieder über Seitengrenzen hinweg auf derselben Seite wie ihre Überschrift landen. Primärschlüsselspalten werden als stabiler Tiebreaker angehängt. [tool-verified: `nativeParams.ts:61-70` — group columns first, then explicit sorts, then PKs] Gruppenüberschrift-Zeilen sind einklappbar; das Einklappen verbirgt Mitglieder, ohne eine neue Abfrage auszulösen. [tool-verified: `useResultsGrid.ts:150-171` — `collapsedGroups` set gates the `build()` recursion]
 
-**Dauerhafte Einstellungen.** Filter-, Sortier- und Gruppierungseinstellungen werden im `localStorage` unter `provisa.grid.table:<domain>.<table>` gespeichert und beim nächsten Besuch wiederhergestellt. [tool-verified: `useResultsGrid.ts:95-98`, `GovernedTableViewer.tsx:66`]
+**Persistente Auswahl.** Filter-, Sortier- und Group-by-Einstellungen werden unter `provisa.grid.table:<domain>.<table>` im `localStorage` gespeichert und beim nächsten Besuch wiederhergestellt. [tool-verified: `useResultsGrid.ts:95-98`, `GovernedTableViewer.tsx:66`]
 
-**Export.** Laden Sie die aktuelle Seite als CSV herunter oder kopieren Sie sie als tabulatorgetrennten Text in die Zwischenablage. Der Export umfasst nur die sichtbare Seite. [tool-verified: `useResultsGrid.ts:247-274` — both handlers iterate `displayRows`, which in server-paged mode is the current page]
+**Export.** Laden Sie die aktuelle Seite als CSV herunter oder kopieren Sie sie als tabulatorgetrennten Text in die Zwischenablage. Der Export deckt nur die sichtbare Seite ab. [tool-verified: `useResultsGrid.ts:247-274` — both handlers iterate `displayRows`, which in server-paged mode is the current page]

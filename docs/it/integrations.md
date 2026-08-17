@@ -58,7 +58,7 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 Il campo `password` del pacchetto di avvio trasporta la credenziale, e *cosa sia* la credenziale determina il metodo: un token di accesso personale, un token bearer OIDC oppure una password verso il provider configurato. Con il provider `basic` e `auth.scram: true` la password viene dimostrata tramite SCRAM-SHA-256 anziché inviata. I certificati client sono supportati. In modalità trust (`none`) il nome utente viene mappato direttamente a un ruolo e la password viene ignorata.
 
-La tabella completa interfaccia × metodo si trova nel [Modello di sicurezza](security.md#surfaces-and-credentials). MD5 non è supportato; abilita TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) quando operi su una rete non attendibile.
+La tabella completa interfaccia × metodo si trova nel [Modello di sicurezza](security.md#superfici-e-credenziali). MD5 non è supportato; abilita TLS (`PROVISA_PGWIRE_CERT` / `PROVISA_PGWIRE_KEY`) quando operi su una rete non attendibile.
 
 ### Limitazioni
 
@@ -144,7 +144,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight trasporta la propria credenziale nel payload JSON, come campo `token` — un token bearer del provider o un token di accesso personale. Sia l'handshake sia ogni ticket lo accettano, ed entrambi lo validano allo stesso modo, quindi un client che si è autenticato all'handshake presenta comunque il token a ogni `do_get`. Un campo `role` accanto *richiede* un ruolo; il server deriva i ruoli consentiti dell'identità e sostituisce il valore autorizzato, quindi una stringa di ruolo in un ticket non è mai l'identità. (REQ-1263) Vedi [Modello di sicurezza](security.md#surfaces-and-credentials).
+Flight trasporta la propria credenziale nel payload JSON, come campo `token` — un token bearer del provider o un token di accesso personale. Sia l'handshake sia ogni ticket lo accettano, ed entrambi lo validano allo stesso modo, quindi un client che si è autenticato all'handshake presenta comunque il token a ogni `do_get`. Un campo `role` accanto *richiede* un ruolo; il server deriva i ruoli consentiti dell'identità e sostituisce il valore autorizzato, quindi una stringa di ruolo in un ticket non è mai l'identità. (REQ-1263) Vedi [Modello di sicurezza](security.md#superfici-e-credenziali).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -203,7 +203,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 Usa `grpc_server_reflection` per individuare lo schema programmaticamente.
 
-Ogni RPC deve portare una credenziale nella chiave di metadati `authorization` — un token del provider o un token di accesso personale. `x-provisa-role` richiede un ruolo dall'insieme consentito dell'identità; non è una credenziale e non lo è mai stata. I certificati client sono supportati. Vedi [Modello di sicurezza](security.md#surfaces-and-credentials).
+Ogni RPC deve portare una credenziale nella chiave di metadati `authorization` — un token del provider o un token di accesso personale. `x-provisa-role` richiede un ruolo dall'insieme consentito dell'identità; non è una credenziale e non lo è mai stata. I certificati client sono supportati. Vedi [Modello di sicurezza](security.md#superfici-e-credenziali).
 
 Le query in streaming emettono un messaggio per riga; le mutazioni sono unarie.
 
@@ -282,6 +282,46 @@ Consulta [docs/import.md](import.md) per la migrazione da Hasura a Provisa.
 ## Kafka
 
 Consulta [docs/sources.md](sources.md#origini-kafka) per la configurazione dei topic Kafka come tabelle di sola lettura e destinazioni dei risultati delle query.
+
+---
+
+## Controlli di qualità dei dati (REQ-1443)
+
+Soda Core e Great Expectations si connettono a Provisa nello stesso modo di qualsiasi altro client
+postgres — tramite pgwire. Questa è l'intera integrazione: il checker mantiene un unico driver
+postgres e analizza la vista federata, così una tabella Snowflake, una tabella Iceberg e una
+collection Mongo vengono tutte controllate dallo stesso dialetto di contratto senza un checker per
+sistema. [tool-verified: `provisa/events/source_loader.py` `make_dq_loader`]
+
+La scansione viene eseguita in un interprete figlio — `python -m provisa.dq.worker` — l'unico
+punto in cui vengono importati `soda_core` o `great_expectations`. Nulla viene collegato al
+processo del server, e un crash del checker abbatte un sottoprocesso anziché l'event loop.
+[tool-verified: `provisa/dq/runner.py` `build_command`]
+
+I risultati della scansione atterrano come normali righe di origine, quindi cadenza, freschezza,
+eventi, derivazione, governance, RLS, la griglia e l'esportazione si applicano tutti senza un
+secondo meccanismo. La stesura del contratto, l'involucro del risultato e la registrazione
+derivata sono trattati in [docs/sources.md](sources.md#controlli-di-qualita-dei-dati-req-1443).
+
+### Installare un checker
+
+Nessuna delle due librerie viene distribuita per impostazione predefinita. Il programma di
+installazione chiede quale si desidera, e la risposta diventa `dq_checker: none|soda|gx` in
+`~/.provisa/config.yaml`. Sul livello Docker `scripts/provisa` la trasforma nell'argomento di
+build `PROVISA_EXTRAS`; sul livello nativo `first-launch.sh` installa nel venv l'extra pyproject
+corrispondente. [tool-verified: `scripts/provisa:69-79`, `packaging/linux/first-launch.sh`
+`_native_extras`]
+
+| `dq_checker` | Libreria | Licenza | Piano cloud ospitato |
+| -------------- | --------- | --------- | -------------------- |
+| `soda` | `soda-postgres` | Elastic License 2.0 | Rifiutato (`cloud_eligible: false`) |
+| `gx` | `great-expectations[postgresql]` | Apache 2.0 | Consentito |
+
+La Elastic License 2.0 vieta di fornire il software a terzi come servizio ospitato, che è
+esattamente ciò che significherebbe eseguire Soda all'interno del piano SaaS per conto di un
+tenant. Una distribuzione ospitata che desideri Soda punta a un endpoint Soda gestito
+direttamente dall'operatore. Vedere [docs/configuration.md](configuration.md#controlli-di-qualita-dei-dati-soda-great_expectations)
+per le chiavi di connessione.
 
 ---
 

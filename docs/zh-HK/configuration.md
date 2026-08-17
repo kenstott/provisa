@@ -105,6 +105,9 @@ sources:
 | `splunk` | `host`/`port` 或 `base_url` + `mapping` | |
 | **GovData** | | |
 | `govdata` | subject + `domain_id` | 獨立的 `GovDataSource` 模型；見下方 §GovData |
+| **數據品質** | | |
+| `soda` | 對準 Provisa pgwire 的 host/port | 需要 `soda` 額外套件；Elastic License 2.0，僅限自行託管（REQ-1443） |
+| `great_expectations` | 對準 Provisa pgwire 的 host/port | 需要 `gx` 額外套件；Apache 2.0（REQ-1443） |
 
 ### 數據來源型別參考
 
@@ -513,6 +516,47 @@ sources:
       disable_ssl_validation: false
 ```
 
+#### 數據品質檢查工具 (soda / great_expectations)
+
+[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
+
+檢查工具數據來源指向 Provisa 自身的 pgwire 端點，因此單一 postgres 驅動程式即可掃描以 Snowflake 或 Iceberg 為後端的資料表之聯邦檢視。掃描身分是明確宣告的，絕不繼承而來——原則適用於該連線，且經篩選的資料列集絕不可產生一次無聲通過的檢查。連線金鑰來自 `mapping`：`host`、`port`、`database`、`user`、`password`。
+
+```yaml
+sources:
+  - id: dq
+    type: soda                 # or great_expectations
+    domain_id: sales-analytics
+    mapping:
+      host: localhost
+      port: 5439               # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+每張結果資料表均逐字攜帶 `dq_contract`——Soda 契約 YAML 或 Great Expectations 套件 JSON。欄位、水位標記及晉升均由其衍生而來；完整衍生方式見[數據品質檢查工具](sources.md#req-1443)。
+
+**安裝時期選擇。** 檢查工具並非連結進去——掃描於子解譯器中執行，且僅在營運人員指名選用時才會安裝該程式庫。每條安裝程式路徑（`install.sh`、`packaging/linux/first-launch.sh`，以及透過 `PROVISA_DQ_CHECKER` 的 macOS 精靈）均會將選擇寫入 `~/.provisa/config.yaml`：
+
+```yaml
+dq_checker: none        # none | soda | gx
+```
+
+`scripts/provisa` 讀取該金鑰並匯出 `PROVISA_EXTRAS`，`docker-compose.app.yml` 會將其作為建置引數傳給 `Dockerfile` 的 `ARG PROVISA_EXTRAS`：[tool-verified: `scripts/provisa:69-79`]
+
+| `dq_checker` | `PROVISA_EXTRAS`（Docker 層級） | 原生 venv 安裝 |
+| -------------- | -------------------------------- | --------------------- |
+| `none` | `firebase,vector` | `provisa[embedded]` |
+| `soda` | `firebase,vector,soda` | `provisa[embedded,soda]` |
+| `gx` | `firebase,vector,gx` | `provisa[embedded,gx]` |
+
+安裝示範數據集會將 `none` 提升為 `gx` 並如此告知，因為示範設定於 `pet_store.pets` 上註冊了一套 Great Expectations 套件，否則其數據品質記分卡將無內容可供顯示。指名 `soda` 則保留 `soda`。
+
+透過 pip 而非安裝程式取用示範環境會略過該精靈步驟，因此 `demo` 額外套件攜帶相同的檢查工具：`provisa run --demo` 的掃描要能執行，須執行 `pip install 'provisa[embedded,demo]'`。若無此套件，掃描會回報「data-quality checker 'great_expectations' is not installed」，並指名安裝指令。
+
+任何其他取值都會停止啟動程式，而非在缺少營運人員所要求的檢查工具下啟動。`soda` 額外套件會拉入 `soda-postgres`；`gx` 會拉入 `great-expectations[postgresql]`。Soda Core 採用 Elastic License 2.0——`config/capabilities.yaml` 將此選項標示為 `cloud_eligible: false`，且託管平面會拒絕它。
+
 ## 領域
 
 ```yaml
@@ -908,7 +952,7 @@ auth:
 
 ### 個人存取權杖
 
-PAT 毋須設定區塊——它們一律獲接受，其儲存隨控制平面結構描述的其餘部分一併建立。(REQ-1263) 可設定的是使用者在簽發時可要求的有效期：1 至 366 日，或者不設有效期以取得永不逾期的權杖。參見[安全模型](security.md#personal-access-tokens)。
+PAT 毋須設定區塊——它們一律獲接受，其儲存隨控制平面結構描述的其餘部分一併建立。(REQ-1263) 可設定的是使用者在簽發時可要求的有效期：1 至 366 日，或者不設有效期以取得永不逾期的權杖。參見[安全模型](security.md#_17)。
 
 ### 雙向 TLS
 
@@ -1173,7 +1217,27 @@ Provisa 會根據端點 URL 的通訊協定綱要，選擇 OTLP/HTTP 或 OTLP/gR
 | `bigquery` | BigQuery | BigQuery | 是 | BigQuery 外部 / BigLake 資料表 | `GOOGLE_APPLICATION_CREDENTIALS` |
 | `fabric` | Microsoft Fabric | T-SQL | 是 | OneLake 捷徑 → OPENROWSET | Azure AD（`az login` 或受管理身分） |
 | `synapse` | Azure Synapse | T-SQL | 是 | ADLS OPENROWSET / 外部資料表 | Azure AD |
-| `sqlalchemy` | SQLAlchemy（任何 RDB） | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `mysql` | MySQL | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `mariadb` | MariaDB | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `oracle` | Oracle Database | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `mssql` | Microsoft SQL Server | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `db2` | IBM Db2 | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `redshift` | Amazon Redshift | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `greenplum` | Greenplum | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `cockroachdb` | CockroachDB | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `yugabytedb` | YugabyteDB | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `opengauss` | openGauss | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `tidb` | TiDB | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `singlestore` | SingleStore | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `vertica` | Vertica | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `exasol` | Exasol | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `teradata` | Teradata Vantage | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `saphana` | SAP HANA | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `sapase` | SAP ASE（Sybase） | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `sqlanywhere` | SAP SQL Anywhere | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `monetdb` | MonetDB | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `firebird` | Firebird | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
+| `sqlalchemy` | 其他關聯式資料庫（依連線 URL） | 依方言而定 | 否 | 無（僅供落地） | 依方言憑證 |
 
 ### 引擎參考
 
@@ -1271,13 +1335,13 @@ PROVISA_ENGINE=synapse
 
 具體化儲存區預設為 `TENANT_DATABASE_URL`。
 
-#### sqlalchemy
+#### 關聯式資料庫引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）及 `sqlalchemy`
 
-通用的僅供落地 RDBMS 引擎（不聯邦至外部數據來源）。適用於單一數據倉庫部署或測試。
+每個可透過網路連線的關聯式資料庫對應一個鍵值，全部運作於同一個僅供落地的執行環境之上（不聯邦至外部數據來源）：每個數據來源均落地至儲存區並於該處查詢。此鍵值選擇資料庫；`PROVISA_ENGINE_URL` 攜帶其方言所需的 DSN。`sqlalchemy` 是沒有專屬鍵值之資料庫的萬用鍵值。不提供檔案內嵌儲存區（SQLite、Access）——伺服器須可經網路連線。
 
 ```bash
-PROVISA_ENGINE=sqlalchemy
-PROVISA_ENGINE_URL="postgresql+psycopg2://user:pass@host/db"
+PROVISA_ENGINE=mysql
+PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
 
 具體化儲存區預設為 `TENANT_DATABASE_URL`。
@@ -1342,7 +1406,7 @@ sources:
 | `PG_DATABASE` | `provisa` | PostgreSQL 資料庫 |
 | `PG_USER` | `provisa` | PostgreSQL 使用者 |
 | `PG_PASSWORD` | `provisa` | PostgreSQL 密碼 |
-| `PROVISA_ENGINE` | `duckdb` | 聯邦引擎鍵值（REQ-989） |
+| `PROVISA_ENGINE` | `duckdb` | 聯邦引擎鍵值（REQ-989、REQ-916） |
 | `PROVISA_ENGINE_URL` | — | 供以 URL 驅動的引擎使用的連線 URL（Snowflake、Databricks、ClickHouse Server、BigQuery、SQLAlchemy） |
 | `PROVISA_MATERIALIZE_URL` | — | 覆寫具體化儲存區 DSN（預設為引擎所宣告的預設值） |
 | `PROVISA_DATA_DIR` | `~/.provisa` | 內嵌 DuckDB 儲存區的數據目錄（REQ-989） |
@@ -1373,6 +1437,8 @@ sources:
 | `PROVISA_MTLS_MODE` | 設定 CA 後為 `required` | `required` 或 `optional`；任何其他取值都會拒絕啟動 (REQ-1228) |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求憑證的 common name 與進行認證的使用者名稱相同 (REQ-1228) |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | 以逗號分隔的網站清單，允許其從瀏覽器開啟 Bolt WebSocket；未設定則拒絕所有瀏覽器 origin (REQ-802) |
+| `PROVISA_EXTRAS` | `firebase,vector` | 烘焙進應用程式映像檔的 pyproject 額外套件；`scripts/provisa` 由 `~/.provisa/config.yaml` 中的 `dq_checker` 推導得出（REQ-1443） |
+| `PROVISA_DQ_CHECKER` | `none` | 僅供安裝程式使用：`none`/`soda`/`gx`，由 `first-launch.sh` 於非互動模式下讀取，並以 `dq_checker` 之名寫入 `config.yaml`（REQ-1443） |
 | `ANTHROPIC_API_KEY` | — | Claude API 金鑰（探索用） |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | 覆寫 `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | 覆寫 `observability.service_name` |

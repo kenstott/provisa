@@ -2,11 +2,11 @@
 
 ## 概覽
 
-Provisa 是一個由配置驅動的數據虛擬化平台，專為驅動語義層而設計——由小型團隊到企業級規模皆可使用。它為異構數據來源提供統一 API，並內建治理、安全性及效能優化。用戶端可透過 SQL、GraphQL 或 Cypher 查詢；三者均為一級介面，套用相同的治理。(REQ-002, REQ-038)
+Provisa 是一個以設定驅動的數據虛擬化平台，專為驅動一個由小型團隊延伸至大型企業的語義層而設計。它為異質數據來源提供統一的 API，並具備治理、安全性及效能優化。用戶端可透過 SQL、GraphQL 或 Cypher 查詢；三者均為一等介面，套用完全相同的治理規則。（REQ-002、REQ-038）
 
-語義層的區分十分重要。要擴展語義層，必須在數據虛擬化層內建立新的數據來源或聚合。這樣便造成清晰的分隔——平台以外不能對語義作出新增，令真正的數據治理成為可能。(REQ-136) 執行是在編譯器層面進行：獲批准的關係目錄是事實的來源，與使用哪種查詢語言無關。(REQ-002)
+語義層的區分至關重要。要擴充語義層，你必須在數據虛擬化層之內建立新的數據來源或聚合。這造成一個乾淨的分隔——不能在平台之外對語義做任何新增，從而實現真正的數據治理。（REQ-136）強制執行是在編譯器層級進行：無論使用哪一種查詢語言，經核准的關聯目錄都是唯一真實來源。（REQ-002）
 
-Provisa 的設計目標，是在營運需求方面達到高效能，同時在企業級分析需求方面達到高度可擴展性。單一平台同時服務兩者，不犧牲速度或可擴展性。
+Provisa 的設計目標，是同時對營運需求具備高效能，並對企業級分析需求具備高可擴展性。單一平台可同時服務兩者，不必犧牲速度或可擴展性。
 
 ```text
 Config YAML → PG Metadata → Federation Catalogs
@@ -31,66 +31,66 @@ Config YAML → PG Metadata → Federation Catalogs
 
 ## 查詢介面
 
-每個介面均為獨立傳輸方式。四者皆套用相同的安全管道（行級安全、數據遮罩、抽樣、角色檢查）。(REQ-002, REQ-038) 用戶端絕不會直接與聯邦引擎通訊。(REQ-266)「查詢語言」（SQL／GraphQL／Cypher）與傳輸方式互相獨立——多種語言可透過同一傳輸方式送達。
+每個介面都是一個獨立的傳輸方式。所有四種都套用同一套安全管線（RLS、遮罩、抽樣、角色檢查）。（REQ-002、REQ-038）用戶端永不直接與聯邦引擎對話。（REQ-266）「查詢語言」（SQL / GraphQL / Cypher）與傳輸方式互相正交——多種語言可經由同一種傳輸方式抵達。
 
-| Port | Transport | Accepted query languages | Use case |
+| 連接埠 | 傳輸方式 | 所接受的查詢語言 | 使用情境 |
 | ------ | ----------- | -------------------------- | ---------- |
-| 8001 | HTTP | GraphQL, SQL, Cypher | Web clients, BI tools, curl, REST consumers |
-| 8815 | Arrow Flight (gRPC) | SQL (via Arrow Flight SQL) | Data tools (Pandas, DuckDB, Spark, ADBC) |
-| 50051 | Protobuf gRPC | Per-role generated proto RPCs | Service-to-service with typed contracts |
-| configurable¹ | PostgreSQL wire protocol (pgwire) | SQL | psql, DBeaver, SQLAlchemy, any PG-compatible client |
+| 8001 | HTTP | GraphQL、SQL、Cypher | 網頁用戶端、BI 工具、curl、REST 消費端 |
+| 8815 | Arrow Flight (gRPC) | SQL（經由 Arrow Flight SQL） | 數據工具（Pandas、DuckDB、Spark、ADBC） |
+| 50051 | Protobuf gRPC | 依角色產生的 proto RPC | 具型別合約的服務對服務通訊 |
+| 可設定¹ | PostgreSQL 線路協定 (pgwire) | SQL | psql、DBeaver、SQLAlchemy，任何相容 PG 的用戶端 |
 
-¹ 設定 `PROVISA_PGWIRE_PORT`（例如 5433）。若未設定或設為 `0`，則停用。
+¹ 設定 `PROVISA_PGWIRE_PORT`（例如 5433）。未設定或為 `0` 時停用。
 
-### HTTP（Port 8001）
+### HTTP（連接埠 8001）
 
-同一 port 下有多個端點，以路徑區分：
+同一連接埠下有多個端點，以路徑區分：
 
-| Path | Language | Notes |
+| 路徑 | 語言 | 備註 |
 | ------ | ---------- | ------- |
-| `POST /data/graphql` | GraphQL | Reads and mutations; APQ hash accepted via `extensions.persistedQuery` |
-| `POST /data/sql` | SQL | Read-only; no capability gate — governed by object visibility + RLS + masking (REQ-001, REQ-267) |
-| `POST /data/query` | Cypher | Read-only; standard role |
-| `GET /data/nl` | Natural language | Translates to SQL/GraphQL/Cypher based on source type |
-| `GET /data/subscribe/{table}` | GraphQL | SSE subscription stream |
-| `GET /neo4j/...` | Cypher (Neo4j compat) | Neo4j HTTP API compatibility shim |
-| `POST /admin/graphql` | GraphQL | Admin API (superuser/admin role required) |
+| `POST /data/graphql` | GraphQL | 讀取及 mutation；透過 `extensions.persistedQuery` 接受 APQ 雜湊值 |
+| `POST /data/sql` | SQL | 唯讀；沒有能力閘控——由物件可視性 + RLS + 遮罩治理（REQ-001、REQ-267） |
+| `POST /data/query` | Cypher | 唯讀；標準角色 |
+| `GET /data/nl` | 自然語言 | 依來源類型轉譯為 SQL/GraphQL/Cypher |
+| `GET /data/subscribe/{table}` | GraphQL | SSE 訂閱串流 |
+| `GET /neo4j/...` | Cypher（Neo4j 相容） | Neo4j HTTP API 相容墊片 |
+| `POST /admin/graphql` | GraphQL | 管理 API（需要 superuser/admin 角色） |
 
-所有路徑預設回傳 JSON。透過內容協商，支援 `Accept: text/csv`、`application/vnd.apache.parquet`、`application/vnd.apache.arrow.stream` 及 `application/octet-stream`（原始二進位數據）。超過已設定大小門檻的結果，會自動轉向至已簽署的 S3 URL。(REQ-029, REQ-137)
+所有路徑預設傳回 JSON。透過內容協商 (content negotiation) 支援 `Accept: text/csv`、`application/vnd.apache.parquet`、`application/vnd.apache.arrow.stream` 及 `application/octet-stream`（原始二進位）。超出所設定大小門檻的結果，會自動被重新導向至一個已簽署的 S3 網址。（REQ-029、REQ-137）
 
-### Arrow Flight（Port 8815）
+### Arrow Flight（連接埠 8815）
 
-透過 gRPC 提供原生欄式 Arrow 傳輸。(REQ-045, REQ-143) 用戶端傳送 JSON ticket：
+以 gRPC 進行原生 Arrow 欄式傳輸。（REQ-045、REQ-143）用戶端送出一張 JSON ticket：
 
 ```json
 {"query": "SELECT name, email FROM customers", "role": "analyst"}
 ```
 
-並以延遲串流方式接收 Arrow RecordBatch。當 Zaychik Arrow Flight SQL 代理可用時，數據會以端到端連續的 Arrow record batch 串流方式流動：(REQ-144)
+並以延遲串流方式收到 Arrow RecordBatches。當 Zaychik Flight SQL 代理伺服器可用時，數據會以 Arrow record batches 串流方式端對端流動：（REQ-144）
 
 ```text
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
-完整結果絕不會在 Provisa 的記憶體中具體化——批次一到達便會轉發。(REQ-145) 這使 Arrow Flight 成為一條無限制的路徑，適合任意大小的結果。
+完整結果永不在 Provisa 的記憶體中被具體化——批次資料一到達即被轉發。（REQ-145）這使 Arrow Flight 成為一條無邊界的路徑，適合任意大小的結果。
 
-### Protobuf gRPC（Port 50051）
+### Protobuf gRPC（連接埠 50051）
 
-從數據結構描述按角色自動生成 `.proto` 檔案。(REQ-525) 串流查詢（每列一則訊息）、單一（unary）變更。已啟用伺服器反射（server reflection）。(REQ-526) 角色透過中繼資料鍵 `x-provisa-role` 傳遞。
+依角色自動由數據結構描述產生 `.proto`。（REQ-525）串流式查詢（每列一則訊息）、單向 (unary) mutation。已啟用伺服器反射 (server reflection)。（REQ-526）角色透過 `x-provisa-role` metadata 鍵傳遞。
 
-### PostgreSQL 線路協定／pgwire（可設定 port）
+### PostgreSQL 線路協定 / pgwire（可設定連接埠）
 
-使用 `buenavista` 程式庫實作 PostgreSQL 前端／後端線路協定。(REQ-527) 任何相容 PostgreSQL 的用戶端——`psql`、DBeaver、使用 `psycopg2` 的 SQLAlchemy、JDBC——均可在不作任何修改下連線。只接受 SQL。完整治理管道（行級安全、數據遮罩、網域權限）以相同方式套用於 pgwire 連線。(REQ-266, REQ-002) 將 `PROVISA_PGWIRE_PORT` 設為非零 port 即可啟用。
+使用 `buenavista` 程式庫，實作 PostgreSQL 前端/後端線路協定。（REQ-527）任何相容 PostgreSQL 的用戶端——`psql`、DBeaver、搭配 `psycopg2` 的 SQLAlchemy、JDBC——都可以在不做任何修改的情況下連線。僅接受 SQL。完整的治理管線（RLS、遮罩、網域權限）同樣適用於 pgwire 連線。（REQ-266、REQ-002）將 `PROVISA_PGWIRE_PORT` 設定為非零連接埠即可啟用。
 
-## 請求管道
+## 請求管線
 
-系統接受三種查詢語言。全部在各自的剖析／編譯步驟後於治理階段匯合。(REQ-262, REQ-263) 只有 GraphQL 支援寫入。(REQ-037) 查詢本身並無能力閘（capability gate）——任何已驗證身分均可以任何語言查詢，數據完全由物件可見性、行級安全及數據遮罩管治。(REQ-001)
+系統接受三種查詢語言。三者在各自的剖析/編譯步驟之後，全部匯聚於治理階段。（REQ-262、REQ-263）只有 GraphQL 支援寫入。（REQ-037）查詢本身沒有任何能力閘控——任何已通過身分驗證的身分都可以用任何語言查詢，數據僅由物件可視性、RLS 及遮罩治理。（REQ-001）
 
-| Interface | Reads | Writes | Query gate |
+| 介面 | 讀取 | 寫入 | 查詢閘控 |
 | --- | --- | --- | --- |
-| GraphQL (`/data/graphql`) | Yes | Yes (mutations) | None — data-layer governance only |
-| SQL (`/data/sql`) | Yes | No | None — data-layer governance only (REQ-267) |
-| Cypher (`/data/query`) | Yes | No | None — data-layer governance only |
+| GraphQL（`/data/graphql`） | 是 | 是（mutation） | 無——僅有數據層治理 |
+| SQL（`/data/sql`） | 是 | 否 | 無——僅有數據層治理（REQ-267） |
+| Cypher（`/data/query`） | 是 | 否 | 無——僅有數據層治理 |
 
 ```mermaid
 flowchart TD
@@ -127,128 +127,128 @@ flowchart TD
 
 **路由決策：**
 
-| Route | When |
+| 路由 | 適用情況 |
 | --- | --- |
-| **Cache** | Result cache hit — evaluated first, serves the stored result with no execution (REQ-865) |
-| **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count — routed to the native count call instead of materializing to count (REQ-875) |
-| **Direct** | Single source + has native driver + has federation connector |
-| **Federation** | Multi-source federation, or source has connector but no driver |
-| **Materialize** | Source has no federation connector — fetch and cache to S3/PG first |
-| **Mutation** | GraphQL mutation — always direct, never federated |
+| **快取 (Cache)** | 結果快取命中——最先被評估，在不執行任何查詢的情況下傳回已儲存的結果（REQ-865） |
+| **廉價計數 (Cheap-count)** | 對一個未具體化來源的 `count(*)` 形狀查詢，且該來源可提供精確的原生計數——路由至原生計數呼叫，而非以具體化方式計數（REQ-875） |
+| **直接 (Direct)** | 單一來源 + 具備原生驅動程式 + 具備聯邦連接器 |
+| **聯邦 (Federation)** | 多來源聯邦，或該來源具備連接器但沒有驅動程式 |
+| **具體化 (Materialize)** | 該來源沒有聯邦連接器——先擷取並快取至 S3/PG |
+| **Mutation** | GraphQL mutation——一律直接執行，永不聯邦化 |
 
-路由使用的是治理後優化階段的輸出，而非優化前經治理的 SQL。治理可以新增數據來源（行級安全子查詢述詞）；優化階段則可以移除數據來源（為熱表內嵌 VALUES CTE、API 快取重寫、聯集分支剪除）。因此，經內嵌後只餘下單一活躍數據來源的聯邦查詢，會被重新路由為直接查詢。(REQ-863)
+路由所消費的是治理後優化階段的輸出，永遠不是優化前、已治理的 SQL。治理階段可能會 ADD（新增）來源（RLS 子查詢判斷式）；優化階段可能會將其 REMOVE（移除）（熱資料表的 VALUES-CTE 內嵌、API 快取重寫、union 分支剪枝）。因此，一個經過內嵌後收合為單一現用來源的聯邦查詢，會被重新路由為直接查詢。（REQ-863）
 
-### 多根查詢
+### 多根查詢 (Multi-Root Queries)
 
-具有多個根欄位的 GraphQL 查詢（例如 `{ orders { id } customers { name } }`）會被編譯成獨立的 SQL 查詢，並各自獨立執行。(REQ-534) SQL 及 Cypher 請求定義上均為單根查詢。結果會合併於單一回應中：
+具有多個根欄位的 GraphQL 查詢（例如 `{ orders { id } customers { name } }`）會被編譯為個別的 SQL 查詢，並各自獨立執行。（REQ-534）SQL 及 Cypher 請求依定義為單根 (single-root)。多個結果會被合併為單一回應：
 
-- 低於轉向門檻的欄位會內嵌於 `data` 中回傳
-- 高於門檻的欄位會被轉向，並在 `redirects` 中以每欄位一項記錄
+- 低於重新導向門檻的欄位會直接內嵌於 `data` 中傳回
+- 超過門檻的欄位會被重新導向，並在 `redirects` 中提供逐欄位的項目
 - 二進位格式（Parquet、Arrow）僅支援單根查詢
 
 ## 聯邦執行路徑
 
-| Path | Transport | Via | When used |
+| 路徑 | 傳輸方式 | 途徑 | 使用時機 |
 | ------ | ----------- | ----- | ----------- |
-| REST | federation engine client (HTTP :8080) | Direct query | Default, always available |
-| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → JDBC | When Zaychik is running |
-| CTAS | federation engine client (HTTP :8080) | Direct write, Iceberg to S3 | Parquet/ORC redirect |
+| REST | 聯邦引擎用戶端（HTTP :8080） | 直接查詢 | 預設，永遠可用 |
+| Flight SQL | `adbc-driver-flightsql`（gRPC :8480） | Zaychik 代理伺服器 → JDBC | 當 Zaychik 正在執行時 |
+| CTAS | 聯邦引擎用戶端（HTTP :8080） | 直接寫入，Iceberg 至 S3 | Parquet/ORC 重新導向 |
 
-### Zaychik Arrow Flight SQL 代理
+### Zaychik Arrow Flight SQL 代理伺服器
 
-聯邦引擎並非原生支援 Arrow Flight SQL 協定。[Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) 是一個 Java 代理，實作 Arrow Flight SQL 的 gRPC 介面，將請求轉譯為 JDBC 查詢，並以 Arrow record batch 串流方式回傳結果。(REQ-144)
+聯邦引擎並非原生支援 Arrow Flight SQL 協定。[Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) 是一個 Java 代理伺服器，實作了 Arrow Flight SQL gRPC 介面，將請求轉譯為 JDBC 查詢，並以 Arrow record batches 的形式將結果串流回傳。（REQ-144）
 
 ```text
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-Provisa Flight Server（Port 8815）以 ADBC 用戶端身分連接至 Zaychik，實現端到端 Arrow 串流，而毋須具體化結果。(REQ-145)
+Provisa 的 Flight 伺服器（連接埠 8815）以 ADBC 用戶端的身分連接至 Zaychik，實現端對端的 Arrow 串流，而不需具體化結果。（REQ-145）
 
 ### Iceberg 結果目錄
 
-CTAS 轉向使用一個基於現有 PostgreSQL 執行個體上 JDBC 目錄的 Iceberg 連接器（目錄 `results`）。(REQ-169) Iceberg 透過原生 S3 檔案系統（`fs.native-s3.enabled=true`）直接將 Parquet／ORC 檔案寫入 MinIO／S3。
+CTAS 重新導向使用一個 Iceberg 連接器（`results` 目錄），其後端為現有 PostgreSQL 實例上的一個 JDBC 目錄。（REQ-169）Iceberg 透過原生 S3 檔案系統（`fs.native-s3.enabled=true`），將 Parquet/ORC 檔案直接寫入 MinIO/S3。
 
 ## 聯邦引擎
 
-Provisa 於啟動時透過環境變數 `PROVISA_ENGINE`、已持久化的 Admin UI 設定，或預設值來選擇聯邦引擎。若未設定任何值，預設為 DuckDB——完全在進程內運作，毋須外部服務（REQ-989）。選擇的詳情請見 [Configuration](configuration.md#_31)。
+Provisa 在啟動時，透過 `PROVISA_ENGINE` 環境變數、持久化的管理介面設定，或預設值來選擇一個聯邦引擎。當未設定任何值時，DuckDB 是預設引擎——完全於行程內執行，不需要外部服務（REQ-989）。選擇詳情請參閱[設定](configuration.md#_32)。
 
-每個引擎都是一個 `FederationEngine` 執行個體，定義於 `provisa/federation/engine.py`。該執行個體持有一組連接器集合，決定引擎可即時讀取（ATTACH）哪些來源類型，以及哪些必須先落地至引擎的具體化儲存區。[tool-verified: `engine.py` `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`]
+每一個引擎都是 `provisa/federation/engine.py` 中定義的一個 `FederationEngine` 實例。該實例擁有一組連接器集合，決定該引擎可以即時讀取（ATTACH）哪些來源類型，以及哪些必須先落地至該引擎的具體化儲存區。[tool-verified: `engine.py` `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`]
 
-### 驅動程式類別（REQ-840）[tool-verified: `engine.py` `DriverClass`]
+### 驅動程式類別（REQ-840） [tool-verified: `engine.py` `DriverClass`]
 
-| Class | Meaning | Examples |
+| 類別 | 意義 | 範例 |
 | ------- | --------- | --------- |
-| `BROAD` | Reaches many external source types via native connectors | Trino |
-| `PARTIAL` | Reaches a subset (relational, files, cloud object/lake) plus lands everything else | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
-| `SELF_ONLY` | Reaches only its own store; every other source lands in | SQLAlchemy |
+| `BROAD` | 透過原生連接器觸及多種外部來源類型 | Trino |
+| `PARTIAL` | 觸及一個子集（關聯式、檔案、雲端物件/數據湖），並落地其餘一切 | DuckDB、PostgreSQL、ClickHouse、Databricks、Snowflake、BigQuery、Fabric、Synapse |
+| `SELF_ONLY` | 僅觸及自身的儲存區；其他每一種來源皆需落地 | SQLAlchemy |
 
 ### 可用引擎 [tool-verified: `engine.py` `_ENGINE_BUILDERS`]
 
-| Engine key | Dialect | MPP | External-link mechanism | Auth |
+| 引擎鍵值 | 方言 | MPP | 外部連結機制 | 身分驗證 |
 | ----------- | --------- | ----- | ------------------------ | ------ |
-| `trino` / `trino-byo` | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
-| `pg` | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
-| `duckdb` | DuckDB | No | Extension-native ATTACH | None (in-process) |
-| `clickhouse` / `clickhouse-server` | ClickHouse | Yes (shards) | S3 / IcebergS3 / DeltaLake table engines (REQ-986) | ClickHouse credentials |
-| `snowflake` | Snowflake | Yes | External stage + external table (REQ-988) | `PROVISA_ENGINE_URL` |
-| `databricks` | Databricks SQL | Yes | Unity Catalog external tables via REST (REQ-987) | Bearer token (`http_path` in `federation_hints`) |
-| `bigquery` | BigQuery | Yes (Dremel) | BigQuery external / BigLake tables | `GOOGLE_APPLICATION_CREDENTIALS` service-account key |
-| `fabric` | T-SQL | Yes | OneLake shortcuts → OPENROWSET | Azure AD (`az login` / managed identity) |
-| `synapse` | T-SQL | Yes | ADLS OPENROWSET / external tables | Azure AD |
-| `sqlalchemy` | Any SQLAlchemy dialect | No | None (land-only) | Per-dialect credentials |
+| `trino` / `trino-byo` | Trino SQL | 是 | Trino 目錄（廣泛的連接器集合） | JDBC 憑證 |
+| `pg` | PostgreSQL | 否 | FDW / pg_duckdb | PostgreSQL 憑證 |
+| `duckdb` | DuckDB | 否 | 擴充功能原生 ATTACH | 無（行程內） |
+| `clickhouse` / `clickhouse-server` | ClickHouse | 是（分片） | S3 / IcebergS3 / DeltaLake 資料表引擎（REQ-986） | ClickHouse 憑證 |
+| `snowflake` | Snowflake | 是 | 外部 stage + 外部資料表（REQ-988） | `PROVISA_ENGINE_URL` |
+| `databricks` | Databricks SQL | 是 | 經由 REST 的 Unity Catalog 外部資料表（REQ-987） | Bearer token（`federation_hints` 中的 `http_path`） |
+| `bigquery` | BigQuery | 是（Dremel） | BigQuery 外部 / BigLake 資料表 | `GOOGLE_APPLICATION_CREDENTIALS` 服務帳戶金鑰 |
+| `fabric` | T-SQL | 是 | OneLake shortcut → OPENROWSET | Azure AD（`az login` / 受管理身分） |
+| `synapse` | T-SQL | 是 | ADLS OPENROWSET / 外部資料表 | Azure AD |
+| `sqlalchemy` | 任何 SQLAlchemy 方言 | 否 | 無（僅限落地） | 依方言而定的憑證 |
 
-### 免設定預設值：DuckDB（REQ-989）[tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`]
+### 零設定預設值：DuckDB（REQ-989） [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`]
 
-當 `PROVISA_ENGINE` 未設定時，Provisa 使用完全內嵌、於進程內運作的 DuckDB 引擎。DuckDB 的具體化儲存區是位於 `$PROVISA_DATA_DIR/materialize.duckdb`（預設：`~/.provisa/materialize.duckdb`）的內嵌 DuckDB 檔案。毋須任何外部資料庫或服務。
+當 `PROVISA_ENGINE` 未設定時，Provisa 使用完全內嵌、行程內執行的 DuckDB 引擎。DuckDB 的具體化儲存區是位於 `$PROVISA_DATA_DIR/materialize.duckdb` 的一個內嵌 DuckDB 檔案（預設為 `~/.provisa/materialize.duckdb`）。不需要任何外部資料庫或服務。
 
-由於 DuckDB 每個檔案只允許單一寫入進程，`store_connection.py` 是透過引擎自身的連線寫入內嵌儲存區——絕不透過第二個獨立連線。這是引擎與具體化儲存區有意共用同一檔案控點的唯一情況。[tool-verified: `store_connection.py` module docstring]
+由於 DuckDB 對每個檔案僅允許一個寫入者，`store_connection.py` 是透過引擎自身的連線寫入內嵌儲存區——絕不會另開第二條獨立連線。這是引擎與具體化儲存區依設計共用同一個檔案控制代碼的唯一案例。[tool-verified: `store_connection.py` module docstring]
 
-### 原生 Arrow 讀取傳輸（REQ-986, REQ-987, REQ-988）[tool-verified: `engine.py` `build_*_engine` `capabilities=`]
+### Arrow 原生讀取傳輸（REQ-986、REQ-987、REQ-988） [tool-verified: `engine.py` `build_*_engine` `capabilities=`]
 
-ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 及 Synapse 均回報 `EngineCapability.ARROW` 及 `EngineCapability.ARROW_STREAM`。針對這些引擎的查詢會直接回傳 Arrow RecordBatch——完全繞過逐列序列化路徑。Flight Server 會將這些批次串流至用戶端，而不會在 Provisa 的進程記憶體中具體化完整結果。就 Trino 而言，Arrow 串流依賴 Zaychik 代理；就倉儲引擎而言，各引擎自身的原生 Arrow API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 及 Snowflake 的 `fetch_arrow_table`）驅動 Flight 串流。
+ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 及 Synapse 全部宣告支援 `EngineCapability.ARROW` 及 `EngineCapability.ARROW_STREAM`。針對這些引擎的查詢會直接傳回 Arrow RecordBatches——完全繞過資料列序列化路徑。Flight 伺服器會將這些批次串流給用戶端，而不會在 Provisa 的行程記憶體中具體化完整結果。對 Trino 而言，Arrow 串流依賴 Zaychik 代理伺服器；對數據倉庫引擎而言，則由該引擎自身原生的 Arrow API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 及 Snowflake 的 `fetch_arrow_table`）餵送 Flight 串流。
 
-### 外部數據連結（ATTACH）[tool-verified: `engine.py` `_warehouse_connectors`]
+### 外部數據連結（ATTACH） [tool-verified: `engine.py` `_warehouse_connectors`]
 
-每個倉儲引擎均可原地掃描雲端物件／湖數據，而毋須落地複本。位於 S3、GCS 或 OneLake 上的 Parquet、CSV、Iceberg 及 Delta Lake 檔案，會直接掛接至引擎，猶如原生資料表一般。所採用的策略——ATTACH（原地掃描）或 LAND（複製至儲存區）——由連接器所宣告的 `Mechanism` 決定；規劃器中並無按引擎區分的分支邏輯。`Mechanism.ATTACH_R` 連接器會觸發免複製掃描；`Mechanism.DIRECT` 連接器或缺少連接器則會觸發落地。[tool-verified: `connector_base.py` `Mechanism`, `engine.py` `_warehouse_connectors`]
+每一個數據倉庫引擎皆可就地掃描雲端物件/數據湖數據，而不落地任何複本。位於 S3、GCS 或 OneLake 上的 Parquet、CSV、Iceberg 及 Delta Lake 檔案，可直接以原生資料表的方式附加至引擎。ATTACH（就地掃描）或 LAND（複製進儲存區）這項策略，是由連接器所宣告的 `Mechanism` 決定；規劃器 (planner) 中不存在任何依引擎而異的分支邏輯。`Mechanism.ATTACH_R` 連接器觸發零複製掃描；`Mechanism.DIRECT` 或缺席的連接器則觸發落地。[tool-verified: `connector_base.py` `Mechanism`, `engine.py` `_warehouse_connectors`]
 
-Attach 會於掛接時自動佈建所有先決條件：
+Attach 會在附加時自動佈建所有先決條件：
 
-| Engine | Object/lake formats | Mechanism | Auto-provisioning [tool-verified] |
+| 引擎 | 物件/數據湖格式 | 機制 | 自動佈建 [tool-verified] |
 | -------- | ------------------- | ---------- | ---------------------------------- |
-| Databricks | parquet, csv, iceberg, delta_lake | UC external table (`ATTACH_R`) | REST installs Unity Catalog storage credential + external location, then `CREATE TABLE … USING <format> LOCATION …` — live-verified over Cloudflare R2 |
-| BigQuery | parquet, csv, json, iceberg, delta_lake | BigQuery external / BigLake table (`ATTACH_R`) | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])` — live-verified |
-| ClickHouse | csv, parquet, iceberg, delta_lake | S3 / IcebergS3 / DeltaLake table engine (`ATTACH_R`) | Validation probe executed at attach time — live-verified over Cloudflare R2 |
-| Fabric | parquet, csv, iceberg, delta_lake | OneLake shortcut → OPENROWSET (`ATTACH_R`) | REST creates an `AmazonS3Compatible` connection + lakehouse + shortcut; returns the OneLake `BULK` path — live-verified reading R2 through Fabric |
-| Snowflake | parquet, csv, json, iceberg, delta_lake | External stage + external table (`ATTACH_R`) | `CREATE STAGE … URL=… CREDENTIALS=…`, then `CREATE OR REPLACE EXTERNAL TABLE … LOCATION=@stage FILE_FORMAT=(TYPE=…)` — implemented; not live-tested (no account available) |
+| Databricks | parquet、csv、iceberg、delta_lake | UC 外部資料表（`ATTACH_R`） | REST 安裝 Unity Catalog 儲存體憑證 + 外部位置，再執行 `CREATE TABLE … USING <format> LOCATION …`——已於 Cloudflare R2 上實際驗證 |
+| BigQuery | parquet、csv、json、iceberg、delta_lake | BigQuery 外部 / BigLake 資料表（`ATTACH_R`） | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])`——已實際驗證 |
+| ClickHouse | csv、parquet、iceberg、delta_lake | S3 / IcebergS3 / DeltaLake 資料表引擎（`ATTACH_R`） | 於附加時執行驗證探測——已於 Cloudflare R2 上實際驗證 |
+| Fabric | parquet、csv、iceberg、delta_lake | OneLake shortcut → OPENROWSET（`ATTACH_R`） | REST 建立一個 `AmazonS3Compatible` 連線 + lakehouse + shortcut；傳回 OneLake 的 `BULK` 路徑——已實際驗證透過 Fabric 讀取 R2 |
+| Snowflake | parquet、csv、json、iceberg、delta_lake | 外部 stage + 外部資料表（`ATTACH_R`） | `CREATE STAGE … URL=… CREDENTIALS=…`，再執行 `CREATE OR REPLACE EXTERNAL TABLE … LOCATION=@stage FILE_FORMAT=(TYPE=…)`——已實作；尚未實測（無可用帳戶） |
 
-雲端儲存的憑證是透過數據來源的 `federation_hints` 傳遞（見 [Sources](sources.md#_15)）。任何無法執行 ATTACH 的來源類型，都會先落地至引擎的具體化儲存區。
+雲端儲存體的憑證放在該來源的 `federation_hints` 中傳遞（見[來源](sources.md#warehouses-as-named-sources)）。任何無法 ATTACH 的來源類型，會先落地至該引擎的具體化儲存區。
 
-### 欄式具體化寫入（REQ-990）[tool-verified: `core/database.py:436`, `store_connection.py:99`]
+### 欄式具體化寫入（REQ-990） [tool-verified: `core/database.py:436`, `store_connection.py:99`]
 
-`provisa/core/database.py` 中的 `Connection.bulk_copy` 會根據儲存區方言選擇最快的批量匯入路徑：PostgreSQL 儲存區使用二進位 `COPY`（asyncpg 的 `copy_records_to_table`），其他所有關聯式儲存區則使用單一預備 `executemany` 陳述式。內嵌的 DuckDB 儲存區則透過 `store_connection.py` 中的 `land_duckdb_native` 落地數據——整個批次僅一次 `executemany` 呼叫，絕不逐列迴圈。
+`provisa/core/database.py` 中的 `Connection.bulk_copy`，會依儲存區方言選擇最快的批量匯入路徑：PostgreSQL 儲存區使用二進位 `COPY`（asyncpg 的 `copy_records_to_table`），其餘所有關聯式儲存區則使用單一個 `executemany` 預備陳述式。DuckDB 內嵌儲存區則透過 `store_connection.py` 中的 `land_duckdb_native` 落地——整批僅呼叫一次 `executemany`，絕不逐列迴圈處理。
 
-## 大型結果轉向
+## 大型結果重新導向
 
-超過列數門檻的結果，會被轉向至相容 S3 的儲存區（MinIO），而非內嵌回傳。(REQ-029)
+超出資料列門檻的結果，會被重新導向至相容 S3 的儲存體（MinIO），而不是直接內嵌傳回。（REQ-029）
 
-### 轉向模式
+### 重新導向模式
 
-| Mode | How it works | Data touches Provisa? |
+| 模式 | 運作方式 | 數據是否經手 Provisa？ |
 | ------ | ------------- | ---------------------- |
-| **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
-| **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
+| **CTAS**（Parquet、ORC） | 聯邦引擎透過 `CREATE TABLE AS SELECT` 直接寫入 S3 | 否 |
+| **Provisa 上傳**（JSON、NDJSON、CSV、Arrow IPC） | Provisa 序列化並透過 boto3 上傳 | 是 |
 
-對於 CTAS 原生格式，Provisa 完全不會接觸數據——聯邦引擎會直接將檔案寫入 MinIO／S3。(REQ-138) 這是大型分析匯出的首選路徑。
+對於 CTAS 原生格式，Provisa 永不經手數據——聯邦引擎直接將檔案寫入 MinIO/S3。（REQ-138）這是大型分析匯出的首選路徑。
 
-### 轉向標頭
+### 重新導向標頭 (Headers)
 
-| Header | Effect |
+| 標頭 | 效果 |
 | -------- | -------- |
-| `X-Provisa-Redirect-Format: <mime>` | Redirect in this format (implies force unless threshold set) |
-| `X-Provisa-Redirect-Threshold: N` | Only redirect if result exceeds N rows |
-| `X-Provisa-Redirect: true` | Force redirect using default format |
+| `X-Provisa-Redirect-Format: <mime>` | 以此格式重新導向（除非設有門檻，否則隱含強制導向） |
+| `X-Provisa-Redirect-Threshold: N` | 僅當結果超過 N 列時才重新導向 |
+| `X-Provisa-Redirect: true` | 以預設格式強制重新導向 |
 
-這些標頭實作了由用戶端主導的轉向。(REQ-137)
+這些標頭實作了由用戶端控制的重新導向。（REQ-137）
 
 **回應：**
 
@@ -264,16 +264,16 @@ Attach 會於掛接時自動佈建所有先決條件：
 }
 ```
 
-### 伺服器端設定
+### 伺服器設定
 
-| Env var | Default | Purpose |
+| 環境變數 | 預設值 | 用途 |
 | --------- | --------- | --------- |
-| `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
-| `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
-| `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket name |
-| `PROVISA_REDIRECT_ENDPOINT` | | S3-compatible endpoint URL |
-| `PROVISA_REDIRECT_TTL` | `3600` | Presigned URL TTL (seconds) |
+| `PROVISA_REDIRECT_ENABLED` | `false` | 啟用伺服器端門檻式重新導向 |
+| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 預設資料列數門檻 |
+| `PROVISA_REDIRECT_FORMAT` | `parquet` | 預設重新導向格式 |
+| `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 儲存桶名稱 |
+| `PROVISA_REDIRECT_ENDPOINT` | | 相容 S3 的端點網址 |
+| `PROVISA_REDIRECT_TTL` | `3600` | 預先簽署網址的 TTL（秒） |
 
 ## 路由決策樹
 
@@ -288,30 +288,30 @@ Steward hint "direct"? → Direct (if possible)
 Redirect to Parquet/ORC? → Federation engine (CTAS, regardless of source count)
 ```
 
-(REQ-027, REQ-028, REQ-030, REQ-279)
+（REQ-027、REQ-028、REQ-030、REQ-279）
 
 ## 聯邦查詢優化
 
-Provisa 會自動初始化聯邦引擎的基於成本的優化器，令跨來源查詢計劃基於實際數據分佈，而非硬編碼的預設值。
+Provisa 會自動預熱聯邦引擎的成本導向優化器，讓跨來源查詢計畫依據真實的數據分佈，而非硬編碼的預設值。
 
-### 自動統計資料（`ANALYZE`）
+### 自動統計資料 (`ANALYZE`)
 
-在登記數據來源時，Provisa 會為每個已發佈的資料表執行 `ANALYZE catalog.schema.table`。(REQ-275) 此舉會擷取：
+於來源登記時，Provisa 會針對每一個已發佈的資料表執行 `ANALYZE catalog.schema.table`。（REQ-275）此舉會蒐集：
 
-- 列數
-- 每欄：空值比例、相異值數目、最小／最大值、直方圖（視乎連接器而定）
+- 資料列數
+- 逐欄位：null 比例、相異值數量、最小/最大值、直方圖（視連接器而定）
 
-優化器會利用這些數值估算已篩選查詢的選擇性。若無統計資料，系統會回退至固定預設值（例如相等述詞的選擇性為 10%），在數據傾斜或高基數的情況下導致連接（join）計劃欠佳。有統計資料時，估算便足夠準確，能在大多數工作負載中就廣播式與分割式連接作出正確決策。
+優化器會利用這些資料，估算篩選查詢的選擇率 (selectivity)。若沒有統計資料，會回退至固定的預設值（例如相等判斷式的選擇率為 10%），這在資料傾斜或高基數的數據上會產生不良的 join 計畫。有了統計資料，估算便足夠準確，能為大多數工作負載作出正確的廣播式 (broadcast) 或分割式 (partitioned) join 決策。
 
-**涵蓋範圍**：統計資料支援程度因連接器而異。PostgreSQL、MySQL、Hive、Iceberg 及 Delta Lake 完全支援 `ANALYZE`。MongoDB 及 Cassandra 連接器則僅提供部分或不提供支援。Provisa 會靜默忽略 `ANALYZE` 錯誤——登記程序絕不會因此被阻擋。(REQ-275)
+**涵蓋範圍**：統計資料支援視連接器而異。PostgreSQL、MySQL、Hive、Iceberg 及 Delta Lake 完全支援 `ANALYZE`。MongoDB 及 Cassandra 連接器僅有部分支援或完全不支援。Provisa 會靜默吞掉 `ANALYZE` 失敗——登記程序絕不會因此被阻擋。（REQ-275）
 
-**選擇性的限制**：統計資料提供的是逐欄估算。若述詞相關聯（例如 `WHERE region = 'US' AND city = 'Seattle'`），優化器會假設欄與欄之間互相獨立，可能會低估列數。這是所有基於成本的優化器中，逐欄統計資料的已知限制。
+**選擇率的限制**：統計資料提供的是逐欄位估算值。對於相關聯的判斷式（`WHERE region = 'US' AND city = 'Seattle'`），優化器假設欄位彼此獨立，這可能會低估資料列數。這是所有成本導向優化器中，欄位層級統計資料共有的已知限制。
 
-**API 數據來源**：PostgreSQL 中的 `api_cache_{table_name}` 資料表，會在每次快取重新整理週期後自動分析，令優化器在將基於 API 的來源與關聯式來源連接時，可取得最新的列數估算。(REQ-280)
+**API 來源**：PostgreSQL 中的 `api_cache_{table_name}` 資料表，會在每一次快取重新整理週期後自動被分析，因此優化器在將以 API 為後端的來源與關聯式來源 join 時，能取得目前的資料列估算值。（REQ-280）
 
-### 管理：重新整理統計資料
+### 管理功能：重新整理統計資料
 
-可按需要透過 Admin API 重新執行統計資料收集：(REQ-276)
+可透過管理 API 隨選重新執行統計資料蒐集：（REQ-276）
 
 ```graphql
 mutation {
@@ -322,34 +322,34 @@ mutation {
 }
 ```
 
-適用於某數據來源自登記以來已收到大量新數據的情況。
+當某個來源自登記以來已收到大量新數據時，此功能十分有用。
 
-## 具體化檢視
+## 具體化檢視 (Materialized Views)
 
-具體化檢視（MV）透過預先計算並快取結果，透明地優化昂貴的查詢。
+MV 藉由預先運算並快取結果，透明地優化昂貴的查詢。
 
-### 以關係作為 MV 提示
+### 作為 MV 提示的關聯
 
-一項關係聲明不只是治理產物——它同時也是連接（join）形態的結構描述。而這正正是 MV 優化器所需要的形態：兩個資料表、兩個欄、一種連接類型。這意味著一項關係可以直接指導具體化。
+一項關聯宣告不僅是一種治理構件——它同時也是一個 join 形狀的結構性描述。而這正是 MV 優化器所需要的：兩個資料表、兩個欄位、一種 join 類型。這代表一項關聯可以直接驅動具體化。
 
-對於**跨來源關係**，這在啟動時會自動發生：每項獲批准的跨來源關係都會產生一個 `JoinPattern` MV（`auto-mv-<rel_id>`）。(REQ-158) 毋須額外的 MV 設定。當編譯器在查詢中偵測到此連接時，重寫器會透明地以預先具體化的結果取代之。
+對於**跨來源關聯**，此舉會在啟動時自動發生：每一項已核准的跨來源關聯都會產生一個 `JoinPattern` MV（`auto-mv-<rel_id>`）。（REQ-158）不需要另外設定 MV。當編譯器在某個查詢中偵測到該 join 時，重寫器 (rewriter) 會透明地以預先具體化的結果取而代之。
 
-對於**同一數據來源內的關係**，數據管家可以透過明確設定 `materialize: true` 選用具體化。同一數據來源內的 JOIN 已因直接執行而具速度優勢，因此只有極高頻率的連接路徑才值得具體化。(REQ-159)
+對於**同來源關聯**，數據管家可以透過 `materialize: true` 明確選擇加入。由於同來源的 JOIN 透過直接執行已相當快速，因此具體化僅在非常熱門的 join 路徑上才有價值。（REQ-159）
 
-實際結果是：批准某項關係的數據管家，其實也隱含地決定了該連接是否適合作為具體化候選。治理行為與優化提示，其實是同一項聲明。
+實際的結果是：核准一項關聯的數據管家，同時也隱含地決定了該 join 是否適合作為具體化的候選對象。治理行為與優化提示，是同一項宣告。
 
-### 模式
+### 模式 (Modes)
 
-| Mode | Config | Behavior |
+| 模式 | 設定 | 行為 |
 | ------ | -------- | ---------- |
-| **Join-pattern** | `join_pattern` in MV config | Rewrites matching JOINs to read from MV table |
-| **Custom SQL** | `sql` in MV config | Arbitrary SELECT, optionally exposed in SDL |
-| **Auto-materialized relationship** | cross-source relationship (automatic) | Auto-generates a join-pattern MV; no config required |
-| **Steward-materialized relationship** | `materialize: true` on same-source relationship | Explicit opt-in for hot same-source join paths |
+| **Join-pattern** | MV 設定中的 `join_pattern` | 將相符的 JOIN 重寫為讀取 MV 資料表 |
+| **自訂 SQL** | MV 設定中的 `sql` | 任意 SELECT，可選擇性地於 SDL 中公開 |
+| **自動具體化關聯** | 跨來源關聯（自動） | 自動產生一個 join-pattern MV；不需設定 |
+| **數據管家具體化關聯** | 同來源關聯上的 `materialize: true` | 針對熱門同來源 join 路徑的明確選擇加入 |
 
 ### 自動具體化
 
-跨來源 JOIN 是最昂貴的查詢（永遠是聯邦查詢）。跨來源關係會在啟動時自動產生 MV 定義：(REQ-158)
+跨來源 JOIN 是成本最高的查詢（永遠聯邦化）。跨來源關聯會在啟動時自動產生 MV 定義：（REQ-158）
 
 ```yaml
 relationships:
@@ -363,7 +363,7 @@ relationships:
     refresh_interval: 600          # refresh every 10 minutes
 ```
 
-只有跨來源關係會產生 MV（同一數據來源內的 JOIN 已透過直接執行而具速度優勢）。(REQ-159) MV 一開始的狀態為 `STALE`，並會由背景重新整理迴圈更新，然後才會被查詢優化器使用。(REQ-160)
+只有跨來源關聯會產生 MV（同來源 JOIN 透過直接執行已相當快速）。（REQ-159）MV 一開始處於 `STALE` 狀態，會由背景重新整理迴圈重新整理，之後才會被查詢優化器使用。（REQ-160）
 
 ### 重新整理生命週期
 
@@ -373,117 +373,151 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
   └──── mutation hits source table ────────────────┘
 ```
 
-重新整理迴圈每 30 秒執行一次，檢查 `get_due_for_refresh()`，並透過聯邦引擎對 MV 目標資料表執行 `CREATE TABLE AS SELECT`（首次執行）或 `DELETE + INSERT`（其後執行）。(REQ-160, REQ-234)
+重新整理迴圈每 30 秒執行一次，檢查 `get_due_for_refresh()`，並透過聯邦引擎針對 MV 目標資料表執行 `CREATE TABLE AS SELECT`（首次執行）或 `DELETE + INSERT`（後續執行）。（REQ-160、REQ-234）
 
-## 模組地圖
+## 模組對照表
 
-| Module | Purpose |
+| 模組 | 用途 |
 | -------- | --------- |
-| `api/` | FastAPI app, routers, middleware, lifespan management |
-| `api/flight/` | Arrow Flight server (gRPC, port 8815) |
-| `api/admin/` | Strawberry GraphQL admin API — config, discovery, views |
-| `api/rest/` | Auto-generated REST endpoints from registered tables |
-| `api/jsonapi/` | Auto-generated JSON:API endpoints with pagination and error handling |
-| `api/data/subscribe.py` | SSE subscriptions — LISTEN/NOTIFY, polling, Debezium CDC |
-| `compiler/` | GraphQL/SQL parsers, semantic SQL generator, RLS, masking, sampling, two-stage governance (`stage2.py`) |
-| `cypher/` | Cypher → SQL translator, parser, label map (REQ-351), write translator for Cypher mutations |
-| `pgwire/` | PostgreSQL wire-protocol server; `catalog.py` intercepts pg_catalog/information_schema for per-role object visibility (REQ-527, REQ-883, REQ-891) |
-| `vector/` | Vector search — model registry, embedding providers (openai/ollama/huggingface), `cosine_similarity()` translation, pgvector fallback cache, declarative embedding generation (REQ-419–431) |
-| `compiler/federation.py` | Apollo Federation v2 subgraph support |
-| `transpiler/` | Dialect transpilation, routing logic |
-| `executor/` | Federated/direct execution, serialization, output formats |
-| `executor/drivers/` | Direct source drivers (PostgreSQL, MySQL, DuckDB, Snowflake, Databricks, ClickHouse, …) |
-| `executor/trino_flight.py` | ADBC Flight SQL client for the federation engine |
-| `executor/ctas_write.py` | CTAS-based redirect (federation engine writes to S3) |
-| `executor/redirect.py` | S3 redirect logic, Provisa-side upload |
-| `federation/engine.py` | `FederationEngine`, `DriverClass`, `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`, `build_engine` |
-| `federation/connector.py` | Connector abstractions — Trino, ClickHouse; `Mechanism`, `WarehouseNativeConnector` |
-| `federation/connector_duckdb.py` | DuckDB and PostgreSQL FDW connector definitions |
-| `federation/snowflake_connectors.py` | Snowflake external stage + external table ATTACH connectors (REQ-988) |
-| `federation/databricks_connectors.py` | Databricks UC external table ATTACH connectors (REQ-987) |
-| `federation/bigquery_connectors.py` | BigQuery external / BigLake ATTACH connectors |
-| `federation/databricks_uc.py` | Unity Catalog credential + external location auto-provisioning |
-| `federation/databricks_backend.py` | Databricks SQL warehouse execution backend |
-| `federation/snowflake_backend.py` | Snowflake execution backend |
-| `federation/bigquery_backend.py` | BigQuery execution backend (Storage Read API Arrow transport) |
-| `federation/mssql_warehouse_backend.py` | Fabric Warehouse + Synapse execution backends (T-SQL over ODBC) |
-| `federation/mssql_warehouse_connectors.py` | OPENROWSET ATTACH connectors for Fabric / Synapse |
-| `federation/fabric_shortcuts.py` | OneLake shortcut auto-provisioning (connection → lakehouse → shortcut) |
-| `federation/clickhouse_backend.py` | ClickHouse execution backend |
-| `federation/duckdb_backend.py` | DuckDB in-process execution backend |
-| `federation/pg_backend.py` | PostgreSQL execution backend |
-| `federation/store_connection.py` | DuckDB-native materialization store write face (REQ-989, REQ-990) |
-| `registry/` | Persisted query registry, governance |
-| `security/` | Visibility, rights, column masking |
-| `cache/` | Redis-backed query result caching (hot tier) |
-| `mv/` | Materialized view registry, refresh, SQL rewriter |
-| `events/` | Dataset change events and trigger dispatch |
-| `webhooks/` | Outbound webhook execution for mutations and events |
-| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks, mutations, or Kafka sink publishes |
-| `apq/` | Apollo APQ wire protocol — Redis-backed query hash cache; separate from result caching |
-| `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
-| `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
-| `compiler/enum_detect.py` | Enum type auto-detection — PostgreSQL native enum types (`pg_enum`) exposed as GraphQL enum types rather than string scalars |
-| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=federated */`) that override automatic routing |
-| `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
-| `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
-| `subscriptions/` | SSE subscription state and delivery |
-| `discovery/` | LLM relationship discovery (Claude API) |
-| `grpc/` | Proto generation, gRPC server, reflection |
-| `api_source/` | REST/GraphQL/gRPC API sources with PG cache |
-| `kafka/` | Kafka topic sources, sink, Schema Registry |
-| `auth/` | Pluggable auth providers, middleware, role mapping |
-| `core/` | Config, models, DB, repositories, secrets; role model supports `parent_role_id` and `flatten_roles()` for recursive role inheritance |
-| `hasura_v2/` | Hasura v2 metadata → Provisa config converter |
-| `ddn/` | Hasura DDN supergraph → Provisa config converter |
-| `mongodb/` | MongoDB source connector |
-| `elasticsearch/` | Elasticsearch source connector |
-| `cassandra/` | Cassandra source connector |
-| `prometheus/` | Prometheus metrics source connector |
-| `source_adapters/` | Generic adapter layer for source connections |
+| `api/` | FastAPI 應用程式、路由器、中介軟體、生命週期管理 |
+| `api/flight/` | Arrow Flight 伺服器（gRPC，連接埠 8815） |
+| `api/admin/` | Strawberry GraphQL 管理 API——設定、探索、檢視 |
+| `api/rest/` | 從已登記資料表自動產生的 REST 端點 |
+| `api/jsonapi/` | 具分頁及錯誤處理的自動產生 JSON:API 端點 |
+| `api/data/subscribe.py` | SSE 訂閱——LISTEN/NOTIFY、輪詢、Debezium CDC |
+| `compiler/` | GraphQL/SQL 剖析器、語義 SQL 產生器、RLS、遮罩、抽樣、兩階段治理（`stage2.py`） |
+| `cypher/` | Cypher → SQL 轉譯器、剖析器、標籤對照表（REQ-351）、Cypher mutation 寫入轉譯器 |
+| `pgwire/` | PostgreSQL 線路協定伺服器；`catalog.py` 攔截 pg_catalog/information_schema 以實現逐角色物件可視性（REQ-527、REQ-883、REQ-891） |
+| `vector/` | 向量搜尋——模型登記冊、嵌入供應商（openai/ollama/huggingface）、`cosine_similarity()` 轉譯、pgvector 回退快取、宣告式嵌入產生（REQ-419–431） |
+| `compiler/federation.py` | Apollo Federation v2 子圖支援 |
+| `transpiler/` | 方言轉譯、路由邏輯 |
+| `executor/` | 聯邦式/直接執行、序列化、輸出格式 |
+| `executor/drivers/` | 直接來源驅動程式（PostgreSQL、MySQL、DuckDB、Snowflake、Databricks、ClickHouse……） |
+| `executor/trino_flight.py` | 聯邦引擎的 ADBC Flight SQL 用戶端 |
+| `executor/ctas_write.py` | 以 CTAS 為基礎的重新導向（聯邦引擎寫入 S3） |
+| `executor/redirect.py` | S3 重新導向邏輯，Provisa 端上傳 |
+| `federation/engine.py` | `FederationEngine`、`DriverClass`、`_ENGINE_BUILDERS`、`ENGINE_REGISTRY`、`build_engine` |
+| `federation/connector.py` | 連接器抽象——Trino、ClickHouse；`Mechanism`、`WarehouseNativeConnector` |
+| `federation/connector_duckdb.py` | DuckDB 及 PostgreSQL FDW 連接器定義 |
+| `federation/snowflake_connectors.py` | Snowflake 外部 stage + 外部資料表 ATTACH 連接器（REQ-988） |
+| `federation/databricks_connectors.py` | Databricks UC 外部資料表 ATTACH 連接器（REQ-987） |
+| `federation/bigquery_connectors.py` | BigQuery 外部 / BigLake ATTACH 連接器 |
+| `federation/databricks_uc.py` | Unity Catalog 憑證 + 外部位置自動佈建 |
+| `federation/databricks_backend.py` | Databricks SQL 倉庫執行後端 |
+| `federation/snowflake_backend.py` | Snowflake 執行後端 |
+| `federation/bigquery_backend.py` | BigQuery 執行後端（Storage Read API Arrow 傳輸） |
+| `federation/mssql_warehouse_backend.py` | Fabric Warehouse + Synapse 執行後端（經 ODBC 的 T-SQL） |
+| `federation/mssql_warehouse_connectors.py` | Fabric / Synapse 的 OPENROWSET ATTACH 連接器 |
+| `federation/fabric_shortcuts.py` | OneLake shortcut 自動佈建（連線 → lakehouse → shortcut） |
+| `federation/clickhouse_backend.py` | ClickHouse 執行後端 |
+| `federation/duckdb_backend.py` | DuckDB 行程內執行後端 |
+| `federation/pg_backend.py` | PostgreSQL 執行後端 |
+| `federation/store_connection.py` | DuckDB 原生具體化儲存區寫入介面（REQ-989、REQ-990） |
+| `registry/` | 持久化查詢登記冊、治理 |
+| `security/` | 可視性、權限、欄位遮罩 |
+| `cache/` | 以 Redis 為後端的查詢結果快取（熱層） |
+| `mv/` | 具體化檢視登記冊、重新整理、SQL 重寫器 |
+| `events/` | 數據集變更事件及觸發器派發 |
+| `webhooks/` | mutation 及事件的出站 webhook 執行 |
+| `scheduler/` | 以 APScheduler 為基礎的背景工作管理——觸發 webhook、mutation 或 Kafka sink 發佈的 cron 及間隔式觸發器 |
+| `apq/` | Apollo APQ 線路協定——以 Redis 為後端的查詢雜湊快取；與結果快取分開 |
+| `compiler/cursor.py` | Relay 風格的游標式分頁——所有清單查詢上的 `first`/`after`/`last`/`before` 引數及 `pageInfo` 產生 |
+| `compiler/aggregate_gen.py` | 自動產生具 `count`、`sum`、`avg`、`min`、`max` 子欄位及已篩選 `nodes` 存取的 `{table}_aggregate` 查詢型別 |
+| `compiler/enum_detect.py` | 列舉型別自動偵測——PostgreSQL 原生列舉型別（`pg_enum`）以 GraphQL 列舉型別而非字串純量的形式公開 |
+| `compiler/hints.py` | 聯邦效能提示——以 SQL 註解形式內嵌的查詢層級路由指令（`/* @provisa route=federated */`），可覆寫自動路由 |
+| `compiler/mutation_gen.py` | Mutation 編譯器；欄位預設集——於 insert/update 時套用的伺服器端靜態值或工作階段變數值，不會公開於 mutation 輸入型別中 |
+| `auth/approval_hook.py` | ABAC 核准掛鉤——查詢執行前呼叫的可插拔外部授權；webhook、gRPC 及 unix_socket 傳輸方式；逐資料表/來源/全域範圍；可設定的回退政策 |
+| `subscriptions/` | SSE 訂閱狀態及派送 |
+| `discovery/` | LLM 關聯探索（Claude API） |
+| `grpc/` | Proto 產生、gRPC 伺服器、反射 |
+| `api_source/` | 具 PG 快取的 REST/GraphQL/gRPC API 來源 |
+| `kafka/` | Kafka 主題來源、sink、Schema Registry |
+| `auth/` | 可插拔身分驗證供應商、中介軟體、角色對映 |
+| `core/` | 設定、模型、DB、儲存庫、機密；角色模型支援 `parent_role_id` 及用於遞迴角色繼承的 `flatten_roles()` |
+| `hasura_v2/` | Hasura v2 metadata → Provisa 設定轉換器 |
+| `ddn/` | Hasura DDN supergraph → Provisa 設定轉換器 |
+| `mongodb/` | MongoDB 來源連接器 |
+| `elasticsearch/` | Elasticsearch 來源連接器 |
+| `cassandra/` | Cassandra 來源連接器 |
+| `prometheus/` | Prometheus 指標來源連接器 |
+| `source_adapters/` | 用於來源連線的通用轉接層 |
 
-## Admin API
+## 管理 API
 
-Strawberry GraphQL Admin API 掛載於 `/admin/graphql`（HTTP Port 8001）。它與數據 GraphQL 端點分開，並需要超級用戶或管理員角色。
+管理用的 Strawberry GraphQL API 掛載於 `/admin/graphql`（HTTP 連接埠 8001）。它與數據 GraphQL 端點分開，且需要 superuser 或 admin 角色。
 
-| Capability | Description |
+| 能力 | 說明 |
 | ----------- | ------------- |
-| Config download/upload | Export or replace the full Provisa YAML config |
-| Relationship editor | Create, update, delete relationship definitions |
-| AI FK discovery | Trigger Claude-powered FK candidate analysis |
-| Schema introspection | Browse published tables, columns, and roles |
-| View management | Register and manage materialized view definitions |
+| 設定下載/上傳 | 匯出或取代完整的 Provisa YAML 設定 |
+| 關聯編輯器 | 建立、更新、刪除關聯定義 |
+| AI FK 探索 | 觸發由 Claude 驅動的 FK 候選分析 |
+| 結構描述內省 | 瀏覽已發佈的資料表、欄位及角色 |
+| 檢視管理 | 登記並管理具體化檢視定義 |
 
-(REQ-164, REQ-165, REQ-166, REQ-167)
+（REQ-164、REQ-165、REQ-166、REQ-167）
 
-## 自動生成的 REST 及 JSON:API 端點
+## AI 模型設定
 
-已登記的資料表除 GraphQL 介面外，亦會以 REST 及 JSON:API 端點形式公開。(REQ-256, REQ-257)
+`GET /admin/ai-models` 及 `PUT /admin/ai-models` 為每個組織設定 LLM 管線。（REQ-464、REQ-419、REQ-500、REQ-370、REQ-1349）
 
-| Interface | Mount path | Spec |
+設定值是**依組織範圍界定**的：每個組織的選擇會疊加於部署層級的設定之上，並於下一次請求即時生效——不需要重新啟動。（REQ-1349） [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
+
+**逐操作模型指派。**五項 NL 操作各自具有可設定的供應商及模型字串：
+
+| 操作 | 驅動的內容 |
+| --------- | -------------- |
+| `table_description` | 由 LLM 產生的資料表描述 |
+| `column_description` | 由 LLM 產生的欄位描述 |
+| `relationship_inference` | FK 候選探索 |
+| `sql_generation` | 自然語言 → SQL 產生 |
+| `table_selection` | 選擇要納入自然語言提示的資料表 |
+
+供應商欄位接受任何相容 `aisuite` 的供應商（`anthropic`、`openai`、`groq`、`mistral`、`cohere` 及其他），或是一個本機端點（`ollama`、`lmstudio`）。將模型字串留空，會移除該組織的覆寫設定，回復為部署層級的預設值。[tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
+
+**自然語言速率限制。**一個可選的、按角色套用的每期間請求數上限。超額請求會傳回帶有 `Retry-After` 的 `429`。[tool-verified: `provisa-ui/src/components/admin/AiModelsTab.tsx:306-313`]
+
+**向量模型登記冊。**一份嵌入模型清單（欄位：`id`、`provider`、`dimensions`，可選的 `api_key_env` 及 `base_url`、`enabled` 旗標）。全清單取代：每一項都必須具備 `id`、`provider` 及 `dimensions`，否則該次寫入會被拒絕，回傳 `400`。[tool-verified: `provisa/api/admin/ai_models_router.py:122-131`]
+
+**API 金鑰。**逐供應商的 LLM API 金鑰經由 `provisa.core.org_secrets` 加密儲存（見下文）。`GET` 回應僅回報每個供應商是否已設定金鑰——絕不會傳回該值本身。對某供應商送出空字串會清除該金鑰，使該供應商的 LLM 呼叫回復為部署層級環境變數所提供的憑證。（REQ-1395、REQ-1398） [tool-verified: `provisa/api/admin/ai_models_router.py:76-78`, `provisa/api/admin/ai_models_router.py:149-165`]
+
+## 逐組織加密機密
+
+`provisa/core/org_secrets.py` 儲存絕不能以明文形式出現在資料庫中的憑證。目前僅限於 LLM 供應商 API 金鑰（`{vendor}_api_key`）。（REQ-1395、REQ-1398） [tool-verified: `provisa/core/org_secrets.py`]
+
+數值是透過 `provisa.encryption.runtime` 的行程層級 `encryption_service` 加密——與 `api_sources.auth` 相同的機制。[tool-verified: `provisa/core/org_secrets.py:16-17`]
+
+支援十二個相容 `aisuite` 的供應商：`anthropic`、`openai`、`cohere`、`groq`、`mistral`、`xai`、`deepseek`、`together`、`fireworks`、`nebius`、`sambanova` 及 `inception`。Google、AWS 及 Azure 因需要超出單純 API 金鑰以外的設定（專案 ID、IAM 角色、地區）而被排除。本機端點供應商（`ollama`、`lmstudio`）因同樣理由——沒有金鑰——而被排除。[tool-verified: `provisa/core/org_secrets.py:33-53`]
+
+向 `write_org_secret` 傳遞 `value=None` 會刪除該資料列。讀取某項機密的呼叫方會立即消費它（例如用以建構一個 LLM 用戶端），且不得在任何 API 回應中將其原樣回傳。[tool-verified: `provisa/core/org_secrets.py:97-117`]
+
+## 自動產生的 REST 及 JSON:API 端點
+
+已登記的資料表會與 GraphQL 介面並列，公開為 REST 及 JSON:API 端點。（REQ-256、REQ-257）
+
+| 介面 | 掛載路徑 | 規格 |
 | ----------- | ----------- | ------ |
-| REST | `/rest/<table-id>` | Simple GET/POST with query parameters |
-| JSON:API | `/jsonapi/<table-id>` | [jsonapi.org](https://jsonapi.org) compliant — pagination, relationships, error objects |
+| REST | `/rest/<table-id>` | 帶有查詢參數的簡單 GET/POST |
+| JSON:API | `/jsonapi/<table-id>` | 符合 [jsonapi.org](https://jsonapi.org) 規範——分頁、關聯、錯誤物件 |
 
-這些端點套用與 GraphQL 端點相同的安全管道（行級安全、數據遮罩、角色檢查）。(REQ-002, REQ-038)
+這些端點套用與 GraphQL 端點相同的安全管線（RLS、遮罩、角色檢查）。（REQ-002、REQ-038）
 
 ## 訂閱
 
-SSE 訂閱於 `GET /data/subscribe/{table}` 公開。有三種傳送模式：(REQ-258)
+SSE 訂閱服務於 `GET /data/subscribe/{table}`。三種傳送模式：（REQ-258）
 
-| Mode | Mechanism | When used |
+| 模式 | 機制 | 使用時機 |
 | ------ | ----------- | ----------- |
-| **LISTEN/NOTIFY** | PostgreSQL `LISTEN` on a channel | PG sources with mutation activity |
-| **Polling** | Re-execute query on interval | Non-PG sources, or when CDC unavailable |
-| **Debezium CDC** | Kafka topic from Debezium connector | High-frequency change streams |
+| **LISTEN/NOTIFY** | 針對某個頻道的 PostgreSQL `LISTEN` | 具有 mutation 活動的 PG 來源 |
+| **輪詢 (Polling)** | 依間隔重新執行查詢 | 非 PG 來源，或 CDC 不可用時 |
+| **Debezium CDC** | 來自 Debezium 連接器的 Kafka 主題 | 高頻率的變更串流 |
 
-(REQ-258, REQ-260, REQ-261)
+（REQ-258、REQ-260、REQ-261）
 
-用戶端會收到 `text/event-stream`，每一列變更或差異均對應一個 JSON 事件。
+用戶端會收到 `text/event-stream`，每一個變更的資料列或差異對應一則 JSON 事件。
 
-## 事件及 Webhook 系統
+## 事件與 Webhook 系統
 
-資料庫變更（INSERT／UPDATE／DELETE）可透過 `events/` 及 `webhooks/` 模組觸發外送事件。(REQ-172, REQ-173, REQ-220)
+資料庫 mutation（INSERT/UPDATE/DELETE）可透過 `events/` 及 `webhooks/` 模組觸發出站事件。（REQ-172、REQ-173、REQ-220）
 
 ```text
 Mutation executed → EventDispatcher → match event trigger rules
@@ -491,92 +525,92 @@ Mutation executed → EventDispatcher → match event trigger rules
                                WebhookExecutor → HTTP POST to configured URL
 ```
 
-事件觸發器於設定中定義，並按資料表、操作類型及選用的列篩選條件對應。Webhook 酬載包含操作類型、變更的一列，以及角色情境。
+事件觸發器在設定中定義，並依資料表、操作類型及選擇性的資料列篩選條件進行比對。Webhook 承載內容 (payload) 包含操作類型、變更的資料列及角色情境。
 
 ## 背景服務
 
-四個背景迴圈會在應用程式的生命週期（lifespan）階段啟動（`api/app.py`）：
+在應用程式生命週期中（`api/app.py`），有四個背景迴圈啟動：
 
-| Service | Interval | Purpose |
+| 服務 | 間隔 | 用途 |
 | --------- | ---------- | --------- |
-| MV refresh loop | 30 s | Polls `get_due_for_refresh()`, executes CTAS or DELETE+INSERT on stale MVs |
-| Warm table manager | Configurable | Promotes frequently-queried tables to Iceberg local SSD cache |
-| Hot table loader | Configurable | Loads small reference tables into in-memory cache for sub-millisecond access |
-| API source poller | Per-source interval | Re-fetches and re-caches remote REST/GraphQL/gRPC sources |
+| MV 重新整理迴圈 | 30 秒 | 輪詢 `get_due_for_refresh()`，對過期的 MV 執行 CTAS 或 DELETE+INSERT |
+| 熱資料表管理員 | 可設定 | 將常被查詢的資料表提升至 Iceberg 本機 SSD 快取 |
+| 熱資料表載入器 | 可設定 | 將小型參考資料表載入記憶體內快取，以取得亞毫秒級存取 |
+| API 來源輪詢器 | 逐來源間隔 | 重新擷取並重新快取遠端 REST/GraphQL/gRPC 來源 |
 
-(REQ-160, REQ-238, REQ-239, REQ-236)
+（REQ-160、REQ-238、REQ-239、REQ-236）
 
-### 熱／暖資料表快取層級
+### 熱/暖資料表快取層級
 
-| Tier | Storage | Promotion criteria | Access latency |
+| 層級 | 儲存體 | 提升條件 | 存取延遲 |
 | ------ | --------- | ------------------- | ---------------- |
-| Hot | In-process memory | Row count < threshold, or is a relationship target | <1 ms |
-| Warm | Iceberg on local SSD | Query frequency threshold exceeded | ~5–20 ms |
-| Cold | Remote source | Default | 50–500 ms |
+| 熱 (Hot) | 行程內記憶體 | 資料列數 < 門檻，或為某項關聯的目標 | < 1 毫秒 |
+| 暖 (Warm) | 本機 SSD 上的 Iceberg | 超過查詢頻率門檻 | 約 5–20 毫秒 |
+| 冷 (Cold) | 遠端來源 | 預設 | 50–500 毫秒 |
 
-(REQ-230, REQ-236, REQ-238, REQ-241)
+（REQ-230、REQ-236、REQ-238、REQ-241）
 
-## 中繼資料匯入（Hasura v2／DDN）
+## Metadata 匯入（Hasura v2 / DDN）
 
-現有的 Hasura 部署可轉換為 Provisa 設定，而毋須手動重寫。(REQ-182, REQ-183)
+既有的 Hasura 部署可以轉換為 Provisa 設定，不需人手改寫。（REQ-182、REQ-183）
 
-| Module | Input | Output |
+| 模組 | 輸入 | 輸出 |
 | -------- | ------- | -------- |
 | `hasura_v2/` | Hasura v2 `metadata.yaml` | Provisa `config.yaml` |
 | `ddn/` | Hasura DDN supergraph JSON | Provisa `config.yaml` |
 
-兩個轉換器均會對應已追蹤的資料表、關係、權限及遠端結構描述。結果是一個完整、可直接使用的 Provisa 設定。(REQ-182, REQ-183)
+兩個轉換器都會對映已追蹤的資料表、關聯、權限及遠端結構描述。結果是一份可直接部署的完整 Provisa 設定。（REQ-182、REQ-183）
 
 ## Apollo Federation
 
-`compiler/federation.py` 將 Provisa 公開為 Apollo Federation v2 子圖（subgraph）。(REQ-259) 子圖 SDL 會根據已發佈的結構描述自動生成，主索引鍵欄上附有 `@key` 指令，跨來源關係上附有 `@external`／`@provides` 註解。Provisa 會回應 Federation Gateway 所需的 `_entities` 及 `_service` 查詢。(REQ-259)
+`compiler/federation.py` 將 Provisa 公開為一個 Apollo Federation v2 子圖。（REQ-259）子圖 SDL 是從已發佈的結構描述自動產生，主鍵欄位上帶有 `@key` 指令，跨子圖關聯上則帶有 `@external`/`@provides` 標註。Provisa 會回應聯邦閘道 (federation gateway) 所需的 `_entities` 及 `_service` 查詢。（REQ-259）
 
-## 以游標為基礎的分頁
+## 游標式分頁
 
-所有列表查詢均透過 `compiler/cursor.py` 支援 Relay 式游標分頁。(REQ-218) 用戶端傳遞 `first`／`after`（向前）或 `last`／`before`（向後）引數。編譯器會將列位置編碼為不透明的 Base64 游標，並插入相應的 `WHERE`／`LIMIT` 子句。每個列表查詢均會回傳一個 `pageInfo` 物件：
+所有清單查詢都透過 `compiler/cursor.py` 支援 Relay 風格的游標式分頁。（REQ-218）用戶端傳遞 `first`/`after`（向前）或 `last`/`before`（向後）引數。編譯器將資料列位置編碼為一個不透明的 base64 游標，並注入相應的 `WHERE`/`LIMIT` 子句。每一個清單查詢都會傳回一個 `pageInfo` 物件：
 
-| Field | Type | Description |
+| 欄位 | 型別 | 說明 |
 | ------- | ------ | ------------- |
-| `hasNextPage` | Boolean | True if more results exist after this page |
-| `hasPreviousPage` | Boolean | True if results exist before this page |
-| `startCursor` | String | Cursor of the first node in this page |
-| `endCursor` | String | Cursor of the last node in this page |
+| `hasNextPage` | Boolean | 若此頁之後仍有更多結果，則為 true |
+| `hasPreviousPage` | Boolean | 若此頁之前存在結果，則為 true |
+| `startCursor` | String | 此頁第一個節點的游標 |
+| `endCursor` | String | 此頁最後一個節點的游標 |
 
 ## 聚合查詢
 
-每個已登記的資料表都會獲得一個自動生成的 `{table}_aggregate` 根欄位（`compiler/aggregate_gen.py`）。(REQ-196) 聚合類型為每個數值欄提供 `count`、`sum`、`avg`、`min`、`max`，以及 `nodes`——具完整欄位選擇能力的已篩選列存取（與基礎查詢相同的行級安全／數據遮罩）。(REQ-196, REQ-198) 聚合查詢適用於聚合 MV 路由——見 `mv/aggregate_catalog.py`。(REQ-198)
+每個已登記的資料表都會取得一個自動產生的 `{table}_aggregate` 根欄位（`compiler/aggregate_gen.py`）。（REQ-196）聚合型別為每個數值欄位公開 `count`、`sum`、`avg`、`min`、`max`，並提供 `nodes` 供具完整欄位選擇的已篩選資料列存取（與基礎查詢相同的 RLS/遮罩）。（REQ-196、REQ-198）聚合查詢符合聚合 MV 路由的資格——見 `mv/aggregate_catalog.py`。（REQ-198）
 
-## Automatic Persisted Queries（APQ）
+## 自動持久化查詢 (APQ)
 
-`apq/cache.py` 實作 Apollo 的 APQ 線路協定。(REQ-288) 當用戶端只傳送查詢雜湊（`extensions.persistedQuery`）時，Provisa 會於 Redis 中查找。(REQ-289) 若未命中，會回傳 `PersistedQueryNotFound` 錯誤；用戶端會以完整查詢文字重試，Provisa 隨即將其儲存。(REQ-288) 這與結果快取（`cache/`）互相獨立。
+`apq/cache.py` 實作了 Apollo APQ 線路協定。（REQ-288）當用戶端僅送出一個查詢雜湊值（`extensions.persistedQuery`）時，Provisa 會在 Redis 中查找它。（REQ-289）未命中時會傳回一個 `PersistedQueryNotFound` 錯誤；用戶端隨後以完整的查詢內容重試，Provisa 會將其儲存。（REQ-288）這與結果快取（`cache/`）是分開的。
 
-## 繼承角色
+## 繼承式角色
 
-`core/models.py` 中的角色可以參照一個 `parent_role_id`。(REQ-215) `flatten_roles()` 會遞迴解析繼承鏈，並合併行級安全 WHERE 子句（以 AND 連接）、欄位可見性（聯集，以最嚴格者為準），以及數據遮罩原則（子角色按欄覆寫父角色）。此舉可避免在相似角色之間重複權限集（例如 `analyst` 繼承自 `reader`）。(REQ-215)
+`core/models.py` 中的角色可以參照一個 `parent_role_id`。（REQ-215）`flatten_roles()` 會遞迴地解析繼承鏈，並合併 RLS WHERE 子句（以 AND 連接）、欄位可視性（聯集，最嚴格者勝出），以及遮罩政策（子角色逐欄位覆寫父角色）。這避免了在相似角色之間重複權限集合（例如 `analyst` 繼承自 `reader`）。（REQ-215）
 
-## ABAC 批核掛鉤
+## ABAC 核准掛鉤
 
-`auth/approval_hook.py` 是一個可插拔的授權掛鉤，於查詢執行前、行級安全及數據遮罩之後被呼叫。(REQ-203) 它可與外部政策引擎（OPA、自訂 ABAC 服務）整合。
+`auth/approval_hook.py` 是一個可插拔的授權掛鉤，於 RLS 及遮罩之後、查詢執行之前被呼叫。（REQ-203）它可與外部政策引擎（OPA、自訂 ABAC 服務）整合。
 
-| Setting | Description |
+| 設定 | 說明 |
 | --------- | ------------- |
-| Transport | `webhook` (HTTP POST), `grpc`, or `unix_socket` |
-| Scope | Per-table, per-source, or global |
-| Fallback policy | `allow` or `deny` when the hook endpoint is unreachable |
+| 傳輸方式 | `webhook`（HTTP POST）、`grpc` 或 `unix_socket` |
+| 範圍 | 逐資料表、逐來源，或全域 |
+| 回退政策 | 掛鉤端點無法觸及時的 `allow` 或 `deny` |
 
-(REQ-246, REQ-247, REQ-204)
+（REQ-246、REQ-247、REQ-204）
 
-## 列舉類型自動偵測
+## 列舉型別自動偵測
 
-`compiler/enum_detect.py` 於結構描述生成時，對 PostgreSQL 原生列舉類型（`pg_enum`）進行內省（introspection）。(REQ-221) 使用自訂 PostgreSQL 列舉類型的欄，會被提升為 GraphQL 列舉類型——其值成為列舉成員，而非字串純量。
+`compiler/enum_detect.py` 在結構描述產生時，內省 PostgreSQL 原生列舉型別（`pg_enum`）。（REQ-221）使用 PostgreSQL 使用者自訂列舉型別的欄位，會被提升為 GraphQL 列舉型別——其值成為列舉成員，而非字串純量。
 
 ## 排程觸發器
 
-`scheduler/jobs.py` 使用 APScheduler 執行以 cron 或間隔觸發器定義的背景工作。(REQ-216) 每項工作均可向已設定的 webhook URL 發出 POST 請求、對數據端點執行變更，或將查詢結果發佈至 Kafka topic。觸發器可透過 Admin API（`scheduledTrigger` 變更）或 YAML 設定中的 `scheduled_triggers` 鍵進行設定。(REQ-216)
+`scheduler/jobs.py` 使用 APScheduler 執行以 cron 或間隔式觸發器定義的背景工作。（REQ-216）每項工作可以 POST 至一個 webhook 網址、對數據端點執行一項 mutation，或將查詢結果發佈至一個 Kafka 主題。觸發器透過管理 API（`scheduledTrigger` mutation）或 YAML 設定中的 `scheduled_triggers` 鍵進行設定。（REQ-216）
 
 ## 聯邦效能提示
 
-`compiler/hints.py` 會分析以 Provisa 註解語法嵌入查詢中的數據管家提示。(REQ-279) 提示的格式因查詢語言而異：
+`compiler/hints.py` 會以 Provisa 的註解語法，剖析內嵌於查詢中的數據管家提示。（REQ-279）提示格式因查詢語言而異：
 
 ```graphql
 # @provisa route=federated
@@ -593,71 +627,71 @@ SELECT id, amount FROM orders
 MATCH (o:Order) RETURN o.id, o.amount
 ```
 
-| Hint | Effect |
+| 提示 | 效果 |
 | ------ | -------- |
-| `route=federated` | Force federation through the federation engine, bypassing direct-driver routing |
-| `route=direct` | Force direct-driver execution |
+| `route=federated` | 強制透過聯邦引擎聯邦化，繞過直接驅動路由 |
+| `route=direct` | 強制直接驅動執行 |
 
-(REQ-279, REQ-277, REQ-278)
+（REQ-279、REQ-277、REQ-278）
 
-## 變更中的欄位預設值
+## Mutation 中的欄位預設集
 
-`compiler/mutation_gen.py` 支援按欄的伺服器端預設值，於 `INSERT` 或 `UPDATE` 時套用。(REQ-214) 預設值不會包含於自動生成的 GraphQL 變更輸入類型中——編譯器會透明地插入它們。預設值類型：`static`（字面值）或 `session`（取自請求的工作階段／標頭，例如 `x-hasura-user-id`）。(REQ-214)
+`compiler/mutation_gen.py` 支援於 `INSERT` 或 `UPDATE` 時套用的逐欄位伺服器端預設集。（REQ-214）預設集不會包含在所產生的 GraphQL mutation 輸入型別中——它們由編譯器透明地注入。預設集類型：`static`（字面值）或 `session`（取自請求工作階段/標頭的值，例如 `x-hasura-user-id`）。（REQ-214）
 
-## GraphQL Voyager 結構描述探索工具
+## GraphQL Voyager 結構描述瀏覽器
 
-Admin UI（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌 GraphQL Voyager 作為互動式結構描述視覺化工具。(REQ-248) 它會將按角色範圍限定的結構描述，以可導覽的實體關係圖呈現——資料表作為節點，關係作為邊。所顯示的結構描述，永遠以目前所選角色作篩選。
+管理介面（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌了 GraphQL Voyager 作為互動式結構描述視覺化工具。（REQ-248）它將角色範圍內的結構描述呈現為一個可瀏覽的實體關聯圖——資料表為節點，關聯為邊。所顯示的結構描述一律依目前所選角色進行篩選。
 
-## 安全執行順序
+## 安全強制執行順序
 
-查詢本身並無能力閘——治理完全透過數據層的控制來表達。(REQ-001) 未經加工的 SQL 請求，會在治理執行之前，先拒絕（HTTP 403）任何超出角色物件範圍的資料表。(REQ-267)
+查詢本身沒有任何能力閘控——治理完全透過數據層控制來表達。（REQ-001）一個原始 SQL 請求，會在治理程序執行之前，就拒絕（HTTP 403）任何超出該角色物件範圍的資料表。（REQ-267）
 
-1. **物件可見性**：按角色劃分的結構描述會隱藏未獲授權的資料表／欄；未經加工 SQL 中超出範圍的資料表會被拒絕 (REQ-039, REQ-267)
-2. **關係執行**：遍歷（traversal）必須存在於獲批准的關係目錄中，除非該角色具有 `ignore_relationships`——在預置的系統角色之中只有 `modeler` 具有它 (REQ-001, REQ-1297)。在高安全模式之下該能力被忽略，任何遍歷都無法逃出目錄 (REQ-693)
-3. **行級安全**：按資料表及角色插入 WHERE 子句 (REQ-040, REQ-041, REQ-263)
-4. **欄位遮罩**：按欄及角色進行數據轉換 (REQ-263)
-5. **列數上限（LIMIT）**：對於沒有 `full_results` 的角色設有列數上限；隨機統計抽樣為另一項獨立的用戶查詢功能 (REQ-263, REQ-478)
+1. **物件可視性**：逐角色結構描述會隱藏未經授權的資料表/欄位；原始 SQL 中超出範圍的資料表會被拒絕（REQ-039、REQ-267）
+2. **關聯強制執行**：遍歷 (traversal) 必須存在於已核准的關聯目錄中，除非該角色持有 `ignore_relationships`——在已預置的系統角色中，只有 `modeler` 具備此能力（REQ-001、REQ-1297）。在高安全性模式下，此能力會被忽略，沒有任何遍歷可逃離目錄範圍（REQ-693）
+3. **RLS**：逐資料表逐角色的 WHERE 子句注入（REQ-040、REQ-041、REQ-263）
+4. **欄位遮罩**：逐欄位逐角色的數據轉換（REQ-263）
+5. **資料列上限 (LIMIT)**：不具備 `full_results` 的角色所受的資料列數上限；隨機統計抽樣是另一項獨立的使用者查詢功能（REQ-263、REQ-478）
 
-四個查詢介面（HTTP、Flight、gRPC、pgwire）均執行相同的第二階段治理管道；任何用戶端路徑均無法在不繞過伺服器的情況下繞過它。(REQ-002, REQ-038, REQ-266)
+所有四種查詢介面（HTTP、Flight、gRPC、pgwire）都強制執行同一套第二階段治理管線；沒有任何用戶端路徑能在不繞過伺服器的情況下繞過治理。（REQ-002、REQ-038、REQ-266）
 
 ## 可擴展性限制
 
-Provisa 是一個輕薄的編譯及路由層——只為查詢延遲增加個位數毫秒。然而，Provisa 序列化結果數據的路徑，均受制於進程記憶體。有兩條路徑是真正無限制的：
+Provisa 是一個輕量的編譯與路由層——它只為查詢延遲增加個位數毫秒。然而，Provisa 需要序列化結果數據的路徑，會受行程記憶體所限。有兩條路徑是真正無邊界的：
 
-| Path | Memory bound? | Suitable for |
+| 路徑 | 是否受記憶體限制？ | 適用情境 |
 | ------ | -------------- | ------------- |
-| JSON inline (HTTP) | Yes | Small-medium results |
-| **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik or warehouse Arrow API** |
-| Protobuf gRPC inline (:50051) | Yes | Medium results, service-to-service |
-| Redirect: Provisa upload (JSON, CSV, NDJSON, Arrow IPC) | Yes | Medium results, file download |
-| **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded — federation engine writes to S3** |
+| JSON 內嵌（HTTP） | 是 | 中小型結果 |
+| **Arrow Flight 串流（gRPC :8815）** | **否** | **無邊界——經 Zaychik 或數據倉庫 Arrow API 串流** |
+| Protobuf gRPC 內嵌（:50051） | 是 | 中型結果，服務對服務通訊 |
+| 重新導向：Provisa 上傳（JSON、CSV、NDJSON、Arrow IPC） | 是 | 中型結果，檔案下載 |
+| **重新導向：CTAS（Parquet、ORC）** | **否** | **無邊界——聯邦引擎寫入 S3** |
 
-(REQ-145, REQ-138)
+（REQ-145、REQ-138）
 
 ### 門檻探測
 
-對於基於門檻的轉向，Provisa 會在查詢中插入 `LIMIT threshold + 1` 作為探測。(REQ-140) 若結果列數較少，便會內嵌回傳（完整結果，不浪費任何工作）。若結果達到上限，探測會被捨棄，並透過 CTAS 或 Provisa 上載重新執行完整查詢。此舉可避免使用 `SELECT COUNT(*)`（部分數據來源未有優化此操作），並適用於任何數據來源。
+對於以門檻為基礎的重新導向，Provisa 會將 `LIMIT threshold + 1` 作為一個探測注入查詢。（REQ-140）若結果的資料列數較少，便直接內嵌傳回（完整結果，不浪費任何運算）。若結果達到該上限，該探測即被捨棄，並透過 CTAS 或 Provisa 上傳重新執行完整查詢。這避免了使用 `SELECT COUNT(*)`（部分來源對此並無優化），且適用於每一種來源。
 
-對於大型分析工作負載，可使用以下其中一個選項：
+對於大型分析工作負載，可使用以下任一方式：
 
-- **Arrow Flight**（Port 8815）用於串流至數據工具——批次會流經 Provisa 而不會被具體化 (REQ-145)
-- **Parquet／ORC 轉向**用於檔案式匯出——聯邦引擎直接寫入 S3，Provisa 回傳一個已預先簽署的 URL (REQ-138, REQ-044)
+- **Arrow Flight**（連接埠 8815）用於串流至數據工具——批次資料流經 Provisa 而不具體化（REQ-145）
+- **Parquet/ORC 重新導向**用於以檔案為基礎的匯出——聯邦引擎直接寫入 S3，Provisa 傳回一個預先簽署的網址（REQ-138、REQ-044）
 
-## 基礎架構
+## 基礎設施
 
-| Service | Image | Port | Purpose |
+| 服務 | 映像 | 連接埠 | 用途 |
 | --------- | ------- | ------ | --------- |
-| Provisa API | (host process) | 8001 | HTTP/REST endpoint |
-| Provisa Flight | (host process) | 8815 | Arrow Flight gRPC server |
-| Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
-| Federation Engine | `trinodb/trino` (default) or external warehouse | 8080 / varies | Query federation engine — Trino for the embedded stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB for warehouse targets |
-| Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino; not required for warehouse engines |
-| PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
-| MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
-| MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |
-| Redis | `redis:7-alpine` | 6379 | Query result cache |
-| PgBouncer | `edoburu/pgbouncer` | 6432 | Connection pooling for PG |
-| Kafka | `confluentinc/cp-kafka:7.6.0` | 9092 | Streaming data sources |
-| Schema Registry | `confluentinc/cp-schema-registry:7.6.0` | 8081 | Avro/Protobuf schema management |
+| Provisa API | (host process) | 8001 | HTTP/REST 端點 |
+| Provisa Flight | (host process) | 8815 | Arrow Flight gRPC 伺服器 |
+| Provisa gRPC | (host process) | 50051 | Protobuf gRPC 伺服器 |
+| Federation Engine | `trinodb/trino`（預設）或外部數據倉庫 | 8080 / 依情況而定 | 查詢聯邦引擎——內嵌堆疊使用 Trino；數據倉庫目標使用 Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB |
+| Zaychik | `provisa-zaychik`（自原始碼建置） | 8480 | Trino 的 Arrow Flight SQL 代理伺服器；數據倉庫引擎不需要 |
+| PostgreSQL | `postgres:16` | 5432 | 設定 metadata + Iceberg 目錄 |
+| MongoDB | `mongo:7` | 27017 | 示範用 NoSQL 數據來源 |
+| MinIO | `minio/minio` | 9000/9001 | 相容 S3 的物件儲存體 |
+| Redis | `redis:7-alpine` | 6379 | 查詢結果快取 |
+| PgBouncer | `edoburu/pgbouncer` | 6432 | PG 的連線池 |
+| Kafka | `confluentinc/cp-kafka:7.6.0` | 9092 | 串流數據來源 |
+| Schema Registry | `confluentinc/cp-schema-registry:7.6.0` | 8081 | Avro/Protobuf 結構描述管理 |
 
-(REQ-055, REQ-169)
+（REQ-055、REQ-169）

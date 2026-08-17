@@ -37,7 +37,7 @@ Le mode trust (`provider: none`, ou middleware d'authentification inactif) fait 
 
 **SCRAM-SHA-256.** Avec `provider: basic` et `auth.scram: true`, le serveur annonce SASL (code d'authentification 10) avec `SCRAM-SHA-256`, et le mot de passe est prouvé plutôt qu'envoyé. (REQ-1394) `SCRAM-SHA-256-PLUS` n'est pas proposé. Un utilisateur dont le vérificateur n'a pas encore été écrit — les vérificateurs ne peuvent pas être dérivés d'empreintes bcrypt — reçoit un échange factice, afin que le réseau ne révèle pas qui a migré ; cet utilisateur s'authentifie par mot de passe en clair sur TLS jusqu'à ce que sa prochaine saisie de mot de passe en écrive un. Avec `auth.scram` désactivé, le serveur utilise le type d'authentification PG 3 (mot de passe en texte clair). MD5 n'est pris en charge dans aucun des deux cas.
 
-**Certificats client.** Définissez `PROVISA_MTLS_CLIENT_CA` et le serveur vérifie un certificat client pendant le handshake, avant d'examiner la moindre credential. (REQ-1228) Avec `PROVISA_MTLS_BIND_PRINCIPAL`, le common name du certificat doit être égal au `user` sous lequel la connexion s'authentifie ensuite. Voir [Configuration](configuration.md#mutual-tls).
+**Certificats client.** Définissez `PROVISA_MTLS_CLIENT_CA` et le serveur vérifie un certificat client pendant le handshake, avant d'examiner la moindre credential. (REQ-1228) Avec `PROVISA_MTLS_BIND_PRINCIPAL`, le common name du certificat doit être égal au `user` sous lequel la connexion s'authentifie ensuite. Voir [Configuration](configuration.md#tls-mutuel).
 
 **Les échecs sont comptés.** Cinq échecs en cinq minutes verrouillent le compte pendant quinze minutes, et le compteur est partagé avec HTTP et Bolt : un verrouillage obtenu sur une surface vaut sur toutes. (REQ-1393)
 

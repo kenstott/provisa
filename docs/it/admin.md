@@ -22,7 +22,7 @@ Un token di accesso personale è accettato ovunque sia accettato un token bearer
 | `GET /auth/tokens` | I token attivi del chiamante in questa organizzazione — prefisso di visualizzazione, nome, marche temporali del ciclo di vita e l'hash che identifica un token per la revoca. Mai una credenziale utilizzabile |
 | `DELETE /auth/tokens/{token_hash}` | Revoca uno dei token del chiamante. 404 quando non è suo o è già revocato |
 
-Omettere `role_id` lascia che il token si risolva nel ruolo posseduto dal proprietario; indicare un ruolo restringe il token al di sotto del proprietario. La revoca avviene anche implicitamente: rimuovere l'appartenenza di un utente a un'organizzazione revoca i suoi token per quell'organizzazione. Per la credenziale in sé vedere il [modello di sicurezza](security.md#personal-access-tokens).
+Omettere `role_id` lascia che il token si risolva nel ruolo posseduto dal proprietario; indicare un ruolo restringe il token al di sotto del proprietario. La revoca avviene anche implicitamente: rimuovere l'appartenenza di un utente a un'organizzazione revoca i suoi token per quell'organizzazione. Per la credenziale in sé vedere il [modello di sicurezza](security.md#token-di-accesso-personali).
 
 ## Capacità
 
@@ -141,6 +141,27 @@ query {
   }
 }
 ```
+
+### Controllo delle dipendenze di colonna (REQ-1484)
+
+Prima di salvare una modifica a una tabella che rinomina l'alias SQL di una colonna o elimina una
+colonna, chiedi cos'altro la referenzia:
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+Rinominare un alias rompe ogni artefatto scritto in riferimento al nome esposto — viste, MV,
+espressioni di metrica, predicati RLS, contratti DQ. Eliminare una colonna rompe questi più gli
+artefatti che memorizzano il `column_name` fisico: relazioni, associazioni al glossario,
+assegnazioni di tag. `breaksOn` indica quale dei due. La pagina Tables esegue questo controllo al
+salvataggio e mostra il risultato come finestra di dialogo consultiva. Vedere
+[Lineage](lineage.md) per cosa copre la query e cosa non può coprire.
 
 ### Gestione delle viste
 

@@ -184,6 +184,55 @@ La risposta ha la stessa forma del grafo di istruzione, con l'aggiunta di un cam
 }
 ```
 
+## Cosa romperebbe la rinomina o l'eliminazione di una colonna (REQ-1484)
+
+Una colonna porta due nomi, e ciascuno è memorizzato da un insieme diverso di artefatti.
+
+Il **nome esposto** è ciò che le superfici SQL e GraphQL mostrano: `table_columns.alias`, con
+fallback al valore predefinito snake_case quando non è impostato alcun alias [tool-verified:
+`computed_sql_alias` at `schema_helpers.py:317`]. Viste, viste materializzate, espressioni di
+metrica, predicati RLS, contratti DQ, grani delle metric-view e chiavi di riga delle MV sono tutti
+scritti in riferimento a quel nome, quindi **rinominare un alias li rompe con la stessa certezza
+con cui li romperebbe eliminare la colonna**.
+
+Il **nome fisico** è `table_columns.column_name`, l'identità che sopravvive alla sostituzione
+integrale delle colonne durante l'upsert della tabella. Relazioni, associazioni al glossario,
+assegnazioni di tag, la colonna watermark e i preset di colonna memorizzano questo nome, quindi si
+rompono solo quando la colonna viene **rimossa**.
+
+`columnDependents` riporta entrambi. Le viste e le MV a valle provengono dal sezionamento del
+grafo di federazione in corrispondenza del nome esposto della colonna; gli artefatti che quel
+grafo non copre provengono da una scansione diretta del registro [tool-verified:
+`graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
+`provisa/api/admin/column_dependents.py`].
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+`breaksOn` vale `rename` per un riferimento al nome esposto e `remove` per uno al nome fisico,
+così un chiamante può capire a quale metà della modifica reagisce ciascun artefatto.
+
+Effettuare questa richiesta **prima** del salvataggio. Una colonna rinominata viene individuata
+tramite il nome esposto che ancora porta nel registro; una volta che l'alias è stato applicato, il
+vecchio nome scompare e la query non trova nulla.
+
+La pagina Tables esegue automaticamente la query quando una modifica in sospeso cambia un alias o
+riduce l'insieme di colonne, ed elenca ciò che trova [tool-verified: `diffEditedColumns` in
+`provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]. L'avviso è consultivo:
+indica gli artefatti interessati e la decisione spetta all'amministratore. Non blocca il
+salvataggio, perché non tutti i consumer dell'estate sono raggiungibili — una dashboard esterna o
+un'applicazione client che interroga la colonna per nome è al di fuori della conoscenza del
+registro. Per lo stesso motivo, le scansioni su testo SQL libero fanno corrispondere la colonna
+come token identificatore anziché risolvere lo scope, il che può indicare un artefatto che in
+realtà non utilizza la colonna. Nella direzione della sicurezza, un avviso preferisce segnalare
+troppo piuttosto che troppo poco.
+
 ## Utilizzare la derivazione per governare i contratti di comando
 
 Poiché la taint closure collega ogni colonna di input dichiarata a ogni colonna di output

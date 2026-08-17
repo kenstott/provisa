@@ -102,7 +102,7 @@ Data Vault 也以同样的方式契合，只是早一个层次。它的中心表
 
 ### 数据源
 
-- **46 种数据源类型**——PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元组存储、Kafka、Google Sheets 等，均通过单一 API 接入；图数据源和 RDF 数据源是一等公民，而非适配器
+- **52 种数据源类型**——PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元组存储、Kafka、Google Sheets 等，均通过单一 API 接入；图数据源和 RDF 数据源是一等公民，而非适配器
 - **智能路由**——单数据源查询绕过联合查询层（延迟低于 100ms）；多数据源查询通过联合查询层路由——可以自带集群，也可以使用内置的工作节点
 - **API 数据源**——将 REST、GraphQL、gRPC、WebSocket 或 RSS 端点注册为可查询的表；内置 SPARQL 辅助工具；跨 API 数据源和关系型数据源的联合连接可透明工作
 - **远程架构自省**——指向任意 GraphQL、OpenAPI 或 gRPC 端点；已记录的操作会自动呈现为可查询的表、图节点和边，并在其上完整应用治理

@@ -37,7 +37,7 @@ trust 模式（`provider: none`，或身份验证中间件未启用）是例外�
 
 **SCRAM-SHA-256。** 在 `provider: basic` 且 `auth.scram: true` 时，服务器会公布带 `SCRAM-SHA-256` 的 SASL（身份验证代码 10），密码通过证明而非发送来验证。（REQ-1394）不提供 `SCRAM-SHA-256-PLUS`。对于尚未写入验证器的用户——验证器无法从 bcrypt 哈希推导——服务器会以模拟交换作答，使链路上无法看出谁已迁移；该用户会通过 TLS 上的明文密码进行身份验证，直到下次输入密码时写入验证器为止。关闭 `auth.scram` 时，服务器使用 PG 身份验证类型 3（明文密码）。两种情况下都不支持 MD5。
 
-**客户端证书。** 设置 `PROVISA_MTLS_CLIENT_CA` 后，服务器会在握手期间、检查任何凭据之前验证客户端证书。（REQ-1228）启用 `PROVISA_MTLS_BIND_PRINCIPAL` 时，证书的 common name 必须与该连接随后用于身份验证的 `user` 相同。参见[配置](configuration.md#mutual-tls)。
+**客户端证书。** 设置 `PROVISA_MTLS_CLIENT_CA` 后，服务器会在握手期间、检查任何凭据之前验证客户端证书。（REQ-1228）启用 `PROVISA_MTLS_BIND_PRINCIPAL` 时，证书的 common name 必须与该连接随后用于身份验证的 `user` 相同。参见[配置](configuration.md#tls)。
 
 **失败尝试会被计数。** 五分钟内五次失败会将账户锁定十五分钟，且该计数器与 HTTP 和 Bolt 共享——在任一接口上招致的锁定，在所有接口上都生效。（REQ-1393）
 

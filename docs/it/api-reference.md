@@ -214,6 +214,14 @@ Endpoint REST semplice auto-generato per ogni tabella registrata. La query strin
 
 Il ruolo autenticato è richiesto; le richieste non autenticate restituiscono `401`. Una spec OpenAPI per queste route è servita su `GET /data/rest/openapi.json` con Swagger UI su `GET /data/rest/docs`.
 
+#### Explorer OpenAPI / Swagger UI
+
+La pagina explorer OpenAPI (`/app/openapi`) incorpora la Swagger UI in un iframe sandboxed. La spec è scopata per ruolo — compaiono solo le tabelle e colonne visibili al ruolo corrente — ed è opzionalmente filtrata per dominio tramite il selettore di dominio. L'interfaccia passa automaticamente tra tema chiaro e scuro. [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:20-34`]
+
+La pagina carica l'HTML della spec tramite `fetch()` invece di un `src` diretto dell'iframe, così la richiesta porta il bearer token della sessione e le richieste relative proprie di Swagger UI si risolvono correttamente contro la stessa origine. [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:44-69`]
+
+Quando si arriva da un link NL "Open in OpenAPI", la pagina espande automaticamente l'endpoint target, popola i parametri di query dall'URL generato da NL (es. `aggregate`, `groupBy`) e clicca Execute — usando il polling del DOM per garantire che ogni passo si completi prima che scatti il successivo. (REQ-1359) [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:94-171`]
+
 ---
 
 ### `GET /data/jsonapi/{domain_id}/{table_name}`
@@ -228,8 +236,26 @@ Endpoint conforme a [JSON:API](https://jsonapi.org) auto-generato per ogni tabel
 - `filter[<col>]` / `filter[<col>][<op>]` — es. `?filter[region]=US`, `?filter[amount][gt]=100`
 - `sort` — separati da virgola, prefisso `-` per discendente, es. `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — paginazione
+- `aggregate` — funzioni di aggregazione separate da virgola da eseguire invece del recupero righe: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Usa `?aggregate=count,sum` per richiedere un sottoinsieme. Le risposte di aggregazione restituiscono `data: null` con i risultati in `meta.aggregate`. (REQ-1359) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:238`]
+- `groupBy` — nomi di colonna separati da virgola; usato con `?aggregate=` per raggruppare i risultati. Sono valide solo le colonne nell'enum `DistinctOnColumn` della tabella; il server restituisce `400` per qualsiasi colonna che il ruolo non può vedere. (REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
+- `includeNodes` — `true` per includere le colonne scalari della tabella base (e gli scalari di dimensione unita nominati in `include=`) dentro l'array `nodes` di ogni riga di gruppo. Richiesto quando una query NL group-by richiede anche dettagli di dimensione. (REQ-1405)
 
 Le risposte sono resource object con `type`/`id`/`attributes`. Gli errori seguono la forma dell'error object JSON:API.
+
+#### Explorer JSON:API
+
+La pagina explorer JSON:API (`/app/jsonapi`) è un'interfaccia browser su questi endpoint. Seleziona una tabella dall'elenco raggruppato per dominio, poi configura:
+
+- **Fields** — scegli quali colonne includere (sparse fieldset); lascia tutto deselezionato per richiedere ogni colonna
+- **Relationships** — seleziona i nomi di relazione derivati dalle FK da caricare tramite `?include=`
+- **Filter** — campo, operatore (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`) e valore
+- **Sort** — un campo, ascendente o discendente
+- **Aggregate** — scegli le colonne di group-by dall'elenco convalidato dal server, poi seleziona una o più funzioni di aggregazione; quando sono selezionate colonne di group-by, una checkbox "Include nodes" aggiunge le colonne scalari della tabella base a ogni riga
+- **Page size** — risorse per pagina, con navigazione first/prev/next/last
+
+I risultati vengono resi in una vista di riepilogo formattata (schede risorsa con ancore di relazione cliccabili) o in una scheda JSON grezzo. L'URL della richiesta live viene mostrato e può essere copiato. La selezione della tabella e la dimensione pagina persistono tra le sessioni in `localStorage`. [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx`]
+
+Quando si arriva da un link NL "Open in JSON:API", l'explorer preseleziona la tabella e inizializza il selettore di aggregazione dai parametri di query generati da NL, poi esegue automaticamente la richiesta. [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:460-479`]
 
 ---
 
@@ -265,6 +291,12 @@ Tre cicli di generazione (Cypher, GraphQL, SQL) girano in parallelo, ciascuno va
 ```
 
 Un branch che esaurisce il proprio limite di iterazioni restituisce `query: null`, `result: null` ed una stringa `error`. Ogni query generata viene eseguita sotto i diritti del consumatore con la governance Stage 2 applicata — il servizio non bypassa mai la governance. (REQ-359)
+
+#### NL Group-By con dettagli di dimensione (REQ-1405)
+
+Quando una query NL group-by proietta anche colonne da una tabella di dimensione unita — ad esempio, "count of inquiries by user with user name and email" — il runner deriva percorsi puntati per-campo (`dim_paths`) dalle colonne di dimensione proiettate nella SELECT. Questi percorsi popolano il parametro `includeNodes=` sugli URL generati dai pannelli JSON:API e OpenAPI, così quei pannelli richiedono gli stessi campi di dimensione unita risolti dai branch SQL e GraphQL. Senza questo, `includeNodes=true` restituirebbe solo i campi scalari propri della tabella di aggregazione base. (REQ-1405) [tool-verified: `docs/arch/requirements.md:REQ-1405`]
+
+Sul pannello gRPC, la `{Type}GroupByRequest` generata porta `include_nodes` (bool) e `include` (stringa ripetuta di nomi di campo relazione). La `{Type}GroupByRow` restituita include un campo `nodes` tipizzato con le righe di dettaglio di dimensione. [tool-verified: `provisa/grpc/query_ir.py:168-196`]
 
 ---
 
@@ -846,6 +878,19 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 
 Il server gRPC si avvia solo quando un proto valido può essere compilato all'avvio. Se il build dello schema fallisce, il server gRPC non si avvia. (REQ-529)
 
+#### RPC di Aggregate e Group-By (REQ-1359, REQ-1361, REQ-1405)
+
+Quando una tabella ha `enable_aggregates` impostato, il proto generato include due RPC aggiuntive accanto a `Query{TypeName}`:
+
+- **`Query{TypeName}Aggregate`** — restituisce gli scalari di aggregazione per la tabella (`count`; `sum`, `avg`, `stddev`, `variance` per colonna numerica; `min`, `max` per colonna comparabile)
+- **`Query{TypeName}GroupBy`** — restituisce una riga per chiave di gruppo con sotto-campi di aggregazione e, opzionalmente, scalari della tabella base e righe di dimensione unita in un campo `nodes`
+
+Entrambe passano attraverso la stessa pipeline compilatore di aggregazione dei campi radice GraphQL `{field}_aggregate` e `{field}_group_by` — nessuna implementazione di aggregazione separata. (REQ-1359) [tool-verified: `provisa/grpc/query_ir.py:133-196`]
+
+**Campo `funcs` (REQ-1361).** Il messaggio di richiesta accetta un campo `funcs` di stringhe ripetute. I valori validi sono `count`, `sum`, `avg`, `stddev`, `variance`, `min` e `max`. Quando `funcs` è omesso, viene richiesta ogni funzione esposta dallo schema per quella tabella. Quando è impostato, compaiono solo le funzioni nominate. Se nessuna delle funzioni nominate si applica ai tipi di colonna della tabella, la query ricade su `count`. [tool-verified: `provisa/grpc/query_ir.py:66`, `provisa/grpc/query_ir.py:75-97`]
+
+**Campi `include_nodes` e `include` (REQ-1405).** Le richieste `Query{TypeName}GroupBy` possono impostare `include_nodes: true` per includere le colonne scalari della tabella base nel campo `nodes` di ogni riga. Il campo `include` di stringhe ripetute nomina i campi di relazione many-to-one le cui colonne scalari sono anch'esse annidate dentro `nodes`. Questo corrisponde al comportamento JSON:API `?includeNodes=` / `?include=`. [tool-verified: `provisa/grpc/query_ir.py:168-195`]
+
 ---
 
 ## Driver JDBC
@@ -880,3 +925,168 @@ Direzioni supportate: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_
 ## Subscription
 
 Le subscription SSE sono disponibili su `GET /data/subscribe/{table}`. (REQ-219, REQ-258) La consegna delle notifiche usa un provider collegabile selezionato per tipo di origine: le origini PostgreSQL usano `LISTEN/NOTIFY`, le origini MongoDB usano Change Streams, e le origini Kafka usano consumer group. Il filtraggio RLS e la validazione dello schema si applicano indipendentemente dal provider. Sono supportate anche le origini WebSocket e RSS tramite lo stesso endpoint. (REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/subscriptions/registry.py`, `provisa/api/app.py` `_rebuild_schemas`]
+
+---
+
+## Glossario aziendale (REQ-1387)
+
+Il glossario aziendale mappa i nomi fisici dei campi — così come esistono nei database di origine — su un vocabolario umano condiviso. Ogni colonna registrata nel layer semantico ottiene automaticamente un termine. Non è richiesto alcun inserimento manuale per popolare il glossario; i curatori aggiungono definizioni, relazioni ed esperti sopra ciò che il sistema deriva.
+
+### Come vengono derivati i termini
+
+Quando Provisa registra o aggiorna le colonne di una tabella, `normalize_term` (`provisa/core/glossary.py`) viene eseguito su ogni nome di colonna e produce una frase canonica. [tool-verified: `provisa/core/repositories/glossary.py:sync_table_refs`]
+
+La normalizzazione applica cinque regole in sequenza:
+
+1. Divide sui confini camelCase e sui caratteri separatori (`_`, `-`, `.`, `/`, spazio bianco).
+2. Converte il risultato in minuscolo.
+3. Espande una tabella fissa di abbreviazioni (es. `cust` → `customer`, `amt` → `amount`, `dt` → `date`, `id` → `identifier`, `key` → `identifier`, `guid` → `identifier`).
+4. Rimuove un **token proxy** finale (`identifier`, `code`, `index`, o `reference`) — una colonna nominata per la sua chiave o codice punta al concetto sottostante attraverso un valore surrogato, quindi il termine dovrebbe essere il concetto stesso. L'ultimo token rimanente non viene mai rimosso.
+5. Qualifica una **frase troppo generica** con il concetto della tabella. Quando la frase normalizzata completa è una parola di attributo nuda (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, e simili), il termine diventa `<concetto tabella> <frase>` — `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. Un unico termine `name` condiviso tra tabelle non correlate fonderebbe significati distinti; la qualificazione collega invece ogni colonna al proprio concetto englobante. Il concetto della tabella è il nome aziendale della tabella, normalizzato con un sostantivo di testa singolare (`order_lines` → `order line`).
+
+Le pseudo-colonne di filtro nativo (prefisso `_nf_`, o qualsiasi colonna che porta `native_filter_type`) sono macchinari da parametro di query, non campi aziendali, e non derivano termini.
+
+Poiché `id`, `key`, `pk` e `sk` si espandono tutti a `identifier` prima del controllo proxy, tre nomi di colonna fisicamente diversi finiscono esattamente sullo stesso termine:
+
+| Nome fisico | Dopo la normalizzazione |
+| --- | --- |
+| `cust_id` | `customer` |
+| `customerId` | `customer` |
+| `CUSTOMER_KEY` | `customer` |
+| `txn_amt` | `transaction amount` |
+
+I primi tre collassano su un unico termine. `transaction amount` mantiene entrambi i token perché `amount` non è un proxy. Una colonna `id` nuda — senza token precedenti — non può essere rimossa; si normalizza a `identifier` così il termine non è vuoto. [tool-verified: `provisa/core/glossary.py:normalize_term`]
+
+### Ciclo di vita
+
+I termini sono **derivati dall'appartenenza al layer semantico**, non creati su richiesta dagli utenti. Il repository delle tabelle è l'unico percorso di scrittura: `sync_table_refs` viene eseguito dentro ogni upsert di set di colonne, e `sweep_refless_terms` viene eseguito dopo ogni percorso di eliminazione. [tool-verified: `provisa/core/repositories/glossary.py`]
+
+**Quando viene aggiunta una colonna:** Provisa cerca il termine normalizzato per nome. Se esiste già, la colonna ottiene un ref verso di esso (e se il termine era deprecato, viene ripristinato — `deprecated` viene reimpostato a `False`). Se non esiste ancora alcun termine, ne viene creato uno.
+
+**Quando una colonna viene rimossa** (cambio di schema o rimozione della tabella): il suo ref viene eliminato e il termine viene **regolato** secondo una regola rimuovi-o-deprecare. Un termine radicato senza ref rimanenti viene rimosso del tutto — insieme ai suoi archi e alle assegnazioni di esperti — a meno che rimuoverlo lascerebbe un termine astratto disconnesso da tutti i termini radicati (nessun percorso attraverso il grafo dei termini). In tal caso, il termine viene **deprecato** (marcato `deprecated=True`) invece che eliminato, così l'ancora nel grafo del termine astratto sopravvive.
+
+I termini astratti non vengono mai rimossi automaticamente; esistono al di fuori del ciclo di vita fisico e vengono eliminati solo esplicitamente tramite l'API admin.
+
+**Ripristino:** se il nome normalizzato di un termine deprecato riappare (una colonna viene ri-registrata), il termine viene smarcato e i suoi ref riprendono ad accumularsi.
+
+### Endpoint di curazione
+
+Tutti gli endpoint sono sotto `/admin/glossary`. Richiedono accesso `org_admin` e un'org configurata. Ogni mutation innesca una pubblicazione di metadata. [tool-verified: `provisa/api/admin/glossary_router.py`]
+
+| Metodo | Path | Descrizione |
+| --- | --- | --- |
+| `GET` | `/admin/glossary/terms` | Elenca i termini. Parametri di query: `q` (ricerca su nome/definizione), `include_deprecated` (default `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | Ottiene il dettaglio del termine: definizione, ref fisici, archi tipizzati, esperti |
+| `POST` | `/admin/glossary/terms` | Crea un termine astratto — vocabolario utente senza ref fisici |
+| `PATCH` | `/admin/glossary/terms/{term_id}` | Rinomina, imposta la definizione o attiva/disattiva l'esclusione dall'export |
+| `DELETE` | `/admin/glossary/terms/{term_id}` | Elimina un termine senza ref fisici |
+| `POST` | `/admin/glossary/refs/move` | Sposta un ref fisico verso un altro termine (consolidamento) |
+| `POST` | `/admin/glossary/terms/{term_id}/edges` | Aggiunge un arco di relazione tipizzato tra due termini |
+| `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Rimuove un arco (parametri di query: `to_term_id`, `rel_type`) |
+| `POST` | `/admin/glossary/terms/{term_id}/experts` | Etichetta un utente come esperto o autore di un termine |
+| `DELETE` | `/admin/glossary/terms/{term_id}/experts/{user_id}` | Rimuove la designazione di esperto/autore di un utente |
+| `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Bozza una definizione per un termine usando il modello AI dell'org — restituisce solo testo, nulla viene persistito finché non viene salvato |
+| `POST` | `/admin/glossary/definitions/generate` | Genera e persiste le definizioni per ogni termine che non ne ha — non sovrascrive mai testo scritto da un umano |
+| `POST` | `/admin/glossary/relationships/generate` | Propone e persiste archi tipizzati sull'intero glossario usando il modello AI dell'org |
+
+**Corpo di `POST /admin/glossary/terms`:**
+
+```json
+{"name": "revenue", "definition": "Recognized net revenue after returns and discounts."}
+```
+
+**Corpo di `POST /admin/glossary/terms/{term_id}/edges`:**
+
+```json
+{"to_term_id": 42, "rel_type": "KIND_OF"}
+```
+
+Valori validi di `rel_type`: `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`. [tool-verified: `provisa/core/glossary.py:TERM_EDGE_TYPES`]
+
+**Corpo di `POST /admin/glossary/terms/{term_id}/experts`:**
+
+```json
+{"user_id": "alice@example.com", "kind": "author"}
+```
+
+Valori validi di `kind`: `expert`, `author`. [tool-verified: `provisa/core/repositories/glossary.py:add_expert`]
+
+**Corpo di `POST /admin/glossary/refs/move`:**
+
+```json
+{"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
+```
+
+Spostare un ref regola il termine perdente secondo la regola rimuovi-o-deprecare. Usa questo per consolidare due termini che la normalizzazione ha tenuto separati — ad esempio, dopo che un'origine usa un'abbreviazione non standard rimasta fuori dalla tabella di espansione.
+
+Eliminare un termine radicato (con ref fisici) restituisce `400 glossary.invalid`. Rimuovi o sposta prima tutti i ref.
+
+**`PATCH /admin/glossary/terms/{term_id}` — campo `export_excluded`:**
+
+```json
+{"export_excluded": true}
+```
+
+Impostare `export_excluded` a `true` trattiene il termine da tutti gli snapshot di export dei metadata, indipendentemente dai suoi ref fisici o dallo stato astratto. Reimpostarlo a `false` ripristina il termine nello snapshot alla prossima pubblicazione. I dati di curazione (definizione, archi, esperti) non sono interessati. [tool-verified: `provisa/core/repositories/glossary.py:set_export_excluded`, `provisa/api/admin/glossary_router.py:update_term`]
+
+### Curazione assistita da AI
+
+Il modello AI configurato dell'org può abbozzare definizioni e proporre archi di relazione sull'intero glossario in un'unica operazione. Entrambe le azioni bulk richiedono accesso `org_admin` e un'org configurata.
+
+**`POST /admin/glossary/definitions/generate`**
+
+Itera ogni termine nel glossario, salta quelli che hanno già una definizione, e chiama il modello AI dell'org per abbozzarne una per ogni termine rimanente. La bozza viene persistita immediatamente — a differenza dell'endpoint di bozza per singolo termine (`POST /admin/glossary/terms/{term_id}/definition/generate`), non c'è un passaggio di editor. Le definizioni scritte da un umano non vengono mai sovrascritte: la protezione è `if summary["definition"]: continue` prima di qualsiasi chiamata al modello. Una singola notifica di pubblicazione copre l'intero batch. [tool-verified: `provisa/api/admin/glossary_router.py:generate_all_definitions`]
+
+Risposta:
+
+```json
+{"generated": 12}
+```
+
+`generated` è il conteggio dei termini che hanno ricevuto una nuova definizione. È zero quando ogni termine ne ha già una.
+
+**`POST /admin/glossary/relationships/generate`**
+
+Invia l'elenco completo dei termini al modello AI dell'org con un prompt che specifica i dieci tipi di arco consentiti (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) e chiede solo proposte con alta confidenza. Il modello risponde con un array JSON; ogni voce viene validata prima di qualsiasi scrittura: nomi di termine sconosciuti, auto-archi e tipi di arco fuori dall'enum chiuso vengono scartati silenziosamente. Le proposte valide vengono upsertate in modo idempotente — rieseguire l'azione non duplica gli archi. Una singola notifica di pubblicazione copre il batch. L'endpoint restituisce `{"added": 0}` immediatamente quando il glossario contiene meno di due termini non deprecati. [tool-verified: `provisa/api/admin/glossary_router.py:generate_relationships`]
+
+Risposta:
+
+```json
+{"added": 5}
+```
+
+`added` è il conteggio degli archi scritti. Un arco già esistente conta comunque — l'upsert riesce, ma i dati dell'arco non cambiano.
+
+### Tool MCP `search_terms`
+
+```
+search_terms(query, role=None, limit=25)
+```
+
+Cerca nei nomi e nelle definizioni dei termini con un confronto per sottostringa case-insensitive, fino a `limit` risultati. Ogni risultato è il dettaglio completo del termine: `name`, `definition`, `is_abstract`, `deprecated`, ref fisici (con `source_id`, `schema_name`, `table_name`, `column_name`), archi tipizzati e assegnazioni di esperti. [tool-verified: `provisa/api/mcp/server.py:236-244`, `provisa/core/repositories/glossary.py:search_terms`]
+
+Usa `search_terms` prima di scrivere SQL per trovare ogni campo fisico che rappresenta un concetto per nome. Ad esempio, cercare `"order date"` restituisce il termine e tutte le colonne `order_dt`, `orderDate`, `ORDER_DATE` in ogni tabella registrata.
+
+### Export dei metadata
+
+Il grafo dei termini del glossario è incluso in ogni `MetadataSnapshot` costruito da `build_snapshot`. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
+
+L'export applica gli stessi filtri del resto dello snapshot:
+
+- Un termine marcato `export_excluded` viene trattenuto del tutto — indipendentemente dai suoi ref fisici, dallo stato astratto, o dal fatto che il catalogo dell'org sia configurato. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
+- Un termine radicato viene pubblicato solo quando almeno uno dei suoi ref fisici appartiene a una colonna che supera sia il filtro **Data Product** (il flag `data_product` della tabella deve essere `true`) sia il filtro colonna **technical** (le colonne taggate `technical` vengono trattenute).
+- Un termine radicato i cui ref sono tutti trattenuti da quei filtri viene trattenuto insieme a loro.
+- I termini astratti vengono pubblicati incondizionatamente — sono vocabolario utente, non vincolato a colonne fisiche.
+- Un arco tra due termini viene pubblicato solo quando entrambi i termini agli estremi vengono pubblicati.
+
+Ogni adapter vendor pubblica il grafo dei termini in modo nativo, in un container di glossario di proprietà di Provisa che crea in modo idempotente — mai in un glossario di catalogo esistente:
+
+| Provider | Container | Termini | Relazioni | Deprecazione |
+| --- | --- | --- | --- | --- |
+| Apache Atlas | "Provisa Glossary" (glossary API) | termini di glossario, definizione su `longDescription` | KIND_OF → `isA`, SYNONYM_OF → `synonyms`, RELATED_TO/PART_OF → `seeAlso` | marcatore shortDescription `[DEPRECATED]` |
+| Atlan | glossario Provisa per qualifiedName stabile | `longDescription` (mai la `userDescription` modificata da umano) | stessa mappatura Atlas | `certificateStatus = DEPRECATED` |
+| DataHub | `urn:li:glossaryNode:provisa.<org>` | aspetto `glossaryTermInfo` per termine | KIND_OF → Inherits, PART_OF → Contains (invertito), RELATED_TO/SYNONYM_OF → related terms | aspetto di deprecazione; le rinomine seguono la successione URN |
+| OpenMetadata | glossario Provisa via `/v1/glossaries` | PUT con chiave fqn, rinomine PATCH-rebind per UUID memorizzato | KIND_OF → gerarchia genitore nativa, SYNONYM_OF → `synonyms`, altri → `relatedTerms` | `entityStatus` |
+| Collibra | dominio di tipo Glossary "Provisa Glossary" | asset Business Term via la Import API | tipi di relazione Business Term nativi | stato asset |
+
+La proprietà è il binding, non il nome: l'id vendor di ogni termine pubblicato viene catturato in `catalog_bindings` sotto l'URN del termine (`provisa://<org>/terms/<name>`), e Provisa modifica o elimina un elemento di glossario lato vendor solo quando detiene quel binding (o l'elemento vive nel container di proprietà di Provisa che ha creato). Un elemento di glossario senza binding Provisa ha avuto origine nel sistema esterno e non viene mai toccato; gli aggiornamenti fanno read-merge così i campi aggiunti dallo steward sui termini propri di Provisa sopravvivono; nulla viene eliminato quando un termine esce dallo snapshot. Le assegnazioni steward termine-asset restano di proprietà esterna — nessun adapter scrive assegnazioni termine-asset (la pubblicazione delle assegnazioni scritte da Provisa è un follow-on esplicito). Su Collibra in particolare, la sicurezza sotto la semantica REPLACE della Import API si basa sul contenimento: il payload menziona solo asset dentro il dominio di glossario Provisa e istanze di relazione solo tra termini Provisa, così i glossari dello steward e le loro relazioni non sono mai raggiungibili. [tool-verified: `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openmetadata.py`]

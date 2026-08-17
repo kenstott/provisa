@@ -184,6 +184,55 @@ La respuesta tiene la misma forma que el grafo de sentencia, con un campo `cycle
 }
 ```
 
+## Qué rompería un renombrado o una eliminación de columna (REQ-1484)
+
+Una columna lleva dos nombres, y cada uno lo almacena un conjunto distinto de artefactos.
+
+El **nombre expuesto** es lo que muestran las superficies SQL y GraphQL: `table_columns.alias`, con
+respaldo en el valor predeterminado snake_case cuando no hay alias definido [tool-verified:
+`computed_sql_alias` en `schema_helpers.py:317`]. Las vistas, vistas materializadas, expresiones de
+métricas, predicados de RLS, contratos de DQ, granularidades de vistas de métricas y claves de fila
+de MV se escriben todos contra ese nombre, así que **renombrar un alias los rompe con la misma
+certeza que eliminar la columna**.
+
+El **nombre físico** es `table_columns.column_name`, la identidad que sobrevive al reemplazo
+completo de columnas del upsert de la tabla. Las relaciones, los enlaces del glosario, las
+asignaciones de etiquetas, la columna de marca de agua (watermark) y los ajustes preestablecidos de
+columna almacenan este, así que solo se rompen cuando la columna se **elimina**.
+
+`columnDependents` reporta ambos casos. Las vistas y MV descendientes provienen de recortar el
+grafo de federación en el nombre expuesto de la columna; los artefactos que ese grafo no cubre
+provienen de un escaneo directo del registro [tool-verified: `graph_dependents` en
+`provisa/lineage/dependents.py`, escaneos del registro en
+`provisa/api/admin/column_dependents.py`].
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+`breaksOn` es `rename` para una referencia por nombre expuesto y `remove` para una por nombre
+físico, de modo que quien llama pueda saber a cuál de las dos mitades de la edición está
+reaccionando cada artefacto.
+
+Consulte esto **antes** de guardar. Una columna renombrada se localiza por el nombre expuesto que
+aún conserva en el registro; una vez que el alias se ha aplicado, el nombre anterior desaparece y
+la consulta no encuentra nada.
+
+La página Tables ejecuta la consulta automáticamente cuando una edición pendiente cambia un alias o
+reduce el conjunto de columnas, y enumera lo que encuentra [tool-verified: `diffEditedColumns` en
+`provisa-ui/src/pages/tables/columnDiff.ts`, diálogo en `TablesPage.tsx`]. La advertencia es
+informativa: nombra los artefactos afectados y el administrador decide. No bloquea el guardado,
+porque no se puede llegar a todos los consumidores del estado — un panel externo o una aplicación
+cliente que consulta la columna por nombre queda fuera del conocimiento del registro. Por la misma
+razón, los escaneos sobre texto SQL libre hacen coincidir la columna como un token identificador en
+lugar de resolver el ámbito, lo que puede nombrar un artefacto que resulte no usar la columna.
+Sobreinformar es la dirección segura para una advertencia.
+
 ## Usar el linaje para gobernar contratos de comandos
 
 Dado que el cierre de contaminación conecta cada columna de entrada declarada con cada columna de

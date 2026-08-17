@@ -253,6 +253,79 @@ sources:
 | `domain_id` | Sim | — | Domínio ao qual esta fonte pertence |
 | `description` | Não | `""` | Descrição legível por humanos |
 
+### Verificadores de Qualidade de Dados (REQ-1443)
+
+Um verificador de qualidade de dados é um tipo de fonte, não um subsistema. Sua saída de scan é dado: um resultado de verificação é uma observação, então ela chega pelo caminho de fonte comum e herda cadência, frescor, eventos, linhagem, governança, RLS, grid e exportação de qualquer outra fonte. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
+
+Dois são suportados, e a escolha é tanto uma escolha de licença quanto de funcionalidade.
+
+| Tipo de Fonte | Dialeto do Contrato | Extra | Licença | Plano de nuvem hospedado |
+| ------------ | ----------------- | ------- | --------- | -------------------- |
+| `soda` | YAML de contrato Soda | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Recusado — veja abaixo |
+| `great_expectations` | JSON de suíte de expectativas | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Permitido |
+
+A Elastic License 2.0 proíbe fornecer o software a terceiros como serviço hospedado ou gerenciado, e executar o Soda dentro do plano SaaS em nome de um locatário é exatamente isso. `config/capabilities.yaml` carrega essa divisão como `cloud_eligible: false` na opção `soda`, e o plano hospedado lê essa flag. Uma implantação hospedada que quer usar o Soda alcança um endpoint Soda fornecido pelo operador, que o próprio operador executa. [tool-verified: `config/capabilities.yaml` lines 197–203]
+
+O Provisa não empacota nem vincula nada. O scan roda em um interpretador filho (`python -m provisa.dq.worker`), que é o único lugar onde `soda_core` ou `great_expectations` é importado, então um verificador source-available nunca alcança o processo do servidor e uma falha do verificador mata um subprocesso em vez do event loop. [tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
+
+**A fonte aponta para o próprio endpoint pgwire do Provisa.** É isso que permite que um único driver postgres verifique uma tabela apoiada em Snowflake ou Iceberg: o verificador escaneia a exibição federada, não o sistema subjacente. Como a política se aplica a essa conexão, a identidade do scan é declarada em vez de herdada — um conjunto de linhas filtrado nunca deve produzir uma verificação que passe silenciosamente.
+
+```yaml
+sources:
+
+  - id: dq
+    type: soda
+    domain_id: sales-analytics
+    description: Soda contract scans over the governed estate
+    mapping:
+      host: localhost
+      port: 5439          # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner    # the scan identity, declared explicitly
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+**Uma tabela de resultados por contrato, e o contrato é todo o registro.** A tabela carrega `dq_contract` — o texto do contrato ao pé da letra — e nada mais sobre sua forma. Colunas, marca d'água e promoções são todas derivadas. [tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
+
+```yaml
+tables:
+
+  - source_id: dq
+    schema_name: quality
+    table_name: orders_scan
+    domain_id: sales-analytics
+    change_signal: ttl_probe
+    cache_ttl: 3600
+    columns:
+      - name: scan_id          # declared only to carry visible_to; replaced at parse
+        visible_to: [analyst, admin]
+    dq_contract: |
+      dataset: provisa/sales/orders
+      columns:
+        - name: customer_id
+          checks:
+            - missing:
+                threshold:
+                  metric: percent
+                  must_be_less_than: 1
+      checks:
+        - row_count:
+            must_be_greater_than: 0
+```
+
+O que o registro deriva desse texto:
+
+- **Linhagem.** O contrato já nomeia seu conjunto de dados alvo, então o registro o interpreta da mesma forma que `extract_inputs` interpreta SQL (REQ-939) e o resolve para a tabela governada. Uma única definição, sem segunda cópia que possa divergir. Um contrato que nomeia um conjunto de dados não governado falha alto no registro em vez de pousar linhas que ninguém pediu.
+- **Colunas.** O envelope de resultado é do verificador, não do operador — 16 colunas entregues, de `scan_id` até `diagnostics`. Colunas declaradas são lidas apenas por seu `visible_to`, que deve ser unânime, e então são substituídas. [tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
+- **Marca d'água.** `scan_time` se torna a marca d'água, o que torna o pouso um append (REQ-982). O histórico de scans se acumula sem um subsistema de histórico.
+- **Promoções.** `freshness_max_timestamp` e `dataset_rows_tested` são promovidos para fora do jsonb `diagnostics` como colunas tipadas (REQ-119). Adicione mais da mesma forma que faria em qualquer outra coluna jsonb. [tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
+
+A temporização não introduz novos campos. `change_signal` somado a `cache_ttl` fornece a cadência de polling; `mv_debounce_quiet` e `mv_debounce_max_delay` colapsam uma rajada upstream em um único scan (REQ-963); um grão de calendário o torna periódico (REQ-962); `expected_events` retém o scan até que suas entradas estejam frescas ao longo da janela (REQ-961). O loop de polling é o agendador do scan.
+
+`outcome` é um de `pass`, `fail`, `warn`, `error`, `skipped`. Nenhum deles é um veredito — a aplicação, se desejada, é uma declaração separada posterior: um preflight ou uma MV sobre os resultados pousados. Como uma observação pousada não carrega nenhuma obrigação de determinismo (REQ-964), verificações não determinísticas são admissíveis aqui que nunca poderiam estar em um gate de preflight — pontuação de anomalia, mudança de janela móvel, frescor em relação a agora.
+
+O contrato é escrito na UI, no painel de qualidade de dados da superfície de edição de tabela, e o texto bruto do contrato ali é sempre a fonte da verdade. Um dry run executa o contrato contra a tabela ao vivo e mostra os resultados sem pousá-los — assim é como você detecta um contrato cujo nome de conjunto de dados foi resolvido para algo inesperado e que, de outra forma, pousaria apenas linhas aprovadas.
+
 ---
 
 ## Conectores Personalizados (REQ-1177)

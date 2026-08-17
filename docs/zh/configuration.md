@@ -513,6 +513,47 @@ sources:
       disable_ssl_validation: false
 ```
 
+#### 数据质量检查器（soda / great_expectations）
+
+[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
+
+检查器数据源指向 Provisa 自身的 pgwire 终结点，因此一个 postgres 驱动即可扫描 Snowflake 或 Iceberg 支撑的表的联邦视图。扫描身份是显式声明的，绝非继承而来——策略适用于该连接，一个被过滤掉的行集绝不能悄无声息地产生一个通过的检查。连接密钥来自 `mapping`：`host`、`port`、`database`、`user`、`password`。
+
+```yaml
+sources:
+  - id: dq
+    type: soda                 # or great_expectations
+    domain_id: sales-analytics
+    mapping:
+      host: localhost
+      port: 5439               # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+每张结果表都携带 `dq_contract`——原样保留的 Soda contract YAML 或 Great Expectations suite JSON。列、水位和提升字段均由其派生；完整的派生过程参见[数据质量检查器](sources.md#req-1443)。
+
+**安装时选择。** 检查器不会被链接进程序——扫描运行在一个子解释器中，且该库只有在运维方指定时才会被安装。每条安装路径（`install.sh`、`packaging/linux/first-launch.sh`，以及通过 `PROVISA_DQ_CHECKER` 的 macOS 向导）都会把选择写入 `~/.provisa/config.yaml`：
+
+```yaml
+dq_checker: none        # none | soda | gx
+```
+
+`scripts/provisa` 读取该键并导出 `PROVISA_EXTRAS`，`docker-compose.app.yml` 会将其作为构建参数传给 `Dockerfile` 的 `ARG PROVISA_EXTRAS`：[tool-verified: `scripts/provisa:69-79`]
+
+| `dq_checker` | `PROVISA_EXTRAS`（Docker 层） | 原生 venv 安装 |
+| -------------- | -------------------------------- | --------------------- |
+| `none` | `firebase,vector` | `provisa[embedded]` |
+| `soda` | `firebase,vector,soda` | `provisa[embedded,soda]` |
+| `gx` | `firebase,vector,gx` | `provisa[embedded,gx]` |
+
+安装演示数据集会把 `none` 提升为 `gx` 并给出提示，因为演示配置在 `pet_store.pets` 上注册了一个 Great Expectations suite，否则其质量记分卡将无内容可展示。若已指定 `soda`，则保持 `soda` 不变。
+
+通过 pip 而非安装程序访问演示环境会跳过该向导步骤，因此 `demo` extra 携带相同的检查器：`provisa run --demo` 要让其扫描运行，需要 `pip install 'provisa[embedded,demo]'`。若没有它，扫描会报告 `data-quality checker 'great_expectations' is not installed`，并给出安装命令。
+
+任何其他取值都会使启动器停止，而不是在没有运维方所要求的检查器的情况下启动。`soda` extra 会拉取 `soda-postgres`；`gx` 会拉取 `great-expectations[postgresql]`。Soda Core 采用 Elastic License 2.0——`config/capabilities.yaml` 将该选项标记为 `cloud_eligible: false`，托管平面会拒绝它。
+
 ## 域
 
 ```yaml
@@ -908,7 +949,7 @@ auth:
 
 ### 个人访问令牌
 
-PAT 无需配置块——它们始终被接受，其存储随控制平面模式的其余部分一并创建。(REQ-1263) 可配置的是用户在签发时可请求的有效期：1 到 366 天，或者不设有效期以获得永不过期的令牌。参见[安全模型](security.md#personal-access-tokens)。
+PAT 无需配置块——它们始终被接受，其存储随控制平面模式的其余部分一并创建。(REQ-1263) 可配置的是用户在签发时可请求的有效期：1 到 366 天，或者不设有效期以获得永不过期的令牌。参见[安全模型](security.md#_17)。
 
 ### 双向 TLS
 
@@ -1271,13 +1312,13 @@ PROVISA_ENGINE=synapse
 
 物化存储默认为 `TENANT_DATABASE_URL`。
 
-#### sqlalchemy
+#### 关系型数据库引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）以及 `sqlalchemy`
 
-通用的仅落地关系型数据库引擎（不联合外部数据源）。用于单数据仓库部署或测试。
+每个可通过网络访问的关系型数据库对应一个键，全部运行在同一种仅落地（land-only）运行时上（不联合外部数据源）：每个数据源都会落地到该存储中并在那里被查询。该键选定数据库；`PROVISA_ENGINE_URL` 携带其方言所需的 DSN。`sqlalchemy` 是没有专属键的数据库的兜底选项。不提供文件内嵌型存储（SQLite、Access）——服务器必须可通过网络访问。
 
 ```bash
-PROVISA_ENGINE=sqlalchemy
-PROVISA_ENGINE_URL="postgresql+psycopg2://user:pass@host/db"
+PROVISA_ENGINE=mysql
+PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
 
 物化存储默认为 `TENANT_DATABASE_URL`。

@@ -105,6 +105,9 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | `splunk` | `host`/`port` oder `base_url` + `mapping` | |
 | **GovData** | | |
 | `govdata` | subject + `domain_id` | Separates `GovDataSource`-Modell; siehe §GovData unten |
+| **Data Quality** | | |
+| `soda` | host/port, zielt auf Provisas pgwire | Benötigt das `soda`-Extra; Elastic License 2.0, nur selbst gehostet (REQ-1443) |
+| `great_expectations` | host/port, zielt auf Provisas pgwire | Benötigt das `gx`-Extra; Apache 2.0 (REQ-1443) |
 
 ### Quellentyp-Referenz
 
@@ -512,6 +515,47 @@ sources:
       datamodel_filter: ""     # optional Splunk Data Model filter
       disable_ssl_validation: false
 ```
+
+#### Data-Quality-Checker (soda / great_expectations)
+
+[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
+
+Eine Checker-Quelle zeigt auf Provisas eigenen pgwire-Endpunkt, sodass ein Postgres-Treiber die föderierte Sicht auf eine Snowflake- oder Iceberg-gestützte Tabelle scannt. Die Scan-Identität wird deklariert, nie vererbt — die Richtlinie gilt für diese Verbindung, und ein gefilterter Zeilensatz darf keinen stillschweigend bestandenen Check erzeugen. Verbindungsschlüssel kommen aus `mapping`: `host`, `port`, `database`, `user`, `password`.
+
+```yaml
+sources:
+  - id: dq
+    type: soda                 # or great_expectations
+    domain_id: sales-analytics
+    mapping:
+      host: localhost
+      port: 5439               # Provisa's pgwire endpoint
+      database: provisa
+      user: dq_scanner
+      password: ${env:PROVISA_DQ_PASSWORD}
+```
+
+Jede Ergebnistabelle trägt `dq_contract` — Soda-Contract-YAML oder eine Great-Expectations-Suite-JSON, unverändert. Spalten, Wasserzeichen und Promotions werden daraus abgeleitet; siehe [Data Quality Checkers](sources.md#data-quality-checker-req-1443) für die vollständige Ableitung.
+
+**Auswahl zur Installationszeit.** Der Checker ist nicht fest eingebunden — der Scan läuft in einem Kindinterpreter, und die Bibliothek wird nur installiert, wenn ein Betreiber sie benennt. Jeder Installationspfad (`install.sh`, `packaging/linux/first-launch.sh` und der macOS-Wizard über `PROVISA_DQ_CHECKER`) schreibt die Wahl nach `~/.provisa/config.yaml`:
+
+```yaml
+dq_checker: none        # none | soda | gx
+```
+
+`scripts/provisa` liest diesen Schlüssel und exportiert `PROVISA_EXTRAS`, das `docker-compose.app.yml` als Build-Argument an `ARG PROVISA_EXTRAS` im `Dockerfile` übergibt: [tool-verified: `scripts/provisa:69-79`]
+
+| `dq_checker` | `PROVISA_EXTRAS` (Docker-Tier) | Native venv-Installation |
+| -------------- | -------------------------------- | --------------------- |
+| `none` | `firebase,vector` | `provisa[embedded]` |
+| `soda` | `firebase,vector,soda` | `provisa[embedded,soda]` |
+| `gx` | `firebase,vector,gx` | `provisa[embedded,gx]` |
+
+Die Installation des Demo-Datasets hebt `none` auf `gx` an und meldet dies, da die Demo-Konfiguration eine Great-Expectations-Suite über `pet_store.pets` registriert und deren Qualitäts-Scorecard sonst nichts anzuzeigen hätte. Bei Angabe von `soda` bleibt `soda` bestehen.
+
+Wird die Demo über pip statt über einen Installer erreicht, entfällt dieser Wizard-Schritt, sodass das `demo`-Extra denselben Checker mitbringt: `pip install 'provisa[embedded,demo]'` ist das, was `provisa run --demo` für seinen Scan benötigt. Ohne es meldet der Scan `data-quality checker 'great_expectations' is not installed` und nennt den Installationsbefehl.
+
+Jeder andere Wert stoppt den Launcher, statt ohne den vom Betreiber angeforderten Checker zu starten. Das `soda`-Extra zieht `soda-postgres`; `gx` zieht `great-expectations[postgresql]`. Soda Core steht unter Elastic License 2.0 — `config/capabilities.yaml` markiert die Option als `cloud_eligible: false`, und die gehostete Ebene verweigert sie.
 
 ## Domänen
 
@@ -1173,7 +1217,27 @@ Vorrang: `PROVISA_ENGINE`-Umgebungsvariable → persistiertes Admin-UI-Konfigura
 | `bigquery` | BigQuery | BigQuery | Ja | BigQuery External-/BigLake-Tables | `GOOGLE_APPLICATION_CREDENTIALS` |
 | `fabric` | Microsoft Fabric | T-SQL | Ja | OneLake-Shortcuts → OPENROWSET | Azure AD (`az login` oder Managed Identity) |
 | `synapse` | Azure Synapse | T-SQL | Ja | ADLS OPENROWSET / External Tables | Azure AD |
-| `sqlalchemy` | SQLAlchemy (jede RDB) | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `mysql` | MySQL | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `mariadb` | MariaDB | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `oracle` | Oracle Database | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `mssql` | Microsoft SQL Server | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `db2` | IBM Db2 | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `redshift` | Amazon Redshift | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `greenplum` | Greenplum | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `cockroachdb` | CockroachDB | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `yugabytedb` | YugabyteDB | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `opengauss` | openGauss | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `tidb` | TiDB | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `singlestore` | SingleStore | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `vertica` | Vertica | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `exasol` | Exasol | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `teradata` | Teradata Vantage | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `saphana` | SAP HANA | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `sapase` | SAP ASE (Sybase) | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `sqlanywhere` | SAP SQL Anywhere | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `monetdb` | MonetDB | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `firebird` | Firebird | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
+| `sqlalchemy` | Andere relationale Datenbank (per Connection-URL) | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
 
 ### Engine-Referenz
 
@@ -1271,13 +1335,13 @@ PROVISA_ENGINE=synapse
 
 Der Materialisierungs-Store ist standardmäßig `TENANT_DATABASE_URL`.
 
-#### sqlalchemy
+#### Relationale-Datenbank-Engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) und `sqlalchemy`
 
-Generische RDBMS-Nur-Landing-Engine (keine Föderation zu externen Quellen). Für Single-Warehouse-Deployments oder Tests verwenden.
+Ein Schlüssel pro netzwerkadressierbarer relationaler Datenbank, alle auf derselben Nur-Landing-Laufzeit (keine Föderation zu externen Quellen): Jede Quelle landet im Store und wird dort abgefragt. Der Schlüssel wählt die Datenbank; `PROVISA_ENGINE_URL` trägt den DSN, den ihr Dialekt erwartet. `sqlalchemy` ist der Catch-all für eine Datenbank ohne eigenen Schlüssel. Dateibasierte Stores (SQLite, Access) werden nicht angeboten — der Server muss über das Netzwerk erreichbar sein.
 
 ```bash
-PROVISA_ENGINE=sqlalchemy
-PROVISA_ENGINE_URL="postgresql+psycopg2://user:pass@host/db"
+PROVISA_ENGINE=mysql
+PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
 
 Der Materialisierungs-Store ist standardmäßig `TENANT_DATABASE_URL`.
@@ -1342,7 +1406,7 @@ Setzen Sie für Google-Cloud-Quellen `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `PG_DATABASE` | `provisa` | PostgreSQL-Datenbank |
 | `PG_USER` | `provisa` | PostgreSQL-Benutzer |
 | `PG_PASSWORD` | `provisa` | PostgreSQL-Passwort |
-| `PROVISA_ENGINE` | `duckdb` | Föderations-Engine-Schlüssel (REQ-989) |
+| `PROVISA_ENGINE` | `duckdb` | Föderations-Engine-Schlüssel (REQ-989, REQ-916) |
 | `PROVISA_ENGINE_URL` | — | Verbindungs-URL für URL-gesteuerte Engines (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
 | `PROVISA_MATERIALIZE_URL` | — | Materialisierungs-Store-DSN überschreiben (Standard ist der deklarierte Standard der Engine) |
 | `PROVISA_DATA_DIR` | `~/.provisa` | Datenverzeichnis für den eingebetteten DuckDB-Store (REQ-989) |
@@ -1373,6 +1437,8 @@ Setzen Sie für Google-Cloud-Quellen `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `PROVISA_MTLS_MODE` | `required`, sobald eine CA gesetzt ist | `required` oder `optional`; jeder andere Wert verweigert den Start (REQ-1228) |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Verlangt, dass der Common Name des Zertifikats dem authentifizierenden Benutzernamen entspricht (REQ-1228) |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Kommagetrennte Sites, die einen Bolt-WebSocket aus einem Browser öffnen dürfen; nicht gesetzt weist jede Browser-Origin ab (REQ-802) |
+| `PROVISA_EXTRAS` | `firebase,vector` | Pyproject-Extras, die ins App-Image eingebacken werden; `scripts/provisa` leitet den Wert aus `dq_checker` in `~/.provisa/config.yaml` ab (REQ-1443) |
+| `PROVISA_DQ_CHECKER` | `none` | Nur Installer: `none`/`soda`/`gx`, gelesen von `first-launch.sh` im nicht-interaktiven Modus und als `dq_checker` in `config.yaml` geschrieben (REQ-1443) |
 | `ANTHROPIC_API_KEY` | — | Claude-API-Schlüssel (Discovery) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Überschreibt `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Überschreibt `observability.service_name` |
