@@ -70,10 +70,16 @@ def main() -> int:
             # (provisa-ui/src/**/__tests__/*.test.tsx), not pytest files under tests/unit/. A
             # requirement whose whole surface is a React component has no Python unit test to
             # give, so both locations count as unit coverage.
+            #
+            # The commercial plugin ships its own pytest suite at .claude/commercial/tests/ — it is
+            # a separate distribution with a separate root, not a second-class location. A
+            # requirement whose whole surface is billing or entitlements has no test to give under
+            # tests/unit/, since the code under test is not in this package.
             unit = [
                 t
                 for t in tests
-                if t.startswith("tests/unit/") or (t.startswith("provisa-ui/src/") and ".test." in t)
+                if t.startswith(("tests/unit/", ".claude/commercial/tests/"))
+                or (t.startswith("provisa-ui/src/") and ".test." in t)
             ]
             integration = [t for t in tests if t.startswith("tests/integration/")]
             # `e2e: true` means the behavior is only verifiable through a full live-stack

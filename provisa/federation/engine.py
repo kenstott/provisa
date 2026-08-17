@@ -330,10 +330,24 @@ class FederationEngine:  # REQ-840
         return self._default_store_fn() if self._default_store_fn is not None else None
 
     def materialize_store(self) -> str:
-        """The materialization store DSN. A store MUST exist: the explicitly-configured
-        ``materialize_store_url`` wins, else the engine's declared default; if neither exists that is
-        a hard error (never a fallback to inline / the engine's own runtime)."""
-        dsn = configured_materialize_url() or self.default_materialize_store()
+        """The materialization store DSN. A store MUST exist: the bound org's OWN store wins, else
+        the explicitly-configured ``materialize_store_url``, else the engine's declared default; if
+        none exists that is a hard error (never a fallback to inline / the engine's own runtime).
+
+        REQ-1048: the org store is first in the precedence, not a fallback for a missing platform
+        one — an org that registered its own store has said its materializations belong on its
+        disk and its bill, and that decision outranks the deployment's configuration. An org that
+        registered none is on the platform store by design, where the REQ-1046 quota applies.
+        """
+        from provisa.api.org_runtime import current_org
+        from provisa.storage.byo import org_store_dsn
+
+        org_id = current_org.get()
+        dsn = (
+            (org_store_dsn(org_id) if org_id else None)
+            or configured_materialize_url()
+            or self.default_materialize_store()
+        )
         if dsn is None:
             raise MaterializeStoreUnconfigured(self.name)
         return dsn

@@ -27,6 +27,7 @@ class MVStatus(str, Enum):  # REQ-160, REQ-199, REQ-235
     DISABLED = "disabled"
     SKIPPED_SIZE = "skipped_size"
     SKIPPED_PREFLIGHT = "skipped_preflight"  # REQ-1165: a preflight ABORT/QUARANTINE held the refresh
+    SKIPPED_QUOTA = "skipped_quota"  # REQ-1047: the org is at its tier's storage allowance
 
 
 @dataclass(frozen=True)

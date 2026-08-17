@@ -91,6 +91,12 @@ class OrgRuntime:
     # that no longer exists and the runtime has to be rebuilt before the next query dispatches.
     shard: str = ""
     engine_generation: int = 0
+    # REQ-1048: the org's OWN materialization store (bring-your-own storage), decrypted once at
+    # build time from ``orgs.storage_url_enc``. Set means every MV output and landed table for this
+    # org is written to a store the ORG pays for, so its footprint is neither metered nor capped by
+    # the REQ-1046 tier quota. ``None`` means the platform's store, where the quota applies — the
+    # state of every org that has not registered one.
+    storage_url: str | None = None
     federation_engine: Any = None
     engine_conn: Any = None
     engine_conn_kwargs: dict = field(default_factory=dict)

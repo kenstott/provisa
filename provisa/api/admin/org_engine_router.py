@@ -359,6 +359,9 @@ async def set_org_engine(request: Request, body: OrgEngineBody):  # REQ-1412
             external_engine=(host, port) if mode == EXTERNAL and host and port else None,
             engine_kind=kind if mode == EXTERNAL else None,
             engine_url=url if mode == EXTERNAL else None,
+            # REQ-1048: the org's BYO materialization store is independent of which engine lane it
+            # runs on, so a lane change carries it across rather than dropping it.
+            storage_url=lane.storage_url,
         ),
     )
     if _isolated_provisioned_here() and mode != ISOLATED:

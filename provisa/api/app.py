@@ -140,6 +140,9 @@ class AppState:
     # they live on the per-org OrgRuntime and resolve through the current_org ContextVar, falling
     # through to the default-org (shared) runtime for every org without a dedicated engine.
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
+    # Full source-row map from the DB, published by _rebuild_schemas so NativeEngineBackend can
+    # attach dynamically registered sources that are not in state.config (YAML-only).
+    runtime_sources: dict[str, dict] = {}
     # schema_build_cache is org-routed; see the property below.
     schema_version: int = (
         0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
@@ -688,7 +691,7 @@ async def _load_and_build(
         tenant_db = state.tenant_db
         assert tenant_db is not None
         async with tenant_db.acquire() as _rls_conn:
-            await _init_meta_rls(cast("Connection", _rls_conn))
+            await _init_meta_rls(_rls_conn)
 
     # Apply observability config to state
     if config.observability:
@@ -834,6 +837,7 @@ class OrgLane(NamedTuple):
     engine_kind: str | None
     engine_url: str | None
     shard: str
+    storage_url: str | None
 
 
 async def _read_org_flags(org_id: str) -> OrgLane:
@@ -846,7 +850,9 @@ async def _read_org_flags(org_id: str) -> OrgLane:
     engine (REQ-1412); ``engine_kind``/``engine_url`` are that engine's kind and DSN when the org
     runs a kind of its own (REQ-1418) — no defaults, the row is authoritative; ``shard`` names the
     shared-lane engine shard that answers this org (REQ-1450), which is what the query-path wake
-    brings back up when it has been released."""
+    brings back up when it has been released; ``storage_url`` is the org's own materialization
+    store when it brings one (REQ-1048), which is what takes its bytes off the platform's disk and
+    out of the storage quota."""
     from sqlalchemy import select as _select
 
     from provisa.core.schema_admin import orgs as _orgs
@@ -862,6 +868,7 @@ async def _read_org_flags(org_id: str) -> OrgLane:
                 _orgs.c.engine_kind,
                 _orgs.c.engine_url_enc,
                 _orgs.c.shard,
+                _orgs.c.storage_url_enc,
             ).where(_orgs.c.id == org_id)
         )
         row = result.fetchone()
@@ -872,12 +879,18 @@ async def _read_org_flags(org_id: str) -> OrgLane:
     external = (row[2], int(row[3])) if row[2] else None
     # REQ-1418: the DSN is stored encrypted; it is decrypted once here, at build time, rather than
     # per query — the same treatment source DSNs already get on the runtime.
+    #
+    # REQ-1048: the BYO materialization-store DSN gets exactly the same treatment — encrypted at
+    # rest, decrypted once here, carried on the runtime so no write path decrypts per landing.
+    from provisa.encryption.runtime import encryption_service
+
     engine_url = None
     if row[5] is not None:
-        from provisa.encryption.runtime import encryption_service
-
         engine_url = encryption_service().decrypt(bytes(row[5])).decode("utf-8")
-    return OrgLane(bool(row[0]), bool(row[1]), external, row[4], engine_url, row[6])
+    storage_url = None
+    if row[7] is not None:
+        storage_url = encryption_service().decrypt(bytes(row[7])).decode("utf-8")
+    return OrgLane(bool(row[0]), bool(row[1]), external, row[4], engine_url, row[6], storage_url)
 
 
 async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
@@ -899,6 +912,7 @@ async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
             engine_kind=lane.engine_kind,
             engine_url=lane.engine_url,
             shard=lane.shard,
+            storage_url=lane.storage_url,
         )
 
     return await state.org_registry.get_or_build(org_id, _builder)
@@ -913,6 +927,7 @@ async def build_org_runtime(
     engine_kind: str | None = None,
     engine_url: str | None = None,
     shard: str = "",
+    storage_url: str | None = None,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -981,6 +996,9 @@ async def build_org_runtime(
 
     rt.shard = shard
     rt.engine_generation = _engine_generation(shard)
+    # REQ-1048: recorded before anything below can materialize, since materialize_store() reads it
+    # off the bound runtime to decide whose disk the org's bytes land on.
+    rt.storage_url = storage_url
     state.org_registry.set(org_id, rt)
     token = set_current_org(org_id)
     try:
@@ -1799,6 +1817,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.org_engine_router import router as org_engine_router  # REQ-1412
 
     app.include_router(org_engine_router)
+    from provisa.api.admin.org_storage_router import (  # REQ-1046, REQ-1048, REQ-1049
+        router as org_storage_router,
+    )
+
+    app.include_router(org_storage_router)
     from provisa.api.admin.import_router import router as hasura_import_router  # REQ-1483
 
     app.include_router(hasura_import_router)

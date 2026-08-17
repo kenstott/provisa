@@ -27,7 +27,7 @@ initialised, because the plugin attaches its columns and its meter table to that
 metadata at import time. ``bring_up_platform`` calls it there.
 """
 
-# Requirements: REQ-1044, REQ-1355, REQ-1452, REQ-1454, REQ-1455
+# Requirements: REQ-1044, REQ-1046, REQ-1355, REQ-1452, REQ-1454, REQ-1455
 
 from __future__ import annotations
 
@@ -121,6 +121,37 @@ async def caps_for_org(state: Any, org_id: str | None) -> tuple[Any, str] | None
     if plugin is None:
         return None
     return await plugin.caps_for_org(state, org_id)
+
+
+async def storage_cap_for_org(state: Any, org_id: str | None) -> tuple[int, str] | None:
+    """The ``(max_bytes, plan)`` storage allowance for ``org_id``, or None when none applies.
+
+    Separate from :func:`caps_for_org` because the two ceilings answer different questions: a tier
+    cap bounds what ONE statement may cost and is attached to every plan, while this bounds what an
+    org accumulates on the operator's disk across every materialization it has ever run. Sharing a
+    resolver would tie a standing quota's lifetime to a single query's.
+
+    None on a self-hosted deployment: the operator owns the disk and there is nobody to bill for
+    it (REQ-1046).
+    """
+    plugin = load()
+    if plugin is None:
+        return None
+    return await plugin.storage_cap_for_org(state, org_id)
+
+
+async def meter_storage(pool: Any, org_id: str, n_bytes: int) -> None:
+    """Record ``org_id``'s current platform-storage footprint against its billing bucket.
+
+    A LEVEL, not an increment: storage is what the org occupies right now, so each observation
+    replaces the last rather than adding to it — unlike ops and egress, which are counts of events
+    that happened. REQ-1049 requires the measurement from day one whether or not the deployment
+    bills on it, because a quota that was never measured cannot be sized, priced or policed.
+    """
+    plugin = load()
+    if plugin is None:
+        return
+    await plugin.record_storage(pool, org_id, n_bytes)
 
 
 def tier_session_hints(caps: Any) -> dict[str, str]:

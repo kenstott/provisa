@@ -30064,10 +30064,10 @@
     Lemon Squeezy retries any delivery that did not answer 2xx and does not order retries against live
     traffic, so the same event arrives twice and an older one can arrive after a newer one -- a redelivered
     "active" landing after a cancellation would re-entitle a cancelled org. Each subscription event is
-    claimed against `orgs.subscription_event_at` in a single UPDATE that both tests and stamps the
-    watermark (applied only when strictly newer), so a duplicate or stale retry is a 200 no-op carrying
-    `ignored: stale_event` rather than a 4xx, which Lemon Squeezy would retry until it disabled the
-    webhook. A subscription payload with no parseable `updated_at` cannot be ordered and is rejected 400.'
+    claimed against `orgs.subscription_event_at` in a single UPDATE that both tests and stamps the watermark
+    (applied only when strictly newer), so a duplicate or stale retry is a 200 no-op carrying `ignored:
+    stale_event` rather than a 4xx, which Lemon Squeezy would retry until it disabled the webhook. A subscription
+    payload with no parseable `updated_at` cannot be ordered and is rejected 400.'
   use_case: Lemon Squeezy MoR consolidates global sales-tax/VAT compliance, chargebacks, and fraud handling
     in one system Provisa does not build; per-tenant plan gating via source_limit maps to LS subscription
     variants.
@@ -30565,16 +30565,23 @@
   - REQ-1036
   - REQ-1044
 - id: REQ-1046
-  status: proposed
+  status: complete
+  since: 2026-08
+  tests:
+  - tests/unit/test_storage_quota.py
+  - .claude/commercial/tests/test_storage_allowance.py
+  - tests/unit/test_org_storage_router.py
   group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: 'Per-tier storage quotas: each org tier enforces a hard ceiling on platform-side storage
-    footprint (Postgres schema bytes for landed/materialized rows, MV output size, and R2 object bytes
-    attributable to the org). Sandbox/free tiers receive the tightest ceilings; paid tiers larger; enforced
-    and metered per org.'
+  description: 'Per-tier storage quotas: each org tier enforces a hard ceiling on the org''s footprint
+    in the platform''s relational materialization store — the per-org schemas holding landed rows, MV
+    outputs, and the API/GraphQL result caches. Redirect result objects are outside the ceiling: they
+    are written under a per-query prefix and TTL-deleted, so they are a rate rather than an accumulation,
+    and the egress meter (REQ-1452) prices them. Free tiers receive the tightest ceilings; paid tiers
+    larger; enforced and metered per org.'
   use_case: Tiered storage model parallels query-cost caps (REQ-1044) as a primary monetization and resource-isolation
     lever. Platform storage (Postgres schema data, materialized rows, MV outputs, R2 object bytes) is
     the metered resource; federation keeps most source data external. Free tiers get tight bounds to prevent
@@ -30590,7 +30597,19 @@
   - REQ-942
   - REQ-966
 - id: REQ-1047
-  status: proposed
+  status: complete
+  since: 2026-08
+  tests:
+  - tests/unit/test_storage_quota.py
+  scenario: 'Given an org whose footprint in the platform materialization store is at its plan''s allowance
+
+When it refreshes a materialized view or lands a source
+
+Then the operation is refused with an error naming both a larger plan and bring-your-own storage
+
+And nothing is truncated, evicted, or partially written
+
+    '
   group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: MUST
@@ -30608,17 +30627,25 @@
   - REQ-1044
   - REQ-1046
   - REQ-1048
+  tests:
+  - tests/unit/test_storage_quota.py
 - id: REQ-1048
-  status: proposed
+  status: complete
+  since: 2026-08
+  tests:
+  - tests/unit/test_storage_quota.py
+  - tests/unit/test_org_storage_router.py
   group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: 'Bring-your-own storage (BYO): premium/enterprise orgs may point their platform-side object
-    storage (MV persistence, Trino exchange/spill, landing/results) at their own S3-compatible bucket
-    (their cloud account, their bill), configured per org. Their bytes never count against platform storage
-    and never reside on platform-owned R2. Org''s BYO bucket credentials are scoped to that org only.'
+  description: 'Bring-your-own storage (BYO): an org may register its own materialization store (their
+    cloud account, their bill), configured per org and stored encrypted at rest. Once registered it outranks
+    the deployment''s configured store for every MV output and landed table the org writes — a precedence,
+    not a fallback. Their bytes never count against platform storage and are neither metered (REQ-1049)
+    nor capped (REQ-1046). The org''s store credentials are scoped to that org only and are never returned
+    by any read surface.'
   use_case: Enables premium customers with large or unpredictable storage needs to avoid platform quota
     limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket
     permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost).
@@ -30627,15 +30654,31 @@
   - REQ-1027
   - REQ-1046
 - id: REQ-1049
-  status: proposed
+  status: complete
+  since: 2026-08
+  tests:
+  - tests/unit/test_storage_quota.py
+  - .claude/commercial/tests/test_storage_allowance.py
+  - tests/unit/test_org_storage_router.py
+  scenario: 'Given an org materializing into the platform store
+
+When a write seam checks the org''s storage headroom
+
+Then the footprint measured off the live store is recorded as that hour''s storage level
+
+And a later observation in the same hour replaces it rather than adding to it
+
+    '
   group: 11. Platform, Infrastructure & Delivery
   category: Storage Management & Quotas
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: 'Per-org storage metering/accounting: platform meters storage consumption per org (Postgres
-    schema bytes + attributable R2 object bytes) to drive quota enforcement (REQ-1046), tier upgrade prompts,
-    and billing.'
+  description: 'Per-org storage metering/accounting: platform meters each org''s footprint in the relational
+    materialization store — measured on demand off the live store rather than accumulated in a counter,
+    so the figure tracks the disk the operator is billed for — to drive quota enforcement (REQ-1046),
+    tier upgrade prompts, and billing. Recorded as a LEVEL per hour (the last observation replaces the
+    previous), not a running total.'
   use_case: Storage metering is the storage analog of per-query cost accounting behind REQ-1044. Enables
     accurate billing per org (platform storage), identifies orgs approaching quota limits (triggering
     upgrade nudges), and feeds resource-capacity planning (platform storage forecasting). BYO orgs (REQ-1048)
@@ -30645,6 +30688,8 @@
   - REQ-1046
   - REQ-1047
   - REQ-1048
+  tests:
+  - tests/unit/test_storage_quota.py
 - id: REQ-1050
   status: complete
   since: 2026-07
@@ -37876,9 +37921,9 @@
   category: SaaS Billing
   priority: SHOULD
   type: behavioral
-  description: 'The active hours the REQ-1454 meter records are POSTED to the merchant of record as
-    Lemon Squeezy usage records, since the Starter price is usage-based (scheme volume, usage_aggregation
-    sum, first tier a $25 fixed_fee) and the invoice therefore carries the units Provisa posts and nothing
+  description: 'The active hours the REQ-1454 meter records are POSTED to the merchant of record as Lemon
+    Squeezy usage records, since the Starter price is usage-based (scheme volume, usage_aggregation sum,
+    first tier a $25 fixed_fee) and the invoice therefore carries the units Provisa posts and nothing
     else -- without this every Starter org is billed the bare minimum whatever it runs. Records are posted
     against the SUBSCRIPTION ITEM, not the subscription: its id appears only inside the subscription payload
     (first_subscription_item), so orgs.ls_subscription_item_id is written at every point a paid subscription
@@ -45039,12 +45084,12 @@
     truthfully AND the customer can predict. The signal is per-query attribution taken at Provisa''s ONE
     audit seam (finalize_audit), after its pending guard, NOT node-pool uptime, which is what the isolated
     lane meters (REQ-1449), and not a Trino event listener: every protocol -- HTTP, pgwire, Bolt, Flight,
-    gRPC, MCP -- reaches the engine through that seam, so it is the only point that sees each org''s
-    statements once and exactly once, while a coordinator-side listener would see only the shared lane and
-    would meter platform work (materialization refreshes, schema rebuilds) the audit seam already excludes.
-    A statement with no acting principal is not a user query and meters nothing; a REJECTED statement does
-    meter, because the org occupied the hour and charging only successes is gameable. N statements inside
-    one clock hour collapse to one billed hour. Pro and Enterprise keep their own units: Pro bills
+    gRPC, MCP -- reaches the engine through that seam, so it is the only point that sees each org''s statements
+    once and exactly once, while a coordinator-side listener would see only the shared lane and would
+    meter platform work (materialization refreshes, schema rebuilds) the audit seam already excludes.
+    A statement with no acting principal is not a user query and meters nothing; a REJECTED statement
+    does meter, because the org occupied the hour and charging only successes is gameable. N statements
+    inside one clock hour collapse to one billed hour. Pro and Enterprise keep their own units: Pro bills
     engine hours read from its dedicated node pool''s uptime, and Enterprise bills no compute at all.
     An hour with no query is not billable on any tier; the tier minimum, not a phantom hour, is what covers
     an idle month.'
@@ -45812,15 +45857,15 @@
     complaint a card charge generates is always that it was a surprise. Cancelled and past-due subscriptions
     say so on the same panel rather than showing a next charge that will not happen. Payment method changes,
     invoice history and cancellation are handed to the Lemon Squeezy customer portal instead of rebuilt.
-    The entry point is the account (person) menu, not the Admin group: the Admin group holds the
-    operational settings of the org, whereas the plan, the running bill and the next charge are the
-    commercial relationship behind the account. The route stays /admin/billing and keeps org_settings;
-    the menu item is shown only where the deployment mounts the billing routes (billing on /auth/me)
-    and only to the right that owns the subscription. Each endpoint names its subject with an org_id
-    the caller supplies, so each one checks it: the org_settings RIGHT in the org being acted in
-    (REQ-1337 -- never a role name), or cross_org for a control-plane caller. The checkout paths also
-    admit the account that reserved the org, because an org awaiting checkout is not bindable
-    (REQ-1476) and its creator would otherwise be locked out of the checkout that makes it real.'
+    The entry point is the account (person) menu, not the Admin group: the Admin group holds the operational
+    settings of the org, whereas the plan, the running bill and the next charge are the commercial relationship
+    behind the account. The route stays /admin/billing and keeps org_settings; the menu item is shown
+    only where the deployment mounts the billing routes (billing on /auth/me) and only to the right that
+    owns the subscription. Each endpoint names its subject with an org_id the caller supplies, so each
+    one checks it: the org_settings RIGHT in the org being acted in (REQ-1337 -- never a role name), or
+    cross_org for a control-plane caller. The checkout paths also admit the account that reserved the
+    org, because an org awaiting checkout is not bindable (REQ-1476) and its creator would otherwise be
+    locked out of the checkout that makes it real.'
   use_case: A Starter customer signs up at $18/mo with a card, opens Billing a fortnight later, sees the
     month-to-date amount and the date the card renews, and needs no support ticket to learn either.
   related_reqs:
@@ -46066,22 +46111,21 @@
   category: Pricing & Tiering
   priority: MUST
   type: behavioral
-  description: 'On a deployment that sells the org, an org is not built until a subscription pays
-    for it. POST /admin/orgs registers the row in provisioning_state awaiting_checkout, grants the
-    creator membership and spawns nothing: between create and checkout the row is a RESERVATION --
-    a claimed id and nothing else, with no schema, no engine and no data. The subscription_created
-    webhook is the only path out of that state, flipping the row to provisioning and starting the
-    build (begin_provisioning, which returns False on a redelivery so a repeated webhook builds
-    nothing twice). Because the row is not an org anyone can work in, awaiting_checkout is excluded
-    from bindable memberships, from the active-org resolution and from auto-join. A reservation
-    holds its id for 30 minutes and is then deleted, releasing both the name and the slot it held
-    against the per-user org cap; a creator returning inside that window gets their own reservation
-    back rather than a 409, so the UI resumes the checkout they abandoned. If the webhook never
-    lands, POST /billing/checkout/reconcile recovers on the return trip: Lemon Squeezy carries no
-    custom data on the subscription, so the buyer email is the only key back, and a candidate must
-    be a variant this deployment sells, created after the reservation, and bound to no org --
-    ambiguity is refused (409) rather than guessed. The reservation policy lives in the commercial
-    plugin; a self-hosted deployment has nothing to charge for and provisions on create as before.'
+  description: 'On a deployment that sells the org, an org is not built until a subscription pays for
+    it. POST /admin/orgs registers the row in provisioning_state awaiting_checkout, grants the creator
+    membership and spawns nothing: between create and checkout the row is a RESERVATION -- a claimed id
+    and nothing else, with no schema, no engine and no data. The subscription_created webhook is the only
+    path out of that state, flipping the row to provisioning and starting the build (begin_provisioning,
+    which returns False on a redelivery so a repeated webhook builds nothing twice). Because the row is
+    not an org anyone can work in, awaiting_checkout is excluded from bindable memberships, from the active-org
+    resolution and from auto-join. A reservation holds its id for 30 minutes and is then deleted, releasing
+    both the name and the slot it held against the per-user org cap; a creator returning inside that window
+    gets their own reservation back rather than a 409, so the UI resumes the checkout they abandoned.
+    If the webhook never lands, POST /billing/checkout/reconcile recovers on the return trip: Lemon Squeezy
+    carries no custom data on the subscription, so the buyer email is the only key back, and a candidate
+    must be a variant this deployment sells, created after the reservation, and bound to no org -- ambiguity
+    is refused (409) rather than guessed. The reservation policy lives in the commercial plugin; a self-hosted
+    deployment has nothing to charge for and provisions on create as before.'
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/core/commerce.py
@@ -46127,19 +46171,18 @@
   category: Multi-Tenancy & Orgs
   priority: MUST
   type: behavioral
-  description: 'Auto-join (REQ-1269) treats a matching email address as proof that the person
-    belongs to the org, which only holds for a domain the org controls. A consumer mailbox provider
-    -- gmail.com, outlook.com, yahoo.com, icloud.com, proton.me and the rest of the set -- issues
-    addresses to anyone who asks, so a rule matching one would hand membership of an org, with its
-    data and its default role, to any stranger who signs up at that provider. An org policy that
-    turns auto_join on is therefore rejected with orgs.auto_join_public_domain when its email_rule
-    admits a consumer domain, including the case of no rule at all (which admits every address).
-    The rule is probed by matching it against a sample address at each domain rather than by reading
-    the regex, so it reaches the same verdict here as it will at sign-in, and an unanchored or
-    over-broad rule is caught as surely as one naming the domain outright. The same check runs again
-    in resolve_auto_join_orgs, so a row written before the rule existed or edited straight into the
-    table admits nobody. A public-domain email_rule remains legal with auto_join off: it bounds who
-    may redeem an invite, and an invite is still a human decision.'
+  description: 'Auto-join (REQ-1269) treats a matching email address as proof that the person belongs
+    to the org, which only holds for a domain the org controls. A consumer mailbox provider -- gmail.com,
+    outlook.com, yahoo.com, icloud.com, proton.me and the rest of the set -- issues addresses to anyone
+    who asks, so a rule matching one would hand membership of an org, with its data and its default role,
+    to any stranger who signs up at that provider. An org policy that turns auto_join on is therefore
+    rejected with orgs.auto_join_public_domain when its email_rule admits a consumer domain, including
+    the case of no rule at all (which admits every address). The rule is probed by matching it against
+    a sample address at each domain rather than by reading the regex, so it reaches the same verdict here
+    as it will at sign-in, and an unanchored or over-broad rule is caught as surely as one naming the
+    domain outright. The same check runs again in resolve_auto_join_orgs, so a row written before the
+    rule existed or edited straight into the table admits nobody. A public-domain email_rule remains legal
+    with auto_join off: it bounds who may redeem an invite, and an invite is still a human decision.'
   code:
   - provisa/api/admin/orgs_router.py
   - provisa/core/org_membership.py
@@ -46172,22 +46215,21 @@
   category: Multi-Tenancy & Orgs
   priority: MUST
   type: behavioral
-  description: 'A person can end up in an org without doing anything: an email-rule match auto-joins
-    them at sign-in (REQ-1269), or an administrator adds them. Either way an org they never asked
-    for appears in their switcher with no explanation of where it came from. Each membership
-    therefore records how it came about -- joined_via is created, invite, auto_join or admin -- and
-    whether the member has been told, in acknowledged_at. Both columns are nullable, so
-    add_missing_columns reconciles existing registries; a NULL joined_via predates the column and
-    explains nothing, so it announces nothing. A membership born of the user''s own act (creating
-    the org) is written already acknowledged and is never announced. Every membership write site
-    routes through membership_values/grant_membership so the provenance is recorded once per path,
-    and a re-grant leaves the first way in -- and its acknowledgement -- standing, so an admin
-    re-adding a member does not resurrect a notice already dismissed. /auth/me returns joined_via
-    and acknowledged with each membership; the UI raises a one-time notice above the app shell
-    naming the org and how it was joined, with POST /auth/acknowledge-join to dismiss it. A
-    membership the user did not ask for (auto_join, admin) also offers the exit -- the existing
-    leave route, which records the auto-join opt-out (REQ-1306) -- while an invitation, which they
-    chose to accept, is explained without one.'
+  description: 'A person can end up in an org without doing anything: an email-rule match auto-joins them
+    at sign-in (REQ-1269), or an administrator adds them. Either way an org they never asked for appears
+    in their switcher with no explanation of where it came from. Each membership therefore records how
+    it came about -- joined_via is created, invite, auto_join or admin -- and whether the member has been
+    told, in acknowledged_at. Both columns are nullable, so add_missing_columns reconciles existing registries;
+    a NULL joined_via predates the column and explains nothing, so it announces nothing. A membership
+    born of the user''s own act (creating the org) is written already acknowledged and is never announced.
+    Every membership write site routes through membership_values/grant_membership so the provenance is
+    recorded once per path, and a re-grant leaves the first way in -- and its acknowledgement -- standing,
+    so an admin re-adding a member does not resurrect a notice already dismissed. /auth/me returns joined_via
+    and acknowledged with each membership; the UI raises a one-time notice above the app shell naming
+    the org and how it was joined, with POST /auth/acknowledge-join to dismiss it. A membership the user
+    did not ask for (auto_join, admin) also offers the exit -- the existing leave route, which records
+    the auto-join opt-out (REQ-1306) -- while an invitation, which they chose to accept, is explained
+    without one.'
   code:
   - provisa/core/schema_admin.py
   - provisa/core/org_membership.py
@@ -46228,27 +46270,26 @@
   priority: SHOULD
   type: behavioral
   description: 'The egress overage the REQ-1454 meter records is billed through a SECOND Lemon Squeezy
-    subscription per org, because a variant carries exactly one usage-based price and the plan
-    variant''s is already the REQ-1281 active hour -- leaving the $0.48/GB transfer charge with no
-    metered target on the plan. Each plan names its own egress variant by environment variable
-    (LEMONSQUEEZY_VARIANT_EGRESS_STARTER and its per-size Pro successors); the variant''s graduated
-    tiers hold the plan''s included GB, so Provisa posts the org''s TOTAL transfer and the merchant of
-    record applies the allowance, keeping the invoice''s egress line its own arithmetic rather than a
-    number Provisa computes twice (REQ-1469). Lemon Squeezy has no API to create a subscription, only
-    a checkout, so the transfer subscription is ordered by POST /billing/egress/checkout against the
-    org''s plan -- an org on trial is priced as Starter, the tier it converts to. Its webhook is
-    recognized BEFORE any plan branch and outside claim_subscription_event: it carries a Provisa
-    variant and a real org but is not a plan, so falling through would overwrite orgs.ls_subscription_id,
-    and the claim stamp is one column per org that two subscriptions would take turns discarding. Its
-    writes are idempotent instead. Binding records ls_egress_subscription_id and ls_egress_item_id at
-    every activation including a trial one; egress_reported_through opens only at the PAID start, so
-    the trial''s bytes stay free, and trial conversion moves BOTH subscriptions'' trial_ends_at to the
-    same instant so the org keeps one billing anniversary. The hourly sweep totals each org''s newly
-    closed egress over [egress_reported_through, current hour), posts the whole GB as a usage record
-    and persists the sub-GB remainder in egress_carry_bytes -- usage records are integers, and
-    truncating would lose most of the traffic of an org that transfers under a GB an hour. A refused
-    post leaves the watermark and the carry untouched, so the next sweep re-totals the span and posts
-    it once. GB means GiB, matching the trial allowance.'
+    subscription per org, because a variant carries exactly one usage-based price and the plan variant''s
+    is already the REQ-1281 active hour -- leaving the $0.48/GB transfer charge with no metered target
+    on the plan. Each plan names its own egress variant by environment variable (LEMONSQUEEZY_VARIANT_EGRESS_STARTER
+    and its per-size Pro successors); the variant''s graduated tiers hold the plan''s included GB, so
+    Provisa posts the org''s TOTAL transfer and the merchant of record applies the allowance, keeping
+    the invoice''s egress line its own arithmetic rather than a number Provisa computes twice (REQ-1469).
+    Lemon Squeezy has no API to create a subscription, only a checkout, so the transfer subscription is
+    ordered by POST /billing/egress/checkout against the org''s plan -- an org on trial is priced as Starter,
+    the tier it converts to. Its webhook is recognized BEFORE any plan branch and outside claim_subscription_event:
+    it carries a Provisa variant and a real org but is not a plan, so falling through would overwrite
+    orgs.ls_subscription_id, and the claim stamp is one column per org that two subscriptions would take
+    turns discarding. Its writes are idempotent instead. Binding records ls_egress_subscription_id and
+    ls_egress_item_id at every activation including a trial one; egress_reported_through opens only at
+    the PAID start, so the trial''s bytes stay free, and trial conversion moves BOTH subscriptions'' trial_ends_at
+    to the same instant so the org keeps one billing anniversary. The hourly sweep totals each org''s
+    newly closed egress over [egress_reported_through, current hour), posts the whole GB as a usage record
+    and persists the sub-GB remainder in egress_carry_bytes -- usage records are integers, and truncating
+    would lose most of the traffic of an org that transfers under a GB an hour. A refused post leaves
+    the watermark and the carry untouched, so the next sweep re-totals the span and posts it once. GB
+    means GiB, matching the trial allowance.'
   use_case: A Starter customer is charged for the data they transfer above their included 25 GB, on the
     same invoice and the same anniversary as their active hours, without Provisa computing a transfer
     charge that could disagree with the one they are billed.
@@ -46276,8 +46317,8 @@
     When the reporting sweep runs at 14:10
 
     Then a usage record of quantity 3 is posted against the org''s EGRESS subscription item, its active
-    hours are posted separately against the plan item, egress_reported_through advances to 14:00 and
-    egress_carry_bytes holds the remaining 0.25 GiB
+    hours are posted separately against the plan item, egress_reported_through advances to 14:00 and egress_carry_bytes
+    holds the remaining 0.25 GiB
 
     And a sweep whose post is refused leaves both the watermark and the carry where they were
 
@@ -46289,25 +46330,24 @@
   category: Hasura Migration
   priority: SHOULD
   type: behavioral
-  description: 'The Hasura v2 and DDN converters (REQ-417, REQ-183) exist only as CLIs that read a
-    project DIRECTORY and write a config file someone then loads, which puts a migration behind shell
-    access to the deployment. Admin -> Import Hasura Config runs the SAME parsers and mappers over an
-    upload, gated on org_settings because an org owns its own semantic layer. One staging module turns
-    the single artifact an administrator actually has -- a zip of the project directory, the
-    consolidated document export_metadata returns (bare or in its {resource_version, metadata}
-    envelope), or a lone .hml -- into the directory-or-document shape the existing converters take;
-    a zip is expanded under a bounded size with entries that escape the destination refused, and
-    exactly one wrapper directory is stepped through so DDN subgraph names come from the project, not
-    from the folder someone happened to zip. The import is two calls because the conversion guesses in
-    places: POST /admin/import/hasura/preview converts and returns the generated YAML, the converter
-    warnings and per-kind counts while writing NOTHING, and POST /admin/import/hasura/apply loads the
-    YAML the administrator approved -- including any edits made in the preview -- through the settled
-    org sequence (catalog names first per REQ-1266, then load_config, source pools, PK resolution,
+  description: 'The Hasura v2 and DDN converters (REQ-417, REQ-183) exist only as CLIs that read a project
+    DIRECTORY and write a config file someone then loads, which puts a migration behind shell access to
+    the deployment. Admin -> Import Hasura Config runs the SAME parsers and mappers over an upload, gated
+    on org_settings because an org owns its own semantic layer. One staging module turns the single artifact
+    an administrator actually has -- a zip of the project directory, the consolidated document export_metadata
+    returns (bare or in its {resource_version, metadata} envelope), or a lone .hml -- into the directory-or-document
+    shape the existing converters take; a zip is expanded under a bounded size with entries that escape
+    the destination refused, and exactly one wrapper directory is stepped through so DDN subgraph names
+    come from the project, not from the folder someone happened to zip. The import is two calls because
+    the conversion guesses in places: POST /admin/import/hasura/preview converts and returns the generated
+    YAML, the converter warnings and per-kind counts while writing NOTHING, and POST /admin/import/hasura/apply
+    loads the YAML the administrator approved -- including any edits made in the preview -- through the
+    settled org sequence (catalog names first per REQ-1266, then load_config, source pools, PK resolution,
     schema rebuild), never a second loader. replace defaults to off so an import merges; turned on it
     is load_config full-replace semantics.'
-  use_case: An administrator migrating off Hasura converts their metadata export in the admin UI,
-    reads what the conversion produced and what it could not convert, corrects the connection details
-    in place, and applies it to their org -- without a shell on the deployment.
+  use_case: An administrator migrating off Hasura converts their metadata export in the admin UI, reads
+    what the conversion produced and what it could not convert, corrects the connection details in place,
+    and applies it to their org -- without a shell on the deployment.
   related_reqs:
   - REQ-183
   - REQ-417
@@ -46326,8 +46366,8 @@
 
     When they upload it and choose Convert and preview
 
-    Then the generated configuration, the converter warnings and the source/table/role counts are
-    returned and nothing is written to the org
+    Then the generated configuration, the converter warnings and the source/table/role counts are returned
+    and nothing is written to the org
 
     And applying the previewed YAML loads it into the acting org and rebuilds its schemas
 
@@ -46341,25 +46381,23 @@
   category: Federation-Wide Provenance Graph
   priority: SHOULD
   type: behavioral
-  description: 'A column carries two names and they answer different questions. The SQL and GraphQL
-    surface only ever shows the EXPOSED name -- table_columns.alias falling back to
-    apply_sql_name(column_name) -- so views, materialized views, metric expressions, RLS predicates,
-    DQ contracts, metric-view grains and MV row keys are authored against it and break when it is
-    RENAMED as well as when the column goes. Relationships, glossary bindings, tag assignments, the
-    watermark column and column presets store the PHYSICAL column_name, which survives the table
-    upsert''s wholesale column replace, so they break only on a REMOVAL. Nothing in the table-edit
-    mutation path checked either. columnDependents(tableId, renamed, removed) answers what a pending
-    edit would break: the downstream views and MVs come from slicing the federation lineage graph
-    (REQ-1160/REQ-1161) at the column''s exposed name, and the artifacts that graph does not cover
-    come from a direct registry scan. The query is asked BEFORE the save, because a renamed column is
-    still located by the exposed name it currently carries. The warning is ADVISORY -- the dialog
-    lists the affected artifacts and the administrator decides -- because the estate''s consumers
-    cannot all be reached and a block would strand the edit. Free-SQL-text scans match the column as
-    an identifier token rather than resolving scope: over-reporting is the safe direction for a
-    warning.'
-  use_case: An administrator renaming a column's SQL alias or dropping a column is told, before the
-    save lands, which views, materialized views, metrics, policies and bindings name that column --
-    and saves anyway if that is the intent.
+  description: 'A column carries two names and they answer different questions. The SQL and GraphQL surface
+    only ever shows the EXPOSED name -- table_columns.alias falling back to apply_sql_name(column_name)
+    -- so views, materialized views, metric expressions, RLS predicates, DQ contracts, metric-view grains
+    and MV row keys are authored against it and break when it is RENAMED as well as when the column goes.
+    Relationships, glossary bindings, tag assignments, the watermark column and column presets store the
+    PHYSICAL column_name, which survives the table upsert''s wholesale column replace, so they break only
+    on a REMOVAL. Nothing in the table-edit mutation path checked either. columnDependents(tableId, renamed,
+    removed) answers what a pending edit would break: the downstream views and MVs come from slicing the
+    federation lineage graph (REQ-1160/REQ-1161) at the column''s exposed name, and the artifacts that
+    graph does not cover come from a direct registry scan. The query is asked BEFORE the save, because
+    a renamed column is still located by the exposed name it currently carries. The warning is ADVISORY
+    -- the dialog lists the affected artifacts and the administrator decides -- because the estate''s
+    consumers cannot all be reached and a block would strand the edit. Free-SQL-text scans match the column
+    as an identifier token rather than resolving scope: over-reporting is the safe direction for a warning.'
+  use_case: An administrator renaming a column's SQL alias or dropping a column is told, before the save
+    lands, which views, materialized views, metrics, policies and bindings name that column -- and saves
+    anyway if that is the intent.
   related_reqs:
   - REQ-1160
   - REQ-1161
@@ -46382,5 +46420,5 @@
 
     And confirming saves the edit unchanged
 
-    And a column whose removal only breaks physical-name references reports those on removal, not on
-    a rename'
+    And a column whose removal only breaks physical-name references reports those on removal, not on a
+    rename'

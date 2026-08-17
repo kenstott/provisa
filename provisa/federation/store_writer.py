@@ -305,6 +305,17 @@ async def land(
     ``match_floor`` guards against upstream source drift — below it the land is refused (see
     ``check_source_drift``). Returns the qualified landed name. The engine is never the writer — this
     opens the store's own connection."""
+    # REQ-1047: the second write seam the storage allowance is enforced at. Landing accumulates on
+    # the operator's disk exactly as a materialized view does — an org that hit its ceiling by
+    # landing sources rather than by materializing has the same effect on the bill and gets the
+    # same rejection. Raises before the connection is opened, so nothing is half-written.
+    from provisa.api.org_runtime import current_org
+    from provisa.storage.quota import require_storage_headroom
+
+    org_id = current_org.get()
+    if org_id is not None:
+        await require_storage_headroom(org_id, operation=f"landing {schema}.{table}")
+
     check_source_drift(columns, rows, match_floor=match_floor)
     shape = shape if shape is not None else select_landing_shape(change_signal, watermark_column)
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))

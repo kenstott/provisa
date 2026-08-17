@@ -46,8 +46,8 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
 if TYPE_CHECKING:
-    import asyncpg
     from provisa.api.app import AppState
+    from provisa.core.database import Connection
 
 log = logging.getLogger(__name__)
 
@@ -1114,7 +1114,7 @@ _RLS_TENANT_TABLES = [
 ]
 
 
-async def _init_meta_rls(conn: asyncpg.Connection) -> None:  # REQ-041, REQ-402
+async def _init_meta_rls(conn: "Connection") -> None:  # REQ-041, REQ-402
     """Enable Postgres RLS on the tenant_id-bearing meta tables. Called only when multitenancy=True."""
     for tbl in _RLS_TENANT_TABLES:
         await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")

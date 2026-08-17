@@ -356,6 +356,34 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
                 log.info("MV %s: sources unchanged (probe) — skipped rebuild", mv.id)
                 return
 
+        # REQ-1047: storage guard — refuse to materialize for an org already at its tier's
+        # platform-storage allowance. Sits beside the row guard below because the two bound
+        # different quantities: max_rows bounds THIS MV, the quota bounds everything the org has
+        # accumulated on the operator's disk. Both refuse rather than truncate, and neither
+        # applies to an org materializing into a store it owns (REQ-1048).
+        from provisa.api.org_runtime import current_org  # noqa: PLC0415
+        from provisa.storage.quota import require_storage_headroom  # noqa: PLC0415
+
+        org_id = current_org.get()
+        if org_id is not None:
+            from provisa.api.errors import ApiError  # noqa: PLC0415
+
+            try:
+                await require_storage_headroom(org_id, operation=f"MV {mv.id} refresh")
+            except ApiError as quota_exc:
+                # Held as MV state rather than propagated: a refresh runs on the scheduler, where
+                # there is no request to answer with a 507. The message is the one the org sees on
+                # the MV, and it names the same two exits the API rejection does.
+                if coordinated:
+                    assert store is not None and writer is not None
+                    from provisa.mv.coordination import release_refresh  # noqa: PLC0415
+
+                    await release_refresh(store, mv.id, writer, quota_exc.detail)
+                mv.status = MVStatus.SKIPPED_QUOTA
+                mv.last_error = str(quota_exc.detail)
+                log.warning("MV %s: %s", mv.id, quota_exc.detail)
+                return
+
         # Size guard: probe source count before materializing
         source_count = await _probe_source_count(engine, mv)
         if source_count > mv.max_rows:

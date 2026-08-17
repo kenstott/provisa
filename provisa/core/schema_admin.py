@@ -132,6 +132,12 @@ orgs = Table(
     # which of the two an org fills is decided by the chosen kind's ENGINE_REGISTRY config_fields,
     # never by sniffing the value.
     Column("engine_url_enc", LargeBinary),
+    # REQ-1048: the org's OWN materialization store (bring-your-own storage), encrypted at rest
+    # like engine_url_enc above and for the same reason — it is a credential to a system the
+    # platform does not own. Set means every MV output and landed table for this org is written
+    # there, on the org's bill, and its footprint is neither metered nor capped by REQ-1046. NULL
+    # means the org materializes into the platform's store, where the tier quota applies.
+    Column("storage_url_enc", LargeBinary),
 )
 
 user_profiles = Table(
