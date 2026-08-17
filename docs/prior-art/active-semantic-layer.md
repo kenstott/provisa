@@ -190,12 +190,21 @@ Layers applied within the pass, in order:
 **Refusals are recorded.** A compilation refused by any layer writes an audit record naming the
 principal, the statement, and the layer that refused. A denial is evidence, not an absence.
 
-**Stage ordering is the inventive point.** The order is: govern, then optimize, then select the
-execution topology. Optimization runs over already-governed IR and therefore cannot introduce an
-ungoverned path, and topology selection observes the post-optimization plan rather than the
-submitted one. Stated without reference to this design: policy is applied to a plan before the plan
-is optimized, and the plan's execution target is chosen after. Disclosure 3 is what that ordering
-makes available.
+**Stage ordering.** The order is: govern, then optimize, then select the execution topology.
+Optimization runs over already-governed IR and therefore cannot introduce an ungoverned path, and
+topology selection observes the post-optimization plan rather than the submitted one.
+
+Applying policy as a rewrite ahead of the optimizer is established practice and is not claimed as
+novel here: virtual-private-database and row-level-security implementations expand a policy
+predicate or security view into the query and hand the result to the optimizer (see, among others,
+US 8,065,329 and US 9,886,481 on optimization over VPD-protected columns; US 9,043,309 on SQL
+transformation for enforcement of data access control; US 8,667,018 on optimizing row-level
+security; and the query-rewriting literature on fine-grained access control). What those describe
+is an optimizer that preserves the plan's data sources and improves execution against them.
+
+The disclosure here is what becomes available when the optimizer is additionally permitted to
+*eliminate a source* from the governed plan, and the execution target is chosen from the resulting
+plan rather than the submitted one. Disclosure 3 is that mechanism.
 
 ---
 
@@ -330,9 +339,31 @@ texts submitted by principals with different policy do not.
 
 ### 4.5 Distinguishing prior practice
 
-Shipping a small relation somewhere to make a join cheaper is long-established. Each established
-form optimizes execution *within* an already-chosen topology. The distinguishing property here is
-that the rewrite is applied *before* the topology is chosen, and changes what is chosen.
+Shipping a small relation somewhere to make a join cheaper is long-established, and the author
+does not claim otherwise. Each established form optimizes execution *within* an already-chosen
+topology, leaving the plan's set of participating sources — and therefore the identity of the
+executing system — unchanged. The distinguishing property here is that the rewrite is applied
+*before* the topology is chosen, reduces the plan's source set, and thereby changes what is chosen.
+
+Specifically distinguished:
+
+- **Dependent joins with full data shipment.** A federating engine may send the entire contents of
+  a join's independent side to the dependent side (Teiid and its derivatives document this as
+  "full pushdown"). The federating engine still issues both queries, still receives both results,
+  and still performs or coordinates the join; it does not leave the execution path, and no source
+  set is re-derived.
+- **Dynamic filtering and semi-join reduction.** Build-side values are propagated into the probe
+  side's scan as a run-time predicate. Published implementations apply this at the worker level
+  within a single distributed execution; the executing engine is unchanged.
+- **Early materialization of remote sub-plans with re-optimization** (cf. US 2007/0226178). Remote
+  intermediate results are pre-computed and the remainder re-optimized, but materialization lands
+  in the federating server and re-optimization does not target source-count reduction. The
+  federating server executes the query in either case.
+- **Foreign-data-wrapper join pushdown.** Pushdown is conditioned on both relations residing on
+  the same foreign server; a join between a local and a foreign relation is documented as
+  non-pushable, with the recommended workarounds (a CTE, or materializing a subset) reducing
+  transferred rows rather than making the join pushable. Literalizing the local relation into the
+  plan is what converts such a join into a fully pushable one.
 
 | Technique | What is shipped | What it changes | Topology after |
 |---|---|---|---|
@@ -546,10 +577,15 @@ cataloging program.
 2. A single-reference-form rule that rejects physical source references at parse time, which is
    what makes the governance pass total.
 3. Governance as a recursive IR pass with seven enumerated layers, a post-pass structural guard
-   that validates the outcome rather than trusting the traversal, and audit of refusals.
-4. The stage ordering govern → optimize → select-topology, where optimization may remove sources and
-   topology selection observes the reduced set — applicable to any system with more than one
-   available execution topology, not to any particular architecture.
+   that validates the outcome rather than trusting the traversal, and audit of refusals. Policy
+   applied as a pre-optimizer rewrite is prior practice and is not claimed; the guard, the layer
+   composition, and the totality argument of item 2 are what is disclosed here.
+4. The stage ordering govern → optimize → select-topology, in which the optimizer is permitted to
+   remove a source from the governed plan and topology selection observes the reduced set —
+   applicable to any system with more than one available execution topology, not to any particular
+   architecture. The permission to eliminate a source, and the deferral of the topology decision
+   until after that elimination, are the disclosed departure from conventional policy-rewrite
+   pipelines, whose optimizers preserve the plan's source set.
 5. Plan-level source elimination as a topology decision: bounding a relation, replacing it with an
    inline constant relation carried in the plan, re-deriving the plan's source set from the
    rewritten plan, and selecting the execution topology from the reduced set — so that a nominally
