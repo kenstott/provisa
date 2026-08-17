@@ -46334,3 +46334,53 @@
     And an upload that is neither Hasura v2 metadata nor a DDN project is refused with a 400
 
     And a caller without org_settings is refused with a 403'
+- id: REQ-1484
+  status: complete
+  since: 2026-08
+  group: 1. Access Governance & Security
+  category: Federation-Wide Provenance Graph
+  priority: SHOULD
+  type: behavioral
+  description: 'A column carries two names and they answer different questions. The SQL and GraphQL
+    surface only ever shows the EXPOSED name -- table_columns.alias falling back to
+    apply_sql_name(column_name) -- so views, materialized views, metric expressions, RLS predicates,
+    DQ contracts, metric-view grains and MV row keys are authored against it and break when it is
+    RENAMED as well as when the column goes. Relationships, glossary bindings, tag assignments, the
+    watermark column and column presets store the PHYSICAL column_name, which survives the table
+    upsert''s wholesale column replace, so they break only on a REMOVAL. Nothing in the table-edit
+    mutation path checked either. columnDependents(tableId, renamed, removed) answers what a pending
+    edit would break: the downstream views and MVs come from slicing the federation lineage graph
+    (REQ-1160/REQ-1161) at the column''s exposed name, and the artifacts that graph does not cover
+    come from a direct registry scan. The query is asked BEFORE the save, because a renamed column is
+    still located by the exposed name it currently carries. The warning is ADVISORY -- the dialog
+    lists the affected artifacts and the administrator decides -- because the estate''s consumers
+    cannot all be reached and a block would strand the edit. Free-SQL-text scans match the column as
+    an identifier token rather than resolving scope: over-reporting is the safe direction for a
+    warning.'
+  use_case: An administrator renaming a column's SQL alias or dropping a column is told, before the
+    save lands, which views, materialized views, metrics, policies and bindings name that column --
+    and saves anyway if that is the intent.
+  related_reqs:
+  - REQ-1160
+  - REQ-1161
+  - REQ-939
+  - REQ-686
+  code:
+  - provisa/lineage/dependents.py
+  - provisa/api/admin/column_dependents.py
+  - provisa/api/admin/schema_query.py
+  - provisa-ui/src/pages/tables/columnDiff.ts
+  - provisa-ui/src/pages/TablesPage.tsx
+  tests:
+  - tests/unit/test_column_dependents.py
+  - provisa-ui/src/__tests__/columnDiff.test.ts
+  scenario: 'Given a registered column whose exposed name a downstream view selects
+
+    When the administrator changes that column''s SQL alias and saves
+
+    Then the dependent view and any materialized view built on it are listed before the save lands
+
+    And confirming saves the edit unchanged
+
+    And a column whose removal only breaks physical-name references reports those on removal, not on
+    a rename'

@@ -432,6 +432,22 @@ export interface RLSRule {
   filterExpr: string;
 }
 
+// REQ-1484: an artifact that references a column the administrator is about to rename or drop.
+// breaksOn is "rename" for anything authored against the column's exposed SQL name (views, MVs,
+// metric expressions, RLS predicates, DQ contracts) and "remove" for stores of the physical
+// column_name (relationships, glossary bindings, tags), which survive a rename.
+export interface ColumnDependent {
+  kind: string;
+  name: string;
+  detail: string;
+  breaksOn: string;
+}
+
+export interface ColumnDependentsResult {
+  columnName: string;
+  dependents: ColumnDependent[];
+}
+
 export interface MutationResult {
   success: boolean;
   message: string;

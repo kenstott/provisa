@@ -30,6 +30,7 @@ import type {
   Relationship,
   RLSRule,
   MutationResult,
+  ColumnDependentsResult,
 } from "../types/admin";
 import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
 import {
@@ -56,6 +57,7 @@ import {
   AvailableTables,
   AvailableColumnsMetadata,
   AvailableFunctions,
+  ColumnDependents,
   GenerateColumnDescription,
   GenerateTableDescription,
   CompileQuery,
@@ -805,6 +807,27 @@ export function useAvailableFunctionsLazy() {
     async (sourceId: string, schemaName = "openapi"): Promise<TableMetadata[]> => {
       const { data } = await run({ variables: { sourceId, schemaName } });
       return data?.availableFunctions ?? [];
+    },
+    [run],
+  );
+}
+
+// REQ-1484: what a pending alias rename or column drop would break. Asked BEFORE the save, because
+// a renamed column is located by the exposed name it still carries in the registry.
+export function useColumnDependents() {
+  const [run] = useLazyQuery<{ columnDependents: ColumnDependentsResult[] }>(ColumnDependents, {
+    fetchPolicy: "network-only",
+  });
+  return useCallback(
+    async (
+      tableId: number,
+      renamed: string[],
+      removed: string[],
+    ): Promise<ColumnDependentsResult[]> => {
+      const { data } = await run({
+        variables: { tableId: String(tableId), renamed, removed },
+      });
+      return data?.columnDependents ?? [];
     },
     [run],
   );

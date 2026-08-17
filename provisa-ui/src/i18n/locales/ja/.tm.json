@@ -3353,5 +3353,9 @@
   "ja/userProfileModal.json::userProfileModal.patNever": "Never",
   "ja/userProfileModal.json::userProfileModal.patRevoke": "Revoke",
   "ja/userProfileModal.json::userProfileModal.patRevoked": "Revoked",
-  "ja/userProfileModal.json::userProfileModal.patNone": "You have no tokens in this organization."
+  "ja/userProfileModal.json::userProfileModal.patNone": "You have no tokens in this organization.",
+  "ja/tablesPage.json::tablesPage.dependentsTitle": "Other artifacts use these columns",
+  "ja/tablesPage.json::tablesPage.dependentsIntro": "Renaming a column's SQL alias or dropping it will break the artifacts below, which name the column as it stands today. Save anyway?",
+  "ja/tablesPage.json::tablesPage.dependentsCancel": "Go back",
+  "ja/tablesPage.json::tablesPage.dependentsConfirm": "Save anyway"
 }

@@ -35,6 +35,7 @@ import {
   useAvailableColumnsMetadataLazy,
   useGenerateTableDescription,
   useGenerateColumnDescription,
+  useColumnDependents,
   useRegisterTable,
   useUpdateTable,
   useDeleteTable,
@@ -48,11 +49,12 @@ import {
   useAllRelationships,
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useInvalidateFileSource } from "../hooks/useAdminOpsQueries";
-import type { RegisteredTable } from "../types/admin";
+import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
+import { diffEditedColumns } from "./tables/columnDiff";
 import { NAMING_CONVENTIONS } from "./tables/constants";
 import { buildTableUpdateInput, normalizeDomain } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
@@ -84,6 +86,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const getAvailableColumnsMetadata = useAvailableColumnsMetadataLazy();
   const { generateTableDescription } = useGenerateTableDescription();
   const { generateColumnDescription } = useGenerateColumnDescription();
+  const getColumnDependents = useColumnDependents();
   const { registerTable } = useRegisterTable();
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
@@ -388,7 +391,43 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setEditingTable(next);
   };
 
+  // REQ-1484: the pending edit's dependent artifacts, held while the administrator decides. Null =
+  // nothing to confirm.
+  const [pendingDependents, setPendingDependents] = useState<ColumnDependentsResult[] | null>(null);
+
+  // REQ-1484: warn before a save that renames a column's SQL alias or drops a column, because both
+  // break artifacts authored against it. The check runs BEFORE the save — a renamed column is
+  // located by the exposed name it still carries in the registry.
   const handleSaveEdit = async () => {
+    if (!editingTable) return;
+    const stored = tables.find((t) => t.id === editingTable.id);
+    if (!stored) {
+      await performSaveEdit();
+      return;
+    }
+    const { renamed, removed } = diffEditedColumns(stored.columns, editingTable.columns);
+    if (renamed.length === 0 && removed.length === 0) {
+      await performSaveEdit();
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      const found = await getColumnDependents(editingTable.id, renamed, removed);
+      if (found.length > 0) {
+        setPendingDependents(found);
+        return;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return;
+    } finally {
+      setSaving(false);
+    }
+    await performSaveEdit();
+  };
+
+  const performSaveEdit = async () => {
     if (!editingTable) return;
     setError(null);
     setSaving(true);
@@ -1198,6 +1237,53 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             {regenning
               ? translate("tablesPage.runNowQueuing")
               : translate("tablesPage.runNowSubmit")}
+          </Button>
+        </Group>
+      </Modal>
+      {/* REQ-1484: advisory — the estate's dependents are listed, the administrator decides. */}
+      <Modal
+        opened={pendingDependents !== null}
+        onClose={() => setPendingDependents(null)}
+        title={translate("tablesPage.dependentsTitle")}
+        size="lg"
+        data-testid="column-dependents-modal"
+      >
+        <Text size="sm" mb="md">
+          {translate("tablesPage.dependentsIntro")}
+        </Text>
+        {(pendingDependents ?? []).map((entry) => (
+          <div key={entry.columnName} style={{ marginBottom: "1rem" }}>
+            <Text fw={600} style={{ fontFamily: "monospace" }}>
+              {entry.columnName}
+            </Text>
+            <Table>
+              <Table.Tbody>
+                {entry.dependents.map((d) => (
+                  <Table.Tr key={`${d.kind}:${d.name}:${d.detail}`}>
+                    <Table.Td>
+                      <Badge variant="light">{d.kind}</Badge>
+                    </Table.Td>
+                    <Table.Td style={{ fontFamily: "monospace" }}>{d.name}</Table.Td>
+                    <Table.Td>{d.detail}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </div>
+        ))}
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => setPendingDependents(null)}>
+            {translate("tablesPage.dependentsCancel")}
+          </Button>
+          <Button
+            color="red"
+            data-testid="column-dependents-confirm"
+            onClick={() => {
+              setPendingDependents(null);
+              void performSaveEdit();
+            }}
+          >
+            {translate("tablesPage.dependentsConfirm")}
           </Button>
         </Group>
       </Modal>

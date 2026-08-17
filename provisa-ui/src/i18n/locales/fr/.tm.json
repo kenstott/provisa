@@ -3353,5 +3353,9 @@
   "fr/importTab.json::importTab.replace": "Replace the existing semantic layer",
   "fr/importTab.json::importTab.replaceHelp": "Deletes every source, table, role and rule not present in this configuration. Leave off to merge the import into what the organization already has.",
   "fr/importTab.json::importTab.apply": "Apply to this organization",
-  "fr/importTab.json::importTab.applied": "Applied: {{sources}} sources, {{tables}} tables, {{roles}} roles."
+  "fr/importTab.json::importTab.applied": "Applied: {{sources}} sources, {{tables}} tables, {{roles}} roles.",
+  "fr/tablesPage.json::tablesPage.dependentsTitle": "Other artifacts use these columns",
+  "fr/tablesPage.json::tablesPage.dependentsIntro": "Renaming a column's SQL alias or dropping it will break the artifacts below, which name the column as it stands today. Save anyway?",
+  "fr/tablesPage.json::tablesPage.dependentsCancel": "Go back",
+  "fr/tablesPage.json::tablesPage.dependentsConfirm": "Save anyway"
 }

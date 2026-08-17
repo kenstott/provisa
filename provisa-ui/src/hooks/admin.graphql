@@ -436,6 +436,18 @@ query AvailableFunctions($sourceId: String!, $schemaName: String!) {
   }
 }
 
+query ColumnDependents($tableId: String!, $renamed: [String!], $removed: [String!]) {
+  columnDependents(tableId: $tableId, renamed: $renamed, removed: $removed) {
+    columnName
+    dependents {
+      kind
+      name
+      detail
+      breaksOn
+    }
+  }
+}
+
 query GenerateColumnDescription($tableId: String!, $columnName: String!) {
   generateColumnDescription(tableId: $tableId, columnName: $columnName)
 }

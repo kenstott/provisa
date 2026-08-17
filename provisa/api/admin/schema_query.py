@@ -42,6 +42,8 @@ from provisa.api.admin.types import (
     CacheStatsType,
     CacheTableStatType,
     CalendarType,
+    ColumnDependentsType,
+    ColumnDependentType,
     DomainType,
     DqCheckBuildInput,
     DqCheckCatalogType,
@@ -987,6 +989,39 @@ class Query:  # REQ-021, REQ-042
         except Exception as e:
             logging.getLogger(__name__).exception("generateTableDescription failed: %s", e)
             return ""
+
+    @strawberry.field
+    async def column_dependents(  # REQ-1484
+        self,
+        table_id: str,
+        renamed: Optional[list[str]] = None,
+        removed: Optional[list[str]] = None,
+    ) -> list[ColumnDependentsType]:
+        """Artifacts that a pending alias rename or column drop would break.
+
+        Advisory — the caller shows this before saving and the administrator decides. ``renamed`` and
+        ``removed`` are PHYSICAL column names; a renamed column is matched by the exposed name it
+        still carries in the registry, which is the name its dependents were authored against, so
+        this must be asked BEFORE the save."""
+        from provisa.api.admin.column_dependents import dependents_for
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            found = await dependents_for(
+                conn, int(table_id), renamed=list(renamed or []), removed=list(removed or [])
+            )
+        return [
+            ColumnDependentsType(
+                column_name=name,
+                dependents=[
+                    ColumnDependentType(
+                        kind=d.kind, name=d.name, detail=d.detail, breaks_on=d.breaks_on
+                    )
+                    for d in deps
+                ],
+            )
+            for name, deps in found.items()
+        ]
 
     @strawberry.field
     async def generate_column_description(self, table_id: str, column_name: str) -> str:

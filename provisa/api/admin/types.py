@@ -126,6 +126,22 @@ class TagAssignmentType:  # REQ-1377
 
 
 @strawberry.type
+class ColumnDependentType:  # REQ-1484
+    """One artifact referencing a column the administrator is about to rename or drop."""
+
+    kind: str  # view | mv | metric | metric_view | rls | dq_contract | relationship | glossary | ...
+    name: str  # the artifact's addressable name
+    detail: str  # how it references the column
+    breaks_on: str  # "rename" (authored against the exposed name) | "remove" (physical ref)
+
+
+@strawberry.type
+class ColumnDependentsType:  # REQ-1484
+    column_name: str
+    dependents: list[ColumnDependentType]
+
+
+@strawberry.type
 class ColumnPresetType:
     column: str
     source: str
