@@ -37,6 +37,7 @@ declare module "*.graphql" {
   export const AvailableColumns: DocumentNode;
   export const AvailableColumnsMetadata: DocumentNode;
   export const AvailableFunctions: DocumentNode;
+  export const ColumnDependents: DocumentNode;
   export const GenerateColumnDescription: DocumentNode;
   export const GenerateTableDescription: DocumentNode;
   export const CompileQuery: DocumentNode;

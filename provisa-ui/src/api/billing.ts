@@ -13,6 +13,7 @@
 // it is false.
 
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import type { OrgProvisioning } from "./admin";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -179,12 +180,12 @@ export async function openCheckout(url: string, onSuccess: () => void): Promise<
  */
 export async function reconcileCheckout(
   orgId: string,
-): Promise<{ reconciled: boolean; state: string }> {
+): Promise<{ reconciled: boolean; state: OrgProvisioning["provisioning_state"] }> {
   return (await billingFetch("/checkout/reconcile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ org_id: orgId }),
-  })) as { reconciled: boolean; state: string };
+  })) as { reconciled: boolean; state: OrgProvisioning["provisioning_state"] };
 }
 
 export async function cancelTrial(orgId: string): Promise<void> {
