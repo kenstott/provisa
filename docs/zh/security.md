@@ -294,7 +294,7 @@ gRPC、Arrow Flight 与 MCP 把证书交给不暴露主机名回调的库；这�
 - **模式元数据端点保持开放。**`/data/sdl`、`/data/introspection`、`/data/schema-version`、`/data/domains`、`/data/proto` 与 `/data/compile` 不返回行数据，而客户端在能够连接之前必须先读取模式——包括哪些字段带 `@encrypted`。
 - **gRPC 与 Arrow Flight 在同一凭证要求下继续服务。**它们正是执行加密的客户端实际使用的传输；关闭它们会让高安全部署失去所有传输协议。在其中任一上的数据调用都必须以调用元数据携带同样的 KMS 密钥。
 - **pgwire、Bolt 与 MCP 不会启动。**三者都没有能够承载解密上下文的逐连接握手：pgwire 行集与 Cypher 结果在线路上都是明文，而 MCP 工具调用会把结果以文本交给模型。为其中任一配置的端口在启动时会被拒绝而非提供服务。
-- **关系防护无法绕过。**`ignore_relationships` 与 `relationship_guard: false` 均被忽略；参见[关系治理](#relationship-governance-v002)。
+- **关系防护无法绕过。**`ignore_relationships` 与 `relationship_guard: false` 均被忽略；参见[关系治理](#v002)。
 
 **如何确认部署处于该模式：**启动日志会指明它；不带 KMS 密钥的 `/data/sql` 请求会以 403 应答并给出提及 REQ-693 的消息；pgwire、Bolt 与 MCP 端口未在监听。
 

@@ -294,7 +294,7 @@ gRPC, Arrow Flight e MCP entregam seus certificados a bibliotecas que não expõ
 - **Endpoints de metadados de esquema seguem abertos.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` e `/data/compile` não devolvem dados de linha, e um cliente precisa ler o esquema — inclusive quais campos são `@encrypted` — antes mesmo de poder se conectar.
 - **gRPC e Arrow Flight continuam servindo, sob a mesma prova.** São os transportes que os clientes que cifram de fato usam; fechá-los deixaria uma implantação de alta segurança sem protocolo de fio. Uma chamada de dados em qualquer um deles precisa carregar a mesma chave KMS como metadado da chamada.
 - **pgwire, Bolt e MCP não iniciam.** Nenhum dos três tem handshake por conexão capaz de carregar um contexto de decifragem: um conjunto de linhas pgwire e um resultado Cypher vão em texto claro pelo fio, e uma chamada de ferramenta MCP entrega seus resultados a um modelo como texto. Uma porta configurada para qualquer um deles é recusada na inicialização em vez de servida.
-- **A proteção de relacionamentos não pode ser burlada.** `ignore_relationships` e `relationship_guard: false` são ambos ignorados; veja [Governança de relacionamento](#relationship-governance-v002).
+- **A proteção de relacionamentos não pode ser burlada.** `ignore_relationships` e `relationship_guard: false` são ambos ignorados; veja [Governança de relacionamento](#governanca-de-relacionamento-v002).
 
 **Verificar se uma implantação está no modo:** o log de inicialização o nomeia, uma requisição `/data/sql` sem chave KMS responde 403 com uma mensagem citando REQ-693, e as portas pgwire, Bolt e MCP não estão escutando.
 

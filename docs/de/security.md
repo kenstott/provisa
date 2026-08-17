@@ -294,7 +294,7 @@ gRPC, Arrow Flight und MCP übergeben ihre Zertifikate an Bibliotheken, die kein
 - **Schema-Metadaten-Endpunkte bleiben offen.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` und `/data/compile` liefern keine Zeilendaten, und ein Client muss das Schema lesen — einschließlich der Frage, welche Felder `@encrypted` sind — bevor er sich überhaupt verbinden kann.
 - **gRPC und Arrow Flight liefern weiter, unter demselben Nachweis.** Sie sind die Transporte, die verschlüsselnde Clients tatsächlich nutzen; sie zu schließen ließe ein Hochsicherheits-Deployment ohne Wire-Protokoll zurück. Ein Datenaufruf über beide muss denselben KMS-Schlüssel als Aufrufmetadaten mitführen.
 - **pgwire, Bolt und MCP starten nicht.** Keines der drei hat einen Handshake pro Verbindung, der einen Entschlüsselungskontext transportieren könnte: Ein pgwire-Ergebnissatz und ein Cypher-Ergebnis sind auf der Leitung Klartext, und ein MCP-Tool-Aufruf übergibt seine Ergebnisse als Text an ein Modell. Ein konfigurierter Port für eines von ihnen wird beim Start abgelehnt statt bedient.
-- **Der Beziehungsschutz kann nicht umgangen werden.** `ignore_relationships` und `relationship_guard: false` werden beide ignoriert; siehe [Governance der Beziehungen](#relationship-governance-v002).
+- **Der Beziehungsschutz kann nicht umgangen werden.** `ignore_relationships` und `relationship_guard: false` werden beide ignoriert; siehe [Governance der Beziehungen](#governance-der-beziehungen-v002).
 
 **So prüfen Sie, ob ein Deployment im Modus läuft:** Das Startprotokoll nennt ihn, eine `/data/sql`-Anfrage ohne KMS-Schlüssel antwortet mit 403 und einer Meldung, die REQ-693 nennt, und die Ports für pgwire, Bolt und MCP lauschen nicht.
 

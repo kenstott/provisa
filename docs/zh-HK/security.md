@@ -294,7 +294,7 @@ gRPC、Arrow Flight 與 MCP 把憑證交給不外露主機名稱回呼的程式�
 - **模式中繼資料端點保持開放。**`/data/sdl`、`/data/introspection`、`/data/schema-version`、`/data/domains`、`/data/proto` 與 `/data/compile` 不回傳列資料，而用戶端在能夠連線之前必須先讀取模式——包括哪些欄位帶 `@encrypted`。
 - **gRPC 與 Arrow Flight 在同一憑證要求之下繼續服務。**它們正是執行加密的用戶端實際使用的傳輸；關閉它們會令高安全部署失去所有傳輸協定。在其中任一上的資料呼叫都必須以呼叫中繼資料攜帶同樣的 KMS 密鑰。
 - **pgwire、Bolt 與 MCP 不會啟動。**三者都沒有能夠承載解密脈絡的逐連線交握：pgwire 列集與 Cypher 結果在線路上都是明文，而 MCP 工具呼叫會把結果以文字交給模型。為其中任一設定的連接埠在啟動時會遭拒絕而非提供服務。
-- **關係防護無法繞過。**`ignore_relationships` 與 `relationship_guard: false` 均被忽略；參見[關係治理](#relationship-governance-v002)。
+- **關係防護無法繞過。**`ignore_relationships` 與 `relationship_guard: false` 均被忽略；參見[關係治理](#v002)。
 
 **如何確認部署處於該模式：**啟動紀錄會指明它；不帶 KMS 密鑰的 `/data/sql` 請求會以 403 回應並給出提及 REQ-693 的訊息；pgwire、Bolt 與 MCP 連接埠未在監聽。
 

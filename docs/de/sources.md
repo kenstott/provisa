@@ -15,7 +15,7 @@ Letztlich läuft jede Abfrage durch die Föderations-Engine, die Föderation üb
 
 **Nur-Föderations**-Quellen werden immer durch die Föderationsschicht abgefragt. Es existiert kein direkter Treiber (REQ-229).
 
-**Direktlesende (Replika)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (wo verfügbar Arrow-nativ), eine Replika im Materialisierungsspeicher der aktiven Engine anlegt, und anschließend laufen Abfragen gegen diese Replika. Siehe [Warehouses als benannte Quellen](#warehouses-as-named-sources).
+**Direktlesende (Replika)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (wo verfügbar Arrow-nativ), eine Replika im Materialisierungsspeicher der aktiven Engine anlegt, und anschließend laufen Abfragen gegen diese Replika. Siehe [Warehouses als benannte Quellen](#warehouses-als-benannte-quellen).
 
 **Materialisieren**-Quellen haben keinen föderierten Connector. Provisa ruft ihre Daten ab (beim Start oder zur Abfragezeit) und cacht sie als Parquet in S3 oder in PostgreSQL, wodurch sie für quellübergreifende Abfragen durch die Föderations-Engine erreichbar werden (REQ-309).
 
