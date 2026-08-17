@@ -77,32 +77,39 @@
           There is no law of physics preventing a column from being called
           <code>customer_lifetime_value</code> and carrying an accurate description of what
           it means, how it's calculated, and when it's wrong. Comments and column
-          descriptions have existed in every database for decades. A layer whose job is
-          renaming <code>cust_dim_x</code> and writing the sentence that should have been
-          there already is a rename script with a license fee.
+          descriptions have existed in every database for decades. But getting those right,
+          when you don't own it, is a problem.
         </p>
         <p>
           We do provide that, for what it's worth, because the estate you actually have is
-          full of tables that are badly named, badly shaped and barely described. A better
-          business term or a clearer description can be aliased over a source, and where
-          that helps, use it. But it isn't the requirement, and it isn't the point. In a
+          full of tables that are badly named, badly shaped and barely described. The
+          originals are imported as they are and never touched — you alias over them. A
+          better business term, a clearer description, sitting on top of a source that keeps
+          its own name. Where that helps, use it. But it isn't the requirement, and it isn't
+          the point. In a
           well-run estate the sources entering the semantic layer would already be well
           shaped, well named and well described — and the layer would still be worth having.
         </p>
         <p>
           The minimum for admission is low: a two-dimensional dataset. That's the bar. But
-          if a table arrives badly named and undescribed, it does need fixing, and the work
-          is assisted rather than manual — a glossary of terms normalized from the physical
-          field names, relationships proposed by a model with cardinality and reasoning
-          attached, table search that ranks on meaning instead of string matching. A steward
-          reviews and overrides. Nobody sits down to type four thousand descriptions.
+          if a table arrives badly named and undescribed, it needs describing. Whether it
+          also wants an alias is arguable — reasonable people land differently on renaming
+          things — but nobody argues for leaving a column undescribed. And that work is
+          assisted rather than manual. Every description field
+          — on a table, on a column, on a glossary term — has a button that drafts one with
+          the model, and the glossary can be drafted in a single pass. Terms themselves are
+          normalized from the physical field names. Relationships are proposed with
+          cardinality and reasoning attached. Table search ranks on meaning rather than
+          string matching. Everything drafted lands in a field a steward edits or overrules,
+          and nothing persists until they say so. Nobody sits down to type four thousand
+          descriptions.
         </p>
         <p>
           The things that genuinely can't live in a name or a description are the ones
           worth building a layer for: which joins are legal and which are nonsense, whose
           row this is and whether you may see it, which physical copy answers this question
           fastest, and what happened when someone asked. A description tells you what a
-          column means. It cannot refuse a query.
+          column means. It cannot enforce good query practices.
         </p>
         <p>
           So this isn't a proposal to rename the collection. Nobody is going to rename
@@ -132,7 +139,7 @@
         </ul>
         <p>
           The other half of the answer is that you never catalog the museum. You catalog
-          the wing that has a question waiting on it. Domains register independently, so
+          the collection that a donor sponsored. Domains register independently, so
           one team can put its corner under a governed API this month without a program to
           boil the estate first — and the corridors between wings get registered when
           someone actually needs to walk one.
@@ -146,8 +153,11 @@
           and "what is actually deployed" becomes a question you answer by reading state
           rather than by re-running a program and watching. Nobody defends the shell script
           now. The argument that won it wasn't that scripts were bad — plenty of them were
-          fine. It was that a declaration can be diffed, reviewed, and queried, and a
-          procedure can only be executed.
+          fine, and you can diff a script as well as anything else. It was that imperative
+          code has side effects, and getting a script to be idempotent — safe to run twice,
+          safe to run after a half-failure — takes real thought every single time, from
+          everyone who touches it. A declaration gets that from the model instead of from
+          the author's care.
         </p>
         <p>
           Data never had that moment. A pipeline is still a deploy script, and the estate

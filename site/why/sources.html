@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>52 sources and an instant data lake — Provisa</title>
-  <meta name="description" content="Register a location, not a file: Provisa crawls folders, buckets, and SharePoint sites and registers every file as a governed table — alongside 52 source types including graph, RDF, and API endpoints." />
+  <title>52 sources, and one of them is a crawler — Provisa</title>
+  <meta name="description" content="52 source types, including a file crawler: point it at a folder, bucket, SFTP host, or SharePoint site and every database file and tabular document under it is discovered and cataloged, ready to register as a governed table — alongside graph, RDF, and API endpoints." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -43,27 +43,36 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Sources</span></p>
-        <h1>An instant data lake — governed on arrival.</h1>
+        <h1>Fifty-two sources, and one of them is a secret weapon.</h1>
         <p class="lead">
-          You don't register files. You register a <em>location</em> — and everything under
-          it lands under the same row-level security, masking, and relationship rules as
-          the rest of your estate.
+          Fifty-one of them connect to a system you already know you have. The fifty-second
+          is a crawler, and it tends to find the half of your estate nobody put on the
+          inventory.
         </p>
       </div>
 
       <div class="doc-body">
-        <h2>Point at a location; get governed tables</h2>
+        <h2>The file crawler</h2>
         <p>
-          Point Provisa at a folder, a bucket, or a SharePoint site and it crawls the whole
-          tree recursively, discovers every file, and registers each one as a governed
-          table. Not just CSV and Parquet — <strong>Excel workbooks</strong>, and even
-          <strong>Word, PowerPoint, HTML, and Markdown documents</strong> converted to
-          tables. Over local disk, <code>s3://</code>, <code>ftp://</code>,
-          <code>sftp://</code>, or SharePoint.
+          It is one source type, and the only one where you register a <em>location</em>
+          rather than a system. Point it at a folder, a bucket, an FTP or SFTP host, or a
+          SharePoint site and it walks the tree recursively, looking for two things:
+          database files, and files with tabular data embedded in them. What it finds gets
+          cataloged as an available table; registering it is still your call, the same as
+          for any other source.
         </p>
         <p>
-          The result is a data lake that is governed the moment it exists, rather than one
-          that gets a governance project scheduled against it months later.
+          Which is a wider net than it sounds. Not just CSV and Parquet —
+          <strong>Excel workbooks</strong>, and even <strong>Word, PowerPoint, HTML, and
+          Markdown documents</strong> converted to tables. Over local disk,
+          <code>s3://</code>, <code>ftp://</code>, <code>sftp://</code>, or SharePoint.
+        </p>
+        <p>
+          The reason it earns the description: the data that runs a department is very
+          often sitting in a share drive, and it has never been anywhere near a governance
+          program. Discovery is the part that used to be a project — after that, what you
+          register lands under the same row-level security, masking, and relationship rules
+          as the databases.
         </p>
 
         <h2>Systems that aren't databases</h2>
@@ -84,7 +93,7 @@
           structure types, each with a short declarative rule for projecting it into rows
           and columns. The path to the collection and the fields to lift from it. A
           sampled document schema, with the steward's explicit types overriding what was
-          inferred. A crawled location that registers what it finds. Once it's flat,
+          inferred. A crawled location that catalogs what it finds. Once it's flat,
           everything after it is SQL, and SQL is a thing a machine can read back.
         </p>
         <a class="more" href="/why/materialized-views">Why that removes the downstream pain</a>
