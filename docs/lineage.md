@@ -180,6 +180,49 @@ Response is the same shape as the statement graph, with a `cycles` field added
 }
 ```
 
+## What a column rename or drop would break (REQ-1484)
+
+A column carries two names, and each is stored by a different set of artifacts.
+
+The **exposed name** is what the SQL and GraphQL surfaces show: `table_columns.alias`, falling back
+to the snake_case default when no alias is set [tool-verified: `computed_sql_alias` at
+`schema_helpers.py:317`]. Views, materialized views, metric expressions, RLS predicates, DQ
+contracts, metric-view grains and MV row keys are all authored against that name, so **renaming an
+alias breaks them just as surely as deleting the column does**.
+
+The **physical name** is `table_columns.column_name`, the identity that survives the table upsert's
+wholesale column replace. Relationships, glossary bindings, tag assignments, the watermark column
+and column presets store this one, so they only break when the column is **removed**.
+
+`columnDependents` reports both. Downstream views and MVs come from slicing the federation graph at
+the column's exposed name; the artifacts that graph does not cover come from a direct scan of the
+registry [tool-verified: `graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
+`provisa/api/admin/column_dependents.py`].
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+`breaksOn` is `rename` for an exposed-name reference and `remove` for a physical-name one, so a
+caller can tell which half of the edit each artifact is reacting to.
+
+Ask this **before** the save. A renamed column is located by the exposed name it still carries in
+the registry; once the alias has landed, the old name is gone and the query finds nothing.
+
+The Tables page runs the query automatically when a pending edit changes an alias or shrinks the
+column set, and lists what it finds [tool-verified: `diffEditedColumns` in
+`provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]. The warning is advisory:
+it names the affected artifacts and the administrator decides. It does not block the save, because
+the estate's consumers cannot all be reached — an outside dashboard or a client application that
+queries the column by name is beyond the registry's knowledge. For the same reason, scans over free
+SQL text match the column as an identifier token rather than resolving scope, which can name an
+artifact that turns out not to use the column. Over-reporting is the safe direction for a warning.
+
 ## Using lineage to govern command contracts
 
 Because the taint closure connects every declared input column to every declared output column,

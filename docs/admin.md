@@ -142,6 +142,26 @@ query {
 }
 ```
 
+### Column dependency check (REQ-1484)
+
+Before saving a table edit that renames a column's SQL alias or drops a column, ask what else
+references it:
+
+```graphql
+query {
+  columnDependents(tableId: "42", renamed: ["order_total"], removed: ["legacy_code"]) {
+    columnName
+    dependents { kind name detail breaksOn }
+  }
+}
+```
+
+Renaming an alias breaks every artifact authored against the exposed name — views, MVs, metric
+expressions, RLS predicates, DQ contracts. Dropping a column breaks those plus the artifacts that
+store the physical `column_name`: relationships, glossary bindings, tag assignments. `breaksOn`
+says which. The Tables page runs this on save and shows the result as an advisory dialog. See
+[Lineage](lineage.md) for what the query covers and what it cannot.
+
 ### View Management
 
 Register a materialized view (REQ-133, REQ-135):
