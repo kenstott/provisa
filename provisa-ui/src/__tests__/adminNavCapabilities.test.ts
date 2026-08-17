@@ -48,6 +48,7 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/observability": "observability",
   "/admin/ai-models": "org_settings",
   "/admin/metadata-export": "org_settings",
+  "/admin/import": "org_settings", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "org_settings",
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   "/admin/glossary": "org_settings", // REQ-1387: the org's own business glossary

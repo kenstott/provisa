@@ -39,6 +39,7 @@
     "itemAuthentication": "Authentication",
     "itemAiModels": "AI Models",
     "itemMetadataExport": "Metadata Export",
+    "itemImport": "Import Hasura Config",
     "itemTags": "Tags",
     "itemReports": "Reports",
     "itemGlossary": "Glossary",

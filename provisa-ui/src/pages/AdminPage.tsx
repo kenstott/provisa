@@ -64,6 +64,7 @@ import { McpServerTab } from "../components/admin/McpServerTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
+import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
@@ -87,6 +88,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/orgs": "Orgs",
   "/admin/ai-models": "AI Models",
   "/admin/metadata-export": "Metadata Export",
+  "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
   "/admin/glossary": "Glossary", // REQ-1387: business-glossary curation
@@ -803,6 +805,7 @@ export function AdminPage() {
         {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab />}
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Metadata Export" && <MetadataExportTab />}
+        {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}

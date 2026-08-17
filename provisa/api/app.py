@@ -1792,6 +1792,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.org_engine_router import router as org_engine_router  # REQ-1412
 
     app.include_router(org_engine_router)
+    from provisa.api.admin.import_router import router as hasura_import_router  # REQ-1483
+
+    app.include_router(hasura_import_router)
     from provisa.api.admin.ossie_router import router as ossie_router  # REQ-1316, REQ-1321
 
     app.include_router(ossie_router)

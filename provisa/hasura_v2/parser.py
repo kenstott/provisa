@@ -359,6 +359,67 @@ def parse_metadata_dir(
     return metadata
 
 
+def parse_metadata_document(
+    doc: Any, collector: WarningCollector | None = None
+) -> HasuraMetadata:  # REQ-1483
+    """Parse a CONSOLIDATED Hasura v2 export — the single object ``export_metadata`` returns.
+
+    The directory layout ``parse_metadata_dir`` reads is what the Hasura CLI writes; the metadata
+    API returns one document instead, and that is what an administrator uploading through the admin
+    surface most often has. It carries what the directory splits across files, plus the per-source
+    ``configuration`` the directory layout has nowhere to put — so ``kind`` and ``connection_info``
+    are read here rather than assumed.
+
+    Both API envelopes are accepted: the bare metadata object and ``{resource_version, metadata}``.
+    """
+    if collector is None:
+        collector = WarningCollector()
+    if not isinstance(doc, dict):
+        raise ValueError("Hasura metadata document must be a mapping")
+    if "metadata" in doc and isinstance(doc["metadata"], dict):
+        doc = doc["metadata"]
+
+    metadata = HasuraMetadata(version=int(doc.get("version", 3)))
+
+    for raw_src in doc.get("sources", []) or []:
+        source = HasuraSource(
+            name=raw_src.get("name", "default"),
+            kind=raw_src.get("kind", "postgres"),
+            connection_info=(raw_src.get("configuration", {}) or {}).get("connection_info", {})
+            or {},
+        )
+        for raw_tbl in raw_src.get("tables", []) or []:
+            source.tables.append(_parse_table(raw_tbl))
+        for raw_fn in raw_src.get("functions", []) or []:
+            source.functions.append(_parse_function(raw_fn))
+        metadata.sources.append(source)
+
+    for raw_action in doc.get("actions", []) or []:
+        metadata.actions.append(_parse_action(raw_action))
+    for raw_cron in doc.get("cron_triggers", []) or []:
+        metadata.cron_triggers.append(_parse_cron_trigger(raw_cron))
+    for raw_ir in doc.get("inherited_roles", []) or []:
+        metadata.inherited_roles.append(_parse_inherited_role(raw_ir))
+    for raw_rs in doc.get("remote_schemas", []) or []:
+        metadata.remote_schemas.append(
+            HasuraRemoteSchema(
+                name=raw_rs.get("name", "unknown"),
+                definition=raw_rs.get("definition", {}),
+            )
+        )
+    api_limits = doc.get("api_limits")
+    if isinstance(api_limits, dict):
+        metadata.api_limits = api_limits
+
+    # Sections of the export the converter has no target for. The directory reader simply never
+    # opens their files; a document carries them inline, so they are reported rather than dropped
+    # silently — an administrator who relies on one learns it did not come across.
+    for key in ("query_collections", "allowlist", "rest_endpoints", "network", "opentelemetry"):
+        if doc.get(key):
+            collector.warn(key, f"{key} is present in the export and is not converted")
+    return metadata
+
+
 def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSource:  # REQ-417
     """Parse a databases/<name>/ directory."""
     source = HasuraSource(name=db_dir.name, kind="postgres")

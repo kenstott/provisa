@@ -121,6 +121,8 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemMetadataExport",
         capability: "org_settings",
       },
+      // REQ-1483: importing a Hasura project rewrites the acting org's semantic layer.
+      { to: "/admin/import", labelKey: "navBar.itemImport", capability: "org_settings" },
       // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
       { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386

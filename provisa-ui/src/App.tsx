@@ -532,6 +532,7 @@ function App() {
                                 ["/admin/orgs", "cross_org"],
                                 ["/admin/ai-models", "org_settings"],
                                 ["/admin/metadata-export", "org_settings"],
+                                ["/admin/import", "org_settings"], // REQ-1483
                                 ["/admin/tags", "org_settings"],
                                 ["/admin/reports", "observability"], // REQ-1386
                                 ["/admin/glossary", "org_settings"], // REQ-1387

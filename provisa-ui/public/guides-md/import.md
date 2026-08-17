@@ -2,6 +2,30 @@
 
 Provisa can convert existing Hasura metadata into a Provisa `config.yaml`, preserving tracked tables, relationships, permissions, and remote schemas.
 
+## Interactive import (Admin → Import Hasura Config)
+
+The admin surface runs the same converters, so an import needs no shell access and no config file
+round-trip. Requires the `org_settings` capability; the import lands in the organization the
+session is acting in.
+
+1. **Upload.** Choose a zipped Hasura v2 metadata directory, a zipped DDN project, a consolidated
+   metadata export (`.yaml`/`.json`, including the `{resource_version, metadata}` envelope the
+   metadata API returns), or a single `.hml`. Leave the format on *Detect automatically* unless the
+   upload is ambiguous.
+2. **Map domains** (optional). Each pair maps a v2 schema or a DDN subgraph to a Provisa domain;
+   anything unmapped keeps its original name.
+3. **Convert and preview.** The server converts and returns counts, converter warnings, and the
+   generated configuration. Nothing is written at this step.
+4. **Review and edit.** The configuration is editable in place — connection details, domain names,
+   role names. What you apply is what is shown.
+5. **Apply.** *Replace the existing semantic layer* deletes every source, table, role and rule
+   absent from the configuration; left off, the import merges into what the organization has.
+   Applying loads the configuration and rebuilds the organization's schemas.
+
+Endpoints: `POST /admin/import/hasura/preview` and `POST /admin/import/hasura/apply`.
+
+---
+
 ## Hasura v2
 
 ### Export Metadata
