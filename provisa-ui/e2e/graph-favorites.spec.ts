@@ -23,7 +23,11 @@ async function seedFavoriteAndOpenPanel(page: Page) {
 
   // Click the Favorites tab (tabs are icon-only; identified by title attribute)
   const favTab = page.locator(".graph-sidebar-tab[title='Favorites']");
-  await expect(favTab).toBeVisible({ timeout: 15000 });
+  // The sidebar is inside GraphPage, and OnboardGate withholds its children until the auth
+  // bootstrap (/auth/me, roles, domains) settles — so this waits on the whole shell, not a widget.
+  // On a 4-worker CI runner that settles well past 15s: the passing retries of these tests measured
+  // 19-27s end to end.
+  await expect(favTab).toBeVisible({ timeout: 60000 });
   await favTab.click();
 
   // The fav item should appear

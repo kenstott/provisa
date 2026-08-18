@@ -279,7 +279,14 @@ export default defineConfig({
   globalTeardown: "./e2e/global-teardown.ts",
   testDir: "./e2e",
   testMatch: /[/\\][^.][^/\\]*\.spec\.ts$/,
-  timeout: 30000,
+  // 30s did not cover this lane's real costs on a CI runner, and the misses were not stalls. In run
+  // 32183296339 an unlabelled MATCH — which by definition fans out over every registered label —
+  // measured 21.9s, 24.5s and 25.9s in cypher-api.spec.ts, and metrics-detail-edit's registerFact
+  // beforeAll took 19.3s; every one sat inside a 30s budget, so the fourth unlabelled MATCH timed
+  // out twice on a 4s margin and the beforeAll blew its hook budget. Work that measures in the
+  // 20-27s band needs a budget above it, not a retry. Individual specs still narrow this with
+  // test.setTimeout where they know their own cost.
+  timeout: 90000,
   retries: 1,
   // Pinned to the number of backends started above: a worker with no backend of its own would
   // have to share one, which is the isolation defect this layout exists to remove. Playwright's
