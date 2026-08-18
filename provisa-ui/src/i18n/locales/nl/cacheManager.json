@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "Responscache",
-      "hot": "Hot-tabellen",
+      "hot": "Tabellen in cache",
       "materialized": "Gematerialiseerde opslag",
-      "setup": "Configuratie"
+      "redirect": "Omleiden"
     },
     "response": {
       "loading": "Cachestatistieken laden...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Kleine opzoektabellen gespiegeld in Redis (of in-memory) en inline opgenomen als VALUES-CTE's om JOIN's te optimaliseren. Altijd beschikbaar, ongeacht de responscache-opslag.",
-      "loadedTables": "Geladen tabellen",
-      "candidates": "Kandidaten",
+      "hotTables": "Hete tabellen",
+      "hotCandidates": "Heet-kandidaten",
       "cachedRows": "Gecachete rijen",
       "empty": "Geen hot-tabellen geladen of als kandidaat geregistreerd.",
       "table": "Tabel",
@@ -39,12 +39,12 @@
       "schema": "Schema",
       "rows": "Rijen",
       "kind": "Soort",
-      "state": "Status",
-      "kindApi": "API",
-      "kindEngine": "engine",
-      "stateLoaded": "geladen",
-      "stateCandidate": "kandidaat",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "Warme tabellen",
+      "kind_hot": "heet",
+      "kind_hot_candidate": "heet-kandidaat",
+      "kind_warm": "warm",
+      "warmDescription": "Warme tabellen zijn grotere tabellen die vaak genoeg worden bevraagd om een Iceberg-kopie in de federatie-engine te krijgen; queries lezen de kopie, die weer wordt verwijderd zodra het verkeer onder de drempel zakt."
     },
     "materialized": {
       "description": "Duurzame opslag waar niet-koppelbare bronnen landen en gematerialiseerde views worden weggeschreven. Verschilt van de responscache en de hot-laag; een query kan elke combinatie van de drie gebruiken.",

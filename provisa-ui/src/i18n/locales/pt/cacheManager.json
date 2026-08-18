@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "Cache de respostas",
-      "hot": "Tabelas quentes",
+      "hot": "Tabelas em cache",
       "materialized": "Armazenamento materializado",
-      "setup": "Configuração"
+      "redirect": "Redirecionamento"
     },
     "response": {
       "loading": "Carregando estatísticas do cache...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Pequenas tabelas de consulta espelhadas no Redis (ou em memória) e embutidas como CTEs VALUES para otimizar JOINs. Sempre disponíveis, independentemente do armazenamento do cache de respostas.",
-      "loadedTables": "Tabelas carregadas",
-      "candidates": "Candidatas",
+      "hotTables": "Tabelas quentes",
+      "hotCandidates": "Candidatas a quente",
       "cachedRows": "Linhas em cache",
       "empty": "Nenhuma tabela quente carregada ou registrada como candidata.",
       "table": "Tabela",
@@ -39,12 +39,12 @@
       "schema": "Esquema",
       "rows": "Linhas",
       "kind": "Tipo",
-      "state": "Estado",
-      "kindApi": "API",
-      "kindEngine": "engine",
-      "stateLoaded": "carregada",
-      "stateCandidate": "candidata",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "Tabelas mornas",
+      "kind_hot": "quente",
+      "kind_hot_candidate": "candidata a quente",
+      "kind_warm": "morna",
+      "warmDescription": "Tabelas mornas são tabelas maiores consultadas com frequência suficiente para ganhar uma cópia Iceberg no motor de federação; as consultas leem a cópia, que é descartada quando o tráfego cai abaixo do limite."
     },
     "materialized": {
       "description": "Armazenamento durável onde as fontes não anexáveis são gravadas e as exibições materializadas são escritas. Distinto do cache de respostas e da camada quente; uma consulta pode usar qualquer combinação dos três.",

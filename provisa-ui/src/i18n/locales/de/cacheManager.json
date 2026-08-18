@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "Response-Cache",
-      "hot": "Hot Tables",
+      "hot": "Zwischengespeicherte Tabellen",
       "materialized": "Materialisierter Store",
-      "setup": "Einrichtung"
+      "redirect": "Weiterleitung"
     },
     "response": {
       "loading": "Cache-Statistiken werden geladen...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Kleine Lookup-Tabellen, die in Redis (oder im Speicher) gespiegelt und als VALUES-CTEs eingebettet werden, um JOINs zu optimieren. Unabhängig vom Response-Cache-Store immer verfügbar.",
-      "loadedTables": "Geladene Tabellen",
-      "candidates": "Kandidaten",
+      "hotTables": "Heiße Tabellen",
+      "hotCandidates": "Heiß-Kandidaten",
       "cachedRows": "Gecachte Zeilen",
       "empty": "Keine Hot Tables geladen oder als Kandidaten registriert.",
       "table": "Tabelle",
@@ -39,12 +39,12 @@
       "schema": "Schema",
       "rows": "Zeilen",
       "kind": "Art",
-      "state": "Status",
-      "kindApi": "API",
-      "kindEngine": "Engine",
-      "stateLoaded": "geladen",
-      "stateCandidate": "Kandidat",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "Warme Tabellen",
+      "kind_hot": "heiß",
+      "kind_hot_candidate": "Heiß-Kandidat",
+      "kind_warm": "warm",
+      "warmDescription": "Warme Tabellen sind größere Tabellen, die häufig genug abgefragt werden, um eine Iceberg-Kopie in der Föderations-Engine zu erhalten; Abfragen lesen die Kopie, die wieder verworfen wird, wenn der Verkehr unter den Schwellenwert fällt."
     },
     "materialized": {
       "description": "Dauerhafter Store, in dem nicht anbindbare Quellen landen und materialisierte Sichten geschrieben werden. Getrennt vom Response-Cache und der Hot-Ebene; eine Abfrage kann jede Kombination der drei nutzen.",

@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "Cache de réponses",
-      "hot": "Tables chaudes",
+      "hot": "Tables en cache",
       "materialized": "Stockage matérialisé",
-      "setup": "Configuration"
+      "redirect": "Redirection"
     },
     "response": {
       "loading": "Chargement des statistiques du cache…",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Petites tables de référence répliquées dans Redis (ou en mémoire) et injectées comme CTE VALUES pour optimiser les JOIN. Toujours disponibles quel que soit le stockage du cache de réponses.",
-      "loadedTables": "Tables chargées",
-      "candidates": "Candidates",
+      "hotTables": "Tables chaudes",
+      "hotCandidates": "Candidates chaudes",
       "cachedRows": "Lignes en cache",
       "empty": "Aucune table chaude chargée ni enregistrée comme candidate.",
       "table": "Table",
@@ -39,12 +39,12 @@
       "schema": "Schéma",
       "rows": "Lignes",
       "kind": "Type",
-      "state": "État",
-      "kindApi": "API",
-      "kindEngine": "moteur",
-      "stateLoaded": "chargée",
-      "stateCandidate": "candidate",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "Tables tièdes",
+      "kind_hot": "chaude",
+      "kind_hot_candidate": "candidate chaude",
+      "kind_warm": "tiède",
+      "warmDescription": "Les tables tièdes sont des tables volumineuses interrogées assez souvent pour obtenir une copie Iceberg dans le moteur de fédération ; les requêtes lisent la copie, supprimée dès que le trafic repasse sous le seuil."
     },
     "materialized": {
       "description": "Stockage durable où atterrissent les sources non attachables et où sont écrites les vues matérialisées. Distinct du cache de réponses et du niveau chaud ; une requête peut combiner les trois.",

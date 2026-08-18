@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "מטמון תגובות",
-      "hot": "טבלאות חמות",
+      "hot": "טבלאות במטמון",
       "materialized": "מאגר Materialized",
-      "setup": "הגדרה"
+      "redirect": "הפניה מחדש"
     },
     "response": {
       "loading": "טוען נתוני מטמון...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "טבלאות עזר קטנות המשוכפלות ב-Redis (או בזיכרון) ומוטמעות כ-VALUES CTEs לאופטימיזציה של JOINs. זמינות תמיד ללא תלות במאגר מטמון התגובות.",
-      "loadedTables": "טבלאות טעונות",
-      "candidates": "מועמדות",
+      "hotTables": "טבלאות חמות",
+      "hotCandidates": "מועמדות לחמה",
       "cachedRows": "שורות במטמון",
       "empty": "אין טבלאות חמות טעונות או רשומות כמועמדות.",
       "table": "טבלה",
@@ -39,12 +39,12 @@
       "schema": "סכמה",
       "rows": "שורות",
       "kind": "סוג",
-      "state": "מצב",
-      "kindApi": "API",
-      "kindEngine": "engine",
-      "stateLoaded": "טעונה",
-      "stateCandidate": "מועמדת",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "טבלאות חמימות",
+      "kind_hot": "חמה",
+      "kind_hot_candidate": "מועמדת לחמה",
+      "kind_warm": "חמימה",
+      "warmDescription": "טבלאות חמימות הן טבלאות גדולות שנשאלות לעיתים קרובות מספיק כדי לקבל עותק Iceberg במנוע הפדרציה; השאילתות קוראות מהעותק, והוא נמחק כשהתעבורה יורדת מתחת לסף."
     },
     "materialized": {
       "description": "מאגר עמיד שאליו נוחתים מקורות שאינם ניתנים לחיבור ישיר ושבו נכתבים Materialized Views. נפרד ממטמון התגובות ומהשכבה החמה; שאילתה יכולה להשתמש בכל שילוב של השלושה.",

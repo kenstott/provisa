@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "Caché de respuestas",
-      "hot": "Tablas calientes",
+      "hot": "Tablas en caché",
       "materialized": "Almacén materializado",
-      "setup": "Configuración"
+      "redirect": "Redirección"
     },
     "response": {
       "loading": "Cargando estadísticas de caché...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Tablas de búsqueda pequeñas replicadas en Redis (o en memoria) e insertadas como CTE de VALUES para optimizar los JOIN. Siempre disponibles, independientemente del almacén de la caché de respuestas.",
-      "loadedTables": "Tablas cargadas",
-      "candidates": "Candidatas",
+      "hotTables": "Tablas calientes",
+      "hotCandidates": "Candidatas a caliente",
       "cachedRows": "Filas en caché",
       "empty": "No hay tablas calientes cargadas ni registradas como candidatas.",
       "table": "Tabla",
@@ -39,12 +39,12 @@
       "schema": "Esquema",
       "rows": "Filas",
       "kind": "Tipo",
-      "state": "Estado",
-      "kindApi": "API",
-      "kindEngine": "motor",
-      "stateLoaded": "cargada",
-      "stateCandidate": "candidata",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "Tablas templadas",
+      "kind_hot": "caliente",
+      "kind_hot_candidate": "candidata a caliente",
+      "kind_warm": "templada",
+      "warmDescription": "Las tablas templadas son tablas grandes consultadas con la frecuencia suficiente para obtener una copia Iceberg en el motor de federación; las consultas leen la copia, que se elimina cuando el tráfico cae por debajo del umbral."
     },
     "materialized": {
       "description": "Almacén duradero donde aterrizan los orígenes no adjuntables y se escriben las vistas materializadas. Distinto de la caché de respuestas y del nivel caliente; una consulta puede usar cualquier combinación de los tres.",

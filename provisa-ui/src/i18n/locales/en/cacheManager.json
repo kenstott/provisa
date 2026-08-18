@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "Response Cache",
-      "hot": "Hot Tables",
+      "hot": "Cached Tables",
       "materialized": "Materialized Store",
-      "setup": "Setup"
+      "redirect": "Redirect"
     },
     "response": {
       "loading": "Loading cache stats...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Small lookup tables mirrored in Redis (or in-memory) and inlined as VALUES CTEs to optimize JOINs. Always available regardless of the response-cache store.",
-      "loadedTables": "Loaded Tables",
-      "candidates": "Candidates",
+      "hotTables": "Hot Tables",
+      "hotCandidates": "Hot Candidates",
       "cachedRows": "Cached Rows",
       "empty": "No hot tables loaded or registered as candidates.",
       "table": "Table",
@@ -39,12 +39,12 @@
       "schema": "Schema",
       "rows": "Rows",
       "kind": "Kind",
-      "state": "State",
-      "kindApi": "API",
-      "kindEngine": "engine",
-      "stateLoaded": "loaded",
-      "stateCandidate": "candidate",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "Warm Tables",
+      "kind_hot": "hot",
+      "kind_hot_candidate": "hot candidate",
+      "kind_warm": "warm",
+      "warmDescription": "Warm tables are larger tables queried often enough to earn a landed Iceberg copy in the federation engine; queries read the copy, and it is dropped again when traffic falls below the threshold."
     },
     "materialized": {
       "description": "Durable store where non-attachable sources land and materialized views are written. Distinct from the response cache and the hot tier; a query can use any combination of the three.",

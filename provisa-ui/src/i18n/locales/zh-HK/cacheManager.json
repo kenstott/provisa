@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "回應快取",
-      "hot": "熱門表格",
+      "hot": "已快取的表格",
       "materialized": "具體化儲存區",
-      "setup": "設定"
+      "redirect": "重新導向"
     },
     "response": {
       "loading": "正在載入快取統計數據...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "鏡像至 Redis（或記憶體內）的小型查閱表格，會以 VALUES CTE 內嵌以優化 JOIN。無論回應快取儲存區為何，均可使用。",
-      "loadedTables": "已載入表格",
-      "candidates": "候選項",
+      "hotTables": "熱表",
+      "hotCandidates": "熱候選項",
       "cachedRows": "已快取列數",
       "empty": "沒有已載入或登記為候選項的熱門表格。",
       "table": "表格",
@@ -39,12 +39,12 @@
       "schema": "結構描述",
       "rows": "列數",
       "kind": "種類",
-      "state": "狀態",
-      "kindApi": "API",
-      "kindEngine": "引擎",
-      "stateLoaded": "已載入",
-      "stateCandidate": "候選項",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "溫表",
+      "kind_hot": "熱",
+      "kind_hot_candidate": "熱候選",
+      "kind_warm": "溫",
+      "warmDescription": "溫表是查詢夠頻密、因而在聯邦引擎中取得 Iceberg 副本的較大表；查詢讀取該副本，流量低於門檻時副本會被刪除。"
     },
     "materialized": {
       "description": "耐久儲存區，用於存放無法附加的數據來源，並寫入具體化檢視。有別於回應快取及熱門層；一個查詢可任意組合使用三者。",

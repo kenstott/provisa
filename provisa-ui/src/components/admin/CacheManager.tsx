@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -36,7 +36,13 @@ import {
   useToggleMV,
 } from "../../hooks/useAdminOpsQueries";
 import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
-import { CacheStorageTab } from "./CacheStorageTab";
+import {
+  HotTablesSettingsPanel,
+  MaterializedSettingsPanel,
+  ResponseCacheSettingsPanel,
+} from "./CacheStorageTab";
+import { RedirectSettingsCard } from "./settingsCards";
+import { fetchSettings } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { displayMvName } from "./mvDisplay";
 
@@ -54,9 +60,13 @@ function fmtBytes(n: number | null, unknown: string): string {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-type TabKey = "response" | "hot" | "materialized" | "setup";
+// REQ-1349: "redirect" sits here because a redirected result IS a cached result handed back as a
+// URL — the org setting that governs it belongs beside the response cache it is cut from, not on
+// the Admin overview. The deployment-wide store settings that used to be one "Setup" tab are now a
+// Settings panel on the tab of the cache type each one configures.
+type TabKey = "response" | "hot" | "materialized" | "redirect";
 
-const TAB_KEYS: TabKey[] = ["response", "hot", "materialized", "setup"];
+const TAB_KEYS: TabKey[] = ["response", "hot", "materialized", "redirect"];
 
 const MV_STATUS_COLOR: Record<string, string> = {
   fresh: "green",
@@ -105,6 +115,10 @@ function SortableTh({
 export function CacheManager() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabKey>("response");
+  const [platform, setPlatform] = useState(false);
+  useEffect(() => {
+    fetchSettings().then((s) => setPlatform(Boolean(s.features?.platform_settings)));
+  }, []);
   return (
     <div>
       <Tabs value={tab} onChange={(v) => setTab((v as TabKey) ?? "response")} mb="md">
@@ -116,15 +130,15 @@ export function CacheManager() {
           ))}
         </Tabs.List>
       </Tabs>
-      {tab === "response" && <ResponseCacheTab />}
-      {tab === "hot" && <HotTablesTab />}
-      {tab === "materialized" && <MaterializedStoreTab />}
-      {tab === "setup" && <CacheStorageTab />}
+      {tab === "response" && <ResponseCacheTab platform={platform} />}
+      {tab === "hot" && <HotTablesTab platform={platform} />}
+      {tab === "materialized" && <MaterializedStoreTab platform={platform} />}
+      {tab === "redirect" && <RedirectSettingsCard />}
     </div>
   );
 }
 
-function ResponseCacheTab() {
+function ResponseCacheTab({ platform }: { platform: boolean }) {
   const { t } = useTranslation();
   const unknown = t("cacheManager.response.unknown");
   const { cacheStats: stats, refetch: refetchStats } = useCacheStats();
@@ -251,6 +265,8 @@ function ResponseCacheTab() {
         )}
       </SimpleGrid>
 
+      <ResponseCacheSettingsPanel platform={platform} />
+
       {tables.length > 0 && (
         <Stack gap="sm">
           <Group gap="sm" align="center">
@@ -337,23 +353,26 @@ function ResponseCacheTab() {
   );
 }
 
-function HotTablesTab() {
+function HotTablesTab({ platform }: { platform: boolean }) {
   const { t } = useTranslation();
   const unknown = t("cacheManager.hot.unknown");
   const { hotTables } = useHotTables();
-  const loaded = hotTables.filter((h) => h.loaded);
-  const totalRows = loaded.reduce((n, h) => n + h.rowCount, 0);
+  const loaded = hotTables.filter((h) => h.kind === "hot");
+  const warm = hotTables.filter((h) => h.kind === "warm");
+  const candidates = hotTables.filter((h) => h.kind === "hot_candidate");
+  const totalRows = [...loaded, ...warm].reduce((n, h) => n + h.rowCount, 0);
   return (
     <Stack gap="md">
       <Text size="sm" c="dimmed">
         {t("cacheManager.hot.description")}
       </Text>
-      <SimpleGrid cols={{ base: 2, sm: 3 }}>
-        <StatCard value={loaded.length} label={t("cacheManager.hot.loadedTables")} />
-        <StatCard
-          value={hotTables.length - loaded.length}
-          label={t("cacheManager.hot.candidates")}
-        />
+      <Text size="sm" c="dimmed">
+        {t("cacheManager.hot.warmDescription")}
+      </Text>
+      <SimpleGrid cols={{ base: 2, sm: 4 }}>
+        <StatCard value={loaded.length} label={t("cacheManager.hot.hotTables")} />
+        <StatCard value={warm.length} label={t("cacheManager.hot.warmTables")} />
+        <StatCard value={candidates.length} label={t("cacheManager.hot.hotCandidates")} />
         <StatCard value={totalRows} label={t("cacheManager.hot.cachedRows")} />
       </SimpleGrid>
       {hotTables.length === 0 ? (
@@ -367,34 +386,28 @@ function HotTablesTab() {
               <Table.Th>{t("cacheManager.hot.schema")}</Table.Th>
               <Table.Th>{t("cacheManager.hot.rows")}</Table.Th>
               <Table.Th>{t("cacheManager.hot.kind")}</Table.Th>
-              <Table.Th>{t("cacheManager.hot.state")}</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {hotTables.map((h) => (
-              <Table.Tr key={`${h.catalog}.${h.schemaName}.${h.tableName}`}>
+              <Table.Tr key={`${h.kind}:${h.catalog}.${h.schemaName}.${h.tableName}`}>
                 <Table.Td>{h.tableName}</Table.Td>
                 <Table.Td>{h.catalog}</Table.Td>
                 <Table.Td>{h.schemaName}</Table.Td>
-                <Table.Td>{h.loaded ? h.rowCount : unknown}</Table.Td>
-                <Table.Td>
-                  {h.isApi ? t("cacheManager.hot.kindApi") : t("cacheManager.hot.kindEngine")}
-                </Table.Td>
-                <Table.Td>
-                  {h.loaded
-                    ? t("cacheManager.hot.stateLoaded")
-                    : t("cacheManager.hot.stateCandidate")}
-                </Table.Td>
+                {/* A candidate has nothing mirrored yet, so it has no row count to report. */}
+                <Table.Td>{h.kind === "hot_candidate" ? unknown : h.rowCount}</Table.Td>
+                <Table.Td>{t(`cacheManager.hot.kind_${h.kind}`)}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
         </Table>
       )}
+      {platform && <HotTablesSettingsPanel />}
     </Stack>
   );
 }
 
-function MaterializedStoreTab() {
+function MaterializedStoreTab({ platform }: { platform: boolean }) {
   const { t } = useTranslation();
   const unknown = t("cacheManager.materialized.unknown");
   const navigate = useNavigate();
@@ -524,6 +537,7 @@ function MaterializedStoreTab() {
           )}
         </>
       )}
+      {platform && <MaterializedSettingsPanel />}
     </Stack>
   );
 }

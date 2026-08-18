@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "响应缓存",
-      "hot": "热表",
+      "hot": "已缓存的表",
       "materialized": "物化存储",
-      "setup": "设置"
+      "redirect": "重定向"
     },
     "response": {
       "loading": "正在加载缓存统计...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "镜像到 Redis（或内存）中的小型查找表，以 VALUES CTE 形式内联以优化 JOIN。无论响应缓存存储如何，始终可用。",
-      "loadedTables": "已加载的表",
-      "candidates": "候选",
+      "hotTables": "热表",
+      "hotCandidates": "热候选",
       "cachedRows": "缓存行数",
       "empty": "没有已加载或已注册为候选的热表。",
       "table": "表",
@@ -39,12 +39,12 @@
       "schema": "架构 (Schema)",
       "rows": "行数",
       "kind": "类型",
-      "state": "状态",
-      "kindApi": "API",
-      "kindEngine": "引擎",
-      "stateLoaded": "已加载",
-      "stateCandidate": "候选",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "温表",
+      "kind_hot": "热",
+      "kind_hot_candidate": "热候选",
+      "kind_warm": "温",
+      "warmDescription": "温表是查询足够频繁、从而在联邦引擎中获得 Iceberg 副本的较大表；查询读取该副本，流量低于阈值时副本会被删除。"
     },
     "materialized": {
       "description": "持久存储，用于存放不可挂载的数据源并写入物化视图。它与响应缓存和热层不同；一个查询可以任意组合使用这三者。",

@@ -198,7 +198,7 @@ class TestCacheTableStats:
 
 class TestHotTables:
     async def test_hot_tables(self, client):
-        data = await _gql(client, "{ hotTables { tableName rowCount loaded isApi } }")
+        data = await _gql(client, "{ hotTables { tableName rowCount kind } }")
         assert isinstance(data["data"]["hotTables"], list)
 
 

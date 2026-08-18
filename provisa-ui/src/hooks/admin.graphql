@@ -532,8 +532,7 @@ query HotTables {
     catalog
     schemaName
     rowCount
-    isApi
-    loaded
+    kind
   }
 }
 

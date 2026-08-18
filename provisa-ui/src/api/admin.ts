@@ -635,8 +635,14 @@ export const SUBSYSTEM_TRACE_KEYS: (keyof SubsystemTraces)[] = [
 export interface PlatformSettings {
   features?: {
     live_config_export: boolean;
+    // REQ-1349: true when the caller holds `platform_settings`. The deployment-wide blocks below
+    // are OMITTED from the payload for a caller without it, so a surface that edits one renders
+    // only when this is set rather than reading an absent block.
+    platform_settings?: boolean;
   };
-  engine: {
+  // Deployment-wide (platform_settings). Optional because GET /admin/settings drops them for an
+  // org administrator, whose settings are the org-scoped `redirect`, `cache` and `naming` mode.
+  engine?: {
     jvm_heap_gb: number;
     query_max_memory: string;
     query_max_memory_per_node: string;
@@ -651,20 +657,21 @@ export interface PlatformSettings {
     default_format: string;
     ttl: number;
   };
-  sampling: {
+  sampling?: {
     default_sample_size: number;
   };
   cache: {
     default_ttl: number;
   };
   naming: {
-    domain_prefix: boolean;
-    convention: string;
-    sql_convention: string;
+    // Deployment-wide, so absent for an org administrator; the two below are the org's own.
+    domain_prefix?: boolean;
+    convention?: string;
+    sql_convention?: string;
     use_domains: boolean | null;
     default_domain: string;
   };
-  otel: {
+  otel?: {
     endpoint: string;
     service_name: string;
     sample_rate: number;
@@ -684,15 +691,15 @@ export interface PlatformSettings {
     // SubsystemTracesConfig declares.
     subsystem_traces: SubsystemTraces;
   };
-  graphql_remote: {
+  graphql_remote?: {
     max_object_depth: number;
     max_list_depth: number;
     max_list_items: number;
   };
-  cdc: {
+  cdc?: {
     consumer_group_id: string;
   };
-  materialize: {
+  materialize?: {
     store_url: string;
   };
 }
@@ -1102,7 +1109,7 @@ export async function updateSettings(
 export async function setDomainPolicy(body: {
   use_domains: boolean | null;
   default_domain: string;
-}): Promise<{ success: boolean; backup: string; use_domains: boolean | null }> {
+}): Promise<{ success: boolean; use_domains: boolean | null }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/domain-policy`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1254,8 +1261,9 @@ export interface HotTableStat {
   catalog: string;
   schemaName: string;
   rowCount: number;
-  isApi: boolean;
-  loaded: boolean;
+  // What is being kept for this table: a registered promotion candidate with nothing mirrored yet
+  // ("hot_candidate"), a mirrored hot copy ("hot"), or an Iceberg warm copy ("warm").
+  kind: "hot_candidate" | "hot" | "warm";
 }
 
 export interface MaterializeStoreInfo {

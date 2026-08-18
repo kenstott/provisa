@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "レスポンスキャッシュ",
-      "hot": "ホットテーブル",
+      "hot": "キャッシュ済みテーブル",
       "materialized": "マテリアライズドストア",
-      "setup": "セットアップ"
+      "redirect": "リダイレクト"
     },
     "response": {
       "loading": "キャッシュ統計を読み込み中...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Redis（またはメモリ内）にミラーリングされ、JOINを最適化するためにVALUES CTEとしてインライン展開される小規模なルックアップテーブルです。レスポンスキャッシュのストアに関係なく常に利用できます。",
-      "loadedTables": "ロード済みテーブル",
-      "candidates": "候補",
+      "hotTables": "ホットテーブル",
+      "hotCandidates": "ホット候補",
       "cachedRows": "キャッシュ済み行数",
       "empty": "ロード済みまたは候補として登録されたホットテーブルはありません。",
       "table": "テーブル",
@@ -39,12 +39,12 @@
       "schema": "スキーマ",
       "rows": "行数",
       "kind": "種別",
-      "state": "状態",
-      "kindApi": "API",
-      "kindEngine": "エンジン",
-      "stateLoaded": "ロード済み",
-      "stateCandidate": "候補",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "ウォームテーブル",
+      "kind_hot": "ホット",
+      "kind_hot_candidate": "ホット候補",
+      "kind_warm": "ウォーム",
+      "warmDescription": "ウォームテーブルは、フェデレーションエンジン内に Iceberg のコピーを持てるほど頻繁にクエリされる大きめのテーブルです。クエリはそのコピーを読み、トラフィックがしきい値を下回ると削除されます。"
     },
     "materialized": {
       "description": "アタッチ不可のソースが格納され、マテリアライズドビューが書き込まれる永続ストアです。レスポンスキャッシュおよびホット層とは別物で、1つのクエリで3つを任意に組み合わせて利用できます。",

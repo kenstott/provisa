@@ -70,6 +70,9 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
         tenant_id: str | None = None,
     ) -> None:
         self._warm_tables: set[str] = set()
+        # Row count measured at promotion time, kept so the admin cache view can report the size of
+        # each warm copy without re-counting through the engine on every page load.
+        self._warm_rows: dict[str, int] = {}
         self._iceberg_catalog = iceberg_catalog
         # Each tenant gets an isolated schema so warm tables never bleed across tenants.
         if tenant_id is not None:
@@ -81,6 +84,32 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
     def get_warm_tables(self) -> set[str]:  # REQ-544
         with self._lock:
             return set(self._warm_tables)
+
+    def snapshot(self) -> list[dict]:
+        """Admin view of the warm tier, shaped like HotTableManager.snapshot().
+
+        Each entry: table_name, catalog, schema, row_count, is_api, loaded. The name a warm table
+        is promoted under is the source FQN the query counter increments ("catalog"."schema"."tbl"),
+        so catalog and schema are read back off it; a warm table is landed the moment it is in the
+        set, which is why ``loaded`` is always True here.
+        """
+        with self._lock:
+            names = sorted(self._warm_tables)
+            rows = dict(self._warm_rows)
+        out: list[dict] = []
+        for name in names:
+            parts = [p.strip('"') for p in name.split('"."')]
+            out.append(
+                {
+                    "table_name": parts[-1],
+                    "catalog": parts[0] if len(parts) == 3 else "",
+                    "schema": parts[1] if len(parts) == 3 else "",
+                    "row_count": rows[name],
+                    "is_api": False,
+                    "loaded": True,
+                }
+            )
+        return out
 
     def _iceberg_ref(self, table: str) -> str:
         safe = table.replace('"', '""')
@@ -144,6 +173,7 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
 
             with self._lock:
                 self._warm_tables.add(table)
+                self._warm_rows[table] = row_count
             promoted.append(table)
             log.info("Promoted %s to warm Iceberg cache (%d rows)", table, row_count)
 
@@ -174,6 +204,7 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
 
             with self._lock:
                 self._warm_tables.discard(table)
+                self._warm_rows.pop(table, None)
             demoted.append(table)
             counter.reset(table)
             log.info("Demoted %s from warm Iceberg cache", table)

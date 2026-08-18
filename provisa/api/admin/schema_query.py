@@ -849,22 +849,29 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def hot_tables(self) -> list[HotTableStatType]:
-        """Hot-tier lookup tables mirrored into Redis/fakeredis for JOIN inlining."""
+        """Cached tables by tier: hot (mirrored for JOIN inlining) and warm (landed in Iceberg).
+
+        Both tiers answer the same admin question — which tables is Provisa keeping a copy of —
+        so they are one list with a tier on each row rather than two surfaces (REQ-241 keeps a
+        table in at most one of them).
+        """
         from provisa.api.app import state
 
-        mgr = getattr(state, "hot_manager", None)
-        if mgr is None:
-            return []
+        hot = getattr(state, "hot_manager", None)
+        entries: list[tuple[dict, str]] = [
+            (e, "hot" if e["loaded"] else "hot_candidate")
+            for e in (hot.snapshot() if hot is not None else [])
+        ]
+        entries += [(e, "warm") for e in state.warm_manager.snapshot()]
         return [
             HotTableStatType(
                 table_name=e["table_name"],
                 catalog=e["catalog"],
                 schema_name=e["schema"],
                 row_count=e["row_count"],
-                is_api=e["is_api"],
-                loaded=e["loaded"],
+                kind=kind,
             )
-            for e in mgr.snapshot()
+            for e, kind in entries
         ]
 
     @strawberry.field

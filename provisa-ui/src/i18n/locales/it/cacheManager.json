@@ -2,9 +2,9 @@
   "cacheManager": {
     "tabs": {
       "response": "Cache delle risposte",
-      "hot": "Tabelle hot",
+      "hot": "Tabelle in cache",
       "materialized": "Store materializzato",
-      "setup": "Configurazione"
+      "redirect": "Reindirizzamento"
     },
     "response": {
       "loading": "Caricamento delle statistiche della cache...",
@@ -30,8 +30,8 @@
     },
     "hot": {
       "description": "Piccole tabelle di lookup replicate in Redis (o in memoria) e incorporate come CTE VALUES per ottimizzare i JOIN. Sempre disponibili indipendentemente dallo store della cache delle risposte.",
-      "loadedTables": "Tabelle caricate",
-      "candidates": "Candidate",
+      "hotTables": "Tabelle calde",
+      "hotCandidates": "Candidate calde",
       "cachedRows": "Righe in cache",
       "empty": "Nessuna tabella hot caricata o registrata come candidata.",
       "table": "Tabella",
@@ -39,12 +39,12 @@
       "schema": "Schema",
       "rows": "Righe",
       "kind": "Tipo",
-      "state": "Stato",
-      "kindApi": "API",
-      "kindEngine": "engine",
-      "stateLoaded": "caricata",
-      "stateCandidate": "candidata",
-      "unknown": "—"
+      "unknown": "—",
+      "warmTables": "Tabelle tiepide",
+      "kind_hot": "calda",
+      "kind_hot_candidate": "candidata calda",
+      "kind_warm": "tiepida",
+      "warmDescription": "Le tabelle tiepide sono tabelle grandi interrogate abbastanza spesso da ottenere una copia Iceberg nel motore di federazione; le query leggono la copia, che viene eliminata quando il traffico scende sotto la soglia."
     },
     "materialized": {
       "description": "Store durevole in cui vengono scritte le origini non collegabili e le viste materializzate. Distinto dalla cache delle risposte e dal livello hot; una query può usare qualsiasi combinazione dei tre.",

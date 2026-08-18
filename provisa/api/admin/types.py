@@ -867,8 +867,11 @@ class HotTableStatType:
     catalog: str
     schema_name: str
     row_count: int
-    is_api: bool
-    loaded: bool
+    # What Provisa is keeping for this table, as one value rather than a tier/state pair:
+    # "hot_candidate" (registered for promotion, nothing mirrored yet, so no row count),
+    # "hot" (mirrored into the response store for JOIN inlining),
+    # "warm" (landed as an Iceberg copy). REQ-241 makes the tiers exclusive.
+    kind: str
 
 
 @strawberry.type
