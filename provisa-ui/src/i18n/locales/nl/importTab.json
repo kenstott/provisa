@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "Hasura-configuratie importeren",
-    "intro": "Zet een Hasura v2-metadata-export of een Hasura DDN-project om in de semantische laag van deze organisatie. Upload een gezipte projectmap, een geconsolideerde metadata-export (YAML of JSON) of één .hml-bestand. Er wordt niets weggeschreven totdat u het resultaat hebt bekeken en toegepast.",
+    "intro": "Zet een Hasura v2-metadata-export of een Hasura DDN-project om. Upload een gezipte projectmap, een geconsolideerde metadata-export (YAML of JSON) of één .hml-bestand. Er wordt niets weggeschreven totdat u het resultaat hebt bekeken en toegepast.",
     "chooseFile": "Bestand kiezen",
     "noFile": "Geen bestand geselecteerd.",
     "flavor": "Bronformaat",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Omzetten en voorbeeld tonen",
     "domainMap": "Domeintoewijzing",
-    "domainMapHelp": "Wijst een Hasura-schema (v2) of subgraaf (DDN) toe aan een Provisa-domein. Alles zonder toewijzing behoudt zijn oorspronkelijke naam.",
-    "domainFrom": "Schema of subgraaf",
-    "domainTo": "Domein",
-    "addPair": "Toewijzing toevoegen",
-    "removePair": "Verwijderen",
+    "domainMapHelp": "Elk schema (v2) of subgraph (DDN) uit de upload, en het Provisa-domein waarin de tabellen terechtkomen. Wijzig een naam en converteer opnieuw.",
+    "domainTo": "Domein voor {{from}}",
+    "remap": "Opnieuw converteren met deze domeinen",
     "summaryHeading": "Wat deze import oplevert",
     "count_sources": "Gegevensbronnen",
     "count_domains": "Domeinen",

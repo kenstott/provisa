@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "Importar configuración de Hasura",
-    "intro": "Convierte una exportación de metadatos de Hasura v2 o un proyecto de Hasura DDN en la capa semántica de esta organización. Suba un directorio de proyecto comprimido, una exportación de metadatos consolidada (YAML o JSON) o un único archivo .hml. No se escribe nada hasta que revise el resultado y lo aplique.",
+    "intro": "Convierte una exportación de metadatos de Hasura v2 o un proyecto de Hasura DDN. Suba un directorio de proyecto comprimido, una exportación de metadatos consolidada (YAML o JSON) o un único archivo .hml. No se escribe nada hasta que revise el resultado y lo aplique.",
     "chooseFile": "Elegir archivo",
     "noFile": "Ningún archivo seleccionado.",
     "flavor": "Formato de origen",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Convertir y previsualizar",
     "domainMap": "Asignación de dominios",
-    "domainMapHelp": "Asigna un esquema de Hasura (v2) o un subgrafo (DDN) a un dominio de Provisa. Todo lo que no se asigne conserva su nombre original.",
-    "domainFrom": "Esquema o subgrafo",
-    "domainTo": "Dominio",
-    "addPair": "Añadir asignación",
-    "removePair": "Quitar",
+    "domainMapHelp": "Cada esquema (v2) o subgrafo (DDN) encontrado en la carga y el dominio de Provisa en el que caen sus tablas. Cambie un nombre y vuelva a convertir.",
+    "domainTo": "Dominio para {{from}}",
+    "remap": "Convertir de nuevo con estos dominios",
     "summaryHeading": "Lo que produce esta importación",
     "count_sources": "Fuentes de datos",
     "count_domains": "Dominios",

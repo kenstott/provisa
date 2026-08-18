@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "匯入 Hasura 組態",
-    "intro": "將 Hasura v2 中繼數據匯出檔或 Hasura DDN 專案轉換為本組織的語意層。可上載壓縮後的專案目錄、合併後的中繼數據匯出檔（YAML 或 JSON），或單一 .hml 檔案。在您檢視結果並套用之前，不會寫入任何內容。",
+    "intro": "轉換 Hasura v2 中繼數據匯出檔或 Hasura DDN 專案。可上載壓縮後的專案目錄、合併後的中繼數據匯出檔（YAML 或 JSON），或單一 .hml 檔案。在您檢視結果並套用之前，不會寫入任何內容。",
     "chooseFile": "選擇檔案",
     "noFile": "未選擇檔案。",
     "flavor": "來源格式",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "轉換並預覽",
     "domainMap": "網域對應",
-    "domainMapHelp": "將 Hasura 結構描述（v2）或子圖（DDN）對應至 Provisa 的網域。未對應的內容會保留原名。",
-    "domainFrom": "結構描述或子圖",
-    "domainTo": "網域",
-    "addPair": "新增對應",
-    "removePair": "移除",
+    "domainMapHelp": "上載檔案中找到的每個 schema（v2）或子圖（DDN），以及其資料表所歸屬的 Provisa 網域。修改名稱後可重新轉換。",
+    "domainTo": "{{from}} 的網域",
+    "remap": "使用這些網域重新轉換",
     "summaryHeading": "本次匯入將產生的內容",
     "count_sources": "數據來源",
     "count_domains": "網域",

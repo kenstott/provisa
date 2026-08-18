@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "Hasura 構成のインポート",
-    "intro": "Hasura v2 のメタデータエクスポート、または Hasura DDN プロジェクトを、この組織のセマンティックレイヤーに変換します。ZIP 化したプロジェクトディレクトリ、統合済みメタデータエクスポート (YAML または JSON)、あるいは単一の .hml ファイルをアップロードしてください。結果を確認して適用するまで、何も書き込まれません。",
+    "intro": "Hasura v2 のメタデータエクスポート、または Hasura DDN プロジェクトを変換します。ZIP 化したプロジェクトディレクトリ、統合済みメタデータエクスポート (YAML または JSON)、あるいは単一の .hml ファイルをアップロードしてください。結果を確認して適用するまで、何も書き込まれません。",
     "chooseFile": "ファイルを選択",
     "noFile": "ファイルが選択されていません。",
     "flavor": "ソース形式",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "変換してプレビュー",
     "domainMap": "ドメインのマッピング",
-    "domainMapHelp": "Hasura のスキーマ (v2) またはサブグラフ (DDN) を Provisa のドメインに対応付けます。対応付けなかったものは元の名前のままです。",
-    "domainFrom": "スキーマまたはサブグラフ",
-    "domainTo": "ドメイン",
-    "addPair": "マッピングを追加",
-    "removePair": "削除",
+    "domainMapHelp": "アップロードに含まれていたスキーマ (v2) またはサブグラフ (DDN) と、そのテーブルが入る Provisa ドメインです。名前を変更して再度変換してください。",
+    "domainTo": "{{from}} のドメイン",
+    "remap": "このドメインで再変換",
     "summaryHeading": "このインポートで作成されるもの",
     "count_sources": "データソース",
     "count_domains": "ドメイン",

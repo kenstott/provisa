@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "Hasura-Konfiguration importieren",
-    "intro": "Wandelt einen Hasura-v2-Metadatenexport oder ein Hasura-DDN-Projekt in die semantische Schicht dieser Organisation um. Laden Sie ein gezipptes Projektverzeichnis, einen zusammengefassten Metadatenexport (YAML oder JSON) oder eine einzelne .hml-Datei hoch. Es wird nichts geschrieben, bevor Sie das Ergebnis geprüft und übernommen haben.",
+    "intro": "Wandelt einen Hasura-v2-Metadatenexport oder ein Hasura-DDN-Projekt um. Laden Sie ein gezipptes Projektverzeichnis, einen zusammengefassten Metadatenexport (YAML oder JSON) oder eine einzelne .hml-Datei hoch. Es wird nichts geschrieben, bevor Sie das Ergebnis geprüft und übernommen haben.",
     "chooseFile": "Datei auswählen",
     "noFile": "Keine Datei ausgewählt.",
     "flavor": "Quellformat",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Umwandeln und Vorschau anzeigen",
     "domainMap": "Domänenzuordnung",
-    "domainMapHelp": "Ordnet ein Hasura-Schema (v2) oder einen Subgraph (DDN) einer Provisa-Domäne zu. Alles ohne Zuordnung behält seinen ursprünglichen Namen.",
-    "domainFrom": "Schema oder Subgraph",
-    "domainTo": "Domäne",
-    "addPair": "Zuordnung hinzufügen",
-    "removePair": "Entfernen",
+    "domainMapHelp": "Jedes im Upload gefundene Schema (v2) bzw. jeder Subgraph (DDN) und die Provisa-Domäne, in der die zugehörigen Tabellen landen. Ändern Sie einen Namen und konvertieren Sie erneut.",
+    "domainTo": "Domäne für {{from}}",
+    "remap": "Mit diesen Domänen erneut konvertieren",
     "summaryHeading": "Was dieser Import erzeugt",
     "count_sources": "Datenquellen",
     "count_domains": "Domänen",

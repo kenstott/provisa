@@ -24,6 +24,7 @@ import {
   Table,
   Text,
   Textarea,
+  TextInput,
   Title,
 } from "@mantine/core";
 import { Check, TriangleAlert, Upload } from "lucide-react";
@@ -48,16 +49,13 @@ const FLAVORS: { value: ImportFlavor; labelKey: string }[] = [
   { value: "ddn", labelKey: "flavorDdn" },
 ];
 
-interface DomainPair {
-  from: string;
-  to: string;
-}
-
 export function ImportTab() {
   const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
   const [flavor, setFlavor] = useState<ImportFlavor>("auto");
-  const [pairs, setPairs] = useState<DomainPair[]>([]);
+  // Target domain per schema (v2) or subgraph (DDN) the upload turned out to carry. Seeded from the
+  // first conversion, since the names cannot be known before the file is parsed.
+  const [domains, setDomains] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [yamlText, setYamlText] = useState("");
   const [replace, setReplace] = useState(false);
@@ -65,28 +63,27 @@ export function ImportTab() {
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  const domainMap = () => {
-    const out: Record<string, string> = {};
-    for (const p of pairs) if (p.from.trim() && p.to.trim()) out[p.from.trim()] = p.to.trim();
-    return out;
-  };
-
-  const runPreview = async () => {
+  const runPreview = async (map: Record<string, string>) => {
     if (!file) return;
     setBusy("preview");
     setError("");
     setMsg("");
     setPreview(null);
     try {
+      // Only renames travel to the server; a name left as it arrived is not a mapping.
+      const domain_map: Record<string, string> = {};
+      for (const [from, to] of Object.entries(map))
+        if (to.trim() && to.trim() !== from) domain_map[from] = to.trim();
       const result = await previewImport({
         filename: file.name,
         content_b64: await fileToBase64(file),
         flavor,
-        domain_map: domainMap(),
+        domain_map,
         source_overrides: {},
       });
       setPreview(result);
       setYamlText(result.config_yaml);
+      setDomains(Object.fromEntries(result.discovered_domains.map((d) => [d, map[d] ?? d])));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -128,7 +125,6 @@ export function ImportTab() {
 
   return (
     <Stack gap="md">
-      <Title order={3}>{t("importTab.heading")}</Title>
       <Text size="sm" c="dimmed">
         {t("importTab.intro")}
       </Text>
@@ -149,7 +145,7 @@ export function ImportTab() {
           w={260}
         />
         <Button
-          onClick={runPreview}
+          onClick={() => runPreview(domains)}
           disabled={!file}
           loading={busy === "preview"}
           aria-label={t("importTab.preview")}
@@ -158,51 +154,6 @@ export function ImportTab() {
         </Button>
       </Group>
       <Text size="sm">{file ? file.name : t("importTab.noFile")}</Text>
-
-      <Stack gap="xs">
-        <Text fw={500} size="sm">
-          {t("importTab.domainMap")}
-        </Text>
-        <Text size="xs" c="dimmed">
-          {t("importTab.domainMapHelp")}
-        </Text>
-        {pairs.map((p, i) => (
-          <Group key={i} gap="xs">
-            <Textarea
-              autosize
-              minRows={1}
-              w={220}
-              aria-label={t("importTab.domainFrom")}
-              value={p.from}
-              onChange={(e) =>
-                setPairs(pairs.map((x, j) => (j === i ? { ...x, from: e.currentTarget.value } : x)))
-              }
-            />
-            <Textarea
-              autosize
-              minRows={1}
-              w={220}
-              aria-label={t("importTab.domainTo")}
-              value={p.to}
-              onChange={(e) =>
-                setPairs(pairs.map((x, j) => (j === i ? { ...x, to: e.currentTarget.value } : x)))
-              }
-            />
-            <Button
-              variant="subtle"
-              color="red"
-              onClick={() => setPairs(pairs.filter((_, j) => j !== i))}
-            >
-              {t("importTab.removePair")}
-            </Button>
-          </Group>
-        ))}
-        <Group>
-          <Button variant="light" onClick={() => setPairs([...pairs, { from: "", to: "" }])}>
-            {t("importTab.addPair")}
-          </Button>
-        </Group>
-      </Stack>
 
       {error && (
         <Alert color="red" icon={<TriangleAlert size={16} />}>
@@ -237,6 +188,39 @@ export function ImportTab() {
           <Text size="sm">
             {t("importTab.roleList")} <Code>{preview.summary.role_ids.join(", ")}</Code>
           </Text>
+
+          {/* One row per name the upload actually carries — the conversion has to run before these
+              are known, which is why the mapping lives here and re-runs it. */}
+          {preview.discovered_domains.length > 0 && (
+            <Stack gap="xs">
+              <Text fw={500} size="sm">
+                {t("importTab.domainMap")}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {t("importTab.domainMapHelp")}
+              </Text>
+              {preview.discovered_domains.map((from) => (
+                <Group key={from} gap="xs" align="center">
+                  <Code w={220}>{from}</Code>
+                  <TextInput
+                    w={220}
+                    aria-label={t("importTab.domainTo", { from })}
+                    value={domains[from] ?? from}
+                    onChange={(e) => setDomains({ ...domains, [from]: e.currentTarget.value })}
+                  />
+                </Group>
+              ))}
+              <Group>
+                <Button
+                  variant="light"
+                  onClick={() => runPreview(domains)}
+                  loading={busy === "preview"}
+                >
+                  {t("importTab.remap")}
+                </Button>
+              </Group>
+            </Stack>
+          )}
 
           <Title order={4}>
             {t("importTab.warningsHeading", { count: preview.warnings.length })}
@@ -287,7 +271,11 @@ export function ImportTab() {
             onChange={(e) => setReplace(e.currentTarget.checked)}
           />
           <Group>
-            <Button onClick={runApply} loading={busy === "apply"} color={replace ? "red" : undefined}>
+            <Button
+              onClick={runApply}
+              loading={busy === "apply"}
+              color={replace ? "red" : undefined}
+            >
               {t("importTab.apply")}
             </Button>
           </Group>

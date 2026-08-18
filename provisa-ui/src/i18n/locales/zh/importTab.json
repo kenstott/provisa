@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "导入 Hasura 配置",
-    "intro": "将 Hasura v2 元数据导出或 Hasura DDN 项目转换为本组织的语义层。可上传压缩后的项目目录、合并后的元数据导出文件（YAML 或 JSON），或单个 .hml 文件。在您查看结果并应用之前，不会写入任何内容。",
+    "intro": "转换 Hasura v2 元数据导出或 Hasura DDN 项目。可上传压缩后的项目目录、合并后的元数据导出文件（YAML 或 JSON），或单个 .hml 文件。在您查看结果并应用之前，不会写入任何内容。",
     "chooseFile": "选择文件",
     "noFile": "未选择文件。",
     "flavor": "源格式",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "转换并预览",
     "domainMap": "域映射",
-    "domainMapHelp": "将 Hasura 架构（v2）或子图（DDN）映射到 Provisa 的域。未映射的内容保留原名。",
-    "domainFrom": "架构或子图",
-    "domainTo": "域",
-    "addPair": "添加映射",
-    "removePair": "移除",
+    "domainMapHelp": "上传文件中找到的每个 schema（v2）或子图（DDN），以及其表所归属的 Provisa 域。修改名称后可重新转换。",
+    "domainTo": "{{from}} 的域",
+    "remap": "使用这些域重新转换",
     "summaryHeading": "本次导入将生成的内容",
     "count_sources": "数据源",
     "count_domains": "域",

@@ -44,6 +44,8 @@ export interface ImportPreview {
   config_yaml: string;
   warnings: ImportWarning[];
   summary: ImportSummary;
+  /** Schema (v2) or subgraph (DDN) names carried by the upload, before any domain mapping. */
+  discovered_domains: string[];
 }
 
 export interface ImportPreviewRequest {

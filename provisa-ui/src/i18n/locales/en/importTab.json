@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "Import Hasura Configuration",
-    "intro": "Convert a Hasura v2 metadata export or a Hasura DDN project into this organization's semantic layer. Upload a zipped project directory, a consolidated metadata export (YAML or JSON), or a single .hml file. Nothing is written until you review the result and apply it.",
+    "intro": "Convert a Hasura v2 metadata export or a Hasura DDN project. Upload a zipped project directory, a consolidated metadata export (YAML or JSON), or a single .hml file. Nothing is written until you review the result and apply it.",
     "chooseFile": "Choose file",
     "noFile": "No file selected.",
     "flavor": "Source format",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Convert and preview",
     "domainMap": "Domain mapping",
-    "domainMapHelp": "Map a Hasura schema (v2) or subgraph (DDN) to a Provisa domain. Anything unmapped keeps its original name.",
-    "domainFrom": "Schema or subgraph",
-    "domainTo": "Domain",
-    "addPair": "Add mapping",
-    "removePair": "Remove",
+    "domainMapHelp": "Each schema (v2) or subgraph (DDN) found in the upload, and the Provisa domain its tables land in. Change a name and convert again.",
+    "domainTo": "Domain for {{from}}",
+    "remap": "Convert again with these domains",
     "summaryHeading": "What this import produces",
     "count_sources": "Sources",
     "count_domains": "Domains",

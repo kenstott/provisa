@@ -79,6 +79,9 @@ class ImportPreviewResponse(BaseModel):
     config_yaml: str
     warnings: list[ImportWarningOut]
     summary: ImportSummary
+    # The schema (v2) or subgraph (DDN) names the upload carries, so the UI can offer one mapping
+    # row per name instead of asking the administrator to type them from memory.
+    discovered_domains: list[str]
 
 
 class ImportApplyRequest(BaseModel):
@@ -120,8 +123,13 @@ def _summarize(config: ProvisaConfig) -> ImportSummary:
     )
 
 
-def _convert(req: ImportPreviewRequest) -> tuple[str, ProvisaConfig, WarningCollector]:
-    """Run the same parser+mapper pair the matching CLI runs, over the staged upload."""
+def _convert(req: ImportPreviewRequest) -> tuple[str, ProvisaConfig, WarningCollector, list[str]]:
+    """Run the same parser+mapper pair the matching CLI runs, over the staged upload.
+
+    The fourth element is what the upload itself names — DDN subgraphs, v2 schemas — before any
+    mapping is applied. It is the left-hand side of the domain map, which the administrator cannot
+    know until the file has been parsed.
+    """
     collector = WarningCollector()
     data = _decode(req.content_b64)
     with staged_upload(req.filename, data, req.flavor) as staged:
@@ -137,7 +145,7 @@ def _convert(req: ImportPreviewRequest) -> tuple[str, ProvisaConfig, WarningColl
                 domain_map=req.domain_map,
                 source_overrides=req.source_overrides,
             )
-            return DDN, config, collector
+            return DDN, config, collector, sorted(metadata.subgraphs)
 
         from provisa.hasura_v2.mapper import convert_metadata
         from provisa.hasura_v2.parser import parse_metadata_dir, parse_metadata_document
@@ -153,7 +161,8 @@ def _convert(req: ImportPreviewRequest) -> tuple[str, ProvisaConfig, WarningColl
             domain_map=req.domain_map,
             source_overrides=req.source_overrides,
         )
-        return HASURA_V2, config, collector
+        schemas = sorted({t.schema_name for s in v2_metadata.sources for t in s.tables})
+        return HASURA_V2, config, collector, schemas
 
 
 @router.post("/preview", response_model=ImportPreviewResponse)
@@ -161,7 +170,7 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
     """Convert an upload and return the config for review. Writes nothing."""
     require_org_settings(request)  # REQ-1483: an org owns its own semantic layer
     try:
-        flavor, config, collector = _convert(req)
+        flavor, config, collector, discovered = _convert(req)
     except UploadError as exc:
         raise ApiError(400, "import.bad_upload", str(exc)) from exc
     except ValueError as exc:
@@ -177,6 +186,7 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
             for w in collector.warnings
         ],
         summary=_summarize(config),
+        discovered_domains=discovered,
     )
 
 
@@ -190,7 +200,10 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
     """
     require_org_settings(request)  # REQ-1483
     from provisa.api.app import _rebuild_schemas, state
-    from provisa.api.app_loaders import _build_source_pools_and_enums, _populate_source_catalog_names
+    from provisa.api.app_loaders import (
+        _build_source_pools_and_enums,
+        _populate_source_catalog_names,
+    )
     from provisa.api.startup_seed import _resolve_pk_from_sources
     from provisa.core.config_loader import load_config, parse_config_dict
 

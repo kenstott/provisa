@@ -44,6 +44,7 @@ function preview(overrides: Partial<ImportPreview> = {}): ImportPreview {
       domain_ids: ["default", "sales"],
       role_ids: ["admin", "customer", "anon"],
     },
+    discovered_domains: ["public"],
     ...overrides,
   };
 }
@@ -115,16 +116,32 @@ describe("ImportTab", () => {
     expect(mockApply.mock.calls[0][1]).toBe(true);
   });
 
-  it("passes the domain mapping to the conversion", async () => {
+  // The names to map are the ones the upload turned out to carry, so the mapping appears with the
+  // conversion result and re-runs the conversion — the first pass sends no mapping at all.
+  it("maps a discovered name and converts again", async () => {
     render(<ImportTab />);
     pickFile();
-    fireEvent.click(screen.getByRole("button", { name: "Add mapping" }));
-    fireEvent.change(screen.getByLabelText("Schema or subgraph"), { target: { value: "public" } });
-    fireEvent.change(screen.getByLabelText("Domain"), { target: { value: "sales" } });
     fireEvent.click(screen.getByRole("button", { name: "Convert and preview" }));
+    await waitFor(() => expect(screen.getByText("Tables")).toBeInTheDocument());
+    expect(mockPreview.mock.calls[0][0].domain_map).toEqual({});
 
-    await waitFor(() => expect(mockPreview).toHaveBeenCalled());
-    expect(mockPreview.mock.calls[0][0].domain_map).toEqual({ public: "sales" });
+    fireEvent.change(screen.getByLabelText("Domain for public"), { target: { value: "sales" } });
+    fireEvent.click(screen.getByRole("button", { name: "Convert again with these domains" }));
+
+    await waitFor(() => expect(mockPreview).toHaveBeenCalledTimes(2));
+    expect(mockPreview.mock.calls[1][0].domain_map).toEqual({ public: "sales" });
+  });
+
+  // A name left as it arrived is not a rename, so it is not sent as one.
+  it("sends no mapping for an unchanged name", async () => {
+    render(<ImportTab />);
+    pickFile();
+    fireEvent.click(screen.getByRole("button", { name: "Convert and preview" }));
+    await waitFor(() => expect(screen.getByText("Tables")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Convert again with these domains" }));
+    await waitFor(() => expect(mockPreview).toHaveBeenCalledTimes(2));
+    expect(mockPreview.mock.calls[1][0].domain_map).toEqual({});
   });
 
   it("reports a conversion failure instead of showing a summary", async () => {

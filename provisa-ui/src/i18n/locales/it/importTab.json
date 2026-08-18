@@ -1,7 +1,6 @@
 {
   "importTab": {
-    "heading": "Importa configurazione Hasura",
-    "intro": "Converte un export di metadati Hasura v2 o un progetto Hasura DDN nel livello semantico di questa organizzazione. Carica una cartella di progetto compressa, un export di metadati consolidato (YAML o JSON) o un singolo file .hml. Non viene scritto nulla finché non esamini il risultato e lo applichi.",
+    "intro": "Converte un export di metadati Hasura v2 o un progetto Hasura DDN. Carica una cartella di progetto compressa, un export di metadati consolidato (YAML o JSON) o un singolo file .hml. Non viene scritto nulla finché non esamini il risultato e lo applichi.",
     "chooseFile": "Scegli file",
     "noFile": "Nessun file selezionato.",
     "flavor": "Formato di origine",
@@ -12,11 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Converti e visualizza anteprima",
     "domainMap": "Mappatura dei domini",
-    "domainMapHelp": "Associa uno schema Hasura (v2) o un sottografo (DDN) a un dominio Provisa. Ciò che non viene associato conserva il nome originale.",
-    "domainFrom": "Schema o sottografo",
-    "domainTo": "Dominio",
-    "addPair": "Aggiungi associazione",
-    "removePair": "Rimuovi",
+    "domainMapHelp": "Ogni schema (v2) o subgraph (DDN) trovato nel file caricato e il dominio Provisa in cui finiscono le sue tabelle. Cambia un nome e riconverti.",
+    "domainTo": "Dominio per {{from}}",
+    "remap": "Riconverti con questi domini",
     "summaryHeading": "Cosa produce questa importazione",
     "count_sources": "Origini dati",
     "count_domains": "Domini",
