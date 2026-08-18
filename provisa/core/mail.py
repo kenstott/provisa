@@ -202,7 +202,7 @@ def compose_invite_message(
         f"Accept the invitation:\n"
         f"{url}\n"
         f"\n"
-        f"If you do not already have a Provisa account you will be asked to sign in first; the "
+        f"If you do not already have a Provisa account you will be asked to create an account first; the "
         f"invitation is applied once you do.\n"
     )
     return MailMessage(
@@ -266,8 +266,8 @@ def _invite_html(  # REQ-1485
         'style="background:#ffffff;">'
         '<tr><td align="center" style="padding:32px 16px;">'
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        'style="max-width:540px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
-        "Roboto,Helvetica,Arial,sans-serif;\">"
+        "style=\"max-width:540px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',"
+        'Roboto,Helvetica,Arial,sans-serif;">'
         f'<tr><td style="background:{_BRAND_INK};border-radius:12px;padding:20px 24px;">'
         '<span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.3px;">'
         f'Provisa</span><span style="color:{_BRAND_ACCENT};font-size:20px;font-weight:700;">'
@@ -292,7 +292,7 @@ def _invite_html(  # REQ-1485
         + "</table></td></tr>"
         f'<tr><td style="padding:0 4px 24px;"><a href="{href}" '
         f'style="display:inline-block;background:{escape(button_color)};color:#ffffff;'
-        'text-decoration:none;font-size:15px;font-weight:600;padding:12px 24px;'
+        "text-decoration:none;font-size:15px;font-weight:600;padding:12px 24px;"
         'border-radius:8px;">Accept invitation</a></td></tr>'
         f'<tr><td style="padding:0 4px 8px;color:{_BRAND_MUTED};font-size:13px;'
         'line-height:20px;">If the button does not work, paste this link into your browser:<br>'
@@ -300,7 +300,7 @@ def _invite_html(  # REQ-1485
         "</td></tr>"
         f'<tr><td style="padding:16px 4px 0;border-top:1px solid {_BRAND_BORDER};'
         f'color:{_BRAND_MUTED};font-size:13px;line-height:20px;">If you do not already have a '
-        "Provisa account you will be asked to sign in first; the invitation is applied once you "
+        "Provisa account you will be asked to create an account first; the invitation is applied once you "
         "do.</td></tr>"
         "</table></td></tr></table></body></html>"
     )

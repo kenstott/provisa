@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 3e757506-c93b-41d8-a0a1-568facc1aeab
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -20,17 +21,18 @@ import {
   ColorInput,
   Group,
   Image,
+  Modal,
   Stack,
   Text,
   Textarea,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import type { OrgBranding } from "../api/branding";
 import {
   deleteOrgLogo,
   fetchOrgBranding,
+  previewInviteMessage,
   publicLogoUrl,
   saveOrgBranding,
   uploadOrgLogo,
@@ -50,6 +52,7 @@ export function OrgBrandingSettings({
   // Bumped after every logo write so the preview <img> refetches instead of showing the old bytes.
   const [logoVersion, setLogoVersion] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
 
   useEffect(() => {
     fetchOrgBranding(orgId)
@@ -73,6 +76,14 @@ export function OrgBrandingSettings({
       setBranding(saved);
       applyOrgBranding(saved);
       notifications.show({ color: "green", message: t("orgBranding.saved") });
+    } catch (e) {
+      onError(e);
+    }
+  };
+
+  const handlePreview = async () => {
+    try {
+      setPreview(await previewInviteMessage(orgId, branding));
     } catch (e) {
       onError(e);
     }
@@ -102,7 +113,6 @@ export function OrgBrandingSettings({
 
   return (
     <Stack gap="sm" maw={520} data-testid="org-branding-settings">
-      <Title order={4}>{t("orgBranding.heading")}</Title>
       <Text c="dimmed" size="sm">
         {t("orgBranding.help")}
       </Text>
@@ -202,9 +212,39 @@ export function OrgBrandingSettings({
         </Group>
       </Stack>
 
-      <Button onClick={handleSave} style={{ alignSelf: "flex-start" }} data-testid="branding-save">
-        {t("orgBranding.save")}
-      </Button>
+      <Group gap="xs">
+        <Button onClick={handleSave} data-testid="branding-save">
+          {t("orgBranding.save")}
+        </Button>
+        <Button variant="default" onClick={handlePreview} data-testid="branding-preview-invite">
+          {t("orgBranding.previewInvite")}
+        </Button>
+      </Group>
+
+      <Modal
+        opened={preview !== null}
+        onClose={() => setPreview(null)}
+        title={t("orgBranding.previewTitle")}
+        size="lg"
+        transitionProps={{ duration: 0 }}
+      >
+        {preview && (
+          <Stack gap="xs" data-testid="branding-preview-modal">
+            <Text size="sm" fw={500}>
+              {t("orgBranding.previewSubject", { subject: preview.subject })}
+            </Text>
+            {/* The message is HTML written for a mail client; an iframe keeps its styles out of the
+                app, and the empty sandbox keeps anything in it from running. */}
+            <iframe
+              title={t("orgBranding.previewTitle")}
+              srcDoc={preview.html}
+              sandbox=""
+              style={{ width: "100%", height: 520, border: "none" }}
+              data-testid="branding-preview-frame"
+            />
+          </Stack>
+        )}
+      </Modal>
     </Stack>
   );
 }

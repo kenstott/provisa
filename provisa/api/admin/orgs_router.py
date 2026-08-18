@@ -337,11 +337,11 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
     _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
     if body.isolated_engine:
         # REQ-1416: accepting the request on a deployment that resolves no dedicated coordinator
-        # would create an org whose every query dies at bind time. The same gate the engine-lane
-        # tab applies (org_engine_router._isolated_available), applied at creation.
-        from provisa.api.admin.org_engine_router import _isolated_available
+        # would create an org whose every query dies at bind time. The same gate the commercial
+        # engine-lane surface applies, applied at creation.
+        from provisa.federation.engine import isolated_engine_available
 
-        if not _isolated_available():
+        if not isolated_engine_available():
             raise ApiError(
                 503,
                 "orgs.isolated_engine_unavailable",
@@ -589,6 +589,52 @@ async def update_org_branding(org_id: str, body: OrgBrandingBody, request: Reque
         if result.fetchone() is None:
             raise ApiError(404, "orgs.not_found", "Org not found")
     return {"org_id": org_id, "branding": document}
+
+
+@router.post("/{org_id}/branding/preview-invite")
+async def preview_invite_message(  # REQ-1486
+    org_id: str, body: OrgBrandingBody, request: Request
+):
+    """The invitation as it would arrive, composed from the branding currently in the editor.
+
+    The body carries the unsaved document so the org_admin sees the effect of an edit before
+    committing it. It is the real composer (core/mail.compose_invite_message) rather than a second
+    template in the UI, so what the preview shows is what the invitee receives — only the invitee,
+    inviter, role, expiry and token are stand-ins.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.core.mail import compose_invite_message
+    from provisa.core.org_branding import BrandingError, validate_branding
+
+    await _require_org_admin(request, org_id)
+    try:
+        document = validate_branding(body.model_dump())
+    except BrandingError as exc:
+        raise ApiError(422, "orgs.branding_invalid", str(exc), field=exc.field) from None
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(select(orgs.c.name).where(orgs.c.id == org_id))
+        row = result.fetchone()
+    if row is None:
+        raise ApiError(404, "orgs.not_found", "Org not found")
+    from provisa.api.app import state as _app_state
+
+    cfg = getattr(_app_state, "config", None)
+    if cfg is None:
+        raise ApiError(503, "orgs.config_not_loaded", "Server configuration is not loaded")
+    message = compose_invite_message(
+        branding=document,
+        to="invitee@example.com",
+        org_name=row._mapping["name"],
+        org_id=org_id,
+        inviter="you",
+        role_id="analyst",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        base_url=cfg.mail.base_url,
+        token="preview-token",
+    )
+    return {"subject": message.subject, "html": message.html, "text": message.body}
 
 
 @router.put("/{org_id}/branding/logo")

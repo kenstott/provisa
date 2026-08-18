@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 71c6aa57-6c99-4902-9183-50b6e16a90c7
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -70,6 +71,28 @@ export async function saveOrgBranding(orgId: string, branding: OrgBranding): Pro
     throw new Error(serverMessage(data, requestFailed("saveOrgBranding", res.status)));
   }
   return (await res.json()).branding;
+}
+
+/**
+ * The invitation as it would arrive under the branding currently in the editor.
+ *
+ * The server composes it with the same function that sends the real message, so the preview is the
+ * message rather than a second copy of the template kept here.
+ */
+export async function previewInviteMessage(
+  orgId: string,
+  branding: OrgBranding,
+): Promise<{ subject: string; html: string; text: string }> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/branding/preview-invite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(branding),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("previewInviteMessage", res.status)));
+  }
+  return res.json();
 }
 
 /** Upload the logo as its own bytes — the file is the body, typed by Content-Type. */
