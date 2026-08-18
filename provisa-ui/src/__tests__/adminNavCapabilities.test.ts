@@ -61,12 +61,15 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1469: the org's plan, running bill and next charge. Billing is the org's own commercial
   // relationship, so an org_admin owns it without holding anything deployment-wide.
   "/admin/billing": "org_settings",
+  // REQ-1349: the cache surface is the org's own cached results, response TTL and redirect policy.
+  // The one deployment-wide half of it — which store the node writes to — is gated inside the page
+  // on `platform_settings`, so the route itself belongs to the org.
+  "/admin/cache": "org_settings",
 };
 
 // Deployment-wide surfaces. A multitenant org_admin does not hold `platform_settings`
 // (apply_tenancy_role_grants withdraws it), so none of these appear for one.
 const DEPLOYMENT_WIDE = [
-  "/admin/cache",
   "/admin/federation-engine",
   "/admin/encryption",
   "/admin/auth",
@@ -134,6 +137,9 @@ describe("admin surface capabilities", () => {
       if (path === "/admin/glossary") continue;
       // REQ-1469: billing's nav entry is the account-menu item in NavBar.tsx, asserted below.
       if (path === "/admin/billing") continue;
+      // The health table was merged into the dashboard, so /admin/system-health is a deep link to
+      // /admin/overview's section rather than a nav entry of its own.
+      if (path === "/admin/system-health") continue;
       expect(nav[path], path).toBe(capability);
     }
   });
@@ -146,6 +152,26 @@ describe("admin surface capabilities", () => {
     expect(linkAt).toBeGreaterThan(-1);
     const gate = source.slice(Math.max(0, linkAt - 200), linkAt);
     expect(gate).toContain('capability="org_settings"');
+  });
+
+  it("gates every top-level nav link on the right its route requires", () => {
+    // The Relationships link shipped ungated while /relationships requires create_relationship, so
+    // an analyst saw the tab and landed on the permission error. Each of these routes carries its
+    // own <Route> rather than a table row, so the gate is read out of App.tsx around the path.
+    const navSource = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
+    const appSource = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    for (const path of ["/sources", "/tables", "/relationships"]) {
+      const routeAt = appSource.indexOf(`path="${path}"`);
+      expect(routeAt, path).toBeGreaterThan(-1);
+      const capability = /capability="([a-z_]+)"/.exec(
+        appSource.slice(routeAt, routeAt + 400),
+      )?.[1];
+      const linkAt = navSource.indexOf(`to="${path}"`);
+      expect(linkAt, path).toBeGreaterThan(-1);
+      expect(navSource.slice(Math.max(0, linkAt - 300), linkAt), path).toContain(
+        `capability="${capability}"`,
+      );
+    }
   });
 
   it("shows billing in the account menu gated on the deployment flag and its route's right", () => {

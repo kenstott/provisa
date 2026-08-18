@@ -276,10 +276,23 @@ export function AuthProvider({
       setAvailableRoles(allRoles);
       setAssignments(userAssignments);
 
+      // REQ-273/REQ-1295: reconcile the acting role against the roles just resolved, in BOTH
+      // directions. A role the caller no longer holds — after an org switch, which keeps
+      // `provisa_role` and the selectedRole state from the org being left, or after an assignment
+      // is revoked — must not stay acting: it is stamped into the `role=` parameter of
+      // /data/rest/docs, whose Swagger page repeats it as X-Provisa-Role, and the server refuses a
+      // role the user is not assigned with 403 "Role 'x' is not assigned to this user". The rest of
+      // the app never sends that header, so the stale role surfaces only there — the OpenAPI page
+      // failing to load its spec while every other surface works.
       const savedRoleId = localStorage.getItem("provisa_role");
-      if (savedRoleId) {
-        const match = allRoles.find((r) => r.id === savedRoleId);
-        if (match) setSelectedRole(match);
+      const saved = savedRoleId ? allRoles.find((r) => r.id === savedRoleId) : undefined;
+      if (saved) {
+        setSelectedRole(saved);
+      } else {
+        if (savedRoleId) localStorage.removeItem("provisa_role");
+        setSelectedRole((current) =>
+          current === "all" || allRoles.some((r) => r.id === current.id) ? current : "all",
+        );
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setters are stable; gate on authEnabled

@@ -22,8 +22,8 @@ describe("entryItem", () => {
   beforeEach(() => localStorage.clear());
 
   it("honours the remembered item when the caller still holds its right", () => {
-    remember("/admin/system-health");
-    expect(entryItem(admin, ["observability"])?.to).toBe("/admin/system-health");
+    remember("/admin/reports");
+    expect(entryItem(admin, ["observability"])?.to).toBe("/admin/reports");
   });
 
   it("drops a remembered item the caller may not reach, landing on the first permitted tab", () => {
@@ -46,6 +46,13 @@ describe("entryItem", () => {
   it("returns undefined when the caller holds no admin surface", () => {
     expect(entryItem(admin, ["query_development"])).toBeUndefined();
     expect(entryItem(admin, [])).toBeUndefined();
+  });
+
+  it("hides the org-engine tab on a deployment without the commercial plugin", () => {
+    // REQ-1412: its router ships in provisa_commercial, so an installed Provisa would link to a 404.
+    remember("/admin/org-engine");
+    expect(entryItem(admin, ["org_settings"], false)?.to).not.toBe("/admin/org-engine");
+    expect(entryItem(admin, ["org_settings"], true)?.to).toBe("/admin/org-engine");
   });
 
   it("clears the remembered item at session start so it cannot cross identities", () => {

@@ -54,7 +54,7 @@ export function NavBar() {
 
   const routeGroup = activeGroupId(location.pathname);
   const adminGroup = NAV_GROUPS.find((g) => g.id === "admin");
-  const adminEntry = adminGroup ? entryItem(adminGroup, capabilities) : undefined;
+  const adminEntry = adminGroup ? entryItem(adminGroup, capabilities, billing) : undefined;
 
   // When route changes into a group, clear any manual pin so the route drives display
   useEffect(() => {
@@ -130,7 +130,7 @@ export function NavBar() {
     }
     // Navigate to the last-visited PERMITTED item in the group (or the first permitted one)
     const group = NAV_GROUPS.find((g) => g.id === id);
-    const target = group ? entryItem(group, capabilities) : undefined;
+    const target = group ? entryItem(group, capabilities, billing) : undefined;
     if (target) navigate(target.to);
     setPinnedGroup(null);
   }
@@ -169,9 +169,13 @@ export function NavBar() {
               {t("navBar.tables")}
             </NavLink>
           </CapabilityGate>
-          <NavLink to="/relationships" data-tour="nav-relationships">
-            {t("navBar.relationships")}
-          </NavLink>
+          {/* Same capability the /relationships route gates on — an ungated link led an analyst
+              straight to "You do not have permission to view this page." */}
+          <CapabilityGate capability="create_relationship">
+            <NavLink to="/relationships" data-tour="nav-relationships">
+              {t("navBar.relationships")}
+            </NavLink>
+          </CapabilityGate>
           <CapabilityGate capability="org_settings">
             <NavLink to="/admin/glossary" data-tour="nav-glossary">
               {t("navBar.itemGlossary")}
@@ -179,7 +183,7 @@ export function NavBar() {
           </CapabilityGate>
           {/* REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
               rendering it left a tab that swallowed the click and never navigated. */}
-          {NAV_GROUPS.filter((group) => entryItem(group, capabilities)).map((group) => {
+          {NAV_GROUPS.filter((group) => entryItem(group, capabilities, billing)).map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
               <button
@@ -319,20 +323,22 @@ export function NavBar() {
       </nav>
       {displayedGroup && (
         <nav className="subnav" ref={subnavRef}>
-          {displayedGroup.items.map((item) => (
-            <span key={item.to} className="subnav-item-wrapper">
-              {item.separatorBefore && <span className="subnav-sep">|</span>}
-              {item.comingSoon ? (
-                <span className="subnav-coming-soon">
-                  {t("navBar.comingSoon", { label: t(item.labelKey) })}
-                </span>
-              ) : (
-                <CapabilityGate capability={item.capability}>
-                  <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
-                </CapabilityGate>
-              )}
-            </span>
-          ))}
+          {displayedGroup.items
+            .filter((item) => !(item.commercial && !billing))
+            .map((item) => (
+              <span key={item.to} className="subnav-item-wrapper">
+                {item.separatorBefore && <span className="subnav-sep">|</span>}
+                {item.comingSoon ? (
+                  <span className="subnav-coming-soon">
+                    {t("navBar.comingSoon", { label: t(item.labelKey) })}
+                  </span>
+                ) : (
+                  <CapabilityGate capability={item.capability}>
+                    <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
+                  </CapabilityGate>
+                )}
+              </span>
+            ))}
           <div className="subnav-extra" ref={setSubnavExtraNode} />
         </nav>
       )}

@@ -15,7 +15,7 @@
 // org creator hit. Under enforced auth the role list must contain only assigned roles, or nothing.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "../../test-utils/render";
+import { render, screen, act } from "../../test-utils/render";
 import { AuthProvider, useAuth } from "../AuthContext";
 
 const fetchMe = vi.fn();
@@ -34,9 +34,13 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 }));
 
 function Probe() {
-  const { role, availableRoles, error, devMode } = useAuth();
+  const { role, availableRoles, error, devMode, selectRole, refresh } = useAuth();
   return (
     <div>
+      <button onClick={() => selectRole(availableRoles.find((r) => r.id === "analyst")!)}>
+        act as analyst
+      </button>
+      <button onClick={() => void refresh()}>refresh</button>
       <span data-testid="role">{role?.id ?? "none"}</span>
       <span data-testid="available">{availableRoles.map((r) => r.id).join(",") || "none"}</span>
       <span data-testid="error">{error ?? "none"}</span>
@@ -113,6 +117,38 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
     renderAuth(true);
 
     expect(await screen.findByTestId("role")).toHaveTextContent("org_admin");
+    // Cleared, not merely ignored: it is stamped into the `role=` parameter of /data/rest/docs,
+    // whose Swagger page repeats it as X-Provisa-Role and gets a 403 for it.
+    expect(localStorage.getItem("provisa_role")).toBeNull();
+  });
+
+  it("drops an acting role the caller no longer holds when the roles resolve again", async () => {
+    // The org-switch case: selectedRole and `provisa_role` belong to the org being left. Keeping
+    // them acting sends a role the user is not assigned in the org being entered, which the server
+    // refuses 403 -- visible only on the OpenAPI page, the one surface that sends X-Provisa-Role.
+    fetchMe.mockResolvedValue({
+      ...ORG_ADMIN_IDENTITY,
+      assignments: [
+        { role_id: "org_admin", domain_id: "*" },
+        { role_id: "analyst", domain_id: "*" },
+      ],
+    });
+    refetchRoles.mockResolvedValue(ORG_ROLE_CATALOG);
+
+    renderAuth(true);
+    expect(await screen.findByTestId("available")).toHaveTextContent("analyst");
+    await act(async () => {
+      screen.getByRole("button", { name: "act as analyst" }).click();
+    });
+    expect(screen.getByTestId("role")).toHaveTextContent("analyst");
+
+    fetchMe.mockResolvedValue(ORG_ADMIN_IDENTITY);
+    await act(async () => {
+      screen.getByRole("button", { name: "refresh" }).click();
+    });
+
+    expect(await screen.findByTestId("role")).toHaveTextContent("org_admin");
+    expect(localStorage.getItem("provisa_role")).toBeNull();
   });
 
   it("acts as the data-plane role, not platform_admin, when both are assigned", async () => {
