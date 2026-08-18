@@ -608,7 +608,10 @@ resource "google_compute_instance" "front_door" {
       WantedBy=multi-user.target
       UNIT
       systemctl daemon-reload
-      systemctl enable --now provisa-front-door
+      systemctl enable provisa-front-door
+      # restart, not enable --now: re-running this script to ship a new proxy.py is a no-op for a
+      # unit that is already active, which leaves the old code serving.
+      systemctl restart provisa-front-door
     SHELL
   })
 
