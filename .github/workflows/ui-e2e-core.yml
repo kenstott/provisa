@@ -74,9 +74,14 @@ jobs:
         working-directory: provisa-ui
         run: npm ci
 
+      # No --with-deps: the ubuntu-24.04 runner image already carries chromium's shared
+      # libraries and fonts, and the apt refresh it triggers has stalled past the job
+      # timeout when the azure mirror is unreachable (run 32158624857: 28.5 minutes on
+      # `Get:5 ... noble-security InRelease`, zero tests run).
       - name: Install Playwright browser
         working-directory: provisa-ui
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 6
+        run: npx playwright install chromium
 
       - name: Run Playwright core lane
         working-directory: provisa-ui
