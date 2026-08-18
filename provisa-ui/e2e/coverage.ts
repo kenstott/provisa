@@ -110,22 +110,21 @@ export const test = base.extend<{
   // illegal outside a spec/describe body, and this module is imported by every spec.
   extraHTTPHeaders: [{ "x-e2e-worker": String(PARALLEL_INDEX) }, { option: true }],
   page: async ({ page, allowedBrowserErrors }, use) => {
-    // The cloud deployment runs in demo mode, where App.tsx calls resetTourStateForDemoSession()
-    // once per browser session: it deletes the "already offered the tour" flag so each visitor is
-    // shown the guided tour, and the tour then drives the page away from wherever the spec
-    // navigated. The reset is spent by a sessionStorage marker, which Playwright's storageState
-    // cannot carry — so it is written here, before any page script runs, together with the seen
-    // flag it would otherwise erase. tour-page-preload.spec.ts opts back in with ?tour=1, which
+    // A fresh profile is offered the guided tour, and that offer is a modal whose overlay swallows
+    // every click a spec tries to make. No spec here is testing the offer, so each page starts
+    // already-offered: the seen flag suppresses the modal, and the demo-reset marker spends the
+    // once-per-session reset App.tsx performs in demo mode (resetTourStateForDemoSession), which
+    // would otherwise erase the seen flag before the offer is decided. The marker lives in
+    // sessionStorage, which Playwright's storageState cannot carry, so both are written here,
+    // before any page script runs. tour-page-preload.spec.ts opts back in with ?tour=1, which
     // starts the tour regardless of the flag.
-    if (TARGET === "cloud") {
-      await page.addInitScript(
-        ([seenKey, resetKey]) => {
-          sessionStorage.setItem(resetKey, "true");
-          localStorage.setItem(seenKey, "true");
-        },
-        [TOUR_SEEN_KEY, TOUR_DEMO_RESET_KEY],
-      );
-    }
+    await page.addInitScript(
+      ([seenKey, resetKey]) => {
+        sessionStorage.setItem(resetKey, "true");
+        localStorage.setItem(seenKey, "true");
+      },
+      [TOUR_SEEN_KEY, TOUR_DEMO_RESET_KEY],
+    );
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
     page.on("console", (msg) => {
