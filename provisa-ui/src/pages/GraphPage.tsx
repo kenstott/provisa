@@ -45,15 +45,14 @@ export function GraphPage() {
   const location = useLocation();
   // A query forwarded from NL "Open in Cypher" or the guided tour, captured ONCE at mount.
   // Consumed after auth resolves so it runs exactly once with the correct role (see below).
+  // REQ-1472: the localStorage handoff is READ here but deleted only where it is actually run.
+  // OnboardGate renders PageLoading instead of its children while /auth/me is in flight, so this
+  // page can mount, unmount and remount before the run effect ever fires; deleting the key at
+  // mount lost the query on that remount and the frame never appeared at all.
   const [forwardedQuery] = useState<string | null>(() => {
     const st = location.state as { query?: string; autoRun?: boolean } | null;
     if (st?.query && st.autoRun) return st.query;
-    const ls = localStorage.getItem("provisa.graph.pending_query");
-    if (ls) {
-      localStorage.removeItem("provisa.graph.pending_query");
-      return ls;
-    }
-    return null;
+    return localStorage.getItem("provisa.graph.pending_query");
   });
   const forwardedRunRef = useRef(false);
   const [frames, setFrames] = useState<FrameData[]>(graphState.frames);
@@ -381,6 +380,7 @@ export function GraphPage() {
     // has resolved, then run exactly once with the correct role.
     if (authLoading || forwardedRunRef.current || !forwardedQuery) return;
     forwardedRunRef.current = true;
+    localStorage.removeItem("provisa.graph.pending_query");
     setHistoryQuery(forwardedQuery);
     runQuery(forwardedQuery);
   }, [runQuery, authLoading, forwardedQuery]);
