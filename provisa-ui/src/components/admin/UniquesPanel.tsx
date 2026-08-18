@@ -25,6 +25,7 @@ import {
 } from "@mantine/core";
 import { Info, Plus, X } from "lucide-react";
 import type { UniqueConstraint } from "../../types/admin";
+import { usePanelState } from "../../hooks/usePanelState";
 
 interface Props {
   uniques: UniqueConstraint[];
@@ -34,6 +35,7 @@ interface Props {
 
 export function UniquesPanel({ uniques, columns, onChange }: Props) {
   const { t } = useTranslation();
+  const [panel, setPanel] = usePanelState("uniques");
 
   const update = (i: number, patch: Partial<UniqueConstraint>) => {
     onChange(uniques.map((u, idx) => (idx === i ? { ...u, ...patch } : u)));
@@ -42,7 +44,13 @@ export function UniquesPanel({ uniques, columns, onChange }: Props) {
   const add = () => onChange([...uniques, { name: "", columns: [] }]);
 
   return (
-    <Accordion variant="contained" mt="md" data-testid="uniques-panel">
+    <Accordion
+      variant="separated"
+      mt="md"
+      value={panel}
+      onChange={setPanel}
+      data-testid="uniques-panel"
+    >
       <Accordion.Item value="uniques">
         <Accordion.Control>
           <Group gap={6} align="center">

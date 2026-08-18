@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "Loading admin dashboard...",
-    "title": "Admin Dashboard",
+    "title": "Admin",
     "platformSettings": "Platform Settings",
     "redirect": "Redirect",
     "enabled": "Enabled",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "SQL Naming Convention",
     "sqlNamingConventionHint": "Casing applied to names on the SQL plane — what the pgwire, Bolt and semantic-SQL surfaces query. Set separately from the GraphQL convention so renaming one plane never renames the other.",
     "domainMode": "Domain Mode",
-    "domainModeHint": "Legacy leaves domains inert; Single stores everything under one hidden domain; Namespaced requires a domain on every table. Changing this backs up and resets the configuration.",
-    "domainModeLegacy": "Legacy (unset)",
+    "domainModeHint": "Single stores every table under one domain; Namespaced requires a domain on every table. Changing this deletes this organization's sources, tables and domains.",
     "domainModeSingle": "Single domain",
     "domainModeNamespaced": "Namespaced",
-    "defaultDomain": "Default Domain",
-    "defaultDomainHint": "The domain every table is stored under in Single mode.",
     "applyDomainPolicy": "Apply Domain Policy",
     "sampling": "Sampling",
     "defaultSampleSize": "Default Sample Size",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "Cancel",
     "policyResetApply": "Reset & Apply",
-    "policyApplied": "Domain policy applied. Backup saved: {{backup}}",
-    "policyApplyFailed": "Failed to apply domain policy"
+    "policyApplied": "Domain policy applied. This organization's catalog was reset.",
+    "policyApplyFailed": "Failed to apply domain policy",
+    "settingsPanel": "Settings"
   }
 }

@@ -22,6 +22,10 @@ export interface DropdownItem {
   capability: Capability;
   comingSoon?: boolean;
   separatorBefore?: boolean;
+  // REQ-1412: the surface exists only where the commercial plugin is installed — its router is
+  // mounted by that plugin, so an installed Provisa would link to a 404. Resolved from the same
+  // `billing` flag /auth/me reports for the billing tab.
+  commercial?: boolean;
 }
 
 export interface NavGroup {
@@ -81,14 +85,16 @@ export const NAV_GROUPS: NavGroup[] = [
       // `org_settings` covers the surfaces whose subject is the acting org itself. org_admin holds
       // both in either tenancy mode, so an org administrator gets a useful Admin tab without any
       // reach into deployment-wide settings or into another org.
-      { to: "/admin/overview", labelKey: "navBar.itemOverview", capability: "observability" },
+      // The dashboard: the catalog counts and the component health table, which were two nav
+      // entries showing one page's worth of read-only status between them.
+      { to: "/admin/overview", labelKey: "navBar.itemDashboard", capability: "observability" },
       { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "org_settings" },
       // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
       // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a
       // role name. The seed grants it to platform_admin always and to org_admin only in a
       // single-tenant deployment (apply_tenancy_role_grants), so a multitenant org_admin never sees
       // these entries.
-      { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "platform_settings" },
+      { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "org_settings" },
       {
         to: "/admin/scheduled-tasks",
         labelKey: "navBar.itemScheduler",
@@ -100,11 +106,17 @@ export const NAV_GROUPS: NavGroup[] = [
         capability: "platform_settings",
       },
       // REQ-1412: which engine lane THIS org runs on (shared / isolated / external) is the org's
-      // own setting, not the deployment's — org_settings, so a multitenant org_admin has it.
+      // own setting, not the deployment's — org_settings, so a multitenant org_admin has it. Hosted
+      // deployments only: choosing among coordinators the PLATFORM offers is not a question an
+      // installed Provisa has, and its router ships in the commercial plugin.
       {
         to: "/admin/org-engine",
-        labelKey: "navBar.itemOrgEngine",
+        // Labelled "Federation" like the deployment-wide tab: the two never appear together --
+        // that one needs platform_settings, this one org_settings -- and to a tenant administrator
+        // the lane their queries run on IS the federation setting they have.
+        labelKey: "navBar.itemFederation",
         capability: "org_settings",
+        commercial: true,
       },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
@@ -128,13 +140,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
       // REQ-1387: the glossary route stays /admin/glossary (org_settings) but its nav entry is
       // the top-level Glossary link in NavBar.tsx, not an item of this group.
-      { to: "/admin/system-health", labelKey: "navBar.itemHealth", capability: "observability" },
       {
         to: "/admin/observability",
         labelKey: "navBar.itemObservability",
         capability: "observability",
       },
-      { to: "/admin/mcp-server", labelKey: "navBar.itemMcpServer", capability: "admin" },
       { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "org_settings" },
     ],
   },
@@ -163,9 +173,14 @@ export function writeLastSubnav(groupId: string, to: string) {
 // at it. Entering the group landed on the denied route, whose NotAuthorized fallback replaces the
 // whole page INCLUDING this subnav, so there was nothing left to click to reach a permitted tab.
 // A preference that no longer resolves is dropped in favour of the first tab that does.
-export function entryItem(group: NavGroup, capabilities: string[]): DropdownItem | undefined {
+export function entryItem(
+  group: NavGroup,
+  capabilities: string[],
+  commercial = true,
+): DropdownItem | undefined {
   const reachable = group.items.filter(
-    (i) => !i.comingSoon && hasCapability(capabilities, i.capability),
+    (i) =>
+      !i.comingSoon && hasCapability(capabilities, i.capability) && !(i.commercial && !commercial),
   );
   const remembered = readLastSubnav()[group.id];
   return reachable.find((i) => i.to === remembered) ?? reachable[0];

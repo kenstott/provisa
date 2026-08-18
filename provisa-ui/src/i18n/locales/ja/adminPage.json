@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "管理ダッシュボードを読み込み中...",
-    "title": "管理ダッシュボード",
+    "title": "管理",
     "platformSettings": "プラットフォーム設定",
     "redirect": "リダイレクト",
     "enabled": "有効",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "SQL 命名規則",
     "sqlNamingConventionHint": "SQL プレーン上の名前に適用する表記で、pgwire、Bolt、セマンティック SQL の各サーフェスが参照します。GraphQL の規則とは別に設定するため、一方のプレーンの名前を変えても他方は変わりません。",
     "domainMode": "ドメインモード",
-    "domainModeHint": "Legacy はドメインを無効のままにし、Single はすべてを 1 つの隠しドメインに格納し、Namespaced はすべてのテーブルにドメインを要求します。これを変更すると、設定をバックアップしてリセットします。",
-    "domainModeLegacy": "レガシー（未設定）",
+    "domainModeHint": "Single はすべてのテーブルを 1 つのドメインに格納し、Namespaced はすべてのテーブルにドメインを要求します。これを変更すると、この組織のソース、テーブル、ドメインが削除されます。",
     "domainModeSingle": "単一ドメイン",
     "domainModeNamespaced": "名前空間付き",
-    "defaultDomain": "デフォルトドメイン",
-    "defaultDomainHint": "Single モードですべてのテーブルが格納されるドメイン。",
     "applyDomainPolicy": "ドメインポリシーを適用",
     "sampling": "サンプリング",
     "defaultSampleSize": "デフォルトサンプルサイズ",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "キャンセル",
     "policyResetApply": "リセットして適用",
-    "policyApplied": "ドメインポリシーを適用しました。バックアップ保存先: {{backup}}",
-    "policyApplyFailed": "ドメインポリシーの適用に失敗しました"
+    "policyApplied": "ドメインポリシーを適用しました。この組織のカタログをリセットしました。",
+    "policyApplyFailed": "ドメインポリシーの適用に失敗しました",
+    "settingsPanel": "設定"
   }
 }

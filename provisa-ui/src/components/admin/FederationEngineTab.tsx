@@ -27,6 +27,7 @@ import {
   setFederationEngine,
   type FederationEngineState,
 } from "../../api/admin";
+import { FederationSettingsCards } from "./settingsCards";
 
 // REQ-916: select + configure the federation engine. Changes persist to the platform config and
 // take effect on the next service restart (the engine is bound once at boot).
@@ -220,6 +221,10 @@ export function FederationEngineTab() {
           </Text>
         )}
       </Group>
+
+      {/* REQ-1349: sampling, CDC and remote-GraphQL limits govern how this engine reaches sources,
+          so they sit with the engine rather than on the Admin overview. */}
+      <FederationSettingsCards />
     </Stack>
   );
 }

@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "Admin-Dashboard wird geladen...",
-    "title": "Admin-Dashboard",
+    "title": "Verwaltung",
     "platformSettings": "Plattformeinstellungen",
     "redirect": "Weiterleitung",
     "enabled": "Aktiviert",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "SQL-Namenskonvention",
     "sqlNamingConventionHint": "Schreibweise für Namen auf der SQL-Ebene — also das, was die pgwire-, Bolt- und Semantic-SQL-Oberflächen abfragen. Getrennt von der GraphQL-Konvention gesetzt, damit das Umbenennen einer Ebene nie die andere umbenennt.",
     "domainMode": "Domänenmodus",
-    "domainModeHint": "Legacy lässt Domänen inaktiv; Single speichert alles unter einer verborgenen Domäne; Namespaced verlangt für jede Tabelle eine Domäne. Eine Änderung sichert die Konfiguration und setzt sie zurück.",
-    "domainModeLegacy": "Legacy (nicht gesetzt)",
+    "domainModeHint": "Single speichert jede Tabelle unter einer Domäne; Namespaced verlangt für jede Tabelle eine Domäne. Eine Änderung löscht die Quellen, Tabellen und Domänen dieser Organisation.",
     "domainModeSingle": "Einzelne Domäne",
     "domainModeNamespaced": "Mit Namespaces",
-    "defaultDomain": "Standarddomäne",
-    "defaultDomainHint": "Die Domäne, unter der im Single-Modus jede Tabelle gespeichert wird.",
     "applyDomainPolicy": "Domänenrichtlinie anwenden",
     "sampling": "Sampling",
     "defaultSampleSize": "Standard-Stichprobengröße",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "Abbrechen",
     "policyResetApply": "Zurücksetzen & Anwenden",
-    "policyApplied": "Domänenrichtlinie angewendet. Backup gespeichert: {{backup}}",
-    "policyApplyFailed": "Anwenden der Domänenrichtlinie fehlgeschlagen"
+    "policyApplied": "Domänenrichtlinie angewendet. Der Katalog dieser Organisation wurde zurückgesetzt.",
+    "policyApplyFailed": "Anwenden der Domänenrichtlinie fehlgeschlagen",
+    "settingsPanel": "Einstellungen"
   }
 }

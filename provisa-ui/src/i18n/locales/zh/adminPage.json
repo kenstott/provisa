@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "正在加载管理仪表板…",
-    "title": "管理仪表板",
+    "title": "管理",
     "platformSettings": "平台设置",
     "redirect": "重定向",
     "enabled": "已启用",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "SQL 命名约定",
     "sqlNamingConventionHint": "应用于 SQL 平面上名称的大小写规则，即 pgwire、Bolt 和语义 SQL 各接口所查询的名称。它与 GraphQL 约定分开设置，因此重命名一个平面绝不会重命名另一个。",
     "domainMode": "域模式",
-    "domainModeHint": "Legacy 使域处于停用状态；Single 将所有内容存放在一个隐藏域下；Namespaced 要求每张表都指定域。更改此项会备份并重置配置。",
-    "domainModeLegacy": "旧版（未设置）",
+    "domainModeHint": "Single 将所有表存放在单个域下；Namespaced 要求每张表都指定域。更改此项会删除本组织的数据源、表和域。",
     "domainModeSingle": "单一域",
     "domainModeNamespaced": "命名空间化",
-    "defaultDomain": "默认域",
-    "defaultDomainHint": "Single 模式下所有表所属的域。",
     "applyDomainPolicy": "应用域策略",
     "sampling": "采样",
     "defaultSampleSize": "默认样本大小",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "取消",
     "policyResetApply": "重置并应用",
-    "policyApplied": "域策略已应用。备份已保存：{{backup}}",
-    "policyApplyFailed": "应用域策略失败"
+    "policyApplied": "域策略已应用。此组织的目录已重置。",
+    "policyApplyFailed": "应用域策略失败",
+    "settingsPanel": "设置"
   }
 }

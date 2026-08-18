@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "Caricamento della dashboard di amministrazione...",
-    "title": "Dashboard di amministrazione",
+    "title": "Amministrazione",
     "platformSettings": "Impostazioni della piattaforma",
     "redirect": "Reindirizzamento",
     "enabled": "Abilitato",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "Convenzione di denominazione SQL",
     "sqlNamingConventionHint": "Convenzione di scrittura applicata ai nomi sul piano SQL, cioè ciò che interrogano le superfici pgwire, Bolt e SQL semantico. Si imposta separatamente dalla convenzione GraphQL, così rinominare un piano non rinomina mai l'altro.",
     "domainMode": "Modalità dominio",
-    "domainModeHint": "Legacy lascia i domini inattivi; Single memorizza tutto sotto un unico dominio nascosto; Namespaced richiede un dominio su ogni tabella. Cambiarlo esegue il backup e reimposta la configurazione.",
-    "domainModeLegacy": "Legacy (non impostata)",
+    "domainModeHint": "Single memorizza ogni tabella sotto un unico dominio; Namespaced richiede un dominio su ogni tabella. Cambiarlo elimina origini, tabelle e domini di questa organizzazione.",
     "domainModeSingle": "Dominio singolo",
     "domainModeNamespaced": "Con namespace",
-    "defaultDomain": "Dominio predefinito",
-    "defaultDomainHint": "Il dominio sotto cui viene memorizzata ogni tabella in modalità Single.",
     "applyDomainPolicy": "Applica criterio di dominio",
     "sampling": "Campionamento",
     "defaultSampleSize": "Dimensione campione predefinita",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "Annulla",
     "policyResetApply": "Reimposta e applica",
-    "policyApplied": "Criterio di dominio applicato. Backup salvato: {{backup}}",
-    "policyApplyFailed": "Applicazione del criterio di dominio non riuscita"
+    "policyApplied": "Criterio di dominio applicato. Il catalogo di questa organizzazione è stato reimpostato.",
+    "policyApplyFailed": "Applicazione del criterio di dominio non riuscita",
+    "settingsPanel": "Impostazioni"
   }
 }

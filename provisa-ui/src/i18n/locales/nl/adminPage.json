@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "Beheerdashboard laden...",
-    "title": "Beheerdashboard",
+    "title": "Beheer",
     "platformSettings": "Platforminstellingen",
     "redirect": "Omleiden",
     "enabled": "Ingeschakeld",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "SQL-naamgevingsconventie",
     "sqlNamingConventionHint": "Schrijfwijze voor namen op het SQL-vlak — dat wat de pgwire-, Bolt- en semantische SQL-oppervlakken bevragen. Los van de GraphQL-conventie ingesteld, zodat het hernoemen van het ene vlak nooit het andere hernoemt.",
     "domainMode": "Domeinmodus",
-    "domainModeHint": "Legacy laat domeinen inactief; Single slaat alles onder één verborgen domein op; Namespaced vereist een domein op elke tabel. Dit wijzigen maakt een back-up van de configuratie en zet die terug.",
-    "domainModeLegacy": "Legacy (niet ingesteld)",
+    "domainModeHint": "Single slaat elke tabel op onder één domein; Namespaced vereist een domein op elke tabel. Dit wijzigen verwijdert de bronnen, tabellen en domeinen van deze organisatie.",
     "domainModeSingle": "Eén domein",
     "domainModeNamespaced": "Met naamruimte",
-    "defaultDomain": "Standaarddomein",
-    "defaultDomainHint": "Het domein waaronder elke tabel in de modus Single wordt opgeslagen.",
     "applyDomainPolicy": "Domeinbeleid toepassen",
     "sampling": "Steekproeven",
     "defaultSampleSize": "Standaard steekproefgrootte",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "Annuleren",
     "policyResetApply": "Resetten en toepassen",
-    "policyApplied": "Domeinbeleid toegepast. Back-up opgeslagen: {{backup}}",
-    "policyApplyFailed": "Toepassen van domeinbeleid mislukt"
+    "policyApplied": "Domeinbeleid toegepast. De catalogus van deze organisatie is opnieuw ingesteld.",
+    "policyApplyFailed": "Toepassen van domeinbeleid mislukt",
+    "settingsPanel": "Instellingen"
   }
 }

@@ -1,5 +1,6 @@
 {
   "systemHealth": {
+    "title": "Systemzustand",
     "loading": "Systemzustand wird geladen...",
     "colComponent": "Komponente",
     "colStatus": "Status",
@@ -21,7 +22,7 @@
     "serverConnected": "Server verbunden",
     "serverUnreachable": "Server nicht erreichbar",
     "redisServer": "Redis-Server",
-    "fakeredis": "fakeredis (In-Process)",
+    "fakeredis": "In-Memory",
     "running": "Läuft",
     "unreachable": "Nicht erreichbar",
     "port": "Port {{port}}",

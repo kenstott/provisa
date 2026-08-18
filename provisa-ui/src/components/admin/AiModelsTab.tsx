@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Accordion,
   ActionIcon,
   Alert,
   Autocomplete,
@@ -38,6 +39,7 @@ import {
   type AiModelsState,
   type VectorModel,
 } from "../../api/aiModels";
+import { usePanelState } from "../../hooks/usePanelState";
 
 // REQ-464, REQ-419, REQ-500, REQ-370: configure per-operation AI model assignments, the
 // embedding-model registry, and the NL rate limit. All bind at startup — changes apply on restart.
@@ -90,6 +92,34 @@ const EMPTY_VECTOR_MODEL: VectorModel = {
   base_url: null,
   enabled: true,
 };
+
+/**
+ * A section of this tab as an expandable panel — the same separated-accordion shape the other
+ * admin sections use, open by default because the assignments are what the tab is for.
+ */
+function Panel({
+  testId,
+  title,
+  children,
+}: {
+  testId: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = usePanelState(testId, "section");
+  return (
+    <Accordion variant="separated" value={open} onChange={setOpen} data-testid={testId}>
+      <Accordion.Item value="section">
+        <Accordion.Control>
+          <Title order={4}>{title}</Title>
+        </Accordion.Control>
+        <Accordion.Panel>
+          <Stack gap="md">{children}</Stack>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
+  );
+}
 
 export function AiModelsTab() {
   const { t } = useTranslation();
@@ -230,204 +260,207 @@ export function AiModelsTab() {
 
   return (
     <Stack maw={860} gap="md">
-      <Title order={4}>{t("aiModelsTab.apiKeysHeading")}</Title>
-      <Text c="dimmed" size="sm">
-        {t("aiModelsTab.apiKeysIntro")}
-      </Text>
-      <Stack gap="sm">
-        {LLM_VENDORS.map((vendor) => {
-          const isSet = !!s.api_keys_set[vendor];
-          const clearing = !!clearApiKeys[vendor];
-          return (
-            <Stack key={vendor} gap={4}>
-              <Group gap="xs" align="center">
-                <Text size="sm" fw={500} tt="capitalize">
-                  {vendor}
-                </Text>
-                <Badge
-                  color={isSet ? "green" : "gray"}
-                  data-testid={`ai-models-${vendor}-key-status`}
-                >
-                  {isSet ? t("aiModelsTab.apiKeySet") : t("aiModelsTab.apiKeyNotSet")}
-                </Badge>
-              </Group>
-              <Group gap="sm" align="flex-end">
-                <PasswordInput
-                  aria-label={t("aiModelsTab.apiKeyLabel", { vendor })}
-                  placeholder={t("aiModelsTab.apiKeyPlaceholder")}
-                  data-testid={`ai-models-${vendor}-key-input`}
-                  value={apiKeyInputs[vendor] ?? ""}
-                  onChange={(e) => {
-                    const value = e.currentTarget.value;
-                    setApiKeyInputs((prev) => ({ ...prev, [vendor]: value }));
-                    setClearApiKeys((prev) => ({ ...prev, [vendor]: false }));
-                  }}
-                  style={{ flex: 1 }}
-                />
-                {isSet && (
-                  <Button
-                    variant="subtle"
-                    color="red"
-                    data-testid={`ai-models-${vendor}-key-clear`}
-                    onClick={() => {
-                      setApiKeyInputs((prev) => ({ ...prev, [vendor]: "" }));
-                      setClearApiKeys((prev) => ({ ...prev, [vendor]: true }));
-                    }}
+      <Panel testId="ai-models-keys-panel" title={t("aiModelsTab.apiKeysHeading")}>
+        <Text c="dimmed" size="sm">
+          {t("aiModelsTab.apiKeysIntro")}
+        </Text>
+        <Stack gap="sm">
+          {LLM_VENDORS.map((vendor) => {
+            const isSet = !!s.api_keys_set[vendor];
+            const clearing = !!clearApiKeys[vendor];
+            return (
+              <Stack key={vendor} gap={4}>
+                <Group gap="xs" align="center">
+                  <Text size="sm" fw={500} tt="capitalize">
+                    {vendor}
+                  </Text>
+                  <Badge
+                    color={isSet ? "green" : "gray"}
+                    data-testid={`ai-models-${vendor}-key-status`}
                   >
-                    {t("aiModelsTab.apiKeyClear")}
-                  </Button>
+                    {isSet ? t("aiModelsTab.apiKeySet") : t("aiModelsTab.apiKeyNotSet")}
+                  </Badge>
+                </Group>
+                <Group gap="sm" align="flex-end">
+                  <PasswordInput
+                    aria-label={t("aiModelsTab.apiKeyLabel", { vendor })}
+                    placeholder={t("aiModelsTab.apiKeyPlaceholder")}
+                    data-testid={`ai-models-${vendor}-key-input`}
+                    value={apiKeyInputs[vendor] ?? ""}
+                    onChange={(e) => {
+                      const value = e.currentTarget.value;
+                      setApiKeyInputs((prev) => ({ ...prev, [vendor]: value }));
+                      setClearApiKeys((prev) => ({ ...prev, [vendor]: false }));
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  {isSet && (
+                    <Button
+                      variant="subtle"
+                      color="red"
+                      data-testid={`ai-models-${vendor}-key-clear`}
+                      onClick={() => {
+                        setApiKeyInputs((prev) => ({ ...prev, [vendor]: "" }));
+                        setClearApiKeys((prev) => ({ ...prev, [vendor]: true }));
+                      }}
+                    >
+                      {t("aiModelsTab.apiKeyClear")}
+                    </Button>
+                  )}
+                </Group>
+                {clearing && (
+                  <Text c="orange" size="sm">
+                    {t("aiModelsTab.apiKeyWillClear")}
+                  </Text>
                 )}
-              </Group>
-              {clearing && (
-                <Text c="orange" size="sm">
-                  {t("aiModelsTab.apiKeyWillClear")}
+              </Stack>
+            );
+          })}
+        </Stack>
+      </Panel>
+
+      <Panel testId="ai-models-assignments-panel" title={t("aiModelsTab.modelsHeading")}>
+        <Text c="dimmed" size="sm">
+          {t("aiModelsTab.modelsIntro")}
+        </Text>
+        <Stack gap="sm">
+          {ROLE_KEYS.map((k) => {
+            const v = s.ai_models[k];
+            const vendor = roleVendor(v);
+            const model = roleModel(v);
+            return (
+              <Stack key={k} gap={4}>
+                <Text size="sm" fw={500}>
+                  {t(`aiModelsTab.role_${k}`)}
                 </Text>
-              )}
-            </Stack>
-          );
-        })}
-      </Stack>
+                <Group gap="sm" align="flex-end">
+                  <Autocomplete
+                    label={t("aiModelsTab.vendorLabel")}
+                    data-testid={`ai-model-${k}-vendor`}
+                    data={OPERATION_VENDOR_OPTIONS}
+                    value={vendor}
+                    onChange={(val) => setRoleVendor(k, val)}
+                    style={{ width: 200 }}
+                  />
+                  <Autocomplete
+                    label={t("aiModelsTab.modelLabel")}
+                    data-testid={`ai-model-${k}`}
+                    data={vendorModels[vendor] ?? []}
+                    value={model}
+                    onChange={(val) => setRoleModel(k, val)}
+                    rightSection={loadingVendors[vendor] ? <Loader size="xs" /> : undefined}
+                    // A vendor that publishes no listing, or has no key yet, leaves the field a
+                    // plain typed input — the reason is stated under it rather than marking the
+                    // value invalid, since typing a model name by hand stays valid.
+                    description={vendorModelErrors[vendor]}
+                    style={{ flex: 1 }}
+                  />
+                </Group>
+              </Stack>
+            );
+          })}
+        </Stack>
+      </Panel>
 
-      <Title order={4}>{t("aiModelsTab.modelsHeading")}</Title>
-      <Text c="dimmed" size="sm">
-        {t("aiModelsTab.modelsIntro")}
-      </Text>
+      <Panel testId="ai-models-nl-panel" title={t("aiModelsTab.nlHeading")}>
+        <Text c="dimmed" size="sm">
+          {t("aiModelsTab.nlIntro")}
+        </Text>
+        <NumberInput
+          label={t("aiModelsTab.rateLimitLabel")}
+          data-testid="ai-models-rate-limit"
+          value={s.nl.rate_limit ?? ""}
+          onChange={(val) => setS({ ...s, nl: { rate_limit: val === "" ? null : Number(val) } })}
+        />
+      </Panel>
 
-      <Stack gap="sm">
-        {ROLE_KEYS.map((k) => {
-          const v = s.ai_models[k];
-          const vendor = roleVendor(v);
-          const model = roleModel(v);
-          return (
-            <Stack key={k} gap={4}>
-              <Text size="sm" fw={500}>
-                {t(`aiModelsTab.role_${k}`)}
-              </Text>
-              <Group gap="sm" align="flex-end">
-                <Autocomplete
-                  label={t("aiModelsTab.vendorLabel")}
-                  data-testid={`ai-model-${k}-vendor`}
-                  data={OPERATION_VENDOR_OPTIONS}
-                  value={vendor}
-                  onChange={(val) => setRoleVendor(k, val)}
-                  style={{ width: 200 }}
-                />
-                <Autocomplete
-                  label={t("aiModelsTab.modelLabel")}
-                  data-testid={`ai-model-${k}`}
-                  data={vendorModels[vendor] ?? []}
-                  value={model}
-                  onChange={(val) => setRoleModel(k, val)}
-                  rightSection={loadingVendors[vendor] ? <Loader size="xs" /> : undefined}
-                  // A vendor that publishes no listing, or has no key yet, leaves the field a
-                  // plain typed input — the reason is stated under it rather than marking the
-                  // value invalid, since typing a model name by hand stays valid.
-                  description={vendorModelErrors[vendor]}
-                  style={{ flex: 1 }}
-                />
-              </Group>
-            </Stack>
-          );
-        })}
-      </Stack>
-
-      <Title order={4}>{t("aiModelsTab.nlHeading")}</Title>
-      <Text c="dimmed" size="sm">
-        {t("aiModelsTab.nlIntro")}
-      </Text>
-      <NumberInput
-        label={t("aiModelsTab.rateLimitLabel")}
-        data-testid="ai-models-rate-limit"
-        value={s.nl.rate_limit ?? ""}
-        onChange={(val) => setS({ ...s, nl: { rate_limit: val === "" ? null : Number(val) } })}
-      />
-
-      <Title order={4}>{t("aiModelsTab.vectorHeading")}</Title>
-      <Text c="dimmed" size="sm">
-        {t("aiModelsTab.vectorIntro")}
-      </Text>
-      <Table data-testid="ai-models-vector-table">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>{t("aiModelsTab.vectorId")}</Table.Th>
-            <Table.Th>{t("aiModelsTab.vectorProvider")}</Table.Th>
-            <Table.Th>{t("aiModelsTab.vectorDimensions")}</Table.Th>
-            <Table.Th>{t("aiModelsTab.vectorApiKeyEnv")}</Table.Th>
-            <Table.Th>{t("aiModelsTab.vectorBaseUrl")}</Table.Th>
-            <Table.Th>{t("aiModelsTab.vectorEnabled")}</Table.Th>
-            <Table.Th />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {s.vector_models.map((vm, i) => (
-            <Table.Tr key={i}>
-              <Table.Td>
-                <TextInput
-                  aria-label={t("aiModelsTab.vectorId")}
-                  value={vm.id}
-                  onChange={(e) => setVector(i, { id: e.currentTarget.value })}
-                />
-              </Table.Td>
-              <Table.Td>
-                <Select
-                  aria-label={t("aiModelsTab.vectorProvider")}
-                  data={PROVIDER_OPTIONS}
-                  value={vm.provider}
-                  onChange={(val) => setVector(i, { provider: val ?? "openai" })}
-                />
-              </Table.Td>
-              <Table.Td>
-                <NumberInput
-                  aria-label={t("aiModelsTab.vectorDimensions")}
-                  value={vm.dimensions}
-                  onChange={(val) => setVector(i, { dimensions: Number(val) })}
-                />
-              </Table.Td>
-              <Table.Td>
-                <TextInput
-                  aria-label={t("aiModelsTab.vectorApiKeyEnv")}
-                  value={vm.api_key_env ?? ""}
-                  onChange={(e) => setVector(i, { api_key_env: e.currentTarget.value || null })}
-                />
-              </Table.Td>
-              <Table.Td>
-                <TextInput
-                  aria-label={t("aiModelsTab.vectorBaseUrl")}
-                  value={vm.base_url ?? ""}
-                  onChange={(e) => setVector(i, { base_url: e.currentTarget.value || null })}
-                />
-              </Table.Td>
-              <Table.Td>
-                <Checkbox
-                  aria-label={t("aiModelsTab.vectorEnabled")}
-                  checked={vm.enabled}
-                  onChange={(e) => setVector(i, { enabled: e.currentTarget.checked })}
-                />
-              </Table.Td>
-              <Table.Td>
-                <ActionIcon
-                  color="red"
-                  variant="subtle"
-                  aria-label={t("aiModelsTab.removeVectorModel")}
-                  onClick={() => removeVector(i)}
-                >
-                  <Trash2 size={16} />
-                </ActionIcon>
-              </Table.Td>
+      <Panel testId="ai-models-vector-panel" title={t("aiModelsTab.vectorHeading")}>
+        <Text c="dimmed" size="sm">
+          {t("aiModelsTab.vectorIntro")}
+        </Text>
+        <Table data-testid="ai-models-vector-table">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("aiModelsTab.vectorId")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.vectorProvider")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.vectorDimensions")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.vectorApiKeyEnv")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.vectorBaseUrl")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.vectorEnabled")}</Table.Th>
+              <Table.Th />
             </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-      <Group>
-        <Button
-          variant="light"
-          leftSection={<Plus size={14} />}
-          onClick={addVector}
-          data-testid="ai-models-add-vector"
-        >
-          {t("aiModelsTab.addVectorModel")}
-        </Button>
-      </Group>
+          </Table.Thead>
+          <Table.Tbody>
+            {s.vector_models.map((vm, i) => (
+              <Table.Tr key={i}>
+                <Table.Td>
+                  <TextInput
+                    aria-label={t("aiModelsTab.vectorId")}
+                    value={vm.id}
+                    onChange={(e) => setVector(i, { id: e.currentTarget.value })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label={t("aiModelsTab.vectorProvider")}
+                    data={PROVIDER_OPTIONS}
+                    value={vm.provider}
+                    onChange={(val) => setVector(i, { provider: val ?? "openai" })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <NumberInput
+                    aria-label={t("aiModelsTab.vectorDimensions")}
+                    value={vm.dimensions}
+                    onChange={(val) => setVector(i, { dimensions: Number(val) })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <TextInput
+                    aria-label={t("aiModelsTab.vectorApiKeyEnv")}
+                    value={vm.api_key_env ?? ""}
+                    onChange={(e) => setVector(i, { api_key_env: e.currentTarget.value || null })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <TextInput
+                    aria-label={t("aiModelsTab.vectorBaseUrl")}
+                    value={vm.base_url ?? ""}
+                    onChange={(e) => setVector(i, { base_url: e.currentTarget.value || null })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Checkbox
+                    aria-label={t("aiModelsTab.vectorEnabled")}
+                    checked={vm.enabled}
+                    onChange={(e) => setVector(i, { enabled: e.currentTarget.checked })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    aria-label={t("aiModelsTab.removeVectorModel")}
+                    onClick={() => removeVector(i)}
+                  >
+                    <Trash2 size={16} />
+                  </ActionIcon>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+        <Group>
+          <Button
+            variant="light"
+            leftSection={<Plus size={14} />}
+            onClick={addVector}
+            data-testid="ai-models-add-vector"
+          >
+            {t("aiModelsTab.addVectorModel")}
+          </Button>
+        </Group>
+      </Panel>
 
       <Alert color="yellow" icon={<TriangleAlert size={16} />}>
         {s.restart_required_note}

@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "טוען את לוח המחוונים לניהול...",
-    "title": "לוח מחוונים לניהול",
+    "title": "ניהול",
     "platformSettings": "הגדרות פלטפורמה",
     "redirect": "הפניה מחדש",
     "enabled": "מופעל",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "מוסכמת שמות ל-SQL",
     "sqlNamingConventionHint": "אופן הכתיב של שמות במשטח ה-SQL — זה שממשקי pgwire, Bolt ו-SQL סמנטי מתשאלים. נקבע בנפרד ממוסכמת ה-GraphQL, ולכן שינוי שמות במשטח אחד לעולם אינו משנה שמות במשטח האחר.",
     "domainMode": "מצב דומיין",
-    "domainModeHint": "Legacy משאיר דומיינים לא פעילים; Single שומר הכול בדומיין מוסתר יחיד; Namespaced מחייב דומיין לכל טבלה. שינוי מגבה את התצורה ומאפס אותה.",
-    "domainModeLegacy": "Legacy (לא מוגדר)",
+    "domainModeHint": "Single שומר כל טבלה בדומיין יחיד; Namespaced מחייב דומיין לכל טבלה. שינוי מוחק את המקורות, הטבלאות והדומיינים של ארגון זה.",
     "domainModeSingle": "דומיין יחיד",
     "domainModeNamespaced": "עם מרחבי שמות (Namespaced)",
-    "defaultDomain": "דומיין ברירת מחדל",
-    "defaultDomainHint": "הדומיין שבו יושבת כל טבלה במצב Single.",
     "applyDomainPolicy": "החלת מדיניות דומיין",
     "sampling": "דגימה",
     "defaultSampleSize": "גודל דגימה ברירת מחדל",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "ביטול",
     "policyResetApply": "איפוס והחלה",
-    "policyApplied": "מדיניות הדומיין הוחלה. גיבוי נשמר: {{backup}}",
-    "policyApplyFailed": "החלת מדיניות הדומיין נכשלה"
+    "policyApplied": "מדיניות הדומיין הוחלה. הקטלוג של הארגון הזה אופס.",
+    "policyApplyFailed": "החלת מדיניות הדומיין נכשלה",
+    "settingsPanel": "הגדרות"
   }
 }

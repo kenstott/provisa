@@ -1,5 +1,6 @@
 {
   "systemHealth": {
+    "title": "システムの状態",
     "loading": "システムヘルスを読み込み中...",
     "colComponent": "コンポーネント",
     "colStatus": "ステータス",
@@ -21,7 +22,7 @@
     "serverConnected": "サーバー接続済み",
     "serverUnreachable": "サーバーに到達不能",
     "redisServer": "Redisサーバー",
-    "fakeredis": "fakeredis（インプロセス）",
+    "fakeredis": "インメモリ",
     "running": "稼働中",
     "unreachable": "到達不能",
     "port": "ポート {{port}}",

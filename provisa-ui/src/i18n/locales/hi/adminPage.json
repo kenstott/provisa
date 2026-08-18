@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "एडमिन डैशबोर्ड लोड हो रहा है...",
-    "title": "एडमिन डैशबोर्ड",
+    "title": "एडमिन",
     "platformSettings": "प्लेटफ़ॉर्म सेटिंग्स",
     "redirect": "रीडायरेक्ट",
     "enabled": "सक्षम",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "SQL नामकरण परिपाटी",
     "sqlNamingConventionHint": "SQL सतह पर नामों का केस — यानी pgwire, Bolt और सिमैंटिक SQL इंटरफ़ेस जो क्वेरी करते हैं। यह GraphQL परिपाटी से अलग सेट होता है, इसलिए एक सतह का नाम बदलने से दूसरी का नाम कभी नहीं बदलता।",
     "domainMode": "डोमेन मोड",
-    "domainModeHint": "Legacy डोमेन को निष्क्रिय रखता है; Single सब कुछ एक छिपे डोमेन में रखता है; Namespaced हर टेबल के लिए डोमेन अनिवार्य करता है। बदलने पर कॉन्फ़िगरेशन का बैकअप बनाकर उसे रीसेट किया जाता है।",
-    "domainModeLegacy": "लीगेसी (अनसेट)",
+    "domainModeHint": "Single हर टेबल को एक ही डोमेन में रखता है; Namespaced हर टेबल के लिए डोमेन अनिवार्य करता है। बदलने पर इस संगठन के स्रोत, टेबल और डोमेन हटा दिए जाते हैं।",
     "domainModeSingle": "एकल डोमेन",
     "domainModeNamespaced": "नेमस्पेस्ड",
-    "defaultDomain": "डिफ़ॉल्ट डोमेन",
-    "defaultDomainHint": "Single मोड में हर टेबल जिस डोमेन में रहती है।",
     "applyDomainPolicy": "डोमेन नीति लागू करें",
     "sampling": "सैंपलिंग",
     "defaultSampleSize": "डिफ़ॉल्ट सैंपल आकार",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "रद्द करें",
     "policyResetApply": "रीसेट करें और लागू करें",
-    "policyApplied": "डोमेन नीति लागू की गई। बैकअप सहेजा गया: {{backup}}",
-    "policyApplyFailed": "डोमेन नीति लागू करने में विफल"
+    "policyApplied": "डोमेन नीति लागू की गई। इस संगठन का कैटलॉग रीसेट कर दिया गया।",
+    "policyApplyFailed": "डोमेन नीति लागू करने में विफल",
+    "settingsPanel": "सेटिंग्स"
   }
 }

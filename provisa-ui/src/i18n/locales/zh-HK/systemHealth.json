@@ -1,5 +1,6 @@
 {
   "systemHealth": {
+    "title": "系統健康狀態",
     "loading": "正在載入系統健康狀態…",
     "colComponent": "元件",
     "colStatus": "狀態",
@@ -21,7 +22,7 @@
     "serverConnected": "伺服器已連線",
     "serverUnreachable": "無法連接伺服器",
     "redisServer": "Redis 伺服器",
-    "fakeredis": "fakeredis（處理程序內）",
+    "fakeredis": "記憶體內",
     "running": "執行中",
     "unreachable": "無法連接",
     "port": "連接埠 {{port}}",

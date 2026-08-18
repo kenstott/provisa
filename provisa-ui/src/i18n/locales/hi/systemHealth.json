@@ -1,5 +1,6 @@
 {
   "systemHealth": {
+    "title": "सिस्टम हेल्थ",
     "loading": "सिस्टम स्वास्थ्य लोड हो रहा है...",
     "colComponent": "घटक",
     "colStatus": "स्थिति",
@@ -21,7 +22,7 @@
     "serverConnected": "सर्वर कनेक्टेड",
     "serverUnreachable": "सर्वर पहुँच से बाहर",
     "redisServer": "Redis सर्वर",
-    "fakeredis": "fakeredis (इन-प्रोसेस)",
+    "fakeredis": "इन-मेमोरी",
     "running": "चल रहा है",
     "unreachable": "पहुँच से बाहर",
     "port": "पोर्ट {{port}}",

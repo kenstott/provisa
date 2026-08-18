@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "Carregando painel de administração...",
-    "title": "Painel de administração",
+    "title": "Administração",
     "platformSettings": "Configurações da plataforma",
     "redirect": "Redirecionamento",
     "enabled": "Habilitado",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "Convenção de nomes SQL",
     "sqlNamingConventionHint": "Grafia aplicada aos nomes no plano SQL — o que as superfícies pgwire, Bolt e SQL semântico consultam. Definida separadamente da convenção do GraphQL, para que renomear um plano nunca renomeie o outro.",
     "domainMode": "Modo de domínio",
-    "domainModeHint": "Legacy deixa os domínios inativos; Single armazena tudo sob um único domínio oculto; Namespaced exige um domínio em cada tabela. Alterar isso faz backup e redefine a configuração.",
-    "domainModeLegacy": "Legado (não definido)",
+    "domainModeHint": "Single armazena todas as tabelas sob um único domínio; Namespaced exige um domínio em cada tabela. Alterar isso exclui as fontes, tabelas e domínios desta organização.",
     "domainModeSingle": "Domínio único",
     "domainModeNamespaced": "Com namespace",
-    "defaultDomain": "Domínio padrão",
-    "defaultDomainHint": "O domínio sob o qual cada tabela é armazenada no modo Single.",
     "applyDomainPolicy": "Aplicar política de domínio",
     "sampling": "Amostragem",
     "defaultSampleSize": "Tamanho de amostra padrão",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "Cancelar",
     "policyResetApply": "Redefinir e aplicar",
-    "policyApplied": "Política de domínio aplicada. Backup salvo: {{backup}}",
-    "policyApplyFailed": "Falha ao aplicar a política de domínio"
+    "policyApplied": "Política de domínio aplicada. O catálogo desta organização foi redefinido.",
+    "policyApplyFailed": "Falha ao aplicar a política de domínio",
+    "settingsPanel": "Configurações"
   }
 }

@@ -1,5 +1,6 @@
 {
   "systemHealth": {
+    "title": "תקינות המערכת",
     "loading": "טוען את מצב תקינות המערכת...",
     "colComponent": "רכיב",
     "colStatus": "מצב",
@@ -21,7 +22,7 @@
     "serverConnected": "השרת מחובר",
     "serverUnreachable": "השרת אינו נגיש",
     "redisServer": "שרת Redis",
-    "fakeredis": "fakeredis (בתוך התהליך)",
+    "fakeredis": "בזיכרון",
     "running": "פועל",
     "unreachable": "אינו נגיש",
     "port": "פורט {{port}}",

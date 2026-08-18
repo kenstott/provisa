@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "正在載入管理儀表板…",
-    "title": "管理儀表板",
+    "title": "管理",
     "platformSettings": "平台設定",
     "redirect": "重新導向",
     "enabled": "已啟用",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "SQL 命名慣例",
     "sqlNamingConventionHint": "套用於 SQL 平面名稱的大小寫規則，即 pgwire、Bolt 與語意 SQL 各介面所查詢的名稱。它與 GraphQL 慣例分開設定，因此重新命名其中一個平面絕不會改動另一個。",
     "domainMode": "網域模式",
-    "domainModeHint": "Legacy 讓網域維持停用；Single 將所有內容存放於一個隱藏網域之下；Namespaced 要求每張表都指定網域。變更此項會備份並重設組態。",
-    "domainModeLegacy": "舊有（未設定）",
+    "domainModeHint": "Single 將所有資料表存放於單一網域之下；Namespaced 要求每張表都指定網域。變更此項會刪除此組織的來源、資料表與網域。",
     "domainModeSingle": "單一網域",
     "domainModeNamespaced": "命名空間",
-    "defaultDomain": "預設網域",
-    "defaultDomainHint": "Single 模式下所有表所屬的網域。",
     "applyDomainPolicy": "套用網域原則",
     "sampling": "抽樣",
     "defaultSampleSize": "預設樣本大小",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "取消",
     "policyResetApply": "重設並套用",
-    "policyApplied": "已套用網域原則。備份已儲存：{{backup}}",
-    "policyApplyFailed": "套用網域原則失敗"
+    "policyApplied": "已套用網域原則。此組織的目錄已重設。",
+    "policyApplyFailed": "套用網域原則失敗",
+    "settingsPanel": "設定"
   }
 }

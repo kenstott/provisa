@@ -1,7 +1,7 @@
 {
   "adminPage": {
     "loading": "Chargement du tableau de bord d'administration...",
-    "title": "Tableau de bord d'administration",
+    "title": "Administration",
     "platformSettings": "Paramètres de la plateforme",
     "redirect": "Redirection",
     "enabled": "Activé",
@@ -23,12 +23,9 @@
     "sqlNamingConvention": "Convention de nommage SQL",
     "sqlNamingConventionHint": "Casse appliquée aux noms du plan SQL — ce que les surfaces pgwire, Bolt et SQL sémantique interrogent. Définie séparément de la convention GraphQL, afin que renommer un plan ne renomme jamais l'autre.",
     "domainMode": "Mode de domaine",
-    "domainModeHint": "Legacy laisse les domaines inertes ; Single stocke tout sous un domaine masqué ; Namespaced exige un domaine sur chaque table. Changer ce réglage sauvegarde puis réinitialise la configuration.",
-    "domainModeLegacy": "Hérité (non défini)",
+    "domainModeHint": "Single stocke chaque table sous un domaine unique ; Namespaced exige un domaine sur chaque table. Changer ce réglage supprime les sources, tables et domaines de cette organisation.",
     "domainModeSingle": "Domaine unique",
     "domainModeNamespaced": "Par espace de noms",
-    "defaultDomain": "Domaine par défaut",
-    "defaultDomainHint": "Le domaine sous lequel chaque table est stockée en mode Single.",
     "applyDomainPolicy": "Appliquer la politique de domaine",
     "sampling": "Échantillonnage",
     "defaultSampleSize": "Taille d'échantillon par défaut",
@@ -90,7 +87,8 @@
     "policyConfirmWord": "RESET",
     "policyCancel": "Annuler",
     "policyResetApply": "Réinitialiser et appliquer",
-    "policyApplied": "Politique de domaine appliquée. Sauvegarde enregistrée : {{backup}}",
-    "policyApplyFailed": "Échec de l'application de la politique de domaine"
+    "policyApplied": "Politique de domaine appliquée. Le catalogue de cette organisation a été réinitialisé.",
+    "policyApplyFailed": "Échec de l'application de la politique de domaine",
+    "settingsPanel": "Paramètres"
   }
 }
