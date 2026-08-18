@@ -11,14 +11,15 @@ import type { Page } from "@playwright/test";
 const QUERY = "MATCH (n:Inquiries) RETURN n LIMIT 5";
 
 async function seedFavoriteAndOpenPanel(page: Page) {
-  await page.goto("/graph");
-
-  // Seed a favorite directly into localStorage so we don't need a live query result
-  await page.evaluate((q) => {
+  // Seed a favorite directly into localStorage so we don't need a live query result. Written in an
+  // init script rather than by goto -> evaluate -> reload: that sequence costs two full loads of the
+  // Istanbul-instrumented bundle through the one Vite server all workers share, which on a loaded
+  // CI runner ran past this helper's 15s tab budget and the 30s test timeout.
+  await page.addInitScript((q) => {
     const fav = { id: "test-fav-1", query: q, label: "My Favorite", ts: Date.now() };
     localStorage.setItem("provisa.graph.favorites", JSON.stringify([fav]));
   }, QUERY);
-  await page.reload();
+  await page.goto("/graph");
 
   // Click the Favorites tab (tabs are icon-only; identified by title attribute)
   const favTab = page.locator(".graph-sidebar-tab[title='Favorites']");
