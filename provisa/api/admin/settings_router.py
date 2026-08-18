@@ -18,7 +18,11 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from provisa.api.admin._platform_guard import require_platform_settings
+from provisa.api.admin._platform_guard import (
+    has_platform_settings,
+    require_org_settings,
+    require_platform_settings,
+)
 from provisa.api.admin._config_io import config_path, read_config, write_config
 from provisa.api.errors import ApiError
 
@@ -132,9 +136,35 @@ async def upload_config(request: Request):  # REQ-164
         return {"success": False, "message": str(e)}
 
 
+# The blocks whose subject is the DEPLOYMENT, not the org: engine sizing, the row-limit and
+# sampling ceilings, FK auto-tracking, the inbound-CDC consumer identity, the materialization
+# store, the tracing pipeline, and the remote-GraphQL traversal limits. Omitted entirely for a
+# caller without `platform_settings` (REQ-1349) — an org administrator neither reads nor writes
+# them, and the endpoint answers ordinary pages so it cannot refuse the whole request instead.
+_PLATFORM_BLOCKS = (
+    "engine",
+    "limits",
+    "relationships",
+    "cdc",
+    "materialize",
+    "sampling",
+    "otel",
+    "graphql_remote",
+)
+
+# `naming` is split rather than dropped: the domain mode is the org's (REQ-1266), the conventions
+# configure the process-global naming module and are the deployment's.
+_NAMING_ORG_SUBKEYS = ("use_domains", "default_domain")
+
+# The PUT blocks an org administrator may write with ``org_settings`` alone. A body touching
+# anything else is checked against ``platform_settings`` as well.
+_ORG_BLOCKS = ("redirect", "cache")
+
+
 @router.get("/admin/settings")
-async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
-    """Return current platform settings."""
+async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416, REQ-1349
+    """Return the settings visible to this caller: the acting org's, plus — for a caller holding
+    ``platform_settings`` — the deployment-wide blocks."""
     from provisa.executor.redirect import RedirectConfig
     from provisa.compiler.sql_gen import _get_default_row_limit
     from provisa.api.app import state
@@ -146,6 +176,8 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         SubsystemTracesConfig,
     )
 
+    from provisa.core import domain_policy
+
     rc = RedirectConfig.from_env()
     cfg = read_config()
     naming_cfg = cfg.get("naming", {})
@@ -156,9 +188,19 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         # Default lives in one place — the ProvisaConfig field default.
         return cfg.get(key, ProvisaConfig.model_fields[key].default)
 
-    return {
+    is_platform = has_platform_settings(request)
+    # The org's LIVE domain mode — its own override where it set one, the deployment's otherwise.
+    # Read off the policy rather than the config file, which only ever states the deployment's.
+    policy_use_domains, policy_default_domain = domain_policy.snapshot()
+
+    payload = {
         # Opt-in features the UI gates on (REQ-164): live config export/diff/patch.
-        "features": {"live_config_export": bool(getattr(state, "config_live_export", False))},
+        "features": {
+            "live_config_export": bool(getattr(state, "config_live_export", False)),
+            # Lets the UI place a control under the right tab without a second round trip, and
+            # tells it which blocks below were omitted rather than being empty.
+            "platform_settings": is_platform,
+        },
         "engine": {
             "jvm_heap_gb": int(_eng("jvm_heap_gb")),
             "query_max_memory": _eng("query_max_memory"),
@@ -184,8 +226,8 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
             "domain_prefix": naming_cfg.get("domain_prefix", False),
             "convention": naming_cfg.get("convention", "apollo_graphql"),
             "sql_convention": naming_cfg.get("sql_convention", "snake"),
-            "use_domains": naming_cfg.get("use_domains", None),
-            "default_domain": naming_cfg.get("default_domain", "default"),
+            "use_domains": policy_use_domains,
+            "default_domain": policy_default_domain,
         },
         "relationships": {
             "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower()
@@ -279,21 +321,77 @@ async def get_settings():  # REQ-165, REQ-302, REQ-303, REQ-416
         },
     }
 
+    if not is_platform:
+        for block in _PLATFORM_BLOCKS:
+            payload.pop(block)
+        payload["naming"] = {k: payload["naming"][k] for k in _NAMING_ORG_SUBKEYS}
+    return payload
 
-def _apply_redirect(r: dict, updated: list) -> None:
-    """Apply the `redirect` settings block (env-var backed)."""
-    if "enabled" in r:
-        os.environ["PROVISA_REDIRECT_ENABLED"] = str(r["enabled"]).lower()
-        updated.append("redirect.enabled")
-    if "threshold" in r:
-        os.environ["PROVISA_REDIRECT_THRESHOLD"] = str(r["threshold"])
-        updated.append("redirect.threshold")
-    if "default_format" in r:
-        os.environ["PROVISA_REDIRECT_FORMAT"] = r["default_format"]
-        updated.append("redirect.default_format")
-    if "ttl" in r:
-        os.environ["PROVISA_REDIRECT_TTL"] = str(r["ttl"])
-        updated.append("redirect.ttl")
+
+# The `redirect` fields an org owns: WHEN its results redirect and how long the link lives. The
+# object store they land in — bucket, endpoint, credentials, region — is the deployment's and has
+# no representation here (REQ-1349); RedirectConfig.from_env reads those from the platform env.
+_REDIRECT_ORG_KEYS = ("enabled", "threshold", "default_format", "ttl")
+
+
+async def _apply_org_blocks(request, body: dict, updated: list) -> None:
+    """Persist the blocks whose subject is the ACTING ORG: `redirect` and `cache.default_ttl`.
+
+    Written to the org's ``org_settings`` rows rather than to process env or the deployment YAML.
+    On a shared shard those are one storage location for every org, so the previous env-backed
+    write handed whichever org saved last a redirect threshold and a cache TTL that then governed
+    every other org's queries.
+    """
+    from provisa.api.app import state
+    from provisa.core.org_settings import read_org_overrides, write_org_overrides
+
+    if not set(body) & set(_ORG_BLOCKS):
+        return  # nothing org-scoped in this body — do not demand the org right for a platform save
+    assert state.tenant_db is not None
+    require_org_settings(request)  # REQ-1349
+    overrides = await read_org_overrides(state.tenant_db)
+    updates: dict = {}
+
+    if "redirect" in body:
+        r = body["redirect"] or {}
+        unknown = set(r) - set(_REDIRECT_ORG_KEYS)
+        if unknown:
+            raise ApiError(
+                400,
+                "settings.redirect_not_org_overridable",
+                f"not org-overridable: {', '.join(sorted(unknown))}",
+            )
+        merged = dict(overrides.get("redirect") or {})
+        for k in _REDIRECT_ORG_KEYS:
+            if k not in r:
+                continue
+            # Null clears the org's override for that field, restoring the deployment's value.
+            if r[k] is None:
+                merged.pop(k, None)
+            else:
+                merged[k] = r[k]
+            updated.append(f"redirect.{k}")
+        updates["redirect"] = merged or None
+
+    if "cache" in body and "default_ttl" in body["cache"]:
+        merged = dict(overrides.get("cache") or {})
+        ttl = body["cache"]["default_ttl"]
+        if ttl is None:
+            merged.pop("default_ttl", None)
+        else:
+            merged["default_ttl"] = int(ttl)
+        updates["cache"] = merged or None
+        updated.append("cache.default_ttl")
+
+    if not updates:
+        return
+    identity = getattr(request.state, "identity", None)
+    await write_org_overrides(
+        state.tenant_db, updates, updated_by=getattr(identity, "user_id", "anonymous")
+    )
+    # The query path reads these off the bound runtime, so the cached copy is refreshed here —
+    # otherwise the org's next query still redirects and caches on the pre-save values.
+    state.settings_overrides = await read_org_overrides(state.tenant_db)
 
 
 def _apply_otel(o: dict, updated: list) -> None:
@@ -460,13 +558,14 @@ async def _apply_naming(n: dict, updated: list) -> str | None:
 
 
 def _apply_scalars(body: dict, state, updated: list) -> None:
-    """Apply the simple env/state-backed scalar setting blocks (limits/cache/sampling/relationships)."""
+    """Apply the deployment-wide env-backed scalar blocks (limits/sampling/relationships).
+
+    `cache.default_ttl` is NOT here — it governs the org's own results and is written as an org
+    override by _apply_org_blocks.
+    """
     if "limits" in body and "default_row_limit" in body["limits"]:
         os.environ["PROVISA_DEFAULT_ROW_LIMIT"] = str(body["limits"]["default_row_limit"])
         updated.append("limits.default_row_limit")
-    if "cache" in body and "default_ttl" in body["cache"]:
-        state.response_cache_default_ttl = int(body["cache"]["default_ttl"])
-        updated.append("cache.default_ttl")
     if "sampling" in body and "default_sample_size" in body["sampling"]:
         os.environ["PROVISA_SAMPLE_SIZE"] = str(int(body["sampling"]["default_sample_size"]))
         updated.append("sampling.default_sample_size")
@@ -478,19 +577,25 @@ def _apply_scalars(body: dict, state, updated: list) -> None:
 
 
 @router.put("/admin/settings")
-async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-302, REQ-303, REQ-416
-    """Update platform settings at runtime."""
-    require_platform_settings(request)  # REQ-1337
+async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-416, REQ-1349
+    """Update settings at runtime, gated per block by whose settings the block is.
+
+    `redirect` and `cache` are the acting org's and need only ``org_settings``; every other block
+    is deployment-wide and still needs ``platform_settings``. A body carrying both is checked
+    against both rights.
+    """
     from provisa.api.app import state
 
     body = await request.json()
     updated: list = []
     restart_required = False
 
+    await _apply_org_blocks(request, body, updated)
+    if set(body) - set(_ORG_BLOCKS):
+        require_platform_settings(request)  # REQ-1337
+
     if "engine" in body:
         restart_required = _apply_engine(body["engine"], state, updated) or restart_required
-    if "redirect" in body:
-        _apply_redirect(body["redirect"], updated)
     _apply_scalars(body, state, updated)
     if "graphql_remote" in body:
         _apply_graphql_remote(body["graphql_remote"], updated)
@@ -519,18 +624,22 @@ async def update_settings(request: Request):  # REQ-165, REQ-194, REQ-253, REQ-3
 
 
 @router.post("/admin/domain-policy")
-async def set_domain_policy(request: Request):  # REQ-165
-    """Change the domain policy (use_domains / default_domain).
+async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
+    """Change the ACTING ORG's domain policy (use_domains / default_domain).
 
-    DESTRUCTIVE: the domain policy is a foundational decision — every registered table's
-    domain_id is bound to it. Changing it backs up the current config, then resets the
-    config to a clean default state (no sources, tables, domains, or relationships;
-    auth and roles preserved) with the new policy applied, and reloads.
+    DESTRUCTIVE, and destructive for this org only: every registered table's domain_id is bound to
+    the policy, so the org's sources, tables, domains and relationships are purged and its schemas
+    rebuilt. The policy is stored as the org's ``naming`` override — one org modelling a single
+    domain says nothing about the next, and on a shared shard rewriting the deployment YAML here
+    would reset every other org's catalog along with this one's.
     """
-    require_platform_settings(request)  # REQ-1337
-    import datetime
-
-    from provisa.api.app import _load_and_build
+    require_org_settings(request)  # REQ-1349
+    from provisa.api.app import _rebuild_schemas, state
+    from provisa.api.app_loaders import _build_source_pools_and_enums
+    from provisa.core import domain_policy
+    from provisa.core.config_loader import load_config, parse_config_dict
+    from provisa.core.org_settings import read_org_overrides, write_org_overrides
+    from provisa.core.repositories import role as role_repo
 
     body = await request.json()
     use_domains = body.get("use_domains", None)
@@ -546,47 +655,68 @@ async def set_domain_policy(request: Request):  # REQ-165
             "default_domain required when use_domains=false",
         )
 
-    path = config_path()
-    cfg = read_config()
+    tenant_db = state.tenant_db
+    if tenant_db is None:
+        raise ApiError(
+            409, "settings.no_active_org", "no org is bound to this request; sign in to an org first"
+        )
 
-    # 1. Timestamped backup of the existing config.
-    backup_name = ""
-    if path.exists():
-        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        backup = path.with_name(f"{path.stem}.{ts}.bak{path.suffix}")
-        backup.write_text(path.read_text())
-        backup_name = backup.name
-
-    # 2. Reset to a clean default state — preserve only auth + roles.
-    naming: dict = {}
+    # 1. Persist the org's policy. `None` means "inherit the deployment's", which is the same value
+    #    that clears the override row outright.
+    naming: dict | None = None
     if use_domains is not None:
-        naming["use_domains"] = use_domains
+        naming = {"use_domains": use_domains}
         if use_domains is False:
             naming["default_domain"] = default_domain
-    new_cfg: dict = {
-        "sources": [],
-        "domains": [],
-        "tables": [],
-        "relationships": [],
-        "roles": cfg.get("roles", []),
-        "naming": naming,
+    identity = getattr(request.state, "identity", None)
+    await write_org_overrides(
+        tenant_db, {"naming": naming}, updated_by=getattr(identity, "user_id", "anonymous")
+    )
+    state.settings_overrides = await read_org_overrides(tenant_db)
+
+    # 2. Apply it to this org's policy scope before anything re-registers against it. A cleared
+    #    override (use_domains=None) resolves to the deployment's own naming block — the value the
+    #    org inherits — so the scope never reads as inert when the deployment namespaces domains.
+    deployment = read_config().get("naming", {}) or {}
+    effective = {
+        "use_domains": use_domains if use_domains is not None else deployment.get("use_domains"),
+        "default_domain": default_domain
+        if use_domains is False
+        else deployment.get("default_domain", "default"),
     }
-    if cfg.get("auth") is not None:
-        new_cfg["auth"] = cfg["auth"]
-    write_config(path, new_cfg)
+    domain_policy.configure(effective["use_domains"], effective["default_domain"])
 
-    # 3. Reload in replace mode to purge the prior sources/tables from the metadata DB.
-    _prev_replace = os.environ.get("PROVISA_CONFIG_REPLACE")
-    os.environ["PROVISA_CONFIG_REPLACE"] = "true"
-    try:
-        await _load_and_build(str(path))
-    finally:
-        if _prev_replace is None:
-            os.environ.pop("PROVISA_CONFIG_REPLACE", None)
-        else:
-            os.environ["PROVISA_CONFIG_REPLACE"] = _prev_replace
+    # 3. Purge THIS org's catalog: an empty config in replace mode deletes the sources, tables,
+    #    domains and relationships bound to the old policy. Same config→org sequence the import
+    #    surface runs — load into the org's tenant_db, then rebuild its pools and schemas.
+    async with tenant_db.acquire() as conn:
+        # Roles are org auth, not catalog: replace mode deletes every role absent from the config it
+        # is handed, so the org's own roles are read back and handed to it unchanged.
+        existing_roles = await role_repo.list_all(conn)
+    empty = parse_config_dict(
+        {
+            "sources": [],
+            "domains": [],
+            "tables": [],
+            "relationships": [],
+            "roles": existing_roles,
+            # The effective policy, not the raw override: load_config re-configures the scope from
+            # whatever naming block it is handed, so handing it the cleared form would undo step 2.
+            "naming": effective,
+        }
+    )
+    async with tenant_db.acquire() as conn:
+        await load_config(
+            empty,
+            conn,
+            state.federation_engine,
+            replace=True,
+            catalog_names=state.source_catalogs,
+        )
+    await _build_source_pools_and_enums(empty)
+    await _rebuild_schemas()
 
-    return {"success": True, "backup": backup_name, "use_domains": use_domains}
+    return {"success": True, "use_domains": use_domains}
 
 
 @router.get("/admin/federation-engine")

@@ -142,6 +142,13 @@ class OrgRuntime:
     # whichever org rebuilt last, so /data/domains hands one org's domain list to another.
     schema_build_cache: dict = field(default_factory=dict)
 
+    # REQ-1349: this org's rows from its ``org_settings`` table, read once at build time and
+    # refreshed by the settings router when the org writes one. Cached here rather than read per
+    # request because the query path consults it (response-cache TTL, large-result redirect) and a
+    # control-plane round trip per query is not a cost those readers can carry. Empty for an org
+    # that has overridden nothing — every read then resolves the deployment value.
+    settings_overrides: dict[str, Any] = field(default_factory=dict)
+
 
 class OrgRegistry:
     """Lazily-built ``dict[org_id, OrgRuntime]`` with a per-org build lock.

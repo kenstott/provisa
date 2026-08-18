@@ -35,9 +35,21 @@ if TYPE_CHECKING:
 # NL rate limit. Any key not listed here is deployment-wide by definition and is rejected.
 # REQ-1074: metadata_export is org-scoped — the catalog an org publishes to, and the credentials
 # it publishes with, belong to that org, not to the deployment.
+# REQ-1266: `naming` carries the org's DOMAIN MODE (use_domains/default_domain) — a tenant setting,
+# since one org modelling a single domain says nothing about the next. The rest of the naming block
+# (convention, sql_convention, domain_prefix) is NOT org-overridable: those configure the process-
+# global `provisa.compiler.naming` module at schema-build time, so they remain deployment-wide and
+# the settings router rejects them on this door (see NAMING_ORG_KEYS).
+# `redirect` (large-result delivery) and `cache` (default response TTL) govern the org's OWN query
+# results, so both are org-owned. The object store they land in — bucket, endpoint, credentials —
+# is the deployment's and stays in the platform env, never here.
 ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
-    {"ai_models", "vector_models", "nl", "metadata_export"}
+    {"ai_models", "vector_models", "nl", "metadata_export", "naming", "redirect", "cache"}
 )
+
+# The only `naming` sub-keys an org owns. Every other sub-key configures the process-global naming
+# module and is deployment-wide.
+NAMING_ORG_KEYS: frozenset[str] = frozenset({"use_domains", "default_domain"})
 
 
 def merge_org_overrides(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -87,6 +99,13 @@ async def write_org_overrides(
     unknown = set(updates) - ORG_OVERRIDABLE_KEYS
     if unknown:
         raise ValueError(f"not org-overridable: {', '.join(sorted(unknown))}")
+    naming = updates.get("naming")
+    if isinstance(naming, dict):
+        # The guarantee lives at the door, not only in the router: `naming` is overridable for the
+        # domain mode alone, so an org can never reach the deployment's naming conventions here.
+        extra = set(naming) - NAMING_ORG_KEYS
+        if extra:
+            raise ValueError(f"not org-overridable: naming.{', naming.'.join(sorted(extra))}")
 
     from datetime import datetime, timezone
 

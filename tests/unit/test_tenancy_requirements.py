@@ -115,6 +115,10 @@ class TestAuthMiddlewareSkipPaths:
             "/auth/provider-type",
             "/auth/bootstrap-status",
             "/setup/status",
+            # REQ-1486: an org's branding dresses the sign-in page, which renders before a token
+            # exists. Both return only what the addressed org chose to show every visitor.
+            "/orgs/branding",
+            "/orgs/branding/logo",
         }
         assert _SKIP_PATHS == expected
 

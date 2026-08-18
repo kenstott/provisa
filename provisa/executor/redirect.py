@@ -25,7 +25,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import logging
 
@@ -39,6 +39,21 @@ if TYPE_CHECKING:
 
 DEFAULT_THRESHOLD = 1000
 DEFAULT_TTL = 3600  # seconds
+
+# REQ-1349: the bound org's `redirect` overrides. `executor` cannot import API state, so the API
+# layer installs a resolver at startup; an installed single-tenant deployment installs none and
+# every field below resolves from the platform env alone.
+_org_overrides_resolver: Callable[[], dict] | None = None
+
+
+def set_org_overrides_resolver(resolver: "Callable[[], dict] | None") -> None:  # REQ-1349
+    """Install the function returning the bound org's ``redirect`` override block."""
+    global _org_overrides_resolver
+    _org_overrides_resolver = resolver
+
+
+def _org_redirect_overrides() -> dict:
+    return _org_overrides_resolver() if _org_overrides_resolver is not None else {}
 
 
 class _Encoder(json.JSONEncoder):
@@ -71,17 +86,30 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
     def from_env() -> RedirectConfig:
         import tempfile
 
+        # REQ-1349: an org may narrow WHEN its own results redirect and how long the link lives —
+        # enabled, threshold, ttl, default_format. WHERE they land (bucket, endpoint, credentials,
+        # region, local_dir) is the deployment's object store and is never org-overridable, so
+        # those stay read from the platform env below.
+        org = _org_redirect_overrides()
         enabled = os.environ.get("PROVISA_REDIRECT_ENABLED", "false").lower() == "true"
+        if "enabled" in org:
+            enabled = bool(org["enabled"])
         return RedirectConfig(
             enabled=enabled,
-            threshold=int(os.environ.get("PROVISA_REDIRECT_THRESHOLD", str(DEFAULT_THRESHOLD))),
+            threshold=int(
+                org.get(
+                    "threshold", os.environ.get("PROVISA_REDIRECT_THRESHOLD", DEFAULT_THRESHOLD)
+                )
+            ),
             bucket=os.environ.get("PROVISA_REDIRECT_BUCKET", "provisa-results"),
             endpoint_url=os.environ.get("PROVISA_REDIRECT_ENDPOINT", ""),
             access_key=os.environ.get("PROVISA_REDIRECT_ACCESS_KEY", ""),
             secret_key=os.environ.get("PROVISA_REDIRECT_SECRET_KEY", ""),
-            ttl=int(os.environ.get("PROVISA_REDIRECT_TTL", str(DEFAULT_TTL))),
+            ttl=int(org.get("ttl", os.environ.get("PROVISA_REDIRECT_TTL", DEFAULT_TTL))),
             region=os.environ.get("PROVISA_REDIRECT_REGION", "us-east-1"),
-            default_format=os.environ.get("PROVISA_REDIRECT_FORMAT", "parquet"),
+            default_format=org.get(
+                "default_format", os.environ.get("PROVISA_REDIRECT_FORMAT", "parquet")
+            ),
             encrypt=os.environ.get("PROVISA_REDIRECT_ENCRYPT", "false").lower() == "true",
             local_dir=os.environ.get(
                 "PROVISA_REDIRECT_LOCAL_DIR",

@@ -79,6 +79,8 @@ from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
 from provisa.core.config_loader import config_replace_mode, load_config, parse_config_dict
 from provisa.core.database import Database
+from provisa.core import domain_policy
+from provisa.executor import redirect as _redirect
 from provisa.core.schema_org import (
     domains as _domains_t,
     naming_rules as _naming_rules_t,
@@ -151,7 +153,10 @@ class AppState:
         ""  # random UUID set at startup; combined with schema_version for cache keys
     )
     response_cache_store: CacheStore = NoopCacheStore()
-    response_cache_default_ttl: int = 300
+    # The DEPLOYMENT's default response TTL (cache.default_ttl in the config file). An org may
+    # narrow it; the routed `response_cache_default_ttl` property below resolves the org's value
+    # over this one. Assigned by _load_and_build, never read directly by the query path.
+    deployment_cache_default_ttl: int = 300
     # REQ-1008: server-lifetime MCP catalog search index (DuckDB VSS HNSW), built lazily on first
     # search_catalog and invalidated (set None) on catalog reload. Any so the mcp package owns the type.
     mcp_catalog_index: Any = None
@@ -558,8 +563,47 @@ class AppState:
     def schema_build_cache(self, value: dict) -> None:
         self._active_runtime().schema_build_cache = value
 
+    @property
+    def settings_overrides(self) -> dict:
+        """The active org's ``org_settings`` rows (REQ-1349). Empty when it has overridden nothing."""
+        return self._active_runtime().settings_overrides
+
+    @settings_overrides.setter
+    def settings_overrides(self, value: dict) -> None:
+        self._active_runtime().settings_overrides = value
+
+    @property
+    def response_cache_default_ttl(self) -> int:
+        """The response-cache TTL for the active org: its own override, else the deployment's.
+
+        Routed rather than a plain scalar because the TTL governs the ORG's results — on a shared
+        shard a process-global scalar hands whichever org saved last a TTL every other org's
+        queries then cache under.
+        """
+        override = self._active_runtime().settings_overrides.get("cache") or {}
+        ttl = override.get("default_ttl")
+        return int(ttl) if ttl is not None else self.deployment_cache_default_ttl
+
+    @response_cache_default_ttl.setter
+    def response_cache_default_ttl(self, value: int) -> None:
+        self.deployment_cache_default_ttl = int(value)
+
 
 state = AppState()
+
+# REQ-1266: the domain mode is a tenant setting, so `provisa.core.domain_policy` keys its policy by
+# the org whose request is running. `core` cannot import this ContextVar, so the API layer installs
+# the resolver here — at import of the API package, before any request or startup build can read a
+# policy. An installed single-tenant deployment binds no org and reads the one unscoped policy.
+domain_policy.set_scope_resolver(current_org.get)
+
+
+def _org_redirect_overrides() -> dict:
+    """The bound org's `redirect` override block, for RedirectConfig.from_env (REQ-1349)."""
+    return state.settings_overrides.get("redirect") or {}
+
+
+_redirect.set_org_overrides_resolver(_org_redirect_overrides)
 
 
 async def _load_and_build(
@@ -766,6 +810,23 @@ async def _load_and_build(
         await load_config(config, conn, state.federation_engine, replace=_replace_mode)
 
     _mark("load_config")
+
+    # REQ-1349: the default org's own settings rows, layered over the deployment config just loaded.
+    # Read here rather than at first use because the query path (response TTL, redirect) reads them
+    # off the runtime. build_org_runtime does the same for every other org.
+    from provisa.core.org_settings import read_org_overrides as _read_org_overrides
+
+    assert state.tenant_db is not None
+    state.settings_overrides = await _read_org_overrides(state.tenant_db)
+    # REQ-1266: the org's domain mode wins over the deployment's, applied after load_config (which
+    # configured the scope from the config file) and before the schema build reads the policy.
+    _naming_override = state.settings_overrides.get("naming") or {}
+    if _naming_override:
+        _use, _default = domain_policy.snapshot()
+        domain_policy.configure(
+            _naming_override.get("use_domains", _use),
+            _naming_override.get("default_domain", _default),
+        )
 
     state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
 
@@ -1070,6 +1131,13 @@ async def build_org_runtime(
         await apply_tenancy_role_grants(state.tenant_db, org_id, multitenancy=state.multitenancy)
         await init_audit_schema(state.tenant_db, org_id=org_id)
 
+        # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
+        # when the org writes one. The query path (response-cache TTL, large-result redirect)
+        # reads them off the runtime, so a control-plane round trip per query is not on that path.
+        from provisa.core.org_settings import read_org_overrides
+
+        rt.settings_overrides = await read_org_overrides(state.tenant_db)
+
         host, port, database, username, _pw = cp.tenant_parts()
         assert database, "control_plane.tenant_url must specify a database"
         await _seed_built_in_sources(host or "", port, database, username or "", org_id=org_id)
@@ -1095,6 +1163,18 @@ async def build_org_runtime(
                 )
             await _build_source_pools_and_enums(config)
             await _resolve_pk_from_sources()
+
+        # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
+        # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
+        # policy to decide whether the org's schema is domain-namespaced. current_org is bound, so
+        # configure() writes this org's scope alone and no other org's policy moves.
+        naming_override = rt.settings_overrides.get("naming") or {}
+        if naming_override:
+            use, default = domain_policy.snapshot()
+            domain_policy.configure(
+                naming_override.get("use_domains", use),
+                naming_override.get("default_domain", default),
+            )
 
         await _rebuild_schemas()
 
@@ -1814,9 +1894,6 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
 
     app.include_router(settings_router)
-    from provisa.api.admin.org_engine_router import router as org_engine_router  # REQ-1412
-
-    app.include_router(org_engine_router)
     from provisa.api.admin.org_storage_router import (  # REQ-1046, REQ-1048, REQ-1049
         router as org_storage_router,
     )

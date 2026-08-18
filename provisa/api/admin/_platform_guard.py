@@ -52,6 +52,23 @@ def require_platform_settings(request: Request) -> None:  # REQ-1337
     )
 
 
+def has_platform_settings(request: Request) -> bool:  # REQ-1349
+    """Whether the caller holds ``platform_settings`` — the non-raising form of the gate above.
+
+    For surfaces that serve BOTH scopes from one door: ``GET /admin/settings`` is read by ordinary
+    pages (the domain filter, the tables and sources views), so it cannot carry a blanket gate.
+    It omits the deployment-wide blocks for a caller without the right instead of refusing.
+    """
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return True  # dev mode — no auth configured
+    caps = _resolved_capabilities(identity, state)
+    return has_platform_bypass(caps) or Capability.PLATFORM_SETTINGS.value in caps
+
+
 def _require_right(request: Request, right: str) -> None:
     """Shared body of the org-scoped gates below: platform bypass, or the named right."""
     from provisa.api.admin.capabilities import _resolved_capabilities
