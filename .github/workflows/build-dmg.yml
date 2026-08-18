@@ -534,6 +534,9 @@ jobs:
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
     # Native tier only — no compose, no observability, no container images, the same
     # payload the Windows native installer ships (packaging/windows/build-sfx.ps1).
     # The Docker tier lives in the Container DMG (build-macos-container).
@@ -600,6 +603,9 @@ jobs:
   build-macos-container:
     name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
     # Docker tier only: the compose tree + observability config. Images are fetched on
     # demand (provisa-core-images-<version>.tar.gz), mirroring build-container.ps1.
     needs: [metadata]
@@ -666,6 +672,9 @@ jobs:
   build-macos-obs:
     name: Build macOS Obs DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
     needs: [metadata, pull-images-obs, download-plugins]
     steps:
       - name: Checkout
@@ -732,6 +741,9 @@ jobs:
   build-macos-demo:
     name: Build macOS Demo DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-14
+    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
+    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    timeout-minutes: 45
     needs: [metadata, pull-images-demo, download-plugins]
     steps:
       - name: Checkout
