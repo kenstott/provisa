@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import tarfile
+from typing import Any
 
 import httpx
 
@@ -134,21 +135,31 @@ def _memory_bytes(spec: str) -> int:
     return int(text)
 
 
-def _config_archive(port: int, memory: str) -> bytes:
+def _query_budget_gb(memory_bytes: int) -> int:
+    """What one query may claim on a coordinator limited to ``memory_bytes`` (REQ-1449).
+
+    A fraction of the JVM HEAP, not of the container limit: jvm.config sets MaxRAMPercentage=70, and
+    Trino reserves a further 30% of the heap as memory.heap-headroom-per-node, so the most a query
+    can be given is 0.7 x 0.7 = 0.49 of the limit. The earlier 60%/30% pair broke both ends of that
+    — it asked for more than the heap could honour, and it set the per-node bound at HALF the
+    cluster bound on a deployment that is one container, so a query was killed at half its stated
+    budget with no second node to absorb the difference. Both bounds name the same pool here.
+    """
+    return max(1, int(memory_bytes / 1024**3 * 0.7 * 0.5))
+
+
+def _config_archive(port: int, query_max_memory_gb: int) -> bytes:
     """A tar of the coordinator's etc files, for upload into the created container.
 
     Uploading beats a bind mount: a bind mount's source path is on the DOCKER HOST, which this
     process only sees through the socket — writing it from inside the app container would put the
     files somewhere the daemon does not look.
     """
-    heap = _memory_bytes(memory)
     files = {
         "config.properties": _CONFIG_PROPERTIES.format(
             port=port,
-            # Trino rejects a max-memory above the heap; 60/30% of the container limit leaves the
-            # JVM (70% of the limit) headroom for non-query allocation.
-            query_max_memory=f"{max(1, int(heap * 0.6) // 1024**3)}GB",
-            query_max_memory_per_node=f"{max(1, int(heap * 0.3) // 1024**3)}GB",
+            query_max_memory=f"{query_max_memory_gb}GB",
+            query_max_memory_per_node=f"{query_max_memory_gb}GB",
         ),
         "jvm.config": _JVM_CONFIG,
     }
@@ -215,17 +226,38 @@ async def _wait_until_ready(host: str, port: int, timeout: float) -> None:
     )
 
 
-async def provision_isolated_engine(org_id: str, wait: bool = True) -> dict:
+async def provision_isolated_engine(org_id: str, wait: bool = True, size: Any = None) -> dict:
     """Create and start the org's dedicated coordinator, and (by default) wait until it answers.
 
     Idempotent: an existing container is started if stopped and left alone if already running, so
     an org that is re-provisioned or moved back onto the isolated lane reuses its coordinator.
+
+    ``size`` is the org's plan-fixed engine size (REQ-1449), resolved by the caller through
+    ``provisa.core.commerce.engine_size_for_org`` — the plan vocabulary stays in the commercial
+    plugin and only ``pod_cpu`` / ``pod_memory_gib`` cross into here. It bounds CPU as well as
+    memory, which the deployment-wide settings cannot: a size IS a vCPU count, and a coordinator
+    with no NanoCpus takes as much of the node as it can find no matter which size was sold.
+
+    ``None`` is the deployment that does not size engines by plan — a self-hosted install, or an
+    org an operator placed on the isolated lane without a plan that sells one. Those use
+    PROVISA_ISOLATED_ENGINE_MEMORY, which is what every org used before sizes existed.
     """
     from provisa.federation.engine import isolated_engine_endpoint
 
     settings = provisioner_settings()
     host, port = isolated_engine_endpoint(org_id)
     name = host
+    memory_bytes = (
+        size.pod_memory_gib * 1024**3 if size is not None else _memory_bytes(settings["memory"])
+    )
+    budget_gb = size.query_max_memory_gb if size is not None else _query_budget_gb(memory_bytes)
+    host_config: dict[str, Any] = {
+        "Memory": memory_bytes,
+        "RestartPolicy": {"Name": "unless-stopped"},
+        "NetworkMode": settings["network"],
+    }
+    if size is not None:
+        host_config["NanoCpus"] = int(float(size.pod_cpu) * 1_000_000_000)
     async with _client(settings["socket"]) as client:
         info = await _inspect(client, name)
         if info is None:
@@ -237,11 +269,7 @@ async def provision_isolated_engine(org_id: str, wait: bool = True) -> dict:
                     "dev.provisa.org": org_id,
                 },
                 "ExposedPorts": {f"{port}/tcp": {}},
-                "HostConfig": {
-                    "Memory": _memory_bytes(settings["memory"]),
-                    "RestartPolicy": {"Name": "unless-stopped"},
-                    "NetworkMode": settings["network"],
-                },
+                "HostConfig": host_config,
                 "NetworkingConfig": {
                     "EndpointsConfig": {settings["network"]: {"Aliases": [name]}}
                 },
@@ -259,7 +287,7 @@ async def provision_isolated_engine(org_id: str, wait: bool = True) -> dict:
             archive = await client.put(
                 f"/containers/{cid}/archive",
                 params={"path": "/etc/trino"},
-                content=_config_archive(port, settings["memory"]),
+                content=_config_archive(port, budget_gb),
                 headers={"Content-Type": "application/x-tar"},
             )
             archive.raise_for_status()

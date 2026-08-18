@@ -57,9 +57,7 @@ def _mock_docker(monkeypatch, handler):
         return handler(request)
 
     def fake_client(_socket: str) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            transport=httpx.MockTransport(record), base_url=prov._DOCKER_BASE
-        )
+        return httpx.AsyncClient(transport=httpx.MockTransport(record), base_url=prov._DOCKER_BASE)
 
     monkeypatch.setattr(prov, "_client", fake_client)
     return calls
@@ -92,7 +90,9 @@ def test_provisioning_is_unavailable_without_a_container_runtime(monkeypatch, co
 def test_container_is_named_exactly_what_the_org_terminal_dials(configured):
     """The whole point: one derivation. If these two ever disagree the org binds a terminal at a
     hostname no container answers — the failure this module exists to remove."""
-    assert prov.container_name("acme") == isolated_engine_endpoint("acme")[0] == "provisa-trino-acme"
+    assert (
+        prov.container_name("acme") == isolated_engine_endpoint("acme")[0] == "provisa-trino-acme"
+    )
 
 
 # ---- container spec ----------------------------------------------------------
@@ -239,3 +239,91 @@ def test_memory_specs_parse_the_way_compose_writes_them():
     assert prov._memory_bytes("512m") == 512 * 1024**2
     assert prov._memory_bytes("2gb") == 2 * 1024**3
     assert prov._memory_bytes("1073741824") == 1024**3
+
+
+# ---- plan sizes (REQ-1449) ---------------------------------------------------
+
+
+class _Size:
+    """The three fields the provisioner reads off a ``ProSize``. The plan vocabulary lives in the
+    commercial plugin, which the open-source test tree cannot import."""
+
+    pod_cpu = "7"
+    pod_memory_gib = 54
+    query_max_memory_gb = 18
+
+
+def _recorded(monkeypatch):
+    """Mock the daemon and return the dict the create body and uploaded config land in."""
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/json"):
+            return httpx.Response(404, json={"message": "absent"})
+        if request.url.path.endswith("/containers/create"):
+            seen["create"] = json.loads(request.content)
+            return httpx.Response(201, json={"Id": "deadbeef"})
+        if "/archive" in request.url.path:
+            tar = tarfile.open(fileobj=io.BytesIO(request.content))
+            seen["config"] = tar.extractfile("config.properties").read().decode()  # type: ignore[union-attr]
+            return httpx.Response(200)
+        return httpx.Response(204)
+
+    _mock_docker(monkeypatch, handler)
+    return seen
+
+
+def _budget(config: str) -> tuple[str, str]:
+    lines = dict(line.split("=", 1) for line in config.splitlines() if "=" in line)
+    return lines["query.max-memory"], lines["query.max-memory-per-node"]
+
+
+@pytest.mark.asyncio
+async def test_a_sized_coordinator_is_built_to_its_plan_not_to_the_deployment(
+    monkeypatch, configured
+):
+    """PROVISA_ISOLATED_ENGINE_MEMORY is one number for the whole deployment, so before this every
+    Pro org got the same coordinator whichever size it was invoiced for."""
+    seen = _recorded(monkeypatch)
+    await prov.provision_isolated_engine("acme", wait=False, size=_Size())
+
+    assert seen["create"]["HostConfig"]["Memory"] == 54 * 1024**3
+    assert _budget(seen["config"]) == ("18GB", "18GB")
+
+
+@pytest.mark.asyncio
+async def test_a_size_bounds_cpu_as_well_as_memory(monkeypatch, configured):
+    """A size IS a vCPU count. Without NanoCpus the container takes as much of the host as it can
+    find, so an org on S runs at L speed until something else on the box wants the cores."""
+    seen = _recorded(monkeypatch)
+    await prov.provision_isolated_engine("acme", wait=False, size=_Size())
+    assert seen["create"]["HostConfig"]["NanoCpus"] == 7 * 1_000_000_000
+
+
+@pytest.mark.asyncio
+async def test_without_a_size_the_deployment_settings_still_apply(monkeypatch, configured):
+    """A self-hosted install, and an org an operator put on the isolated lane without a plan that
+    sells one, keep the behaviour they had before sizes existed — and take no CPU bound, because
+    the deployment settings do not express one."""
+    seen = _recorded(monkeypatch)
+    await prov.provision_isolated_engine("acme", wait=False)
+
+    assert seen["create"]["HostConfig"]["Memory"] == 4 * 1024**3
+    assert "NanoCpus" not in seen["create"]["HostConfig"]
+
+
+def test_the_query_budget_is_a_fraction_of_the_heap_not_of_the_container():
+    """jvm.config sets MaxRAMPercentage=70 and Trino keeps 30% of the heap as headroom, so 0.49 of
+    the limit is the ceiling. The old 60% of the CONTAINER asked for more than the heap could give."""
+    assert prov._query_budget_gb(54 * 1024**3) == 18
+    heap = 54 * 0.7
+    assert 18 + heap * 0.3 <= heap
+
+
+def test_both_memory_bounds_name_the_same_pool_on_one_container():
+    """The old split set per-node at half the cluster bound. On a deployment that is a single
+    container there is no second node to hold the other half — the query was just killed early."""
+    config = prov._config_archive(8080, 18)
+    tar = tarfile.open(fileobj=io.BytesIO(config))
+    cluster, per_node = _budget(tar.extractfile("config.properties").read().decode())  # type: ignore[union-attr]
+    assert cluster == per_node == "18GB"

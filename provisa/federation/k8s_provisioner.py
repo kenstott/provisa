@@ -11,10 +11,10 @@
 """REQ-1447/REQ-1448/REQ-1450: bring a federation engine into existence on Kubernetes.
 
 The sibling of :mod:`provisa.federation.isolated_provisioner`, which creates a coordinator as a
-container on the control plane's OWN Docker socket. That co-tenancy is the thing being retired: the
-container bounds ``Memory`` but never ``NanoCpus``, and it runs with
+container on the control plane's OWN Docker socket. That co-tenancy is the thing being retired: a
+sized container bounds both ``Memory`` and ``NanoCpus`` (REQ-1449) but it still runs with
 ``node-scheduler.include-coordinator=true``, so an org's scan executes on the node the control plane
-is serving every other org from.
+is serving every other org from — a CPU bound shares that node politely, it does not leave it.
 
 Here an engine is a Deployment on an Autopilot cluster, where a node is provisioned to fit the pod
 and removed when the pod goes. The SHARED (Starter) lane and the ISOLATED (Pro) lane are the same
@@ -49,6 +49,7 @@ import ssl
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -417,6 +418,23 @@ def _memory_gib() -> int:
     return _int_env("PROVISA_ENGINE_MEMORY_GIB", 24)
 
 
+def _pod_shape(size: Any) -> tuple[str, int, int]:
+    """``(cpu, memory_gib, query_budget_gb)`` for a pod of ``size``.
+
+    ``size`` is the org's plan-fixed engine size (REQ-1449), resolved by the caller through
+    ``provisa.core.commerce.engine_size_for_org``; only these three numbers cross out of the
+    commercial plugin, so the plan vocabulary stays there.
+
+    ``None`` is the shared lane and any deployment that does not size engines by plan: those are the
+    deployment-wide ``PROVISA_ENGINE_CPU`` / ``PROVISA_ENGINE_MEMORY_GIB``, which is what every
+    shard used before sizes existed. See the budget derivation in :func:`_config_data`.
+    """
+    if size is not None:
+        return size.pod_cpu, size.pod_memory_gib, size.query_max_memory_gb
+    memory = _memory_gib()
+    return os.environ.get("PROVISA_ENGINE_CPU", "6"), memory, max(1, int(memory * 0.7 * 0.5))
+
+
 def shared_resource_groups() -> str:
     """The shared lane's queue policy, verbatim (REQ-1450).
 
@@ -428,9 +446,9 @@ def shared_resource_groups() -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _config_data(resource_groups: str | None) -> dict[str, str]:
+def _config_data(resource_groups: str | None, size: Any = None) -> dict[str, str]:
     port = _int_env("PROVISA_ENGINE_PORT", 8080)
-    heap = _memory_gib()
+    _, _, budget = _pod_shape(size)
     otlp_endpoint = os.environ.get("PROVISA_ENGINE_OTLP_ENDPOINT", "").strip()
     config = _CONFIG_PROPERTIES.format(
         port=port,
@@ -446,8 +464,8 @@ def _config_data(resource_groups: str | None) -> dict[str, str]:
         # refused to start — "The sum of max query memory per node and heap headroom cannot be
         # larger than the available heap memory". 0.7 heap × 0.5 leaves the default headroom
         # intact with room to spare.
-        query_max_memory=f"{max(1, int(heap * 0.7 * 0.5))}GB",
-        query_max_memory_per_node=f"{max(1, int(heap * 0.7 * 0.5))}GB",
+        query_max_memory=f"{budget}GB",
+        query_max_memory_per_node=f"{budget}GB",
     )
     jvm = _JVM_CONFIG
     if otlp_endpoint:
@@ -478,9 +496,9 @@ def _config_revision(data: dict[str, str]) -> str:
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
-def _config_manifest(shard: str, resource_groups: str | None) -> dict:
+def _config_manifest(shard: str, resource_groups: str | None, size: Any = None) -> dict:
     settings = provisioner_settings()
-    data = _config_data(resource_groups)
+    data = _config_data(resource_groups, size)
     return {
         "apiVersion": "v1",
         "kind": "ConfigMap",
@@ -505,13 +523,15 @@ def _config_mounts(resource_groups: str | None) -> list[dict]:
     ]
 
 
-def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = None) -> dict:
+def _deployment_manifest(
+    shard: str, lane: str, resource_groups: str | None = None, size: Any = None
+) -> dict:
     settings = provisioner_settings()
     name = shard_workload_name(shard)
     port = _int_env("PROVISA_ENGINE_PORT", 8080)
     flight_port = _int_env("PROVISA_ENGINE_FLIGHT_PORT", 8480)
-    memory = _memory_gib()
-    revision = _config_revision(_config_data(resource_groups))
+    cpu, memory, _ = _pod_shape(size)
+    revision = _config_revision(_config_data(resource_groups, size))
     return {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -561,14 +581,8 @@ def _deployment_manifest(shard: str, lane: str, resource_groups: str | None = No
                                 # Requests equal limits: Trino sizes its heap off the limit, and a
                                 # burstable pod that gets throttled below its heap assumption fails
                                 # queries rather than running them slowly.
-                                "requests": {
-                                    "memory": f"{memory}Gi",
-                                    "cpu": os.environ.get("PROVISA_ENGINE_CPU", "6"),
-                                },
-                                "limits": {
-                                    "memory": f"{memory}Gi",
-                                    "cpu": os.environ.get("PROVISA_ENGINE_CPU", "6"),
-                                },
+                                "requests": {"memory": f"{memory}Gi", "cpu": cpu},
+                                "limits": {"memory": f"{memory}Gi", "cpu": cpu},
                             },
                             "volumeMounts": _config_mounts(resource_groups),
                             # Liveness deliberately absent: a coordinator busy with a large query
@@ -732,7 +746,7 @@ async def _await_ready(shard: str) -> str:
 
 
 async def ensure_shard_running(
-    shard: str, *, lane: str = "shared", resource_groups: str | None = None
+    shard: str, *, lane: str = "shared", resource_groups: str | None = None, size: Any = None
 ) -> dict:
     """Bring a shard's engine up and return its endpoint once it can actually serve.
 
@@ -747,18 +761,23 @@ async def ensure_shard_running(
     runtime rebuilt so its ``CREATE CATALOG`` statements are reissued — and a resumed engine boots
     with ``catalog.management=dynamic`` and NO catalogs, so a query released before the rebuild fails
     against an engine that is running perfectly (REQ-1448).
+
+    ``size`` is the org's plan-fixed engine size on the isolated lane (REQ-1449). It sets the pod's
+    requests and the query budget in its config, so a size change is a config revision and therefore
+    a rollout — the shard comes back on the hardware the org now pays for rather than drifting from
+    it. ``None`` is the shared lane and any deployment that does not size engines by plan.
     """
     settings = provisioner_settings()
     ns = f"/api/v1/namespaces/{settings['namespace']}"
     await _k8s_apply(
         f"{ns}/configmaps/{shard_workload_name(shard)}-config",
-        _config_manifest(shard, resource_groups),
+        _config_manifest(shard, resource_groups, size),
     )
     await _k8s_apply(f"{ns}/services/{shard_workload_name(shard)}", _service_manifest(shard))
     await _k8s_apply(
         f"/apis/apps/v1/namespaces/{settings['namespace']}/deployments/"
         f"{shard_workload_name(shard)}",
-        _deployment_manifest(shard, lane, resource_groups),
+        _deployment_manifest(shard, lane, resource_groups, size),
     )
     host = await _await_ready(shard)
     return {"shard": shard, "host": host, "port": _int_env("PROVISA_ENGINE_PORT", 8080)}
@@ -774,6 +793,25 @@ async def ensure_shared_shard(shard: str) -> dict:
     return await ensure_shard_running(
         shard, lane="shared", resource_groups=shared_resource_groups()
     )
+
+
+async def ensure_isolated_shard(shard: str, size: Any) -> dict:
+    """Bring up the shard of the ISOLATED (Pro) lane serving one org, at its plan's size.
+
+    ``size`` is required rather than defaulted: the isolated lane is sold in fixed sizes (REQ-1449),
+    and a shard brought up without one would run on the deployment-wide settings while the org is
+    invoiced at the active-hour rate of the size it bought.
+
+    No resource groups. The queue policy exists to keep one org off another's shard, and there is no
+    other org here — the size is the whole limit, so a concurrency ceiling on top of it would bill
+    for hardware and then refuse to let the org use it.
+    """
+    if size is None:
+        raise K8sProvisioningError(
+            f"shard {shard} is on the isolated lane but no engine size was resolved for it; "
+            "a dedicated engine is provisioned at the size its plan sells (REQ-1449)"
+        )
+    return await ensure_shard_running(shard, lane="isolated", size=size)
 
 
 async def scale_shard_to_zero(shard: str) -> dict:

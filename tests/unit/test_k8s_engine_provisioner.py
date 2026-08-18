@@ -231,13 +231,15 @@ def test_query_memory_fits_under_the_heap_headroom(configured):
     config = prov._config_manifest("shared_1", None)["data"]["config.properties"]
     per_node = int(
         next(
-            line.split("=", 1)[1] for line in config.splitlines() if line.startswith("query.max-memory-per-node=")
+            line.split("=", 1)[1]
+            for line in config.splitlines()
+            if line.startswith("query.max-memory-per-node=")
         ).removesuffix("GB")
     )
     pod_gib = int(
-        prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]["containers"][0][
-            "resources"
-        ]["limits"]["memory"].removesuffix("Gi")
+        prov._deployment_manifest("shared_1", "shared")["spec"]["template"]["spec"]["containers"][
+            0
+        ]["resources"]["limits"]["memory"].removesuffix("Gi")
     )
     heap = pod_gib * 0.7
     assert per_node + heap * 0.3 <= heap
@@ -422,8 +424,15 @@ async def test_ready_ignores_the_previous_releases_pod(monkeypatch, configured):
     which is how a control plane carrying the Flight sidecar dialed the sidecar-less pod and got
     ECONNREFUSED. observedGeneration and replicas==updatedReplicas are what exclude it."""
     seen: list[dict] = []
-    rolling = {"metadata": {"generation": 4}, "status": {
-        "observedGeneration": 4, "replicas": 2, "updatedReplicas": 1, "readyReplicas": 1}}
+    rolling = {
+        "metadata": {"generation": 4},
+        "status": {
+            "observedGeneration": 4,
+            "replicas": 2,
+            "updatedReplicas": 1,
+            "readyReplicas": 1,
+        },
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         if "/deployments/" in request.url.path:
@@ -577,7 +586,9 @@ async def test_scale_to_zero_waits_for_the_pod_to_go(monkeypatch, configured):
 
 
 @pytest.mark.asyncio
-async def test_scale_to_zero_fails_rather_than_calling_a_live_shard_stopped(monkeypatch, configured):
+async def test_scale_to_zero_fails_rather_than_calling_a_live_shard_stopped(
+    monkeypatch, configured
+):
     """PROVISA_ENGINE_DRAIN_SECONDS bounds how long a pod may take to go. Past it the shard is still
     billing, and saying otherwise would hand the reaper a stop it never got."""
     monkeypatch.setenv("PROVISA_ENGINE_DRAIN_SECONDS", "0")
@@ -662,9 +673,11 @@ async def test_a_pod_that_is_not_ready_is_not_an_address(monkeypatch, configured
             )
         return _cluster_get()
 
-    monkeypatch.setattr(prov, "_client", lambda verify=True: httpx.AsyncClient(
-        transport=httpx.MockTransport(record)
-    ))
+    monkeypatch.setattr(
+        prov,
+        "_client",
+        lambda verify=True: httpx.AsyncClient(transport=httpx.MockTransport(record)),
+    )
     with pytest.raises(prov.K8sProvisioningError) as excinfo:
         await prov._resolve_pod_ip("shared_1")
     assert "no ready pod" in str(excinfo.value)
@@ -684,17 +697,26 @@ async def test_the_warm_path_re_reads_the_address(monkeypatch, configured):
                 200,
                 json={
                     "items": [
-                        {"status": {"podIP": ip[0], "conditions": [{"type": "Ready", "status": "True"}]}}
+                        {
+                            "status": {
+                                "podIP": ip[0],
+                                "conditions": [{"type": "Ready", "status": "True"}],
+                            }
+                        }
                     ]
                 },
             )
         if "/deployments/" in request.url.path:
-            return httpx.Response(200, json={"spec": {"replicas": 1}, "status": {"readyReplicas": 1}})
+            return httpx.Response(
+                200, json={"spec": {"replicas": 1}, "status": {"readyReplicas": 1}}
+            )
         return _cluster_get()
 
-    monkeypatch.setattr(prov, "_client", lambda verify=True: httpx.AsyncClient(
-        transport=httpx.MockTransport(record)
-    ))
+    monkeypatch.setattr(
+        prov,
+        "_client",
+        lambda verify=True: httpx.AsyncClient(transport=httpx.MockTransport(record)),
+    )
 
     assert (await prov.shard_status("shared_1"))["state"] == "ready"
     assert prov.shard_endpoint("shared_1")[0] == "10.20.3.7"
@@ -722,3 +744,92 @@ async def test_a_stopped_shard_forgets_its_address(monkeypatch, configured):
     await prov.scale_shard_to_zero("shared_1")
     with pytest.raises(prov.K8sProvisioningError):
         prov.shard_endpoint("shared_1")
+
+
+# ---- plan sizes (REQ-1449) ---------------------------------------------------
+
+
+class _Size:
+    """The three fields the provisioner reads off a ``ProSize``. The plan vocabulary lives in the
+    commercial plugin, which the open-source test tree cannot import."""
+
+    pod_cpu = "15"
+    pod_memory_gib = 112
+    query_max_memory_gb = 39
+
+
+def _deployment_container(size):
+    return prov._deployment_manifest("iso_acme", "isolated", None, size)["spec"]["template"][
+        "spec"
+    ]["containers"][0]
+
+
+def test_a_sized_pod_is_built_to_its_plan_not_to_the_deployment(configured):
+    """PROVISA_ENGINE_CPU/MEMORY_GIB are one shape for the whole deployment (the fixture's 24Gi), so
+    before this every Pro shard came up identical whichever size it was invoiced for."""
+    resources = _deployment_container(_Size())["resources"]
+    assert resources["limits"] == {"memory": "112Gi", "cpu": "15"}
+    assert resources["requests"] == resources["limits"]  # Guaranteed QoS: Trino heaps off the limit
+
+
+def test_a_sized_shard_gets_its_plans_query_budget(configured):
+    config = prov._config_manifest("iso_acme", None, _Size())["data"]["config.properties"]
+    assert "query.max-memory=39GB" in config
+    assert "query.max-memory-per-node=39GB" in config
+
+
+def test_resizing_a_shard_is_a_rollout(configured):
+    """The config is a subPath mount and the kubelet never refreshes those, so a size change that
+    did not move the pod template would leave the shard running its old budget until something else
+    happened to restart it."""
+    small = prov._deployment_manifest("iso_acme", "isolated", None, _Size())
+    resized = _Size()
+    resized.query_max_memory_gb = 18
+    big = prov._deployment_manifest("iso_acme", "isolated", None, resized)
+    annotation = "provisa.dev/config-revision"
+    assert (
+        small["spec"]["template"]["metadata"]["annotations"][annotation]
+        != big["spec"]["template"]["metadata"]["annotations"][annotation]
+    )
+
+
+def test_the_shared_lane_keeps_the_deployment_settings(configured):
+    """Sizes are what Pro buys; the shared lane is one cluster for everyone and is still sized by
+    the operator."""
+    assert prov._pod_shape(None) == ("6", 24, 8)
+    assert prov._pod_shape(_Size()) == ("15", 112, 39)
+
+
+@pytest.mark.asyncio
+async def test_an_isolated_shard_without_a_size_is_refused(configured):
+    """It would come up on the deployment-wide settings while the org is invoiced at the active-hour
+    rate of the size it bought — silently the wrong hardware, at the wrong price."""
+    with pytest.raises(prov.K8sProvisioningError) as excinfo:
+        await prov.ensure_isolated_shard("iso_acme", None)
+    assert "REQ-1449" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_the_isolated_lane_carries_no_queue_policy(monkeypatch, configured):
+    """The queue exists to keep one org off another's shard and there is no other org here: the size
+    is the whole limit, so a concurrency ceiling would bill for hardware and then refuse to use it."""
+    applied: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if "/deployments/" in path and request.method == "GET":
+            return httpx.Response(200, json={"status": {"readyReplicas": 1}})
+        if request.method in ("POST", "PATCH", "PUT"):
+            applied.append(json.loads(request.content))
+            return httpx.Response(200, json={})
+        if "/pods" in path:
+            return httpx.Response(200, json={"items": [{"status": {"podIP": "10.20.3.7"}}]})
+        return _cluster_get()
+
+    _mock_api(monkeypatch, handler)
+    await prov.ensure_isolated_shard("iso_acme", _Size())
+
+    config = next(m for m in applied if m.get("kind") == "ConfigMap")
+    assert "resource-groups.properties" not in config["data"]
+    deployment = next(m for m in applied if m.get("kind") == "Deployment")
+    assert deployment["metadata"]["labels"]["provisa.dev/lane"] == "isolated"

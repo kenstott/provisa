@@ -191,6 +191,24 @@ async def require_lane_entitlement(state: Any, org_id: str | None, mode: str) ->
     await plugin.require_lane(state, org_id, mode)
 
 
+async def engine_size_for_org(state: Any, org_id: str | None) -> Any:
+    """The plan-fixed size of ``org_id``'s dedicated engine, or None when its plan does not set one.
+
+    REQ-1449 sells the isolated lane in fixed sizes, so on a hosted deployment the org's plan — not
+    a deployment-wide environment variable — says how large its coordinator is. The object carries
+    ``pod_cpu``, ``pod_memory_gib`` and ``query_max_memory_gb``; the provisioner reads those three
+    and nothing else, so the plan vocabulary stays inside the plugin.
+
+    None without the plugin, and None for an org whose plan sells no engine but which an operator
+    put on the isolated lane anyway. Both are deployments that size their engines themselves, and
+    the provisioner uses its own settings for them.
+    """
+    plugin = load()
+    if plugin is None:
+        return None
+    return await plugin.engine_size_for_org(state, org_id)
+
+
 async def lane_entitled(state: Any, org_id: str | None, mode: str) -> bool:
     """Whether ``org_id`` may select the ``mode`` lane. True without the plugin — an unbilled
     deployment gates nothing."""

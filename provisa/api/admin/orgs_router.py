@@ -265,7 +265,13 @@ async def _provision_org_task(
             )
 
             if provisioning_available():
-                await provision_isolated_engine(org_id)
+                # REQ-1449: the coordinator is built to the size the org's plan sells, resolved
+                # through the commerce seam so the plan vocabulary stays in the plugin. None on a
+                # deployment that sizes its engines itself.
+                from provisa.core.commerce import engine_size_for_org
+
+                size = await engine_size_for_org(_app_state, org_id)
+                await provision_isolated_engine(org_id, size=size)
 
         schema_sql_path = Path(__file__).parent.parent.parent / "core" / "schema.sql"
         schema_sql = schema_sql_path.read_text() if schema_sql_path.exists() else ""
