@@ -194,6 +194,21 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     return invite
 
 
+async def _org_branding(org_id: str) -> dict[str, str]:  # REQ-1486
+    """The org's branding document, for the invitation. Empty when the org set none."""
+    from provisa.api.app import state
+    from provisa.core.org_branding import parse_branding
+    from provisa.core.schema_admin import orgs
+
+    assert state.admin_db is not None
+    async with state.admin_db.acquire() as conn:
+        result = await conn.execute_core(select(orgs.c.branding).where(orgs.c.id == org_id))
+        row = result.fetchone()
+    if row is None:
+        raise ApiError(404, "invites.org_not_found", f"Org {org_id} not found", org_id=org_id)
+    return parse_branding(row._mapping["branding"])
+
+
 async def _deliver_invite(  # REQ-1310
     *,
     email: str | None,
@@ -226,6 +241,7 @@ async def _deliver_invite(  # REQ-1310
     if not getattr(cfg, "multitenancy", False):  # REQ-1330
         return "saas_only"
     message = compose_invite_message(
+        branding=await _org_branding(org_id),  # REQ-1486
         to=email,
         org_name=org_name,
         org_id=org_id,

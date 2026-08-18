@@ -81,12 +81,19 @@ class _Sink:
         # the body quoted-printable, so the raw octets contain neither the URL nor the long lines
         # as written.
         parsed = message_from_bytes(envelope.content, policy=email_policy.default)
+        # REQ-1485: the message is multipart/alternative; each part is read the way the client
+        # that prefers it would.
+        html_part = parsed.get_body(preferencelist=("html",))
+        plain_part = parsed.get_body(preferencelist=("plain",))
+        assert plain_part is not None, "every message must carry a text part"
         self.messages.append(
             SimpleNamespace(
                 mail_from=envelope.mail_from,
                 rcpt_tos=list(envelope.rcpt_tos),
                 subject=parsed["Subject"],
-                content=parsed.get_content(),
+                content_type=parsed.get_content_type(),
+                content=plain_part.get_content(),
+                html=None if html_part is None else html_part.get_content(),
             )
         )
         return "250 Message accepted for delivery"
@@ -243,6 +250,62 @@ def test_the_message_names_org_inviter_role_and_expiry(planes, smtp):
     assert f"https://provisa.example.test/?invite={invite['token']}" in body
 
 
+def test_the_message_carries_a_branded_html_alternative(planes, smtp):
+    """REQ-1485: the invitee's client renders the branded part, and a text-only client still gets
+    the whole invitation — the same facts and the same link in both."""
+    with TestClient(_make_app(planes)) as client:
+        invite = _create_invite(client, email="carol@example.test", role_id="analyst")
+
+    msg = smtp.sink.messages[0]
+    assert msg.content_type == "multipart/alternative"
+    html = msg.html
+    assert html is not None
+    assert ">Provisa<" in html  # the wordmark, as text: image blocking cannot hide it
+    assert "<img" not in html  # no remote assets to be blocked
+    assert "#1F2933" in html and "#4f46e5" in html  # brand ink and primary
+    assert "Acme Analytics" in html
+    assert "alice" in html
+    assert "analyst" in html
+    assert invite["expires_at"][:10] in html
+    assert f"https://provisa.example.test/?invite={invite['token']}" in html
+    # and the plain part is still complete on its own
+    assert f"https://provisa.example.test/?invite={invite['token']}" in msg.content
+
+
+def test_the_inviting_orgs_branding_reaches_the_delivered_message(planes, smtp):
+    """REQ-1486: the org's display name, its own sentence and its primary color travel all the way
+    into the message a person opens, not just into the composer."""
+    from sqlalchemy import update as sa_update
+
+    from provisa.core.org_branding import serialize_branding, validate_branding
+
+    document = validate_branding(
+        {
+            "display_name": "Acme Data Platform",
+            "primary_color": "#B91C1C",
+            "invite_message": "Ping #data-platform if you have questions.",
+        }
+    )
+    with planes.sync.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        conn.execute(
+            sa_update(orgs)
+            .where(orgs.c.id == "acme")
+            .values(branding=serialize_branding(document))
+        )
+
+    with TestClient(_make_app(planes)) as client:
+        _create_invite(client, email="carol@example.test", role_id="analyst")
+
+    msg = smtp.sink.messages[0]
+    assert "Acme Data Platform" in msg.subject
+    assert msg.html is not None
+    for part in (msg.content, msg.html):
+        assert "Acme Data Platform" in part
+        assert "Ping #data-platform if you have questions." in part
+    assert "#b91c1c" in msg.html.lower()  # the org's color on the action button
+
+
 def test_the_delivered_link_redeems_the_invitation(planes, smtp):
     """The link is the onboarding path, not a notice about one: the invitee follows it and is a
     member of the org afterward, in both planes."""
@@ -395,6 +458,8 @@ def test_resend_adapter_delivers_through_the_port(planes, smtp, resend_api, monk
     assert req.payload["from"] == "invites@provisa.dev"
     assert req.payload["to"] == ["carol@example.test"]
     assert f"https://provisa.example.test/?invite={invite['token']}" in req.payload["text"]
+    # REQ-1485: the branded part travels through this adapter too, not only over SMTP
+    assert f"https://provisa.example.test/?invite={invite['token']}" in req.payload["html"]
 
 
 def test_resend_without_api_key_is_reported_not_silent(planes, smtp, monkeypatch):

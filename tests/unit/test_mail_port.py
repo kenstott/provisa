@@ -19,7 +19,7 @@ The structural half of that is checked by reading the source of the call sites, 
 guarantee is "nobody imports it", which no amount of exercising one call site can show.
 """
 
-# Requirements: REQ-1310, REQ-1330
+# Requirements: REQ-1310, REQ-1330, REQ-1485, REQ-1486
 
 from __future__ import annotations
 
@@ -88,3 +88,128 @@ def test_no_application_code_reaches_a_mail_transport_directly():
     # models.py carries the Resend endpoint as a CONFIG default, which is the port working as
     # intended — the URL is a setting, not an import.
     assert offenders == []
+
+
+# REQ-1485: the branded alternative part.
+
+
+def _invite() -> MailMessage:
+    from datetime import datetime, timezone
+
+    from provisa.core.mail import compose_invite_message
+
+    return compose_invite_message(
+        to="carol@example.test",
+        org_name="Acme Analytics",
+        org_id="acme",
+        inviter="alice",
+        role_id="analyst",
+        expires_at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc),
+        base_url="https://provisa.example.test",
+        token="tok-1",
+    )
+
+
+def test_the_invitation_carries_both_a_text_and_a_branded_part():
+    """Text stays canonical: a client that renders neither HTML nor remote content still receives
+    every fact and the link."""
+    message = _invite()
+    for part in (message.body, message.html):
+        assert part is not None
+        assert "Acme Analytics" in part
+        assert "alice" in part
+        assert "analyst" in part
+        assert "2026-09-01" in part
+        assert "https://provisa.example.test/?invite=tok-1" in part
+
+
+def test_the_branded_part_uses_the_product_palette_and_no_remote_assets():
+    """A blocked image would leave the message looking broken, so the wordmark is text."""
+    html = _invite().html
+    assert html is not None
+    assert ">Provisa<" in html
+    assert "<img" not in html
+    assert "http://" not in html  # no external stylesheet or tracking pixel
+    for color in ("#1F2933", "#10B981", "#4f46e5"):
+        assert color in html
+
+
+def test_the_branded_part_escapes_user_supplied_values():
+    from provisa.core.mail import _invite_html
+
+    html = _invite_html(
+        org_name="<script>alert(1)</script>",
+        org_id="acme",
+        inviter="a&b",
+        role_id="analyst",
+        expiry="2026-09-01 12:00 UTC",
+        url="https://provisa.example.test/?invite=t&x=1",
+    )
+    assert "<script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "a&amp;b" in html
+    assert "invite=t&amp;x=1" in html
+
+
+# REQ-1486: the inviting org's own branding on the message.
+
+
+def test_an_org_with_no_branding_sends_the_products_own_invitation():
+    """Branding is additive: an org that set none must be indistinguishable from before REQ-1486."""
+    assert _invite() == _invite_with({})
+
+
+def _invite_with(branding: dict[str, str]) -> MailMessage:
+    from datetime import datetime, timezone
+
+    from provisa.core.mail import compose_invite_message
+
+    return compose_invite_message(
+        branding=branding,
+        to="carol@example.test",
+        org_name="Acme Analytics",
+        org_id="acme",
+        inviter="alice",
+        role_id="analyst",
+        expires_at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc),
+        base_url="https://provisa.example.test",
+        token="tok-1",
+    )
+
+
+def test_the_display_name_replaces_the_org_name_in_the_subject_and_both_parts():
+    message = _invite_with({"display_name": "Acme Data Platform"})
+
+    assert "Acme Data Platform" in message.subject
+    assert "Acme Analytics" not in message.subject
+    assert message.html is not None
+    for part in (message.body, message.html):
+        assert "Acme Data Platform" in part
+    # The org id still identifies the org unambiguously, whatever it calls itself.
+    assert "acme" in message.body
+
+
+def test_the_orgs_own_sentence_is_carried_above_the_products_copy():
+    note = "Ping #data-platform if you have questions."
+    message = _invite_with({"invite_message": note})
+
+    assert note in message.body
+    assert message.html is not None
+    assert note in message.html
+    # Provisa's own facts survive alongside it.
+    assert "analyst" in message.body
+
+
+def test_the_orgs_sentence_is_escaped_in_the_branded_part():
+    message = _invite_with({"invite_message": "<script>alert(1)</script>"})
+
+    assert message.html is not None
+    assert "<script>" not in message.html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in message.html
+
+
+def test_the_primary_color_becomes_the_button_color():
+    message = _invite_with({"primary_color": "#b91c1c"})
+
+    assert message.html is not None
+    assert "#b91c1c" in message.html

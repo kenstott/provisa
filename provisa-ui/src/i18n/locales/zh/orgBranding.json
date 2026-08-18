@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "品牌形象",
+    "help": "用户在你的组织地址的登录页面以及你发送的邀请中看到的内容。留空则使用 Provisa 自身的呈现方式。",
+    "displayNameLabel": "组织名称",
+    "displayNameDesc": "显示在登录表单上方，并用于邀请邮件的主题。",
+    "primaryColorLabel": "主色",
+    "primaryColorDesc": "按钮与激活状态，也包括邀请中的按钮。",
+    "accentColorLabel": "强调色",
+    "accentColorDesc": "登录页面组织名称旁的竖线。",
+    "welcomeLabel": "欢迎语",
+    "welcomeDesc": "登录页面组织名称下方显示的一行文字。",
+    "inviteLabel": "邀请语",
+    "inviteDesc": "你自己的一句话，置于每封邀请中 Provisa 文案的上方。",
+    "logoLabel": "标志",
+    "logoDesc": "PNG、JPEG、SVG 或 WebP，最大 256 KB。",
+    "uploadLogo": "上传标志",
+    "replaceLogo": "替换标志",
+    "removeLogo": "移除标志",
+    "noLogo": "尚未设置标志。",
+    "save": "保存品牌形象",
+    "saved": "品牌形象已保存。",
+    "logoSaved": "标志已保存。",
+    "logoRemoved": "标志已移除。"
+  }
+}

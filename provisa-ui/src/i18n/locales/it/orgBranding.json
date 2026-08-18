@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "Branding",
+    "help": "Ciò che le persone vedono nella pagina di accesso all'indirizzo della tua organizzazione e negli inviti che invii. Lascia un campo vuoto per usare la presentazione di Provisa.",
+    "displayNameLabel": "Nome dell'organizzazione",
+    "displayNameDesc": "Mostrato sopra il modulo di accesso e usato nell'oggetto degli inviti.",
+    "primaryColorLabel": "Colore primario",
+    "primaryColorDesc": "Pulsanti e stati attivi. Anche il pulsante dell'invito.",
+    "accentColorLabel": "Colore di accento",
+    "accentColorDesc": "La linea accanto al tuo nome nella pagina di accesso.",
+    "welcomeLabel": "Messaggio di benvenuto",
+    "welcomeDesc": "Una riga mostrata sotto il tuo nome nella pagina di accesso.",
+    "inviteLabel": "Messaggio di invito",
+    "inviteDesc": "La tua frase, posta sopra il testo di Provisa in ogni invito che invii.",
+    "logoLabel": "Logo",
+    "logoDesc": "PNG, JPEG, SVG o WebP, fino a 256 KB.",
+    "uploadLogo": "Carica logo",
+    "replaceLogo": "Sostituisci logo",
+    "removeLogo": "Rimuovi logo",
+    "noLogo": "Nessun logo impostato.",
+    "save": "Salva branding",
+    "saved": "Branding salvato.",
+    "logoSaved": "Logo salvato.",
+    "logoRemoved": "Logo rimosso."
+  }
+}

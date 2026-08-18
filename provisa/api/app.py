@@ -1857,6 +1857,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.orgs_router import router as orgs_router
 
     app.include_router(orgs_router)
+    from provisa.api.branding_router import router as branding_router  # REQ-1486
+
+    app.include_router(branding_router)
     from provisa.api.admin.maintenance_router import router as maintenance_router  # REQ-1466
 
     app.include_router(maintenance_router)

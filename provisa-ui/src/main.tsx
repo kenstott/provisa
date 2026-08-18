@@ -53,6 +53,16 @@ async function bootstrap() {
   if (isOrgSubdomainHost()) {
     const { establishOrgSubdomainSession } = await import("./lib/crossSubdomainAuth.ts");
     if (!(await establishOrgSubdomainSession())) return;
+    // REQ-1486: on an org's own address the Host names the org, so its branding is read without a
+    // header and applied before the first paint. A branding read that fails is not a boot failure —
+    // the product's own presentation is the correct fallback (REQ-1486 says branding is additive).
+    const [{ fetchPublicBranding }, { applyOrgBranding }] = await Promise.all([
+      import("./api/branding.ts"),
+      import("./lib/orgBranding.ts"),
+    ]);
+    await fetchPublicBranding()
+      .then((read) => applyOrgBranding(read.branding))
+      .catch((err: unknown) => console.error("org branding could not be read:", err));
   } else {
     const firebase = await import("./lib/firebase.ts");
     await firebase.installFirebaseTokenSync();

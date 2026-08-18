@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "ブランディング",
+    "help": "組織のアドレスのサインインページと、送信する招待に表示される内容です。空欄のままにすると Provisa 標準の表示になります。",
+    "displayNameLabel": "組織名",
+    "displayNameDesc": "サインインフォームの上に表示され、招待の件名にも使われます。",
+    "primaryColorLabel": "プライマリカラー",
+    "primaryColorDesc": "ボタンとアクティブ状態。招待のボタンにも使われます。",
+    "accentColorLabel": "アクセントカラー",
+    "accentColorDesc": "サインインページの組織名の横の罫線。",
+    "welcomeLabel": "ウェルカムメッセージ",
+    "welcomeDesc": "サインインページで組織名の下に表示される 1 行。",
+    "inviteLabel": "招待メッセージ",
+    "inviteDesc": "送信するすべての招待で、Provisa の本文の上に置かれる独自の一文。",
+    "logoLabel": "ロゴ",
+    "logoDesc": "PNG、JPEG、SVG、WebP。最大 256 KB。",
+    "uploadLogo": "ロゴをアップロード",
+    "replaceLogo": "ロゴを差し替え",
+    "removeLogo": "ロゴを削除",
+    "noLogo": "ロゴは設定されていません。",
+    "save": "ブランディングを保存",
+    "saved": "ブランディングを保存しました。",
+    "logoSaved": "ロゴを保存しました。",
+    "logoRemoved": "ロゴを削除しました。"
+  }
+}

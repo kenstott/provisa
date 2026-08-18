@@ -35,6 +35,7 @@ import {
   revokeOrgAdmin,
 } from "../api/admin";
 import type { OrgInvite, OrgMember } from "../api/admin";
+import { OrgBrandingSettings } from "../components/OrgBrandingSettings";
 import { useRoles } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
 
@@ -344,6 +345,9 @@ export function TeamPage() {
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+
+      {/* REQ-1486: the org's own presentation, edited by the same org_admin who runs the team. */}
+      {activeOrgId && <OrgBrandingSettings orgId={activeOrgId} onError={reportError} />}
 
       {multitenancy && (
         <>

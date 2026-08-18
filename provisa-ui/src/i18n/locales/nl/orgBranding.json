@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "Huisstijl",
+    "help": "Wat mensen zien op de aanmeldpagina op het adres van uw organisatie en in de uitnodigingen die u verstuurt. Laat een veld leeg om de eigen presentatie van Provisa te gebruiken.",
+    "displayNameLabel": "Naam van de organisatie",
+    "displayNameDesc": "Wordt boven het aanmeldformulier getoond en gebruikt in de onderwerpregel van uitnodigingen.",
+    "primaryColorLabel": "Primaire kleur",
+    "primaryColorDesc": "Knoppen en actieve statussen. Ook de knop in de uitnodiging.",
+    "accentColorLabel": "Accentkleur",
+    "accentColorDesc": "De lijn naast uw naam op de aanmeldpagina.",
+    "welcomeLabel": "Welkomstbericht",
+    "welcomeDesc": "Eén regel onder uw naam op de aanmeldpagina.",
+    "inviteLabel": "Uitnodigingsbericht",
+    "inviteDesc": "Uw eigen zin, boven de tekst van Provisa in elke uitnodiging die u verstuurt.",
+    "logoLabel": "Logo",
+    "logoDesc": "PNG, JPEG, SVG of WebP, tot 256 KB.",
+    "uploadLogo": "Logo uploaden",
+    "replaceLogo": "Logo vervangen",
+    "removeLogo": "Logo verwijderen",
+    "noLogo": "Geen logo ingesteld.",
+    "save": "Huisstijl opslaan",
+    "saved": "Huisstijl opgeslagen.",
+    "logoSaved": "Logo opgeslagen.",
+    "logoRemoved": "Logo verwijderd."
+  }
+}

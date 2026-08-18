@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "Marca",
+    "help": "Lo que ven las personas en la página de inicio de sesión de la dirección de su organización y en las invitaciones que envía. Deje un campo vacío para usar la presentación propia de Provisa.",
+    "displayNameLabel": "Nombre de la organización",
+    "displayNameDesc": "Se muestra sobre el formulario de inicio de sesión y se usa en el asunto de las invitaciones.",
+    "primaryColorLabel": "Color primario",
+    "primaryColorDesc": "Botones y estados activos. También el botón de la invitación.",
+    "accentColorLabel": "Color de acento",
+    "accentColorDesc": "La línea junto a su nombre en la página de inicio de sesión.",
+    "welcomeLabel": "Mensaje de bienvenida",
+    "welcomeDesc": "Una línea que aparece bajo su nombre en la página de inicio de sesión.",
+    "inviteLabel": "Mensaje de invitación",
+    "inviteDesc": "Su propia frase, colocada sobre el texto de Provisa en cada invitación que envía.",
+    "logoLabel": "Logotipo",
+    "logoDesc": "PNG, JPEG, SVG o WebP, hasta 256 KB.",
+    "uploadLogo": "Subir logotipo",
+    "replaceLogo": "Reemplazar logotipo",
+    "removeLogo": "Eliminar logotipo",
+    "noLogo": "No hay logotipo definido.",
+    "save": "Guardar marca",
+    "saved": "Marca guardada.",
+    "logoSaved": "Logotipo guardado.",
+    "logoRemoved": "Logotipo eliminado."
+  }
+}

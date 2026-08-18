@@ -138,6 +138,15 @@ orgs = Table(
     # there, on the org's bill, and its footprint is neither metered nor capped by REQ-1046. NULL
     # means the org materializes into the platform's store, where the tier quota applies.
     Column("storage_url_enc", LargeBinary),
+    # REQ-1486: the org's own light branding — a JSON document of display_name, primary_color,
+    # accent_color, welcome_message and invite_message, written only through
+    # provisa.core.org_branding.validate_branding. NULL means the org set none and the product's
+    # own presentation stands. The logo travels beside it as bytes rather than a URL: the sign-in
+    # page must render it before any session exists, and a tenant-supplied remote URL would make
+    # that page fetch from a host the platform does not control.
+    Column("branding", Text),
+    Column("branding_logo", LargeBinary),
+    Column("branding_logo_media_type", Text),
 )
 
 user_profiles = Table(

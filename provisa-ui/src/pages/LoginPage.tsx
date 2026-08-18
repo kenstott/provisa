@@ -28,6 +28,10 @@ import { startSession, startSuperuserSession } from "../lib/session";
 import { storedToken } from "../lib/sessionToken";
 import { isOrgSubdomainHost } from "../lib/authHost";
 import { nextParam, redirectToControlPlaneLogin } from "../lib/crossSubdomainAuth";
+import { fetchPublicBranding } from "../api/branding";
+import type { PublicBranding } from "../api/branding";
+import { applyOrgBranding, brandingOrg } from "../lib/orgBranding";
+import { OrgBrandingHeader } from "../components/OrgBrandingHeader";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -60,6 +64,9 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   // REQ-1472: the deployment's break-glass account. It is not an IdP account, so under a
   // provider like firebase there is no button that can sign it in — this reveals its own form.
   const [operatorMode, setOperatorMode] = useState(false);
+  // REQ-1486: the branding of the org this sign-in is for. Null until it is read, and null forever
+  // on a sign-in that belongs to no org — the header renders nothing in both cases.
+  const [branding, setBranding] = useState<PublicBranding | null>(null);
 
   // REQ-1348: no sign-in form is reachable on an org subdomain — the identity provider only
   // authorizes the control-plane host, so rendering one here offers a button that cannot work.
@@ -83,6 +90,19 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     fetchBootstrapStatus()
       .then(setFirstLogin)
       .catch(() => setFirstLogin(false));
+
+    // REQ-1486: the org's own mark, when this sign-in belongs to an org. A failure here is
+    // reported to the console and leaves the page unbranded rather than blocking sign-in — the
+    // branding is a presentation layer over a form that must work regardless.
+    const org = brandingOrg();
+    if (org) {
+      fetchPublicBranding(org)
+        .then((read) => {
+          setBranding(read);
+          applyOrgBranding(read.branding);
+        })
+        .catch((err: unknown) => console.error("org branding could not be read:", err));
+    }
 
     const params = new URLSearchParams(window.location.search);
     const token = params.get("invite");
@@ -297,6 +317,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   if (operatorMode) {
     return (
       <div className="page">
+        <OrgBrandingHeader branding={branding} />
         <Title order={2}>{t("loginPage.operatorSignInTitle")}</Title>
         <form onSubmit={handleOperatorLogin} style={{ maxWidth: 360 }}>
           <Stack gap="md">
@@ -349,6 +370,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   if (provider === "firebase") {
     return (
       <div className="page">
+        <OrgBrandingHeader branding={branding} />
         <Title order={2}>
           {firstLogin ? t("loginPage.firstLoginHeading") : t("loginPage.signInTitle")}
         </Title>
@@ -452,6 +474,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   if (mode === "register" && provider === "basic") {
     return (
       <div className="page">
+        <OrgBrandingHeader branding={branding} />
         <Title order={2}>{t("loginPage.createAccountTitle")}</Title>
         <form onSubmit={handleRegister} style={{ maxWidth: 360 }}>
           <Stack gap="md">
@@ -544,6 +567,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
 
   return (
     <div className="page">
+      <OrgBrandingHeader branding={branding} />
       <Title order={2}>
         {firstLogin ? t("loginPage.firstLoginHeading") : t("loginPage.loginTitle")}
       </Title>

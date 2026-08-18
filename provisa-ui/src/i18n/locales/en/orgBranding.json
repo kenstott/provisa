@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "Branding",
+    "help": "What people see on the sign-in page at your organization's address, and in the invitations you send. Leave a field empty to use Provisa's own presentation.",
+    "displayNameLabel": "Organization name",
+    "displayNameDesc": "Shown above the sign-in form and used in invitation subject lines.",
+    "primaryColorLabel": "Primary color",
+    "primaryColorDesc": "Buttons and active states. Also the invitation button.",
+    "accentColorLabel": "Accent color",
+    "accentColorDesc": "The rule beside your name on the sign-in page.",
+    "welcomeLabel": "Welcome message",
+    "welcomeDesc": "One line shown under your name on the sign-in page.",
+    "inviteLabel": "Invitation message",
+    "inviteDesc": "Your own sentence, placed above Provisa's copy in every invitation you send.",
+    "logoLabel": "Logo",
+    "logoDesc": "PNG, JPEG, SVG or WebP, up to 256 KB.",
+    "uploadLogo": "Upload logo",
+    "replaceLogo": "Replace logo",
+    "removeLogo": "Remove logo",
+    "noLogo": "No logo set.",
+    "save": "Save branding",
+    "saved": "Branding saved.",
+    "logoSaved": "Logo saved.",
+    "logoRemoved": "Logo removed."
+  }
+}

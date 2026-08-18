@@ -532,6 +532,109 @@ async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request
     return dict(row._mapping)
 
 
+class OrgBrandingBody(BaseModel):  # REQ-1486
+    """The editable branding fields. Every one is optional and ``None`` clears it, so a PATCH
+    carrying one field leaves the rest as they were only if the client sends them back — the UI
+    edits the whole document at once, which is why this replaces rather than merges."""
+
+    display_name: str | None = None
+    primary_color: str | None = None
+    accent_color: str | None = None
+    welcome_message: str | None = None
+    invite_message: str | None = None
+
+
+@router.get("/{org_id}/branding")
+async def read_org_branding(org_id: str, request: Request):  # REQ-1486
+    """The org's stored branding, for the edit form. The public read is /orgs/branding."""
+    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.core.org_branding import parse_branding
+
+    await _require_org_admin(request, org_id)
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            select(orgs.c.id, orgs.c.branding, orgs.c.branding_logo_media_type).where(
+                orgs.c.id == org_id
+            )
+        )
+        row = result.fetchone()
+    if row is None:
+        raise ApiError(404, "orgs.not_found", "Org not found")
+    record = dict(row._mapping)
+    return {
+        "org_id": record["id"],
+        "branding": parse_branding(record["branding"]),
+        "logo_media_type": record["branding_logo_media_type"],
+    }
+
+
+@router.patch("/{org_id}/branding")
+async def update_org_branding(org_id: str, body: OrgBrandingBody, request: Request):  # REQ-1486
+    """Set the org's branding document. Org admin of this org, or platform admin."""
+    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.core.org_branding import BrandingError, serialize_branding, validate_branding
+
+    await _require_org_admin(request, org_id)
+    try:
+        document = validate_branding(body.model_dump())
+    except BrandingError as exc:
+        raise ApiError(422, "orgs.branding_invalid", str(exc), field=exc.field) from None
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            update(orgs)
+            .where(orgs.c.id == org_id)
+            .values(branding=serialize_branding(document))
+            .returning(orgs.c.id)
+        )
+        if result.fetchone() is None:
+            raise ApiError(404, "orgs.not_found", "Org not found")
+    return {"org_id": org_id, "branding": document}
+
+
+@router.put("/{org_id}/branding/logo")
+async def upload_org_logo(org_id: str, request: Request):  # REQ-1486
+    """Store the org's logo. The body is the image itself, typed by Content-Type — the file never
+    has to be base64'd into JSON to reach here, and the bytes are what the public endpoint serves.
+    """
+    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.core.org_branding import BrandingError, validate_logo
+
+    await _require_org_admin(request, org_id)
+    data = await request.body()
+    try:
+        media_type = validate_logo(data, request.headers.get("content-type", ""))
+    except BrandingError as exc:
+        raise ApiError(422, "orgs.branding_logo_invalid", str(exc), field=exc.field) from None
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            update(orgs)
+            .where(orgs.c.id == org_id)
+            .values(branding_logo=data, branding_logo_media_type=media_type)
+            .returning(orgs.c.id)
+        )
+        if result.fetchone() is None:
+            raise ApiError(404, "orgs.not_found", "Org not found")
+    return {"org_id": org_id, "logo_media_type": media_type, "bytes": len(data)}
+
+
+@router.delete("/{org_id}/branding/logo")
+async def delete_org_logo(org_id: str, request: Request):  # REQ-1486
+    """Remove the org's logo; the product's own presentation stands again."""
+    from provisa.api.admin.invites_router import _require_org_admin
+
+    await _require_org_admin(request, org_id)
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            update(orgs)
+            .where(orgs.c.id == org_id)
+            .values(branding_logo=None, branding_logo_media_type=None)
+            .returning(orgs.c.id)
+        )
+        if result.fetchone() is None:
+            raise ApiError(404, "orgs.not_found", "Org not found")
+    return {"org_id": org_id, "logo_media_type": None}
+
+
 @router.get("/{org_id}/config-export")
 async def export_org_config(org_id: str, request: Request):  # REQ-1304
     """The org's live config YAML — the snapshot the UI downloads before confirming a deletion.

@@ -15429,3 +15429,31 @@ A column carries two names and they answer different questions. The SQL and Grap
 **Code:** `provisa/lineage/dependents.py`, `provisa/api/admin/column_dependents.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/pages/tables/columnDiff.ts`, `provisa-ui/src/pages/TablesPage.tsx`
 
 **Tests:** `tests/unit/test_column_dependents.py`, `provisa-ui/src/__tests__/columnDiff.test.ts`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1485 · Email Delivery {#REQ-1485}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Transactional messages carry a branded HTML alternative alongside the plain-text part. The message is multipart/alternative and the text part stays canonical: it names the org, the inviter, the role, the expiry and the redemption link on its own, so a text-only client loses nothing. The branded part is table layout with inline styles drawn from the product palette (ink #1F2933, accent #10B981, primary #4f46e5) and contains no images or external stylesheets -- the wordmark is text, so a recipient blocking remote content does not see a broken message. User-supplied values (org name, inviter, role, link) are HTML-escaped. The branded part travels through the EmailSender port, so both the SMTP and Resend adapters send it without a call-site change ([REQ-1330](#REQ-1330)).
+
+**Use case:** An invitation that arrives looking like the product it invites the recipient into, while remaining readable and complete for clients that render text only or block remote content.
+
+**Code:** `provisa/core/mail.py`
+
+**Tests:** `tests/unit/test_mail_port.py`, `tests/integration/test_invite_delivery.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1486 · Org Branding {#REQ-1486}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+An org admin puts their organization's own light branding on the surfaces its people meet at the org's address: a display name, a logo, a primary and an accent color, a welcome line on the sign-in page, and a sentence added to every invitation the org sends. The field set is fixed and every value is validated at the edit -- colors are six-digit hex, text is capped per surface (display name 80, welcome 400, invite 1000), an unknown field is refused rather than dropped, and an emptied field clears rather than storing blank. The logo is stored as bytes on the org row (PNG, JPEG, SVG or WebP, at most 256 KiB) and served from the platform's own origin, so the sign-in page depends on no tenant-supplied remote host; an SVG is served under a Content-Security-Policy of "default-src 'none'; style-src 'unsafe-inline'; sandbox" with X-Content-Type-Options nosniff. Branding is read without a bearer, because it dresses the page that renders before a token exists: the addressed org follows [REQ-1276](#REQ-1276) -- the Host subdomain, or on the control-plane host the x-org-provisa header (a fetch) or an ?org= parameter (an <img>, which sends no headers of the page's choosing). An address naming an org that does not exist answers exactly as an address naming none, so the endpoint cannot be walked to enumerate org ids. Writes are gated by the org's own org_admin (or a platform admin) and replace the whole document rather than merging. Branding is additive: an org that set none is presented exactly as the product itself.
+
+**Use case:** An organization signing in at its own subdomain sees its own name, mark and colors, and its invitations arrive carrying them, without the platform hosting a per-tenant theme.
+
+**Code:** `provisa/core/org_branding.py`, `provisa/api/branding_router.py`, `provisa/api/admin/orgs_router.py`, `provisa/api/admin/invites_router.py`, `provisa/core/mail.py`, `provisa/core/schema_admin.py`, `provisa/auth/middleware.py`, `provisa-ui/src/api/branding.ts`, `provisa-ui/src/lib/orgBranding.ts`, `provisa-ui/src/components/OrgBrandingHeader.tsx`, `provisa-ui/src/components/OrgBrandingSettings.tsx`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/pages/TeamPage.tsx`, `provisa-ui/src/main.tsx`
+
+**Tests:** `tests/unit/test_org_branding.py`, `tests/unit/test_org_branding_router.py`, `tests/unit/test_mail_port.py`, `tests/integration/test_invite_delivery.py`

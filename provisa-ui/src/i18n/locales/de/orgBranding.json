@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "Branding",
+    "help": "Was Personen auf der Anmeldeseite unter der Adresse Ihrer Organisation und in Ihren Einladungen sehen. Lassen Sie ein Feld leer, um die Darstellung von Provisa zu verwenden.",
+    "displayNameLabel": "Name der Organisation",
+    "displayNameDesc": "Wird über dem Anmeldeformular angezeigt und in Betreffzeilen von Einladungen verwendet.",
+    "primaryColorLabel": "Primärfarbe",
+    "primaryColorDesc": "Schaltflächen und aktive Zustände. Auch die Schaltfläche in der Einladung.",
+    "accentColorLabel": "Akzentfarbe",
+    "accentColorDesc": "Die Linie neben Ihrem Namen auf der Anmeldeseite.",
+    "welcomeLabel": "Begrüßungstext",
+    "welcomeDesc": "Eine Zeile, die unter Ihrem Namen auf der Anmeldeseite erscheint.",
+    "inviteLabel": "Einladungstext",
+    "inviteDesc": "Ihr eigener Satz, der in jeder Einladung über dem Text von Provisa steht.",
+    "logoLabel": "Logo",
+    "logoDesc": "PNG, JPEG, SVG oder WebP, bis zu 256 KB.",
+    "uploadLogo": "Logo hochladen",
+    "replaceLogo": "Logo ersetzen",
+    "removeLogo": "Logo entfernen",
+    "noLogo": "Kein Logo festgelegt.",
+    "save": "Branding speichern",
+    "saved": "Branding gespeichert.",
+    "logoSaved": "Logo gespeichert.",
+    "logoRemoved": "Logo entfernt."
+  }
+}

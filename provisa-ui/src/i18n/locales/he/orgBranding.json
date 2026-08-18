@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "מיתוג",
+    "help": "מה שאנשים רואים בדף הכניסה בכתובת של הארגון שלך ובהזמנות שאתם שולחים. השאירו שדה ריק כדי להשתמש בתצוגה של Provisa.",
+    "displayNameLabel": "שם הארגון",
+    "displayNameDesc": "מוצג מעל טופס הכניסה ומשמש בשורת הנושא של ההזמנות.",
+    "primaryColorLabel": "צבע ראשי",
+    "primaryColorDesc": "כפתורים ומצבים פעילים. גם הכפתור בהזמנה.",
+    "accentColorLabel": "צבע הדגשה",
+    "accentColorDesc": "הקו לצד השם שלכם בדף הכניסה.",
+    "welcomeLabel": "הודעת פתיחה",
+    "welcomeDesc": "שורה אחת שמוצגת מתחת לשם שלכם בדף הכניסה.",
+    "inviteLabel": "הודעת הזמנה",
+    "inviteDesc": "המשפט שלכם, שממוקם מעל הטקסט של Provisa בכל הזמנה שאתם שולחים.",
+    "logoLabel": "לוגו",
+    "logoDesc": "PNG,‏ JPEG,‏ SVG או WebP, עד 256 ק\"ב.",
+    "uploadLogo": "העלאת לוגו",
+    "replaceLogo": "החלפת הלוגו",
+    "removeLogo": "הסרת הלוגו",
+    "noLogo": "לא הוגדר לוגו.",
+    "save": "שמירת המיתוג",
+    "saved": "המיתוג נשמר.",
+    "logoSaved": "הלוגו נשמר.",
+    "logoRemoved": "הלוגו הוסר."
+  }
+}

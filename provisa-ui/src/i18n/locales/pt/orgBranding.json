@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "Identidade visual",
+    "help": "O que as pessoas veem na página de login no endereço da sua organização e nos convites que você envia. Deixe um campo vazio para usar a apresentação do próprio Provisa.",
+    "displayNameLabel": "Nome da organização",
+    "displayNameDesc": "Exibido acima do formulário de login e usado no assunto dos convites.",
+    "primaryColorLabel": "Cor primária",
+    "primaryColorDesc": "Botões e estados ativos. Também o botão do convite.",
+    "accentColorLabel": "Cor de destaque",
+    "accentColorDesc": "A linha ao lado do seu nome na página de login.",
+    "welcomeLabel": "Mensagem de boas-vindas",
+    "welcomeDesc": "Uma linha exibida abaixo do seu nome na página de login.",
+    "inviteLabel": "Mensagem do convite",
+    "inviteDesc": "Sua própria frase, colocada acima do texto do Provisa em cada convite que você envia.",
+    "logoLabel": "Logotipo",
+    "logoDesc": "PNG, JPEG, SVG ou WebP, até 256 KB.",
+    "uploadLogo": "Enviar logotipo",
+    "replaceLogo": "Substituir logotipo",
+    "removeLogo": "Remover logotipo",
+    "noLogo": "Nenhum logotipo definido.",
+    "save": "Salvar identidade visual",
+    "saved": "Identidade visual salva.",
+    "logoSaved": "Logotipo salvo.",
+    "logoRemoved": "Logotipo removido."
+  }
+}

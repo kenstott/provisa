@@ -1,0 +1,26 @@
+{
+  "orgBranding": {
+    "heading": "Identité visuelle",
+    "help": "Ce que les personnes voient sur la page de connexion à l'adresse de votre organisation et dans les invitations que vous envoyez. Laissez un champ vide pour utiliser la présentation propre à Provisa.",
+    "displayNameLabel": "Nom de l'organisation",
+    "displayNameDesc": "Affiché au-dessus du formulaire de connexion et utilisé dans l'objet des invitations.",
+    "primaryColorLabel": "Couleur principale",
+    "primaryColorDesc": "Boutons et états actifs. Également le bouton de l'invitation.",
+    "accentColorLabel": "Couleur d'accent",
+    "accentColorDesc": "Le trait à côté de votre nom sur la page de connexion.",
+    "welcomeLabel": "Message d'accueil",
+    "welcomeDesc": "Une ligne affichée sous votre nom sur la page de connexion.",
+    "inviteLabel": "Message d'invitation",
+    "inviteDesc": "Votre propre phrase, placée au-dessus du texte de Provisa dans chaque invitation que vous envoyez.",
+    "logoLabel": "Logo",
+    "logoDesc": "PNG, JPEG, SVG ou WebP, jusqu'à 256 Ko.",
+    "uploadLogo": "Téléverser un logo",
+    "replaceLogo": "Remplacer le logo",
+    "removeLogo": "Supprimer le logo",
+    "noLogo": "Aucun logo défini.",
+    "save": "Enregistrer l'identité visuelle",
+    "saved": "Identité visuelle enregistrée.",
+    "logoSaved": "Logo enregistré.",
+    "logoRemoved": "Logo supprimé."
+  }
+}

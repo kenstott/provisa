@@ -128,6 +128,11 @@ _SKIP_PATHS = {
     # live in TenantMiddleware, which never registered — the webhook 401'd instead.
     "/billing/signup",
     "/billing/webhook",
+    # REQ-1486: an org's own branding dresses the sign-in page, which by definition renders before
+    # a token exists. Both answer only what the addressed org chose to show every visitor at its
+    # address — a name, a logo, two colors, a welcome line — and neither reads membership.
+    "/orgs/branding",
+    "/orgs/branding/logo",
 }
 
 
