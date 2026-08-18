@@ -39,7 +39,7 @@ CONFIG = {
     "zone": "us-east1-b",
     "instance": "coordinator",
     "backend_host": "10.0.0.2",
-    "ports": {"5432": {"wake_style": "hold"}, "8080": {"wake_style": "http"}},
+    "ports": {"5432": {"wake_style": "raw"}, "443": {"wake_style": "html"}},
     "status_port": 9443,
     "status_token": "s3cr3t-token",
     "idle_stop_minutes": 60,
@@ -177,7 +177,7 @@ def test_status_reports_the_coordinator_ports_and_idle_time(proxy, monkeypatch):
     payload = proxy._status_payload()
 
     assert payload["coordinator"] == "RUNNING"
-    assert set(payload["ports"]) == {"5432", "8080"}
+    assert set(payload["ports"]) == {"443", "5432"}
     assert payload["all_up"] is False
     assert payload["idle_seconds"] == 600
 
@@ -196,7 +196,7 @@ def test_status_does_not_probe_the_ports_of_a_stopped_coordinator(proxy, monkeyp
     payload = proxy._status_payload()
 
     assert probed == []
-    assert payload["ports"] == {"5432": False, "8080": False}
+    assert payload["ports"] == {"443": False, "5432": False}
     assert payload["all_up"] is False
 
 
@@ -289,3 +289,169 @@ def test_a_coordinator_that_is_already_stopped_is_not_stopped_again(proxy, monke
 
 def test_the_idle_window_comes_from_the_configured_minutes(proxy):
     assert proxy.IDLE_STOP_SECONDS == CONFIG["idle_stop_minutes"] * 60
+
+
+# --- readiness (REQ-1333) ---------------------------------------------------------------------
+#
+# The UI container binds its port the moment it restarts, while the API's lifespan is still
+# running. Routing on the accept handed the browser an SPA whose every call was refused, so the
+# site reported it could not reach Provisa — between the waking page and a working site.
+
+
+def _tls_backend(tmp_path, responder):
+    """A TLS listener on localhost answering each request with ``responder(request)``.
+
+    Returns ``(port, requests)``. The certificate is self-signed and issued for a name that is not
+    127.0.0.1, which is the deployed shape too: the coordinator's cert is for the public hostname
+    and the front door dials its internal address.
+    """
+    import socket as _socket
+    import ssl as _ssl
+    import threading as _threading
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "cloud.provisa.test")])
+    now = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + datetime.timedelta(days=3650))
+        .sign(key, hashes.SHA256())
+    )
+    cert_file = tmp_path / "backend.crt"
+    key_file = tmp_path / "backend.key"
+    cert_file.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_file.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+
+    srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(8)
+    port = srv.getsockname()[1]
+    ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(str(cert_file), str(key_file))
+    requests: list[str] = []
+
+    def serve():
+        while True:
+            try:
+                raw, _ = srv.accept()
+            except OSError:
+                return
+            try:
+                with ctx.wrap_socket(raw, server_side=True) as tls:
+                    tls.settimeout(5)
+                    requests.append(tls.recv(65536).decode("latin-1"))
+                    tls.sendall(responder(requests[-1]))
+            except OSError:
+                continue
+
+    _threading.Thread(target=serve, daemon=True).start()
+    return port, requests
+
+
+def _http(status: str, body: bytes = b"") -> bytes:
+    return (
+        f"HTTP/1.1 {status}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode()
+        + body
+    )
+
+
+@pytest.fixture
+def local_backend(proxy, monkeypatch):
+    """Point the proxy's backend at localhost so a real TLS probe can be answered."""
+    monkeypatch.setattr(proxy, "BACKEND_HOST", "127.0.0.1")
+    proxy._health_cache.clear()
+    return proxy
+
+
+def test_a_port_that_answers_health_is_ready(local_backend, tmp_path):
+    port, requests = _tls_backend(tmp_path, lambda _r: _http("200 OK", b'{"status":"ok"}'))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+
+    assert local_backend._backend_ready(port) is True
+    assert requests[0].startswith("GET /health ")
+
+
+def test_a_port_that_accepts_but_is_not_serving_yet_is_not_ready(local_backend, tmp_path):
+    """This is the state the middle attempt landed in: the socket is open, the app is not up."""
+    port, _ = _tls_backend(tmp_path, lambda _r: _http("503 Service Unavailable"))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+
+    assert local_backend._backend_ready(port) is False
+
+
+def test_a_port_nothing_listens_on_is_not_ready(local_backend):
+    port = 9  # discard; nothing accepts
+    local_backend.PORTS[port] = {"wake_style": "html"}
+    assert local_backend._backend_ready(port) is False
+
+
+def test_readiness_is_cached_across_the_connections_of_one_page_load(local_backend, tmp_path):
+    """A browser opens several connections per document; a probe on each would multiply the
+    latency of every request the front door forwards."""
+    port, requests = _tls_backend(tmp_path, lambda _r: _http("200 OK"))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+
+    for _ in range(5):
+        assert local_backend._backend_ready(port) is True
+    assert len(requests) == 1
+
+
+def test_readiness_is_re_probed_once_the_cache_expires(local_backend, tmp_path, monkeypatch):
+    answers = ["503 Service Unavailable", "200 OK"]
+    port, _ = _tls_backend(tmp_path, lambda _r: _http(answers.pop(0) if answers else "200 OK"))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+    now = [1000.0]
+    monkeypatch.setattr(local_backend.time, "monotonic", lambda: now[0])
+
+    assert local_backend._backend_ready(port) is False
+    now[0] += local_backend.HEALTH_CACHE_TTL + 1
+    assert local_backend._backend_ready(port) is True
+
+
+def test_a_raw_protocol_port_is_still_judged_by_the_accept(proxy, monkeypatch):
+    """Bolt, pgwire and Flight speak no HTTP, so there is nothing to ask them for."""
+    probed: list[int] = []
+
+    def _connect(port, timeout=None):
+        probed.append(port)
+        return None
+
+    monkeypatch.setattr(proxy, "_backend_connect", _connect)
+    proxy._status_payload()
+    assert 5432 in probed
+
+
+def _routing(proxy, monkeypatch, ready: bool):
+    """Drive ``_handle`` on the browser port with the readiness answer fixed, recording the route."""
+    took: list[str] = []
+    monkeypatch.setattr(proxy, "_backend_ready", lambda _port: ready)
+    monkeypatch.setattr(proxy, "_backend_connect", lambda port, timeout=None: object())
+    monkeypatch.setattr(proxy, "_splice", lambda *_a: took.append("spliced"))
+    monkeypatch.setattr(proxy, "_serve_wake_response", lambda *_a: took.append("wake_page"))
+    monkeypatch.setattr(proxy, "trigger_wake", lambda: took.append("wake_call"))
+    proxy._handle(object(), 443)
+    return took
+
+
+def test_an_unready_backend_gets_the_waking_page_not_the_broken_site(proxy, monkeypatch):
+    assert _routing(proxy, monkeypatch, ready=False) == ["wake_call", "wake_page"]
+
+
+def test_a_ready_backend_is_spliced_straight_through(proxy, monkeypatch):
+    assert _routing(proxy, monkeypatch, ready=True) == ["spliced"]

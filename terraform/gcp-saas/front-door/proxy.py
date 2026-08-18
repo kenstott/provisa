@@ -53,6 +53,9 @@ TLS_CERT = CFG["tls_cert"]  # path; "" when the deploy runs without TLS material
 TLS_KEY = CFG["tls_key"]
 
 BACKEND_CONNECT_TIMEOUT = 2.0
+HEALTH_PATH = "/health"
+HEALTH_TIMEOUT = 2.5
+HEALTH_CACHE_TTL = 3.0
 WAKE_HOLD_SECONDS = 110  # raw-TCP clients: hold until boot completes or they give up
 STATUS_CACHE_TTL = 10.0
 START_DEBOUNCE_SECONDS = 30.0
@@ -63,6 +66,7 @@ _last_activity = time.monotonic()
 _active_conns = 0
 _last_start_call = 0.0
 _status_cache = ("", 0.0)
+_health_cache: dict[int, tuple[bool, float]] = {}
 
 _metadata_token = ("", 0.0)
 
@@ -143,6 +147,46 @@ def _backend_connect(port: int, timeout: float = BACKEND_CONNECT_TIMEOUT):
         return socket.create_connection((BACKEND_HOST, port), timeout=timeout)
     except OSError:
         return None
+
+
+def _backend_ready(port: int) -> bool:
+    """Whether the app behind an HTTPS port is SERVING, not merely accepting.
+
+    A TCP accept is the UI container, which binds its port the moment it restarts. The API's
+    lifespan runs long after that — it re-seeds the bootstrap org and rebuilds org_registry — and
+    /health is the endpoint that only answers once it has finished. Splicing on the accept is what
+    produced the middle state users saw: the waking page stopped appearing, the SPA loaded, and
+    every call it made was refused, so the site said it could not reach Provisa. Held to /health,
+    the client keeps getting the waking page until the whole path is up.
+
+    The result is cached briefly because a browser opens several connections per page load and each
+    one would otherwise cost a probe.
+    """
+    ready, at = _health_cache.get(port, (False, 0.0))
+    if time.monotonic() - at < HEALTH_CACHE_TTL:
+        return ready
+    ready = False
+    sock = _backend_connect(port, timeout=HEALTH_TIMEOUT)
+    if sock is not None:
+        # The backend's certificate is issued for the public hostname and this dials the VM's
+        # internal address, so a verifying context would fail on the name for a perfectly healthy
+        # app. The hop is inside the VPC and the question here is liveness, not identity.
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        try:
+            with ctx.wrap_socket(sock) as tls:
+                tls.settimeout(HEALTH_TIMEOUT)
+                tls.sendall(
+                    f"GET {HEALTH_PATH} HTTP/1.1\r\nHost: {BACKEND_HOST}\r\n"
+                    "Connection: close\r\n\r\n".encode()
+                )
+                status_line = tls.recv(SPLICE_BUF).split(b"\r\n", 1)[0].split()
+                ready = len(status_line) > 1 and status_line[1] == b"200"
+        except (OSError, ssl.SSLError):
+            ready = False
+    _health_cache[port] = (ready, time.monotonic())
+    return ready
 
 
 def _splice(client: socket.socket, backend: socket.socket) -> None:
@@ -243,6 +287,10 @@ def _status_payload() -> dict:
         # Probe concurrently: SYNs to a stopped/booting VM hang the full timeout,
         # and 7 sequential probes would push /status past typical client limits.
         def probe(port: int) -> bool:
+            # Same definition of "up" the proxy routes on, so all_up means a client sent here now
+            # gets the site rather than the app's own cannot-connect page.
+            if PORTS[port]["wake_style"] in ("html", "json"):
+                return _backend_ready(port)
             backend = _backend_connect(port, timeout=1.5)
             if backend:
                 backend.close()
@@ -313,14 +361,23 @@ def _listen_status() -> None:
 
 
 def _handle(client: socket.socket, port: int) -> None:
+    if PORTS[port]["wake_style"] in ("html", "json"):
+        # Readiness on an HTTPS port is /health, not an accept: see _backend_ready. A port that
+        # accepts but is not serving still gets the waking page, and still triggers the wake —
+        # the box may be RUNNING with the app mid-boot, where trigger_wake is a no-op.
+        if _backend_ready(port):
+            backend = _backend_connect(port)
+            if backend:
+                _splice(client, backend)
+                return
+        trigger_wake()
+        _serve_wake_response(client, port)
+        return
     backend = _backend_connect(port)
     if backend:
         _splice(client, backend)
         return
     trigger_wake()
-    if PORTS[port]["wake_style"] in ("html", "json"):
-        _serve_wake_response(client, port)
-        return
     # Raw TCP protocol: hold the client while the coordinator boots, then splice.
     deadline = time.monotonic() + WAKE_HOLD_SECONDS
     while time.monotonic() < deadline:
@@ -393,7 +450,9 @@ def main() -> None:
     threading.Thread(target=_idle_reaper, daemon=True).start()
     log.info(
         "front-door up: backend=%s ports=%s idle_stop=%ss",
-        BACKEND_HOST, sorted(PORTS), IDLE_STOP_SECONDS,
+        BACKEND_HOST,
+        sorted(PORTS),
+        IDLE_STOP_SECONDS,
     )
     while True:
         time.sleep(3600)
