@@ -24,6 +24,19 @@ vi.mock("../api/maintenance", () => ({
   setMaintenanceNotice: vi.fn(),
 }));
 
+// REQ-1349: the Maintenance tab now also carries the config-file section, which reads
+// /admin/settings on mount. This suite is about the downtime notice, so the settings read is
+// stubbed rather than left to hit the network.
+vi.mock("../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/admin")>()),
+  fetchSettings: vi.fn().mockResolvedValue({
+    features: { live_config_export: true, platform_settings: true },
+    redirect: { enabled: false, threshold: 0, ttl: 0, default_format: "csv" },
+    cache: { default_ttl: 0 },
+    naming: { use_domains: true, default_domain: "" },
+  }),
+}));
+
 import { fetchMaintenanceNotice, setMaintenanceNotice } from "../api/maintenance";
 const mockFetch = vi.mocked(fetchMaintenanceNotice);
 const mockSet = vi.mocked(setMaintenanceNotice);

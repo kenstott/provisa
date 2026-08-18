@@ -1,7 +1,6 @@
 {
   "metadataExportTab": {
     "loading": "Metadata-exportinstellingen laden…",
-    "heading": "Metadata-export",
     "intro": "Publiceer de governed metadata van deze organisatie — tabellen, kolommen, domeinen, data stewards, goedgekeurde relaties en lineage op kolomniveau — naar een externe datacatalogus. Publicatie is uitsluitend uitgaand: Provisa leest de doelcatalogus nooit terug als bron van waarheid.",
     "notEntitledTitle": "Niet inbegrepen in dit abonnement",
     "notEntitled": "Metadata-export vereist het {{tier}}-abonnement. Upgrade om een catalogusdoel te configureren.",

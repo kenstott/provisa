@@ -18,10 +18,13 @@ export function FilterInput({
   value,
   onChange,
   placeholder,
+  testId = "filter-input",
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /** Overridden where a page's tests already address its filter by another name. */
+  testId?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -32,7 +35,7 @@ export function FilterInput({
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        data-testid="filter-input"
+        data-testid={testId}
         rightSection={
           <Group gap={2} wrap="nowrap">
             <CopyButton text={value} size={11} />

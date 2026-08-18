@@ -27,6 +27,8 @@ import {
  * The message field is left empty by default: an empty message means the server's standard wording,
  * so the deployment says the same thing every time without an administrator having to compose it.
  */
+import { ConfigFileSection } from "./settingsCards";
+
 export function MaintenanceTab() {
   const [notice, setNotice] = useState<MaintenanceNotice | null>(null);
   const [message, setMessage] = useState("");
@@ -92,8 +94,8 @@ export function MaintenanceTab() {
 
       {notice?.active && (
         <Alert color="orange" data-testid="maintenance-active">
-          The banner is live{notice.started_at ? ` since ${new Date(notice.started_at).toLocaleString()}` : ""}
-          .
+          The banner is live
+          {notice.started_at ? ` since ${new Date(notice.started_at).toLocaleString()}` : ""}.
         </Alert>
       )}
 
@@ -137,6 +139,10 @@ export function MaintenanceTab() {
           </Group>
         </Stack>
       </Card>
+
+      {/* REQ-1349: exporting, diffing and re-applying the config file is deployment maintenance,
+          not an overview statistic. */}
+      <ConfigFileSection />
     </Stack>
   );
 }

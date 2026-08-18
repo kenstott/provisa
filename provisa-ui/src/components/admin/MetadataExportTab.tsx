@@ -178,7 +178,6 @@ export function MetadataExportTab() {
 
   return (
     <Stack maw={860} gap="md">
-      <Title order={4}>{t("metadataExportTab.heading")}</Title>
       <Text c="dimmed" size="sm">
         {t("metadataExportTab.intro")}
       </Text>

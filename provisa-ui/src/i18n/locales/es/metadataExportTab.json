@@ -1,7 +1,6 @@
 {
   "metadataExportTab": {
     "loading": "Cargando la configuración de exportación de metadatos…",
-    "heading": "Exportación de metadatos",
     "intro": "Publique los metadatos gobernados de esta organización — tablas, columnas, dominios, stewards, relaciones aprobadas y linaje a nivel de columna — en un catálogo de datos externo. La publicación es solo de salida: Provisa nunca lee el catálogo de destino como fuente de verdad.",
     "notEntitledTitle": "No incluido en este plan",
     "notEntitled": "La exportación de metadatos requiere el plan {{tier}}. Actualice el plan para configurar un catálogo de destino.",

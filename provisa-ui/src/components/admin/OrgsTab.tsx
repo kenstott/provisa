@@ -36,6 +36,7 @@ import {
   fetchInvites,
   createInvite,
   revokeInvite,
+  fetchOrgRoles,
 } from "../../api/admin";
 import type { Org, OrgMember, OrgInvite } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
@@ -55,6 +56,10 @@ export function OrgsTab() {
   const [orgPage, setOrgPage] = useState(1);
   const [orgInvites, setOrgInvites] = useState<OrgInvite[]>([]);
   const [inviteOrgId, setInviteOrgId] = useState<string | null>(null);
+  // The role the invitation confers. Defaulted to org_admin here because this tab's invitations
+  // exist to give a new org an administrator — the server's own default is analyst (REQ-1314).
+  const [inviteRoleId, setInviteRoleId] = useState<string>("org_admin");
+  const [inviteRoles, setInviteRoles] = useState<string[]>([]);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteSearch, setInviteSearch] = useState("");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
@@ -119,13 +124,28 @@ export function OrgsTab() {
 
   const handleCreateInvite = async () => {
     if (!inviteOrgId || !inviteOrgId.trim()) return;
-    const invite = await createInvite(inviteOrgId.trim());
+    const invite = await createInvite(inviteOrgId.trim(), inviteRoleId);
     setOrgInvites(await fetchInvites());
     const url = `${window.location.origin}/register?invite=${invite.token}`;
     await navigator.clipboard.writeText(url);
     notifications.show({ color: "green", message: t("orgsTab.inviteCreated", { url }) });
     setInviteOrgId(null);
     setShowInviteForm(false);
+  };
+
+  // The roles on offer are the selected org's own — role ids are per-org rows, and the server
+  // refuses an invitation naming one the org does not have (REQ-1313).
+  const handleSelectInviteOrg = async (orgId: string | null) => {
+    setInviteOrgId(orgId);
+    if (!orgId) {
+      setInviteRoles([]);
+      return;
+    }
+    try {
+      setInviteRoles((await fetchOrgRoles(orgId)).map((r) => r.id));
+    } catch (e) {
+      notifications.show({ color: "red", message: (e as Error).message });
+    }
   };
 
   const handleRevokeInvite = async (token: string) => {
@@ -349,6 +369,10 @@ export function OrgsTab() {
         </Button>
       </Group>
 
+      <Text size="sm" c="dimmed" maw={720}>
+        {t("orgsTab.invitesIntro")}
+      </Text>
+
       {showInviteForm && (
         <Stack gap="sm" maw={480}>
           <Select
@@ -356,7 +380,15 @@ export function OrgsTab() {
             placeholder={t("orgsTab.orgSelectPlaceholder")}
             data={orgSelectData}
             value={inviteOrgId}
-            onChange={setInviteOrgId}
+            onChange={(v) => void handleSelectInviteOrg(v)}
+          />
+          <Select
+            label={t("orgsTab.inviteRoleLabel")}
+            description={t("orgsTab.inviteRoleDescription")}
+            data={inviteRoles}
+            value={inviteRoleId}
+            onChange={(v) => v && setInviteRoleId(v)}
+            disabled={!inviteOrgId}
           />
           <Button
             onClick={handleCreateInvite}
@@ -373,6 +405,7 @@ export function OrgsTab() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("orgsTab.colOrg")}</Table.Th>
+              <Table.Th>{t("orgsTab.colRole")}</Table.Th>
               <Table.Th>{t("orgsTab.colToken")}</Table.Th>
               <Table.Th>{t("orgsTab.colCreatedBy")}</Table.Th>
               <Table.Th>{t("orgsTab.colExpires")}</Table.Th>
@@ -383,7 +416,7 @@ export function OrgsTab() {
           <Table.Tbody>
             {filteredInvites.length === 0 && (
               <Table.Tr>
-                <Table.Td colSpan={6} ta="center" c="dimmed">
+                <Table.Td colSpan={7} ta="center" c="dimmed">
                   {t("orgsTab.noInvites")}
                 </Table.Td>
               </Table.Tr>
@@ -391,6 +424,11 @@ export function OrgsTab() {
             {pagedInvites.map((inv) => (
               <Table.Tr key={inv.token}>
                 <Table.Td>{inv.org_name}</Table.Td>
+                <Table.Td>
+                  <Badge variant="light" color={inv.role_id === "org_admin" ? "blue" : "gray"}>
+                    {inv.role_id}
+                  </Badge>
+                </Table.Td>
                 <Table.Td>
                   <Text ff="monospace" span>
                     {inv.token.slice(0, 8)}…

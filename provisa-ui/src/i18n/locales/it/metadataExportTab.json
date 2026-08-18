@@ -1,7 +1,6 @@
 {
   "metadataExportTab": {
     "loading": "Caricamento delle impostazioni di esportazione dei metadati…",
-    "heading": "Esportazione metadati",
     "intro": "Pubblica i metadati governati di questa organizzazione — tabelle, colonne, domini, data steward, relazioni approvate e derivazione a livello di colonna — in un catalogo dati esterno. La pubblicazione è solo in uscita: Provisa non legge mai il catalogo di destinazione come fonte di verità.",
     "notEntitledTitle": "Non incluso in questo piano",
     "notEntitled": "L'esportazione dei metadati richiede il piano {{tier}}. Eseguire l'upgrade per configurare un catalogo di destinazione.",

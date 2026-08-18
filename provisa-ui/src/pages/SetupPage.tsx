@@ -40,7 +40,10 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firebaseProjectId, setFirebaseProjectId] = useState("");
   const [useDomains, setUseDomains] = useState<boolean | null>(false);
-  const [defaultDomain, setDefaultDomain] = useState("default");
+  // Single-domain mode hides the domain from every label, name and access check, so the name is
+  // only the string rows are stored under -- the server needs one, an operator gains nothing from
+  // choosing it. Sent as the policy default; not asked for.
+  const defaultDomain = "default";
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -129,10 +132,8 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
 
           <Title order={3}>{t("setupPage.domainModelHeading")}</Title>
           <Radio.Group
-            value={useDomains === false ? "simple" : useDomains === true ? "namespaced" : "legacy"}
-            onChange={(v) =>
-              setUseDomains(v === "simple" ? false : v === "namespaced" ? true : null)
-            }
+            value={useDomains === true ? "namespaced" : "simple"}
+            onChange={(v) => setUseDomains(v === "namespaced")}
             name="domains"
           >
             <Stack gap="md">
@@ -148,18 +149,6 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
                   </Box>
                 }
               />
-              {useDomains === false && (
-                <Box ml="lg">
-                  <TextInput
-                    id="setup-default-domain"
-                    label={t("setupPage.defaultDomainNameLabel")}
-                    value={defaultDomain}
-                    onChange={(e) => setDefaultDomain(e.currentTarget.value)}
-                    required
-                    pattern="[A-Za-z_][A-Za-z0-9_]*"
-                  />
-                </Box>
-              )}
               <Radio
                 value="namespaced"
                 data-testid="setup-domains-namespaced"
@@ -168,18 +157,6 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
                     <Text fw={700}>{t("setupPage.namespacedDomainLabel")}</Text>
                     <Text size="sm" c="dimmed">
                       {t("setupPage.namespacedDomainDesc")}
-                    </Text>
-                  </Box>
-                }
-              />
-              <Radio
-                value="legacy"
-                data-testid="setup-domains-legacy"
-                label={
-                  <Box>
-                    <Text fw={700}>{t("setupPage.legacyDomainLabel")}</Text>
-                    <Text size="sm" c="dimmed">
-                      {t("setupPage.legacyDomainDesc")}
                     </Text>
                   </Box>
                 }

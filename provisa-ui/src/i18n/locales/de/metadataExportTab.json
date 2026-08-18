@@ -1,7 +1,6 @@
 {
   "metadataExportTab": {
     "loading": "Einstellungen für den Metadatenexport werden geladen…",
-    "heading": "Metadatenexport",
     "intro": "Veröffentlicht die governten Metadaten dieser Organisation — Tabellen, Spalten, Domänen, Data Stewards, genehmigte Beziehungen und Lineage auf Spaltenebene — in einem externen Datenkatalog. Die Veröffentlichung ist ausschließlich ausgehend: Provisa liest den Zielkatalog nie als maßgebliche Quelle zurück.",
     "notEntitledTitle": "In diesem Plan nicht enthalten",
     "notEntitled": "Der Metadatenexport erfordert den {{tier}}-Plan. Führen Sie ein Upgrade durch, um ein Katalogziel zu konfigurieren.",

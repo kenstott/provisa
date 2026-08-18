@@ -1,7 +1,6 @@
 {
   "metadataExportTab": {
     "loading": "Chargement des paramètres d'export de métadonnées…",
-    "heading": "Export de métadonnées",
     "intro": "Publiez les métadonnées gouvernées de cette organisation — tables, colonnes, domaines, data stewards, relations approuvées et traçabilité au niveau des colonnes — vers un catalogue de données externe. La publication est uniquement sortante : Provisa ne relit jamais le catalogue cible comme source de vérité.",
     "notEntitledTitle": "Non inclus dans ce plan",
     "notEntitled": "L'export de métadonnées nécessite le plan {{tier}}. Passez à l'offre supérieure pour configurer un catalogue cible.",

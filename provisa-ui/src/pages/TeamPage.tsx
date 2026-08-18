@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Accordion,
   Alert,
   Button,
   Group,
@@ -36,6 +37,7 @@ import {
 } from "../api/admin";
 import type { OrgInvite, OrgMember } from "../api/admin";
 import { OrgBrandingSettings } from "../components/OrgBrandingSettings";
+import { useLocalStorage } from "../components/graph/graph-persistence";
 import { useRoles } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
 
@@ -58,6 +60,13 @@ export function TeamPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [exported, setExported] = useState(false);
+  // Which sections are open, kept across visits. Branding is absent from the default because it is
+  // set once and then rarely touched, unlike the member and invite lists.
+  const [openSections, setOpenSections] = useLocalStorage<string[]>("provisa.team.sections", [
+    "members",
+    "invites",
+    "danger",
+  ]);
 
   const reportError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
@@ -179,233 +188,268 @@ export function TeamPage() {
         </Alert>
       )}
 
-      <Stack gap="sm">
-        <Title order={4}>{t("teamPage.membersHeading")}</Title>
-        <Table.ScrollContainer minWidth={640}>
-          <Table
-            striped
-            highlightOnHover
-            withTableBorder
-            verticalSpacing="xs"
-            data-testid="team-members"
-          >
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("teamPage.colPerson")}</Table.Th>
-                <Table.Th>{t("teamPage.colProvider")}</Table.Th>
-                <Table.Th>{t("teamPage.colOrgAdmin")}</Table.Th>
-                <Table.Th>{t("teamPage.colActions")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {members.length === 0 && (
-                <Table.Tr>
-                  <Table.Td colSpan={4} ta="center" c="dimmed">
-                    {t("teamPage.noMembers")}
-                  </Table.Td>
-                </Table.Tr>
-              )}
-              {members.map((m) => {
-                const lastAdmin = m.is_org_admin && adminCount <= 1;
-                return (
-                  <Table.Tr key={m.user_id} data-testid={`team-member-${m.user_id}`}>
-                    <Table.Td>
-                      <Text size="sm">{m.display_name ?? m.email ?? m.user_id}</Text>
-                      {m.email && m.display_name && (
-                        <Text size="xs" c="dimmed">
-                          {m.email}
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>{m.provider ?? "—"}</Table.Td>
-                    <Table.Td>{m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")}</Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Button
-                          size="compact-xs"
-                          variant="default"
-                          disabled={lastAdmin}
-                          title={lastAdmin ? t("teamPage.lastAdminHint") : undefined}
-                          onClick={() => handleToggleAdmin(m)}
-                          data-testid={`team-toggle-admin-${m.user_id}`}
-                        >
-                          {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
-                        </Button>
-                        <Button
-                          size="compact-xs"
-                          color="red"
-                          variant="light"
-                          disabled={lastAdmin || m.user_id === userId}
-                          title={
-                            m.user_id === userId
-                              ? t("teamPage.selfRemoveHint")
-                              : lastAdmin
-                                ? t("teamPage.lastAdminHint")
-                                : undefined
-                          }
-                          onClick={() => handleRemoveMember(m)}
-                          data-testid={`team-remove-${m.user_id}`}
-                        >
-                          {t("teamPage.removeButton")}
-                        </Button>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      </Stack>
-
-      <Stack gap="sm" maw={480}>
-        <Title order={4}>{t("teamPage.inviteHeading")}</Title>
-        <Text c="dimmed" size="sm">
-          {t("teamPage.inviteHelp")}
-        </Text>
-        <Select
-          label={t("teamPage.roleLabel")}
-          description={t("teamPage.roleDesc")}
-          placeholder={t("teamPage.rolePlaceholder")}
-          data={roleOptions}
-          value={roleId}
-          onChange={setRoleId}
-          data-testid="team-invite-role"
-        />
-        <Button
-          onClick={handleCreate}
-          disabled={!activeOrgId || !roleId}
-          style={{ alignSelf: "flex-start" }}
-          data-testid="team-invite-create"
-        >
-          {t("teamPage.generateInvite")}
-        </Button>
-      </Stack>
-
-      <Table.ScrollContainer minWidth={640}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("teamPage.colToken")}</Table.Th>
-              <Table.Th>{t("teamPage.colRole")}</Table.Th>
-              <Table.Th>{t("teamPage.colExpires")}</Table.Th>
-              <Table.Th>{t("teamPage.colStatus")}</Table.Th>
-              <Table.Th>{t("teamPage.colActions")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {invites.length === 0 && (
-              <Table.Tr>
-                <Table.Td colSpan={5} ta="center" c="dimmed">
-                  {t("teamPage.noInvites")}
-                </Table.Td>
-              </Table.Tr>
-            )}
-            {invites.map((inv) => (
-              <Table.Tr key={inv.token}>
-                <Table.Td>
-                  <Text ff="monospace" span>
-                    {inv.token.slice(0, 8)}…
-                  </Text>
-                </Table.Td>
-                <Table.Td>{inv.role_id ?? "—"}</Table.Td>
-                <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
-                <Table.Td>
-                  {inv.used_at
-                    ? t("teamPage.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
-                    : t("teamPage.activeStatus")}
-                </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    {!inv.used_at && (
-                      <Button
-                        size="compact-xs"
-                        variant="default"
-                        onClick={() => handleCopy(inv.token)}
-                      >
-                        {copiedToken === inv.token
-                          ? t("teamPage.copiedButton")
-                          : t("teamPage.copyButton")}
-                      </Button>
-                    )}
-                    {!inv.used_at && (
-                      <Button
-                        size="compact-xs"
-                        color="red"
-                        variant="light"
-                        onClick={() => handleRevoke(inv.token)}
-                      >
-                        {t("teamPage.revokeButton")}
-                      </Button>
-                    )}
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
-
-      {/* REQ-1486: the org's own presentation, edited by the same org_admin who runs the team. */}
-      {activeOrgId && <OrgBrandingSettings orgId={activeOrgId} onError={reportError} />}
-
-      {multitenancy && (
-        <>
-          <Stack gap="sm" maw={520}>
-            <Title order={4}>{t("teamPage.dangerHeading")}</Title>
-            <Text c="dimmed" size="sm">
-              {t("teamPage.dangerHelp")}
-            </Text>
-            <Button
-              color="red"
-              variant="outline"
-              style={{ alignSelf: "flex-start" }}
-              disabled={!activeOrgId}
-              onClick={() => {
-                setConfirmText("");
-                setExported(false);
-                setDeleteOpen(true);
-              }}
-              data-testid="team-delete-org"
-            >
-              {t("teamPage.deleteOrgButton")}
-            </Button>
-          </Stack>
-
-          <Modal
-            opened={deleteOpen}
-            onClose={() => setDeleteOpen(false)}
-            title={t("teamPage.deleteModalTitle")}
-            transitionProps={{ duration: 0 }}
-          >
-            <Stack gap="sm" data-testid="team-delete-modal">
-              <Alert color="red">{t("teamPage.deleteWarning", { org: activeOrgId })}</Alert>
-              <Button
-                variant="default"
-                onClick={handleExport}
-                style={{ alignSelf: "flex-start" }}
-                data-testid="team-export-config"
+      <Accordion
+        multiple
+        variant="separated"
+        value={openSections}
+        onChange={setOpenSections}
+        data-testid="team-sections"
+      >
+        <Accordion.Item value="members">
+          <Accordion.Control data-testid="team-section-members">
+            <Title order={4}>{t("teamPage.membersHeading")}</Title>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <Table.ScrollContainer minWidth={640}>
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                verticalSpacing="xs"
+                data-testid="team-members"
               >
-                {exported ? t("teamPage.downloadedButton") : t("teamPage.downloadButton")}
-              </Button>
-              <TextInput
-                label={t("teamPage.confirmLabel", { org: activeOrgId })}
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.currentTarget.value)}
-                data-testid="team-delete-confirm"
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("teamPage.colPerson")}</Table.Th>
+                    <Table.Th>{t("teamPage.colProvider")}</Table.Th>
+                    <Table.Th>{t("teamPage.colOrgAdmin")}</Table.Th>
+                    <Table.Th>{t("teamPage.colActions")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {members.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={4} ta="center" c="dimmed">
+                        {t("teamPage.noMembers")}
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                  {members.map((m) => {
+                    const lastAdmin = m.is_org_admin && adminCount <= 1;
+                    return (
+                      <Table.Tr key={m.user_id} data-testid={`team-member-${m.user_id}`}>
+                        <Table.Td>
+                          <Text size="sm">{m.display_name ?? m.email ?? m.user_id}</Text>
+                          {m.email && m.display_name && (
+                            <Text size="xs" c="dimmed">
+                              {m.email}
+                            </Text>
+                          )}
+                        </Table.Td>
+                        <Table.Td>{m.provider ?? "—"}</Table.Td>
+                        <Table.Td>{m.is_org_admin ? t("teamPage.yes") : t("teamPage.no")}</Table.Td>
+                        <Table.Td>
+                          <Group gap="xs">
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              disabled={lastAdmin}
+                              title={lastAdmin ? t("teamPage.lastAdminHint") : undefined}
+                              onClick={() => handleToggleAdmin(m)}
+                              data-testid={`team-toggle-admin-${m.user_id}`}
+                            >
+                              {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
+                            </Button>
+                            <Button
+                              size="compact-xs"
+                              color="red"
+                              variant="light"
+                              disabled={lastAdmin || m.user_id === userId}
+                              title={
+                                m.user_id === userId
+                                  ? t("teamPage.selfRemoveHint")
+                                  : lastAdmin
+                                    ? t("teamPage.lastAdminHint")
+                                    : undefined
+                              }
+                              onClick={() => handleRemoveMember(m)}
+                              data-testid={`team-remove-${m.user_id}`}
+                            >
+                              {t("teamPage.removeButton")}
+                            </Button>
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Accordion.Panel>
+        </Accordion.Item>
+
+        <Accordion.Item value="invites">
+          <Accordion.Control data-testid="team-section-invites">
+            <Title order={4}>{t("teamPage.inviteHeading")}</Title>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <Stack gap="sm" maw={480}>
+              <Text c="dimmed" size="sm">
+                {t("teamPage.inviteHelp")}
+              </Text>
+              <Select
+                label={t("teamPage.roleLabel")}
+                description={t("teamPage.roleDesc")}
+                placeholder={t("teamPage.rolePlaceholder")}
+                data={roleOptions}
+                value={roleId}
+                onChange={setRoleId}
+                data-testid="team-invite-role"
               />
               <Button
-                color="red"
-                disabled={confirmText !== activeOrgId}
-                onClick={handleDeleteOrg}
+                onClick={handleCreate}
+                disabled={!activeOrgId || !roleId}
                 style={{ alignSelf: "flex-start" }}
-                data-testid="team-delete-submit"
+                data-testid="team-invite-create"
               >
-                {t("teamPage.deleteConfirmButton")}
+                {t("teamPage.generateInvite")}
               </Button>
             </Stack>
-          </Modal>
-        </>
+
+            <Table.ScrollContainer minWidth={640}>
+              <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("teamPage.colToken")}</Table.Th>
+                    <Table.Th>{t("teamPage.colRole")}</Table.Th>
+                    <Table.Th>{t("teamPage.colExpires")}</Table.Th>
+                    <Table.Th>{t("teamPage.colStatus")}</Table.Th>
+                    <Table.Th>{t("teamPage.colActions")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {invites.length === 0 && (
+                    <Table.Tr>
+                      <Table.Td colSpan={5} ta="center" c="dimmed">
+                        {t("teamPage.noInvites")}
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                  {invites.map((inv) => (
+                    <Table.Tr key={inv.token}>
+                      <Table.Td>
+                        <Text ff="monospace" span>
+                          {inv.token.slice(0, 8)}…
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>{inv.role_id ?? "—"}</Table.Td>
+                      <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
+                      <Table.Td>
+                        {inv.used_at
+                          ? t("teamPage.usedStatus", {
+                              date: new Date(inv.used_at).toLocaleDateString(),
+                            })
+                          : t("teamPage.activeStatus")}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          {!inv.used_at && (
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              onClick={() => handleCopy(inv.token)}
+                            >
+                              {copiedToken === inv.token
+                                ? t("teamPage.copiedButton")
+                                : t("teamPage.copyButton")}
+                            </Button>
+                          )}
+                          {!inv.used_at && (
+                            <Button
+                              size="compact-xs"
+                              color="red"
+                              variant="light"
+                              onClick={() => handleRevoke(inv.token)}
+                            >
+                              {t("teamPage.revokeButton")}
+                            </Button>
+                          )}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Accordion.Panel>
+        </Accordion.Item>
+
+        {/* REQ-1486: the org's own presentation, edited by the same org_admin who runs the team. */}
+        {activeOrgId && (
+          <Accordion.Item value="branding">
+            <Accordion.Control data-testid="team-section-branding">
+              <Title order={4}>{t("orgBranding.heading")}</Title>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <OrgBrandingSettings orgId={activeOrgId} onError={reportError} />
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {multitenancy && (
+          <Accordion.Item value="danger">
+            <Accordion.Control data-testid="team-section-danger">
+              <Title order={4}>{t("teamPage.dangerHeading")}</Title>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap="sm" maw={520}>
+                <Text c="dimmed" size="sm">
+                  {t("teamPage.dangerHelp")}
+                </Text>
+                <Button
+                  color="red"
+                  variant="outline"
+                  style={{ alignSelf: "flex-start" }}
+                  disabled={!activeOrgId}
+                  onClick={() => {
+                    setConfirmText("");
+                    setExported(false);
+                    setDeleteOpen(true);
+                  }}
+                  data-testid="team-delete-org"
+                >
+                  {t("teamPage.deleteOrgButton")}
+                </Button>
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+      </Accordion>
+
+      {multitenancy && (
+        <Modal
+          opened={deleteOpen}
+          onClose={() => setDeleteOpen(false)}
+          title={t("teamPage.deleteModalTitle")}
+          transitionProps={{ duration: 0 }}
+        >
+          <Stack gap="sm" data-testid="team-delete-modal">
+            <Alert color="red">{t("teamPage.deleteWarning", { org: activeOrgId })}</Alert>
+            <Button
+              variant="default"
+              onClick={handleExport}
+              style={{ alignSelf: "flex-start" }}
+              data-testid="team-export-config"
+            >
+              {exported ? t("teamPage.downloadedButton") : t("teamPage.downloadButton")}
+            </Button>
+            <TextInput
+              label={t("teamPage.confirmLabel", { org: activeOrgId })}
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.currentTarget.value)}
+              data-testid="team-delete-confirm"
+            />
+            <Button
+              color="red"
+              disabled={confirmText !== activeOrgId}
+              onClick={handleDeleteOrg}
+              style={{ alignSelf: "flex-start" }}
+              data-testid="team-delete-submit"
+            >
+              {t("teamPage.deleteConfirmButton")}
+            </Button>
+          </Stack>
+        </Modal>
       )}
     </Stack>
   );

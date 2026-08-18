@@ -35,7 +35,8 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { BookOpen, Plus, Sparkles, Trash2 } from "lucide-react";
+import { FilterInput } from "./FilterInput";
 import {
   GLOSSARY_EXPERT_KINDS,
   GLOSSARY_REL_TYPES,
@@ -275,36 +276,36 @@ export function GlossaryTab() {
     .map((term) => ({ value: String(term.id), label: term.name }));
 
   return (
-    <div style={{ display: "flex", gap: "0.75rem", height: "calc(100vh - 180px)", minHeight: 420 }}>
-      <div
-        style={{
-          width: 280,
-          flexShrink: 0,
-          display: "flex",
-          flexDirection: "column",
-          borderInlineEnd: "1px solid var(--border)",
-        }}
-        data-testid="glossary-list"
-      >
-        <Group justify="space-between" px="xs" py={6}>
-          <Text size="sm" fw={600}>
+    <Stack gap="md" style={{ height: "calc(100vh - 180px)", minHeight: 420 }}>
+      {/* Same heading row as the other admin tabs: title, filter, actions. The list/detail split
+          below it is this tab's own layout. */}
+      <Group justify="space-between" wrap="wrap">
+        <Group gap="xs" align="center" wrap="nowrap">
+          <BookOpen size={22} style={{ display: "block", flexShrink: 0 }} />
+          {/* Order 2: AdminPage suppresses its own page title for this tab, so this is the page
+              heading, not a section heading. mb=0 drops the `.page h2` bottom margin, which would
+              otherwise push the text up off the icon's centre line. */}
+          <Title order={2} mb={0} lh={1}>
             {t("glossaryTab.title")}
-          </Text>
+          </Title>
+        </Group>
+        <FilterInput
+          value={query}
+          onChange={setQuery}
+          placeholder={t("glossaryTab.searchPlaceholder")}
+          testId="glossary-search"
+        />
+        <Group gap="xs">
           <Button
-            size="compact-xs"
-            variant="default"
-            leftSection={<Plus size={12} />}
+            leftSection={<Plus size={14} />}
             onClick={() => setAddOpen(true)}
             data-testid="glossary-new-btn"
           >
             {t("glossaryTab.newTerm")}
           </Button>
-        </Group>
-        <Group gap={6} px="xs" pb={6} wrap="wrap">
           <Button
-            size="compact-xs"
             variant="default"
-            leftSection={<Sparkles size={12} />}
+            leftSection={<Sparkles size={14} />}
             loading={bulkGeneratingDefinitions}
             onClick={() => void handleBulkGenerateDefinitions()}
             data-testid="glossary-bulk-definitions-btn"
@@ -312,9 +313,8 @@ export function GlossaryTab() {
             {t("glossaryTab.bulkGenerateDefinitions")}
           </Button>
           <Button
-            size="compact-xs"
             variant="default"
-            leftSection={<Sparkles size={12} />}
+            leftSection={<Sparkles size={14} />}
             loading={bulkGeneratingRelationships}
             onClick={() => void handleBulkGenerateRelationships()}
             data-testid="glossary-bulk-relationships-btn"
@@ -322,360 +322,373 @@ export function GlossaryTab() {
             {t("glossaryTab.bulkGenerateRelationships")}
           </Button>
         </Group>
-        <Stack gap={6} px="xs" pb={6}>
-          <TextInput
-            size="xs"
-            value={query}
-            onChange={(e) => setQuery(e.currentTarget.value)}
-            placeholder={t("glossaryTab.searchPlaceholder")}
-            data-testid="glossary-search"
-          />
+      </Group>
+
+      <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>
+        <div
+          style={{
+            width: 280,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            borderInlineEnd: "1px solid var(--border)",
+          }}
+          data-testid="glossary-list"
+        >
           <Checkbox
             size="xs"
+            px="xs"
+            pb={6}
             label={t("glossaryTab.hideDeprecated")}
             checked={hideDeprecated}
             onChange={(e) => setHideDeprecated(e.currentTarget.checked)}
             data-testid="glossary-hide-deprecated"
           />
-        </Stack>
-        <div style={{ flex: 1, overflow: "auto" }}>
-          {listLoading && terms.length === 0 ? (
+          <div style={{ flex: 1, overflow: "auto" }}>
+            {listLoading && terms.length === 0 ? (
+              <Group justify="center" py="md">
+                <Loader size="xs" />
+              </Group>
+            ) : terms.length === 0 ? (
+              <Text size="xs" c="dimmed" px="xs" py="sm">
+                {t("glossaryTab.empty")}
+              </Text>
+            ) : (
+              terms.map((term) => (
+                <NavLink
+                  key={term.id}
+                  active={term.id === selectedId}
+                  label={term.name}
+                  onClick={() => setSelectedId(term.id)}
+                  data-testid={`glossary-item-${term.id}`}
+                  rightSection={
+                    <Group gap={4} wrap="nowrap">
+                      {term.is_abstract && (
+                        <Badge size="xs" variant="light">
+                          {t("glossaryTab.abstract")}
+                        </Badge>
+                      )}
+                      {term.deprecated && (
+                        <Badge size="xs" color="gray" variant="light">
+                          {t("glossaryTab.deprecated")}
+                        </Badge>
+                      )}
+                      <Badge size="xs" variant="default">
+                        {term.ref_count}
+                      </Badge>
+                    </Group>
+                  }
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto" }} data-testid="glossary-detail">
+          {detailLoading ? (
             <Group justify="center" py="md">
               <Loader size="xs" />
             </Group>
-          ) : terms.length === 0 ? (
-            <Text size="xs" c="dimmed" px="xs" py="sm">
-              {t("glossaryTab.empty")}
+          ) : !detail ? (
+            <Text size="sm" c="dimmed" py="sm">
+              {t("glossaryTab.selectTerm")}
             </Text>
           ) : (
-            terms.map((term) => (
-              <NavLink
-                key={term.id}
-                active={term.id === selectedId}
-                label={term.name}
-                onClick={() => setSelectedId(term.id)}
-                data-testid={`glossary-item-${term.id}`}
-                rightSection={
-                  <Group gap={4} wrap="nowrap">
-                    {term.is_abstract && (
-                      <Badge size="xs" variant="light">
-                        {t("glossaryTab.abstract")}
-                      </Badge>
-                    )}
-                    {term.deprecated && (
-                      <Badge size="xs" color="gray" variant="light">
-                        {t("glossaryTab.deprecated")}
-                      </Badge>
-                    )}
-                    <Badge size="xs" variant="default">
-                      {term.ref_count}
-                    </Badge>
-                  </Group>
-                }
+            <Stack gap="md" pb="md">
+              {actionError && (
+                <Alert color="red" data-testid="glossary-error">
+                  {actionError}
+                </Alert>
+              )}
+
+              <Group align="flex-end" gap="sm">
+                <TextInput
+                  label={t("glossaryTab.nameLabel")}
+                  value={name}
+                  onChange={(e) => setName(e.currentTarget.value)}
+                  style={{ flex: 1 }}
+                  data-testid="glossary-name-input"
+                />
+                <Button
+                  variant="default"
+                  disabled={!name.trim() || name.trim() === detail.name}
+                  onClick={() =>
+                    void act(
+                      () => updateGlossaryTerm(detail.id, { name: name.trim() }),
+                      t("glossaryTab.updated"),
+                    )
+                  }
+                  data-testid="glossary-rename-btn"
+                >
+                  {t("glossaryTab.rename")}
+                </Button>
+                <Tooltip
+                  label={t("glossaryTab.deleteDisabledHint")}
+                  disabled={detail.refs.length === 0}
+                >
+                  <span>
+                    <Button
+                      color="red"
+                      variant="light"
+                      leftSection={<Trash2 size={14} />}
+                      disabled={detail.refs.length > 0}
+                      onClick={() => void handleDelete()}
+                      data-testid="glossary-delete-btn"
+                    >
+                      {t("glossaryTab.delete")}
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Group>
+
+              <Checkbox
+                label={t("glossaryTab.excludeFromExportLabel")}
+                checked={exportExcluded}
+                onChange={(e) => {
+                  const next = e.currentTarget.checked;
+                  setExportExcluded(next);
+                  void act(() => updateGlossaryTerm(detail.id, { export_excluded: next }));
+                }}
+                data-testid="glossary-export-excluded-checkbox"
               />
-            ))
+
+              <Group align="flex-end" gap="sm">
+                <Stack gap={2} style={{ flex: 1 }} data-testid="glossary-definition-input">
+                  <Text size="sm" fw={500}>
+                    {t("glossaryTab.definitionLabel")}
+                  </Text>
+                  <DescriptionField
+                    value={definition}
+                    onChange={setDefinition}
+                    placeholder={t("glossaryTab.definitionLabel")}
+                    rows={2}
+                    generating={generatingDefinition}
+                    onGenerate={() => void handleGenerateDefinition()}
+                  />
+                </Stack>
+                <Button
+                  variant="default"
+                  disabled={definition === (detail.definition ?? "")}
+                  onClick={() =>
+                    void act(
+                      () => updateGlossaryTerm(detail.id, { definition }),
+                      t("glossaryTab.updated"),
+                    )
+                  }
+                  data-testid="glossary-definition-save-btn"
+                >
+                  {t("glossaryTab.save")}
+                </Button>
+              </Group>
+
+              <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
+              {detail.refs.length === 0 ? (
+                <Text size="xs" c="dimmed">
+                  {t("glossaryTab.noRefs")}
+                </Text>
+              ) : (
+                <Table.ScrollContainer minWidth={480}>
+                  <Table striped withTableBorder verticalSpacing="xs">
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>{t("glossaryTab.colColumn")}</Table.Th>
+                        <Table.Th>{t("glossaryTab.colTable")}</Table.Th>
+                        <Table.Th>{t("glossaryTab.colSource")}</Table.Th>
+                        <Table.Th>{t("glossaryTab.colDomain")}</Table.Th>
+                        <Table.Th>{t("glossaryTab.colMove")}</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {detail.refs.map((ref) => (
+                        <Table.Tr
+                          key={`${ref.table_id}:${ref.column_name}`}
+                          data-testid={`glossary-ref-${ref.table_id}-${ref.column_name}`}
+                        >
+                          <Table.Td>{ref.column_name}</Table.Td>
+                          <Table.Td>{ref.alias || `${ref.schema_name}.${ref.table_name}`}</Table.Td>
+                          <Table.Td>{ref.source_id}</Table.Td>
+                          <Table.Td>{ref.domain_id}</Table.Td>
+                          <Table.Td>
+                            <Select
+                              size="xs"
+                              data={otherTermOptions}
+                              value={null}
+                              placeholder={t("glossaryTab.moveToPlaceholder")}
+                              onChange={(v) => handleMoveRef(ref, v)}
+                              searchable
+                              data-testid={`glossary-move-select-${ref.table_id}-${ref.column_name}`}
+                            />
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
+
+              <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
+              <Stack gap={4}>
+                {detail.edges_out.map((edge) => (
+                  <Group
+                    key={`out:${edge.term_id}:${edge.rel_type}`}
+                    gap="xs"
+                    data-testid={`glossary-edge-out-${edge.term_id}-${edge.rel_type}`}
+                  >
+                    <Badge size="sm" variant="light">
+                      {t(`glossaryTab.rel_${edge.rel_type}`)}
+                    </Badge>
+                    <Text size="sm">{edge.name}</Text>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      size="sm"
+                      aria-label={t("glossaryTab.removeEdge")}
+                      onClick={() =>
+                        void act(() => removeGlossaryEdge(detail.id, edge.term_id, edge.rel_type))
+                      }
+                    >
+                      <Trash2 size={13} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+                {detail.edges_in.map((edge) => (
+                  <Group
+                    key={`in:${edge.term_id}:${edge.rel_type}`}
+                    gap="xs"
+                    data-testid={`glossary-edge-in-${edge.term_id}-${edge.rel_type}`}
+                  >
+                    <Badge size="sm" variant="outline">
+                      {t(`glossaryTab.rel_${edge.rel_type}_reverse`, {
+                        defaultValue: t(`glossaryTab.rel_${edge.rel_type}`),
+                      })}
+                    </Badge>
+                    <Text size="sm">{edge.name}</Text>
+                    <Text size="sm" c="dimmed">
+                      {t("glossaryTab.incoming")}
+                    </Text>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      size="sm"
+                      aria-label={t("glossaryTab.removeEdge")}
+                      onClick={() =>
+                        void act(() => removeGlossaryEdge(edge.term_id, detail.id, edge.rel_type))
+                      }
+                    >
+                      <Trash2 size={13} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+                {detail.edges_out.length === 0 && detail.edges_in.length === 0 && (
+                  <Text size="xs" c="dimmed">
+                    {t("glossaryTab.noEdges")}
+                  </Text>
+                )}
+              </Stack>
+              <Group align="flex-end" gap="sm">
+                <Select
+                  label={t("glossaryTab.edgeRelLabel")}
+                  data={relTypeOptions}
+                  value={edgeRelType}
+                  onChange={setEdgeRelType}
+                  w={180}
+                  data-testid="glossary-edge-rel-select"
+                />
+                <Select
+                  label={t("glossaryTab.edgeTermLabel")}
+                  data={otherTermOptions}
+                  value={edgeTermId}
+                  onChange={setEdgeTermId}
+                  searchable
+                  w={220}
+                  data-testid="glossary-edge-term-select"
+                />
+                <Button
+                  variant="default"
+                  disabled={edgeTermId === null || edgeRelType === null}
+                  onClick={() =>
+                    void act(() =>
+                      addGlossaryEdge(
+                        detail.id,
+                        Number(edgeTermId),
+                        edgeRelType as GlossaryRelType,
+                      ),
+                    )
+                  }
+                  data-testid="glossary-edge-add-btn"
+                >
+                  {t("glossaryTab.addEdge")}
+                </Button>
+              </Group>
+
+              <Title order={5}>{t("glossaryTab.expertsTitle")}</Title>
+              <Stack gap={4}>
+                {detail.experts.map((expert) => (
+                  <Group
+                    key={expert.user_id}
+                    gap="xs"
+                    data-testid={`glossary-expert-${expert.user_id}`}
+                  >
+                    <Text size="sm">{expert.user_id}</Text>
+                    <Badge size="sm" variant="light">
+                      {t(`glossaryTab.kind_${expert.kind}`)}
+                    </Badge>
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      size="sm"
+                      aria-label={t("glossaryTab.removeExpert")}
+                      onClick={() =>
+                        void act(() => removeGlossaryExpert(detail.id, expert.user_id))
+                      }
+                    >
+                      <Trash2 size={13} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+                {detail.experts.length === 0 && (
+                  <Text size="xs" c="dimmed">
+                    {t("glossaryTab.noExperts")}
+                  </Text>
+                )}
+              </Stack>
+              <Group align="flex-end" gap="sm">
+                <TextInput
+                  label={t("glossaryTab.expertUserLabel")}
+                  value={expertUserId}
+                  onChange={(e) => setExpertUserId(e.currentTarget.value)}
+                  w={220}
+                  data-testid="glossary-expert-user-input"
+                />
+                <Select
+                  label={t("glossaryTab.expertKindLabel")}
+                  data={kindOptions}
+                  value={expertKind}
+                  onChange={(v) => v && setExpertKind(v)}
+                  allowDeselect={false}
+                  w={140}
+                  data-testid="glossary-expert-kind-select"
+                />
+                <Button
+                  variant="default"
+                  disabled={!expertUserId.trim()}
+                  onClick={() =>
+                    void act(() =>
+                      addGlossaryExpert(
+                        detail.id,
+                        expertUserId.trim(),
+                        expertKind as GlossaryExpertKind,
+                      ),
+                    )
+                  }
+                  data-testid="glossary-expert-add-btn"
+                >
+                  {t("glossaryTab.addExpert")}
+                </Button>
+              </Group>
+            </Stack>
           )}
         </div>
-      </div>
-
-      <div style={{ flex: 1, overflow: "auto" }} data-testid="glossary-detail">
-        {detailLoading ? (
-          <Group justify="center" py="md">
-            <Loader size="xs" />
-          </Group>
-        ) : !detail ? (
-          <Text size="sm" c="dimmed" py="sm">
-            {t("glossaryTab.selectTerm")}
-          </Text>
-        ) : (
-          <Stack gap="md" pb="md">
-            {actionError && (
-              <Alert color="red" data-testid="glossary-error">
-                {actionError}
-              </Alert>
-            )}
-
-            <Group align="flex-end" gap="sm">
-              <TextInput
-                label={t("glossaryTab.nameLabel")}
-                value={name}
-                onChange={(e) => setName(e.currentTarget.value)}
-                style={{ flex: 1 }}
-                data-testid="glossary-name-input"
-              />
-              <Button
-                variant="default"
-                disabled={!name.trim() || name.trim() === detail.name}
-                onClick={() =>
-                  void act(
-                    () => updateGlossaryTerm(detail.id, { name: name.trim() }),
-                    t("glossaryTab.updated"),
-                  )
-                }
-                data-testid="glossary-rename-btn"
-              >
-                {t("glossaryTab.rename")}
-              </Button>
-              <Tooltip
-                label={t("glossaryTab.deleteDisabledHint")}
-                disabled={detail.refs.length === 0}
-              >
-                <span>
-                  <Button
-                    color="red"
-                    variant="light"
-                    leftSection={<Trash2 size={14} />}
-                    disabled={detail.refs.length > 0}
-                    onClick={() => void handleDelete()}
-                    data-testid="glossary-delete-btn"
-                  >
-                    {t("glossaryTab.delete")}
-                  </Button>
-                </span>
-              </Tooltip>
-            </Group>
-
-            <Checkbox
-              label={t("glossaryTab.excludeFromExportLabel")}
-              checked={exportExcluded}
-              onChange={(e) => {
-                const next = e.currentTarget.checked;
-                setExportExcluded(next);
-                void act(() => updateGlossaryTerm(detail.id, { export_excluded: next }));
-              }}
-              data-testid="glossary-export-excluded-checkbox"
-            />
-
-            <Group align="flex-end" gap="sm">
-              <Stack gap={2} style={{ flex: 1 }} data-testid="glossary-definition-input">
-                <Text size="sm" fw={500}>
-                  {t("glossaryTab.definitionLabel")}
-                </Text>
-                <DescriptionField
-                  value={definition}
-                  onChange={setDefinition}
-                  placeholder={t("glossaryTab.definitionLabel")}
-                  rows={2}
-                  generating={generatingDefinition}
-                  onGenerate={() => void handleGenerateDefinition()}
-                />
-              </Stack>
-              <Button
-                variant="default"
-                disabled={definition === (detail.definition ?? "")}
-                onClick={() =>
-                  void act(
-                    () => updateGlossaryTerm(detail.id, { definition }),
-                    t("glossaryTab.updated"),
-                  )
-                }
-                data-testid="glossary-definition-save-btn"
-              >
-                {t("glossaryTab.save")}
-              </Button>
-            </Group>
-
-            <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
-            {detail.refs.length === 0 ? (
-              <Text size="xs" c="dimmed">
-                {t("glossaryTab.noRefs")}
-              </Text>
-            ) : (
-              <Table.ScrollContainer minWidth={480}>
-                <Table striped withTableBorder verticalSpacing="xs">
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>{t("glossaryTab.colColumn")}</Table.Th>
-                      <Table.Th>{t("glossaryTab.colTable")}</Table.Th>
-                      <Table.Th>{t("glossaryTab.colSource")}</Table.Th>
-                      <Table.Th>{t("glossaryTab.colDomain")}</Table.Th>
-                      <Table.Th>{t("glossaryTab.colMove")}</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {detail.refs.map((ref) => (
-                      <Table.Tr
-                        key={`${ref.table_id}:${ref.column_name}`}
-                        data-testid={`glossary-ref-${ref.table_id}-${ref.column_name}`}
-                      >
-                        <Table.Td>{ref.column_name}</Table.Td>
-                        <Table.Td>{ref.alias || `${ref.schema_name}.${ref.table_name}`}</Table.Td>
-                        <Table.Td>{ref.source_id}</Table.Td>
-                        <Table.Td>{ref.domain_id}</Table.Td>
-                        <Table.Td>
-                          <Select
-                            size="xs"
-                            data={otherTermOptions}
-                            value={null}
-                            placeholder={t("glossaryTab.moveToPlaceholder")}
-                            onChange={(v) => handleMoveRef(ref, v)}
-                            searchable
-                            data-testid={`glossary-move-select-${ref.table_id}-${ref.column_name}`}
-                          />
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
-            )}
-
-            <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
-            <Stack gap={4}>
-              {detail.edges_out.map((edge) => (
-                <Group
-                  key={`out:${edge.term_id}:${edge.rel_type}`}
-                  gap="xs"
-                  data-testid={`glossary-edge-out-${edge.term_id}-${edge.rel_type}`}
-                >
-                  <Badge size="sm" variant="light">
-                    {t(`glossaryTab.rel_${edge.rel_type}`)}
-                  </Badge>
-                  <Text size="sm">{edge.name}</Text>
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    size="sm"
-                    aria-label={t("glossaryTab.removeEdge")}
-                    onClick={() =>
-                      void act(() => removeGlossaryEdge(detail.id, edge.term_id, edge.rel_type))
-                    }
-                  >
-                    <Trash2 size={13} />
-                  </ActionIcon>
-                </Group>
-              ))}
-              {detail.edges_in.map((edge) => (
-                <Group
-                  key={`in:${edge.term_id}:${edge.rel_type}`}
-                  gap="xs"
-                  data-testid={`glossary-edge-in-${edge.term_id}-${edge.rel_type}`}
-                >
-                  <Badge size="sm" variant="outline">
-                    {t(`glossaryTab.rel_${edge.rel_type}_reverse`, {
-                      defaultValue: t(`glossaryTab.rel_${edge.rel_type}`),
-                    })}
-                  </Badge>
-                  <Text size="sm">{edge.name}</Text>
-                  <Text size="sm" c="dimmed">
-                    {t("glossaryTab.incoming")}
-                  </Text>
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    size="sm"
-                    aria-label={t("glossaryTab.removeEdge")}
-                    onClick={() =>
-                      void act(() => removeGlossaryEdge(edge.term_id, detail.id, edge.rel_type))
-                    }
-                  >
-                    <Trash2 size={13} />
-                  </ActionIcon>
-                </Group>
-              ))}
-              {detail.edges_out.length === 0 && detail.edges_in.length === 0 && (
-                <Text size="xs" c="dimmed">
-                  {t("glossaryTab.noEdges")}
-                </Text>
-              )}
-            </Stack>
-            <Group align="flex-end" gap="sm">
-              <Select
-                label={t("glossaryTab.edgeRelLabel")}
-                data={relTypeOptions}
-                value={edgeRelType}
-                onChange={setEdgeRelType}
-                w={180}
-                data-testid="glossary-edge-rel-select"
-              />
-              <Select
-                label={t("glossaryTab.edgeTermLabel")}
-                data={otherTermOptions}
-                value={edgeTermId}
-                onChange={setEdgeTermId}
-                searchable
-                w={220}
-                data-testid="glossary-edge-term-select"
-              />
-              <Button
-                variant="default"
-                disabled={edgeTermId === null || edgeRelType === null}
-                onClick={() =>
-                  void act(() =>
-                    addGlossaryEdge(detail.id, Number(edgeTermId), edgeRelType as GlossaryRelType),
-                  )
-                }
-                data-testid="glossary-edge-add-btn"
-              >
-                {t("glossaryTab.addEdge")}
-              </Button>
-            </Group>
-
-            <Title order={5}>{t("glossaryTab.expertsTitle")}</Title>
-            <Stack gap={4}>
-              {detail.experts.map((expert) => (
-                <Group
-                  key={expert.user_id}
-                  gap="xs"
-                  data-testid={`glossary-expert-${expert.user_id}`}
-                >
-                  <Text size="sm">{expert.user_id}</Text>
-                  <Badge size="sm" variant="light">
-                    {t(`glossaryTab.kind_${expert.kind}`)}
-                  </Badge>
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    size="sm"
-                    aria-label={t("glossaryTab.removeExpert")}
-                    onClick={() => void act(() => removeGlossaryExpert(detail.id, expert.user_id))}
-                  >
-                    <Trash2 size={13} />
-                  </ActionIcon>
-                </Group>
-              ))}
-              {detail.experts.length === 0 && (
-                <Text size="xs" c="dimmed">
-                  {t("glossaryTab.noExperts")}
-                </Text>
-              )}
-            </Stack>
-            <Group align="flex-end" gap="sm">
-              <TextInput
-                label={t("glossaryTab.expertUserLabel")}
-                value={expertUserId}
-                onChange={(e) => setExpertUserId(e.currentTarget.value)}
-                w={220}
-                data-testid="glossary-expert-user-input"
-              />
-              <Select
-                label={t("glossaryTab.expertKindLabel")}
-                data={kindOptions}
-                value={expertKind}
-                onChange={(v) => v && setExpertKind(v)}
-                allowDeselect={false}
-                w={140}
-                data-testid="glossary-expert-kind-select"
-              />
-              <Button
-                variant="default"
-                disabled={!expertUserId.trim()}
-                onClick={() =>
-                  void act(() =>
-                    addGlossaryExpert(
-                      detail.id,
-                      expertUserId.trim(),
-                      expertKind as GlossaryExpertKind,
-                    ),
-                  )
-                }
-                data-testid="glossary-expert-add-btn"
-              >
-                {t("glossaryTab.addExpert")}
-              </Button>
-            </Group>
-          </Stack>
-        )}
       </div>
 
       <Modal
@@ -723,6 +736,6 @@ export function GlossaryTab() {
           </Group>
         </Stack>
       </Modal>
-    </div>
+    </Stack>
   );
 }
