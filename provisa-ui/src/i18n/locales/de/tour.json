@@ -7,6 +7,15 @@
       "start": "Start",
       "docs": "Doku"
     },
+    "welcome": {
+      "title": "Geführte Tour starten?",
+      "body": "Ein fünfminütiger Rundgang: eine Quelle verbinden und sie auf sieben Arten abfragen. Jederzeit verlassen — der Kompass in der Symbolleiste öffnet die Tour wieder, wann immer Sie möchten.",
+      "never": "Nicht mehr anzeigen",
+      "later": "Später",
+      "start": "Tour starten",
+      "resume": "Tour fortsetzen",
+      "restart": "Neu beginnen"
+    },
     "steps": {
       "step0": {
         "title": "Willkommen, machen wir die Tour",

@@ -34,9 +34,10 @@ import { fetchSetupStatus } from "./api/setup";
 import {
   TourProvider,
   useTour,
-  hasSeenTour,
+  claimTourOffer,
   resetTourStateForDemoSession,
 } from "./tour/useTour";
+import { TourWelcomeModal } from "./tour/TourWelcomeModal";
 import { prefetchPageChunksOnIdle } from "./pageChunks";
 import { storedToken } from "./lib/sessionToken";
 import "./App.css";
@@ -107,47 +108,51 @@ function NotAuthorized() {
  * tab to click. A caller holding no admin surface at all still gets NotAuthorized.
  */
 function AdminEntry() {
-  const { capabilities, loading } = useAuth();
+  const { capabilities, loading, billing } = useAuth();
   const group = NAV_GROUPS.find((g) => g.id === "admin");
   // REQ-1430: no capabilities yet during bootstrap — resolving the entry now would deny a caller
   // whose rights simply have not arrived.
   if (loading) return <CredentialCheck />;
-  const target = group ? entryItem(group, capabilities) : undefined;
+  const target = group ? entryItem(group, capabilities, billing) : undefined;
   if (!target) return <NotAuthorized />;
   return <Navigate to={target.to} replace />;
 }
 
 /**
- * Auto-launches the guided tour when the server is in demo mode (first visit
- * only) or when the URL carries `?tour=1`, which always starts it and then
- * strips the param so a refresh doesn't relaunch.
+ * Decides how the guided tour opens on arrival.
+ *
+ * `?tour=1` starts it outright and strips the param so a refresh doesn't relaunch — that URL is an
+ * explicit request. Otherwise the tour is offered, not launched: a welcome modal once per browser
+ * session, until it is taken or the modal's checkbox turns the offer off for good.
  */
 function TourAutoStart({ demoMode }: { demoMode: boolean }) {
   const { startTour } = useTour();
   const [searchParams, setSearchParams] = useSearchParams();
   const tourParam = searchParams.get("tour");
+  // Decided on the first render rather than in the effect: claimTourOffer marks the session
+  // offered, so it must run exactly once per mount.
+  const [offering, setOffering] = useState(() => {
+    if (tourParam !== null) return false;
+    // Each visit to a demo server is a new visitor: drop the previous one's seen-flag, declined
+    // flag and half-finished progress before deciding whether to offer, so the tour is offered
+    // afresh rather than suppressed by someone else's session.
+    if (demoMode) resetTourStateForDemoSession();
+    return claimTourOffer();
+  });
   useEffect(() => {
-    if (tourParam !== null) {
-      setSearchParams(
-        (p) => {
-          const n = new URLSearchParams(p);
-          n.delete("tour");
-          return n;
-        },
-        { replace: true },
-      );
-      // ?tour=1 always starts fresh from the top.
-      startTour({ restart: true });
-      return;
-    }
-    if (!demoMode) return;
-    // Each visit to a demo server is a new visitor: drop the previous one's seen-flag and
-    // half-finished progress before deciding whether to auto-start, so the tour opens at step 0
-    // rather than resuming someone else's session or not opening at all.
-    resetTourStateForDemoSession();
-    if (!hasSeenTour()) startTour({ restart: true });
-  }, [tourParam, demoMode, startTour, setSearchParams]);
-  return null;
+    if (tourParam === null) return;
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete("tour");
+        return n;
+      },
+      { replace: true },
+    );
+    // ?tour=1 always starts fresh from the top.
+    startTour({ restart: true });
+  }, [tourParam, startTour, setSearchParams]);
+  return offering ? <TourWelcomeModal onClose={() => setOffering(false)} /> : null;
 }
 
 /** Redirects to /login when auth is enabled and no token is present. */
@@ -519,7 +524,7 @@ function App() {
                               [
                                 ["/admin/overview", "observability"],
                                 ["/admin/domains", "org_settings"],
-                                ["/admin/cache", "platform_settings"],
+                                ["/admin/cache", "org_settings"],
                                 ["/admin/scheduled-tasks", "org_settings"],
                                 ["/admin/federation-engine", "platform_settings"],
                                 ["/admin/org-engine", "org_settings"], // REQ-1412

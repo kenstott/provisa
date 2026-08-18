@@ -7,6 +7,15 @@
       "start": "Démarrer",
       "docs": "Docs"
     },
+    "welcome": {
+      "title": "Suivre la visite guidée ?",
+      "body": "Un parcours de cinq minutes : connectez une source, puis interrogez-la de sept façons. Quittez à tout moment — la boussole de la barre d'outils rouvre la visite quand vous le souhaitez.",
+      "never": "Ne plus afficher",
+      "later": "Plus tard",
+      "start": "Démarrer la visite",
+      "resume": "Reprendre la visite",
+      "restart": "Recommencer"
+    },
     "steps": {
       "step0": {
         "title": "Bienvenue, découvrons la visite guidée",

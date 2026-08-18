@@ -7,6 +7,15 @@
       "start": "Início",
       "docs": "Documentação"
     },
+    "welcome": {
+      "title": "Fazer a visita guiada?",
+      "body": "Um percurso de cinco minutos: conecte uma fonte e consulte-a de sete formas. Saia quando quiser — a bússola na barra de ferramentas reabre a visita a qualquer momento.",
+      "never": "Não mostrar novamente",
+      "later": "Mais tarde",
+      "start": "Iniciar a visita",
+      "resume": "Retomar a visita",
+      "restart": "Começar de novo"
+    },
     "steps": {
       "step0": {
         "title": "Bem-vindo, vamos fazer o tour",

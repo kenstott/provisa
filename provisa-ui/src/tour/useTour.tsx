@@ -29,8 +29,12 @@ import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
 import { prefetchSettings } from "../api/admin";
 import { prefetchLineageGraph } from "../api/lineage";
-import { TOUR_SEEN_KEY, TOUR_DEMO_RESET_KEY } from "./tourKeys";
-
+import {
+  TOUR_SEEN_KEY,
+  TOUR_DEMO_RESET_KEY,
+  TOUR_DECLINED_KEY,
+  TOUR_OFFERED_KEY,
+} from "./tourKeys";
 
 // localStorage keys owned by NlPage — mirrored here so the tour can seed a
 // canned result (NL needs an external LLM key, which a demo visitor lacks).
@@ -224,11 +228,37 @@ export function resetTourStateForDemoSession(): void {
   cleanupPrep();
   localStorage.removeItem(TOUR_SEEN_KEY);
   localStorage.removeItem(TOUR_PROGRESS_KEY);
+  // The previous visitor's "never again" is not this visitor's.
+  localStorage.removeItem(TOUR_DECLINED_KEY);
 }
 
 /** True once the guided tour has been completed or dismissed on this browser. */
 export function hasSeenTour(): boolean {
   return localStorage.getItem(TOUR_SEEN_KEY) === "true";
+}
+
+/** True once the welcome modal's "don't show this again" has been ticked on this browser. */
+export function tourDeclined(): boolean {
+  return localStorage.getItem(TOUR_DECLINED_KEY) === "true";
+}
+
+/** Remember the welcome modal's checkbox, so the offer never returns on this device. */
+export function declineTour(): void {
+  localStorage.setItem(TOUR_DECLINED_KEY, "true");
+}
+
+/**
+ * Whether to open the welcome modal now, marking the session offered if so.
+ *
+ * One offer per browser session, and none once the tour has been taken or permanently declined.
+ * Reading and marking together keeps a double mount (StrictMode, a route remount) from counting as
+ * two offers.
+ */
+export function claimTourOffer(): boolean {
+  if (hasSeenTour() || tourDeclined()) return false;
+  if (sessionStorage.getItem(TOUR_OFFERED_KEY) === "true") return false;
+  sessionStorage.setItem(TOUR_OFFERED_KEY, "true");
+  return true;
 }
 
 /**
@@ -313,22 +343,37 @@ const ANCHOR_WAIT_MS = 45000;
 // stall never reads as a dead click, long enough that a normal advance shows no spinner at all.
 const WAITING_HINT_MS = 1200;
 
-function waitForElement(selector: string, timeoutMs = ANCHOR_WAIT_MS): Promise<HTMLElement> {
+function waitForElement(
+  selector: string,
+  timeoutMs = ANCHOR_WAIT_MS,
+  signal?: AbortSignal,
+): Promise<HTMLElement> {
   const existing = document.querySelector<HTMLElement>(selector);
   if (existing) return Promise.resolve(existing);
   return new Promise((resolve, reject) => {
+    const stop = () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
     const observer = new MutationObserver(() => {
       const el = document.querySelector<HTMLElement>(selector);
       if (el) {
-        observer.disconnect();
-        clearTimeout(timer);
+        stop();
         resolve(el);
       }
     });
     const timer = setTimeout(() => {
-      observer.disconnect();
+      stop();
       reject(new Error(`Tour: element not found within ${timeoutMs}ms: ${selector}`));
     }, timeoutMs);
+    // Without this the observer outlives the step that started it — up to ANCHOR_WAIT_MS of
+    // observing a document the provider has already left.
+    const onAbort = () => {
+      stop();
+      reject(new Error(`Tour: wait for ${selector} abandoned`));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
     observer.observe(document.body, { childList: true, subtree: true });
   });
 }
@@ -384,6 +429,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
     const i = activeStep;
     activeStepRef.current = i;
     let cancelled = false;
+    // Aborts any anchor wait still pending when the step changes or the provider unmounts.
+    const abort = new AbortController();
     // An advance that resolves promptly should not flash a spinner; one that doesn't must say so.
     const waitingTimer = setTimeout(() => {
       if (!cancelled) setStatus({ kind: "waiting", step: i });
@@ -415,7 +462,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           }
         }
         if (step.clickBefore) {
-          const trigger = await waitForElement(step.clickBefore);
+          const trigger = await waitForElement(step.clickBefore, undefined, abort.signal);
           trigger.click();
         }
         // Gate on the destination page's own content, not just `step.element` — that selector
@@ -423,9 +470,9 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // finished loading its data, which would otherwise show the popover over a page still
         // stuck on its own "Loading…" state.
         if (step.readySelector) {
-          await waitForElement(step.readySelector, step.waitMs);
+          await waitForElement(step.readySelector, step.waitMs, abort.signal);
         }
-        const element = await waitForElement(step.element, step.waitMs);
+        const element = await waitForElement(step.element, step.waitMs, abort.signal);
         if (cancelled || !driverRef.current) return;
         // The anchor is here; whatever the visitor was told to wait for is done.
         clearTimeout(waitingTimer);
@@ -507,6 +554,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
     })();
     return () => {
       cancelled = true;
+      abort.abort();
       clearTimeout(waitingTimer);
     };
     // `attempt` is the Retry trigger: it re-runs this effect on the same step index.

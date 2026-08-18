@@ -7,6 +7,15 @@
       "start": "Inizia",
       "docs": "Documentazione"
     },
+    "welcome": {
+      "title": "Vuoi fare il tour guidato?",
+      "body": "Un percorso di cinque minuti: colleghi una sorgente e la interroghi in sette modi. Puoi uscire quando vuoi: la bussola nella barra degli strumenti riapre il tour in qualsiasi momento.",
+      "never": "Non mostrare più",
+      "later": "Più tardi",
+      "start": "Avvia il tour",
+      "resume": "Riprendi il tour",
+      "restart": "Ricomincia"
+    },
     "steps": {
       "step0": {
         "title": "Benvenuto, facciamo il tour",

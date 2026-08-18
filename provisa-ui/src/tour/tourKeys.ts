@@ -17,6 +17,22 @@
 export const TOUR_SEEN_KEY = "provisa_tour_seen";
 
 /**
+ * "Never offer the guided tour on this device again."
+ *
+ * Set by the welcome modal's checkbox. Device-scoped on purpose: there is no server-side user
+ * preference store, and the offer is a UI nicety, not an account setting.
+ */
+export const TOUR_DECLINED_KEY = "provisa_tour_declined";
+
+/**
+ * "This browser session has already been offered the tour."
+ *
+ * sessionStorage: declining with "Maybe later" silences the offer for the rest of the session and
+ * it comes back on the next sign-in, which is what the checkbox is there to stop permanently.
+ */
+export const TOUR_OFFERED_KEY = "provisa_tour_offered";
+
+/**
  * "This browser session has already had the demo server's tour state reset."
  *
  * A demo deployment clears TOUR_SEEN_KEY once per browser session (useTour's

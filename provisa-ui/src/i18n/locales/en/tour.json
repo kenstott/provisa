@@ -7,6 +7,15 @@
       "start": "Start",
       "docs": "Docs"
     },
+    "welcome": {
+      "title": "Take the guided tour?",
+      "body": "A five-minute walkthrough: connect a source, then query it seven ways. Leave at any point — the compass in the toolbar reopens the tour whenever you want it.",
+      "never": "Don't show this again",
+      "later": "Maybe later",
+      "start": "Start tour",
+      "resume": "Resume tour",
+      "restart": "Start over"
+    },
     "steps": {
       "step0": {
         "title": "Welcome, let's take the tour",

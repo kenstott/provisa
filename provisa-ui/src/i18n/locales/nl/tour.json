@@ -7,6 +7,15 @@
       "start": "Start",
       "docs": "Documentatie"
     },
+    "welcome": {
+      "title": "De rondleiding volgen?",
+      "body": "Een rondleiding van vijf minuten: verbind een bron en bevraag die op zeven manieren. Stop wanneer u wilt — het kompas in de werkbalk opent de rondleiding altijd opnieuw.",
+      "never": "Niet meer tonen",
+      "later": "Later",
+      "start": "Rondleiding starten",
+      "resume": "Rondleiding hervatten",
+      "restart": "Opnieuw beginnen"
+    },
     "steps": {
       "step0": {
         "title": "Welkom, laten we de rondleiding starten",
