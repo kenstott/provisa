@@ -14568,9 +14568,9 @@ An org administrator moves the acting org between three federation-engine lanes 
 
 **Use case:** An org with its own Trino cluster points Provisa at it; an org needing isolation from other tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
 
-**Code:** `provisa/api/admin/org_engine_router.py`, `provisa/api/app.py`, `provisa/api/org_runtime.py`, `provisa/core/schema_admin.py`, `provisa/federation/trino_lifecycle.py`, `provisa/core/commerce.py`, `.claude/commercial/provisa_commercial/entitlements.py`, `provisa-ui/src/components/admin/OrgEngineTab.tsx`
+**Code:** `.claude/commercial/provisa_commercial/org_engine_router.py`, `provisa/api/app.py`, `provisa/api/org_runtime.py`, `provisa/core/schema_admin.py`, `provisa/federation/trino_lifecycle.py`, `provisa/core/commerce.py`, `.claude/commercial/provisa_commercial/entitlements.py`, `provisa-ui/src/components/admin/OrgEngineTab.tsx`
 
-**Tests:** `tests/unit/test_org_engine_lane.py`, `.claude/commercial/tests/test_lane_entitlement.py`, `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
+**Tests:** `tests/unit/test_org_engine_lane.py`, `.claude/commercial/tests/test_org_engine_lane.py`, `.claude/commercial/tests/test_lane_entitlement.py`, `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
 
 ## 3. Source Registration & Data Modeling
 
@@ -14620,9 +14620,9 @@ The SaaS CREATES an isolated org's dedicated federation-engine coordinator, rath
 
 **Use case:** An org that requires tenant isolation gets a coordinator of its own that actually exists, from the onboarding checkbox or the Org Engine tab, without an operator standing one up by hand.
 
-**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/federation/engine.py`, `provisa/api/admin/org_engine_router.py`, `provisa/api/admin/orgs_router.py`, `docker-compose.isolated-engine.yml`
+**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/federation/engine.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`, `provisa/api/admin/orgs_router.py`, `docker-compose.isolated-engine.yml`
 
-**Tests:** `tests/unit/test_isolated_engine_provisioner.py`, `tests/unit/test_org_engine_lane.py`
+**Tests:** `tests/unit/test_isolated_engine_provisioner.py`, `tests/unit/test_org_engine_lane.py`, `.claude/commercial/tests/test_org_engine_lane.py`
 
 ## 8. Client Access & Protocols
 
@@ -14648,9 +14648,9 @@ An organization on the external engine lane runs an engine KIND of its own, not 
 
 **Use case:** A tenant with an existing Databricks warehouse points its organization at that warehouse and keeps its data in its own account, without the deployment changing engine for every other tenant.
 
-**Code:** `provisa/core/schema_admin.py`, `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/federation/engine.py`, `provisa/federation/native_backend.py`, `provisa/api/admin/org_engine_router.py`, `provisa-ui/src/components/admin/OrgEngineTab.tsx`
+**Code:** `provisa/core/schema_admin.py`, `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/federation/engine.py`, `provisa/federation/native_backend.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`, `provisa-ui/src/components/admin/OrgEngineTab.tsx`
 
-**Tests:** `tests/unit/test_org_engine_lane.py`, `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`
+**Tests:** `tests/unit/test_org_engine_lane.py`, `.claude/commercial/tests/test_org_engine_lane.py`, `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`
 
 ### REQ-1421 · Multi-Tenancy {#REQ-1421}
 
@@ -14660,9 +14660,9 @@ The engine kinds offered to an organization name the PRODUCT it runs, not the li
 
 **Use case:** An administrator choosing an engine for the organization picks "MySQL" or "Oracle Database" from the list, rather than reading a library name and inferring which databases it reaches.
 
-**Code:** `provisa/federation/engine.py`, `provisa/api/admin/org_engine_router.py`
+**Code:** `provisa/federation/engine.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`
 
-**Tests:** `tests/unit/test_federation_engine.py`, `tests/unit/test_org_engine_lane.py`
+**Tests:** `tests/unit/test_federation_engine.py`, `.claude/commercial/tests/test_org_engine_lane.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -15008,7 +15008,7 @@ SaaS runs ONE engine architecture on one GKE cluster. Shared ([REQ-1243](#REQ-12
 
 **Use case:** An org on the isolated lane gets the same engine the shared lane runs, on hardware it alone occupies, and a query that saturates it leaves every other org untouched.
 
-**Code:** `provisa/federation/isolated_provisioner.py`, `provisa/api/admin/org_engine_router.py`, `terraform/gcp-saas/main.tf`
+**Code:** `provisa/federation/isolated_provisioner.py`, `.claude/commercial/provisa_commercial/org_engine_router.py`, `terraform/gcp-saas/main.tf`
 
 **Tests:** —
 

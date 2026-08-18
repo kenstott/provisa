@@ -43361,7 +43361,7 @@ And a later observation in the same hour replaces it rather than adding to it
   use_case: An org with its own Trino cluster points Provisa at it; an org needing isolation from other
     tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
   code:
-  - provisa/api/admin/org_engine_router.py
+  - .claude/commercial/provisa_commercial/org_engine_router.py
   - provisa/api/app.py
   - provisa/api/org_runtime.py
   - provisa/core/schema_admin.py
@@ -43371,6 +43371,7 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa-ui/src/components/admin/OrgEngineTab.tsx
   tests:
   - tests/unit/test_org_engine_lane.py
+  - .claude/commercial/tests/test_org_engine_lane.py
   - .claude/commercial/tests/test_lane_entitlement.py
   - provisa-ui/src/__tests__/OrgEngineTab.test.tsx
   - provisa-ui/src/__tests__/adminNavCapabilities.test.ts
@@ -43540,12 +43541,13 @@ And a later observation in the same hour replaces it rather than adding to it
   code:
   - provisa/federation/isolated_provisioner.py
   - provisa/federation/engine.py
-  - provisa/api/admin/org_engine_router.py
+  - .claude/commercial/provisa_commercial/org_engine_router.py
   - provisa/api/admin/orgs_router.py
   - docker-compose.isolated-engine.yml
   tests:
   - tests/unit/test_isolated_engine_provisioner.py
   - tests/unit/test_org_engine_lane.py
+  - .claude/commercial/tests/test_org_engine_lane.py
   scenario: "Given a deployment configured with an isolated-engine host template, image, network and socket\n\
     When an org is created with isolated_engine, or moved onto the isolated lane\nThen a coordinator container\
     \ is created whose name and network alias are the hostname that\n  org's terminal dials, on the network\
@@ -43631,10 +43633,11 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa/api/app.py
   - provisa/federation/engine.py
   - provisa/federation/native_backend.py
-  - provisa/api/admin/org_engine_router.py
+  - .claude/commercial/provisa_commercial/org_engine_router.py
   - provisa-ui/src/components/admin/OrgEngineTab.tsx
   tests:
   - tests/unit/test_org_engine_lane.py
+  - .claude/commercial/tests/test_org_engine_lane.py
   - provisa-ui/src/__tests__/OrgEngineTab.test.tsx
   scenario: "Given a deployment running the bundled Trino engine\nWhen an organization administrator moves\
     \ the organization to the external lane,\n  chooses the Databricks kind and supplies its warehouse\
@@ -43668,10 +43671,10 @@ And a later observation in the same hour replaces it rather than adding to it
     from the list, rather than reading a library name and inferring which databases it reaches.
   code:
   - provisa/federation/engine.py
-  - provisa/api/admin/org_engine_router.py
+  - .claude/commercial/provisa_commercial/org_engine_router.py
   tests:
   - tests/unit/test_federation_engine.py
-  - tests/unit/test_org_engine_lane.py
+  - .claude/commercial/tests/test_org_engine_lane.py
   scenario: 'Given a deployment offering the org-engine kinds
 
     When an organization administrator opens the external-engine kind list
@@ -44788,7 +44791,7 @@ And a later observation in the same hour replaces it rather than adding to it
     occupies, and a query that saturates it leaves every other org untouched.
   code:
   - provisa/federation/isolated_provisioner.py
-  - provisa/api/admin/org_engine_router.py
+  - .claude/commercial/provisa_commercial/org_engine_router.py
   - terraform/gcp-saas/main.tf
   scenario: 'Given an org moved onto the isolated lane
 
