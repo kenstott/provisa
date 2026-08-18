@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 3c5f8ab1-72d6-4e09-b4a3-9f61d27e05cc
+# Canary: 736aa734-184c-4d51-a0aa-4c5eeca89317
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -8,7 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1412: the org's federation-engine lane — shared, isolated, or external.
+"""REQ-1412: the per-org federation-engine lane, as CORE resolves it.
+
+The admin surface that moves an org between lanes is commercial (``provisa_commercial``); what is
+here is what core must do once an org is on one — resolve its terminal, its endpoint, and its DSN.
 
 An org administrator moves the org between three lanes. The mode is DERIVED from the ``orgs``
 row (``external_engine_host`` set = external; else ``isolated_engine`` decides isolated vs
@@ -20,7 +23,6 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.api.admin.org_engine_router import EXTERNAL, ISOLATED, MODES, SHARED, _mode_of
 from provisa.api.app import state
 from provisa.api.org_runtime import OrgRuntime, reset_current_org, set_current_org
 from provisa.federation.trino_lifecycle import terminal_conn_kwargs
@@ -47,28 +49,6 @@ def saas_isolated_org():
     yield org_id, rt
     state.org_registry.invalidate(org_id)
 
-
-# ---- mode derivation ---------------------------------------------------------
-
-
-def test_modes_are_the_three_lanes():
-    assert MODES == (SHARED, ISOLATED, EXTERNAL)
-
-
-def test_mode_is_derived_never_stored_twice():
-    assert _mode_of(None, False, False) == SHARED
-    assert _mode_of(None, False, True) == ISOLATED
-    assert _mode_of("trino.acme.example.com", False, True) == EXTERNAL
-    # An external host wins over the isolated flag: the org runs the cluster either way, and the
-    # host is what says whose it is.
-    assert _mode_of("trino.acme.example.com", False, False) == EXTERNAL
-
-
-def test_a_dsn_addressed_org_is_external_without_a_host():  # REQ-1418
-    """A Databricks/Snowflake/BigQuery engine has no coordinator host — reading only the host would
-    file an org running its own warehouse as shared, and route its queries to the pooled engine."""
-    assert _mode_of(None, True, False) == EXTERNAL
-    assert _mode_of(None, True, True) == EXTERNAL
 
 
 def test_orgs_table_carries_the_external_endpoint():
@@ -174,27 +154,6 @@ def test_unknown_engine_kind_raises_rather_than_guessing():
         engine_addressing("not-an-engine")
 
 
-def test_external_kinds_exclude_engines_an_org_cannot_operate():
-    from provisa.api.admin.org_engine_router import _external_kinds
-
-    keys = {k["key"] for k in _external_kinds()}
-    # Bundled Trino is the deployment's to run and DuckDB is in-process — neither is reachable
-    # from outside, so neither is offered as an engine the ORG operates.
-    assert "trino" not in keys and "duckdb" not in keys
-    # Embedded ClickHouse (chdb) links into the Provisa process; its "URL" is a local data
-    # directory, not an address an org can operate. clickhouse-server is its external counterpart.
-    assert "clickhouse" not in keys and "clickhouse-server" in keys
-    assert {"databricks", "snowflake", "bigquery", "trino-byo"} <= keys
-    assert all(k["addressing"] in {"url", "endpoint"} for k in _external_kinds())
-
-
-def test_a_deployment_managed_trino_is_endpoint_addressed_when_the_org_runs_it():
-    """The bundled kind carries no address in the registry because the DEPLOYMENT manages its
-    coordinator; an org that operates one reaches it exactly as trino-byo does."""
-    from provisa.api.admin.org_engine_router import _external_addressing
-
-    assert _external_addressing("trino") == "endpoint"
-    assert _external_addressing("databricks") == "url"
 
 
 def test_active_engine_url_is_the_orgs_own_dsn(databricks_org):
@@ -243,46 +202,28 @@ def test_an_org_with_its_own_engine_runtime_is_not_blocked_by_the_native_single_
 def test_isolated_lane_is_unavailable_without_a_host_template(monkeypatch):
     """Offering isolation a deployment cannot resolve would sell a guarantee it cannot keep —
     isolated_engine_endpoint raises rather than falling back to the shared coordinator."""
-    from provisa.api.admin.org_engine_router import _isolated_available
+    from provisa.federation.engine import isolated_engine_available
 
     monkeypatch.delenv("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE", raising=False)
-    assert _isolated_available() is False
+    assert isolated_engine_available() is False
     monkeypatch.setenv("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE", "trino-{org_id}.internal")
-    assert _isolated_available() is True
+    assert isolated_engine_available() is True
 
 
-# ---- the surface is org-scoped, not deployment-wide --------------------------
+# ---- the surface itself is not here ------------------------------------------
 
 
-def test_endpoints_are_gated_on_org_settings():
-    """The engine KIND is platform_settings; which lane an org runs on is the org's own setting,
-    so an org_admin holds it in either tenancy mode (REQ-1349)."""
-    import inspect
+def test_core_mounts_no_org_engine_surface():
+    """REQ-1412: moving one tenant between coordinators the PLATFORM offers is a hosted-platform
+    question, so the surface lives in the commercial plugin. An installed Provisa points at the
+    engine it operates from /admin/federation-engine and mounts nothing per-org."""
+    import importlib
 
-    from provisa.api.admin import org_engine_router as mod
-
-    for fn in (mod.get_org_engine, mod.set_org_engine):
-        src = inspect.getsource(fn)
-        assert "require_org_settings(request)" in src
-        assert "require_platform_settings" not in src
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("provisa.api.admin.org_engine_router")
 
 
 # ---- the entitlement gate ----------------------------------------------------
-
-
-def test_the_lane_is_entitlement_checked_before_anything_is_written():
-    """REQ-1412: the isolated lane is platform-run compute, so on a hosted deployment it belongs to
-    a plan. The check has to precede the write and the provisioning, or a refused org still gets a
-    coordinator stood up for it."""
-    import inspect
-
-    from provisa.api.admin import org_engine_router as mod
-
-    src = inspect.getsource(mod.set_org_engine)
-    gate = src.index("require_lane_entitlement")
-    assert gate < src.index("update(orgs)")
-    assert gate < src.index("state.org_registry.rebuild")
-    assert "lane_entitled(state, org_id, ISOLATED)" in inspect.getsource(mod.get_org_engine)
 
 
 async def test_a_deployment_without_the_commercial_plugin_gates_no_lane():

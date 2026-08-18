@@ -1370,6 +1370,19 @@ def configured_engine_endpoint() -> tuple[str, int]:
     return host, port
 
 
+def isolated_engine_available() -> bool:  # REQ-1043/REQ-1412
+    """Whether this deployment can resolve a dedicated coordinator for an org at all.
+
+    :func:`isolated_engine_endpoint` raises without ``PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE`` rather
+    than routing to the shared engine, so both callers that OFFER the isolated lane — org creation
+    and the commercial engine-lane surface — test it here first and refuse 503 instead of creating
+    an org whose every query dies at bind time.
+    """
+    import os
+
+    return bool(os.environ.get("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE"))
+
+
 def isolated_engine_endpoint(org_id: str) -> tuple[str, int]:  # REQ-1043/REQ-1067/REQ-1244
     """The dedicated coordinator endpoint for an isolated-engine org.
 
