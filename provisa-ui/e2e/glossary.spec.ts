@@ -158,7 +158,10 @@ test.describe("REQ-1387 glossary curation", () => {
 
     const edge = page.locator('[data-testid^="glossary-edge-out-"][data-testid$="-KIND_OF"]');
     await expect(edge).toBeVisible();
-    await expect(edge).toContainText("Kind of");
+    // The edge's type is a Select (the curator retypes in place), so "Kind of" is the input's
+    // value, not text content — toContainText only ever saw the target term's name.
+    // (the Select also renders a hidden input carrying the stored KIND_OF value)
+    await expect(edge.locator('[data-testid^="glossary-edge-out-rel-"]')).toHaveValue("Kind of");
     await expect(edge).toContainText(DERIVED_SPECIES);
 
     // The inverse direction is visible from the rooted term.

@@ -461,8 +461,15 @@ main {
   display: grid;
   /* Equal side tracks keep the filter on the header's centerline
    * (relationships-header.spec.ts measures that); the middle track must be a
-   * fraction, not `auto`, or the filter collapses to its content width. */
-  grid-template-columns: 1fr minmax(0, 2fr) 1fr;
+   * fraction, not `auto`, or the filter collapses to its content width.
+   *
+   * Thirds, not 1fr/2fr/1fr: a side track still floors at its content's min-content
+   * width, so once the actions outgrow their share the extra comes out of the LEFT
+   * track and the middle stops being centred. /tables carries the widest action row
+   * (Add table, Add view, Model, two help bubbles, the ERD icon) at ~350px against a
+   * 302px quarter-share — 32px off centre. A third of the header is 403px, which the
+   * row fits inside. */
+  grid-template-columns: 1fr minmax(0, 1fr) 1fr;
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
