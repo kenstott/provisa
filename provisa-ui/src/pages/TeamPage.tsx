@@ -37,6 +37,7 @@ import {
 } from "../api/admin";
 import type { OrgInvite, OrgMember } from "../api/admin";
 import { OrgBrandingSettings } from "../components/OrgBrandingSettings";
+import { useSearchParams } from "react-router-dom";
 import { useLocalStorage } from "../components/graph/graph-persistence";
 import { useRoles } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
@@ -67,6 +68,17 @@ export function TeamPage() {
     "invites",
     "danger",
   ]);
+
+  // ?section=<value> opens that accordion item — how another page links straight to a section a
+  // returning visitor has collapsed (the org-address modal links to branding this way).
+  const [searchParams] = useSearchParams();
+  const requestedSection = searchParams.get("section");
+  useEffect(() => {
+    if (!requestedSection) return;
+    setOpenSections((open) =>
+      open.includes(requestedSection) ? open : [...open, requestedSection],
+    );
+  }, [requestedSection, setOpenSections]);
 
   const reportError = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 

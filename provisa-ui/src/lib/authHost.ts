@@ -79,6 +79,17 @@ export function controlPlaneOrigin(location: Location = window.location): string
 }
 
 /**
+ * The address an org is reached at on this deployment: its id as the leftmost label in front of
+ * the same base domain (REQ-1276). `null` on a host with no base domain — a desktop install or
+ * `localhost` addresses no org by name, so there is no such URL to show rather than a guessed one.
+ */
+export function orgOrigin(orgId: string, location: Location = window.location): string | null {
+  const base = baseDomain(location.hostname);
+  if (!base) return null;
+  return `${location.protocol}//${orgId}.${base}${location.port ? `:${location.port}` : ""}`;
+}
+
+/**
  * True when `origin` is a host of THIS deployment — same scheme, same port, and a single
  * label in front of the same base domain. The relay answers token requests only from these,
  * so a sibling tenant of some other zone can never ask the control plane for a bearer.

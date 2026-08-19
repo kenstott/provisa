@@ -10,7 +10,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Checkbox, Group, Modal, Stack, Text } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, Stack, Text, Title } from "@mantine/core";
+import { BrandMark } from "../components/BrandMark";
 import { declineTour, tourResumeStep, useTour } from "./useTour";
 
 /**
@@ -31,7 +32,27 @@ export function TourWelcomeModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal opened onClose={close} title={t("tour.welcome.title")} centered size="lg">
+    <Modal
+      opened
+      onClose={close}
+      // The offer is the product introducing itself, so it carries the mark and the wordmark the
+      // navbar and the landing page carry — the same BrandMark, not a second drawing of it.
+      title={
+        <Group gap="sm" align="center" c="var(--primary)">
+          <BrandMark size={28} />
+          <Stack gap={0}>
+            <Text size="sm" fw={700} lh={1.1}>
+              {t("navBar.brand")}
+            </Text>
+            <Title order={4} c="var(--text)" lh={1.2}>
+              {t("tour.welcome.title")}
+            </Title>
+          </Stack>
+        </Group>
+      }
+      centered
+      size="lg"
+    >
       <Stack gap="md">
         <Text size="sm">{t("tour.welcome.body")}</Text>
         <Checkbox

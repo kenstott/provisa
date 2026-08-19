@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import i18n from "../i18n";
+import { MemoryRouter } from "react-router-dom";
 import { TeamPage } from "../pages/TeamPage";
 import type { OrgMember } from "../api/admin";
 
@@ -62,6 +63,15 @@ function member(over: Partial<OrgMember>): OrgMember {
   };
 }
 
+/** The page reads the ?section= deep link, so it renders under a router as it does in the app. */
+function renderTeamPage() {
+  return render(
+    <MemoryRouter>
+      <TeamPage />
+    </MemoryRouter>,
+  );
+}
+
 describe("TeamPage offboarding", () => {
   beforeEach(() => {
     removeSpy.mockClear();
@@ -78,7 +88,7 @@ describe("TeamPage offboarding", () => {
       member({ user_id: "uid-me", display_name: "Me", is_org_admin: true }),
       member({ user_id: "uid-bob", display_name: "Bob" }),
     ];
-    render(<TeamPage />);
+    renderTeamPage();
 
     const bob = await screen.findByTestId("team-member-uid-bob");
     expect(bob).toHaveTextContent("Bob");
@@ -91,7 +101,7 @@ describe("TeamPage offboarding", () => {
       member({ user_id: "uid-me", is_org_admin: true }),
       member({ user_id: "uid-bob" }),
     ];
-    render(<TeamPage />);
+    renderTeamPage();
 
     fireEvent.click(await screen.findByTestId("team-toggle-admin-uid-bob"));
     await waitFor(() => expect(grantSpy).toHaveBeenCalledWith("acme", "uid-bob"));
@@ -102,7 +112,7 @@ describe("TeamPage offboarding", () => {
       member({ user_id: "uid-me", is_org_admin: true }),
       member({ user_id: "uid-bob", is_org_admin: true }),
     ];
-    render(<TeamPage />);
+    renderTeamPage();
 
     fireEvent.click(await screen.findByTestId("team-toggle-admin-uid-bob"));
     await waitFor(() => expect(revokeAdminSpy).toHaveBeenCalledWith("acme", "uid-bob"));
@@ -113,7 +123,7 @@ describe("TeamPage offboarding", () => {
       member({ user_id: "uid-me", is_org_admin: true }),
       member({ user_id: "uid-bob" }),
     ];
-    render(<TeamPage />);
+    renderTeamPage();
 
     expect(await screen.findByTestId("team-toggle-admin-uid-me")).toBeDisabled();
     expect(screen.getByTestId("team-remove-uid-me")).toBeDisabled();
@@ -124,7 +134,7 @@ describe("TeamPage offboarding", () => {
       member({ user_id: "uid-me", is_org_admin: true }),
       member({ user_id: "uid-bob" }),
     ];
-    render(<TeamPage />);
+    renderTeamPage();
 
     fireEvent.click(await screen.findByTestId("team-remove-uid-bob"));
     await waitFor(() => expect(removeSpy).toHaveBeenCalledWith("acme", "uid-bob"));
@@ -136,7 +146,7 @@ describe("TeamPage offboarding", () => {
       member({ user_id: "uid-bob" }),
     ];
     removeSpy.mockRejectedValueOnce(new Error("Cannot remove the last org_admin"));
-    render(<TeamPage />);
+    renderTeamPage();
 
     fireEvent.click(await screen.findByTestId("team-remove-uid-bob"));
     expect(await screen.findByTestId("team-error")).toHaveTextContent(
@@ -146,7 +156,7 @@ describe("TeamPage offboarding", () => {
 
   it("keeps the delete button inert until the org id is retyped, then sends the confirmation", async () => {
     mockMembers = [member({ user_id: "uid-me", is_org_admin: true })];
-    render(<TeamPage />);
+    renderTeamPage();
 
     fireEvent.click(await screen.findByTestId("team-delete-org"));
     const submit = await screen.findByTestId("team-delete-submit");
@@ -169,7 +179,7 @@ describe("TeamPage offboarding", () => {
     const createObjectURL = vi.fn(() => "blob:config");
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
-    render(<TeamPage />);
+    renderTeamPage();
 
     fireEvent.click(await screen.findByTestId("team-delete-org"));
     fireEvent.click(await screen.findByTestId("team-export-config"));
@@ -183,7 +193,7 @@ describe("TeamPage offboarding", () => {
   it("hides the delete-organization section on a single-tenant deploy", async () => {
     mockMultitenancy = false;
     mockMembers = [member({ user_id: "uid-me", is_org_admin: true })];
-    render(<TeamPage />);
+    renderTeamPage();
 
     await screen.findByTestId("team-page");
     expect(screen.queryByTestId("team-delete-org")).not.toBeInTheDocument();

@@ -1,0 +1,11 @@
+{
+  "orgAddress": {
+    "title": "Your organization has its own address",
+    "body": "This is the address to give your stakeholders. Anyone you invite signs in and works here:",
+    "copy": "Copy address",
+    "open": "Open it in a new tab",
+    "brandingBody": "The site at that address can carry your name, your colours and your logo instead of ours. Set it in Team → Branding; it applies to the sign-in page, the app, and the invitations you send.",
+    "brandingButton": "Brand the site",
+    "doneButton": "Got it"
+  }
+}

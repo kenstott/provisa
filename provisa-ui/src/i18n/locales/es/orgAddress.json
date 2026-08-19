@@ -1,0 +1,11 @@
+{
+  "orgAddress": {
+    "title": "Su organización tiene su propia dirección",
+    "body": "Esta es la dirección que debe dar a sus partes interesadas. Todas las personas a las que invite inician sesión y trabajan aquí:",
+    "copy": "Copiar dirección",
+    "open": "Abrirla en una pestaña nueva",
+    "brandingBody": "El sitio de esa dirección puede llevar su nombre, sus colores y su logotipo en lugar de los nuestros. Configúrelo en Equipo → Marca; se aplica a la página de inicio de sesión, a la aplicación y a las invitaciones que envíe.",
+    "brandingButton": "Personalizar la marca",
+    "doneButton": "Entendido"
+  }
+}

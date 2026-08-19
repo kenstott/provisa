@@ -1,0 +1,11 @@
+{
+  "orgAddress": {
+    "title": "La tua organizzazione ha un indirizzo tutto suo",
+    "body": "È l'indirizzo da comunicare ai tuoi stakeholder. Chiunque inviti accede e lavora qui:",
+    "copy": "Copia indirizzo",
+    "open": "Aprilo in una nuova scheda",
+    "brandingBody": "Il sito a quell'indirizzo può portare il tuo nome, i tuoi colori e il tuo logo al posto dei nostri. Si imposta in Team → Branding; vale per la pagina di accesso, l'applicazione e gli inviti che invii.",
+    "brandingButton": "Personalizza il sito",
+    "doneButton": "Ho capito"
+  }
+}

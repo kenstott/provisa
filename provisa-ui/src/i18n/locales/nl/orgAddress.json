@@ -1,0 +1,11 @@
+{
+  "orgAddress": {
+    "title": "Uw organisatie heeft een eigen adres",
+    "body": "Dit is het adres dat u aan uw stakeholders geeft. Iedereen die u uitnodigt, meldt zich hier aan en werkt hier:",
+    "copy": "Adres kopiëren",
+    "open": "Openen in een nieuw tabblad",
+    "brandingBody": "De site op dat adres kan uw naam, uw kleuren en uw logo dragen in plaats van die van ons. Stel dit in bij Team → Huisstijl; het geldt voor de aanmeldpagina, de applicatie en de uitnodigingen die u verstuurt.",
+    "brandingButton": "Huisstijl instellen",
+    "doneButton": "Begrepen"
+  }
+}

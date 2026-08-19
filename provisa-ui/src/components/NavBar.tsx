@@ -13,6 +13,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
 import { ActionIcon, Badge, Checkbox, Menu, Stack, Text, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { BrandMark } from "./BrandMark";
 import { CapabilityGate } from "./CapabilityGate";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
@@ -140,21 +141,7 @@ export function NavBar() {
       <nav className="navbar" ref={navRef}>
         <div className="navbar-brand">
           <NavLink to="/" aria-label={t("navBar.home")}>
-            <svg
-              className="navbar-brand-mark"
-              viewBox="0 0 100 100"
-              width="24"
-              height="24"
-              role="img"
-              aria-hidden="true"
-            >
-              <g fill="currentColor">
-                <rect x="30" y="18" width="15" height="64" rx="7" />
-                <circle cx="52" cy="35" r="22" />
-              </g>
-              <circle cx="52" cy="35" r="10.5" fill="var(--surface)" />
-              <circle cx="52" cy="35" r="4.5" fill="#10B981" />
-            </svg>
+            <BrandMark className="navbar-brand-mark" />
             <span>{t("navBar.brand")}</span>
           </NavLink>
         </div>

@@ -1,0 +1,11 @@
+{
+  "orgAddress": {
+    "title": "Ihre Organisation hat eine eigene Adresse",
+    "body": "Diese Adresse geben Sie Ihren Stakeholdern. Alle, die Sie einladen, melden sich hier an und arbeiten hier:",
+    "copy": "Adresse kopieren",
+    "open": "In einem neuen Tab öffnen",
+    "brandingBody": "Die Website unter dieser Adresse kann Ihren Namen, Ihre Farben und Ihr Logo tragen statt unserer. Einstellbar unter Team → Branding; es gilt für die Anmeldeseite, die Anwendung und die Einladungen, die Sie versenden.",
+    "brandingButton": "Website branden",
+    "doneButton": "Verstanden"
+  }
+}

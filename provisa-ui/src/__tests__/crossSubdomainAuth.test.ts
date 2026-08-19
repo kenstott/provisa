@@ -21,6 +21,7 @@ import {
   isOrgSubdomainHost,
   isSiblingOrigin,
   orgFromHost,
+  orgOrigin,
 } from "../lib/authHost";
 
 /** A stand-in for `window.location` — only the fields authHost reads. */
@@ -64,6 +65,18 @@ describe("authHost host classification", () => {
     expect(controlPlaneOrigin(loc("http://acme.provisa.test:5173/"))).toBe(
       "http://cloud.provisa.test:5173",
     );
+  });
+
+  it("addresses an org by its id in front of the same base domain", () => {
+    // What the org-address modal shows a new administrator to hand to their stakeholders.
+    expect(orgOrigin("acme", loc("https://cloud.provisa.dev/onboard"))).toBe(
+      "https://acme.provisa.dev",
+    );
+    expect(orgOrigin("acme", loc("http://cloud.provisa.test:5173/"))).toBe(
+      "http://acme.provisa.test:5173",
+    );
+    // A host with no base domain addresses no org by name, so there is no address to show.
+    expect(orgOrigin("acme", loc("http://localhost:5173/"))).toBeNull();
   });
 
   it("refuses to guess an origin for a host with no base domain", () => {

@@ -40,6 +40,8 @@ import {
   startTrial,
 } from "../api/billing";
 import { useAuth } from "../context/AuthContext";
+import { OrgAddressModal } from "../components/OrgAddressModal";
+import { orgOrigin } from "../lib/authHost";
 
 // REQ-1266: a member-less authenticated user either self-creates an org OR joins an existing one
 // with an invite code. Create returns immediately with provisioning_state="provisioning"; we poll
@@ -70,6 +72,9 @@ export function OnboardOrgPage() {
   // may never have kept. Invites addressed to this identity's email are offered as one-click joins;
   // the token field stays for link invites, which are addressed to nobody.
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  // The new org's own address (REQ-1276), told once over the welcome screen. Dismissed state is
+  // kept here so closing it does not take the welcome screen with it.
+  const [addressShown, setAddressShown] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,8 +233,17 @@ export function OnboardOrgPage() {
   };
 
   if (phase === "welcome") {
+    // Null on a deployment whose host names no org — a desktop install has no per-org address.
+    const address = orgOrigin(id);
     return (
       <Box maw={560} mx="auto" my={80} data-testid="onboard-org-welcome">
+        {address && (
+          <OrgAddressModal
+            url={address}
+            opened={addressShown}
+            onClose={() => setAddressShown(false)}
+          />
+        )}
         <Stack gap="lg">
           <Group gap="sm">
             <ThemeIcon size="xl" radius="xl" color="green" variant="light">

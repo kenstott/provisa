@@ -10,6 +10,7 @@
 
 import { Center, Paper, Stack, Text, Title, Group } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { BrandMark } from "../components/BrandMark";
 import { LoginPage } from "./LoginPage";
 
 interface LandingPageProps {
@@ -28,14 +29,7 @@ export function LandingPage({ onLoginSuccess, authDisabled }: LandingPageProps) 
     <Center mih="100vh" p="md">
       <Stack align="center" gap="lg" style={{ width: "100%", maxWidth: 420 }}>
         <Group gap="sm" align="center">
-          <svg viewBox="0 0 100 100" width="40" height="40" role="img" aria-hidden="true">
-            <g fill="currentColor">
-              <rect x="30" y="18" width="15" height="64" rx="7" />
-              <circle cx="52" cy="35" r="22" />
-            </g>
-            <circle cx="52" cy="35" r="10.5" fill="var(--surface)" />
-            <circle cx="52" cy="35" r="4.5" fill="#10B981" />
-          </svg>
+          <BrandMark size={40} />
           <Title order={1}>{t("navBar.brand")}</Title>
         </Group>
         <Text c="dimmed" ta="center">

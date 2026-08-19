@@ -1,0 +1,11 @@
+{
+  "orgAddress": {
+    "title": "Votre organisation a sa propre adresse",
+    "body": "C'est l'adresse à communiquer à vos parties prenantes. Toute personne que vous invitez se connecte et travaille ici :",
+    "copy": "Copier l'adresse",
+    "open": "L'ouvrir dans un nouvel onglet",
+    "brandingBody": "Le site à cette adresse peut porter votre nom, vos couleurs et votre logo au lieu des nôtres. À configurer dans Équipe → Image de marque ; cela s'applique à la page de connexion, à l'application et aux invitations que vous envoyez.",
+    "brandingButton": "Personnaliser le site",
+    "doneButton": "J'ai compris"
+  }
+}
