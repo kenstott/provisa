@@ -46,11 +46,13 @@ def _merge_nodes_sql(group_by_sql: str, nodes_sql: str, nodes_columns: list) -> 
     join_key_cols = [c for c in nodes_columns if c.nested_in == "__join_key__"]
     if not node_cols or not join_key_cols:
         return None
-    kv = ", ".join(f"'{c.field_name}', n.\"{c.column}\"" for c in node_cols)
+    # SQL-standard json_object(KEY k VALUE v) — the same spelling sql_selection.py emits — so
+    # sqlglot transpiles it per engine. Postgres json_build_object reaches DuckDB unrewritten.
+    kv = ", ".join(f"KEY '{c.field_name}' VALUE n.\"{c.column}\"" for c in node_cols)
     key_select = ", ".join(f'n."{c.column}"' for c in join_key_cols)
     join_cond = " AND ".join(f'g."{c.column}" = nodes_agg."{c.column}"' for c in join_key_cols)
     nodes_agg_sql = (
-        f"SELECT {key_select}, json_agg(json_build_object({kv})) AS nodes\n"
+        f"SELECT {key_select}, json_agg(json_object({kv})) AS nodes\n"
         f"FROM (\n  {nodes_sql}\n) n\n"
         f"GROUP BY {key_select}"
     )
