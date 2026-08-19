@@ -105,17 +105,26 @@ def _return_line_to_entries(return_line: str) -> list[tuple[str, str]]:
 
     The compiled nodes fragment aliases only the relationship items; scalar columns come back as
     bare `a.col` property accesses, whose alias is the property name.
+
+    A column that is both a selected node field and the group-by join key is returned twice by the
+    nodes fragment (the SQL merge splits those two roles apart via nested_in="__join_key__"); the
+    repeat is the same expression, and a Cypher map literal rejects a repeated key, so identical
+    entries collapse to one. A repeated alias over a *different* expression is a compile bug and is
+    left in place to fail loud.
     """
     body = re.sub(r"^\s*RETURN\s+", "", return_line.strip(), flags=re.IGNORECASE)
     entries = []
     for item in _split_top_level_commas(body):
         m = re.search(r"\sAS\s+(\w+)\s*$", item, flags=re.IGNORECASE)
         if m:
-            entries.append((m.group(1), _unwrap_collect(item[: m.start()].strip())))
-            continue
-        prop = re.match(r"^\w+\.(\w+)$", item.strip())
-        if prop:
-            entries.append((prop.group(1), item.strip()))
+            entry = (m.group(1), _unwrap_collect(item[: m.start()].strip()))
+        else:
+            prop = re.match(r"^\w+\.(\w+)$", item.strip())
+            if not prop:
+                continue
+            entry = (prop.group(1), item.strip())
+        if entry not in entries:
+            entries.append(entry)
     return entries
 
 
