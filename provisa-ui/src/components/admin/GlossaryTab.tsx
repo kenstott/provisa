@@ -505,7 +505,7 @@ export function GlossaryTab() {
                           data-testid={`glossary-ref-${ref.table_id}-${ref.column_name}`}
                         >
                           <Table.Td>{ref.column_name}</Table.Td>
-                          <Table.Td>{ref.alias || `${ref.schema_name}.${ref.table_name}`}</Table.Td>
+                          <Table.Td>{ref.alias || ref.table_name}</Table.Td>
                           <Table.Td>{ref.source_id}</Table.Td>
                           <Table.Td>{ref.domain_id}</Table.Td>
                           <Table.Td>

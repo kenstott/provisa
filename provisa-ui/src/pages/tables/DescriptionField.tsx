@@ -14,6 +14,19 @@ import { ActionIcon, Group, Stack, Textarea, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { CopyButton } from "../../components/CopyButton";
 
+const EXPANDED_HEIGHT = 300;
+
+/** Top of the region the editor may occupy: the nearest scrolling ancestor's inner
+ *  edge, or the viewport when the page itself is what scrolls. Anything above that
+ *  edge is clipped, so it is what decides whether 300px fits above the field. */
+function visibleTop(el: HTMLElement): number {
+  for (let node = el.parentElement; node !== null; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll") return node.getBoundingClientRect().top;
+  }
+  return 0;
+}
+
 export function DescriptionField({
   value,
   onChange,
@@ -31,6 +44,11 @@ export function DescriptionField({
 }) {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
+  // Which edge the expanded editor is pinned to. Bottom-anchored by default so the
+  // caret stays where the user clicked; flipped to top when the collapsed field sits
+  // too close to the top of the viewport for 300px to fit above it, which would push
+  // the editor's top edge off-screen.
+  const [anchor, setAnchor] = useState<"bottom" | "top">("bottom");
   // The focused editor is 300px tall; growing it in flow moved every sibling laid out
   // below or beside it — including an adjacent Save button, which collapse-on-blur then
   // yanked out from under the pointer between mousedown and mouseup, so no click event
@@ -55,14 +73,25 @@ export function DescriptionField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={rows}
-          onFocus={() => setFocused(true)}
+          onFocus={(e) => {
+            const slot = e.currentTarget.getBoundingClientRect();
+            const top = visibleTop(e.currentTarget);
+            setAnchor(slot.bottom - EXPANDED_HEIGHT < top ? "top" : "bottom");
+            setFocused(true);
+          }}
           onBlur={() => setFocused(false)}
           styles={{
             root: focused
-              ? { position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 5 }
+              ? {
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  [anchor]: 0,
+                  zIndex: 5,
+                }
               : {},
             input: focused
-              ? { height: 300, transition: "height 0.15s ease" }
+              ? { height: EXPANDED_HEIGHT, transition: "height 0.15s ease" }
               : { transition: "height 0.15s ease" },
           }}
         />

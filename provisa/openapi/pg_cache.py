@@ -50,6 +50,21 @@ _JSON_TO_PG: dict[str, str] = {
 _META_COLS = [("_params_hash", "TEXT"), ("_cached_at", "TIMESTAMPTZ")]
 
 
+def _relation(pg_conn: "Connection", pg_schema: str, pg_table: str) -> str:
+    """The quoted relation name to address the cache table on THIS connection.
+
+    ``pg_schema`` is the registered table's schema. Schema-capable backends (PostgreSQL) address
+    the table as ``"schema"."table"``; SQLite has no schema concept at all — ``CREATE SCHEMA``
+    is a syntax error there and every qualified reference resolves to nothing — so the cache
+    table is the bare name, matching the same ``capabilities.schemas`` branch the landing writer
+    uses (federation/store_writer.py) and the schema-stripping the SQLite transpile target applies
+    to the compiler's SQL (transpiler/transpile.py::_strip_schema_qualifiers).
+    """
+    if not pg_conn.capabilities.schemas:
+        return f'"{pg_table}"'
+    return f'"{pg_schema}"."{pg_table}"'
+
+
 def _hash_params(params: dict) -> str:
     return hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -134,12 +149,13 @@ async def _insert_rows(
 ) -> int:
     if not rows:
         return 0
+    rel = _relation(pg_conn, pg_schema, pg_table)
     all_cols = col_names + ["_params_hash", "_cached_at"]
     placeholders = ", ".join(f"${i + 1}" for i in range(len(all_cols)))
     col_list = ", ".join(f'"{c}"' for c in all_cols)
     data_rows = [_to_row_tuple(row, col_names, phash, text_cols) for row in rows]
     await pg_conn.executemany(
-        f'INSERT INTO "{pg_schema}"."{pg_table}" ({col_list}) VALUES ({placeholders})',
+        f"INSERT INTO {rel} ({col_list}) VALUES ({placeholders})",
         data_rows,
     )
     return len(data_rows)
@@ -158,6 +174,7 @@ async def _upsert_rows(
     """Upsert rows keyed by (pk_column, _params_hash). Requires a UNIQUE constraint on those columns."""
     if not rows:
         return 0
+    rel = _relation(pg_conn, pg_schema, pg_table)
     all_cols = col_names + ["_params_hash", "_cached_at"]
     placeholders = ", ".join(f"${i + 1}" for i in range(len(all_cols)))
     col_list = ", ".join(f'"{c}"' for c in all_cols)
@@ -166,7 +183,7 @@ async def _upsert_rows(
     )
     data_rows = [_to_row_tuple(row, col_names, phash, text_cols) for row in rows]
     await pg_conn.executemany(
-        f'INSERT INTO "{pg_schema}"."{pg_table}" ({col_list}) VALUES ({placeholders})'
+        f"INSERT INTO {rel} ({col_list}) VALUES ({placeholders})"
         f' ON CONFLICT ("{pk_column}", "_params_hash") DO UPDATE SET {update_set}',
         data_rows,
     )
@@ -193,8 +210,9 @@ async def _is_fresh(
 ) -> bool:
     if _mem_fresh.get((pg_schema, pg_table, phash), 0) > _time.monotonic():
         return True
+    rel = _relation(pg_conn, pg_schema, pg_table)
     cached_at = await pg_conn.fetchval(
-        f'SELECT _cached_at FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1 LIMIT 1',
+        f"SELECT _cached_at FROM {rel} WHERE _params_hash = $1 LIMIT 1",
         phash,
     )
     if cached_at is None:
@@ -244,13 +262,15 @@ async def cache_openapi_table(  # REQ-318
 
     all_cols = entity_cols + _META_COLS
     col_defs = ", ".join(f'"{name}" {pg_type}' for name, pg_type in all_cols)
-    await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
-    await pg_conn.execute(f'DROP TABLE IF EXISTS "{pg_schema}"."{pg_table}"')
-    await pg_conn.execute(f'CREATE TABLE "{pg_schema}"."{pg_table}" ({col_defs})')
+    rel = _relation(pg_conn, pg_schema, pg_table)
+    if pg_conn.capabilities.schemas:
+        await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
+    await pg_conn.execute(f"DROP TABLE IF EXISTS {rel}")
+    await pg_conn.execute(f"CREATE TABLE {rel} ({col_defs})")
     if pk_column:
         await pg_conn.execute(
             f'CREATE UNIQUE INDEX IF NOT EXISTS "{pg_table}__pk_hash_uidx"'
-            f' ON "{pg_schema}"."{pg_table}" ("{pk_column}", "_params_hash")'
+            f' ON {rel} ("{pk_column}", "_params_hash")'
         )
 
     col_names = [c[0] for c in entity_cols]
@@ -310,18 +330,17 @@ async def fill_api_table(  # REQ-318
         )
     except Exception:
         text_cols = frozenset()
+    rel = _relation(pg_conn, pg_schema, pg_table)
     if pk_column and pk_column in col_names:
         await pg_conn.execute(
             f'CREATE UNIQUE INDEX IF NOT EXISTS "{pg_table}__pk_hash_uidx"'
-            f' ON "{pg_schema}"."{pg_table}" ("{pk_column}", "_params_hash")'
+            f' ON {rel} ("{pk_column}", "_params_hash")'
         )
         n = await _upsert_rows(
             pg_conn, pg_schema, pg_table, col_names, rows, phash, pk_column, text_cols
         )
     else:
-        await pg_conn.execute(
-            f'DELETE FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1', phash
-        )
+        await pg_conn.execute(f"DELETE FROM {rel} WHERE _params_hash = $1", phash)
         n = await _insert_rows(pg_conn, pg_schema, pg_table, col_names, rows, phash, text_cols)
     _mark_fresh(pg_schema, pg_table, phash, ttl)
     log.info("fill_api_table %s → PG %s.%s (%d rows, hash=%s)", path, pg_schema, pg_table, n, phash)
@@ -384,7 +403,8 @@ async def fetch_pk_row(  # REQ-318
     if not rows:
         return 0
 
-    await pg_conn.execute(f'DELETE FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1', phash)
+    rel = _relation(pg_conn, pg_schema, pg_table)
+    await pg_conn.execute(f"DELETE FROM {rel} WHERE _params_hash = $1", phash)
     col_names = list(rows[0].keys())
     n = await _insert_rows(pg_conn, pg_schema, pg_table, col_names, rows, phash)
     _mark_fresh(pg_schema, pg_table, phash, ttl)

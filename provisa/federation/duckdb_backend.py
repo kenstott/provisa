@@ -36,6 +36,14 @@ class DuckDBBackend(NativeEngineBackend):
     # out of _attach_registered() into a 400 on an unrelated /data/sql request).
     _attach_errors = (duckdb.Error, KeyError, UnreachableSource)
 
+    def transpile_physical(self, pg_sql: str) -> str:
+        """DuckDB physical SQL, then rewrite the JSON array aggregate the compiler emits for
+        one-to-many relationships: SQLGlot writes Postgres json_agg as JSON_ARRAYAGG, which DuckDB
+        does not register — its spelling is json_group_array."""
+        from provisa.transpiler.transpile import transpile_to_duckdb
+
+        return transpile_to_duckdb(pg_sql)
+
     def _new_runtime(self) -> Any:
         return DuckDBFederationRuntime()
 

@@ -151,6 +151,46 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     return tree.transform(_transform).sql(dialect="trino")
 
 
+def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
+    """Transpile PostgreSQL-dialect SQL to DuckDB SQL."""
+    return _rewrite_json_agg_for_duckdb(transpile(pg_sql, "duckdb"))
+
+
+def _rewrite_json_agg_for_duckdb(sql: str) -> str:
+    """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x).
+
+    The compiler emits Postgres ``json_agg`` for a one-to-many relationship selection
+    (compiler/sql_selection.py:431,438); SQLGlot's DuckDB generator writes that as
+    ``JSON_ARRAYAGG``, which DuckDB does not register under any of those three spellings —
+    its aggregate is ``json_group_array``. Unrewritten, every nested-relationship query
+    fails with "Scalar Function with name json_arrayagg does not exist".
+
+    json_group_array over JSON-typed values nests without re-encoding, so the sibling
+    ``json_object`` (which DuckDB does register, in the flat k, v form SQLGlot writes)
+    needs no rewrite.
+    """
+    # Parse failure must fail loud: returning input skips the required DuckDB rewrite.
+    tree = sqlglot.parse_one(sql, read="duckdb")
+
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        inner = None
+        if (
+            isinstance(node, exp.Anonymous)
+            and node.name.upper() in ("JSON_ARRAYAGG", "JSON_AGG", "JSONB_AGG")
+            and node.expressions
+        ):
+            inner = node.expressions[0]
+        elif isinstance(node, exp.JSONArrayAgg):
+            inner = node.this
+        if inner is not None:
+            # Recurse: transform is pre-order and skips a replaced node's children, so a
+            # nested aggregate (a one-to-many inside a one-to-many) would survive unrewritten.
+            return exp.Anonymous(this="json_group_array", expressions=[inner.transform(_transform)])
+        return node
+
+    return tree.transform(_transform).sql(dialect="duckdb")
+
+
 def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     """Collapse SQL-standard JSON_OBJECT('k': v, ...) into flat json_build_object('k', v, ...).
 

@@ -41,7 +41,9 @@ class TestTranspileToTrino:
         assert "to_json" not in transpile_to_trino(pg).lower()
 
     def test_nested_json_build_object_is_rewritten(self):
-        pg = "SELECT json_build_object('u', json_build_object('id', \"b\".\"id\")) AS x FROM \"t\" \"b\""
+        pg = (
+            'SELECT json_build_object(\'u\', json_build_object(\'id\', "b"."id")) AS x FROM "t" "b"'
+        )
         assert "json_build_object" not in transpile_to_trino(pg).lower()
 
     def test_jsonb_build_object_is_rewritten(self):
@@ -51,7 +53,7 @@ class TestTranspileToTrino:
             "SELECT users.id AS user_id, (SELECT JSON_AGG(JSONB_BUILD_OBJECT("
             "'pet_id', pets.id, 'pet_name', pets.name)) FROM \"pet_store\".\"inquiries\" AS "
             'inquiries JOIN "pet_store"."pets" AS pets ON inquiries.pet_id = pets.id '
-            'WHERE inquiries.user_id = users.id) AS pet_details '
+            "WHERE inquiries.user_id = users.id) AS pet_details "
             'FROM "pet_store"."users" AS users LIMIT 100'
         )
         out = transpile_to_trino(pg).lower()
@@ -363,3 +365,49 @@ class TestRewriteCorrelatedSubqueries:
         result = transpile_to_trino(sql)
         assert "orders" in result.lower()
         assert "WITH" not in result
+
+
+def test_duckdb_json_agg_rewritten_to_json_group_array_and_executes():
+    """REQ-066/REQ-068: a one-to-many relationship selection must run on DuckDB.
+
+    SQLGlot writes Postgres json_agg as JSON_ARRAYAGG, which DuckDB does not register —
+    unrewritten, every nested-relationship GraphQL query failed with
+    "Catalog Error: Scalar Function with name json_arrayagg does not exist".
+    """
+    import duckdb
+
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    pg_sql = (
+        'SELECT "t0"."name", '
+        '(SELECT json_agg(json_object(KEY \'message\' VALUE "t1"."message")) '
+        'FROM "inquiries" "t1" WHERE "t1"."pet_id" = "t0"."id") AS "inquiries" '
+        'FROM "pets" "t0" ORDER BY 1'
+    )
+    physical = transpile_to_duckdb(pg_sql)
+    assert "JSON_ARRAYAGG" not in physical.upper()
+    assert "JSON_GROUP_ARRAY" in physical.upper()
+
+    con = duckdb.connect()
+    con.execute("CREATE TABLE pets(id INT, name VARCHAR)")
+    con.execute("INSERT INTO pets VALUES (1, 'Rex'), (2, 'Mia')")
+    con.execute("CREATE TABLE inquiries(pet_id INT, message VARCHAR)")
+    con.execute("INSERT INTO inquiries VALUES (1, 'hi'), (1, 'yo'), (2, 'hey')")
+    assert con.sql(physical).fetchall() == [
+        ("Mia", '[{"message":"hey"}]'),
+        ("Rex", '[{"message":"hi"},{"message":"yo"}]'),
+    ]
+
+
+def test_duckdb_nested_json_agg_rewritten_at_every_depth():
+    """A one-to-many inside a one-to-many: the transform is pre-order and skips a replaced
+    node's children, so the inner aggregate needs the explicit recursion."""
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    pg_sql = (
+        "SELECT json_agg(json_object(KEY 'k' VALUE "
+        '(SELECT json_agg("t2"."v") FROM "b" "t2"))) FROM "a" "t1"'
+    )
+    physical = transpile_to_duckdb(pg_sql)
+    assert "JSON_ARRAYAGG" not in physical.upper()
+    assert physical.upper().count("JSON_GROUP_ARRAY") == 2
