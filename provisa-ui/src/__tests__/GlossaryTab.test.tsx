@@ -29,6 +29,7 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   moveGlossaryRef: vi.fn(),
   addGlossaryEdge: vi.fn(),
   removeGlossaryEdge: vi.fn(),
+  retypeGlossaryEdge: vi.fn(),
   addGlossaryExpert: vi.fn(),
   removeGlossaryExpert: vi.fn(),
   generateGlossaryDefinition: vi.fn(),
@@ -47,6 +48,7 @@ import {
   generateGlossaryRelationships,
   listGlossaryTerms,
   moveGlossaryRef,
+  retypeGlossaryEdge,
   updateGlossaryTerm,
 } from "../api/glossary";
 
@@ -58,6 +60,7 @@ const mockGenerate = vi.mocked(generateGlossaryDefinition);
 const mockBulkDefinitions = vi.mocked(generateAllGlossaryDefinitions);
 const mockBulkRelationships = vi.mocked(generateGlossaryRelationships);
 const mockMoveRef = vi.mocked(moveGlossaryRef);
+const mockRetypeEdge = vi.mocked(retypeGlossaryEdge);
 const mockNotify = vi.mocked(notifications.show);
 
 const REVENUE: GlossaryTermSummary = {
@@ -141,6 +144,7 @@ describe("GlossaryTab", () => {
     mockBulkDefinitions.mockReset();
     mockBulkRelationships.mockReset();
     mockMoveRef.mockReset();
+    mockRetypeEdge.mockReset();
     mockNotify.mockClear();
     mockList.mockResolvedValue([REVENUE, CHURN, MARGIN]);
     mockFetchTerm.mockImplementation(async (id) => {
@@ -169,6 +173,40 @@ describe("GlossaryTab", () => {
 
     const margin = screen.getByTestId("glossary-item-3");
     expect(within(margin).getByText(t("glossaryTab.deprecated"))).toBeInTheDocument();
+  });
+
+  it("explains what the glossary is for next to the add button", async () => {
+    render(<GlossaryTab />);
+
+    // HoverCard renders its dropdown on hover, so the assertion is on the trigger opening it —
+    // the copy itself lands in the portal once the pointer arrives.
+    const help = await screen.findByTestId("glossary-purpose-help");
+    expect(help).toHaveAttribute("aria-label", t("glossaryTab.purposeAria"));
+
+    fireEvent.mouseEnter(help);
+    expect(await screen.findByText(t("glossaryTab.purposeTitle"))).toBeInTheDocument();
+    expect(screen.getByText(t("glossaryTab.purposeBody"))).toBeInTheDocument();
+    expect(screen.getByText(t("glossaryTab.purposeAdd"))).toBeInTheDocument();
+  });
+
+  it("corrects a relationship's type in place, in both directions", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await screen.findByTestId("glossary-edge-out-rel-2");
+
+    const outgoing = await openSelect("glossary-edge-out-rel-2");
+    fireEvent.click(within(outgoing).getByText(t("glossaryTab.rel_KIND_OF"), { hidden: true }));
+    await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "KIND_OF"));
+
+    // The incoming picker reads in reverse but sends the stored forward type, and the edge
+    // keeps its own direction: the other term is still the source.
+    fireEvent.click(screen.getByTestId("glossary-item-2"));
+    await screen.findByTestId("glossary-edge-in-rel-1");
+    const incoming = await openSelect("glossary-edge-in-rel-1");
+    fireEvent.click(
+      within(incoming).getByText(t("glossaryTab.rel_PART_OF_reverse"), { hidden: true }),
+    );
+    await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "PART_OF"));
   });
 
   it("passes the search text and the deprecated toggle to the list endpoint", async () => {

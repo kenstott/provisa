@@ -202,6 +202,22 @@ export async function addGlossaryEdge(
   if (!res.ok) throw await mutationError(res, "addGlossaryEdge");
 }
 
+// The relationship type is part of an edge's identity, so retyping is its own endpoint —
+// the server does the delete and the insert together rather than the UI doing both.
+export async function retypeGlossaryEdge(
+  termId: number,
+  toTermId: number,
+  relType: GlossaryRelType,
+  newRelType: GlossaryRelType,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/edges`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to_term_id: toTermId, rel_type: relType, new_rel_type: newRelType }),
+  });
+  if (!res.ok) throw await mutationError(res, "retypeGlossaryEdge");
+}
+
 export async function removeGlossaryEdge(
   termId: number,
   toTermId: number,

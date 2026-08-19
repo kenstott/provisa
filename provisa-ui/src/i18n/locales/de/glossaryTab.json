@@ -81,7 +81,11 @@
     "retireDone": "Begriff außer Dienst gestellt.",
     "unretireDone": "Begriff wiederhergestellt.",
     "proposed": "Vorgeschlagen",
-    "proposedUndefined": "Vorgeschlagen: Dieser Begriff wurde aus den Spalten- und Tabellennamen abgeleitet. Geben Sie ihm eine Definition, damit Agenten und Kataloge ihn verwenden.",
-    "proposedUngrounded": "Vorgeschlagen: Dieser Begriff erreicht keine physische Spalte. Verknüpfen Sie ihn mit einem Begriff, der eine hat, damit er echte Daten benennt."
+    "proposedUndefined": "Vorgeschlagen: Dieser Begriff wurde aus den Spalten- und Tabellennamen abgeleitet. Benennen Sie ihn um, falls der abgeleitete Name unpassend ist, und geben Sie ihm dann eine Definition, damit Agenten und Kataloge ihn verwenden.",
+    "proposedUngrounded": "Vorgeschlagen: Dieser Begriff erreicht keine physische Spalte. Verknüpfen Sie ihn mit einem Begriff, der eine hat, damit er echte Daten benennt.",
+    "purposeTitle": "Wozu das Glossar dient",
+    "purposeBody": "Es hilft Menschen und Agenten, die richtigen Daten zu finden und korrekt zu verwenden. Jeder Begriff benennt ein Geschäftskonzept, listet alle physischen Spalten auf, die es tragen, und sagt, was es tatsächlich bedeutet — so trifft eine in Geschäftssprache gestellte Frage die richtige Spalte statt einer plausibel wirkenden falschen.",
+    "purposeAdd": "Begriffe für reale Spalten werden für Sie abgeleitet. Legen Sie nur dann einen von Hand an, wenn keine einzelne Spalte das Konzept trägt — ein Oberbegriff, den Sie anschließend mit den Begriffen verknüpfen, die es tun, damit er weiterhin reale Daten erreicht.",
+    "purposeAria": "Über das Glossar"
   }
 }

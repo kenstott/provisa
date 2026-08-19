@@ -3398,6 +3398,10 @@
   "it/glossaryTab.json::glossaryTab.retireDone": "Term retired.",
   "it/glossaryTab.json::glossaryTab.unretireDone": "Term restored.",
   "it/glossaryTab.json::glossaryTab.proposed": "Proposed",
-  "it/glossaryTab.json::glossaryTab.proposedUndefined": "Proposed: this term was derived from the column and table names. Give it a definition and agents and catalogs will start using it.",
-  "it/glossaryTab.json::glossaryTab.proposedUngrounded": "Proposed: this term reaches no physical column. Relate it to a term that has one so it names real data."
+  "it/glossaryTab.json::glossaryTab.proposedUndefined": "Proposed: this term was derived from the column and table names. Rename it if the derived name is off, then give it a definition and agents and catalogs will start using it.",
+  "it/glossaryTab.json::glossaryTab.proposedUngrounded": "Proposed: this term reaches no physical column. Relate it to a term that has one so it names real data.",
+  "it/glossaryTab.json::glossaryTab.purposeTitle": "What the glossary is for",
+  "it/glossaryTab.json::glossaryTab.purposeBody": "It is how people and agents find the right data and use it correctly. Each term names one business concept, lists every physical column that carries it, and says what it actually means — so a question asked in business language lands on the right column instead of a plausible-looking wrong one.",
+  "it/glossaryTab.json::glossaryTab.purposeAdd": "Terms for real columns are derived for you. Add one by hand only for a concept no single column carries — an umbrella term you then relate to the terms that do, so it still reaches real data.",
+  "it/glossaryTab.json::glossaryTab.purposeAria": "About the glossary"
 }

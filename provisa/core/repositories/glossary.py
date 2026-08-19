@@ -541,6 +541,25 @@ async def add_edge(conn: "Connection", from_term_id: int, to_term_id: int, rel_t
     )
 
 
+async def retype_edge(
+    conn: "Connection", from_term_id: int, to_term_id: int, rel_type: str, new_rel_type: str
+) -> bool:
+    """Change an existing relationship's type, keeping its direction and endpoints.
+
+    ``rel_type`` is part of the edge's identity, so this is a delete and an insert rather
+    than an UPDATE; doing it here keeps the pair atomic within the caller's transaction. A
+    curator retyping SYNONYM_OF to KIND_OF is correcting the same statement about the same
+    two terms, not withdrawing one relationship and asserting another, so the UI must not
+    make them delete and re-add it.
+    """
+    if new_rel_type not in TERM_EDGE_TYPES:
+        raise ValueError(f"rel_type must be one of {TERM_EDGE_TYPES}")
+    if not await remove_edge(conn, from_term_id, to_term_id, rel_type):
+        return False
+    await add_edge(conn, from_term_id, to_term_id, new_rel_type)
+    return True
+
+
 async def remove_edge(
     conn: "Connection", from_term_id: int, to_term_id: int, rel_type: str
 ) -> bool:

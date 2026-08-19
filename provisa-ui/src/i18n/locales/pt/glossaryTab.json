@@ -81,7 +81,11 @@
     "retireDone": "Termo retirado.",
     "unretireDone": "Termo restaurado.",
     "proposed": "Proposto",
-    "proposedUndefined": "Proposto: este termo foi derivado dos nomes da coluna e da tabela. Dê-lhe uma definição para que agentes e catálogos passem a usá-lo.",
-    "proposedUngrounded": "Proposto: este termo não alcança nenhuma coluna física. Relacione-o a um termo que tenha uma para que ele nomeie dados reais."
+    "proposedUndefined": "Proposto: este termo foi derivado dos nomes da coluna e da tabela. Renomeie-o se o nome derivado não servir e depois dê-lhe uma definição para que agentes e catálogos passem a usá-lo.",
+    "proposedUngrounded": "Proposto: este termo não alcança nenhuma coluna física. Relacione-o a um termo que tenha uma para que ele nomeie dados reais.",
+    "purposeTitle": "Para que serve o glossário",
+    "purposeBody": "É como pessoas e agentes encontram os dados certos e os usam corretamente. Cada termo nomeia um conceito de negócio, lista todas as colunas físicas que o carregam e diz o que ele realmente significa — assim uma pergunta feita em linguagem de negócio chega à coluna certa, e não a uma errada de aparência plausível.",
+    "purposeAdd": "Os termos de colunas reais são derivados automaticamente. Crie um à mão apenas para um conceito que nenhuma coluna carrega sozinha: um termo guarda-chuva que você depois relaciona aos termos que a têm, para que ele continue alcançando dados reais.",
+    "purposeAria": "Sobre o glossário"
   }
 }

@@ -42663,7 +42663,16 @@ And a later observation in the same hour replaces it rather than adding to it
     COLUMN-REMOVAL WARNING (REQ-1484 surface): the pre-save dependents check reports each bound term with
     the outcome already decided by the settle rule — kept (has another column), kept but taken out of
     service (curated), or deleted with the column (derived and blank) — so an administrator reads the
-    consequence rather than inferring it.'
+    consequence rather than inferring it. RELATIONSHIP RETYPING: rel_type is part of an edge''s
+    identity, so correcting one is a single curation act served by PATCH
+    /admin/glossary/terms/{term_id}/edges — the repository does the delete and the insert together
+    inside one transaction, rather than the UI publishing twice and leaving a window in which the
+    relationship does not exist. An incoming edge is retyped through the same stored forward values
+    shown under reverse labels, so the curator reads the sentence on screen while the server still
+    receives the edge''s own direction. GLOSSARY PURPOSE HELP: a hover bubble beside the add control
+    states what the glossary is for — that terms for real columns are derived automatically, and a
+    hand-added term is warranted only for a concept no single column carries — because the button is
+    self-evident and the purpose is not.'
   use_case: Bottom-up bootstrap means the glossary is never empty — every column name seeds the vocabulary,
     avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical
     field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL

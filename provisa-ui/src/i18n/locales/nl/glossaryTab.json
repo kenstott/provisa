@@ -81,7 +81,11 @@
     "retireDone": "Term buiten gebruik gesteld.",
     "unretireDone": "Term hersteld.",
     "proposed": "Voorgesteld",
-    "proposedUndefined": "Voorgesteld: deze term is afgeleid van de kolom- en tabelnamen. Geef er een definitie aan zodat agents en catalogi hem gaan gebruiken.",
-    "proposedUngrounded": "Voorgesteld: deze term bereikt geen fysieke kolom. Koppel hem aan een term die er wel een heeft, zodat hij echte gegevens benoemt."
+    "proposedUndefined": "Voorgesteld: deze term is afgeleid van de kolom- en tabelnamen. Hernoem hem als de afgeleide naam niet klopt en geef er dan een definitie aan zodat agents en catalogi hem gaan gebruiken.",
+    "proposedUngrounded": "Voorgesteld: deze term bereikt geen fysieke kolom. Koppel hem aan een term die er wel een heeft, zodat hij echte gegevens benoemt.",
+    "purposeTitle": "Waar de woordenlijst voor is",
+    "purposeBody": "Zo vinden mensen en agents de juiste gegevens en gebruiken ze die correct. Elke term benoemt één bedrijfsbegrip, somt alle fysieke kolommen op die het dragen en zegt wat het werkelijk betekent — zodat een vraag in bedrijfstaal bij de juiste kolom uitkomt in plaats van bij een aannemelijk ogende verkeerde.",
+    "purposeAdd": "Termen voor echte kolommen worden voor u afgeleid. Voeg er alleen handmatig een toe voor een begrip dat geen enkele kolom draagt — een overkoepelende term die u vervolgens koppelt aan de termen die dat wel doen, zodat hij echte gegevens blijft bereiken.",
+    "purposeAria": "Over de woordenlijst"
   }
 }

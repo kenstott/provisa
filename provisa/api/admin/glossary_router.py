@@ -360,6 +360,36 @@ async def add_edge(request: Request, term_id: int) -> dict:
     return {"ok": True}
 
 
+@router.patch("/terms/{term_id}/edges")
+async def retype_edge(request: Request, term_id: int) -> dict:
+    """Correct an existing relationship's type in place.
+
+    The type is part of the edge's identity, so this is its own endpoint rather than a
+    field on the add: retyping is one curation act on one statement, and the UI would
+    otherwise have to delete and re-add, which is two publishes and a window where the
+    relationship does not exist.
+    """
+    require_org_settings(request)
+    org_id = require_active_org_id(request)
+    body = await request.json()
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        try:
+            changed = await glossary_repo.retype_edge(
+                cast("Connection", conn),
+                term_id,
+                int(body["to_term_id"]),
+                str(body["rel_type"]),
+                str(body["new_rel_type"]),
+            )
+        except ValueError as exc:
+            raise ApiError(400, "glossary.invalid", str(exc)) from exc
+    if not changed:
+        raise ApiError(404, "glossary.edge_not_found", "edge not found")
+    await _notify(org_id, "glossary edge retyped")
+    return {"ok": True}
+
+
 @router.delete("/terms/{term_id}/edges")
 async def remove_edge(request: Request, term_id: int, to_term_id: int, rel_type: str) -> dict:
     require_org_settings(request)

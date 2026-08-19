@@ -22,6 +22,7 @@ import {
   Button,
   Checkbox,
   Group,
+  HoverCard,
   Loader,
   Modal,
   NavLink,
@@ -35,7 +36,15 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Archive, ArchiveRestore, BookOpen, Plus, Sparkles, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  BookOpen,
+  CircleHelp,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { FilterInput } from "./FilterInput";
 import {
   GLOSSARY_EXPERT_KINDS,
@@ -52,6 +61,7 @@ import {
   moveGlossaryRef,
   removeGlossaryEdge,
   removeGlossaryExpert,
+  retypeGlossaryEdge,
   updateGlossaryTerm,
 } from "../../api/glossary";
 import { DescriptionField } from "../../pages/tables/DescriptionField";
@@ -279,6 +289,13 @@ export function GlossaryTab() {
     value: rt,
     label: t(`glossaryTab.rel_${rt}`),
   }));
+  // An incoming edge is stored in the other term's direction, so its picker offers the same
+  // stored values under their reverse reading ("Classifies" for KIND_OF) — the curator sees
+  // the sentence they are looking at, and the server still gets the forward type.
+  const reverseRelTypeOptions = GLOSSARY_REL_TYPES.map((rt) => ({
+    value: rt,
+    label: t(`glossaryTab.rel_${rt}_reverse`, { defaultValue: t(`glossaryTab.rel_${rt}`) }),
+  }));
   const kindOptions = GLOSSARY_EXPERT_KINDS.map((k) => ({
     value: k,
     label: t(`glossaryTab.kind_${k}`),
@@ -315,6 +332,34 @@ export function GlossaryTab() {
           >
             {t("glossaryTab.newTerm")}
           </Button>
+          {/* Most terms arrive derived, so the one thing a curator has to decide here is when
+              adding a term by hand is warranted. The bubble states what the glossary is for
+              rather than what the button does — the button is self-evident, the purpose is not. */}
+          <HoverCard width={340} shadow="md" withArrow position="bottom-end">
+            <HoverCard.Target>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                aria-label={t("glossaryTab.purposeAria")}
+                data-testid="glossary-purpose-help"
+              >
+                <CircleHelp size={16} />
+              </ActionIcon>
+            </HoverCard.Target>
+            <HoverCard.Dropdown>
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  {t("glossaryTab.purposeTitle")}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {t("glossaryTab.purposeBody")}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {t("glossaryTab.purposeAdd")}
+                </Text>
+              </Stack>
+            </HoverCard.Dropdown>
+          </HoverCard>
           <Button
             variant="default"
             leftSection={<Sparkles size={14} />}
@@ -457,9 +502,7 @@ export function GlossaryTab() {
                 </Button>
                 <Tooltip
                   label={
-                    detail.retired
-                      ? t("glossaryTab.unretireHint")
-                      : t("glossaryTab.retireHint")
+                    detail.retired ? t("glossaryTab.unretireHint") : t("glossaryTab.retireHint")
                   }
                 >
                   <Button
@@ -471,7 +514,9 @@ export function GlossaryTab() {
                     onClick={() =>
                       void act(
                         () => updateGlossaryTerm(detail.id, { retired: !detail.retired }),
-                        detail.retired ? t("glossaryTab.unretireDone") : t("glossaryTab.retireDone"),
+                        detail.retired
+                          ? t("glossaryTab.unretireDone")
+                          : t("glossaryTab.retireDone"),
                       )
                     }
                     data-testid="glossary-retire-btn"
@@ -591,9 +636,29 @@ export function GlossaryTab() {
                     gap="xs"
                     data-testid={`glossary-edge-out-${edge.term_id}-${edge.rel_type}`}
                   >
-                    <Badge size="sm" variant="light">
-                      {t(`glossaryTab.rel_${edge.rel_type}`)}
-                    </Badge>
+                    {/* The type is part of the edge's identity, so correcting it is a retype,
+                        not a delete plus an add — the curator is fixing one statement about
+                        one pair of terms. */}
+                    <Select
+                      data={relTypeOptions}
+                      value={edge.rel_type}
+                      onChange={(next) =>
+                        next &&
+                        next !== edge.rel_type &&
+                        void act(() =>
+                          retypeGlossaryEdge(
+                            detail.id,
+                            edge.term_id,
+                            edge.rel_type,
+                            next as GlossaryRelType,
+                          ),
+                        )
+                      }
+                      size="xs"
+                      w={190}
+                      aria-label={t("glossaryTab.edgeRelLabel")}
+                      data-testid={`glossary-edge-out-rel-${edge.term_id}`}
+                    />
                     <Text size="sm">{edge.name}</Text>
                     <ActionIcon
                       variant="subtle"
@@ -614,11 +679,26 @@ export function GlossaryTab() {
                     gap="xs"
                     data-testid={`glossary-edge-in-${edge.term_id}-${edge.rel_type}`}
                   >
-                    <Badge size="sm" variant="outline">
-                      {t(`glossaryTab.rel_${edge.rel_type}_reverse`, {
-                        defaultValue: t(`glossaryTab.rel_${edge.rel_type}`),
-                      })}
-                    </Badge>
+                    <Select
+                      data={reverseRelTypeOptions}
+                      value={edge.rel_type}
+                      onChange={(next) =>
+                        next &&
+                        next !== edge.rel_type &&
+                        void act(() =>
+                          retypeGlossaryEdge(
+                            edge.term_id,
+                            detail.id,
+                            edge.rel_type,
+                            next as GlossaryRelType,
+                          ),
+                        )
+                      }
+                      size="xs"
+                      w={190}
+                      aria-label={t("glossaryTab.edgeRelLabel")}
+                      data-testid={`glossary-edge-in-rel-${edge.term_id}`}
+                    />
                     <Text size="sm">{edge.name}</Text>
                     <Text size="sm" c="dimmed">
                       {t("glossaryTab.incoming")}

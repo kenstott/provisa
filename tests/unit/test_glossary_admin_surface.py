@@ -192,6 +192,51 @@ async def test_retired_toggle_round_trips_and_hides_the_term_from_mcp_search(tmp
         assert len(notified) == 3
 
 
+async def test_edge_type_is_correctable_in_place(tmp_path, monkeypatch):
+    """Retyping is one act on one relationship, not a withdrawal plus a new assertion."""
+    async with _surface(tmp_path, monkeypatch) as (_db, notified):
+        customer = await _term_id("customer")
+        party = (
+            await glossary_router.create_abstract_term(
+                _with_json(_request(), {"name": "party", "definition": "Any actor."})
+            )
+        )["id"]
+        await glossary_router.add_edge(
+            _with_json(_request(), {"to_term_id": party, "rel_type": "RELATED_TO"}), customer
+        )
+        await glossary_router.retype_edge(
+            _with_json(
+                _request(),
+                {"to_term_id": party, "rel_type": "RELATED_TO", "new_rel_type": "KIND_OF"},
+            ),
+            customer,
+        )
+        detail = await glossary_router.get_term(_request(), customer)
+        # One edge, same endpoints and direction, corrected type.
+        assert detail["edges_out"] == [{"term_id": party, "rel_type": "KIND_OF", "name": "party"}]
+
+        with pytest.raises(ApiError) as unknown:
+            await glossary_router.retype_edge(
+                _with_json(
+                    _request(),
+                    {"to_term_id": party, "rel_type": "PART_OF", "new_rel_type": "KIND_OF"},
+                ),
+                customer,
+            )
+        assert unknown.value.status_code == 404
+        with pytest.raises(ApiError) as bad:
+            await glossary_router.retype_edge(
+                _with_json(
+                    _request(),
+                    {"to_term_id": party, "rel_type": "KIND_OF", "new_rel_type": "VIBES_WITH"},
+                ),
+                customer,
+            )
+        assert bad.value.status_code == 400
+        # create + add + retype; neither refusal published.
+        assert len(notified) == 3
+
+
 async def test_free_form_edge_type_is_refused(tmp_path, monkeypatch):
     async with _surface(tmp_path, monkeypatch) as (_db, notified):
         customer = await _term_id("customer")
