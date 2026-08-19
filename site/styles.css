@@ -212,6 +212,13 @@ code:not(pre code) {
   padding: 1px 6px; border-radius: 5px; color: var(--primary-hover);
 }
 
+/* ── The full source-type list on /why/sources ─────────── */
+.src-all { display: grid; gap: 22px; margin: 18px 0 8px; }
+.src-group h4 {
+  margin: 0 0 10px; font-size: .82rem; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-muted);
+}
+
 /* ── Interfaces: three languages, then protocols by workload ─ */
 .langs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .lang {

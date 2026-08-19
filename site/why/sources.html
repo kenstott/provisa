@@ -107,15 +107,47 @@
           queries and a join in application code.
         </p>
 
-        <h2>The 53</h2>
+        <h2 id="the-53">The 53</h2>
         <p>
-          PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL, Kafka,
-          Snowflake, Databricks, BigQuery, Fabric, ClickHouse, DuckDB, Oracle, SQL Server,
-          Google Sheets, CSV, Parquet, Excel, DOCX, PPTX, HTML, Markdown, SharePoint,
-          Splunk, S3, FTP, SFTP, REST, GraphQL, gRPC, RSS, and WebSocket endpoints among
-          them. The full, current list lives in the <a href="/docs/sources/">source
-          reference</a>.
+          Every registrable source type, grouped by what it is. Each one registers the same
+          way and lands under the same governance; the per-type connection fields are in the
+          <a href="/docs/sources/">source reference</a>.
         </p>
+
+        <div class="src-all">
+          <div class="src-group">
+            <h4>Relational</h4>
+            <ul class="chips"><li>PostgreSQL</li><li>MySQL</li><li>MariaDB</li><li>SingleStore</li><li>SQL Server</li><li>Oracle</li><li>Firebird</li><li>SQLite</li><li>CockroachDB</li><li>YugabyteDB</li><li>Greenplum</li><li>TiDB</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>Warehouses &amp; lakehouses</h4>
+            <ul class="chips"><li>Snowflake</li><li>BigQuery</li><li>Databricks</li><li>Microsoft Fabric</li><li>Synapse</li><li>Redshift</li><li>Trino</li><li>Delta Lake</li><li>Iceberg</li><li>Hudi</li><li>Hive</li><li>Hive on S3</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>Analytics &amp; OLAP</h4>
+            <ul class="chips"><li>ClickHouse</li><li>DuckDB</li><li>Elasticsearch</li><li>Apache Pinot</li><li>Apache Druid</li><li>Exasol</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>Graph &amp; semantic</h4>
+            <ul class="chips"><li>Neo4j</li><li>SPARQL / RDF</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>NoSQL, cache &amp; streaming</h4>
+            <ul class="chips"><li>MongoDB</li><li>Cassandra</li><li>Redis</li><li>Kafka</li><li>WebSocket</li><li>RSS</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>Files &amp; documents</h4>
+            <ul class="chips"><li>CSV</li><li>Parquet</li><li>Google Sheets</li><li>SharePoint</li><li>File crawler</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>APIs &amp; remote schemas</h4>
+            <ul class="chips"><li>REST / OpenAPI</li><li>GraphQL remote</li><li>gRPC remote</li><li>Airport (DuckDB)</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>Observability &amp; other</h4>
+            <ul class="chips"><li>Prometheus</li><li>Splunk</li><li>Soda</li><li>Great Expectations</li><li>Ingest</li><li>Government data</li></ul>
+          </div>
+        </div>
 
         <h2>Observability as data</h2>
         <p>
