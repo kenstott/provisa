@@ -195,7 +195,7 @@ describe("GlossaryTab", () => {
     await screen.findByTestId("glossary-edge-out-rel-2");
 
     const outgoing = await openSelect("glossary-edge-out-rel-2");
-    fireEvent.click(within(outgoing).getByText(t("glossaryTab.rel_KIND_OF"), { hidden: true }));
+    fireEvent.click(within(outgoing).getByText(t("glossaryTab.rel_KIND_OF")));
     await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "KIND_OF"));
 
     // The incoming picker reads in reverse but sends the stored forward type, and the edge
@@ -203,9 +203,7 @@ describe("GlossaryTab", () => {
     fireEvent.click(screen.getByTestId("glossary-item-2"));
     await screen.findByTestId("glossary-edge-in-rel-1");
     const incoming = await openSelect("glossary-edge-in-rel-1");
-    fireEvent.click(
-      within(incoming).getByText(t("glossaryTab.rel_PART_OF_reverse"), { hidden: true }),
-    );
+    fireEvent.click(within(incoming).getByText(t("glossaryTab.rel_PART_OF_reverse")));
     await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "PART_OF"));
   });
 

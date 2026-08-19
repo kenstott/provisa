@@ -35,6 +35,8 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   is_abstract: false,
   deprecated: false,
   export_excluded: false,
+  retired: false,
+  live: true,
   ref_count: 1,
   refs: [
     {
