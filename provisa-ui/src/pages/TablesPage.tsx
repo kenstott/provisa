@@ -540,7 +540,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           )}
           <HelpBubble
             title={translate("tablesPage.purposeTitle")}
-            paragraphs={[translate("tablesPage.purposeBody"), translate("tablesPage.purposeAdd")]}
+            paragraphs={[
+              translate("tablesPage.purposeBody"),
+              translate("tablesPage.purposeAdd"),
+              translate("tablesPage.purposeModel"),
+            ]}
             ariaLabel={translate("tablesPage.purposeAria")}
             testId="tables-purpose-help"
           />

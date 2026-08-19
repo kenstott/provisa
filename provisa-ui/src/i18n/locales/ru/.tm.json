@@ -3410,7 +3410,7 @@
   "ru/sourcesPage.json::sourcesPage.purposeAria": "About data sources",
   "ru/tablesPage.json::tablesPage.purposeTitle": "What registering a table does",
   "ru/tablesPage.json::tablesPage.purposeBody": "Registration is what puts a table into the governed model: it fixes the columns, the names they are exposed under, and which roles can see them. Only registered tables can be queried, and everything downstream — relationships, metrics, views, glossary terms — names registered columns.",
-  "ru/tablesPage.json::tablesPage.purposeAdd": "+ View defines a relation from SQL or from metrics instead of from a physical table. + Model builds an entity or fact (star schema / Data Vault) and registers whatever it lowers to.",
+  "ru/tablesPage.json::tablesPage.purposeAdd": "+ View registers a relation defined by SQL or by metrics instead of by a physical table — and registering it is where it stops being a saved query. The definition also decides how it is served: live, or materialized on a cadence or on a calendar window, with a refresh that replaces, upserts, or appends. Choose an append mode and the view keeps its own history, so consumers can read it as of a past point in time; its inputs are tracked as lineage, so a refresh waits on what it depends on.",
   "ru/tablesPage.json::tablesPage.purposeAria": "About registered tables",
   "ru/relationshipsPage.json::relationshipsPage.purposeTitle": "What relationships are for",
   "ru/relationshipsPage.json::relationshipsPage.purposeBody": "A relationship declares how two tables join, including across different sources. It is what lets a query, an agent, or the ERD traverse from one table to another instead of guessing a join — and joins are governed, so a role only traverses the relationships it holds rights to.",
@@ -3431,5 +3431,6 @@
   "ru/relationshipsPage.json::relationshipsPage.modelingHelpTitle": "SQL modeling workbench",
   "ru/relationshipsPage.json::relationshipsPage.modelingHelpBody": "A workspace for settling a join before you declare it: run SQL against the registered tables, profile the columns, draw the join on a canvas, then promote the result into a real relationship without retyping it here.",
   "ru/relationshipsPage.json::relationshipsPage.suggestHelpTitle": "Suggested relationships",
-  "ru/relationshipsPage.json::relationshipsPage.suggestHelpBody": "Scans the registered tables across domains for likely joins and lists them as candidates. Nothing is declared until you accept one, and a rejected candidate stays out of the list until you clear the rejections."
+  "ru/relationshipsPage.json::relationshipsPage.suggestHelpBody": "Scans the registered tables across domains for likely joins and lists them as candidates. Nothing is declared until you accept one, and a rejected candidate stays out of the list until you clear the rejections.",
+  "ru/tablesPage.json::tablesPage.purposeModel": "+ Model declares an entity or a fact — the two pieces both a star schema and a Data Vault are built from — and lowers it onto those same primitives, registering the materialized view, its history mode, and the relationships to the entities it keys on."
 }

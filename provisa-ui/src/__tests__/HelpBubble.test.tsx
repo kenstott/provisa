@@ -75,7 +75,7 @@ describe("HelpBubble", () => {
 
   // The icon-only controls in each page's action row, which have no visible label at all.
   it.each([
-    ["tablesPage", ["erdHelpTitle", "erdHelpBody"]],
+    ["tablesPage", ["erdHelpTitle", "erdHelpBody", "purposeModel"]],
     [
       "relationshipsPage",
       [

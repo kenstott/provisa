@@ -62,9 +62,10 @@
     "dataProductTitle": "Producto de datos — incluido en provisa metadata export",
     "purposeTitle": "Qué hace registrar una tabla",
     "purposeBody": "El registro es lo que incorpora una tabla al modelo gobernado: fija las columnas, los nombres con los que se exponen y qué roles pueden verlas. Solo las tablas registradas se pueden consultar, y todo lo que viene después — relaciones, métricas, vistas, términos del glosario — nombra columnas registradas.",
-    "purposeAdd": "+ Vista define una relación a partir de SQL o de métricas en lugar de una tabla física. + Modelo construye una entidad o un hecho (esquema en estrella / Data Vault) y registra aquello en lo que se traduce.",
+    "purposeAdd": "+ Vista registra una relación definida por SQL o por métricas en lugar de por una tabla física, y al registrarla deja de ser una consulta guardada. La definición decide además cómo se sirve: en vivo, o materializada según una cadencia o una ventana de calendario, con una actualización que reemplaza, hace upsert o añade. Si eliges un modo de añadido, la vista conserva su propio historial y los consumidores pueden leerla tal como estaba en un momento pasado; sus entradas se registran como linaje, así que una actualización espera a aquello de lo que depende.",
     "purposeAria": "Acerca de las tablas registradas",
     "erdHelpTitle": "Diagrama entidad-relación",
-    "erdHelpBody": "Dibuja las tablas registradas y las relaciones declaradas entre ellas, de modo que los joins que ya existen se ven antes de escribir una consulta. Lee el modelo en lugar de editarlo: filtra por dominio y exporta el diagrama como PNG o SVG."
+    "erdHelpBody": "Dibuja las tablas registradas y las relaciones declaradas entre ellas, de modo que los joins que ya existen se ven antes de escribir una consulta. Lee el modelo en lugar de editarlo: filtra por dominio y exporta el diagrama como PNG o SVG.",
+    "purposeModel": "+ Modelo declara una entidad o un hecho —las dos piezas con las que se construyen tanto un esquema en estrella como un Data Vault— y lo baja a esas mismas primitivas, registrando la vista materializada, su modo de historial y las relaciones con las entidades cuyas claves usa."
   }
 }

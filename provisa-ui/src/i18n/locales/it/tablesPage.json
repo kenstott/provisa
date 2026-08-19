@@ -62,9 +62,10 @@
     "dataProductTitle": "Data product — incluso in provisa metadata export",
     "purposeTitle": "Cosa fa la registrazione di una tabella",
     "purposeBody": "La registrazione è ciò che inserisce una tabella nel modello governato: fissa le colonne, i nomi con cui sono esposte e quali ruoli possono vederle. Solo le tabelle registrate sono interrogabili, e tutto ciò che ne deriva — relazioni, metriche, viste, termini del glossario — nomina colonne registrate.",
-    "purposeAdd": "+ Vista definisce una relazione a partire da SQL o da metriche anziché da una tabella fisica. + Modello costruisce un'entità o un fatto (schema a stella / Data Vault) e registra ciò in cui si traduce.",
+    "purposeAdd": "+ Vista registra una relazione definita da SQL o da metriche anziché da una tabella fisica — e registrarla è ciò che la fa smettere di essere una query salvata. La definizione decide anche come viene servita: live, oppure materializzata con una cadenza o su una finestra di calendario, con un aggiornamento che sostituisce, fa upsert o accoda. Se scegli una modalità di accodamento, la vista conserva la propria storia e i consumatori possono leggerla com'era in un momento passato; i suoi input sono tracciati come lineage, così un aggiornamento attende ciò da cui dipende.",
     "purposeAria": "Informazioni sulle tabelle registrate",
     "erdHelpTitle": "Diagramma entità-relazione",
-    "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate tra loro, così i join già esistenti sono visibili prima di scrivere una query. Legge il modello anziché modificarlo: filtra per dominio ed esporta il diagramma come PNG o SVG."
+    "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate tra loro, così i join già esistenti sono visibili prima di scrivere una query. Legge il modello anziché modificarlo: filtra per dominio ed esporta il diagramma come PNG o SVG.",
+    "purposeModel": "+ Modello dichiara un'entità o un fatto — i due mattoni con cui si costruiscono sia uno schema a stella sia un Data Vault — e lo abbassa su quelle stesse primitive, registrando la vista materializzata, la sua modalità di storia e le relazioni verso le entità di cui usa le chiavi."
   }
 }

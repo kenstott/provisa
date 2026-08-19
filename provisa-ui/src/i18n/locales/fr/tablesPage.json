@@ -62,9 +62,10 @@
     "dataProductTitle": "Produit de données — inclus dans provisa metadata export",
     "purposeTitle": "Ce que fait l'enregistrement d'une table",
     "purposeBody": "L'enregistrement fait entrer une table dans le modèle gouverné : il fixe les colonnes, les noms sous lesquels elles sont exposées et les rôles qui peuvent les voir. Seules les tables enregistrées sont interrogeables, et tout ce qui vient ensuite — relations, métriques, vues, termes du glossaire — nomme des colonnes enregistrées.",
-    "purposeAdd": "+ Vue définit une relation à partir de SQL ou de métriques plutôt que d'une table physique. + Modèle construit une entité ou un fait (schéma en étoile / Data Vault) et enregistre ce qu'il produit.",
+    "purposeAdd": "+ Vue enregistre une relation définie par SQL ou par des métriques plutôt que par une table physique — et l'enregistrer, c'est ce qui la fait cesser d'être une requête sauvegardée. La définition décide aussi de sa livraison : en direct, ou matérialisée selon une cadence ou une fenêtre de calendrier, avec un rafraîchissement qui remplace, fait un upsert ou ajoute. Avec un mode d'ajout, la vue conserve son propre historique et les consommateurs peuvent la lire telle qu'elle était à une date passée ; ses entrées sont suivies comme lignage, si bien qu'un rafraîchissement attend ce dont il dépend.",
     "purposeAria": "À propos des tables enregistrées",
     "erdHelpTitle": "Diagramme entité-association",
-    "erdHelpBody": "Dessine les tables enregistrées et les relations déclarées entre elles, afin que les jointures existantes soient visibles avant d'écrire une requête. Il lit le modèle sans le modifier : filtrez par domaine et exportez le diagramme en PNG ou SVG."
+    "erdHelpBody": "Dessine les tables enregistrées et les relations déclarées entre elles, afin que les jointures existantes soient visibles avant d'écrire une requête. Il lit le modèle sans le modifier : filtrez par domaine et exportez le diagramme en PNG ou SVG.",
+    "purposeModel": "+ Modèle déclare une entité ou un fait — les deux briques dont sont faits aussi bien un schéma en étoile qu'un Data Vault — et l'abaisse sur ces mêmes primitives, en enregistrant la vue matérialisée, son mode d'historique et les relations vers les entités dont il reprend les clés."
   }
 }

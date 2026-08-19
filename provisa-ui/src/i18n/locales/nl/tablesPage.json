@@ -62,9 +62,10 @@
     "dataProductTitle": "Dataproduct — opgenomen in provisa metadata export",
     "purposeTitle": "Wat het registreren van een tabel doet",
     "purposeBody": "Registratie neemt een tabel op in het bestuurde model: het legt de kolommen vast, de namen waaronder ze zichtbaar zijn en welke rollen ze mogen zien. Alleen geregistreerde tabellen zijn bevraagbaar, en alles daarna — relaties, metrieken, views, glossariumtermen — benoemt geregistreerde kolommen.",
-    "purposeAdd": "+ View definieert een relatie uit SQL of uit metrieken in plaats van uit een fysieke tabel. + Model bouwt een entiteit of feit (stervormig schema / Data Vault) en registreert waarnaar het wordt vertaald.",
+    "purposeAdd": "+ Weergave registreert een relatie die door SQL of door metrieken wordt gedefinieerd in plaats van door een fysieke tabel — en met die registratie houdt ze op een opgeslagen query te zijn. De definitie bepaalt ook hoe ze wordt geleverd: live, of gematerialiseerd op een cadans of op een kalendervenster, met een verversing die vervangt, upsert of aanvult. Kies je een aanvulmodus, dan houdt de weergave haar eigen historie bij, zodat consumenten haar kunnen lezen zoals ze op een eerder moment was; haar invoer wordt als lineage bijgehouden, dus een verversing wacht op waar ze van afhangt.",
     "purposeAria": "Over geregistreerde tabellen",
     "erdHelpTitle": "Entiteit-relatiediagram",
-    "erdHelpBody": "Tekent de geregistreerde tabellen en de relaties die ertussen zijn gedeclareerd, zodat bestaande joins zichtbaar zijn voordat je een query schrijft. Het leest het model in plaats van het te bewerken: filter op domein en exporteer het diagram als PNG of SVG."
+    "erdHelpBody": "Tekent de geregistreerde tabellen en de relaties die ertussen zijn gedeclareerd, zodat bestaande joins zichtbaar zijn voordat je een query schrijft. Het leest het model in plaats van het te bewerken: filter op domein en exporteer het diagram als PNG of SVG.",
+    "purposeModel": "+ Model declareert een entiteit of een feit — de twee bouwstenen waaruit zowel een stervormig schema als een Data Vault bestaat — en brengt dat terug tot diezelfde primitieven: de gematerialiseerde weergave, haar historiemodus en de relaties naar de entiteiten waarvan het de sleutels gebruikt."
   }
 }

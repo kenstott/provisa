@@ -42680,7 +42680,12 @@ And a later observation in the same hour replaces it rather than adding to it
     Tables/Views and Relationships the icon is itself the hover target (HelpBubble accepts the
     control as its target instead of rendering a second ''?''): the ERD icon on both pages, and the
     SQL modeling workbench and Suggest with AI icons on Relationships, each explaining what the tool
-    behind the glyph opens and whether it edits the model or only reads it.'
+        behind the glyph opens and whether it edits the model or only reads it. The Tables/Views
+    copy carries a third paragraph (purposeModel) because a view is not a saved query: registration
+    also fixes how it is served (live, or materialized on a cadence or a calendar window per
+    REQ-962), what a refresh writes (replace / upsert / append), whether it keeps append-only
+    history for as-of reads (REQ-1162), and its lineage inputs, while + Model lowers an entity or
+    fact onto those same primitives plus the relationships (REQ-1164).'
   use_case: Bottom-up bootstrap means the glossary is never empty — every column name seeds the vocabulary,
     avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical
     field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL
