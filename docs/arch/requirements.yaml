@@ -46585,3 +46585,680 @@ And a later observation in the same hour replaces it rather than adding to it
     And an invitation the organization sends carries its display name, its sentence and its primary color
 
     And an organization that set no branding is presented exactly as the product itself'
+- id: REQ-1487
+  status: proposed
+  target: 2026-Q4
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'An organization runs its governed model in more than one lane -- a dev lane, a test
+    lane, a staging lane, whatever it names -- without becoming more than one organization. A lane is a
+    named copy of the org''s governed model; the name is the org''s to choose, and one lane named prod
+    exists from the organization''s creation and cannot be deleted or renamed, so there is always a lane
+    the address resolves to. Identity, membership, branding, subscription tier and the org''s address
+    stay at the org: lanes multiply the model, never the tenant. A lane is not a hostname label --
+    REQ-1276 gives the leftmost label to the org and REQ-1348 rejects a deeper one as hostile -- so the
+    selected lane travels as an x-provisa-lane request header, mirroring x-org-provisa, with the
+    selection persisted per user. A request naming a lane the org does not have is refused; a request
+    naming none is served by prod, which is the only lane every org is guaranteed to have.'
+  use_case: 'A team develops a change against its dev lane and runs its suite against its test lane,
+    both inside the one organization its people, invoices and address belong to.'
+  code:
+  - provisa/core/lanes.py
+  - provisa/auth/middleware.py
+  - provisa/core/db.py
+  - provisa-ui/src/lib/lane.ts
+  - provisa-ui/src/components/LaneSelector.tsx
+  scenario: 'Given an organization with lanes prod and dev
+
+    When a request carries x-provisa-lane: dev
+
+    Then it is served from the dev lanes governed model
+
+    And a request carrying no lane header is served from prod
+
+    And a request naming a lane the org does not have is refused rather than served by prod
+
+    And prod cannot be deleted or renamed
+
+    '
+  related_reqs:
+  - REQ-1276
+  - REQ-1348
+  - REQ-1488
+  - REQ-1489
+- id: REQ-1488
+  status: proposed
+  target: 2026-Q4
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'A lane is physically a schema of its own. An org''s governed model already lives in one
+    Postgres schema reached by SET search_path TO org_<org_id>; a lane extends that name rather than
+    adding a discriminator column to forty tables, so every existing repository query is correct in a
+    lane without being rewritten and a lane''s state cannot leak into another lane''s reads by a
+    forgotten predicate. The org''s default lane keeps the existing schema name so an organization that
+    never creates a lane is unchanged. Lane creation, deletion and renaming are org_admin acts recorded
+    in the org''s admin audit log; deleting a lane drops its schema and its store, and prod is refused.'
+  use_case: 'An organization adds a dev lane and every governed read in it is scoped by the same
+    search_path mechanism that already isolates orgs, with no query rewritten.'
+  code:
+  - provisa/core/lanes.py
+  - provisa/core/db.py
+  - provisa/core/org_ids.py
+  - provisa/core/schema_org.py
+  - provisa/api/admin/lanes_router.py
+  scenario: 'Given an org_admin who creates a lane named dev
+
+    When a request is served in that lane
+
+    Then its governed reads run under that lanes own schema
+
+    And deleting the lane drops that schema and its store
+
+    And an attempt to delete prod is refused
+
+    '
+  related_reqs:
+  - REQ-1487
+  - REQ-1293
+- id: REQ-1489
+  status: proposed
+  target: ['REQ-1487', 'REQ-1490', 'REQ-1491', 'REQ-1492']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: MUST
+  type: behavioral
+  description: 'Copying a lane carries the governed model and nothing else, and what it carries is
+    stated as an allow-list rather than an exclusion list, so a table added to the org schema later does
+    not travel by default. Every table in the org schema falls in exactly one of four classes. CARRIED
+    -- the governed model: domains, naming_rules, registered_tables, table_columns, relationships,
+    metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms and their refs,
+    edges and experts, materialized_views, calendars, kafka_topics, api_endpoints, tracked_functions,
+    tracked_webhooks, table_meta_links. IDENTITY ONLY -- sources, api_sources, kafka_sources and
+    kafka_sinks carry their id, type and governance fields while their connection values stay behind
+    (REQ-1491). NEVER -- org_secrets, user_directory, user_role_assignments, and the org_settings keys
+    that name an external target or a per-lane runtime (metadata_export, redirect, cache). NEVER -- the
+    runtime and evidence tables, which belong to the lane that produced them: mv_refresh_log,
+    mv_delta_ledger, relationship_candidates, creation_requests, api_endpoint_candidates,
+    live_query_state, file_source_mtimes, node_ids, rel_ids, query_audit_log, query_sla_log,
+    source_catalog_cache, events, event_status, node_freshness_state, preserved_snapshots,
+    admin_audit_log, and catalog_bindings, whose vendor_ref and physical_key address another lane''s
+    external catalog. A test enumerates every table declared in schema_org.py and fails on any name
+    carrying no classification, so the failure mode for a forgotten table is a red test rather than a
+    copied secret.'
+  use_case: 'A platform team adds a table to the org schema and learns from a failing test that they
+    must say whether it belongs to a lane copy, instead of discovering months later that it carried
+    credentials into a dev lane.'
+  code:
+  - provisa/core/lane_copy.py
+  - provisa/core/schema_org.py
+  scenario: 'tests/unit/test_lane_copy_classification.py
+
+    '
+  related_reqs:
+  - Given a lane copy from prod to dev
+  - When the copy completes
+  - Then dev holds prods governed model
+  - And dev holds no secret, no user, no role assignment and no runtime history from prod
+  - And a table in schema_org.py with no classification fails the classification test
+- id: REQ-1490
+  status: proposed
+  target: ['REQ-1489', 'REQ-1491', 'REQ-1492']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: MUST
+  type: behavioral
+  description: 'Copying into a lane that already exists is a merge, not a replacement. The carried
+    classes of REQ-1489 are merged by identity -- an object present in the source lane is created or
+    updated in the target, and the merge reports what it will add, change and leave alone before it is
+    applied -- while every excluded class in the target is left exactly as it was. A dev lane that has
+    been bound to its own database, granted to its own developers and given its own secrets does not
+    lose any of them by taking a newer model from prod, and prod does not acquire dev''s bindings or
+    grants by taking a change back. Deletion is explicit: an object the source lane no longer has is
+    removed from the target only when the merge is applied with removals, which is stated in the report
+    and is a separate confirmation, so a merge cannot silently empty a lane. A merge applies whole or
+    not at all.'
+  use_case: 'A team promotes a model change from dev to prod and prod keeps its own production
+    connections, its own grants and its own secrets throughout.'
+  code:
+  - provisa/core/lane_copy.py
+  - provisa/api/admin/lanes_router.py
+  - provisa-ui/src/components/LaneMergeDialog.tsx
+  scenario: 'tests/unit/test_lane_merge.py
+
+    '
+  related_reqs:
+  - Given a dev lane bound to its own sources and granted to its own developers
+  - When prods governed model is merged into it
+  - Then devs model matches prods
+  - And devs bindings, grants and secrets are untouched
+  - And an object prod no longer has is removed only when removals are confirmed
+  - And a merge that fails part way leaves the lane as it was
+- id: REQ-1491
+  status: proposed
+  target: ['REQ-1489', 'REQ-1490', 'REQ-125']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: MUST
+  type: behavioral
+  description: 'Where a lane points is a per-lane fact that no copy ever supplies. A source row travels
+    between lanes because registered_tables references it and dropping it would cascade the model away,
+    but its host, port, database, username, path and federation_hints do not, and neither do an
+    api_source''s base URL and encrypted auth, a kafka_source''s bootstrap servers or a kafka_sink''s
+    target. A source that has not been bound in a lane is marked unbound rather than left blank: an
+    empty host is not an absent one, and the connection builder reads it as localhost:5432, so a blanked
+    copy would connect a dev lane to whatever database is local to the node. The query path checks
+    boundness before it builds any connection and refuses a query naming an unbound source, naming the
+    source and the lane. Secret references are per-lane for the same reason -- one ${env:...} reference
+    resolves identically in every lane of a process, so a carried reference is a carried credential; a
+    lane''s bindings resolve through that lane''s own secret keys.'
+  use_case: 'A newly created dev lane is inert until an administrator says what it reaches, and cannot
+    reach production by inheriting a connection or a credential reference.'
+  code:
+  - provisa/core/lane_bindings.py
+  - provisa/core/schema_org.py
+  - provisa/core/database.py
+  - provisa/core/secrets.py
+  - provisa-ui/src/components/LaneBindings.tsx
+  scenario: 'tests/unit/test_lane_bindings.py
+
+    '
+  related_reqs:
+  - Given a lane copied from prod
+  - When a query names a source that has not been bound in the new lane
+  - Then the query is refused naming that source and that lane
+  - And no connection is attempted with a defaulted host or port
+  - And the credential reference resolved is the new lanes, not the source lanes
+- id: REQ-1492
+  status: proposed
+  target: ['REQ-867', 'REQ-868', 'REQ-869', 'REQ-1489']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: MUST
+  type: behavioral
+  description: 'Write authority is granted into a lane and never carried between lanes. Provisa executes
+    mutations against sources -- compiled INSERT, UPDATE and DELETE, OpenAPI POST/PUT/PATCH/DELETE, gRPC
+    methods that declare side effects, Hasura mutations, ingest DDL -- so a copied lane is a writer, not
+    a reader, and inheriting where it points together with permission to write there is the compound
+    failure. A lane copy therefore resets table_columns.writable_by to empty and carries no
+    user_role_assignments, which restores the default-deny of REQ-867 and REQ-868 in the new lane. Role
+    definitions do travel, because rls_rules and writable_by reference roles by id and a lane whose RLS
+    points at absent roles states a governance model it does not have. Restoring write in a lane is an
+    act recorded in that lane''s admin audit log, and promotion toward prod can never confer it: rights
+    in a target lane come only from grants made in that lane.'
+  use_case: 'A developer with write rights in dev acquires none in prod when the model is promoted, and
+    a lane cloned from prod cannot mutate anything until someone grants it.'
+  code:
+  - provisa/core/lane_copy.py
+  - provisa/security/mutation_authz.py
+  - provisa/security/rights.py
+  - provisa/core/repositories/table.py
+  scenario: 'tests/unit/test_lane_write_authority.py
+
+    '
+  related_reqs:
+  - Given a prod lane whose roles hold write on registered columns
+  - When a lane is copied from it
+  - Then the new lanes columns are writable by no role
+  - And the new lane holds no role assignment
+  - And the roles the RLS rules reference still exist
+  - And granting write in the new lane is recorded in its admin audit log
+- id: REQ-1493
+  status: proposed
+  target: ['REQ-1491', 'REQ-1494', 'REQ-1495']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'Every lane owns a writable store, because a non-prod lane needs data that is neither a
+    read of production nor absent. A regulated organization cannot let developers read production rows
+    at all, so a read-only binding to production is not a weaker version of the answer but the wrong
+    one; and a lane evolving a data structure needs a shape production does not yet have, which no
+    binding to production can hold. The lane store is where both live: a structure the lane''s model
+    declares and no source carries is created there, and a dataset is populated by landing an extract
+    through the governed read path, so column masking and row-level security are applied by the reading
+    lane before any row is written to the receiving lane''s store. The store is the boundary an auditor
+    can inspect: the dev store holds only what governance permitted out of prod, and holds it whether or
+    not the binding is later changed.'
+  use_case: 'A team develops against a masked extract and against tables that do not exist in production
+    yet, without any developer holding a credential that reads production rows unmasked.'
+  code:
+  - provisa/federation/store_writer.py
+  - provisa/core/lanes.py
+  - provisa/ingest/ddl.py
+  - provisa/api/admin/lanes_router.py
+  scenario: 'tests/integration/test_lane_store.py
+
+    '
+  related_reqs:
+  - Given a dev lane and a masked column in prods model
+  - When an extract is landed from prod into the dev lanes store
+  - Then the rows written carry the masked value, not the source value
+  - And rows excluded by prods row-level security are not written
+  - And a table declared only in the dev lanes model exists in the dev store
+- id: REQ-1494
+  status: proposed
+  target: ['REQ-1493', 'REQ-1489']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'Masking gains a deterministic form so a masked extract stays usable. Column masking
+    today is redaction -- regex, constant or truncate -- which is correct for a rendered value and
+    destroys a key: constant-masking a customer id collapses every row onto one value, and every join
+    through that column in the receiving lane is wrong. A keyed deterministic mask maps a value to a
+    stable surrogate, so equal inputs mask equal, unequal inputs mask unequal, and joins and cardinality
+    survive the extract while the original value does not. The key is per-org and per-lane-pair, held
+    with the org''s secrets and never carried by a lane copy, so a surrogate cannot be reversed by
+    anyone holding only the extract, and two extracts taken for different lanes do not correlate.'
+  use_case: 'A developer joins a masked customer table to a masked orders table in a dev lane and gets
+    the same row counts production would give, without either table holding a real identifier.'
+  code:
+  - provisa/security/masking.py
+  - provisa/core/schema_org.py
+  - provisa/core/lane_extract.py
+  scenario: 'tests/unit/test_masking_deterministic.py
+
+    '
+  related_reqs:
+  - Given a column masked deterministically and referenced by a relationship
+  - When an extract is landed into another lane
+  - Then equal source values carry equal surrogates and unequal values carry unequal ones
+  - And a join through that column returns the cardinality the source join would
+  - And the surrogate cannot be reversed without the key, which the lane copy did not carry
+- id: REQ-1495
+  status: proposed
+  target: ['REQ-1493', 'REQ-1320']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: COULD
+  type: behavioral
+  description: 'A lane populates a table from its own model when no source holds one. A structure being
+    designed exists in the lane''s model before it exists anywhere else, so there is nothing to extract
+    and nothing to mask; the model itself -- column types, nullability, unique constraints,
+    relationships and the tags that classify a column -- is enough to generate rows that satisfy it.
+    Generated data honours declared keys and referential relationships so a generated set is joinable,
+    and is marked as generated in the lane''s store so it can never be mistaken for an extract of
+    anything real.'
+  use_case: 'A team designs a new fact table and its dimensions in a dev lane and queries it end to end
+    before any source has been changed.'
+  code:
+  - provisa/core/lane_generate.py
+  - provisa/core/schema_org.py
+  scenario: 'tests/unit/test_lane_generate.py
+
+    '
+  related_reqs:
+  - Given a table declared only in a lanes model, with a relationship to another such table
+  - When rows are generated for it
+  - Then the rows satisfy the declared types, nullability and unique constraints
+  - And the relationship joins to generated rows on the other side
+  - And the table is marked in the store as generated
+- id: REQ-1496
+  status: proposed
+  target: ['REQ-1490', 'REQ-1489']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'A lane''s governed model is versioned as immutable builds, which is what makes promotion
+    and reversal the same operation with a different argument. Every change to a lane''s carried classes
+    advances that lane''s build, identified and addressable; a build records what the model was, never
+    the excluded classes, so a build is safe to hold and safe to show. Promoting is merging a named
+    build of one lane into another under REQ-1490, and reverting is merging that lane''s previous build
+    into itself, so a lane can be returned to a state it held without anyone reconstructing it by hand.
+    A build''s diff against another build is readable before it is applied. This is metadata only: no
+    data moves between lanes when a build is applied.'
+  use_case: 'An administrator promotes a reviewed dev build into prod, sees a regression, and returns
+    prod to its previous build without reconstructing anything by hand.'
+  code:
+  - provisa/core/lane_builds.py
+  - provisa/core/lane_copy.py
+  - provisa/api/admin/lanes_router.py
+  - provisa-ui/src/components/LaneBuilds.tsx
+  scenario: 'tests/unit/test_lane_builds.py
+
+    '
+  related_reqs:
+  - Given a lane whose model has changed since its last build
+  - When the change is committed
+  - Then a new immutable build identifies that model
+  - And promoting that build into another lane merges it under the merge rules
+  - And merging the previous build back returns the lane to its earlier model
+  - And no data is moved by either operation
+- id: REQ-1497
+  status: complete
+  since: 2026-08
+  group: 13. Multi-Tenancy & Organizations
+  category: Org Onboarding
+  priority: SHOULD
+  type: behavioral
+  description: 'Creating an organization tells its administrator the two things about it that the
+    workspace does not show: that the organization has an address of its own -- its id in front of the
+    deployment''s base domain, per REQ-1276 -- and that the site at that address can be dressed in the
+    organization''s own name, colors and logo, per REQ-1486. The address is shown once over the welcome
+    screen, copyable and openable, and the branding editor is one click away. A deployment whose host
+    names no organization -- a desktop install, or localhost -- has no such address, and none is shown
+    rather than a guessed one. The product''s mark is drawn from one component, so the navigation bar,
+    the landing page and the tour offer carry the same mark rather than three copies of it.'
+  use_case: 'An administrator finishes creating an organization already knowing the address to hand to
+    their stakeholders and that they can put their own name on it.'
+  code:
+  - provisa-ui/src/components/OrgAddressModal.tsx
+  - provisa-ui/src/components/BrandMark.tsx
+  - provisa-ui/src/lib/authHost.ts
+  - provisa-ui/src/pages/OnboardOrgPage.tsx
+  - provisa-ui/src/pages/TeamPage.tsx
+  - provisa-ui/src/tour/TourWelcomeModal.tsx
+  - provisa-ui/src/i18n/locales/en/orgAddress.json
+  scenario: 'provisa-ui/src/__tests__/orgAddressModal.test.tsx
+
+    provisa-ui/src/__tests__/crossSubdomainAuth.test.ts
+
+    '
+  related_reqs:
+  - Given an administrator who has just created an organization on a deployment with a base domain
+  - When the welcome screen appears
+  - Then the organizations own address is shown, copyable and openable
+  - And the branding editor opens from it in one click
+  - And on a host that names no organization no address is shown
+- id: REQ-1498
+  status: proposed
+  target: ['REQ-1489', 'REQ-1490', 'REQ-1491', 'REQ-1492', 'REQ-1496']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: MUST
+  type: behavioral
+  description: 'Every lane operation is available from the provisa command line, because a lane change
+    is rarely the only thing happening: it lands beside a schema change in a source, a deployment, a
+    data load or a test run, and those are scripted. The lane subcommands cover the whole lifecycle --
+    listing lanes, creating and deleting one, binding its sources, showing a lane''''s current build,
+    diffing two builds, merging one lane or build into another, and reverting a lane to a previous
+    build. Each runs the same code the API runs, so the allow-list of REQ-1489, the merge and removal
+    rules of REQ-1490 and the binding and write-authority rules of REQ-1491 and REQ-1492 hold
+    identically however the operation was invoked; a command line that could copy what the API refuses
+    to copy would be the way secrets leave a lane. Every command reports as text for a person and as
+    JSON for a script, exits non-zero when it refuses and says which rule refused it, and accepts a dry
+    run that prints the merge report -- what would be added, changed, removed and left alone -- without
+    applying it, so a pipeline can gate on the report before it applies anything.'
+  use_case: 'A release script alters a table in the source, then merges the dev lane''''s build into
+    prod and fails the pipeline on a non-zero exit, in the same run and without anyone opening the UI.'
+  code:
+  - provisa/cli.py
+  - provisa/cli_lanes.py
+  - provisa/core/lane_copy.py
+  - provisa/core/lane_builds.py
+  scenario: 'tests/unit/test_cli_lanes.py
+
+    '
+  related_reqs:
+  - Given a dev lane and a prod lane
+  - When provisa lane merge --from dev --into prod --dry-run is run
+  - Then it prints what would be added, changed, removed and left alone, and applies nothing
+  - And the same command without --dry-run applies the merge under the merge rules
+  - And a merge the rules refuse exits non-zero naming the rule
+  - And --json emits the same report as machine-readable output
+- id: REQ-1499
+  status: proposed
+  target: ['REQ-1489', 'REQ-1490', 'REQ-1493']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: COULD
+  type: behavioral
+  description: 'An organization may replicate a lane whole -- bindings, secrets, users and role
+    assignments included -- when what it wants is the control plane as it stands rather than the
+    governed model alone. The replicate is the deliberate opposite of REQ-1489 and is fenced
+    accordingly. Its target must be a non-prod lane and never prod, which takes merges only; it is an
+    org_admin act carrying an explicit acknowledgement that the target will hold production credentials,
+    recorded in the org''''s admin audit log with who, when and from where; and the target lane is
+    thereafter marked as replicated, which means it is governed as production -- every grant in it
+    reaches production data, so it is neither a safe place for developers nor a substitute for the
+    masked extract of REQ-1493. Only replicate into a lane whose members already hold the production
+    access it confers.'
+  use_case: 'An administrator reproduces a production incident in a scratch lane that reaches exactly
+    what production reaches, and the lane is marked so nobody mistakes it for a development lane.'
+  code:
+  - provisa/core/lane_copy.py
+  - provisa/cli_lanes.py
+  - provisa/api/admin/lanes_router.py
+  scenario: 'tests/unit/test_lane_replicate.py
+
+    '
+  related_reqs:
+  - Given an org_admin replicating prod into a non-prod lane with the acknowledgement given
+  - Then the target holds prods bindings, secrets, users and role assignments
+  - And the target is marked as replicated and governed as production
+  - And a replicate whose target is prod is refused
+  - And a replicate without the acknowledgement is refused
+  - And the act is recorded in the orgs admin audit log
+- id: REQ-1500
+  status: proposed
+  target: ['REQ-1498', 'REQ-1493', 'REQ-1487']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: COULD
+  type: behavioral
+  description: 'A non-prod lane can be exported as a configuration a desktop Provisa loads, so a
+    developer works against the lane''''s model on their own machine. The export carries the governed
+    model and the lane''''s own bindings and secret references; whether the desktop can resolve those
+    references is the developer''''s environment to answer, and an unresolved one fails loudly on first
+    use rather than defaulting to something local. What the export does not carry is the lane''''s
+    store: landed extracts, generated sets and materialized views are data, and a lane holding large
+    ones is not reasonable to move through a file. The export states what it left behind and how large
+    it was, so the developer knows the difference between a lane that exported whole and one whose
+    queries will find nothing materialized. Exporting prod is refused -- the desktop is a separate
+    instance with no org governance around it, and a production export is a production credential in a
+    file.'
+  use_case: 'A developer takes their dev lane onto a laptop, works offline against the model, and knows
+    which materialized views did not come with it.'
+  code:
+  - provisa/cli_lanes.py
+  - provisa/core/lane_export.py
+  - provisa/core/lanes.py
+  scenario: 'tests/unit/test_lane_export.py
+
+    '
+  related_reqs:
+  - Given a non-prod lane with a materialized view and a landed extract
+  - When it is exported for the desktop
+  - Then the export carries the governed model, the lanes bindings and its secret references
+  - And it carries neither the landed rows nor the materialized view
+  - And it states what it left behind and how large it was
+  - And exporting prod is refused
+- id: REQ-1501
+  status: proposed
+  target: 2026-Q4
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: MUST
+  type: behavioral
+  description: 'Lanes take their shape from two exemplars, and which one governs is decided per half of
+    the design rather than argued case by case. Structure follows Hasura: the governed model is a
+    metadata artifact that is exported, diffed and applied, versioned as a build, and moved between
+    lanes by an explicit apply rather than by editing the target -- so a lane''''s model is reproducible
+    from something a person can read and a pipeline can hold. Per-lane state follows LaunchDarkly: what
+    a lane points at, what it may write, who is in it, what it has materialized and which keys address
+    it are environment-scoped facts that a promotion never carries, so promoting a change into
+    production changes what production means and nothing about what production reaches. The two meet at
+    one rule: an object arriving in a lane by merge arrives inert -- present in the model, unbound,
+    writable by no role and materializing nothing -- which is the analogue of a flag that exists in
+    every environment and is on in one. Absence and inertness are different states and are reported
+    differently.'
+  use_case: 'A team reasons about lanes with two familiar mental models instead of one novel one, and
+    can predict which facts travel with a promotion before they run it.'
+  code:
+  - provisa/core/lanes.py
+  - provisa/core/lane_copy.py
+  - provisa/core/lane_builds.py
+  scenario: 'Given an object that exists in the dev lane and not in prod
+
+    When the dev build is merged into prod
+
+    Then prod holds the object unbound, writable by no role and materializing nothing
+
+    And prod reports it as present and inert rather than as absent or as ready
+
+    And prods own bindings, grants, members, materializations and keys are unchanged
+
+    '
+  related_reqs:
+  - REQ-1489
+  - REQ-1490
+  - REQ-1491
+  - REQ-1492
+  - REQ-1496
+- id: REQ-1502
+  status: proposed
+  target: ['REQ-1498', 'REQ-1490', 'REQ-1496']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'A lane''''s governed model can be exported to files, held in version control and applied
+    back, which is what makes a lane reproducible rather than merely copyable. Export writes the carried
+    classes of REQ-1489 as readable files whose ordering is stable, so two exports of the same model are
+    the same bytes and a review sees the change and not the serializer. Apply takes those files and
+    brings a lane to what they describe under the merge rules of REQ-1490, and diff shows what an apply
+    would do without doing it. An apply that would leave an object unusable -- a relationship whose
+    other side is absent, an RLS rule naming a role that is not there, a metric over a column no longer
+    registered -- reports every such object and applies nothing; a model that is inconsistent in a file
+    is inconsistent in a lane, and finding out at query time is finding out too late.'
+  use_case: 'A team reviews a model change as a diff in a pull request and applies the merged result to
+    a lane from the same files.'
+  code:
+  - provisa/core/lane_files.py
+  - provisa/cli_lanes.py
+  - provisa/core/lane_copy.py
+  scenario: 'tests/unit/test_lane_files.py
+
+    '
+  related_reqs:
+  - Given a lane exported to files
+  - When the same lane is exported again unchanged
+  - Then the files are byte-identical
+  - And applying files that describe an RLS rule naming an absent role reports it and applies nothing
+  - And diff shows what an apply would change without changing it
+- id: REQ-1503
+  status: proposed
+  target: ['REQ-1487', 'REQ-1489']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: MUST
+  type: behavioral
+  description: 'A credential addresses exactly one lane. API keys, service tokens and any other
+    non-interactive credential are issued into a lane and carry it, so a key cannot be pointed at
+    another lane by changing a header: a request whose credential names one lane and whose
+    x-provisa-lane header names another is refused rather than resolved in favour of either. This is
+    what makes a lane safe to hand out -- an application configured with a dev lane''''s key reaches dev
+    whatever it sends -- and it is why keys are never carried by a copy or a merge. Rotating or revoking
+    a lane''''s keys affects that lane alone, and deleting a lane revokes its keys with it.'
+  use_case: 'A staging application is configured with a staging key and cannot reach production data
+    even if its configuration is wrong or its host is compromised.'
+  code:
+  - provisa/auth/middleware.py
+  - provisa/core/lanes.py
+  - provisa/api/admin/lanes_router.py
+  scenario: 'tests/unit/test_lane_credentials.py
+
+    '
+  related_reqs:
+  - Given an API key issued into the dev lane
+  - When a request presents it with x-provisa-lane: prod
+  - Then the request is refused rather than served by either lane
+  - And revoking the dev lanes keys leaves other lanes keys working
+  - And deleting the dev lane revokes its keys
+- id: REQ-1504
+  status: proposed
+  target: ['REQ-1490', 'REQ-1496', 'REQ-1498']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'A lane can be protected, and a merge into a protected lane waits for an approval by
+    someone other than the person who requested it. prod is protected when the organization has more
+    than one member; any lane can be protected by an org_admin. A request to merge into a protected lane
+    creates a pending change carrying the merge report of REQ-1490 -- what would be added, changed,
+    removed and left alone -- which an approver reads before deciding; approval applies it, rejection
+    discards it, and a change whose source lane has moved on since the request is stale and must be
+    re-requested rather than applied against a report that no longer describes it. Requests, approvals,
+    rejections and applications are recorded in the org''''s admin audit log with who and when.'
+  use_case: 'A model change reaches production only after a second person has read what it would do.'
+  code:
+  - provisa/core/lane_approvals.py
+  - provisa/core/lane_copy.py
+  - provisa/api/admin/lanes_router.py
+  - provisa-ui/src/components/LaneApprovals.tsx
+  scenario: 'tests/unit/test_lane_approvals.py
+
+    '
+  related_reqs:
+  - Given a protected prod lane and a requested merge from dev
+  - Then the merge does not apply until it is approved
+  - And the requester cannot approve their own request
+  - And the approver sees the merge report before deciding
+  - And a request whose source build has changed is stale and must be re-requested
+  - And every step is recorded in the orgs admin audit log
+- id: REQ-1505
+  status: proposed
+  target: ['REQ-1496', 'REQ-1490']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'Every lane keeps a change history, and any two lanes can be compared for one object. The
+    history records what changed in that lane''''s governed model, who changed it and when, and whether
+    the change was made in the lane or arrived by a merge, naming the source lane and build when it did
+    -- so the question a production incident asks, what changed here and where did it come from, is
+    answered without reconstructing it from builds. Comparison answers the other question: for one
+    table, metric or rule, what does dev say and what does prod say, shown as a difference rather than
+    as two documents to read side by side.'
+  use_case: 'An administrator investigating a production behaviour sees the change that introduced it,
+    which lane it came from and how prod''''s version of that object differs from dev''''s.'
+  code:
+  - provisa/core/lane_history.py
+  - provisa/core/lane_builds.py
+  - provisa-ui/src/components/LaneHistory.tsx
+  - provisa-ui/src/components/LaneCompare.tsx
+  scenario: 'tests/unit/test_lane_history.py
+
+    '
+  related_reqs:
+  - Given a change made in dev and merged into prod
+  - When prods history is read
+  - Then the change is recorded as having arrived from the dev lane and that build
+  - And a change made directly in prod is recorded as made in prod
+  - And comparing one object between dev and prod shows the difference between them
+- id: REQ-1506
+  status: proposed
+  target: ['REQ-1490', 'REQ-1502', 'REQ-1504']
+  group: 13. Multi-Tenancy & Organizations
+  category: Lanes
+  priority: SHOULD
+  type: behavioral
+  description: 'A merge can be scoped to part of a model. Promoting one corrected metric should not
+    require promoting every other change the source lane has accumulated, so a merge accepts a selection
+    of objects and carries them alone. The selection closes over what the chosen objects require: a
+    metric brought without the column it reads, or a relationship without the table on its other side,
+    would land inconsistent, so the merge report names the objects pulled in by the selection and the
+    merge either carries them or refuses. A scoped merge is a merge in every other respect -- the same
+    exclusions, the same untouched target state, the same all-or-nothing application, the same approval
+    where the target is protected.'
+  use_case: 'An administrator promotes a single corrected metric to production while the rest of the dev
+    lane''''s work stays in dev.'
+  code:
+  - provisa/core/lane_copy.py
+  - provisa/cli_lanes.py
+  - provisa-ui/src/components/LaneMergeDialog.tsx
+  scenario: 'tests/unit/test_lane_merge_scoped.py
+
+    '
+  related_reqs:
+  - Given a dev lane with several changes and a selection naming one metric
+  - When the scoped merge is applied
+  - Then prod holds that metric and none of the other changes
+  - And the report names anything the metric required that the selection did not
+  - And a selection that cannot be closed consistently is refused
+  - And the targets bindings, grants and members are untouched
