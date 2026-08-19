@@ -402,41 +402,60 @@ export function RelationshipsPage() {
             ariaLabel={t("relationshipsPage.purposeAria")}
             testId="rels-purpose-help"
           />
-          <ActionIcon
-            variant="subtle"
-            aria-label={t("relationshipsPage.sqlModelingTool")}
-            title={t("relationshipsPage.sqlModelingTool")}
-            onClick={() => setShowModelingModal(true)}
-          >
-            <Code2 size={14} />
-          </ActionIcon>
-          <ActionIcon
-            data-tour="rels-erd"
-            variant="subtle"
-            aria-label={t("relationshipsPage.viewErd")}
-            title={t("relationshipsPage.viewErd")}
-            onClick={() => setShowErd(true)}
-          >
-            <Network size={14} />
-          </ActionIcon>
+          {/* Each icon is its own hover target. A row of "?" glyphs beside a row of icons
+              would double the thing a reader is trying to decode. */}
+          <HelpBubble
+            title={t("relationshipsPage.modelingHelpTitle")}
+            paragraphs={[t("relationshipsPage.modelingHelpBody")]}
+            ariaLabel={t("relationshipsPage.sqlModelingTool")}
+            testId="rels-modeling-help"
+            target={
+              <ActionIcon
+                variant="subtle"
+                aria-label={t("relationshipsPage.sqlModelingTool")}
+                onClick={() => setShowModelingModal(true)}
+              >
+                <Code2 size={14} />
+              </ActionIcon>
+            }
+          />
+          <HelpBubble
+            title={t("relationshipsPage.erdHelpTitle")}
+            paragraphs={[t("relationshipsPage.erdHelpBody")]}
+            ariaLabel={t("relationshipsPage.viewErd")}
+            testId="rels-erd-help"
+            target={
+              <ActionIcon
+                data-tour="rels-erd"
+                variant="subtle"
+                aria-label={t("relationshipsPage.viewErd")}
+                onClick={() => setShowErd(true)}
+              >
+                <Network size={14} />
+              </ActionIcon>
+            }
+          />
           {canManage && (
-            <ActionIcon
-              variant="subtle"
-              aria-label={
-                discovering
-                  ? t("relationshipsPage.discovering")
-                  : t("relationshipsPage.suggestWithAi")
+            <HelpBubble
+              title={t("relationshipsPage.suggestHelpTitle")}
+              paragraphs={[t("relationshipsPage.suggestHelpBody")]}
+              ariaLabel={t("relationshipsPage.suggestWithAi")}
+              testId="rels-suggest-help"
+              target={
+                <ActionIcon
+                  variant="subtle"
+                  aria-label={
+                    discovering
+                      ? t("relationshipsPage.discovering")
+                      : t("relationshipsPage.suggestWithAi")
+                  }
+                  onClick={handleDiscover}
+                  disabled={discovering}
+                >
+                  <Sparkles size={14} />
+                </ActionIcon>
               }
-              title={
-                discovering
-                  ? t("relationshipsPage.discovering")
-                  : t("relationshipsPage.suggestWithAi")
-              }
-              onClick={handleDiscover}
-              disabled={discovering}
-            >
-              <Sparkles size={14} />
-            </ActionIcon>
+            />
           )}
           {canManage && rejectedCount > 0 && (
             <Button variant="default" onClick={handleClearRejections}>

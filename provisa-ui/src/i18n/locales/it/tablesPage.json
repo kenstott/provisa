@@ -63,6 +63,8 @@
     "purposeTitle": "Cosa fa la registrazione di una tabella",
     "purposeBody": "La registrazione è ciò che inserisce una tabella nel modello governato: fissa le colonne, i nomi con cui sono esposte e quali ruoli possono vederle. Solo le tabelle registrate sono interrogabili, e tutto ciò che ne deriva — relazioni, metriche, viste, termini del glossario — nomina colonne registrate.",
     "purposeAdd": "+ Vista definisce una relazione a partire da SQL o da metriche anziché da una tabella fisica. + Modello costruisce un'entità o un fatto (schema a stella / Data Vault) e registra ciò in cui si traduce.",
-    "purposeAria": "Informazioni sulle tabelle registrate"
+    "purposeAria": "Informazioni sulle tabelle registrate",
+    "erdHelpTitle": "Diagramma entità-relazione",
+    "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate tra loro, così i join già esistenti sono visibili prima di scrivere una query. Legge il modello anziché modificarlo: filtra per dominio ed esporta il diagramma come PNG o SVG."
   }
 }

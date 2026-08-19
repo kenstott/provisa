@@ -35,6 +35,12 @@
     "purposeTitle": "Waar relaties voor zijn",
     "purposeBody": "Een relatie legt vast hoe twee tabellen samenkomen, ook over bronnen heen. Dat laat een query, een agent of het ERD van de ene tabel naar de andere gaan in plaats van een join te raden — en joins vallen onder governance: een rol volgt alleen de relaties waarop die rechten heeft.",
     "purposeAdd": "Leg er zelf een vast als u de sleutels kent, of gebruik Suggest with AI om kandidaten voor te stellen en elk voorstel te accepteren of af te wijzen.",
-    "purposeAria": "Over relaties"
+    "purposeAria": "Over relaties",
+    "erdHelpTitle": "Entiteit-relatiediagram",
+    "erdHelpBody": "Tekent de geregistreerde tabellen en de op deze pagina gedeclareerde relaties als één graaf, zodat een joinpad dat bronnen overschrijdt in één oogopslag zichtbaar is. Het leest het model in plaats van het te bewerken: filter op domein en exporteer het diagram als PNG of SVG.",
+    "modelingHelpTitle": "SQL-modelleerwerkbank",
+    "modelingHelpBody": "Een werkruimte om een join uit te werken voordat je hem declareert: voer SQL uit op de geregistreerde tabellen, profileer de kolommen, teken de join op een canvas en promoveer het resultaat daarna tot een echte relatie zonder het hier opnieuw in te typen.",
+    "suggestHelpTitle": "Voorgestelde relaties",
+    "suggestHelpBody": "Doorzoekt de geregistreerde tabellen over domeinen heen op waarschijnlijke joins en toont ze als kandidaten. Er wordt niets gedeclareerd tot je er een accepteert, en een afgewezen kandidaat blijft uit de lijst tot je de afwijzingen wist."
   }
 }

@@ -35,6 +35,12 @@
     "purposeTitle": "What relationships are for",
     "purposeBody": "A relationship declares how two tables join, including across different sources. It is what lets a query, an agent, or the ERD traverse from one table to another instead of guessing a join — and joins are governed, so a role only traverses the relationships it holds rights to.",
     "purposeAdd": "Declare one by hand when you know the keys, or use Suggest with AI to propose candidates and accept or reject each.",
-    "purposeAria": "About relationships"
+    "purposeAria": "About relationships",
+    "erdHelpTitle": "Entity-relationship diagram",
+    "erdHelpBody": "Draws the registered tables and the relationships declared on this page as one graph, so a join path that crosses sources is visible at a glance. It reads the model rather than editing it: filter by domain and export the diagram as PNG or SVG.",
+    "modelingHelpTitle": "SQL modeling workbench",
+    "modelingHelpBody": "A workspace for settling a join before you declare it: run SQL against the registered tables, profile the columns, draw the join on a canvas, then promote the result into a real relationship without retyping it here.",
+    "suggestHelpTitle": "Suggested relationships",
+    "suggestHelpBody": "Scans the registered tables across domains for likely joins and lists them as candidates. Nothing is declared until you accept one, and a rejected candidate stays out of the list until you clear the rejections."
   }
 }

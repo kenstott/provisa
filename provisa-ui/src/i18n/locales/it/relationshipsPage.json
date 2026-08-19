@@ -35,6 +35,12 @@
     "purposeTitle": "A cosa servono le relazioni",
     "purposeBody": "Una relazione dichiara come due tabelle si uniscono, anche tra sorgenti diverse. È ciò che permette a una query, a un agente o all'ERD di passare da una tabella all'altra invece di indovinare un join — e i join sono governati: un ruolo percorre solo le relazioni su cui ha diritti.",
     "purposeAdd": "Dichiarala a mano quando conosci le chiavi, oppure usa Suggerisci con l'IA per proporre candidate e accettare o rifiutare ciascuna.",
-    "purposeAria": "Informazioni sulle relazioni"
+    "purposeAria": "Informazioni sulle relazioni",
+    "erdHelpTitle": "Diagramma entità-relazione",
+    "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate in questa pagina come un unico grafo, così un percorso di join che attraversa più sorgenti è visibile a colpo d'occhio. Legge il modello anziché modificarlo: filtra per dominio ed esporta il diagramma come PNG o SVG.",
+    "modelingHelpTitle": "Banco di modellazione SQL",
+    "modelingHelpBody": "Uno spazio per definire un join prima di dichiararlo: esegui SQL sulle tabelle registrate, profila le colonne, disegna il join su una tela e poi promuovi il risultato a relazione reale senza riscriverlo qui.",
+    "suggestHelpTitle": "Relazioni suggerite",
+    "suggestHelpBody": "Analizza le tabelle registrate di tutti i domini alla ricerca di join probabili e li elenca come candidati. Nulla viene dichiarato finché non ne accetti uno, e un candidato rifiutato resta fuori dall'elenco finché non azzeri i rifiuti."
   }
 }

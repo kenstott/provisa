@@ -63,6 +63,8 @@
     "purposeTitle": "Wat het registreren van een tabel doet",
     "purposeBody": "Registratie neemt een tabel op in het bestuurde model: het legt de kolommen vast, de namen waaronder ze zichtbaar zijn en welke rollen ze mogen zien. Alleen geregistreerde tabellen zijn bevraagbaar, en alles daarna — relaties, metrieken, views, glossariumtermen — benoemt geregistreerde kolommen.",
     "purposeAdd": "+ View definieert een relatie uit SQL of uit metrieken in plaats van uit een fysieke tabel. + Model bouwt een entiteit of feit (stervormig schema / Data Vault) en registreert waarnaar het wordt vertaald.",
-    "purposeAria": "Over geregistreerde tabellen"
+    "purposeAria": "Over geregistreerde tabellen",
+    "erdHelpTitle": "Entiteit-relatiediagram",
+    "erdHelpBody": "Tekent de geregistreerde tabellen en de relaties die ertussen zijn gedeclareerd, zodat bestaande joins zichtbaar zijn voordat je een query schrijft. Het leest het model in plaats van het te bewerken: filter op domein en exporteer het diagram als PNG of SVG."
   }
 }

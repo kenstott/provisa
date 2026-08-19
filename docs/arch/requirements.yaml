@@ -42676,7 +42676,11 @@ And a later observation in the same hour replaces it rather than adding to it
     sits beside the add action on Sources, Tables/Views, Relationships, Metrics, Tags and the
     Glossary, each carrying purposeTitle/purposeBody/purposeAdd/purposeAria in all 13 locales — the
     copy says what the object does once it exists and what the curator is deciding by creating one,
-    never what the button does.'
+    never what the button does. An icon-only control has no visible label at all, so on
+    Tables/Views and Relationships the icon is itself the hover target (HelpBubble accepts the
+    control as its target instead of rendering a second ''?''): the ERD icon on both pages, and the
+    SQL modeling workbench and Suggest with AI icons on Relationships, each explaining what the tool
+    behind the glyph opens and whether it edits the model or only reads it.'
   use_case: Bottom-up bootstrap means the glossary is never empty — every column name seeds the vocabulary,
     avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical
     field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL

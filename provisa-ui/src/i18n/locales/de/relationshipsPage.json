@@ -35,6 +35,12 @@
     "purposeTitle": "Wozu Beziehungen dienen",
     "purposeBody": "Eine Beziehung legt fest, wie zwei Tabellen verknüpft werden — auch über Quellen hinweg. Sie erlaubt einer Abfrage, einem Agenten oder dem ERD, von einer Tabelle zur anderen zu navigieren, statt einen Join zu raten — und Joins unterliegen der Governance: Eine Rolle folgt nur den Beziehungen, für die sie Rechte hat.",
     "purposeAdd": "Legen Sie eine Beziehung selbst an, wenn Sie die Schlüssel kennen, oder lassen Sie mit „Suggest with AI“ Kandidaten vorschlagen und nehmen Sie jeden einzeln an oder ab.",
-    "purposeAria": "Über Beziehungen"
+    "purposeAria": "Über Beziehungen",
+    "erdHelpTitle": "Entity-Relationship-Diagramm",
+    "erdHelpBody": "Zeichnet die registrierten Tabellen und die auf dieser Seite deklarierten Beziehungen als einen Graphen, sodass ein quellenübergreifender Join-Pfad auf einen Blick sichtbar ist. Es liest das Modell, statt es zu bearbeiten: nach Domäne filtern und das Diagramm als PNG oder SVG exportieren.",
+    "modelingHelpTitle": "SQL-Modellierungswerkbank",
+    "modelingHelpBody": "Ein Arbeitsbereich, um einen Join zu klären, bevor Sie ihn deklarieren: SQL gegen die registrierten Tabellen ausführen, Spalten profilieren, den Join auf einer Zeichenfläche skizzieren und das Ergebnis anschließend zu einer echten Beziehung befördern, ohne es hier erneut einzutippen.",
+    "suggestHelpTitle": "Vorgeschlagene Beziehungen",
+    "suggestHelpBody": "Durchsucht die registrierten Tabellen domänenübergreifend nach wahrscheinlichen Joins und listet sie als Kandidaten auf. Nichts wird deklariert, bevor Sie einen annehmen; ein abgelehnter Kandidat bleibt aus der Liste, bis Sie die Ablehnungen zurücksetzen."
   }
 }

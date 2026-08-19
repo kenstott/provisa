@@ -35,6 +35,12 @@
     "purposeTitle": "Para qué sirven las relaciones",
     "purposeBody": "Una relación declara cómo se unen dos tablas, incluso entre distintas fuentes. Es lo que permite a una consulta, a un agente o al ERD recorrer de una tabla a otra en vez de adivinar el join — y los joins están gobernados: un rol solo recorre las relaciones sobre las que tiene derechos.",
     "purposeAdd": "Declárela a mano cuando conozca las claves, o use Sugerir con IA para proponer candidatas y aceptar o rechazar cada una.",
-    "purposeAria": "Acerca de las relaciones"
+    "purposeAria": "Acerca de las relaciones",
+    "erdHelpTitle": "Diagrama entidad-relación",
+    "erdHelpBody": "Dibuja las tablas registradas y las relaciones declaradas en esta página como un único grafo, de modo que una ruta de join entre fuentes se ve de un vistazo. Lee el modelo en lugar de editarlo: filtra por dominio y exporta el diagrama como PNG o SVG.",
+    "modelingHelpTitle": "Banco de modelado SQL",
+    "modelingHelpBody": "Un espacio para resolver un join antes de declararlo: ejecuta SQL sobre las tablas registradas, perfila las columnas, dibuja el join en un lienzo y luego promueve el resultado a una relación real sin volver a escribirla aquí.",
+    "suggestHelpTitle": "Relaciones sugeridas",
+    "suggestHelpBody": "Recorre las tablas registradas de todos los dominios buscando joins probables y los lista como candidatos. No se declara nada hasta que aceptas uno, y un candidato rechazado queda fuera de la lista hasta que limpias los rechazos."
   }
 }

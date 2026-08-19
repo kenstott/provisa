@@ -544,15 +544,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             ariaLabel={translate("tablesPage.purposeAria")}
             testId="tables-purpose-help"
           />
-          <ActionIcon
-            data-tour="tables-erd"
-            variant="subtle"
-            aria-label={translate("tablesPage.viewErd")}
-            title={translate("tablesPage.viewErd")}
-            onClick={() => setShowErd(true)}
-          >
-            <Network size={14} />
-          </ActionIcon>
+          {/* The icon is the opaque thing here, so it is its own hover target: a "?" next to
+              it would add one more glyph to the row a reader is already trying to decode. */}
+          <HelpBubble
+            title={translate("tablesPage.erdHelpTitle")}
+            paragraphs={[translate("tablesPage.erdHelpBody")]}
+            ariaLabel={translate("tablesPage.viewErd")}
+            testId="tables-erd-help"
+            target={
+              <ActionIcon
+                data-tour="tables-erd"
+                variant="subtle"
+                aria-label={translate("tablesPage.viewErd")}
+                onClick={() => setShowErd(true)}
+              >
+                <Network size={14} />
+              </ActionIcon>
+            }
+          />
         </div>
       </div>
 

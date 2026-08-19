@@ -35,6 +35,12 @@
     "purposeTitle": "Para que servem os relacionamentos",
     "purposeBody": "Um relacionamento declara como duas tabelas se juntam, inclusive entre fontes diferentes. É o que permite a uma consulta, a um agente ou ao ERD percorrer de uma tabela a outra em vez de adivinhar o join — e os joins são governados: um papel só percorre os relacionamentos sobre os quais tem direitos.",
     "purposeAdd": "Declare um à mão quando souber as chaves, ou use Sugerir com IA para propor candidatos e aceitar ou rejeitar cada um.",
-    "purposeAria": "Sobre os relacionamentos"
+    "purposeAria": "Sobre os relacionamentos",
+    "erdHelpTitle": "Diagrama entidade-relacionamento",
+    "erdHelpBody": "Desenha as tabelas registadas e os relacionamentos declarados nesta página como um único grafo, para que um caminho de junção entre fontes seja visível de imediato. Lê o modelo em vez de o editar: filtre por domínio e exporte o diagrama como PNG ou SVG.",
+    "modelingHelpTitle": "Bancada de modelação SQL",
+    "modelingHelpBody": "Um espaço para resolver uma junção antes de a declarar: execute SQL sobre as tabelas registadas, analise as colunas, desenhe a junção numa tela e promova o resultado a um relacionamento real sem o voltar a escrever aqui.",
+    "suggestHelpTitle": "Relacionamentos sugeridos",
+    "suggestHelpBody": "Percorre as tabelas registadas em todos os domínios à procura de junções prováveis e lista-as como candidatas. Nada é declarado enquanto não aceitar uma, e uma candidata rejeitada fica fora da lista até limpar as rejeições."
   }
 }

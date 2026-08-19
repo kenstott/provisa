@@ -3423,5 +3423,13 @@
   "ru/tagsTab.json::tagsTab.purposeTitle": "What tags are for",
   "ru/tagsTab.json::tagsTab.purposeBody": "A tag is one org-wide label with fixed meaning, applied to sources, tables, columns, relationships, or commands. Tags carry behavior, not just documentation: technical keeps a column out of the Data Product export, entity turns a column's values into retrieval vocabulary, deprecated tells consumers to migrate off.",
   "ru/tagsTab.json::tagsTab.purposeAdd": "The registry is single. A tag that applies to several object types is one identity everywhere, so editing it in any of the scoped lists edits it in all of them.",
-  "ru/tagsTab.json::tagsTab.purposeAria": "About tags"
+  "ru/tagsTab.json::tagsTab.purposeAria": "About tags",
+  "ru/tablesPage.json::tablesPage.erdHelpTitle": "Entity-relationship diagram",
+  "ru/tablesPage.json::tablesPage.erdHelpBody": "Draws the registered tables and the relationships declared between them, so the joins that already exist are visible before you write a query. It reads the model rather than editing it: filter by domain and export the diagram as PNG or SVG.",
+  "ru/relationshipsPage.json::relationshipsPage.erdHelpTitle": "Entity-relationship diagram",
+  "ru/relationshipsPage.json::relationshipsPage.erdHelpBody": "Draws the registered tables and the relationships declared on this page as one graph, so a join path that crosses sources is visible at a glance. It reads the model rather than editing it: filter by domain and export the diagram as PNG or SVG.",
+  "ru/relationshipsPage.json::relationshipsPage.modelingHelpTitle": "SQL modeling workbench",
+  "ru/relationshipsPage.json::relationshipsPage.modelingHelpBody": "A workspace for settling a join before you declare it: run SQL against the registered tables, profile the columns, draw the join on a canvas, then promote the result into a real relationship without retyping it here.",
+  "ru/relationshipsPage.json::relationshipsPage.suggestHelpTitle": "Suggested relationships",
+  "ru/relationshipsPage.json::relationshipsPage.suggestHelpBody": "Scans the registered tables across domains for likely joins and lists them as candidates. Nothing is declared until you accept one, and a rejected candidate stays out of the list until you clear the rejections."
 }

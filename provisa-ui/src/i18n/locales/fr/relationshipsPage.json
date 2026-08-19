@@ -35,6 +35,12 @@
     "purposeTitle": "À quoi servent les relations",
     "purposeBody": "Une relation déclare comment deux tables se joignent, y compris entre sources différentes. C'est ce qui permet à une requête, à un agent ou à l'ERD de passer d'une table à l'autre au lieu de deviner une jointure — et les jointures sont gouvernées : un rôle ne parcourt que les relations sur lesquelles il a des droits.",
     "purposeAdd": "Déclarez-la à la main si vous connaissez les clés, ou utilisez Suggérer avec l'IA pour proposer des candidates et accepter ou rejeter chacune.",
-    "purposeAria": "À propos des relations"
+    "purposeAria": "À propos des relations",
+    "erdHelpTitle": "Diagramme entité-association",
+    "erdHelpBody": "Dessine les tables enregistrées et les relations déclarées sur cette page en un seul graphe, afin qu'un chemin de jointure traversant plusieurs sources soit visible d'un coup d'œil. Il lit le modèle sans le modifier : filtrez par domaine et exportez le diagramme en PNG ou SVG.",
+    "modelingHelpTitle": "Atelier de modélisation SQL",
+    "modelingHelpBody": "Un espace pour régler une jointure avant de la déclarer : exécutez du SQL sur les tables enregistrées, profilez les colonnes, tracez la jointure sur un canevas, puis promouvez le résultat en relation réelle sans la ressaisir ici.",
+    "suggestHelpTitle": "Relations suggérées",
+    "suggestHelpBody": "Parcourt les tables enregistrées de tous les domaines à la recherche de jointures probables et les liste comme candidates. Rien n'est déclaré tant que vous n'en acceptez pas une, et une candidate rejetée reste hors de la liste jusqu'à ce que vous effaciez les rejets."
   }
 }

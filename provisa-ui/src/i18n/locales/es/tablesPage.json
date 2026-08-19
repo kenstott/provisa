@@ -63,6 +63,8 @@
     "purposeTitle": "Qué hace registrar una tabla",
     "purposeBody": "El registro es lo que incorpora una tabla al modelo gobernado: fija las columnas, los nombres con los que se exponen y qué roles pueden verlas. Solo las tablas registradas se pueden consultar, y todo lo que viene después — relaciones, métricas, vistas, términos del glosario — nombra columnas registradas.",
     "purposeAdd": "+ Vista define una relación a partir de SQL o de métricas en lugar de una tabla física. + Modelo construye una entidad o un hecho (esquema en estrella / Data Vault) y registra aquello en lo que se traduce.",
-    "purposeAria": "Acerca de las tablas registradas"
+    "purposeAria": "Acerca de las tablas registradas",
+    "erdHelpTitle": "Diagrama entidad-relación",
+    "erdHelpBody": "Dibuja las tablas registradas y las relaciones declaradas entre ellas, de modo que los joins que ya existen se ven antes de escribir una consulta. Lee el modelo en lugar de editarlo: filtra por dominio y exporta el diagrama como PNG o SVG."
   }
 }
