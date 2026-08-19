@@ -459,7 +459,10 @@ main {
    title and action buttons measure (relationships-header.spec.ts asserts that centering). */
 .page-header {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* Equal side tracks keep the filter on the header's centerline
+   * (relationships-header.spec.ts measures that); the middle track must be a
+   * fraction, not `auto`, or the filter collapses to its content width. */
+  grid-template-columns: 1fr minmax(0, 2fr) 1fr;
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
