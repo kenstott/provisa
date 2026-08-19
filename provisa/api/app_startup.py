@@ -23,7 +23,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from pathlib import Path
 
 import yaml
 
@@ -34,6 +33,7 @@ from provisa.core.schema_org import (
     sources as _sources_t,
 )
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
+from provisa.core.config_location import config_path, config_path_str
 from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
@@ -149,7 +149,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
         # REQ-240: warm-tier thresholds + sweep interval come from config (warm_tables.*),
         # not Python constants. Per-table warm: true/false sets force/opt-out.
         _raw: dict = {}
-        _warm_cfg_path = Path(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
+        _warm_cfg_path = config_path()
         if _warm_cfg_path.exists():
             with open(_warm_cfg_path) as _wf:
                 _raw = yaml.safe_load(_wf) or {}
@@ -197,8 +197,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
         hot_mgr = state.hot_manager
         assert isinstance(hot_mgr, HotTableManager)
 
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        _hot_path = Path(config_path)
+        _hot_path = config_path()
         _hot_interval = 300
         if _hot_path.exists():
             with open(_hot_path) as _hf:
@@ -577,7 +576,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
         scheduler = AsyncIOScheduler()
         _cfg_triggers = []
         try:
-            with open(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")) as _cfg_f:
+            with open(config_path_str()) as _cfg_f:
                 _raw = yaml.safe_load(_cfg_f.read())
             if isinstance(_raw, dict):
                 from provisa.core.config_loader import parse_config_dict

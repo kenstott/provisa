@@ -8,23 +8,23 @@
 
 # Requirements: REQ-164
 
-import os
 from pathlib import Path
 
 import yaml
 
+from provisa.core.config_location import config_path as _config_path
+
 
 def read_config() -> dict:  # REQ-164
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
     try:
-        with open(config_path) as f:
+        with open(_config_path()) as f:
             return yaml.safe_load(f) or {}
     except Exception:
         return {}
 
 
 def config_path() -> Path:
-    return Path(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
+    return _config_path()
 
 
 def read_config_for_setup() -> dict:  # REQ-164, REQ-120

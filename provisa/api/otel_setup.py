@@ -19,6 +19,8 @@ from typing import Any
 
 import yaml
 
+from provisa.core.config_location import config_path_str
+
 # Matches SQL string literals ('...') and bare numeric literals outside identifiers.
 _SQL_LITERAL_RE = re.compile(r"'[^']*'|\"[^\"]*\"|\b\d+(\.\d+)?\b")
 
@@ -320,7 +322,7 @@ def setup_otel(
     import logging
 
     _log = logging.getLogger(__name__)
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+    config_path = config_path_str()
     _otel_cfg: dict = {}
     try:
         with open(config_path) as _f:

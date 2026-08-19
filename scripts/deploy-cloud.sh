@@ -147,9 +147,10 @@ push_api() {
 }
 
 # The shipped runtime configs, which were previously reachable only through an image rebuild. The
-# node loads /app/config/provisa-install.yaml (packaging/linux/first-launch.sh:429 sets
-# PROVISA_CONFIG), so a config change that never shipped left the node registering a stale source
-# and column-grant set: the pre-REQ-1297 copy still named platform_admin in every column's
+# node is a demo install, so its demo overlay points PROVISA_CONFIG at
+# /app/config/provisa-install.yaml (packaging/linux/first-launch.sh, write_demo_overlay; the base
+# compose sets provisa-install-base.yaml). A config change that never shipped left the node
+# registering a stale source and column-grant set: the pre-REQ-1297 copy still named platform_admin in every column's
 # visible_to, and repositories/table.py strips that role at write time, which emptied the grant
 # lists and dropped whole tables out of every role's schema.
 #

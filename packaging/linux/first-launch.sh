@@ -448,9 +448,9 @@ write_protocol_overlay() {
 
 # ── Demo overlay (Docker tier) ────────────────────────────────────────────────
 # The app container runs `uvicorn main:app` and loads the config PROVISA_CONFIG points
-# at (app.py). With no override it defaults to config/provisa.yaml — a fileless path on
-# a fresh deploy — so the server drops into the first-run setup wizard. A demo deploy
-# must instead load the complete, pre-federated demo config baked into the image.
+# at (app.py). The base compose points it at the wizard skeleton, so an unmodified deploy
+# comes up in the first-run setup wizard. A demo deploy must instead load the complete,
+# pre-federated demo config baked into the image.
 # Mirror native launch f7289d27: export PROVISA_CONFIG (the baked demo config),
 # PROVISA_DEMO=1 (guided tour + wizard suppression), and PROVISA_DEMO_DIR (the baked
 # SQLite sample data the demo config resolves ${env:PROVISA_DEMO_DIR} against). Paths
@@ -780,6 +780,11 @@ services:
       - ${CERT_DIR}:/app/certs:ro
     environment:
       PROVISA_ROLE: "control-plane"
+      # The config the app loads (REQ-528). It has no default in code, and the image bakes no
+      # config/provisa.yaml, so a container without this boots into a startup error. The wizard
+      # skeleton is the non-demo answer, same as native launch (start-ui-install.sh:190); a demo
+      # install's overlay overrides it with the pre-federated demo config.
+      PROVISA_CONFIG: "/app/config/provisa-install-base.yaml"
       PROVISA_TLS_CERT: "/app/certs/provisa.crt"
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
@@ -866,6 +871,11 @@ services:
       LEMONSQUEEZY_VARIANT_PRO_S: "\${LEMONSQUEEZY_VARIANT_PRO_S:-}"
       LEMONSQUEEZY_VARIANT_PRO_M: "\${LEMONSQUEEZY_VARIANT_PRO_M:-}"
       LEMONSQUEEZY_VARIANT_PRO_L: "\${LEMONSQUEEZY_VARIANT_PRO_L:-}"
+      # REQ-1482: egress rides a second subscription, so each plan names a second variant too.
+      LEMONSQUEEZY_VARIANT_EGRESS_STARTER: "\${LEMONSQUEEZY_VARIANT_EGRESS_STARTER:-}"
+      LEMONSQUEEZY_VARIANT_EGRESS_PRO_S: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_S:-}"
+      LEMONSQUEEZY_VARIANT_EGRESS_PRO_M: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_M:-}"
+      LEMONSQUEEZY_VARIANT_EGRESS_PRO_L: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_L:-}"
       LEMONSQUEEZY_SIGNING_SECRET: "\${LEMONSQUEEZY_SIGNING_SECRET:-}"
     depends_on:
       redis:

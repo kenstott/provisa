@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -244,14 +246,14 @@ class TestREQ164AdminConfig:
             bak_path = cfg_path.with_suffix(".yaml.bak")
             assert bak_path.read_text() == original
 
-    def test_config_path_default(self):
-        # REQ-164: default config path is config/provisa.yaml when env not set
+    def test_config_path_unset_is_an_error(self):
+        # REQ-164: no default — an unset PROVISA_CONFIG names itself instead of reading a path
         from provisa.api.admin._config_io import config_path
 
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PROVISA_CONFIG", None)
-            p = config_path()
-            assert str(p) == "config/provisa.yaml"
+            with pytest.raises(RuntimeError, match="PROVISA_CONFIG"):
+                config_path()
 
     def test_read_config_returns_dict(self):
         # REQ-164: read_config returns a dict from YAML
@@ -401,7 +403,7 @@ class TestREQ167LLMRelationshipDiscovery:
 
 
 # ---------------------------------------------------------------------------
-# REQ-528: Config path controlled by PROVISA_CONFIG env var (default config/provisa.yaml)
+# REQ-528: Config path controlled by PROVISA_CONFIG env var, which has no default
 # ---------------------------------------------------------------------------
 
 
@@ -416,14 +418,14 @@ class TestREQ528ProvIsaConfigEnvVar:
             p = config_path()
         assert str(p) == "/custom/path/config.yaml"
 
-    def test_config_path_default_when_env_absent(self):
-        # REQ-528: default is config/provisa.yaml
+    def test_config_path_raises_when_env_absent(self):
+        # REQ-528: no default — startup fails naming the variable rather than reading a path
         from provisa.api.admin._config_io import config_path
 
         env = {k: v for k, v in os.environ.items() if k != "PROVISA_CONFIG"}
         with patch.dict(os.environ, env, clear=True):
-            p = config_path()
-        assert str(p) == "config/provisa.yaml"
+            with pytest.raises(RuntimeError, match="PROVISA_CONFIG"):
+                config_path()
 
     def test_read_config_respects_provisa_config_env_var(self):
         # REQ-528: read_config must read from path given by PROVISA_CONFIG
@@ -437,13 +439,14 @@ class TestREQ528ProvIsaConfigEnvVar:
         assert cfg.get("my_key") == "my_value"
 
     def test_app_py_reads_provisa_config_env_var(self):
-        # REQ-528: app.py must also honour PROVISA_CONFIG
+        # REQ-528: app.py resolves its config through the one helper, so it honours PROVISA_CONFIG
+        # and inherits the no-default rule instead of carrying its own copy.
         import inspect
         import provisa.api.app as app_mod
 
         src = inspect.getsource(app_mod)
-        assert "PROVISA_CONFIG" in src
-        assert "config/provisa.yaml" in src
+        assert "config_path_str" in src
+        assert "config/provisa.yaml" not in src
 
 
 # ---------------------------------------------------------------------------

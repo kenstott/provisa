@@ -118,11 +118,20 @@ class TestOrgScopedGates:
 def test_overridable_keys_exclude_every_deployment_wide_concern():
     # The allow-list is the boundary: a key absent from it has no per-org representation at all.
     # metadata_export joined the set with REQ-1074: the catalog an org publishes to, and the
-    # credentials it publishes with, are that org's, not the deployment's.
-    assert ORG_OVERRIDABLE_KEYS == {"ai_models", "vector_models", "nl", "metadata_export"}
+    # credentials it publishes with, are that org's, not the deployment's. REQ-1266 added `naming`
+    # (the org's domain mode only — NAMING_ORG_KEYS bounds it), plus `redirect` and `cache`, which
+    # govern the org's own query results; the object store they land in stays in the platform env.
+    assert ORG_OVERRIDABLE_KEYS == {
+        "ai_models",
+        "vector_models",
+        "nl",
+        "metadata_export",
+        "naming",
+        "redirect",
+        "cache",
+    }
     for deployment_wide in (
         "federation",
-        "cache",
         "encryption",
         "auth",
         "sources",

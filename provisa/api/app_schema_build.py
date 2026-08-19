@@ -18,11 +18,11 @@ and column-metadata synthesis. Reaches the app state singleton lazily.
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 import yaml
 
+from provisa.core.config_location import config_path_str
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.observability.ops_schema import OPS_TABLES as _OPS_TABLES
 from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL as _OPS_PG_TO_PHYSICAL
@@ -85,7 +85,7 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
         if raw_config.get("naming", {}).get("sql_convention"):
             state.global_sql_naming_convention = raw_config["naming"]["sql_convention"]
     else:
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        config_path = config_path_str()
         path = Path(config_path)
         if path.exists():
             with open(path) as f:

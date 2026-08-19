@@ -47,6 +47,11 @@ os.environ.setdefault(
     ),
 )
 
+# REQ-528: PROVISA_CONFIG names the config the process runs on and has no default — every launcher
+# sets it, and the test suite is one. The repo's dev-local config is what an in-process create_app()
+# reads unless a test pins its own; setdefault so an explicit outer value wins.
+os.environ.setdefault("PROVISA_CONFIG", "config/provisa.yaml")
+
 _REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 

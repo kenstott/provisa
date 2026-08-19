@@ -5370,11 +5370,11 @@ Development observability stack available in docker-compose under `observability
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-The path to the Provisa config file is controlled by the `PROVISA_CONFIG` environment variable (default: `config/provisa.yaml`).
+The path to the Provisa config file is controlled by the `PROVISA_CONFIG` environment variable, which every launcher sets and which has no default — an unset variable is a startup error naming the variable, not a read of `config/provisa.yaml`. Nothing ships that path: the Dockerfile bakes an explicit config set that excludes it and no deploy pushes it, so the former default surfaced as a FileNotFoundError several frames inside Trino config generation.
 
 **Use case:** Configurable config path lets operators run multiple Provisa instances with different configs on the same host.
 
-**Code:** `provisa/api/app.py`, `provisa/api/admin/_config_io.py`
+**Code:** `provisa/core/config_location.py`, `provisa/api/app.py`, `provisa/api/admin/_config_io.py`
 
 **Tests:** `tests/integration/test_infra.py`, `tests/unit/test_admin_requirements.py`
 

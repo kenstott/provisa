@@ -29,6 +29,7 @@ import yaml
 from fastapi import FastAPI, Request, Response
 from sqlalchemy.exc import SQLAlchemyError
 
+from provisa.core.config_location import config_path_str
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
@@ -611,7 +612,7 @@ async def _load_and_build(
 ) -> None:  # REQ-012, REQ-016, REQ-247, REQ-289, REQ-369, REQ-371
     """Load config, introspect the engine, build schemas for all roles."""
     if config_path is None:
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        config_path = config_path_str()
 
     # Use uvicorn's console logger — the root logger's only handler is the OTLP
     # exporter, so provisa.* logs never reach the console / backend.log.
@@ -1101,7 +1102,7 @@ async def build_org_runtime(
             rt.federation_engine.bind_terminal()
         # Tenant plane for THIS org: its own Database scoped to org_<id>. The platform/admin plane
         # (state.admin_db) is global and already up — never rebuilt here.
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        config_path = config_path_str()
         cp = load_control_plane(config_path)
         # REQ-1316: reuse the process-wide tenant engine. Database.acquire() issues this org's
         # search_path on every checkout, so the org boundary is the handle, not the pool. Building
@@ -1656,7 +1657,7 @@ def create_app() -> FastAPI:
         redoc_url="/data/openapi/redoc",
         openapi_url="/data/openapi/openapi.json",
     )
-    state.federation_engine.write_config(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
+    state.federation_engine.write_config(config_path_str())
     _setup_otel(app)
 
     app.add_middleware(
