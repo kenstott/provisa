@@ -59,6 +59,10 @@
     },
     "derived": "派生",
     "dataProduct": "产品",
-    "dataProductTitle": "数据产品 — 包含在 provisa metadata export 中"
+    "dataProductTitle": "数据产品 — 包含在 provisa metadata export 中",
+    "purposeTitle": "注册表意味着什么",
+    "purposeBody": "注册才会把一张表纳入受治理的模型：它确定列、列对外暴露的名称，以及哪些角色可以看到它们。只有已注册的表可以被查询，而下游的一切——关系、指标、视图、术语——引用的都是已注册的列。",
+    "purposeAdd": "“+ 视图”从 SQL 或指标定义一个关系，而不是从物理表定义。“+ 模型”构建实体或事实（星型模型 / Data Vault），并注册它所降解出的对象。",
+    "purposeAria": "关于已注册的表"
   }
 }

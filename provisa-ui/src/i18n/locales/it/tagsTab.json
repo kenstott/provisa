@@ -49,6 +49,10 @@
     "deleted": "Tag {{id}} eliminato",
     "pagination": "Paginazione dei tag",
     "derivedTag": "derivato",
-    "derivedTagHelp": "Derivato dalla registrazione di ciascun oggetto: non viene mai assegnato"
+    "derivedTagHelp": "Derivato dalla registrazione di ciascun oggetto: non viene mai assegnato",
+    "purposeTitle": "A cosa servono i tag",
+    "purposeBody": "Un tag è un'unica etichetta valida per tutta l'organizzazione, con significato fisso, applicata a sorgenti, tabelle, colonne, relazioni o comandi. I tag portano comportamento, non solo documentazione: technical tiene una colonna fuori dall'export Data Product, entity trasforma i valori di una colonna in vocabolario di recupero, deprecated dice ai consumatori di migrare.",
+    "purposeAdd": "Il registro è unico. Un tag applicabile a più tipi di oggetto è la stessa identità ovunque, quindi modificarlo in uno degli elenchi lo modifica in tutti.",
+    "purposeAria": "Informazioni sui tag"
   }
 }

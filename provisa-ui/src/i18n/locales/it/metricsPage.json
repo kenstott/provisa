@@ -47,7 +47,11 @@
     "deleteTitle": "Elimina metrica",
     "deleteConfirm": "Eliminare la metrica \"{{name}}\"? L'operazione non può essere annullata.",
     "delete": "Elimina",
-    "deleteFailed": "Eliminazione non riuscita."
+    "deleteFailed": "Eliminazione non riuscita.",
+    "purposeTitle": "A cosa servono le metriche",
+    "purposeBody": "Una metrica è la definizione di business di una misura: un'aggregazione su una tabella dei fatti, definita qui una sola volta e proiettata su ogni superficie — SQL, GraphQL, il canvas di esplorazione, le viste costruite da metriche e l'export di interscambio.",
+    "purposeAdd": "Definiscila una volta perché i consumatori non divergano reimplementando il calcolo. Una vista costruita da una metrica si rigenera a ogni modifica della metrica, così il numero resta lo stesso ovunque.",
+    "purposeAria": "Informazioni sulle metriche"
   },
   "sqlJoinCanvas": {
     "removeMetric": "Rimuovi metrica {{metricName}}",

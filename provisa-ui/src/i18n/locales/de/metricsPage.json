@@ -47,7 +47,11 @@
     "deleteTitle": "Metrik löschen",
     "deleteConfirm": "Metrik \"{{name}}\" löschen? Dies kann nicht rückgängig gemacht werden.",
     "delete": "Löschen",
-    "deleteFailed": "Löschen fehlgeschlagen."
+    "deleteFailed": "Löschen fehlgeschlagen.",
+    "purposeTitle": "Wozu Metriken dienen",
+    "purposeBody": "Eine Metrik ist die fachliche Definition einer Kennzahl — eine Aggregation über eine Faktentabelle, hier einmal definiert und in jede Oberfläche projiziert: SQL, GraphQL, die Explore-Ansicht, aus Metriken gebaute Views und den Interchange-Export.",
+    "purposeAdd": "Einmal definiert, können Konsumenten nicht durch eigene Nachbildung der Rechenlogik abweichen. Ein aus einer Metrik gebauter View wird bei jeder Änderung der Metrik neu erzeugt, sodass die Zahl überall gleich bleibt.",
+    "purposeAria": "Über Metriken"
   },
   "sqlJoinCanvas": {
     "removeMetric": "Metrik {{metricName}} entfernen",

@@ -42672,7 +42672,11 @@ And a later observation in the same hour replaces it rather than adding to it
     receives the edge''s own direction. GLOSSARY PURPOSE HELP: a hover bubble beside the add control
     states what the glossary is for — that terms for real columns are derived automatically, and a
     hand-added term is warranted only for a concept no single column carries — because the button is
-    self-evident and the purpose is not.'
+    self-evident and the purpose is not. The same control (provisa-ui/src/components/HelpBubble.tsx)
+    sits beside the add action on Sources, Tables/Views, Relationships, Metrics, Tags and the
+    Glossary, each carrying purposeTitle/purposeBody/purposeAdd/purposeAria in all 13 locales — the
+    copy says what the object does once it exists and what the curator is deciding by creating one,
+    never what the button does.'
   use_case: Bottom-up bootstrap means the glossary is never empty — every column name seeds the vocabulary,
     avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical
     field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL

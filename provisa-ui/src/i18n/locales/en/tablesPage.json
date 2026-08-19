@@ -59,6 +59,10 @@
     },
     "derived": "derived",
     "dataProduct": "product",
-    "dataProductTitle": "Data Product — included in provisa metadata export"
+    "dataProductTitle": "Data Product — included in provisa metadata export",
+    "purposeTitle": "What registering a table does",
+    "purposeBody": "Registration is what puts a table into the governed model: it fixes the columns, the names they are exposed under, and which roles can see them. Only registered tables can be queried, and everything downstream — relationships, metrics, views, glossary terms — names registered columns.",
+    "purposeAdd": "+ View defines a relation from SQL or from metrics instead of from a physical table. + Model builds an entity or fact (star schema / Data Vault) and registers whatever it lowers to.",
+    "purposeAria": "About registered tables"
   }
 }

@@ -38,6 +38,7 @@ import {
 import type { Tag, TagFieldPolicy, TagObjectType, TagParamPolicy } from "../../types/admin";
 import { baseTagId } from "../../types/admin";
 import { FilterInput } from "./FilterInput";
+import { HelpBubble } from "../HelpBubble";
 
 const PAGE_SIZE = 50;
 
@@ -205,14 +206,22 @@ export function TagsTab() {
           }}
           placeholder={t("tagsTab.filterPlaceholder")}
         />
-        <Button
-          variant={showForm ? "default" : "filled"}
-          leftSection={<Plus size={14} />}
-          onClick={openCreate}
-          data-testid="tags-create-button"
-        >
-          {showForm ? t("tagsTab.closeForm") : t("tagsTab.addTag")}
-        </Button>
+        <Group gap="xs">
+          <Button
+            variant={showForm ? "default" : "filled"}
+            leftSection={<Plus size={14} />}
+            onClick={openCreate}
+            data-testid="tags-create-button"
+          >
+            {showForm ? t("tagsTab.closeForm") : t("tagsTab.addTag")}
+          </Button>
+          <HelpBubble
+            title={t("tagsTab.purposeTitle")}
+            paragraphs={[t("tagsTab.purposeBody"), t("tagsTab.purposeAdd")]}
+            ariaLabel={t("tagsTab.purposeAria")}
+            testId="tags-purpose-help"
+          />
+        </Group>
       </Group>
 
       <SegmentedControl

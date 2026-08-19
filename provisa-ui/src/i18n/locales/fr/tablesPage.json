@@ -59,6 +59,10 @@
     },
     "derived": "dérivée",
     "dataProduct": "produit",
-    "dataProductTitle": "Produit de données — inclus dans provisa metadata export"
+    "dataProductTitle": "Produit de données — inclus dans provisa metadata export",
+    "purposeTitle": "Ce que fait l'enregistrement d'une table",
+    "purposeBody": "L'enregistrement fait entrer une table dans le modèle gouverné : il fixe les colonnes, les noms sous lesquels elles sont exposées et les rôles qui peuvent les voir. Seules les tables enregistrées sont interrogeables, et tout ce qui vient ensuite — relations, métriques, vues, termes du glossaire — nomme des colonnes enregistrées.",
+    "purposeAdd": "+ Vue définit une relation à partir de SQL ou de métriques plutôt que d'une table physique. + Modèle construit une entité ou un fait (schéma en étoile / Data Vault) et enregistre ce qu'il produit.",
+    "purposeAria": "À propos des tables enregistrées"
   }
 }

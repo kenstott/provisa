@@ -31,6 +31,10 @@
     "none": "(geen)",
     "firstPage": "Eerste pagina",
     "lastPage": "Laatste pagina",
-    "pageOf": "Pagina {{page}} / {{totalPages}}"
+    "pageOf": "Pagina {{page}} / {{totalPages}}",
+    "purposeTitle": "Waar relaties voor zijn",
+    "purposeBody": "Een relatie legt vast hoe twee tabellen samenkomen, ook over bronnen heen. Dat laat een query, een agent of het ERD van de ene tabel naar de andere gaan in plaats van een join te raden — en joins vallen onder governance: een rol volgt alleen de relaties waarop die rechten heeft.",
+    "purposeAdd": "Leg er zelf een vast als u de sleutels kent, of gebruik Suggest with AI om kandidaten voor te stellen en elk voorstel te accepteren of af te wijzen.",
+    "purposeAria": "Over relaties"
   }
 }

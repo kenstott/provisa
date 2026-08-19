@@ -47,7 +47,11 @@
     "deleteTitle": "Excluir métrica",
     "deleteConfirm": "Excluir a métrica \"{{name}}\"? Isso não pode ser desfeito.",
     "delete": "Excluir",
-    "deleteFailed": "Falha ao excluir."
+    "deleteFailed": "Falha ao excluir.",
+    "purposeTitle": "Para que servem as métricas",
+    "purposeBody": "Uma métrica é a definição de negócio de uma medida: uma agregação sobre uma tabela de fatos, definida uma única vez aqui e projetada em todas as superfícies — SQL, GraphQL, o canvas de exploração, as visões construídas a partir de métricas e a exportação de intercâmbio.",
+    "purposeAdd": "Defina uma vez para que os consumidores não divirjam reimplementando a aritmética. Uma visão construída a partir de uma métrica é regerada sempre que a métrica muda, então o número permanece o mesmo em toda parte.",
+    "purposeAria": "Sobre as métricas"
   },
   "sqlJoinCanvas": {
     "removeMetric": "Remover métrica {{metricName}}",

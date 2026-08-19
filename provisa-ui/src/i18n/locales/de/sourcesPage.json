@@ -34,6 +34,10 @@
     "firstPage": "Erste Seite",
     "previousPage": "Vorherige Seite",
     "nextPage": "Nächste Seite",
-    "lastPage": "Letzte Seite"
+    "lastPage": "Letzte Seite",
+    "purposeTitle": "Wozu Datenquellen dienen",
+    "purposeBody": "Eine Quelle ist eine registrierte Verbindung zu einem System, das Daten hält — eine Datenbank, ein Warehouse, ein Dateispeicher, eine API. Durch die Registrierung liest Provisa deren Schemata und fragt sie in derselben Sprache ab wie jede andere Quelle, ohne die Daten irgendwohin zu kopieren.",
+    "purposeAdd": "Das Hinzufügen einer Quelle registriert für sich genommen keine Tabellen. Nutzen Sie „Discover“ in der Zeile, um ihre Schemata zu durchsuchen und die Tabellen zu registrieren, die Sie unter Governance stellen wollen.",
+    "purposeAria": "Über Datenquellen"
   }
 }

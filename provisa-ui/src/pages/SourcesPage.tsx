@@ -24,6 +24,7 @@ import {
   Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
+import { HelpBubble } from "../components/HelpBubble";
 import { fetchSettings, fetchFederationEngine } from "../api/admin";
 import type { PlatformSettings, FederationEngineState } from "../api/admin";
 import {
@@ -980,6 +981,12 @@ export function SourcesPage() {
               {showForm ? <X size={14} /> : t("sourcesPage.addSource")}
             </Button>
           )}
+          <HelpBubble
+            title={t("sourcesPage.purposeTitle")}
+            paragraphs={[t("sourcesPage.purposeBody"), t("sourcesPage.purposeAdd")]}
+            ariaLabel={t("sourcesPage.purposeAria")}
+            testId="sources-purpose-help"
+          />
         </div>
       </div>
 

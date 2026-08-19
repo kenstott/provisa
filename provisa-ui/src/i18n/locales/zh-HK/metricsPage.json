@@ -47,7 +47,11 @@
     "deleteTitle": "刪除指標",
     "deleteConfirm": "刪除指標「{{name}}」？此操作無法復原。",
     "delete": "刪除",
-    "deleteFailed": "刪除失敗。"
+    "deleteFailed": "刪除失敗。",
+    "purposeTitle": "指標的用途",
+    "purposeBody": "指標是某個量度的業務定義——在一張事實資料表上的彙總，在此處定義一次，並投影到所有介面：SQL、GraphQL、探索畫布、由指標建立的檢視，以及交換匯出。",
+    "purposeAdd": "定義一次，使用方便不會因各自重寫算式而出現偏差。由指標建立的檢視會在指標變更時重新產生，因此各處的數字始終一致。",
+    "purposeAria": "關於指標"
   },
   "sqlJoinCanvas": {
     "removeMetric": "移除指標 {{metricName}}",

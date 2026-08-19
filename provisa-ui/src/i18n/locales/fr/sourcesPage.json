@@ -34,6 +34,10 @@
     "firstPage": "Première page",
     "previousPage": "Page précédente",
     "nextPage": "Page suivante",
-    "lastPage": "Dernière page"
+    "lastPage": "Dernière page",
+    "purposeTitle": "À quoi servent les sources de données",
+    "purposeBody": "Une source est une connexion enregistrée vers un système qui détient des données : base de données, entrepôt, stockage de fichiers, API. L'enregistrer permet à Provisa de lire ses schémas et de l'interroger dans le même langage que toute autre source, sans copier les données où que ce soit.",
+    "purposeAdd": "Ajouter une source n'enregistre aucune table en soi. Utilisez Découvrir sur la ligne pour parcourir ses schémas et enregistrer les tables que vous voulez gouverner.",
+    "purposeAria": "À propos des sources de données"
   }
 }

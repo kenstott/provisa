@@ -49,6 +49,10 @@
     "deleted": "Tag {{id}} gelöscht",
     "pagination": "Tag-Seitennavigation",
     "derivedTag": "abgeleitet",
-    "derivedTagHelp": "Aus der eigenen Registrierung jedes Objekts abgeleitet — wird nie zugewiesen"
+    "derivedTagHelp": "Aus der eigenen Registrierung jedes Objekts abgeleitet — wird nie zugewiesen",
+    "purposeTitle": "Wozu Tags dienen",
+    "purposeBody": "Ein Tag ist ein organisationsweites Label mit fester Bedeutung, das auf Quellen, Tabellen, Spalten, Beziehungen oder Kommandos angewendet wird. Tags tragen Verhalten, nicht nur Dokumentation: „technical“ hält eine Spalte aus dem Data-Product-Export heraus, „entity“ macht die Werte einer Spalte zu Retrieval-Vokabular, „deprecated“ fordert Konsumenten zur Migration auf.",
+    "purposeAdd": "Es gibt nur eine Registry. Ein Tag, das für mehrere Objekttypen gilt, ist überall dieselbe Identität — eine Änderung in einer der Listen ändert es in allen.",
+    "purposeAria": "Über Tags"
   }
 }

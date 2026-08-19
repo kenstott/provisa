@@ -31,6 +31,10 @@
     "none": "(ninguno)",
     "firstPage": "Primera página",
     "lastPage": "Última página",
-    "pageOf": "Página {{page}} / {{totalPages}}"
+    "pageOf": "Página {{page}} / {{totalPages}}",
+    "purposeTitle": "Para qué sirven las relaciones",
+    "purposeBody": "Una relación declara cómo se unen dos tablas, incluso entre distintas fuentes. Es lo que permite a una consulta, a un agente o al ERD recorrer de una tabla a otra en vez de adivinar el join — y los joins están gobernados: un rol solo recorre las relaciones sobre las que tiene derechos.",
+    "purposeAdd": "Declárela a mano cuando conozca las claves, o use Sugerir con IA para proponer candidatas y aceptar o rechazar cada una.",
+    "purposeAria": "Acerca de las relaciones"
   }
 }

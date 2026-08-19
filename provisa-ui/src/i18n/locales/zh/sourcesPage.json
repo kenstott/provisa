@@ -34,6 +34,10 @@
     "firstPage": "首页",
     "previousPage": "上一页",
     "nextPage": "下一页",
-    "lastPage": "末页"
+    "lastPage": "末页",
+    "purposeTitle": "数据源的作用",
+    "purposeBody": "数据源是指向持有数据的系统（数据库、数仓、文件存储、API）的一条已注册连接。注册后，Provisa 即可读取其模式，并以与其他所有数据源相同的语言查询它，而无需把数据复制到任何地方。",
+    "purposeAdd": "仅添加数据源不会注册任何表。请在该行使用 Discover 浏览其模式，并注册你希望纳入治理的表。",
+    "purposeAria": "关于数据源"
   }
 }

@@ -49,6 +49,10 @@
     "deleted": "标签 {{id}} 已删除",
     "pagination": "标签分页",
     "derivedTag": "派生",
-    "derivedTagHelp": "由各对象自身的注册信息派生——不可手动分配"
+    "derivedTagHelp": "由各对象自身的注册信息派生——不可手动分配",
+    "purposeTitle": "标签的作用",
+    "purposeBody": "标签是全组织统一、含义固定的一个标记，可应用于数据源、表、列、关系或命令。标签带有行为，而不只是说明：technical 使某列不参与 Data Product 导出，entity 把某列的取值变成检索词表，deprecated 提示消费方尽早迁移。",
+    "purposeAdd": "注册表只有一个。适用于多种对象类型的标签在各处都是同一个身份，因此在任一分类列表中编辑它，就等于在所有列表中编辑它。",
+    "purposeAria": "关于标签"
   }
 }

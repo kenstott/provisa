@@ -47,7 +47,11 @@
     "deleteTitle": "Metric verwijderen",
     "deleteConfirm": "Metric \"{{name}}\" verwijderen? Dit kan niet ongedaan worden gemaakt.",
     "delete": "Verwijderen",
-    "deleteFailed": "Verwijderen mislukt."
+    "deleteFailed": "Verwijderen mislukt.",
+    "purposeTitle": "Waar metrieken voor zijn",
+    "purposeBody": "Een metriek is de bedrijfsdefinitie van een meetwaarde: een aggregatie over één feitentabel, hier één keer gedefinieerd en geprojecteerd naar elk oppervlak — SQL, GraphQL, het explore-canvas, views die uit metrieken zijn gebouwd, en de interchange-export.",
+    "purposeAdd": "Eén definitie voorkomt dat consumenten afwijken door het rekenwerk opnieuw te implementeren. Een view die op een metriek is gebouwd wordt opnieuw gegenereerd zodra de metriek verandert, dus het getal blijft overal gelijk.",
+    "purposeAria": "Over metrieken"
   },
   "sqlJoinCanvas": {
     "removeMetric": "Metric {{metricName}} verwijderen",

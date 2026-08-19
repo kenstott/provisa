@@ -49,6 +49,10 @@
     "deleted": "Etiqueta {{id}} eliminada",
     "pagination": "Paginación de etiquetas",
     "derivedTag": "derivada",
-    "derivedTagHelp": "Derivada del propio registro de cada objeto: nunca se asigna"
+    "derivedTagHelp": "Derivada del propio registro de cada objeto: nunca se asigna",
+    "purposeTitle": "Para qué sirven las etiquetas",
+    "purposeBody": "Una etiqueta es un rótulo único para toda la organización con un significado fijo, aplicado a fuentes, tablas, columnas, relaciones o comandos. Las etiquetas llevan comportamiento, no solo documentación: technical deja una columna fuera de la exportación de Data Product, entity convierte los valores de una columna en vocabulario de recuperación, deprecated indica a los consumidores que migren.",
+    "purposeAdd": "El registro es único. Una etiqueta que aplica a varios tipos de objeto es la misma identidad en todos, así que editarla en cualquiera de las listas la edita en todas.",
+    "purposeAria": "Acerca de las etiquetas"
   }
 }

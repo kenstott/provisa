@@ -29,6 +29,7 @@ import { Check, Plus, X } from "lucide-react";
 import { useMetrics, useTables, useUpsertMetric, useDeleteMetric } from "../hooks/useAdminQueries";
 import type { Metric, RegisteredTable } from "../types/admin";
 import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
+import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 
 interface MetricForm {
@@ -324,14 +325,22 @@ export function MetricsPage() {
     <div style={{ flex: 1, overflow: "auto", padding: "1rem 1.25rem" }}>
       <Group justify="space-between" mb="md">
         <Title order={3}>{t("metricsPage.title")}</Title>
-        <Button
-          size="xs"
-          leftSection={<Plus size={13} />}
-          onClick={openCreate}
-          data-testid="metrics-new-button"
-        >
-          {t("metricsPage.newMetric")}
-        </Button>
+        <Group gap="xs">
+          <Button
+            size="xs"
+            leftSection={<Plus size={13} />}
+            onClick={openCreate}
+            data-testid="metrics-new-button"
+          >
+            {t("metricsPage.newMetric")}
+          </Button>
+          <HelpBubble
+            title={t("metricsPage.purposeTitle")}
+            paragraphs={[t("metricsPage.purposeBody"), t("metricsPage.purposeAdd")]}
+            ariaLabel={t("metricsPage.purposeAria")}
+            testId="metrics-purpose-help"
+          />
+        </Group>
       </Group>
 
       {/* REQ-1316: semantic interchange (Ossie) — export endpoint/download + import review. */}

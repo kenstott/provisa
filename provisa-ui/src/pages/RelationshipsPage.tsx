@@ -15,6 +15,7 @@ import { ArrowUp, ArrowDown, ArrowUpDown, Layers, Sparkles, Code2, Network, X } 
 import { ActionIcon, Alert, Button, Group, Pagination, Table, Text, Title } from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
 import { FilterInput } from "../components/admin/FilterInput";
+import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
@@ -395,6 +396,12 @@ export function RelationshipsPage() {
               {showForm ? <X size={14} /> : t("relationshipsPage.addRelationship")}
             </Button>
           )}
+          <HelpBubble
+            title={t("relationshipsPage.purposeTitle")}
+            paragraphs={[t("relationshipsPage.purposeBody"), t("relationshipsPage.purposeAdd")]}
+            ariaLabel={t("relationshipsPage.purposeAria")}
+            testId="rels-purpose-help"
+          />
           <ActionIcon
             variant="subtle"
             aria-label={t("relationshipsPage.sqlModelingTool")}

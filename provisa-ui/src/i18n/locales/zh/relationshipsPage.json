@@ -31,6 +31,10 @@
     "none": "（无）",
     "firstPage": "第一页",
     "lastPage": "最后一页",
-    "pageOf": "第 {{page}} / {{totalPages}} 页"
+    "pageOf": "第 {{page}} / {{totalPages}} 页",
+    "purposeTitle": "关系的作用",
+    "purposeBody": "关系声明了两张表如何连接，包括跨不同数据源的连接。它让查询、智能体或 ERD 能够从一张表走到另一张表，而不是猜测连接方式——并且连接受治理：角色只能沿它拥有权限的关系遍历。",
+    "purposeAdd": "已知键时可手动声明；否则使用“Suggest with AI”生成候选，再逐条接受或拒绝。",
+    "purposeAria": "关于关系"
   }
 }

@@ -22,7 +22,6 @@ import {
   Button,
   Checkbox,
   Group,
-  HoverCard,
   Loader,
   Modal,
   NavLink,
@@ -36,16 +35,9 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import {
-  Archive,
-  ArchiveRestore,
-  BookOpen,
-  CircleHelp,
-  Plus,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, Plus, Sparkles, Trash2 } from "lucide-react";
 import { FilterInput } from "./FilterInput";
+import { HelpBubble } from "../HelpBubble";
 import {
   GLOSSARY_EXPERT_KINDS,
   GLOSSARY_REL_TYPES,
@@ -335,31 +327,12 @@ export function GlossaryTab() {
           {/* Most terms arrive derived, so the one thing a curator has to decide here is when
               adding a term by hand is warranted. The bubble states what the glossary is for
               rather than what the button does — the button is self-evident, the purpose is not. */}
-          <HoverCard width={340} shadow="md" withArrow position="bottom-end">
-            <HoverCard.Target>
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                aria-label={t("glossaryTab.purposeAria")}
-                data-testid="glossary-purpose-help"
-              >
-                <CircleHelp size={16} />
-              </ActionIcon>
-            </HoverCard.Target>
-            <HoverCard.Dropdown>
-              <Stack gap="xs">
-                <Text size="sm" fw={600}>
-                  {t("glossaryTab.purposeTitle")}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {t("glossaryTab.purposeBody")}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {t("glossaryTab.purposeAdd")}
-                </Text>
-              </Stack>
-            </HoverCard.Dropdown>
-          </HoverCard>
+          <HelpBubble
+            title={t("glossaryTab.purposeTitle")}
+            paragraphs={[t("glossaryTab.purposeBody"), t("glossaryTab.purposeAdd")]}
+            ariaLabel={t("glossaryTab.purposeAria")}
+            testId="glossary-purpose-help"
+          />
           <Button
             variant="default"
             leftSection={<Sparkles size={14} />}

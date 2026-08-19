@@ -31,6 +31,10 @@
     "none": "(nessuno)",
     "firstPage": "Prima pagina",
     "lastPage": "Ultima pagina",
-    "pageOf": "Pagina {{page}} / {{totalPages}}"
+    "pageOf": "Pagina {{page}} / {{totalPages}}",
+    "purposeTitle": "A cosa servono le relazioni",
+    "purposeBody": "Una relazione dichiara come due tabelle si uniscono, anche tra sorgenti diverse. È ciò che permette a una query, a un agente o all'ERD di passare da una tabella all'altra invece di indovinare un join — e i join sono governati: un ruolo percorre solo le relazioni su cui ha diritti.",
+    "purposeAdd": "Dichiarala a mano quando conosci le chiavi, oppure usa Suggerisci con l'IA per proporre candidate e accettare o rifiutare ciascuna.",
+    "purposeAria": "Informazioni sulle relazioni"
   }
 }

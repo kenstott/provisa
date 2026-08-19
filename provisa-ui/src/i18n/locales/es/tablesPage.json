@@ -59,6 +59,10 @@
     },
     "derived": "derivada",
     "dataProduct": "producto",
-    "dataProductTitle": "Producto de datos — incluido en provisa metadata export"
+    "dataProductTitle": "Producto de datos — incluido en provisa metadata export",
+    "purposeTitle": "Qué hace registrar una tabla",
+    "purposeBody": "El registro es lo que incorpora una tabla al modelo gobernado: fija las columnas, los nombres con los que se exponen y qué roles pueden verlas. Solo las tablas registradas se pueden consultar, y todo lo que viene después — relaciones, métricas, vistas, términos del glosario — nombra columnas registradas.",
+    "purposeAdd": "+ Vista define una relación a partir de SQL o de métricas en lugar de una tabla física. + Modelo construye una entidad o un hecho (esquema en estrella / Data Vault) y registra aquello en lo que se traduce.",
+    "purposeAria": "Acerca de las tablas registradas"
   }
 }

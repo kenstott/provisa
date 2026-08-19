@@ -34,6 +34,10 @@
     "firstPage": "Prima pagina",
     "previousPage": "Pagina precedente",
     "nextPage": "Pagina successiva",
-    "lastPage": "Ultima pagina"
+    "lastPage": "Ultima pagina",
+    "purposeTitle": "A cosa servono le sorgenti dati",
+    "purposeBody": "Una sorgente è una connessione registrata a un sistema che contiene dati: un database, un warehouse, un archivio di file, un'API. Registrarla consente a Provisa di leggerne gli schemi e interrogarla nello stesso linguaggio di ogni altra sorgente, senza copiare i dati da nessuna parte.",
+    "purposeAdd": "Aggiungere una sorgente non registra alcuna tabella di per sé. Usa Discover sulla riga per esplorarne gli schemi e registrare le tabelle che vuoi governare.",
+    "purposeAria": "Informazioni sulle sorgenti dati"
   }
 }

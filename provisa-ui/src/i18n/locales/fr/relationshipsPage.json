@@ -31,6 +31,10 @@
     "none": "(aucun)",
     "firstPage": "Première page",
     "lastPage": "Dernière page",
-    "pageOf": "Page {{page}} / {{totalPages}}"
+    "pageOf": "Page {{page}} / {{totalPages}}",
+    "purposeTitle": "À quoi servent les relations",
+    "purposeBody": "Une relation déclare comment deux tables se joignent, y compris entre sources différentes. C'est ce qui permet à une requête, à un agent ou à l'ERD de passer d'une table à l'autre au lieu de deviner une jointure — et les jointures sont gouvernées : un rôle ne parcourt que les relations sur lesquelles il a des droits.",
+    "purposeAdd": "Déclarez-la à la main si vous connaissez les clés, ou utilisez Suggérer avec l'IA pour proposer des candidates et accepter ou rejeter chacune.",
+    "purposeAria": "À propos des relations"
   }
 }

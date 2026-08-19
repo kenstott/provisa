@@ -47,7 +47,11 @@
     "deleteTitle": "删除指标",
     "deleteConfirm": "删除指标“{{name}}”？此操作无法撤消。",
     "delete": "删除",
-    "deleteFailed": "删除失败。"
+    "deleteFailed": "删除失败。",
+    "purposeTitle": "指标的作用",
+    "purposeBody": "指标是某个度量的业务定义——在一张事实表上的聚合，在此处定义一次，并投影到所有界面：SQL、GraphQL、探索画布、由指标构建的视图，以及交换导出。",
+    "purposeAdd": "定义一次，消费方就不会因为各自重写算法而产生偏差。由指标构建的视图会在指标变更时重新生成，因此各处的数字始终一致。",
+    "purposeAria": "关于指标"
   },
   "sqlJoinCanvas": {
     "removeMetric": "移除指标 {{metricName}}",

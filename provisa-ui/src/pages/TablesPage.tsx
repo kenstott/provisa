@@ -52,6 +52,7 @@ import { usePurgeCacheByTable, useInvalidateFileSource } from "../hooks/useAdmin
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
+import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { diffEditedColumns } from "./tables/columnDiff";
@@ -537,6 +538,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               {translate("tablesPage.model")}
             </Button>
           )}
+          <HelpBubble
+            title={translate("tablesPage.purposeTitle")}
+            paragraphs={[translate("tablesPage.purposeBody"), translate("tablesPage.purposeAdd")]}
+            ariaLabel={translate("tablesPage.purposeAria")}
+            testId="tables-purpose-help"
+          />
           <ActionIcon
             data-tour="tables-erd"
             variant="subtle"

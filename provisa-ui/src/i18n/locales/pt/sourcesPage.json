@@ -34,6 +34,10 @@
     "firstPage": "Primeira página",
     "previousPage": "Página anterior",
     "nextPage": "Próxima página",
-    "lastPage": "Última página"
+    "lastPage": "Última página",
+    "purposeTitle": "Para que servem as fontes de dados",
+    "purposeBody": "Uma fonte é uma conexão registrada a um sistema que contém dados — um banco de dados, um warehouse, um repositório de arquivos, uma API. Registrá-la permite que o Provisa leia seus esquemas e a consulte na mesma linguagem de qualquer outra fonte, sem copiar os dados para lugar nenhum.",
+    "purposeAdd": "Adicionar uma fonte não registra tabelas por si só. Use Discover na linha para navegar pelos esquemas e registrar as tabelas que você quer governar.",
+    "purposeAria": "Sobre as fontes de dados"
   }
 }

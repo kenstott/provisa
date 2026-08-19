@@ -34,6 +34,10 @@
     "firstPage": "第一頁",
     "previousPage": "上一頁",
     "nextPage": "下一頁",
-    "lastPage": "最後一頁"
+    "lastPage": "最後一頁",
+    "purposeTitle": "資料來源的用途",
+    "purposeBody": "來源是指向持有資料的系統（資料庫、倉儲、檔案儲存、API）的一條已註冊連線。註冊後，Provisa 便可讀取其結構描述，並以與其他所有來源相同的語言查詢它，毋須把資料複製到任何地方。",
+    "purposeAdd": "只加入來源並不會註冊任何資料表。請在該列使用 Discover 瀏覽其結構描述，並註冊你想納入治理的資料表。",
+    "purposeAria": "關於資料來源"
   }
 }

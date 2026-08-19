@@ -49,6 +49,10 @@
     "deleted": "Tag {{id}} excluída",
     "pagination": "Paginação de tags",
     "derivedTag": "derivada",
-    "derivedTagHelp": "Derivada do próprio registro de cada objeto — nunca é atribuída"
+    "derivedTagHelp": "Derivada do próprio registro de cada objeto — nunca é atribuída",
+    "purposeTitle": "Para que servem as tags",
+    "purposeBody": "Uma tag é um rótulo único em toda a organização, com significado fixo, aplicado a fontes, tabelas, colunas, relacionamentos ou comandos. Tags carregam comportamento, não apenas documentação: technical mantém uma coluna fora da exportação de Data Product, entity transforma os valores de uma coluna em vocabulário de recuperação, deprecated avisa os consumidores para migrarem.",
+    "purposeAdd": "O registro é único. Uma tag aplicável a vários tipos de objeto é a mesma identidade em todos, então editá-la em qualquer das listas a edita em todas.",
+    "purposeAria": "Sobre as tags"
   }
 }

@@ -31,6 +31,10 @@
     "none": "(none)",
     "firstPage": "First page",
     "lastPage": "Last page",
-    "pageOf": "Page {{page}} / {{totalPages}}"
+    "pageOf": "Page {{page}} / {{totalPages}}",
+    "purposeTitle": "What relationships are for",
+    "purposeBody": "A relationship declares how two tables join, including across different sources. It is what lets a query, an agent, or the ERD traverse from one table to another instead of guessing a join — and joins are governed, so a role only traverses the relationships it holds rights to.",
+    "purposeAdd": "Declare one by hand when you know the keys, or use Suggest with AI to propose candidates and accept or reject each.",
+    "purposeAria": "About relationships"
   }
 }

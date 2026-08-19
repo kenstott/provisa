@@ -47,7 +47,11 @@
     "deleteTitle": "メトリクスを削除",
     "deleteConfirm": "メトリクス「{{name}}」を削除しますか？この操作は元に戻せません。",
     "delete": "削除",
-    "deleteFailed": "削除に失敗しました。"
+    "deleteFailed": "削除に失敗しました。",
+    "purposeTitle": "メトリクスの目的",
+    "purposeBody": "メトリクスは指標のビジネス定義です。1 つのファクトテーブル上の集計をここで一度だけ定義し、SQL、GraphQL、Explore キャンバス、メトリクスから作られたビュー、交換用エクスポートといったすべての面に投影します。",
+    "purposeAdd": "一度定義しておけば、利用側が計算を再実装して値がずれることはありません。メトリクスから作られたビューはメトリクスの変更のたびに再生成されるため、数値はどこでも同じままです。",
+    "purposeAria": "メトリクスについて"
   },
   "sqlJoinCanvas": {
     "removeMetric": "メトリクス {{metricName}} を削除",

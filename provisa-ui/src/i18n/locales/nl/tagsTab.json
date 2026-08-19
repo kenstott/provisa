@@ -49,6 +49,10 @@
     "deleted": "Tag {{id}} verwijderd",
     "pagination": "Tag-paginering",
     "derivedTag": "afgeleid",
-    "derivedTagHelp": "Afgeleid uit de eigen registratie van elk object — wordt nooit toegewezen"
+    "derivedTagHelp": "Afgeleid uit de eigen registratie van elk object — wordt nooit toegewezen",
+    "purposeTitle": "Waar tags voor zijn",
+    "purposeBody": "Een tag is één organisatiebreed label met vaste betekenis, toegepast op bronnen, tabellen, kolommen, relaties of commando's. Tags dragen gedrag, niet alleen documentatie: technical houdt een kolom buiten de Data Product-export, entity maakt van de waarden van een kolom retrieval-vocabulaire, deprecated zegt consumenten dat ze moeten migreren.",
+    "purposeAdd": "Er is één registry. Een tag die voor meerdere objecttypen geldt, is overal dezelfde identiteit: bewerken in één van de lijsten bewerkt hem in alle.",
+    "purposeAria": "Over tags"
   }
 }

@@ -34,6 +34,10 @@
     "firstPage": "Eerste pagina",
     "previousPage": "Vorige pagina",
     "nextPage": "Volgende pagina",
-    "lastPage": "Laatste pagina"
+    "lastPage": "Laatste pagina",
+    "purposeTitle": "Waar databronnen voor zijn",
+    "purposeBody": "Een bron is één geregistreerde verbinding met een systeem dat gegevens bevat — een database, een warehouse, een bestandsopslag, een API. Registreren stelt Provisa in staat de schema's ervan te lezen en het te bevragen in dezelfde taal als elke andere bron, zonder de gegevens ergens naartoe te kopiëren.",
+    "purposeAdd": "Een bron toevoegen registreert op zichzelf geen tabellen. Gebruik Discover op de rij om de schema's te doorzoeken en de tabellen te registreren die u onder governance wilt brengen.",
+    "purposeAria": "Over databronnen"
   }
 }

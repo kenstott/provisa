@@ -49,6 +49,10 @@
     "deleted": "標籤 {{id}} 已刪除",
     "pagination": "標籤分頁",
     "derivedTag": "衍生",
-    "derivedTagHelp": "由各物件本身的註冊資料衍生——不可手動指派"
+    "derivedTagHelp": "由各物件本身的註冊資料衍生——不可手動指派",
+    "purposeTitle": "標籤的用途",
+    "purposeBody": "標籤是全組織統一、意義固定的一個標記，可套用於來源、資料表、欄位、關聯或指令。標籤帶有行為，而不只是說明：technical 令某欄不參與 Data Product 匯出，entity 把某欄的值變成檢索詞彙，deprecated 提示使用方及早遷移。",
+    "purposeAdd": "登錄表只有一個。適用於多種物件類型的標籤在各處都是同一個身分，因此在任一分類清單中編輯它，就等於在所有清單中編輯它。",
+    "purposeAria": "關於標籤"
   }
 }

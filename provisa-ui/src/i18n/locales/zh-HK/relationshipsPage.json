@@ -31,6 +31,10 @@
     "none": "（無）",
     "firstPage": "第一頁",
     "lastPage": "最後一頁",
-    "pageOf": "第 {{page}} 頁，共 {{totalPages}} 頁"
+    "pageOf": "第 {{page}} 頁，共 {{totalPages}} 頁",
+    "purposeTitle": "關聯的用途",
+    "purposeBody": "關聯宣告兩張資料表如何聯結，包括跨不同來源。它讓查詢、代理或 ERD 能由一張表走到另一張表，而非猜測聯結方式——而聯結受治理：角色只能沿著它擁有權限的關聯遍歷。",
+    "purposeAdd": "已知索引鍵時可自行宣告；否則使用「Suggest with AI」產生候選，再逐一接受或拒絕。",
+    "purposeAria": "關於關聯"
   }
 }

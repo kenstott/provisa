@@ -59,6 +59,10 @@
     },
     "derived": "派生",
     "dataProduct": "プロダクト",
-    "dataProductTitle": "データプロダクト — provisa metadata export に含まれます"
+    "dataProductTitle": "データプロダクト — provisa metadata export に含まれます",
+    "purposeTitle": "テーブル登録で何が起きるか",
+    "purposeBody": "登録によってテーブルはガバナンス下のモデルに入ります。列、公開される列名、閲覧できるロールが確定します。クエリできるのは登録済みテーブルだけであり、下流のすべて（リレーションシップ、メトリクス、ビュー、用語集の用語）は登録済みの列を参照します。",
+    "purposeAdd": "「+ View」は物理テーブルではなく SQL またはメトリクスからリレーションを定義します。「+ Model」はエンティティまたはファクト（スタースキーマ／Data Vault）を構築し、その展開先を登録します。",
+    "purposeAria": "登録済みテーブルについて"
   }
 }

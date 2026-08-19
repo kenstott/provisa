@@ -31,6 +31,10 @@
     "none": "(nenhum)",
     "firstPage": "Primeira página",
     "lastPage": "Última página",
-    "pageOf": "Página {{page}} / {{totalPages}}"
+    "pageOf": "Página {{page}} / {{totalPages}}",
+    "purposeTitle": "Para que servem os relacionamentos",
+    "purposeBody": "Um relacionamento declara como duas tabelas se juntam, inclusive entre fontes diferentes. É o que permite a uma consulta, a um agente ou ao ERD percorrer de uma tabela a outra em vez de adivinhar o join — e os joins são governados: um papel só percorre os relacionamentos sobre os quais tem direitos.",
+    "purposeAdd": "Declare um à mão quando souber as chaves, ou use Sugerir com IA para propor candidatos e aceitar ou rejeitar cada um.",
+    "purposeAria": "Sobre os relacionamentos"
   }
 }

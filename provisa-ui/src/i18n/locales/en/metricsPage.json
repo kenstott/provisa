@@ -47,7 +47,11 @@
     "deleteTitle": "Delete Metric",
     "deleteConfirm": "Delete metric \"{{name}}\"? This cannot be undone.",
     "delete": "Delete",
-    "deleteFailed": "Delete failed."
+    "deleteFailed": "Delete failed.",
+    "purposeTitle": "What metrics are for",
+    "purposeBody": "A metric is the business definition of a measure — an aggregate over one fact table, defined once here and projected into every surface: SQL, GraphQL, the explore canvas, views built from metrics, and interchange export.",
+    "purposeAdd": "Define it once so consumers cannot drift by re-implementing the arithmetic. A view built from a metric regenerates whenever the metric changes, so the number stays the same everywhere.",
+    "purposeAria": "About metrics"
   },
   "sqlJoinCanvas": {
     "removeMetric": "Remove metric {{metricName}}",
