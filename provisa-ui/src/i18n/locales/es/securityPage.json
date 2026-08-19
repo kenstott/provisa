@@ -47,6 +47,10 @@
     "purposeTitle": "Para qué sirven las reglas RLS",
     "purposeBody": "Una regla de seguridad a nivel de fila es un predicado SQL ligado a un rol y a un ámbito. El servidor lo añade con AND a la consulta antes de ejecutarla —en lecturas y en escrituras, llegue por la superficie que llegue la petición—, así que un rol solo ve las filas que su regla permite y no puede eludirlo eligiendo otro cliente.",
     "purposeAdd": "Aplica una regla a una sola tabla, o a un dominio entero para que cubra todas sus tablas; si ambas aplican, para esa tabla gana la regla de tabla. Una regla se escribe contra un rol y no contra una persona, así que lo que alguien ve se cambia cambiando el rol que tiene.",
-    "purposeAria": "Acerca de las reglas RLS"
+    "purposeAria": "Acerca de las reglas RLS",
+    "rolePurposeTitle": "Para qué sirven los roles",
+    "rolePurposeBody": "El rol es la unidad contra la que se escribe cualquier otro permiso. Sus capacidades deciden qué operaciones puede ejecutar y su acceso a dominios decide a qué partes del modelo llega siquiera. Las reglas de fila, y las comprobaciones de acceso de todas las superficies, nombran un rol y no una persona: lo que alguien puede ver y hacer se cambia cambiando el rol que tiene.",
+    "rolePurposeAdd": "Un rol lleva además sus propios topes: peticiones por segundo y límites de profundidad, número de nodos y tiempo de ejecución de la consulta. Así se le da alcance a un rol sin darle coste ilimitado: una consulta cara la rechaza el rol que la emitió, no la fuente a la que habría llegado.",
+    "rolePurposeAria": "Acerca de los roles"
   }
 }

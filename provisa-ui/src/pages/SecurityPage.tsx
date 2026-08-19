@@ -238,19 +238,29 @@ export function SecurityRolesPage() {
           onChange={setRoleSearch}
           placeholder={t("securityPage.filterByRoleId")}
         />
-        <Button
-          data-testid="toggle-role-form"
-          onClick={() => {
-            if (showRoleForm) {
-              setShowRoleForm(false);
-            } else {
-              setExpandedRole(null);
-              handleNewRole();
-            }
-          }}
-        >
-          {showRoleForm ? t("securityPage.closeForm") : t("securityPage.addRole")}
-        </Button>
+        {/* Nested Group: the parent spreads its children, and the bubble explains this
+            button, so it has to travel with it. */}
+        <Group gap="xs">
+          <Button
+            data-testid="toggle-role-form"
+            onClick={() => {
+              if (showRoleForm) {
+                setShowRoleForm(false);
+              } else {
+                setExpandedRole(null);
+                handleNewRole();
+              }
+            }}
+          >
+            {showRoleForm ? t("securityPage.closeForm") : t("securityPage.addRole")}
+          </Button>
+          <HelpBubble
+            title={t("securityPage.rolePurposeTitle")}
+            paragraphs={[t("securityPage.rolePurposeBody"), t("securityPage.rolePurposeAdd")]}
+            ariaLabel={t("securityPage.rolePurposeAria")}
+            testId="roles-purpose-help"
+          />
+        </Group>
       </Group>
 
       {showRoleForm && (

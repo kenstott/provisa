@@ -47,6 +47,10 @@
     "purposeTitle": "A cosa servono le regole RLS",
     "purposeBody": "Una regola di sicurezza a livello di riga è un predicato SQL legato a un ruolo e a un ambito. Il server lo aggiunge in AND alla query prima dell'esecuzione — in lettura come in scrittura, da qualunque superficie arrivi la richiesta — così un ruolo vede solo le righe che la sua regola consente e non può sottrarsene scegliendo un altro client.",
     "purposeAdd": "Applica una regola a una singola tabella, oppure a un intero dominio perché copra tutte le sue tabelle; se valgono entrambe, per quella tabella vince la regola di tabella. Una regola riguarda un ruolo e non una persona: ciò che qualcuno vede si cambia cambiando il ruolo che possiede.",
-    "purposeAria": "Informazioni sulle regole RLS"
+    "purposeAria": "Informazioni sulle regole RLS",
+    "rolePurposeTitle": "A cosa servono i ruoli",
+    "rolePurposeBody": "Il ruolo è l'unità contro cui viene scritto ogni altro permesso. Le sue capability decidono quali operazioni può eseguire e il suo accesso ai domini decide quali parti del modello riesce a raggiungere. Le regole di riga, e i controlli di accesso di ogni superficie, nominano un ruolo e non una persona: ciò che qualcuno può vedere e fare si cambia cambiando il ruolo che possiede.",
+    "rolePurposeAdd": "Un ruolo porta anche i propri tetti: richieste al secondo e limiti di profondità, numero di nodi e tempo di esecuzione della query. È così che a un ruolo si dà portata senza dargli costo illimitato: una query costosa viene rifiutata dal ruolo che l'ha emessa, non dalla sorgente che avrebbe colpito.",
+    "rolePurposeAria": "Informazioni sui ruoli"
   }
 }

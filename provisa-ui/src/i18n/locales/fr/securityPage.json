@@ -47,6 +47,10 @@
     "purposeTitle": "À quoi servent les règles RLS",
     "purposeBody": "Une règle de sécurité au niveau des lignes est un prédicat SQL lié à un rôle et à une portée. Le serveur l'ajoute à la requête par un AND avant l'exécution — en lecture comme en écriture, quelle que soit la surface d'où vient la demande — si bien qu'un rôle ne voit que les lignes autorisées par sa règle et ne peut pas s'y soustraire en changeant de client.",
     "purposeAdd": "Portez une règle sur une seule table, ou sur un domaine entier pour couvrir toutes ses tables ; si les deux s'appliquent, la règle de table l'emporte pour cette table. Une règle vise un rôle et non une personne : ce que quelqu'un voit se change en changeant le rôle qu'il détient.",
-    "purposeAria": "À propos des règles RLS"
+    "purposeAria": "À propos des règles RLS",
+    "rolePurposeTitle": "À quoi servent les rôles",
+    "rolePurposeBody": "Le rôle est l'unité contre laquelle toute autre autorisation est écrite. Ses capacités déterminent les opérations qu'il peut exécuter, et son accès aux domaines détermine les parties du modèle qu'il atteint. Les règles de ligne, comme les contrôles d'accès de chaque surface, visent un rôle et non une personne : ce que quelqu'un peut voir et faire se change en changeant le rôle qu'il détient.",
+    "rolePurposeAdd": "Un rôle porte aussi ses propres plafonds : requêtes par seconde, et limites de profondeur, de nombre de nœuds et de temps d'exécution. C'est ainsi qu'un rôle reçoit de la portée sans recevoir un coût illimité — une requête trop coûteuse est refusée par le rôle qui l'a émise, non par la source qu'elle aurait atteinte.",
+    "rolePurposeAria": "À propos des rôles"
   }
 }

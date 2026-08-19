@@ -47,6 +47,10 @@
     "purposeTitle": "Para que servem as regras RLS",
     "purposeBody": "Uma regra de segurança ao nível da linha é um predicado SQL ligado a um papel e a um âmbito. O servidor junta-o à consulta com AND antes da execução — em leituras e em escritas, venha o pedido da superfície que vier — pelo que um papel vê apenas as linhas que a sua regra permite e não lhe escapa escolhendo outro cliente.",
     "purposeAdd": "Aplique uma regra a uma única tabela, ou a um domínio inteiro para cobrir todas as suas tabelas; se ambas se aplicarem, para essa tabela vence a regra da tabela. Uma regra é escrita contra um papel e não contra uma pessoa, pelo que o que alguém vê muda-se mudando o papel que detém.",
-    "purposeAria": "Sobre as regras RLS"
+    "purposeAria": "Sobre as regras RLS",
+    "rolePurposeTitle": "Para que servem os papéis",
+    "rolePurposeBody": "O papel é a unidade contra a qual qualquer outra permissão é escrita. As suas capacidades decidem que operações pode executar e o seu acesso a domínios decide que partes do modelo chega sequer a alcançar. As regras de linha, e as verificações de acesso de cada superfície, nomeiam um papel e não uma pessoa: o que alguém vê e faz muda-se mudando o papel que detém.",
+    "rolePurposeAdd": "Um papel carrega ainda os seus próprios tetos: pedidos por segundo e limites de profundidade, número de nós e tempo de execução da consulta. É assim que se dá alcance a um papel sem lhe dar custo ilimitado — uma consulta cara é recusada pelo papel que a emitiu, não pela fonte que teria atingido.",
+    "rolePurposeAria": "Acerca dos papéis"
   }
 }

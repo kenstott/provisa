@@ -3436,5 +3436,9 @@
   "es/securityPage.json::securityPage.purposeTitle": "What RLS rules are for",
   "es/securityPage.json::securityPage.purposeBody": "A row-level security rule is a SQL predicate bound to one role and one scope. The server ANDs it into the query before execution — on reads and on writes, whichever surface the request arrives on — so a role sees only the rows its rule permits and cannot opt out by picking a different client.",
   "es/securityPage.json::securityPage.purposeAdd": "Scope a rule to a single table, or to a whole domain so it covers every table in it; where both apply, the table rule wins for that table. A rule is written against a role rather than a person, so what someone can see is changed by changing the role they hold.",
-  "es/securityPage.json::securityPage.purposeAria": "About RLS rules"
+  "es/securityPage.json::securityPage.purposeAria": "About RLS rules",
+  "es/securityPage.json::securityPage.rolePurposeTitle": "What roles are for",
+  "es/securityPage.json::securityPage.rolePurposeBody": "A role is the unit every other permission is written against. Its capabilities decide which operations it may run, and its domain access decides which parts of the model it can reach at all. Row-level rules, and the access checks on every surface, name a role rather than a person — so what someone can see and do is changed by changing the role they hold.",
+  "es/securityPage.json::securityPage.rolePurposeAdd": "A role also carries its own ceilings: requests per second, and limits on query depth, node count, and execution time. That is how a role can be given reach without being given unbounded cost — an expensive query is refused by the role that issued it, not by the source it would have hit.",
+  "es/securityPage.json::securityPage.rolePurposeAria": "About roles"
 }

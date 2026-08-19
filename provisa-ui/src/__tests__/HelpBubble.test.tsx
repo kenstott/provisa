@@ -74,9 +74,12 @@ describe("HelpBubble", () => {
     expect(clicks).toEqual(["hit"]);
   });
 
-  // The icon-only controls in each page's action row, which have no visible label at all.
+  // The extra controls in a page's action row beyond the one covered by SURFACES: icons with
+  // no visible label at all, and second add buttons that need their own explanation.
   it.each([
     ["tablesPage", ["erdHelpTitle", "erdHelpBody", "purposeModel"]],
+    // Security carries two add controls — RLS rules and roles — so it carries two sets of copy.
+    ["securityPage", ["rolePurposeTitle", "rolePurposeBody", "rolePurposeAdd", "rolePurposeAria"]],
     [
       "relationshipsPage",
       [
@@ -88,7 +91,7 @@ describe("HelpBubble", () => {
         "suggestHelpBody",
       ],
     ],
-  ] as const)("%s carries copy for its icon-only controls", (ns, keys) => {
+  ] as const)("%s carries copy for its additional controls", (ns, keys) => {
     for (const key of keys) {
       const value = t(`${ns}.${key}`);
       expect(value).not.toBe(`${ns}.${key}`);

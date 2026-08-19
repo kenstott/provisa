@@ -47,6 +47,10 @@
     "purposeTitle": "Waar RLS-regels voor zijn",
     "purposeBody": "Een row-level-securityregel is een SQL-predicaat dat aan één rol en één bereik is gebonden. De server voegt het met AND aan de query toe vóór uitvoering — bij lezen én schrijven, via welke surface het verzoek ook binnenkomt — zodat een rol alleen de rijen ziet die zijn regel toestaat en daar niet onderuit komt door een andere client te kiezen.",
     "purposeAdd": "Richt een regel op één tabel, of op een heel domein zodat ze alle tabellen daarin dekt; gelden beide, dan wint voor die tabel de tabelregel. Een regel geldt een rol en niet een persoon: wat iemand ziet verander je door de rol te veranderen die hij heeft.",
-    "purposeAria": "Over RLS-regels"
+    "purposeAria": "Over RLS-regels",
+    "rolePurposeTitle": "Waar rollen voor zijn",
+    "rolePurposeBody": "De rol is de eenheid waartegen elke andere rechten worden geschreven. De capabilities bepalen welke operaties ze mag uitvoeren, de domeintoegang bepaalt welke delen van het model ze überhaupt bereikt. Rijregels, en de toegangscontroles op elke surface, benoemen een rol en niet een persoon: wat iemand kan zien en doen verander je door de rol te veranderen die hij heeft.",
+    "rolePurposeAdd": "Een rol draagt ook eigen plafonds: verzoeken per seconde, en limieten op querydiepte, aantal nodes en uitvoeringstijd. Zo krijgt een rol bereik zonder onbegrensde kosten — een dure query wordt geweigerd door de rol die hem uitgaf, niet door de bron die hij zou hebben geraakt.",
+    "rolePurposeAria": "Over rollen"
   }
 }

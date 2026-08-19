@@ -47,6 +47,10 @@
     "purposeTitle": "Wozu RLS-Regeln dienen",
     "purposeBody": "Eine Row-Level-Security-Regel ist ein SQL-Prädikat, das an genau eine Rolle und einen Geltungsbereich gebunden ist. Der Server hängt es vor der Ausführung per AND an die Abfrage an — bei Lese- wie bei Schreibzugriffen, unabhängig davon, über welche Schnittstelle die Anfrage kommt. So sieht eine Rolle nur die Zeilen, die ihre Regel erlaubt, und kann sich dem nicht durch die Wahl eines anderen Clients entziehen.",
     "purposeAdd": "Binden Sie eine Regel an eine einzelne Tabelle oder an eine ganze Domäne, sodass sie für all deren Tabellen gilt; treffen beide zu, gewinnt für diese Tabelle die Tabellenregel. Eine Regel gilt einer Rolle, nicht einer Person — was jemand sieht, ändern Sie über die Rolle, die er innehat.",
-    "purposeAria": "Über RLS-Regeln"
+    "purposeAria": "Über RLS-Regeln",
+    "rolePurposeTitle": "Wozu Rollen dienen",
+    "rolePurposeBody": "Eine Rolle ist die Einheit, gegen die jede andere Berechtigung geschrieben wird. Ihre Capabilities bestimmen, welche Operationen sie ausführen darf, ihr Domänenzugriff bestimmt, welche Teile des Modells sie überhaupt erreicht. Zeilenregeln und die Zugriffsprüfungen aller Schnittstellen benennen eine Rolle, nicht eine Person — was jemand sehen und tun kann, ändern Sie also über die Rolle, die er innehat.",
+    "rolePurposeAdd": "Eine Rolle trägt zudem eigene Obergrenzen: Anfragen pro Sekunde sowie Grenzen für Abfragetiefe, Knotenzahl und Ausführungszeit. So erhält eine Rolle Reichweite, ohne unbegrenzte Kosten zu erhalten — eine teure Abfrage wird von der ausstellenden Rolle abgelehnt, nicht erst von der Quelle, die sie getroffen hätte.",
+    "rolePurposeAria": "Über Rollen"
   }
 }
