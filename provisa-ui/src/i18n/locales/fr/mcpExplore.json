@@ -12,6 +12,7 @@
     "roleNoteTooltip": "Chaque consultation du catalogue et chaque requête exécutée par l'assistant s'exécutent sous ce rôle : il voit donc exactement les tables, colonnes et lignes accordées à ce rôle.",
     "toolRunningTooltip": "{{name}} est en cours d'exécution.",
     "toolDoneTooltip": "{{name}} est terminé. Son résultat a été renvoyé à l'assistant.",
-    "toolErrorTooltip": "{{name}} a échoué. L'assistant a reçu l'erreur et peut réessayer avec d'autres arguments."
+    "toolErrorTooltip": "{{name}} a échoué. L'assistant a reçu l'erreur et peut réessayer avec d'autres arguments.",
+    "roleNoteHelpTitle": "Le rôle sous lequel tourne cette session"
   }
 }

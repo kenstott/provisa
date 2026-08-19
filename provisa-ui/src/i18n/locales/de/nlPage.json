@@ -24,6 +24,11 @@
     "strictModeTooltip": "Die gesamte Generierung basiert strikt auf dem GraphQL-Ausdruck: Zuerst wird GraphQL erzeugt und gegen das Schema validiert, dann zu SQL und schließlich zu Cypher kompiliert. Aus: SQL und GraphQL werden unabhängig erzeugt und Cypher wird aus dem SQL-Ergebnis abgeleitet.",
     "questionTooltip": "Fragen Sie in normaler Sprache mit Ihren eigenen Tabellen-, Spalten- und Beziehungsnamen. Enter sendet; Umschalt+Enter fügt eine Zeile hinzu.",
     "generateTooltip": "Erzeugt aus dieser Frage eine Abfrage für jede Oberfläche — GraphQL, SQL und Cypher — auf Basis des Schemas, das Ihre aktuelle Rolle sehen darf.",
-    "mcpChatTooltip": "Übergibt diese Frage an den MCP-Assistenten, der den Katalog erkundet und die Abfrage für Sie ausführt, statt sie nur zu erzeugen."
+    "mcpChatTooltip": "Übergibt diese Frage an den MCP-Assistenten, der den Katalog erkundet und die Abfrage für Sie ausführt, statt sie nur zu erzeugen.",
+    "questionHelpTitle": "Die Frage stellen",
+    "strictHelpTitle": "Strikte Generierung",
+    "generateHelpTitle": "Was „Generieren“ erzeugt",
+    "mcpChatHelpTitle": "An den Assistenten übergeben",
+    "openInExplorerHelp": "Lädt diese generierte Abfrage in den {{label}}-Explorer und führt sie dort aus, wo Sie sie bearbeiten, das Ergebnis prüfen und in dieser Oberfläche weiterarbeiten können."
   }
 }

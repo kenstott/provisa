@@ -36,6 +36,7 @@ import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy, Trash2 } from "lucide-react";
+import { HelpBubble } from "../components/HelpBubble";
 import { useAuth } from "../context/AuthContext";
 
 /** A copy-to-clipboard button that fades in on bubble hover. */
@@ -402,11 +403,17 @@ export function McpExplorePage() {
       <Text c="dimmed" size="sm" mb="xs">
         {t("mcpExplore.intro")}
       </Text>
-      <Tooltip label={t("mcpExplore.roleNoteTooltip")} multiline w={280}>
-        <Text size="xs" c="dimmed" mb="sm" style={{ width: "fit-content" }}>
-          {t("mcpExplore.roleNote", { role: roleId || t("mcpExplore.noRole") })}
-        </Text>
-      </Tooltip>
+      <HelpBubble
+        title={t("mcpExplore.roleNoteHelpTitle")}
+        paragraphs={[t("mcpExplore.roleNoteTooltip")]}
+        ariaLabel={t("mcpExplore.roleNoteHelpTitle")}
+        testId="mcp-role-note-help"
+        target={
+          <Text size="xs" c="dimmed" mb="sm" style={{ width: "fit-content" }}>
+            {t("mcpExplore.roleNote", { role: roleId || t("mcpExplore.noRole") })}
+          </Text>
+        }
+      />
 
       <ConnectClaudeDesktop roleId={roleId} />
 

@@ -12,6 +12,7 @@
     "roleNoteTooltip": "助理執行的每一次數據目錄查詢與查詢作業都以此角色執行，因此它只會看到該角色獲授權的表、欄與列。",
     "toolRunningTooltip": "{{name}} 正在執行。",
     "toolDoneTooltip": "{{name}} 已完成，結果已交回助理。",
-    "toolErrorTooltip": "{{name}} 失敗。助理已收到該錯誤，可能會改用其他引數重試。"
+    "toolErrorTooltip": "{{name}} 失敗。助理已收到該錯誤，可能會改用其他引數重試。",
+    "roleNoteHelpTitle": "本工作階段所使用的角色"
   }
 }

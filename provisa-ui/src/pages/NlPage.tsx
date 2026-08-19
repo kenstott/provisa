@@ -26,10 +26,10 @@ import {
   Table,
   Text,
   Textarea,
-  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { HelpBubble } from "../components/HelpBubble";
 import { useAuth } from "../context/AuthContext";
 import { submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
 
@@ -287,61 +287,87 @@ export function NlPage() {
     <Stack gap="md" p="md" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
       <GuidanceBanner />
       <Group align="flex-start" gap="sm" wrap="nowrap">
-        <Tooltip label={t("nlPage.questionTooltip")} multiline w={280}>
-          <Textarea
-            aria-label={t("nlPage.questionLabel")}
-            placeholder={t("nlPage.questionPlaceholder")}
-            value={question}
-            rows={2}
-            autosize
-            minRows={2}
-            style={{ flex: 1 }}
-            data-testid="nl-question-input"
-            onChange={(e) => {
-              setQuestion(e.currentTarget.value);
-              localStorage.setItem(NL_QUESTION_KEY, e.currentTarget.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void handleSubmit();
-              }
-            }}
-          />
-        </Tooltip>
-        <Tooltip label={t("nlPage.strictModeTooltip")} multiline w={280}>
-          <Switch
-            label={t("nlPage.strictMode")}
-            checked={strict}
-            onChange={(e) => {
-              const next = e.currentTarget.checked;
-              setStrict(next);
-              localStorage.setItem(NL_STRICT_KEY, next ? "1" : "0");
-            }}
-            data-testid="nl-strict-toggle"
-          />
-        </Tooltip>
-        <Tooltip label={t("nlPage.generateTooltip")} multiline w={280}>
-          <Button
-            disabled={submitting || !question.trim()}
-            onClick={() => void handleSubmit()}
-            loading={submitting}
-            data-testid="nl-submit-button"
-          >
-            {submitting ? t("nlPage.generating") : t("nlPage.generate")}
-          </Button>
-        </Tooltip>
+        {/* Every explanation on this row is a HelpBubble, the same card the rest of the app
+            uses; the control is its own hover target so the row keeps its shape. */}
+        <HelpBubble
+          title={t("nlPage.questionHelpTitle")}
+          paragraphs={[t("nlPage.questionTooltip")]}
+          ariaLabel={t("nlPage.questionLabel")}
+          testId="nl-question-help"
+          target={
+            <Textarea
+              aria-label={t("nlPage.questionLabel")}
+              placeholder={t("nlPage.questionPlaceholder")}
+              value={question}
+              rows={2}
+              autosize
+              minRows={2}
+              style={{ flex: 1 }}
+              data-testid="nl-question-input"
+              onChange={(e) => {
+                setQuestion(e.currentTarget.value);
+                localStorage.setItem(NL_QUESTION_KEY, e.currentTarget.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSubmit();
+                }
+              }}
+            />
+          }
+        />
+        <HelpBubble
+          title={t("nlPage.strictHelpTitle")}
+          paragraphs={[t("nlPage.strictModeTooltip")]}
+          ariaLabel={t("nlPage.strictMode")}
+          testId="nl-strict-help"
+          target={
+            <Switch
+              label={t("nlPage.strictMode")}
+              checked={strict}
+              onChange={(e) => {
+                const next = e.currentTarget.checked;
+                setStrict(next);
+                localStorage.setItem(NL_STRICT_KEY, next ? "1" : "0");
+              }}
+              data-testid="nl-strict-toggle"
+            />
+          }
+        />
+        <HelpBubble
+          title={t("nlPage.generateHelpTitle")}
+          paragraphs={[t("nlPage.generateTooltip")]}
+          ariaLabel={t("nlPage.generate")}
+          testId="nl-generate-help"
+          target={
+            <Button
+              disabled={submitting || !question.trim()}
+              onClick={() => void handleSubmit()}
+              loading={submitting}
+              data-testid="nl-submit-button"
+            >
+              {submitting ? t("nlPage.generating") : t("nlPage.generate")}
+            </Button>
+          }
+        />
         {/* Hand the same question to the MCP chat assistant, which runs it agentically. */}
-        <Tooltip label={t("nlPage.mcpChatTooltip")} multiline w={280}>
-          <Button
-            variant="light"
-            disabled={!question.trim()}
-            onClick={() => navigate("/explore", { state: { mcpQuestion: question.trim() } })}
-            data-testid="nl-mcp-chat-button"
-          >
-            {t("nlPage.mcpChat")}
-          </Button>
-        </Tooltip>
+        <HelpBubble
+          title={t("nlPage.mcpChatHelpTitle")}
+          paragraphs={[t("nlPage.mcpChatTooltip")]}
+          ariaLabel={t("nlPage.mcpChat")}
+          testId="nl-mcp-chat-help"
+          target={
+            <Button
+              variant="light"
+              disabled={!question.trim()}
+              onClick={() => navigate("/explore", { state: { mcpQuestion: question.trim() } })}
+              data-testid="nl-mcp-chat-button"
+            >
+              {t("nlPage.mcpChat")}
+            </Button>
+          }
+        />
       </Group>
 
       {globalError && (
@@ -403,16 +429,22 @@ function BranchPanel({
           {label}
         </Badge>
         {!branch.loading && branch.query && (
-          <Tooltip label={t("nlPage.openInExplorer", { label })} multiline w={280}>
-            <Button
-              size="compact-xs"
-              variant="light"
-              onClick={() => onOpen(target, branch.query!)}
-              data-testid={`nl-open-button-${target}`}
-            >
-              {t("nlPage.openIn", { label })}
-            </Button>
-          </Tooltip>
+          <HelpBubble
+            title={t("nlPage.openIn", { label })}
+            paragraphs={[t("nlPage.openInExplorerHelp", { label })]}
+            ariaLabel={t("nlPage.openInExplorer", { label })}
+            testId={`nl-open-help-${target}`}
+            target={
+              <Button
+                size="compact-xs"
+                variant="light"
+                onClick={() => onOpen(target, branch.query!)}
+                data-testid={`nl-open-button-${target}`}
+              >
+                {t("nlPage.openIn", { label })}
+              </Button>
+            }
+          />
         )}
       </Group>
       <ScrollArea style={{ flex: 1 }} p="sm">

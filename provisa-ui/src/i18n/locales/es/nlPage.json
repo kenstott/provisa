@@ -24,6 +24,11 @@
     "strictModeTooltip": "Toda la generación se basa estrictamente en la expresión GraphQL: primero se genera GraphQL y se valida contra el esquema, luego se compila a SQL y después a Cypher. Desactivado: SQL y GraphQL se generan de forma independiente y Cypher se deriva del resultado SQL.",
     "questionTooltip": "Pregunte en lenguaje natural usando sus propios nombres de tablas, columnas y relaciones. Intro envía; Mayús+Intro añade una línea.",
     "generateTooltip": "Genera una consulta para cada superficie —GraphQL, SQL y Cypher— a partir de esta pregunta, usando el esquema que su rol actual puede ver.",
-    "mcpChatTooltip": "Entrega esta pregunta al asistente MCP, que explora el catálogo y ejecuta la consulta por usted en lugar de solo generarla."
+    "mcpChatTooltip": "Entrega esta pregunta al asistente MCP, que explora el catálogo y ejecuta la consulta por usted en lugar de solo generarla.",
+    "questionHelpTitle": "Formular la pregunta",
+    "strictHelpTitle": "Generación estricta",
+    "generateHelpTitle": "Qué produce Generar",
+    "mcpChatHelpTitle": "Pasarla al asistente",
+    "openInExplorerHelp": "Carga esta consulta generada en el explorador {{label}} y la ejecuta allí, donde puedes editarla, revisar el resultado y seguir trabajando en esa superficie."
   }
 }

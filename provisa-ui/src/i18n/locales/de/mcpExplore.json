@@ -12,6 +12,7 @@
     "roleNoteTooltip": "Jede Katalogabfrage und jede Abfrage, die der Assistent ausführt, läuft unter dieser Rolle — er sieht also genau die Tabellen, Spalten und Zeilen, für die diese Rolle berechtigt ist.",
     "toolRunningTooltip": "{{name}} läuft.",
     "toolDoneTooltip": "{{name}} ist abgeschlossen. Das Ergebnis wurde an den Assistenten zurückgegeben.",
-    "toolErrorTooltip": "{{name}} ist fehlgeschlagen. Der Assistent hat den Fehler erhalten und versucht es möglicherweise mit anderen Argumenten erneut."
+    "toolErrorTooltip": "{{name}} ist fehlgeschlagen. Der Assistent hat den Fehler erhalten und versucht es möglicherweise mit anderen Argumenten erneut.",
+    "roleNoteHelpTitle": "Die Rolle dieser Sitzung"
   }
 }

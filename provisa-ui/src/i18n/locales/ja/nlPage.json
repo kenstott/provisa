@@ -24,6 +24,11 @@
     "strictModeTooltip": "すべての生成を GraphQL 表現に厳密に基づいて行います。まず GraphQL を生成してスキーマに対して検証し、次に SQL、続いて Cypher へコンパイルします。オフの場合、SQL と GraphQL は独立に生成され、Cypher は SQL の結果から導出されます。",
     "questionTooltip": "自分のテーブル名、列名、リレーション名を使って自然文で質問できます。Enter で送信、Shift+Enter で改行します。",
     "generateTooltip": "現在のロールで参照できるスキーマを使い、この質問から GraphQL、SQL、Cypher の各サーフェス向けのクエリを生成します。",
-    "mcpChatTooltip": "この質問を MCP アシスタントに渡します。アシスタントはクエリを生成するだけでなく、カタログを探索してクエリを実行します。"
+    "mcpChatTooltip": "この質問を MCP アシスタントに渡します。アシスタントはクエリを生成するだけでなく、カタログを探索してクエリを実行します。",
+    "questionHelpTitle": "質問の書き方",
+    "strictHelpTitle": "厳密な生成",
+    "generateHelpTitle": "「生成」が作るもの",
+    "mcpChatHelpTitle": "アシスタントに渡す",
+    "openInExplorerHelp": "生成されたこのクエリを {{label}} エクスプローラに読み込んで実行します。そこで編集し、結果を確認し、その画面で作業を続けられます。"
   }
 }

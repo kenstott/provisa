@@ -12,6 +12,7 @@
     "roleNoteTooltip": "Toda consulta ao catálogo e toda consulta que o assistente executa rodam sob este papel — portanto ele vê exatamente as tabelas, colunas e linhas concedidas a esse papel.",
     "toolRunningTooltip": "{{name}} está em execução.",
     "toolDoneTooltip": "{{name}} terminou. O resultado foi devolvido ao assistente.",
-    "toolErrorTooltip": "{{name}} falhou. O assistente recebeu o erro e pode tentar de novo com outros argumentos."
+    "toolErrorTooltip": "{{name}} falhou. O assistente recebeu o erro e pode tentar de novo com outros argumentos.",
+    "roleNoteHelpTitle": "O papel com que esta sessão corre"
   }
 }

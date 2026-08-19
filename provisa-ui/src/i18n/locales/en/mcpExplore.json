@@ -12,6 +12,7 @@
     "roleNoteTooltip": "Every catalog lookup and query the assistant runs is executed as this role, so it sees exactly the tables, columns, and rows that role is granted.",
     "toolRunningTooltip": "{{name}} is running.",
     "toolDoneTooltip": "{{name}} finished. Its result was handed back to the assistant.",
-    "toolErrorTooltip": "{{name}} failed. The assistant received the error and may retry with different arguments."
+    "toolErrorTooltip": "{{name}} failed. The assistant received the error and may retry with different arguments.",
+    "roleNoteHelpTitle": "The role this session runs as"
   }
 }

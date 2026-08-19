@@ -24,6 +24,11 @@
     "strictModeTooltip": "Alle generatie is strikt gebaseerd op de GraphQL-expressie: eerst wordt GraphQL gegenereerd en tegen het schema gevalideerd, daarna gecompileerd naar SQL en vervolgens naar Cypher. Uit: SQL en GraphQL worden onafhankelijk gegenereerd en Cypher wordt afgeleid uit het SQL-resultaat.",
     "questionTooltip": "Stel uw vraag in gewone taal met uw eigen tabel-, kolom- en relatienamen. Enter verstuurt; Shift+Enter voegt een regel toe.",
     "generateTooltip": "Genereert uit deze vraag een query voor elk oppervlak — GraphQL, SQL en Cypher — op basis van het schema dat uw huidige rol mag zien.",
-    "mcpChatTooltip": "Geeft deze vraag door aan de MCP-assistent, die de catalogus verkent en de query voor u uitvoert in plaats van die alleen te genereren."
+    "mcpChatTooltip": "Geeft deze vraag door aan de MCP-assistent, die de catalogus verkent en de query voor u uitvoert in plaats van die alleen te genereren.",
+    "questionHelpTitle": "De vraag stellen",
+    "strictHelpTitle": "Strikte generatie",
+    "generateHelpTitle": "Wat Genereren oplevert",
+    "mcpChatHelpTitle": "Doorgeven aan de assistent",
+    "openInExplorerHelp": "Laadt deze gegenereerde query in de {{label}}-verkenner en voert hem daar uit, waar je hem kunt bewerken, het resultaat kunt bekijken en in die surface verder kunt werken."
   }
 }

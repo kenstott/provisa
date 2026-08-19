@@ -42692,7 +42692,10 @@ And a later observation in the same hour replaces it rather than adding to it
     person. Security''s Roles surface carries its own bubble beside + Role, stating that a role is
     the unit every other permission is written against — capabilities decide which operations it may
     run and domain access which parts of the model it reaches (REQ-003/005/042) — and that it
-    carries its own rate and query-complexity ceilings (REQ-369/1174).'
+        carries its own rate and query-complexity ceilings (REQ-369/1174). The card is the single
+    explanation style: the NL page and the MCP explorer render their control explanations through
+    the same component rather than as Mantine tooltips, with the control itself as the hover target
+    so the row keeps its shape.'
   use_case: Bottom-up bootstrap means the glossary is never empty — every column name seeds the vocabulary,
     avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical
     field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL

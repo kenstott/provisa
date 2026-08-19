@@ -12,6 +12,7 @@
     "roleNoteTooltip": "Ogni consultazione del catalogo e ogni query eseguita dall'assistente vengono eseguite con questo ruolo, quindi vede esattamente le tabelle, le colonne e le righe concesse a quel ruolo.",
     "toolRunningTooltip": "{{name}} è in esecuzione.",
     "toolDoneTooltip": "{{name}} è terminato. Il risultato è stato restituito all'assistente.",
-    "toolErrorTooltip": "{{name}} non è riuscito. L'assistente ha ricevuto l'errore e potrebbe riprovare con argomenti diversi."
+    "toolErrorTooltip": "{{name}} non è riuscito. L'assistente ha ricevuto l'errore e potrebbe riprovare con argomenti diversi.",
+    "roleNoteHelpTitle": "Il ruolo con cui gira questa sessione"
   }
 }

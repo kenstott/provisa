@@ -12,6 +12,7 @@
     "roleNoteTooltip": "Elke catalogusopvraging en elke query die de assistent uitvoert, draait onder deze rol — hij ziet dus precies de tabellen, kolommen en rijen waarvoor die rol rechten heeft.",
     "toolRunningTooltip": "{{name}} wordt uitgevoerd.",
     "toolDoneTooltip": "{{name}} is klaar. Het resultaat is aan de assistent teruggegeven.",
-    "toolErrorTooltip": "{{name}} is mislukt. De assistent heeft de fout ontvangen en probeert het mogelijk opnieuw met andere argumenten."
+    "toolErrorTooltip": "{{name}} is mislukt. De assistent heeft de fout ontvangen en probeert het mogelijk opnieuw met andere argumenten.",
+    "roleNoteHelpTitle": "De rol waaronder deze sessie draait"
   }
 }

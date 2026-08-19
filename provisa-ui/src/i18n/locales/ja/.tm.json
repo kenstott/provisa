@@ -3440,5 +3440,11 @@
   "ja/securityPage.json::securityPage.rolePurposeTitle": "What roles are for",
   "ja/securityPage.json::securityPage.rolePurposeBody": "A role is the unit every other permission is written against. Its capabilities decide which operations it may run, and its domain access decides which parts of the model it can reach at all. Row-level rules, and the access checks on every surface, name a role rather than a person — so what someone can see and do is changed by changing the role they hold.",
   "ja/securityPage.json::securityPage.rolePurposeAdd": "A role also carries its own ceilings: requests per second, and limits on query depth, node count, and execution time. That is how a role can be given reach without being given unbounded cost — an expensive query is refused by the role that issued it, not by the source it would have hit.",
-  "ja/securityPage.json::securityPage.rolePurposeAria": "About roles"
+  "ja/securityPage.json::securityPage.rolePurposeAria": "About roles",
+  "ja/nlPage.json::nlPage.questionHelpTitle": "Asking the question",
+  "ja/nlPage.json::nlPage.strictHelpTitle": "Strict generation",
+  "ja/nlPage.json::nlPage.generateHelpTitle": "What Generate produces",
+  "ja/nlPage.json::nlPage.mcpChatHelpTitle": "Handing it to the assistant",
+  "ja/nlPage.json::nlPage.openInExplorerHelp": "Loads this generated query into the {{label}} explorer and runs it there, where you can edit it, inspect the result, and keep working in that surface.",
+  "ja/mcpExplore.json::mcpExplore.roleNoteHelpTitle": "The role this session runs as"
 }

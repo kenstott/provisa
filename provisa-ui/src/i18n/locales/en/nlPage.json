@@ -24,6 +24,11 @@
     "strictModeTooltip": "All generation based strictly on GraphQL expression: GraphQL is generated first and validated against the schema, then compiled to SQL, then to Cypher. Off: SQL and GraphQL are generated independently and Cypher is derived from the SQL result.",
     "questionTooltip": "Ask in plain English using your own table, column, and relationship names. Enter submits; Shift+Enter adds a line.",
     "generateTooltip": "Generate a query for every surface — GraphQL, SQL, and Cypher — from this question, using the schema your current role can see.",
-    "mcpChatTooltip": "Hand this question to the MCP assistant, which explores the catalog and runs the query for you instead of only generating it."
+    "mcpChatTooltip": "Hand this question to the MCP assistant, which explores the catalog and runs the query for you instead of only generating it.",
+    "questionHelpTitle": "Asking the question",
+    "strictHelpTitle": "Strict generation",
+    "generateHelpTitle": "What Generate produces",
+    "mcpChatHelpTitle": "Handing it to the assistant",
+    "openInExplorerHelp": "Loads this generated query into the {{label}} explorer and runs it there, where you can edit it, inspect the result, and keep working in that surface."
   }
 }

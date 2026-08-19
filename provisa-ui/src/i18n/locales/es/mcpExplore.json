@@ -12,6 +12,7 @@
     "roleNoteTooltip": "Cada consulta al catálogo y cada consulta que ejecuta el asistente se ejecutan con este rol, de modo que ve exactamente las tablas, columnas y filas concedidas a ese rol.",
     "toolRunningTooltip": "{{name}} está en ejecución.",
     "toolDoneTooltip": "{{name}} ha terminado. Su resultado se devolvió al asistente.",
-    "toolErrorTooltip": "{{name}} ha fallado. El asistente recibió el error y puede reintentarlo con otros argumentos."
+    "toolErrorTooltip": "{{name}} ha fallado. El asistente recibió el error y puede reintentarlo con otros argumentos.",
+    "roleNoteHelpTitle": "El rol con el que corre esta sesión"
   }
 }
