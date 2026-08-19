@@ -43,6 +43,10 @@
     "filterExpression": "筛选表达式",
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "未定义行级安全规则。",
-    "noRulesMatchFilter": "没有符合当前筛选条件的规则。"
+    "noRulesMatchFilter": "没有符合当前筛选条件的规则。",
+    "purposeTitle": "RLS 规则的作用",
+    "purposeBody": "行级安全规则是一条绑定到某个角色和某个作用域的 SQL 谓词。服务器在执行前把它以 AND 拼进查询——读和写都一样，无论请求从哪个接口进来——因此该角色只能看到规则允许的行，也无法通过换一个客户端来绕开。",
+    "purposeAdd": "规则可以限定到单张表，也可以限定到整个域从而覆盖其中所有表；两者同时适用时，该表以表级规则为准。规则针对的是角色而不是某个人，所以要改变某人能看到什么，就改变他持有的角色。",
+    "purposeAria": "关于 RLS 规则"
   }
 }

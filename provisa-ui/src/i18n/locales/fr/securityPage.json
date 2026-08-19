@@ -43,6 +43,10 @@
     "filterExpression": "Expression de filtre",
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Aucune règle RLS définie.",
-    "noRulesMatchFilter": "Aucune règle ne correspond au filtre actuel."
+    "noRulesMatchFilter": "Aucune règle ne correspond au filtre actuel.",
+    "purposeTitle": "À quoi servent les règles RLS",
+    "purposeBody": "Une règle de sécurité au niveau des lignes est un prédicat SQL lié à un rôle et à une portée. Le serveur l'ajoute à la requête par un AND avant l'exécution — en lecture comme en écriture, quelle que soit la surface d'où vient la demande — si bien qu'un rôle ne voit que les lignes autorisées par sa règle et ne peut pas s'y soustraire en changeant de client.",
+    "purposeAdd": "Portez une règle sur une seule table, ou sur un domaine entier pour couvrir toutes ses tables ; si les deux s'appliquent, la règle de table l'emporte pour cette table. Une règle vise un rôle et non une personne : ce que quelqu'un voit se change en changeant le rôle qu'il détient.",
+    "purposeAria": "À propos des règles RLS"
   }
 }

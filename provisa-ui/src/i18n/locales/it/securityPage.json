@@ -43,6 +43,10 @@
     "filterExpression": "Espressione di filtro",
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Nessuna regola RLS definita.",
-    "noRulesMatchFilter": "Nessuna regola corrisponde al filtro corrente."
+    "noRulesMatchFilter": "Nessuna regola corrisponde al filtro corrente.",
+    "purposeTitle": "A cosa servono le regole RLS",
+    "purposeBody": "Una regola di sicurezza a livello di riga è un predicato SQL legato a un ruolo e a un ambito. Il server lo aggiunge in AND alla query prima dell'esecuzione — in lettura come in scrittura, da qualunque superficie arrivi la richiesta — così un ruolo vede solo le righe che la sua regola consente e non può sottrarsene scegliendo un altro client.",
+    "purposeAdd": "Applica una regola a una singola tabella, oppure a un intero dominio perché copra tutte le sue tabelle; se valgono entrambe, per quella tabella vince la regola di tabella. Una regola riguarda un ruolo e non una persona: ciò che qualcuno vede si cambia cambiando il ruolo che possiede.",
+    "purposeAria": "Informazioni sulle regole RLS"
   }
 }

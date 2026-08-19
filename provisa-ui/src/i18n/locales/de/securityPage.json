@@ -43,6 +43,10 @@
     "filterExpression": "Filterausdruck",
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Keine RLS-Regeln definiert.",
-    "noRulesMatchFilter": "Keine Regeln entsprechen dem aktuellen Filter."
+    "noRulesMatchFilter": "Keine Regeln entsprechen dem aktuellen Filter.",
+    "purposeTitle": "Wozu RLS-Regeln dienen",
+    "purposeBody": "Eine Row-Level-Security-Regel ist ein SQL-Prädikat, das an genau eine Rolle und einen Geltungsbereich gebunden ist. Der Server hängt es vor der Ausführung per AND an die Abfrage an — bei Lese- wie bei Schreibzugriffen, unabhängig davon, über welche Schnittstelle die Anfrage kommt. So sieht eine Rolle nur die Zeilen, die ihre Regel erlaubt, und kann sich dem nicht durch die Wahl eines anderen Clients entziehen.",
+    "purposeAdd": "Binden Sie eine Regel an eine einzelne Tabelle oder an eine ganze Domäne, sodass sie für all deren Tabellen gilt; treffen beide zu, gewinnt für diese Tabelle die Tabellenregel. Eine Regel gilt einer Rolle, nicht einer Person — was jemand sieht, ändern Sie über die Rolle, die er innehat.",
+    "purposeAria": "Über RLS-Regeln"
   }
 }

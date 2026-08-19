@@ -43,6 +43,10 @@
     "filterExpression": "Expressão de filtro",
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "Nenhuma regra RLS definida.",
-    "noRulesMatchFilter": "Nenhuma regra corresponde ao filtro atual."
+    "noRulesMatchFilter": "Nenhuma regra corresponde ao filtro atual.",
+    "purposeTitle": "Para que servem as regras RLS",
+    "purposeBody": "Uma regra de segurança ao nível da linha é um predicado SQL ligado a um papel e a um âmbito. O servidor junta-o à consulta com AND antes da execução — em leituras e em escritas, venha o pedido da superfície que vier — pelo que um papel vê apenas as linhas que a sua regra permite e não lhe escapa escolhendo outro cliente.",
+    "purposeAdd": "Aplique uma regra a uma única tabela, ou a um domínio inteiro para cobrir todas as suas tabelas; se ambas se aplicarem, para essa tabela vence a regra da tabela. Uma regra é escrita contra um papel e não contra uma pessoa, pelo que o que alguém vê muda-se mudando o papel que detém.",
+    "purposeAria": "Sobre as regras RLS"
   }
 }

@@ -24,6 +24,7 @@ const SURFACES = [
   "sourcesPage",
   "tablesPage",
   "relationshipsPage",
+  "securityPage",
   "metricsPage",
   "tagsTab",
   "glossaryTab",

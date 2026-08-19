@@ -43,6 +43,10 @@
     "filterExpression": "篩選運算式",
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "未定義任何 RLS 規則。",
-    "noRulesMatchFilter": "沒有符合目前篩選條件的規則。"
+    "noRulesMatchFilter": "沒有符合目前篩選條件的規則。",
+    "purposeTitle": "RLS 規則的作用",
+    "purposeBody": "資料列層級安全規則是一條綁定到某個角色和某個範圍的 SQL 述詞。伺服器在執行前把它以 AND 併入查詢——讀和寫都一樣，無論請求從哪個介面進來——因此該角色只看得到規則允許的資料列，也無法換一個用戶端來繞開。",
+    "purposeAdd": "規則可以限定到單一資料表，也可以限定到整個網域以涵蓋其中所有資料表；兩者同時適用時，該資料表以資料表層級的規則為準。規則針對的是角色而不是某個人，所以要改變某人看得到什麼，就改變他持有的角色。",
+    "purposeAria": "關於 RLS 規則"
   }
 }

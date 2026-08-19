@@ -3432,5 +3432,9 @@
   "fr/relationshipsPage.json::relationshipsPage.modelingHelpBody": "A workspace for settling a join before you declare it: run SQL against the registered tables, profile the columns, draw the join on a canvas, then promote the result into a real relationship without retyping it here.",
   "fr/relationshipsPage.json::relationshipsPage.suggestHelpTitle": "Suggested relationships",
   "fr/relationshipsPage.json::relationshipsPage.suggestHelpBody": "Scans the registered tables across domains for likely joins and lists them as candidates. Nothing is declared until you accept one, and a rejected candidate stays out of the list until you clear the rejections.",
-  "fr/tablesPage.json::tablesPage.purposeModel": "+ Model declares an entity or a fact — the two pieces both a star schema and a Data Vault are built from — and lowers it onto those same primitives, registering the materialized view, its history mode, and the relationships to the entities it keys on."
+  "fr/tablesPage.json::tablesPage.purposeModel": "+ Model declares an entity or a fact — the two pieces both a star schema and a Data Vault are built from — and lowers it onto those same primitives, registering the materialized view, its history mode, and the relationships to the entities it keys on.",
+  "fr/securityPage.json::securityPage.purposeTitle": "What RLS rules are for",
+  "fr/securityPage.json::securityPage.purposeBody": "A row-level security rule is a SQL predicate bound to one role and one scope. The server ANDs it into the query before execution — on reads and on writes, whichever surface the request arrives on — so a role sees only the rows its rule permits and cannot opt out by picking a different client.",
+  "fr/securityPage.json::securityPage.purposeAdd": "Scope a rule to a single table, or to a whole domain so it covers every table in it; where both apply, the table rule wins for that table. A rule is written against a role rather than a person, so what someone can see is changed by changing the role they hold.",
+  "fr/securityPage.json::securityPage.purposeAria": "About RLS rules"
 }

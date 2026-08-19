@@ -28,6 +28,7 @@ import {
   Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
+import { HelpBubble } from "../components/HelpBubble";
 import { MultiSelect } from "../components/MultiSelect";
 import {
   useRoles,
@@ -662,19 +663,29 @@ export function SecurityRlsPage() {
           onChange={setRuleSearch}
           placeholder={t("securityPage.filterByRoleOrTable")}
         />
-        <Button
-          data-testid="toggle-rule-form"
-          onClick={() => {
-            if (showRuleForm) {
-              setShowRuleForm(false);
-            } else {
-              setExpandedRule(null);
-              handleNewRule();
-            }
-          }}
-        >
-          {showRuleForm ? t("securityPage.closeForm") : t("securityPage.addRls")}
-        </Button>
+        {/* Nested Group: the parent spreads its children, and the bubble explains this
+            button, so it has to travel with it. */}
+        <Group gap="xs">
+          <Button
+            data-testid="toggle-rule-form"
+            onClick={() => {
+              if (showRuleForm) {
+                setShowRuleForm(false);
+              } else {
+                setExpandedRule(null);
+                handleNewRule();
+              }
+            }}
+          >
+            {showRuleForm ? t("securityPage.closeForm") : t("securityPage.addRls")}
+          </Button>
+          <HelpBubble
+            title={t("securityPage.purposeTitle")}
+            paragraphs={[t("securityPage.purposeBody"), t("securityPage.purposeAdd")]}
+            ariaLabel={t("securityPage.purposeAria")}
+            testId="security-purpose-help"
+          />
+        </Group>
       </Group>
 
       {showRuleForm && (

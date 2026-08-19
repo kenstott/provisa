@@ -43,6 +43,10 @@
     "filterExpression": "Expresión de filtro",
     "filterExpressionPlaceholder": "region = 'US' AND status = 'active'",
     "noRulesDefined": "No hay reglas RLS definidas.",
-    "noRulesMatchFilter": "Ninguna regla coincide con el filtro actual."
+    "noRulesMatchFilter": "Ninguna regla coincide con el filtro actual.",
+    "purposeTitle": "Para qué sirven las reglas RLS",
+    "purposeBody": "Una regla de seguridad a nivel de fila es un predicado SQL ligado a un rol y a un ámbito. El servidor lo añade con AND a la consulta antes de ejecutarla —en lecturas y en escrituras, llegue por la superficie que llegue la petición—, así que un rol solo ve las filas que su regla permite y no puede eludirlo eligiendo otro cliente.",
+    "purposeAdd": "Aplica una regla a una sola tabla, o a un dominio entero para que cubra todas sus tablas; si ambas aplican, para esa tabla gana la regla de tabla. Una regla se escribe contra un rol y no contra una persona, así que lo que alguien ve se cambia cambiando el rol que tiene.",
+    "purposeAria": "Acerca de las reglas RLS"
   }
 }
