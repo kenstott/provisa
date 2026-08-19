@@ -30,7 +30,7 @@
         "description": "➕ Новые подключения начинаются с этой кнопки — PostgreSQL, Snowflake, MongoDB, REST API, CSV и ещё 30+."
       },
       "step3": {
-        "title": "35+ типов источников",
+        "title": "53 типа источников",
         "description": "Один список коннекторов охватывает все категории:<ul><li><strong>Базы данных</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Облачные хранилища</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Аналитика / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Озёра данных и файлы</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL и графовые</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API</strong> — REST, GraphQL, gRPC</li><li><strong>Потоковая передача</strong> — Kafka</li><li><strong>Корпоративный SaaS</strong> — SharePoint, Splunk · плюс государственные подписки на данные</li></ul>Выберите один, заполните подключение, сохраните. Список не фиксирован — нативные механизмы федерации <strong>расширяемы</strong>: объявите собственный FDW для Postgres или расширение DuckDB в конфигурации — и Provisa получит доступ к новому типу источника без кода."
       },
       "step4": {

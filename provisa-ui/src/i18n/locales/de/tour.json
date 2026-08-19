@@ -30,7 +30,7 @@
         "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche — PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und 30+ weitere."
       },
       "step3": {
-        "title": "35+ Quellentypen",
+        "title": "53 Quellentypen",
         "description": "Eine einzige Connector-Liste deckt jede Kategorie ab:<ul><li><strong>Datenbanken</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Cloud Warehouses</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Data Lakes &amp; Dateien</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL &amp; Graph</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>APIs</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>Enterprise SaaS</strong> — SharePoint, Splunk · plus behördliche Datenabonnements</li></ul>Eine Quelle wählen, die Verbindung ausfüllen, Speichern. Die Liste ist nicht starr — die nativen Föderations-Engines sind <strong>erweiterbar</strong>: einen benutzerdefinierten Postgres-FDW oder eine DuckDB-Erweiterung in der Konfiguration deklarieren, und Provisa erreicht einen neuen Quellentyp, ohne Code."
       },
       "step4": {

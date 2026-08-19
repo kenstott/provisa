@@ -102,7 +102,7 @@ Data Vault מתאים באותה דרך, שכבה אחת מוקדם יותר. ה
 
 ### מקורות נתונים (Data Sources)
 
-- **52 סוגי מקור** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, מאגרי triple של SPARQL, Kafka, Google Sheets, ועוד דרך API יחיד; מקורות גרף ו-RDF הם מדרגה ראשונה, לא מתאמים (adapters)
+- **53 סוגי מקור** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, מאגרי triple של SPARQL, Kafka, Google Sheets, ועוד דרך API יחיד; מקורות גרף ו-RDF הם מדרגה ראשונה, לא מתאמים (adapters)
 - **ניתוב חכם** — שאילתות מקור-יחיד עוקפות פדרציה (מתחת ל-100ms); שאילתות רב-מקור מנותבות דרך שכבת הפדרציה — הביאו את הקלאסטר שלכם או השתמשו בעובדים (workers) המוטמעים
 - **מקורות API** — רשמו נקודות קצה REST, GraphQL, gRPC, WebSocket, או RSS כטבלאות ניתנות לשאילתה; עוזרי SPARQL כלולים; joins מפוזרים על פני מקורות API ומקורות יחסיים עובדים בשקיפות
 - **בדיקת סכמה מרוחקת (Remote schema introspection)** — כוונו לכל נקודת קצה GraphQL, OpenAPI, או gRPC; פעולות מתועדות נחשפות אוטומטית כטבלאות, צמתי גרף, וקשתות ניתנים לשאילתה עם ממשל מלא מיושם מעליהם

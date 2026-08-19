@@ -30,7 +30,7 @@
         "description": "➕ 新連接由這個按鈕開始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 30 多種其他類型。"
       },
       "step3": {
-        "title": "35 種以上的數據來源類型",
+        "title": "53 種數據來源類型",
         "description": "一份連接器清單涵蓋所有類別：<ul><li><strong>數據庫</strong>——PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>雲端數據倉庫</strong>——Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析／OLAP</strong>——ClickHouse、Druid、Pinot</li><li><strong>數據湖與檔案</strong>——Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL 與圖數據庫</strong>——MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong>——REST、GraphQL、gRPC</li><li><strong>串流</strong>——Kafka</li><li><strong>企業級 SaaS</strong>——SharePoint、Splunk，另加政府數據訂閱</li></ul>選一種，填寫連接資訊，儲存即可。這份清單並非固定——原生聯邦引擎是<strong>可擴充</strong>的：只要在設定中宣告自訂的 Postgres FDW 或 DuckDB 擴充功能，Provisa 就能連接新的數據來源類型，毋須撰寫程式碼。"
       },
       "step4": {

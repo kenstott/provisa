@@ -102,7 +102,7 @@ Estos son los protocolos de conexión. SQL, GraphQL y Cypher viajan sobre ellos 
 
 ### Orígenes de datos
 
-- **52 tipos de origen** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, almacenes de triples SPARQL, Kafka, Google Sheets y más a través de una única API; los orígenes de grafo y RDF son de primera clase, no adaptadores
+- **53 tipos de origen** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, almacenes de triples SPARQL, Kafka, Google Sheets y más a través de una única API; los orígenes de grafo y RDF son de primera clase, no adaptadores
 - **Enrutamiento inteligente** — Las consultas de un solo origen omiten la federación (menos de 100 ms); las consultas multiorigen se enrutan a través de la capa de federación — traiga su propio clúster o use los workers integrados
 - **Orígenes de API** — Registre endpoints REST, GraphQL, gRPC, WebSocket o RSS como tablas consultables; ayudantes de SPARQL incluidos; las uniones federadas entre orígenes de API y orígenes relacionales funcionan de manera transparente
 - **Introspección de esquemas remotos** — Apunte a cualquier endpoint GraphQL, OpenAPI o gRPC; las operaciones documentadas se exponen automáticamente como tablas consultables, nodos de grafo y aristas con el gobierno completo aplicado encima

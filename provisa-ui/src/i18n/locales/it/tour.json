@@ -30,7 +30,7 @@
         "description": "➕ Le nuove connessioni iniziano da questo pulsante — PostgreSQL, Snowflake, MongoDB, un'API REST, un CSV e oltre 30 altri tipi."
       },
       "step3": {
-        "title": "Oltre 35 tipi di sorgente",
+        "title": "53 tipi di sorgente",
         "description": "Un unico elenco di connettori copre ogni categoria:<ul><li><strong>Database</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Data warehouse cloud</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Data lake e file</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL e grafo</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>SaaS enterprise</strong> — SharePoint, Splunk · più abbonamenti a dati governativi</li></ul>Scegline uno, compila la connessione, salva. L'elenco non è fisso — i motori di federazione nativi sono <strong>estensibili</strong>: dichiara un FDW Postgres personalizzato o un'estensione DuckDB nella configurazione e Provisa raggiunge un nuovo tipo di sorgente, senza scrivere codice."
       },
       "step4": {

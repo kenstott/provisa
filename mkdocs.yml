@@ -1,5 +1,5 @@
 site_name: Provisa
-site_description: A single governed API over 46 heterogeneous data sources — query with GraphQL, Cypher, or SQL.
+site_description: A single governed API over 53 heterogeneous data sources — query with GraphQL, Cypher, or SQL.
 site_url: https://provisa.dev/docs/
 site_dir: docs_site
 repo_url: https://github.com/kenstott/provisa
@@ -123,6 +123,7 @@ nav:
       - pgwire: pgwire.md
   - Data Sources:
       - Sources: sources.md
+      - Federation Engines: engines.md
       - Remote Schemas: remote-schemas.md
       - Import (Hasura / DDN): import.md
   - Modeling, Commands & Lineage:

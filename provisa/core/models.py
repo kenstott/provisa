@@ -64,6 +64,12 @@ class SourceType(str, Enum):
     fabric = "fabric"  # Microsoft Fabric Warehouse (T-SQL over TDS, Azure AD auth)
     synapse = "synapse"  # Azure Synapse SQL (T-SQL over TDS, Azure AD auth)
     redshift = "redshift"
+    # REQ-994: a remote Trino/Presto coordinator read as a SOURCE via the SQLAlchemy trino
+    # dialect and landed as a replica — distinct from Trino as the federation ENGINE, which is
+    # an _ENGINE_BUILDERS key, not a SourceType. The driver already exists
+    # (executor/drivers/registry.py "trino"); without this member Source.type rejects it and
+    # that driver is unreachable from config.
+    trino = "trino"
     # Analytics / OLAP
     clickhouse = "clickhouse"
     elasticsearch = "elasticsearch"

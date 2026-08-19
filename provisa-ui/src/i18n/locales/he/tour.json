@@ -30,7 +30,7 @@
         "description": "➕ חיבורים חדשים מתחילים בכפתור הזה — PostgreSQL, Snowflake, MongoDB, REST API, קובץ CSV, ועוד 30+."
       },
       "step3": {
-        "title": "מעל 35 סוגי מקורות",
+        "title": "53 סוגי מקורות",
         "description": "רשימת מחברים אחת חוצה כל קטגוריה:<ul><li><strong>מסדי נתונים</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>מחסני נתונים בענן</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>אנליטיקה / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lakes וקבצים</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL וגרפים</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>ממשקי API</strong> — REST, GraphQL, gRPC</li><li><strong>סטרימינג</strong> — Kafka</li><li><strong>SaaS ארגוני</strong> — SharePoint, Splunk · בנוסף מנויי נתוני ממשל</li></ul>בוחרים אחד, ממלאים את החיבור, שומרים. הרשימה אינה קבועה — מנועי הפדרציה הילידיים <strong>ניתנים להרחבה</strong>: מצהירים על FDW מותאם ל-Postgres או תוסף DuckDB בקונפיגורציה, ו-Provisa מגיע לסוג מקור חדש, בלי קוד."
       },
       "step4": {

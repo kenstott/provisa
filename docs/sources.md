@@ -23,6 +23,25 @@ Every query ultimately executes through the federation engine, which provides fe
 
 ## All Sources
 
+Provisa registers **53** source types. The tables below cover all 53; the index is the count. [tool-verified: `provisa/core/models.py` `SourceType`]
+
+| # | Group | Source types |
+| --- | --- | --- |
+| 1–13 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport` |
+| 14–20 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `fabric`, `synapse`, `trino` |
+| 21–25 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 26–30 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hudi`, `hive`, `hive_s3` |
+| 31–33 | [NoSQL](#nosql) | `mongodb`, `cassandra`, `redis` |
+| 34–36 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 37 | [Push receiver](#push-receiver) | `ingest` |
+| 38–39 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
+| 40–43 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files` |
+| 44–45 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 46–47 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `splunk` |
+| 48–50 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote` |
+| 51 | [GovData](#govdata) | `govdata` |
+| 52–53 | [Data quality checkers](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms) (REQ-027). "Connector Name" is the federated connector used when the source participates in multi-source JOINs (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
 ### RDBMS
@@ -40,6 +59,8 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `yugabytedb` | asyncpg (pg wire) | postgresql | postgres | Yes |
 | `greenplum` | asyncpg (pg wire) | postgresql | postgres | Yes |
 | `tidb` | aiomysql (mysql wire) | mysql | mysql | Yes |
+| `firebird` | — | — (DuckDB extension) | — | No |
+| `airport` | — | — (DuckDB extension) | — | No |
 
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver, and dialect — CockroachDB, YugabyteDB, and Greenplum ride the PostgreSQL wire; TiDB rides the MySQL wire. They need only registry entries, no new connector code. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
@@ -80,6 +101,7 @@ These source types are federation-only — no direct driver, no dialect. [tool-v
 | `iceberg` | iceberg | Yes (`as_of` argument, REQ-372) | — |
 | `delta_lake` | delta_lake | Yes (`as_of` argument, REQ-372) | — |
 | `hive` | hive | No | — |
+| `hudi` | — (ClickHouse `Hudi` engine, zero-copy — REQ-1178) | No | No federated connector; reached in place when ClickHouse is the active engine |
 | `hive_s3` | hive | No | S3-backed Hive |
 
 ### NoSQL

@@ -30,7 +30,7 @@
         "description": "➕ 新连接从这个按钮开始——PostgreSQL、Snowflake、MongoDB、REST API、CSV，还有 30 多种其他类型。"
       },
       "step3": {
-        "title": "35+ 种数据源类型",
+        "title": "53 种数据源类型",
         "description": "一份连接器列表覆盖所有类别：<ul><li><strong>数据库</strong> —— PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>云数据仓库</strong> —— Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析 / OLAP</strong> —— ClickHouse、Druid、Pinot</li><li><strong>数据湖与文件</strong> —— Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL 与图数据库</strong> —— MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong> —— REST、GraphQL、gRPC</li><li><strong>流式处理</strong> —— Kafka</li><li><strong>企业 SaaS</strong> —— SharePoint、Splunk · 以及政府数据订阅</li></ul>选一个，填写连接信息，保存。这份列表并非固定不变——原生联邦引擎是<strong>可扩展的</strong>：在配置中声明一个自定义 Postgres FDW 或 DuckDB 扩展，Provisa 就能接入新的数据源类型，无需编写代码。"
       },
       "step4": {

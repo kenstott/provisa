@@ -102,7 +102,7 @@ Explorer 會將一段 GraphQL 查詢與其即時的 SQL 及 Cypher 翻譯並列�
 
 ### 數據來源
 
-- **52 種來源類型**——PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存庫、Kafka、Google Sheets 等等，透過單一 API 存取；圖形及 RDF 來源屬於一級公民，而非轉接器
+- **53 種來源類型**——PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存庫、Kafka、Google Sheets 等等，透過單一 API 存取；圖形及 RDF 來源屬於一級公民，而非轉接器
 - **智慧路由**——單一來源查詢會繞過聯邦（延遲低於 100 毫秒）；多來源查詢則經由聯邦層路由——可自帶叢集，或使用內嵌的工作程序
 - **API 來源**——將 REST、GraphQL、gRPC、WebSocket 或 RSS 端點註冊為可查詢的資料表；內附 SPARQL 輔助工具；跨 API 來源與關聯式來源的聯邦式 join 可透明運作
 - **遠端結構描述內省 (introspection)**——指向任何 GraphQL、OpenAPI 或 gRPC 端點；已記載的操作會自動公開為可查詢的資料表、圖形節點及邊，並在其上完整套用治理

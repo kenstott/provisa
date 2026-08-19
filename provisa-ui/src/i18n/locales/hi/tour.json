@@ -30,7 +30,7 @@
         "description": "➕ नए कनेक्शन इस बटन से शुरू होते हैं — PostgreSQL, Snowflake, MongoDB, एक REST API, एक CSV, और 30+ और।"
       },
       "step3": {
-        "title": "35+ स्रोत प्रकार",
+        "title": "53 स्रोत प्रकार",
         "description": "एक कनेक्टर सूची हर श्रेणी को कवर करती है:<ul><li><strong>डेटाबेस</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>क्लाउड वेयरहाउस</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>एनालिटिक्स / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>लेक्स और फ़ाइलें</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL और ग्राफ़</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>API</strong> — REST, GraphQL, gRPC</li><li><strong>स्ट्रीमिंग</strong> — Kafka</li><li><strong>एंटरप्राइज़ SaaS</strong> — SharePoint, Splunk · साथ ही सरकारी डेटा सब्सक्रिप्शन</li></ul>एक चुनें, कनेक्शन भरें, सेव करें। सूची तय नहीं है — नेटिव फ़ेडरेशन इंजन <strong>एक्सटेंसिबल</strong> हैं: कॉन्फ़िग में एक कस्टम Postgres FDW या DuckDB एक्सटेंशन घोषित करें और Provisa बिना किसी कोड के एक नए स्रोत प्रकार तक पहुँच जाता है।"
       },
       "step4": {

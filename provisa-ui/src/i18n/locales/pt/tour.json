@@ -30,7 +30,7 @@
         "description": "➕ Novas conexões começam com este botão — PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e mais de 30 outros."
       },
       "step3": {
-        "title": "Mais de 35 tipos de fontes",
+        "title": "53 tipos de fontes",
         "description": "Uma única lista de conectores abrange todas as categorias:<ul><li><strong>Bancos de dados</strong> — PostgreSQL, MySQL, MariaDB, Oracle, SQL Server, Greenplum</li><li><strong>Warehouses em nuvem</strong> — Snowflake, BigQuery, Databricks, Redshift, Microsoft Fabric, Azure Synapse</li><li><strong>Analytics / OLAP</strong> — ClickHouse, Druid, Pinot</li><li><strong>Lakes e arquivos</strong> — Iceberg, Delta Lake, Hive, Parquet, CSV, JSON</li><li><strong>NoSQL e grafos</strong> — MongoDB, Cassandra, Redis, Neo4j</li><li><strong>APIs</strong> — REST, GraphQL, gRPC</li><li><strong>Streaming</strong> — Kafka</li><li><strong>SaaS empresarial</strong> — SharePoint, Splunk · além de assinaturas de dados governamentais</li></ul>Escolha uma, preencha a conexão, salve. A lista não é fixa — os mecanismos de federação nativos são <strong>extensíveis</strong>: declare um FDW do Postgres ou uma extensão do DuckDB personalizados na configuração e o Provisa alcança um novo tipo de fonte, sem código."
       },
       "step4": {

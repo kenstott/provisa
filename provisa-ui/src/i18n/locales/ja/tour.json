@@ -30,7 +30,7 @@
         "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他30種類以上。"
       },
       "step3": {
-        "title": "35種類以上のソースタイプ",
+        "title": "53 種類のソースタイプ",
         "description": "1つのコネクタ一覧があらゆるカテゴリをカバーします：<ul><li><strong>データベース</strong> — PostgreSQL、MySQL、MariaDB、Oracle、SQL Server、Greenplum</li><li><strong>クラウドウェアハウス</strong> — Snowflake、BigQuery、Databricks、Redshift、Microsoft Fabric、Azure Synapse</li><li><strong>分析 / OLAP</strong> — ClickHouse、Druid、Pinot</li><li><strong>レイク＆ファイル</strong> — Iceberg、Delta Lake、Hive、Parquet、CSV、JSON</li><li><strong>NoSQL＆グラフ</strong> — MongoDB、Cassandra、Redis、Neo4j</li><li><strong>API</strong> — REST、GraphQL、gRPC</li><li><strong>ストリーミング</strong> — Kafka</li><li><strong>エンタープライズ SaaS</strong> — SharePoint、Splunk · 加えて政府データのサブスクリプション</li></ul>1つ選び、接続情報を入力し、保存するだけです。この一覧は固定ではありません — ネイティブなフェデレーションエンジンは<strong>拡張可能</strong>です：カスタムの Postgres FDW や DuckDB 拡張を設定で宣言すれば、コード不要で新しいソースタイプに Provisa が対応します。"
       },
       "step4": {
