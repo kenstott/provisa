@@ -86,3 +86,42 @@ def test_expand_view_with_quoted_semantic_ref_also_fixed(sqlite_ctx):
     # "pet_store"."pets" must not appear as a standalone 2-part ref
     # (it will appear as a substring of the catalog-physical form, which is fine)
     assert not re.search(r'(?<!"pet_store_sqlite"\.)("pet_store"."pets")', fixed)
+
+
+@pytest.fixture()
+def org_scoped_sqlite_ctx() -> CompilationContext:
+    """Same source under a NON-default org: REQ-1266 prefixes the engine catalog."""
+    meta = TableMeta(
+        table_id=1,
+        field_name="pets",
+        type_name="Pets",
+        source_id="pet-store-sqlite",
+        catalog_name="org_kstott__pet_store_sqlite",
+        schema_name="pet_store",
+        table_name="pets",
+        domain_id="pet_store",
+    )
+    return CompilationContext(tables={"pets": meta})
+
+
+def test_base_catalog_ref_rewrites_to_org_catalog(org_scoped_sqlite_ctx):
+    """A hand-authored view_sql addresses the source by its BASE catalog name.
+
+    Regression: the base-catalog spelling was unanchored, so the shorter "schema"."table"
+    key matched its tail and spliced the org catalog into the middle, producing the 4-part
+    name Trino rejects with 'Too many dots in table name'.
+    """
+    view_sql_map = {
+        "view_dim_pet": 'SELECT "id", "name" FROM "pet_store_sqlite"."pet_store"."pets"'
+    }
+    outer = "SELECT * FROM (SELECT id, name FROM view_dim_pet) _s LIMIT 100"
+    expanded = expand_view_refs(outer, view_sql_map)
+    fixed = rewrite_semantic_to_catalog_physical(expanded, org_scoped_sqlite_ctx)
+    assert '"org_kstott__pet_store_sqlite"."pet_store"."pets"' in fixed
+    assert '"pet_store_sqlite"."org_kstott__pet_store_sqlite"' not in fixed
+
+
+def test_org_catalog_ref_is_idempotent(org_scoped_sqlite_ctx):
+    """An already org-qualified ref survives a second rewrite pass unchanged."""
+    sql = 'SELECT "id" FROM "org_kstott__pet_store_sqlite"."pet_store"."pets"'
+    assert rewrite_semantic_to_catalog_physical(sql, org_scoped_sqlite_ctx) == sql

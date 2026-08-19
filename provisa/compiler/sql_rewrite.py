@@ -314,6 +314,8 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
     join targets that are not in ctx.tables). Distinct from ``rewrite_semantic_to_physical``,
     which only rewrites semantic → uncatalogued schema.table.
     """
+    from provisa.compiler.naming import source_to_catalog
+
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str, str]] = set()
     for meta in _all_table_metas(ctx):
@@ -332,6 +334,13 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
         # Anchor already-catalog-qualified refs so the shorter no-catalog key cannot match
         # them as a substring (longest-first regex wins; self-mapping is a no-op).
         replacements.setdefault(physical_with_catalog, physical_with_catalog)
+        # Hand-authored SQL (a view_sql / MV body in config) addresses a source by its BASE
+        # catalog name — the org-prefixed name is a runtime fact of REQ-1266, not something an
+        # author writes. Without this key the bare-catalog spelling is unanchored, so the shorter
+        # "schema"."table" key matches its TAIL and splices the org catalog into the middle:
+        # pet_store_sqlite.org_kstott__pet_store_sqlite.pet_store.pets ("Too many dots").
+        base_catalog_ref = f"{_q(source_to_catalog(meta.source_id))}.{physical_no_catalog}"
+        replacements.setdefault(base_catalog_ref, physical_with_catalog)
     return _apply_replacements(sql, replacements)
 
 
