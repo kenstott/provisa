@@ -212,6 +212,35 @@ code:not(pre code) {
   padding: 1px 6px; border-radius: 5px; color: var(--primary-hover);
 }
 
+/* ── Interfaces: three languages, then protocols by workload ─ */
+.langs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.lang {
+  padding: 20px 22px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+.lang h4 { margin: 0 0 8px; font-size: 1.02rem; }
+.lang p { margin: 0; color: var(--text-muted); font-size: .93rem; }
+
+.iface-matrix {
+  margin-top: 18px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); overflow: hidden;
+}
+.iface-row {
+  display: grid; grid-template-columns: 15rem 1fr; gap: 26px;
+  padding: 22px 24px; border-top: 1px solid var(--border-soft);
+}
+.iface-row:first-child { border-top: 0; }
+.iface-cat h4 { margin: 0 0 6px; font-size: 1.02rem; }
+.iface-use { margin: 0; color: var(--text-muted); font-size: .86rem; }
+.iface-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 9px; }
+.iface-list li { color: var(--text-muted); font-size: .93rem; line-height: 1.5; }
+.iface-list strong { color: var(--text); font-weight: 600; }
+
+@media (max-width: 860px) {
+  .langs { grid-template-columns: 1fr; }
+  .iface-row { grid-template-columns: 1fr; gap: 14px; }
+}
+
 /* ── Screenshots ───────────────────────────────────── */
 .shot { margin: 44px 0 0; }
 .shot-frame {

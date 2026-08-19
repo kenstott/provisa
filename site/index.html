@@ -146,19 +146,55 @@
           </p>
         </header>
 
-        <div class="grid grid-3">
-          <div class="card"><h4>GraphQL</h4><p>Per-role schemas with field-level visibility, constrained to registered relationships — valid by construction.</p></div>
-          <div class="card"><h4>SQL</h4><p>Full SQL over federated data. Single-source queries bypass federation entirely for sub-100ms latency.</p></div>
-          <div class="card"><h4>Cypher</h4><p>Graph traversals over the same federated schema, under identical governance.</p></div>
-          <div class="card"><h4>pgwire</h4><p>Any Postgres client connects on port 5439. <code>pg_catalog</code> is answered in-memory, so schema browsers just work.</p></div>
-          <div class="card"><h4>Bolt (Neo4j)</h4><p>Neo4j Browser, Bloom, and the official drivers run Cypher against the federated graph.</p></div>
-          <div class="card"><h4>Arrow Flight</h4><p>Arrow record batches streamed over gRPC — columnar all the way out, no row-by-row serialization. Accepts GraphQL or SQL.</p></div>
-          <div class="card"><h4>gRPC model API</h4><p>A <code>.proto</code> generated from your schema — typed query and insert RPCs per table.</p></div>
-          <div class="card"><h4>JDBC &amp; REST</h4><p>Tableau, Power BI, and DBeaver over JDBC; JSON:API 1.1 for applications.</p></div>
-          <div class="card"><h4>Airport (DuckDB)</h4><p>Any DuckDB client attaches Provisa as a database and pushes filters down.</p></div>
-          <div class="card"><h4>WebSocket &amp; SSE</h4><p>Subscriptions stream change events — Postgres native, MongoDB native, CDC, or polling.</p></div>
-          <div class="card"><h4>MCP server</h4><p>AI agents query your governed data as tools. The OAuth token maps to a role, so agents get no bypass.</p></div>
-          <div class="card"><h4>Natural language</h4><p>NL→SQL, Cypher, or GraphQL powered by Claude, with a validation loop before anything runs.</p></div>
+        <div class="langs">
+          <div class="lang"><h4>GraphQL</h4><p>Per-role schemas with field-level visibility, constrained to registered relationships — valid by construction.</p></div>
+          <div class="lang"><h4>SQL</h4><p>Full SQL over federated data. Single-source queries bypass federation entirely for sub-100ms latency.</p></div>
+          <div class="lang"><h4>Cypher</h4><p>Graph traversals over the same federated schema, under identical governance.</p></div>
+        </div>
+
+        <div class="iface-matrix">
+          <div class="iface-row">
+            <div class="iface-cat">
+              <h4>Relational &amp; BI</h4>
+              <p class="iface-use">Tableau, Power BI, DBeaver, psql, and local analytical engines.</p>
+            </div>
+            <ul class="iface-list">
+              <li><strong>pgwire</strong> — any Postgres client on port 5439; <code>pg_catalog</code> is answered in-memory, so schema browsers just work.</li>
+              <li><strong>JDBC &amp; REST</strong> — the BI tools over JDBC; JSON:API 1.1 for applications.</li>
+              <li><strong>Airport (DuckDB)</strong> — any DuckDB client attaches Provisa as a database and pushes filters down.</li>
+            </ul>
+          </div>
+          <div class="iface-row">
+            <div class="iface-cat">
+              <h4>Graph &amp; search</h4>
+              <p class="iface-use">Neo4j Browser and Bloom, plus application-side traversals.</p>
+            </div>
+            <ul class="iface-list">
+              <li><strong>Bolt</strong> — the Neo4j tools and official drivers run Cypher against the federated graph.</li>
+              <li><strong>GraphQL over HTTP</strong> — the same per-role schema every other surface enforces.</li>
+            </ul>
+          </div>
+          <div class="iface-row">
+            <div class="iface-cat">
+              <h4>High-performance data</h4>
+              <p class="iface-use">Columnar streaming, microservices, zero-serialization ML.</p>
+            </div>
+            <ul class="iface-list">
+              <li><strong>Arrow Flight</strong> — Arrow record batches over gRPC, columnar all the way out. Accepts GraphQL or SQL.</li>
+              <li><strong>gRPC model API</strong> — a <code>.proto</code> generated from your schema; typed query and insert RPCs per table.</li>
+              <li><strong>WebSocket &amp; SSE</strong> — subscriptions stream change events: Postgres native, MongoDB native, CDC, or polling.</li>
+            </ul>
+          </div>
+          <div class="iface-row">
+            <div class="iface-cat">
+              <h4>AI &amp; automation</h4>
+              <p class="iface-use">Agentic tool calls and LLM-driven query generation.</p>
+            </div>
+            <ul class="iface-list">
+              <li><strong>MCP server</strong> — agents query your governed data as tools. The OAuth token maps to a role, so agents get no bypass.</li>
+              <li><strong>Natural language</strong> — NL→SQL, Cypher, or GraphQL powered by Claude, with a validation loop before anything runs.</li>
+            </ul>
+          </div>
         </div>
 
         <a class="more" href="/why/interfaces">Every interface in detail</a>
