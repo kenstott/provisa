@@ -32,6 +32,10 @@ so the boundary regexes here serve a different output alphabet.
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Set as AbstractSet
 
 TERM_EDGE_TYPES = (
     "KIND_OF",
@@ -240,3 +244,49 @@ def normalize_term(physical_name: str, *, table_context: str | None = None) -> s
             tokens.pop()
         return " ".join(tokens)
     return phrase
+
+
+def live_term_ids(
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+) -> set[int]:
+    """The terms a consuming surface may offer, by the one admission rule (REQ-1387).
+
+    A term is live when it is all three of:
+
+    * **in service** — neither ``retired`` (a curator took it out) nor ``deprecated``
+      (the derivation lost its last column but the row was kept as an anchor);
+    * **defined** — it carries a definition. A term derived from a column name is a
+      token, not a meaning: "customer" off ``cust_id`` tells an agent nothing the schema
+      does not already say, so an undefined term is a proposal awaiting a curator, never
+      vocabulary to ground a question on;
+    * **grounded** — connected, over in-service terms, to a term that holds a physical
+      ref. The glossary is an entry point into the data, so every chain must terminate
+      at a column; an abstract term wired to nothing physical names no data and cannot
+      answer anything.
+
+    Connectivity is structural and ignores definitions: an abstract term reaches data
+    through an undefined rooted term just as well as a defined one. Out-of-service terms
+    do not conduct — a retired term must not keep its dependents alive.
+
+    ``rooted`` is the set of term ids holding at least one physical ref. Callers supply
+    it because the two callers count refs differently: the repository counts every ref,
+    the exporter counts only refs whose column actually publishes.
+    """
+    by_id = {t["id"]: t for t in terms}
+    conducting = {
+        tid for tid, t in by_id.items() if not t.get("retired") and not t.get("deprecated")
+    }
+    adjacency: dict[int, set[int]] = {}
+    for a, b in edges:
+        if a not in conducting or b not in conducting:
+            continue
+        adjacency.setdefault(a, set()).add(b)
+        adjacency.setdefault(b, set()).add(a)
+    frontier = [tid for tid in rooted if tid in conducting]
+    grounded = set(frontier)
+    while frontier:
+        for neighbor in adjacency.get(frontier.pop(), ()):
+            if neighbor not in grounded:
+                grounded.add(neighbor)
+                frontier.append(neighbor)
+    return {tid for tid in grounded if (by_id[tid].get("definition") or "").strip()}

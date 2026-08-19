@@ -170,6 +170,28 @@ async def test_export_excluded_toggle_round_trips_and_notifies(tmp_path, monkeyp
         assert len(notified) == 2
 
 
+async def test_retired_toggle_round_trips_and_hides_the_term_from_mcp_search(tmp_path, monkeypatch):
+    from provisa.api.mcp import tools
+
+    async with _surface(tmp_path, monkeypatch) as (db, notified):
+        state = types.SimpleNamespace(contexts={"analyst": object()}, tenant_db=db)
+        customer = await _term_id("customer")
+        await glossary_router.update_term(
+            _with_json(_request(), {"definition": "The buyer."}), customer
+        )
+        await glossary_router.update_term(_with_json(_request(), {"retired": True}), customer)
+        detail = await glossary_router.get_term(_request(), customer)
+        assert bool(detail["retired"]) is True
+        # Still curatable in the admin surface, but gone from the agent surface.
+        assert detail["refs"]
+        assert await tools.search_terms(state, "analyst", "customer") == []
+        await glossary_router.update_term(_with_json(_request(), {"retired": False}), customer)
+        assert [h["name"] for h in await tools.search_terms(state, "analyst", "customer")] == [
+            "customer"
+        ]
+        assert len(notified) == 3
+
+
 async def test_free_form_edge_type_is_refused(tmp_path, monkeypatch):
     async with _surface(tmp_path, monkeypatch) as (_db, notified):
         customer = await _term_id("customer")
@@ -206,7 +228,7 @@ async def test_move_ref_and_missing_term_404(tmp_path, monkeypatch):
                 {"table_id": row.id, "column_name": "order_dt", "to_term_id": customer},
             )
         )
-        assert moved == {"ok": True}
+        assert moved == {"ok": True, "source_term_removed": True}
         terms = await glossary_router.list_terms(_request())
         assert {t["name"] for t in terms} == {"customer"}
         with pytest.raises(ApiError) as err:
@@ -261,6 +283,12 @@ async def test_mcp_search_terms_requires_role_and_returns_refs(tmp_path, monkeyp
 
     async with _surface(tmp_path, monkeypatch) as (db, _notified):
         state = types.SimpleNamespace(contexts={"analyst": object()}, tenant_db=db)
+        customer = await _term_id("customer")
+        # Undefined terms are proposals; the search surface only offers defined ones.
+        assert await tools.search_terms(state, "analyst", "customer") == []
+        await glossary_router.update_term(
+            _with_json(_request(), {"definition": "The buyer."}), customer
+        )
         hits = await tools.search_terms(state, "analyst", "customer")
         assert [t["name"] for t in hits] == ["customer"]
         assert hits[0]["refs"][0]["column_name"] == "cust_id"

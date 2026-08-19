@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 39d495f3-b737-40b0-9d11-cab151560282
+// Canary: c4aca815-dfb5-4a23-b2c0-b946101d6150
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -46,6 +46,7 @@ import {
   generateGlossaryDefinition,
   generateGlossaryRelationships,
   listGlossaryTerms,
+  moveGlossaryRef,
   updateGlossaryTerm,
 } from "../api/glossary";
 
@@ -56,6 +57,7 @@ const mockDelete = vi.mocked(deleteGlossaryTerm);
 const mockGenerate = vi.mocked(generateGlossaryDefinition);
 const mockBulkDefinitions = vi.mocked(generateAllGlossaryDefinitions);
 const mockBulkRelationships = vi.mocked(generateGlossaryRelationships);
+const mockMoveRef = vi.mocked(moveGlossaryRef);
 const mockNotify = vi.mocked(notifications.show);
 
 const REVENUE: GlossaryTermSummary = {
@@ -66,6 +68,8 @@ const REVENUE: GlossaryTermSummary = {
   deprecated: false,
   ref_count: 1,
   export_excluded: false,
+  retired: false,
+  live: true,
 };
 const CHURN: GlossaryTermSummary = {
   id: 2,
@@ -75,6 +79,8 @@ const CHURN: GlossaryTermSummary = {
   deprecated: false,
   ref_count: 0,
   export_excluded: false,
+  retired: false,
+  live: true,
 };
 const MARGIN: GlossaryTermSummary = {
   id: 3,
@@ -84,6 +90,8 @@ const MARGIN: GlossaryTermSummary = {
   deprecated: true,
   ref_count: 0,
   export_excluded: false,
+  retired: false,
+  live: true,
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
@@ -132,6 +140,7 @@ describe("GlossaryTab", () => {
     mockDelete.mockReset();
     mockBulkDefinitions.mockReset();
     mockBulkRelationships.mockReset();
+    mockMoveRef.mockReset();
     mockNotify.mockClear();
     mockList.mockResolvedValue([REVENUE, CHURN, MARGIN]);
     mockFetchTerm.mockImplementation(async (id) => {
@@ -280,6 +289,66 @@ describe("GlossaryTab", () => {
         }),
       ),
     );
+  });
+
+  // Moving a term's last ref retires the term server-side, so re-reading it would 404.
+  it("clears the selection when a move removed the term it was showing", async () => {
+    mockMoveRef.mockResolvedValue({ source_term_removed: true });
+    render(<GlossaryTab />);
+
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await screen.findByTestId("glossary-ref-10-revenue");
+
+    const listbox = await openSelect("glossary-move-select-10-revenue");
+    fireEvent.click(within(listbox).getByText("Churn", { ignore: "" }));
+
+    await waitFor(() =>
+      expect(mockMoveRef).toHaveBeenCalledWith({
+        table_id: 10,
+        column_name: "revenue",
+        to_term_id: 2,
+      }),
+    );
+    // The panel drops back to the empty state; no second read of the deleted term.
+    await waitFor(() => expect(screen.queryByTestId("glossary-ref-10-revenue")).toBeNull());
+    expect(mockFetchTerm).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the term open when a move left it with other refs", async () => {
+    mockMoveRef.mockResolvedValue({ source_term_removed: false });
+    render(<GlossaryTab />);
+
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await screen.findByTestId("glossary-ref-10-revenue");
+
+    const listbox = await openSelect("glossary-move-select-10-revenue");
+    fireEvent.click(within(listbox).getByText("Churn", { ignore: "" }));
+
+    await waitFor(() => expect(mockFetchTerm).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("glossary-ref-10-revenue")).toBeInTheDocument();
+  });
+
+  // Soft delete: a rooted term cannot be deleted (its refs would recreate it), so retiring is
+  // how a curator takes one out of service — server-side it drops out of agent term search
+  // and metadata export.
+  it("retires the selected term and offers to restore it", async () => {
+    render(<GlossaryTab />);
+
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    const retire = await screen.findByTestId("glossary-retire-btn");
+    expect(retire).toHaveTextContent(t("glossaryTab.retire"));
+
+    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true });
+    fireEvent.click(retire);
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { retired: true }));
+    await waitFor(() =>
+      expect(screen.getByTestId("glossary-retire-btn")).toHaveTextContent(
+        t("glossaryTab.unretire"),
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId("glossary-retire-btn"));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, { retired: false }));
   });
 
   it("bulk-generates relationships and shows a count notification", async () => {

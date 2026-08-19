@@ -42,6 +42,13 @@ export interface GlossaryTermSummary {
   deprecated: boolean;
   ref_count: number;
   export_excluded: boolean;
+  // Curator soft delete: the term keeps its refs but no consuming surface binds it —
+  // agent term search skips it and metadata export withholds it.
+  retired: boolean;
+  // Server-computed admission: in service, defined, and connected to a term holding a
+  // physical ref. Only live terms reach an agent or a downstream catalog; anything else is
+  // a proposal. Groundedness is a property of the term graph, so it is not derivable here.
+  live: boolean;
 }
 
 export interface GlossaryRef {
@@ -126,7 +133,7 @@ export async function createGlossaryTerm(body: {
 
 export async function updateGlossaryTerm(
   termId: number,
-  body: { name?: string; definition?: string | null; export_excluded?: boolean },
+  body: { name?: string; definition?: string | null; export_excluded?: boolean; retired?: boolean },
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}`, {
     method: "PATCH",
@@ -172,13 +179,14 @@ export async function moveGlossaryRef(body: {
   table_id: number;
   column_name: string;
   to_term_id: number;
-}): Promise<void> {
+}): Promise<{ source_term_removed: boolean }> {
   const res = await fetch(`${API_BASE}/admin/glossary/refs/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await mutationError(res, "moveGlossaryRef");
+  return (await res.json()) as { source_term_removed: boolean };
 }
 
 export async function addGlossaryEdge(

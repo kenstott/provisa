@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from provisa.core.database import Database
 from provisa.core.models import Column, Table
+from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
     glossary_term_edges,
@@ -70,19 +71,27 @@ async def _server(tmp_path):
                 ),
             )
         state = types.SimpleNamespace(contexts={"analyst": object()}, tenant_db=db)
-        yield build_mcp_server(state)
+        yield build_mcp_server(state), db
     finally:
         await engine.dispose()
 
 
 async def test_search_terms_is_a_registered_tool(tmp_path):
-    async with _server(tmp_path) as server:
+    async with _server(tmp_path) as (server, _db):
         names = {t.name for t in await server.list_tools()}
         assert "search_terms" in names
 
 
 async def test_search_terms_round_trips_through_the_protocol(tmp_path):
-    async with _server(tmp_path) as server:
+    async with _server(tmp_path) as (server, db):
+        # Derived and undefined, so the protocol offers nothing: an agent may only bind a
+        # question to a term that is in service, defined, and grounded in a column.
+        empty = await server.call_tool("search_terms", {"query": "customer", "role": "analyst"})
+        # No hits serializes as no content blocks, so the structured half carries the answer.
+        assert empty[1] == {"result": []}
+        async with db.acquire() as conn:
+            term = (await glossary_repo.list_terms(conn))[0]
+            await glossary_repo.set_definition(conn, term["id"], "The buyer.")
         content = await server.call_tool("search_terms", {"query": "customer", "role": "analyst"})
         blocks = content[0] if isinstance(content, tuple) else content
         payload = json.loads(blocks[0].text)
@@ -92,6 +101,6 @@ async def test_search_terms_round_trips_through_the_protocol(tmp_path):
 
 
 async def test_unknown_role_fails_through_the_protocol(tmp_path):
-    async with _server(tmp_path) as server:
+    async with _server(tmp_path) as (server, _db):
         with pytest.raises(Exception, match="No schema for role"):
             await server.call_tool("search_terms", {"query": "customer", "role": "nobody"})

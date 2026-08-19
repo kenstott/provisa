@@ -18,7 +18,7 @@
     "delete": "削除",
     "deleteConfirm": "用語 {{name}} を削除しますか?",
     "deleted": "用語 {{name}} を削除しました。",
-    "deleteDisabledHint": "参照を持つ用語は削除できません。",
+    "deleteDisabledHint": "この用語は列から導出されています。廃止して運用から外すか、削除するには参照を別の用語に移動してください。",
     "cancel": "キャンセル",
     "create": "作成",
     "created": "用語 {{name}} を作成しました。",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "{{count}} 件の定義を生成しました。",
     "definitionsGenerated_other": "{{count}} 件の定義を生成しました。",
     "relationshipsGenerated": "{{count}} 件のリレーションシップを追加しました。",
-    "relationshipsGenerated_other": "{{count}} 件のリレーションシップを追加しました。"
+    "relationshipsGenerated_other": "{{count}} 件のリレーションシップを追加しました。",
+    "retire": "廃止",
+    "unretire": "復元",
+    "retired": "廃止済み",
+    "retireHint": "この用語を廃止します。列との対応は保持されますが、エージェントの用語検索とメタデータエクスポートの双方から除外されます。",
+    "unretireHint": "この用語を再び有効にします。",
+    "retireDone": "用語を廃止しました。",
+    "unretireDone": "用語を復元しました。",
+    "proposed": "提案中",
+    "proposedUndefined": "提案中: この用語は列名とテーブル名から導出されました。定義を与えると、エージェントとカタログが使用するようになります。",
+    "proposedUngrounded": "提案中: この用語は物理列に到達していません。列を持つ用語と関連付けて、実データを指すようにしてください。"
   }
 }

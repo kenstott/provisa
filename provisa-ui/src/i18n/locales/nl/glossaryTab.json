@@ -18,7 +18,7 @@
     "delete": "Verwijderen",
     "deleteConfirm": "Term {{name}} verwijderen?",
     "deleted": "Term {{name}} verwijderd.",
-    "deleteDisabledHint": "Een term met referenties kan niet worden verwijderd.",
+    "deleteDisabledHint": "Deze term is afgeleid van zijn kolommen. Stel hem buiten gebruik, of verplaats zijn referenties naar een andere term om hem te verwijderen.",
     "cancel": "Annuleren",
     "create": "Aanmaken",
     "created": "Term {{name}} aangemaakt.",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "{{count}} definitie gegenereerd.",
     "definitionsGenerated_other": "{{count}} definities gegenereerd.",
     "relationshipsGenerated": "{{count}} relatie toegevoegd.",
-    "relationshipsGenerated_other": "{{count}} relaties toegevoegd."
+    "relationshipsGenerated_other": "{{count}} relaties toegevoegd.",
+    "retire": "Buiten gebruik stellen",
+    "unretire": "Herstellen",
+    "retired": "Buiten gebruik",
+    "retireHint": "Stel deze term buiten gebruik: hij behoudt zijn kolommen, maar het termzoeken voor agents en de metadata-export slaan hem over.",
+    "unretireHint": "Neem deze term weer in gebruik.",
+    "retireDone": "Term buiten gebruik gesteld.",
+    "unretireDone": "Term hersteld.",
+    "proposed": "Voorgesteld",
+    "proposedUndefined": "Voorgesteld: deze term is afgeleid van de kolom- en tabelnamen. Geef er een definitie aan zodat agents en catalogi hem gaan gebruiken.",
+    "proposedUngrounded": "Voorgesteld: deze term bereikt geen fysieke kolom. Koppel hem aan een term die er wel een heeft, zodat hij echte gegevens benoemt."
   }
 }

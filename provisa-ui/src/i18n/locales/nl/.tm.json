@@ -597,7 +597,7 @@
   "nl/glossaryTab.json::glossaryTab.definitionsGenerated_other": "{{count}} definitions generated.",
   "nl/glossaryTab.json::glossaryTab.delete": "Delete",
   "nl/glossaryTab.json::glossaryTab.deleteConfirm": "Delete term {{name}}?",
-  "nl/glossaryTab.json::glossaryTab.deleteDisabledHint": "A term with refs cannot be deleted.",
+  "nl/glossaryTab.json::glossaryTab.deleteDisabledHint": "This term is derived from its columns. Retire it to take it out of service, or move its refs to another term to delete it.",
   "nl/glossaryTab.json::glossaryTab.deleted": "Term {{name}} deleted.",
   "nl/glossaryTab.json::glossaryTab.deprecated": "Deprecated",
   "nl/glossaryTab.json::glossaryTab.edgeRelLabel": "Relationship",
@@ -3389,5 +3389,15 @@
   "nl/orgsTab.json::orgsTab.invitesIntro": "An invite link is how someone gets an account and a role in an organization. Creating an organization here already makes you its administrator, so the usual reason to send a link from this tab is to hand an organization over: invite the person who will run it as org_admin, then step back out. Registration opens at the link, and the role below is granted the moment they sign up.",
   "nl/orgsTab.json::orgsTab.inviteRoleLabel": "Role granted on sign-up",
   "nl/orgsTab.json::orgsTab.inviteRoleDescription": "org_admin hands the organization to the invitee; other roles admit them as a regular member.",
-  "nl/orgsTab.json::orgsTab.colRole": "Role"
+  "nl/orgsTab.json::orgsTab.colRole": "Role",
+  "nl/glossaryTab.json::glossaryTab.retire": "Retire",
+  "nl/glossaryTab.json::glossaryTab.unretire": "Restore",
+  "nl/glossaryTab.json::glossaryTab.retired": "Retired",
+  "nl/glossaryTab.json::glossaryTab.retireHint": "Take this term out of service: it keeps its columns, but agent term search and metadata export both skip it.",
+  "nl/glossaryTab.json::glossaryTab.unretireHint": "Put this term back in service.",
+  "nl/glossaryTab.json::glossaryTab.retireDone": "Term retired.",
+  "nl/glossaryTab.json::glossaryTab.unretireDone": "Term restored.",
+  "nl/glossaryTab.json::glossaryTab.proposed": "Proposed",
+  "nl/glossaryTab.json::glossaryTab.proposedUndefined": "Proposed: this term was derived from the column and table names. Give it a definition and agents and catalogs will start using it.",
+  "nl/glossaryTab.json::glossaryTab.proposedUngrounded": "Proposed: this term reaches no physical column. Relate it to a term that has one so it names real data."
 }

@@ -93,7 +93,7 @@ async def create_abstract_term(request: Request) -> dict:
 
 @router.patch("/terms/{term_id}")
 async def update_term(request: Request, term_id: int) -> dict:
-    """Rename and/or set the definition."""
+    """Rename, set the definition, or flip the export_excluded / retired flags."""
     require_org_settings(request)
     org_id = require_active_org_id(request)
     body = await request.json()
@@ -110,6 +110,8 @@ async def update_term(request: Request, term_id: int) -> dict:
                 found = await glossary_repo.set_export_excluded(
                     _conn, term_id, bool(body["export_excluded"])
                 )
+            if "retired" in body:
+                found = await glossary_repo.set_retired(_conn, term_id, bool(body["retired"]))
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not found:
@@ -152,9 +154,7 @@ async def term_for_ref(request: Request, table_id: int, column_name: str) -> dic
     require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
-        term = await glossary_repo.get_term_by_ref(
-            cast("Connection", conn), table_id, column_name
-        )
+        term = await glossary_repo.get_term_by_ref(cast("Connection", conn), table_id, column_name)
     if term is None:
         raise ApiError(404, "glossary.ref_not_found", "no term for that column")
     return term
@@ -174,9 +174,7 @@ async def generate_definition(request: Request, term_id: int) -> dict:
         term = await glossary_repo.get_term(cast("Connection", conn), term_id)
     if term is None:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
-    refs = ", ".join(
-        f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"]
-    )
+    refs = ", ".join(f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"])
     related = ", ".join(
         f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
     )
@@ -270,8 +268,7 @@ async def generate_relationships(request: Request) -> dict:
             return {"added": 0}
         by_name = {t["name"]: t["id"] for t in terms}
         term_lines = "\n".join(
-            f"- {t['name']}" + (f": {t['definition']}" if t["definition"] else "")
-            for t in terms
+            f"- {t['name']}" + (f": {t['definition']}" if t["definition"] else "") for t in terms
         )
         prompt = (
             "You are a data catalog assistant. Given this business-glossary term list, "
@@ -335,10 +332,12 @@ async def move_ref(request: Request) -> dict:
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
-    if not moved:
+    if moved is None:
         raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
     await _notify(org_id, "glossary ref moved")
-    return {"ok": True}
+    # Moving a term's last ref retires it, so the losing term may no longer exist. Report that
+    # here: the admin UI has it open and would otherwise re-read it and surface a bare 404.
+    return {"ok": True, **moved}
 
 
 @router.post("/terms/{term_id}/edges")

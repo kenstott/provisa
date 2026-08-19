@@ -14,9 +14,13 @@ Terms are the normalized vocabulary derived from physical field names (REQ-1387)
 Lifecycle is derived from semantic-layer membership: ``sync_table_refs`` runs inside
 the table repository's upsert (the single write path for ``table_columns``), and
 ``sweep_refless_terms`` runs after any deletion path whose FK cascade removed refs.
-A term losing its last physical ref is REMOVED unless deleting it would leave an
-abstract term dangling — with no path to any rooted term — in which case the term
-is deprecated (kept) instead.
+A term losing its last physical ref is REMOVED unless it carries curator work (a
+definition, a relationship, an expert, a retirement) or deleting it would leave an
+abstract term dangling — with no path to any rooted term — in which case the term is
+deprecated (kept, out of service, revived if its column returns) instead.
+
+What any consuming surface may then offer is one rule, ``core.glossary.live_term_ids``:
+in service, defined, and grounded in a physical column.
 """
 
 # Requirements: REQ-1387
@@ -25,7 +29,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select, update
 
-from provisa.core.glossary import TERM_EDGE_TYPES, normalize_term
+from provisa.core.glossary import TERM_EDGE_TYPES, live_term_ids, normalize_term
 from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_experts,
@@ -50,7 +54,8 @@ async def sync_table_refs(
 
     New columns create-or-link terms by deterministic normalization (relinking a
     deprecated term revives it); departed columns drop their refs and the affected
-    terms are settled under the remove-or-deprecate rule. ``table_context`` is the
+    terms are settled under the remove-or-deprecate rule, which keeps any term a
+    curator has worked on. ``table_context`` is the
     table's business name — it qualifies TOO-GENERIC phrases (employees.first_name →
     "employee first name") so unrelated tables' name/date/id columns never over-merge.
     """
@@ -76,9 +81,7 @@ async def sync_table_refs(
     for col in column_names:
         if col in existing:
             continue
-        term_id = await _find_or_create_term(
-            conn, normalize_term(col, table_context=table_context)
-        )
+        term_id = await _find_or_create_term(conn, normalize_term(col, table_context=table_context))
         await conn.upsert(
             glossary_term_refs,
             {"term_id": term_id, "table_id": table_id, "column_name": col},
@@ -107,9 +110,7 @@ async def sweep_refless_terms(conn: "Connection") -> None:
         await conn.execute_core(
             select(glossary_terms.c.id)
             .where(~glossary_terms.c.is_abstract, ~glossary_terms.c.deprecated)
-            .where(
-                ~glossary_terms.c.id.in_(select(glossary_term_refs.c.term_id).distinct())
-            )
+            .where(~glossary_terms.c.id.in_(select(glossary_term_refs.c.term_id).distinct()))
         )
     ).fetchall()
     if rows:
@@ -123,9 +124,7 @@ async def _find_or_create_term(conn: "Connection", name: str) -> int:
     if row is not None:
         if row.deprecated:
             await conn.execute_core(
-                update(glossary_terms)
-                .where(glossary_terms.c.id == row.id)
-                .values(deprecated=False)
+                update(glossary_terms).where(glossary_terms.c.id == row.id).values(deprecated=False)
             )
         return row.id
     term_id = await conn.upsert_returning(
@@ -138,20 +137,24 @@ async def _find_or_create_term(conn: "Connection", name: str) -> int:
     return term_id
 
 
-async def _settle_terms(conn: "Connection", term_ids: set[int]) -> None:
-    """Apply the remove-or-deprecate rule to each candidate that is refless and rooted-born."""
+async def _settle_terms(conn: "Connection", term_ids: set[int]) -> set[int]:
+    """Apply the remove-or-deprecate rule to each candidate that is refless and rooted-born.
+
+    Returns the ids that were removed, so a caller holding a reference to one of them
+    (the admin surface, whose client has the losing term open) can be told it is gone
+    rather than discovering it as a 404 on the next read.
+    """
+    removed: set[int] = set()
     if not term_ids:
-        return
+        return removed
     graph = await _load_graph(conn)
     for term_id in sorted(term_ids):
         node = graph.terms.get(term_id)
         if node is None or node["is_abstract"] or node["deprecated"] or node["ref_count"] > 0:
             continue
-        if _dangling_grows(graph, term_id):
+        if _is_curated(graph, node) or _dangling_grows(graph, term_id):
             await conn.execute_core(
-                update(glossary_terms)
-                .where(glossary_terms.c.id == term_id)
-                .values(deprecated=True)
+                update(glossary_terms).where(glossary_terms.c.id == term_id).values(deprecated=True)
             )
             node["deprecated"] = True
         else:
@@ -162,14 +165,12 @@ async def _settle_terms(conn: "Connection", term_ids: set[int]) -> None:
                 )
             )
             await conn.execute_core(
-                _delete(glossary_term_experts).where(
-                    glossary_term_experts.c.term_id == term_id
-                )
+                _delete(glossary_term_experts).where(glossary_term_experts.c.term_id == term_id)
             )
-            await conn.execute_core(
-                _delete(glossary_terms).where(glossary_terms.c.id == term_id)
-            )
+            await conn.execute_core(_delete(glossary_terms).where(glossary_terms.c.id == term_id))
             graph.remove(term_id)
+            removed.add(term_id)
+    return removed
 
 
 class _TermGraph:
@@ -226,6 +227,8 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
                 glossary_terms.c.id,
                 glossary_terms.c.is_abstract,
                 glossary_terms.c.deprecated,
+                glossary_terms.c.retired,
+                glossary_terms.c.definition,
             )
         )
     ).fetchall()
@@ -238,15 +241,54 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id)
         )
     ).fetchall()
+    expert_rows = (
+        await conn.execute_core(select(glossary_term_experts.c.term_id).distinct())
+    ).fetchall()
+    with_experts = {r.term_id for r in expert_rows}
     terms = {
         r.id: {
+            "id": r.id,
             "is_abstract": bool(r.is_abstract),
             "deprecated": bool(r.deprecated),
+            "retired": bool(r.retired),
+            "definition": r.definition,
+            "has_expert": r.id in with_experts,
             "ref_count": counts.get(r.id, 0),
         }
         for r in term_rows
     }
     return _TermGraph(terms, [(r.from_term_id, r.to_term_id) for r in edge_rows])
+
+
+async def live_ids(conn: "Connection") -> set[int]:
+    """Ids of the terms a consuming surface may offer, by the shared admission rule.
+
+    Every term holding a ref is rooted here; the exporter runs the same rule over its own,
+    narrower notion of rooted (only refs whose column actually publishes).
+    """
+    graph = await _load_graph(conn)
+    return live_term_ids(
+        graph.terms.values(),
+        graph.edges,
+        {tid for tid, node in graph.terms.items() if node["ref_count"] > 0},
+    )
+
+
+def _is_curated(graph: _TermGraph, node: dict) -> bool:
+    """True when a term carries curator work that losing its last column must not destroy.
+
+    A derived term is born blank, so a definition, a relationship, or a named expert can only
+    have come from a person; deleting the row would discard that silently and the next
+    registration of the same column would put a blank term in its place. Such a term is
+    deprecated instead — kept, out of service, and revived by ``_find_or_create_term`` if its
+    column comes back. ``retired`` counts too: a curator's withdrawal is itself the work.
+    """
+    return bool(
+        (node["definition"] or "").strip()
+        or node["retired"]
+        or node["has_expert"]
+        or any(node["id"] in edge for edge in graph.edges)
+    )
 
 
 def _dangling_grows(graph: _TermGraph, term_id: int) -> bool:
@@ -277,7 +319,13 @@ async def list_terms(
     counts: dict[int, int] = {}
     for r in ref_rows:
         counts[r.term_id] = counts.get(r.term_id, 0) + 1
-    return [dict(r._mapping) | {"ref_count": counts.get(r.id, 0)} for r in rows]
+    # ``live`` rides the row so the admin surface shows the same admission rule the agent and
+    # export surfaces enforce, rather than re-deriving it from the flags and guessing at
+    # groundedness, which is a property of the graph and not of any one row.
+    live = await live_ids(conn)
+    return [
+        dict(r._mapping) | {"ref_count": counts.get(r.id, 0), "live": r.id in live} for r in rows
+    ]
 
 
 async def get_term(conn: "Connection", term_id: int) -> dict | None:
@@ -337,6 +385,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
         )
     ).fetchall()
     term["experts"] = [dict(r._mapping) for r in experts]
+    term["live"] = term_id in await live_ids(conn)
     return term
 
 
@@ -347,9 +396,7 @@ async def create_abstract_term(
     if not name:
         raise ValueError("term name is required")
     existing = (
-        await conn.execute_core(
-            select(glossary_terms.c.id).where(glossary_terms.c.name == name)
-        )
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
     ).fetchone()
     if existing is not None:
         raise ValueError(f"term {name!r} already exists")
@@ -388,6 +435,21 @@ async def set_definition(conn: "Connection", term_id: int, definition: str | Non
     return (result.rowcount or 0) > 0
 
 
+async def set_retired(conn: "Connection", term_id: int, retired: bool) -> bool:
+    """Retire (or un-retire) a term: the soft delete for rooted terms.
+
+    A rooted term cannot be deleted — ``sync_table_refs`` would recreate it from the same
+    column on the next registration — so retiring is how a curator takes one out of service.
+    The term keeps its refs and stays editable here; ``search_terms`` and the metadata export
+    both skip it, so no agent or downstream catalog can bind to it. Nothing in the derived
+    lifecycle writes this column, so the retirement survives a column departing and returning.
+    """
+    result = await conn.execute_core(
+        update(glossary_terms).where(glossary_terms.c.id == term_id).values(retired=retired)
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def set_export_excluded(conn: "Connection", term_id: int, excluded: bool) -> bool:
     """Opt a term out of (or back into) metadata export; curation is untouched."""
     result = await conn.execute_core(
@@ -407,7 +469,9 @@ async def delete_term(conn: "Connection", term_id: int) -> bool:
         )
     ).fetchall()
     if refs:
-        raise ValueError("term has physical refs; remove or move them first")
+        raise ValueError(
+            "term has physical refs; retire it, or move its refs to another term, first"
+        )
     await conn.execute_core(
         _delete(glossary_term_edges).where(
             (glossary_term_edges.c.from_term_id == term_id)
@@ -417,16 +481,19 @@ async def delete_term(conn: "Connection", term_id: int) -> bool:
     await conn.execute_core(
         _delete(glossary_term_experts).where(glossary_term_experts.c.term_id == term_id)
     )
-    result = await conn.execute_core(
-        _delete(glossary_terms).where(glossary_terms.c.id == term_id)
-    )
+    result = await conn.execute_core(_delete(glossary_terms).where(glossary_terms.c.id == term_id))
     return (result.rowcount or 0) > 0
 
 
 async def move_ref(
     conn: "Connection", table_id: int, column_name: str, to_term_id: int
-) -> bool:
-    """Move one physical ref to another term (consolidation); the losing term is settled."""
+) -> dict | None:
+    """Move one physical ref to another term (consolidation); the losing term is settled.
+
+    Returns ``None`` when no such ref exists, otherwise ``{"source_term_removed": bool}`` —
+    moving a term's last ref is the retire path, so the losing term is frequently deleted by
+    the settle and the caller must not read it again.
+    """
     row = (
         await conn.execute_core(
             select(glossary_term_refs.c.id, glossary_term_refs.c.term_id).where(
@@ -436,7 +503,7 @@ async def move_ref(
         )
     ).fetchone()
     if row is None:
-        return False
+        return None
     target = (
         await conn.execute_core(
             select(glossary_terms.c.id).where(glossary_terms.c.id == to_term_id)
@@ -445,14 +512,14 @@ async def move_ref(
     if target is None:
         raise ValueError(f"term {to_term_id} does not exist")
     if row.term_id == to_term_id:
-        return True
+        return {"source_term_removed": False}
     await conn.execute_core(
         update(glossary_term_refs)
         .where(glossary_term_refs.c.id == row.id)
         .values(term_id=to_term_id)
     )
-    await _settle_terms(conn, {row.term_id})
-    return True
+    removed = await _settle_terms(conn, {row.term_id})
+    return {"source_term_removed": row.term_id in removed}
 
 
 async def add_edge(conn: "Connection", from_term_id: int, to_term_id: int, rel_type: str) -> None:
@@ -462,9 +529,7 @@ async def add_edge(conn: "Connection", from_term_id: int, to_term_id: int, rel_t
         raise ValueError("a term cannot relate to itself")
     for tid in (from_term_id, to_term_id):
         exists = (
-            await conn.execute_core(
-                select(glossary_terms.c.id).where(glossary_terms.c.id == tid)
-            )
+            await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.id == tid))
         ).fetchone()
         if exists is None:
             raise ValueError(f"term {tid} does not exist")
@@ -495,9 +560,7 @@ async def add_expert(
     if kind not in ("expert", "author"):
         raise ValueError("kind must be 'expert' or 'author'")
     exists = (
-        await conn.execute_core(
-            select(glossary_terms.c.id).where(glossary_terms.c.id == term_id)
-        )
+        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.id == term_id))
     ).fetchone()
     if exists is None:
         raise ValueError(f"term {term_id} does not exist")
@@ -588,14 +651,26 @@ async def get_term_by_ref(conn: "Connection", table_id: int, column_name: str) -
 
 
 async def search_terms(conn: "Connection", query: str, *, limit: int = 25) -> list[dict]:
-    """Term lookup for the MCP surface: match on name or definition, refs included."""
+    """Term lookup for the MCP surface: match on name or definition, refs included.
+
+    Only live terms are returned — see ``live_term_ids`` for the admission rule. This is the
+    surface an agent binds a question to a column through, so anything it offers must be
+    in service, defined, and grounded in a physical column: an undefined term is a proposal,
+    a retired one was withdrawn, and an ungrounded one names no data.
+
+    The gate runs after the match rather than inside it because groundedness is a property of
+    the term graph, not of any one row.
+    """
+    live = await live_ids(conn)
+    if not live:
+        return []
     pattern = f"%{query.lower()}%"
     rows = (
         await conn.execute_core(
-            select(glossary_terms)
+            select(glossary_terms.c.id)
+            .where(glossary_terms.c.id.in_(live))
             .where(
-                glossary_terms.c.name.ilike(pattern)
-                | glossary_terms.c.definition.ilike(pattern)
+                glossary_terms.c.name.ilike(pattern) | glossary_terms.c.definition.ilike(pattern)
             )
             .order_by(glossary_terms.c.name)
             .limit(limit)

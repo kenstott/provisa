@@ -35,7 +35,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { BookOpen, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, Plus, Sparkles, Trash2 } from "lucide-react";
 import { FilterInput } from "./FilterInput";
 import {
   GLOSSARY_EXPERT_KINDS,
@@ -250,17 +250,29 @@ export function GlossaryTab() {
     }
   };
 
-  const handleMoveRef = (ref: GlossaryRef, toTermId: string | null) => {
+  // Moving a term's last ref is the retire path: the server settles the losing term and
+  // usually deletes it. Clear the selection in that case instead of letting the shared
+  // post-mutation refresh re-read a term that no longer exists (a bare 404 in the panel).
+  const handleMoveRef = async (ref: GlossaryRef, toTermId: string | null) => {
     if (toTermId === null) return;
-    void act(
-      () =>
-        moveGlossaryRef({
-          table_id: ref.table_id,
-          column_name: ref.column_name,
-          to_term_id: Number(toTermId),
-        }),
-      t("glossaryTab.moved"),
-    );
+    setActionError("");
+    try {
+      const { source_term_removed } = await moveGlossaryRef({
+        table_id: ref.table_id,
+        column_name: ref.column_name,
+        to_term_id: Number(toTermId),
+      });
+      notifications.show({ color: "green", message: t("glossaryTab.moved") });
+      if (source_term_removed) {
+        setSelectedId(null);
+        setDetail(null);
+      } else if (selectedId !== null) {
+        await loadDetail(selectedId);
+      }
+      await refreshList();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const relTypeOptions = GLOSSARY_REL_TYPES.map((rt) => ({
@@ -373,6 +385,16 @@ export function GlossaryTab() {
                           {t("glossaryTab.deprecated")}
                         </Badge>
                       )}
+                      {term.retired && (
+                        <Badge size="xs" color="orange" variant="light">
+                          {t("glossaryTab.retired")}
+                        </Badge>
+                      )}
+                      {!term.live && !term.retired && !term.deprecated && (
+                        <Badge size="xs" color="yellow" variant="light">
+                          {t("glossaryTab.proposed")}
+                        </Badge>
+                      )}
                       <Badge size="xs" variant="default">
                         {term.ref_count}
                       </Badge>
@@ -401,6 +423,17 @@ export function GlossaryTab() {
                 </Alert>
               )}
 
+              {/* A term nothing consumes is the normal state of a freshly derived glossary, so
+                  the panel says which of the two admission tests it still fails rather than
+                  leaving the curator to infer it from a badge. */}
+              {!detail.live && !detail.retired && !detail.deprecated && (
+                <Alert color="yellow" data-testid="glossary-proposed">
+                  {(detail.definition ?? "").trim()
+                    ? t("glossaryTab.proposedUngrounded")
+                    : t("glossaryTab.proposedUndefined")}
+                </Alert>
+              )}
+
               <Group align="flex-end" gap="sm">
                 <TextInput
                   label={t("glossaryTab.nameLabel")}
@@ -422,6 +455,30 @@ export function GlossaryTab() {
                 >
                   {t("glossaryTab.rename")}
                 </Button>
+                <Tooltip
+                  label={
+                    detail.retired
+                      ? t("glossaryTab.unretireHint")
+                      : t("glossaryTab.retireHint")
+                  }
+                >
+                  <Button
+                    variant="light"
+                    color={detail.retired ? "teal" : "orange"}
+                    leftSection={
+                      detail.retired ? <ArchiveRestore size={14} /> : <Archive size={14} />
+                    }
+                    onClick={() =>
+                      void act(
+                        () => updateGlossaryTerm(detail.id, { retired: !detail.retired }),
+                        detail.retired ? t("glossaryTab.unretireDone") : t("glossaryTab.retireDone"),
+                      )
+                    }
+                    data-testid="glossary-retire-btn"
+                  >
+                    {detail.retired ? t("glossaryTab.unretire") : t("glossaryTab.retire")}
+                  </Button>
+                </Tooltip>
                 <Tooltip
                   label={t("glossaryTab.deleteDisabledHint")}
                   disabled={detail.refs.length === 0}
@@ -514,7 +571,7 @@ export function GlossaryTab() {
                               data={otherTermOptions}
                               value={null}
                               placeholder={t("glossaryTab.moveToPlaceholder")}
-                              onChange={(v) => handleMoveRef(ref, v)}
+                              onChange={(v) => void handleMoveRef(ref, v)}
                               searchable
                               data-testid={`glossary-move-select-${ref.table_id}-${ref.column_name}`}
                             />

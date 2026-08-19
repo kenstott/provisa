@@ -18,7 +18,7 @@
     "delete": "刪除",
     "deleteConfirm": "刪除詞彙 {{name}}?",
     "deleted": "詞彙 {{name}} 已刪除。",
-    "deleteDisabledHint": "帶有參照的詞彙無法刪除。",
+    "deleteDisabledHint": "此詞彙由其欄位衍生而來。停用它以退出使用，或將其參照移至其他詞彙以刪除它。",
     "cancel": "取消",
     "create": "建立",
     "created": "詞彙 {{name}} 已建立。",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "已產生 {{count}} 個定義。",
     "definitionsGenerated_other": "已產生 {{count}} 個定義。",
     "relationshipsGenerated": "已新增 {{count}} 個關係。",
-    "relationshipsGenerated_other": "已新增 {{count}} 個關係。"
+    "relationshipsGenerated_other": "已新增 {{count}} 個關係。",
+    "retire": "停用",
+    "unretire": "還原",
+    "retired": "已停用",
+    "retireHint": "停用此詞彙：它仍與欄位綁定，但代理詞彙搜尋與中繼資料匯出都會略過它。",
+    "unretireHint": "重新啟用此詞彙。",
+    "retireDone": "詞彙已停用。",
+    "unretireDone": "詞彙已還原。",
+    "proposed": "待定",
+    "proposedUndefined": "待定：此術語衍生自欄位名稱與資料表名稱。為它加上定義，代理程式與目錄才會使用它。",
+    "proposedUngrounded": "待定：此術語未連接任何實體欄位。請把它關聯到擁有實體欄位的術語，使其指向真實資料。"
   }
 }

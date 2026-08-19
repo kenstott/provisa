@@ -18,7 +18,7 @@
     "delete": "Delete",
     "deleteConfirm": "Delete term {{name}}?",
     "deleted": "Term {{name}} deleted.",
-    "deleteDisabledHint": "A term with refs cannot be deleted.",
+    "deleteDisabledHint": "This term is derived from its columns. Retire it to take it out of service, or move its refs to another term to delete it.",
     "cancel": "Cancel",
     "create": "Create",
     "created": "Term {{name}} created.",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "{{count}} definition generated.",
     "definitionsGenerated_other": "{{count}} definitions generated.",
     "relationshipsGenerated": "{{count}} relationship added.",
-    "relationshipsGenerated_other": "{{count}} relationships added."
+    "relationshipsGenerated_other": "{{count}} relationships added.",
+    "retire": "Retire",
+    "unretire": "Restore",
+    "retired": "Retired",
+    "retireHint": "Take this term out of service: it keeps its columns, but agent term search and metadata export both skip it.",
+    "unretireHint": "Put this term back in service.",
+    "retireDone": "Term retired.",
+    "unretireDone": "Term restored.",
+    "proposed": "Proposed",
+    "proposedUndefined": "Proposed: this term was derived from the column and table names. Give it a definition and agents and catalogs will start using it.",
+    "proposedUngrounded": "Proposed: this term reaches no physical column. Relate it to a term that has one so it names real data."
   }
 }

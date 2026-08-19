@@ -18,7 +18,7 @@
     "delete": "Excluir",
     "deleteConfirm": "Excluir o termo {{name}}?",
     "deleted": "Termo {{name}} excluído.",
-    "deleteDisabledHint": "Um termo com referências não pode ser excluído.",
+    "deleteDisabledHint": "Este termo é derivado de suas colunas. Retire-o de serviço, ou mova suas referências para outro termo para excluí-lo.",
     "cancel": "Cancelar",
     "create": "Criar",
     "created": "Termo {{name}} criado.",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "{{count}} definição gerada.",
     "definitionsGenerated_other": "{{count}} definições geradas.",
     "relationshipsGenerated": "{{count}} relação adicionada.",
-    "relationshipsGenerated_other": "{{count}} relações adicionadas."
+    "relationshipsGenerated_other": "{{count}} relações adicionadas.",
+    "retire": "Retirar",
+    "unretire": "Restaurar",
+    "retired": "Retirado",
+    "retireHint": "Retira este termo de serviço: ele mantém suas colunas, mas a busca de termos por agentes e a exportação de metadados o ignoram.",
+    "unretireHint": "Coloca este termo de volta em serviço.",
+    "retireDone": "Termo retirado.",
+    "unretireDone": "Termo restaurado.",
+    "proposed": "Proposto",
+    "proposedUndefined": "Proposto: este termo foi derivado dos nomes da coluna e da tabela. Dê-lhe uma definição para que agentes e catálogos passem a usá-lo.",
+    "proposedUngrounded": "Proposto: este termo não alcança nenhuma coluna física. Relacione-o a um termo que tenha uma para que ele nomeie dados reais."
   }
 }

@@ -383,6 +383,13 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     definition      TEXT,
     is_abstract     BOOLEAN NOT NULL DEFAULT FALSE,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Soft delete. A rooted term cannot be deleted (its refs are derived and would recreate
+    -- it on the next registration), so retiring is how a curator takes a term out of service:
+    -- it stays bound to its columns and stays editable in the admin surface, but no consuming
+    -- surface will ever surface or bind it — agent term search skips it and metadata export
+    -- withholds it. Set only by a curator; never written by the derived lifecycle, so a
+    -- retirement survives the column departing and re-registering.
+    retired         BOOLEAN NOT NULL DEFAULT FALSE,
     -- Per-term opt-out from metadata export: the term (and any edge touching it) is
     -- withheld from every vendor snapshot while its curation stays intact locally.
     export_excluded BOOLEAN NOT NULL DEFAULT FALSE,

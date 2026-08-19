@@ -18,7 +18,7 @@
     "delete": "Elimina",
     "deleteConfirm": "Eliminare il termine {{name}}?",
     "deleted": "Termine {{name}} eliminato.",
-    "deleteDisabledHint": "Un termine con riferimenti non può essere eliminato.",
+    "deleteDisabledHint": "Questo termine deriva dalle sue colonne. Ritiralo dal servizio, oppure sposta i suoi riferimenti su un altro termine per eliminarlo.",
     "cancel": "Annulla",
     "create": "Crea",
     "created": "Termine {{name}} creato.",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "{{count}} definizione generata.",
     "definitionsGenerated_other": "{{count}} definizioni generate.",
     "relationshipsGenerated": "{{count}} relazione aggiunta.",
-    "relationshipsGenerated_other": "{{count}} relazioni aggiunte."
+    "relationshipsGenerated_other": "{{count}} relazioni aggiunte.",
+    "retire": "Ritira",
+    "unretire": "Ripristina",
+    "retired": "Ritirato",
+    "retireHint": "Ritira questo termine dal servizio: mantiene le sue colonne, ma la ricerca di termini per gli agenti e l'esportazione dei metadati lo ignorano.",
+    "unretireHint": "Rimetti questo termine in servizio.",
+    "retireDone": "Termine ritirato.",
+    "unretireDone": "Termine ripristinato.",
+    "proposed": "Proposto",
+    "proposedUndefined": "Proposto: questo termine è stato derivato dai nomi della colonna e della tabella. Dagli una definizione perché agenti e cataloghi lo usino.",
+    "proposedUngrounded": "Proposto: questo termine non raggiunge alcuna colonna fisica. Collegalo a un termine che ne ha una perché indichi dati reali."
   }
 }

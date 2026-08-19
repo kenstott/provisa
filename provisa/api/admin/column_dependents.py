@@ -31,6 +31,8 @@ from sqlalchemy import or_, select
 from provisa.compiler.naming import apply_sql_name, domain_to_sql_name
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.schema_org import (
+    glossary_term_edges,
+    glossary_term_experts,
     glossary_term_refs,
     glossary_terms,
     metrics,
@@ -51,6 +53,81 @@ def _mentions(sql_text: str | None, name: str) -> bool:
     if not sql_text:
         return False
     return re.search(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", sql_text) is not None
+
+
+async def _glossary_dependents(
+    conn: "Connection", table_id: int, column_name: str
+) -> list[Dependent]:
+    """The glossary terms this column is bound to, each stating what removing it would do.
+
+    Removing a column drops its ref and settles the term (REQ-1387), so the outcome is already
+    decided at this point and the administrator should read it rather than infer it: a term that
+    still has another column is untouched, a term a curator has worked on is kept but taken out
+    of service, and a blank term derived from this column alone is deleted with it.
+    """
+    rows = (
+        await conn.execute_core(
+            select(glossary_terms.c.id, glossary_terms.c.name, glossary_terms.c.definition)
+            .select_from(
+                glossary_term_refs.join(
+                    glossary_terms, glossary_term_refs.c.term_id == glossary_terms.c.id
+                )
+            )
+            .where(
+                glossary_term_refs.c.table_id == table_id,
+                glossary_term_refs.c.column_name == column_name,
+            )
+        )
+    ).fetchall()
+    if not rows:
+        return []
+    term_ids = [r.id for r in rows]
+    other_refs = {
+        r.term_id
+        for r in (
+            await conn.execute_core(
+                select(glossary_term_refs.c.term_id).where(
+                    glossary_term_refs.c.term_id.in_(term_ids),
+                    ~(
+                        (glossary_term_refs.c.table_id == table_id)
+                        & (glossary_term_refs.c.column_name == column_name)
+                    ),
+                )
+            )
+        ).fetchall()
+    }
+    with_edges = {
+        tid
+        for r in (
+            await conn.execute_core(
+                select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id).where(
+                    glossary_term_edges.c.from_term_id.in_(term_ids)
+                    | glossary_term_edges.c.to_term_id.in_(term_ids)
+                )
+            )
+        ).fetchall()
+        for tid in (r.from_term_id, r.to_term_id)
+    }
+    with_experts = {
+        r.term_id
+        for r in (
+            await conn.execute_core(
+                select(glossary_term_experts.c.term_id).where(
+                    glossary_term_experts.c.term_id.in_(term_ids)
+                )
+            )
+        ).fetchall()
+    }
+    out = []
+    for r in rows:
+        if r.id in other_refs:
+            detail = "bound term, keeps its other columns"
+        elif (r.definition or "").strip() or r.id in with_edges or r.id in with_experts:
+            detail = "bound term, curated — kept but taken out of service"
+        else:
+            detail = "bound term, derived and blank — deleted with the column"
+        out.append(Dependent("glossary", r.name, detail, "remove"))
+    return out
 
 
 async def _table_row(conn: "Connection", table_id: int) -> dict:
@@ -176,8 +253,9 @@ async def _physical_name_dependents(
     tid = row["id"]
 
     rres = await conn.execute_core(
-        select(relationships.c.id, relationships.c.source_column, relationships.c.target_column)
-        .where(
+        select(
+            relationships.c.id, relationships.c.source_column, relationships.c.target_column
+        ).where(
             or_(
                 relationships.c.source_table_id == tid,
                 relationships.c.target_table_id == tid,
@@ -188,19 +266,7 @@ async def _physical_name_dependents(
         if column_name in (r.source_column, r.target_column):
             out.append(Dependent("relationship", r.id, "join column", "remove"))
 
-    gres = await conn.execute_core(
-        select(glossary_terms.c.name)
-        .select_from(
-            glossary_term_refs.join(
-                glossary_terms, glossary_term_refs.c.term_id == glossary_terms.c.id
-            )
-        )
-        .where(
-            glossary_term_refs.c.table_id == tid,
-            glossary_term_refs.c.column_name == column_name,
-        )
-    )
-    out += [Dependent("glossary", r.name, "bound term", "remove") for r in gres.fetchall()]
+    out += await _glossary_dependents(conn, tid, column_name)
 
     tres = await conn.execute_core(
         select(tag_assignments.c.tag_id).where(

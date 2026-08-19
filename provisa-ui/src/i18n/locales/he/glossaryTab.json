@@ -18,7 +18,7 @@
     "delete": "מחק",
     "deleteConfirm": "למחוק את המונח {{name}}?",
     "deleted": "המונח {{name}} נמחק.",
-    "deleteDisabledHint": "לא ניתן למחוק מונח עם הפניות.",
+    "deleteDisabledHint": "מונח זה נגזר מהעמודות שלו. הוציאו אותו משימוש, או העבירו את ההפניות שלו למונח אחר כדי למחוק אותו.",
     "cancel": "ביטול",
     "create": "צור",
     "created": "המונח {{name}} נוצר.",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "הגדרה {{count}} נוצרה.",
     "definitionsGenerated_other": "{{count}} הגדרות נוצרו.",
     "relationshipsGenerated": "קשר {{count}} נוסף.",
-    "relationshipsGenerated_other": "{{count}} קשרים נוספו."
+    "relationshipsGenerated_other": "{{count}} קשרים נוספו.",
+    "retire": "הוצא משימוש",
+    "unretire": "שחזר",
+    "retired": "הוצא משימוש",
+    "retireHint": "הוצאת המונח משימוש: הוא שומר על העמודות שלו, אך חיפוש מונחים לסוכנים וייצוא מטא-נתונים מדלגים עליו.",
+    "unretireHint": "החזרת המונח לשימוש.",
+    "retireDone": "המונח הוצא משימוש.",
+    "unretireDone": "המונח שוחזר.",
+    "proposed": "מוצע",
+    "proposedUndefined": "מוצע: המונח הזה נגזר משמות העמודה והטבלה. הוסיפו לו הגדרה כדי שסוכנים וקטלוגים ישתמשו בו.",
+    "proposedUngrounded": "מוצע: המונח הזה אינו מגיע לאף עמודה פיזית. קשרו אותו למונח שיש לו עמודה כזו כדי שיציין נתונים אמיתיים."
   }
 }

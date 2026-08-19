@@ -56,6 +56,7 @@ from provisa.api.metadata_export.refs import (
     term_uri,
 )
 from provisa.core.derived_tags import derived_tags_for_table
+from provisa.core.glossary import live_term_ids
 from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignment
 from provisa.dq.contract import (
     CHECKERS,
@@ -237,9 +238,7 @@ def _lineage_edges(
     return edges
 
 
-def _resolve_assignment_table(
-    assignment: TagAssignment, index: TableIndex
-) -> Table | None:
+def _resolve_assignment_table(assignment: TagAssignment, index: TableIndex) -> Table | None:
     """Resolve a table/column assignment's qualified address; None if unresolvable.
 
     A tag assignment can outlive its target only transiently (the DB cascades deletes);
@@ -429,11 +428,14 @@ def _glossary_assets(
 ) -> tuple[list[GlossaryTermAsset], list[GlossaryTermEdge]]:  # REQ-1387
     """Project the term graph onto the published assets.
 
-    A ref publishes only when its column does (data_product + technical filters); a rooted
-    term whose refs are all withheld is withheld with them, exactly as model tags are. An
-    abstract term publishes unconditionally — it is user vocabulary, not physical binding.
-    A term the admin marked export_excluded is withheld outright regardless of refs.
-    Edges publish when both endpoints do.
+    A ref publishes only when its column does (data_product + technical filters), so the
+    rootedness this rule is judged on is narrower than the repository's: a term whose refs
+    are all withheld is not rooted here even though it holds refs in the control plane.
+
+    On top of that, only live terms publish — ``live_term_ids``: in service, defined, and
+    connected to a rooted term. A downstream catalog binds assets to whatever it receives, so
+    an undefined proposal or an abstract term wired to nothing physical must never leave here.
+    ``export_excluded`` withholds a term on top of that. Edges publish when both endpoints do.
     """
     by_identity = {(t.source_id, t.schema_name, t.table_name): t for t in exported}
     refs_by_term: dict[int, list] = {}
@@ -448,13 +450,16 @@ def _glossary_assets(
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
+    live = live_term_ids(
+        glossary.get("terms", []),
+        [(e["from_term_id"], e["to_term_id"]) for e in glossary.get("edges", [])],
+        set(refs_by_term),
+    )
     terms = []
     for term in glossary.get("terms", []):
-        if term.get("export_excluded"):
+        if term["id"] not in live or term.get("export_excluded"):
             continue
         refs = refs_by_term.get(term["id"], [])
-        if not refs and not term["is_abstract"]:
-            continue
         terms.append(
             GlossaryTermAsset(
                 term_id=term["id"],

@@ -18,7 +18,7 @@
     "delete": "删除",
     "deleteConfirm": "删除术语 {{name}}?",
     "deleted": "术语 {{name}} 已删除。",
-    "deleteDisabledHint": "带有引用的术语无法删除。",
+    "deleteDisabledHint": "此术语由其列派生而来。停用它以退出使用，或将其引用移动到其他术语以删除它。",
     "cancel": "取消",
     "create": "创建",
     "created": "术语 {{name}} 已创建。",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "已生成 {{count}} 个定义。",
     "definitionsGenerated_other": "已生成 {{count}} 个定义。",
     "relationshipsGenerated": "已添加 {{count}} 个关系。",
-    "relationshipsGenerated_other": "已添加 {{count}} 个关系。"
+    "relationshipsGenerated_other": "已添加 {{count}} 个关系。",
+    "retire": "停用",
+    "unretire": "恢复",
+    "retired": "已停用",
+    "retireHint": "停用此术语：它仍与列绑定，但代理术语搜索和元数据导出都会跳过它。",
+    "unretireHint": "重新启用此术语。",
+    "retireDone": "术语已停用。",
+    "unretireDone": "术语已恢复。",
+    "proposed": "待定",
+    "proposedUndefined": "待定：该术语派生自列名和表名。为它添加定义后，智能体和目录才会使用它。",
+    "proposedUngrounded": "待定：该术语没有连接到任何物理列。请将它关联到拥有物理列的术语，使其指向真实数据。"
   }
 }

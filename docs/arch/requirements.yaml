@@ -42639,7 +42639,31 @@ And a later observation in the same hour replaces it rather than adding to it
     the vendor''s own id is captured into catalog_bindings at publish, keyed by the term''s URN (provisa://<org>/terms/<name>),
     and that binding is the ownership test. A glossary item with no Provisa binding originated in the
     external system (steward- or vendor-created) and is NEVER modified, re-parented, or deleted, whatever
-    its name; steward term-to-asset assignments remain HUMAN-OWNED per REQ-1389 and are never written.'
+    its name; steward term-to-asset assignments remain HUMAN-OWNED per REQ-1389 and are never written.
+    ADMISSION RULE (settled): what any consuming surface may offer is ONE predicate, core.glossary.live_term_ids,
+    shared by the repository and the exporter. A term is LIVE only when it is (1) IN SERVICE — neither
+    retired (a curator withdrew it) nor deprecated (the derivation lost its last column); (2) DEFINED
+    — a term derived from a column name is a token, not a meaning, so an undefined term is a PROPOSAL
+    awaiting a curator, never vocabulary an agent may ground a question on; and (3) GROUNDED — connected,
+    over in-service terms, to a term holding a physical ref. The glossary is an entry point INTO the data,
+    so every term chain must terminate at a physical column: an abstract term wired to nothing physical
+    names no data and is not offered. Groundedness is a property of the term graph, not of any one row,
+    so it is computed server-side and rides the admin payload as a `live` flag rather than being re-derived
+    in the UI. Connectivity is STRUCTURAL and ignores definitions — an undefined rooted term still CONDUCTS
+    grounding to its neighbours, it is merely not offered itself — but out-of-service terms do not conduct,
+    so retiring a term also withdraws whatever reached data only through it. The rule cannot be enforced
+    at creation (a term must exist before an edge can attach to it), so it is enforced at CONSUMPTION:
+    MCP term search, metadata export, and the admin surface all apply it. Rootedness is the caller''s:
+    the repository counts every ref, the exporter counts only refs whose column actually publishes. CURATION-PRESERVING
+    SETTLE: a term losing its last physical ref is deprecated rather than deleted whenever it carries
+    curator work — a definition, a relationship, a named expert, or a retirement — because a derived term
+    is born blank, so any of those can only have come from a person and deleting the row would discard
+    it silently. Deprecation (system-set) is auto-cleared by _find_or_create_term when a matching column
+    reappears; retirement (curator-set) never auto-clears. Blank refless terms are still hard-deleted.
+    COLUMN-REMOVAL WARNING (REQ-1484 surface): the pre-save dependents check reports each bound term with
+    the outcome already decided by the settle rule — kept (has another column), kept but taken out of
+    service (curated), or deleted with the column (derived and blank) — so an administrator reads the
+    consequence rather than inferring it.'
   use_case: Bottom-up bootstrap means the glossary is never empty — every column name seeds the vocabulary,
     avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical
     field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL
@@ -42680,6 +42704,7 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa/core/schema.sql
   - provisa/core/schema_org.py
   - provisa/api/admin/glossary_router.py
+  - provisa/api/admin/column_dependents.py
   - provisa/api/mcp/tools.py
   - provisa/api/metadata_export/builder.py
   - provisa/api/metadata_export/model.py
@@ -42701,6 +42726,7 @@ And a later observation in the same hour replaces it rather than adding to it
   - tests/unit/test_metadata_export_glossary_datahub.py
   - tests/unit/test_metadata_export_glossary_openmetadata.py
   - tests/unit/test_metadata_export_glossary_collibra.py
+  - tests/unit/test_column_dependents.py
   - tests/integration/test_glossary_lifecycle.py
   - tests/steps/steps_business_glossary_ontology.py
   - provisa-ui/src/__tests__/GlossaryTab.test.tsx

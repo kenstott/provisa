@@ -18,7 +18,7 @@
     "delete": "Löschen",
     "deleteConfirm": "Begriff {{name}} löschen?",
     "deleted": "Begriff {{name}} gelöscht.",
-    "deleteDisabledHint": "Ein Begriff mit Referenzen kann nicht gelöscht werden.",
+    "deleteDisabledHint": "Dieser Begriff wird aus seinen Spalten abgeleitet. Stellen Sie ihn außer Dienst, oder verschieben Sie seine Referenzen zu einem anderen Begriff, um ihn zu löschen.",
     "cancel": "Abbrechen",
     "create": "Erstellen",
     "created": "Begriff {{name}} erstellt.",
@@ -72,6 +72,16 @@
     "definitionsGenerated": "{{count}} Definition generiert.",
     "definitionsGenerated_other": "{{count}} Definitionen generiert.",
     "relationshipsGenerated": "{{count}} Beziehung hinzugefügt.",
-    "relationshipsGenerated_other": "{{count}} Beziehungen hinzugefügt."
+    "relationshipsGenerated_other": "{{count}} Beziehungen hinzugefügt.",
+    "retire": "Außer Dienst stellen",
+    "unretire": "Wiederherstellen",
+    "retired": "Außer Dienst",
+    "retireHint": "Diesen Begriff außer Dienst stellen: Er behält seine Spalten, wird aber von der Agenten-Begriffssuche und vom Metadaten-Export übersprungen.",
+    "unretireHint": "Diesen Begriff wieder in Dienst stellen.",
+    "retireDone": "Begriff außer Dienst gestellt.",
+    "unretireDone": "Begriff wiederhergestellt.",
+    "proposed": "Vorgeschlagen",
+    "proposedUndefined": "Vorgeschlagen: Dieser Begriff wurde aus den Spalten- und Tabellennamen abgeleitet. Geben Sie ihm eine Definition, damit Agenten und Kataloge ihn verwenden.",
+    "proposedUngrounded": "Vorgeschlagen: Dieser Begriff erreicht keine physische Spalte. Verknüpfen Sie ihn mit einem Begriff, der eine hat, damit er echte Daten benennt."
   }
 }
