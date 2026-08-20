@@ -43,9 +43,9 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Sources</span></p>
-        <h1>Fifty-two sources, and one of them is a secret weapon.</h1>
+        <h1>Fifty-three sources, and one of them is a secret weapon.</h1>
         <p class="lead">
-          Fifty-one of them connect to a system you already know you have. The fifty-second
+          Fifty-two of them connect to a system you already know you have. The fifty-third
           is a crawler, and it tends to find the half of your estate nobody put on the
           inventory.
         </p>
@@ -63,10 +63,24 @@
         </p>
         <p>
           Which is a wider net than it sounds. Not just CSV and Parquet —
-          <strong>Excel workbooks</strong>, and even <strong>Word, PowerPoint, HTML, and
-          Markdown documents</strong> converted to tables. Over local disk,
-          <code>s3://</code>, <code>ftp://</code>, <code>sftp://</code>, or SharePoint.
+          <strong>Excel workbooks</strong>, and even <strong>Word, PowerPoint, HTML, XML,
+          and Markdown documents</strong>, each converted to tables on the way in.
         </p>
+
+        <div class="src-all">
+          <div class="src-group">
+            <h4>Where it crawls</h4>
+            <ul class="chips"><li>Local &amp; network folders</li><li>S3</li><li>SharePoint</li><li>HDFS</li><li>HTTP(S)</li><li>FTP · FTPS</li><li>SFTP</li><li>Iceberg</li></ul>
+          </div>
+          <div class="src-group">
+            <h4>What it reads directly</h4>
+            <ul class="chips"><li>CSV</li><li>TSV</li><li><code>.gz</code> of either</li><li>JSON</li><li>Parquet</li><li>Arrow</li><li>YAML</li><li>SQLite · <code>.db</code></li></ul>
+          </div>
+          <div class="src-group">
+            <h4>What it converts to tables</h4>
+            <ul class="chips"><li>Excel · <code>.xlsx</code> · <code>.xls</code></li><li>Word · <code>.docx</code></li><li>PowerPoint · <code>.pptx</code></li><li>HTML</li><li>XML</li><li>Markdown</li></ul>
+          </div>
+        </div>
         <p>
           The reason it earns the description: the data that runs a department is very
           often sitting in a share drive, and it has never been anywhere near a governance
@@ -101,7 +115,7 @@
         <h2>Graph and RDF are first-class</h2>
         <p>
           Neo4j and SPARQL sources are not adapters bolted onto a relational core. They
-          participate in the same federated schema, the same relationship registry, and the
+          participate in the same federated model, the same relationship registry, and the
           same governance layers — which is what makes a Cypher traversal across a
           relational source and a graph source a single legal query rather than two
           queries and a join in application code.
@@ -178,7 +192,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1 — free to evaluate with no time limit, and free in production for organizations under 100 people and under $1M revenue; larger organizations need a commercial license for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/interfaces">Interfaces</a>
         <a href="/why/governance">Governance</a>

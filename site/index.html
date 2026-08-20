@@ -61,10 +61,34 @@
           <a class="btn btn-primary" href="#download">Download</a>
           <a class="btn btn-ghost" href="/docs">Read the docs</a>
         </div>
+        <p class="hero-try">
+          <span class="hero-try-lead">Nothing to connect yet?</span>
+          <a class="hero-try-cta" href="#download">Download and take the demo tour</a>
+          <span class="hero-try-tail">— a sample federation is bundled, so there is nothing to connect first.</span>
+        </p>
 
-        <div class="hero-terminal" role="img" aria-label="Example: connect over the Postgres wire protocol and query federated data">
-          <div class="term-bar"><span></span><span></span><span></span></div>
-          <pre><code><span class="c-comment"># psql speaks to Provisa as if it were Postgres — on port 5439</span>
+        <div class="proto">
+          <div class="hero-terminal">
+            <div class="proto-bar">
+              <div class="term-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="proto-tabs" role="tablist" aria-label="Query language and wire protocol">
+                <button class="proto-tab is-active" role="tab" id="tab-sql" aria-controls="panel-sql" aria-selected="true" tabindex="0">
+                  <span class="proto-lang">SQL</span><span class="proto-wire">pgwire</span>
+                </button>
+                <button class="proto-tab" role="tab" id="tab-graphql" aria-controls="panel-graphql" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">GraphQL</span><span class="proto-wire">HTTP</span>
+                </button>
+                <button class="proto-tab" role="tab" id="tab-cypher" aria-controls="panel-cypher" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">Cypher</span><span class="proto-wire">Bolt</span>
+                </button>
+                <button class="proto-tab" role="tab" id="tab-rest" aria-controls="panel-rest" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">REST</span><span class="proto-wire">OpenAPI</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-sql" aria-labelledby="tab-sql">
+              <pre><code><span class="c-comment"># psql speaks to Provisa as if it were Postgres — on port 5439</span>
 <span class="c-cmd">psql</span> <span class="c-flag">-h</span> localhost <span class="c-flag">-p</span> 5439 <span class="c-flag">-U</span> analyst
 
 <span class="c-comment"># One SQL query, joined across Postgres, Mongo, and Elasticsearch</span>
@@ -72,15 +96,116 @@
 <span class="c-kw">FROM</span> customers c
 <span class="c-kw">JOIN</span> orders o   <span class="c-kw">ON</span> o.customer_id = c.id
 <span class="c-kw">JOIN</span> queries t  <span class="c-kw">ON</span> t.actor = c.email
-<span class="c-kw">WHERE</span> o.total &gt; 1000;
-<span class="c-comment"># RLS, masking, and approval already applied. Nothing to remember.</span></code></pre>
+<span class="c-kw">WHERE</span> o.total &gt; 1000;</code></pre>
+            </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-graphql" aria-labelledby="tab-graphql" hidden>
+              <pre><code><span class="c-comment"># The per-role schema, over plain HTTP</span>
+<span class="c-cmd">POST</span> https://provisa.internal<span class="c-flag">/graphql</span>
+
+<span class="c-comment"># The same question — relationships are fields, not joins</span>
+<span class="c-kw">query</span> BigOrders {
+  orders(where: { total: { gt: <span class="c-str">1000</span> } }) {
+    total
+    customers { name email }
+    queries   { trace_id }
+  }
+}</code></pre>
+            </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-cypher" aria-labelledby="tab-cypher" hidden>
+              <pre><code><span class="c-comment"># Neo4j Browser and the official drivers, over Bolt</span>
+<span class="c-cmd">bolt</span>://localhost:7687   <span class="c-comment"># database: provisa_analyst</span>
+
+<span class="c-comment"># The same question — sources are labels, relationships are edges</span>
+<span class="c-kw">MATCH</span> (c:Customer)-[:PLACED]-&gt;(o:Order)
+<span class="c-kw">MATCH</span> (c)-[:RAN]-&gt;(t:Query)
+<span class="c-kw">WHERE</span> o.total &gt; <span class="c-str">1000</span>
+<span class="c-kw">RETURN</span> c.name, o.total, t.trace_id</code></pre>
+            </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-rest" aria-labelledby="tab-rest" hidden>
+              <pre><code><span class="c-comment"># No new language. The endpoints are generated from the model.</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-G</span> https://provisa.internal<span class="c-flag">/data/jsonapi/orders</span> \
+  <span class="c-flag">-H</span> <span class="c-str">"Authorization: Bearer $TOKEN"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'filter[total][gt]=1000'</span> <span class="c-flag">-d</span> <span class="c-str">'include=customers'</span>
+
+<span class="c-comment"># The same question — JSON back, related rows sideloaded</span>
+{ <span class="c-str">"data"</span>: [ { <span class="c-str">"type"</span>: <span class="c-str">"orders"</span>, <span class="c-str">"attributes"</span>: { <span class="c-str">"total"</span>: 1420 } } ],
+  <span class="c-str">"included"</span>: [ { <span class="c-str">"type"</span>: <span class="c-str">"customers"</span>, <span class="c-str">"attributes"</span>: { <span class="c-str">"name"</span>: <span class="c-str">"Acme"</span> } } ] }
+
+<span class="c-comment"># The spec is generated too — point a client generator at it</span>
+<span class="c-cmd">curl</span> https://provisa.internal<span class="c-flag">/data/jsonapi/openapi.json</span></code></pre>
+            </div>
+          </div>
+
+          <p class="proto-note">
+            One model, three languages — and if you want none of them, generated REST.
+            <strong>RLS, masking, and approval are already applied</strong> on whichever
+            tab you pick — nothing to remember, and nothing to re-implement per protocol.
+          </p>
         </div>
 
-        <ul class="stats" aria-label="Provisa at a glance">
-          <li><span class="stat-n">53</span><span class="stat-l">source types, one schema</span></li>
-          <li><span class="stat-n">6</span><span class="stat-l">governance layers, every path</span></li>
-          <li><span class="stat-n">32</span><span class="stat-l">federation engines, declared and swappable</span></li>
-        </ul>
+      </div>
+    </section>
+
+    <!-- Jobs: the hero's promise, sized to one project -->
+    <section class="jobs container" aria-label="Start with one job">
+      <p class="jobs-kicker">Most people start with one of these.</p>
+      <div class="jobs-grid">
+        <a class="job" href="/why/governance">
+          <p class="job-tag">Give an agent your data</p>
+          <h3>An AI agent needs one database, safely.</h3>
+          <p>
+            Point Claude or any MCP client at Provisa instead of the database. The OAuth
+            token maps to a role, so the agent gets the same six governance layers a
+            person does — and no bypass to forget about.
+          </p>
+          <span class="job-more">MCP, and the eight other protocols &rarr;</span>
+        </a>
+        <a class="job" href="/why/interfaces">
+          <p class="job-tag">A backend for your frontend</p>
+          <h3>One API over sources that don't match.</h3>
+          <p>
+            The app needs Postgres, a document store, and two internal REST services in
+            the same response. Declare the relationships once and the API spans all of
+            them — per-role, filtered, paginated — in whichever shape your client wants:
+            GraphQL/OpenAPI, JSON:API, or gRPC. No BFF service to maintain.
+          </p>
+          <span class="job-more">The interfaces, and the Hasura path in &rarr;</span>
+        </a>
+        <a class="job" href="/why/sources">
+          <p class="job-tag">BI without a warehouse</p>
+          <h3>Tableau over the sources you actually have.</h3>
+          <p>
+            Postgres, Mongo, Elasticsearch, a Google Sheet, an S3 prefix of extracts.
+            Connect the BI tool over JDBC or pgwire and join across all of them — no
+            pipeline, no copy, no warehouse in the middle.
+          </p>
+          <span class="job-more">All 53 source types &rarr;</span>
+        </a>
+        <a class="job" href="/why/interfaces">
+          <p class="job-tag">Data science, connected</p>
+          <h3>Every dataset the team needs, in Arrow.</h3>
+          <p>
+            Register the sources once and the whole team queries them from pandas,
+            Polars, or DuckDB. Arrow Flight streams record batches columnar all the way
+            out — no row-by-row serialization, nothing materialized server-side while
+            you read — and single-source queries route straight to the driver.
+          </p>
+          <span class="job-more">Flight, Airport, and pgwire &rarr;</span>
+        </a>
+        <a class="job" href="/why/governance">
+          <p class="job-tag">Provision data to other teams</p>
+          <h3>Hand over a result set, not a pipeline.</h3>
+          <p>
+            The consuming team writes SQL and gets it back fast: Arrow streams over
+            Flight, typed gRPC, and — past a row threshold — a presigned S3 URL for
+            multi-GB deliveries instead of a timed-out HTTP response. Kafka carries the
+            change notifications, so they pull the delta rather than the snapshot.
+          </p>
+          <span class="job-more">How the governance follows the data &rarr;</span>
+        </a>
       </div>
     </section>
 
@@ -106,11 +231,12 @@
     <!-- Value pillars -->
     <section class="pillars container" aria-label="Why Provisa">
       <article class="pillar">
-        <h3>Three languages, one schema</h3>
+        <h3>Three languages, one model</h3>
         <p>
-          GraphQL, Cypher, and SQL all query the same federated schema and retarget to
-          any source dialect. Governance applies identically across all three —
-          <em>not three integrations, but one</em>.
+          GraphQL, Cypher, and SQL all query the same federated model and retarget to
+          any source dialect. Domains carve it into namespaces — a domain is the schema
+          a SQL client sees — and governance applies identically across all three
+          languages: <em>not three integrations, but one</em>.
         </p>
       </article>
       <article class="pillar">
@@ -149,7 +275,7 @@
         <div class="langs">
           <div class="lang"><h4>GraphQL</h4><p>Per-role schemas with field-level visibility, constrained to registered relationships — valid by construction.</p></div>
           <div class="lang"><h4>SQL</h4><p>Full SQL over federated data. Single-source queries bypass federation entirely for sub-100ms latency.</p></div>
-          <div class="lang"><h4>Cypher</h4><p>Graph traversals over the same federated schema, under identical governance.</p></div>
+          <div class="lang"><h4>Cypher</h4><p>Graph traversals over the same federated model, under identical governance.</p></div>
         </div>
 
         <div class="iface-matrix">
@@ -217,19 +343,40 @@
           <p class="eyebrow">Active, query-time governance</p>
           <h2>Six layers. Every language. Every transport.</h2>
           <p class="section-sub">
-            Governance is applied uniformly — there is no query path that bypasses it.
-            Add a source, column, or relationship and every layer applies automatically.
+            You do not configure any of this to get started — one source and a role is
+            enough. It matters later, when the project you started alone has to survive
+            an auditor: governance is applied uniformly, there is no query path that
+            bypasses it, and adding a source, column, or relationship applies every layer
+            automatically.
           </p>
         </header>
 
-        <ol class="layers">
-          <li><span class="layer-n">0</span><div><h4>Introspection filtering</h4><p>Schema browsers only ever see what the role is allowed to see.</p></div></li>
-          <li><span class="layer-n">1</span><div><h4>Public access</h4><p>Anonymous surface is explicit, never accidental.</p></div></li>
-          <li><span class="layer-n">2</span><div><h4>Domain access</h4><p>Roles reach only the domains registered to them.</p></div></li>
-          <li><span class="layer-n">3</span><div><h4>Row-level security</h4><p>Per-table, per-role <code>WHERE</code> injection — inherited recursively.</p></div></li>
-          <li><span class="layer-n">4</span><div><h4>Column visibility &amp; masking</h4><p>Regex, constant, or truncate masking with role-based bypass.</p></div></li>
-          <li><span class="layer-n">5</span><div><h4>Predicate guard &amp; approval</h4><p>Pre-execution ABAC hook over webhook, gRPC, or unix socket.</p></div></li>
-        </ol>
+        <div class="gov-flow">
+          <div class="gov-edge gov-edge-in">
+            <span class="gov-edge-label">Query in</span>
+            <span class="gov-edge-body">GraphQL · SQL · Cypher, over any of the nine protocols</span>
+          </div>
+
+          <ol class="layers">
+            <li><span class="layer-n">0</span><div><h4>Introspection filtering</h4><p>Schema browsers only ever see what the role is allowed to see.</p></div></li>
+            <li><span class="layer-n">1</span><div><h4>Public access</h4><p>Anonymous surface is explicit, never accidental.</p></div></li>
+            <li><span class="layer-n">2</span><div><h4>Domain access</h4><p>Roles reach only the domains registered to them.</p></div></li>
+            <li><span class="layer-n">3</span><div><h4>Row-level security</h4><p>Per-table, per-role <code>WHERE</code> injection — inherited recursively.</p></div></li>
+            <li><span class="layer-n">4</span><div><h4>Column visibility &amp; masking</h4><p>Regex, constant, or truncate masking with role-based bypass.</p></div></li>
+            <li><span class="layer-n">5</span><div><h4>Predicate guard &amp; approval</h4><p>Pre-execution ABAC hook over webhook, gRPC, or unix socket.</p></div></li>
+          </ol>
+
+          <div class="gov-edge gov-edge-out">
+            <span class="gov-edge-label">Plan out</span>
+            <span class="gov-edge-body">One compiled plan, policy already inside it — plus the audit row</span>
+          </div>
+        </div>
+
+        <p class="gov-claim">
+          All six are applied while the query is <em>compiled</em>, not checked against a
+          policy list afterwards. What executes is already the governed query — so there is
+          no version of it that could have run ungoverned.
+        </p>
 
         <p class="section-note">
           <strong>Relationships are governed too.</strong> A JOIN or a graph traversal is
@@ -265,32 +412,71 @@
 
         <a class="more" href="/why/sources#the-53">See all 53 source types</a>
 
-        <div class="lake">
-          <div class="lake-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5" /><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6" />
-            </svg>
+        <div class="spot">
+          <div class="spot-head">
+            <div class="spot-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5" /><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6" />
+              </svg>
+            </div>
+            <div>
+              <p class="eyebrow">Auto-indexing file crawler</p>
+              <h3>Point it at a location. Get a catalog of the data hiding in it.</h3>
+              <p class="spot-lead">
+                One of the 53 behaves unlike the other fifty-two: you register a
+                <em>location</em>, not a table. It walks the tree recursively, introspects
+                every data file it finds, and catalogs each one as an available table —
+                the shared drive nobody has mapped, the S3 prefix of extracts, the
+                SharePoint site a department has been running on for years.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3>One of the 53 is a quiet secret weapon</h3>
-            <p>
-              The file crawler is a single source type, and it behaves unlike the other
-              fifty-two. You register a <em>location</em> rather than a table: point it at a
-              folder, a bucket, an SFTP host, or a SharePoint site and it walks the tree,
-              finds every database file and every file with tabular data inside it, and
-              catalogs what it found. You pick which of those to register.
-            </p>
-            <a class="more" href="/why/sources">What it crawls, and what else registers</a>
+
+          <ol class="spot-steps">
+            <li>
+              <span class="spot-step-n">1</span>
+              <h4>Point</h4>
+              <p>A local or network folder, an S3 bucket, a SharePoint site, an HDFS path, or an HTTP, FTP, or SFTP host — one location, not one table.</p>
+            </li>
+            <li>
+              <span class="spot-step-n">2</span>
+              <h4>Crawl</h4>
+              <p>It walks the tree to whatever depth you allow, converts documents that hold tables into data, and reads the schema out of each one.</p>
+            </li>
+            <li>
+              <span class="spot-step-n">3</span>
+              <h4>Register</h4>
+              <p>You pick which of the discovered tables to register — and they land under the same six governance layers as everything else.</p>
+            </li>
+          </ol>
+
+          <div class="spot-rows">
+            <div class="spot-row">
+              <span class="spot-row-label">Crawls</span>
+              <ul class="chips" aria-label="Locations it crawls">
+                <li>Local &amp; network folders</li><li>S3</li><li>SharePoint</li>
+                <li>HDFS</li><li>HTTP(S)</li><li>FTP · FTPS · SFTP</li>
+              </ul>
+            </div>
+            <div class="spot-row">
+              <span class="spot-row-label">Reads</span>
+              <ul class="chips" aria-label="Formats it reads">
+                <li>CSV · TSV</li><li>JSON</li><li>Parquet</li><li>Arrow</li><li>YAML</li>
+                <li>Excel</li><li>Word</li><li>PowerPoint</li><li>HTML</li><li>XML</li><li>Markdown</li>
+              </ul>
+            </div>
           </div>
+
+          <a class="more" href="/why/sources">What it crawls, and what else registers</a>
         </div>
 
         <figure class="shot">
           <div class="shot-frame">
             <div class="term-bar"><span></span><span></span><span></span></div>
             <img src="assets/graph-view.png" width="1440" height="900" loading="lazy"
-                 alt="The federated schema explored as a live graph: domain and node labels, relationship types, and variable-length traversals across sources." />
+                 alt="The federated model explored as a live graph: domain and node labels, relationship types, and variable-length traversals across sources." />
           </div>
-          <figcaption>The same federated schema, explorable as a live graph — domains, node labels, and relationships across every source.</figcaption>
+          <figcaption>The same federated model, explorable as a live graph — domains, node labels, and relationships across every source.</figcaption>
         </figure>
       </div>
     </section>
@@ -396,11 +582,23 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Get Provisa</p>
-          <h2>Download and run in a minute.</h2>
+          <h2>Download and run in 5 minutes.</h2>
           <p class="section-sub">
             Signed desktop installers for every OS, or <code>pip install</code> the
-            embedded runtime. The native tier boots immediately — no Docker, no JVM.
+            embedded runtime. The whole working system runs on your desktop in about five
+            minutes — no Docker, no JVM, no cluster. Launch it and pick the guided demo:
+            a sample federation is already bundled, so you can run SQL, GraphQL, and
+            Cypher over it before you connect anything of your own.
             Preview builds; <a href="#signup">join the list</a> for the general-availability release.
+            A hosted SaaS tier is coming — the same runtime, run for you.
+          </p>
+          <p class="section-sub dl-license">
+            Business Source License 1.1. Non-production use is free for everyone, with
+            no time limit — evaluate it for as long as you like. Production use is also
+            free for organizations under 100 people and under $1M revenue in the prior
+            tax year; larger organizations need a commercial license to run it in
+            production — <a href="mailto:kennethstott@gmail.com">get in touch</a>. Each
+            release converts to GPL v2-or-later four years after it ships.
           </p>
         </header>
 
@@ -606,7 +804,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">The Active Semantic Layer. Business Source License 1.1.</p>
+      <p class="footer-note">The Active Semantic Layer. Business Source License 1.1 — free to evaluate with no time limit, and free in production for organizations under 100 people and under $1M revenue; larger organizations need a commercial license for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/active-semantic-layer">Active Semantic Layer</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -629,6 +827,32 @@
     const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
+
+    // Hero protocol switcher — tabs follow the WAI-ARIA tabs pattern.
+    (function () {
+      const tabs = Array.from(document.querySelectorAll('.proto-tab'));
+      if (!tabs.length) return;
+      const select = (tab) => {
+        tabs.forEach((t) => {
+          const on = t === tab;
+          t.classList.toggle('is-active', on);
+          t.setAttribute('aria-selected', String(on));
+          t.tabIndex = on ? 0 : -1;
+          document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+        });
+      };
+      tabs.forEach((tab, i) => {
+        tab.addEventListener('click', () => select(tab));
+        tab.addEventListener('keydown', (e) => {
+          const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+          if (!step) return;
+          e.preventDefault();
+          const next = tabs[(i + step + tabs.length) % tabs.length];
+          select(next);
+          next.focus();
+        });
+      });
+    })();
 
     // Highlight the visitor's OS.
     (function () {

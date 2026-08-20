@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Query interfaces &amp; wire protocols — Provisa</title>
-  <meta name="description" content="Three query languages and nine wire protocols over one federated schema: GraphQL, SQL, Cypher over pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, and MCP." />
+  <meta name="description" content="Three query languages and nine wire protocols over one federated model: GraphQL, SQL, Cypher over pgwire, Bolt, Arrow Flight, gRPC, JDBC, REST, WebSocket, Airport, and MCP." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -43,11 +43,17 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Interfaces</span></p>
-        <h1>Three languages. Nine protocols. One schema.</h1>
+        <h1>Three languages. Nine protocols. One model.</h1>
         <p class="lead">
           The query language and the wire protocol are independent choices. Every entry
-          point resolves against the same federated schema and passes through the same
+          point resolves against the same federated model and passes through the same
           governance — there is no path in that skips it.
+        </p>
+        <p class="lead">
+          One model does not mean one namespace. You divide sources into
+          <strong>domains</strong>, and a domain is what a SQL client sees as a schema —
+          so <code>sales.orders</code> and <code>finance.orders</code> stay distinct
+          while resolving through the same governed model.
         </p>
       </div>
 
@@ -71,7 +77,7 @@
 
         <h3>Cypher</h3>
         <p>
-          Graph queries over the same federated schema. Traverse relationships as edges,
+          Graph queries over the same federated model. Traverse relationships as edges,
           union sources into a single node label, and walk variable-length paths — under
           identical governance to the SQL and GraphQL paths.
         </p>
@@ -108,18 +114,22 @@
           changing the model, not a separate build step.
         </p>
 
-        <h3>JDBC and REST</h3>
+        <h3>JDBC, REST, and JSON:API</h3>
         <p>
-          BI tools — Tableau, Power BI, DBeaver — connect over JDBC. Applications get
-          JSON:API 1.1 at <code>/data/jsonapi/{table}</code>, with sparse fieldsets and
-          filter expressions.
+          BI tools — Tableau, Power BI, DBeaver — connect over JDBC. Applications get two
+          HTTP shapes over the same model: plain REST at
+          <code>/data/rest/{table}</code>, with filter, ordering, pagination, and field
+          selection as query parameters, and JSON:API 1.1 at
+          <code>/data/jsonapi/{table}</code> with sparse fieldsets and filter
+          expressions. Both are described by a generated OpenAPI 3.1 document, so a
+          client generator produces a typed SDK without anyone hand-writing a spec.
         </p>
 
         <h3>Airport (DuckDB)</h3>
         <p>
           Any DuckDB client attaches Provisa as a database —
           <code>ATTACH 'grpc://host' AS p (TYPE AIRPORT)</code> — and queries the governed
-          federated schema from local DuckDB. Filters and projections push down; writes
+          federated model from local DuckDB. Filters and projections push down; writes
           update by primary key.
         </p>
 
@@ -168,7 +178,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1.</p>
+      <p class="footer-note">Config-driven data virtualization. Business Source License 1.1 — free to evaluate with no time limit, and free in production for organizations under 100 people and under $1M revenue; larger organizations need a commercial license for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/interfaces">Interfaces</a>
         <a href="/why/governance">Governance</a>
