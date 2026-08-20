@@ -47572,6 +47572,10 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa_commercial/models.py
   - provisa_commercial/org_db.py
   - provisa-ui/src/components/admin/BillingTab.tsx
+  tests:
+  - .claude/commercial/tests/test_plan_change.py
+  - .claude/commercial/tests/test_plan_lane.py
+  - provisa-ui/src/__tests__/BillingTab.test.tsx
   scenario: 'Given an organization on the Starter plan with an active Lemon Squeezy subscription
 
     When an administrator with billing access changes the plan to Pro M
@@ -47672,6 +47676,9 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa/federation/engine.py
   - provisa_commercial/entitlements.py
   - provisa_commercial/org_engine_router.py
+  tests:
+  - tests/unit/test_engine_wake.py
+  - .claude/commercial/tests/test_plan_lane.py
   scenario: 'Given a hosted deployment whose federation engines are provisioned in a cluster
 
     When an organization''s plan becomes Pro M
@@ -47754,6 +47761,8 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa-ui/src/components/admin/BillingTab.tsx
   - provisa-ui/src/api/billing.ts
   - provisa_commercial/router.py
+  tests:
+  - provisa-ui/src/__tests__/BillingTab.test.tsx
   scenario: 'Given an organization on the Starter plan
 
     When its administrator opens the Billing page
@@ -47828,6 +47837,10 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa-ui/src/components/admin/FederationEngineTab.tsx
   - provisa-ui/src/components/navGroups.ts
   - provisa_commercial/org_engine_router.py
+  tests:
+  - provisa-ui/src/__tests__/OrgEngineTab.test.tsx
+  - provisa-ui/src/__tests__/navEntryItem.test.ts
+  - .claude/commercial/tests/test_plan_lane.py
   scenario: 'Given a hosted deployment
 
     When an organization administrator opens the org engine surface
