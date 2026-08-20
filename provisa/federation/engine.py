@@ -1377,9 +1377,18 @@ def isolated_engine_available() -> bool:  # REQ-1043/REQ-1412
     than routing to the shared engine, so both callers that OFFER the isolated lane — org creation
     and the commercial engine-lane surface — test it here first and refuse 503 instead of creating
     an org whose every query dies at bind time.
+
+    A deployment that provisions its engines in a cluster resolves a dedicated coordinator the same
+    way it resolves a shared one — by waking the org's own shard and dialling the pod the cluster
+    reports ready — and needs no template at all. Refusing the lane there as "unavailable" while the
+    cluster is standing right there is the defect REQ-1510 closes.
     """
     import os
 
+    from provisa.federation import k8s_provisioner as k8s
+
+    if k8s.provisioning_available():
+        return True
     return bool(os.environ.get("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE"))
 
 
@@ -1390,8 +1399,19 @@ def isolated_engine_endpoint(org_id: str) -> tuple[str, int]:  # REQ-1043/REQ-10
     e.g. ``trino-{org_id}.internal``) and ``$PROVISA_ISOLATED_ENGINE_PORT``. An org that requested
     an isolated engine on a deployment with no template configured is a hard error — routing it to
     the shared coordinator would silently void the isolation the org was promised.
+
+    On a cluster deployment the address comes from the cluster instead, for the reason
+    :func:`configured_engine_endpoint` gives for the shared lane: the coordinator is a pod created on
+    wake and destroyed on idle, and the control plane sits outside the cluster, so there is no
+    stable name to template. The org's own shard (``k8s.isolated_shard``) is the one to ask about,
+    and the wake that precedes every dial is what recorded its address (REQ-1510).
     """
     import os
+
+    from provisa.federation import k8s_provisioner as k8s
+
+    if k8s.provisioning_available():
+        return k8s.shard_endpoint(k8s.isolated_shard(org_id))
 
     template = os.environ.get("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE")
     if not template:

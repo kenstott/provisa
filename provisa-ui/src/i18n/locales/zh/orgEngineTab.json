@@ -23,6 +23,19 @@
     "applyNote": "保存后会立即重建本组织的运行时。进行中的查询将在原引擎上完成。",
     "saveButton": "保存引擎",
     "saved": "引擎已更新。",
-    "currentSuffix": "（当前）"
+    "currentSuffix": "（当前）",
+    "hostedIntro": "本组织的查询引擎由其套餐决定。套餐决定由哪个引擎执行本组织的查询，以及引擎的规格。",
+    "hostedLane": "引擎",
+    "hostedLaneShared": "共享——由 Provisa 运维的共用引擎",
+    "hostedLaneIsolated": "专用——由 Provisa 仅为本组织运维的引擎",
+    "hostedLaneExternal": "由本组织自行运维的引擎",
+    "hostedPlan": "套餐：{{plan}}",
+    "hostedSize": "机型：{{machine}} — {{vcpu}} vCPU、{{memory}} GiB",
+    "hostedStateReady": "该引擎正在运行。",
+    "hostedStateStarting": "该引擎正在启动。",
+    "hostedStateStopped": "该引擎处于空闲状态，将在下一次查询时启动。",
+    "hostedStateAbsent": "该引擎尚未创建，将在下一次查询时启动。",
+    "hostedStateOther": "引擎状态：{{state}}",
+    "hostedChange": "如需更换引擎，请在账单页面更改套餐。"
   }
 }

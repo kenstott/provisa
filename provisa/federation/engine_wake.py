@@ -109,12 +109,17 @@ def note_activity(shard: str) -> None:
     _last_activity[shard] = time.monotonic()
 
 
-async def ensure_shard_awake(shard: str) -> bool:
+async def ensure_shard_awake(shard: str, *, lane: str = "shared", size: Any = None) -> bool:
     """Bring ``shard`` up if it is not already serving. Returns whether it was a COLD start.
 
     Cheap on the warm path: within the recheck window a query costs nothing at all, and outside it a
     single Deployment GET. The window exists because the alternative — a status call per query — puts
     a GKE API round trip on every statement the platform runs.
+
+    ``lane``/``size`` travel with EVERY wake, not only with the first provision (REQ-1510). An
+    isolated shard resumed at the shared shape would return the org's engine on hardware smaller
+    than the one it is invoiced for, and the queue policy the shared lane needs would cap a
+    dedicated engine the org has already paid for in full.
     """
     note_activity(shard)
 
@@ -152,8 +157,11 @@ async def ensure_shard_awake(shard: str) -> bool:
                 return False
             cold = True
 
-        log.info("waking engine shard %s", shard)
-        await k8s.ensure_shared_shard(shard)
+        log.info("waking %s engine shard %s", lane, shard)
+        if lane == "isolated":
+            await k8s.ensure_isolated_shard(shard, size)
+        else:
+            await k8s.ensure_shared_shard(shard)
         _generation[shard] = _generation.get(shard, 0) + 1
         _ready_seen[shard] = time.monotonic()
         note_activity(shard)
@@ -170,13 +178,28 @@ async def converge_boot_shard() -> str:
     what is running is a no-op apply plus the ready check the wake would have done anyway.
     """
     shard = boot_shard()
+    log.info("converging engine shard %s on boot", shard)
+    await converge_shard(shard)
+    return shard
+
+
+async def converge_shard(shard: str, *, lane: str = "shared", size: Any = None) -> None:
+    """Apply ``shard``'s manifests and wait for it to serve, warm or cold.
+
+    APPLY where :func:`ensure_shard_awake` probes. A shard that is already ready returns from the
+    wake without touching the cluster, which is right for a query and wrong for a change of shape:
+    a Pro org that moves between sizes needs the config revision and the rollout it causes, or its
+    engine keeps serving on the hardware it no longer pays for (REQ-1510). The generation bump is
+    what tells the query path that the coordinator holding the org's catalogs has been replaced.
+    """
     async with _lock_for(shard):
-        log.info("converging engine shard %s on boot", shard)
-        await k8s.ensure_shared_shard(shard)
+        if lane == "isolated":
+            await k8s.ensure_isolated_shard(shard, size)
+        else:
+            await k8s.ensure_shared_shard(shard)
         _generation[shard] = _generation.get(shard, 0) + 1
         _ready_seen[shard] = time.monotonic()
         note_activity(shard)
-    return shard
 
 
 async def restore_shared_terminal(state: Any, shard: str) -> None:
@@ -284,6 +307,39 @@ def prewarm_engine(state: Any, org_id: str | None) -> None:
     _prewarm_tasks[org_id] = asyncio.create_task(_run())
 
 
+async def isolated_wake_size(state: Any, org_id: str) -> Any:
+    """The size an isolated org's shard is woken at — its plan's, through the commercial seam.
+
+    None on a deployment that does not size engines by plan, which is what the provisioner reads as
+    "use the deployment-wide shape" (REQ-1449).
+    """
+    from provisa.core.commerce import engine_size_for_org
+
+    return await engine_size_for_org(state, org_id)
+
+
+async def _wake_isolated(state: Any, org_id: str, runtime: Any) -> None:
+    """REQ-1510: wake the shard that serves ``org_id`` ALONE, at the size its plan sells.
+
+    The dedicated lane is woken by the same machinery as the shared one — the org's coordinator is a
+    shard of its own — with two differences. The size travels with the wake, so a resumed engine
+    comes back on the hardware the org is invoiced for rather than the shared shape. And there is no
+    shared terminal to restore: an isolated org dispatches through its OWN terminal, so a cold start
+    is repaired by rebuilding this org's runtime, which reissues its catalogs on the new
+    coordinator.
+    """
+    shard = k8s.isolated_shard(org_id)
+    await ensure_shard_awake(shard, lane="isolated", size=await isolated_wake_size(state, org_id))
+    if runtime.engine_generation == generation(shard):
+        return
+
+    from provisa.api.app import ensure_org_runtime
+
+    state.org_registry.invalidate(org_id)
+    log.info("rebuilding org %s runtime: dedicated engine shard %s restarted", org_id, shard)
+    await ensure_org_runtime(org_id)
+
+
 async def ensure_engine_awake(state: Any) -> None:
     """The query path's wake: the active org's shard is serving, and its catalogs are on it.
 
@@ -325,6 +381,9 @@ async def ensure_engine_awake(state: Any) -> None:
     # operates, so there is nothing here to wake.
     if runtime.engine_endpoint is not None or runtime.engine_url is not None:
         return
+    if runtime.isolated_engine:
+        await _wake_isolated(state, org_id, runtime)
+        return
     shard = runtime.shard
     if not shard:
         raise RuntimeError(
@@ -365,6 +424,21 @@ async def _stop_shard(shard: str) -> None:
         # Whatever the outcome — stopped, cancelled by a wake, or failed — the shard is no longer
         # known to be serving, so the next query re-checks instead of trusting a stale sighting.
         _ready_seen.pop(shard, None)
+
+
+async def release_shard(shard: str) -> None:
+    """Take ``shard`` down and forget it — the org it served no longer has one (REQ-1510).
+
+    Distinct from the reaper's idle scale-down, which leaves the shard in the tables because a query
+    for it is expected again. A shard released because its org moved back to the shared lane is not
+    coming back, so the reaper is not left measuring the idleness of something nobody dispatches to.
+    The Deployment object is scaled to zero rather than deleted: on Autopilot the pod is the bill,
+    and keeping the object means a return to Pro is the same rollout as any other size change.
+    """
+    async with _lock_for(shard):
+        await k8s.scale_shard_to_zero(shard)
+        _ready_seen.pop(shard, None)
+        _last_activity.pop(shard, None)
 
 
 async def idle_reaper() -> None:

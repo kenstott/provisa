@@ -23,6 +23,19 @@
     "applyNote": "L'enregistrement reconstruit immédiatement l'environnement d'exécution de cette organisation. Les requêtes en cours se terminent sur le moteur précédent.",
     "saveButton": "Enregistrer le moteur",
     "saved": "Moteur mis à jour.",
-    "currentSuffix": " (actuel)"
+    "currentSuffix": " (actuel)",
+    "hostedIntro": "Le moteur de requêtes de cette organisation découle de son forfait. Le forfait détermine quel moteur exécute les requêtes de l'organisation et sa taille.",
+    "hostedLane": "Moteur",
+    "hostedLaneShared": "Partagé — le moteur mutualisé exploité par Provisa",
+    "hostedLaneIsolated": "Dédié — un moteur que Provisa exploite pour cette seule organisation",
+    "hostedLaneExternal": "Un moteur exploité par cette organisation",
+    "hostedPlan": "Forfait : {{plan}}",
+    "hostedSize": "Machine : {{machine}} — {{vcpu}} vCPU, {{memory}} Gio",
+    "hostedStateReady": "Ce moteur fonctionne.",
+    "hostedStateStarting": "Ce moteur démarre.",
+    "hostedStateStopped": "Ce moteur est en veille. Il démarre à la prochaine requête.",
+    "hostedStateAbsent": "Ce moteur n'a pas encore été créé. Il démarre à la prochaine requête.",
+    "hostedStateOther": "État du moteur : {{state}}",
+    "hostedChange": "Pour changer de moteur, changez de forfait sur la page Facturation."
   }
 }

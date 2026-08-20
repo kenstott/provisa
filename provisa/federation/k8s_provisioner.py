@@ -333,6 +333,18 @@ async def _k8s_apply(path: str, manifest: dict) -> dict:
 # ── Naming ──────────────────────────────────────────────────────────────────────
 
 
+def isolated_shard(org_id: str) -> str:  # REQ-1510
+    """The shard name of the coordinator that serves ``org_id`` alone.
+
+    A dedicated engine is a shard like any other — it is woken, dialled and idled by the same
+    machinery — so it is NAMED like one rather than reached through a hostname template the control
+    plane has to be told about separately (REQ-1510). The org's shared-lane placement (``orgs.shard``)
+    is a different string and is left alone, so a return to Starter lands back on the shard the org
+    already had (REQ-1450).
+    """
+    return f"org_{org_id}"
+
+
 def shard_workload_name(shard: str) -> str:
     """The Deployment/Service name for a shard.
 

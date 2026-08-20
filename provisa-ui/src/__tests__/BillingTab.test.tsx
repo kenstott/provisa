@@ -27,22 +27,95 @@ vi.mock("../api/billing", async () => {
     fetchPortalUrl: vi.fn(),
     openCheckout: vi.fn(),
     startEgressSubscription: vi.fn(),
+    fetchPlans: vi.fn(),
+    changePlan: vi.fn(),
   };
 });
 
 import {
   BillingError,
   cancelTrial,
+  changePlan,
   fetchBillingSummary,
+  fetchPlans,
   openCheckout,
   startEgressSubscription,
   startTrial,
 } from "../api/billing";
+import type { PlanOffers } from "../api/billing";
 const mockSummary = vi.mocked(fetchBillingSummary);
 const mockStart = vi.mocked(startTrial);
 const mockCancel = vi.mocked(cancelTrial);
 const mockOpen = vi.mocked(openCheckout);
 const mockEgress = vi.mocked(startEgressSubscription);
+const mockPlans = vi.mocked(fetchPlans);
+const mockChange = vi.mocked(changePlan);
+
+/** The four plan offers the server prices and orders (REQ-1509/REQ-1511). */
+function offers(overrides: Partial<PlanOffers> = {}): PlanOffers {
+  return {
+    org_id: "acme",
+    plan: "starter",
+    on_trial: false,
+    plans: [
+      {
+        plan: "starter",
+        fixed_cents: 2500,
+        fixed_kind: "minimum",
+        fixed_interval: "month",
+        source_limit: 10,
+        lane: "shared",
+        engine: null,
+      },
+      {
+        plan: "pro_s",
+        fixed_cents: 50000,
+        fixed_kind: "minimum",
+        fixed_interval: "month",
+        source_limit: 100,
+        lane: "isolated",
+        engine: {
+          label: "Pro S",
+          machine_type: "n2-highmem-4",
+          vcpu: 4,
+          memory_gib: 32,
+          query_max_memory_gb: 20,
+        },
+      },
+      {
+        plan: "pro_m",
+        fixed_cents: 90000,
+        fixed_kind: "minimum",
+        fixed_interval: "month",
+        source_limit: 100,
+        lane: "isolated",
+        engine: {
+          label: "Pro M",
+          machine_type: "n2-highmem-8",
+          vcpu: 8,
+          memory_gib: 64,
+          query_max_memory_gb: 40,
+        },
+      },
+      {
+        plan: "pro_l",
+        fixed_cents: 170000,
+        fixed_kind: "minimum",
+        fixed_interval: "month",
+        source_limit: 100,
+        lane: "isolated",
+        engine: {
+          label: "Pro L",
+          machine_type: "n2-highmem-16",
+          vcpu: 16,
+          memory_gib: 128,
+          query_max_memory_gb: 80,
+        },
+      },
+    ],
+    ...overrides,
+  };
+}
 
 function summary(overrides: Partial<BillingSummary> = {}): BillingSummary {
   return {
@@ -90,6 +163,9 @@ describe("BillingTab", () => {
     mockCancel.mockReset();
     mockOpen.mockReset();
     mockEgress.mockReset();
+    mockPlans.mockReset();
+    mockChange.mockReset();
+    mockPlans.mockResolvedValue(offers());
   });
 
   // REQ-1455: the org with no subscription and no trial is the one the trial exists for. Its
@@ -265,5 +341,146 @@ describe("BillingTab", () => {
     render(<BillingTab />);
     expect(await screen.findByText("Active hours metered: 7")).toBeInTheDocument();
     expect(screen.getByText("Egress metered: 2.00 GB")).toBeInTheDocument();
+  });
+
+  // REQ-1511: the plans are the server's — priced, ordered and marked by it — so the card grid
+  // shows what it sent, with the org's own plan marked and not offered as a change to itself.
+  it("shows the server's plans and marks the current one", async () => {
+    mockSummary.mockResolvedValue(summary(subscribed()));
+    render(<BillingTab />);
+    expect(await screen.findByTestId("billing-plan-starter")).toBeInTheDocument();
+    expect(screen.getByTestId("billing-plan-pro_l")).toHaveTextContent("n2-highmem-16");
+    expect(screen.getByTestId("billing-plan-current-starter")).toBeInTheDocument();
+    expect(screen.queryByTestId("billing-choose-starter")).not.toBeInTheDocument();
+    expect(screen.getByTestId("billing-choose-pro_m")).toBeInTheDocument();
+  });
+
+  it("says an upgrade is charged now and a downgrade credits the next invoice", async () => {
+    mockSummary.mockResolvedValue(summary({ ...subscribed(), plan: "pro_m" }));
+    mockPlans.mockResolvedValue(offers({ plan: "pro_m" }));
+    render(<BillingTab />);
+    fireEvent.click(await screen.findByTestId("billing-choose-pro_l"));
+    expect(await screen.findByText(/charged now/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(await screen.findByTestId("billing-choose-starter"));
+    expect(await screen.findByText(/next invoice/)).toBeInTheDocument();
+  });
+
+  it("reports the dedicated engine the change moved the org onto", async () => {
+    mockSummary.mockResolvedValue(summary(subscribed()));
+    mockChange.mockResolvedValue({
+      org_id: "acme",
+      plan: "pro_m",
+      changed: true,
+      prorated: "charged_now",
+      engine: {
+        lane: "isolated",
+        moved: true,
+        shard: "org_acme",
+        size: {
+          label: "Pro M",
+          machine_type: "n2-highmem-8",
+          vcpu: 8,
+          memory_gib: 64,
+          query_max_memory_gb: 40,
+        },
+      },
+      engine_error: null,
+    });
+    render(<BillingTab />);
+    fireEvent.click(await screen.findByTestId("billing-choose-pro_m"));
+    fireEvent.click(await screen.findByTestId("billing-plan-confirm"));
+    const changed = await screen.findByTestId("billing-plan-changed");
+    expect(changed).toHaveTextContent("n2-highmem-8");
+    await waitFor(() => expect(mockChange).toHaveBeenCalledWith("acme", "pro_m"));
+  });
+
+  // REQ-1509: the plan changed even though the engine move did not. Reporting success alone would
+  // leave the administrator believing they are running on hardware they are not.
+  it("reports a plan change whose engine move failed", async () => {
+    mockSummary.mockResolvedValue(summary(subscribed()));
+    mockChange.mockResolvedValue({
+      org_id: "acme",
+      plan: "pro_s",
+      changed: true,
+      prorated: "charged_now",
+      engine: null,
+      engine_error: "the cluster refused the shard",
+    });
+    render(<BillingTab />);
+    fireEvent.click(await screen.findByTestId("billing-choose-pro_s"));
+    fireEvent.click(await screen.findByTestId("billing-plan-confirm"));
+    expect(await screen.findByTestId("billing-plan-changed")).toHaveTextContent(
+      "the cluster refused the shard",
+    );
+  });
+
+  // REQ-1509: the source count that refuses a Starter downgrade is the server's at the moment of
+  // the change, so its sentence is shown verbatim rather than restated from a stale count here.
+  it("shows the server's refusal verbatim", async () => {
+    mockSummary.mockResolvedValue(summary({ ...subscribed(), plan: "pro_m" }));
+    mockPlans.mockResolvedValue(offers({ plan: "pro_m" }));
+    mockChange.mockRejectedValue(
+      new BillingError(
+        409,
+        "billing.plan_sources_exceed_limit",
+        "Starter allows 10 data sources; this organization has 24.",
+      ),
+    );
+    render(<BillingTab />);
+    fireEvent.click(await screen.findByTestId("billing-choose-starter"));
+    fireEvent.click(await screen.findByTestId("billing-plan-confirm"));
+    expect(await screen.findByTestId("billing-plan-refused")).toHaveTextContent(
+      "this organization has 24",
+    );
+  });
+
+  it("warns that changing plan ends a running trial", async () => {
+    const trialing = subscribed();
+    mockSummary.mockResolvedValue(
+      summary({
+        ...trialing,
+        subscription: {
+          ...trialing.subscription!,
+          status: "on_trial",
+          trial_ends_at: "2026-09-01T00:00:00+00:00",
+        },
+      }),
+    );
+    mockPlans.mockResolvedValue(offers({ plan: "starter", on_trial: true }));
+    render(<BillingTab />);
+    fireEvent.click(await screen.findByTestId("billing-choose-pro_s"));
+    expect(await screen.findByText(/ends your trial now/)).toBeInTheDocument();
+  });
+
+  // REQ-1509: the provider would not take the change over the API, so the only place it can happen
+  // is the portal. Reporting a change here would report one that did not happen.
+  it("sends the administrator to the portal when the provider will not take the change", async () => {
+    mockSummary.mockResolvedValue(summary(subscribed()));
+    mockChange.mockResolvedValue({
+      org_id: "acme",
+      plan: "pro_s",
+      changed: false,
+      portal_url: "https://provisa.lemonsqueezy.com/billing/portal",
+    });
+    const href = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        set href(v: string) {
+          href(v);
+        },
+        get href() {
+          return "";
+        },
+      },
+    });
+    render(<BillingTab />);
+    fireEvent.click(await screen.findByTestId("billing-choose-pro_s"));
+    fireEvent.click(await screen.findByTestId("billing-plan-confirm"));
+    await waitFor(() =>
+      expect(href).toHaveBeenCalledWith("https://provisa.lemonsqueezy.com/billing/portal"),
+    );
+    expect(screen.queryByTestId("billing-plan-changed")).not.toBeInTheDocument();
   });
 });

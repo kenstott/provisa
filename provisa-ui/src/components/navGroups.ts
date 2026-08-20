@@ -26,6 +26,11 @@ export interface DropdownItem {
   // mounted by that plugin, so an installed Provisa would link to a 404. Resolved from the same
   // `billing` flag /auth/me reports for the billing tab.
   commercial?: boolean;
+  // REQ-1512: the inverse of `commercial` — a surface an INSTALLED Provisa has and a hosted one
+  // does not. The deployment-wide engine kind is fixed by the cluster the platform runs, so on
+  // hosted this entry could only report a setting nobody may change or accept one the next deploy
+  // overwrites. Resolved from the same `billing` flag, which is what says a deployment is hosted.
+  installedOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -104,6 +109,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/admin/federation-engine",
         labelKey: "navBar.itemFederation",
         capability: "platform_settings",
+        installedOnly: true, // REQ-1512
       },
       // REQ-1412: which engine lane THIS org runs on (shared / isolated / external) is the org's
       // own setting, not the deployment's — org_settings, so a multitenant org_admin has it. Hosted
@@ -180,7 +186,10 @@ export function entryItem(
 ): DropdownItem | undefined {
   const reachable = group.items.filter(
     (i) =>
-      !i.comingSoon && hasCapability(capabilities, i.capability) && !(i.commercial && !commercial),
+      !i.comingSoon &&
+      hasCapability(capabilities, i.capability) &&
+      !(i.commercial && !commercial) &&
+      !(i.installedOnly && commercial),
   );
   const remembered = readLastSubnav()[group.id];
   return reachable.find((i) => i.to === remembered) ?? reachable[0];

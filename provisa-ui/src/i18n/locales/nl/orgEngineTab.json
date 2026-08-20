@@ -23,6 +23,19 @@
     "applyNote": "Opslaan bouwt de runtime van deze organisatie onmiddellijk opnieuw op. Lopende query's worden op de vorige engine afgerond.",
     "saveButton": "Engine opslaan",
     "saved": "Engine bijgewerkt.",
-    "currentSuffix": " (huidig)"
+    "currentSuffix": " (huidig)",
+    "hostedIntro": "De query-engine van deze organisatie volgt uit haar abonnement. Het abonnement bepaalt welke engine de query's van de organisatie uitvoert en hoe groot die is.",
+    "hostedLane": "Engine",
+    "hostedLaneShared": "Gedeeld — de gepoolde engine die Provisa beheert",
+    "hostedLaneIsolated": "Toegewijd — een engine die Provisa alleen voor deze organisatie beheert",
+    "hostedLaneExternal": "Een engine die deze organisatie zelf beheert",
+    "hostedPlan": "Abonnement: {{plan}}",
+    "hostedSize": "Machine: {{machine}} — {{vcpu}} vCPU, {{memory}} GiB",
+    "hostedStateReady": "Deze engine draait.",
+    "hostedStateStarting": "Deze engine start op.",
+    "hostedStateStopped": "Deze engine staat stil. Hij start bij de volgende query.",
+    "hostedStateAbsent": "Deze engine is nog niet aangemaakt. Hij start bij de volgende query.",
+    "hostedStateOther": "Engine-status: {{state}}",
+    "hostedChange": "Wijzig het abonnement op de pagina Facturering om de engine te wijzigen."
   }
 }

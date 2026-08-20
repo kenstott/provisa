@@ -47418,27 +47418,32 @@ And a later observation in the same hour replaces it rather than adding to it
   - REQ-1504
 - id: REQ-1507
   status: proposed
-  target: 2026-Q4
-  group: 13. Multi-Tenancy & Organizations
-  category: Environments
+  target: '2026-Q4'
+  group: '13. Multi-Tenancy & Organizations'
+  category: 'Environments'
   priority: SHOULD
   type: behavioral
-  description: 'Environments are a Pro entitlement, because the tiers describe different customers
-    rather than different sizes of the same one. Starter is bought by a reporting team, an analytics
-    group, a data-science team -- people who model and query what already exists, for whom one governed
-    model and its history is the whole need. Pro is bought by a business whose systems depend on this
-    one: a model change there is a change to something in production, so it is developed somewhere else,
-    reviewed and promoted, which is exactly what an environment is for. A Starter org has prod and
-    cannot create another environment; the environment API and the environment CLI refuse with the tier
-    they require rather than failing obscurely, and the in-product plan picker names environments as
-    what the upgrade buys. A Starter developer who wants a local copy is not left without one: the file
-    export of REQ-1502 carries the model to a desktop install, where they bind their own sources, so the
-    model travels and no credential does. When an org that has environments moves down to Starter, its
-    non-prod environments are frozen rather than deleted -- no queries run in them and nothing merges
-    out of them, while their models stay readable and exportable until the org deletes them or is
-    entitled again. Billing changes may not destroy a customer''s work.'
-  use_case: 'A reporting team buys Starter and gets one governed model with its history; a business buys
-    Pro and develops changes in a dev environment before they reach production.'
+  description: 'Environments are gated by an entitlement feature, not by a product name. The gate is a
+    Feature in provisa/control_plane/entitlements.py with a minimum Tier, checked by require_feature the
+    same way every other gated capability is; which packaged product carries that tier is a price-list
+    decision recorded in REQ-1452 and may change without touching this gate. The minimum tier is
+    premium, because the tiers describe different customers rather than different sizes of the same one.
+    The standard tier is bought by a reporting team, an analytics group, a data-science team -- people
+    who model and query what already exists, for whom one governed model and its history is the whole
+    need. The premium tier is bought by a business whose systems depend on this one: a model change
+    there is a change to something in production, so it is developed somewhere else, reviewed and
+    promoted, which is exactly what an environment is for. An org below the minimum tier has prod and
+    cannot create another environment; the environment API and the environment CLI refuse naming the
+    tier the feature requires rather than failing obscurely, and the in-product plan picker names
+    environments as what the upgrade buys, using whatever the current product name for that tier is. A
+    developer below the gate is not left without a local copy: the file export of REQ-1502 carries the
+    model to a desktop install, where they bind their own sources, so the model travels and no
+    credential does. When an org that has environments moves below the minimum tier, its non-prod
+    environments are frozen rather than deleted -- no queries run in them and nothing merges out of
+    them, while their models stay readable and exportable until the org deletes them or is entitled
+    again. Billing changes may not destroy a customer''s work.'
+  use_case: 'A reporting team on the standard tier gets one governed model with its history; a business
+    on the premium tier develops changes in a dev environment before they reach production.'
   code:
   - provisa/control_plane/entitlements.py
   - provisa/core/environments.py
@@ -47447,17 +47452,17 @@ And a later observation in the same hour replaces it rather than adding to it
   - provisa-ui/src/components/admin/BillingTab.tsx
   tests:
   - tests/unit/test_env_entitlement.py
-  scenario: 'Given an org on the Starter tier
+  scenario: 'Given an org whose tier is below the minimum tier of the environments feature
 
     When it attempts to create an environment
 
-    Then the attempt is refused naming the tier environments require
+    Then require_feature refuses naming the feature and the tier it requires
 
     And the same attempt from the CLI is refused the same way and exits non-zero
 
     And the org can still export its model to files for a desktop install
 
-    And an org moved down from Pro keeps its non-prod environments frozen and readable rather than deleted
+    And an org that moved below the gate keeps its non-prod environments frozen and readable rather than deleted
 
     And demo mode is exempt as it is for every other tier gate
 
@@ -47470,6 +47475,7 @@ And a later observation in the same hour replaces it rather than adding to it
   - REQ-1370
   - REQ-1452
   - REQ-1502
+
 - id: REQ-1508
   status: proposed
   target: 2026-Q4
@@ -47508,3 +47514,346 @@ And a later observation in the same hour replaces it rather than adding to it
   - REQ-1243
   - REQ-1412
   - REQ-1447
+- id: REQ-1509
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Billing
+  priority: MUST
+  type: behavioral
+  description: 'An organization changes its own plan from the Billing page, in either direction,
+    across all four orderable plans -- Starter, Pro S, Pro M and Pro L. A plan change moves the
+    EXISTING Lemon Squeezy subscription onto the target plan''s variant; it never opens a second
+    checkout, because a second checkout mints a second subscription and leaves the org billed twice.
+    Where the org also holds the egress subscription of REQ-1482, that subscription is moved to the
+    target plan''s egress variant in the same operation: the plan variant carries the active hour and
+    the egress variant carries the included GB, so a plan whose egress variant did not move charges
+    the new rate against the old allowance. A change that moves the plan but fails to move the egress
+    variant is reported as a failure naming both subscriptions and never reported as success -- the
+    move is a variant assignment, so repeating it is safe. Both directions take effect at once and
+    are prorated by the merchant of record: the org is charged or credited for the remainder of the
+    period at the difference between the two plans, in the manner the merchant of record supports:
+    an upgrade invoices the prorated difference immediately, and a downgrade issues a credit that
+    lands on the next invoice, because a negative amount cannot be collected now. Every plan change is prorated the same way,
+    including Pro L to Pro M and Pro M to Pro S, which are downgrades between Pro sizes and not
+    departures from Pro. The plan written to the org is the plan Lemon Squeezy returns, applied
+    through the same watermark the subscription webhook uses (REQ-1455), so the subscription_updated
+    event that follows is recognized as already applied and the merchant of record stays the single
+    source of truth. Metered reporting follows the plan across the change. The active hours and
+    egress accrued but not yet reported are posted against the subscription items the org was on
+    BEFORE the variant moves, and only then is the org rebound to the items the change returns:
+    usage on these plans is billed in arrears, so hours reported after the swap are charged at the
+    plan in force when they are reported, and an unflushed span would bill time spent on Starter at
+    the Pro rate or post it against an item the subscription no longer holds. The reporting
+    watermark is not reopened by a plan change -- it is the boundary between invoiced and
+    uninvoiced time, and moving it back re-posts hours already billed. A subscription the merchant
+    of record will not modify over the API -- PayPal being the case they name -- is not a failure
+    and not a silent no-op: the change is reported as one the customer must complete in the hosted
+    portal, and the organization''s plan is left as it was until the provider says otherwise. A plan change made while the organization is still on trial converts the trial
+    rather than running alongside it. Downgrading to Starter is refused while the organization holds
+    more than Starter''s source limit: Pro admits 100 sources and Starter admits 10, and an org
+    moved down while over the ceiling would sit above a limit with no way to be brought under it
+    except by Provisa deleting the customer''s sources. The refusal names the current source count
+    and the limit so the administrator knows how many to remove. Upgrades and changes between Pro
+    sizes carry no such precondition, all three Pro sizes admitting the same number of sources. The
+    plan determines the engine lane and size (REQ-1412, REQ-1449) rather than being chosen beside
+    them, so a completed plan change is followed by the lane and size the new plan entitles; when the
+    billing change succeeds and the engine move does not, both outcomes are reported, because the
+    organization is invoiced for the new plan either way. The Billing page offers the plans and their
+    machine shapes as the server states them, never as figures typed into the page, so what an
+    administrator compares before changing plan is what the invoice will charge for.'
+  use_case: 'An organization that has outgrown Starter moves itself to Pro M from the Billing page
+    and has the larger engine within the same session, with no sales contact and no second card
+    entry; one that over-bought moves back down and sees the credit on its next invoice.'
+  code:
+  - provisa_commercial/router.py
+  - provisa_commercial/usage.py
+  - provisa_commercial/lemonsqueezy_client.py
+  - provisa_commercial/models.py
+  - provisa_commercial/org_db.py
+  - provisa-ui/src/components/admin/BillingTab.tsx
+  scenario: 'Given an organization on the Starter plan with an active Lemon Squeezy subscription
+
+    When an administrator with billing access changes the plan to Pro M
+
+    Then the existing subscription is moved to the Pro M variant rather than a second checkout being opened
+
+    And the egress subscription, where one exists, is moved to the Pro M egress variant
+
+    And the prorated difference is invoiced immediately
+
+    And unreported hours and egress are posted against the previous subscription items before the change
+
+    And the organization is rebound to the subscription items the change returns, with its reporting watermark unmoved
+
+    And the organization is recorded on the Pro M plan with the Pro M source limit
+
+    And the subscription webhook that follows is recognized as already applied
+
+    And the organization is moved to the engine lane and size that Pro M entitles
+
+    Given an organization on a Pro plan holding more than 10 sources
+
+    When an administrator changes the plan to Starter
+
+    Then the change is refused, naming the current source count and the Starter limit
+
+    And the organization stays on its Pro plan and its subscription is unchanged
+
+    Given an organization on Pro L holding 4 sources
+
+    When an administrator changes the plan to Pro M
+
+    Then the change is accepted, its credit applied to the next invoice, no source precondition applying between Pro sizes
+
+    Given an organization whose subscription is paid through PayPal
+
+    When an administrator changes the plan
+
+    Then the change is reported as one to be completed in the hosted portal and the recorded plan is unchanged
+
+    Given an organization still on trial
+
+    When an administrator changes the plan
+
+    Then the trial is converted rather than continuing beside the new plan
+
+    '
+  related_reqs:
+  - REQ-1455
+  - REQ-1449
+  - REQ-1482
+  - REQ-1412
+  - REQ-1469
+  - REQ-1075
+- id: REQ-1510
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Billing
+  priority: MUST
+  type: behavioral
+  description: 'On a hosted deployment an organization''s engine lane and its engine size are DERIVED
+    from its plan, not chosen beside it. A Pro plan of any size runs on the isolated lane at that
+    plan''s size; trial and Starter run on the shared lane. Nothing else decides it, and no
+    administrator sets it: the lane was a stored choice checked against an entitlement (REQ-1412), so
+    an organization that bought Pro and never opened the engine tab kept querying the pooled shard it
+    is no longer paying for, and one that moved down kept a dedicated engine its plan no longer sells
+    until somebody noticed. Derivation removes the gap by construction -- there is one fact, the
+    plan, and the lane is read from it. The external lane is not derived and is not part of this: an
+    organization-operated engine is an enterprise arrangement, so it stays available to self-hosted
+    and enterprise deployments and is offered to nobody on the hosted plans.
+    An isolated organization''s queries dispatch to a shard of its own, distinct from the shared
+    shard it came from, and its shared-lane placement is retained rather than released so a return to
+    Starter lands back on the shard it already had (REQ-1450). Where the engines are provisioned in a
+    cluster (REQ-1447), a dedicated engine is reached the same way a shared one is -- by waking the
+    shard and dialling the pod the cluster reports ready -- and not through a templated hostname the
+    control plane has to be told about separately; a deployment that can bring up shared shards can
+    bring up isolated ones, so entering the lane must not be refused as unavailable while the cluster
+    is standing right there. Waking a dedicated engine restores it at the size its plan sells: a wake
+    that reapplied the shared shape would return the organization''s engine on hardware smaller than
+    the one it is invoiced for, and the size travels with every wake rather than only with the first
+    provision. A size change is a configuration revision and therefore a rollout, so the engine comes
+    back on the hardware the organization now pays for instead of drifting from it.
+    Every transition is ordered so that no query is released against an engine that cannot serve it:
+    the dedicated engine exists and is ready before the organization''s runtime is rebuilt onto it,
+    the runtime rebuild -- which reissues the organization''s catalogs, a resumed engine holding none
+    -- happens under the organization registry''s lock, and the engine being left is removed only
+    after traffic has moved off it. A transition whose billing already succeeded but whose engine
+    move failed leaves the organization on the lane it can still serve from and reports the failure,
+    rather than stranding it on a lane with no engine.'
+  use_case: 'An organization that upgrades to Pro M is running on a dedicated engine of that size
+    within the same session, and one that returns to Starter is back on the shared shard it started
+    from with its dedicated engine released -- neither having chosen a lane, and neither able to
+    end up paying for one thing while running on another.'
+  code:
+  - provisa/federation/k8s_provisioner.py
+  - provisa/federation/engine_wake.py
+  - provisa/federation/engine.py
+  - provisa_commercial/entitlements.py
+  - provisa_commercial/org_engine_router.py
+  scenario: 'Given a hosted deployment whose federation engines are provisioned in a cluster
+
+    When an organization''s plan becomes Pro M
+
+    Then the organization is placed on the isolated lane on a shard of its own at the Pro M size
+
+    And its shared-lane shard placement is retained
+
+    And its dedicated engine is ready before its runtime is rebuilt onto it
+
+    And the runtime is rebuilt under the organization registry lock so its catalogs are reissued
+
+    Given an organization on the isolated lane whose engine has been idled to zero
+
+    When a query arrives for that organization
+
+    Then the shard is woken at the size its plan sells rather than at the shared shape
+
+    Given an organization on Pro M
+
+    When its plan becomes Pro L
+
+    Then the engine is rolled onto the Pro L hardware rather than continuing on the smaller shape
+
+    Given an organization on the isolated lane
+
+    When its plan becomes Starter
+
+    Then it is returned to the shared shard it previously held
+
+    And its dedicated engine is released only after its runtime no longer dispatches to it
+
+    Given an organization whose plan change was billed successfully
+
+    When the engine move for the new lane fails
+
+    Then the organization stays on a lane that can serve queries and the failure is reported
+
+    '
+  related_reqs:
+  - REQ-1509
+  - REQ-1449
+  - REQ-1412
+  - REQ-1447
+  - REQ-1450
+  - REQ-1448
+  - REQ-1464
+- id: REQ-1511
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Billing
+  priority: MUST
+  type: behavioral
+  description: 'The Billing page is where an organization changes its plan. It shows the four
+    orderable plans -- Starter, Pro S, Pro M and Pro L -- with the price and the machine each one
+    buys, marks the one the organization is on, and offers the others as a single action. Every
+    figure on the cards is the one the server states, never a rate or a machine shape typed into the
+    page: the page already refuses to compute money a second way because a total it derived would
+    disagree with the invoice, and hardware is the same kind of claim -- a vCPU count written into
+    the browser drifts from the pod the organization is actually given.
+    Before the change is made the page says what will happen to the money, in the terms the merchant
+    of record actually uses: an upgrade is charged now for the remainder of the period, and a
+    downgrade returns a credit that lands on the next invoice rather than as a refund. It also says
+    what will happen to the engine, because a plan change moves the organization between the shared
+    and dedicated lanes and a dedicated engine takes a minute or two to come up (REQ-1510); the page
+    reports that move as it proceeds and reports its failure if it fails, rather than returning to
+    rest as though the only thing that changed was a price.
+    A downgrade to Starter that the server refuses because the organization holds more sources than
+    Starter admits is shown as what it is -- the number held and the number allowed -- and the page
+    does not decide this for itself: the count that matters is the server''s at the moment of the
+    change. A plan change offered to an organization still on trial says that it ends the trial and
+    begins billing, since that is what it does. Where the merchant of record will not take the change
+    over the API and returns a hosted-portal address instead, the page sends the administrator there
+    rather than reporting a change that did not happen.'
+  use_case: 'An administrator comparing Pro sizes sees the machine and the price of each, changes to
+    the one they want, is told what will be charged now, and watches their new engine come up --
+    without leaving the product, contacting sales, or entering a card a second time.'
+  code:
+  - provisa-ui/src/components/admin/BillingTab.tsx
+  - provisa-ui/src/api/billing.ts
+  - provisa_commercial/router.py
+  scenario: 'Given an organization on the Starter plan
+
+    When its administrator opens the Billing page
+
+    Then the four orderable plans are shown with the price and machine the server states for each
+
+    And the Starter plan is marked as the one in use
+
+    When the administrator chooses Pro M
+
+    Then the page states that the prorated difference is charged now and that a dedicated engine will be started
+
+    And on confirmation the plan changes and the engine move is reported as it proceeds
+
+    Given an organization on Pro L holding more sources than Starter admits
+
+    When its administrator chooses Starter
+
+    Then the refusal is shown with the number of sources held and the number Starter allows
+
+    And the organization stays on Pro L
+
+    Given an organization still on trial
+
+    When its administrator chooses a plan
+
+    Then the page states that the trial ends and billing begins
+
+    Given a subscription the merchant of record will not change over the API
+
+    When its administrator chooses a different plan
+
+    Then the administrator is sent to the hosted portal rather than shown a change that did not happen
+
+    '
+  related_reqs:
+  - REQ-1509
+  - REQ-1510
+  - REQ-1449
+  - REQ-1469
+  - REQ-1455
+- id: REQ-1512
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Billing
+  priority: MUST
+  type: behavioral
+  description: 'On a hosted deployment the engine an organization runs on is reported, not chosen.
+    The org engine surface shows the lane the organization''s plan puts it on, the size of the engine
+    that lane gives it, and the state of that engine -- running, idle, or coming up -- and offers no
+    control that changes any of it. Where a change is wanted it names the Billing page, because the
+    plan is the thing that decides this (REQ-1510) and a second control that appeared to decide it
+    would be a control that either contradicts the plan or silently agrees with it. The lane
+    selector, the engine-kind list and the external endpoint form are absent on hosted deployments
+    rather than shown disabled: an organization-operated engine is an enterprise arrangement and is
+    not part of any hosted plan, so it is not something a hosted administrator is invited to
+    consider and then refused. Those controls remain on self-hosted and enterprise deployments, where
+    an organization does operate its own engine and the lane is genuinely its choice.
+    The deployment-wide federation-engine surface -- which selects the engine KIND for the whole
+    installation and takes effect at the next restart -- is not offered on a hosted deployment
+    either. It is a question an installed Provisa has and a hosted one does not: the engine kind is
+    fixed by the cluster the platform runs, so the surface could only report a setting nobody may
+    change or accept one that the next deploy overwrites. It stays where it belongs, on installed
+    deployments, gated as it already is.'
+  use_case: 'A hosted organization''s administrator opening the engine page learns which engine
+    their queries run on and whether it is up, and is sent to Billing to change it -- never faced
+    with a lane or an engine kind their plan does not sell, and never able to put their organization
+    on a lane it is not paying for.'
+  code:
+  - provisa-ui/src/components/admin/OrgEngineTab.tsx
+  - provisa-ui/src/components/admin/FederationEngineTab.tsx
+  - provisa-ui/src/components/navGroups.ts
+  - provisa_commercial/org_engine_router.py
+  scenario: 'Given a hosted deployment
+
+    When an organization administrator opens the org engine surface
+
+    Then the lane, the engine size and the engine state are shown
+
+    And no control is offered that changes the lane, the engine kind or an external endpoint
+
+    And the Billing page is named as where the plan that decides them is changed
+
+    Given a hosted deployment
+
+    When an administrator looks for the deployment-wide federation-engine surface
+
+    Then it is not offered
+
+    Given a self-hosted deployment
+
+    When an organization administrator opens the org engine surface
+
+    Then the lane, engine-kind and external endpoint controls are offered as before
+
+    '
+  related_reqs:
+  - REQ-1510
+  - REQ-1511
+  - REQ-1412
+  - REQ-1418
+  - REQ-916

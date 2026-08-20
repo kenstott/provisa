@@ -55,6 +55,15 @@ describe("entryItem", () => {
     expect(entryItem(admin, ["org_settings"], true)?.to).toBe("/admin/org-engine");
   });
 
+  it("hides the deployment-wide federation engine on a hosted deployment", () => {
+    // REQ-1512: hosted orgs get their engine from their plan, so the deployment-wide engine screen
+    // is an installed-Provisa surface only — the same `billing` flag that says a deployment is
+    // hosted is what removes it.
+    remember("/admin/federation-engine");
+    expect(entryItem(admin, ["platform_settings"], true)?.to).not.toBe("/admin/federation-engine");
+    expect(entryItem(admin, ["platform_settings"], false)?.to).toBe("/admin/federation-engine");
+  });
+
   it("clears the remembered item at session start so it cannot cross identities", () => {
     expect(SESSION_KEYS).toContain(LAST_SUBNAV_KEY);
   });

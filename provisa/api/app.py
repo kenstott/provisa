@@ -1028,6 +1028,7 @@ async def build_org_runtime(
     # precedes the generation sample below so the runtime is stamped with the coordinator that
     # actually receives its catalogs. An org on its own coordinator (REQ-1412/1418) is not served
     # by a shard this control plane operates, so there is nothing here to wake.
+    effective_shard = shard
     if external_engine is None and engine_url is None:
         from provisa.federation.k8s_provisioner import provisioning_available
 
@@ -1035,10 +1036,25 @@ async def build_org_runtime(
             from provisa.federation.engine_wake import (
                 boot_shard,
                 ensure_shard_awake,
+                isolated_wake_size,
                 restore_shared_terminal,
             )
 
-            await ensure_shard_awake(shard or boot_shard())
+            if isolated_engine:
+                # REQ-1510: a dedicated engine is a shard of its own, woken at the size the org's
+                # plan sells. ``shard`` stays the org's SHARED-lane placement in the admin plane
+                # (REQ-1450) — what the runtime records is the shard that actually answers it, which
+                # is what the query path wakes and stamps generations against.
+                from provisa.federation.k8s_provisioner import isolated_shard
+
+                effective_shard = isolated_shard(org_id)
+                await ensure_shard_awake(
+                    effective_shard,
+                    lane="isolated",
+                    size=await isolated_wake_size(state, org_id),
+                )
+            else:
+                await ensure_shard_awake(shard or boot_shard())
             # REQ-1448: the wake brought a NEW coordinator up, and this build's own CREATE CATALOG
             # statements go out over the SHARED terminal — which is still connected to the pod that
             # was released while the lane sat idle. ensure_engine_awake restores it, but that runs
@@ -1050,14 +1066,17 @@ async def build_org_runtime(
             boot = boot_shard()
             default_rt = state.org_registry.get(state.org_id)
             if (
-                org_id != state.org_id
+                # REQ-1510: an isolated org issues its catalogs over its OWN terminal, so the shared
+                # one is neither used by this build nor restored by it.
+                not isolated_engine
+                and org_id != state.org_id
                 and default_rt is not None
                 and default_rt.engine_generation != _engine_generation(boot)
             ):
                 await restore_shared_terminal(state, boot)
 
-    rt.shard = shard
-    rt.engine_generation = _engine_generation(shard)
+    rt.shard = effective_shard
+    rt.engine_generation = _engine_generation(effective_shard)
     # REQ-1048: recorded before anything below can materialize, since materialize_store() reads it
     # off the bound runtime to decide whose disk the org's bytes land on.
     rt.storage_url = storage_url

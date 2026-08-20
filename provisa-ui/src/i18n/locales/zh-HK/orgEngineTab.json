@@ -23,6 +23,19 @@
     "applyNote": "儲存後會立即重建本組織的執行階段。進行中的查詢會在先前的引擎上完成。",
     "saveButton": "儲存引擎",
     "saved": "引擎已更新。",
-    "currentSuffix": "（目前）"
+    "currentSuffix": "（目前）",
+    "hostedIntro": "本組織的查詢引擎由其方案決定。方案決定由哪個引擎執行本組織的查詢，以及引擎的規格。",
+    "hostedLane": "引擎",
+    "hostedLaneShared": "共用——由 Provisa 營運的共用引擎",
+    "hostedLaneIsolated": "專用——由 Provisa 僅為本組織營運的引擎",
+    "hostedLaneExternal": "由本組織自行營運的引擎",
+    "hostedPlan": "方案：{{plan}}",
+    "hostedSize": "機型：{{machine}} — {{vcpu}} vCPU、{{memory}} GiB",
+    "hostedStateReady": "該引擎正在運行。",
+    "hostedStateStarting": "該引擎正在啟動。",
+    "hostedStateStopped": "該引擎處於閒置狀態，會在下一次查詢時啟動。",
+    "hostedStateAbsent": "該引擎尚未建立，會在下一次查詢時啟動。",
+    "hostedStateOther": "引擎狀態：{{state}}",
+    "hostedChange": "如需更換引擎，請在帳單頁面更改方案。"
   }
 }

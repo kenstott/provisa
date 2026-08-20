@@ -22,12 +22,81 @@ import {
   TextInput,
 } from "@mantine/core";
 import { Check } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   fetchOrgEngine,
   setOrgEngine,
   type OrgEngineMode,
   type OrgEngineState,
 } from "../../api/admin";
+
+/**
+ * REQ-1512: on a hosted deployment the engine is REPORTED, not chosen.
+ *
+ * The lane and the size come from the plan (REQ-1510), so there is no lane selector, no engine-kind
+ * list and no external endpoint form here — absent rather than shown disabled, because an
+ * organization-operated engine is an enterprise arrangement sold on no hosted plan and is not
+ * something a hosted administrator is invited to consider and then refused. Billing is named
+ * instead, that being where the plan which decides all of this is changed.
+ */
+function HostedEngineReport({ state }: { state: OrgEngineState }) {
+  const { t } = useTranslation();
+  const laneKey =
+    state.mode === "isolated"
+      ? "orgEngineTab.hostedLaneIsolated"
+      : state.mode === "external"
+        ? "orgEngineTab.hostedLaneExternal"
+        : "orgEngineTab.hostedLaneShared";
+  const engineState = state.isolated_engine?.state ?? null;
+  const stateText =
+    engineState === null
+      ? null
+      : engineState === "ready" || engineState === "running"
+        ? t("orgEngineTab.hostedStateReady")
+        : engineState === "starting"
+          ? t("orgEngineTab.hostedStateStarting")
+          : engineState === "stopped" || engineState === "exited"
+            ? t("orgEngineTab.hostedStateStopped")
+            : engineState === "absent"
+              ? t("orgEngineTab.hostedStateAbsent")
+              : t("orgEngineTab.hostedStateOther", { state: engineState });
+
+  return (
+    <Stack gap="md" maw={720} data-testid="org-engine-hosted">
+      <Text c="dimmed" size="sm">
+        {t("orgEngineTab.hostedIntro")}
+      </Text>
+      <Stack gap="xs">
+        <Text fw={600}>{t("orgEngineTab.hostedLane")}</Text>
+        <Text size="sm" data-testid="org-engine-hosted-lane">
+          {t(laneKey)}
+        </Text>
+        {state.plan && (
+          <Text size="sm" data-testid="org-engine-hosted-plan">
+            {t("orgEngineTab.hostedPlan", { plan: state.plan })}
+          </Text>
+        )}
+        {state.engine_size && (
+          <Text size="sm" data-testid="org-engine-hosted-size">
+            {t("orgEngineTab.hostedSize", {
+              machine: state.engine_size.machine_type,
+              vcpu: state.engine_size.vcpu,
+              memory: state.engine_size.memory_gib,
+            })}
+          </Text>
+        )}
+        {stateText && (
+          <Text size="sm" data-testid="org-engine-hosted-state">
+            {stateText}
+          </Text>
+        )}
+      </Stack>
+      <Alert color="blue" variant="light" data-testid="org-engine-hosted-change">
+        <Link to="/admin/billing">{t("orgEngineTab.hostedChange")}</Link>
+      </Alert>
+    </Stack>
+  );
+}
 
 // REQ-1412: the org administrator's engine lane — shared, isolated (Provisa-operated), or external
 // (org-operated). Distinct from FederationEngineTab, which picks the engine KIND for the whole
@@ -98,6 +167,10 @@ export function OrgEngineTab() {
 
   if (error && !state) return <Alert color="red">{error}</Alert>;
   if (!state) return <Text>{t("orgEngineTab.loading")}</Text>;
+  // REQ-1512: a plan decides the lane on a hosted deployment, so the controls below are not offered
+  // there at all. They stay on self-hosted and enterprise deployments, where the lane is genuinely
+  // the organization's own choice.
+  if (state.plan_derived) return <HostedEngineReport state={state} />;
 
   return (
     <Stack gap="md" maw={720}>

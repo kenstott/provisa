@@ -23,6 +23,19 @@
     "applyNote": "Das Speichern baut die Laufzeitumgebung dieser Organisation sofort neu auf. Laufende Abfragen werden auf der bisherigen Engine beendet.",
     "saveButton": "Engine speichern",
     "saved": "Engine aktualisiert.",
-    "currentSuffix": " (aktuell)"
+    "currentSuffix": " (aktuell)",
+    "hostedIntro": "Die Abfrage-Engine dieser Organisation ergibt sich aus ihrem Tarif. Der Tarif bestimmt, welche Engine die Abfragen der Organisation ausführt und wie groß sie ist.",
+    "hostedLane": "Engine",
+    "hostedLaneShared": "Gemeinsam — die gepoolte Engine, die Provisa betreibt",
+    "hostedLaneIsolated": "Dediziert — eine Engine, die Provisa allein für diese Organisation betreibt",
+    "hostedLaneExternal": "Eine Engine, die diese Organisation selbst betreibt",
+    "hostedPlan": "Tarif: {{plan}}",
+    "hostedSize": "Maschine: {{machine}} — {{vcpu}} vCPU, {{memory}} GiB",
+    "hostedStateReady": "Diese Engine läuft.",
+    "hostedStateStarting": "Diese Engine startet gerade.",
+    "hostedStateStopped": "Diese Engine ruht. Sie startet bei der nächsten Abfrage.",
+    "hostedStateAbsent": "Diese Engine wurde noch nicht angelegt. Sie startet bei der nächsten Abfrage.",
+    "hostedStateOther": "Engine-Status: {{state}}",
+    "hostedChange": "Um die Engine zu ändern, ändern Sie den Tarif auf der Abrechnungsseite."
   }
 }

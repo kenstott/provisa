@@ -23,6 +23,19 @@
     "applyNote": "保存すると、この組織のランタイムが直ちに再構築されます。実行中のクエリは以前のエンジンで完了します。",
     "saveButton": "エンジンを保存",
     "saved": "エンジンを更新しました。",
-    "currentSuffix": "（現在）"
+    "currentSuffix": "（現在）",
+    "hostedIntro": "この組織のクエリエンジンはプランによって決まります。どのエンジンが組織のクエリを実行し、その規模がどれだけかはプランが決定します。",
+    "hostedLane": "エンジン",
+    "hostedLaneShared": "共有 — Provisa が運用するプール型エンジン",
+    "hostedLaneIsolated": "専有 — この組織のためだけに Provisa が運用するエンジン",
+    "hostedLaneExternal": "この組織が自ら運用するエンジン",
+    "hostedPlan": "プラン: {{plan}}",
+    "hostedSize": "マシン: {{machine}} — {{vcpu}} vCPU、{{memory}} GiB",
+    "hostedStateReady": "このエンジンは稼働中です。",
+    "hostedStateStarting": "このエンジンは起動中です。",
+    "hostedStateStopped": "このエンジンは停止しています。次のクエリで起動します。",
+    "hostedStateAbsent": "このエンジンはまだ作成されていません。次のクエリで起動します。",
+    "hostedStateOther": "エンジンの状態: {{state}}",
+    "hostedChange": "エンジンを変更するには、請求ページでプランを変更してください。"
   }
 }

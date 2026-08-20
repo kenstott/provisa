@@ -16,7 +16,10 @@ import {
   Card,
   Group,
   List,
+  Loader,
+  Modal,
   Progress,
+  SimpleGrid,
   Stack,
   Text,
   Title,
@@ -30,7 +33,12 @@ import {
   openCheckout,
   startEgressSubscription,
   startTrial,
+  changePlan,
+  fetchPlans,
   type BillingSummary,
+  type PlanChanged,
+  type PlanOffer,
+  type PlanOffers,
 } from "../../api/billing";
 
 const GIB = 1024 ** 3;
@@ -51,9 +59,216 @@ function formatMoney(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+const PLAN_NAMES: Record<string, string> = {
+  trial: "Trial",
+  starter: "Starter",
+  pro_s: "Pro S",
+  pro_m: "Pro M",
+  pro_l: "Pro L",
+};
+
+function planName(plan: string): string {
+  return PLAN_NAMES[plan] ?? plan;
+}
+
 /** Whole days from now until `iso`, floored at zero. */
 function daysUntil(iso: string): number {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
+}
+
+/**
+ * REQ-1511: the four orderable plans, and the move between them.
+ *
+ * Every figure on a card is the server's: the price comes from the merchant of record's own price
+ * object and the machine from the size table that provisions the engine (REQ-1449), because a rate
+ * or a vCPU count written into the page drifts from the invoice and from the pod the organization
+ * is actually given. What the page states for itself is only what the change will do — charged now
+ * on the way up, credited on the next invoice on the way down (REQ-1509) — and that a plan change
+ * moves the engine (REQ-1510).
+ */
+function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void }) {
+  const [offers, setOffers] = useState<PlanOffers | null>(null);
+  const [target, setTarget] = useState<PlanOffer | null>(null);
+  const [changing, setChanging] = useState(false);
+  const [result, setResult] = useState<PlanChanged | null>(null);
+  const [refused, setRefused] = useState("");
+
+  const loadPlans = useCallback(() => {
+    fetchPlans(orgId)
+      .then(setOffers)
+      .catch((e: Error) => setRefused(e.message));
+  }, [orgId]);
+
+  useEffect(loadPlans, [loadPlans]);
+
+  if (offers === null) return null;
+
+  // The direction is read from the order the server sends the plans in, not from a ranking of plan
+  // names held here — the money it decides the wording for is still the merchant of record's.
+  const rank = (plan: string) => offers.plans.findIndex((p) => p.plan === plan);
+  const currentRank = rank(offers.plan === "trial" ? "starter" : offers.plan);
+  const upgrade = target !== null && rank(target.plan) > currentRank;
+
+  const confirm = async () => {
+    if (target === null) return;
+    setChanging(true);
+    setRefused("");
+    setResult(null);
+    try {
+      const changed = await changePlan(orgId, target.plan);
+      if (changed.portal_url) {
+        // The provider would not take the change over the API. Sending the administrator there is
+        // the only way the change happens; reporting success here would report one that did not.
+        window.location.href = changed.portal_url;
+        return;
+      }
+      setResult(changed);
+      setTarget(null);
+      loadPlans();
+      onChanged();
+    } catch (e) {
+      // The server's words verbatim: the source count that refuses a Starter downgrade is the
+      // server's at the moment of the change, and restating it here would restate a stale one.
+      setRefused(e instanceof BillingError ? e.message : String(e));
+      setTarget(null);
+    } finally {
+      setChanging(false);
+    }
+  };
+
+  return (
+    <Card withBorder padding="lg" data-testid="billing-plans">
+      <Title order={4} mb="sm">
+        Plans
+      </Title>
+      <Stack gap="sm">
+        {refused && (
+          <Alert color="red" title="Plan change" data-testid="billing-plan-refused">
+            {refused}
+          </Alert>
+        )}
+        {result && (
+          <Alert
+            color={result.engine_error ? "orange" : "green"}
+            title={`Now on ${planName(result.plan)}`}
+            data-testid="billing-plan-changed"
+          >
+            <Stack gap="xs">
+              <Text size="sm">
+                {result.prorated === "charged_now"
+                  ? "The difference for the rest of this period has been charged."
+                  : "A credit for the rest of this period lands on your next invoice."}
+              </Text>
+              {result.engine_error ? (
+                <Text size="sm">
+                  Your plan changed, but moving your engine did not finish: {result.engine_error}
+                </Text>
+              ) : result.engine?.lane === "isolated" ? (
+                <Text size="sm">
+                  Your queries now run on a dedicated {result.engine.size?.machine_type} engine
+                  {result.engine.size ? ` (${result.engine.size.label})` : ""}.
+                </Text>
+              ) : result.engine?.lane === "shared" ? (
+                <Text size="sm">Your queries now run on the shared engine.</Text>
+              ) : null}
+            </Stack>
+          </Alert>
+        )}
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+          {offers.plans.map((offer) => {
+            const current = offer.plan === offers.plan;
+            return (
+              <Card
+                withBorder
+                padding="md"
+                key={offer.plan}
+                data-testid={`billing-plan-${offer.plan}`}
+              >
+                <Stack gap="xs" h="100%" justify="space-between">
+                  <Stack gap="xs">
+                    <Group justify="space-between">
+                      <Text fw={600}>{planName(offer.plan)}</Text>
+                      {current && (
+                        <Badge color="green" data-testid={`billing-plan-current-${offer.plan}`}>
+                          Current plan
+                        </Badge>
+                      )}
+                    </Group>
+                    {offer.fixed_cents != null && (
+                      <Text size="sm">
+                        {formatMoney(offer.fixed_cents)}
+                        {offer.fixed_interval ? ` per ${offer.fixed_interval}` : ""}
+                        {offer.fixed_kind === "minimum" ? " minimum" : ""}
+                      </Text>
+                    )}
+                    <Text size="sm" c="dimmed">
+                      {offer.engine
+                        ? `Dedicated engine — ${offer.engine.machine_type}, ${offer.engine.vcpu} vCPU, ${offer.engine.memory_gib} GiB`
+                        : "Shared engine"}
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      Up to {offer.source_limit} data sources
+                    </Text>
+                  </Stack>
+                  {!current && (
+                    <Button
+                      variant="light"
+                      onClick={() => setTarget(offer)}
+                      data-testid={`billing-choose-${offer.plan}`}
+                    >
+                      Change to {planName(offer.plan)}
+                    </Button>
+                  )}
+                </Stack>
+              </Card>
+            );
+          })}
+        </SimpleGrid>
+      </Stack>
+
+      <Modal
+        opened={target !== null}
+        onClose={() => (changing ? undefined : setTarget(null))}
+        title={target ? `Change to ${planName(target.plan)}` : ""}
+      >
+        {target && (
+          <Stack gap="sm">
+            <Text size="sm">
+              {upgrade
+                ? "The difference for the remainder of this period is charged now."
+                : "A credit for the remainder of this period lands on your next invoice rather than as a refund."}
+            </Text>
+            <Text size="sm">
+              {target.engine
+                ? `A dedicated ${target.engine.machine_type} engine is started for this organization. It takes a minute or two to come up.`
+                : "This organization moves to the shared engine, and its dedicated engine is released."}
+            </Text>
+            {offers.on_trial && (
+              <Text size="sm">Changing plan ends your trial now and begins billing.</Text>
+            )}
+            {changing && (
+              <Group gap="xs" data-testid="billing-plan-progress">
+                <Loader size="xs" />
+                <Text size="sm">
+                  {target.engine
+                    ? "Changing your plan and starting your engine…"
+                    : "Changing your plan and moving your engine…"}
+                </Text>
+              </Group>
+            )}
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setTarget(null)} disabled={changing}>
+                Cancel
+              </Button>
+              <Button onClick={confirm} loading={changing} data-testid="billing-plan-confirm">
+                Change plan
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+    </Card>
+  );
 }
 
 /**
@@ -260,6 +475,8 @@ export function BillingTab() {
           </Stack>
         </Card>
       )}
+
+      {sub !== null && <PlanCards orgId={activeOrgId} onChanged={load} />}
 
       {summary && sub !== null && !summary.has_egress_subscription && (
         <Card withBorder padding="lg" data-testid="billing-add-transfer">

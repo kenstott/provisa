@@ -199,3 +199,61 @@ export async function fetchPortalUrl(orgId: string): Promise<string> {
   };
   return data.portal_url;
 }
+
+// REQ-1509, REQ-1511: the plans an org can move to, and the move itself. Every figure here is the
+// server's — the price from the merchant of record's own price object, the machine from the size
+// table that provisions the engine — so nothing on the card is a constant typed into the page.
+
+export interface PlanEngine {
+  label: string;
+  machine_type: string;
+  vcpu: number;
+  memory_gib: number;
+  query_max_memory_gb: number;
+}
+
+export interface PlanOffer {
+  plan: string;
+  fixed_cents: number | null;
+  fixed_kind: "minimum" | "fee" | null;
+  fixed_interval: string | null;
+  source_limit: number;
+  lane: "shared" | "isolated";
+  engine: PlanEngine | null;
+}
+
+export interface PlanOffers {
+  org_id: string;
+  plan: string;
+  /** Whether a plan change would end a running trial and begin billing (REQ-1455). */
+  on_trial: boolean;
+  plans: PlanOffer[];
+}
+
+export async function fetchPlans(orgId: string): Promise<PlanOffers> {
+  return (await billingFetch(`/plans?org_id=${encodeURIComponent(orgId)}`)) as PlanOffers;
+}
+
+export interface PlanChanged {
+  org_id: string;
+  plan: string;
+  changed: boolean;
+  /** Absent when the provider would not take the change and named its portal instead. */
+  prorated?: "charged_now" | "credited_next_invoice";
+  subscription_status?: string;
+  egress_moved?: boolean | null;
+  /** What the org's engine now runs on, or null when the move failed (REQ-1510). */
+  engine?: { lane: string; moved: boolean; shard?: string | null; size?: PlanEngine | null } | null;
+  /** The engine move's failure. The plan change stands regardless — the org is invoiced for it. */
+  engine_error?: string | null;
+  portal_url?: string;
+  detail?: string;
+}
+
+export async function changePlan(orgId: string, plan: string): Promise<PlanChanged> {
+  return (await billingFetch("/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ org_id: orgId, plan }),
+  })) as PlanChanged;
+}

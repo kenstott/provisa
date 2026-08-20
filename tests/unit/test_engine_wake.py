@@ -460,7 +460,7 @@ def test_org_build_wakes_the_shard_before_anything_asks_for_its_address():
 
     src = inspect.getsource(app_module.build_org_runtime)
     wake = src.index("ensure_shard_awake(")
-    assert wake < src.index("_engine_generation(shard)"), "the generation is sampled before the wake"
+    assert wake < src.index("_engine_generation(effective_shard)"), "the generation is sampled before the wake"
     assert wake < src.index("_seed_built_in_sources("), "the seed runs before the wake"
 
 
@@ -587,3 +587,99 @@ def test_sign_in_prewarms_the_engine():
 
     src = inspect.getsource(auth_router.me)
     assert "prewarm_engine(state, active_org_id)" in src
+
+
+# ── the dedicated lane (REQ-1510) ───────────────────────────────────────────────
+
+
+@pytest.fixture
+def fake_isolated_k8s(fake_k8s, monkeypatch):
+    """``fake_k8s`` plus the isolated provisioner call, recording the size it was asked for."""
+    isolated: list[tuple[str, object]] = []
+
+    async def ensure_isolated_shard(shard: str, size):
+        isolated.append((shard, size))
+        fake_k8s.state = "ready"
+
+    monkeypatch.setattr(engine_wake.k8s, "ensure_isolated_shard", ensure_isolated_shard)
+    fake_k8s.isolated = isolated
+    return fake_k8s
+
+
+async def test_a_cold_isolated_shard_wakes_at_its_plan_size(fake_isolated_k8s):
+    """The size travels with the wake, not only with the first provision: a dedicated engine resumed
+    at the shared shape serves on hardware the org is not invoiced for (REQ-1510)."""
+    assert await engine_wake.ensure_shard_awake("org_acme", lane="isolated", size="pro_m") is True
+    assert fake_isolated_k8s.isolated == [("org_acme", "pro_m")]
+    assert fake_isolated_k8s.wakes == []  # never the shared manifests
+
+
+async def test_converge_applies_even_when_the_shard_is_already_ready(fake_isolated_k8s):
+    """A move between Pro sizes finds the shard serving. The wake would return without touching the
+    cluster; converge applies, which is what revises the config and rolls the new machine in."""
+    fake_isolated_k8s.state = "ready"
+    await engine_wake.converge_shard("org_acme", lane="isolated", size="pro_l")
+    assert fake_isolated_k8s.isolated == [("org_acme", "pro_l")]
+    assert engine_wake.generation("org_acme") == 1
+
+
+async def test_converge_bumps_the_generation_so_the_query_path_rebuilds(fake_isolated_k8s):
+    await engine_wake.converge_shard("org_acme", lane="isolated", size="pro_s")
+    await engine_wake.converge_shard("org_acme", lane="isolated", size="pro_m")
+    assert engine_wake.generation("org_acme") == 2
+
+
+async def test_release_stops_the_shard_and_forgets_it(fake_isolated_k8s):
+    """A shard released because its org moved back to the shared lane is not coming back, so the
+    reaper must not be left measuring the idleness of something nobody dispatches to."""
+    await engine_wake.ensure_shard_awake("org_acme", lane="isolated", size="pro_s")
+    assert "org_acme" in engine_wake._ready_seen
+    await engine_wake.release_shard("org_acme")
+    assert fake_isolated_k8s.stops == ["org_acme"]
+    assert "org_acme" not in engine_wake._ready_seen
+    assert "org_acme" not in engine_wake._last_activity
+
+
+def test_the_isolated_shard_name_is_distinct_from_the_orgs_shared_placement():
+    """REQ-1450: ``orgs.shard`` keeps the pooled placement across the move, so a return to Starter
+    lands back on the shard the org already had."""
+    from provisa.federation.k8s_provisioner import isolated_shard, shard_workload_name
+
+    assert isolated_shard("acme") == "org_acme"
+    assert isolated_shard("acme") != "shared_1"
+    assert shard_workload_name(isolated_shard("acme")) == "trino-org-acme"
+
+
+def test_a_dedicated_engine_is_dialled_at_its_pods_address_on_a_cluster(monkeypatch):
+    """Not through PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE: on a provisioning deployment the shard the
+    control plane just woke is the engine, and its pod IP is what the wake recorded (REQ-1510)."""
+    from provisa.federation import engine as engine_mod
+    from provisa.federation import k8s_provisioner as k8s
+
+    monkeypatch.setattr(k8s, "provisioning_available", lambda: True)
+    monkeypatch.setenv("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE", "trino-{org_id}.internal")
+    monkeypatch.setitem(k8s._pod_ips, "org_acme", "10.4.2.7")
+    monkeypatch.setenv("PROVISA_ENGINE_PORT", "8080")
+    assert engine_mod.isolated_engine_endpoint("acme") == ("10.4.2.7", 8080)
+
+
+def test_the_isolated_lane_is_available_wherever_the_cluster_provisions(monkeypatch):
+    """The lane used to require the host template, so a cluster deployment refused an org its plan
+    had already sold a dedicated engine to (REQ-1510)."""
+    from provisa.federation import engine as engine_mod
+    from provisa.federation import k8s_provisioner as k8s
+
+    monkeypatch.delenv("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE", raising=False)
+    monkeypatch.setattr(k8s, "provisioning_available", lambda: True)
+    assert engine_mod.isolated_engine_available() is True
+
+
+def test_an_isolated_org_wakes_its_own_shard_and_skips_the_shared_terminal():
+    """An isolated org dispatches over its OWN terminal, so restoring the shared one for it would
+    reissue the wrong org's catalogs onto the wrong coordinator."""
+    import inspect
+
+    src = inspect.getsource(engine_wake._wake_isolated)
+    assert "isolated_shard(org_id)" in src
+    assert "restore_shared_terminal" not in src
+    assert src.index("ensure_shard_awake(") < src.index("ensure_org_runtime(org_id)")

@@ -23,6 +23,19 @@
     "applyNote": "Salvar reconstrói o ambiente de execução desta organização imediatamente. As consultas em andamento terminam no motor anterior.",
     "saveButton": "Salvar motor",
     "saved": "Motor atualizado.",
-    "currentSuffix": " (atual)"
+    "currentSuffix": " (atual)",
+    "hostedIntro": "O motor de consultas desta organização vem do seu plano. O plano decide qual motor executa as consultas da organização e qual o seu tamanho.",
+    "hostedLane": "Motor",
+    "hostedLaneShared": "Compartilhado — o motor agrupado que o Provisa opera",
+    "hostedLaneIsolated": "Dedicado — um motor que o Provisa opera apenas para esta organização",
+    "hostedLaneExternal": "Um motor operado por esta organização",
+    "hostedPlan": "Plano: {{plan}}",
+    "hostedSize": "Máquina: {{machine}} — {{vcpu}} vCPU, {{memory}} GiB",
+    "hostedStateReady": "Este motor está em execução.",
+    "hostedStateStarting": "Este motor está subindo.",
+    "hostedStateStopped": "Este motor está ocioso. Ele sobe na próxima consulta.",
+    "hostedStateAbsent": "Este motor ainda não foi criado. Ele sobe na próxima consulta.",
+    "hostedStateOther": "Estado do motor: {{state}}",
+    "hostedChange": "Para trocar de motor, troque o plano na página de Faturamento."
   }
 }

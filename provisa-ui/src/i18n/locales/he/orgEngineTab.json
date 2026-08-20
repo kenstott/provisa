@@ -23,6 +23,19 @@
     "applyNote": "שמירה בונה מחדש את סביבת הריצה של ארגון זה מיד. שאילתות שכבר רצות יסתיימו על המנוע הקודם.",
     "saveButton": "שמירת המנוע",
     "saved": "המנוע עודכן.",
-    "currentSuffix": " (נוכחי)"
+    "currentSuffix": " (נוכחי)",
+    "hostedIntro": "מנוע השאילתות של ארגון זה נגזר מהתוכנית שלו. התוכנית קובעת איזה מנוע מריץ את שאילתות הארגון ומה גודלו.",
+    "hostedLane": "מנוע",
+    "hostedLaneShared": "משותף — מאגר מנועים שמנוהל על ידי Provisa",
+    "hostedLaneIsolated": "ייעודי — מנוע ש-Provisa מנהלת עבור ארגון זה בלבד",
+    "hostedLaneExternal": "מנוע שהארגון הזה מפעיל בעצמו",
+    "hostedPlan": "תוכנית: {{plan}}",
+    "hostedSize": "מכונה: {{machine}} — {{vcpu}} vCPU, ‏{{memory}} GiB",
+    "hostedStateReady": "המנוע הזה פועל.",
+    "hostedStateStarting": "המנוע הזה עולה.",
+    "hostedStateStopped": "המנוע הזה במנוחה. הוא יעלה בשאילתה הבאה.",
+    "hostedStateAbsent": "המנוע הזה טרם נוצר. הוא יעלה בשאילתה הבאה.",
+    "hostedStateOther": "מצב המנוע: {{state}}",
+    "hostedChange": "כדי לשנות את המנוע, שנו את התוכנית בעמוד החיוב."
   }
 }

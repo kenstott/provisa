@@ -829,6 +829,28 @@ export interface OrgEngineState {
   isolated_entitled: boolean;
   /** The engine kind the deployment runs — the default for an org that picks none of its own. */
   engine_name: string;
+  // REQ-1510/REQ-1512: on a hosted deployment the lane and the size come from the org's plan, so
+  // this surface reports them and offers no control that changes them.
+  /** The plan that decides the lane, or null where nothing does (self-hosted and enterprise). */
+  plan: string | null;
+  plan_derived: boolean;
+  /** The machine the plan's lane gives this org, or null on the shared lane. */
+  engine_size: OrgEngineSize | null;
+  /** The dedicated coordinator's state, or null where the deployment creates none. */
+  isolated_engine: IsolatedEngineStatus | null;
+}
+
+export interface OrgEngineSize {
+  label: string;
+  machine_type: string;
+  vcpu: number;
+  memory_gib: number;
+  query_max_memory_gb: number;
+}
+
+export interface IsolatedEngineStatus {
+  /** "ready", "starting", "stopped", "absent", or docker's own container state. */
+  state: string;
 }
 
 export async function fetchOrgEngine(): Promise<OrgEngineState> {

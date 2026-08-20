@@ -23,6 +23,19 @@
     "applyNote": "Il salvataggio ricostruisce immediatamente l'ambiente di esecuzione di questa organizzazione. Le query in corso terminano sul motore precedente.",
     "saveButton": "Salva motore",
     "saved": "Motore aggiornato.",
-    "currentSuffix": " (attuale)"
+    "currentSuffix": " (attuale)",
+    "hostedIntro": "Il motore di query di questa organizzazione deriva dal suo piano. Il piano decide quale motore esegue le query dell'organizzazione e quanto è grande.",
+    "hostedLane": "Motore",
+    "hostedLaneShared": "Condiviso: il motore in pool gestito da Provisa",
+    "hostedLaneIsolated": "Dedicato: un motore che Provisa gestisce solo per questa organizzazione",
+    "hostedLaneExternal": "Un motore gestito da questa organizzazione",
+    "hostedPlan": "Piano: {{plan}}",
+    "hostedSize": "Macchina: {{machine}} — {{vcpu}} vCPU, {{memory}} GiB",
+    "hostedStateReady": "Questo motore è in funzione.",
+    "hostedStateStarting": "Questo motore si sta avviando.",
+    "hostedStateStopped": "Questo motore è inattivo. Si avvia alla prossima query.",
+    "hostedStateAbsent": "Questo motore non è ancora stato creato. Si avvia alla prossima query.",
+    "hostedStateOther": "Stato del motore: {{state}}",
+    "hostedChange": "Per cambiare motore, cambia il piano nella pagina Fatturazione."
   }
 }

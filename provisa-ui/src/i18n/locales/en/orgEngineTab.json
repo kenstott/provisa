@@ -23,6 +23,19 @@
     "applyNote": "Saving rebuilds this organization's runtime immediately. Queries in flight finish on the previous engine.",
     "saveButton": "Save engine",
     "saved": "Engine updated.",
-    "currentSuffix": " (current)"
+    "currentSuffix": " (current)",
+    "hostedIntro": "This organization's query engine comes from its plan. The plan decides which engine runs the organization's queries and how large it is.",
+    "hostedLane": "Engine",
+    "hostedLaneShared": "Shared — the pooled engine Provisa operates",
+    "hostedLaneIsolated": "Dedicated — an engine Provisa operates for this organization alone",
+    "hostedLaneExternal": "An engine this organization operates",
+    "hostedPlan": "Plan: {{plan}}",
+    "hostedSize": "Machine: {{machine}} — {{vcpu}} vCPU, {{memory}} GiB",
+    "hostedStateReady": "This engine is running.",
+    "hostedStateStarting": "This engine is coming up.",
+    "hostedStateStopped": "This engine is idle. It starts on the next query.",
+    "hostedStateAbsent": "This engine has not been created yet. It starts on the next query.",
+    "hostedStateOther": "Engine state: {{state}}",
+    "hostedChange": "To change the engine, change the plan on the Billing page."
   }
 }

@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { MemoryRouter } from "react-router-dom";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import type { OrgEngineState } from "../api/admin";
 
@@ -42,6 +43,10 @@ function state(overrides: Partial<OrgEngineState> = {}): OrgEngineState {
     isolated_available: false,
     isolated_entitled: true,
     engine_name: "trino",
+    plan: null,
+    plan_derived: false,
+    engine_size: null,
+    isolated_engine: null,
     ...overrides,
   };
 }
@@ -133,5 +138,64 @@ describe("OrgEngineTab", () => {
     await waitFor(() => expect(screen.getByTestId("org-engine-save-button")).toBeDisabled());
     expect(screen.queryByTestId("org-engine-url")).not.toBeInTheDocument();
     expect(screen.queryByTestId("org-engine-host")).not.toBeInTheDocument();
+  });
+
+  // REQ-1512: on a hosted deployment the plan decides the lane and the size (REQ-1510), so the tab
+  // reports what the org runs on and offers no controls at all — absent, not disabled, because an
+  // org-operated engine is sold on no hosted plan and is not something to offer and then refuse.
+  it("reports the engine and offers no controls when the plan decides it", async () => {
+    mockFetch.mockResolvedValue(
+      state({
+        mode: "isolated",
+        plan: "pro_m",
+        plan_derived: true,
+        engine_size: {
+          label: "Pro M",
+          machine_type: "n2-highmem-8",
+          vcpu: 8,
+          memory_gib: 64,
+          query_max_memory_gb: 40,
+        },
+        isolated_engine: { state: "ready" },
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <OrgEngineTab />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId("org-engine-hosted")).toBeInTheDocument();
+    expect(screen.getByTestId("org-engine-hosted-size")).toHaveTextContent("n2-highmem-8");
+    expect(screen.getByTestId("org-engine-hosted-plan")).toHaveTextContent("pro_m");
+    expect(screen.getByTestId("org-engine-hosted-state")).toHaveTextContent(/running/i);
+    expect(screen.queryByTestId("org-engine-mode-isolated")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-mode-external")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-kind")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-url")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-host")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-save-button")).not.toBeInTheDocument();
+  });
+
+  it("names the Billing page as where a plan-decided engine is changed", async () => {
+    mockFetch.mockResolvedValue(
+      state({ mode: "shared", plan: "starter", plan_derived: true, isolated_engine: null }),
+    );
+    render(
+      <MemoryRouter>
+        <OrgEngineTab />
+      </MemoryRouter>,
+    );
+    const change = await screen.findByTestId("org-engine-hosted-change");
+    expect(change).toHaveTextContent(/Billing page/);
+    expect(change.querySelector("a")).toHaveAttribute("href", "/admin/billing");
+    // A shared-lane org has no dedicated engine, so there is no engine state to report.
+    expect(screen.queryByTestId("org-engine-hosted-state")).not.toBeInTheDocument();
+  });
+
+  it("keeps the controls where nothing derives the lane", async () => {
+    mockFetch.mockResolvedValue(state({ plan: null, plan_derived: false }));
+    render(<OrgEngineTab />);
+    expect(await screen.findByTestId("org-engine-save-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-hosted")).not.toBeInTheDocument();
   });
 });

@@ -311,7 +311,7 @@ export function NavBar() {
       {displayedGroup && (
         <nav className="subnav" ref={subnavRef}>
           {displayedGroup.items
-            .filter((item) => !(item.commercial && !billing))
+            .filter((item) => !(item.commercial && !billing) && !(item.installedOnly && billing))
             .map((item) => (
               <span key={item.to} className="subnav-item-wrapper">
                 {item.separatorBefore && <span className="subnav-sep">|</span>}
