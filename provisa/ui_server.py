@@ -63,7 +63,13 @@ _API_VERIFY = not API_BASE_URL.startswith("https://")
 # Upstream read budget for the proxy leg. A request that outlives it is reported as a 504
 # naming the method, path and elapsed seconds, so the offending endpoint is identifiable
 # from the log alone — the bare httpx.ReadTimeout traceback carries no request path.
-_PROXY_TIMEOUT_S = float(os.environ.get("PROVISA_UI_PROXY_TIMEOUT", "120"))
+#
+# It must exceed the engine wake it may be waiting on. The first query after a shard has idled to
+# zero blocks in ensure_engine_awake for as long as Autopilot takes to provision a node and pull the
+# images — PROVISA_ENGINE_READY_TIMEOUT, 420s (REQ-1448, REQ-1464). A shorter budget here does not
+# shorten that wait, it only kills the request that is paying for it, so the user sees a 504 on
+# every first query and the wake they triggered completes with nobody left to serve.
+_PROXY_TIMEOUT_S = float(os.environ.get("PROVISA_UI_PROXY_TIMEOUT", "480"))
 
 _log = logging.getLogger("provisa.ui_server")
 

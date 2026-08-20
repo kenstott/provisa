@@ -19,15 +19,16 @@ Three things follow from a shard that can be absent, and all three are handled h
 any call site:
 
 * **The wake happens BEFORE the terminal is dispatched, not as a retry.** ``execute_trino``'s retry
-  budget is 30s (``PROVISA_RETRY_BUDGET_SECS``) and a cold shard is ~90-120s of node provision plus
+  budget is 30s (``PROVISA_RETRY_BUDGET_SECS``) and a cold shard is ~2-4min of node provision plus
   Trino start. A wake left to the retry loop therefore cannot succeed — the budget expires while
   Autopilot is still bringing a node up for the pod. :func:`ensure_engine_awake` runs at the top of ``_execute_plan``, so
   the query waits on the wake and then dispatches once, with its full retry budget intact for the
   failures retries are actually for.
 * **A resumed shard has NO catalogs.** It runs ``catalog.management=dynamic`` over an ``emptyDir``,
-  so the ``CREATE CATALOG`` statements an org's runtime issued are gone with the old pod. Every cold
-  start bumps that shard's generation; an org runtime stamped with an older generation is rebuilt
-  before its query runs, which is what reissues them.
+  so the ``CREATE CATALOG`` statements an org's runtime issued are gone with the old pod. A shard's
+  generation counts the distinct coordinator pods observed serving it, so any replacement bumps it;
+  an org runtime stamped with an older generation is rebuilt before its query runs, which is what
+  reissues them.
 * **The reaper and the wake race by construction.** A stop is a drain plus the scale-down that
   follows it, minutes long, and a query can arrive in the middle of it. The wake CANCELS an in-flight stop rather than
   waiting it out, and then treats the shard as cold — the pod may already be gone.
@@ -51,11 +52,10 @@ from provisa.federation import k8s_provisioner as k8s
 log = logging.getLogger(__name__)
 
 # Per shard: the lock that makes a wake happen once for N concurrent queries, when the shard was
-# last SEEN ready, the number of cold starts it has had, when it last served traffic, and the
-# in-flight stop task the reaper started.
+# last SEEN ready, when it last served traffic, and the in-flight stop task the reaper started.
+# The generation is NOT here: it belongs to the cluster, not to this process. See `generation`.
 _locks: dict[str, asyncio.Lock] = {}
 _ready_seen: dict[str, float] = {}
-_generation: dict[str, int] = {}
 _last_activity: dict[str, float] = {}
 _stop_tasks: dict[str, asyncio.Task] = {}
 # Per org (None = the deployment's own org): the in-flight sign-in prewarm, so a second sign-in
@@ -96,12 +96,19 @@ def boot_shard() -> str:
 
 
 def generation(shard: str) -> int:
-    """How many times this process has cold-started ``shard``.
+    """How many distinct coordinator pods have served ``shard`` since this process started.
 
     An org runtime carries the generation its ``CREATE CATALOG`` statements were issued under. A
     mismatch means the coordinator that held those catalogs is gone.
+
+    This counts pods the cluster reported, not cold starts this process drove. The API and the UI
+    proxy are separate processes sharing one shard, so a restart driven by either — or an eviction
+    driven by neither — must be visible to both. A per-process counter is not: the container that
+    did not drive the restart sees its generation still match, skips
+    :func:`restore_shared_terminal`, and its terminal keeps dialing the retired pod's IP until the
+    process is restarted (REQ-1448).
     """
-    return _generation.get(shard, 0)
+    return k8s.coordinator_epoch(shard)
 
 
 def note_activity(shard: str) -> None:
@@ -162,10 +169,41 @@ async def ensure_shard_awake(shard: str, *, lane: str = "shared", size: Any = No
             await k8s.ensure_isolated_shard(shard, size)
         else:
             await k8s.ensure_shared_shard(shard)
-        _generation[shard] = _generation.get(shard, 0) + 1
         _ready_seen[shard] = time.monotonic()
         note_activity(shard)
         return True
+
+
+async def attach_if_serving(state: Any) -> bool:
+    """The background path's engine check: is a live coordinator attached, WITHOUT starting one?
+
+    Scheduled maintenance must never be what wakes a shard. OTEL compaction ticks every minute, so a
+    wake here would hold a pod up permanently and idle-to-zero would save nothing (REQ-1448,
+    REQ-1464). Nor may the job dial the shard blind: its handle is the shared terminal, still
+    connected to the pod that went away, and that is what times out against a released address.
+
+    So the two are split. Serving: bring the terminal onto the live coordinator exactly as the query
+    path does. Not serving: report it, and the caller leaves the work for a tick when the shard is
+    already up for someone else. Deliberately no :func:`note_activity` — a maintenance tick is not
+    traffic and must not extend the idle window the reaper measures.
+    """
+    if not k8s.provisioning_available():
+        return True
+
+    shard = boot_shard()
+    status = await k8s.shard_status(shard)
+    if status["state"] != "ready":
+        return False
+
+    default = state.org_registry.get(state.org_id)
+    if default is None:
+        raise RuntimeError(
+            "the default org has no built runtime, so the engine a background job dispatches to "
+            "cannot be resolved (REQ-1448)"
+        )
+    if default.engine_generation != generation(shard):
+        await restore_shared_terminal(state, shard)
+    return True
 
 
 async def converge_boot_shard() -> str:
@@ -189,15 +227,15 @@ async def converge_shard(shard: str, *, lane: str = "shared", size: Any = None) 
     APPLY where :func:`ensure_shard_awake` probes. A shard that is already ready returns from the
     wake without touching the cluster, which is right for a query and wrong for a change of shape:
     a Pro org that moves between sizes needs the config revision and the rollout it causes, or its
-    engine keeps serving on the hardware it no longer pays for (REQ-1510). The generation bump is
-    what tells the query path that the coordinator holding the org's catalogs has been replaced.
+    engine keeps serving on the hardware it no longer pays for (REQ-1510). The rollout the apply
+    causes is what tells the query path that the coordinator holding the org's catalogs has been
+    replaced: the new pod is a new generation, which the wake observes on its way back out.
     """
     async with _lock_for(shard):
         if lane == "isolated":
             await k8s.ensure_isolated_shard(shard, size)
         else:
             await k8s.ensure_shared_shard(shard)
-        _generation[shard] = _generation.get(shard, 0) + 1
         _ready_seen[shard] = time.monotonic()
         note_activity(shard)
 
@@ -258,7 +296,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
 def prewarm_engine(state: Any, org_id: str | None) -> None:
     """REQ-1471: start the shard's cold start at SIGN-IN, so the first query does not pay for it.
 
-    A cold start is ~90-120s of Autopilot node provision plus Trino start, and the query path pays
+    A cold start is ~2-4min of Autopilot node provision plus Trino start, and the query path pays
     every second of it inside the request. Signing in is the earliest moment the platform knows
     which shard a session is about to use, and it is followed by seconds-to-minutes of the operator
     reading schemas and composing a query — which is exactly the window the node needs. This kicks

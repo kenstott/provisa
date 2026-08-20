@@ -92,10 +92,11 @@ def _pod_list() -> httpx.Response:
         json={
             "items": [
                 {
+                    "metadata": {"name": "trino-shared-1-abc", "uid": "uid-shared-1"},
                     "status": {
                         "podIP": _POD_IP,
                         "conditions": [{"type": "Ready", "status": "True"}],
-                    }
+                    },
                 }
             ]
         },
@@ -663,10 +664,11 @@ async def test_a_pod_that_is_not_ready_is_not_an_address(monkeypatch, configured
                 json={
                     "items": [
                         {
+                            "metadata": {"name": "trino-shared-1-abc", "uid": "uid-starting"},
                             "status": {
                                 "podIP": "10.20.3.9",
                                 "conditions": [{"type": "Ready", "status": "False"}],
-                            }
+                            },
                         }
                     ]
                 },
@@ -698,10 +700,11 @@ async def test_the_warm_path_re_reads_the_address(monkeypatch, configured):
                 json={
                     "items": [
                         {
+                            "metadata": {"name": f"trino-shared-1-{ip[0]}", "uid": f"uid-{ip[0]}"},
                             "status": {
                                 "podIP": ip[0],
                                 "conditions": [{"type": "Ready", "status": "True"}],
-                            }
+                            },
                         }
                     ]
                 },
@@ -721,9 +724,58 @@ async def test_the_warm_path_re_reads_the_address(monkeypatch, configured):
     assert (await prov.shard_status("shared_1"))["state"] == "ready"
     assert prov.shard_endpoint("shared_1")[0] == "10.20.3.7"
 
+    first_epoch = prov.coordinator_epoch("shared_1")
+
     ip[0] = "10.20.4.2"
     await prov.shard_status("shared_1")
     assert prov.shard_endpoint("shared_1")[0] == "10.20.4.2"
+    # The replacement must move the generation too, not just the address. The generation is what
+    # ensure_engine_awake tests to decide whether to rebuild the shared terminal, and a terminal
+    # left connected to the old pod keeps dialing it until the process is restarted — which is what
+    # happens whenever the OTHER app container drove the restart (REQ-1448).
+    assert prov.coordinator_epoch("shared_1") == first_epoch + 1
+
+
+@pytest.mark.asyncio
+async def test_a_pod_that_is_ready_but_terminating_is_not_an_address(monkeypatch, configured):
+    """A pod inside its termination grace period still reports Ready. Dialing it hands the terminal
+    a coordinator that is already shutting down."""
+
+    def record(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/pods"):
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "metadata": {
+                                "name": "trino-shared-1-old",
+                                "uid": "uid-old",
+                                "deletionTimestamp": "2026-08-20T20:20:00Z",
+                            },
+                            "status": {
+                                "podIP": "10.20.0.2",
+                                "conditions": [{"type": "Ready", "status": "True"}],
+                            },
+                        },
+                        {
+                            "metadata": {"name": "trino-shared-1-new", "uid": "uid-new"},
+                            "status": {
+                                "podIP": "10.20.1.3",
+                                "conditions": [{"type": "Ready", "status": "True"}],
+                            },
+                        },
+                    ]
+                },
+            )
+        return _cluster_get()
+
+    monkeypatch.setattr(
+        prov,
+        "_client",
+        lambda verify=True: httpx.AsyncClient(transport=httpx.MockTransport(record)),
+    )
+    assert await prov._resolve_pod_ip("shared_1") == "10.20.1.3"
 
 
 @pytest.mark.asyncio
@@ -823,7 +875,20 @@ async def test_the_isolated_lane_carries_no_queue_policy(monkeypatch, configured
             applied.append(json.loads(request.content))
             return httpx.Response(200, json={})
         if "/pods" in path:
-            return httpx.Response(200, json={"items": [{"status": {"podIP": "10.20.3.7"}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "metadata": {"name": "trino-iso-acme-a", "uid": "uid-iso"},
+                            "status": {
+                                "podIP": "10.20.3.7",
+                                "conditions": [{"type": "Ready", "status": "True"}],
+                            },
+                        }
+                    ]
+                },
+            )
         return _cluster_get()
 
     _mock_api(monkeypatch, handler)

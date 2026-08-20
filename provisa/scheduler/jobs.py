@@ -128,6 +128,20 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         logger.warning("compact_otel: event loop shutting down, skipping this run")
         return
 
+    # The inserts below run through the shared terminal, which on the hosted control plane is a
+    # connection to a shard that idles to zero. Two failures follow if this is skipped: the terminal
+    # dials the pod IP the coordinator was released from and every chunk dies on a connect timeout,
+    # and a resumed coordinator has none of the catalogs `otel.signals` is written through. This
+    # attaches to the live one when there is one — and when there is not, the run is skipped rather
+    # than allowed to wake the shard: compaction ticks every minute, so waking here would keep a pod
+    # up forever and idle-to-zero would save nothing (REQ-1448, REQ-1464). Nothing is lost by
+    # waiting; the parquet stays in the object store and the next tick with a live shard takes it.
+    from provisa.federation.engine_wake import attach_if_serving
+
+    if not await attach_if_serving(state):
+        logger.debug("compact_otel: engine shard is not serving — leaving this run for a later tick")
+        return
+
     async def _one(signal: str) -> None:
         try:
             await asyncio.to_thread(
@@ -680,6 +694,16 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
     if engine is None:
         return
 
+    # Same seam as compaction: these ALTER TABLE ... EXECUTE statements go through the shared
+    # terminal, so a released coordinator means a connect timeout per procedure and a resumed one
+    # means the otel catalog is not there yet. Reclaim is maintenance and must not be what wakes the
+    # shard (REQ-1448) — the orphan files keep until a tick that finds it already serving.
+    from provisa.federation.engine_wake import attach_if_serving
+
+    if not await attach_if_serving(state):
+        logger.debug("reclaim_otel: engine shard is not serving — leaving this run for a later tick")
+        return
+
     threshold = f"{retention_hours}h"
     for signal in ("logs", "metrics", "traces"):
         for proc, hint in (
@@ -745,6 +769,15 @@ async def watch_engine() -> None:
     watchdog through the seam — the engine restarts its container and replaces a dead connection;
     native engines have no external process to watch (no-op)."""
     from provisa.api.app import state
+    from provisa.federation.engine_wake import attach_if_serving
+
+    # A shard at zero replicas is not an unresponsive engine, and the watchdog cannot tell the two
+    # apart: it pings, the ping times out against the released pod IP, and it tries to `docker start
+    # provisa-trino-1` — a container that does not exist on a control plane whose engine runs on
+    # GKE. Every tick of an idle shard therefore paid a connect timeout to reach a wrong action.
+    # Resting is the designed state (REQ-1448); there is nothing here to watch until it is serving.
+    if not await attach_if_serving(state):
+        return
 
     await state.federation_engine.watchdog()
 

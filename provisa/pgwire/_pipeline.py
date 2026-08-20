@@ -780,7 +780,7 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
         from provisa.api.app import state  # type: ignore[assignment]
     # REQ-1448: the shard this org queries may have had its node released while idle. Waking it HERE
     # — before the terminal, not inside the executor's retry loop — is what makes a cold start
-    # survivable: a node is ~90-120s to provision and the retry budget is 30s, so a query that
+    # survivable: a node is ~2-4min to provision and the retry budget is 30s, so a query that
     # discovers the absence at dispatch time could never wait it out. This is also the one seam every
     # surface reaches, so no protocol server needs a wake of its own.
     from provisa.federation.engine_wake import ensure_engine_awake

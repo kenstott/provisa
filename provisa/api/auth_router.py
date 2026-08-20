@@ -129,7 +129,7 @@ async def me(request: Request):
     # REQ-1471: the IdP owns login, so this is the first authenticated call of a session and the
     # earliest point the platform knows which shard that session will query. Starting the shard's
     # cold start here — not blocking on it — spends the operator's read-and-compose time on the
-    # ~90-120s node provision the first query would otherwise pay for inside the request.
+    # ~2-4min node provision the first query would otherwise pay for inside the request.
     from provisa.federation.engine_wake import prewarm_engine
 
     prewarm_engine(state, active_org_id)

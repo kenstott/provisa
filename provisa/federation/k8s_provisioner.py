@@ -359,6 +359,25 @@ def shard_workload_name(shard: str) -> str:
 # (scale_shard_to_zero), so what it holds is always the cluster's own last word.
 _pod_ips: dict[str, str] = {}
 
+# The pod UID behind each shard's recorded address, and a counter bumped every time that UID
+# changes. This is the coordinator generation: an observation of the cluster, not a count of the
+# restarts this process happened to drive. Two app containers share one shard, so a restart driven
+# by either one — or by an eviction neither one asked for — has to be visible to both, or the
+# container that did not drive it keeps dialing the pod that is gone (REQ-1448).
+_pod_uids: dict[str, str] = {}
+_coordinator_epoch: dict[str, int] = {}
+
+
+def coordinator_epoch(shard: str) -> int:
+    """How many distinct pods have served ``shard`` since this process started observing it."""
+    return _coordinator_epoch.get(shard, 0)
+
+
+def _forget_pod(shard: str) -> None:
+    """Drop the recorded coordinator, so the next pod observed counts as a new one."""
+    _pod_ips.pop(shard, None)
+    _pod_uids.pop(shard, None)
+
 
 async def _resolve_pod_ip(shard: str) -> str:
     """The IP of the shard's ready pod, asked of the Kubernetes API.
@@ -382,6 +401,11 @@ async def _resolve_pod_ip(shard: str) -> str:
     if resp.status_code >= 400:
         raise K8sProvisioningError(f"listing pods for shard {shard} failed: {gcp_error_detail(resp)}")
     for pod in resp.json().get("items", []):
+        meta = pod.get("metadata", {})
+        # A pod being deleted still reports Ready until its grace period runs out. Dialing it hands
+        # the terminal a coordinator that is already shutting down.
+        if meta.get("deletionTimestamp"):
+            continue
         status = pod.get("status", {})
         ready = any(
             c.get("type") == "Ready" and c.get("status") == "True"
@@ -389,6 +413,10 @@ async def _resolve_pod_ip(shard: str) -> str:
         )
         ip = status.get("podIP")
         if ready and ip:
+            uid = meta["uid"]
+            if _pod_uids.get(shard) != uid:
+                _pod_uids[shard] = uid
+                _coordinator_epoch[shard] = _coordinator_epoch.get(shard, 0) + 1
             _pod_ips[shard] = ip
             return ip
     raise K8sProvisioningError(f"shard {shard} has no ready pod with an address")
@@ -766,7 +794,7 @@ async def ensure_shard_running(
     no-op, and a Deployment that already has a ready replica returns on the first GET.
 
     There is no node step. Applying the Deployment at one replica is the whole wake: Autopilot
-    provisions a node to fit the pod's requests, which is the ~90-120s ``PROVISA_ENGINE_READY_TIMEOUT``
+    provisions a node to fit the pod's requests, which is the ~2-4min ``PROVISA_ENGINE_READY_TIMEOUT``
     covers (REQ-1464).
 
     The caller must hold the org registry's lock. A wake is a coupled sequence — replica ready, org
@@ -868,7 +896,7 @@ async def scale_shard_to_zero(shard: str) -> dict:
             )
         await asyncio.sleep(5.0)
 
-    _pod_ips.pop(shard, None)
+    _forget_pod(shard)
     log.info("engine shard %s scaled to zero", shard)
     return {"shard": shard, "state": "stopped"}
 
@@ -891,7 +919,7 @@ async def shard_status(shard: str) -> dict:
         # ready Deployment, and reusing the old one would dial an address nothing answers on.
         await _resolve_pod_ip(shard)
     else:
-        _pod_ips.pop(shard, None)
+        _forget_pod(shard)
     # Desired replicas, not node count: on Autopilot a shard at zero replicas has no node by
     # construction, and one with a replica that is not ready yet is a node being provisioned.
     desired = int(body.get("spec", {}).get("replicas", 0))

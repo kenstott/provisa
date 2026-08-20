@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.federation import engine_wake
+from provisa.federation import k8s_provisioner as k8s
 
 
 @pytest.fixture(autouse=True)
@@ -29,20 +30,28 @@ def _clean_module_state():
     for d in (
         engine_wake._locks,
         engine_wake._ready_seen,
-        engine_wake._generation,
         engine_wake._last_activity,
         engine_wake._stop_tasks,
         engine_wake._prewarm_tasks,
+        # The generation is the provisioner's observation of which pod is serving, so resetting it
+        # means clearing what the provisioner has seen.
+        k8s._pod_ips,
+        k8s._pod_uids,
+        k8s._coordinator_epoch,
     ):
         d.clear()
     yield
     for d in (
         engine_wake._locks,
         engine_wake._ready_seen,
-        engine_wake._generation,
         engine_wake._last_activity,
         engine_wake._stop_tasks,
         engine_wake._prewarm_tasks,
+        # The generation is the provisioner's observation of which pod is serving, so resetting it
+        # means clearing what the provisioner has seen.
+        k8s._pod_ips,
+        k8s._pod_uids,
+        k8s._coordinator_epoch,
     ):
         d.clear()
 
@@ -55,18 +64,35 @@ class _FakeK8s:
         self.status_calls = 0
         self.wakes: list[str] = []
         self.stops: list[str] = []
+        self.pods = 0
+
+    def land_pod(self, shard: str) -> None:
+        """What every real provisioner call ends in: the pod now serving ``shard`` is observed.
+
+        The generation the wake reports is that observation, so a fake that skipped it would report
+        a shard whose coordinator never changed no matter how often it was restarted.
+        """
+        self.pods += 1
+        k8s._pod_uids[shard] = f"uid-{self.pods}"
+        k8s._coordinator_epoch[shard] = k8s._coordinator_epoch.get(shard, 0) + 1
+        k8s._pod_ips[shard] = f"10.20.0.{self.pods}"
 
     async def shard_status(self, shard: str) -> dict:
         self.status_calls += 1
+        if self.state == "ready" and shard not in k8s._pod_uids:
+            self.land_pod(shard)
         return {"shard": shard, "state": self.state, "ready_replicas": 0, "replicas": 0}
 
     async def ensure_shared_shard(self, shard: str) -> None:
         self.wakes.append(shard)
         self.state = "ready"
+        self.land_pod(shard)
 
     async def scale_shard_to_zero(self, shard: str) -> None:
         self.stops.append(shard)
         self.state = "stopped"
+        k8s._pod_uids.pop(shard, None)
+        k8s._pod_ips.pop(shard, None)
 
 
 @pytest.fixture
@@ -111,7 +137,10 @@ async def test_already_ready_shard_is_not_woken(fake_k8s):
     fake_k8s.state = "ready"
     assert await engine_wake.ensure_shard_awake("shared_1") is False
     assert fake_k8s.wakes == []
-    assert engine_wake.generation("shared_1") == 0
+    # The shard was not started here, but its pod WAS seen for the first time, and the generation
+    # counts pods observed rather than starts driven. A runtime stamped before that first sighting
+    # has no evidence its catalogs were issued on this coordinator.
+    assert engine_wake.generation("shared_1") == 1
 
 
 async def test_warm_path_skips_the_status_call(fake_k8s):
@@ -276,7 +305,11 @@ async def test_warm_shard_does_not_rebuild_the_org_runtime(fake_k8s, monkeypatch
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _boom, raising=False)
 
-    rt = OrgRuntime(org_id="acme", shard="shared_1", engine_generation=0)
+    # Stamped on the coordinator now serving: that is what "warm" means to the query path.
+    await engine_wake.ensure_shard_awake("shared_1")
+    rt = OrgRuntime(
+        org_id="acme", shard="shared_1", engine_generation=engine_wake.generation("shared_1")
+    )
     token = current_org.set("acme")
     try:
         await engine_wake.ensure_engine_awake(_state_with(rt, rebuilt))
@@ -323,7 +356,10 @@ async def test_default_org_query_on_a_warm_shard_leaves_the_terminal_alone(fake_
     from provisa.api.org_runtime import OrgRuntime
 
     fake_k8s.state = "ready"
-    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    await engine_wake.ensure_shard_awake("shared_1")
+    default = OrgRuntime(
+        org_id="default", shard="shared_1", engine_generation=engine_wake.generation("shared_1")
+    )
     state = _state_with(None, [], default=default)
 
     await engine_wake.ensure_engine_awake(state)
@@ -600,6 +636,7 @@ def fake_isolated_k8s(fake_k8s, monkeypatch):
     async def ensure_isolated_shard(shard: str, size):
         isolated.append((shard, size))
         fake_k8s.state = "ready"
+        fake_k8s.land_pod(shard)
 
     monkeypatch.setattr(engine_wake.k8s, "ensure_isolated_shard", ensure_isolated_shard)
     fake_k8s.isolated = isolated
@@ -683,3 +720,59 @@ def test_an_isolated_org_wakes_its_own_shard_and_skips_the_shared_terminal():
     assert "isolated_shard(org_id)" in src
     assert "restore_shared_terminal" not in src
     assert src.index("ensure_shard_awake(") < src.index("ensure_org_runtime(org_id)")
+
+
+# ── attach_if_serving ───────────────────────────────────────────────────────────
+
+
+async def test_a_background_job_does_not_wake_a_resting_shard(fake_k8s):
+    """Compaction ticks every minute. If maintenance could wake the shard it would never rest, and
+    idle-to-zero would save nothing (REQ-1448, REQ-1464)."""
+    assert await engine_wake.attach_if_serving(_state_with(None, [])) is False
+    assert fake_k8s.wakes == []
+
+
+async def test_a_background_job_reattaches_to_a_replaced_coordinator(fake_k8s):
+    """The job's handle is the shared terminal, still connected to the pod that went away. Without
+    the restore it dials a released address and every statement dies on a connect timeout."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    fake_k8s.state = "ready"
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    state = _state_with(None, [], default=default)
+
+    assert await engine_wake.attach_if_serving(state) is True
+    # The pod was observed for the first time here, so generation 1 against the runtime's 0 is the
+    # replacement the terminal has to be moved onto.
+    assert state.federation_engine.provisions == 1
+    assert default.engine_generation == 1
+
+
+async def test_a_background_job_on_an_unchanged_coordinator_leaves_the_terminal_alone(fake_k8s):
+    """A restore per tick would tear down and rebuild a working terminal every minute."""
+    fake_k8s.state = "ready"
+    state = _state_with(None, [])
+    await engine_wake.attach_if_serving(state)
+    provisions = state.federation_engine.provisions
+
+    await engine_wake.attach_if_serving(state)
+    assert state.federation_engine.provisions == provisions
+
+
+async def test_a_background_job_does_not_count_as_traffic(fake_k8s):
+    """The reaper measures idleness from real traffic. A maintenance tick that stamped activity
+    would hold the shard open forever exactly as a wake would."""
+    fake_k8s.state = "ready"
+    await engine_wake.attach_if_serving(_state_with(None, []))
+    assert "shared_1" not in engine_wake._last_activity
+
+
+async def test_a_non_provisioning_deployment_always_has_its_engine(monkeypatch):
+    """A desktop engine is always on, so a background job must neither check nor skip."""
+    monkeypatch.setattr(engine_wake.k8s, "provisioning_available", lambda: False)
+
+    async def _boom(*a, **k):
+        raise AssertionError("the provisioner must not be reached")
+
+    monkeypatch.setattr(engine_wake.k8s, "shard_status", _boom)
+    assert await engine_wake.attach_if_serving(SimpleNamespace()) is True
