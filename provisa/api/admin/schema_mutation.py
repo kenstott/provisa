@@ -305,6 +305,44 @@ def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | 
     return None
 
 
+async def _refuse_over_source_limit(source_id: str) -> MutationResult | None:  # REQ-1513
+    """Refuse a NEW source the org's plan has no room for, or None when there is room.
+
+    The ceiling is the one the Billing page prints on the plan card, so the number an administrator
+    chose the plan for is the number enforced here. Only a source the org does not already hold is
+    tested: ``create_source`` is an upsert, and editing the connection details of a source that is
+    already registered adds nothing to the count.
+
+    None on a self-hosted deployment — there is no subscription, so there is no ceiling (REQ-1513).
+    """
+    from provisa.api.app import state
+    from provisa.api.org_runtime import current_org
+    from provisa.core.commerce import source_limit_for_org
+    from provisa.core.repositories import source as source_repo
+
+    org_id = current_org.get() or state.org_id
+    limit = await source_limit_for_org(state, org_id)
+    if limit is None:
+        return None
+    max_sources, plan = limit
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        if await source_repo.get(conn, source_id) is not None:
+            return None
+        held = await source_repo.count_billable(conn)
+    if held < max_sources:
+        return None
+    return MutationResult(
+        success=False,
+        message=(
+            f"This organization holds {held} of the {max_sources} data sources its {plan} plan "
+            f"admits. Change the plan on the Billing page, or remove a source."
+        ),
+        code="schema.source_limit_reached",
+        params={"source": source_id, "held": str(held), "limit": str(max_sources), "plan": plan},
+    )
+
+
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
@@ -421,6 +459,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel, SourceType as SourceTypeEnum
+
+        _limit_refusal = await _refuse_over_source_limit(input.id)
+        if _limit_refusal is not None:
+            return _limit_refusal
 
         if input.type == "govdata":
             _err = await _validate_govdata_api_key(input)

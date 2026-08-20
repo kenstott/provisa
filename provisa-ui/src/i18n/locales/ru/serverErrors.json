@@ -246,6 +246,7 @@
       "source_connection_failed": "Источник '{{source}}': сбой проверки подключения: {{error}}",
       "source_created": "Источник '{{source}}' создан",
       "source_deleted": "Источник '{{source}}' удален",
+      "source_limit_reached": "Эта организация использует {{held}} из {{limit}} источников данных, допускаемых тарифом {{plan}}. Измените тариф на странице оплаты или удалите источник.",
       "source_load_protection_set": "защита от нагрузки задана для источника '{{source}}'",
       "source_naming_updated": "Соглашение об именовании обновлено для источника '{{source}}'",
       "source_no_connection": "источник '{{source}}' не имеет активного подключения",

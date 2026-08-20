@@ -246,6 +246,7 @@
       "source_connection_failed": "数据源 '{{source}}'：连接验证失败：{{error}}",
       "source_created": "数据源 '{{source}}' 已创建",
       "source_deleted": "数据源 '{{source}}' 已删除",
+      "source_limit_reached": "该组织已使用 {{plan}} 套餐允许的 {{limit}} 个数据源中的 {{held}} 个。请在账单页面更改套餐，或移除一个数据源。",
       "source_load_protection_set": "已为数据源 '{{source}}' 设置负载保护",
       "source_naming_updated": "已更新数据源 '{{source}}' 的命名约定",
       "source_no_connection": "数据源 '{{source}}' 没有活跃连接",

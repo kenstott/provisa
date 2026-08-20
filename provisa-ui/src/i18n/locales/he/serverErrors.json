@@ -246,6 +246,7 @@
       "source_connection_failed": "המקור '{{source}}': אימות החיבור נכשל: {{error}}",
       "source_created": "המקור '{{source}}' נוצר",
       "source_deleted": "המקור '{{source}}' נמחק",
+      "source_limit_reached": "לארגון זה יש {{held}} מתוך {{limit}} מקורות הנתונים שתוכנית {{plan}} מתירה. שנו את התוכנית בעמוד החיוב, או הסירו מקור.",
       "source_load_protection_set": "הגנת עומס הוגדרה עבור המקור '{{source}}'",
       "source_naming_updated": "מוסכמת השמות עודכנה עבור המקור '{{source}}'",
       "source_no_connection": "למקור '{{source}}' אין חיבור פעיל",

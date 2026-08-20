@@ -40,6 +40,14 @@ from provisa.core.source_registry import (
 # ("derived table"); pairs with base relations the way Denodo base/derived views do.
 DERIVED_SOURCE_ID = "__derived__"
 
+# REQ-1513: the sources every org is seeded with, which no plan sells and no plan counts. They back
+# the meta and ops domains — the control plane's self-catalog, the telemetry store and the derived
+# sentinel — and are written by ``_seed_built_in_sources`` on every boot and every org build, so an
+# org that registered nothing at all still holds three rows. Counting them against a source ceiling
+# would charge the customer for Provisa's own furniture and would put a brand-new Starter org three
+# sources into its allowance.
+BUILT_IN_SOURCE_IDS = frozenset({"provisa-admin", "provisa-otel", DERIVED_SOURCE_ID})
+
 
 class SourceType(str, Enum):
     # RDBMS

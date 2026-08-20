@@ -246,6 +246,7 @@
       "source_connection_failed": "Source '{{source}}': connection validation failed: {{error}}",
       "source_created": "Source '{{source}}' created",
       "source_deleted": "Source '{{source}}' deleted",
+      "source_limit_reached": "This organization holds {{held}} of the {{limit}} data sources its {{plan}} plan admits. Change the plan on the Billing page, or remove a source.",
       "source_load_protection_set": "load protection set for source '{{source}}'",
       "source_naming_updated": "Naming convention updated for source '{{source}}'",
       "source_no_connection": "source '{{source}}' has no active connection",

@@ -246,6 +246,7 @@
       "source_connection_failed": "Bron '{{source}}': verbindingsvalidatie mislukt: {{error}}",
       "source_created": "Bron '{{source}}' gemaakt",
       "source_deleted": "Bron '{{source}}' verwijderd",
+      "source_limit_reached": "Deze organisatie gebruikt {{held}} van de {{limit}} gegevensbronnen die het {{plan}}-abonnement toestaat. Wijzig het abonnement op de pagina Facturering of verwijder een bron.",
       "source_load_protection_set": "belastingsbescherming ingesteld voor bron '{{source}}'",
       "source_naming_updated": "Naamgevingsconventie bijgewerkt voor bron '{{source}}'",
       "source_no_connection": "bron '{{source}}' heeft geen actieve verbinding",

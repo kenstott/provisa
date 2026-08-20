@@ -246,6 +246,7 @@
       "source_connection_failed": "स्रोत '{{source}}': कनेक्शन सत्यापन विफल हुआ: {{error}}",
       "source_created": "स्रोत '{{source}}' बनाया गया",
       "source_deleted": "स्रोत '{{source}}' हटाया गया",
+      "source_limit_reached": "इस संगठन के पास {{limit}} में से {{held}} डेटा स्रोत हैं, जितने उसकी {{plan}} योजना में अनुमत हैं। बिलिंग पृष्ठ पर योजना बदलें, या कोई स्रोत हटाएँ।",
       "source_load_protection_set": "स्रोत '{{source}}' के लिए लोड सुरक्षा सेट की गई",
       "source_naming_updated": "स्रोत '{{source}}' के लिए नामकरण परंपरा अपडेट की गई",
       "source_no_connection": "स्रोत '{{source}}' का कोई सक्रिय कनेक्शन नहीं है",

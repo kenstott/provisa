@@ -246,6 +246,7 @@
       "source_connection_failed": "ソース「{{source}}」：接続検証に失敗しました：{{error}}",
       "source_created": "ソース「{{source}}」を作成しました",
       "source_deleted": "ソース「{{source}}」を削除しました",
+      "source_limit_reached": "この組織は {{plan}} プランで利用できる {{limit}} 件のうち {{held}} 件のデータソースを保持しています。請求ページでプランを変更するか、データソースを削除してください。",
       "source_load_protection_set": "ソース「{{source}}」に負荷保護を設定しました",
       "source_naming_updated": "ソース「{{source}}」の命名規則を更新しました",
       "source_no_connection": "ソース「{{source}}」にアクティブな接続がありません",

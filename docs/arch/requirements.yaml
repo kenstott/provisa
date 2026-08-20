@@ -47870,3 +47870,74 @@ And a later observation in the same hour replaces it rather than adding to it
   - REQ-1412
   - REQ-1418
   - REQ-916
+- id: REQ-1513
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Billing
+  priority: MUST
+  type: behavioral
+  description: 'The source ceiling a plan sells is enforced where sources are created, not only where
+    a plan is downgraded. Starter admits ten data sources and Pro admits one hundred, and those are
+    the numbers the Billing plan cards print (REQ-1511); registering a source beyond the ceiling is
+    refused with the count, the ceiling and the plan named, and with the Billing page named as where
+    the plan is changed. The ceiling is read from the same table the plan cards are priced from, so
+    the number an administrator chose the plan for is the number the create path enforces.
+    The sources Provisa seeds into every organization -- provisa-admin, provisa-otel and the derived
+    sentinel, which back the meta and ops domains -- are excluded from the count. They are written by
+    the built-in seed on every boot and every organization build, so an organization that has
+    registered nothing at all still holds three rows; counting them would charge the customer for
+    Provisa''s own furniture and would put a brand-new Starter organization three sources into an
+    allowance it had not begun to spend. The Starter downgrade guard (REQ-1509) reads the same
+    counter, so the ceiling that refuses a create and the ceiling that refuses a downgrade can never
+    disagree, and a downgrade is never refused over sources the customer has nothing to remove of.
+    A source the organization already holds is not tested: create_source is an upsert, and editing
+    the connection details of a registered source adds nothing to the count.
+    No ceiling applies on a self-hosted deployment. There is no subscription there, so there is no
+    plan to read one from, and bounding an operator''s own installation would paywall software the
+    customer already owns.'
+  use_case: 'An administrator of a hosted Starter organization registering an eleventh data source is
+    told how many of the ten their plan admits are already in use and is sent to Billing, rather than
+    finding the eleventh source registered and the plan card''s promise meaningless.'
+  code:
+  - provisa/core/models.py
+  - provisa/core/repositories/source.py
+  - provisa/core/commerce.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa_commercial/entitlements.py
+  - provisa_commercial/router.py
+  - provisa-ui/src/i18n/locales/en/serverErrors.json
+  tests:
+  - tests/unit/test_source_limit.py
+  - .claude/commercial/tests/test_plan_change.py
+  scenario: 'Given a hosted organization on the Starter plan holding the ten sources it admits
+
+    When an administrator registers another source
+
+    Then the create is refused naming the count, the ceiling and the plan
+
+    And the Billing page is named as where the plan is changed
+
+    Given an organization that has registered nothing
+
+    When its sources are counted against the ceiling
+
+    Then the built-in meta and ops sources are not counted
+
+    Given a source the organization already holds
+
+    When its connection details are edited
+
+    Then no ceiling is tested
+
+    Given a self-hosted deployment
+
+    When any number of sources is registered
+
+    Then no ceiling applies
+
+    '
+  related_reqs:
+  - REQ-1509
+  - REQ-1511
+  - REQ-1510

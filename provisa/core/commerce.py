@@ -218,6 +218,20 @@ async def lane_entitled(state: Any, org_id: str | None, mode: str) -> bool:
     return await plugin.lane_entitled(state, org_id, mode)
 
 
+async def source_limit_for_org(state: Any, org_id: str | None) -> tuple[int, str] | None:
+    """The ``(max_sources, plan)`` a plan admits for ``org_id``, or None when nothing bounds it.
+
+    REQ-1513: Starter admits 10 sources and Pro admits 100, and those are the numbers the Billing
+    page prints on the plan cards. None on a self-hosted deployment and for an id with no ``orgs``
+    row: an operator running their own Provisa registers as many sources as their own systems have,
+    and imposing a ceiling there would paywall software the customer already owns.
+    """
+    plugin = load()
+    if plugin is None:
+        return None
+    return await plugin.source_limit_for_org(state, org_id)
+
+
 # --- trial eligibility ----------------------------------------------------------------------- #
 
 

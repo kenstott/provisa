@@ -49,6 +49,26 @@ async def upsert(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-25
     await conn.upsert(sources, _source_values(source), index_elements=["id"])
 
 
+async def count_billable(conn: "Connection") -> int:  # REQ-1513
+    """How many sources the org has registered — the number a plan's source ceiling is read against.
+
+    The built-in rows are excluded: they are seeded by Provisa into every org, so counting them
+    would spend part of the allowance the customer bought before the customer registered anything.
+    """
+    from sqlalchemy import func
+
+    from provisa.core.models import BUILT_IN_SOURCE_IDS
+
+    result = await conn.execute_core(
+        select(func.count())
+        .select_from(sources)
+        .where(sources.c.id.notin_(sorted(BUILT_IN_SOURCE_IDS)))
+    )
+    row = result.fetchone()
+    assert row is not None  # COUNT over an empty table is a row holding 0, never no row
+    return int(row[0])
+
+
 async def get(conn: "Connection", source_id: str) -> dict | None:  # REQ-012
     result = await conn.execute_core(select(sources).where(sources.c.id == source_id))
     row = result.fetchone()

@@ -246,6 +246,7 @@
       "source_connection_failed": "Quelle '{{source}}': Verbindungsprüfung fehlgeschlagen: {{error}}",
       "source_created": "Quelle '{{source}}' erstellt",
       "source_deleted": "Quelle '{{source}}' gelöscht",
+      "source_limit_reached": "Diese Organisation nutzt {{held}} der {{limit}} Datenquellen, die ihr {{plan}}-Tarif zulässt. Ändern Sie den Tarif auf der Seite „Abrechnung“ oder entfernen Sie eine Datenquelle.",
       "source_load_protection_set": "Lastschutz für Quelle '{{source}}' gesetzt",
       "source_naming_updated": "Namenskonvention für Quelle '{{source}}' aktualisiert",
       "source_no_connection": "Quelle '{{source}}' hat keine aktive Verbindung",

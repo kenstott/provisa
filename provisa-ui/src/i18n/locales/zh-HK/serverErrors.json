@@ -246,6 +246,7 @@
       "source_connection_failed": "數據來源「{{source}}」：連線驗證失敗：{{error}}",
       "source_created": "數據來源「{{source}}」已建立",
       "source_deleted": "數據來源「{{source}}」已刪除",
+      "source_limit_reached": "此機構已使用 {{plan}} 方案允許的 {{limit}} 個資料來源中的 {{held}} 個。請在帳單頁面變更方案，或移除一個資料來源。",
       "source_load_protection_set": "已為數據來源「{{source}}」設定負載保護",
       "source_naming_updated": "已更新數據來源「{{source}}」的命名慣例",
       "source_no_connection": "數據來源「{{source}}」沒有作用中的連線",

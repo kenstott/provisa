@@ -246,6 +246,7 @@
       "source_connection_failed": "Origine '{{source}}': convalida della connessione non riuscita: {{error}}",
       "source_created": "Origine '{{source}}' creata",
       "source_deleted": "Origine '{{source}}' eliminata",
+      "source_limit_reached": "Questa organizzazione utilizza {{held}} delle {{limit}} origini dati consentite dal suo piano {{plan}}. Cambia piano nella pagina Fatturazione oppure rimuovi un'origine.",
       "source_load_protection_set": "protezione dal carico impostata per l'origine '{{source}}'",
       "source_naming_updated": "Convenzione di denominazione aggiornata per l'origine '{{source}}'",
       "source_no_connection": "l'origine '{{source}}' non ha una connessione attiva",

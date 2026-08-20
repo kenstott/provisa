@@ -246,6 +246,7 @@
       "source_connection_failed": "Origen '{{source}}': error en la validación de la conexión: {{error}}",
       "source_created": "Origen '{{source}}' creado",
       "source_deleted": "Origen '{{source}}' eliminado",
+      "source_limit_reached": "Esta organización tiene {{held}} de las {{limit}} fuentes de datos que admite su plan {{plan}}. Cambie el plan en la página de facturación o elimine una fuente.",
       "source_load_protection_set": "protección de carga establecida para el origen '{{source}}'",
       "source_naming_updated": "Convención de nomenclatura actualizada para el origen '{{source}}'",
       "source_no_connection": "el origen '{{source}}' no tiene conexión activa",

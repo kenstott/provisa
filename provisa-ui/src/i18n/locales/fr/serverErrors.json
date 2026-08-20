@@ -246,6 +246,7 @@
       "source_connection_failed": "Source « {{source}} » : échec de la validation de connexion : {{error}}",
       "source_created": "Source « {{source}} » créée",
       "source_deleted": "Source « {{source}} » supprimée",
+      "source_limit_reached": "Cette organisation utilise {{held}} des {{limit}} sources de données autorisées par son forfait {{plan}}. Changez de forfait sur la page Facturation ou supprimez une source.",
       "source_load_protection_set": "protection de charge définie pour la source « {{source}} »",
       "source_naming_updated": "Convention de nommage mise à jour pour la source « {{source}} »",
       "source_no_connection": "la source « {{source}} » n'a pas de connexion active",

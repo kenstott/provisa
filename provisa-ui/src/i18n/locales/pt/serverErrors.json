@@ -246,6 +246,7 @@
       "source_connection_failed": "Fonte '{{source}}': falha na validação da conexão: {{error}}",
       "source_created": "Fonte '{{source}}' criada",
       "source_deleted": "Fonte '{{source}}' excluída",
+      "source_limit_reached": "Esta organização tem {{held}} das {{limit}} fontes de dados que o plano {{plan}} permite. Altere o plano na página de faturação ou remova uma fonte.",
       "source_load_protection_set": "proteção de carga definida para a fonte '{{source}}'",
       "source_naming_updated": "Convenção de nomenclatura atualizada para a fonte '{{source}}'",
       "source_no_connection": "a fonte '{{source}}' não tem conexão ativa",
