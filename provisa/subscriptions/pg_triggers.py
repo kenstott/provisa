@@ -21,6 +21,9 @@ from provisa.subscriptions.pg_provider import CHANNEL_PREFIX
 
 log = logging.getLogger(__name__)
 
+# Postgres refuses a NOTIFY payload of 8000 bytes or more; stay clear of the boundary.
+MAX_NOTIFY_BYTES = 7900
+
 
 def _trigger_sql(schema: str, table: str) -> str:
     """Return idempotent SQL to install a notify trigger on schema.table."""
@@ -30,14 +33,29 @@ def _trigger_sql(schema: str, table: str) -> str:
     return f"""
 CREATE OR REPLACE FUNCTION {fn}()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rowjson text;
+  payload text;
+  budget int;
 BEGIN
-  PERFORM pg_notify(
-    '{channel}',
-    json_build_object(
-      'op', lower(TG_OP),
-      'row', CASE WHEN TG_OP = 'DELETE' THEN row_to_json(OLD) ELSE row_to_json(NEW) END
-    )::text
-  );
+  rowjson := (CASE WHEN TG_OP = 'DELETE' THEN row_to_json(OLD) ELSE row_to_json(NEW) END)::text;
+  payload := json_build_object('op', lower(TG_OP), 'row', rowjson::json)::text;
+  -- REQ-1515: NOTIFY caps a payload at 8000 bytes and raises otherwise, which would abort the
+  -- writer's transaction. A row too large to fit is truncated rather than dropped: the
+  -- subscriber still sees the change and the leading columns, and a write never fails for
+  -- want of a notification. The loop halves the character budget until the encoded envelope
+  -- fits, since a character is up to four bytes.
+  IF octet_length(payload) > {MAX_NOTIFY_BYTES} THEN
+    budget := {MAX_NOTIFY_BYTES};
+    LOOP
+      payload := json_build_object(
+        'op', lower(TG_OP), 'truncated', true, 'row_text', left(rowjson, budget)
+      )::text;
+      EXIT WHEN octet_length(payload) <= {MAX_NOTIFY_BYTES} OR budget < 1;
+      budget := budget / 2;
+    END LOOP;
+  END IF;
+  PERFORM pg_notify('{channel}', payload);
   RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
 END;
 $$;

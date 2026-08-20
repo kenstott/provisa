@@ -47941,3 +47941,105 @@ And a later observation in the same hour replaces it rather than adding to it
   - REQ-1509
   - REQ-1511
   - REQ-1510
+- id: REQ-1514
+  status: complete
+  since: 2026-08
+  group: 8. User Interface
+  category: Application Shell
+  priority: MUST
+  type: behavioral
+  description: When the deployment stops answering, the whole application says so in one place instead
+    of leaving each surface to render a transport error in its own vocabulary. A same-origin request
+    that never gets a response -- the server restarting after a deploy, a node waking from an idle stop,
+    a dropped network -- rejects with a TypeError, and before this the user saw "TypeError. Failed to
+    fetch" printed over a GraphiQL result pane, or a list that simply came up empty, with nothing naming
+    the cause or telling them to wait. Reachability is DERIVED from the traffic the app already makes,
+    never asserted by a caller - the fetch interceptor that carries the bearer (REQ-1267) samples every
+    same-origin request, a rejection marks the deployment unreachable and any response marks it reachable
+    again. An HTTP error status is a reachable server, and a caller's own abort is not an outage. The
+    notice is a modal, not a banner, and is not dismissible - nothing the user does while the server
+    is down can succeed, so the interruption is the message. It sits outside the setup, sign-in and onboarding
+    gates, because a server that is not answering is what breaks those too. While it is up, an unauthenticated
+    /health probe polls until the deployment answers, so the notice clears itself and the recovery does
+    not also cost the user a reload. The failure is re-thrown untouched, so no call site loses the error
+    it already handled.
+  use_case: A deploy restarts the containers while a user has the query page open; instead of a raw
+    "Failed to fetch" over the result pane, they are told the server is restarting and the page resumes
+    on its own when it comes back.
+  tests:
+  - provisa-ui/src/__tests__/serverReachability.test.tsx
+  code:
+  - provisa-ui/src/lib/serverReachability.ts
+  - provisa-ui/src/lib/authFetch.ts
+  - provisa-ui/src/components/ServerUnavailableModal.tsx
+  - provisa-ui/src/App.tsx
+  scenario: 'Given the deployment is restarting
+
+    When the page issues a same-origin request that fails at the transport
+
+    Then the application shows one non-dismissible "Server unavailable" notice
+
+    And the underlying error still reaches the caller that made the request
+
+    Given the server is unreachable
+
+    When it starts answering /health again
+
+    Then the notice clears itself without a reload
+
+    Given a request the caller aborted
+
+    When it rejects
+
+    Then the deployment is not treated as unreachable
+
+    Given a request to a foreign origin fails
+
+    When it rejects
+
+    Then the deployment is not treated as unreachable
+
+    '
+  related_reqs:
+  - REQ-1267
+  - REQ-1466
+
+- id: REQ-1515
+  status: complete
+  group: 8. Client Access & Protocols
+  category: API & Integration
+  priority: MUST
+  type: behavioral
+  description: A subscription notification must never abort the write it observes.
+    PostgreSQL refuses a NOTIFY payload of 8000 bytes or more, and the REQ-258 trigger
+    fires inside the writer's transaction, so a row whose JSON exceeds the limit used
+    to fail the INSERT itself. The trigger measures the payload and, when it will not
+    fit, truncates the row's JSON to a text field marked truncated, halving the character
+    budget until the encoded envelope fits. The subscriber still sees the change and the
+    leading columns; a write never fails for want of a notification.
+  use_case: A long statement written to query_audit_log no longer fails the audit
+    insert and surfaces to the user as an Internal Server Error.
+  code:
+  - provisa/subscriptions/pg_triggers.py
+  tests:
+  - tests/integration/test_pg_notify_payload_limit.py
+  since: 2026-08
+  scenario: 'Given a registered PostgreSQL table carrying the subscription notify trigger
+
+    When a row is written whose JSON exceeds the NOTIFY payload limit
+
+    Then the write succeeds and the subscriber receives the change announced without
+    its row body
+
+    '
+  integration_test: required
+  integration_test_reason: The limit is enforced by PostgreSQL at NOTIFY time; only
+    a real server proves the write survives it.
+  bdd: true
+  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  stakeholders:
+  - app-developer
+  - ops
+  related_reqs:
+  - REQ-258
+  - REQ-074

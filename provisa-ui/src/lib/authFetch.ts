@@ -10,6 +10,11 @@
 
 import { currentFirebaseToken } from "./firebase";
 import { storedToken } from "./sessionToken";
+import {
+  markServerReachable,
+  markServerUnreachable,
+  setReachabilityProbeFetch,
+} from "./serverReachability";
 
 // REQ-1267: on an auth-enforced deploy (firebase/basic) the bearer token lives in
 // localStorage and must ride on EVERY same-origin request. The Apollo link already adds it
@@ -46,6 +51,7 @@ export async function currentBearer(): Promise<string | null> {
 /** Wrap window.fetch to attach `Authorization: Bearer <provisa_token>` to same-origin requests. */
 export function installAuthFetch(): void {
   const originalFetch = window.fetch.bind(window);
+  setReachabilityProbeFetch(originalFetch);
 
   const isSameOrigin = (url: string): boolean => {
     // Relative URLs ("/auth/me", "auth/me") are same-origin by definition. Absolute URLs
@@ -55,13 +61,33 @@ export function installAuthFetch(): void {
     return url.startsWith(window.location.origin);
   };
 
+  // REQ-1514: every request to our own deployment is also a reachability sample. A response of any
+  // status proves the server is answering; a rejection that is not a caller's abort is the
+  // transport failing, which is the outage the app-wide notice exists to name. The error is
+  // re-thrown untouched — the caller still sees exactly what it saw before.
+  const sampled = async (
+    input: RequestInfo | URL,
+    init: RequestInit | undefined,
+    sameOrigin: boolean,
+  ): Promise<Response> => {
+    if (!sameOrigin) return originalFetch(input, init);
+    try {
+      const res = await originalFetch(input, init);
+      markServerReachable();
+      return res;
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) markServerUnreachable();
+      throw err;
+    }
+  };
+
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const sameOrigin = isSameOrigin(url);
+
     const token = await currentBearer();
     const orgId = localStorage.getItem("provisa_org");
-    if (!token) return originalFetch(input, init);
-
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (!isSameOrigin(url)) return originalFetch(input, init);
+    if (!token || !sameOrigin) return sampled(input, init, sameOrigin);
 
     // Merge onto whichever headers source applies: init overrides a Request's own headers.
     const headers = new Headers(
@@ -70,6 +96,6 @@ export function installAuthFetch(): void {
     // Do not clobber an explicit header (e.g. Apollo's authLink already set one).
     if (!headers.has("authorization")) headers.set("Authorization", `Bearer ${token}`);
     if (orgId && !headers.has(ORG_HEADER)) headers.set(ORG_HEADER, orgId);
-    return originalFetch(input, { ...init, headers });
+    return sampled(input, { ...init, headers }, sameOrigin);
   };
 }

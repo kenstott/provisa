@@ -28,6 +28,7 @@ import { CapabilityGate } from "./components/CapabilityGate";
 import { CredentialCheck } from "./components/CredentialCheck";
 import { PageLoading } from "./components/PageLoading";
 import { OnboardGate } from "./components/OnboardGate";
+import { ServerUnavailableModal } from "./components/ServerUnavailableModal";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { MaintenanceBanner } from "./components/MaintenanceBanner"; // REQ-1466
 import { fetchSetupStatus } from "./api/setup";
@@ -213,6 +214,9 @@ function App() {
           authVersion={authVersion}
           multitenancy={multitenancy}
         >
+          {/* REQ-1514: outside every gate below — a server that is not answering is what breaks
+              setup, sign-in and the app alike, and the notice must not depend on any of them. */}
+          <ServerUnavailableModal />
           {setupError ? (
             <div className="page">
               <p>Could not reach the Provisa API.</p>
