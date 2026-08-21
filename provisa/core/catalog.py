@@ -182,6 +182,20 @@ def create_kafka_catalog(conn: TrinoConnection, kafka_source: dict) -> None:  # 
     cur.fetchall()
 
 
+def analyze_capable_catalogs(conn: TrinoConnection) -> set[str]:  # REQ-636
+    """Catalogs on this coordinator whose connector implements ANALYZE.
+
+    ``system.metadata.analyze_properties`` carries one row per (catalog, analyze property);
+    a connector that does not implement statistics collection contributes none. Asking the
+    coordinator is the only way to know — Trino answers a connector that cannot collect stats
+    with NOT_SUPPORTED at execution time, which is what every SQLite/JDBC/adapter-backed
+    catalog did on every config load.
+    """
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT catalog_name FROM system.metadata.analyze_properties")
+    return {row[0] for row in cur.fetchall()}
+
+
 def analyze_source_tables(  # REQ-636, REQ-1266
     conn: TrinoConnection,
     source: "Source",
@@ -196,6 +210,9 @@ def analyze_source_tables(  # REQ-636, REQ-1266
     ``catalog_name`` (REQ-1266): org-prefixed physical catalog; bare name when omitted.
     """
     catalog_name = catalog_name or _to_catalog_name(source.id)
+    if catalog_name not in analyze_capable_catalogs(conn):
+        log.debug("ANALYZE %s skipped: connector collects no statistics", catalog_name)
+        return
     cur = conn.cursor()
     for tbl in tables:
         if tbl.source_id != source.id:
