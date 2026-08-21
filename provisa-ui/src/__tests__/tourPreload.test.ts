@@ -23,7 +23,11 @@ import { describe, it, expect, vi } from "vitest";
 import { prefetchAllPageChunks, prefetchPageChunksOnIdle } from "../pageChunks";
 
 describe("REQ-1362 tour page preload", () => {
-  it("resolves only once every page chunk has loaded", async () => {
+  // 60s, because this case really does import every page chunk — Monaco and GraphiQL included — and
+  // in a full run it does so while the other ~96 test files are competing for the same transform
+  // pool. What it asserts is that the promise settles after the imports, not how fast; the 5s
+  // default is a budget for logic tests and times this one out on suite contention alone.
+  it("resolves only once every page chunk has loaded", { timeout: 60_000 }, async () => {
     const modules = import.meta.glob("../pages/*.tsx");
     const pages = Object.keys(modules);
     expect(pages.length).toBeGreaterThan(5);

@@ -46930,7 +46930,7 @@ And a later observation in the same hour replaces it rather than adding to it
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
-  priority: COULD
+  priority: MAY
   type: behavioral
   description: 'An environment populates a table from its own model when no source holds one. A
     structure being designed exists in the environment''s model before it exists anywhere else, so there
@@ -47098,7 +47098,7 @@ And a later observation in the same hour replaces it rather than adding to it
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
-  priority: COULD
+  priority: MAY
   type: behavioral
   description: 'An organization may replicate an environment whole -- bindings, secrets, users and role
     assignments included -- when what it wants is the control plane as it stands rather than the
@@ -47141,7 +47141,7 @@ And a later observation in the same hour replaces it rather than adding to it
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
-  priority: COULD
+  priority: MAY
   type: behavioral
   description: 'A non-prod environment can be exported as a configuration a desktop Provisa loads, so a
     developer works against the environment''s model on their own machine. The export carries the
@@ -47944,7 +47944,7 @@ And a later observation in the same hour replaces it rather than adding to it
 - id: REQ-1514
   status: complete
   since: 2026-08
-  group: 8. User Interface
+  group: 10. UI & Admin Surfaces
   category: Application Shell
   priority: MUST
   type: behavioral
@@ -48003,6 +48003,100 @@ And a later observation in the same hour replaces it rather than adding to it
   related_reqs:
   - REQ-1267
   - REQ-1466
+
+- id: REQ-1516
+  status: complete
+  since: 2026-08
+  group: 10. UI & Admin Surfaces
+  category: Application Shell
+  priority: MUST
+  type: behavioral
+  description: A query that is waiting for a stopped engine to start must say so, and the wait must
+    be shortened where it can be. Engine shards idle to zero (REQ-1448, REQ-1464), so the first query
+    after a quiet period blocks for the two to four minutes Autopilot takes to provision a node and
+    start Trino. Before this the only evidence was a request that had not come back, which is
+    indistinguishable from a hung server, so every surface rendered an unexplained spinner for
+    minutes. Three parts. The server reports engine state WITHOUT starting it - always-on, ready,
+    starting or stopped - for the engine the CALLER'S org actually dispatches to - the shared shard
+    on the pooled lane, the org's own coordinator on the dedicated one (REQ-1510), always-on for a
+    BYO engine (REQ-1412) or a non-provisioning install. The org is taken off the request, never a
+    parameter, so a Pro org is never told the shared shard's state. A drain in progress reports
+    starting, because the Deployment still reports ready throughout a stop the next query will have
+    to cancel and pay for anyway. Reporting never wakes and never stamps activity, or an idle tab
+    polling would hold a pod up indefinitely. The UI DERIVES the notice from traffic it already
+    makes - a same-origin request outstanding past a threshold starts the poll, and only the server's
+    answer raises anything, so there is no path allowlist to keep current and a wrong guess costs one
+    cheap request. The notice is a banner, not a modal, and does not block - the server is answering
+    and every surface that does not touch the engine still works. It shows elapsed time, because
+    minutes without a number read as a hang. Finally the prewarm widens - sign-in already prewarms
+    (REQ-1471), which covers a session that queries soon after it starts but not the tab left open
+    past the idle window, so arriving at the query surface starts the engine while the operator is
+    still composing.
+  use_case: An operator returns to a tab left open over lunch and runs a query; instead of a spinner
+    with no explanation, they are told the engine is starting and how long it has been - and because
+    opening the page already started it, the wait is mostly over before they hit Run.
+  tests:
+  - provisa-ui/src/__tests__/engineWake.test.tsx
+  - tests/unit/test_engine_wake.py
+  code:
+  - provisa/federation/engine_wake.py
+  - provisa/api/data/endpoint_dev.py
+  - provisa-ui/src/lib/engineWake.ts
+  - provisa-ui/src/lib/authFetch.ts
+  - provisa-ui/src/components/EngineWakingBanner.tsx
+  - provisa-ui/src/pages/QueryPage.tsx
+  - provisa-ui/src/App.tsx
+  scenario: 'Given the org''s engine shard has idled to zero
+
+    When a query is issued and stays outstanding past the slow-request threshold
+
+    Then the application says the query engine is starting, with elapsed time
+
+    And the query keeps running behind the notice
+
+    Given the request comes back
+
+    When the engine is serving again
+
+    Then the notice clears itself
+
+    Given a slow request the engine is not responsible for
+
+    When the server reports the engine ready
+
+    Then nothing is shown
+
+    Given an org on the dedicated engine lane
+
+    When it asks for engine state
+
+    Then it is told about its OWN coordinator, not the shared shard
+
+    Given an org running its own external engine
+
+    When it asks for engine state
+
+    Then the answer is always-on
+
+    Given a browser polling engine state
+
+    When the shard is stopped
+
+    Then the poll neither starts it nor counts as activity against the idle reaper
+
+    Given an operator opens the query surface
+
+    When the engine is stopped
+
+    Then a prewarm is issued and returns without waiting for the wake
+
+    '
+  related_reqs:
+  - REQ-1448
+  - REQ-1464
+  - REQ-1471
+  - REQ-1510
+  - REQ-1514
 
 - id: REQ-1515
   status: complete

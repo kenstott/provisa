@@ -206,6 +206,56 @@ async def attach_if_serving(state: Any) -> bool:
     return True
 
 
+async def engine_state(state: Any, org_id: str | None) -> str:
+    """What the engine behind ``org_id`` is doing right now, WITHOUT starting it (REQ-1516).
+
+    One of ``always-on``, ``ready``, ``starting``, ``stopped``. A cold start is ~2-4min of Autopilot
+    node provision plus Trino start, and until this existed the only evidence the UI had was a
+    request that had not come back — indistinguishable from a hung server, so it rendered a bare
+    spinner for minutes. This is what lets it say which one is happening.
+
+    ``always-on`` is the desktop and self-hosted answer: the engine is a process that is simply
+    there, and reporting a shard state for it would invite the UI to wait for a wake that has no
+    meaning. It is also what an org running its own coordinator gets (REQ-1412) — not this control
+    plane's shard to report on.
+
+    Never wakes, and never stamps activity. A browser polls this while it waits, and a poll that
+    woke the shard would let an idle tab hold a pod up indefinitely; one that counted as traffic
+    would do the same through the reaper (REQ-1448, REQ-1464).
+    """
+    if not k8s.provisioning_available():
+        return "always-on"
+
+    if org_id is None or org_id == state.org_id:
+        shard = boot_shard()
+    else:
+        runtime = state.org_registry.get(org_id)
+        if runtime is None:
+            raise RuntimeError(
+                f"org {org_id!r} is bound for this request but has no built runtime, so the engine "
+                "it queries cannot be reported (REQ-1516)"
+            )
+        if runtime.engine_endpoint is not None or runtime.engine_url is not None:
+            return "always-on"
+        # REQ-1510: a Pro org on the dedicated lane has a coordinator of its own, and it idles to
+        # zero exactly as the shared one does. Reporting the shared shard's state to it would tell
+        # a paying org its engine is ready while its own is still provisioning a node.
+        shard = k8s.isolated_shard(org_id) if runtime.isolated_engine else runtime.shard
+        if not shard:
+            raise RuntimeError(
+                f"org {org_id!r} has no shard recorded on its runtime, so the engine it queries "
+                "cannot be reported (REQ-1516)"
+            )
+
+    # An in-flight stop is a drain plus the scale-down after it, minutes long, and the Deployment
+    # still reports ready throughout. Reporting "ready" there would clear the UI's waiting state
+    # just before the query's own wake cancels the stop and pays for a cold start anyway.
+    if _stop_tasks.get(shard) is not None:
+        return "starting"
+
+    return (await k8s.shard_status(shard))["state"]
+
+
 async def converge_boot_shard() -> str:
     """Apply this control plane's shard manifests and wait for it to serve. Returns the shard.
 

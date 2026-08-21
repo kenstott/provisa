@@ -15,6 +15,7 @@ import {
   markServerUnreachable,
   setReachabilityProbeFetch,
 } from "./serverReachability";
+import { isEngineProbePath, noteRequestEnd, noteRequestStart } from "./engineWake";
 
 // REQ-1267: on an auth-enforced deploy (firebase/basic) the bearer token lives in
 // localStorage and must ride on EVERY same-origin request. The Apollo link already adds it
@@ -65,12 +66,21 @@ export function installAuthFetch(): void {
   // status proves the server is answering; a rejection that is not a caller's abort is the
   // transport failing, which is the outage the app-wide notice exists to name. The error is
   // re-thrown untouched — the caller still sees exactly what it saw before.
+  //
+  // REQ-1516: it is also a duration sample. A request outstanding long enough that a cold engine
+  // start would explain it is what starts the engine-state poll — no call site opts in, and no path
+  // allowlist has to be kept current, because the server's answer is what decides whether anything
+  // is shown. The engine endpoints themselves are excluded: a probe counted as an outstanding
+  // request would hold the count above zero and keep polling on its own.
   const sampled = async (
     input: RequestInfo | URL,
     init: RequestInit | undefined,
     sameOrigin: boolean,
+    url: string,
   ): Promise<Response> => {
     if (!sameOrigin) return originalFetch(input, init);
+    const timed = !isEngineProbePath(url);
+    if (timed) noteRequestStart();
     try {
       const res = await originalFetch(input, init);
       markServerReachable();
@@ -78,6 +88,8 @@ export function installAuthFetch(): void {
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) markServerUnreachable();
       throw err;
+    } finally {
+      if (timed) noteRequestEnd();
     }
   };
 
@@ -87,7 +99,7 @@ export function installAuthFetch(): void {
 
     const token = await currentBearer();
     const orgId = localStorage.getItem("provisa_org");
-    if (!token || !sameOrigin) return sampled(input, init, sameOrigin);
+    if (!token || !sameOrigin) return sampled(input, init, sameOrigin, url);
 
     // Merge onto whichever headers source applies: init overrides a Request's own headers.
     const headers = new Headers(
@@ -96,6 +108,6 @@ export function installAuthFetch(): void {
     // Do not clobber an explicit header (e.g. Apollo's authLink already set one).
     if (!headers.has("authorization")) headers.set("Authorization", `Bearer ${token}`);
     if (orgId && !headers.has(ORG_HEADER)) headers.set(ORG_HEADER, orgId);
-    return sampled(input, { ...init, headers }, sameOrigin);
+    return sampled(input, { ...init, headers }, sameOrigin, url);
   };
 }

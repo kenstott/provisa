@@ -830,6 +830,48 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     return {"sql": last_sql, "cypher": cypher, "attempts": attempt}
 
 
+@router.get("/engine/state")
+async def engine_state_endpoint(raw_request: Request):  # REQ-1516
+    """What the engine THIS request's org queries is doing, without starting it.
+
+    The org is taken off the request, not a parameter, so the answer is about the engine the caller
+    actually dispatches to: the shared shard on the pooled lane, the org's own coordinator on the
+    dedicated one (REQ-1510), and ``always-on`` for a BYO engine or a non-provisioning install. A
+    Pro org watching the shared shard's state would be told its engine is ready while its own is
+    still coming up.
+
+    ``stopped``/``starting`` is what the UI waits on instead of rendering an unexplained spinner for
+    the ~2-4min a cold start takes. Reporting only — a poll must never wake the shard it is
+    watching, or an idle tab keeps a pod alive indefinitely (REQ-1448, REQ-1464).
+    """
+    from provisa.api.app import state
+    from provisa.federation.engine_wake import engine_state
+
+    org_id = getattr(raw_request.state, "active_org_id", None)
+    return {"org_id": org_id, "state": await engine_state(state, org_id)}
+
+
+@router.post("/engine/prewarm", status_code=202)
+async def engine_prewarm_endpoint(raw_request: Request):  # REQ-1516
+    """Start this org's engine now, and return without waiting for it.
+
+    Sign-in already prewarms (REQ-1471), which covers a session that queries soon after it starts.
+    It does not cover the tab left open past the idle window — the shard is reaped underneath it and
+    the next query pays the full cold start. The UI calls this when the operator arrives at a query
+    surface, so the node is provisioning while they are still reading schemas and composing.
+
+    202, not 200: the wake is accepted, not completed. Whether it finished is
+    ``GET /data/engine/state``, and the query path runs the same wake regardless, so a prewarm that
+    fails costs the session the head start and nothing else.
+    """
+    from provisa.api.app import state
+    from provisa.federation.engine_wake import prewarm_engine
+
+    org_id = getattr(raw_request.state, "active_org_id", None)
+    prewarm_engine(state, org_id)
+    return {"org_id": org_id, "accepted": True}
+
+
 class QueryRequest(BaseModel):
     query: str
     params: dict = {}

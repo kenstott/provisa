@@ -36,6 +36,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
 import { ResponseTableOverlay } from "../plugins/table-view";
 import { setLastQueryElapsedMs, subscribeQueryTiming } from "../query-timing";
+import { prewarmEngine } from "../lib/engineWake";
 import { HeadersQuickInsert } from "../plugins/headers-quick-insert";
 import {
   useGraphiQL,
@@ -542,6 +543,13 @@ function AutoRunFromNav({ query }: { query: string }) {
 
 /** Query development page — embeds GraphiQL with Explorer (REQ-062). */
 export function QueryPage() {
+  // REQ-1516: start the engine on arrival, not on the first Run. Sign-in already prewarms
+  // (REQ-1471), which covers a session that queries soon after it starts; it does not cover the tab
+  // left open past the idle window, where the shard is reaped underneath the operator. Composing a
+  // query takes about as long as a cold start, so spending that time on the node provision is the
+  // difference between a query that returns and one that waits 2-4 minutes first.
+  useEffect(() => prewarmEngine(), []);
+
   const { t } = useTranslation();
   const { colorScheme } = useMantineColorScheme();
   // GraphiQL has its own light/dark theme — force it to follow the app scheme.

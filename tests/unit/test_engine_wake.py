@@ -776,3 +776,85 @@ async def test_a_non_provisioning_deployment_always_has_its_engine(monkeypatch):
 
     monkeypatch.setattr(engine_wake.k8s, "shard_status", _boom)
     assert await engine_wake.attach_if_serving(SimpleNamespace()) is True
+
+
+# ── engine_state ────────────────────────────────────────────────────────────────
+
+
+async def test_a_desktop_engine_reports_always_on(monkeypatch):
+    """A process that is simply there has no wake to wait for, and reporting a shard state would
+    invite the UI to wait for one."""
+    monkeypatch.setattr(engine_wake.k8s, "provisioning_available", lambda: False)
+
+    async def _boom(*a, **k):
+        raise AssertionError("the provisioner must not be reached")
+
+    monkeypatch.setattr(engine_wake.k8s, "shard_status", _boom)
+    assert await engine_wake.engine_state(SimpleNamespace(), None) == "always-on"
+
+
+async def test_the_default_org_reports_the_boot_shard(fake_k8s):
+    fake_k8s.state = "stopped"
+    assert await engine_wake.engine_state(_state_with(None, []), None) == "stopped"
+    fake_k8s.state = "ready"
+    assert await engine_wake.engine_state(_state_with(None, []), "default") == "ready"
+
+
+async def test_reporting_the_state_never_wakes_or_stamps_activity(fake_k8s):
+    """A browser polls this while it waits. A poll that woke the shard — or counted as traffic —
+    would let an idle tab hold a pod up indefinitely."""
+    await engine_wake.engine_state(_state_with(None, []), None)
+    assert fake_k8s.wakes == []
+    assert "shared_1" not in engine_wake._last_activity
+
+
+async def test_a_pro_org_reports_its_own_coordinator(fake_k8s, monkeypatch):
+    """REQ-1510: a dedicated engine idles to zero like any other. Reporting the shared shard's
+    state would tell a paying org its engine is ready while its own is still provisioning."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    monkeypatch.setattr(engine_wake.k8s, "isolated_shard", lambda oid: f"org-{oid}")
+    seen: list[str] = []
+
+    async def _status(shard: str) -> dict:
+        seen.append(shard)
+        return {"shard": shard, "state": "starting", "ready_replicas": 0, "replicas": 1}
+
+    monkeypatch.setattr(engine_wake.k8s, "shard_status", _status)
+
+    rt = OrgRuntime(org_id="acme", shard="shared_1", isolated_engine=True)
+    assert await engine_wake.engine_state(_state_with(rt, []), "acme") == "starting"
+    assert seen == ["org-acme"]
+
+
+async def test_a_byo_engine_org_reports_always_on(fake_k8s):
+    """REQ-1412: an org running its own coordinator is not this control plane's shard to report."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    rt = OrgRuntime(org_id="acme", engine_endpoint=("their-host", 8080), shard="shared_1")
+    assert await engine_wake.engine_state(_state_with(rt, []), "acme") == "always-on"
+
+
+async def test_a_draining_shard_reports_starting(fake_k8s):
+    """A stop is a drain plus the scale-down after it, and the Deployment reports ready throughout.
+    Reporting ready would clear the UI's waiting state just before the query's wake cancels the stop
+    and pays for a cold start anyway."""
+    fake_k8s.state = "ready"
+
+    async def _drain() -> None:
+        await asyncio.Event().wait()
+
+    engine_wake._stop_tasks["shared_1"] = asyncio.create_task(_drain())
+    await asyncio.sleep(0)
+    try:
+        assert await engine_wake.engine_state(_state_with(None, []), None) == "starting"
+    finally:
+        engine_wake._stop_tasks["shared_1"].cancel()
+
+
+async def test_an_org_with_no_runtime_is_an_error_not_a_guess(fake_k8s):
+    """Reporting a default state for an org whose engine cannot be resolved would show a ready
+    engine for a request that is about to fail."""
+    state = _state_with(None, [])
+    with pytest.raises(RuntimeError, match="no built runtime"):
+        await engine_wake.engine_state(state, "acme")
