@@ -60,4 +60,4 @@ COPY trino/etc/resource-groups.json ./trino/etc/resource-groups.json
 
 EXPOSE 8000 3000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "620"]

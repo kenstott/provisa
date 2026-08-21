@@ -21,6 +21,8 @@ import {
   Group,
   List,
   Loader,
+  Paper,
+  Radio,
   SegmentedControl,
   Stack,
   Text,
@@ -31,17 +33,20 @@ import {
 import { PartyPopper, ShieldCheck, UserPlus } from "lucide-react";
 import type { PendingInvite } from "../api/admin";
 import { createOrg, fetchMyInvites, fetchOrgStatus, redeemInvite } from "../api/admin";
-import type { OrgReservation } from "../api/billing";
+import type { OrgReservation, PlanOffer } from "../api/billing";
 import {
+  BillingError,
+  fetchCatalog,
   fetchMyReservation,
   openCheckout,
   reconcileCheckout,
   startEgressSubscription,
-  startTrial,
+  startPlanCheckout,
 } from "../api/billing";
 import { useAuth } from "../context/AuthContext";
 import { OrgAddressModal } from "../components/OrgAddressModal";
 import { orgOrigin } from "../lib/authHost";
+import { formatMoney, planName } from "../lib/planDisplay";
 
 // REQ-1266: a member-less authenticated user either self-creates an org OR joins an existing one
 // with an invite code. Create returns immediately with provisioning_state="provisioning"; we poll
@@ -55,16 +60,23 @@ export function OnboardOrgPage() {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [includeDemo, setIncludeDemo] = useState(false);
-  // REQ-1043/REQ-1067: dedicated federation engine, chosen at creation (pre-billing surface).
+  // REQ-1043/REQ-1067: dedicated federation engine, chosen at creation. Only where nothing is sold —
+  // on a commerce deploy the lane comes with the plan (REQ-1510), so it is not a separate choice.
   const [isolatedEngine, setIsolatedEngine] = useState(false);
+  // REQ-1514: the priced plans, and the one being bought. The checkout overlay states only the
+  // first tier's unit price, which is zero on every plan, so the terms are shown here instead.
+  const [plans, setPlans] = useState<PlanOffer[] | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
   const [emailRule, setEmailRule] = useState("");
   const [autoJoin, setAutoJoin] = useState(false);
   const [autoJoinRole, setAutoJoinRole] = useState("");
   const [invite, setInvite] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"form" | "checkout" | "provisioning" | "joining" | "welcome">(
-    "form",
-  );
+  // "creating" is the org create itself; "provisioning" is only reached after a checkout closed,
+  // which is what lets the two say different things about payment on a commerce deploy.
+  const [phase, setPhase] = useState<
+    "form" | "creating" | "checkout" | "provisioning" | "joining" | "welcome"
+  >("form");
   // REQ-1476: a reservation this account left behind — the id is held, so the way back in is the
   // checkout it abandoned, not a second create.
   const [reservation, setReservation] = useState<OrgReservation | null>(null);
@@ -109,6 +121,31 @@ export function OnboardOrgPage() {
     };
   }, [billing, t]);
 
+  // REQ-1514: the catalog is priced by the store, so it is fetched rather than typed into the page.
+  // Only a commercial deployment sells plans, so /billing/catalog exists only there.
+  useEffect(() => {
+    if (!billing) return;
+    let cancelled = false;
+    fetchCatalog()
+      .then((offers) => {
+        if (cancelled) return;
+        setPlans(offers);
+        // The cheapest plan is first (PLAN_ORDER) and is the one carrying the trial.
+        setPlan(offers[0].plan);
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : t("onboardOrg.planLoadFailed"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [billing, t]);
+
+  // The plan being bought, once the catalog has arrived. Null on a non-commercial deployment and
+  // while the catalog is in flight, which is what the submit button is disabled on.
+  const offer = plans === null ? null : (plans.find((p) => p.plan === plan) ?? null);
+
   const acceptInvite = async (token: string) => {
     setError(null);
     setPhase("joining");
@@ -142,22 +179,36 @@ export function OnboardOrgPage() {
     setPhase("welcome");
   };
 
+  // REQ-1476: the org leaves awaiting_checkout when the purchase binds to it — normally through the
+  // webhook, and through reconcile when that has not arrived. Both read the same purchase, and the
+  // store publishes it some seconds after the overlay closes, so a reconcile that finds no
+  // subscription yet is the race and not the answer: keep asking until one of the two lands.
+  const settleCheckout = async (orgId: string) => {
+    let state = (await fetchOrgStatus(orgId)).provisioning_state;
+    for (let i = 0; i < 60 && state === "awaiting_checkout"; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        state = (await reconcileCheckout(orgId)).state;
+      } catch (err) {
+        if (!(err instanceof BillingError) || err.code !== "billing.no_subscription_found") throw err;
+        state = (await fetchOrgStatus(orgId)).provisioning_state;
+      }
+    }
+    if (state === "awaiting_checkout") throw new Error(t("onboardOrg.checkoutNotSettled"));
+    return state;
+  };
+
   // REQ-1476: the subscription is what builds the org, so the checkout overlay is the rest of the
   // create. The webhook normally provisions before the overlay closes; reconcile covers the case
   // where it has not arrived, and the poll then runs the same way for both.
-  const runCheckout = async (orgId: string) => {
+  const runCheckout = async (orgId: string, chosen: string) => {
     setPhase("checkout");
-    const url = await startTrial(orgId, window.location.href);
+    const url = await startPlanCheckout(orgId, chosen, window.location.href);
     await openCheckout(url, () => {
       void (async () => {
         setPhase("provisioning");
         try {
-          const status = await fetchOrgStatus(orgId);
-          let state = status.provisioning_state;
-          if (state === "awaiting_checkout") {
-            state = (await reconcileCheckout(orgId)).state;
-          }
-          await waitForReady(orgId, state);
+          await waitForReady(orgId, await settleCheckout(orgId));
         } catch (err) {
           setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
           setPhase("form");
@@ -181,7 +232,7 @@ export function OnboardOrgPage() {
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    setPhase("provisioning");
+    setPhase("creating");
     try {
       const created = await createOrg(
         id,
@@ -192,10 +243,14 @@ export function OnboardOrgPage() {
           autoJoin,
           autoJoinRole: autoJoinRole.trim() || null,
         },
-        isolatedEngine,
+        // REQ-1510: where plans are sold the lane is the plan's, not a checkbox's.
+        offer ? offer.lane === "isolated" : isolatedEngine,
       );
       if (created.provisioning_state === "awaiting_checkout") {
-        await runCheckout(id);
+        // The server only holds an org for checkout where plans are sold, and the submit that got
+        // here is disabled until one is picked, so a missing offer is a broken page, not a case.
+        if (offer === null) throw new Error(t("onboardOrg.planLoadFailed"));
+        await runCheckout(id, offer.plan);
         return;
       }
       await waitForReady(id, created.provisioning_state);
@@ -205,12 +260,12 @@ export function OnboardOrgPage() {
     }
   };
 
-  const handleResume = async (held: OrgReservation) => {
+  const handleResume = async (held: OrgReservation, chosen: PlanOffer) => {
     setError(null);
     setId(held.org_id);
     setName(held.name);
     try {
-      await runCheckout(held.org_id);
+      await runCheckout(held.org_id, chosen.plan);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.checkoutFailed"));
       setPhase("form");
@@ -325,10 +380,12 @@ export function OnboardOrgPage() {
           <Loader />
           <Text>{t("onboardOrg.openingCheckout")}</Text>
         </Stack>
-      ) : phase === "provisioning" ? (
+      ) : phase === "creating" || phase === "provisioning" ? (
         <Stack gap="md" align="center" data-testid="onboard-org-provisioning">
           <Loader />
-          <Text>{billing ? t("onboardOrg.finishingSetup") : t("onboardOrg.provisioning")}</Text>
+          <Text>
+            {phase === "provisioning" ? t("onboardOrg.finishingSetup") : t("onboardOrg.provisioning")}
+          </Text>
         </Stack>
       ) : phase === "joining" ? (
         <Stack gap="md" align="center" data-testid="onboard-org-joining">
@@ -355,7 +412,8 @@ export function OnboardOrgPage() {
                   <Button
                     size="xs"
                     data-testid="onboard-resume-checkout"
-                    onClick={() => void handleResume(reservation)}
+                    disabled={offer === null}
+                    onClick={() => offer && void handleResume(reservation, offer)}
                   >
                     {t("onboardOrg.resumeButton")}
                   </Button>
@@ -432,13 +490,90 @@ export function OnboardOrgPage() {
                   checked={includeDemo}
                   onChange={(e) => setIncludeDemo(e.currentTarget.checked)}
                 />
-                <Checkbox
-                  data-testid="onboard-org-isolated-engine"
-                  label={t("onboardOrg.isolatedEngineLabel")}
-                  description={t("onboardOrg.isolatedEngineDesc")}
-                  checked={isolatedEngine}
-                  onChange={(e) => setIsolatedEngine(e.currentTarget.checked)}
-                />
+                {/* REQ-1510: where plans are sold the plan carries the lane, so the checkbox would
+                    be a second, contradictable answer to the same question. */}
+                {!billing && (
+                  <Checkbox
+                    data-testid="onboard-org-isolated-engine"
+                    label={t("onboardOrg.isolatedEngineLabel")}
+                    description={t("onboardOrg.isolatedEngineDesc")}
+                    checked={isolatedEngine}
+                    onChange={(e) => setIsolatedEngine(e.currentTarget.checked)}
+                  />
+                )}
+                {/* REQ-1514: what each plan actually costs and caps. The checkout overlay renders a
+                    variant by its first tier's unit price, which is zero on every plan, and says
+                    nothing of the hourly rate, the source cap, or the transfer allowance. */}
+                {plans && (
+                  <Radio.Group
+                    data-testid="onboard-org-plan"
+                    label={t("onboardOrg.planLabel")}
+                    description={t("onboardOrg.planDesc")}
+                    value={plan}
+                    onChange={setPlan}
+                  >
+                    <Stack gap="xs" mt="xs">
+                      {plans.map((p) => (
+                        <Paper
+                          key={p.plan}
+                          withBorder
+                          p="sm"
+                          radius="md"
+                          data-testid={`onboard-org-plan-${p.plan}`}
+                        >
+                          <Radio
+                            value={p.plan}
+                            label={
+                              <Text fw={600}>
+                                {planName(p.plan)}
+                                {p.fixed_cents !== null &&
+                                  ` — ${formatMoney(p.fixed_cents)}/${p.fixed_interval}`}
+                              </Text>
+                            }
+                          />
+                          <Stack gap={2} mt={6} ml={30}>
+                            {p.fixed_cents !== null && (
+                              <Text size="xs" c="dimmed">
+                                {t("onboardOrg.planMinimum", {
+                                  amount: formatMoney(p.fixed_cents),
+                                  interval: p.fixed_interval,
+                                  hours: p.included_hours,
+                                })}
+                              </Text>
+                            )}
+                            <Text size="xs" c="dimmed">
+                              {t("onboardOrg.planHourly", {
+                                amount: formatMoney(p.hourly_cents),
+                              })}
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              {t("onboardOrg.planEgress", {
+                                gb: p.egress.included_gb,
+                                amount: formatMoney(p.egress.per_gb_cents),
+                              })}
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              {t("onboardOrg.planSources", { sources: p.source_limit })}
+                            </Text>
+                            <Text size="xs" c="dimmed">
+                              {p.engine
+                                ? t("onboardOrg.planEngineDedicated", {
+                                    vcpu: p.engine.vcpu,
+                                    memory: p.engine.memory_gib,
+                                  })
+                                : t("onboardOrg.planEngineShared")}
+                            </Text>
+                            <Text size="xs" c={p.trial_days === null ? "dimmed" : "green"}>
+                              {p.trial_days === null
+                                ? t("onboardOrg.planNoTrial")
+                                : t("onboardOrg.planTrial", { days: p.trial_days })}
+                            </Text>
+                          </Stack>
+                        </Paper>
+                      ))}
+                    </Stack>
+                  </Radio.Group>
+                )}
                 <TextInput
                   id="onboard-org-email-rule"
                   data-testid="onboard-org-email-rule"
@@ -474,12 +609,18 @@ export function OnboardOrgPage() {
                 )}
                 {/* REQ-1476: on a commercial deployment this button opens a checkout — the org is
                     created by the subscription, so it says what it does. */}
-                {billing && (
+                {billing && offer && (
                   <Text size="sm" c="dimmed" data-testid="onboard-org-signup-desc">
-                    {t("onboardOrg.signUpDesc")}
+                    {offer.trial_days === null
+                      ? t("onboardOrg.signUpDescPaid")
+                      : t("onboardOrg.signUpDesc")}
                   </Text>
                 )}
-                <Button type="submit" data-testid="onboard-org-submit">
+                <Button
+                  type="submit"
+                  data-testid="onboard-org-submit"
+                  disabled={billing && offer === null}
+                >
                   {billing ? t("onboardOrg.signUpButton") : t("onboardOrg.createButton")}
                 </Button>
               </Stack>

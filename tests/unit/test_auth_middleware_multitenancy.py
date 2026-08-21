@@ -154,6 +154,10 @@ def _make_app(**kw):
             "active_org_id": request.state.active_org_id,
         }
 
+    @app.get("/billing/reservation")
+    async def _reservation(request: Request):
+        return {"active_org_id": request.state.active_org_id}
+
     return app
 
 
@@ -221,6 +225,17 @@ def test_member_less_user_allowed_on_platform_plane():
     admin = _Pool(rows_by_table={"user_org_memberships": []})
     app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
     resp = TestClient(app).get("/auth/me", headers=_auth("newbie"))
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] is None
+
+
+def test_member_less_user_allowed_on_billing():
+    # REQ-1476: the buyer signing up holds no membership — the org is a reservation until the
+    # checkout completes — so the org-selection gate must not stand between them and /billing.
+    db = _Pool(rows_by_table={"user_role_assignments": []})
+    admin = _Pool(rows_by_table={"user_org_memberships": []})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
+    resp = TestClient(app).get("/billing/reservation", headers=_auth("newbie"))
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] is None
 

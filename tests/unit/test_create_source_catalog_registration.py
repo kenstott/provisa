@@ -119,3 +119,82 @@ def test_fixed_catalog_warehouse_pins_every_source_to_the_warehouse_database(sta
     _populate_source_catalog_names(_config(Source(id="synapse-ext", type=SourceType.parquet)))
 
     assert state.source_catalogs["synapse-ext"] == "provisa_syn"
+
+
+class _RecordingEngine:
+    """Records what the source-provisioning seam is asked to act on."""
+
+    has_otel_catalog = False
+
+    def __init__(self) -> None:
+        self.registered: list[tuple[str, str | None]] = []
+        self.analyzed: list[tuple[str, str | None]] = []
+
+    def register_source(self, source, resolved_password, catalog_name=None) -> None:
+        self.registered.append((source.id, catalog_name))
+
+    def analyze(self, source, tables, catalog_name=None) -> None:
+        self.analyzed.append((source.id, catalog_name))
+
+
+def test_config_load_analyzes_at_the_catalog_it_registered(state):
+    """ANALYZE must name the same catalog registration created (REQ-1266).
+
+    Analyzing the bare name asked an isolated coordinator about a catalog it does not have, and
+    every ANALYZE on a non-default org died TABLE_NOT_FOUND.
+    """
+    import asyncio
+
+    from provisa.core.config_loader import _analyze_sources
+
+    engine = _RecordingEngine()
+    config = _config(Source(id="pet-store-pg", type=SourceType.postgresql, database="provisa"))
+    asyncio.run(_analyze_sources(engine, config, {"pet-store-pg": "org_ks__pet_store_pg"}))
+
+    assert engine.analyzed == [("pet-store-pg", "org_ks__pet_store_pg")]
+
+
+def test_dynamic_source_registers_and_analyzes_at_the_recorded_catalog(state, monkeypatch):
+    """The createSource path must use ``state.source_catalogs[id]``, not the bare derived name."""
+    import asyncio
+
+    from provisa.api.admin.schema_common import (
+        _analyze_source_on_engine,
+        _register_source_on_engine,
+    )
+    from provisa.api.admin.types import SourceInput
+
+    engine = _RecordingEngine()
+    monkeypatch.setattr(state, "federation_engine", engine, raising=False)
+    state.source_catalogs["pet-store-pg"] = "org_ks__pet_store_pg"
+
+    model = Source(id="pet-store-pg", type=SourceType.postgresql, database="provisa")
+    source_input = SourceInput(id="pet-store-pg", type="postgresql", database="provisa")
+
+    class _Result:
+        def fetchall(self):
+            class _Row:
+                schema_name = "public"
+                table_name = "pets"
+
+            return [_Row()]
+
+    class _Conn:
+        async def execute_core(self, _stmt):
+            return _Result()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    class _Pool:
+        def acquire(self):
+            return _Conn()
+
+    _register_source_on_engine(state, model, source_input)
+    asyncio.run(_analyze_source_on_engine(state, _Pool(), model, source_input))
+
+    assert engine.registered == [("pet-store-pg", "org_ks__pet_store_pg")]
+    assert engine.analyzed == [("pet-store-pg", "org_ks__pet_store_pg")]

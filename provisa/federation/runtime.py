@@ -298,10 +298,10 @@ class EngineRuntime:  # REQ-825, REQ-840
         engines (Postgres/Trino) the Postgres store default. Never a hardcoded catalog."""
         return self._backend.materialize_store_target(self._state, org_id)
 
-    def provision(self, ops_views: list, retention_hours: int | None) -> None:
+    def provision(self, ops_views: list) -> None:
         """Boot-time: connect the engine terminal and seed the OTel ops store (no-op for native
         engines, whose telemetry lands in the dedicated ops store)."""
-        self._backend.provision(self._state, ops_views, retention_hours)
+        self._backend.provision(self._state, ops_views)
 
     async def reconcile_landed_tables(self) -> list[tuple[str, str]]:
         """Converge the store's landing schema for MATERIALIZED tables and attach their read views
@@ -386,10 +386,10 @@ class EngineRuntime:  # REQ-825, REQ-840
         await self._backend.watchdog(self._state)
 
     async def reload_catalog(
-        self, catalog: str, ops_views: list, retention_hours: int | None
+        self, catalog: str, ops_views: list
     ) -> dict:
         """Reload an engine catalog without a restart (native engines have no dynamic catalog)."""
-        return await self._backend.reload_catalog(self._state, catalog, ops_views, retention_hours)
+        return await self._backend.reload_catalog(self._state, catalog, ops_views)
 
     def classify_error(self, exc: Exception) -> str | None:
         """Map an engine driver exception to an engine-agnostic category (``"connection"`` → 503,
@@ -423,9 +423,9 @@ class EngineRuntime:  # REQ-825, REQ-840
         """Register a Kafka source as an engine catalog (no-op for native engines)."""
         self._backend.register_kafka_catalog(self._state, kafka_source)
 
-    def reseed_ops(self, ops_views: list, retention_hours: int | None) -> None:
+    def reseed_ops(self, ops_views: list) -> None:
         """Idempotently re-seed the OTel ops store (self-heal after reconcile); no-op for native."""
-        self._backend.reseed_ops(self._state, ops_views, retention_hours)
+        self._backend.reseed_ops(self._state, ops_views)
 
     def cluster_diagnostics(self) -> tuple[bool, int, int]:
         """Engine health for the admin system-health view: ``(connected, workers, active_workers)``."""

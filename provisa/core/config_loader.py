@@ -492,11 +492,18 @@ async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> No
         )
 
 
-async def _analyze_sources(engine: Any, config: ProvisaConfig) -> None:  # REQ-275
-    """Prime federation CBO stats after tables are registered — through the engine seam."""
+async def _analyze_sources(  # REQ-275
+    engine: Any, config: ProvisaConfig, catalog_names: dict[str, str] | None = None
+) -> None:
+    """Prime federation CBO stats after tables are registered — through the engine seam.
+
+    ``catalog_names`` (REQ-1266) is the same map ``_upsert_sources`` registers under: the source
+    lives at the org-prefixed catalog on a non-default org, so analyzing the bare name asked an
+    isolated coordinator about a catalog it does not have and every ANALYZE died TABLE_NOT_FOUND.
+    """
     for src in config.sources:
         try:
-            engine.analyze(src, config.tables)
+            engine.analyze(src, config.tables, catalog_name=(catalog_names or {}).get(src.id))
         except Exception:
             pass  # engine.analyze / analyze_source_tables already log per-table failures
 
@@ -506,6 +513,7 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     engine: Any,
     config: ProvisaConfig,
     openapi_specs: dict[str, dict],
+    catalog_names: dict[str, str] | None = None,
 ) -> None:
     sources_by_id = {src.id: src for src in config.sources}
 
@@ -556,7 +564,7 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     await _purge_removed_tables(conn, config)
 
     if engine is not None:
-        await _analyze_sources(engine, config)
+        await _analyze_sources(engine, config, catalog_names)
 
 
 async def _upsert_relationships(
@@ -660,7 +668,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_dq_contracts(config)
     _validate_probe_type(config)
     _validate_watermark_columns(config)
-    await _upsert_tables(conn, engine, config, openapi_specs)
+    await _upsert_tables(conn, engine, config, openapi_specs, catalog_names=catalog_names)
 
     # 6. Relationships (tables must exist first)
     # Preserve relationships whose source or target table belongs to a dynamically-registered

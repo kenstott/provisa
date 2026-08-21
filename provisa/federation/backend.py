@@ -144,7 +144,7 @@ class EngineBackend:
         """Native engines run in-process — always connected once built."""
         return True
 
-    def provision(self, state: Any, ops_views: list, retention_hours: int | None) -> None:
+    def provision(self, state: Any, ops_views: list) -> None:
         """No external terminal to connect; telemetry lands in the dedicated ops store."""
 
     async def provision_infra(self, state: Any) -> None:
@@ -274,7 +274,7 @@ class EngineBackend:
         """No external process to watch."""
 
     async def reload_catalog(
-        self, state: Any, catalog: str, ops_views: list, retention_hours: int | None
+        self, state: Any, catalog: str, ops_views: list
     ) -> dict:
         return {
             "success": False,
@@ -318,7 +318,7 @@ class EngineBackend:
         """Register a Kafka source as an engine catalog. Native engines reach Kafka through their
         own connector (or not at all) — no-op."""
 
-    def reseed_ops(self, state: Any, ops_views: list, retention_hours: int | None) -> None:
+    def reseed_ops(self, state: Any, ops_views: list) -> None:
         """Idempotently re-seed the OTel ops store (self-heal if boot seeding raced). No-op for a
         native engine, whose telemetry lives in the dedicated ops store."""
 
@@ -638,10 +638,10 @@ class TrinoBackend(EngineBackend):
     def is_connected(self, state: Any) -> bool:
         return state.engine_conn is not None
 
-    def provision(self, state: Any, ops_views: list, retention_hours: int | None) -> None:
+    def provision(self, state: Any, ops_views: list) -> None:
         from provisa.federation import trino_lifecycle
 
-        trino_lifecycle.provision(state, ops_views, retention_hours)
+        trino_lifecycle.provision(state, ops_views)
 
     def bind_terminal(self, state: Any) -> None:
         from provisa.federation import trino_lifecycle
@@ -659,11 +659,11 @@ class TrinoBackend(EngineBackend):
         await trino_lifecycle.watchdog(state)
 
     async def reload_catalog(
-        self, state: Any, catalog: str, ops_views: list, retention_hours: int | None
+        self, state: Any, catalog: str, ops_views: list
     ) -> dict:
         from provisa.federation import trino_lifecycle
 
-        return await trino_lifecycle.reload_catalog(state, catalog, ops_views, retention_hours)
+        return await trino_lifecycle.reload_catalog(state, catalog, ops_views)
 
     def classify_error(self, exc: Exception) -> str | None:
         from provisa.federation import trino_lifecycle
@@ -698,7 +698,7 @@ class TrinoBackend(EngineBackend):
 
         trino_lifecycle.register_kafka_catalog(state, kafka_source)
 
-    def reseed_ops(self, state: Any, ops_views: list, retention_hours: int | None) -> None:
+    def reseed_ops(self, state: Any, ops_views: list) -> None:
         """Register the Provisa-owned catalogs and seed the ops views on THIS org's terminal.
 
         REQ-1043/REQ-1244/REQ-1427: gating on ``engine_conn`` alone made this a silent no-op on
@@ -721,7 +721,7 @@ class TrinoBackend(EngineBackend):
             # REQ-1429: ensure, not re-register — dropping the deployment-scoped `otel`/`results`
             # for one org takes them away from every other org on a shared coordinator.
             ensure_system_catalogs(conn, state.tenant_engine.url, state.org_id)
-            seed_ops_trino(conn, ops_views, retention_hours)
+            seed_ops_trino(conn, ops_views)
 
     def cluster_diagnostics(self, state: Any) -> tuple[bool, int, int]:
         conn = state.engine_conn

@@ -1217,9 +1217,7 @@ async def reload_query_engine_catalog(request: Request, catalog: str = "otel"):
     from provisa.api.app import state
     from provisa.api.startup_seed import _OPS_VIEWS
 
-    return await state.federation_engine.reload_catalog(
-        catalog, _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-    )
+    return await state.federation_engine.reload_catalog(catalog, _OPS_VIEWS)
 
 
 async def _resolve_engine_container(client, engine_name: str) -> str:  # REQ-1433

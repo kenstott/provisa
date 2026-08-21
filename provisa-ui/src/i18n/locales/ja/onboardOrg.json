@@ -49,6 +49,19 @@
     "checkoutFailed": "チェックアウトを開けませんでした",
     "resumeTitle": "サインアップを完了する",
     "resumeBody": "{{name}} のサインアップを開始しましたが、チェックアウトが完了していません。この名前は {{expires}} まで確保されます。",
-    "resumeButton": "チェックアウトを再開"
+    "resumeButton": "チェックアウトを再開",
+    "planLabel": "プランを選択",
+    "planDesc": "どのプランも月額最低料金に対してエンジン時間で課金されます。最低料金は使用分に充当され、別途加算されるわけではありません。",
+    "planLoadFailed": "料金を読み込めませんでした",
+    "planMinimum": "最低 {{amount}}/{{interval}}、エンジン {{hours}} 時間分を含みます",
+    "planHourly": "それ以降はエンジン 1 時間あたり {{amount}}",
+    "planEgress": "クエリ結果は月 {{gb}} GB まで込み、超過分は 1 GB あたり {{amount}}",
+    "planSources": "データソースは最大 {{sources}} 件",
+    "planEngineShared": "共有エンジンで実行されます",
+    "planEngineDedicated": "専有エンジン {{vcpu}} vCPU / {{memory}} GB",
+    "planTrial": "{{days}} 日間の無料トライアル — カードは今登録され、トライアルが有料に切り替わるまで請求はありません",
+    "planNoTrial": "このサイズにトライアルはありません。最初の請求から課金が始まります",
+    "signUpDescPaid": "組織を作成すると、選択したプランの支払い画面が開きます。このサイズでは課金がすぐに始まります。",
+    "checkoutNotSettled": "お支払いはまだ届いていません。1 分ほどしてからこのページを再読み込みし、組織のセットアップを完了してください。"
   }
 }

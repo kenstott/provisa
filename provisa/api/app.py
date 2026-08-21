@@ -1399,9 +1399,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         # raced the otel catalog. No-op for a native engine (telemetry lives in the ops store).
         from provisa.api.startup_seed import _OPS_VIEWS
 
-        state.federation_engine.reseed_ops(
-            _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-        )
+        state.federation_engine.reseed_ops(_OPS_VIEWS)
 
         await _register_user_views_in_state(conn, raw_config)
 

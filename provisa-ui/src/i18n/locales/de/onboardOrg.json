@@ -49,6 +49,19 @@
     "checkoutFailed": "Checkout konnte nicht geöffnet werden",
     "resumeTitle": "Registrierung abschließen",
     "resumeBody": "Sie haben die Registrierung für {{name}} begonnen, den Checkout aber nicht abgeschlossen. Der Name wird bis {{expires}} reserviert.",
-    "resumeButton": "Checkout fortsetzen"
+    "resumeButton": "Checkout fortsetzen",
+    "planLabel": "Tarif wählen",
+    "planDesc": "Jeder Tarif rechnet nach Engine-Stunden gegen ein monatliches Minimum ab — das Minimum wird aufgebraucht, nicht zusätzlich berechnet.",
+    "planLoadFailed": "Preise konnten nicht geladen werden",
+    "planMinimum": "{{amount}}/{{interval}} Minimum, enthält {{hours}} Engine-Stunden",
+    "planHourly": "danach {{amount}} pro Engine-Stunde",
+    "planEgress": "{{gb}} GB Abfrageergebnisse pro Monat enthalten, danach {{amount}} pro GB",
+    "planSources": "Bis zu {{sources}} Datenquellen",
+    "planEngineShared": "Läuft auf der gemeinsam genutzten Engine",
+    "planEngineDedicated": "Dedizierte Engine mit {{vcpu}} vCPU / {{memory}} GB",
+    "planTrial": "{{days}} Tage kostenlos testen — die Karte wird jetzt hinterlegt, belastet wird sie erst beim Übergang in ein Abo",
+    "planNoTrial": "Kein Testzeitraum in dieser Größe; die Abrechnung beginnt mit Ihrer ersten Rechnung",
+    "signUpDescPaid": "Mit dem Erstellen einer Organisation öffnet sich der Checkout für den gewählten Tarif. In dieser Größe beginnt die Abrechnung sofort.",
+    "checkoutNotSettled": "Ihre Zahlung ist noch nicht bei uns eingegangen. Laden Sie diese Seite in einer Minute neu, um die Einrichtung Ihrer Organisation abzuschließen."
   }
 }

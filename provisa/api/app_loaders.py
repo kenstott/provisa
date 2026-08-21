@@ -104,9 +104,7 @@ def _apply_server_and_engine_config(raw_config: dict) -> None:
     # telemetry lands in the dedicated ops store (ops_schema/otlp2sql), so provision() is a no-op.
     from provisa.api.startup_seed import _OPS_VIEWS
 
-    state.federation_engine.provision(
-        _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-    )
+    state.federation_engine.provision(_OPS_VIEWS)
 
     # Engine session tuning (e.g. Fault-Tolerant Execution) — engine-specific, applied through the
     # lifecycle seam. Native engines have no per-session cluster tuning (no-op).

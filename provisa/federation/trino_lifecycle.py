@@ -155,7 +155,7 @@ def bind_terminal(state: Any) -> None:
     state.engine_conn_kwargs = terminal_conn_kwargs(state)
 
 
-def provision(state: Any, ops_views: list, retention_hours: int | None) -> None:
+def provision(state: Any, ops_views: list) -> None:
     """Connect the Trino terminal and seed the OTel ops catalog. Boot-time; blocking."""
     state.engine_conn_kwargs = terminal_conn_kwargs(state)
     state.engine_conn = trino.dbapi.connect(**state.engine_conn_kwargs)
@@ -170,7 +170,7 @@ def provision(state: Any, ops_views: list, retention_hours: int | None) -> None:
     register_system_catalogs(state.engine_conn, state.tenant_engine.url, state.org_id)
 
     schema_service.init(state.federation_engine)
-    seed_ops_trino(state.engine_conn, ops_views, retention_hours)
+    seed_ops_trino(state.engine_conn, ops_views)
 
 
 async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171
@@ -313,7 +313,7 @@ async def watchdog(state: Any) -> None:
 
 
 async def reload_catalog(
-    state: Any, catalog: str, ops_views: list, retention_hours: int | None
+    state: Any, catalog: str, ops_views: list
 ) -> dict:
     """Re-register a Provisa-owned Trino catalog from runtime values, then reconnect and re-run
     OTel DDL.
@@ -349,7 +349,7 @@ async def reload_catalog(
     try:
         from provisa.observability.ops_trino import seed_ops_trino
 
-        seed_ops_trino(state.engine_conn, ops_views, retention_hours)
+        seed_ops_trino(state.engine_conn, ops_views)
     except Exception as exc:
         errors.append(str(exc))
 

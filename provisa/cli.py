@@ -213,6 +213,15 @@ async def _announce_ready(
         print(f"\nProvisa is running — open {url} in your browser (announce: {exc}).", flush=True)
 
 
+# uvicorn's 5s default expires an idle connection while the browser still holds it pooled, and the
+# cloud front door splices client to backend one-to-one, so that close tears down the browser's
+# connection too. The browser only finds out when it writes the next request into the dead socket,
+# and it does not retry a POST — which is how filling in a form for more than five seconds ended in
+# "Failed to fetch". This sits above the front door's 300s splice idle timeout so the proxy, not
+# uvicorn, is what closes first.
+KEEP_ALIVE_SECONDS = 620
+
+
 async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_browser: bool) -> None:
     import uvicorn
 
@@ -224,9 +233,24 @@ async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_bro
     from provisa import ui_server
 
     api = uvicorn.Server(
-        uvicorn.Config(create_app, factory=True, host=host, port=api_port, log_level="info")
+        uvicorn.Config(
+            create_app,
+            factory=True,
+            host=host,
+            port=api_port,
+            log_level="info",
+            timeout_keep_alive=KEEP_ALIVE_SECONDS,
+        )
     )
-    ui = uvicorn.Server(uvicorn.Config(ui_server.app, host=host, port=ui_port, log_level="warning"))
+    ui = uvicorn.Server(
+        uvicorn.Config(
+            ui_server.app,
+            host=host,
+            port=ui_port,
+            log_level="warning",
+            timeout_keep_alive=KEEP_ALIVE_SECONDS,
+        )
+    )
     await asyncio.gather(
         api.serve(),
         ui.serve(),

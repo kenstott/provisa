@@ -44,11 +44,24 @@
     "acceptInvite": "Accept",
     "signUpButton": "Sign up",
     "signUpDesc": "Creating an organization starts your Starter trial. We take your card now; nothing is charged until the trial converts.",
+    "planLabel": "Choose a plan",
+    "planDesc": "Every plan bills by the engine hour against a monthly minimum — the minimum is drawn against, not added to.",
+    "planLoadFailed": "Could not load pricing",
+    "planMinimum": "{{amount}}/{{interval}} minimum, covering {{hours}} engine hours",
+    "planHourly": "{{amount}} per engine hour after that",
+    "planEgress": "{{gb}} GB of query results a month included, then {{amount}} per GB",
+    "planSources": "Up to {{sources}} data sources",
+    "planEngineShared": "Runs on the shared engine",
+    "planEngineDedicated": "Dedicated {{vcpu}} vCPU / {{memory}} GB engine",
+    "planTrial": "{{days}}-day free trial — card taken now, nothing charged until it converts",
+    "planNoTrial": "No trial on this size; billing starts with your first invoice",
+    "signUpDescPaid": "Creating an organization opens checkout for the plan you chose. Billing starts immediately on this size.",
     "openingCheckout": "Opening secure checkout...",
     "finishingSetup": "Payment received. Building your organization...",
     "checkoutFailed": "Could not open checkout",
     "resumeTitle": "Finish signing up",
     "resumeBody": "You started signing up for {{name}} but did not finish checkout. The name is held until {{expires}}.",
-    "resumeButton": "Resume checkout"
+    "resumeButton": "Resume checkout",
+    "checkoutNotSettled": "Your payment has not reached us yet. Reload this page in a minute to finish setting up your organization."
   }
 }

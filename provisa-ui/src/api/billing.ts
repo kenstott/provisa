@@ -212,11 +212,24 @@ export interface PlanEngine {
   query_max_memory_gb: number;
 }
 
+/** What a plan bills for data transfer: the monthly allowance, then the rate past it (REQ-1482). */
+export interface PlanEgress {
+  included_gb: number;
+  per_gb_cents: number;
+}
+
 export interface PlanOffer {
   plan: string;
   fixed_cents: number | null;
   fixed_kind: "minimum" | "fee" | null;
   fixed_interval: string | null;
+  /** Cents per engine hour past `included_hours`. The checkout overlay never shows this. */
+  hourly_cents: number;
+  /** Engine hours the fixed minimum has already bought. */
+  included_hours: number;
+  egress: PlanEgress;
+  /** Null on every plan whose variant grants no trial — today, all three Pro sizes. */
+  trial_days: number | null;
   source_limit: number;
   lane: "shared" | "isolated";
   engine: PlanEngine | null;
@@ -232,6 +245,28 @@ export interface PlanOffers {
 
 export async function fetchPlans(orgId: string): Promise<PlanOffers> {
   return (await billingFetch(`/plans?org_id=${encodeURIComponent(orgId)}`)) as PlanOffers;
+}
+
+// REQ-1514: the same offers with no org, for the signup page — the buyer picking a size has no org
+// to ask about yet, and the checkout overlay states only the first tier's unit price, which is zero
+// on every plan.
+
+export async function fetchCatalog(): Promise<PlanOffer[]> {
+  return ((await billingFetch("/catalog")) as { plans: PlanOffer[] }).plans;
+}
+
+/** Open the signup checkout for `plan`. The server resolves the variant; the client never names it. */
+export async function startPlanCheckout(
+  orgId: string,
+  plan: string,
+  redirectUrl: string,
+): Promise<string> {
+  const data = (await billingFetch("/plan/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ org_id: orgId, plan, redirect_url: redirectUrl }),
+  })) as { checkout_url: string };
+  return data.checkout_url;
 }
 
 export interface PlanChanged {

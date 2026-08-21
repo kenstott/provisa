@@ -49,6 +49,19 @@
     "checkoutFailed": "Impossible d'ouvrir le paiement",
     "resumeTitle": "Terminer l'inscription",
     "resumeBody": "Vous avez commencé l'inscription de {{name}} sans terminer le paiement. Le nom est réservé jusqu'au {{expires}}.",
-    "resumeButton": "Reprendre le paiement"
+    "resumeButton": "Reprendre le paiement",
+    "planLabel": "Choisissez une formule",
+    "planDesc": "Chaque formule est facturée à l'heure de moteur sur un minimum mensuel : le minimum est consommé, il ne s'ajoute pas.",
+    "planLoadFailed": "Impossible de charger les tarifs",
+    "planMinimum": "{{amount}}/{{interval}} minimum, couvrant {{hours}} heures de moteur",
+    "planHourly": "ensuite {{amount}} par heure de moteur",
+    "planEgress": "{{gb}} Go de résultats de requête par mois inclus, puis {{amount}} par Go",
+    "planSources": "Jusqu'à {{sources}} sources de données",
+    "planEngineShared": "S'exécute sur le moteur partagé",
+    "planEngineDedicated": "Moteur dédié de {{vcpu}} vCPU / {{memory}} Go",
+    "planTrial": "{{days}} jours d'essai gratuit — la carte est enregistrée maintenant, rien n'est débité tant que l'essai n'est pas converti",
+    "planNoTrial": "Pas d'essai sur cette taille ; la facturation commence à votre première facture",
+    "signUpDescPaid": "La création d'une organisation ouvre le paiement de la formule choisie. Sur cette taille, la facturation démarre immédiatement.",
+    "checkoutNotSettled": "Votre paiement ne nous est pas encore parvenu. Rechargez cette page dans une minute pour terminer la configuration de votre organisation."
   }
 }

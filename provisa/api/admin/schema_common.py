@@ -230,7 +230,12 @@ def _register_source_on_engine(state, model, input: SourceInput) -> None:
 
     try:
         state.federation_engine.register_source(
-            model, resolve_secrets(input.password) if input.password else ""
+            model,
+            resolve_secrets(input.password) if input.password else "",
+            # REQ-1266: the physical catalog the caller just published for this source. Registering
+            # under the bare name put a non-default org's source at a catalog its own queries — which
+            # address the org-prefixed name — could not find.
+            catalog_name=state.source_catalogs[input.id],
         )
     except Exception as _cat_err:
         logging.getLogger(__name__).warning(
@@ -256,7 +261,10 @@ async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> N
         rows = _res.fetchall()
     table_refs = [_TblRef(input.id, r.schema_name, r.table_name) for r in rows]
     if table_refs:
-        state.federation_engine.analyze(model, table_refs)
+        # REQ-1266: analyze the catalog the source is registered at, not the bare name.
+        state.federation_engine.analyze(
+            model, table_refs, catalog_name=state.source_catalogs[input.id]
+        )
 
 
 def _prime_govdata_cache(input: SourceInput) -> None:

@@ -49,6 +49,19 @@
     "checkoutFailed": "Checkout kon niet worden geopend",
     "resumeTitle": "Aanmelding afronden",
     "resumeBody": "U bent begonnen met aanmelden voor {{name}} maar hebt de checkout niet afgerond. De naam blijft gereserveerd tot {{expires}}.",
-    "resumeButton": "Checkout hervatten"
+    "resumeButton": "Checkout hervatten",
+    "planLabel": "Kies een abonnement",
+    "planDesc": "Elk abonnement rekent per engine-uur af tegen een maandelijks minimum — het minimum wordt opgebruikt, niet opgeteld.",
+    "planLoadFailed": "Kan de prijzen niet laden",
+    "planMinimum": "{{amount}}/{{interval}} minimum, goed voor {{hours}} engine-uren",
+    "planHourly": "daarna {{amount}} per engine-uur",
+    "planEgress": "{{gb}} GB queryresultaten per maand inbegrepen, daarna {{amount}} per GB",
+    "planSources": "Tot {{sources}} databronnen",
+    "planEngineShared": "Draait op de gedeelde engine",
+    "planEngineDedicated": "Toegewijde engine met {{vcpu}} vCPU / {{memory}} GB",
+    "planTrial": "{{days}} dagen gratis proberen — de kaart wordt nu vastgelegd, er wordt niets afgeschreven tot de proefperiode overgaat in een abonnement",
+    "planNoTrial": "Geen proefperiode op dit formaat; de facturering begint met je eerste factuur",
+    "signUpDescPaid": "Bij het aanmaken van een organisatie opent de afrekening voor het gekozen abonnement. Op dit formaat begint de facturering meteen.",
+    "checkoutNotSettled": "Je betaling heeft ons nog niet bereikt. Herlaad deze pagina over een minuut om je organisatie verder in te richten."
   }
 }

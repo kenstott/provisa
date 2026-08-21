@@ -40,6 +40,7 @@ import {
   type PlanOffer,
   type PlanOffers,
 } from "../../api/billing";
+import { formatMoney, planName } from "../../lib/planDisplay";
 
 const GIB = 1024 ** 3;
 
@@ -53,22 +54,6 @@ function formatDate(iso: string): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function formatMoney(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
-const PLAN_NAMES: Record<string, string> = {
-  trial: "Trial",
-  starter: "Starter",
-  pro_s: "Pro S",
-  pro_m: "Pro M",
-  pro_l: "Pro L",
-};
-
-function planName(plan: string): string {
-  return PLAN_NAMES[plan] ?? plan;
 }
 
 /** Whole days from now until `iso`, floored at zero. */

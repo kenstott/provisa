@@ -49,6 +49,19 @@
     "checkoutFailed": "無法開啟結帳頁面",
     "resumeTitle": "完成註冊",
     "resumeBody": "您已開始註冊 {{name}}，但未完成結帳。該名稱會保留至 {{expires}}。",
-    "resumeButton": "繼續結帳"
+    "resumeButton": "繼續結帳",
+    "planLabel": "選擇方案",
+    "planDesc": "所有方案均按引擎小時計費，並從每月最低消費中扣除——最低消費是被抵扣的，不會另行加收。",
+    "planLoadFailed": "無法載入價格",
+    "planMinimum": "最低 {{amount}}/{{interval}}，包含 {{hours}} 引擎小時",
+    "planHourly": "超出後每引擎小時 {{amount}}",
+    "planEgress": "每月包含 {{gb}} GB 查詢結果，超出部分每 GB {{amount}}",
+    "planSources": "最多 {{sources}} 個數據來源",
+    "planEngineShared": "在共用引擎上執行",
+    "planEngineDedicated": "專用引擎，{{vcpu}} vCPU / {{memory}} GB",
+    "planTrial": "{{days}} 天免費試用——現在綁定信用卡，試用轉為訂閱前不會扣款",
+    "planNoTrial": "此規格沒有試用；由第一張帳單開始計費",
+    "signUpDescPaid": "建立組織會開啟所選方案的結帳頁面。此規格會立即開始計費。",
+    "checkoutNotSettled": "我們尚未收到您的付款。請在一分鐘後重新載入此頁面，以完成組織的設定。"
   }
 }

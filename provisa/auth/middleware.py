@@ -598,7 +598,14 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # membership yet: /auth/redeem-invite CREATES the first membership, /auth/me reports zero
             # orgs, /setup + /admin/orgs run superadmin onboarding. They touch no tenant data, so an
             # unresolved (None) active org is correct there rather than the tenant-path 401.
-            platform_plane = request.url.path.startswith(("/auth/", "/setup", "/admin/orgs"))
+            # REQ-1476 adds /billing: the org being paid for does not exist as a membership yet
+            # (it is a reservation in awaiting_checkout), so the buyer necessarily has none. Without
+            # this the gate below 401'd /billing/trial/start and /billing/reservation and signup
+            # could not finish on a commerce deploy. Safe because /billing is control plane — every
+            # org-scoped handler authorizes itself with require_org_billing_access_or_creator.
+            platform_plane = request.url.path.startswith(
+                ("/auth/", "/setup", "/admin/orgs", "/billing")
+            )
             requested_org = _requested_org_from_host(request)
             if requested_org is not None:
                 # REQ-1327: membership is the ONLY way into an org — no platform-admin escape.

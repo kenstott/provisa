@@ -77,7 +77,7 @@ spec:
           {{- if .Values.tls.enabled }}
           # REQ-1257: the image CMD serves plaintext uvicorn; override it to bind
           # the mounted TLS cert so the API listens HTTPS on {{ .Values.provisa.port }}.
-          command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "{{ .Values.provisa.port }}", "--ssl-certfile", "/app/certs/tls.crt", "--ssl-keyfile", "/app/certs/tls.key"]
+          command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "{{ .Values.provisa.port }}", "--ssl-certfile", "/app/certs/tls.crt", "--ssl-keyfile", "/app/certs/tls.key", "--timeout-keep-alive", "620"]
           {{- end }}
           ports:
             - name: http

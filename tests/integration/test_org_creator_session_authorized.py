@@ -145,7 +145,11 @@ def planes(monkeypatch):
         app_state, "auth_config", {"provider": "basic", "bootstrap_superadmin": True}, raising=False
     )
 
-    async def _fake_build(org_id, *, include_demo=False, isolated_engine=False):  # noqa: ARG001
+    # Mirrors build_org_runtime's keyword-only tail (include_demo, isolated_engine, external_engine,
+    # engine_kind, engine_url, shard, storage_url) without restating it: this stub cares about none
+    # of them, and naming a subset means every new build argument breaks the fixture instead of the
+    # code under test.
+    async def _fake_build(org_id, **_kwargs):  # noqa: ARG001
         return types.SimpleNamespace(tenant_db=tenant_db)
 
     async def _noop_provision(*_args, **_kwargs):

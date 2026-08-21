@@ -310,9 +310,7 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
 
     log.info("re-establishing the shared engine terminal: shard %s restarted", shard)
     state.engine_conn = None
-    state.federation_engine.provision(
-        _OPS_VIEWS, getattr(state, "otel_snapshot_retention_hours", None)
-    )
+    state.federation_engine.provision(_OPS_VIEWS)
     await state.federation_engine.provision_infra()
 
     default = state.org_registry.get(state.org_id)

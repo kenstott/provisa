@@ -16,7 +16,6 @@ engine — native engines land telemetry in the dedicated ops store (see
 
 from __future__ import annotations
 
-import datetime
 import logging
 
 from provisa.observability.ops_schema import OPS_TABLES
@@ -35,7 +34,6 @@ def _ops_physical(pg_type: str) -> str:
 def seed_ops_trino(  # REQ-016
     trino_conn: TrinoConnection,
     ops_views: list[tuple[str, list[tuple[str, str, bool]], str]],
-    snapshot_retention_hours: int | None = None,
 ) -> None:
     """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
     _log = logging.getLogger(__name__)
@@ -93,10 +91,19 @@ def seed_ops_trino(  # REQ-016
                     "ops Iceberg: could not inspect columns for %s", tbl_name, exc_info=True
                 )
 
-        # Evolve partition spec on existing tables to include table_name (non-destructive).
-        for tbl_name in OPS_TABLES:
+        # Evolve partition spec on existing tables to match what CREATE TABLE declares
+        # (non-destructive). Trino spells partition evolution as SET PROPERTIES, not Spark's
+        # ADD PARTITION FIELD, which every run raised SYNTAX_ERROR on.
+        for tbl_name, cols in OPS_TABLES.items():
+            col_names_lower = {col_name.lower() for col_name, _, _ in cols}
+            partition_cols = (
+                ["'table_name'", "'_date'"] if "table_name" in col_names_lower else ["'_date'"]
+            )
             try:
-                _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
+                _exec(
+                    f"ALTER TABLE otel.signals.{tbl_name} "
+                    f"SET PROPERTIES partitioning = ARRAY[{', '.join(partition_cols)}]"
+                )
             except TrinoError:
                 pass  # already present, unsupported, or Trino transient — best-effort, not fatal
 
@@ -123,29 +130,7 @@ def seed_ops_trino(  # REQ-016
         except Exception:
             _log.warning("ops view %s: create failed", view_name, exc_info=True)
 
-    if not _tables_ready:
-        return
-
-    # Expire old Iceberg snapshots and orphan files when retention is configured.
-    if snapshot_retention_hours is not None:
-        threshold = (
-            datetime.datetime.now(datetime.timezone.utc)
-            - datetime.timedelta(hours=snapshot_retention_hours)
-        ).strftime("%Y-%m-%d %H:%M:%S.000")
-        for tbl_name in OPS_TABLES:
-            for proc, arg in [
-                ("expire_snapshots", f"retention_threshold => TIMESTAMP '{threshold}'"),
-                ("remove_orphan_files", f"retention_threshold => TIMESTAMP '{threshold}'"),
-            ]:
-                try:
-                    _exec(f"ALTER TABLE otel.signals.{tbl_name} EXECUTE {proc}({arg})")
-                    _log.info(
-                        "ops Iceberg: %s on %s (retention %dh)",
-                        proc,
-                        tbl_name,
-                        snapshot_retention_hours,
-                    )
-                except Exception:
-                    _log.warning(
-                        "ops Iceberg: %s on %s failed (non-fatal)", proc, tbl_name, exc_info=True
-                    )
+    # Snapshot/orphan-file reclamation is the scheduler's (REQ-302/303 reclaim_otel_storage): it
+    # passes retention as the duration string the procedures take and sets the matching
+    # min-retention session properties. Seeding attempted the same procedures with a TIMESTAMP,
+    # which Trino rejects as INVALID_PROCEDURE_ARGUMENT on every boot.

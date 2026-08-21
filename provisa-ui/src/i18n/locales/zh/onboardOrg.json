@@ -49,6 +49,19 @@
     "checkoutFailed": "无法打开结账页面",
     "resumeTitle": "完成注册",
     "resumeBody": "您已开始注册 {{name}}，但尚未完成结账。该名称将保留至 {{expires}}。",
-    "resumeButton": "继续结账"
+    "resumeButton": "继续结账",
+    "planLabel": "选择套餐",
+    "planDesc": "所有套餐都按引擎小时计费，并从每月最低消费中扣除——最低消费是被抵扣的，不会另行加收。",
+    "planLoadFailed": "无法加载价格",
+    "planMinimum": "最低 {{amount}}/{{interval}}，包含 {{hours}} 引擎小时",
+    "planHourly": "超出后每引擎小时 {{amount}}",
+    "planEgress": "每月含 {{gb}} GB 查询结果，超出部分每 GB {{amount}}",
+    "planSources": "最多 {{sources}} 个数据源",
+    "planEngineShared": "运行在共享引擎上",
+    "planEngineDedicated": "独占引擎，{{vcpu}} vCPU / {{memory}} GB",
+    "planTrial": "{{days}} 天免费试用——现在绑定银行卡，试用转为订阅前不会扣款",
+    "planNoTrial": "该规格没有试用；从第一张账单开始计费",
+    "signUpDescPaid": "创建组织将打开所选套餐的结账页面。该规格立即开始计费。",
+    "checkoutNotSettled": "我们尚未收到您的付款。请在一分钟后重新加载此页面，以完成组织的设置。"
   }
 }

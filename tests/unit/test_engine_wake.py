@@ -197,7 +197,7 @@ class _FakeEngine:
         self.infra = 0
         self.reconciles = 0
 
-    def provision(self, ops_views, retention):
+    def provision(self, ops_views):
         self.provisions += 1
 
     async def provision_infra(self):
@@ -386,8 +386,8 @@ async def test_tenant_cold_start_restores_the_shared_terminal_before_reissuing_c
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
 
     class _Recording(_FakeEngine):
-        def provision(self, ops_views, retention):
-            super().provision(ops_views, retention)
+        def provision(self, ops_views):
+            super().provision(ops_views)
             order.append("restore")
 
     state.federation_engine = _Recording()

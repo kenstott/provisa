@@ -49,6 +49,19 @@
     "checkoutFailed": "No se pudo abrir el pago",
     "resumeTitle": "Complete su registro",
     "resumeBody": "Comenzó a registrar {{name}} pero no completó el pago. El nombre queda reservado hasta {{expires}}.",
-    "resumeButton": "Reanudar el pago"
+    "resumeButton": "Reanudar el pago",
+    "planLabel": "Elija un plan",
+    "planDesc": "Todos los planes se facturan por hora de motor contra un mínimo mensual: el mínimo se consume, no se suma.",
+    "planLoadFailed": "No se pudieron cargar los precios",
+    "planMinimum": "{{amount}}/{{interval}} de mínimo, que cubre {{hours}} horas de motor",
+    "planHourly": "después, {{amount}} por hora de motor",
+    "planEgress": "{{gb}} GB de resultados de consulta al mes incluidos, después {{amount}} por GB",
+    "planSources": "Hasta {{sources}} orígenes de datos",
+    "planEngineShared": "Se ejecuta en el motor compartido",
+    "planEngineDedicated": "Motor dedicado de {{vcpu}} vCPU / {{memory}} GB",
+    "planTrial": "{{days}} días de prueba gratuita: la tarjeta se registra ahora y no se cobra nada hasta que la prueba se convierta",
+    "planNoTrial": "Este tamaño no tiene prueba; la facturación empieza con su primera factura",
+    "signUpDescPaid": "Al crear una organización se abre el pago del plan elegido. En este tamaño la facturación empieza de inmediato.",
+    "checkoutNotSettled": "Su pago aún no nos ha llegado. Vuelva a cargar esta página en un minuto para terminar de configurar su organización."
   }
 }

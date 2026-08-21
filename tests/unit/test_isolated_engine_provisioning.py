@@ -149,14 +149,14 @@ def test_the_ops_catalogs_reach_the_org_s_own_coordinator(backend, monkeypatch):
     )
     monkeypatch.setattr(
         "provisa.observability.ops_trino.seed_ops_trino",
-        lambda conn, views, hours: calls.append(("views", conn, tuple(views), hours)),
+        lambda conn, views: calls.append(("views", conn, tuple(views))),
     )
 
-    backend.reseed_ops(state, ["traces"], 24)
+    backend.reseed_ops(state, ["traces"])
 
     # Catalogs first: the ops views are created inside `otel`.
     assert [c[0] for c in calls] == ["catalogs", "views"]
     assert calls[0] == ("catalogs", opened, "postgresql://cp/provisa", "kstott")
-    assert calls[1] == ("views", opened, ("traces",), 24)
+    assert calls[1] == ("views", opened, ("traces",))
     assert opened.closed
     assert state.engine_conn is None
