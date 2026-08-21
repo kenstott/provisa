@@ -112,6 +112,7 @@ async def test_nf_condition_extracted_and_forwarded_as_nf_args(monkeypatch):
             SOURCE_ID,
             False,
             {SOURCE_ID},
+            (),
         )
 
     with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_fake_optimize_and_route)):

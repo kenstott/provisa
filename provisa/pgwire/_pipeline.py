@@ -22,6 +22,7 @@ import collections
 import logging
 import re
 import secrets as _secrets
+import time as _time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -107,6 +108,15 @@ class _Plan:
     # engine-side kill as a tier error. None when the deployment has no billing subject.
     tier_caps: Any | None = field(default=None)
     tier_plan: str | None = field(default=None)
+    # REQ-1517: the plan's own account of how it was built — the semantic sources the statement
+    # resolved to, the router's reason for the route it picked, and the labels of the
+    # post-governance optimizations that fired (hot-table inlining, API-cache rewrite, branch
+    # drop). Populated at the top of the pipeline where those decisions are made; the stats
+    # terminal renders them, so the execution DAG reports the real plan instead of the surface's
+    # guess at it. Empty when nothing optimized the statement.
+    sources: frozenset[str] = field(default_factory=frozenset)
+    route_reason: str | None = field(default=None)
+    optimizations: tuple[str, ...] = field(default=())
 
 
 # --------------------------------------------------------------------------- #
@@ -219,6 +229,16 @@ async def _optimize_and_route(
 
     _inlined = set(_values_ctes) | _actually_dropped
     optimized = bool(_inlined or _rewrites)
+    # REQ-1517: name each optimization that fired, per relation, so the execution DAG can say WHY a
+    # scan is cheap (or absent) instead of rendering an unexplained node. Built here because this is
+    # the only place that knows which rewrite applied to which table.
+    opt_labels: list[str] = []
+    for _tn in sorted(_values_ctes):
+        opt_labels.append(f"hot-table inline: {_tn}")
+    for _tn in sorted(_actually_dropped):
+        opt_labels.append(f"branch dropped: {_tn}")
+    for _tn in sorted(_rewrites):
+        opt_labels.append(f"api cache: {_tn}")
     if optimized:
         sources = reduce_sources_for_routing(governed_sql, gov_ctx, ctx, _inlined)
     else:
@@ -249,7 +269,7 @@ async def _optimize_and_route(
             dialect=None,
             reason="query rewritten to a materialized cache table",
         )
-    return exec_sql, decision, default_source, optimized, sources
+    return exec_sql, decision, default_source, optimized, sources, tuple(opt_labels)
 
 
 def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
@@ -372,6 +392,22 @@ async def _attach_tier_caps(plan: _Plan, state: Any) -> _Plan:
     return plan
 
 
+async def _wake_before_governing(state: Any) -> None:
+    """REQ-1448: the shard the active org queries is serving before this statement is planned.
+
+    ``_execute_plan`` wakes too, but it is not reached by every surface: the govern-then-stream
+    terminals (pgwire's socketserver worker, Flight SQL, airport, Bolt, gRPC, CTAS) drain the
+    engine's SYNC terminal themselves, so on a shard that had idled to zero they dialed a released
+    pod address and answered a connection error — with no wake and nothing naming the cold start.
+    Both halves of the ONE pipeline mint plans through ``_govern_and_route`` /
+    ``_govern_and_route_compiled``, so waking HERE covers the streaming surfaces without giving any
+    of them a wake of its own. Warm shards short-circuit inside ``ensure_shard_awake``.
+    """
+    from provisa.federation.engine_wake import ensure_engine_awake
+
+    await ensure_engine_awake(state)
+
+
 async def _govern_and_route(
     sql: str,
     role_id: str,
@@ -380,10 +416,12 @@ async def _govern_and_route(
     as_of: str | None = None,
     deliver: Delivery | None = None,
     buffered: bool = False,
+    explain: bool | None = None,
 ) -> _Plan:
     """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044)."""
     from provisa.api.app import state
 
+    await _wake_before_governing(state)
     plan = await _govern_and_route_planned(
         sql,
         role_id,
@@ -391,6 +429,7 @@ async def _govern_and_route(
         as_of=as_of,
         deliver=deliver,
         buffered=buffered,
+        explain=explain,
     )
     return await _attach_tier_caps(plan, state)
 
@@ -403,6 +442,11 @@ async def _govern_and_route_planned(
     as_of: str | None = None,
     deliver: Delivery | None = None,
     buffered: bool = False,
+    # REQ-1519: describe this statement instead of running it. False wraps the FINAL routed SQL in
+    # the dialect's EXPLAIN, True in its EXPLAIN ANALYZE (which does run it). Wrapping here — at
+    # the bottom of the ONE pipeline, after governance, optimization and routing — is what makes
+    # the explained statement the statement that would have executed.
+    explain: bool | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     import sqlglot
     import sqlglot.expressions as exp
@@ -578,6 +622,15 @@ async def _govern_and_route_planned(
     # parse the statement themselves, so the type must be passed through explicitly.
     _is_mutation = isinstance(_parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge))
 
+    if explain is not None:
+        # REQ-1519: describing a statement and delivering its rows to a sink are different
+        # terminals; an EXPLAIN has no result set to land, so the combination is refused rather
+        # than silently resolved. A write is refused outright — EXPLAIN ANALYZE executes it.
+        if deliver is not None or buffered:
+            raise ValueError("EXPLAIN cannot be combined with result delivery")
+        if _is_mutation:
+            raise ValueError("EXPLAIN is only supported for read statements")
+
     # REQ-301: strip _nf_* WHERE conditions (native API params, e.g. _nf_petId) before routing,
     # same as the compiled path (_govern_and_route_compiled) — without this, an API table with a
     # required path param never resolves it, materialization skips, and the unmaterialized table
@@ -595,7 +648,7 @@ async def _govern_and_route_planned(
     )
     _nf_args = _extracted_nf or None
 
-    _qualified, decision, _default_source, _optimized, _sources = await _optimize_and_route(
+    _qualified, decision, _default_source, _optimized, _sources, _opts = await _optimize_and_route(
         _physical_sql,
         governed_semantic,
         gov_ctx,
@@ -710,6 +763,14 @@ async def _govern_and_route_planned(
         except ValueError:
             raise
         physical_sql = state.federation_engine.transpile_physical(_qualified)
+        if explain is not None:
+            # REQ-1519: the ONE pipeline's own EXPLAIN — the engine describes the federated
+            # statement it would have run, wrapped after transpile so nothing else changes.
+            from provisa.executor.explain import wrap_explain
+
+            physical_sql = wrap_explain(
+                physical_sql, state.federation_engine.dialect, analyze=explain
+            )
         return _Plan(
             route=Route.ENGINE,
             sql=governed_semantic,
@@ -722,6 +783,10 @@ async def _govern_and_route_planned(
             span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+            # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
+            sources=frozenset(_sources),
+            route_reason=decision.reason,
+            optimizations=_opts,
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -744,6 +809,11 @@ async def _govern_and_route_planned(
         if state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES:
             _physical = strip_schema(_physical)
         sql_to_run = transpile(_physical, dialect)
+        if explain is not None:
+            # REQ-1519: the source describes the pushed-down statement in its own dialect.
+            from provisa.executor.explain import wrap_explain
+
+            sql_to_run = wrap_explain(sql_to_run, dialect, analyze=explain)
         return _Plan(
             route=decision.route,
             sql=sql_to_run,
@@ -755,6 +825,10 @@ async def _govern_and_route_planned(
             span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+            # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
+            sources=frozenset(_sources),
+            route_reason=decision.reason,
+            optimizations=_opts,
         )
 
 
@@ -786,6 +860,7 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     from provisa.federation.engine_wake import ensure_engine_awake
 
     await ensure_engine_awake(state)
+    _t0 = _time.perf_counter()
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.
     try:
@@ -810,6 +885,15 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
         await finalize_audit(plan, 402, state)
         raise
     await finalize_audit(plan, 200, state)
+    # REQ-1517: record this statement against the request's stats accumulator (opt-in via
+    # X-Provisa-Stats) from the PLAN, at the one terminal every raw-SQL surface reaches — so the
+    # route, the source and the execution DAG a surface reports are the ones that actually ran.
+    # A no-op when the caller did not ask for stats.
+    from provisa.executor.plan_stats import record_plan_execution
+
+    record_plan_execution(
+        plan, state, rows=len(result.rows), elapsed_ms=(_time.perf_counter() - _t0) * 1000
+    )
     return result
 
 
@@ -1029,6 +1113,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     """Governance + routing for already-physical SQL, with the org's tier ceilings bound."""
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
+    await _wake_before_governing(state)
     plan = await _govern_and_route_compiled_planned(
         sql,
         role_id,
@@ -1148,7 +1233,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
     # Route on the OUTPUT of the optimization stage (REQ-863): sources whose every referenced
     # table was inlined/pruned drop out of the routing set.
-    _exec_sql, decision, _default_source, _optimized, sources = await _optimize_and_route(
+    _exec_sql, decision, _default_source, _optimized, sources, _opts = await _optimize_and_route(
         _exec_sql, governed_sql, gov_ctx, ctx, state, nf_args=_nf_args
     )
 
@@ -1250,6 +1335,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+            # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
+            sources=frozenset(sources),
+            route_reason=decision.reason,
+            optimizations=_opts,
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -1279,6 +1368,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+            # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
+            sources=frozenset(sources),
+            route_reason=decision.reason,
+            optimizations=_opts,
         )
 
 

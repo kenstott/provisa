@@ -269,7 +269,7 @@ async def _run_govern_and_route(monkeypatch, sql: str, *, tables: list[dict]) ->
     )
 
     async def _mock_optimize_route(exec_sql, governed_sql, gov_ctx, ctx, state, **kwargs):
-        return exec_sql, decision, SOURCE_ID, False, {SOURCE_ID}
+        return exec_sql, decision, SOURCE_ID, False, {SOURCE_ID}, ()
 
     with patch.object(_pipeline, "_optimize_and_route", side_effect=_mock_optimize_route):
         plan = await _pipeline._govern_and_route(sql, "analyst")

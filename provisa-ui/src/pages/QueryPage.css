@@ -683,16 +683,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.stats-mermaid {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--surface);
-  overflow-x: auto;
-}
-
-.stats-mermaid svg {
-  max-width: 100%;
-  height: auto;
-}
+/* .stats-mermaid lives with the shared component: components/MermaidDiagram.css */
 
 .stats-row-clickable {
   cursor: pointer;

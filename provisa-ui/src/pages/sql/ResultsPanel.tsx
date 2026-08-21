@@ -15,6 +15,8 @@ import { History, BarChart2 } from "lucide-react";
 import { ResultsGrid } from "./ResultsGrid";
 import type { ResultsGridState } from "./useResultsGrid";
 import type { ResultTab, HistoryEntry } from "./types";
+import type { ExplainNodeDto, ExplainResponse } from "../../api/admin";
+import { MermaidDiagram } from "../../components/MermaidDiagram";
 
 interface ResultsPanelProps {
   resultTab: ResultTab;
@@ -27,6 +29,8 @@ interface ResultsPanelProps {
   errors: string[];
   history: HistoryEntry[];
   queryStats: unknown;
+  analyzePlan: ExplainResponse | null;
+  analyzeError: string;
   sqlText: string;
   setSqlText: React.Dispatch<React.SetStateAction<string>>;
   setRole: React.Dispatch<React.SetStateAction<string>>;
@@ -42,6 +46,8 @@ export function ResultsPanel({
   errors,
   history,
   queryStats,
+  analyzePlan,
+  analyzeError,
   sqlText,
   setSqlText,
   setRole,
@@ -55,6 +61,7 @@ export function ResultsPanel({
     errors: t("sqlResultsPanel.tabErrors"),
     history: t("sqlResultsPanel.tabHistory"),
     stats: t("sqlResultsPanel.tabStats"),
+    analyze: t("sqlResultsPanel.tabAnalyze"),
   };
 
   return (
@@ -67,42 +74,46 @@ export function ResultsPanel({
         style={{ flexShrink: 0 }}
       >
         <Tabs.List>
-          {(["results", "profile", "errors", "history", "stats"] as ResultTab[]).map((tab) => {
-            const count =
-              tab === "results"
-                ? resultRows.length
-                : tab === "profile"
-                  ? profile.length
-                  : tab === "errors"
-                    ? errors.length
-                    : tab === "stats"
-                      ? 0
-                      : history.length;
-            if (tab === "stats" && !queryStats) return null;
-            return (
-              <Tabs.Tab
-                key={tab}
-                value={tab}
-                data-testid={`results-tab-${tab}`}
-                leftSection={
-                  tab === "history" ? (
-                    <History size={11} />
-                  ) : tab === "profile" ? (
-                    <BarChart2 size={11} />
-                  ) : undefined
-                }
-                rightSection={
-                  count > 0 ? (
-                    <Badge size="xs" circle color={tab === "errors" ? "red" : "blue"}>
-                      {count}
-                    </Badge>
-                  ) : undefined
-                }
-              >
-                {tabLabels[tab]}
-              </Tabs.Tab>
-            );
-          })}
+          {(["results", "profile", "errors", "history", "stats", "analyze"] as ResultTab[]).map(
+            (tab) => {
+              const count =
+                tab === "results"
+                  ? resultRows.length
+                  : tab === "profile"
+                    ? profile.length
+                    : tab === "errors"
+                      ? errors.length
+                      : tab === "stats" || tab === "analyze"
+                        ? 0
+                        : history.length;
+              if (tab === "stats" && !queryStats) return null;
+              // REQ-1519: the tab appears only once a plan has been asked for.
+              if (tab === "analyze" && !analyzePlan && !analyzeError) return null;
+              return (
+                <Tabs.Tab
+                  key={tab}
+                  value={tab}
+                  data-testid={`results-tab-${tab}`}
+                  leftSection={
+                    tab === "history" ? (
+                      <History size={11} />
+                    ) : tab === "profile" ? (
+                      <BarChart2 size={11} />
+                    ) : undefined
+                  }
+                  rightSection={
+                    count > 0 ? (
+                      <Badge size="xs" circle color={tab === "errors" ? "red" : "blue"}>
+                        {count}
+                      </Badge>
+                    ) : undefined
+                  }
+                >
+                  {tabLabels[tab]}
+                </Tabs.Tab>
+              );
+            },
+          )}
         </Tabs.List>
       </Tabs>
 
@@ -574,6 +585,7 @@ export function ResultsPanel({
             const stats = queryStats as {
               total_elapsed_ms?: number;
               sources?: StatsSource[];
+              mermaid?: string;
             } | null;
             if (!stats) return null;
             return (
@@ -584,6 +596,7 @@ export function ResultsPanel({
                     {t("sqlResultsPanel.statsTotalMs", { ms: stats.total_elapsed_ms })}
                   </strong>
                 </div>
+                {stats.mermaid && <MermaidDiagram chart={stats.mermaid} />}
                 {(stats.sources ?? []).map((s, i) => (
                   <div
                     key={i}
@@ -660,9 +673,160 @@ export function ResultsPanel({
               </Box>
             );
           })()}
+
+        {/* REQ-1519: the engine's own plan for the routed statement, with the Provisa rewrites
+            that produced it drawn onto the same picture. */}
+        {resultTab === "analyze" &&
+          (analyzeError ? (
+            <pre
+              style={{
+                margin: "0.75rem",
+                fontSize: "0.8rem",
+                color: "var(--destructive)",
+                whiteSpace: "pre-wrap",
+                fontFamily: "monospace",
+              }}
+              data-testid="analyze-error"
+            >
+              {analyzeError}
+            </pre>
+          ) : analyzePlan ? (
+            <Box
+              style={{ padding: "0.75rem 1rem", fontSize: "0.8rem" }}
+              data-testid="analyze-panel"
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1rem",
+                  flexWrap: "wrap",
+                  marginBottom: "0.5rem",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <span>
+                  {t("sqlResultsPanel.analyzeRoute")}{" "}
+                  <strong style={{ color: "var(--text)" }}>{analyzePlan.route}</strong>{" "}
+                  {analyzePlan.route_reason}
+                </span>
+                <span>
+                  {t("sqlResultsPanel.analyzeDialect")}{" "}
+                  <strong style={{ color: "var(--text)" }}>{analyzePlan.dialect}</strong>
+                </span>
+                <span>
+                  {analyzePlan.analyzed
+                    ? t("sqlResultsPanel.analyzeMeasured")
+                    : t("sqlResultsPanel.analyzeEstimated")}
+                </span>
+              </div>
+
+              {analyzePlan.optimizations.length > 0 && (
+                <div style={{ marginBottom: "0.5rem" }} data-testid="analyze-optimizations">
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {t("sqlResultsPanel.analyzeOptimizations")}
+                  </span>{" "}
+                  {analyzePlan.optimizations.map((o) => (
+                    <Badge key={o} size="xs" color="green" variant="light" mr="xs">
+                      {o}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* REQ-1519: the diagram and the operator list are two readings of one tree —
+                  side by side so a node in the graph can be found in the list without scrolling. */}
+              <div
+                style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}
+                data-testid="analyze-panes"
+              >
+                {analyzePlan.plan.length > 0 && (
+                  <div style={{ flex: "1 1 50%", minWidth: 0, overflow: "auto" }}>
+                    <Table className="data-table" style={{ fontSize: "0.68rem" }}>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>{t("sqlResultsPanel.analyzeColOperator")}</Table.Th>
+                          <Table.Th>{t("sqlResultsPanel.analyzeColRows")}</Table.Th>
+                          <Table.Th>
+                            {analyzePlan.analyzed
+                              ? t("sqlResultsPanel.analyzeColActualMs")
+                              : t("sqlResultsPanel.analyzeColCost")}
+                          </Table.Th>
+                          <Table.Th>{t("sqlResultsPanel.analyzeColDetail")}</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {flattenPlan(analyzePlan.plan).map((row, i) => (
+                          <Table.Tr key={i}>
+                            <Table.Td
+                              style={{
+                                fontFamily: "monospace",
+                                paddingInlineStart: `${0.4 + row.depth * 0.9}rem`,
+                              }}
+                            >
+                              {row.node.op}
+                            </Table.Td>
+                            <Table.Td>{row.node.rows ?? t("sqlResultsPanel.dash")}</Table.Td>
+                            <Table.Td>
+                              {(analyzePlan.analyzed ? row.node.actual_ms : row.node.cost) ??
+                                t("sqlResultsPanel.dash")}
+                            </Table.Td>
+                            <Table.Td style={{ color: "var(--text-muted)" }}>
+                              {Object.entries(row.node.detail)
+                                .map(([k, v]) => `${k}=${v}`)
+                                .join("  ")}
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </div>
+                )}
+                {analyzePlan.mermaid && (
+                  <div
+                    style={{
+                      flex: "1 1 50%",
+                      minWidth: 0,
+                      overflow: "auto",
+                      borderInlineStart: "1px solid var(--border)",
+                      paddingInlineStart: "0.75rem",
+                    }}
+                  >
+                    <MermaidDiagram chart={analyzePlan.mermaid} />
+                  </div>
+                )}
+              </div>
+
+              <pre
+                style={{
+                  margin: "0.5rem 0 0",
+                  fontSize: "0.72rem",
+                  color: "var(--text-muted)",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  maxHeight: "10em",
+                  overflow: "auto",
+                  background: "var(--surface)",
+                  padding: "0.4rem",
+                  borderRadius: "4px",
+                }}
+                data-testid="analyze-sql"
+              >
+                {analyzePlan.sql}
+              </pre>
+            </Box>
+          ) : null)}
       </div>
     </div>
   );
+}
+
+// REQ-1519: the operator tree read top-down, each row carrying its depth so the list reads like
+// the diagram.
+function flattenPlan(
+  nodes: ExplainNodeDto[],
+  depth = 0,
+): { node: ExplainNodeDto; depth: number }[] {
+  return nodes.flatMap((node) => [{ node, depth }, ...flattenPlan(node.children, depth + 1)]);
 }
 
 export { PAGE_SIZE } from "./types";

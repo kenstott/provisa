@@ -18,6 +18,7 @@ helpers are exercised directly to reach branches HTTP cannot cheaply reach.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -221,6 +222,36 @@ class TestSqlEndpointStatsAndFormat:
         body = resp.json()
         assert "provisa_stats" in body
 
+    async def test_stats_report_the_governed_plan_not_a_placeholder(self, sql_client):
+        # REQ-1517: the entry and the DAG come from the plan the pipeline terminal executed, so
+        # the source column names the route that ran and the diagram is present for the SQL
+        # surface the same way it is for GraphQL.
+        fallback_result = _make_query_result(rows=[(1,)], column_names=["id"])
+        with (
+            patch(
+                "provisa.executor.direct.execute_direct",
+                new=AsyncMock(return_value=fallback_result),
+            ),
+            patch(
+                "provisa.executor.trino.execute_trino", new=AsyncMock(return_value=fallback_result)
+            ),
+        ):
+            resp = await sql_client.post(
+                "/data/sql",
+                json={"sql": "SELECT id FROM orders", "role": "org_admin"},
+                headers={"accept": "application/json", "x-provisa-stats": "true"},
+            )
+        assert resp.status_code == 200
+        stats = resp.json()["provisa_stats"]
+        assert stats["mermaid"].startswith("flowchart LR")
+        (entry,) = stats["sources"]
+        assert entry["field"] == "sql"
+        # "batch" was the placeholder strategy the endpoint used to invent for every statement.
+        assert entry["strategy"] != "batch"
+        assert entry["strategy"].startswith(("direct:", "federated:"))
+        assert entry["rows"] == 1
+        assert entry["physical_sql"]
+
     async def test_default_json_response_shape(self, sql_client):
         fallback_result = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
@@ -258,6 +289,86 @@ class TestSqlEndpointStatsAndFormat:
             )
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/csv")
+
+
+class TestSqlExplainEndpoint:
+    """REQ-1519: /data/sql/explain describes the plan the ONE pipeline would have executed."""
+
+    PG_PLAN = json.dumps(
+        [
+            {
+                "Plan": {
+                    "Node Type": "Seq Scan",
+                    "Relation Name": "orders",
+                    "Total Cost": 10.0,
+                    "Plan Rows": 42,
+                }
+            }
+        ]
+    )
+
+    def _explain_result(self):
+        return QueryResult(rows=[(self.PG_PLAN,)], column_names=["QUERY PLAN"])
+
+    async def _post(self, client, body):
+        direct = AsyncMock(return_value=self._explain_result())
+        with (
+            patch("provisa.executor.direct.execute_direct", new=direct),
+            patch(
+                "provisa.executor.trino.execute_trino",
+                new=AsyncMock(return_value=self._explain_result()),
+            ),
+        ):
+            resp = await client.post("/data/sql/explain", json=body)
+        return resp, direct
+
+    async def test_the_statement_the_source_receives_is_wrapped_in_explain(self, sql_client):
+        resp, direct = await self._post(
+            sql_client, {"sql": "SELECT id FROM orders", "role": "org_admin"}
+        )
+        assert resp.status_code == 200, resp.text
+        executed = " ".join(str(a) for a in direct.await_args.args)
+        assert "EXPLAIN (FORMAT JSON)" in executed
+        assert "ANALYZE" not in executed
+
+    async def test_the_plan_tree_and_the_route_come_back_normalized(self, sql_client):
+        resp, _ = await self._post(
+            sql_client, {"sql": "SELECT id FROM orders", "role": "org_admin"}
+        )
+        body = resp.json()
+        assert body["route"] == "DIRECT"
+        assert body["route_reason"]
+        assert body["dialect"] == "postgres"
+        assert body["analyzed"] is False
+        (node,) = body["plan"]
+        assert node["op"] == "Seq Scan orders"
+        assert node["rows"] == 42
+        assert body["mermaid"].startswith("flowchart TD")
+        assert "Seq Scan orders" in body["mermaid"]
+
+    async def test_analyze_true_asks_the_source_to_run_the_statement(self, sql_client):
+        resp, direct = await self._post(
+            sql_client, {"sql": "SELECT id FROM orders", "role": "org_admin", "analyze": True}
+        )
+        assert resp.status_code == 200, resp.text
+        executed = " ".join(str(a) for a in direct.await_args.args)
+        assert "EXPLAIN (ANALYZE, FORMAT JSON)" in executed
+        assert resp.json()["analyzed"] is True
+
+    async def test_a_write_is_refused_because_analyze_would_perform_it(self, sql_client):
+        resp, _ = await self._post(sql_client, {"sql": "DELETE FROM orders", "role": "org_admin"})
+        assert resp.status_code == 400
+        assert "read statements" in resp.text
+
+    async def test_a_batch_is_refused_rather_than_silently_explaining_one_statement(
+        self, sql_client
+    ):
+        resp, _ = await self._post(
+            sql_client,
+            {"sql": "SELECT id FROM orders; SELECT id FROM orders", "role": "org_admin"},
+        )
+        assert resp.status_code == 400
+        assert "single statement" in resp.text
 
 
 class TestSqlEndpointRoleResolution:

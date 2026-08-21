@@ -1204,6 +1204,42 @@ export async function runSql(
   }
 }
 
+// REQ-1519: the plan the ONE pipeline would have executed, described by the target's own EXPLAIN.
+export interface ExplainNodeDto {
+  op: string;
+  detail: Record<string, string>;
+  rows: number | null;
+  cost: number | null;
+  actual_ms: number | null;
+  children: ExplainNodeDto[];
+}
+
+export interface ExplainResponse {
+  route: string;
+  route_reason: string;
+  dialect: string;
+  analyzed: boolean;
+  sources: string[];
+  optimizations: string[];
+  sql: string;
+  plan: ExplainNodeDto[];
+  mermaid: string;
+}
+
+export async function explainSql(
+  sqlText: string,
+  role: string = "admin",
+  analyze: boolean = false,
+): Promise<ExplainResponse> {
+  const resp = await fetch(`${API_BASE_RAW}/data/sql/explain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ sql: sqlText, role, analyze }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}
+
 export async function nlToSql(
   question: string,
   role: string = "admin",

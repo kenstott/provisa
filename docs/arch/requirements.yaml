@@ -48137,3 +48137,137 @@ And a later observation in the same hour replaces it rather than adding to it
   related_reqs:
   - REQ-258
   - REQ-074
+- id: REQ-1517
+  status: complete
+  group: 8. Client Access & Protocols
+  category: Observability
+  priority: SHOULD
+  type: behavioral
+  description: A raw-SQL statement must account for itself the way a GraphQL query does. The
+    GraphQL surface builds its execution DAG from the compiled field plan, so a SQL statement
+    — which has no fields — used to report a single invented row naming the engine and no
+    diagram at all. The governed plan already knows what the statement resolved to, so it
+    carries that account — the semantic sources it scanned, the reason the router chose DIRECT
+    or ENGINE, and the labels of the optimizations that fired after governance (hot-table
+    inlining, API-cache rewrite, dropped UNION branch). The one pipeline terminal records
+    the entry and renders the Mermaid DAG from that plan, so the source table and the diagram
+    report the route that actually ran. Each optimization appears as its own node feeding
+    the route, which is what explains a source the user expected to see scanned and did not.
+    Surfaces that record their own entries — the GraphQL field executors, the Cypher router
+    — leave the terminal's recording off, so one statement never produces two rows.
+  use_case: A developer runs a statement on Explore / SQL with query stats on and sees the
+    same diagram-and-source view the GraphQL surface gives, including which sources the hot-table
+    cache served instead of the origin.
+  code:
+  - provisa/executor/plan_stats.py
+  - provisa/executor/stats.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/api/data/endpoint_dev.py
+  - provisa-ui/src/components/MermaidDiagram.tsx
+  - provisa-ui/src/pages/sql/ResultsPanel.tsx
+  tests:
+  - tests/unit/test_plan_stats.py
+  - tests/unit/test_endpoint_dev_api.py
+  since: 2026-08
+  scenario: 'Given a SQL statement run with query stats requested
+
+    When the governed plan routes it and the post-governance optimizations fire
+
+    Then the response carries a Mermaid DAG whose scan nodes, optimization nodes and route
+    node report the plan that executed
+
+    '
+  bdd: true
+  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  stakeholders:
+  - app-developer
+  related_reqs:
+  - REQ-1516
+- id: REQ-1518
+  status: complete
+  group: 6. Federation & Engine
+  category: Multi-tenancy
+  priority: MUST
+  type: behavioral
+  description: The Arrow Flight transport must dial the shard the ACTIVE org queries, not the
+    one this control plane booted on. On a deployment that provisions its engines the Zaychik
+    Flight SQL proxy is a sidecar in the shard's pod, so its address is that pod's and it dies
+    with it. A single connection opened at boot against the boot shard therefore served every
+    Arrow and streaming query from the shared shard's proxy — an isolated-engine org's Arrow
+    result came off the shared coordinator, voiding the isolation the org is invoiced for
+    (REQ-1510) — and after any shard restart that connection held a released pod address.
+    The transport is resolved at the call instead, per shard and per coordinator generation
+    (REQ-1448) — the active org's shard is read the same way the wake reads it, a connection
+    is opened to that pod's sidecar and cached, and a generation change closes the stale
+    connection before redialing. An org running its own coordinator has no sidecar to dial
+    and is refused rather than routed to a shard. Deployments that do not provision engines
+    (desktop, self-hosted, tests) keep the single proxy beside the control plane.
+  use_case: An org on the dedicated engine lane runs an Arrow Flight or COPY-to-Arrow query
+    and the batches come off its own coordinator, not the shared one.
+  code:
+  - provisa/federation/backend.py
+  - provisa/federation/engine_wake.py
+  - provisa/federation/trino_lifecycle.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_flight_shard_transport.py
+  since: 2026-08
+  depends_on:
+  - REQ-1448
+  - REQ-1510
+  scenario: 'Given an isolated-engine org whose shard is serving
+
+    When it runs a query over Arrow Flight
+
+    Then the record batches are drained from that shard''s own Zaychik sidecar, and a restart
+    of that shard closes the stale connection and redials the new pod
+
+    '
+- id: REQ-1519
+  status: complete
+  group: 8. Client Access & Protocols
+  category: Observability
+  priority: SHOULD
+  type: behavioral
+  description: A developer must be able to see how a statement will be executed without running it,
+    and see the Provisa rewrites on the same picture as the engine's own plan. Explore / SQL offers
+    Analyze beside Sample; it describes the statement through the ONE pipeline — governance, metric
+    expansion, semantic lowering, the post-governance optimizations and the route all apply — and the
+    FINAL routed SQL is wrapped in the target's own EXPLAIN at the bottom of the pipeline, so the tree
+    is the tree for the statement that would have run. The dialects' shapes (PostgreSQL and DuckDB JSON,
+    Trino and MySQL, SQLite QUERY PLAN, indented ANALYZE text) are normalized to one operator tree with
+    rows, cost and, when the run form is requested, actual timings. A dialect with no EXPLAIN Provisa
+    knows is refused rather than guessed at; so is a write, whose ANALYZE form would perform it, a multi-statement
+    batch, and any request that also asks for row delivery. The optimizations that fired are returned
+    beside the tree and drawn as their own nodes feeding the route, because they are exactly what the
+    engine plan cannot say — a table the user wrote that no scan node mentions was inlined, cache-served
+    or dropped.
+  use_case: A developer presses Analyze on Explore / SQL and reads the engine's plan for the statement
+    Provisa would actually send, with the hot-table inline and cache rewrites called out.
+  code:
+  - provisa/executor/explain.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/api/data/endpoint_dev.py
+  - provisa-ui/src/components/MermaidDiagram.tsx
+  - provisa-ui/src/pages/sql/ResultsPanel.tsx
+  tests:
+  - tests/unit/test_explain.py
+  - tests/unit/test_endpoint_dev_api.py
+  since: 2026-08
+  scenario: 'Given a read statement and a role whose governance applies to it
+
+
+    When the developer asks for it to be analyzed
+
+
+    Then the routed statement is described by the target''s own EXPLAIN and returned as one operator
+    tree with the Provisa optimizations that produced it annotated on the route
+
+
+    '
+  bdd: true
+  bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  stakeholders:
+  - app-developer
+  related_reqs:
+  - REQ-1517

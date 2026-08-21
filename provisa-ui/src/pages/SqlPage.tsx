@@ -27,7 +27,8 @@ import {
 } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { runSql } from "../api/admin";
+import { runSql, explainSql } from "../api/admin";
+import type { ExplainResponse } from "../api/admin";
 import {
   useRoles,
   useDomains,
@@ -127,6 +128,10 @@ export function SqlPage() {
     () => localStorage.getItem("sql:statsEnabled") === "true",
   );
   const [queryStats, setQueryStats] = useState<unknown>(null);
+  // REQ-1519: the plan Analyze last described, and the reason a description was refused.
+  const [analyzePlan, setAnalyzePlan] = useState<ExplainResponse | null>(null);
+  const [analyzeError, setAnalyzeError] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
@@ -509,6 +514,23 @@ export function SqlPage() {
     ensureDomainChecked,
   ]);
 
+  // REQ-1519: describe the statement through the ONE pipeline instead of running it. The plan
+  // comes back governed, optimized and routed, so the tree is the tree for the SQL that would run.
+  const handleAnalyze = useCallback(async () => {
+    if (!sqlText.trim()) return;
+    setAnalyzing(true);
+    setAnalyzeError("");
+    try {
+      const plan = await explainSql(sqlText.trim().replace(/;+$/, ""), role, false);
+      setAnalyzePlan(plan);
+    } catch (e) {
+      setAnalyzePlan(null);
+      setAnalyzeError(e instanceof Error ? e.message : String(e));
+    }
+    setAnalyzing(false);
+    setResultTab("analyze");
+  }, [sqlText, role]);
+
   const handleRun = useCallback(async () => {
     if (!sqlText.trim()) return;
     const aliased = autoAliasConflicts(sqlText);
@@ -772,6 +794,8 @@ export function SqlPage() {
               handleCopy={handleCopy}
               running={running}
               handleRun={handleRun}
+              handleAnalyze={handleAnalyze}
+              analyzing={analyzing}
               sampleMode={sampleMode}
               setSampleMode={setSampleMode}
               sampleSize={sampleSize}
@@ -797,6 +821,8 @@ export function SqlPage() {
               errors={errors}
               history={history}
               queryStats={queryStats}
+              analyzePlan={analyzePlan}
+              analyzeError={analyzeError}
               sqlText={sqlText}
               setSqlText={setSqlText}
               setRole={setRole}

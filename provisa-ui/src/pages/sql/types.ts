@@ -10,7 +10,7 @@
 
 import type { Metric, Relationship, RegisteredTable } from "../../types/admin";
 
-export type ResultTab = "results" | "profile" | "errors" | "history" | "stats";
+export type ResultTab = "results" | "profile" | "errors" | "history" | "stats" | "analyze";
 export type TopTab = "sql" | "canvas";
 
 export interface HistoryEntry {

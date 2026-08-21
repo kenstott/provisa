@@ -243,21 +243,22 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     from provisa.executor import stats as _qs_mod
 
     if stats_enabled:
-        _qs_mod.begin()
+        # REQ-1517: this surface records nothing itself — the pipeline terminal records each
+        # governed plan it executes, under the "sql" label.
+        _qs_mod.begin(plan_entries=True)
     _t0 = _time.perf_counter()
 
-    def _finalize(result, *, source: str, strategy: str, physical_sql: str | None):
+    def _finalize(result):
         rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
         if stats_enabled:
-            _qs_mod.record(
-                field="sql",
-                source=source,
-                strategy=strategy,
-                elapsed_ms=(_time.perf_counter() - _t0) * 1000,
-                rows=len(rows_as_dicts),
-                physical_sql=physical_sql,
-            )
+            # REQ-1517: the entries and the execution DAG are recorded by the pipeline terminal
+            # (provisa.executor.plan_stats), which knows the real route, source and optimizations.
+            # This surface only attaches what was recorded.
             qs = _qs_mod.current()
+            if qs is not None:
+                # The true end-to-end wall clock for the request, which the accumulator reports as
+                # the total instead of its own construction time.
+                qs.wall_ms = (_time.perf_counter() - _t0) * 1000
             if qs is not None and output_format == "json":
                 from fastapi.encoders import jsonable_encoder
 
@@ -313,7 +314,65 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         raise
     except Exception as exc:  # allow-ble: request boundary — an arbitrary user query can raise ANY engine/driver exception type
         raise HTTPException(status_code=400, detail=str(exc))
-    return _finalize(result, source="engine", strategy="batch", physical_sql=request.sql)
+    return _finalize(result)
+
+
+class ExplainRequest(BaseModel):
+    sql: str
+    role: str = "org_admin"
+    # REQ-1519: True runs the statement and reports real timings (the dialect's EXPLAIN ANALYZE);
+    # False describes it without running it.
+    analyze: bool = False
+
+
+@router.post("/sql/explain")
+async def sql_explain_endpoint(  # REQ-1519
+    raw_request: Request,
+    request: ExplainRequest,
+    x_provisa_role: str | None = Header(None),
+    x_provisa_as_of: str | None = Header(None),
+):
+    """Explain a statement's governed plan — the engine's own EXPLAIN, annotated with the Provisa
+    rewrites that produced the statement it describes.
+
+    The plan comes from the ONE pipeline (``_govern_and_route(..., explain=...)``), so the tree is
+    the tree for the statement that would have run: governed, optimized, routed. The optimizations
+    that fired are returned alongside it, because they are what the engine plan cannot say — a
+    table the user wrote that no scan node mentions was inlined, cache-served, or dropped.
+    """
+    from provisa.api.app import state
+    from provisa.executor.explain import ExplainUnsupported, analyze_sql
+
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
+    if role_id not in state.schemas:
+        raise ApiError(
+            400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
+        )
+    _check_sql_capabilities(state.roles.get(role_id))
+
+    _as_of = None
+    if x_provisa_as_of:
+        from provisa.mv.bitemporal import parse_as_of
+
+        try:
+            _as_of = parse_as_of(x_provisa_as_of)
+        except ValueError as exc:
+            raise ApiError(
+                400, "data.invalid_as_of", f"invalid X-Provisa-As-Of: {exc}", error=str(exc)
+            )
+
+    # Same request-boundary contract as /data/sql: a governance denial is 403, an unsupported
+    # dialect or an arbitrary query the source rejects is a 400 carrying the reason.
+    try:
+        return await analyze_sql(request.sql, role_id, state, analyze=request.analyze, as_of=_as_of)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ExplainUnsupported as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:  # allow-ble: request boundary — an arbitrary user query can raise ANY engine/driver exception type
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _check_sql_capabilities(role) -> None:

@@ -28,6 +28,12 @@ class FieldStat:
 
 @dataclass
 class QueryStats:
+    # REQ-1517: whether the pipeline terminal records this request's entries from the governed plan,
+    # and the label it records them under. A surface that already records its own entries (the
+    # GraphQL field executors, the Cypher router) leaves this off, so one statement never produces
+    # two rows; the raw-SQL surfaces turn it on and record nothing themselves.
+    plan_entries: bool = False
+    statement_label: str = "sql"
     entries: list[FieldStat] = _field(default_factory=list)
     mermaid: str | None = None
     wall_ms: float | None = None  # true end-to-end wall-clock set by caller
@@ -84,8 +90,8 @@ class QueryStats:
 _ctx: ContextVar[QueryStats | None] = ContextVar("query_stats", default=None)
 
 
-def begin() -> QueryStats:
-    s = QueryStats()
+def begin(*, plan_entries: bool = False, statement_label: str = "sql") -> QueryStats:
+    s = QueryStats(plan_entries=plan_entries, statement_label=statement_label)
     _ctx.set(s)
     return s
 

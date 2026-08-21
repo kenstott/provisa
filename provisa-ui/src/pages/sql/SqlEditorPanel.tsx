@@ -22,7 +22,7 @@ import {
   TextInput,
   useComputedColorScheme,
 } from "@mantine/core";
-import { Play, Copy, Check, X, Sparkles } from "lucide-react";
+import { Play, Copy, Check, X, Sparkles, GitBranch } from "lucide-react";
 import { format as formatSql } from "sql-formatter";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -62,6 +62,8 @@ interface SqlEditorPanelProps {
   // Toolbar
   running: boolean;
   handleRun: () => void;
+  handleAnalyze: () => void;
+  analyzing: boolean;
   sampleMode: "first" | "last" | "random";
   setSampleMode: React.Dispatch<React.SetStateAction<"first" | "last" | "random">>;
   sampleSize: number;
@@ -103,6 +105,8 @@ export function SqlEditorPanel({
   handleCopy,
   running,
   handleRun,
+  handleAnalyze,
+  analyzing,
   sampleMode,
   setSampleMode,
   sampleSize,
@@ -484,6 +488,19 @@ export function SqlEditorPanel({
           data-testid="sql-run"
         >
           {running ? t("sqlEditorPanel.running") : t("sqlEditorPanel.run")}
+        </Button>
+        {/* REQ-1519: describe the statement instead of running it — the engine's plan for the
+            routed SQL, with the Provisa rewrites that produced it called out. */}
+        <Button
+          size="xs"
+          variant="default"
+          leftSection={<GitBranch size={11} />}
+          onClick={handleAnalyze}
+          disabled={analyzing || running || !sqlText.trim()}
+          data-testid="sql-analyze"
+          title={t("sqlEditorPanel.analyzeTitle")}
+        >
+          {analyzing ? t("sqlEditorPanel.analyzing") : t("sqlEditorPanel.analyze")}
         </Button>
         <Select
           aria-label={t("sqlEditorPanel.sampleModeLabel")}
