@@ -322,12 +322,22 @@ async def restore_shared_terminal(state: Any, shard: str) -> None:
     config = getattr(state, "config", None)
     if config is not None:
         async with state.tenant_db.acquire() as conn:
-            await load_config(
+            failed = await load_config(
                 config,
                 conn,
                 state.federation_engine,
                 replace=False,
                 catalog_names=default.source_catalogs,
+            )
+        # A catalog that did not come back is not a boot-time inconvenience here: the resumed
+        # coordinator now serves every shared-lane org WITHOUT it, and the next query answers a raw
+        # CATALOG_NOT_FOUND that names the source rather than the wake. Fail the wake instead, so
+        # the query reports what actually broke and the generation is NOT stamped — the following
+        # request retries the restore rather than inheriting a half-restored terminal.
+        if failed:
+            raise RuntimeError(
+                f"shard {shard} restarted and {len(failed)} source catalog(s) could not be "
+                f"reissued on the new coordinator: {', '.join(sorted(failed))}"
             )
     # Materialized sources read through landing tables in the materialization store, and their
     # schemas and read views are dynamic catalog state too — a resumed coordinator answers
@@ -424,6 +434,45 @@ async def _wake_isolated(state: Any, org_id: str, runtime: Any) -> None:
     state.org_registry.invalidate(org_id)
     log.info("rebuilding org %s runtime: dedicated engine shard %s restarted", org_id, shard)
     await ensure_org_runtime(org_id)
+
+
+def active_shard(state: Any) -> str | None:
+    """The shard the CURRENT org's queries dispatch to, resolved the way the wake resolves it.
+
+    None means "this deployment has no shard to name for the active org": either it does not
+    provision engines at all (desktop, self-hosted, tests), or the org runs a coordinator of its
+    own that this control plane neither provisions nor wakes (REQ-1412/REQ-1418).
+
+    :func:`ensure_engine_awake` performs the same resolution and then acts on it. This is the read
+    half, for callers that need to know WHICH pod the active org's traffic belongs to — the Arrow
+    Flight transport, whose sidecar lives in that pod (REQ-1518).
+    """
+    if not k8s.provisioning_available():
+        return None
+
+    from provisa.api.org_runtime import current_org
+
+    org_id = current_org.get()
+    if org_id is None:
+        return boot_shard()
+
+    runtime = state.org_registry.get(org_id)
+    if runtime is None:
+        raise RuntimeError(
+            f"org {org_id!r} is bound for this query but has no built runtime — the shard it "
+            "queries cannot be resolved (REQ-1448)"
+        )
+    if runtime.engine_endpoint is not None or runtime.engine_url is not None:
+        return None
+    if runtime.isolated_engine:
+        return k8s.isolated_shard(org_id)
+    shard = runtime.shard
+    if not shard:
+        raise RuntimeError(
+            f"org {org_id!r} has no shard recorded on its runtime, so the engine it queries cannot "
+            "be resolved (REQ-1450)"
+        )
+    return shard
 
 
 async def ensure_engine_awake(state: Any) -> None:

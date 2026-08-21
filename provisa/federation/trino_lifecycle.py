@@ -182,17 +182,18 @@ async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171
         from provisa.federation.k8s_provisioner import provisioning_available
 
         if provisioning_available():
-            # On a provisioning deployment the proxy is a sidecar in the shard's pod, so its
-            # address is the shard's — and it exists only after the wake that boot performs
-            # before this runs. Every other deployment (desktop, self-hosted, tests) runs it
-            # beside the control plane, where the compose service name is the address.
-            from provisa.federation.engine_wake import boot_shard
-            from provisa.federation.k8s_provisioner import shard_flight_endpoint
-
-            zaychik_host, zaychik_port = shard_flight_endpoint(boot_shard())
-        else:
-            zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
-            zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
+            # REQ-1518: nothing to connect at boot. The proxy is a sidecar in the shard's pod, so
+            # its address is that pod's and it dies with it — and the shard an Arrow query needs is
+            # the ACTIVE org's, which is not known here and is not the boot shard for an isolated
+            # org. Binding one connection to boot_shard() here is what sent an isolated org's Arrow
+            # stream through the shared shard's proxy and left every shard restart holding a
+            # released address. The transport is resolved per shard, per generation, at the call
+            # (``TrinoBackend._shard_flight_transport``). Every other deployment (desktop,
+            # self-hosted, tests) runs one proxy beside the control plane at a stable name, which
+            # is the connection built below.
+            return
+        zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
+        zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
         state.flight_client = await asyncio.to_thread(
             create_flight_connection, host=zaychik_host, port=zaychik_port
         )
@@ -312,9 +313,7 @@ async def watchdog(state: Any) -> None:
 # -- catalog reload (was settings_router `reload_query_engine_catalog`) ------------------------
 
 
-async def reload_catalog(
-    state: Any, catalog: str, ops_views: list
-) -> dict:
+async def reload_catalog(state: Any, catalog: str, ops_views: list) -> dict:
     """Re-register a Provisa-owned Trino catalog from runtime values, then reconnect and re-run
     OTel DDL.
 

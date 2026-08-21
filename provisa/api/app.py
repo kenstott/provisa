@@ -143,6 +143,11 @@ class AppState:
     # they live on the per-org OrgRuntime and resolve through the current_org ContextVar, falling
     # through to the default-org (shared) runtime for every org without a dedicated engine.
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
+    # REQ-1518: on a deployment that provisions its engines the Zaychik proxy is a sidecar in the
+    # shard's pod, so there is no single address to hold — one connection per shard, keyed by the
+    # coordinator generation it was opened against. `flight_client` above is the OTHER deployments'
+    # single proxy, which sits beside the control plane at a stable name.
+    flight_clients: dict[str, tuple[int, Any]] = {}  # shard → (generation, ADBC connection)
     # Full source-row map from the DB, published by _rebuild_schemas so NativeEngineBackend can
     # attach dynamically registered sources that are not in state.config (YAML-only).
     runtime_sources: dict[str, dict] = {}
@@ -1174,12 +1179,22 @@ async def build_org_runtime(
             # default-org name) — the cross-org collision guard (REQ-1266).
             _populate_source_catalog_names(config)
             async with state.tenant_db.acquire() as conn:
-                await load_config(
+                failed_catalogs = await load_config(
                     config,
                     conn,
                     state.federation_engine,
                     replace=False,
                     catalog_names=rt.source_catalogs,
+                )
+            # REQ-1448: this build IS the repair a wake performs — a source whose catalog did not
+            # come back leaves the org dispatching at a coordinator that has never heard of it, and
+            # the next query answers a raw CATALOG_NOT_FOUND naming the source rather than the wake.
+            # Fail the build so the caller sees the wake failure and the registry keeps no
+            # half-built runtime (the except below drops it).
+            if failed_catalogs:
+                raise RuntimeError(
+                    f"org {org_id!r}: {len(failed_catalogs)} source catalog(s) could not be issued "
+                    f"on its engine: {', '.join(sorted(failed_catalogs))}"
                 )
             await _build_source_pools_and_enums(config)
             await _resolve_pk_from_sources()
@@ -1207,6 +1222,14 @@ async def build_org_runtime(
             from provisa.events.app_wiring import wire_event_loop
 
             await wire_event_loop(scheduler, state=state, log=logging.getLogger(__name__))
+    except Exception:
+        # The runtime was registered before this body ran (materialize_store() and the catalog-name
+        # map are read off the registry while it builds), so a failure part-way leaves a runtime
+        # whose catalogs, schemas or pools are incomplete cached under the org — and every later
+        # query reads it as healthy. Drop it: the next request rebuilds from scratch, which is also
+        # what makes a failed wake retry instead of sticking.
+        state.org_registry.invalidate(org_id)
+        raise
     finally:
         reset_current_org(token)
     return rt

@@ -273,9 +273,7 @@ class EngineBackend:
     async def watchdog(self, state: Any) -> None:
         """No external process to watch."""
 
-    async def reload_catalog(
-        self, state: Any, catalog: str, ops_views: list
-    ) -> dict:
+    async def reload_catalog(self, state: Any, catalog: str, ops_views: list) -> dict:
         return {
             "success": False,
             "errors": [f"engine {self.engine.name!r} has no reloadable catalog"],
@@ -566,6 +564,20 @@ class TrinoBackend(EngineBackend):
 
         return transpile_to_trino(pg_sql)
 
+    def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
+        """Trino reaches its materialization store through the ``provisa_admin`` catalog.
+
+        The base default names the catalog ``postgresql``, which is a *store-engine's* own catalog
+        name — Trino has no such catalog. ``register_system_catalogs`` registers the control-plane
+        Postgres (the same database ``materialize_store()`` lands into) as ``provisa_admin``, which
+        is also what ``resolved_cache_catalog`` names for the API-result cache. Inheriting the base
+        default made every MV sweep and refresh on Trino ask for
+        ``"postgresql"."org_<org>_mv_cache"`` and answer CATALOG_NOT_FOUND.
+        """
+        from provisa.core.trino_system_catalogs import PROVISA_ADMIN_CATALOG
+
+        return PROVISA_ADMIN_CATALOG, f"org_{org_id}_mv_cache"
+
     # -- landing ---------------------------------------------------------------
 
     def landing_target(
@@ -658,9 +670,7 @@ class TrinoBackend(EngineBackend):
 
         await trino_lifecycle.watchdog(state)
 
-    async def reload_catalog(
-        self, state: Any, catalog: str, ops_views: list
-    ) -> dict:
+    async def reload_catalog(self, state: Any, catalog: str, ops_views: list) -> dict:
         from provisa.federation import trino_lifecycle
 
         return await trino_lifecycle.reload_catalog(state, catalog, ops_views)
@@ -690,6 +700,9 @@ class TrinoBackend(EngineBackend):
     def close(self, state: Any) -> None:
         if getattr(state, "flight_client", None) is not None:
             state.flight_client.close()
+        for _gen, client in getattr(state, "flight_clients", {}).values():
+            client.close()
+        getattr(state, "flight_clients", {}).clear()
         if state.engine_conn is not None:
             state.engine_conn.close()
 
@@ -918,12 +931,55 @@ class TrinoBackend(EngineBackend):
     # -- engine-specific transports (Arrow via Zaychik Flight SQL proxy) --------
 
     def _flight_transport(self, state: Any) -> Any:
+        from provisa.federation import k8s_provisioner as k8s
+
+        if k8s.provisioning_available():
+            return self._shard_flight_transport(state)
+
         client = state.flight_client
         if client is None:
             raise RuntimeError(
                 f"engine {self.engine.name!r} Arrow Flight transport is not configured "
                 "(set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the proxy is running)"
             )
+        return client
+
+    def _shard_flight_transport(self, state: Any) -> Any:
+        """REQ-1518: the Flight connection for the shard the ACTIVE org queries, not the boot one.
+
+        The proxy is a sidecar in the shard's pod, so its address is that pod's and it dies with it.
+        A single connection built at boot against ``boot_shard()`` therefore had two defects: an
+        isolated org's Arrow/stream query drained the SHARED shard's proxy — voiding the isolation
+        the org is invoiced for — and after any shard restart the connection held a released pod
+        address. Both are resolved the same way the SQL terminal resolves its endpoint: per shard,
+        per coordinator generation. ``ensure_engine_awake`` has already run at the top of the ONE
+        pipeline, so the shard is serving and its address is recorded before this is asked for.
+        """
+        from provisa.executor.trino_flight import create_flight_connection
+        from provisa.federation.engine_wake import active_shard, generation
+        from provisa.federation.k8s_provisioner import shard_flight_endpoint
+
+        shard = active_shard(state)
+        if shard is None:
+            raise RuntimeError(
+                f"engine {self.engine.name!r} Arrow Flight transport cannot be resolved: the "
+                "active org runs a coordinator this control plane does not provision, so it has "
+                "no Zaychik sidecar to dial (REQ-1518)"
+            )
+        gen = generation(shard)
+        cached = state.flight_clients.get(shard)
+        if cached is not None:
+            cached_gen, client = cached
+            if cached_gen == gen:
+                return client
+            # The pod that held this connection is gone; closing it is what stops the next Arrow
+            # query from re-using a socket to a released address.
+            client.close()
+            del state.flight_clients[shard]
+
+        host, port = shard_flight_endpoint(shard)
+        client = create_flight_connection(host=host, port=port)
+        state.flight_clients[shard] = (gen, client)
         return client
 
     def execute_arrow(self, state: Any, sql: str, params: list | None = None):
