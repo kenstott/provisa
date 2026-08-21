@@ -48087,6 +48087,7 @@
   code:
   - provisa/subscriptions/pg_triggers.py
   tests:
+  - tests/unit/test_pg_notify_trigger_sql.py
   - tests/integration/test_pg_notify_payload_limit.py
   since: 2026-08
   scenario: 'Given a registered PostgreSQL table carrying the subscription notify trigger
