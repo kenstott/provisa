@@ -287,7 +287,9 @@ push_obs() {
   # been pointed at an external store — the writer and the compactor addressed different buckets.
   local want have
   want="$(shasum -a 256 "$REPO/docker-compose.observability.yml" | cut -d' ' -f1)"
-  have="$(ssh_node "sudo shasum -a 256 $OBS_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)"
+  # A node that has never had the overlay is the case this function installs, so shasum's failure
+  # on a missing file is a probe result, not an abort — the same rule verify()'s poll follows.
+  have="$(ssh_node "sudo shasum -a 256 $OBS_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)" || have=""
   if [ "$want" = "$have" ]; then
     echo "== observability: up to date"
     return
@@ -318,7 +320,7 @@ push_obs_config() {
   for f in "$REPO"/observability/*.yaml; do
     name="$(basename "$f")"
     want="$(shasum -a 256 "$f" | cut -d' ' -f1)"
-    have="$(ssh_node "sudo shasum -a 256 $OBS_CONF_DIR/$name 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)"
+    have="$(ssh_node "sudo shasum -a 256 $OBS_CONF_DIR/$name 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)" || have=""
     [ "$want" = "$have" ] && continue
     scp_node "$f" "/tmp/$name"
     ssh_node "sudo mkdir -p $OBS_CONF_DIR && sudo cp /tmp/$name $OBS_CONF_DIR/$name"
@@ -342,7 +344,9 @@ APP_YML="/root/.provisa/compose/docker-compose.app.yml"
 push_app() {
   local want have
   want="$(shasum -a 256 "$REPO/docker-compose.app.yml" | cut -d' ' -f1)"
-  have="$(ssh_node "sudo shasum -a 256 $APP_YML" | tr -d '\r' | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $APP_YML" | tr -d '\r' | cut -d' ' -f1)" || have=""
+  # Unlike the extensions, the installer always writes this file: an unreadable one means the node
+  # is not a Provisa install, which is why this stays an abort rather than an install.
   [ -n "$have" ] || { echo "cannot read $APP_YML on the node" >&2; exit 1; }
   if [ "$want" = "$have" ]; then
     echo "== app overlay: up to date"
@@ -377,7 +381,7 @@ push_demo() {
     || { echo "cannot extract the demo overlay from first-launch.sh" >&2; exit 1; }
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.demo.yml" | cut -d' ' -f1)"
-  have="$(ssh_node "sudo shasum -a 256 $DEMO_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $DEMO_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)" || have=""
   if [ "$want" = "$have" ]; then
     echo "== demo overlay: up to date"
     return
