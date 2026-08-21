@@ -48154,7 +48154,7 @@
   - REQ-1516
 - id: REQ-1518
   status: complete
-  group: 6. Federation & Engine
+  group: 13. Multi-Tenancy & Organizations
   category: Multi-tenancy
   priority: MUST
   type: behavioral
@@ -48240,7 +48240,7 @@
   - REQ-1517
 - id: REQ-1520
   status: complete
-  group: 7. User Interface
+  group: 10. UI & Admin Surfaces
   category: Usability
   priority: SHOULD
   type: behavioral
@@ -48272,7 +48272,7 @@
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
   stakeholders:
-  - end-user
+  - data-steward
 - id: REQ-1521
   status: complete
   group: 8. Client Access & Protocols
