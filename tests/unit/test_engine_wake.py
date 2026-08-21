@@ -79,8 +79,13 @@ class _FakeK8s:
 
     async def shard_status(self, shard: str) -> dict:
         self.status_calls += 1
-        if self.state == "ready" and shard not in k8s._pod_uids:
-            self.land_pod(shard)
+        if self.state == "ready":
+            if shard not in k8s._pod_uids:
+                self.land_pod(shard)
+            else:
+                # A ready shard is re-resolved on every status read, which is how an address
+                # discarded after a dial that reached nothing comes back (REQ-1448).
+                k8s._pod_ips[shard] = f"10.20.0.{self.pods}"
         return {"shard": shard, "state": self.state, "ready_replicas": 0, "replicas": 0}
 
     async def ensure_shared_shard(self, shard: str) -> None:
@@ -496,7 +501,9 @@ def test_org_build_wakes_the_shard_before_anything_asks_for_its_address():
 
     src = inspect.getsource(app_module.build_org_runtime)
     wake = src.index("ensure_shard_awake(")
-    assert wake < src.index("_engine_generation(effective_shard)"), "the generation is sampled before the wake"
+    assert wake < src.index("_engine_generation(effective_shard)"), (
+        "the generation is sampled before the wake"
+    )
     assert wake < src.index("_seed_built_in_sources("), "the seed runs before the wake"
 
 
@@ -858,3 +865,72 @@ async def test_an_org_with_no_runtime_is_an_error_not_a_guess(fake_k8s):
     state = _state_with(None, [])
     with pytest.raises(RuntimeError, match="no built runtime"):
         await engine_wake.engine_state(state, "acme")
+
+
+# ── readdress_lost_coordinator ──────────────────────────────────────────────────
+
+
+def _timeout_error() -> Exception:
+    """The failure a released pod IP produces: a connect timeout, restated by the executor."""
+    import requests
+
+    inner = requests.exceptions.ConnectTimeout("connect timeout=10")
+    outer = RuntimeError("failed to execute: HTTPConnectionPool(host='10.20.0.16', port=8080)")
+    outer.__cause__ = inner
+    return outer
+
+
+async def test_a_moved_coordinator_is_re_resolved_and_the_query_redispatched(fake_k8s):
+    """REQ-1448: the recheck window means the recorded address can be up to a window stale, and an
+    eviction this process did not drive replaces the pod inside it. The connect failure is the only
+    signal that says so, so it drops the address and wakes again — and the caller redispatches."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    fake_k8s.state = "ready"
+    default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
+    state = _state_with(None, [], default=default)
+    await engine_wake.ensure_engine_awake(state)
+    stale = k8s.recorded_shard_address("shared_1")
+    assert stale is not None
+
+    # The cluster now answers with a different pod, as it would after the node was released.
+    fake_k8s.land_pod("shared_1")
+    k8s._pod_ips["shared_1"] = stale  # what this process still holds
+
+    assert await engine_wake.readdress_lost_coordinator(_timeout_error(), state) is True
+    assert k8s.recorded_shard_address("shared_1") != stale
+
+
+async def test_an_unmoved_coordinator_is_not_redispatched(fake_k8s):
+    """A shard that comes back at the same address was reachable all along, so the timeout was the
+    engine's own. Dispatching again would make a genuinely-down coordinator cost two waits."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    fake_k8s.state = "ready"
+    state = _state_with(None, [], default=OrgRuntime(org_id="default", shard="shared_1"))
+    await engine_wake.ensure_engine_awake(state)
+
+    assert await engine_wake.readdress_lost_coordinator(_timeout_error(), state) is False
+
+
+async def test_a_statement_error_does_not_re_resolve(fake_k8s):
+    """A query the coordinator ACCEPTED and failed says nothing about the address, and re-resolving
+    would rebuild every org runtime over a syntax error."""
+    from provisa.api.org_runtime import OrgRuntime
+
+    fake_k8s.state = "ready"
+    state = _state_with(None, [], default=OrgRuntime(org_id="default", shard="shared_1"))
+    await engine_wake.ensure_engine_awake(state)
+    before = fake_k8s.status_calls
+
+    assert await engine_wake.readdress_lost_coordinator(ValueError("SYNTAX_ERROR"), state) is False
+    assert fake_k8s.status_calls == before
+
+
+async def test_non_provisioning_deployment_never_re_resolves(monkeypatch):
+    """An operator-run coordinator has an address this control plane did not resolve and cannot
+    replace."""
+    monkeypatch.setattr(engine_wake.k8s, "provisioning_available", lambda: False)
+    assert (
+        await engine_wake.readdress_lost_coordinator(_timeout_error(), SimpleNamespace()) is False
+    )

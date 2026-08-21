@@ -399,7 +399,9 @@ async def _resolve_pod_ip(shard: str) -> str:
         f"?labelSelector=provisa.dev%2Fshard%3D{shard}",
     )
     if resp.status_code >= 400:
-        raise K8sProvisioningError(f"listing pods for shard {shard} failed: {gcp_error_detail(resp)}")
+        raise K8sProvisioningError(
+            f"listing pods for shard {shard} failed: {gcp_error_detail(resp)}"
+        )
     for pod in resp.json().get("items", []):
         meta = pod.get("metadata", {})
         # A pod being deleted still reports Ready until its grace period runs out. Dialing it hands
@@ -420,6 +422,28 @@ async def _resolve_pod_ip(shard: str) -> str:
             _pod_ips[shard] = ip
             return ip
     raise K8sProvisioningError(f"shard {shard} has no ready pod with an address")
+
+
+def recorded_shard_address(shard: str) -> str | None:
+    """The address currently recorded for ``shard``, or None if none is.
+
+    The read :func:`shard_endpoint` refuses to make: a caller comparing the address across a
+    re-resolution is asking WHETHER one is held, and an absent record is the answer rather than an
+    error.
+    """
+    return _pod_ips.get(shard)
+
+
+def forget_shard_address(shard: str) -> None:
+    """Discard the recorded address for ``shard``, so the next wake asks the cluster for it.
+
+    The pod UID is deliberately KEPT. Whether the coordinator was replaced is the cluster's to say,
+    and it says it by handing back a different UID at the next resolution — which bumps the
+    generation and rebuilds the org runtimes bound to the old one. Dropping the UID here would
+    declare a replacement this process never observed and rebuild every runtime over what may have
+    been one unreachable moment of the same pod (REQ-1448).
+    """
+    _pod_ips.pop(shard, None)
 
 
 def shard_endpoint(shard: str) -> tuple[str, int]:

@@ -857,14 +857,23 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     # survivable: a node is ~2-4min to provision and the retry budget is 30s, so a query that
     # discovers the absence at dispatch time could never wait it out. This is also the one seam every
     # surface reaches, so no protocol server needs a wake of its own.
-    from provisa.federation.engine_wake import ensure_engine_awake
+    from provisa.federation.engine_wake import ensure_engine_awake, readdress_lost_coordinator
 
     await ensure_engine_awake(state)
     _t0 = _time.perf_counter()
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.
     try:
-        result = await _run_plan_terminal(plan, state)
+        try:
+            result = await _run_plan_terminal(plan, state)
+        except Exception as exc:
+            # REQ-1448: a dial that reached nothing can mean the coordinator moved while this
+            # process held its address. Only re-resolving says which, and only a shard that
+            # actually moved earns the second dispatch — the executor's own retries cannot help
+            # here, because they rebuild the connection at the same dead address.
+            if not await readdress_lost_coordinator(exc, state):
+                raise
+            result = await _run_plan_terminal(plan, state)
     except Exception as exc:
         # REQ-1044: the engine kills a query that breached a scan-side ceiling with its own
         # EXCEEDED_* error, which says nothing about the customer's plan. Restate it as the tier

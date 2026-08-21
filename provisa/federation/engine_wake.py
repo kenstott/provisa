@@ -475,6 +475,84 @@ def active_shard(state: Any) -> str | None:
     return shard
 
 
+def _causes(exc: BaseException) -> list[BaseException]:
+    """``exc`` and everything it was raised from, so a wrapped dial failure is still recognisable."""
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        chain.append(cur)
+        cur = cur.__cause__ or cur.__context__
+    return chain
+
+
+def _is_lost_coordinator(exc: BaseException) -> bool:
+    """Whether ``exc`` is a dial that never reached a coordinator at all.
+
+    Narrow on purpose: a query the engine ACCEPTED and then failed is a statement error, and
+    re-resolving the address would neither explain it nor change it. What qualifies is the shape a
+    released pod IP takes — a connect timeout or a refused connection — because that is the failure
+    an address the cluster has since moved produces, and nothing else this path can fix.
+    """
+    import requests
+    import trino.exceptions
+
+    for cause in _causes(exc):
+        if isinstance(cause, trino.exceptions.TrinoConnectionError):
+            return True
+        if isinstance(cause, requests.exceptions.ConnectionError | requests.exceptions.Timeout):
+            return True
+        # execute_trino restates a failed reconnect as the builtin, which also covers a socket that
+        # was refused outright rather than timing out.
+        if isinstance(cause, ConnectionError | TimeoutError):
+            return True
+    return False
+
+
+async def readdress_lost_coordinator(exc: BaseException, state: Any) -> bool:
+    """Re-resolve the active shard after a dial that reached nothing. Redispatch?
+
+    ``ensure_shard_awake`` answers from a recheck window (``PROVISA_ENGINE_READY_RECHECK_SECONDS``)
+    so that N queries do not cost N GKE round trips, and inside that window no cluster call happens
+    at all — which is also to say the recorded address is up to a window old. A pod replaced by
+    something this process did not drive (an eviction, a node repair) leaves every query in the
+    remainder of the window dialing an address nothing answers on, and the executor's retry budget
+    is shorter than the window, so retrying at the same address cannot outlast it.
+
+    The connect failure is the one signal that says the recorded address is stale, so it is what
+    reopens the window: drop the address, wake again — which re-resolves it, bumps the generation if
+    the UID moved, and rebuilds the runtimes whose catalogs went with the old pod — and report
+    whether the shard actually moved. It moved: the statement is worth dispatching once more at the
+    new address. It did not: the coordinator is genuinely unreachable and the error stands
+    (REQ-1448).
+    """
+    if not k8s.provisioning_available():
+        return False
+    if not _is_lost_coordinator(exc):
+        return False
+
+    shard = active_shard(state)
+    if shard is None:
+        return False
+
+    before = k8s.recorded_shard_address(shard)
+    _ready_seen.pop(shard, None)
+    k8s.forget_shard_address(shard)
+    await ensure_engine_awake(state)
+    after = k8s.recorded_shard_address(shard)
+    if after == before:
+        return False
+
+    log.warning(
+        "engine shard %s answers at %s, not the %s this query dialed: redispatching",
+        shard,
+        after,
+        before,
+    )
+    return True
+
+
 async def ensure_engine_awake(state: Any) -> None:
     """The query path's wake: the active org's shard is serving, and its catalogs are on it.
 
