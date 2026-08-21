@@ -15457,3 +15457,463 @@ An org admin puts their organization's own light branding on the surfaces its pe
 **Code:** `provisa/core/org_branding.py`, `provisa/api/branding_router.py`, `provisa/api/admin/orgs_router.py`, `provisa/api/admin/invites_router.py`, `provisa/core/mail.py`, `provisa/core/schema_admin.py`, `provisa/auth/middleware.py`, `provisa-ui/src/api/branding.ts`, `provisa-ui/src/lib/orgBranding.ts`, `provisa-ui/src/components/OrgBrandingHeader.tsx`, `provisa-ui/src/components/OrgBrandingSettings.tsx`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/pages/TeamPage.tsx`, `provisa-ui/src/main.tsx`
 
 **Tests:** `tests/unit/test_org_branding.py`, `tests/unit/test_org_branding_router.py`, `tests/unit/test_mail_port.py`, `tests/integration/test_invite_delivery.py`
+
+### REQ-1487 · Environments {#REQ-1487}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An organization runs its governed model in more than one environment -- a dev environment, a test environment, a staging environment, whatever it names -- without becoming more than one organization. An environment is a named copy of the org's governed model; the name is the org's to choose, and one environment named prod exists from the organization's creation and cannot be deleted or renamed, so there is always an environment the address resolves to. Identity, membership, branding, subscription tier and the org's address stay at the org: environments multiply the model, never the tenant. An environment is not a hostname label -- [REQ-1276](#REQ-1276) gives the leftmost label to the org and [REQ-1348](#REQ-1348) rejects a deeper one as hostile -- so the selected environment travels as an x-provisa-env request header, mirroring x-org-provisa, with the selection persisted per user. A request naming an environment the org does not have is refused; a request naming none is served by prod, which is the only environment every org is guaranteed to have.
+
+**Use case:** A team develops a change against its dev environment and runs its suite against its test environment, both inside the one organization its people, invoices and address belong to.
+
+**Code:** `provisa/core/environments.py`, `provisa/auth/middleware.py`, `provisa/core/db.py`, `provisa-ui/src/lib/env.ts`, `provisa-ui/src/components/EnvironmentSelector.tsx`
+
+**Tests:** —
+
+### REQ-1488 · Environments {#REQ-1488}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An environment is physically a schema of its own. An org's governed model already lives in one Postgres schema reached by SET search_path TO org_<org_id>; an environment extends that name rather than adding a discriminator column to forty tables, so every existing repository query is correct in a environment without being rewritten and an environment's state cannot leak into another environment's reads by a forgotten predicate. The org's default environment keeps the existing schema name so an organization that never creates an environment is unchanged. Environment creation, deletion and renaming are org_admin acts recorded in the org's admin audit log; deleting an environment drops its schema and its store, and prod is refused.
+
+**Use case:** An organization adds a dev environment and every governed read in it is scoped by the same search_path mechanism that already isolates orgs, with no query rewritten.
+
+**Code:** `provisa/core/environments.py`, `provisa/core/db.py`, `provisa/core/org_ids.py`, `provisa/core/schema_org.py`, `provisa/api/admin/environments_router.py`
+
+**Tests:** —
+
+### REQ-1489 · Environments {#REQ-1489}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Copying an environment carries the governed model and nothing else, and what it carries is stated as an allow-list rather than an exclusion list, so a table added to the org schema later does not travel by default. Every table in the org schema falls in exactly one of four classes. CARRIED -- the governed model: domains, naming_rules, registered_tables, table_columns, relationships, metrics, roles, rls_rules, tags, tag_param_values, tag_assignments, glossary terms and their refs, edges and experts, materialized_views, calendars, kafka_topics, api_endpoints, tracked_functions, tracked_webhooks, table_meta_links. IDENTITY ONLY -- sources, api_sources, kafka_sources and kafka_sinks carry their id, type and governance fields while their connection values stay behind ([REQ-1491](#REQ-1491)). NEVER -- org_secrets, user_directory, user_role_assignments, and the org_settings keys that name an external target or a per-environment runtime (metadata_export, redirect, cache). NEVER -- the runtime and evidence tables, which belong to the environment that produced them: mv_refresh_log, mv_delta_ledger, relationship_candidates, creation_requests, api_endpoint_candidates, live_query_state, file_source_mtimes, node_ids, rel_ids, query_audit_log, query_sla_log, source_catalog_cache, events, event_status, node_freshness_state, preserved_snapshots, admin_audit_log, and catalog_bindings, whose vendor_ref and physical_key address another environment's external catalog. A test enumerates every table declared in schema_org.py and fails on any name carrying no classification, so the failure mode for a forgotten table is a red test rather than a copied secret. (Amended 2026-08-21:) A source's mapping is a per-connector JSON bag rather than a column set, and it demonstrably holds both credentials and instance identity -- credentials_json, certificate_path, certificate_password ([REQ-729](#REQ-729)), storage_config, storage_type, disable_ssl_validation -- so classifying sources by column alone would carry a service account into a dev environment. mapping is therefore classified PER KEY, not per column, by the connector that owns it: each connector class declares the mapping keys that are BINDINGS, and every other key is governance and travels. The declaration is default-deny -- a key the connector does not name is a binding and stays behind -- so a connector added later cannot leak by omission, and a connector that declares nothing carries no mapping at all. The same classification test enumerates the connector registry and fails on a connector whose mapping keys carry no declaration.
+
+**Use case:** A platform team adds a table to the org schema and learns from a failing test that they must say whether it belongs to an environment copy, instead of discovering months later that it carried credentials into a dev environment.
+
+**Code:** `provisa/connectors/base.py`, `provisa/core/env_copy.py`, `provisa/core/schema_org.py`
+
+**Tests:** `tests/unit/test_env_copy_classification.py`
+
+### REQ-1490 · Environments {#REQ-1490}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Copying into an environment that already exists is a merge, not a replacement. The carried classes of [REQ-1489](#REQ-1489) are merged by identity -- an object present in the source environment is created or updated in the target, and the merge reports what it will add, change and leave alone before it is applied -- while every excluded class in the target is left exactly as it was. A dev environment that has been bound to its own database, granted to its own developers and given its own secrets does not lose any of them by taking a newer model from prod, and prod does not acquire dev's bindings or grants by taking a change back. Deletion is explicit: an object the source environment no longer has is removed from the target only when the merge is applied with removals, which is stated in the report and is a separate confirmation, so a merge cannot silently empty an environment. A merge applies whole or not at all.
+
+**Use case:** A team promotes a model change from dev to prod and prod keeps its own production connections, its own grants and its own secrets throughout.
+
+**Code:** `provisa/core/env_copy.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/EnvironmentMergeDialog.tsx`
+
+**Tests:** `tests/unit/test_env_merge.py`
+
+### REQ-1491 · Environments {#REQ-1491}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Where an environment points is a per-environment fact that no copy ever supplies. A source row travels between environments because registered_tables references it and dropping it would cascade the model away, but its host, port, database, username, path and federation_hints do not, and neither do an api_source's base URL and encrypted auth, a kafka_source's bootstrap servers or a kafka_sink's target. A source that has not been bound in an environment is marked unbound rather than left blank: an empty host is not an absent one, and the connection builder reads it as localhost:5432, so a blanked copy would connect a dev environment to whatever database is local to the node. The query path checks boundness before it builds any connection and refuses a query naming an unbound source, naming the source and the environment. Secret references are per-environment for the same reason -- one ${env:...} reference resolves identically in every environment of a process, so a carried reference is a carried credential; a environment's bindings resolve through that environment's own secret keys. (Amended 2026-08-21:) mapping is stripped by the same rule and for the same reason: the keys the owning connector declares as bindings -- an object store's endpoint and bucket, a certificate path and its password, an inline credentials document, a TLS-verification override -- are per-environment facts and stay behind with host and port, while the governance keys in the same bag travel. A source whose connector declares bindings is unbound in the new environment until every declared binding key has been supplied there, so partial binding is unbound, not half-connected.
+
+**Use case:** A newly created dev environment is inert until an administrator says what it reaches, and cannot reach production by inheriting a connection or a credential reference.
+
+**Code:** `provisa/core/env_bindings.py`, `provisa/core/schema_org.py`, `provisa/core/database.py`, `provisa/core/secrets.py`, `provisa-ui/src/components/EnvironmentBindings.tsx`
+
+**Tests:** `tests/unit/test_env_bindings.py`
+
+### REQ-1492 · Environments {#REQ-1492}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Write authority is granted into an environment and never carried between environments. Provisa executes mutations against sources -- compiled INSERT, UPDATE and DELETE, OpenAPI POST/PUT/PATCH/DELETE, gRPC methods that declare side effects, Hasura mutations, ingest DDL -- so a copied environment is a writer, not a reader, and inheriting where it points together with permission to write there is the compound failure. An environment copy therefore resets table_columns.writable_by to empty and carries no user_role_assignments, which restores the default-deny of [REQ-867](#REQ-867) and [REQ-868](#REQ-868) in the new environment. Role definitions do travel, because rls_rules and writable_by reference roles by id and an environment whose RLS points at absent roles states a governance model it does not have. Restoring write in an environment is an act recorded in that environment's admin audit log, and promotion toward prod can never confer it: rights in a target environment come only from grants made in that environment.
+
+**Use case:** A developer with write rights in dev acquires none in prod when the model is promoted, and an environment cloned from prod cannot mutate anything until someone grants it.
+
+**Code:** `provisa/core/env_copy.py`, `provisa/security/mutation_authz.py`, `provisa/security/rights.py`, `provisa/core/repositories/table.py`
+
+**Tests:** `tests/unit/test_env_write_authority.py`
+
+### REQ-1493 · Environments {#REQ-1493}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Every environment owns a writable store, because a non-prod environment needs data that is neither a read of production nor absent. A regulated organization cannot let developers read production rows at all, so a read-only binding to production is not a weaker version of the answer but the wrong one; and an environment evolving a data structure needs a shape production does not yet have, which no binding to production can hold. The environment store is where both live: a structure the environment's model declares and no source carries is created there, and a dataset is populated by landing an extract through the governed read path, so column masking and row-level security are applied by the reading environment before any row is written to the receiving environment's store. The store is the boundary an auditor can inspect: the dev store holds only what governance permitted out of prod, and holds it whether or not the binding is later changed.
+
+**Use case:** A team develops against a masked extract and against tables that do not exist in production yet, without any developer holding a credential that reads production rows unmasked.
+
+**Code:** `provisa/federation/store_writer.py`, `provisa/core/environments.py`, `provisa/ingest/ddl.py`, `provisa/api/admin/environments_router.py`
+
+**Tests:** `tests/integration/test_env_store.py`
+
+### REQ-1494 · Environments {#REQ-1494}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Masking gains a deterministic form so a masked extract stays usable. Column masking today is redaction -- regex, constant or truncate -- which is correct for a rendered value and destroys a key: constant-masking a customer id collapses every row onto one value, and every join through that column in the receiving environment is wrong. A keyed deterministic mask maps a value to a stable surrogate, so equal inputs mask equal, unequal inputs mask unequal, and joins and cardinality survive the extract while the original value does not. The key is per-org and per-environment-pair, held with the org's secrets and never carried by an environment copy, so a surrogate cannot be reversed by anyone holding only the extract, and two extracts taken for different environments do not correlate.
+
+**Use case:** A developer joins a masked customer table to a masked orders table in a dev environment and gets the same row counts production would give, without either table holding a real identifier.
+
+**Code:** `provisa/security/masking.py`, `provisa/core/schema_org.py`, `provisa/core/env_extract.py`
+
+**Tests:** `tests/unit/test_masking_deterministic.py`
+
+### REQ-1495 · Environments {#REQ-1495}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+An environment populates a table from its own model when no source holds one. A structure being designed exists in the environment's model before it exists anywhere else, so there is nothing to extract and nothing to mask; the model itself -- column types, nullability, unique constraints, relationships and the tags that classify a column -- is enough to generate rows that satisfy it. Generated data honours declared keys and referential relationships so a generated set is joinable, and is marked as generated in the environment's store so it can never be mistaken for an extract of anything real.
+
+**Use case:** A team designs a new fact table and its dimensions in a dev environment and queries it end to end before any source has been changed.
+
+**Code:** `provisa/core/env_generate.py`, `provisa/core/schema_org.py`
+
+**Tests:** `tests/unit/test_env_generate.py`
+
+### REQ-1496 · Environments {#REQ-1496}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An environment's governed model is versioned as immutable builds, which is what makes promotion and reversal the same operation with a different argument. Every change to an environment's carried classes advances that environment's build, identified and addressable; a build records what the model was, never the excluded classes, so a build is safe to hold and safe to show. Promoting is merging a named build of one environment into another under [REQ-1490](#REQ-1490), and reverting is merging that environment's previous build into itself, so an environment can be returned to a state it held without anyone reconstructing it by hand. A build's diff against another build is readable before it is applied. This is metadata only: no data moves between environments when a build is applied.
+
+**Use case:** An administrator promotes a reviewed dev build into prod, sees a regression, and returns prod to its previous build without reconstructing anything by hand.
+
+**Code:** `provisa/core/env_builds.py`, `provisa/core/env_copy.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/EnvironmentBuilds.tsx`
+
+**Tests:** `tests/unit/test_env_builds.py`
+
+### REQ-1497 · Org Onboarding {#REQ-1497}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Creating an organization tells its administrator the two things about it that the workspace does not show: that the organization has an address of its own -- its id in front of the deployment's base domain, per [REQ-1276](#REQ-1276) -- and that the site at that address can be dressed in the organization's own name, colors and logo, per [REQ-1486](#REQ-1486). The address is shown once over the welcome screen, copyable and openable, and the branding editor is one click away. A deployment whose host names no organization -- a desktop install, or localhost -- has no such address, and none is shown rather than a guessed one. The product's mark is drawn from one component, so the navigation bar, the landing page and the tour offer carry the same mark rather than three copies of it.
+
+**Use case:** An administrator finishes creating an organization already knowing the address to hand to their stakeholders and that they can put their own name on it.
+
+**Code:** `provisa-ui/src/components/OrgAddressModal.tsx`, `provisa-ui/src/components/BrandMark.tsx`, `provisa-ui/src/lib/authHost.ts`, `provisa-ui/src/pages/OnboardOrgPage.tsx`, `provisa-ui/src/pages/TeamPage.tsx`, `provisa-ui/src/tour/TourWelcomeModal.tsx`, `provisa-ui/src/i18n/locales/en/orgAddress.json`
+
+**Tests:** `provisa-ui/src/__tests__/orgAddressModal.test.tsx`, `provisa-ui/src/__tests__/crossSubdomainAuth.test.ts`
+
+### REQ-1498 · Environments {#REQ-1498}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Every environment operation is available from the provisa command line, because an environment change is rarely the only thing happening: it lands beside a schema change in a source, a deployment, a data load or a test run, and those are scripted. The environment subcommands cover the whole lifecycle -- listing environments, creating and deleting one, binding its sources, showing an environment's current build, diffing two builds, merging one environment or build into another, and reverting an environment to a previous build. Each runs the same code the API runs, so the allow-list of [REQ-1489](#REQ-1489), the merge and removal rules of [REQ-1490](#REQ-1490) and the binding and write-authority rules of [REQ-1491](#REQ-1491) and [REQ-1492](#REQ-1492) hold identically however the operation was invoked; a command line that could copy what the API refuses to copy would be the way secrets leave an environment. Every command reports as text for a person and as JSON for a script, exits non-zero when it refuses and says which rule refused it, and accepts a dry run that prints the merge report -- what would be added, changed, removed and left alone -- without applying it, so a pipeline can gate on the report before it applies anything.
+
+**Use case:** A release script alters a table in the source, then merges the dev environment's build into prod and fails the pipeline on a non-zero exit, in the same run and without anyone opening the UI.
+
+**Code:** `provisa/cli.py`, `provisa/cli_envs.py`, `provisa/core/env_copy.py`, `provisa/core/env_builds.py`
+
+**Tests:** `tests/unit/test_cli_envs.py`
+
+### REQ-1499 · Environments {#REQ-1499}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+An organization may replicate an environment whole -- bindings, secrets, users and role assignments included -- when what it wants is the control plane as it stands rather than the governed model alone. The replicate is the deliberate opposite of [REQ-1489](#REQ-1489) and is fenced accordingly. Its target must be a non-prod environment and never prod, which takes merges only; it is an org_admin act carrying an explicit acknowledgement that the target will hold production credentials, recorded in the org's admin audit log with who, when and from where; and the target environment is thereafter marked as replicated, which means it is governed as production -- every grant in it reaches production data, so it is neither a safe place for developers nor a substitute for the masked extract of [REQ-1493](#REQ-1493). Only replicate into an environment whose members already hold the production access it confers.
+
+**Use case:** An administrator reproduces a production incident in a scratch environment that reaches exactly what production reaches, and the environment is marked so nobody mistakes it for a development environment.
+
+**Code:** `provisa/core/env_copy.py`, `provisa/cli_envs.py`, `provisa/api/admin/environments_router.py`
+
+**Tests:** `tests/unit/test_env_replicate.py`
+
+### REQ-1500 · Environments {#REQ-1500}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+A non-prod environment can be exported as a configuration a desktop Provisa loads, so a developer works against the environment's model on their own machine. The export carries the governed model and the environment's own bindings and secret references; whether the desktop can resolve those references is the developer's environment to answer, and an unresolved one fails loudly on first use rather than defaulting to something local. What the export does not carry is the environment's store: landed extracts, generated sets and materialized views are data, and an environment holding large ones is not reasonable to move through a file. The export states what it left behind and how large it was, so the developer knows the difference between an environment that exported whole and one whose queries will find nothing materialized. Exporting prod is refused -- the desktop is a separate instance with no org governance around it, and a production export is a production credential in a file.
+
+**Use case:** A developer takes their dev environment onto a laptop, works offline against the model, and knows which materialized views did not come with it.
+
+**Code:** `provisa/cli_envs.py`, `provisa/core/env_export.py`, `provisa/core/environments.py`
+
+**Tests:** `tests/unit/test_env_export.py`
+
+### REQ-1501 · Environments {#REQ-1501}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Environments take their shape from two exemplars, and which one governs is decided per half of the design rather than argued case by case. Structure follows Hasura: the governed model is a metadata artifact that is exported, diffed and applied, versioned as a build, and moved between environments by an explicit apply rather than by editing the target -- so an environment's model is reproducible from something a person can read and a pipeline can hold. Per-environment state follows LaunchDarkly: what an environment points at, what it may write, who is in it, what it has materialized and which keys address it are environment-scoped facts that a promotion never carries, so promoting a change into production changes what production means and nothing about what production reaches. The two meet at one rule: an object arriving in an environment by merge arrives inert -- present in the model, unbound, writable by no role and materializing nothing -- which is the analogue of a flag that exists in every environment and is on in one. Absence and inertness are different states and are reported differently.
+
+**Use case:** A team reasons about environments with two familiar mental models instead of one novel one, and can predict which facts travel with a promotion before they run it.
+
+**Code:** `provisa/core/environments.py`, `provisa/core/env_copy.py`, `provisa/core/env_builds.py`
+
+**Tests:** —
+
+### REQ-1502 · Environments {#REQ-1502}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An environment's governed model can be exported to files, held in version control and applied back, which is what makes an environment reproducible rather than merely copyable. Export writes the carried classes of [REQ-1489](#REQ-1489) as readable files whose ordering is stable, so two exports of the same model are the same bytes and a review sees the change and not the serializer. Apply takes those files and brings an environment to what they describe under the merge rules of [REQ-1490](#REQ-1490), and diff shows what an apply would do without doing it. An apply that would leave an object unusable -- a relationship whose other side is absent, an RLS rule naming a role that is not there, a metric over a column no longer registered -- reports every such object and applies nothing; a model that is inconsistent in a file is inconsistent in an environment, and finding out at query time is finding out too late.
+
+**Use case:** A team reviews a model change as a diff in a pull request and applies the merged result to an environment from the same files.
+
+**Code:** `provisa/core/env_files.py`, `provisa/cli_envs.py`, `provisa/core/env_copy.py`
+
+**Tests:** `tests/unit/test_env_files.py`
+
+### REQ-1503 · Environments {#REQ-1503}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A credential addresses exactly one environment. API keys, service tokens and any other non-interactive credential are issued into an environment and carry it, so a key cannot be pointed at another environment by changing a header: a request whose credential names one environment and whose x-provisa-env header names another is refused rather than resolved in favour of either. This is what makes an environment safe to hand out -- an application configured with a dev environment's key reaches dev whatever it sends -- and it is why keys are never carried by a copy or a merge. Rotating or revoking an environment's keys affects that environment alone, and deleting an environment revokes its keys with it.
+
+**Use case:** A staging application is configured with a staging key and cannot reach production data even if its configuration is wrong or its host is compromised.
+
+**Code:** `provisa/auth/middleware.py`, `provisa/core/environments.py`, `provisa/api/admin/environments_router.py`
+
+**Tests:** `tests/unit/test_env_credentials.py`
+
+### REQ-1504 · Environments {#REQ-1504}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+An environment can be protected, and a merge into a protected environment waits for an approval by someone other than the person who requested it. prod is protected when the organization has more than one member; any environment can be protected by an org_admin. A request to merge into a protected environment creates a pending change carrying the merge report of [REQ-1490](#REQ-1490) -- what would be added, changed, removed and left alone -- which an approver reads before deciding; approval applies it, rejection discards it, and a change whose source environment has moved on since the request is stale and must be re-requested rather than applied against a report that no longer describes it. Requests, approvals, rejections and applications are recorded in the org's admin audit log with who and when.
+
+**Use case:** A model change reaches production only after a second person has read what it would do.
+
+**Code:** `provisa/core/env_approvals.py`, `provisa/core/env_copy.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/EnvironmentApprovals.tsx`
+
+**Tests:** `tests/unit/test_env_approvals.py`
+
+### REQ-1505 · Environments {#REQ-1505}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Every environment keeps a change history, and any two environments can be compared for one object. The history records what changed in that environment's governed model, who changed it and when, and whether the change was made in the environment or arrived by a merge, naming the source environment and build when it did -- so the question a production incident asks, what changed here and where did it come from, is answered without reconstructing it from builds. Comparison answers the other question: for one table, metric or rule, what does dev say and what does prod say, shown as a difference rather than as two documents to read side by side.
+
+**Use case:** An administrator investigating a production behaviour sees the change that introduced it, which environment it came from and how prod's version of that object differs from dev's.
+
+**Code:** `provisa/core/env_history.py`, `provisa/core/env_builds.py`, `provisa-ui/src/components/EnvironmentHistory.tsx`, `provisa-ui/src/components/EnvironmentCompare.tsx`
+
+**Tests:** `tests/unit/test_env_history.py`
+
+### REQ-1506 · Environments {#REQ-1506}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A merge can be scoped to part of a model. Promoting one corrected metric should not require promoting every other change the source environment has accumulated, so a merge accepts a selection of objects and carries them alone. The selection closes over what the chosen objects require: a metric brought without the column it reads, or a relationship without the table on its other side, would land inconsistent, so the merge report names the objects pulled in by the selection and the merge either carries them or refuses. A scoped merge is a merge in every other respect -- the same exclusions, the same untouched target state, the same all-or-nothing application, the same approval where the target is protected.
+
+**Use case:** An administrator promotes a single corrected metric to production while the rest of the dev environment's work stays in dev.
+
+**Code:** `provisa/core/env_copy.py`, `provisa/cli_envs.py`, `provisa-ui/src/components/EnvironmentMergeDialog.tsx`
+
+**Tests:** `tests/unit/test_env_merge_scoped.py`
+
+### REQ-1507 · Environments {#REQ-1507}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Environments are gated by an entitlement feature, not by a product name. The gate is a Feature in provisa/control_plane/entitlements.py with a minimum Tier, checked by require_feature the same way every other gated capability is; which packaged product carries that tier is a price-list decision recorded in [REQ-1452](#REQ-1452) and may change without touching this gate. The minimum tier is premium, because the tiers describe different customers rather than different sizes of the same one. The standard tier is bought by a reporting team, an analytics group, a data-science team -- people who model and query what already exists, for whom one governed model and its history is the whole need. The premium tier is bought by a business whose systems depend on this one: a model change there is a change to something in production, so it is developed somewhere else, reviewed and promoted, which is exactly what an environment is for. An org below the minimum tier has prod and cannot create another environment; the environment API and the environment CLI refuse naming the tier the feature requires rather than failing obscurely, and the in-product plan picker names environments as what the upgrade buys, using whatever the current product name for that tier is. A developer below the gate is not left without a local copy: the file export of [REQ-1502](#REQ-1502) carries the model to a desktop install, where they bind their own sources, so the model travels and no credential does. When an org that has environments moves below the minimum tier, its non-prod environments are frozen rather than deleted -- no queries run in them and nothing merges out of them, while their models stay readable and exportable until the org deletes them or is entitled again. Billing changes may not destroy a customer's work.
+
+**Use case:** A reporting team on the standard tier gets one governed model with its history; a business on the premium tier develops changes in a dev environment before they reach production.
+
+**Code:** `provisa/control_plane/entitlements.py`, `provisa/core/environments.py`, `provisa/cli_envs.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
+
+**Tests:** `tests/unit/test_env_entitlement.py`
+
+### REQ-1508 · Environments {#REQ-1508}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+One word, one meaning, and the two words stay apart. ENVIRONMENT names what an organization works in -- prod, dev, test, whatever it creates -- and LANE keeps the federation-engine sense it already has in [REQ-073](#REQ-073), [REQ-1243](#REQ-1243), [REQ-1412](#REQ-1412), [REQ-1418](#REQ-1418), [REQ-1447](#REQ-1447) and [REQ-1450](#REQ-1450), where shared, isolated and external say WHERE an org's engine runs. Neither word may be used for the other in the requirements, the admin surfaces, the API fields or the CLI, because they are independent facts about an org and read as one when the vocabulary blurs: an org on the shared engine lane can hold several environments, and an org on an isolated lane may hold only prod. An org's environments and its engine lane are chosen separately and neither constrains the other.
+
+**Use case:** An administrator reading Org Engine and Environments in the same admin area is never in doubt which one says where their engine runs and which says what they are working in.
+
+**Code:** `provisa/core/environments.py`, `provisa/core/commerce.py`, `provisa-ui/src/components/admin`, `docs/arch/requirements.yaml`
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1509 · SaaS Billing {#REQ-1509}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An organization changes its own plan from the Billing page, in either direction, across all four orderable plans -- Starter, Pro S, Pro M and Pro L. A plan change moves the EXISTING Lemon Squeezy subscription onto the target plan's variant; it never opens a second checkout, because a second checkout mints a second subscription and leaves the org billed twice. Where the org also holds the egress subscription of [REQ-1482](#REQ-1482), that subscription is moved to the target plan's egress variant in the same operation: the plan variant carries the active hour and the egress variant carries the included GB, so a plan whose egress variant did not move charges the new rate against the old allowance. A change that moves the plan but fails to move the egress variant is reported as a failure naming both subscriptions and never reported as success -- the move is a variant assignment, so repeating it is safe. Both directions take effect at once and are prorated by the merchant of record: the org is charged or credited for the remainder of the period at the difference between the two plans, in the manner the merchant of record supports: an upgrade invoices the prorated difference immediately, and a downgrade issues a credit that lands on the next invoice, because a negative amount cannot be collected now. Every plan change is prorated the same way, including Pro L to Pro M and Pro M to Pro S, which are downgrades between Pro sizes and not departures from Pro. The plan written to the org is the plan Lemon Squeezy returns, applied through the same watermark the subscription webhook uses ([REQ-1455](#REQ-1455)), so the subscription_updated event that follows is recognized as already applied and the merchant of record stays the single source of truth. Metered reporting follows the plan across the change. The active hours and egress accrued but not yet reported are posted against the subscription items the org was on BEFORE the variant moves, and only then is the org rebound to the items the change returns: usage on these plans is billed in arrears, so hours reported after the swap are charged at the plan in force when they are reported, and an unflushed span would bill time spent on Starter at the Pro rate or post it against an item the subscription no longer holds. The reporting watermark is not reopened by a plan change -- it is the boundary between invoiced and uninvoiced time, and moving it back re-posts hours already billed. A subscription the merchant of record will not modify over the API -- PayPal being the case they name -- is not a failure and not a silent no-op: the change is reported as one the customer must complete in the hosted portal, and the organization's plan is left as it was until the provider says otherwise. A plan change made while the organization is still on trial converts the trial rather than running alongside it. Downgrading to Starter is refused while the organization holds more than Starter's source limit: Pro admits 100 sources and Starter admits 10, and an org moved down while over the ceiling would sit above a limit with no way to be brought under it except by Provisa deleting the customer's sources. The refusal names the current source count and the limit so the administrator knows how many to remove. Upgrades and changes between Pro sizes carry no such precondition, all three Pro sizes admitting the same number of sources. The plan determines the engine lane and size ([REQ-1412](#REQ-1412), [REQ-1449](#REQ-1449)) rather than being chosen beside them, so a completed plan change is followed by the lane and size the new plan entitles; when the billing change succeeds and the engine move does not, both outcomes are reported, because the organization is invoiced for the new plan either way. The Billing page offers the plans and their machine shapes as the server states them, never as figures typed into the page, so what an administrator compares before changing plan is what the invoice will charge for.
+
+**Use case:** An organization that has outgrown Starter moves itself to Pro M from the Billing page and has the larger engine within the same session, with no sales contact and no second card entry; one that over-bought moves back down and sees the credit on its next invoice.
+
+**Code:** `provisa_commercial/router.py`, `provisa_commercial/usage.py`, `provisa_commercial/lemonsqueezy_client.py`, `provisa_commercial/models.py`, `provisa_commercial/org_db.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
+
+**Tests:** `.claude/commercial/tests/test_plan_change.py`, `.claude/commercial/tests/test_plan_lane.py`, `provisa-ui/src/__tests__/BillingTab.test.tsx`
+
+### REQ-1510 · SaaS Billing {#REQ-1510}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+On a hosted deployment an organization's engine lane and its engine size are DERIVED from its plan, not chosen beside it. A Pro plan of any size runs on the isolated lane at that plan's size; trial and Starter run on the shared lane. Nothing else decides it, and no administrator sets it: the lane was a stored choice checked against an entitlement ([REQ-1412](#REQ-1412)), so an organization that bought Pro and never opened the engine tab kept querying the pooled shard it is no longer paying for, and one that moved down kept a dedicated engine its plan no longer sells until somebody noticed. Derivation removes the gap by construction -- there is one fact, the plan, and the lane is read from it. The external lane is not derived and is not part of this: an organization-operated engine is an enterprise arrangement, so it stays available to self-hosted and enterprise deployments and is offered to nobody on the hosted plans. An isolated organization's queries dispatch to a shard of its own, distinct from the shared shard it came from, and its shared-lane placement is retained rather than released so a return to Starter lands back on the shard it already had ([REQ-1450](#REQ-1450)). Where the engines are provisioned in a cluster ([REQ-1447](#REQ-1447)), a dedicated engine is reached the same way a shared one is -- by waking the shard and dialling the pod the cluster reports ready -- and not through a templated hostname the control plane has to be told about separately; a deployment that can bring up shared shards can bring up isolated ones, so entering the lane must not be refused as unavailable while the cluster is standing right there. Waking a dedicated engine restores it at the size its plan sells: a wake that reapplied the shared shape would return the organization's engine on hardware smaller than the one it is invoiced for, and the size travels with every wake rather than only with the first provision. A size change is a configuration revision and therefore a rollout, so the engine comes back on the hardware the organization now pays for instead of drifting from it. Every transition is ordered so that no query is released against an engine that cannot serve it: the dedicated engine exists and is ready before the organization's runtime is rebuilt onto it, the runtime rebuild -- which reissues the organization's catalogs, a resumed engine holding none -- happens under the organization registry's lock, and the engine being left is removed only after traffic has moved off it. A transition whose billing already succeeded but whose engine move failed leaves the organization on the lane it can still serve from and reports the failure, rather than stranding it on a lane with no engine.
+
+**Use case:** An organization that upgrades to Pro M is running on a dedicated engine of that size within the same session, and one that returns to Starter is back on the shared shard it started from with its dedicated engine released -- neither having chosen a lane, and neither able to end up paying for one thing while running on another.
+
+**Code:** `provisa/federation/k8s_provisioner.py`, `provisa/federation/engine_wake.py`, `provisa/federation/engine.py`, `provisa_commercial/entitlements.py`, `provisa_commercial/org_engine_router.py`
+
+**Tests:** `tests/unit/test_engine_wake.py`, `.claude/commercial/tests/test_plan_lane.py`
+
+### REQ-1511 · SaaS Billing {#REQ-1511}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The Billing page is where an organization changes its plan. It shows the four orderable plans -- Starter, Pro S, Pro M and Pro L -- with the price and the machine each one buys, marks the one the organization is on, and offers the others as a single action. Every figure on the cards is the one the server states, never a rate or a machine shape typed into the page: the page already refuses to compute money a second way because a total it derived would disagree with the invoice, and hardware is the same kind of claim -- a vCPU count written into the browser drifts from the pod the organization is actually given. Before the change is made the page says what will happen to the money, in the terms the merchant of record actually uses: an upgrade is charged now for the remainder of the period, and a downgrade returns a credit that lands on the next invoice rather than as a refund. It also says what will happen to the engine, because a plan change moves the organization between the shared and dedicated lanes and a dedicated engine takes a minute or two to come up ([REQ-1510](#REQ-1510)); the page reports that move as it proceeds and reports its failure if it fails, rather than returning to rest as though the only thing that changed was a price. A downgrade to Starter that the server refuses because the organization holds more sources than Starter admits is shown as what it is -- the number held and the number allowed -- and the page does not decide this for itself: the count that matters is the server's at the moment of the change. A plan change offered to an organization still on trial says that it ends the trial and begins billing, since that is what it does. Where the merchant of record will not take the change over the API and returns a hosted-portal address instead, the page sends the administrator there rather than reporting a change that did not happen.
+
+**Use case:** An administrator comparing Pro sizes sees the machine and the price of each, changes to the one they want, is told what will be charged now, and watches their new engine come up -- without leaving the product, contacting sales, or entering a card a second time.
+
+**Code:** `provisa-ui/src/components/admin/BillingTab.tsx`, `provisa-ui/src/api/billing.ts`, `provisa_commercial/router.py`
+
+**Tests:** `provisa-ui/src/__tests__/BillingTab.test.tsx`
+
+### REQ-1512 · SaaS Billing {#REQ-1512}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+On a hosted deployment the engine an organization runs on is reported, not chosen. The org engine surface shows the lane the organization's plan puts it on, the size of the engine that lane gives it, and the state of that engine -- running, idle, or coming up -- and offers no control that changes any of it. Where a change is wanted it names the Billing page, because the plan is the thing that decides this ([REQ-1510](#REQ-1510)) and a second control that appeared to decide it would be a control that either contradicts the plan or silently agrees with it. The lane selector, the engine-kind list and the external endpoint form are absent on hosted deployments rather than shown disabled: an organization-operated engine is an enterprise arrangement and is not part of any hosted plan, so it is not something a hosted administrator is invited to consider and then refused. Those controls remain on self-hosted and enterprise deployments, where an organization does operate its own engine and the lane is genuinely its choice. The deployment-wide federation-engine surface -- which selects the engine KIND for the whole installation and takes effect at the next restart -- is not offered on a hosted deployment either. It is a question an installed Provisa has and a hosted one does not: the engine kind is fixed by the cluster the platform runs, so the surface could only report a setting nobody may change or accept one that the next deploy overwrites. It stays where it belongs, on installed deployments, gated as it already is.
+
+**Use case:** A hosted organization's administrator opening the engine page learns which engine their queries run on and whether it is up, and is sent to Billing to change it -- never faced with a lane or an engine kind their plan does not sell, and never able to put their organization on a lane it is not paying for.
+
+**Code:** `provisa-ui/src/components/admin/OrgEngineTab.tsx`, `provisa-ui/src/components/admin/FederationEngineTab.tsx`, `provisa-ui/src/components/navGroups.ts`, `provisa_commercial/org_engine_router.py`
+
+**Tests:** `provisa-ui/src/__tests__/OrgEngineTab.test.tsx`, `provisa-ui/src/__tests__/navEntryItem.test.ts`, `.claude/commercial/tests/test_plan_lane.py`
+
+### REQ-1513 · SaaS Billing {#REQ-1513}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The source ceiling a plan sells is enforced where sources are created, not only where a plan is downgraded. Starter admits ten data sources and Pro admits one hundred, and those are the numbers the Billing plan cards print ([REQ-1511](#REQ-1511)); registering a source beyond the ceiling is refused with the count, the ceiling and the plan named, and with the Billing page named as where the plan is changed. The ceiling is read from the same table the plan cards are priced from, so the number an administrator chose the plan for is the number the create path enforces. The sources Provisa seeds into every organization -- provisa-admin, provisa-otel and the derived sentinel, which back the meta and ops domains -- are excluded from the count. They are written by the built-in seed on every boot and every organization build, so an organization that has registered nothing at all still holds three rows; counting them would charge the customer for Provisa's own furniture and would put a brand-new Starter organization three sources into an allowance it had not begun to spend. The Starter downgrade guard ([REQ-1509](#REQ-1509)) reads the same counter, so the ceiling that refuses a create and the ceiling that refuses a downgrade can never disagree, and a downgrade is never refused over sources the customer has nothing to remove of. A source the organization already holds is not tested: create_source is an upsert, and editing the connection details of a registered source adds nothing to the count. No ceiling applies on a self-hosted deployment. There is no subscription there, so there is no plan to read one from, and bounding an operator's own installation would paywall software the customer already owns.
+
+**Use case:** An administrator of a hosted Starter organization registering an eleventh data source is told how many of the ten their plan admits are already in use and is sent to Billing, rather than finding the eleventh source registered and the plan card's promise meaningless.
+
+**Code:** `provisa/core/models.py`, `provisa/core/repositories/source.py`, `provisa/core/commerce.py`, `provisa/api/admin/schema_mutation.py`, `provisa_commercial/entitlements.py`, `provisa_commercial/router.py`, `provisa-ui/src/i18n/locales/en/serverErrors.json`
+
+**Tests:** `tests/unit/test_source_limit.py`, `.claude/commercial/tests/test_plan_change.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1514 · Application Shell {#REQ-1514}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+When the deployment stops answering, the whole application says so in one place instead of leaving each surface to render a transport error in its own vocabulary. A same-origin request that never gets a response -- the server restarting after a deploy, a node waking from an idle stop, a dropped network -- rejects with a TypeError, and before this the user saw "TypeError. Failed to fetch" printed over a GraphiQL result pane, or a list that simply came up empty, with nothing naming the cause or telling them to wait. Reachability is DERIVED from the traffic the app already makes, never asserted by a caller - the fetch interceptor that carries the bearer ([REQ-1267](#REQ-1267)) samples every same-origin request, a rejection marks the deployment unreachable and any response marks it reachable again. An HTTP error status is a reachable server, and a caller's own abort is not an outage. The notice is a modal, not a banner, and is not dismissible - nothing the user does while the server is down can succeed, so the interruption is the message. It sits outside the setup, sign-in and onboarding gates, because a server that is not answering is what breaks those too. While it is up, an unauthenticated /health probe polls until the deployment answers, so the notice clears itself and the recovery does not also cost the user a reload. The failure is re-thrown untouched, so no call site loses the error it already handled.
+
+**Use case:** A deploy restarts the containers while a user has the query page open; instead of a raw "Failed to fetch" over the result pane, they are told the server is restarting and the page resumes on its own when it comes back.
+
+**Code:** `provisa-ui/src/lib/serverReachability.ts`, `provisa-ui/src/lib/authFetch.ts`, `provisa-ui/src/components/ServerUnavailableModal.tsx`, `provisa-ui/src/App.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/serverReachability.test.tsx`
+
+### REQ-1516 · Application Shell {#REQ-1516}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A query that is waiting for a stopped engine to start must say so, and the wait must be shortened where it can be. Engine shards idle to zero ([REQ-1448](#REQ-1448), [REQ-1464](#REQ-1464)), so the first query after a quiet period blocks for the two to four minutes Autopilot takes to provision a node and start Trino. Before this the only evidence was a request that had not come back, which is indistinguishable from a hung server, so every surface rendered an unexplained spinner for minutes. Three parts. The server reports engine state WITHOUT starting it - always-on, ready, starting or stopped - for the engine the CALLER'S org actually dispatches to - the shared shard on the pooled lane, the org's own coordinator on the dedicated one ([REQ-1510](#REQ-1510)), always-on for a BYO engine ([REQ-1412](#REQ-1412)) or a non-provisioning install. The org is taken off the request, never a parameter, so a Pro org is never told the shared shard's state. A drain in progress reports starting, because the Deployment still reports ready throughout a stop the next query will have to cancel and pay for anyway. Reporting never wakes and never stamps activity, or an idle tab polling would hold a pod up indefinitely. The UI DERIVES the notice from traffic it already makes - a same-origin request outstanding past a threshold starts the poll, and only the server's answer raises anything, so there is no path allowlist to keep current and a wrong guess costs one cheap request. The notice is a banner, not a modal, and does not block - the server is answering and every surface that does not touch the engine still works. It shows elapsed time, because minutes without a number read as a hang. Finally the prewarm widens - sign-in already prewarms ([REQ-1471](#REQ-1471)), which covers a session that queries soon after it starts but not the tab left open past the idle window, so arriving at the query surface starts the engine while the operator is still composing.
+
+**Use case:** An operator returns to a tab left open over lunch and runs a query; instead of a spinner with no explanation, they are told the engine is starting and how long it has been - and because opening the page already started it, the wait is mostly over before they hit Run.
+
+**Code:** `provisa/federation/engine_wake.py`, `provisa/api/data/endpoint_dev.py`, `provisa-ui/src/lib/engineWake.ts`, `provisa-ui/src/lib/authFetch.ts`, `provisa-ui/src/components/EngineWakingBanner.tsx`, `provisa-ui/src/pages/QueryPage.tsx`, `provisa-ui/src/App.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/engineWake.test.tsx`, `tests/unit/test_engine_wake.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1515 · API & Integration {#REQ-1515}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A subscription notification must never abort the write it observes. PostgreSQL refuses a NOTIFY payload of 8000 bytes or more, and the [REQ-258](#REQ-258) trigger fires inside the writer's transaction, so a row whose JSON exceeds the limit used to fail the INSERT itself. The trigger measures the payload and, when it will not fit, truncates the row's JSON to a text field marked truncated, halving the character budget until the encoded envelope fits. The subscriber still sees the change and the leading columns; a write never fails for want of a notification.
+
+**Use case:** A long statement written to query_audit_log no longer fails the audit insert and surfaces to the user as an Internal Server Error.
+
+**Code:** `provisa/subscriptions/pg_triggers.py`
+
+**Tests:** `tests/unit/test_pg_notify_trigger_sql.py`, `tests/integration/test_pg_notify_payload_limit.py`
+
+### REQ-1517 · Observability {#REQ-1517}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A raw-SQL statement must account for itself the way a GraphQL query does. The GraphQL surface builds its execution DAG from the compiled field plan, so a SQL statement — which has no fields — used to report a single invented row naming the engine and no diagram at all. The governed plan already knows what the statement resolved to, so it carries that account — the semantic sources it scanned, the reason the router chose DIRECT or ENGINE, and the labels of the optimizations that fired after governance (hot-table inlining, API-cache rewrite, dropped UNION branch). The one pipeline terminal records the entry and renders the Mermaid DAG from that plan, so the source table and the diagram report the route that actually ran. Each optimization appears as its own node feeding the route, which is what explains a source the user expected to see scanned and did not. Surfaces that record their own entries — the GraphQL field executors, the Cypher router — leave the terminal's recording off, so one statement never produces two rows.
+
+**Use case:** A developer runs a statement on Explore / SQL with query stats on and sees the same diagram-and-source view the GraphQL surface gives, including which sources the hot-table cache served instead of the origin.
+
+**Code:** `provisa/executor/plan_stats.py`, `provisa/executor/stats.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint_dev.py`, `provisa-ui/src/components/MermaidDiagram.tsx`, `provisa-ui/src/pages/sql/ResultsPanel.tsx`
+
+**Tests:** `tests/unit/test_plan_stats.py`, `tests/unit/test_endpoint_dev_api.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1518 · Multi-tenancy {#REQ-1518}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The Arrow Flight transport must dial the shard the ACTIVE org queries, not the one this control plane booted on. On a deployment that provisions its engines the Zaychik Flight SQL proxy is a sidecar in the shard's pod, so its address is that pod's and it dies with it. A single connection opened at boot against the boot shard therefore served every Arrow and streaming query from the shared shard's proxy — an isolated-engine org's Arrow result came off the shared coordinator, voiding the isolation the org is invoiced for ([REQ-1510](#REQ-1510)) — and after any shard restart that connection held a released pod address. The transport is resolved at the call instead, per shard and per coordinator generation ([REQ-1448](#REQ-1448)) — the active org's shard is read the same way the wake reads it, a connection is opened to that pod's sidecar and cached, and a generation change closes the stale connection before redialing. An org running its own coordinator has no sidecar to dial and is refused rather than routed to a shard. Deployments that do not provision engines (desktop, self-hosted, tests) keep the single proxy beside the control plane.
+
+**Use case:** An org on the dedicated engine lane runs an Arrow Flight or COPY-to-Arrow query and the batches come off its own coordinator, not the shared one.
+
+**Code:** `provisa/federation/backend.py`, `provisa/federation/engine_wake.py`, `provisa/federation/trino_lifecycle.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_flight_shard_transport.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1519 · Observability {#REQ-1519}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A developer must be able to see how a statement will be executed without running it, and see the Provisa rewrites on the same picture as the engine's own plan. Explore / SQL offers Analyze beside Sample; it describes the statement through the ONE pipeline — governance, metric expansion, semantic lowering, the post-governance optimizations and the route all apply — and the FINAL routed SQL is wrapped in the target's own EXPLAIN at the bottom of the pipeline, so the tree is the tree for the statement that would have run. The dialects' shapes (PostgreSQL and DuckDB JSON, Trino and MySQL, SQLite QUERY PLAN, indented ANALYZE text) are normalized to one operator tree with rows, cost and, when the run form is requested, actual timings. A dialect with no EXPLAIN Provisa knows is refused rather than guessed at; so is a write, whose ANALYZE form would perform it, a multi-statement batch, and any request that also asks for row delivery. The optimizations that fired are returned beside the tree and drawn as their own nodes feeding the route, because they are exactly what the engine plan cannot say — a table the user wrote that no scan node mentions was inlined, cache-served or dropped.
+
+**Use case:** A developer presses Analyze on Explore / SQL and reads the engine's plan for the statement Provisa would actually send, with the hot-table inline and cache rewrites called out.
+
+**Code:** `provisa/executor/explain.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint_dev.py`, `provisa-ui/src/components/MermaidDiagram.tsx`, `provisa-ui/src/pages/sql/ResultsPanel.tsx`
+
+**Tests:** `tests/unit/test_explain.py`, `tests/unit/test_endpoint_dev_api.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1520 · Usability {#REQ-1520}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Every hover hint in the console must be painted by the console. Hundreds of controls carry a native title attribute, which the browser draws in its own chrome — its own font, colour and placement — so the same hint looks foreign on the Tables page and everywhere else it appears. A single mount above every route lifts the attribute off the hovered element, so the browser has nothing to draw, and repaints the text as a themed bubble positioned against the element, flipping above it near the bottom of the viewport. The attribute is restored when the pointer leaves, on Escape, on scroll and on unmount, so the element keeps its accessible name; an element whose title is blank is left alone.
+
+**Use case:** A user hovers a control on the Tables page and reads the hint in the app's own type and surface instead of the browser's tooltip.
+
+**Code:** `provisa-ui/src/components/TitleTooltips.tsx`, `provisa-ui/src/components/TitleTooltips.css`, `provisa-ui/src/App.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/TitleTooltips.test.tsx`
+
+## 8. Client Access & Protocols
+
+### REQ-1521 · Usability {#REQ-1521}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The analyzed plan must be readable at full size. The diagram and the operator list sit side by side in the results strip, separated by a rule, which is enough to locate a node but too narrow for a wide plan. Hovering the pair reveals an expand control that reopens the identical two panes in a modal at 90% of the viewport; both readings are rendered from one component so the inline and expanded views can never diverge. The rule between the panes is itself the handle: dragging it sets the split (clamped between 15% and 85%, and mirrored under RTL), because whether the tree or the diagram needs the room depends on the plan.
+
+**Use case:** A developer expands the analyzed plan to read a wide operator tree without scrolling.
+
+**Code:** `provisa-ui/src/pages/sql/ResultsPanel.tsx`, `provisa-ui/src/pages/sql/ResultsPanel.css`
+
+**Tests:** `provisa-ui/src/__tests__/SqlAnalyzePanel.test.tsx`
+
+### REQ-1522 · Observability {#REQ-1522}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+An analyzed plan must carry the row and cost estimates the target engine already computed, whichever engine it is. Each names them somewhere else, and only one naming exists on any given node: Postgres states Plan Rows and Total Cost; Trino returns its plan as fragments keyed by id, each node carrying an estimates list whose first entry is the chosen alternative (outputRowCount, cpuCost); DuckDB's plan states the optimizer's guess as the Estimated Cardinality string inside extra_info, while its profile reports the rows an operator actually produced in operator_cardinality, which wins when both exist; MySQL puts the row estimate on the leaf table as rows_examined_per_scan and its costs on each block as query_cost and prefix_cost strings. A node the optimizer could not estimate reports no estimate rather than a guess, and a NaN estimate never reaches the response, since it is not JSON. SQLite has no numbers in EXPLAIN QUERY PLAN at all and reports none.
+
+**Use case:** A developer analyzing a statement on a Trino-, MySQL- or DuckDB-backed instance reads the same rows and cost columns they get from Postgres.
+
+**Code:** `provisa/executor/explain.py`
+
+**Tests:** `tests/unit/test_explain.py`, `tests/fixtures/explain/trino_481_join_group.json`, `tests/fixtures/explain/mysql_8_join.json`, `tests/fixtures/explain/duckdb_1_5_scan_agg.json`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1523 · Environments {#REQ-1523}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+An environment name is bounded, and so is the number of them. [REQ-1488](#REQ-1488) makes an environment a schema of its own, so a free-form name is a schema name and an unbounded count is unbounded schemas: the short-lived per-developer environments an org actually creates -- dev-alice, dev-1482-refund-fix -- accumulate until nothing reaps them. A name is therefore lowercase letters, digits and hyphens, starting with a letter, at most 32 characters, and unique within the org; prod is reserved by [REQ-1487](#REQ-1487) and the platform's own prefixes are refused rather than truncated, because the name reaches a schema identifier. The count of environments an org may hold is a limit on its plan, enforced where an environment is created rather than only where a plan is downgraded, in the manner [REQ-1513](#REQ-1513) already uses for the source ceiling. An environment may carry an expiry chosen at creation, after which it is deleted with its schema and its store; prod can carry none. Expiry is opt-in and its absence means permanent -- an environment is never reaped for being idle, because a quiet pre-prod is not an abandoned one. An org_admin is told which environments expire and when, and may extend or clear an expiry at any time before it fires.
+
+**Use case:** A developer creates dev-1482-refund-fix for a two-week change and gives it a two-week expiry, and the org is not left holding forty dev schemas a year later.
+
+**Code:** `provisa/core/environments.py`, `provisa/control_plane/entitlements.py`, `provisa/api/admin/environments_router.py`
+
+**Tests:** —
