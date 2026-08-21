@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 11557514-6a05-4a67-ae76-7227c880597f
+// Canary: 5ed860a9-532c-4b85-afe0-69953ed8fa40
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -10,13 +10,14 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Box, Button, Table, Tabs } from "@mantine/core";
-import { History, BarChart2 } from "lucide-react";
+import { Badge, Box, Button, Modal, Table, Tabs } from "@mantine/core";
+import { History, BarChart2, Maximize2 } from "lucide-react";
 import { ResultsGrid } from "./ResultsGrid";
 import type { ResultsGridState } from "./useResultsGrid";
 import type { ResultTab, HistoryEntry } from "./types";
 import type { ExplainNodeDto, ExplainResponse } from "../../api/admin";
 import { MermaidDiagram } from "../../components/MermaidDiagram";
+import "./ResultsPanel.css";
 
 interface ResultsPanelProps {
   resultTab: ResultTab;
@@ -54,6 +55,7 @@ export function ResultsPanel({
 }: ResultsPanelProps) {
   const { t } = useTranslation();
   const { profile, handleDownloadProfile } = grid;
+  const [analyzeExpanded, setAnalyzeExpanded] = React.useState(false);
 
   const tabLabels: Record<ResultTab, string> = {
     results: t("sqlResultsPanel.tabResults"),
@@ -735,65 +737,18 @@ export function ResultsPanel({
 
               {/* REQ-1519: the diagram and the operator list are two readings of one tree —
                   side by side so a node in the graph can be found in the list without scrolling. */}
-              <div
-                style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}
-                data-testid="analyze-panes"
-              >
-                {analyzePlan.plan.length > 0 && (
-                  <div style={{ flex: "1 1 50%", minWidth: 0, overflow: "auto" }}>
-                    <Table className="data-table" style={{ fontSize: "0.68rem" }}>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>{t("sqlResultsPanel.analyzeColOperator")}</Table.Th>
-                          <Table.Th>{t("sqlResultsPanel.analyzeColRows")}</Table.Th>
-                          <Table.Th>
-                            {analyzePlan.analyzed
-                              ? t("sqlResultsPanel.analyzeColActualMs")
-                              : t("sqlResultsPanel.analyzeColCost")}
-                          </Table.Th>
-                          <Table.Th>{t("sqlResultsPanel.analyzeColDetail")}</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {flattenPlan(analyzePlan.plan).map((row, i) => (
-                          <Table.Tr key={i}>
-                            <Table.Td
-                              style={{
-                                fontFamily: "monospace",
-                                paddingInlineStart: `${0.4 + row.depth * 0.9}rem`,
-                              }}
-                            >
-                              {row.node.op}
-                            </Table.Td>
-                            <Table.Td>{row.node.rows ?? t("sqlResultsPanel.dash")}</Table.Td>
-                            <Table.Td>
-                              {(analyzePlan.analyzed ? row.node.actual_ms : row.node.cost) ??
-                                t("sqlResultsPanel.dash")}
-                            </Table.Td>
-                            <Table.Td style={{ color: "var(--text-muted)" }}>
-                              {Object.entries(row.node.detail)
-                                .map(([k, v]) => `${k}=${v}`)
-                                .join("  ")}
-                            </Table.Td>
-                          </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
-                  </div>
-                )}
-                {analyzePlan.mermaid && (
-                  <div
-                    style={{
-                      flex: "1 1 50%",
-                      minWidth: 0,
-                      overflow: "auto",
-                      borderInlineStart: "1px solid var(--border)",
-                      paddingInlineStart: "0.75rem",
-                    }}
-                  >
-                    <MermaidDiagram chart={analyzePlan.mermaid} />
-                  </div>
-                )}
+              <div className="analyze-panes-wrap">
+                <button
+                  type="button"
+                  className="analyze-expand"
+                  onClick={() => setAnalyzeExpanded(true)}
+                  title={t("sqlResultsPanel.analyzeExpand")}
+                  aria-label={t("sqlResultsPanel.analyzeExpand")}
+                  data-testid="analyze-expand"
+                >
+                  <Maximize2 size={12} />
+                </button>
+                <AnalyzePanes plan={analyzePlan} />
               </div>
 
               <pre
@@ -813,9 +768,117 @@ export function ResultsPanel({
               >
                 {analyzePlan.sql}
               </pre>
+
+              {/* REQ-1519: the same two panes at full size — a wide plan is unreadable in the
+                  results strip, so the expand control reopens it in a 90% modal. */}
+              <Modal
+                opened={analyzeExpanded}
+                onClose={() => setAnalyzeExpanded(false)}
+                size="90%"
+                title={t("sqlResultsPanel.analyzeExpandTitle")}
+                styles={{
+                  content: { height: "90vh" },
+                  body: { height: "calc(90vh - 3.5rem)", overflow: "auto" },
+                }}
+              >
+                <AnalyzePanes plan={analyzePlan} />
+              </Modal>
             </Box>
           ) : null)}
       </div>
+    </div>
+  );
+}
+
+// REQ-1519: one rendering of the plan, used inline in the results strip and again at full size
+// in the expand modal, so both readings stay identical.
+function AnalyzePanes({ plan: analyzePlan }: { plan: ExplainResponse }) {
+  const { t } = useTranslation();
+  // REQ-1521: the rule between the panes is the handle — the split a reader wants depends on
+  // whether the tree is deep or the diagram is wide, so they set it by dragging it.
+  const [listPct, setListPct] = React.useState(50);
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // The separator is only ever rendered as a child of the pane row, so its parent is the row.
+    const row = e.currentTarget.parentElement as HTMLElement;
+    const rtl = window.getComputedStyle(row).direction === "rtl";
+    const onMove = (ev: MouseEvent) => {
+      const rect = row.getBoundingClientRect();
+      const offset = rtl ? rect.right - ev.clientX : ev.clientX - rect.left;
+      setListPct(Math.min(85, Math.max(15, (offset / rect.width) * 100)));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
+  return (
+    <div
+      style={{ display: "flex", gap: "0.75rem", alignItems: "stretch" }}
+      data-testid="analyze-panes"
+    >
+      {analyzePlan.plan.length > 0 && (
+        <div style={{ flex: `0 0 ${listPct}%`, minWidth: 0, overflow: "auto" }}>
+          <Table className="data-table" style={{ fontSize: "0.68rem" }}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("sqlResultsPanel.analyzeColOperator")}</Table.Th>
+                <Table.Th>{t("sqlResultsPanel.analyzeColRows")}</Table.Th>
+                <Table.Th>
+                  {analyzePlan.analyzed
+                    ? t("sqlResultsPanel.analyzeColActualMs")
+                    : t("sqlResultsPanel.analyzeColCost")}
+                </Table.Th>
+                <Table.Th>{t("sqlResultsPanel.analyzeColDetail")}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {flattenPlan(analyzePlan.plan).map((row, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td
+                    style={{
+                      fontFamily: "monospace",
+                      paddingInlineStart: `${0.4 + row.depth * 0.9}rem`,
+                    }}
+                  >
+                    {row.node.op}
+                  </Table.Td>
+                  <Table.Td>{row.node.rows ?? t("sqlResultsPanel.dash")}</Table.Td>
+                  <Table.Td>
+                    {(analyzePlan.analyzed ? row.node.actual_ms : row.node.cost) ??
+                      t("sqlResultsPanel.dash")}
+                  </Table.Td>
+                  <Table.Td style={{ color: "var(--text-muted)" }}>
+                    {Object.entries(row.node.detail)
+                      .map(([k, v]) => `${k}=${v}`)
+                      .join("  ")}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </div>
+      )}
+      {analyzePlan.plan.length > 0 && analyzePlan.mermaid && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("sqlResultsPanel.analyzeResize")}
+          title={t("sqlResultsPanel.analyzeResize")}
+          onMouseDown={startResize}
+          data-testid="analyze-resizer"
+          className="analyze-resizer"
+        />
+      )}
+      {analyzePlan.mermaid && (
+        <div style={{ flex: "1 1 0", minWidth: 0, overflow: "auto" }}>
+          <MermaidDiagram chart={analyzePlan.mermaid} />
+        </div>
+      )}
     </div>
   );
 }

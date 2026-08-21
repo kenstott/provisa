@@ -1,0 +1,158 @@
+{
+  "0" : {
+    "id" : "16",
+    "name" : "Output",
+    "descriptor" : {
+      "columnNames" : "[orderkey, _col1]"
+    },
+    "outputs" : [ {
+      "type" : "bigint",
+      "name" : "orderkey"
+    }, {
+      "type" : "bigint",
+      "name" : "count"
+    } ],
+    "details" : [ "_col1 := count" ],
+    "estimates" : [ {
+      "outputRowCount" : 15000.0,
+      "outputSizeInBytes" : 270000.0,
+      "cpuCost" : 0.0,
+      "memoryCost" : 0.0,
+      "networkCost" : 0.0
+    } ],
+    "children" : [ {
+      "id" : "11",
+      "name" : "Aggregate",
+      "descriptor" : {
+        "type" : " (STREAMING)",
+        "keys" : "[orderkey]"
+      },
+      "outputs" : [ {
+        "type" : "bigint",
+        "name" : "orderkey"
+      }, {
+        "type" : "bigint",
+        "name" : "count"
+      } ],
+      "details" : [ "count := count(*)" ],
+      "estimates" : [ {
+        "outputRowCount" : 15000.0,
+        "outputSizeInBytes" : 270000.0,
+        "cpuCost" : 135000.0,
+        "memoryCost" : 270000.0,
+        "networkCost" : 0.0
+      } ],
+      "children" : [ {
+        "id" : "375",
+        "name" : "InnerJoin",
+        "descriptor" : {
+          "criteria" : "(custkey = custkey_1)",
+          "distribution" : "REPLICATED"
+        },
+        "outputs" : [ {
+          "type" : "bigint",
+          "name" : "orderkey"
+        } ],
+        "details" : [ "Distribution: REPLICATED", "dynamicFilterAssignments = {custkey_1 -> #df_455}" ],
+        "estimates" : [ {
+          "outputRowCount" : 15000.0,
+          "outputSizeInBytes" : 135000.0,
+          "cpuCost" : 418500.0,
+          "memoryCost" : 13500.0,
+          "networkCost" : 0.0
+        } ],
+        "children" : [ {
+          "id" : "457",
+          "name" : "ScanFilterProject",
+          "descriptor" : {
+            "table" : "tpch:tiny:orders",
+            "filterPredicate" : "(totalprice > double '100.0')",
+            "dynamicFilters" : "{custkey = #df_455}"
+          },
+          "outputs" : [ {
+            "type" : "bigint",
+            "name" : "orderkey"
+          }, {
+            "type" : "bigint",
+            "name" : "custkey"
+          } ],
+          "details" : [ "orderkey := tpch:orderkey", "custkey := tpch:custkey", "totalprice := tpch:totalprice", "tpch:orderstatus", "    :: [[F], [O], [P]]" ],
+          "estimates" : [ {
+            "outputRowCount" : 15000.0,
+            "outputSizeInBytes" : 270000.0,
+            "cpuCost" : 405000.0,
+            "memoryCost" : 0.0,
+            "networkCost" : 0.0
+          }, {
+            "outputRowCount" : 15000.0,
+            "outputSizeInBytes" : 270000.0,
+            "cpuCost" : 405000.0,
+            "memoryCost" : 0.0,
+            "networkCost" : 0.0
+          }, {
+            "outputRowCount" : 15000.0,
+            "outputSizeInBytes" : 270000.0,
+            "cpuCost" : 270000.0,
+            "memoryCost" : 0.0,
+            "networkCost" : 0.0
+          } ],
+          "children" : [ ]
+        }, {
+          "id" : "500",
+          "name" : "LocalExchange",
+          "descriptor" : {
+            "partitioning" : "SINGLE",
+            "isReplicateNullsAndAny" : "",
+            "arguments" : "[]"
+          },
+          "outputs" : [ {
+            "type" : "bigint",
+            "name" : "custkey_1"
+          } ],
+          "details" : [ ],
+          "estimates" : [ {
+            "outputRowCount" : 1500.0,
+            "outputSizeInBytes" : 13500.0,
+            "cpuCost" : 0.0,
+            "memoryCost" : 0.0,
+            "networkCost" : 0.0
+          } ],
+          "children" : [ {
+            "id" : "425",
+            "name" : "RemoteSource",
+            "descriptor" : {
+              "sourceFragmentIds" : "[1]"
+            },
+            "outputs" : [ {
+              "type" : "bigint",
+              "name" : "custkey_1"
+            } ],
+            "details" : [ ],
+            "estimates" : [ ],
+            "children" : [ ]
+          } ]
+        } ]
+      } ]
+    } ]
+  },
+  "1" : {
+    "id" : "1",
+    "name" : "TableScan",
+    "descriptor" : {
+      "table" : "tpch:tiny:customer"
+    },
+    "outputs" : [ {
+      "type" : "bigint",
+      "name" : "custkey_1"
+    } ],
+    "details" : [ "custkey_1 := tpch:custkey" ],
+    "estimates" : [ {
+      "outputRowCount" : 1500.0,
+      "outputSizeInBytes" : 13500.0,
+      "cpuCost" : 13500.0,
+      "memoryCost" : 0.0,
+      "networkCost" : 0.0
+    } ],
+    "children" : [ ]
+  }
+}

@@ -1,0 +1,45 @@
+/* REQ-1519: the expand control stays out of the way until the pane is hovered, matching the
+   copy-button pattern used on the stats SQL block. */
+.analyze-panes-wrap {
+  position: relative;
+}
+
+.analyze-panes-wrap:hover .analyze-expand {
+  opacity: 1;
+}
+
+.analyze-expand {
+  position: absolute;
+  top: 2px;
+  inset-inline-end: 2px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 3px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--surface-alt);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.analyze-expand:hover {
+  color: var(--text);
+}
+
+/* REQ-1521: the rule between the plan panes doubles as their resize handle. */
+.analyze-resizer {
+  flex: 0 0 5px;
+  align-self: stretch;
+  min-height: 2rem;
+  cursor: col-resize;
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.analyze-resizer:hover {
+  background: var(--primary);
+}

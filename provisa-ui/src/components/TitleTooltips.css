@@ -1,0 +1,22 @@
+/* REQ-1520: the hover hint painted in the app's own type and surface tokens instead of the
+   browser's native tooltip chrome. */
+.app-tooltip {
+  position: fixed;
+  z-index: 1000;
+  transform: translate(-50%, 0);
+  max-width: 22rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--surface-alt);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
+  pointer-events: none;
+}
+
+.app-tooltip-above {
+  transform: translate(-50%, -100%);
+}

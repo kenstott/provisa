@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 03c91509-ed7f-4455-ad86-e218aecf4ebb
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -25,6 +26,7 @@ tier ceilings and provenance stamp.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -65,7 +67,7 @@ _SYNTAX: dict[str, ExplainSyntax] = {
     ),
     "sqlite": ExplainSyntax("EXPLAIN QUERY PLAN ", None, "sqlite_qp"),
     "mysql": ExplainSyntax(
-        "EXPLAIN FORMAT=JSON ", "EXPLAIN ANALYZE ", "named_json", analyze_fmt="text_indent"
+        "EXPLAIN FORMAT=JSON ", "EXPLAIN ANALYZE ", "mysql_json", analyze_fmt="text_indent"
     ),
 }
 
@@ -118,6 +120,27 @@ class ExplainNode:
         }
 
 
+def _num(raw: Any) -> float | None:
+    """One numeric estimate from a plan, or None when the engine did not have one.
+
+    Engines write these three different ways: as a number (Postgres, Trino), as a string
+    (MySQL costs, DuckDB cardinalities), and as NaN when Trino's optimizer could not estimate
+    a node. NaN is not JSON, so it must not reach the response — an unestimated node is
+    reported as having no estimate, which is what it is.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw) if math.isfinite(raw) else None
+    if isinstance(raw, str):
+        try:
+            value = float(raw)
+        except ValueError:
+            return None
+        return value if math.isfinite(value) else None
+    return None
+
+
 def _flatten_detail(raw: Any) -> dict[str, str]:
     if isinstance(raw, dict):
         return {str(k): str(v) for k, v in raw.items() if v not in (None, "", [], {})}
@@ -148,21 +171,113 @@ def _from_postgres(node: dict) -> ExplainNode:
     )
 
 
+def _named_estimates(node: dict) -> tuple[float | None, float | None]:
+    """The row and cost estimates of a DuckDB or Trino operator.
+
+    Each engine names them somewhere else, and only one of these keys exists on any given
+    node: DuckDB's profile (EXPLAIN ANALYZE) counts the rows an operator actually produced in
+    ``operator_cardinality``, its plan (plain EXPLAIN) states the optimizer's guess as the
+    ``Estimated Cardinality`` string inside ``extra_info``, and Trino carries a per-node
+    ``estimates`` list whose first entry is the chosen alternative.
+    """
+    extra = node.get("extra_info") if isinstance(node.get("extra_info"), dict) else {}
+    estimates = node.get("estimates")
+    chosen = (
+        estimates[0]
+        if isinstance(estimates, list) and estimates and isinstance(estimates[0], dict)
+        else {}
+    )
+    rows = (
+        _num(node.get("operator_cardinality"))
+        if "operator_cardinality" in node
+        else _num(node.get("cardinality"))
+        if "cardinality" in node
+        else _num(chosen.get("outputRowCount"))
+        if chosen
+        else _num(extra.get("Estimated Cardinality"))
+    )
+    cost = _num(node.get("cost")) if "cost" in node else _num(chosen.get("cpuCost"))
+    return rows, cost
+
+
 def _from_named(node: dict) -> ExplainNode:
     """DuckDB (plan and profile) and Trino JSON — an operator name plus nested children."""
     op = node.get("operator_name") or node.get("name") or node.get("operator_type") or "?"
     timing = node.get("operator_timing")
-    detail = _flatten_detail(
-        node.get("extra_info") or node.get("details") or node.get("descriptor")
-    )
+    # Trino splits an operator's description across both keys; DuckDB fills only extra_info.
+    detail = {
+        **_flatten_detail(node.get("descriptor")),
+        **_flatten_detail(node.get("extra_info") or node.get("details")),
+    }
+    rows, cost = _named_estimates(node)
     return ExplainNode(
         op=str(op),
         detail=detail,
-        rows=node.get("operator_cardinality", node.get("cardinality")),
-        cost=node.get("cost"),
+        rows=rows,
+        cost=cost,
         actual_ms=(timing * 1000) if isinstance(timing, (int, float)) else None,
         children=[_from_named(c) for c in node.get("children", []) if isinstance(c, dict)],
     )
+
+
+# MySQL wraps its scans in operation objects; the label reads better than the raw key.
+_MYSQL_LABELS = {
+    "query_block": "Query block",
+    "ordering_operation": "Ordering",
+    "grouping_operation": "Grouping",
+    "duplicates_removal": "Duplicate removal",
+    "materialized_from_subquery": "Materialized subquery",
+    "optimized_away_subqueries": "Optimized-away subqueries",
+    "union_result": "Union",
+}
+# Lists whose entries are operators in their own right, rather than plain values.
+_MYSQL_CHILD_LISTS = ("nested_loop", "windows", "attached_subqueries", "query_specifications")
+
+
+def _from_mysql(payload: dict) -> list[ExplainNode]:
+    """MySQL EXPLAIN FORMAT=JSON — nested operations, each carrying its own cost_info.
+
+    The row estimate lives on the leaf ``table`` objects (``rows_examined_per_scan``); the
+    costs are strings, on the block as ``query_cost`` and on a table as ``prefix_cost``.
+    """
+    return [_mysql_node("query_block", payload["query_block"])]
+
+
+def _mysql_node(key: str, raw: dict) -> ExplainNode:
+    cost_info = raw.get("cost_info") if isinstance(raw.get("cost_info"), dict) else {}
+    if key == "table":
+        op = f"{raw.get('access_type', '?')} {raw.get('table_name', '?')}"
+        cost = _num(cost_info.get("prefix_cost"))
+    else:
+        op = _MYSQL_LABELS.get(key, key.replace("_", " ").capitalize())
+        cost = _num(cost_info.get("query_cost"))
+    node = ExplainNode(
+        op=op,
+        detail={
+            k: str(v)
+            for k, v in raw.items()
+            if k != "cost_info" and not isinstance(v, (dict, list))
+        },
+        rows=_num(raw.get("rows_examined_per_scan")),
+        cost=cost,
+    )
+    for child_key, value in raw.items():
+        if child_key == "cost_info":
+            continue
+        if isinstance(value, dict):
+            node.children.append(_mysql_node(child_key, value))
+        elif isinstance(value, list) and child_key in _MYSQL_CHILD_LISTS:
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                # A nested_loop entry is a wrapper holding exactly one table.
+                inner = item.get("table")
+                node.children.append(
+                    _mysql_node("table", inner)
+                    if isinstance(inner, dict)
+                    else _mysql_node(child_key, item)
+                )
+    return node
 
 
 def _from_sqlite(rows: list[tuple]) -> list[ExplainNode]:
@@ -215,9 +330,14 @@ def parse_explain(rows: list[tuple], column_names: list[str], fmt: str) -> list[
     if fmt == "postgres_json":
         plans = payload if isinstance(payload, list) else [payload]
         return [_from_postgres(p["Plan"]) for p in plans if isinstance(p, dict) and "Plan" in p]
+    if fmt == "mysql_json":
+        return _from_mysql(payload)
     # named_json: a profile wrapper carries no operator of its own, only its children.
     if isinstance(payload, list):
         return [_from_named(p) for p in payload if isinstance(p, dict)]
+    # Trino returns its plan as fragments keyed by id, each one a root of its own.
+    if payload and all(str(k).isdigit() for k in payload):
+        return [_from_named(v) for v in payload.values() if isinstance(v, dict)]
     if not (payload.get("operator_name") or payload.get("name")):
         return [_from_named(c) for c in payload.get("children", []) if isinstance(c, dict)]
     return [_from_named(payload)]

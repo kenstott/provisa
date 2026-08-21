@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 8e64c40f-127d-4641-8691-c952f32780f2
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -11,6 +12,7 @@ annotations that account for the difference between what was written and what ra
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -196,3 +198,114 @@ class TestBuildExplainMermaid:
         assert '"' not in chart.split("flowchart TD")[1].replace('["', "").replace(
             '"]', ""
         ).replace('("', "").replace('")', "").replace('{{"', "").replace('"}}', "")
+
+
+# REQ-1522: the estimates every engine already computes, read from the key each one uses.
+# The fixtures are verbatim EXPLAIN output captured from Trino 481, MySQL 8 and DuckDB 1.5,
+# so a key rename in an engine breaks these tests rather than silently emptying the columns.
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "explain"
+
+
+def _fixture(name: str) -> str:
+    return (FIXTURES / f"{name}.json").read_text()
+
+
+def _walk(nodes: list[ExplainNode]) -> list[ExplainNode]:
+    return [n for node in nodes for n in [node, *_walk(node.children)]]
+
+
+class TestEngineEstimates:
+    def test_trino_fragments_are_roots_and_carry_the_optimizer_estimates(self):
+        nodes = parse_explain([(_fixture("trino_481_join_group"),)], ["Query Plan"], "named_json")
+        # Trino returns one entry per fragment; each is a plan root of its own.
+        assert [n.op for n in nodes] == ["Output", "TableScan"]
+        by_op = {n.op: n for n in _walk(nodes)}
+        assert by_op["InnerJoin"].rows == 15000.0
+        assert by_op["InnerJoin"].cost == 418500.0
+        assert by_op["TableScan"].rows == 1500.0
+        assert by_op["TableScan"].detail["table"] == "tpch:tiny:customer"
+
+    def test_a_trino_node_the_optimizer_could_not_estimate_reports_no_estimate(self):
+        nodes = parse_explain([(_fixture("trino_481_join_group"),)], ["Query Plan"], "named_json")
+        remote = next(n for n in _walk(nodes) if n.op == "RemoteSource")
+        assert remote.rows is None
+        assert remote.cost is None
+
+    def test_a_nan_estimate_never_reaches_the_response(self):
+        payload = json.dumps(
+            {"0": {"name": "ScanProject", "estimates": [{"outputRowCount": float("nan")}]}}
+        )
+        (root,) = parse_explain([(payload,)], ["Query Plan"], "named_json")
+        assert root.rows is None
+        json.dumps(root.to_dict(), allow_nan=False)
+
+    def test_duckdb_plan_reads_the_estimated_cardinality_out_of_extra_info(self):
+        nodes = parse_explain(
+            [("physical_plan", _fixture("duckdb_1_5_scan_agg"))],
+            ["explain_key", "explain_value"],
+            "named_json",
+        )
+        scan = next(n for n in _walk(nodes) if n.op == "SEQ_SCAN")
+        assert scan.rows == 20.0
+        assert scan.detail["Filters"] == "i>5"
+
+    def test_duckdb_profile_still_prefers_the_rows_the_operator_actually_produced(self):
+        payload = json.dumps(
+            {
+                "children": [
+                    {
+                        "operator_name": "SEQ_SCAN",
+                        "operator_cardinality": 95,
+                        "operator_timing": 0.002,
+                        "extra_info": {"Estimated Cardinality": "20"},
+                        "children": [],
+                    }
+                ]
+            }
+        )
+        (scan,) = parse_explain([(payload,)], ["QUERY PLAN"], "named_json")
+        assert scan.rows == 95.0
+        assert scan.actual_ms == 2.0
+
+    def test_mysql_json_reads_rows_off_the_table_and_cost_off_each_block(self):
+        (block,) = parse_explain([(_fixture("mysql_8_join"),)], ["EXPLAIN"], "mysql_json")
+        assert block.op == "Query block"
+        assert block.cost == 0.9
+        assert [(n.op, n.rows, n.cost) for n in block.children] == [
+            ("ALL t", 3.0, 0.55),
+            ("eq_ref c", 1.0, 0.9),
+        ]
+
+    def test_mysql_wrapping_operations_become_their_own_nodes(self):
+        payload = json.dumps(
+            {
+                "query_block": {
+                    "select_id": 1,
+                    "cost_info": {"query_cost": "0.55"},
+                    "ordering_operation": {
+                        "using_filesort": True,
+                        "grouping_operation": {
+                            "using_temporary_table": True,
+                            "table": {
+                                "table_name": "t",
+                                "access_type": "ALL",
+                                "rows_examined_per_scan": 3,
+                                "cost_info": {"prefix_cost": "0.55"},
+                                "used_columns": ["id", "amt"],
+                            },
+                        },
+                    },
+                }
+            }
+        )
+        (block,) = parse_explain([(payload,)], ["EXPLAIN"], "mysql_json")
+        (ordering,) = block.children
+        (grouping,) = ordering.children
+        (table,) = grouping.children
+        assert [ordering.op, grouping.op, table.op] == ["Ordering", "Grouping", "ALL t"]
+        assert table.rows == 3.0
+        assert ordering.detail["using_filesort"] == "True"
+
+    def test_mysql_asks_for_the_json_form_it_can_read(self):
+        assert syntax_for("mysql").fmt == "mysql_json"
+        assert wrap_explain("SELECT 1", "mysql", analyze=False).startswith("EXPLAIN FORMAT=JSON ")

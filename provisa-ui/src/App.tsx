@@ -30,6 +30,7 @@ import { PageLoading } from "./components/PageLoading";
 import { OnboardGate } from "./components/OnboardGate";
 import { ServerUnavailableModal } from "./components/ServerUnavailableModal";
 import { EngineWakingBanner } from "./components/EngineWakingBanner";
+import { TitleTooltips } from "./components/TitleTooltips";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { MaintenanceBanner } from "./components/MaintenanceBanner"; // REQ-1466
 import { fetchSetupStatus } from "./api/setup";
@@ -218,6 +219,9 @@ function App() {
           {/* REQ-1514: outside every gate below — a server that is not answering is what breaks
               setup, sign-in and the app alike, and the notice must not depend on any of them. */}
           <ServerUnavailableModal />
+          {/* REQ-1520: mounted above every route so a native `title` anywhere in the app is
+              painted in the app's own styling rather than the browser's. */}
+          <TitleTooltips />
           <EngineWakingBanner />
           {setupError ? (
             <div className="page">

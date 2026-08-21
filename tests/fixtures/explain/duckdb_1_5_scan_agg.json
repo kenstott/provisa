@@ -1,0 +1,21 @@
+[
+    {
+        "name": "UNGROUPED_AGGREGATE",
+        "children": [
+            {
+                "name": "SEQ_SCAN",
+                "children": [],
+                "extra_info": {
+                    "Table": "memory.main.t",
+                    "Type": "Sequential Scan",
+                    "Projections": "",
+                    "Filters": "i>5",
+                    "Estimated Cardinality": "20"
+                }
+            }
+        ],
+        "extra_info": {
+            "Aggregates": "count_star()"
+        }
+    }
+]
