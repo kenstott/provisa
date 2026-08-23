@@ -395,7 +395,11 @@ def test_binding_refuses_a_connection_with_no_certificate(ca):
 
 def test_the_common_name_is_found_among_other_subject_fields():
     peer_cert = {
-        "subject": ((("countryName", "US"),), (("organizationName", "Provisa"),), (("commonName", "alice"),))
+        "subject": (
+            (("countryName", "US"),),
+            (("organizationName", "Provisa"),),
+            (("commonName", "alice"),),
+        )
     }
 
     assert peer_common_name(peer_cert) == "alice"

@@ -51,9 +51,9 @@ def login_server():
         users=[
             {
                 "username": _USERNAME,
-                "password_hash": bcrypt.hashpw(
-                    _PASSWORD.encode("utf-8"), bcrypt.gensalt()
-                ).decode("utf-8"),
+                "password_hash": bcrypt.hashpw(_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode(
+                    "utf-8"
+                ),
                 "roles": ["analyst"],
             }
         ],
@@ -63,9 +63,7 @@ def login_server():
     app.include_router(simple_mod.router)
 
     port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-    )
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
 
     previous = simple_mod._provider_instance

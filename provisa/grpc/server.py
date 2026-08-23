@@ -610,9 +610,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
-            async for _m in self._handle_query_group_by_bound(
-                request, context, type_name, role_id
-            ):
+            async for _m in self._handle_query_group_by_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
         finally:
             if _org_token is not None:
@@ -690,7 +688,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
         nodes_by_group_key: dict[tuple, list] = {}
         row_msg_cls = getattr(self._pb2, type_name, None)
         nodes_columns = compiled.nodes_columns
-        if include_nodes and compiled.nodes_sql is not None and nodes_columns is not None and row_msg_cls is not None:
+        if (
+            include_nodes
+            and compiled.nodes_sql is not None
+            and nodes_columns is not None
+            and row_msg_cls is not None
+        ):
             nodes_plan = await _govern_and_route_compiled(
                 compiled.nodes_sql, role_id, exec_params=compiled.nodes_params or None, state=state
             )
@@ -731,7 +734,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             field = descriptor.fields_by_name.get(key)
             if field is None:
                 continue
-            if field.message_type is not None and field.message_type.full_name != "google.protobuf.Timestamp":
+            if (
+                field.message_type is not None
+                and field.message_type.full_name != "google.protobuf.Timestamp"
+            ):
                 nested[key] = val
             else:
                 kwargs[key] = _proto_value(field, val)
@@ -744,7 +750,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
             if field.label == field.LABEL_REPEATED:
                 items = val if isinstance(val, list) else [val]
                 getattr(msg, key).extend(
-                    self._dict_row_to_message(sub_cls, item) for item in items if isinstance(item, dict)
+                    self._dict_row_to_message(sub_cls, item)
+                    for item in items
+                    if isinstance(item, dict)
                 )
             elif isinstance(val, dict):
                 getattr(msg, key).CopyFrom(self._dict_row_to_message(sub_cls, val))

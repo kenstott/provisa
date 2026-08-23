@@ -10,13 +10,17 @@
 
 """Server-side capability enforcement for admin GraphQL mutations."""
 
-# Requirements: REQ-042, REQ-060, REQ-434
+# Requirements: REQ-042, REQ-060, REQ-434, REQ-1530, REQ-1531
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from provisa.security.rights import capabilities_for_claims, has_platform_bypass
+from provisa.security.rights import (
+    capabilities_for_claims,
+    domain_access_for_claims,
+    has_platform_bypass,
+)
 
 if TYPE_CHECKING:
     import strawberry
@@ -43,21 +47,20 @@ def _resolved_capabilities(identity, state) -> set[str]:
     # REQ-1337: RIGHTS ONLY. The role id is never folded in as a pseudo-capability — a gate reads
     # the rights a role carries, and the seed (schema.sql + apply_tenancy_role_grants) is the single
     # place that decides which role carries which right.
-    return capabilities_for_claims(
-        getattr(identity, "roles", []), getattr(state, "roles", {})
-    )
+    return capabilities_for_claims(getattr(identity, "roles", []), getattr(state, "roles", {}))
 
 
-def _domain_access(identity, _state) -> set[str]:  # pyright: ignore[reportUnusedParameter]
-    """Return the set of domain IDs accessible to this identity (empty = none)."""
+def _domain_access(identity, state) -> set[str]:
+    """The domain IDs this identity may act in (REQ-1530).
+
+    Read off the ROLES the identity holds — ``roles.domain_access`` — and not off the ``:domain``
+    suffix a claim may carry. The suffix records which grant was made; the scope is the role's, so
+    that an org_admin narrows a developer by giving them a role whose domain_access names their
+    domains rather than by granting a role on a domain.
+    """
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
         return set()
-    domains: set[str] = set()
-    for claim in getattr(identity, "roles", []):
-        claim = claim.strip()
-        domain = claim.split(":", 1)[1] if ":" in claim else "*"
-        domains.add(domain)
-    return domains
+    return domain_access_for_claims(getattr(identity, "roles", []), getattr(state, "roles", {}))
 
 
 def require_capability(  # REQ-042, REQ-060
@@ -89,13 +92,54 @@ def require_capability(  # REQ-042, REQ-060
         raise PermissionError(f"Missing capability: {capability!r}")
 
     if domain_id is not None:
-        from provisa.core import domain_policy
+        require_domain(info, domain_id)
 
-        if domain_policy.single_domain():
-            return  # single-domain mode: domain is not a gate
-        domains = _domain_access(identity, state)
-        if "*" not in domains and domain_id not in domains:
-            raise PermissionError(f"No access to domain {domain_id!r}")
+
+def require_domain(info: "strawberry.types.Info", domain_id: str) -> None:  # REQ-1530, REQ-1531
+    """The domain half of the gate ALONE: may this caller act on objects in ``domain_id``?
+
+    Separate from :func:`require_capability` because some acts are permitted by more than one
+    right — registering a view is allowed to a holder of ``create_view`` OR ``query_development`` —
+    and the question "which domains may you touch" has one answer regardless of which of those
+    rights carried the caller in. Both functions honour the same three exemptions: dev/no-auth,
+    the platform administrator's bypass, and single-domain mode where a domain gates nothing.
+    """
+    from provisa.api.app import state
+    from provisa.core import domain_policy
+
+    identity = _identity_from_info(info)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return
+    if has_platform_bypass(_resolved_capabilities(identity, state)):
+        return
+    if domain_policy.single_domain():
+        return  # single-domain mode: domain is not a gate
+    from provisa.core.env_authority import may_change_domain
+
+    if not may_change_domain(sorted(_domain_access(identity, state)), domain_id):
+        raise PermissionError(f"No access to domain {domain_id!r}")
+
+
+def require_capability_request(request, capability: str) -> None:  # REQ-1531
+    """The same gate for a REST admin router, which has a Request rather than a resolver Info.
+
+    REQ-1531: the capability check grew up in the GraphQL resolver layer, so an admin REST router
+    reaching the same table enforced nothing. A role carries both capabilities and domain_access
+    (REQ-1530), which makes minting one the way a member would widen their own scope — so the REST
+    path must ask the same question the mutation asks. Raises ``ApiError(403)`` because that is what
+    a router's caller can render; the dev/no-auth and platform-bypass exemptions are unchanged.
+    """
+    from provisa.api.app import state
+    from provisa.api.errors import ApiError
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return
+    caps = _resolved_capabilities(identity, state)
+    if has_platform_bypass(caps):
+        return
+    if capability not in caps:
+        raise ApiError(403, "auth.missing_capability", f"Missing capability: {capability!r}")
 
 
 def has_capability(info: "strawberry.types.Info", capability: str) -> bool:  # REQ-434

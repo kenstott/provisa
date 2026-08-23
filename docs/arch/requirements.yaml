@@ -50784,6 +50784,46 @@
   - REQ-1543
   - REQ-1545
   - REQ-1552
+- id: REQ-1556
+  status: proposed
+  target: 2026-Q4
+  group: 13. Multi-Tenancy & Organizations
+  category: Environments
+  priority: MUST
+  type: behavioral
+  description: 'A PULL SAYS WHAT IT OVERWROTE, AND A REFUSED PULL SAYS WHAT COLLIDED. Taking
+    what the remote holds is the same act as a merge with the same silent case in it, so it
+    carries the same report (REQ-1555), measured from the commit the local branch and the fetched
+    sha last shared. TWO DOORS. When the two lines have DIVERGED the pull is already refused, and
+    the refusal names only that fact -- which leaves the person who must now decide with no
+    account of WHICH objects both sides touched; the refusal therefore carries the conflicts, so
+    the answer to "so what collided?" is in the response rather than in a comparison somebody has
+    to run by hand. When the pull FAST-FORWARDS it is not refused and nothing about it looks
+    dangerous, yet the apply diffs the incoming tree against the environment''s CURRENT
+    PROJECTION rather than against the commit that branch stands at -- so an edit sitting in the
+    schema which never reached a commit is carried away and reported as an ordinary change. That
+    is the DRIFTED environment (REQ-1524, a write-through commit that did not land), and it is
+    the case with no divergence recorded anywhere to warn about it. Both are computed at the PATH
+    and inside the transaction that applies, and both are REPORTED, NEVER RESOLVED: the pull that
+    applies still applies, and Provisa offers no way to choose per object. The report reaches the
+    response, the audit record, and the environments screen.'
+  use_case: A person pulling the remote's version of an environment can see which objects it overwrote that had been changed locally, and a person refused a pull for divergence can see which objects the two lines both touched.
+  scenario: 'Given an environment holds a change that never reached a commit and its remote branch has moved ahead
+
+
+    When the environment is pulled
+
+
+    Then the pull applies and names the objects whose local change it carried away'
+  code:
+  - provisa/core/env_conflicts.py
+  - provisa/core/env_deploy.py
+  - provisa/api/admin/environments_router.py
+  - provisa-ui/src/components/admin/EnvironmentsTab.tsx
+  depends_on:
+  - REQ-1524
+  - REQ-1547
+  - REQ-1555
 - id: REQ-1555
   status: proposed
   target: 2026-Q4

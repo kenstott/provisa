@@ -496,10 +496,11 @@ def _is_lost_coordinator(exc: BaseException) -> bool:
     an address the cluster has since moved produces, and nothing else this path can fix.
     """
     import requests
-    import trino.exceptions
+
+    from provisa.executor.trino import is_connection_error
 
     for cause in _causes(exc):
-        if isinstance(cause, trino.exceptions.TrinoConnectionError):
+        if is_connection_error(cause):
             return True
         if isinstance(cause, requests.exceptions.ConnectionError | requests.exceptions.Timeout):
             return True

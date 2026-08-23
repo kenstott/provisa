@@ -105,7 +105,9 @@ class TestGenerateCatalogProperties:
         """A key_pattern the connector cannot scan is an error, not a silently ignored setting."""
         cfg = _simple_config(
             tables=[
-                RedisTableConfig(name="orders", key_pattern="default:orders:*", key_column="order_key"),
+                RedisTableConfig(
+                    name="orders", key_pattern="default:orders:*", key_column="order_key"
+                ),
             ]
         )
         with pytest.raises(ValueError, match="orders:\\*"):

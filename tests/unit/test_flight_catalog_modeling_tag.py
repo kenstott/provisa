@@ -21,7 +21,9 @@ from provisa.api.flight.catalog import build_catalog_tables_from_context
 
 
 def _state_with_table(**table_info_kwargs):
-    tinfo = SimpleNamespace(domain_id="sales", description="Order records", columns=[], **table_info_kwargs)
+    tinfo = SimpleNamespace(
+        domain_id="sales", description="Order records", columns=[], **table_info_kwargs
+    )
     ctx = SimpleNamespace(table_map={"orders": tinfo})
     return SimpleNamespace(contexts={"analyst": ctx})
 

@@ -145,7 +145,9 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         # only a direct connection streams; a pgbouncer'd source materializes via execute().
         return not self._use_pgbouncer
 
-    async def open_stream(self, sql: str, params: list | None = None) -> _PgDirectStream:  # REQ-1190
+    async def open_stream(
+        self, sql: str, params: list | None = None
+    ) -> _PgDirectStream:  # REQ-1190
         pool = self._pool
         assert pool is not None
         stream = _PgDirectStream(pool, sql, list(params or []))

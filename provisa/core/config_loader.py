@@ -169,7 +169,15 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266
     engine: Any,
     config: ProvisaConfig,
     catalog_names: dict[str, str] | None = None,
-) -> None:
+) -> list[str]:
+    """Upsert each source and (re)issue its engine catalog. Returns the ids whose catalog failed.
+
+    A failure is REPORTED, not swallowed: boot tolerates it (an unreachable source must not brick
+    startup) but a wake does not, because on a wake this IS the catalog the next query reads —
+    swallowing left a resumed coordinator short a catalog and the user saw a raw CATALOG_NOT_FOUND
+    from their own query instead of the wake failure. The caller decides which it is.
+    """
+    failed: list[str] = []
     for src in config.sources:
         await source_repo.upsert(conn, src)
         # Provision the source on the bound engine through the abstraction (the engine makes a
@@ -184,7 +192,13 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266
                     catalog_name=(catalog_names or {}).get(src.id),
                 )
             except Exception:
-                pass  # register_source / catalog.create_catalog already log warnings
+                log.exception(
+                    "registering source %r on the engine catalog %r failed",
+                    src.id,
+                    (catalog_names or {}).get(src.id) or src.id,
+                )
+                failed.append(src.id)
+    return failed
 
 
 async def _upsert_naming_rules(conn: "Connection", config: ProvisaConfig) -> None:
@@ -505,7 +519,10 @@ async def _analyze_sources(  # REQ-275
         try:
             engine.analyze(src, config.tables, catalog_name=(catalog_names or {}).get(src.id))
         except Exception:
-            pass  # engine.analyze / analyze_source_tables already log per-table failures
+            # Stats are an optimization — a source whose catalog cannot be analyzed still serves
+            # queries — so this does not join the failed-catalog list. It is reported, never
+            # silently dropped.
+            log.exception("priming CBO stats for source %r failed", src.id)
 
 
 async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
@@ -626,11 +643,13 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     engine: Any = None,
     replace: bool = False,
     catalog_names: dict[str, str] | None = None,
-) -> None:
+) -> list[str]:
     """Upsert full config into PG within caller's transaction scope.
 
     When replace=True, all existing sources/tables/domains/roles/relationships
     not present in the new config are deleted first (full replace semantics).
+
+    Returns the source ids whose engine catalog could not be (re)issued.
     """
     # Resolve domain policy before any registration so repos/compilers read one source of truth.
     domain_policy.configure(config.naming.use_domains, config.naming.default_domain)
@@ -644,7 +663,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
         await _replace_mode_cleanup(conn, config)
 
     # 1. Sources
-    await _upsert_sources(conn, engine, config, catalog_names=catalog_names)
+    failed_catalogs = await _upsert_sources(conn, engine, config, catalog_names=catalog_names)
 
     # 2. Domains
     if domain_policy.single_domain():
@@ -737,6 +756,8 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     from provisa.core.repositories import glossary as glossary_repo
 
     await glossary_repo.sweep_refless_terms(conn)
+
+    return failed_catalogs
 
 
 def _validate_table_kafka_sinks(config) -> None:
@@ -997,7 +1018,7 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266
     engine: Any = None,
     replace: bool = False,
     catalog_names: dict[str, str] | None = None,
-) -> None:
+) -> list[str]:
     """Upsert full config into PG within a transaction. Idempotent.
 
     ``engine`` is the EngineRuntime: it provisions each source (the engine catalog / native
@@ -1009,9 +1030,12 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266
     under. Supplied per-org (org-prefixed) so a non-default org's sources attach under their own
     catalogs instead of colliding with the default org in the shared coordinator. ``None`` on the
     default-org/startup path → each source registers under its bare name (unchanged behavior).
+
+    Returns the source ids whose engine catalog could not be (re)issued — empty on a clean load.
+    A wake MUST check it (see ``engine_wake.restore_shared_terminal``); boot logs and continues.
     """
     async with pg_conn.transaction():
-        await _load_config_in_txn(
+        return await _load_config_in_txn(
             config, pg_conn, engine, replace=replace, catalog_names=catalog_names
         )
 

@@ -264,9 +264,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any) -> dict:
             join_key_indices = [
                 i for i, c in enumerate(cq.nodes_columns) if c.nested_in == "__join_key__"
             ]
-            output_cols = [
-                (i, c) for i, c in enumerate(cq.nodes_columns) if c.nested_in is None
-            ]
+            output_cols = [(i, c) for i, c in enumerate(cq.nodes_columns) if c.nested_in is None]
             for nrow in nodes_result.rows:
                 jkey = tuple(nrow[i] for i in join_key_indices)
                 nodes_by_key.setdefault(jkey, []).append(
@@ -277,7 +275,10 @@ async def _execute_grpc(query: str, role: str, app_state: Any) -> dict:
             group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
             agg_row = tuple(row[i] for i in agg_idx)
             top, nested = split_agg_columns(agg_cols, agg_row)
-            out_row = {"group_key": json.dumps(group_key, default=str), "aggregate": {**top, **nested}}
+            out_row = {
+                "group_key": json.dumps(group_key, default=str),
+                "aggregate": {**top, **nested},
+            }
             if include_nodes:
                 jkey = tuple(row[i] for i in group_key_idx)
                 out_row["nodes"] = nodes_by_key.get(jkey, [])
@@ -374,7 +375,13 @@ async def _execute_jsonapi(query: str, role: str, app_state: Any) -> dict:
     m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)\?aggregate=([^&]+)$", query)
     if m is not None:
         return await _execute_domain_table_aggregate(
-            m.group(1), m.group(2), [], role, app_state, "jsonapi", _parse_aggregate_funcs(m.group(3))
+            m.group(1),
+            m.group(2),
+            [],
+            role,
+            app_state,
+            "jsonapi",
+            _parse_aggregate_funcs(m.group(3)),
         )
     m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)", query)
     if m is None:
@@ -399,7 +406,13 @@ async def _execute_openapi(query: str, role: str, app_state: Any) -> dict:
     m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)\?aggregate=([^&]+)$", query)
     if m is not None:
         return await _execute_domain_table_aggregate(
-            m.group(1), m.group(2), [], role, app_state, "openapi", _parse_aggregate_funcs(m.group(3))
+            m.group(1),
+            m.group(2),
+            [],
+            role,
+            app_state,
+            "openapi",
+            _parse_aggregate_funcs(m.group(3)),
         )
     m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)", query)
     if m is None:
@@ -407,9 +420,7 @@ async def _execute_openapi(query: str, role: str, app_state: Any) -> dict:
     return await _execute_domain_table(m.group(1), m.group(2), role, app_state)
 
 
-async def _execute_domain_table(
-    domain_id: str, table_name: str, role: str, app_state: Any
-) -> dict:
+async def _execute_domain_table(domain_id: str, table_name: str, role: str, app_state: Any) -> dict:
     from provisa.compiler.sql_gen import _q
     from provisa.compiler.sql_rewrite import _semantic_table_ref
 
@@ -487,7 +498,9 @@ async def _execute_domain_table_aggregate(
     if graphql_text is None:
         raise RuntimeError(f"No aggregate/group-by fields for {domain_id}/{table_name}")
 
-    cq, result, nodes_result = (await _compile_and_execute_graphql(graphql_text, role, app_state))[0]
+    cq, result, nodes_result = (await _compile_and_execute_graphql(graphql_text, role, app_state))[
+        0
+    ]
 
     if by_columns:
         shaped = serialize_group_by(

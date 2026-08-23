@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "Não é possível excluir funções do sistema",
-      "cannot_modify_system": "Não é possível modificar funções do sistema",
+      "cannot_modify_administrative": "Não é possível modificar funções administrativas",
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária"
     },

@@ -39,7 +39,7 @@ def split_sql_statements(sql: str) -> list[str]:
     start = 0
     for tok in tokens:
         if tok.token_type == sqlglot.TokenType.SEMICOLON:
-            seg = sql[start:tok.start].strip()
+            seg = sql[start : tok.start].strip()
             if seg:
                 stmts.append(seg)
             start = tok.end + 1
@@ -208,7 +208,11 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
             domain_sl = domain_to_sql_name(meta.domain_id).lower()
             if domain_sl != sl:
-                by_schema_name[(domain_sl, nl)] = (meta.catalog_name, meta.schema_name, meta.table_name)
+                by_schema_name[(domain_sl, nl)] = (
+                    meta.catalog_name,
+                    meta.schema_name,
+                    meta.table_name,
+                )
                 if orig_nl is not None:
                     by_schema_name[(domain_sl, orig_nl)] = (
                         meta.catalog_name,

@@ -31,10 +31,13 @@ from provisa.core.database import OrgRouter
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("url", [
-    "postgresql+asyncpg://u:p@h/db",
-    "mysql+aiomysql://u:p@h/db",
-])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "postgresql+asyncpg://u:p@h/db",
+        "mysql+aiomysql://u:p@h/db",
+    ],
+)
 def test_rejects_schema_capable_backends(url):
     """A schema-capable backend scopes orgs on a shared engine — a router must refuse to build."""
     with pytest.raises(ValueError, match="not-schema-capable"):
@@ -75,9 +78,7 @@ def test_database_for_lazily_builds_and_caches_one_engine_per_org():
     from unittest.mock import MagicMock
 
     engine = MagicMock(name="engine")
-    with patch(
-        "provisa.core.database.create_engine_from_url", return_value=engine
-    ) as make_engine:
+    with patch("provisa.core.database.create_engine_from_url", return_value=engine) as make_engine:
         router = OrgRouter("sqlite+aiosqlite:////data/control.db")
 
         a1 = router.database_for("acme")

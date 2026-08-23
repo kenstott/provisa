@@ -212,9 +212,7 @@ def _tag_definitions(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                 "description": f"Provisa registry tag {tag_id!r}.",
             },
         )
-        for tag_id in sorted(
-            {tag.tag_id for tag in snapshot.model_tags if tag.asset is not None}
-        )
+        for tag_id in sorted({tag.tag_id for tag in snapshot.model_tags if tag.asset is not None})
     ]
 
 
@@ -601,9 +599,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                             # REQ-1378: relationship registry tags ride the relationship
                             # record — DataHub has no edge entity to tag natively here.
                             **(
-                                {"tags": sorted(edge_tags[edge.id])}
-                                if edge.id in edge_tags
-                                else {}
+                                {"tags": sorted(edge_tags[edge.id])} if edge.id in edge_tags else {}
                             ),
                         }
                         for edge in edges

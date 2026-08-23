@@ -125,12 +125,7 @@ def _compressed_content(uncompressed: bytes) -> bytes:
     its parse and the extension silently sees an empty catalog.
     """
     # array(2) header + forced-uint32 length + str-framed zstd frame.
-    return (
-        b"\x92"
-        + b"\xce"
-        + struct.pack(">I", len(uncompressed))
-        + _emit_str(_zstd(uncompressed))
-    )
+    return b"\x92" + b"\xce" + struct.pack(">I", len(uncompressed)) + _emit_str(_zstd(uncompressed))
 
 
 def serialize_schema_contents(flight_info_protos: list[bytes]) -> tuple[bytes, str]:

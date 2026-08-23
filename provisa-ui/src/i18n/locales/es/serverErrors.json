@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "No se pueden eliminar los roles del sistema",
-      "cannot_modify_system": "No se pueden modificar los roles del sistema",
+      "cannot_modify_administrative": "No se pueden modificar los roles administrativos",
       "not_found": "No se encontró el rol",
       "org_selection_required": "Se requiere seleccionar una organización"
     },

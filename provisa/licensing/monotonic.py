@@ -65,6 +65,7 @@ def elapsed_days(*, now_epoch: float, high_water: float, first_seen_iso: str) ->
 def trial_expired(*, now_epoch: float, high_water: float, first_seen_iso: str) -> bool:
     """True when ≥ ``_TRIAL_DAYS`` have elapsed (rollback-resistant). Licensing is checked separately
     by the caller; this is purely the time test (REQ-1136)."""
-    return elapsed_days(
-        now_epoch=now_epoch, high_water=high_water, first_seen_iso=first_seen_iso
-    ) >= _TRIAL_DAYS
+    return (
+        elapsed_days(now_epoch=now_epoch, high_water=high_water, first_seen_iso=first_seen_iso)
+        >= _TRIAL_DAYS
+    )

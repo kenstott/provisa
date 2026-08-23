@@ -225,11 +225,15 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
     # unset — the startup path). Org-scoped catalogs get an org_<id>__ prefix for non-default
     # orgs so identically-named demo sources in different orgs don't collide; the default org
     # keeps bare names. state.org_id is the bootstrap/default org (the one kept un-prefixed).
-    from provisa.api.org_runtime import current_org
+    from provisa.api.org_runtime import active_env, current_org
     from provisa.compiler.naming import org_prefixed_catalog
 
     _building_org = current_org.get() or state.org_id
     _default_org = state.org_id
+    # REQ-1529: and the environment being built, because a branch resolves its own bindings — the
+    # same source id may reach a different host there than it does in the base, and the catalog
+    # namespace is the one shared coordinator's.
+    _building_env = active_env()
 
     for src in config.sources:
         state.source_types[src.id] = src.type.value
@@ -239,7 +243,10 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
         # (provisa/core/catalog.py:116) and what native engines attach by. `src.database` is the
         # remote database/tenant the connector talks to, not a catalog.
         state.source_catalogs[src.id] = _fixed_catalog or org_prefixed_catalog(
-            _building_org, source_to_catalog(src.id), default_org=_default_org
+            _building_org,
+            source_to_catalog(src.id),
+            default_org=_default_org,
+            env=_building_env,
         )
         state.source_dialects[src.id] = src.dialect or ""
         state.source_cache[src.id] = {
@@ -273,7 +280,9 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
         _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
         if has_driver(src.type.value) and (src.type.value not in VIRTUAL_SOURCES or _is_flat_file):
             resolved_pw = resolve_secrets(src.password)
-            resolved_host = "" if _is_flat_file else (resolve_secrets(src.host) if src.host else "localhost")
+            resolved_host = (
+                "" if _is_flat_file else (resolve_secrets(src.host) if src.host else "localhost")
+            )
             resolved_database = (src.path or src.database) if _is_flat_file else src.database
             state.source_dsns[src.id] = (
                 resolved_database if _is_flat_file else f"{resolved_host}:{src.port}/{src.database}"
@@ -489,7 +498,9 @@ def _load_mv_and_views_config(
                     enabled=True,
                     sql=view_sql,
                     expose_in_sdl=False,
-                    preprocess=view_cfg.get("preprocess"),  # REQ-957 (purity-checked at boot compile)
+                    preprocess=view_cfg.get(
+                        "preprocess"
+                    ),  # REQ-957 (purity-checked at boot compile)
                 )
                 state.mv_registry.register(mv)
                 _view_log.info("Registered materialized view: %s", view_id)
@@ -524,11 +535,14 @@ def _load_mv_and_views_config(
                 right_column=rel_cfg["target_column"],
                 join_type="left",
             )
+            # The store the ACTIVE engine materializes into — never a hardcoded catalog
+            # (Trino → provisa_admin, DuckDB → mat_store).
+            _rel_cat, _rel_schema = state.federation_engine.materialize_store_target(state.org_id)
             mv = MVDefinition(
                 id=mv_id,
                 source_tables=[src_table, tgt_table],
-                target_catalog="postgresql",
-                target_schema=f"org_{state.org_id}_mv_cache",
+                target_catalog=_rel_cat,
+                target_schema=_rel_schema,
                 refresh_interval=rel_cfg.get("refresh_interval", 300),
                 enabled=True,
                 join_pattern=jp,
@@ -887,9 +901,7 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
 
     _domains_cfg = (raw_config or {}).get("domains", []) or []
     _alias_stored = {
-        d["id"]: d.get("graphql_alias")
-        for d in _domains_cfg
-        if isinstance(d, dict) and d.get("id")
+        d["id"]: d.get("graphql_alias") for d in _domains_cfg if isinstance(d, dict) and d.get("id")
     }
 
     def _domain_prefix(domain_id: str) -> str:
@@ -906,9 +918,7 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         target[item["name"]] = item  # raw registered name — non-GraphQL surfaces
         gql = _apply_conv(item["name"], _conv)
         key = (
-            f"{_domain_prefix(item['domain_id'])}__{gql}"
-            if _dp and item.get("domain_id")
-            else gql
+            f"{_domain_prefix(item['domain_id'])}__{gql}" if _dp and item.get("domain_id") else gql
         )
         if key != item["name"]:
             target[key] = item  # GraphQL field name (convention-cased, maybe domain-prefixed)

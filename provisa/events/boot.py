@@ -234,7 +234,9 @@ def specs_from_config(
                 # push sources are driven by their listener. Boot lands the first copy either way.
                 probe_factory=factory,
                 probe_type=args.probe_type,
-                preprocess=make_rows_evaluator(getattr(tbl, "mv_preprocess", None), node),  # REQ-1165
+                preprocess=make_rows_evaluator(
+                    getattr(tbl, "mv_preprocess", None), node
+                ),  # REQ-1165
             )
         )
 
@@ -312,8 +314,12 @@ def specs_from_config(
         from provisa.events.lineage import extract_inputs
         from provisa.mv.preflight_eval import make_streams_evaluator
 
-        preflight_inputs = sorted(extract_inputs(mv.sql, "postgres")) if getattr(mv, "sql", None) else []
-        preprocess = make_streams_evaluator(engine, getattr(mv, "preprocess", None), preflight_inputs)
+        preflight_inputs = (
+            sorted(extract_inputs(mv.sql, "postgres")) if getattr(mv, "sql", None) else []
+        )
+        preprocess = make_streams_evaluator(
+            engine, getattr(mv, "preprocess", None), preflight_inputs
+        )
         specs.append(
             NodeSpec(
                 node=node,

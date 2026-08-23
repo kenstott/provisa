@@ -62,7 +62,7 @@
     "deleteConfirm": "Delete",
     "mergeTitle": "Merge {{env}}",
     "mergeIntoLabel": "Into",
-    "mergeIntoHelp": "Where this environment was branched from. Change it to carry the work somewhere else.",
+    "mergeIntoHelp": "Defaults to where this environment was branched from. Change it to carry the work somewhere else.",
     "noMergeTarget": "This environment was not branched from another, so choose where the work should go.",
     "removals": "Apply removals",
     "removalsHelp": "Objects the source no longer has are removed from the target. Left off, a merge only adds and changes.",
@@ -71,7 +71,7 @@
     "retireRemote": "Delete its branch on the remote too",
     "retireRemoteHelp": "The copy on the git host is what survives a lost volume, so this is offered only alongside deleting the environment and never instead of it.",
     "mergeMessage": "Message",
-    "mergeMessageHelp": "Required. The merge lands as one squashed commit, so this sentence is the only account of the work it carries.",
+    "mergeMessageHelp": "Required. The commit/merge message. Describe the intent behind these changes.",
     "preview": "Preview",
     "mergeConfirm": "Merge",
     "propose": "Propose",
@@ -138,6 +138,7 @@
       "removed": "removed it"
     },
     "conflictsNotCompared": "These environments share no common ancestor, so nothing could be compared — this is not the same as no conflicts.",
-    "mergedOverwriting": "Merged into {{env}}, overwriting {{count}} object(s) changed there."
+    "mergedOverwriting": "Merged into {{env}}, overwriting {{count}} object(s) changed there.",
+    "pulledOverwriting": "Pulled {{env}} from the remote, overwriting {{count}} object(s) changed here since these lines parted:"
   }
 }

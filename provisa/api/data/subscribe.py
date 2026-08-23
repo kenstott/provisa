@@ -475,7 +475,9 @@ async def _acquire_sse_slot(state, role_id: str | None) -> str | None:  # REQ-36
         return None
     key = f"rl:sse:{role_id}"
     if not await limiter.acquire(key, cap):
-        raise ApiError(429, "subscribe.sse_limit_reached", "max concurrent SSE subscriptions reached")
+        raise ApiError(
+            429, "subscribe.sse_limit_reached", "max concurrent SSE subscriptions reached"
+        )
     return key
 
 

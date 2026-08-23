@@ -61,9 +61,7 @@ class LockedOut(PermissionError):  # REQ-1393
     def __init__(self, subject: str, retry_after: int) -> None:
         self.subject = subject
         self.retry_after = retry_after
-        super().__init__(
-            f"too many failed authentication attempts; retry in {retry_after} seconds"
-        )
+        super().__init__(f"too many failed authentication attempts; retry in {retry_after} seconds")
 
 
 class LoginThrottle:  # REQ-1393

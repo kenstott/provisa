@@ -446,10 +446,16 @@ class Connection:
 
         REQ-828: every control-plane statement passes through the app-layer meta-RLS guard here —
         the single, un-bypassable seam that enforces tenant isolation store-independently (a no-op
-        when no tenant is in scope)."""
+        when no tenant is in scope).
+
+        REQ-1525: and through the credential-literal guard, which refuses a write that would put a
+        credential into a carried field. It sits here rather than at the commit because REQ-1524
+        forbids a failed commit from failing the change it observes — refusing at commit time would
+        leave the secret in the database and the repository permanently behind."""
+        from provisa.core.env_secrets import guard_statement
         from provisa.core.meta_rls import apply_meta_tenant_guard
 
-        result = await self._ac.execute(apply_meta_tenant_guard(stmt))
+        result = await self._ac.execute(apply_meta_tenant_guard(guard_statement(stmt)))
         await self._commit_if_autocommit()
         return result
 
@@ -505,6 +511,7 @@ class Connection:
         )
         from sqlalchemy.exc import IntegrityError
 
+        from provisa.core.env_secrets import guard_statement
         from provisa.core.meta_rls import apply_meta_tenant_guard
 
         cols = (
@@ -529,7 +536,10 @@ class Connection:
         # the connection in a failed state and the next statement (e.g. upsert_returning's SELECT)
         # would raise InFailedSQLTransactionError. begin_nested auto-begins the outer txn if none is
         # active; rolling back the savepoint keeps the connection usable.
-        insert_stmt = apply_meta_tenant_guard(_insert(table).values(**values))
+        # REQ-1525: this INSERT is executed directly rather than through execute_core (it needs
+        # the savepoint), so the credential guard that lives there is applied here too — a seam
+        # with one hole in it is not a seam.
+        insert_stmt = apply_meta_tenant_guard(guard_statement(_insert(table).values(**values)))
         try:
             if self.capabilities.savepoints:
                 async with self._ac.begin_nested():

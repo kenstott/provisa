@@ -186,9 +186,7 @@ def governed_table_scan_schema(
     raise ValueError(f"Route {plan.route!r} is not supported for the airport service")
 
 
-def _direct_typed_schema(
-    column_names: list[str], column_types: list[str] | None
-) -> pa.Schema:
+def _direct_typed_schema(column_names: list[str], column_types: list[str] | None) -> pa.Schema:
     """Byte-stable Arrow schema for a DIRECT scan, from the native driver's own result-column types.
 
     Row-independent (identical for a 0-row and an N-row result), so the airport advertises and

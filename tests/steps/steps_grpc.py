@@ -68,9 +68,7 @@ def _status_code_of(exc: BaseException):
     return code
 
 
-@given(
-    "a gRPC caller omitting or providing an unrecognised x-provisa-role metadata key"
-)
+@given("a gRPC caller omitting or providing an unrecognised x-provisa-role metadata key")
 def caller_without_role(shared_data):
     # Omit the x-provisa-role key entirely. Other benign metadata may be present.
     metadata = (

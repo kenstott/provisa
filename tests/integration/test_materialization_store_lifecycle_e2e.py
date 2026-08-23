@@ -68,9 +68,7 @@ def _land(path: str, rows: list[tuple]) -> None:
             "(id INTEGER PRIMARY KEY, customer VARCHAR, amount DOUBLE, updated_at INTEGER)"
         )
         # PK upsert — replaces prior row state, the REQ-874 apply discipline.
-        con.executemany(
-            f"INSERT OR REPLACE INTO {_STORE_TABLE} VALUES (?, ?, ?, ?)", rows
-        )
+        con.executemany(f"INSERT OR REPLACE INTO {_STORE_TABLE} VALUES (?, ?, ?, ?)", rows)
     finally:
         con.close()
 
@@ -83,7 +81,9 @@ def _read_store(path: str) -> list[tuple]:
         names = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
         if _STORE_TABLE not in names:
             return []
-        return con.execute(f"SELECT id, customer, amount FROM {_STORE_TABLE} ORDER BY id").fetchall()
+        return con.execute(
+            f"SELECT id, customer, amount FROM {_STORE_TABLE} ORDER BY id"
+        ).fetchall()
     finally:
         con.close()
 

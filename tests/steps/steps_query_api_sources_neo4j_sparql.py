@@ -94,7 +94,8 @@ def query_returns_node_objects(shared_data: dict) -> None:
 
 
 @then(
-    "registration is blocked with an error directing the steward to use explicit scalar RETURN aliases")
+    "registration is blocked with an error directing the steward to use explicit scalar RETURN aliases"
+)
 def registration_blocked_with_error(shared_data: dict) -> None:
     """Assert validation raised and the message guides toward scalar aliases."""
     error = shared_data.get("validation_error")
@@ -167,9 +168,7 @@ def caller_executes_query(shared_data: dict) -> None:
         captured.append(request)
         content_type = request.headers.get("content-type", "")
         if "x-www-form-urlencoded" in content_type or request.method == "GET":
-            return httpx.Response(
-                200, json={"head": {"vars": ["s"]}, "results": {"bindings": []}}
-            )
+            return httpx.Response(200, json={"head": {"vars": ["s"]}, "results": {"bindings": []}})
         return httpx.Response(200, json={"results": [], "errors": []})
 
     transport = httpx.MockTransport(handler)
@@ -184,9 +183,7 @@ def caller_executes_query(shared_data: dict) -> None:
                 "/db/neo4j/tx/commit",
                 json_body={"statement": "MATCH (u) RETURN u.id AS id"},
             )
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://fuseki:3030"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://fuseki:3030") as client:
             sparql_resp = await _request_with_retry(
                 client,
                 "POST",
@@ -209,9 +206,7 @@ def caller_executes_query(shared_data: dict) -> None:
     shared_data["get_resp"] = get_resp
 
 
-@then(
-    "the POST body is transmitted correctly and existing GET endpoints are unaffected"
-)
+@then("the POST body is transmitted correctly and existing GET endpoints are unaffected")
 def post_body_transmitted(shared_data: dict) -> None:
     """Assert POST bodies were transmitted and the GET request carried none."""
     captured = shared_data["captured"]

@@ -54,7 +54,7 @@ def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
     sql = re.sub(rf'(?<![\w."])(?P<kw>FROM\s+|JOIN\s+)?[A-Za-z_]\w*\.{vt}\b{_ALIAS}', repl, sql)
     # Unquoted bare reference (no schema prefix), only directly after FROM/JOIN so a
     # same-named column or alias elsewhere in the query is never mistaken for the table.
-    sql = re.sub(rf'\b(?P<kw>FROM\s+|JOIN\s+){vt}\b{_ALIAS}', repl, sql)
+    sql = re.sub(rf"\b(?P<kw>FROM\s+|JOIN\s+){vt}\b{_ALIAS}", repl, sql)
     return sql
 
 

@@ -1533,9 +1533,19 @@ class ControlPlaneConfig(BaseModel):
         from sqlalchemy import make_url
 
         u = make_url(self.resolved_tenant_url())
-        q_host = u.query.get("host")  # SQLAlchemy multi-valued query params can be a tuple
-        socket_host: str | None = q_host[0] if isinstance(q_host, tuple) else q_host
-        return u.host or socket_host, u.port or 5432, u.database, u.username, u.password
+
+        def _q(name: str) -> str | None:
+            value = u.query.get(name)  # SQLAlchemy multi-valued query params can be a tuple
+            return value[0] if isinstance(value, tuple) else value
+
+        socket_host = _q("host")
+        # The socket URL carries its port in the query for the same reason it carries its host
+        # there, and that port is not the default one: the embedded plane picks a free port and
+        # names the socket file after it, so reading 5432 here addresses a socket that is not
+        # listening. 5432 stands only for a TCP URL that stated no port at all.
+        socket_port = _q("port")
+        port = u.port or (int(socket_port) if socket_port else 5432)
+        return u.host or socket_host, port, u.database, u.username, u.password
 
 
 class SecurityConfig(BaseModel):  # REQ-693

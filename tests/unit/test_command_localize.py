@@ -58,7 +58,12 @@ def test_no_command_no_localization():
 
 
 def test_join_command_localized_and_executable():
-    rows = {"enrich": [{"id": 1, "embedding": "[0.1]", "geo": "x"}, {"id": 2, "embedding": "[0.2]", "geo": ""}]}
+    rows = {
+        "enrich": [
+            {"id": 1, "embedding": "[0.1]", "geo": "x"},
+            {"id": 2, "embedding": "[0.2]", "geo": ""},
+        ]
+    }
     hit, out, calls = _run(
         "SELECT o.n, e.geo FROM orders o JOIN enrich('main.public.orders') e ON o.id = e.id", rows
     )
@@ -74,10 +79,11 @@ def test_join_command_localized_and_executable():
 
 
 def test_detect_all_multiple_commands():
-    rows = {"enrich": [{"id": 1, "embedding": "[0]", "geo": "x"}], "labels": [{"id": 1, "label": "vip"}]}
-    hit, out, calls = _run(
-        "SELECT * FROM enrich('a') e JOIN labels('b') l ON e.id = l.id", rows
-    )
+    rows = {
+        "enrich": [{"id": 1, "embedding": "[0]", "geo": "x"}],
+        "labels": [{"id": 1, "label": "vip"}],
+    }
+    hit, out, calls = _run("SELECT * FROM enrich('a') e JOIN labels('b') l ON e.id = l.id", rows)
     assert hit is True
     assert {c[0] for c in calls} == {"enrich", "labels"}
     assert out.count("VALUES") == 2
@@ -103,7 +109,9 @@ def test_empty_result_yields_empty_typed_relation():
 def test_unaliased_standalone_synthesizes_alias():
     # A bare `FROM fn(args)` (no alias) still localizes — a synthetic alias is minted, nothing
     # references it. Executable in duckdb.
-    hit, out, calls = _run("SELECT * FROM enrich('a')", {"enrich": [{"id": 1, "embedding": "x", "geo": "y"}]})
+    hit, out, calls = _run(
+        "SELECT * FROM enrich('a')", {"enrich": [{"id": 1, "embedding": "x", "geo": "y"}]}
+    )
     assert hit is True and "_cmd0" in out
     assert duckdb.sql(out).fetchall() == [(1, "x", "y")]
 

@@ -12,6 +12,10 @@ persistent (``cleanup_mode=None``): it keeps running after this process exits an
 a later call to the same data dir reuses it. Requires a pgserver-capable
 interpreter (cpython <= 3.12 today).
 
+``reset`` drops the ``provisa`` database so the next ``start`` rebuilds it at the current schema
+(V1 has no migrations), and ``dump-table``/``apply`` carry one table's rows across that wipe — which
+is how the demo keeps its org settings while everything else is rebuilt from config.
+
 ``start`` ensures a ``provisa`` role + ``provisa`` database, applies ``db/init.sql``
 once, and prints the connection coordinates the backend needs as two shell-eval
 lines (unix-socket host + port):
@@ -22,6 +26,9 @@ lines (unix-socket host + port):
 Usage:
     python -m provisa.core.control_plane_pg start <datadir> [--init-sql db/init.sql]
     python -m provisa.core.control_plane_pg stop  <datadir>
+    python -m provisa.core.control_plane_pg reset <datadir>
+    python -m provisa.core.control_plane_pg dump-table <datadir> --table T --out FILE
+    python -m provisa.core.control_plane_pg apply <datadir> --file FILE
 """
 
 from __future__ import annotations
@@ -91,18 +98,89 @@ def stop(datadir: str) -> None:
     _server(datadir).cleanup()
 
 
+def reset(datadir: str) -> None:
+    """Drop the ``provisa`` database so the next :func:`start` rebuilds it at the current schema.
+
+    V1 has no migrations, so a pristine start means a pristine database — this is the PostgreSQL
+    analogue of deleting the sqlite control-plane files. Open backends are terminated first: a
+    connection left by a previous run would otherwise hold DROP DATABASE off.
+    """
+    srv = _server(datadir)
+    srv.psql(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='provisa' "
+        "AND pid <> pg_backend_pid()"
+    )
+    srv.psql("DROP DATABASE IF EXISTS provisa")
+
+
+def _has_table(srv, table: str) -> bool:
+    return "1" in srv.psql(
+        f"\\c provisa\nSELECT 1 FROM information_schema.tables WHERE table_name='{table}' LIMIT 1"
+    )
+
+
+def dump_table(datadir: str, table: str, out: str) -> bool:
+    """Write every schema's rows of *table* to *out* as INSERTs, returning whether anything was written.
+
+    Used to carry a table across :func:`reset`. A control plane that has never held the table yields
+    ``False`` and no file — a fresh install has nothing to retain, which is a fact about the plane
+    rather than a failure.
+    """
+    import subprocess
+
+    from pgserver._commands import POSTGRES_BIN_PATH  # the bundled binaries, no PATH lookup
+
+    srv = _server(datadir)
+    if not _has_table(srv, table):
+        return False
+    uri = srv.get_uri(database="provisa")
+    sql = subprocess.check_output(
+        [
+            str(POSTGRES_BIN_PATH / "pg_dump"),
+            uri,
+            "--data-only",
+            "--inserts",
+            "--on-conflict-do-nothing",
+            f"--table=*.{table}",
+        ]
+    )
+    Path(out).write_text(sql.decode())
+    return True
+
+
+def apply_sql(datadir: str, path: str) -> None:
+    """Run a SQL file against the ``provisa`` database — the restore half of :func:`dump_table`."""
+    srv = _server(datadir)
+    srv.psql(f"\\c provisa\n{Path(path).read_text()}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Embedded control-plane postgres (native tier).")
-    parser.add_argument("command", choices=["start", "stop"])
+    parser.add_argument("command", choices=["start", "stop", "reset", "dump-table", "apply"])
     parser.add_argument("datadir")
     parser.add_argument("--init-sql", default=None, help="schema applied once on first DB creation")
+    parser.add_argument(
+        "--table", default=None, help="dump-table: the table to carry across a reset"
+    )
+    parser.add_argument("--out", default=None, help="dump-table: file the INSERTs are written to")
+    parser.add_argument("--file", default=None, help="apply: SQL file to run against the database")
     args = parser.parse_args()
     if args.command == "start":
         host, port = start(args.datadir, args.init_sql)
         print(f"PG_HOST={host}")
         print(f"PG_PORT={port}")
-    else:
+    elif args.command == "stop":
         stop(args.datadir)
+    elif args.command == "reset":
+        reset(args.datadir)
+    elif args.command == "dump-table":
+        if not args.table or not args.out:
+            parser.error("dump-table needs --table and --out")
+        print("DUMPED=1" if dump_table(args.datadir, args.table, args.out) else "DUMPED=0")
+    else:
+        if not args.file:
+            parser.error("apply needs --file")
+        apply_sql(args.datadir, args.file)
 
 
 if __name__ == "__main__":

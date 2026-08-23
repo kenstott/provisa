@@ -52,9 +52,9 @@ def startup(monkeypatch):
 
 
 def _start_servers_source() -> str:
-    return (_REPO_ROOT / "provisa/api/app_startup.py").read_text().split(
-        "async def _start_servers"
-    )[1]
+    return (
+        (_REPO_ROOT / "provisa/api/app_startup.py").read_text().split("async def _start_servers")[1]
+    )
 
 
 def test_the_listener_is_gated_on_a_generated_descriptor():
@@ -77,7 +77,7 @@ def test_the_descriptor_is_the_union_of_every_roles_surface():
     loaders = (_REPO_ROOT / "provisa/api/app_loaders.py").read_text()
     wire = loaders.split("_wire_role = {")[1].split("state.wire_proto")[0]
 
-    assert 'for r in roles' in wire, "the wire descriptor no longer unions every role"
+    assert "for r in roles" in wire, "the wire descriptor no longer unions every role"
     assert '"domain_access": ["*"]' in wire
 
 

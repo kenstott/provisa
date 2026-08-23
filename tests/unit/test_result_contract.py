@@ -150,9 +150,7 @@ def test_streaming_stats_tally_and_finalize():
 
 def test_streaming_on_close_fires_once_at_end():
     seen: list[StreamStats] = []
-    r = StreamingQueryResult(
-        iter([[(1,)], [(2,)]]), column_names=["a"], on_close=seen.append
-    )
+    r = StreamingQueryResult(iter([[(1,)], [(2,)]]), column_names=["a"], on_close=seen.append)
     assert seen == []  # not fired before drain
     r.rows  # drains
     assert len(seen) == 1

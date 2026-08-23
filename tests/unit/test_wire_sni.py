@@ -96,9 +96,20 @@ def tls_pair(tmp_path_factory) -> tuple[str, str]:
     cert, key = directory / "server.pem", directory / "server.key"
     subprocess.run(
         [
-            "openssl", "req", "-x509", "-newkey", "rsa:2048",
-            "-keyout", str(key), "-out", str(cert),
-            "-days", "1", "-nodes", "-subj", "/CN=provisa.test",
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=provisa.test",
         ],
         check=True,
         capture_output=True,
@@ -200,7 +211,9 @@ def test_bolt_reads_the_org_off_its_transport():
 
     session = cast(Any, object.__new__(BoltSession))
     ssl_object = SimpleNamespace(_provisa_sni_host="beta.provisa.dev")
-    session.writer = SimpleNamespace(get_extra_info=lambda name: ssl_object if name == "ssl_object" else None)
+    session.writer = SimpleNamespace(
+        get_extra_info=lambda name: ssl_object if name == "ssl_object" else None
+    )
     assert session._requested_org() == "beta"
 
     # A WebSocket or plaintext writer exposes no ssl_object, and one that does not answer

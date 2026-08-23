@@ -127,7 +127,12 @@ def _periodic_mv(cp, store, *, run, expected):
         dependents_of=lambda _n: [],
         name="mv-box",
         generate=make_mv_generate(
-            DsnEngine(store), schema="", table="mv_a", columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store),
+            schema="",
+            table="mv_a",
+            columns=_COLS,
+            run_query=run,
+            pk_columns=["id"],
         ),
         deadline_source=PeriodicCalendar(cal, "daily"),
         expected_events=expected,
@@ -142,7 +147,9 @@ async def test_periodic_calendar_seal_lands_into_store(control_plane, monkeypatc
     cp, store = control_plane["db"], control_plane["store"]
     await _fan_in(cp, "mat.daily", "s.tx")
     async with cp.acquire() as conn:
-        await queue.record_refresh(conn, "s.tx", at=WIN_END, ok=True)  # input fresh through boundary
+        await queue.record_refresh(
+            conn, "s.tx", at=WIN_END, ok=True
+        )  # input fresh through boundary
 
     async def run():
         return [{"id": 7, "status": "sealed"}]
@@ -218,14 +225,36 @@ async def test_forced_regen_bypasses_hash_gate_and_ripples(control_plane):
         db=cp,
     )
     mv_a = MVTableProcessor(
-        "mv.a", change_signal="ttl", watermark_column=None, dependents_of=dep, name="mv.a",
-        generate=make_mv_generate(DsnEngine(store), schema="", table="mv_a", columns=_COLS, run_query=run_a,
-                                  pk_columns=["id"]), db=cp,
+        "mv.a",
+        change_signal="ttl",
+        watermark_column=None,
+        dependents_of=dep,
+        name="mv.a",
+        generate=make_mv_generate(
+            DsnEngine(store),
+            schema="",
+            table="mv_a",
+            columns=_COLS,
+            run_query=run_a,
+            pk_columns=["id"],
+        ),
+        db=cp,
     )
     mv_b = MVTableProcessor(
-        "mv.b", change_signal="ttl", watermark_column=None, dependents_of=dep, name="mv.b",
-        generate=make_mv_generate(DsnEngine(store), schema="", table="mv_b", columns=_COLS, run_query=run_b,
-                                  pk_columns=["id"]), db=cp,
+        "mv.b",
+        change_signal="ttl",
+        watermark_column=None,
+        dependents_of=dep,
+        name="mv.b",
+        generate=make_mv_generate(
+            DsnEngine(store),
+            schema="",
+            table="mv_b",
+            columns=_COLS,
+            run_query=run_b,
+            pk_columns=["id"],
+        ),
+        db=cp,
     )
     procs = [src, mv_a, mv_b]
 

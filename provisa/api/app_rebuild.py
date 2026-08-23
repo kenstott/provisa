@@ -213,7 +213,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                             incremental=bool(_vr.get("mv_incremental")),  # REQ-969
                             calendar=_vr.get("mv_calendar"),  # REQ-962
                             grain=_vr.get("mv_grain"),  # REQ-962/1168
-                            allowed_lateness=float(_vr.get("mv_allowed_lateness") or 0.0),  # REQ-961
+                            allowed_lateness=float(
+                                _vr.get("mv_allowed_lateness") or 0.0
+                            ),  # REQ-961
                             expected_events=_vr.get("mv_expected_events"),  # REQ-961
                             business_day_grain=bool(_vr.get("mv_business_day_grain")),  # REQ-962
                         )
@@ -227,7 +229,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                     _existing.incremental = bool(_vr.get("mv_incremental"))  # REQ-969
                     _existing.calendar = _vr.get("mv_calendar")  # REQ-962
                     _existing.grain = _vr.get("mv_grain")  # REQ-962/1168
-                    _existing.allowed_lateness = float(_vr.get("mv_allowed_lateness") or 0.0)  # REQ-961
+                    _existing.allowed_lateness = float(
+                        _vr.get("mv_allowed_lateness") or 0.0
+                    )  # REQ-961
                     _existing.expected_events = _vr.get("mv_expected_events")  # REQ-961
                     _existing.business_day_grain = bool(_vr.get("mv_business_day_grain"))  # REQ-962
 

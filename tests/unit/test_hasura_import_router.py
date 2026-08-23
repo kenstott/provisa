@@ -59,7 +59,9 @@ V2_DOCUMENT = {
 
 def _request(caps: tuple[str, ...] = ("org_settings",)):
     return SimpleNamespace(
-        state=SimpleNamespace(identity=SimpleNamespace(user_id="admin@example.com", roles=list(caps)))
+        state=SimpleNamespace(
+            identity=SimpleNamespace(user_id="admin@example.com", roles=list(caps))
+        )
     )
 
 
@@ -238,9 +240,7 @@ async def test_apply_rejects_an_invalid_config(monkeypatch):
     _grant(monkeypatch, {"org_settings"})
     _wire_apply(monkeypatch)
     with pytest.raises(ApiError) as exc:
-        await ir.apply_import(
-            ir.ImportApplyRequest(config_yaml="sources: [{}]"), _request()
-        )
+        await ir.apply_import(ir.ImportApplyRequest(config_yaml="sources: [{}]"), _request())
     assert exc.value.status_code == 400
 
 
@@ -321,9 +321,7 @@ async def test_preview_converts_a_ddn_project(monkeypatch):
         "      value: http://connector:8080\n"
     )
     data = _zip({"proj/app/connector.hml": hml})
-    req = ir.ImportPreviewRequest(
-        filename="proj.zip", content_b64=base64.b64encode(data).decode()
-    )
+    req = ir.ImportPreviewRequest(filename="proj.zip", content_b64=base64.b64encode(data).decode())
     resp = await ir.preview_import(req, _request())
     assert resp.flavor == DDN
     assert "pgconn" in resp.summary.source_ids

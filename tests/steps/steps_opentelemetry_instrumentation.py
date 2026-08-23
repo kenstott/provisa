@@ -21,7 +21,6 @@ def shared_data() -> dict:
 
 @scenario(
     "../features/REQ-549.feature",
-
     "REQ-549 default behaviour",
 )
 def test_req_549_default_behaviour():
@@ -56,7 +55,8 @@ def _exporter_endpoint(exporter) -> str:
 
 
 @then(
-    "OTLP/HTTP is used with path suffixes /v1/traces, /v1/metrics, /v1/logs appended automatically")
+    "OTLP/HTTP is used with path suffixes /v1/traces, /v1/metrics, /v1/logs appended automatically"
+)
 def then_http_paths_appended(shared_data):
     base = shared_data["endpoint"]
 

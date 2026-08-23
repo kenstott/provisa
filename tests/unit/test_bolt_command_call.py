@@ -40,9 +40,7 @@ async def test_call_command_invokes_executor():
         "provisa.api.data.action_exec.invoke_tracked_function",
         new=AsyncMock(return_value=rows),
     ) as inv:
-        result = await _maybe_invoke_command_call(
-            "CALL random_python_set(3, 7)", "admin", _state()
-        )
+        result = await _maybe_invoke_command_call("CALL random_python_set(3, 7)", "admin", _state())
     assert result == (["id", "region"], [[1, "east"]])
     # positional args mapped to the command's declared argument names
     inv.assert_awaited_once()

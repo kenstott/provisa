@@ -16,6 +16,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import type { BranchSync, Environment } from "../api/environments";
+import { notifications } from "@mantine/notifications";
+
+// The notification host is not mounted in these renders, so what a notification SAYS is read off
+// the call rather than out of the DOM (REQ-1556).
+vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
 const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
@@ -33,6 +38,18 @@ vi.mock("../api/environments", () => ({
   fetchBranchSync: vi.fn(),
   pushEnvironment: vi.fn(),
   pullEnvironment: vi.fn(),
+  // REQ-1556: the refusal is recognised by TYPE rather than by parsing its message, so the mock
+  // has to hand back a real class for the component's instanceof to mean anything.
+  DivergedError: class DivergedError extends Error {
+    constructor(
+      message: string,
+      public base: string | null,
+      public conflicts: unknown[],
+    ) {
+      super(message);
+      this.name = "DivergedError";
+    }
+  },
   fetchMergeRequests: vi.fn(),
   decideMergeRequest: vi.fn(),
   fetchRepoIntegration: vi.fn(),
@@ -63,6 +80,7 @@ import {
   fetchBranchSync,
   pushEnvironment,
   pullEnvironment,
+  DivergedError,
 } from "../api/environments";
 
 const mockList = vi.mocked(fetchEnvironments);
@@ -243,6 +261,50 @@ describe("EnvironmentsTab", () => {
     render(<EnvironmentsTab />);
     fireEvent.click(await screen.findByTestId("env-pull-dev"));
     await waitFor(() => expect(mockPull).toHaveBeenCalledWith("acme", "dev"));
+  });
+
+  it("names the objects a pull carried away from this environment", async () => {
+    // REQ-1556: a fast-forward is not refused and looks like any other pull, and it can still
+    // overwrite an edit sitting in this schema that no commit holds.
+    mockPull.mockResolvedValue({
+      applied: true,
+      report: {
+        added: 0,
+        changed: 1,
+        removed: 0,
+        base: "abc1234",
+        compared: true,
+        conflicts: [{ path: "sales/domain.yaml", source: "changed", target: "changed" }],
+      },
+      sync: syncOf(),
+    });
+    render(<EnvironmentsTab />);
+    fireEvent.click(await screen.findByTestId("env-pull-dev"));
+    await waitFor(() => expect(notifications.show).toHaveBeenCalled());
+    const said = vi.mocked(notifications.show).mock.calls.at(-1)![0];
+    render(<>{said!.message}</>);
+    expect(screen.getByTestId("env-pull-conflict")).toHaveTextContent("sales/domain.yaml");
+    expect(screen.getByTestId("env-pull-conflicts")).toHaveTextContent("overwriting 1 object(s)");
+  });
+
+  it("names the objects a refused pull collided on", async () => {
+    // REQ-1556: "the two lines diverged" is not a statement about any particular object, and the
+    // objects are what whoever has to decide is deciding about.
+    mockPull.mockRejectedValue(
+      new DivergedError(
+        "'dev' and its remote branch both hold commits the other does not.",
+        "abc",
+        [{ path: "sales/domain.yaml", source: "changed", target: "removed" }],
+      ),
+    );
+    render(<EnvironmentsTab />);
+    fireEvent.click(await screen.findByTestId("env-pull-dev"));
+    await waitFor(() => expect(notifications.show).toHaveBeenCalled());
+    const said = vi.mocked(notifications.show).mock.calls.at(-1)![0];
+    render(<>{said!.message}</>);
+    expect(screen.getByTestId("env-pull-conflict")).toHaveTextContent(
+      "source changed it, target removed it",
+    );
   });
 
   it("creates a branch of the environment that was chosen to branch from", async () => {

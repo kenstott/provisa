@@ -78,7 +78,9 @@ class TestDirectiveExtractionIsParseAware:
         assert out == sql  # literal preserved intact
 
     def test_real_relationship_guard_comment_is_honored_and_keeps_leading_code(self):
-        out, opted = extract_relationship_guard_comment("SELECT * FROM a JOIN b -- relationship-guard=false")
+        out, opted = extract_relationship_guard_comment(
+            "SELECT * FROM a JOIN b -- relationship-guard=false"
+        )
         assert opted is True
         assert out == "SELECT * FROM a JOIN b "  # code before the comment is preserved
 

@@ -120,9 +120,13 @@ def planes(monkeypatch):
     # REQ-1337: the runtime's roles registry is where a role id becomes the rights it carries, and
     # the inviter's gate reads those rights. In a real process it comes from the schema.sql seed;
     # here it mirrors the capability lists written into the role rows above.
-    loaded_roles = {rid: {"id": rid, "capabilities": caps} for rid, caps in _SEEDED_ROLE_CAPS.items()}
+    loaded_roles = {
+        rid: {"id": rid, "capabilities": caps} for rid, caps in _SEEDED_ROLE_CAPS.items()
+    }
     registry = OrgRegistry()
-    registry.set(_ROOT_ORG, OrgRuntime(org_id=_ROOT_ORG, tenant_db=tenant_db, roles=dict(loaded_roles)))
+    registry.set(
+        _ROOT_ORG, OrgRuntime(org_id=_ROOT_ORG, tenant_db=tenant_db, roles=dict(loaded_roles))
+    )
     registry.set("acme", OrgRuntime(org_id="acme", tenant_db=tenant_db, roles=dict(loaded_roles)))
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
     monkeypatch.setattr(app_state, "admin_db", admin_db, raising=False)

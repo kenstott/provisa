@@ -278,7 +278,9 @@ def test_control_plane_refresh_never_empties_a_concurrent_query(sqlite_cp_db: Pa
             t.join(timeout=10)
         rt.close()
     assert errors == []
-    assert empties == [], f"{len(empties)} short reads during a control-plane rebuild: {empties[:5]}"
+    assert empties == [], (
+        f"{len(empties)} short reads during a control-plane rebuild: {empties[:5]}"
+    )
 
 
 def test_concurrent_queries_never_steal_each_others_results(sqlite_cp_db: Path):

@@ -153,6 +153,4 @@ def build_sentinel_probe(sentinel_path: str, *, http_head: HttpHead | None = Non
             return _http_token(sentinel_path, head)
 
         return _http
-    raise ValueError(
-        f"unsupported sentinel_path scheme {scheme!r}; expected file/ftp/sftp/http(s)"
-    )
+    raise ValueError(f"unsupported sentinel_path scheme {scheme!r}; expected file/ftp/sftp/http(s)")

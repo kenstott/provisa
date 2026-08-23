@@ -117,6 +117,38 @@ async def _upsert_relationship_impl(
             code="schema.invalid_cardinality",
             params={"cardinality": input.cardinality},
         )
+    # REQ-1531: A RELATIONSHIP IS OWNED BY ITS SOURCE. The row is source -> target and the unique
+    # constraint is (source_table_id, alias), so the edge hangs off the source side and the source's
+    # domain is the one being changed. The target is referenced, not altered — its own RLS and
+    # masking still apply when the join is traversed. So the gate asks about the SOURCE domain, and
+    # an edge whose target lives elsewhere is recorded but flagged for the other domain to review.
+    from provisa.api.admin.capabilities import require_domain
+    from provisa.core.repositories import table as table_repo
+
+    _pool_g = await _get_pool()
+    async with _pool_g.acquire() as _gconn:
+        _src_row = await table_repo.find_by_table_name(
+            cast("Connection", _gconn), input.source_table_id
+        )
+        _tgt_row = (
+            await table_repo.find_by_table_name(cast("Connection", _gconn), input.target_table_id)
+            if input.target_table_id
+            else None
+        )
+    if _src_row is None:
+        return MutationResult(
+            success=False,
+            message=f"Source table {input.source_table_id!r} is not registered",
+            code="schema.relationship_unknown_source",
+            params={"table": input.source_table_id},
+        )
+    try:
+        require_domain(info, _src_row["domain_id"])
+    except PermissionError:
+        # REQ-434/1531: out of domain queues a request, the same answer a missing right gets.
+        return await _queue_creation_request(info, "relationship", "create_relationship", input)
+    _cross_domain = _tgt_row is not None and _tgt_row["domain_id"] != _src_row["domain_id"]
+
     # REQ-020: record the defining steward as owner.
     _identity = _identity_from_info(info)
     _owner = getattr(_identity, "user_id", None) if _identity is not None else None
@@ -139,6 +171,16 @@ async def _upsert_relationship_impl(
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         await rel_repo.upsert(_conn, model)
+        if _cross_domain:
+            # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
+            # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
+            # source steward's to clear — the flag is the other domain's notice that its tables are
+            # now reachable through an edge it did not define.
+            await _conn.execute_core(
+                update(relationships)
+                .where(relationships.c.id == input.id)
+                .values(needs_review=True)
+            )
         if input.record_candidate and not input.target_function_name:
             _rres = await _conn.execute_core(
                 select(relationships.c.source_table_id, relationships.c.target_table_id).where(
@@ -263,9 +305,7 @@ def _validate_load_protection(
     if not load_protected:
         return None
     armed = (
-        bool(off_peak_window)
-        or cache_ttl is not None
-        or (change_signal in ("probe", "ttl_probe"))
+        bool(off_peak_window) or cache_ttl is not None or (change_signal in ("probe", "ttl_probe"))
     )
     if not armed:
         return MutationResult(
@@ -301,7 +341,12 @@ def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | 
     try:
         parse_off_peak_window(off_peak_window, tz)
     except (ValueError, KeyError) as e:  # ZoneInfoNotFoundError subclasses KeyError
-        return MutationResult(success=False, message=f"invalid off-peak window: {e}", code="schema.invalid_off_peak_window", params={"error": str(e)})
+        return MutationResult(
+            success=False,
+            message=f"invalid off-peak window: {e}",
+            code="schema.invalid_off_peak_window",
+            params={"error": str(e)},
+        )
     return None
 
 
@@ -349,7 +394,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def rebuild_schemas(self) -> MutationResult:
         """Rebuild in-memory schema from DB state. Useful after external DB changes."""
         await _rebuild_schemas()
-        return MutationResult(success=True, message="Schemas rebuilt", code="schema.schemas_rebuilt")
+        return MutationResult(
+            success=True, message="Schemas rebuilt", code="schema.schemas_rebuilt"
+        )
 
     @strawberry.mutation
     async def dry_run_dq_contract(  # REQ-1443 clause 7
@@ -394,13 +441,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 base_system=BaseSystem(input.base_system),
                 tz=input.tz,
                 fiscal_anchor=(input.fiscal_anchor_month, input.fiscal_anchor_day),
-                retail_anchor=date.fromisoformat(input.retail_anchor) if input.retail_anchor else None,
+                retail_anchor=date.fromisoformat(input.retail_anchor)
+                if input.retail_anchor
+                else None,
                 week_start=input.week_start,
                 holidays=frozenset(date.fromisoformat(d) for d in input.holidays),
                 weekend=frozenset(input.weekend),
             )
         except (ValueError, KeyError) as e:
-            return MutationResult(success=False, message=f"invalid calendar: {e}", code="schema.invalid_calendar", params={"error": str(e)})
+            return MutationResult(
+                success=False,
+                message=f"invalid calendar: {e}",
+                code="schema.invalid_calendar",
+                params={"error": str(e)},
+            )
         pool = await _get_pool()
         async with pool.acquire() as conn:
             await calendar_repo.upsert(
@@ -448,8 +502,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
             removed = await calendar_repo.delete(_conn, name)
         if removed == 0:
-            return MutationResult(success=False, message=f"calendar {name!r} not found", code="schema.calendar_not_found", params={"calendar": name})
-        return MutationResult(success=True, message=f"calendar {name!r} deleted", code="schema.calendar_deleted", params={"calendar": name})
+            return MutationResult(
+                success=False,
+                message=f"calendar {name!r} not found",
+                code="schema.calendar_not_found",
+                params={"calendar": name},
+            )
+        return MutationResult(
+            success=True,
+            message=f"calendar {name!r} deleted",
+            code="schema.calendar_deleted",
+            params={"calendar": name},
+        )
 
     @strawberry.mutation
     async def create_source(
@@ -523,8 +587,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # Populate the org-scoped catalog name so catalog_for() resolves this source
         # after dynamic creation (mirrors _populate_source_catalog_names in app_loaders.py).
         from provisa.api.app_loaders import fixed_catalog_for_engine
-        from provisa.api.org_runtime import current_org
+        from provisa.api.org_runtime import active_env, current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
+
         # The physical catalog is derived from the source id and nothing else — create_catalog
         # (provisa/core/catalog.py:116) names it `_to_catalog_name(source.id)`, and native engines
         # attach by source id too. `input.database` is the *remote* database/tenant the connector
@@ -535,8 +600,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # the one warehouse catalog instead — see fixed_catalog_for_engine, mirrored from the
         # config-load path in _populate_source_catalog_names.
         _building_org = current_org.get() or state.org_id
+        # REQ-1529: the environment too — a branch's binding may point the same source id at a
+        # different host, and the coordinator's catalog namespace is shared across both.
         state.source_catalogs[input.id] = fixed_catalog_for_engine(state) or org_prefixed_catalog(
-            _building_org, source_to_catalog(input.id), default_org=state.org_id
+            _building_org,
+            source_to_catalog(input.id),
+            default_org=state.org_id,
+            env=active_env(),
         )
 
         # Provision on the bound engine (the engine makes a catalog; native engines no-op / attach lazily).
@@ -548,7 +618,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         _fire_catalog_indexing(state, pool, input)
 
-        return MutationResult(success=True, message=f"Source {input.id!r} created", code="schema.source_created", params={"source": input.id})
+        return MutationResult(
+            success=True,
+            message=f"Source {input.id!r} created",
+            code="schema.source_created",
+            params={"source": input.id},
+        )
 
     @strawberry.mutation
     async def update_source(
@@ -565,7 +640,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _conn = cast("Connection", conn)
             existing = await source_repo.get(_conn, input.id)
             if existing is None:
-                return MutationResult(success=False, message=f"Source {input.id!r} not found", code="schema.source_not_found", params={"source": input.id})
+                return MutationResult(
+                    success=False,
+                    message=f"Source {input.id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": input.id},
+                )
             model = SourceModel(
                 id=input.id,
                 type=SourceTypeEnum(input.type),
@@ -630,13 +710,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         # Keep catalog name in sync with the (possibly renamed) source config.
         from provisa.api.app_loaders import fixed_catalog_for_engine
-        from provisa.api.org_runtime import current_org
+        from provisa.api.org_runtime import active_env, current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
+
         # Source id only — see the same derivation in create_source above for why `input.database`
         # (the remote database/tenant) is not a catalog name, and the fixed-catalog exception.
         _building_org = current_org.get() or state.org_id
+        # REQ-1529: the environment too — a branch's binding may point the same source id at a
+        # different host, and the coordinator's catalog namespace is shared across both.
         state.source_catalogs[input.id] = fixed_catalog_for_engine(state) or org_prefixed_catalog(
-            _building_org, source_to_catalog(input.id), default_org=state.org_id
+            _building_org,
+            source_to_catalog(input.id),
+            default_org=state.org_id,
+            env=active_env(),
         )
 
         # Invalidate and re-index catalog cache (REQ-464)
@@ -659,14 +745,21 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         _asyncio.create_task(_reindex())
 
-        return MutationResult(success=True, message=f"Source {input.id!r} updated", code="schema.source_updated", params={"source": input.id})
+        return MutationResult(
+            success=True,
+            message=f"Source {input.id!r} updated",
+            code="schema.source_updated",
+            params={"source": input.id},
+        )
 
     @strawberry.mutation
     async def rename_source(self, old_id: str, new_id: str) -> MutationResult:
         from provisa.core.repositories import source as source_repo
 
         if not new_id.strip():
-            return MutationResult(success=False, message="New ID must not be empty", code="schema.new_id_empty")
+            return MutationResult(
+                success=False, message="New ID must not be empty", code="schema.new_id_empty"
+            )
         pool = await _get_pool()
         async with pool.acquire() as conn:
             renamed = await source_repo.rename(cast("Connection", conn), old_id, new_id)
@@ -677,7 +770,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.source_renamed",
                 params={"old": old_id, "new": new_id},
             )
-        return MutationResult(success=False, message=f"Source {old_id!r} not found", code="schema.source_not_found", params={"source": old_id})
+        return MutationResult(
+            success=False,
+            message=f"Source {old_id!r} not found",
+            code="schema.source_not_found",
+            params={"source": old_id},
+        )
 
     @strawberry.mutation
     async def delete_source(self, id: str) -> MutationResult:
@@ -690,23 +788,47 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if deleted:
             state.graphql_remote_sources.pop(id, None)
             await _rebuild_schemas()
-            return MutationResult(success=True, message=f"Source {id!r} deleted", code="schema.source_deleted", params={"source": id})
-        return MutationResult(success=False, message=f"Source {id!r} not found", code="schema.source_not_found", params={"source": id})
+            return MutationResult(
+                success=True,
+                message=f"Source {id!r} deleted",
+                code="schema.source_deleted",
+                params={"source": id},
+            )
+        return MutationResult(
+            success=False,
+            message=f"Source {id!r} not found",
+            code="schema.source_not_found",
+            params={"source": id},
+        )
 
     @strawberry.mutation
-    async def create_domain(self, input: DomainInput) -> MutationResult:  # REQ-021
+    async def create_domain(
+        self, info: StrawberryInfo, input: DomainInput
+    ) -> MutationResult:  # REQ-021, REQ-1531
+        # REQ-1531: the domain vocabulary itself is the org_admin's. A member scoped to sales cannot
+        # answer their own scoping by minting a domain, so this is gated by the right that owns the
+        # org's domains and NOT by domain membership — there is no domain to be a member of yet.
+        from provisa.api.admin.capabilities import require_capability
         from provisa.api.metadata_export.refs import RESERVED_KIND_KEYWORDS
+
+        require_capability(info, "org_settings")
         from provisa.core.models import Domain as DomainModel
         from provisa.core.repositories import domain as domain_repo
 
         # REQ-1385: kind keywords are reserved URI path segments; a domain with one of these
         # names would make its semantic URIs unparseable.
-        if input.id in RESERVED_KIND_KEYWORDS:
+        #
+        # REQ-1526: EVERY SEGMENT, not the whole id. A hierarchical id is split on "/" into path
+        # segments both by the URI builder and by the serialized directory tree, so "a/tables" plants
+        # a domain directory exactly where the kind directory goes even though the id as a whole
+        # matches no reserved word. Checking the id entire only ever caught the one-segment case.
+        reserved = [seg for seg in input.id.split("/") if seg in RESERVED_KIND_KEYWORDS]
+        if reserved:
             return MutationResult(
                 success=False,
-                message=f"Domain id {input.id!r} is a reserved word",
+                message=f"Domain id {input.id!r} uses the reserved word {reserved[0]!r}",
                 code="schema.domain_reserved_word",
-                params={"domain": input.id},
+                params={"domain": input.id, "reserved": reserved[0]},
             )
         pool = await _get_pool()
         model = DomainModel(
@@ -717,18 +839,36 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         async with pool.acquire() as conn:
             await domain_repo.upsert(cast("Connection", conn), model)
-        return MutationResult(success=True, message=f"Domain {input.id!r} created", code="schema.domain_created", params={"domain": input.id})
+        return MutationResult(
+            success=True,
+            message=f"Domain {input.id!r} created",
+            code="schema.domain_created",
+            params={"domain": input.id},
+        )
 
     @strawberry.mutation
-    async def delete_domain(self, id: str) -> MutationResult:
+    async def delete_domain(self, info: StrawberryInfo, id: str) -> MutationResult:  # REQ-1531
+        from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import domain as domain_repo
+
+        require_capability(info, "org_settings")  # REQ-1531: see create_domain
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             deleted = await domain_repo.delete(cast("Connection", conn), id)
         if deleted:
-            return MutationResult(success=True, message=f"Domain {id!r} deleted", code="schema.domain_deleted", params={"domain": id})
-        return MutationResult(success=False, message=f"Domain {id!r} not found", code="schema.domain_not_found", params={"domain": id})
+            return MutationResult(
+                success=True,
+                message=f"Domain {id!r} deleted",
+                code="schema.domain_deleted",
+                params={"domain": id},
+            )
+        return MutationResult(
+            success=False,
+            message=f"Domain {id!r} not found",
+            code="schema.domain_not_found",
+            params={"domain": id},
+        )
 
     @strawberry.mutation
     async def upsert_tag(self, input: TagInput) -> MutationResult:  # REQ-1373, REQ-1375
@@ -1102,9 +1242,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def create_role(
-        self, input: RoleInput
-    ) -> MutationResult:  # REQ-042, REQ-059, REQ-060, REQ-215
+        self, info: StrawberryInfo, input: RoleInput
+    ) -> MutationResult:  # REQ-042, REQ-059, REQ-060, REQ-215, REQ-1531
+        # REQ-1531: a role carries both capabilities and domain_access (REQ-1530), so minting one is
+        # how a member would widen their own scope. It is the org_admin's act, gated by the right
+        # that administers members.
+        from provisa.api.admin.capabilities import require_capability
         from provisa.core.models import Role as RoleModel
+
+        require_capability(info, "user_management")
         from provisa.core.models import RoleRateLimit
         from provisa.core.repositories import role as role_repo
 
@@ -1129,7 +1275,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         async with pool.acquire() as conn:
             await role_repo.upsert(cast("Connection", conn), model)
-        return MutationResult(success=True, message=f"Role {input.id!r} created", code="schema.role_created", params={"role": input.id})
+        return MutationResult(
+            success=True,
+            message=f"Role {input.id!r} created",
+            code="schema.role_created",
+            params={"role": input.id},
+        )
 
     @strawberry.mutation
     async def register_table(
@@ -1196,7 +1347,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def upsert_metric(self, info: StrawberryInfo, input: MetricInput) -> MutationResult:  # REQ-1317
+    async def upsert_metric(
+        self, info: StrawberryInfo, input: MetricInput
+    ) -> MutationResult:  # REQ-1317
         """Create or replace a governed metric definition (REQ-1317). The expression must parse
         under sqlglot and contain at least one aggregate function — hard error otherwise."""
         from provisa.api.admin.capabilities import require_capability
@@ -1241,7 +1394,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.metric_saved_regenerated",
                 params={"metric": input.name, "views": ", ".join(sorted(regenerated))},
             )
-        return MutationResult(success=True, message=f"Metric {input.name!r} saved", code="schema.metric_saved", params={"metric": input.name})
+        return MutationResult(
+            success=True,
+            message=f"Metric {input.name!r} saved",
+            code="schema.metric_saved",
+            params={"metric": input.name},
+        )
 
     @strawberry.mutation
     async def delete_metric(self, info: StrawberryInfo, name: str) -> MutationResult:  # REQ-1317
@@ -1255,8 +1413,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             deleted = await metric_repo.delete(cast("Connection", conn), name)
         if deleted:
             await _rebuild_schemas()  # republish state.metrics + schema metric blocks
-            return MutationResult(success=True, message=f"Metric {name!r} deleted", code="schema.metric_deleted", params={"metric": name})
-        return MutationResult(success=False, message=f"Metric {name!r} not found", code="schema.metric_not_found", params={"metric": name})
+            return MutationResult(
+                success=True,
+                message=f"Metric {name!r} deleted",
+                code="schema.metric_deleted",
+                params={"metric": name},
+            )
+        return MutationResult(
+            success=False,
+            message=f"Metric {name!r} not found",
+            code="schema.metric_not_found",
+            params={"metric": name},
+        )
 
     @strawberry.mutation
     async def update_table(
@@ -1380,33 +1548,89 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def delete_table(self, id: int) -> MutationResult:
+    async def delete_table(self, info: StrawberryInfo, id: int) -> MutationResult:  # REQ-1531
+        # REQ-1531: deleting a registration is a change to the domain that holds it, so it asks the
+        # same question register/update ask. The id names the object, so the domain is looked up.
+        from provisa.api.admin.domain_guard import DomainLookupError, require_table_domain
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            try:
+                await require_table_domain(info, cast("Connection", conn), id)
+            except DomainLookupError:
+                return MutationResult(
+                    success=False,
+                    message=f"Table {id} not found",
+                    code="schema.table_not_found",
+                    params={"table": id},
+                )
             deleted = await table_repo.delete(cast("Connection", conn), id)
         if deleted:
             await _rebuild_schemas()
-            return MutationResult(success=True, message=f"Table {id} deleted", code="schema.table_deleted", params={"table": id})
-        return MutationResult(success=False, message=f"Table {id} not found", code="schema.table_not_found", params={"table": id})
+            return MutationResult(
+                success=True,
+                message=f"Table {id} deleted",
+                code="schema.table_deleted",
+                params={"table": id},
+            )
+        return MutationResult(
+            success=False,
+            message=f"Table {id} not found",
+            code="schema.table_not_found",
+            params={"table": id},
+        )
 
     @strawberry.mutation
-    async def delete_role(self, id: str) -> MutationResult:
+    async def delete_role(self, info: StrawberryInfo, id: str) -> MutationResult:  # REQ-1531
+        from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import role as role_repo
+
+        require_capability(info, "user_management")  # REQ-1531: see create_role
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             deleted = await role_repo.delete(cast("Connection", conn), id)
         if deleted:
-            return MutationResult(success=True, message=f"Role {id!r} deleted", code="schema.role_deleted", params={"role": id})
-        return MutationResult(success=False, message=f"Role {id!r} not found", code="schema.role_not_found", params={"role": id})
+            return MutationResult(
+                success=True,
+                message=f"Role {id!r} deleted",
+                code="schema.role_deleted",
+                params={"role": id},
+            )
+        return MutationResult(
+            success=False,
+            message=f"Role {id!r} not found",
+            code="schema.role_not_found",
+            params={"role": id},
+        )
 
     @strawberry.mutation
-    async def upsert_rls_rule(self, input: RLSRuleInput) -> MutationResult:  # REQ-041, REQ-402
+    async def upsert_rls_rule(
+        self, info: StrawberryInfo, input: RLSRuleInput
+    ) -> MutationResult:  # REQ-041, REQ-402, REQ-1531
+        # REQ-1531: an RLS rule decides who sees which rows of a domain's tables. Writing one is the
+        # masking surface, and it lands in a domain — named directly for a domain-level rule, or the
+        # table's own for a table-level one.
+        from provisa.api.admin.capabilities import require_capability, require_domain
+        from provisa.api.admin.domain_guard import table_domain_by_name
         from provisa.core.models import RLSRule as RLSRuleModel
 
+        require_capability(info, "masking_config")
         pool = await _get_pool()
+        if input.domain_id:
+            require_domain(info, input.domain_id)
+        elif input.table_id:
+            async with pool.acquire() as _gconn:
+                _dom = await table_domain_by_name(cast("Connection", _gconn), input.table_id)
+            if _dom is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Table not registered: {input.table_id}",
+                    code="schema.table_not_found",
+                    params={"table": input.table_id},
+                )
+            require_domain(info, _dom)
         model = RLSRuleModel(
             table_id=input.table_id or None,
             domain_id=input.domain_id or None,
@@ -1422,7 +1646,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return MutationResult(
             success=True,
             message=f"RLS rule for {target} / role {input.role_id!r} saved",
-            code="schema.rls_rule_saved_domain" if input.domain_id else "schema.rls_rule_saved_table",
+            code="schema.rls_rule_saved_domain"
+            if input.domain_id
+            else "schema.rls_rule_saved_table",
             params=(
                 {"domain": input.domain_id, "role": input.role_id}
                 if input.domain_id
@@ -1433,19 +1659,31 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def delete_rls_rule(
         self,
+        info: StrawberryInfo,
         role_id: str,
         table_id: Optional[int] = None,
         domain_id: Optional[str] = None,
-    ) -> MutationResult:
+    ) -> MutationResult:  # REQ-1531
+        from provisa.api.admin.capabilities import require_capability, require_domain
+        from provisa.api.admin.domain_guard import table_domain
 
+        require_capability(info, "masking_config")  # REQ-1531: see upsert_rls_rule
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            if domain_id:
+                require_domain(info, domain_id)
+            elif table_id is not None:
+                require_domain(info, await table_domain(cast("Connection", conn), table_id))
             deleted = await rls_repo.delete(
                 cast("Connection", conn), role_id, table_id=table_id, domain_id=domain_id
             )
         if deleted:
-            return MutationResult(success=True, message="RLS rule deleted", code="schema.rls_rule_deleted")
-        return MutationResult(success=False, message="RLS rule not found", code="schema.rls_rule_not_found")
+            return MutationResult(
+                success=True, message="RLS rule deleted", code="schema.rls_rule_deleted"
+            )
+        return MutationResult(
+            success=False, message="RLS rule not found", code="schema.rls_rule_not_found"
+        )
 
     @strawberry.mutation
     async def execute_creation_request(  # REQ-434, REQ-063
@@ -1459,7 +1697,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         async with pool.acquire() as conn:
             req = await cr_repo.get(cast("Connection", conn), request_id)
         if req is None or req["status"] != "pending":
-            return MutationResult(success=False, message="Request not found or already resolved", code="schema.request_not_pending")
+            return MutationResult(
+                success=False,
+                message="Request not found or already resolved",
+                code="schema.request_not_pending",
+            )
         try:
             require_capability(info, req["capability"])
         except PermissionError as e:
@@ -1484,11 +1726,21 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
                 exists = _ex.scalar()
             if not exists:
-                return MutationResult(success=False, message=f"Webhook {wh_name!r} not found", code="schema.webhook_not_found", params={"webhook": wh_name})
+                return MutationResult(
+                    success=False,
+                    message=f"Webhook {wh_name!r} not found",
+                    code="schema.webhook_not_found",
+                    params={"webhook": wh_name},
+                )
             from provisa.api.app import _rebuild_schemas
 
             await _rebuild_schemas()
-            result = MutationResult(success=True, message=f"Approved webhook {wh_name!r}", code="schema.webhook_approved", params={"webhook": wh_name})
+            result = MutationResult(
+                success=True,
+                message=f"Approved webhook {wh_name!r}",
+                code="schema.webhook_approved",
+                params={"webhook": wh_name},
+            )
         else:
             return MutationResult(
                 success=False,
@@ -1503,7 +1755,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         resolved_by = getattr(identity, "user_id", None) if identity is not None else None
         async with pool.acquire() as conn:
             await cr_repo.mark_executed(cast("Connection", conn), request_id, resolved_by)
-        return MutationResult(success=True, message=f"Executed creation request #{request_id}", code="schema.request_executed", params={"id": request_id})
+        return MutationResult(
+            success=True,
+            message=f"Executed creation request #{request_id}",
+            code="schema.request_executed",
+            params={"id": request_id},
+        )
 
     @strawberry.mutation
     async def reject_creation_request(  # REQ-434, REQ-063
@@ -1514,7 +1771,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import creation_request as cr_repo
 
         if not reason or not reason.strip():
-            return MutationResult(success=False, message="A rejection reason is required", code="schema.rejection_reason_required")
+            return MutationResult(
+                success=False,
+                message="A rejection reason is required",
+                code="schema.rejection_reason_required",
+            )
         pool = await _get_pool()
         async with pool.acquire() as conn:
             req = await cr_repo.get(cast("Connection", conn), request_id)
@@ -1533,7 +1794,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             await cr_repo.mark_rejected(
                 cast("Connection", conn), request_id, reason.strip(), resolved_by
             )
-        return MutationResult(success=True, message=f"Rejected creation request #{request_id}", code="schema.request_rejected", params={"id": request_id})
+        return MutationResult(
+            success=True,
+            message=f"Rejected creation request #{request_id}",
+            code="schema.request_rejected",
+            params={"id": request_id},
+        )
 
     @strawberry.mutation
     async def upsert_relationship(  # REQ-019, REQ-020, REQ-366, REQ-434
@@ -1550,8 +1816,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             deleted = await rel_repo.delete(cast("Connection", conn), id)
         if deleted:
             await _rebuild_schemas()
-            return MutationResult(success=True, message=f"Relationship {id!r} deleted", code="schema.relationship_deleted", params={"relationship": id})
-        return MutationResult(success=False, message=f"Relationship {id!r} not found", code="schema.relationship_not_found", params={"relationship": id})
+            return MutationResult(
+                success=True,
+                message=f"Relationship {id!r} deleted",
+                code="schema.relationship_deleted",
+                params={"relationship": id},
+            )
+        return MutationResult(
+            success=False,
+            message=f"Relationship {id!r} not found",
+            code="schema.relationship_not_found",
+            params={"relationship": id},
+        )
 
     # ── Admin: Cache Configuration ──
 
@@ -1568,7 +1844,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 .values(cache_enabled=cache_enabled, cache_ttl=cache_ttl)
             )
             if (result.rowcount or 0) == 0:
-                return MutationResult(success=False, message=f"Source {source_id!r} not found", code="schema.source_not_found", params={"source": source_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Source {source_id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": source_id},
+                )
         return MutationResult(
             success=True,
             message=f"Cache settings updated for source {source_id!r}",
@@ -1589,8 +1870,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 .values(cache_ttl=cache_ttl)
             )
             if (result.rowcount or 0) == 0:
-                return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
-        return MutationResult(success=True, message=f"Cache TTL updated for table {table_id}", code="schema.table_cache_updated", params={"table": table_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
+        return MutationResult(
+            success=True,
+            message=f"Cache TTL updated for table {table_id}",
+            code="schema.table_cache_updated",
+            params={"table": table_id},
+        )
 
     @strawberry.mutation
     async def update_source_prefer_materialized(
@@ -1605,7 +1896,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 .values(prefer_materialized=prefer_materialized)
             )
             if (result.rowcount or 0) == 0:
-                return MutationResult(success=False, message=f"Source {source_id!r} not found", code="schema.source_not_found", params={"source": source_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Source {source_id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": source_id},
+                )
         return MutationResult(
             success=True,
             message=f"prefer_materialized set for source {source_id!r}",
@@ -1626,8 +1922,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 .values(prefer_materialized=prefer_materialized)
             )
             if (result.rowcount or 0) == 0:
-                return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
-        return MutationResult(success=True, message=f"prefer_materialized set for table {table_id}", code="schema.table_prefer_materialized_set", params={"table": table_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
+        return MutationResult(
+            success=True,
+            message=f"prefer_materialized set for table {table_id}",
+            code="schema.table_prefer_materialized_set",
+            params={"table": table_id},
+        )
 
     @strawberry.mutation
     async def update_source_load_protection(
@@ -1651,7 +1957,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             row = _res.fetchone()
             if row is None:
-                return MutationResult(success=False, message=f"Source {source_id!r} not found", code="schema.source_not_found", params={"source": source_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Source {source_id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": source_id},
+                )
             err = _validate_load_protection(
                 load_protected, off_peak_window, row.cache_ttl, row.change_signal, source_id
             )
@@ -1669,7 +1980,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     off_peak_tz=off_peak_tz,
                 )
             )
-        return MutationResult(success=True, message=f"load protection set for source {source_id!r}", code="schema.source_load_protection_set", params={"source": source_id})
+        return MutationResult(
+            success=True,
+            message=f"load protection set for source {source_id!r}",
+            code="schema.source_load_protection_set",
+            params={"source": source_id},
+        )
 
     @strawberry.mutation
     async def update_table_load_protection(
@@ -1696,7 +2012,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             row = _res.fetchone()
             if row is None:
-                return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
             # REQ-1141/1162: load protection (WHEN a source may be hit) and snapshotting (WHAT
             # point-in-time the data represents) are different axes, but on ONE table their timing can
             # fight — a snapshot boundary can fall outside the off-peak window, so the snapshot never
@@ -1724,7 +2045,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             src = _sres.fetchone()
             effective_lp = src.load_protected if load_protected is None else load_protected
             eff_window = off_peak_window or (src.off_peak_window if src else None)
-            eff_ttl = row.cache_ttl if row.cache_ttl is not None else (src.cache_ttl if src else None)
+            eff_ttl = (
+                row.cache_ttl if row.cache_ttl is not None else (src.cache_ttl if src else None)
+            )
             eff_sig = row.change_signal or (src.change_signal if src else None)
             err = _validate_load_protection(
                 effective_lp, eff_window, eff_ttl, eff_sig, f"table {table_id}"
@@ -1743,7 +2066,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     off_peak_tz=off_peak_tz,
                 )
             )
-        return MutationResult(success=True, message=f"load protection set for table {table_id}", code="schema.table_load_protection_set", params={"table": table_id})
+        return MutationResult(
+            success=True,
+            message=f"load protection set for table {table_id}",
+            code="schema.table_load_protection_set",
+            params={"table": table_id},
+        )
 
     # ── Admin: Naming Convention ──
 
@@ -1764,7 +2092,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         state.global_gql_naming_convention = convention
         _naming.configure(gql=convention, sql=state.global_sql_naming_convention)
         await _rebuild_schemas()
-        return MutationResult(success=True, message=f"Naming convention set to {convention!r}", code="schema.naming_convention_set", params={"convention": convention})
+        return MutationResult(
+            success=True,
+            message=f"Naming convention set to {convention!r}",
+            code="schema.naming_convention_set",
+            params={"convention": convention},
+        )
 
     @strawberry.mutation
     async def update_source_naming(
@@ -1779,7 +2112,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 .values(gql_naming_convention=gql_naming_convention)
             )
             if (result.rowcount or 0) == 0:
-                return MutationResult(success=False, message=f"Source {source_id!r} not found", code="schema.source_not_found", params={"source": source_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Source {source_id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": source_id},
+                )
         await _rebuild_schemas()
         return MutationResult(
             success=True,
@@ -1790,9 +2128,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_source_allowed_domains(
-        self, source_id: str, allowed_domains: list[str]
-    ) -> MutationResult:
+        self, info: StrawberryInfo, source_id: str, allowed_domains: list[str]
+    ) -> MutationResult:  # REQ-1531
         """Set the allowed domain list for a source (empty list = unrestricted)."""
+        # REQ-1531: this decides which domains may reach a source at all. A member widening it would
+        # be granting themselves reach, so it belongs to whoever registers sources, and is not
+        # gated by membership in the domains being listed.
+        from provisa.api.admin.capabilities import require_capability
+
+        require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(
@@ -1801,7 +2145,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 .values(allowed_domains=allowed_domains)
             )
             if (result.rowcount or 0) == 0:
-                return MutationResult(success=False, message=f"Source {source_id!r} not found", code="schema.source_not_found", params={"source": source_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Source {source_id!r} not found",
+                    code="schema.source_not_found",
+                    params={"source": source_id},
+                )
         from provisa.api.app import state
 
         if allowed_domains:
@@ -1829,7 +2178,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 .values(gql_naming_convention=gql_naming_convention)
             )
             if (result.rowcount or 0) == 0:
-                return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
         await _rebuild_schemas()
         return MutationResult(
             success=True,
@@ -1869,7 +2223,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
             ).fetchone()
             if row is None:
-                return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
             schema_name, table_name, source_id = row[0], row[1], row[2]
             node = f"{schema_name}.{table_name}"
             if state.mv_registry.get(f"view-{table_name}") is not None:
@@ -1878,15 +2237,29 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 scope = "source"
                 engine = _resolve_engine()
                 if engine is None:
-                    return MutationResult(success=False, message="Federation engine is not ready", code="schema.engine_not_ready", params={"table": node})
+                    return MutationResult(
+                        success=False,
+                        message="Federation engine is not ready",
+                        code="schema.engine_not_ready",
+                        params={"table": node},
+                    )
                 # The live config's own Source model — the same object the event loop classifies from,
                 # so this answer and the DAG's cannot disagree.
                 src = next(
-                    (s for s in (state.config.sources if state.config else []) if s.id == source_id),
+                    (
+                        s
+                        for s in (state.config.sources if state.config else [])
+                        if s.id == source_id
+                    ),
                     None,
                 )
                 if src is None:
-                    return MutationResult(success=False, message=f"Source {source_id!r} not found", code="schema.source_not_found", params={"source": source_id})
+                    return MutationResult(
+                        success=False,
+                        message=f"Source {source_id!r} not found",
+                        code="schema.source_not_found",
+                        params={"source": source_id},
+                    )
                 try:
                     landed = federate(src, engine) is Strategy.MATERIALIZED
                 except UnreachableSource:
@@ -1894,11 +2267,21 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     # re-land is exactly how an operator retries the load once it is back.
                     landed = True
                 if not landed:
-                    return MutationResult(success=False, message=f"{node} federates live — it has no landed rows to regenerate", code="schema.table_not_landed", params={"table": node})
+                    return MutationResult(
+                        success=False,
+                        message=f"{node} federates live — it has no landed rows to regenerate",
+                        code="schema.table_not_landed",
+                        params={"table": node},
+                    )
             try:
                 event_id = await injector.force_regen(conn, scope=scope, node=node, reason=reason)
             except ValueError as exc:  # REQ-968 refuses a missing reason / unknown scope, loudly
-                return MutationResult(success=False, message=str(exc), code="schema.regen_refused", params={"table": node})
+                return MutationResult(
+                    success=False,
+                    message=str(exc),
+                    code="schema.regen_refused",
+                    params={"table": node},
+                )
         return MutationResult(
             success=True,
             message=f"Regen queued for {node}",
@@ -1915,14 +2298,24 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         mv = state.mv_registry.get(mv_id)
         if mv is None:
-            return MutationResult(success=False, message=f"MV {mv_id!r} not found", code="schema.mv_not_found", params={"mv": mv_id})
+            return MutationResult(
+                success=False,
+                message=f"MV {mv_id!r} not found",
+                code="schema.mv_not_found",
+                params={"mv": mv_id},
+            )
         try:
             from provisa.mv.refresh import refresh_mv
 
             assert state.federation_engine is not None
             # REQ-879: coordinate the refresh across the fleet via the shared control-plane catalog.
             await refresh_mv(state.federation_engine, mv, state.mv_registry, store=state.tenant_db)
-            return MutationResult(success=True, message=f"MV {mv_id!r} refreshed", code="schema.mv_refreshed", params={"mv": mv_id})
+            return MutationResult(
+                success=True,
+                message=f"MV {mv_id!r} refreshed",
+                code="schema.mv_refreshed",
+                params={"mv": mv_id},
+            )
         except Exception as e:
             logging.getLogger(__name__).exception("refresh_mv %r failed", mv_id)
             return MutationResult(success=False, message=str(e))
@@ -1935,7 +2328,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         mv = state.mv_registry.get(mv_id)
         if mv is None:
-            return MutationResult(success=False, message=f"MV {mv_id!r} not found", code="schema.mv_not_found", params={"mv": mv_id})
+            return MutationResult(
+                success=False,
+                message=f"MV {mv_id!r} not found",
+                code="schema.mv_not_found",
+                params={"mv": mv_id},
+            )
         mv.enabled = enabled
         if not enabled:
             mv.status = MVStatus.DISABLED
@@ -1957,7 +2355,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         try:
             count = await state.response_cache_store.invalidate_by_pattern("provisa:cache:*")
-            return MutationResult(success=True, message=f"Purged {count} cache entries", code="schema.cache_purged", params={"count": count})
+            return MutationResult(
+                success=True,
+                message=f"Purged {count} cache entries",
+                code="schema.cache_purged",
+                params={"count": count},
+            )
         except Exception as e:
             logging.getLogger(__name__).exception("purge_cache failed")
             return MutationResult(success=False, message=str(e))
@@ -2001,7 +2404,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _srow = _res.fetchone()
             row = dict(_srow._mapping) if _srow is not None else None
             if not row:
-                return MutationResult(success=False, message=f"Table {table_id} not found", code="schema.table_not_found", params={"table": table_id})
+                return MutationResult(
+                    success=False,
+                    message=f"Table {table_id} not found",
+                    code="schema.table_not_found",
+                    params={"table": table_id},
+                )
             if row["type"] != "sqlite":
                 return MutationResult(
                     success=False,
@@ -2013,7 +2421,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             # An ATTACH engine (DuckDB) reads the sqlite file live — no replica to re-migrate (REQ-947).
             if engine_attaches(getattr(_state, "federation_engine", None), "sqlite"):
-                return MutationResult(success=True, message="attached live; no migration needed", code="schema.attached_live")
+                return MutationResult(
+                    success=True,
+                    message="attached live; no migration needed",
+                    code="schema.attached_live",
+                )
             from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
 
             try:
@@ -2046,7 +2458,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         path = _config_path()
         if not path.exists():
-            return MutationResult(success=False, message="Config file not found", code="schema.config_not_found")
+            return MutationResult(
+                success=False, message="Config file not found", code="schema.config_not_found"
+            )
 
         cfg = read_config()
         triggers = cfg.get("scheduled_triggers", [])
@@ -2058,7 +2472,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 break
 
         if not found:
-            return MutationResult(success=False, message=f"Task {task_id!r} not found", code="schema.task_not_found", params={"task": task_id})
+            return MutationResult(
+                success=False,
+                message=f"Task {task_id!r} not found",
+                code="schema.task_not_found",
+                params={"task": task_id},
+            )
 
         with open(path, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
@@ -2101,11 +2520,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.app import state
 
         if state.federation_engine is None:
-            return MutationResult(success=False, message="Query engine not available", code="schema.query_engine_unavailable")
+            return MutationResult(
+                success=False,
+                message="Query engine not available",
+                code="schema.query_engine_unavailable",
+            )
 
         pool = await _get_pool()
         if pool is None:
-            return MutationResult(success=False, message="Database pool not available", code="schema.db_pool_unavailable")
+            return MutationResult(
+                success=False,
+                message="Database pool not available",
+                code="schema.db_pool_unavailable",
+            )
 
         async with pool.acquire() as conn:
             _res = await conn.execute_core(

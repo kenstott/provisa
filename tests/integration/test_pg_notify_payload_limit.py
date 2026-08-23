@@ -88,7 +88,7 @@ async def test_multibyte_row_is_truncated_under_the_byte_limit(notified_table):
     queue = await _listen(conn, table)
 
     await conn.execute(
-        f"INSERT INTO {schema}.{table} (body) VALUES ($1)", "\U0001F600" * MAX_NOTIFY_BYTES
+        f"INSERT INTO {schema}.{table} (body) VALUES ($1)", "\U0001f600" * MAX_NOTIFY_BYTES
     )
 
     payload = await asyncio.wait_for(queue.get(), timeout=5)

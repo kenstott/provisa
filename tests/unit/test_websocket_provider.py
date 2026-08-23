@@ -24,39 +24,48 @@ import pytest
 # _extract_path
 # ---------------------------------------------------------------------------
 
+
 class TestExtractPath:
     def test_top_level_key(self):
         from provisa.subscriptions.websocket_provider import _extract_path
+
         assert _extract_path({"a": 1}, "a") == 1
 
     def test_nested_key(self):
         from provisa.subscriptions.websocket_provider import _extract_path
+
         assert _extract_path({"a": {"b": {"c": 42}}}, "a.b.c") == 42
 
     def test_list_index(self):
         from provisa.subscriptions.websocket_provider import _extract_path
+
         assert _extract_path({"items": [10, 20, 30]}, "items.1") == 20
 
     def test_missing_key_returns_none(self):
         from provisa.subscriptions.websocket_provider import _extract_path
+
         assert _extract_path({"a": 1}, "b") is None
 
     def test_missing_nested_returns_none(self):
         from provisa.subscriptions.websocket_provider import _extract_path
+
         assert _extract_path({"a": {}}, "a.b.c") is None
 
     def test_non_dict_mid_path_returns_none(self):
         from provisa.subscriptions.websocket_provider import _extract_path
+
         assert _extract_path({"a": 99}, "a.b") is None
 
     def test_list_out_of_bounds_returns_none(self):
         from provisa.subscriptions.websocket_provider import _extract_path
+
         assert _extract_path({"items": [1]}, "items.5") is None
 
 
 # ---------------------------------------------------------------------------
 # WebSocketNotificationProvider
 # ---------------------------------------------------------------------------
+
 
 class FakeWS:
     """Fake websocket connection: yields pre-loaded messages then stops."""
@@ -149,9 +158,7 @@ class TestWebSocketProvider:
         ws = FakeWS([json.dumps(msg)])
 
         with patch("websockets.connect", return_value=ws):
-            provider = WebSocketNotificationProvider(
-                url="ws://localhost/feed", event_path="data"
-            )
+            provider = WebSocketNotificationProvider(url="ws://localhost/feed", event_path="data")
             events = []
             async for ev in provider.watch("prices"):
                 events.append(ev)
@@ -249,6 +256,7 @@ class TestWebSocketProvider:
 # ---------------------------------------------------------------------------
 # Registry integration
 # ---------------------------------------------------------------------------
+
 
 class TestWebSocketRegistry:
     def test_registry_returns_websocket_provider(self):

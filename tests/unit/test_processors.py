@@ -104,9 +104,19 @@ def test_validate_covers_ir_vocabulary():
         ("m", "json"),
     )
     row = {
-        "a": "x", "b": 1, "c": 10**18, "d": 1.5, "e": 2.5, "f": Decimal("3.14"),
-        "g": True, "h": dt.date(2026, 7, 20), "i": "2026-07-20T00:00:00",
-        "j": dt.time(1, 2, 3), "k": "0b7f...", "l": b"\x00\x01", "m": {"any": [1, 2]},
+        "a": "x",
+        "b": 1,
+        "c": 10**18,
+        "d": 1.5,
+        "e": 2.5,
+        "f": Decimal("3.14"),
+        "g": True,
+        "h": dt.date(2026, 7, 20),
+        "i": "2026-07-20T00:00:00",
+        "j": dt.time(1, 2, 3),
+        "k": "0b7f...",
+        "l": b"\x00\x01",
+        "m": {"any": [1, 2]},
     }
     assert list(validate_rows([row], schema, where="t")) == [row]
 

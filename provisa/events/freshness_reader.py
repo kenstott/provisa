@@ -57,7 +57,11 @@ def make_db_freshness_of(
         async with db.acquire() as conn:
             state = await queue.get_node_state(conn, node)
         if state is None or state["last_refresh_at"] is None:
-            return StateSubject(refreshed_at=None, ok=False)  # never refreshed → an outage, not fresh
-        return StateSubject(refreshed_at=state["last_refresh_at"], ok=bool(state["last_refresh_ok"]))
+            return StateSubject(
+                refreshed_at=None, ok=False
+            )  # never refreshed → an outage, not fresh
+        return StateSubject(
+            refreshed_at=state["last_refresh_at"], ok=bool(state["last_refresh_ok"])
+        )
 
     return freshness_of

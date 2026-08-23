@@ -162,9 +162,7 @@ _SODA_KINDS: tuple[CheckKind, ...] = (
 _MOSTLY = CheckParam("mostly", "number")
 
 _GX_KINDS: tuple[CheckKind, ...] = (
-    CheckKind(
-        check_type="expect_column_values_to_not_be_null", scope="column", params=(_MOSTLY,)
-    ),
+    CheckKind(check_type="expect_column_values_to_not_be_null", scope="column", params=(_MOSTLY,)),
     CheckKind(check_type="expect_column_values_to_be_unique", scope="column", params=(_MOSTLY,)),
     CheckKind(
         check_type="expect_column_values_to_be_in_set",

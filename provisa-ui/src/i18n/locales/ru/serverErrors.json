@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "Нельзя удалять системные роли",
-      "cannot_modify_system": "Нельзя изменять системные роли",
+      "cannot_modify_administrative": "Нельзя изменять административные роли",
       "not_found": "Роль не найдена",
       "org_selection_required": "Требуется выбор организации"
     },

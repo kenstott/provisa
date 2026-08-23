@@ -74,9 +74,7 @@ def _snapshot(
                 domain_id=None,
                 description="orders",
                 columns=[
-                    ColumnAsset(
-                        ref=column_ref, name="cust_id", data_type="integer", description=""
-                    )
+                    ColumnAsset(ref=column_ref, name="cust_id", data_type="integer", description="")
                 ],
                 semantic_uri=f"provisa://{ORG}/sales/tables/orders",
             )
@@ -139,9 +137,7 @@ def test_a_snapshot_without_terms_emits_no_glossary_aspects():
 def test_a_deprecated_term_carries_datahubs_native_deprecation_aspect():
     proposals = to_proposals(_snapshot([_term(1, "legacy_margin", deprecated=True)]))
     deprecation = next(
-        p
-        for p in proposals
-        if p.aspect_name == "deprecation" and p.entity_type == "glossaryTerm"
+        p for p in proposals if p.aspect_name == "deprecation" and p.entity_type == "glossaryTerm"
     )
     assert deprecation.urn == glossary_term_urn(ORG, "legacy_margin")
     assert deprecation.aspect["deprecated"] is True
@@ -245,8 +241,7 @@ async def test_a_renamed_term_deprecates_its_old_urn_toward_the_successor(monkey
     deprecations = [
         p["proposal"]
         for p in posted
-        if p["proposal"]["aspectName"] == "deprecation"
-        and p["proposal"]["entityUrn"] == old_urn
+        if p["proposal"]["aspectName"] == "deprecation" and p["proposal"]["entityUrn"] == old_urn
     ]
     assert len(deprecations) == 1
     aspect = json.loads(deprecations[0]["aspect"]["value"])

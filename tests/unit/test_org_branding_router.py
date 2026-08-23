@@ -76,9 +76,7 @@ async def admin_db():
 
 @pytest.fixture
 def client(admin_db, monkeypatch):
-    monkeypatch.setattr(
-        "provisa.api.app.state", SimpleNamespace(admin_db=admin_db), raising=False
-    )
+    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(admin_db=admin_db), raising=False)
     app = FastAPI()
     app.include_router(branding_router)
     with TestClient(app) as test_client:
@@ -173,9 +171,7 @@ async def test_the_logo_is_served_as_its_own_bytes_with_the_stored_type(client, 
     assert read.headers["x-content-type-options"] == "nosniff"
 
 
-async def test_a_tenant_supplied_svg_is_served_under_a_policy_that_cannot_execute(
-    client, admin_db
-):
+async def test_a_tenant_supplied_svg_is_served_under_a_policy_that_cannot_execute(client, admin_db):
     await _set_logo(admin_db, "acme", b"<svg xmlns='http://www.w3.org/2000/svg'/>", "image/svg+xml")
 
     read = client.get("/orgs/branding/logo", headers={"host": "acme.provisa.dev"})

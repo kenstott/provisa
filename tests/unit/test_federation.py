@@ -60,12 +60,8 @@ def _make_base_schema(type_names: list[str] | None = None) -> GraphQLSchema:
     query = GraphQLObjectType(
         "Query",
         {
-            "orders": GraphQLField(
-                GraphQLList(GraphQLNonNull(orders_type))
-            ),
-            "customers": GraphQLField(
-                GraphQLList(GraphQLNonNull(customers_type))
-            ),
+            "orders": GraphQLField(GraphQLList(GraphQLNonNull(orders_type))),
+            "customers": GraphQLField(GraphQLList(GraphQLNonNull(customers_type))),
         },
     )
     return GraphQLSchema(query=query)
@@ -281,9 +277,7 @@ class TestGroupRepresentations:
 
     def test_missing_typename_raises(self):
         with pytest.raises(ValueError, match="missing __typename"):
-            group_representations(
-                [{"id": 1}], {"Orders": 1}, {"Orders": ["id"]}
-            )
+            group_representations([{"id": 1}], {"Orders": 1}, {"Orders": ["id"]})
 
     def test_unknown_type_raises(self):
         with pytest.raises(ValueError, match="Unknown entity type"):
@@ -307,9 +301,7 @@ class TestGroupRepresentations:
 
 class TestCompileEntityQuery:
     def test_single_pk(self):
-        sql, params = compile_entity_query(
-            "pg", "public", "orders", ["id"], [{"id": 1}, {"id": 2}]
-        )
+        sql, params = compile_entity_query("pg", "public", "orders", ["id"], [{"id": 1}, {"id": 2}])
         assert '"id" IN ($1, $2)' in sql
         assert params == [1, 2]
         assert '"pg"."public"."orders"' in sql
@@ -335,9 +327,7 @@ class TestResolveEntities:
         reps = [{"__typename": "Orders", "id": 1}]
         type_to_table = {"Orders": 1}
         type_to_keys = {"Orders": ["id"]}
-        table_meta = {
-            1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}
-        }
+        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
 
         async def mock_execute(sql, params, rls_ctx):
             return [{"id": 1, "amount": 100}]
@@ -390,9 +380,7 @@ class TestResolveEntities:
         reps = [{"__typename": "Orders", "id": 1}]
         type_to_table = {"Orders": 1}
         type_to_keys = {"Orders": ["id"]}
-        table_meta = {
-            1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}
-        }
+        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
 
         captured_rls = {}
 
@@ -416,9 +404,7 @@ class TestResolveEntities:
         reps = [{"__typename": "Orders", "id": 999}]
         type_to_table = {"Orders": 1}
         type_to_keys = {"Orders": ["id"]}
-        table_meta = {
-            1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}
-        }
+        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
 
         async def mock_execute(sql, params, rls_ctx):
             return []  # no rows found

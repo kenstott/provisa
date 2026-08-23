@@ -242,9 +242,7 @@ async def publish_snapshot(org_id: str) -> PublishResult:
             # REQ-1389: hand the provider the vendor ids captured by earlier publishes, so
             # a physically re-addressed asset rebinds the SAME catalog entity instead of
             # trusting the vendor's name-keyed upsert.
-            exporter.stored_bindings = await catalog_binding.load_bindings(
-                conn, config.provider
-            )
+            exporter.stored_bindings = await catalog_binding.load_bindings(conn, config.provider)
         result = await exporter.publish(snapshot)
         if result.bindings:
             async with tenant_db.acquire() as conn:

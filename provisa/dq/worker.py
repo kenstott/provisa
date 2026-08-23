@@ -215,9 +215,7 @@ def run_gx(payload: dict) -> dict:
     data_source = context.data_sources.add_postgres(
         name=payload["data_source_name"], connection_string=connection_string
     )
-    asset = data_source.add_table_asset(
-        name=table_name, table_name=table_name, schema_name=schema
-    )
+    asset = data_source.add_table_asset(name=table_name, table_name=table_name, schema_name=schema)
     batch_definition = asset.add_batch_definition_whole_table("provisa_scan")
     suite = context.suites.add(
         ExpectationSuite(
@@ -255,9 +253,7 @@ def _gx_check_row(validation_result: Any) -> dict:
     column_name = kwargs.get("column") or ""
     exception_info = validation_result.exception_info or {}
     raised = any(
-        info.get("raised_exception")
-        for info in exception_info.values()
-        if isinstance(info, dict)
+        info.get("raised_exception") for info in exception_info.values() if isinstance(info, dict)
     )
     if raised:
         outcome = "NOT_EVALUATED"

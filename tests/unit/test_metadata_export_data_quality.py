@@ -305,9 +305,7 @@ def test_a_warn_is_published_as_a_failure_not_a_pass():
     facet = orders.payload["dataset"]["facets"]["dataQualityAssertions"]
     assert [(e["column"], e["success"]) for e in facet["assertions"]] == [("customer", False)]
 
-    result = next(
-        e for e in om_entities(snapshot) if e.kind == "test_case_result"
-    )
+    result = next(e for e in om_entities(snapshot) if e.kind == "test_case_result")
     assert result.body["testCaseStatus"] == "Failed"
 
     run = next(p for p in to_proposals(snapshot) if p.aspect_name == "assertionRunEvent")
@@ -401,7 +399,9 @@ def test_openmetadata_test_definitions_name_the_checker_as_the_platform(snapshot
 def test_openmetadata_test_case_names_survive_a_check_being_removed(snapshot):
     """A positional name would re-address every case below a removed check."""
     full = {e.body["name"] for e in om_entities(snapshot) if e.kind == "test_case"}
-    trimmed_contract = "\n".join(CONTRACT.strip().splitlines()[:1] + CONTRACT.strip().splitlines()[5:])
+    trimmed_contract = "\n".join(
+        CONTRACT.strip().splitlines()[:1] + CONTRACT.strip().splitlines()[5:]
+    )
     trimmed = build_snapshot(
         _config(tables=[_observed(), _results(trimmed_contract)]),
         org_id="acme",

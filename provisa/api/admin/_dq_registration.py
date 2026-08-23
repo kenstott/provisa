@@ -50,9 +50,7 @@ async def apply_dq_registration(conn: "Connection", model) -> None:
     from provisa.dq.contract import CHECKERS
     from provisa.dq.registration import derive_checker_table, is_checker_source_type
 
-    result = await conn.execute_core(
-        select(sources.c.type).where(sources.c.id == model.source_id)
-    )
+    result = await conn.execute_core(select(sources.c.type).where(sources.c.id == model.source_id))
     fetched = result.fetchone()
     source_type = fetched._mapping["type"] if fetched is not None else None
     if not is_checker_source_type(source_type):

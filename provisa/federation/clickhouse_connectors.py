@@ -109,7 +109,7 @@ class ClickHouseSqliteConnector(Connector):  # REQ-1178
         local_schema = f"ch_{source.id}"
         return {
             "attach_ddl": [
-                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = SQLite(\'{source.path}\')'
+                f"CREATE DATABASE IF NOT EXISTS \"{local_schema}\" ENGINE = SQLite('{source.path}')"
             ],
             "local_schema": local_schema,
         }

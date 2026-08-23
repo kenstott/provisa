@@ -32,7 +32,9 @@ def _norm(d: dict) -> dict:
     """Order-insensitive view of a merged-graph dict for comparison."""
     return {
         "nodes": sorted(d["nodes"], key=lambda n: n["id"]),
-        "edges": sorted(d["edges"], key=lambda e: (e["source"], e["target"], e.get("transform", ""))),
+        "edges": sorted(
+            d["edges"], key=lambda e: (e["source"], e["target"], e.get("transform", ""))
+        ),
         "outputs": sorted(d["outputs"]),
         "cycles": sorted([sorted(c["nodes"]) for c in d.get("cycles", [])]),
     }

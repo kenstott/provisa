@@ -556,6 +556,22 @@ code:not(pre code) {
 .more:hover::after { transform: translateX(3px); }
 .section-note + .more { margin-top: 18px; }
 
+/* ── Protocol matrix disclosure ───────────────────────── */
+.proto-expand {
+  margin-top: 72px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+.proto-expand[open] { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.proto-expand summary {
+  cursor: pointer; list-style: none; padding: 18px 24px; font-weight: 600; font-size: .98rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.proto-expand summary::-webkit-details-marker { display: none; }
+.proto-expand summary::after { content: "+"; color: var(--primary-hover); font-size: 1.3rem; font-weight: 400; line-height: 1; }
+.proto-expand[open] summary::after { content: "–"; }
+.proto-expand .iface-matrix { padding: 4px 24px 24px; }
+
 /* ── FAQ ───────────────────────────────────────────── */
 .faq { display: grid; gap: 12px; }
 .faq details {

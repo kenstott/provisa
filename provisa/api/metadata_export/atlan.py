@@ -257,9 +257,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
         anchor is not the Provisa glossary is refused, never modified (ownership rule).
         """
         live_guid, _physical_key = binding
-        fetch = await client.get(
-            self._url(f"{self.entity_guid_path}/{live_guid}"), headers=headers
-        )
+        fetch = await client.get(self._url(f"{self.entity_guid_path}/{live_guid}"), headers=headers)
         if fetch.status_code >= 400:
             result.errors.append(
                 AssetError(
@@ -295,9 +293,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
             relationships={"anchor": {"typeName": GLOSSARY_TYPE, "guid": glossary_guid}},
         )
 
-    async def _publish_glossary(
-        self, snapshot: MetadataSnapshot, result: PublishResult
-    ) -> None:
+    async def _publish_glossary(self, snapshot: MetadataSnapshot, result: PublishResult) -> None:
         """Publish the term graph into the Provisa-owned glossary (REQ-1387).
 
         Every term lands in the ONE glossary Provisa creates and owns. A vendor-side term

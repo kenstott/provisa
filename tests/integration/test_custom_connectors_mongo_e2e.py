@@ -111,7 +111,9 @@ def _install_mongo_fdw_into_pgserver() -> None:
 @pytest.fixture(scope="session")
 def pg_with_mongo_fdw():
     if sys.platform != "darwin" or not _have_build_tools():
-        pytest.skip("mongo_fdw build here is wired for macOS (dylib/install_name_tool) + a C toolchain")
+        pytest.skip(
+            "mongo_fdw build here is wired for macOS (dylib/install_name_tool) + a C toolchain"
+        )
     _build_mongo_fdw()
     _install_mongo_fdw_into_pgserver()
     base = tempfile.mkdtemp(prefix="provisa_mongo_fdw_")
@@ -124,7 +126,9 @@ def pg_with_mongo_fdw():
     yield server
 
 
-async def test_config_driven_mongo_fdw_federates_live_mongodb(pg_with_mongo_fdw, tmp_path, monkeypatch):
+async def test_config_driven_mongo_fdw_federates_live_mongodb(
+    pg_with_mongo_fdw, tmp_path, monkeypatch
+):
     server = pg_with_mongo_fdw
     mongo_port = int(os.environ["MONGO_PORT"])  # set by the requires_mongodb docker provisioning
 

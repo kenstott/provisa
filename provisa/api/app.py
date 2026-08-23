@@ -93,12 +93,18 @@ from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
 from provisa.api.org_runtime import (
     ActiveOrgPool,
+    active_env,
     OrgRegistry,
     OrgRuntime,
+    current_env,
     current_org,
+    reset_current_env,
     reset_current_org,
+    runtime_key,
+    set_current_env,
     set_current_org,
 )
+from provisa.core.environments import PROD, org_schema
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 from provisa.api.admin.db_queries import (
@@ -148,9 +154,7 @@ class AppState:
     # coordinator generation it was opened against. `flight_client` above is the OTHER deployments'
     # single proxy, which sits beside the control plane at a stable name.
     flight_clients: dict[str, tuple[int, Any]] = {}  # shard → (generation, ADBC connection)
-    # Full source-row map from the DB, published by _rebuild_schemas so NativeEngineBackend can
-    # attach dynamically registered sources that are not in state.config (YAML-only).
-    runtime_sources: dict[str, dict] = {}
+    # runtime_sources is org-routed; see the property below.
     # schema_build_cache is org-routed; see the property below.
     schema_version: int = (
         0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
@@ -315,13 +319,29 @@ class AppState:
             self.org_registry.invalidate(old)
 
     def _active_runtime(self) -> OrgRuntime:
-        """The OrgRuntime for the current request's org, or the default-org runtime
-        when no org is bound. Never fabricates a runtime for an unbuilt org — a
+        """The OrgRuntime for the current request's org AND environment, or the default-org
+        runtime when no org is bound. Never fabricates a runtime for an unbuilt org — a
         tenant-data path with an unbuilt selected org is a routing defect that the
-        entrypoint must have caught (see require_current_org)."""
+        entrypoint must have caught (see require_current_org).
+
+        REQ-1488/REQ-1529: the environment is part of the identity of a runtime, not a variation
+        within one. A branch holds a separate copy of the model in a separate schema and reaches
+        its sources through bindings it may have inherited read-only, so serving it from its base's
+        runtime would hand it the base's pools and compiled schemas. ``runtime_key`` keys prod on
+        the bare org id, so an org that never created an environment resolves exactly as before."""
         org_id = current_org.get() or self.org_id
-        rt = self.org_registry.get(org_id)
+        env = current_env.get()
+        rt = self.org_registry.get(runtime_key(org_id, env))
         if rt is None:
+            if env is not None and env != PROD:
+                # REQ-1529: NOT the default runtime. A branch whose runtime was never built must
+                # fail, because the default one is prod's — falling back would serve the branch
+                # prod's pools and prod's bindings, which is the exact reach the binding rules
+                # exist to bound. The entrypoint builds the runtime before binding the env.
+                raise RuntimeError(
+                    f"no runtime built for environment {env!r} of org {org_id!r}; "
+                    "ensure_org_runtime must build it before the environment is bound"
+                )
             rt = self.org_registry.get(self.org_id)
             assert rt is not None, "default-org runtime missing — AppState not initialized"
         return rt
@@ -415,6 +435,36 @@ class AppState:
     @source_pools.setter
     def source_pools(self, value: SourcePool) -> None:
         self._active_runtime().source_pools = value
+
+    @property
+    def runtime_sources(self) -> dict[str, dict]:
+        """The active runtime's full source-row map, as _rebuild_schemas published it.
+
+        REQ-1488/REQ-1529: routed rather than process-global because a branch's rows are not its
+        base's — the connection values on them are whatever the branch's bindings resolved to, and
+        a shared map would hand the last runtime that rebuilt its sources to every other one.
+        """
+        return self._active_runtime().runtime_sources
+
+    @runtime_sources.setter
+    def runtime_sources(self, value: dict[str, dict]) -> None:
+        self._active_runtime().runtime_sources = value
+
+    @property
+    def source_binding_env(self) -> dict[str, str]:
+        """source_id → the environment that SUPPLIED its connection values (REQ-1529).
+
+        The active environment itself when it bound the source, an ancestor when it inherited the
+        binding. The write path reads it to establish that the write HAS a target at all — a source
+        absent from this map is unbound here and in everything this environment inherited from, and
+        REQ-1491 refuses a write with nowhere to land. Whether the writer may write is their roles'
+        answer, not this map's (REQ-1539). Empty for prod, which inherits from nobody.
+        """
+        return self._active_runtime().source_binding_env
+
+    @source_binding_env.setter
+    def source_binding_env(self, value: dict[str, str]) -> None:
+        self._active_runtime().source_binding_env = value
 
     @property
     def source_types(self) -> dict[str, str]:
@@ -894,6 +944,59 @@ async def _load_and_build(
 
     _mark("hot_tables")
 
+    await _ensure_environment_baselines()
+
+    _mark("prod-baseline")
+
+
+async def _ensure_environment_baselines() -> None:
+    """Give every environment of the booted org the starting point its history is supposed to have.
+
+    REQ-1543: AN ENVIRONMENT'S LINE IS NEVER STARTED BY AN EDIT. However the environment came to
+    exist -- created through the admin API, assembled here from the config file, or restored beside a
+    volume that outlived the process that made it -- it is standing on a model from the moment it
+    exists, and that model is what its first commit records. Without it the first change somebody
+    makes IS the first commit, and undoing that change has no parent to step back to: the change
+    would be unundoable precisely because it was the first one, which is not a rule anybody asked
+    for.
+
+    So the guarantee is enforced here, against the environments that are actually there, rather than
+    only inside the call that creates one. prod is ensured first because an org always has one and
+    the org booted from a config file was never handed the registry row ``create_org`` writes.
+
+    It runs at the END of the boot because the model is what is being committed, and the model is not
+    finished until the config is loaded and the schemas are built. Idempotent, like the rest of
+    provisioning: an environment whose line has already started is left exactly as it is, and an
+    unchanged model writes no second commit (REQ-1526).
+    """
+    from provisa.core.env_repo import ensure_repo, has_branch, write_through
+    from provisa.core.env_store import ensure_prod, list_envs
+    from provisa.core.environments import PROD, org_schema
+
+    assert state.admin_db is not None
+    assert state.tenant_db is not None
+    await ensure_prod(state.admin_db, state.org_id)
+    repo = ensure_repo(state.org_id)
+    unstarted = [
+        row["name"]
+        for row in await list_envs(state.admin_db, state.org_id)
+        if not has_branch(repo, row["name"])
+    ]
+    # prod first: a branch created from it is seeded from its tip, so its line has to exist before
+    # theirs can continue it rather than root beside it.
+    unstarted.sort(key=lambda name: (name != PROD, name))
+    for name in unstarted:
+        async with state.tenant_db.acquire() as conn:
+            await write_through(
+                conn,
+                state.admin_db,
+                state.org_id,
+                name,
+                org_schema(state.org_id, name),
+                "provisioned",
+                None,
+            )
+
 
 class OrgLane(NamedTuple):
     """The admin-plane row that decides how one org's runtime is built."""
@@ -960,19 +1063,26 @@ async def _read_org_flags(org_id: str) -> OrgLane:
     return OrgLane(bool(row[0]), bool(row[1]), external, row[4], engine_url, row[6], storage_url)
 
 
-async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
-    """Get the org's data-plane runtime, building it (once, under the registry lock) on a miss.
+async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:  # REQ-1266
+    """Get the org ENVIRONMENT's data-plane runtime, building it (once, under the lock) on a miss.
 
     The single seam every entrypoint (HTTP middleware AND the pgwire/bolt/flight/gRPC/MCP protocol
     servers) uses to lazily materialize an org's runtime before binding ``current_org``. The
     registry is in-memory with no TTL, so first access after a process restart rebuilds; whether to
     reload the demo sources / bind a dedicated engine is read authoritatively from the admin plane
-    (no default)."""
+    (no default).
 
-    async def _builder(oid: str) -> OrgRuntime:
-        lane = await _read_org_flags(oid)
+    REQ-1488/REQ-1529: ``env`` selects WHICH copy of the org's model is served, and each gets its
+    own runtime under its own key. The org-level lane flags are the ORG's — an environment is a
+    copy of the model, not a second tenant, so a branch runs on the same engine, the same shard and
+    the same storage its org does; what differs is the schema it reads and the bindings its sources
+    resolve through. ``None`` and ``prod`` are the same environment and the same key."""
+
+    async def _builder(_key: str) -> OrgRuntime:
+        lane = await _read_org_flags(org_id)
         return await build_org_runtime(
-            oid,
+            org_id,
+            env=env or PROD,
             include_demo=lane.seeded_demo,
             isolated_engine=lane.isolated_engine,
             external_engine=lane.external_engine,
@@ -982,12 +1092,13 @@ async def ensure_org_runtime(org_id: str) -> OrgRuntime:  # REQ-1266
             storage_url=lane.storage_url,
         )
 
-    return await state.org_registry.get_or_build(org_id, _builder)
+    return await state.org_registry.get_or_build(runtime_key(org_id, env), _builder)
 
 
 async def build_org_runtime(
     org_id: str,
     *,
+    env: str = PROD,
     include_demo: bool = False,
     isolated_engine: bool = False,
     external_engine: tuple[str, int] | None = None,
@@ -1017,7 +1128,8 @@ async def build_org_runtime(
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
-    rt = OrgRuntime(org_id=org_id)
+    rt = OrgRuntime(org_id=org_id, env=env)
+    key = runtime_key(org_id, env)
     # REQ-1448: sampled BEFORE the CREATE CATALOG statements below are issued, not after. A shard
     # that restarts part-way through this build must leave the runtime stamped with the OLD
     # generation, so the next query rebuilds it; stamping afterwards would record the new
@@ -1085,8 +1197,9 @@ async def build_org_runtime(
     # REQ-1048: recorded before anything below can materialize, since materialize_store() reads it
     # off the bound runtime to decide whose disk the org's bytes land on.
     rt.storage_url = storage_url
-    state.org_registry.set(org_id, rt)
+    state.org_registry.set(key, rt)
     token = set_current_org(org_id)
+    env_token = set_current_env(env)
     try:
         if external_engine is not None or engine_url is not None:
             # REQ-1412: the org runs its OWN coordinator. Same dedicated-EngineRuntime shape as an
@@ -1144,17 +1257,20 @@ async def build_org_runtime(
             tenant_engine = create_engine_from_url(
                 cp.resolved_tenant_url(), pool_size=cp.pool_max, max_overflow=cp.max_overflow
             )
-        state.tenant_db = Database(tenant_engine, name="org", search_path=f"org_{org_id}")
+        # REQ-1488: the environment IS the schema. Every repository query this runtime issues goes
+        # through this handle, so scoping it here is what makes an unmodified repository query read
+        # the branch's copy of the model rather than prod's.
+        state.tenant_db = Database(tenant_engine, name="org", search_path=org_schema(org_id, env))
 
         schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
         if not schema_sql_path.exists():
             raise RuntimeError(
                 f"control-plane schema.sql missing from the package: {schema_sql_path}"
             )
-        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id)
+        await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id, env=env)
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
         await apply_tenancy_role_grants(state.tenant_db, org_id, multitenancy=state.multitenancy)
-        await init_audit_schema(state.tenant_db, org_id=org_id)
+        await init_audit_schema(state.tenant_db, org_id=org_id, env=env)
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
         # when the org writes one. The query path (response-cache TTL, large-result redirect)
@@ -1165,7 +1281,9 @@ async def build_org_runtime(
 
         host, port, database, username, _pw = cp.tenant_parts()
         assert database, "control_plane.tenant_url must specify a database"
-        await _seed_built_in_sources(host or "", port, database, username or "", org_id=org_id)
+        await _seed_built_in_sources(
+            host or "", port, database, username or "", org_id=org_id, env=env
+        )
         state.source_dsns["provisa-admin"] = f"{host}:{port}/{database}"
 
         # Demo orgs load the same config the default org runs; its sources are namespaced under
@@ -1228,11 +1346,45 @@ async def build_org_runtime(
         # whose catalogs, schemas or pools are incomplete cached under the org — and every later
         # query reads it as healthy. Drop it: the next request rebuilds from scratch, which is also
         # what makes a failed wake retry instead of sticking.
-        state.org_registry.invalidate(org_id)
+        state.org_registry.invalidate(key)
         raise
     finally:
+        reset_current_env(env_token)
         reset_current_org(token)
     return rt
+
+
+async def _overlay_env_bindings(
+    sources: dict[str, dict], org_id: str, env: str
+) -> tuple[dict[str, dict], dict[str, str]]:
+    """Point a non-prod environment's sources where its bindings say, and say who said so.
+
+    REQ-1529: returns the source map with each resolved source's connection columns replaced by
+    the values the supplying environment holds, and ``source_id -> supplying environment`` beside
+    it. A source no environment in the chain bound is left EXACTLY as the row has it — unbound —
+    because REQ-1491 makes that a marked state the query path refuses, and inventing a connection
+    for it is the one thing that must not happen: an empty host dials localhost.
+    """
+    from provisa.core.env_bindings import BindingError, resolve
+
+    assert state.admin_db is not None, (
+        "an environment other than prod cannot be served without the admin plane its registry "
+        "lives on; select_environment refuses the request before this is reached"
+    )
+    assert state.tenant_db is not None  # the caller returns early without one
+    resolved: dict[str, dict] = {}
+    binding_env: dict[str, str] = {}
+    for source_id, row in sources.items():
+        try:
+            supplier, values = await resolve(
+                state.admin_db, state.tenant_db, org_id, env, "sources", source_id
+            )
+        except BindingError:
+            resolved[source_id] = row
+            continue
+        resolved[source_id] = {**row, **values, "bound": True}
+        binding_env[source_id] = supplier
+    return resolved, binding_env
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
@@ -1390,6 +1542,17 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 state.source_types[_sid] = _src_dict["type"]
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
+        # REQ-1529: a branch's ``sources`` rows carry the source's identity and not its connection
+        # (REQ-1491), so WHERE this environment points is resolved from its lineage here — the one
+        # seam between the DB rows and the runtime that reads them. Nothing was copied at branch
+        # time, so a credential rotated on the base is picked up by every branch of it with no act
+        # of their own.
+        _env = active_env()
+        if _env != PROD:
+            sources, _binding_env = await _overlay_env_bindings(
+                sources, current_org.get() or state.org_id, _env
+            )
+            state.source_binding_env = _binding_env
         # Publish the full DB source map so NativeEngineBackend._attach_registered can attach
         # dynamically registered sources that are not in state.config (YAML-loaded only).
         state.runtime_sources = sources
@@ -1771,6 +1934,14 @@ def create_app() -> FastAPI:
     # to signal completion to the client for unbounded StreamingResponse bodies (SSE subscriptions,
     # REQ-219) even after the inner generator has fully finished — the connection hangs open. A
     # pure ASGI middleware calls the inner app's `send` directly, so no such relay exists.
+    from fastapi.responses import JSONResponse
+
+    from provisa.api.env_routing import (
+        EnvironmentSelectionError,
+        env_header_value,
+        select_environment,
+    )
+
     class _OrgRoutingMiddleware:
         def __init__(self, app):
             self.app = app
@@ -1782,20 +1953,37 @@ def create_app() -> FastAPI:
 
             request_state = scope.setdefault("state", {})
             active_org = request_state.get("active_org_id")
-            # No org bound (unauthenticated, or a default-org request): the AppState shims resolve
-            # the default-org runtime. Never fabricate a non-default org here.
-            if active_org is None or active_org == state.org_id:
+            # REQ-1487: the environment the request names, checked against the org that owns it
+            # BEFORE anything is bound to it — see provisa.api.env_routing for why an unknown name
+            # is a refusal and not a quiet fall back to prod. Read for the default org too: a
+            # single-org deployment branches its model exactly as a multitenant one does.
+            requested_env = env_header_value(scope.get("headers") or [])
+            env_org = active_org or state.org_id
+            try:
+                selected_env = await select_environment(state.admin_db, env_org, requested_env)
+            except EnvironmentSelectionError as exc:
+                await JSONResponse(
+                    {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
+                )(scope, receive, send)
+                return
+
+            # No org bound (unauthenticated, or a default-org request) AND prod: the AppState shims
+            # resolve the default-org runtime. Never fabricate a non-default org here.
+            if (active_org is None or active_org == state.org_id) and selected_env == PROD:
                 await self.app(scope, receive, send)
                 return
             # Keep existing tenant cache-key call sites (which read request.state.tenant_id)
             # pointed at the same id space as the org router.
-            request_state["tenant_id"] = active_org
+            if active_org is not None:
+                request_state["tenant_id"] = active_org
 
-            await ensure_org_runtime(active_org)
-            token = set_current_org(active_org)
+            await ensure_org_runtime(env_org, selected_env)
+            token = set_current_org(env_org)
+            env_token = set_current_env(selected_env)
             try:
                 await self.app(scope, receive, send)
             finally:
+                reset_current_env(env_token)
                 reset_current_org(token)
             # REQ-462: tag the trace with the org that served the request. Folded in from the
             # former _TenantSpanMiddleware, which was registered under the same dead guard.
@@ -1804,7 +1992,11 @@ def create_app() -> FastAPI:
 
                 _span = _trace.get_current_span()
                 if _span.is_recording():
-                    _span.set_attribute("org_id", active_org)
+                    _span.set_attribute("org_id", env_org)
+                    if selected_env != PROD:
+                        # REQ-1487: a trace from a branch must be readable as one; the org alone no
+                        # longer says which copy of the model answered.
+                        _span.set_attribute("env", selected_env)
             except (ImportError, AttributeError):
                 # Best-effort span decoration: tolerate an absent OTel install or a no-op shim
                 # span lacking is_recording/set_attribute. Never break a request for a tag.
@@ -1975,6 +2167,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.orgs_router import router as orgs_router
 
     app.include_router(orgs_router)
+    from provisa.api.admin.environments_router import router as environments_router  # REQ-1487
+
+    app.include_router(environments_router)
     from provisa.api.branding_router import router as branding_router  # REQ-1486
 
     app.include_router(branding_router)

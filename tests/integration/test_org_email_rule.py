@@ -74,14 +74,20 @@ def _prepare_sync():
         )
         conn.execute(
             insert(org_invites).values(
-                token="tok-acme", org_id="acme", role_id="org_admin",
-                created_by="super", expires_at=expires,
+                token="tok-acme",
+                org_id="acme",
+                role_id="org_admin",
+                created_by="super",
+                expires_at=expires,
             )
         )
         conn.execute(
             insert(org_invites).values(
-                token="tok-widget", org_id="widget", role_id="org_admin",
-                created_by="super", expires_at=expires,
+                token="tok-widget",
+                org_id="widget",
+                role_id="org_admin",
+                created_by="super",
+                expires_at=expires,
             )
         )
 

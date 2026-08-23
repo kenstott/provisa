@@ -55,8 +55,12 @@ async def _register_mv(conn, *, source_id, table_name, mv_calendar):
 async def test_upsert_list_and_versioning(tmp_path):
     async with _db(tmp_path) as db:
         async with db.acquire() as conn:
-            await calendar_repo.upsert(conn, {"name": "fy", "version": "v1", "base_system": "fiscal"})
-            await calendar_repo.upsert(conn, {"name": "fy", "version": "v2", "base_system": "fiscal"})
+            await calendar_repo.upsert(
+                conn, {"name": "fy", "version": "v1", "base_system": "fiscal"}
+            )
+            await calendar_repo.upsert(
+                conn, {"name": "fy", "version": "v2", "base_system": "fiscal"}
+            )
             rows = await calendar_repo.list_all(conn)
             latest = await calendar_repo.get_latest(conn, "fy")
     assert {(r["name"], r["version"]) for r in rows} == {("fy", "v1"), ("fy", "v2")}

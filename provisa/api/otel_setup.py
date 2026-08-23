@@ -103,8 +103,8 @@ query_duration: Any = None
 def _otlp_protocol(configured: str = "") -> str:
     """Resolve the OTLP transport: OTEL_EXPORTER_OTLP_PROTOCOL, else the config's, else grpc."""
     protocol = (
-        os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") or configured or "grpc"
-    ).strip().lower()
+        (os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") or configured or "grpc").strip().lower()
+    )
     if protocol not in ("grpc", "http/protobuf"):
         raise ValueError(
             f"OTLP protocol {protocol!r} is not a transport; use 'grpc' or 'http/protobuf'"

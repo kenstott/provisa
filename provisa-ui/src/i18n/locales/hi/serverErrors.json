@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "सिस्टम भूमिकाएँ हटाई नहीं जा सकतीं",
-      "cannot_modify_system": "सिस्टम भूमिकाएँ संशोधित नहीं की जा सकतीं",
+      "cannot_modify_administrative": "प्रशासनिक भूमिकाएँ संशोधित नहीं की जा सकतीं",
       "not_found": "भूमिका नहीं मिली",
       "org_selection_required": "संगठन चयन आवश्यक है"
     },

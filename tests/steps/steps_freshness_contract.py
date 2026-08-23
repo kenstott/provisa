@@ -101,9 +101,7 @@ async def _run_case(tmp_path, monkeypatch, *, input_state, generate, holidays=fr
         async with db.acquire() as conn:
             fired = await proc.process_pending(conn)
             posted = [
-                r
-                for r in await queue.read_since(conn, cursor=0)
-                if r["source_table"] == MV_NODE
+                r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == MV_NODE
             ]
         return fired, posted
     finally:
@@ -111,9 +109,7 @@ async def _run_case(tmp_path, monkeypatch, *, input_state, generate, holidays=fr
 
 
 def _run(ctx, monkeypatch, **kw):
-    fired, posted = ctx["loop"].run_until_complete(
-        _run_case(ctx["tmp_path"], monkeypatch, **kw)
-    )
+    fired, posted = ctx["loop"].run_until_complete(_run_case(ctx["tmp_path"], monkeypatch, **kw))
     ctx["fired"] = fired
     ctx["posted"] = posted
 

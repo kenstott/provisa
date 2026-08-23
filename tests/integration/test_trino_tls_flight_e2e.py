@@ -82,7 +82,17 @@ def _wait_healthy(project: str, service: str, timeout_s: int) -> None:
     last_status = ""
     while time.monotonic() < deadline:
         out = subprocess.run(
-            ["docker", "compose", "-p", project, "-f", _COMPOSE_FILE, "ps", "--format", "{{.Service}} {{.Status}}"],
+            [
+                "docker",
+                "compose",
+                "-p",
+                project,
+                "-f",
+                _COMPOSE_FILE,
+                "ps",
+                "--format",
+                "{{.Service}} {{.Status}}",
+            ],
             cwd=_FIXTURE_DIR,
             check=True,
             capture_output=True,

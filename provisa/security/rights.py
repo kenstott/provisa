@@ -59,7 +59,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     COLUMN_GRANT = "column_grant"
     USER_MANAGEMENT = "user_management"
     MASKING_CONFIG = "masking_config"
-    VIEW_GOVERNANCE = "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)
+    VIEW_GOVERNANCE = (
+        "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)
+    )
     SUPERADMIN = "superadmin"
     # REQ-1337: read/modify DEPLOYMENT-WIDE settings — federation engine, cache storage, encryption
     # provider, auth provider, the config file itself, query-engine lifecycle. Distinct from ADMIN so
@@ -134,6 +136,37 @@ def capabilities_for_claims(  # REQ-1337
         for c in role.get("capabilities") or []:
             caps.add(c)
     return caps
+
+
+def domain_access_for_claims(  # REQ-1530
+    claims: Iterable[str], roles: dict[str, dict] | None
+) -> set[str]:
+    """The union of the DOMAIN SCOPES those roles carry.
+
+    The companion of ``capabilities_for_claims``: that one answers what kind of act a member may
+    perform, this one answers which objects the act may touch. Read off ``roles.domain_access``,
+    because the scope belongs to the ROLE and not to the individual grant — the ``:domain`` suffix a
+    claim may carry records which grant was made and is deliberately not consulted here, so that an
+    authorization question has one answer rather than two that can disagree (REQ-1530).
+
+    A claim naming a role absent from the registry contributes nothing, matching
+    ``capabilities_for_claims``: an unknown role grants no rights and therefore reaches no domains.
+    Interpret the result with ``provisa.core.env_authority.domains_within``, which is the one place
+    that decides what ``*`` means.
+    """
+    out: set[str] = set()
+    for role_id in role_ids_from_claims(claims):
+        role = (roles or {}).get(role_id)
+        if role is None:
+            continue
+        access = role.get("domain_access")
+        if access is None:
+            raise ValueError(
+                f"role {role_id!r} was loaded without domain_access: the column is NOT NULL on the "
+                "roles table, so this is a registry built by a loader that dropped the field"
+            )
+        out.update(access)
+    return out
 
 
 # REQ-1297: the two capability strings that mean "unrestricted". Only platform_admin carries them

@@ -157,9 +157,7 @@ async def refresh_org_registry_view(*, tenant_db: "Database", admin_db: "Databas
         org_schemas: dict[str, str] = {}
         for org_id in org_ids:
             schema = f"org_{org_id}"
-            present = await conn.fetchval(
-                f"SELECT to_regclass('{schema}.user_role_assignments')"
-            )
+            present = await conn.fetchval(f"SELECT to_regclass('{schema}.user_role_assignments')")
             if present is not None:
                 org_schemas[org_id] = schema
         sql = build_view_sql(

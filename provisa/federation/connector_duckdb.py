@@ -134,7 +134,9 @@ class DuckDBFilesConnector(Connector):
             if any(c in p for c in ("*", "?", "[")):
                 break
             dir_parts.append(p)
-        directory = _Path(*dir_parts) if len(dir_parts) > 1 else _Path(dir_parts[0] if dir_parts else ".")
+        directory = (
+            _Path(*dir_parts) if len(dir_parts) > 1 else _Path(dir_parts[0] if dir_parts else ".")
+        )
         csv_path = directory / f"{table_name}.csv"
 
         try:
@@ -402,9 +404,7 @@ class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
     mechanism = Mechanism.SCAN  # delta_scan scanner view — read in place, no attach (REQ-951)
 
     def details(self, source: Source) -> dict:
-        return {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM delta_scan('{source.path}')"
-        }
+        return {"view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM delta_scan('{source.path}')"}
 
 
 # --- Postgres: a single-node federator that ATTACHes remote sources via postgres_fdw (SQL/MED) ---

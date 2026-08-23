@@ -62,9 +62,7 @@ async def load_bindings(conn: "Connection", provider: str) -> dict[str, tuple[st
     return {row.semantic_uri: (row.vendor_ref, row.physical_key) for row in result.fetchall()}
 
 
-async def remove_stale_bindings(
-    conn: "Connection", provider: str, keep_uris: set[str]
-) -> int:
+async def remove_stale_bindings(conn: "Connection", provider: str, keep_uris: set[str]) -> int:
     """Drop ``provider`` bindings for assets no longer in the published model.
 
     An asset absent from the snapshot will never be republished, so its binding can never

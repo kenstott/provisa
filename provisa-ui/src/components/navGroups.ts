@@ -94,6 +94,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // entries showing one page's worth of read-only status between them.
       { to: "/admin/overview", labelKey: "navBar.itemDashboard", capability: "observability" },
       { to: "/admin/domains", labelKey: "navBar.itemDomains", capability: "org_settings" },
+      { to: "/admin/environments", labelKey: "navBar.itemEnvironments", capability: "org_settings" },
       // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
       // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a
       // role name. The seed grants it to platform_admin always and to org_admin only in a

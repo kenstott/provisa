@@ -658,7 +658,9 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
     tenant_db = state.tenant_db
     if tenant_db is None:
         raise ApiError(
-            409, "settings.no_active_org", "no org is bound to this request; sign in to an org first"
+            409,
+            "settings.no_active_org",
+            "no org is bound to this request; sign in to an org first",
         )
 
     # 1. Persist the org's policy. `None` means "inherit the deployment's", which is the same value

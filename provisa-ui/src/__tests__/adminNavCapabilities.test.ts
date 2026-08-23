@@ -53,6 +53,10 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   "/admin/glossary": "org_settings", // REQ-1387: the org's own business glossary
   "/admin/domains": "org_settings",
+  // REQ-1487: the org's environments — its branches, the merges between them, and the repository
+  // the model is projected into. All of it is the acting org's own model, so none of it is
+  // deployment-wide.
+  "/admin/environments": "org_settings",
   "/admin/scheduled-tasks": "org_settings",
   "/admin/requests": "org_settings",
   // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external

@@ -101,9 +101,7 @@ async def test_remove_stale_bindings_keeps_only_the_published_set(tmp_path):
             conn, "datahub", {URI_TOTALS: ("urn:li:dataset:y", "wh.public.order_totals")}
         )
 
-        removed = await catalog_binding.remove_stale_bindings(
-            conn, "atlas", keep_uris={URI_ORDERS}
-        )
+        removed = await catalog_binding.remove_stale_bindings(conn, "atlas", keep_uris={URI_ORDERS})
 
         assert removed == 1
         assert await catalog_binding.load_bindings(conn, "atlas") == {

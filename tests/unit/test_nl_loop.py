@@ -48,13 +48,16 @@ def _valid_on_second(call_count: list) -> callable:
         if call_count[0] >= 2:
             return CompileResult(valid=True)
         return CompileResult(valid=False, error="First attempt invalid")
+
     return _compile
 
 
 @pytest.mark.asyncio
 async def test_valid_on_first_attempt_returns_immediately():
     llm = _FixedLLM(["MATCH (n) RETURN n"])
-    query, error = await generation_loop("find nodes", "cypher", _SDL, _always_valid, llm, max_iterations=5)
+    query, error = await generation_loop(
+        "find nodes", "cypher", _SDL, _always_valid, llm, max_iterations=5
+    )
     assert query == "MATCH (n) RETURN n"
     assert error is None
     assert llm.call_count == 1
@@ -65,7 +68,9 @@ async def test_invalid_then_valid_retries():
     llm = _FixedLLM(["bad query", "MATCH (n) RETURN n"])
     call_count = [0]
     compiler = _valid_on_second(call_count)
-    query, error = await generation_loop("find nodes", "cypher", _SDL, compiler, llm, max_iterations=5)
+    query, error = await generation_loop(
+        "find nodes", "cypher", _SDL, compiler, llm, max_iterations=5
+    )
     assert query == "MATCH (n) RETURN n"
     assert error is None
     assert llm.call_count == 2
@@ -74,7 +79,9 @@ async def test_invalid_then_valid_retries():
 @pytest.mark.asyncio
 async def test_exhausts_max_iterations():
     llm = _FixedLLM(["bad"] * 10)
-    query, error = await generation_loop("find nodes", "cypher", _SDL, _always_invalid, llm, max_iterations=3)
+    query, error = await generation_loop(
+        "find nodes", "cypher", _SDL, _always_invalid, llm, max_iterations=3
+    )
     assert query is None
     assert error is not None
     assert llm.call_count == 3

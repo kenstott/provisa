@@ -152,11 +152,7 @@ def _assertion_column(table: TableAsset, assertion: Any) -> str | None:
     A column assertion's ref is the table's parts plus the column; a table-level one is the
     table's parts exactly.
     """
-    return (
-        assertion.asset.parts[-1]
-        if len(assertion.asset.parts) > len(table.ref.parts)
-        else None
-    )
+    return assertion.asset.parts[-1] if len(assertion.asset.parts) > len(table.ref.parts) else None
 
 
 def _spec_data_quality_facet(

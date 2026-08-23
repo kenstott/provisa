@@ -391,7 +391,8 @@ class TestDBeaverERDiagram:
         result = answer(
             f"SELECT attname, attnum FROM pg_catalog.pg_attribute"
             f" WHERE attrelid={pets_oid} AND attnum>0 AND attisdropped=false",
-            "testrole", state,
+            "testrole",
+            state,
         )
         col_names = [r[0] for r in result.rows]
         assert "id" in col_names, f"id missing: {col_names}"
@@ -408,9 +409,12 @@ class TestDBeaverERDiagram:
                 WHERE a.attrelid=c.oid AND c.relnamespace={meta_oid}
                 AND a.attnum>0 AND NOT a.attisdropped
                 ORDER BY c.oid, a.attnum""",
-            "testrole", state,
+            "testrole",
+            state,
         )
-        assert len(result.rows) == 6, f"expected 6 cols (4 pets + 2 reg), got {len(result.rows)}: {result.rows}"
+        assert len(result.rows) == 6, (
+            f"expected 6 cols (4 pets + 2 reg), got {len(result.rows)}: {result.rows}"
+        )
         col_names = [r[1] for r in result.rows]
         assert "id" in col_names
         assert "registered_table_id" in col_names
@@ -420,7 +424,8 @@ class TestDBeaverERDiagram:
         result = answer(
             f"SELECT oid, conname, contype, conrelid, confrelid, conkey, confkey"
             f" FROM pg_catalog.pg_constraint WHERE conrelid={pets_oid}",
-            "testrole", state,
+            "testrole",
+            state,
         )
         fk_rows = [r for r in result.rows if r[2] == "f"]
         assert len(fk_rows) >= 1, f"no FK rows for pets (oid={pets_oid}): {result.rows}"
@@ -437,14 +442,16 @@ class TestDBeaverERDiagram:
         attr_result = answer(
             f"SELECT attname, attnum FROM pg_catalog.pg_attribute"
             f" WHERE attrelid={pets_oid} AND attnum>0 ORDER BY attnum",
-            "testrole", state,
+            "testrole",
+            state,
         )
         attnum_map = {r[0]: r[1] for r in attr_result.rows}
         expected_attnum = attnum_map["registered_table_id"]
 
         con_result = answer(
             f"SELECT conkey FROM pg_catalog.pg_constraint WHERE conrelid={pets_oid} AND contype='f'",
-            "testrole", state,
+            "testrole",
+            state,
         )
         assert len(con_result.rows) >= 1
         conkey = con_result.rows[0][0]

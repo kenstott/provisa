@@ -140,24 +140,35 @@ async def test_calendar_boundary_seals_addressable_snapshots(tmp_path, monkeypat
 
         # January closes at Feb 1 → seal the January snapshot, stamped 2026-02-01.
         fired = await _fire(
-            db, proc, engine, con,
+            db,
+            proc,
+            engine,
+            con,
             base_rows=[(1, "west", 10), (2, "east", 20)],
-            now=datetime(2026, 2, 10, tzinfo=UTC), monkeypatch=monkeypatch,
+            now=datetime(2026, 2, 10, tzinfo=UTC),
+            monkeypatch=monkeypatch,
         )
         assert fired is not None  # the periodic fire sealed a version
 
         # February closes at Mar 1 → seal a second, different snapshot.
         fired2 = await _fire(
-            db, proc, engine, con,
+            db,
+            proc,
+            engine,
+            con,
             base_rows=[(1, "west", 15), (3, "north", 30)],
-            now=datetime(2026, 3, 10, tzinfo=UTC), monkeypatch=monkeypatch,
+            now=datetime(2026, 3, 10, tzinfo=UTC),
+            monkeypatch=monkeypatch,
         )
         assert fired2 is not None
 
     spec = mv.bitemporal
     # as-of each boundary → exactly that month's sealed dataset (calendar-addressed time travel)
     assert _as_of(con, spec, datetime(2026, 2, 1, tzinfo=UTC)) == {(1, "west", 10), (2, "east", 20)}
-    assert _as_of(con, spec, datetime(2026, 3, 1, tzinfo=UTC)) == {(1, "west", 15), (3, "north", 30)}
+    assert _as_of(con, spec, datetime(2026, 3, 1, tzinfo=UTC)) == {
+        (1, "west", 15),
+        (3, "north", 30),
+    }
     # history is preserved (append-only): two distinct versions live in the log
     versions = con.execute(f"SELECT COUNT(DISTINCT sys_recorded_at) FROM {TARGET}").fetchone()[0]
     assert versions == 2
@@ -172,12 +183,16 @@ async def test_downstream_ripple_on_each_seal(tmp_path, monkeypatch):
     async with _control_plane(tmp_path) as db:
         proc = _processor(db, engine, mv)
         await _fire(
-            db, proc, engine, con, base_rows=[(1, "west", 10)],
-            now=datetime(2026, 2, 10, tzinfo=UTC), monkeypatch=monkeypatch,
+            db,
+            proc,
+            engine,
+            con,
+            base_rows=[(1, "west", 10)],
+            now=datetime(2026, 2, 10, tzinfo=UTC),
+            monkeypatch=monkeypatch,
         )
         async with db.acquire() as conn:
             posted = [
-                r for r in await queue.read_since(conn, cursor=0)
-                if r["source_table"] == MV_NODE
+                r for r in await queue.read_since(conn, cursor=0) if r["source_table"] == MV_NODE
             ]
     assert [p["event_type"] for p in posted] == ["replace"]  # sealed → ripples once

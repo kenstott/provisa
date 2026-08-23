@@ -24,7 +24,7 @@ SAMPLE_SPEC = {
     "paths": {},
 }
 
-SAMPLE_YAML = "openapi: \"3.0.0\"\ninfo:\n  title: Test API\n  version: \"1.0.0\"\npaths: {}\n"
+SAMPLE_YAML = 'openapi: "3.0.0"\ninfo:\n  title: Test API\n  version: "1.0.0"\npaths: {}\n'
 SAMPLE_JSON = json.dumps(SAMPLE_SPEC)
 
 

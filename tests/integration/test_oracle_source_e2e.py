@@ -35,7 +35,9 @@ def _seed(sql_statements: list[str]) -> None:
     conn = oracledb.connect(
         user="system",
         password="provisa",
-        dsn=oracledb.makedsn("localhost", int(os.environ["ORACLE_PORT"]), service_name=_SERVICE_NAME),
+        dsn=oracledb.makedsn(
+            "localhost", int(os.environ["ORACLE_PORT"]), service_name=_SERVICE_NAME
+        ),
     )
     conn.autocommit = True
     try:
@@ -54,7 +56,9 @@ def _drop_widgets() -> None:
     conn = oracledb.connect(
         user="system",
         password="provisa",
-        dsn=oracledb.makedsn("localhost", int(os.environ["ORACLE_PORT"]), service_name=_SERVICE_NAME),
+        dsn=oracledb.makedsn(
+            "localhost", int(os.environ["ORACLE_PORT"]), service_name=_SERVICE_NAME
+        ),
     )
     conn.autocommit = True
     try:

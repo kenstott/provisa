@@ -50,7 +50,6 @@ def saas_isolated_org():
     state.org_registry.invalidate(org_id)
 
 
-
 def test_orgs_table_carries_the_external_endpoint():
     from provisa.core.schema_admin import orgs
 
@@ -152,8 +151,6 @@ def test_unknown_engine_kind_raises_rather_than_guessing():
 
     with pytest.raises(ValueError, match="unknown engine kind"):
         engine_addressing("not-an-engine")
-
-
 
 
 def test_active_engine_url_is_the_orgs_own_dsn(databricks_org):

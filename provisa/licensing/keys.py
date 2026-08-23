@@ -33,9 +33,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 # provisa.dev license issuer public key (placeholder until the production key is minted; override in
 # a deployment/test via PROVISA_LICENSE_PUBKEY). 32-byte Ed25519 public key, hex-encoded.
-_DEFAULT_LICENSE_PUBKEY_HEX = (
-    "0000000000000000000000000000000000000000000000000000000000000000"
-)
+_DEFAULT_LICENSE_PUBKEY_HEX = "0000000000000000000000000000000000000000000000000000000000000000"
 
 # App-local anchor keypair (tamper-evidence only — not a secret boundary, see module docstring).
 _ANCHOR_SEED_HEX = "9d61b19deffe6a07d4b8f6b8b3c2a1f0e5d4c3b2a1908f7e6d5c4b3a29180706"

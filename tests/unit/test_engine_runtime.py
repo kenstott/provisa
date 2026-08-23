@@ -92,9 +92,7 @@ async def test_direct_route_uses_native_terminal(monkeypatch):
     seen = {}
 
     async def _fake_direct(pools, source_id, sql, params, span_attrs=None):
-        seen.update(
-            pools=pools, source_id=source_id, sql=sql, params=params, span_attrs=span_attrs
-        )
+        seen.update(pools=pools, source_id=source_id, sql=sql, params=params, span_attrs=span_attrs)
         return QueryResult(rows=[(1,)], column_names=["x"])
 
     monkeypatch.setattr("provisa.executor.direct.execute_direct", _fake_direct)

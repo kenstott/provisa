@@ -282,6 +282,12 @@ async def _provision_org_task(
             redis_url=os.environ.get("REDIS_URL"),
             redis_password=os.environ.get("PROVISA_REDIS_ORG_PASSWORD"),
         )
+        # REQ-1487: prod exists from the organization's creation, so its registry row is written
+        # here beside the schema and the role rather than by a load. Every other environment's row
+        # is written by the load that creates it (REQ-1488).
+        from provisa.core.env_store import ensure_prod
+
+        await ensure_prod(_admin_pool(), org_id, created_by)
         # REQ-1322: build under the registry's per-org lock, never by calling build_org_runtime
         # directly. Membership is granted synchronously at create, so the creator's very first
         # follow-up request (the status poll) already routes to this org and lazily builds it
@@ -305,6 +311,27 @@ async def _provision_org_task(
         if created_by is not None:
             assert rt.tenant_db is not None
             await grant_org_role(rt.tenant_db, created_by, "org_admin")
+        # REQ-1524: the repository is created by the act that produces an organization, not lazily
+        # by its first change, and with the same failure semantics as the schema — ensure_repo
+        # raises, so an org whose repository could not be created does not reach "ready". Prod's
+        # first commit is written here because the org already holds a model at this point (the
+        # seeded domains, and the demo model when --demo asked for one): committing it now is what
+        # makes the very first user edit a diff rather than the whole model appearing at once.
+        from provisa.core.env_repo import ensure_repo, write_through
+        from provisa.core.environments import PROD, org_schema
+
+        ensure_repo(org_id)
+        assert rt.tenant_db is not None
+        async with rt.tenant_db.acquire() as conn:
+            await write_through(
+                conn,
+                _admin_pool(),
+                org_id,
+                PROD,
+                org_schema(org_id),
+                "provisioned",
+                created_by,
+            )
         # The registry view is refreshed BEFORE the row flips to ready: an org the root registry
         # cannot see is not finished provisioning, and flipping first would let a poller read
         # "ready" and then have the except-branch rewrite the same row to "failed".
@@ -775,7 +802,8 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
     # that still exists.
     from provisa.api.app import state as _app_state
 
-    _app_state.org_registry.invalidate(org_id)
+    # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
+    _app_state.org_registry.invalidate_org(org_id)
     # REQ-1301: the registry view names the dropped schema, so it must stop naming it before anyone
     # queries it again.
     await _refresh_root_registry_view()
@@ -826,7 +854,7 @@ async def retry_provisioning(org_id: str, request: Request):  # REQ-1315
         )
     from provisa.api.app import state as _app_state
 
-    _app_state.org_registry.invalidate(org_id)
+    _app_state.org_registry.invalidate_org(org_id)  # REQ-1488: environments go with the org
     await deprovision_org(_pool(), org_id, redis_url=os.environ.get("REDIS_URL"))
     task = asyncio.create_task(
         _provision_org_task(org_id, bool(seeded_demo), created_by, bool(iso_engine))

@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "Systeemrollen kunnen niet worden verwijderd",
-      "cannot_modify_system": "Systeemrollen kunnen niet worden gewijzigd",
+      "cannot_modify_administrative": "Beheerdersrollen kunnen niet worden gewijzigd",
       "not_found": "Rol niet gevonden",
       "org_selection_required": "Organisatieselectie vereist"
     },

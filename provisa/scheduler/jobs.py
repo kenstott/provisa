@@ -139,7 +139,9 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     from provisa.federation.engine_wake import attach_if_serving
 
     if not await attach_if_serving(state):
-        logger.debug("compact_otel: engine shard is not serving — leaving this run for a later tick")
+        logger.debug(
+            "compact_otel: engine shard is not serving — leaving this run for a later tick"
+        )
         return
 
     async def _one(signal: str) -> None:
@@ -701,7 +703,9 @@ async def reclaim_otel_storage() -> None:  # REQ-302, REQ-303
     from provisa.federation.engine_wake import attach_if_serving
 
     if not await attach_if_serving(state):
-        logger.debug("reclaim_otel: engine shard is not serving — leaving this run for a later tick")
+        logger.debug(
+            "reclaim_otel: engine shard is not serving — leaving this run for a later tick"
+        )
         return
 
     threshold = f"{retention_hours}h"

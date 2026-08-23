@@ -156,7 +156,9 @@ def _reconcile_is_scheduled(shared_data):
     # The reconcile is the same publish on a cron the org owns, so what is asserted is that the
     # armed job carries that org's id and calls that publish.
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(publishing.reconcile_org, trigger="cron", args=[ORG], id=publishing.reconcile_job_id(ORG))
+    scheduler.add_job(
+        publishing.reconcile_org, trigger="cron", args=[ORG], id=publishing.reconcile_job_id(ORG)
+    )
     job = scheduler.get_job(publishing.reconcile_job_id(ORG))
     assert job is not None
     assert list(job.args) == [ORG]

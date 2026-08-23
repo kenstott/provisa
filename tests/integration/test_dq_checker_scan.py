@@ -176,9 +176,7 @@ def test_a_checker_scan_lands_one_row_per_check(
 
     # The seeded defect is one null customer out of three rows, and every checker must see it.
     failures = [r for r in rows if r["outcome"] == "fail"]
-    assert [(r["column_name"], r["check_type"]) for r in failures] == [
-        ("customer", failing_check)
-    ]
+    assert [(r["column_name"], r["check_type"]) for r in failures] == [("customer", failing_check)]
     assert failures[0]["failed_rows"] == 1
     assert failures[0]["rows_tested"] == 3
     assert failures[0]["dataset"] == f"provisa/{SCHEMA}/{TABLE}"

@@ -171,7 +171,7 @@ class TestOrphanDetection:
 
         engine = _FakeEngine(show_tables=[("mv_known",), ("mv_unknown",), ("mv_stale",)])
 
-        orphans = await detect_orphans(engine, registry, "mv_cache")
+        orphans = await detect_orphans(engine, registry, "mv_cache", catalog="mat_store")
 
         assert orphans == ["mv_stale", "mv_unknown"]
 
@@ -183,7 +183,7 @@ class TestOrphanDetection:
 
         engine = _FakeEngine(show_tables=[("mv_known",)])
 
-        orphans = await detect_orphans(engine, registry, "mv_cache")
+        orphans = await detect_orphans(engine, registry, "mv_cache", catalog="mat_store")
         assert orphans == []
 
 
@@ -199,6 +199,7 @@ class TestOrphanGracePeriod:
             ["orphan_table"],
             grace_period=86400,
             schema_name="mv_cache",
+            catalog="mat_store",
         )
 
         assert dropped == []
@@ -219,6 +220,7 @@ class TestOrphanGracePeriod:
             ["old_orphan"],
             grace_period=86400,
             schema_name="mv_cache",
+            catalog="mat_store",
         )
 
         assert dropped == ["old_orphan"]
@@ -241,6 +243,7 @@ class TestOrphanGracePeriod:
             [],
             grace_period=86400,
             schema_name="mv_cache",
+            catalog="mat_store",
         )
 
         assert dropped == []
@@ -261,6 +264,7 @@ class TestOrphanGracePeriod:
             ["old", "new"],
             grace_period=86400,
             schema_name="mv_cache",
+            catalog="mat_store",
         )
 
         assert dropped == ["old"]

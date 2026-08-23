@@ -420,7 +420,9 @@ def _build_group_by_graphql_query(  # REQ-1359
         args_parts.append("order_by: {" + ", ".join(ob_parts) + "}")
     args_str = f"({', '.join(args_parts)})"
     nodes_part = f" nodes {{ {node_selection} }}" if node_selection else ""
-    return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {agg_selection} }}{nodes_part} }} }}"
+    return (
+        f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {agg_selection} }}{nodes_part} }} }}"
+    )
 
 
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
@@ -621,7 +623,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 target_field = _resolve_query_field(query_type, gql_table, "_group_by", "GroupBy")
                 kind = "group-by"
             else:
-                target_field = _resolve_query_field(query_type, gql_table, "_aggregate", "Aggregate")
+                target_field = _resolve_query_field(
+                    query_type, gql_table, "_aggregate", "Aggregate"
+                )
                 kind = "aggregate"
             if target_field is None:
                 return _jsonapi_error_response(
@@ -769,7 +773,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 agg_alias=agg_compiled.agg_alias,
             )
             agg_payload = (
-                shaped.get("data", {}).get(agg_compiled.root_field, {}).get(agg_compiled.agg_alias, {})
+                shaped.get("data", {})
+                .get(agg_compiled.root_field, {})
+                .get(agg_compiled.agg_alias, {})
             )
             return JSONResponse(
                 content={"data": None, "meta": {"aggregate": agg_payload}},
@@ -918,9 +924,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         # relationship map, the included buckets, and the emitted attributes all speak one
         # convention.
         rows = [
-            rename_row_keys(
-                row, gql_to_physical, rel_gql_to_physical, rel_scalar_gql_to_physical
-            )
+            rename_row_keys(row, gql_to_physical, rel_gql_to_physical, rel_scalar_gql_to_physical)
             for row in rows
         ]
         physical_rel_fields = {f"{p}_id": p for p in rel_physical_to_gql}

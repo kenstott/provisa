@@ -785,9 +785,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         _state = self._app_state()
         admin_db = _state.admin_db
         assert admin_db is not None  # the basic provider is DB-backed; _scram_offered required it
-        verifier = asyncio.run_coroutine_threadsafe(
-            read_verifier(admin_db, username), loop
-        ).result(timeout=60)
+        verifier = asyncio.run_coroutine_threadsafe(read_verifier(admin_db, username), loop).result(
+            timeout=60
+        )
         if verifier is None:
             # PostgreSQL's mock authentication. A user who has never set a password under SCRAM —
             # and a user who does not exist — gets a well-formed exchange that no proof satisfies,

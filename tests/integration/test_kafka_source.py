@@ -104,8 +104,10 @@ class TestKafkaTopicRead:
         columns = [row[0] for row in cursor.fetchall()]
         assert len(columns) > 0, f"Table {table} should have columns"
         # Kafka connector always adds internal columns
-        assert any(c in columns for c in ["_message", "_key", "_partition_offset", "_timestamp"]
-                   or len(columns) > 0)
+        assert any(
+            c in columns
+            for c in ["_message", "_key", "_partition_offset", "_timestamp"] or len(columns) > 0
+        )
 
 
 class TestKafkaMessageContent:

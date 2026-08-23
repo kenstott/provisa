@@ -70,7 +70,12 @@ def _mv(node, run, db, store, *, dep):
         dependents_of=dep,
         name=node,
         generate=make_mv_generate(
-            DsnEngine(store), schema="", table=_TABLE[node], columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store),
+            schema="",
+            table=_TABLE[node],
+            columns=_COLS,
+            run_query=run,
+            pk_columns=["id"],
         ),
         db=db,
     )
@@ -207,9 +212,7 @@ async def test_cyclic_lineage_rejected_at_registration(control_plane):
     """A cyclic MV lineage (mv.a <- mv.b <- mv.a) is rejected when the dependents graph is built —
     fan-out would never terminate, so the DAG is refused, not silently run to the max-rounds backstop."""
     with pytest.raises(ValueError, match="cycle"):
-        supervisor.dependents_of(
-            {"mv.a": "SELECT id FROM mv.b", "mv.b": "SELECT id FROM mv.a"}
-        )
+        supervisor.dependents_of({"mv.a": "SELECT id FROM mv.b", "mv.b": "SELECT id FROM mv.a"})
 
 
 async def test_hash_gate_stops_the_ripple(control_plane):
@@ -286,9 +289,7 @@ async def test_error_event_poisons_the_whole_chain(control_plane):
     assert calls == {"a": 0, "b": 0}
     async with store_writer.store_connection(store) as sconn:
         for table in ("mv_a", "mv_b"):
-            exists = await sconn.fetchval(
-                "SELECT to_regclass($1)", f"public.{table}"
-            )
+            exists = await sconn.fetchval("SELECT to_regclass($1)", f"public.{table}")
             assert exists is None  # nothing landed below the fault
     # the error fanned forward to both dependents, not swallowed
     async with cp.acquire() as conn:

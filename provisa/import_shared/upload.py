@@ -74,7 +74,9 @@ def _extract_zip(data: bytes, dest: Path) -> None:
                 )
             target = (dest / info.filename).resolve()
             if not target.is_relative_to(dest.resolve()):
-                raise UploadError(f"archive entry escapes the extraction directory: {info.filename}")
+                raise UploadError(
+                    f"archive entry escapes the extraction directory: {info.filename}"
+                )
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read(info))
 
@@ -146,7 +148,9 @@ def staged_upload(filename: str, data: bytes, flavor: str = "auto") -> Generator
             yield StagedUpload(flavor=DDN, root=dest, document=None)
             return
         if not name.endswith((".yaml", ".yml", ".json")):
-            raise UploadError(f"unsupported upload {filename!r}: expected .zip, .yaml, .yml, .json or .hml")
+            raise UploadError(
+                f"unsupported upload {filename!r}: expected .zip, .yaml, .yml, .json or .hml"
+            )
         try:
             doc = _load_document(data, name)
         except (yaml.YAMLError, json.JSONDecodeError, UnicodeDecodeError) as exc:

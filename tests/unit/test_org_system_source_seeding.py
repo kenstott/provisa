@@ -78,6 +78,20 @@ def test_the_org_builder_seeds_into_the_org_being_built():
     assert "org_id=org_id" in call
 
 
+def test_the_org_builder_seeds_into_the_environment_being_built():
+    """REQ-1488: an environment IS a schema, and the seed writes a schema name.
+
+    Without the env the meta/ops rows a branch's runtime seeds name PROD's schema, so the branch
+    holds two registrations of every meta table and fails _assert_domain_table_unique on the
+    first request made to it.
+    """
+    source = (_REPO_ROOT / "provisa/api/app.py").read_text()
+    builder = source.split("async def build_org_runtime")[1]
+    call = builder.split("await _seed_built_in_sources(")[1].split(")")[0]
+
+    assert "env=env" in call
+
+
 @pytest.mark.parametrize("source_id", sorted(SYSTEM_SOURCES))
 def test_every_system_source_is_seeded(source_id):
     from provisa.core.config_loader import _SYSTEM_SOURCE_IDS
@@ -102,4 +116,4 @@ def test_the_seed_is_an_upsert_so_a_rebuild_does_not_collide():
     body = seed.split("async def _seed_built_in_sources")[1]
 
     assert body.count("upsert(") >= len(SYSTEM_SOURCES)
-    assert "index_elements=[\"id\"]" in body
+    assert 'index_elements=["id"]' in body

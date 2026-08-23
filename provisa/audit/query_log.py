@@ -57,8 +57,11 @@ CREATE INDEX IF NOT EXISTS idx_audit_user_time ON query_audit_log (user_id, logg
 """
 
 
-async def init_audit_schema(pool: "Database", org_id: str = "default") -> None:  # REQ-074
+async def init_audit_schema(
+    pool: "Database", org_id: str = "default", env: str | None = None
+) -> None:  # REQ-074, REQ-1488
     from provisa.core.db import _validate_org_id
+    from provisa.core.environments import org_schema
 
     _validate_org_id(org_id)
     # Non-PG backends already have query_audit_log from schema_org.create_all
@@ -67,7 +70,9 @@ async def init_audit_schema(pool: "Database", org_id: str = "default") -> None: 
     # A raw asyncpg pool (no Database shim) has no .dialect and is always PostgreSQL.
     if getattr(pool, "dialect", "postgresql") != "postgresql":
         return
-    schema_name = f"org_{org_id}"
+    # REQ-1488: an environment is a schema of its own, so its query audit log is the one in its
+    # own schema — an environment's reads are not entries in prod's log.
+    schema_name = org_schema(org_id, env)
     async with pool.acquire() as conn:
         # Same advisory lock id as init_schema (provisa/core/db.py) — both bootstrap relations into
         # org_<id>, and two callers can run them concurrently for one org (provision_org runs

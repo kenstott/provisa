@@ -485,9 +485,7 @@ def _patch_pipeline(monkeypatch, rows, redirect=None):
     async def fake_execute(plan, state):
         return QueryResult(rows=rows, column_names=[], redirect=redirect)
 
-    monkeypatch.setattr(
-        "provisa.pgwire._pipeline._govern_and_route_compiled", fake_govern
-    )
+    monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", fake_govern)
     monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", fake_execute)
 
 

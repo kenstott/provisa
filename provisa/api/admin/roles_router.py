@@ -10,7 +10,7 @@
 
 """Org-scoped role CRUD endpoints."""
 
-# Requirements: REQ-042, REQ-059, REQ-060, REQ-215
+# Requirements: REQ-042, REQ-059, REQ-060, REQ-215, REQ-1531, REQ-1539
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, insert, or_, select, update
 
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import roles
 
@@ -27,6 +28,20 @@ if TYPE_CHECKING:
     from provisa.core.database import Database
 
 router = APIRouter(prefix="/admin/roles", tags=["admin"])
+
+#: The two roles no environment may redefine (REQ-1539).
+#:
+#: Every other seeded role -- ``analyst``, ``developer``, ``modeler`` -- IS editable, because the
+#: ``roles`` table lives in the environment's own schema: each environment holds its own copy of
+#: every row, seeded once at creation and never written by a merge, a load or a checkout. Editing
+#: ``developer`` in dev therefore changes dev and nothing else, which is the whole mechanism by
+#: which a lower lane holds different rights from prod.
+#:
+#: ``org_admin`` and ``platform_admin`` are held out because they are the roles that carry
+#: ``user_management`` itself. An org_admin who narrowed their own role would lock the environment
+#: out of being administered at all, with no second administrator to undo it -- so the lock-out is
+#: prevented by construction rather than by a check that counts who is left.
+_UNEDITABLE: frozenset[str] = frozenset({"org_admin", "platform_admin"})
 
 
 def _active_org(request: Request) -> str:
@@ -75,6 +90,8 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
 
 @router.post("/")
 async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-215
+    # REQ-1531: a role carries capabilities AND domain_access, so minting one widens scope.
+    require_capability_request(request, "user_management")
     org_id = _active_org(request)
     pool = _pool(request)
     async with pool.acquire() as conn:
@@ -97,7 +114,8 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
 @router.put("/{role_id}")
 async def update_role(
     role_id: str, body: UpdateRoleBody, request: Request
-):  # REQ-042, REQ-059, REQ-060, REQ-215
+):  # REQ-042, REQ-059, REQ-060, REQ-215, REQ-1531, REQ-1539
+    require_capability_request(request, "user_management")  # REQ-1531: see create_role
     pool = _pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
@@ -109,8 +127,10 @@ async def update_role(
         if existing is None:
             raise ApiError(404, "roles.not_found", "Role not found")
         existing = dict(existing._mapping)
-        if existing["org_id"] is None:
-            raise ApiError(400, "roles.cannot_modify_system", "Cannot modify system roles")
+        if role_id in _UNEDITABLE:
+            raise ApiError(
+                400, "roles.cannot_modify_administrative", "Cannot modify administrative roles"
+            )
 
         new_caps = body.capabilities if body.capabilities is not None else existing["capabilities"]
         new_domains = (
@@ -131,7 +151,8 @@ async def update_role(
 
 
 @router.delete("/{role_id}")
-async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-060
+async def delete_role(role_id: str, request: Request):  # REQ-042, REQ-059, REQ-060, REQ-1531
+    require_capability_request(request, "user_management")  # REQ-1531: see create_role
     pool = _pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(select(roles.c.org_id).where(roles.c.id == role_id))

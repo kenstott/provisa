@@ -39,9 +39,7 @@ def test_superuser_login_issues_a_session_the_middleware_accepts(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["token_type"] == "bearer"
-    identity = validate_superuser_session(
-        body["access_token"], _AUTH_CONFIG["superuser"], _SECRET
-    )
+    identity = validate_superuser_session(body["access_token"], _AUTH_CONFIG["superuser"], _SECRET)
     assert identity is not None
     assert identity.user_id == "root"
 

@@ -41,7 +41,9 @@ pytest.importorskip("psycopg2")
 pytest.importorskip("adbc_driver_postgresql")
 
 _ROWS = 5_000_000  # ~1 GiB once materialized as Python tuples (3 cols: bigint, bigint, char(40))
-_HEADROOM = 400 * 1024 * 1024  # AS cap = process baseline + this; one stream batch fits, 1 GiB does not
+_HEADROOM = (
+    400 * 1024 * 1024
+)  # AS cap = process baseline + this; one stream batch fits, 1 GiB does not
 _SQL = "SELECT id, amount, label FROM big ORDER BY id"
 
 # A busted RLIMIT_AS is signaled to the parent through the worker's EXIT CODE, never through the result
@@ -471,7 +473,9 @@ def test_streaming_peak_rss_is_bounded(big_pg, variant, capsys):
         pytest.fail(f"variant {variant!r} raised:\n{result[1]}")
     status, n, peak = result
     with capsys.disabled():
-        print(f"\n[mem] {variant}: rows={n} peak_rss={_mib(peak)} MiB (ceiling {_mib(_STREAM_PEAK_CEILING)})")
+        print(
+            f"\n[mem] {variant}: rows={n} peak_rss={_mib(peak)} MiB (ceiling {_mib(_STREAM_PEAK_CEILING)})"
+        )
     assert (status, n) == ("ok", _ROWS)
     assert peak < _STREAM_PEAK_CEILING, f"{variant} peak {_mib(peak)} MiB exceeded stream ceiling"
 
@@ -484,6 +488,8 @@ def test_materialized_peak_rss_is_large(big_pg, capsys):
         pytest.fail(f"direct_materialized raised:\n{result[1]}")
     status, n, peak = result
     with capsys.disabled():
-        print(f"\n[mem] direct_materialized: rows={n} peak_rss={_mib(peak)} MiB (floor {_mib(_MATERIALIZE_PEAK_FLOOR)})")
+        print(
+            f"\n[mem] direct_materialized: rows={n} peak_rss={_mib(peak)} MiB (floor {_mib(_MATERIALIZE_PEAK_FLOOR)})"
+        )
     assert (status, n) == ("ok", _ROWS)
     assert peak > _MATERIALIZE_PEAK_FLOOR, f"materialized peak {_mib(peak)} MiB unexpectedly small"

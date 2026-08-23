@@ -100,7 +100,12 @@ async def sql_client(monkeypatch):
     # Role must exist in state.roles or the rate-limit middleware rejects it as unknown
     # (REQ-369). admin capability keeps the endpoint's QUERY_DEVELOPMENT check passing;
     # empty domain_access preserves the table-access (V000) governance under test.
-    app_mod.state.roles = {"org_admin": {"id": "org_admin", "capabilities": ["query_development", "full_results", "usage", "write"]}}
+    app_mod.state.roles = {
+        "org_admin": {
+            "id": "org_admin",
+            "capabilities": ["query_development", "full_results", "usage", "write"],
+        }
+    }
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {"pg": "postgresql"}
     app_mod.state.source_dialects = {"pg": "postgres"}

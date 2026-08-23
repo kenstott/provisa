@@ -10,7 +10,7 @@
 
 import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from "@apollo/client";
 import { map } from "rxjs/operators";
-import { currentBearer, ORG_HEADER } from "./lib/authFetch";
+import { currentBearer, ENV_HEADER, ORG_HEADER, selectedEnv } from "./lib/authFetch";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -30,8 +30,14 @@ const httpLink = new HttpLink({
 
 const authLink = new ApolloLink((operation, forward) => {
   const orgId = localStorage.getItem("provisa_org");
-  // REQ-1317: the name the middleware reads.
-  if (orgId) operation.setContext({ headers: { [ORG_HEADER]: orgId } });
+  const env = selectedEnv();
+  // REQ-1317: the name the middleware reads. REQ-1487: and the environment within it — GraphQL
+  // does not pass through the fetch interceptor's header path, so a query left without this would
+  // read prod's model while every REST surface beside it read the branch.
+  const headers: Record<string, string> = {};
+  if (orgId) headers[ORG_HEADER] = orgId;
+  if (env !== null) headers[ENV_HEADER] = env;
+  if (Object.keys(headers).length > 0) operation.setContext({ headers });
   return forward(operation);
 });
 
@@ -67,6 +73,22 @@ export function clearPersistedAdminCache(): void {
   localStorage.removeItem(CACHE_KEY);
   localStorage.removeItem(SCHEMA_VERSION_KEY);
   void client.clearStore();
+}
+
+/** REQ-1487/REQ-1543: the reader is now looking at a DIFFERENT model — another environment, or the
+ * same one stepped back along its history — and every entity in the cache belongs to the one it was
+ * just looking at. Both stores go: the in-memory one, and the snapshot persisted to localStorage,
+ * which would otherwise be restored on the next load and replay the model that was left.
+ *
+ * This is what a full page reload used to do, and the reload is why choosing an environment threw
+ * the whole application away and rebuilt it — a splash screen in the middle of a two-click gesture.
+ * Resetting the store is the part of that which was actually needed: active queries re-run against
+ * the environment now selected, and the views holding them re-render with the answer.
+ */
+export function modelReplaced(): Promise<unknown> {
+  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(SCHEMA_VERSION_KEY);
+  return client.resetStore().catch(() => {});
 }
 
 if (typeof window !== "undefined") {

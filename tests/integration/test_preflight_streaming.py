@@ -294,7 +294,9 @@ async def test_wiring_rejects_streaming_check_on_non_streaming_engine(con):
 
 async def test_source_rows_evaluator_gates_in_memory(con):
     # The LANDED-SOURCE evaluator runs the hook over its own fetched rows ({node: rows}) — no engine.
-    evaluator = make_rows_evaluator(_NON_SQL_QUARANTINE.replace("streams['orders']", "streams['s.o']"), "s.o")
+    evaluator = make_rows_evaluator(
+        _NON_SQL_QUARANTINE.replace("streams['orders']", "streams['s.o']"), "s.o"
+    )
     assert evaluator is not None
     rows = [{"id": 1, "qty": 5}, {"id": 2, "qty": 6}]  # sum 11 < 20 → quarantine
     verdict = await evaluator(rows, _Ctx())

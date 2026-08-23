@@ -104,9 +104,7 @@ def to_verdict(result: Any) -> Verdict:
     )
 
 
-async def run_preflight(
-    fn: Callable[..., Any] | None, streams: Any, ctx: Any
-) -> Verdict:
+async def run_preflight(fn: Callable[..., Any] | None, streams: Any, ctx: Any) -> Verdict:
     """Invoke a compiled preflight hook and return its normalized verdict (REQ-1165).
 
     ``streams`` is the check's first argument — a ``dict[str, Iterable[dict]]`` keyed by input node

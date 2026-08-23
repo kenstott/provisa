@@ -34,15 +34,11 @@ class TestTestEndpointGuard:
 
     def test_endpoint_returns_404_when_disabled(self, monkeypatch):
         monkeypatch.delenv("PROVISA_ENABLE_TEST_ENDPOINTS", raising=False)
-        resp = _client().post(
-            "/admin/actions/test", json={"actionType": "function", "name": "x"}
-        )
+        resp = _client().post("/admin/actions/test", json={"actionType": "function", "name": "x"})
         assert resp.status_code == 404
 
     def test_endpoint_passes_guard_when_enabled(self, monkeypatch):
         # Enabled → guard passes; with no DB connected the handler returns 503, not 404.
         monkeypatch.setenv("PROVISA_ENABLE_TEST_ENDPOINTS", "true")
-        resp = _client().post(
-            "/admin/actions/test", json={"actionType": "function", "name": "x"}
-        )
+        resp = _client().post("/admin/actions/test", json={"actionType": "function", "name": "x"})
         assert resp.status_code != 404

@@ -136,6 +136,48 @@ class TestInitSchema:
         schema_sql_idx = next(i for i, s in enumerate(executed) if "CREATE TABLE" in s)
         assert search_path_idx < schema_sql_idx
 
+    @pytest.mark.asyncio
+    async def test_init_schema_builds_an_environment_schema(self):  # REQ-1488
+        # An environment is a schema of its own; prod keeps the pre-environment name, so an org
+        # that never creates one issues exactly the DDL it issued before environments existed.
+        from provisa.core.db import init_schema
+
+        for env, expected in (
+            (None, "org_myorg"),
+            ("prod", "org_myorg"),
+            ("dev", "org_myorg_env_dev"),
+        ):
+            mock_conn = _conn_with_advisory_lock()
+            mock_pool = MagicMock()
+            mock_pool.acquire = MagicMock(
+                return_value=AsyncMock(
+                    __aenter__=AsyncMock(return_value=mock_conn),
+                    __aexit__=AsyncMock(return_value=False),
+                )
+            )
+            mock_pool.dialect = "postgresql"
+            await init_schema(mock_pool, "SELECT 1", org_id="myorg", env=env)
+
+            core_sql = [str(c.args[0]) for c in mock_conn.execute_core.await_args_list if c.args]
+            assert any(f"CREATE SCHEMA IF NOT EXISTS {expected}" in s for s in core_sql), core_sql
+            assert any(f"{expected}_mv_cache" in s for s in core_sql), core_sql
+            executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
+            assert any(s == f"SET search_path TO {expected}" for s in executed), executed
+
+    @pytest.mark.asyncio
+    async def test_create_org_role_grants_each_environment_to_the_one_org_role(self):  # REQ-1488
+        # REQ-1487 keeps identity at the org, so an environment gets no DB role of its own.
+        from provisa.core.db import create_org_role
+
+        conn = AsyncMock()
+        conn.capabilities = MagicMock(dialect="postgresql")
+        await create_org_role(conn, "acme", env="dev")
+
+        granted = [c.args[0] for c in conn.execute.await_args_list if c.args]
+        assert any(
+            "GRANT USAGE, CREATE ON SCHEMA org_acme_env_dev TO role_acme" in s for s in granted
+        ), granted
+
     def test_validate_org_id_rejects_invalid_chars(self):  # REQ-697
         from provisa.core.db import _validate_org_id
 
@@ -337,6 +379,7 @@ class TestProvisionOrg:
 
         mock_conn = AsyncMock()
         mock_pool = MagicMock()
+        mock_pool.dialect = "postgresql"  # the rollback drops schemas only where they exist
         mock_pool.acquire = MagicMock(
             return_value=AsyncMock(
                 __aenter__=AsyncMock(return_value=mock_conn),
@@ -378,6 +421,40 @@ class TestProvisionOrg:
         assert any("DROP ROLE" in s and "role_acme" in s for s in executed)
         assert any("DROP SCHEMA" in s and "org_acme" in s for s in executed)
 
+    @pytest.mark.asyncio
+    async def test_deprovision_org_emits_no_schema_ddl_off_postgres(self):  # REQ-1488
+        """A plane without schemas has none to drop, and DROP SCHEMA does not parse on it."""
+        from provisa.core.org_provisioning import deprovision_org
+
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+        mock_pool.dialect = "sqlite"
+        mock_pool.acquire = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=False),
+            )
+        )
+
+        await deprovision_org(mock_pool, "acme", env="dev")
+
+        executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
+        assert executed == []
+
+    @pytest.mark.asyncio
+    async def test_provision_env_refused_off_postgres(self):  # REQ-1488
+        """REQ-1488 makes the environment a schema; a backend without schemas cannot hold one."""
+        from provisa.core.environments import EnvironmentPlaneError
+        from provisa.core.org_provisioning import provision_org
+
+        mock_pool = MagicMock()
+        mock_pool.dialect = "sqlite"
+
+        with pytest.raises(EnvironmentPlaneError):
+            await provision_org(mock_pool, "", org_id="acme", env="dev")
+
+        mock_pool.acquire.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # REQ-702: Demo seed code uses org_id for schema scoping
@@ -414,3 +491,60 @@ class TestDemoSeedOrgScoping:
             + mock_conn.upsert_returning.await_args_list
         ]
         assert any("org_demo" in c for c in all_calls)
+
+    @pytest.mark.asyncio
+    async def test_seed_meta_domain_registers_tables_in_the_environment_schema(self):  # REQ-1488
+        """A branch's runtime seeds its OWN schema.
+
+        The seed runs once per runtime, and a branch runtime is scoped to ``org_<id>_env_<name>``.
+        Naming ``org_<id>`` here registered the branch's meta tables at prod's address, alongside
+        the branch's own copies of the same rows — and every request to that runtime then failed
+        the (domain, table) uniqueness assertion in ``_assert_domain_table_unique``.
+        """
+        from provisa.api.startup_seed import _seed_meta_domain, _seed_ops_domain
+
+        for seed in (_seed_meta_domain, _seed_ops_domain):
+            mock_conn = AsyncMock()
+            mock_conn.reflect_columns = AsyncMock(return_value=[])
+            mock_conn.upsert_returning = AsyncMock(return_value=1)
+            result = MagicMock()
+            result.scalar.return_value = 1
+            result.fetchone.return_value = None
+            mock_conn.execute_core = AsyncMock(return_value=result)
+
+            await seed(mock_conn, org_id="demo", env="dev")
+
+            registered = [str(c) for c in mock_conn.upsert_returning.await_args_list]
+            assert registered, f"{seed.__name__} registered nothing"
+            assert all("org_demo_env_dev" in c for c in registered)
+            assert not any("'org_demo'" in c for c in registered)
+
+    @pytest.mark.asyncio
+    async def test_seed_retires_registrations_naming_a_sibling_environment(self):  # REQ-1488
+        """A schema seeded by the env-blind version of this code is repaired on the next boot.
+
+        The rows are unreachable and fatal — two registrations of every meta table fail
+        ``_assert_domain_table_unique`` — and the seed is their only writer, so it retires them
+        rather than leaving the environment permanently unusable.
+        """
+        from provisa.api.startup_seed import _seed_meta_domain
+
+        mock_conn = AsyncMock()
+        mock_conn.reflect_columns = AsyncMock(return_value=[])
+        mock_conn.upsert_returning = AsyncMock(return_value=1)
+        result = MagicMock()
+        result.scalar.return_value = 1
+        result.fetchone.return_value = None
+        mock_conn.execute_core = AsyncMock(return_value=result)
+
+        await _seed_meta_domain(mock_conn, org_id="demo", env="dev")
+
+        deletes = [
+            str(c.args[0].compile(compile_kwargs={"literal_binds": True}))
+            for c in mock_conn.execute_core.await_args_list
+            if str(c.args[0]).startswith("DELETE")
+        ]
+        purge = [d for d in deletes if "org_demo_env_%" in d]
+        assert len(purge) == 1, deletes
+        assert "schema_name != 'org_demo_env_dev'" in purge[0]
+        assert "= 'org_demo'" in purge[0]

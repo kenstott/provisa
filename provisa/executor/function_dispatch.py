@@ -254,7 +254,9 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
             col_names = [c["name"] for c in declared] if declared else None
             materialized = await _materialize_relation(str(value), state, col_names)
             schema = _schema_from_columns(declared)
-            if schema is not None:  # REQ-1159: enforce the declared input dataset contract, fail-loud
+            if (
+                schema is not None
+            ):  # REQ-1159: enforce the declared input dataset contract, fail-loud
                 materialized["rows"] = _validate_against(
                     materialized["rows"], schema, where=f"command {fn.get('name')!r} input {name!r}"
                 )

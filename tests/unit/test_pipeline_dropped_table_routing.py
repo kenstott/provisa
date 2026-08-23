@@ -202,8 +202,8 @@ async def test_openapi_path_param_table_routes_through_engine_cache_not_tenant_d
         patch("provisa.api_source.engine_cache.schedule_drop", new=AsyncMock()),
     ):
         exec_sql, decision, default_source, optimized, sources, _opts = await _optimize_and_route(
-            'SELECT * FROM get_pet_by_id WHERE "_nf_petId" = \'1\'',
-            'SELECT * FROM get_pet_by_id WHERE "_nf_petId" = \'1\'',
+            "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
+            "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'",
             gov_ctx,
             ctx,
             state,

@@ -137,7 +137,12 @@ def test_an_envelope_without_checker_identity_is_rejected():
 def test_the_worker_runs_in_the_same_interpreter_as_a_module():
     """The isolation being bought is IMPORT isolation, not environment isolation: the checker is a
     pyproject extra installed into this environment."""
-    assert build_command("/tmp/p.json") == [sys.executable, "-m", "provisa.dq.worker", "/tmp/p.json"]
+    assert build_command("/tmp/p.json") == [
+        sys.executable,
+        "-m",
+        "provisa.dq.worker",
+        "/tmp/p.json",
+    ]
 
 
 @pytest.mark.asyncio
@@ -168,9 +173,7 @@ async def test_a_contract_naming_a_different_data_source_is_reported_not_correct
         )
 
 
-@pytest.mark.parametrize(
-    ("checker", "extra"), [("great_expectations", "gx"), ("soda", "soda")]
-)
+@pytest.mark.parametrize(("checker", "extra"), [("great_expectations", "gx"), ("soda", "soda")])
 def test_an_uninstalled_checker_names_the_extra_that_supplies_it(checker: str, extra: str):
     """A checker is acquired on operator selection, so "not installed" is an ordinary operator state
     and the failure has to name its own remedy rather than surface the checker's import traceback."""

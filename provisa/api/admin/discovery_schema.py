@@ -79,7 +79,10 @@ async def get_unique_constraints(
         fetched = result.fetchone()
     if fetched is None:
         raise ApiError(
-            404, "discovery.source_not_found", f"Source '{source_id}' not found", source_id=source_id
+            404,
+            "discovery.source_not_found",
+            f"Source '{source_id}' not found",
+            source_id=source_id,
         )
     source_type = fetched._mapping["type"]
     raw = await introspect_unique_constraints(
@@ -156,7 +159,10 @@ async def discover_source_schema(
 
     if row is None:
         raise ApiError(
-            404, "discovery.source_not_found", f"Source '{source_id}' not found", source_id=source_id
+            404,
+            "discovery.source_not_found",
+            f"Source '{source_id}' not found",
+            source_id=source_id,
         )
 
     source_type = row["type"]

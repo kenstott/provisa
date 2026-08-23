@@ -635,7 +635,11 @@ def _lift_correlated_in_expr(
     if isinstance(expr, exp.JSONObject):
         return _lift_in_json_object(expr, outer_aliases, cte_defs, new_joins, cte_counter)
 
-    if isinstance(expr, exp.Anonymous) and expr.name.upper() in ("JSON_AGG", "JSONB_AGG", "ARRAY_AGG"):
+    if isinstance(expr, exp.Anonymous) and expr.name.upper() in (
+        "JSON_AGG",
+        "JSONB_AGG",
+        "ARRAY_AGG",
+    ):
         children = expr.expressions or []
         if children:
             child_rewritten = _lift_correlated_in_expr(
@@ -1047,7 +1051,11 @@ def _flatten_nested_in_expr(
             return _flatten_walk_alias(node, _walk)
         if isinstance(node, exp.JSONObject):
             return _flatten_walk_json_object(node, _walk)
-        if isinstance(node, exp.Anonymous) and node.name.upper() in ("JSON_AGG", "JSONB_AGG", "ARRAY_AGG"):
+        if isinstance(node, exp.Anonymous) and node.name.upper() in (
+            "JSON_AGG",
+            "JSONB_AGG",
+            "ARRAY_AGG",
+        ):
             return _flatten_walk_agg(node, _walk)
         if isinstance(node, exp.JSONArrayAgg):
             return _flatten_walk_json_array_agg(node, _walk)

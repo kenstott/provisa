@@ -270,13 +270,9 @@ async def provision_isolated_engine(org_id: str, wait: bool = True, size: Any = 
                 },
                 "ExposedPorts": {f"{port}/tcp": {}},
                 "HostConfig": host_config,
-                "NetworkingConfig": {
-                    "EndpointsConfig": {settings["network"]: {"Aliases": [name]}}
-                },
+                "NetworkingConfig": {"EndpointsConfig": {settings["network"]: {"Aliases": [name]}}},
             }
-            created = await client.post(
-                "/containers/create", params={"name": name}, json=body
-            )
+            created = await client.post("/containers/create", params={"name": name}, json=body)
             if created.status_code == 404:
                 raise IsolatedProvisioningError(
                     f"image {settings['image']!r} is not present on the node and this process does "
@@ -297,7 +293,9 @@ async def provision_isolated_engine(org_id: str, wait: bool = True, size: Any = 
         if started.status_code != 304:
             started.raise_for_status()
     if wait:
-        await _wait_until_ready(host, port, float(os.environ.get("PROVISA_ISOLATED_ENGINE_READY_TIMEOUT", "300")))
+        await _wait_until_ready(
+            host, port, float(os.environ.get("PROVISA_ISOLATED_ENGINE_READY_TIMEOUT", "300"))
+        )
     return {"container": name, "host": host, "port": port}
 
 
@@ -310,9 +308,7 @@ async def deprovision_isolated_engine(org_id: str) -> dict:
     settings = provisioner_settings()
     name = container_name(org_id)
     async with _client(settings["socket"]) as client:
-        removed = await client.delete(
-            f"/containers/{name}", params={"force": "true", "v": "true"}
-        )
+        removed = await client.delete(f"/containers/{name}", params={"force": "true", "v": "true"})
         if removed.status_code == 404:
             return {"container": name, "state": "absent"}
         removed.raise_for_status()

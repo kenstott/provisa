@@ -270,9 +270,7 @@ class TestREQ617RoleSelectionViaMetadata:
     async def test_missing_role_metadata_raises_unauthenticated(self):
         # REQ-617: Missing x-provisa-role causes UNAUTHENTICATED rejection.
         pb2, _ = _make_pb2_module("Orders", ["id"])
-        servicer = ProvisaServicer(
-            SimpleNamespace(schemas={}, contexts={}), pb2, MagicMock()
-        )
+        servicer = ProvisaServicer(SimpleNamespace(schemas={}, contexts={}), pb2, MagicMock())
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = []
 

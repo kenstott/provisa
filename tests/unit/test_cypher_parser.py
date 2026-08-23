@@ -63,9 +63,7 @@ def test_order_by_parsed():
 
 
 def test_order_by_multiple_columns_parsed():
-    ast = parse_cypher(
-        "MATCH (u:Person)-[:WROTE]->(p:Post) RETURN u.id, p.id ORDER BY u.id, p.id"
-    )
+    ast = parse_cypher("MATCH (u:Person)-[:WROTE]->(p:Post) RETURN u.id, p.id ORDER BY u.id, p.id")
     assert len(ast.order_by) == 2
     assert ast.order_by[0].expression.replace(" ", "") == "u.id"
     assert ast.order_by[1].expression.replace(" ", "") == "p.id"

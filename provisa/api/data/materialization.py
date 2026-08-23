@@ -184,7 +184,10 @@ async def _mat_gql_remote_table(
         }
         if _governed_excluded:
             col_dicts = [c for c in col_dicts if c["name"] not in _governed_excluded]
-    from provisa.compiler.naming import apply_sql_name as _apply_sql_name, apply_gql_name as _apply_gql_name
+    from provisa.compiler.naming import (
+        apply_sql_name as _apply_sql_name,
+        apply_gql_name as _apply_gql_name,
+    )
 
     def _gql_selection(c: dict) -> str:
         # The store lands under the semantic sql name; the remote keys the field by its GraphQL

@@ -57,7 +57,9 @@ async def profile_table(
         )
         row = result.fetchone()
     if row is None:
-        raise ApiError(404, "profile.table_not_found", f"Table {table_id} not found", table_id=table_id)
+        raise ApiError(
+            404, "profile.table_not_found", f"Table {table_id} not found", table_id=table_id
+        )
 
     m = row._mapping
     source_id: str = m["source_id"]

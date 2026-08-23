@@ -190,9 +190,7 @@ def _table(domain_id: str) -> dict:
 class TestProvisaConfigDomainPolicy:
     def test_legacy_unaffected(self):
         # use_domains absent: domains list + arbitrary domain_id allowed, no errors.
-        cfg = ProvisaConfig.model_validate(
-            _config({}, [{"id": "sales"}], [_table("sales")])
-        )
+        cfg = ProvisaConfig.model_validate(_config({}, [{"id": "sales"}], [_table("sales")]))
         assert cfg.naming.use_domains is None
 
     def test_single_domain_rejects_domains_list(self):

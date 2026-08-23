@@ -99,9 +99,7 @@ def snapshot():
             Role(id="analyst", capabilities=[], domain_access=["*"]),
             Role(id="admin", capabilities=[], domain_access=["*"]),
         ],
-        rls_rules=[
-            RLSRule(table_id="orders", role_id="analyst", filter="region_id = 'us'")
-        ],
+        rls_rules=[RLSRule(table_id="orders", role_id="analyst", filter="region_id = 'us'")],
     )
     return build_snapshot(config, org_id="acme", dialect="postgres")
 
@@ -235,9 +233,7 @@ async def test_transport_error_on_read_falls_back_and_reports_it(snapshot, monke
 
 
 @pytest.mark.asyncio
-async def test_first_publish_of_a_table_merges_nothing_and_reports_nothing(
-    snapshot, monkeypatch
-):
+async def test_first_publish_of_a_table_merges_nothing_and_reports_nothing(snapshot, monkeypatch):
     puts, _ = _mock_transport(monkeypatch, 404)
     result = await OpenMetadataExport(_export_config()).publish(snapshot)
     assert result.ok

@@ -88,6 +88,11 @@ sources = Table(
     Column("federation_hints", JSON, nullable=False, default=dict, server_default="{}"),
     Column("cdc", JSON),
     Column("change_signal", Text, nullable=False, server_default="ttl"),  # REQ-929
+    # REQ-1491: whether this environment has supplied this source's connection values. A copy
+    # carries the row and never the binding, and an empty host is not an absent one — the
+    # connection builder reads it as localhost — so an unbound source is MARKED, and the query
+    # path refuses a query naming it rather than dialling whatever is local to the node.
+    Column("bound", Boolean, nullable=False, server_default=true()),
 )
 
 domains = Table(
@@ -595,10 +600,15 @@ kafka_sources = Table(
     "kafka_sources",
     metadata,
     Column("id", Text, primary_key=True),
-    Column("bootstrap_servers", Text, nullable=False),
+    Column("bootstrap_servers", Text, nullable=False, server_default=""),
     Column("schema_registry_url", Text),
     Column("auth_type", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-1491: whether this environment has supplied this source's connection values. A copy
+    # carries the row and never the binding, and an empty host is not an absent one — the
+    # connection builder reads it as localhost — so an unbound source is MARKED, and the query
+    # path refuses a query naming it rather than dialling whatever is local to the node.
+    Column("bound", Boolean, nullable=False, server_default=true()),
 )
 
 kafka_topics = Table(
@@ -626,10 +636,15 @@ kafka_sinks = Table(
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("query_stable_id", Text, nullable=False, unique=True),
-    Column("topic", Text, nullable=False),
+    Column("topic", Text, nullable=False, server_default=""),
     Column("key_column", Text),
     Column("value_format", Text, nullable=False, server_default="json"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-1491: whether this environment has supplied this source's connection values. A copy
+    # carries the row and never the binding, and an empty host is not an absent one — the
+    # connection builder reads it as localhost — so an unbound source is MARKED, and the query
+    # path refuses a query naming it rather than dialling whatever is local to the node.
+    Column("bound", Boolean, nullable=False, server_default=true()),
 )
 
 api_sources = Table(
@@ -637,11 +652,16 @@ api_sources = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column("type", Text, nullable=False),
-    Column("base_url", Text, nullable=False),
+    Column("base_url", Text, nullable=False, server_default=""),
     Column("spec_url", Text),
     # REQ-686: API auth config (keys/tokens) encrypted at rest, decrypted before use.
     Column("auth", LargeBinary),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-1491: whether this environment has supplied this source's connection values. A copy
+    # carries the row and never the binding, and an empty host is not an absent one — the
+    # connection builder reads it as localhost — so an unbound source is MARKED, and the query
+    # path refuses a query naming it rather than dialling whatever is local to the node.
+    Column("bound", Boolean, nullable=False, server_default=true()),
     CheckConstraint(
         "type IN ('openapi', 'graphql_api', 'grpc_api')", name="api_sources_type_check"
     ),

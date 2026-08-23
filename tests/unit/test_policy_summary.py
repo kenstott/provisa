@@ -64,9 +64,7 @@ def test_lazy_read_through_cache_summary():
 
 
 def test_reachable_default_is_live():
-    r = describe_refresh_policy(
-        _src("pg", SourceType.postgresql), _tbl("pg"), build_trino_engine()
-    )
+    r = describe_refresh_policy(_src("pg", SourceType.postgresql), _tbl("pg"), build_trino_engine())
     assert r.serving is Serving.LIVE and r.warning is None
 
 

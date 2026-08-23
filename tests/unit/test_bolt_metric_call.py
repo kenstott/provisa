@@ -166,9 +166,7 @@ async def test_unknown_metric_is_hard_error():
 async def test_invisible_metric_reads_as_unknown():
     # visible_to=["finance"] — role "admin" must get the same error as a nonexistent metric.
     with pytest.raises(ValueError, match="Unknown metric: 'secret_margin'"):
-        await _maybe_invoke_metric_call(
-            "CALL provisa.metric('secret_margin')", "admin", _state()
-        )
+        await _maybe_invoke_metric_call("CALL provisa.metric('secret_margin')", "admin", _state())
 
 
 @_asyncio
@@ -231,9 +229,7 @@ def _label_map_with_roles():
 def test_db_labels_includes_fact_and_dimension():
     from provisa.bolt.session import _system_query
 
-    with patch(
-        "provisa.bolt.session._bolt_label_map", return_value=_label_map_with_roles()
-    ):
+    with patch("provisa.bolt.session._bolt_label_map", return_value=_label_map_with_roles()):
         result = _system_query("CALL db.labels()", object(), "admin", True, SimpleNamespace())
     assert result is not None
     cols, rows = result

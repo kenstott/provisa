@@ -373,7 +373,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
 
         if plan.physical_sql is None:
             raise RuntimeError("the engine plan missing transpiled SQL")
-        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
+        require_governed_plan(
+            plan
+        )  # REQ-1176: verify at the last moment, before the engine executes
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
         table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)

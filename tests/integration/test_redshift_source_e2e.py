@@ -50,7 +50,11 @@ from tests.integration.redshift_cluster import (
     redshift_cluster,  # noqa: F401 — imported for pytest fixture discovery
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_redshift, pytest.mark.requires_warehouse]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.requires_redshift,
+    pytest.mark.requires_warehouse,
+]
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))

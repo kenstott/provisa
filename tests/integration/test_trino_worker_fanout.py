@@ -109,7 +109,9 @@ def trino_worker():
     finally:
         # --no-deps / --no-recreate: scale the worker back to 0 without touching the
         # coordinator or any other service (matches the scale-up flags above).
-        _compose("up", "-d", "--no-deps", "--no-recreate", "--scale", "trino-worker=0", "trino-worker")
+        _compose(
+            "up", "-d", "--no-deps", "--no-recreate", "--scale", "trino-worker=0", "trino-worker"
+        )
 
 
 @pytest.mark.usefixtures("trino_worker")

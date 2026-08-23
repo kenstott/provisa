@@ -42,18 +42,19 @@ import logging
 from typing import Any
 
 from provisa.api.errors import ApiError
+from provisa.core.environments import env_schemas
 
 log = logging.getLogger(__name__)
 
-# The store schemas one org's platform-owned bytes live in. Enumerated rather than matched with a
-# LIKE 'org_<id>%' pattern: an org id is user-chosen text, so a prefix match would bill "acme" for
-# every byte belonging to "acme_eu".
-_ORG_SCHEMA_SUFFIXES = ("", "_mv_cache", "_api_cache", "_gql_cache")
 
+def org_store_schemas(org_id: str, env: str | None = None) -> list[str]:
+    """The materialization-store schemas whose bytes are attributable to one org environment.
 
-def org_store_schemas(org_id: str) -> list[str]:
-    """The materialization-store schemas whose bytes are attributable to ``org_id``."""
-    return [f"org_{org_id}{suffix}" for suffix in _ORG_SCHEMA_SUFFIXES]
+    The suffix set lives in :mod:`provisa.core.environments` so metering and provisioning cannot
+    disagree about which schemas an environment owns (REQ-1488). ``env`` defaults to prod, which
+    derives exactly the names this returned before environments existed.
+    """
+    return env_schemas(org_id, env)
 
 
 # Postgres is the only relational store flagged materialized_store today (EngineDefinition.

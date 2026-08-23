@@ -45,6 +45,7 @@ _RSS_TYPES = {"rss"}
 # GovData — Calcite JDBC adapter over US government datasets (JPype, polling)
 _GOVDATA_TYPES = {"govdata"}
 
+
 def supports_polling_fallback(source_type: str) -> bool:
     """Whether *source_type* falls back to watermark polling when native CDC/push is unavailable."""
     return source_type in _POLLING_TYPES

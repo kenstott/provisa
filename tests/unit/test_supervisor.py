@@ -171,7 +171,9 @@ async def test_three_level_cascade_one_recompute_per_node(tmp_path):
             watermark_column=None,
             dependents_of=dep,
             name=node,
-            generate=make_mv_generate(DsnEngine(store), schema="", table=table, columns=_COLS, run_query=run),
+            generate=make_mv_generate(
+                DsnEngine(store), schema="", table=table, columns=_COLS, run_query=run
+            ),
             db=None,
         )
 

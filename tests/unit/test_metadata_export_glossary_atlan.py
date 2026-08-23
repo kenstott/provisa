@@ -120,9 +120,7 @@ class _FakeAtlan:
                 return httpx.Response(200, json=body, request=request)
             guid = url.rsplit("/", 1)[-1]
             if guid in fake.live_terms:
-                return httpx.Response(
-                    200, json={"entity": fake.live_terms[guid]}, request=request
-                )
+                return httpx.Response(200, json={"entity": fake.live_terms[guid]}, request=request)
             return httpx.Response(404, request=request)
 
         async def _post(self, url, json=None, headers=None):
@@ -226,9 +224,7 @@ async def test_a_stored_binding_updates_the_same_vendor_term_in_place(monkeypatc
     fake.install(monkeypatch)
     uri = f"provisa://{ORG}/terms/customer"
     export = _export(bindings={uri: ("t-1", f"cust@{GLOSSARY_QN}")})
-    result = await export.publish(
-        _snapshot([_term(1, "customer", definition="new definition")])
-    )
+    result = await export.publish(_snapshot([_term(1, "customer", definition="new definition")]))
     assert result.ok
     (entity,) = _bulk_entities(fake)
     assert entity["guid"] == "t-1"
@@ -356,7 +352,9 @@ async def test_only_provisas_own_deprecation_marker_is_cleared(monkeypatch):
         },
         "relationshipAttributes": {"anchor": {"typeName": GLOSSARY_TYPE, "guid": "g-1"}},
     }
-    fake = _FakeAtlan(glossary_guid="g-1", live_terms={"t-1": was_deprecated, "t-2": human_verified})
+    fake = _FakeAtlan(
+        glossary_guid="g-1", live_terms={"t-1": was_deprecated, "t-2": human_verified}
+    )
     fake.install(monkeypatch)
     export = _export(
         bindings={

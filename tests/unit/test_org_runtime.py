@@ -53,6 +53,51 @@ def test_two_orgs_same_source_id_get_distinct_catalogs():
     assert b == "org_beta__demo_pg"
 
 
+def test_prod_and_none_give_the_pre_environment_name():
+    # REQ-1529: an org holding only prod is byte-identical to one that predates environments.
+    assert org_prefixed_catalog("acme", "pg_sales", default_org="root", env=None) == (
+        org_prefixed_catalog("acme", "pg_sales", default_org="root", env="prod")
+    )
+    assert org_prefixed_catalog("acme", "pg_sales", default_org="root", env="prod") == (
+        "org_acme__pg_sales"
+    )
+
+
+def test_a_branch_never_registers_under_its_bases_catalog_name():
+    # REQ-1529: a branch resolves its own bindings, so the same source id may point at a different
+    # host there. The coordinator's catalog namespace is shared, so an unprefixed branch would
+    # REPLACE the base's catalog rather than shadow it, and the base would afterwards be querying
+    # the branch's database.
+    base = org_prefixed_catalog("acme", "pg_sales", default_org="root", env="prod")
+    branch = org_prefixed_catalog("acme", "pg_sales", default_org="root", env="feature")
+    assert branch == "org_acme_env_feature__pg_sales"
+    assert branch != base
+
+
+def test_a_branch_of_the_default_org_is_prefixed_too():
+    # The default org's bare name is prod's; a branch of it collides with that name, so the
+    # bare-name exemption is prod's alone and not the org's.
+    assert org_prefixed_catalog("root", "pg_sales", default_org="root", env="feature") == (
+        "org_root_env_feature__pg_sales"
+    )
+    assert org_prefixed_catalog("root", "pg_sales", default_org="root", env="prod") == "pg_sales"
+
+
+def test_the_env_infix_matches_the_schema_name_it_mirrors():
+    from provisa.core.environments import org_schema
+
+    # Both split on the first `_env_` after `org_`, which REQ-1309 guarantees is unambiguous by
+    # forbidding an underscore in an org id.
+    catalog = org_prefixed_catalog("acme", "pg_sales", default_org="root", env="feature")
+    assert catalog.startswith(org_schema("acme", "feature") + "__")
+
+
+def test_two_branches_of_one_org_get_distinct_catalogs():
+    a = org_prefixed_catalog("acme", "demo_pg", default_org="root", env="feature")
+    b = org_prefixed_catalog("acme", "demo_pg", default_org="root", env="hotfix")
+    assert a != b
+
+
 def test_require_current_org_raises_when_unset():
     # A tenant-data path that reaches this with no org bound is a routing defect — it must raise,
     # never silently default (no-fallback rule).
@@ -84,9 +129,7 @@ async def test_get_or_build_builds_once_under_concurrency():
         await asyncio.sleep(0.01)  # widen the race window
         return OrgRuntime(org_id=org_id)
 
-    results = await asyncio.gather(
-        *[registry.get_or_build("acme", builder) for _ in range(20)]
-    )
+    results = await asyncio.gather(*[registry.get_or_build("acme", builder) for _ in range(20)])
     assert calls == 1
     first = results[0]
     assert all(r is first for r in results)

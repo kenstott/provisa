@@ -2219,7 +2219,7 @@
   "de/serverErrors.json::serverErrors.profile.role_header_required": "X-Provisa-Role header required to profile a view",
   "de/serverErrors.json::serverErrors.profile.table_not_found": "Table {{table_id}} not found",
   "de/serverErrors.json::serverErrors.roles.cannot_delete_system": "Cannot delete system roles",
-  "de/serverErrors.json::serverErrors.roles.cannot_modify_system": "Cannot modify system roles",
+  "de/serverErrors.json::serverErrors.roles.cannot_modify_administrative": "Cannot modify administrative roles",
   "de/serverErrors.json::serverErrors.roles.not_found": "Role not found",
   "de/serverErrors.json::serverErrors.roles.org_selection_required": "Org selection required",
   "de/serverErrors.json::serverErrors.schema.allowed_domains_updated": "Allowed domains updated for source '{{source}}'",

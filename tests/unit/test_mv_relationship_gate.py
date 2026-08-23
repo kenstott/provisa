@@ -94,7 +94,9 @@ def test_relationship_absent():
 
 
 def test_relationship_function_target_never_matches():
-    rels = [{"source_table_id": 1, "source_column": "x", "target_table_id": None, "target_column": None}]
+    rels = [
+        {"source_table_id": 1, "source_column": "x", "target_table_id": None, "target_column": None}
+    ]
     assert not relationship_present(rels, 1, "x", 2, "y")
 
 

@@ -246,7 +246,9 @@ def test_write_denial_without_a_resolved_tree_records_no_tables(captured):
 
 def test_write_denial_without_an_identity_writes_nothing(captured):
     tree = sqlglot.parse_one("SELECT * FROM hr.salaries")
-    asyncio.run(write_denial("SELECT * FROM hr.salaries", "analyst", tree, _Ctx({}), _CapturingState()))
+    asyncio.run(
+        write_denial("SELECT * FROM hr.salaries", "analyst", tree, _Ctx({}), _CapturingState())
+    )
     assert captured == []
 
 

@@ -375,9 +375,10 @@ async def test_req1165_quarantine_holds_without_land_or_poison(tmp_path):
             # the claimed upstream event is completed (not left to re-fire)
             assert await queue.peek_pending(conn, dependent_table="s.orders") == []
             # NOT fanned to dependents — a hold does not poison the DAG
-            assert await queue.claim(
-                conn, dependent_table="down.x", processor_name="p", now=_now()
-            ) == []
+            assert (
+                await queue.claim(conn, dependent_table="down.x", processor_name="p", now=_now())
+                == []
+            )
         async with store_writer.store_connection(dsn) as sc:
             from sqlalchemy.exc import OperationalError
 

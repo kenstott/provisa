@@ -50,7 +50,9 @@ class DirectDriver(ABC):  # REQ-027, REQ-052
         conformance gap for that source, streaming-uniformity-gap Defect 1)."""
         return False
 
-    async def open_stream(self, sql: str, params: list | None = None) -> DirectResultStream:  # REQ-1190
+    async def open_stream(
+        self, sql: str, params: list | None = None
+    ) -> DirectResultStream:  # REQ-1190
         """Open a bounded server-side cursor over ``sql``. Only valid when ``supports_streaming``."""
         raise NotImplementedError(f"{type(self).__name__} does not support streaming DIRECT reads")
 

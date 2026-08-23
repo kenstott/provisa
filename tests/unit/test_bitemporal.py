@@ -101,7 +101,7 @@ def test_snapshot_append_is_single_insert_of_whole_dataset():
 
 def test_snapshot_reconstruct_picks_latest_batch():
     sql = reconstruct_as_of_sql(TARGET, _snap(), COLS, ts_sql=None)
-    assert f"MAX(\"sys_recorded_at\") FROM {TARGET}" in sql
+    assert f'MAX("sys_recorded_at") FROM {TARGET}' in sql
     assert "ROW_NUMBER" not in sql
 
 

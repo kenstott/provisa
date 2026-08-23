@@ -66,7 +66,6 @@ from tests.itest_stack import ITEST_PROJECT as _ITEST_PROJECT
 pytestmark = [pytest.mark.integration]
 
 
-
 _FB_HOST = os.environ.get("FIREBIRD_HOST", "localhost")
 _FB_PORT = int(os.environ.get("FIREBIRD_PORT", "3050"))
 _FB_USER = "provisa"
@@ -78,7 +77,10 @@ _WIDGETS = [(1, "Widget A"), (2, "Widget B"), (3, "Widget C")]
 
 _FB_RELEASE_TAG = "v5.0.4"
 _FB_RELEASE_BASE = f"https://github.com/FirebirdSQL/firebird/releases/download/{_FB_RELEASE_TAG}"
-_ARCH_MAP = {"arm64": "arm64", "x86_64": "x64"}  # Firebird's macOS pkg naming vs. platform.machine()
+_ARCH_MAP = {
+    "arm64": "arm64",
+    "x86_64": "x64",
+}  # Firebird's macOS pkg naming vs. platform.machine()
 
 _LINUX_CLIENT_CANDIDATES = [
     "/usr/lib/x86_64-linux-gnu/libfbclient.so.2",
@@ -164,9 +166,13 @@ def _ensure_firebird_client_lib() -> str:
 def _firebird_container_id() -> str:
     out = subprocess.run(
         [
-            "docker", "ps", "-q",
-            "--filter", f"label=com.docker.compose.project={_ITEST_PROJECT}",
-            "--filter", "label=com.docker.compose.service=firebird",
+            "docker",
+            "ps",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={_ITEST_PROJECT}",
+            "--filter",
+            "label=com.docker.compose.service=firebird",
         ],  # fmt: skip
         capture_output=True,
         text=True,
@@ -181,9 +187,15 @@ def _firebird_container_id() -> str:
 def _isql(container_id: str, script: str) -> None:
     subprocess.run(
         [
-            "docker", "exec", "-i", container_id,
+            "docker",
+            "exec",
+            "-i",
+            container_id,
             "/usr/local/firebird/bin/isql",
-            "-user", _FB_USER, "-password", _FB_PASSWORD,
+            "-user",
+            _FB_USER,
+            "-password",
+            _FB_PASSWORD,
             _FB_DB_PATH_IN_CONTAINER,
         ],  # fmt: skip
         input=script,

@@ -68,7 +68,12 @@ _BLOB_ROLE = "Storage Blob Data Contributor"
 
 _AZ_TIMEOUT_S = 1800  # workspace create is the long pole (~5 min); RG delete can reach ~15 min
 _RBAC_TIMEOUT_S = 600  # AAD role assignments are eventually consistent -- minutes, not seconds
-_AZ_TRANSIENT_MARKERS = ("read timed out", "connection aborted", "connection reset", "remote end closed connection")
+_AZ_TRANSIENT_MARKERS = (
+    "read timed out",
+    "connection aborted",
+    "connection reset",
+    "remote end closed connection",
+)
 _AZ_TRANSIENT_RETRIES = 4
 
 
@@ -83,7 +88,9 @@ def _az(*args: str, timeout: int = _AZ_TIMEOUT_S) -> str:
         if proc.returncode == 0:
             return proc.stdout.strip()
         stderr = proc.stderr.strip()
-        if attempt == _AZ_TRANSIENT_RETRIES or not any(m in stderr.lower() for m in _AZ_TRANSIENT_MARKERS):
+        if attempt == _AZ_TRANSIENT_RETRIES or not any(
+            m in stderr.lower() for m in _AZ_TRANSIENT_MARKERS
+        ):
             raise RuntimeError(f"az {' '.join(args)} failed ({proc.returncode}): {stderr}")
         time.sleep(5 * (attempt + 1))
     raise AssertionError("unreachable")
@@ -143,10 +150,16 @@ def _resolve_location() -> str:
     subscription = _az("account", "show", "--query", "id", "-o", "tsv", timeout=60)
     for location in _LOCATION_CANDIDATES:
         status = _az(
-            "rest", "--method", "get", "--url",
+            "rest",
+            "--method",
+            "get",
+            "--url",
             f"https://management.azure.com/subscriptions/{subscription}"
             f"/providers/Microsoft.Sql/locations/{location}/capabilities?api-version=2021-11-01",
-            "--query", "status", "-o", "tsv",
+            "--query",
+            "status",
+            "-o",
+            "tsv",
             timeout=120,
         )
         if status == "Available":
@@ -158,7 +171,9 @@ def _resolve_location() -> str:
 
 
 def _register_provider() -> None:
-    state = _az("provider", "show", "-n", "Microsoft.Synapse", "--query", "registrationState", "-o", "tsv")
+    state = _az(
+        "provider", "show", "-n", "Microsoft.Synapse", "--query", "registrationState", "-o", "tsv"
+    )
     if state != "Registered":
         _az("provider", "register", "-n", "Microsoft.Synapse", "--wait")
 
@@ -194,7 +209,9 @@ def _wait_for_openrowset(server: str, adls_url: str) -> None:
         except pyodbc.Error as exc:
             last = exc
             time.sleep(15)
-    raise RuntimeError(f"OPENROWSET on {adls_url} never became readable within {_RBAC_TIMEOUT_S}s: {last}")
+    raise RuntimeError(
+        f"OPENROWSET on {adls_url} never became readable within {_RBAC_TIMEOUT_S}s: {last}"
+    )
 
 
 def _create_database(server: str) -> None:
@@ -258,72 +275,190 @@ def synapse_lane():
     try:
         # Hierarchical namespace is not optional: Synapse requires ADLS Gen2 for its primary account.
         _az(
-            "storage", "account", "create",
-            "-n", storage, "-g", resource_group, "-l", location,
-            "--sku", "Standard_LRS", "--kind", "StorageV2",
-            "--enable-hierarchical-namespace", "true",
-            "-o", "none",
+            "storage",
+            "account",
+            "create",
+            "-n",
+            storage,
+            "-g",
+            resource_group,
+            "-l",
+            location,
+            "--sku",
+            "Standard_LRS",
+            "--kind",
+            "StorageV2",
+            "--enable-hierarchical-namespace",
+            "true",
+            "-o",
+            "none",
         )
         key = _az(
-            "storage", "account", "keys", "list",
-            "-n", storage, "-g", resource_group,
-            "--query", "[0].value", "-o", "tsv",
+            "storage",
+            "account",
+            "keys",
+            "list",
+            "-n",
+            storage,
+            "-g",
+            resource_group,
+            "--query",
+            "[0].value",
+            "-o",
+            "tsv",
         )
         # The account key -- not --auth-mode login -- for the filesystem and upload: those run
         # seconds after the role assignment, well inside its propagation window. The key never
         # leaves this process and dies with the account.
         _az(
-            "storage", "fs", "create", "-n", _FILESYSTEM,
-            "--account-name", storage, "--account-key", key, "-o", "none",
+            "storage",
+            "fs",
+            "create",
+            "-n",
+            _FILESYSTEM,
+            "--account-name",
+            storage,
+            "--account-key",
+            key,
+            "-o",
+            "none",
         )
         with tempfile.TemporaryDirectory() as tmp:
             local = _seed_parquet(Path(tmp))
             _az(
-                "storage", "fs", "file", "upload",
-                "-f", _FILESYSTEM, "-s", str(local), "-p", _PARQUET_PATH,
-                "--account-name", storage, "--account-key", key, "--overwrite", "-o", "none",
+                "storage",
+                "fs",
+                "file",
+                "upload",
+                "-f",
+                _FILESYSTEM,
+                "-s",
+                str(local),
+                "-p",
+                _PARQUET_PATH,
+                "--account-name",
+                storage,
+                "--account-key",
+                key,
+                "--overwrite",
+                "-o",
+                "none",
             )
 
         storage_scope = _az(
-            "storage", "account", "show",
-            "-n", storage, "-g", resource_group, "--query", "id", "-o", "tsv",
+            "storage",
+            "account",
+            "show",
+            "-n",
+            storage,
+            "-g",
+            resource_group,
+            "--query",
+            "id",
+            "-o",
+            "tsv",
         )
         # Granted before the workspace is created so the ~5 minutes of workspace provisioning double
         # as RBAC propagation time.
         _az(
-            "role", "assignment", "create",
-            "--role", _BLOB_ROLE, "--assignee-object-id", user_oid,
-            "--assignee-principal-type", "User", "--scope", storage_scope, "-o", "none",
+            "role",
+            "assignment",
+            "create",
+            "--role",
+            _BLOB_ROLE,
+            "--assignee-object-id",
+            user_oid,
+            "--assignee-principal-type",
+            "User",
+            "--scope",
+            storage_scope,
+            "-o",
+            "none",
         )
 
         print(f"== provisioning workspace {workspace} ==", flush=True)
         _az(
-            "synapse", "workspace", "create",
-            "-n", workspace, "-g", resource_group, "-l", location,
-            "--storage-account", storage, "--file-system", _FILESYSTEM,
-            "--sql-admin-login-user", "provisaadmin",
-            "--sql-admin-login-password", _sql_password(),
-            "-o", "none",
+            "synapse",
+            "workspace",
+            "create",
+            "-n",
+            workspace,
+            "-g",
+            resource_group,
+            "-l",
+            location,
+            "--storage-account",
+            storage,
+            "--file-system",
+            _FILESYSTEM,
+            "--sql-admin-login-user",
+            "provisaadmin",
+            "--sql-admin-login-password",
+            _sql_password(),
+            "-o",
+            "none",
         )
         msi = _az(
-            "synapse", "workspace", "show",
-            "-n", workspace, "-g", resource_group,
-            "--query", "identity.principalId", "-o", "tsv",
+            "synapse",
+            "workspace",
+            "show",
+            "-n",
+            workspace,
+            "-g",
+            resource_group,
+            "--query",
+            "identity.principalId",
+            "-o",
+            "tsv",
         )
         _az(
-            "role", "assignment", "create",
-            "--role", _BLOB_ROLE, "--assignee-object-id", msi,
-            "--assignee-principal-type", "ServicePrincipal", "--scope", storage_scope, "-o", "none",
+            "role",
+            "assignment",
+            "create",
+            "--role",
+            _BLOB_ROLE,
+            "--assignee-object-id",
+            msi,
+            "--assignee-principal-type",
+            "ServicePrincipal",
+            "--scope",
+            storage_scope,
+            "-o",
+            "none",
         )
         # The workspace SQL endpoint denies every client IP by default. Scoped to this host's egress
         # address: a 0.0.0.0-255.255.255.255 rule leaves a public SQL endpoint open to the internet
         # for as long as the workspace stands.
-        egress = _az("rest", "--method", "get", "--url", "https://api.ipify.org?format=json",
-                     "--skip-authorization-header", "--query", "ip", "-o", "tsv", timeout=120)
+        egress = _az(
+            "rest",
+            "--method",
+            "get",
+            "--url",
+            "https://api.ipify.org?format=json",
+            "--skip-authorization-header",
+            "--query",
+            "ip",
+            "-o",
+            "tsv",
+            timeout=120,
+        )
         _az(
-            "synapse", "workspace", "firewall-rule", "create",
-            "-n", "provisa-e2e-client", "--workspace-name", workspace, "-g", resource_group,
-            "--start-ip-address", egress, "--end-ip-address", egress, "-o", "none",
+            "synapse",
+            "workspace",
+            "firewall-rule",
+            "create",
+            "-n",
+            "provisa-e2e-client",
+            "--workspace-name",
+            workspace,
+            "-g",
+            resource_group,
+            "--start-ip-address",
+            egress,
+            "--end-ip-address",
+            egress,
+            "-o",
+            "none",
         )
 
         sql_server = f"{workspace}-ondemand.sql.azuresynapse.net"

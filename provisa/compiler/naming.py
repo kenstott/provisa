@@ -160,7 +160,9 @@ def source_to_catalog(source_id: str) -> str:  # REQ-471
     return source_id.replace("-", "_")
 
 
-def org_prefixed_catalog(org_id: str, base_catalog: str, *, default_org: str) -> str:  # REQ-1266
+def org_prefixed_catalog(
+    org_id: str, base_catalog: str, *, default_org: str, env: str | None = None
+) -> str:  # REQ-1266, REQ-1529
     """Namespace an org-scoped source's engine catalog so two orgs seeded with
     identical source ids don't collide in the one global engine catalog namespace.
 
@@ -168,7 +170,25 @@ def org_prefixed_catalog(org_id: str, base_catalog: str, *, default_org: str) ->
     existing ``source_to_catalog`` call site stay byte-identical; any other org gets
     an ``org_<id>__`` prefix. System catalogs (provisa-admin/otel) and fixed-warehouse
     catalogs (BigQuery/Fabric/Synapse — one physical catalog shared across orgs) are
-    NOT org-scoped and must never be passed here."""
+    NOT org-scoped and must never be passed here.
+
+    AN ENVIRONMENT NAMESPACES IT TOO (REQ-1529), for the same reason an org does and with more
+    force: a branch resolves its own bindings, so the same source id in a branch may point at a
+    different host than it does in the base. The catalog namespace is the one shared coordinator's,
+    so a branch registering under the base's name would not shadow the base's catalog for itself —
+    it would REPLACE it, and the base would afterwards be querying the branch's database. prod and
+    ``None`` give the pre-environment name, which is what keeps an org holding only prod
+    byte-identical; anything else is prefixed even in the default org, because a branch of the
+    default org collides with the default org's own bare name.
+
+    The ``_env_`` infix matches ``org_schema`` deliberately: REQ-1309 forbids an underscore in an
+    org id, so the first one after ``org_`` splits the name into exactly one org and one
+    environment however either is named.
+    """
+    from provisa.core.environments import PROD
+
+    if env is not None and env != PROD:
+        return f"org_{org_id}_env_{env}__{base_catalog}"
     if org_id == default_org:
         return base_catalog
     return f"org_{org_id}__{base_catalog}"

@@ -34,7 +34,7 @@ renumber it. Children -- a table's columns, a term's edges -- are replaced withi
 because the file is the whole statement of what they are.
 """
 
-# Requirements: REQ-1489, REQ-1491, REQ-1496, REQ-1524, REQ-1526, REQ-1539
+# Requirements: REQ-1489, REQ-1491, REQ-1496, REQ-1524, REQ-1526, REQ-1539, REQ-1556
 
 from __future__ import annotations
 
@@ -60,6 +60,7 @@ from provisa.core.schema_org import metadata as org_metadata
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
+    from provisa.core.env_conflicts import Conflict
 
 
 class DeployError(Exception):
@@ -148,9 +149,29 @@ class DeployReport:
     ref: str
     seed: bool
     delta: DeployDelta
+    #: The commit the environment's branch and the incoming tree last shared, and every object they
+    #: each moved away from it differently (REQ-1556). Both are the pull's question and nothing
+    #: else's: a deploy of an arbitrary ref is the operator stating which model the environment
+    #: runs, so its divergence from what stood there is the point of the act. ``base`` is None when
+    #: the caller asked no such question, and the empty list under it then means NOTHING WAS
+    #: COMPARED rather than nothing collided.
+    base: str | None = None
+    conflicts: list["Conflict"] = field(default_factory=list)
+
+    @property
+    def compared(self) -> bool:
+        return self.base is not None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"env": self.env, "ref": self.ref, "seed": self.seed, **self.delta.as_dict()}
+        return {
+            "env": self.env,
+            "ref": self.ref,
+            "seed": self.seed,
+            **self.delta.as_dict(),
+            "base": self.base,
+            "compared": self.compared,
+            "conflicts": [c.as_dict() for c in self.conflicts],
+        }
 
 
 async def plan_deploy(
@@ -161,6 +182,7 @@ async def plan_deploy(
     *,
     ref: str,
     seed: bool = False,
+    base_sha: str | None = None,
 ) -> DeployReport:
     """What :func:`deploy_tree` would do, without doing any of it.
 
@@ -168,7 +190,7 @@ async def plan_deploy(
     person approves and the deploy they approved are computed from the same check.
     """
     async with db.acquire() as conn:
-        return await _load(conn, org_id, env, tree, ref, seed, apply=False)
+        return await _load(conn, org_id, env, tree, ref, seed, base_sha, apply=False)
 
 
 async def deploy_tree(
@@ -179,10 +201,17 @@ async def deploy_tree(
     *,
     ref: str,
     seed: bool = False,
+    base_sha: str | None = None,
 ) -> DeployReport:
-    """Make ``tree`` the model of ``env``. One transaction: it holds whole or not at all."""
+    """Make ``tree`` the model of ``env``. One transaction: it holds whole or not at all.
+
+    ``base_sha`` names the commit this environment and the incoming tree last shared, and asks for
+    the conflict report (REQ-1556). Passed by the pull and by nothing else; the comparison runs on
+    this connection inside this transaction, BEFORE the apply, because afterwards the environment
+    holds the incoming model and there is nothing left to notice.
+    """
     async with db.acquire() as conn, conn.transaction():
-        return await _load(conn, org_id, env, tree, ref, seed, apply=True)
+        return await _load(conn, org_id, env, tree, ref, seed, base_sha, apply=True)
 
 
 async def _load(
@@ -192,23 +221,32 @@ async def _load(
     tree: dict[str, dict[str, Any]],
     ref: str,
     seed: bool,
+    base_sha: str | None,
     *,
     apply: bool,
 ) -> DeployReport:
+    from provisa.core.env_conflicts import against_base
+
     schema = org_schema(org_id, env)
     scope = PROJECTED if seed else PROJECTED - SEEDED_AT_CREATION
     incoming = {p: b for p, b in tree.items() if table_of(p) in scope}
     current = {p: b for p, b in (await project(conn, schema)).items() if table_of(p) in scope}
 
+    # REQ-1556: which of this environment's own work the incoming tree carries away. Asked against
+    # the commit the two lines last shared, because ``current`` alone cannot say whether an object
+    # that differs is one the incoming model changed or one somebody changed HERE -- and for a
+    # fast-forward pull, where nothing diverged, the second is a local edit no commit ever holds.
+    conflicts = against_base(org_id, base_sha, incoming, current) if base_sha else []
+
     delta = _diff(current, incoming)
     rows = _decompose(incoming, await _existing_ids(conn, schema))
     if not apply:
-        return DeployReport(env or "prod", ref, seed, delta)
+        return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
 
     ordered = [t for t in org_metadata.sorted_tables if t.name in scope]
     await _apply(conn, ordered, schema, rows, delta)
     await _resync_sequences(conn, ordered, schema)
-    return DeployReport(env or "prod", ref, seed, delta)
+    return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
 
 
 def _diff(current: dict[str, dict], incoming: dict[str, dict]) -> DeployDelta:

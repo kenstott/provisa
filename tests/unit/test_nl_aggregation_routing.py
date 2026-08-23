@@ -416,7 +416,9 @@ class TestGenerateOpenapiQuery:
         plan = AggregationPlan(meta, ["species"], False, ["count"], [])
         q, e = _generate_openapi_query(plan, set(), {})
         assert e is None
-        assert q == "GET /data/rest/pet_store/pets?groupBy=species&aggregate=count&includeNodes=true"
+        assert (
+            q == "GET /data/rest/pet_store/pets?groupBy=species&aggregate=count&includeNodes=true"
+        )
 
     def test_no_plan_falls_back_to_old_behavior(self):
         nm = SimpleNamespace(type_name="DimPet", domain_id="pet_store", table_name="dim_pet")
@@ -438,7 +440,9 @@ class TestExecutorRouting:
         cq = _agg_only_compiled()
         with (
             patch.object(
-                executor, "_grpc_aggregate_graphql_text", return_value="{ pets_aggregate { count } }"
+                executor,
+                "_grpc_aggregate_graphql_text",
+                return_value="{ pets_aggregate { count } }",
             ) as fake_text,
             patch.object(
                 executor,
@@ -471,7 +475,9 @@ class TestExecutorRouting:
                 new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]), None)]),
             ) as fake_exec,
         ):
-            result = await executor._execute_grpc("QueryPetsGroupBy(by=[species])", "admin", app_state)
+            result = await executor._execute_grpc(
+                "QueryPetsGroupBy(by=[species])", "admin", app_state
+            )
         # _execute_grpc calls _grpc_group_by_graphql_text(ctx, "Pets", ["species"], None, False, None) —
         # funcs is None and include_nodes/include are absent when the query text carries no
         # funcs=/include_nodes= suffix.
@@ -481,7 +487,9 @@ class TestExecutorRouting:
         fake_exec.assert_awaited_once()
         # split_group_by_columns: species→groupKey idx, count→agg idx.
         # split_agg_columns on agg cols: nested_in="aggregate" → len==1 → top scalar.
-        assert result == {"group_by": [{"group_key": '{"species": "dog"}', "aggregate": {"count": 3}}]}
+        assert result == {
+            "group_by": [{"group_key": '{"species": "dog"}', "aggregate": {"count": 3}}]
+        }
 
     async def test_execute_grpc_plain_falls_back_to_sql(self):
         from provisa.nl import executor
@@ -492,7 +500,9 @@ class TestExecutorRouting:
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
                 return_value="SELECT * FROM pet_store.pets LIMIT 20",
             ),
-            patch.object(executor, "_execute_sql", new=AsyncMock(return_value={"columns": [], "rows": []})) as fake_exec,
+            patch.object(
+                executor, "_execute_sql", new=AsyncMock(return_value={"columns": [], "rows": []})
+            ) as fake_exec,
         ):
             await executor._execute_grpc("QueryPets", "admin", app_state)
         fake_exec.assert_awaited_once()
@@ -504,7 +514,9 @@ class TestExecutorRouting:
         cq = _agg_only_compiled()
         with (
             patch.object(
-                executor, "_grpc_aggregate_graphql_text", return_value="{ pets_aggregate { count } }"
+                executor,
+                "_grpc_aggregate_graphql_text",
+                return_value="{ pets_aggregate { count } }",
             ) as fake_text,
             patch.object(
                 executor,
@@ -645,7 +657,11 @@ class TestExecutorRouting:
         )
         assert result == {
             "data": [
-                {"groupKey": {"species": "dog"}, "aggregate": {"count": 3}, "nodes": [{"name": "Rex"}]}
+                {
+                    "groupKey": {"species": "dog"},
+                    "aggregate": {"count": 3},
+                    "nodes": [{"name": "Rex"}],
+                }
             ]
         }
 
@@ -654,7 +670,9 @@ class TestExecutorRouting:
 
         app_state = SimpleNamespace(contexts={"admin": _ctx()})
         with patch.object(
-            executor, "_execute_domain_table", new=AsyncMock(return_value={"columns": [], "rows": []})
+            executor,
+            "_execute_domain_table",
+            new=AsyncMock(return_value={"columns": [], "rows": []}),
         ) as fake_exec:
             await executor._execute_jsonapi(
                 "/data/jsonapi/pet_store/pets?page[size]=20", "admin", app_state
@@ -668,7 +686,9 @@ class TestExecutorRouting:
         cq = _agg_only_compiled()
         with (
             patch.object(
-                executor, "_grpc_aggregate_graphql_text", return_value="{ pets_aggregate { count } }"
+                executor,
+                "_grpc_aggregate_graphql_text",
+                return_value="{ pets_aggregate { count } }",
             ) as fake_text,
             patch.object(
                 executor,
@@ -718,7 +738,9 @@ class TestExecutorRouting:
 
         app_state = SimpleNamespace(contexts={"admin": _ctx()})
         with patch.object(
-            executor, "_execute_domain_table", new=AsyncMock(return_value={"columns": [], "rows": []})
+            executor,
+            "_execute_domain_table",
+            new=AsyncMock(return_value={"columns": [], "rows": []}),
         ) as fake_exec:
             await executor._execute_openapi("GET /data/rest/pet_store/pets", "admin", app_state)
         fake_exec.assert_awaited_once_with("pet_store", "pets", "admin", app_state)
@@ -894,4 +916,6 @@ class TestIncludeRelations:
     def test_flag_only_has_no_relations(self):
         from provisa.nl.executor import _include_relations
 
-        assert _include_relations("/data/jsonapi/d/t?groupBy=a&aggregate=true&includeNodes=true") == []
+        assert (
+            _include_relations("/data/jsonapi/d/t?groupBy=a&aggregate=true&includeNodes=true") == []
+        )

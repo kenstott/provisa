@@ -82,7 +82,9 @@ def _discover_group_by_field(srv: IsolatedServer) -> str:
         )
     assert resp.status_code == 200, f"introspection: HTTP {resp.status_code} {resp.text[:300]}"
     names = {f["name"] for f in resp.json()["data"]["__schema"]["queryType"]["fields"]}
-    candidates = [n for n in names if "orders" in n.lower() and "groupby" in n.lower().replace("_", "")]
+    candidates = [
+        n for n in names if "orders" in n.lower() and "groupby" in n.lower().replace("_", "")
+    ]
     assert candidates, f"no orders group-by root field in schema; fields={sorted(names)}"
     return candidates[0]
 
@@ -92,9 +94,7 @@ def _read_graphql(srv: IsolatedServer, gb_field: str) -> dict[str, int]:
 
     query = f"{{ {gb_field}(by: [region]) {{ groupKey aggregate {{ count }} }} }}"
     with httpx.Client(base_url=srv.base_url, timeout=60.0) as c:
-        resp = c.post(
-            "/data/graphql", json={"query": query}, headers={"x-provisa-role": _ROLE}
-        )
+        resp = c.post("/data/graphql", json={"query": query}, headers={"x-provisa-role": _ROLE})
     assert resp.status_code == 200, f"graphql: HTTP {resp.status_code} {resp.text[:300]}"
     body = resp.json()
     assert not body.get("errors"), f"graphql: {body.get('errors')}"
@@ -114,7 +114,10 @@ def _read_jsonapi(srv: IsolatedServer) -> dict[str, int]:
     assert resp.status_code == 200, f"jsonapi: HTTP {resp.status_code} {resp.text[:300]}"
     rows = resp.json()["data"]
     return _region_counts(
-        [(r["attributes"]["groupKey"]["region"], r["attributes"]["aggregate"]["count"]) for r in rows]
+        [
+            (r["attributes"]["groupKey"]["region"], r["attributes"]["aggregate"]["count"])
+            for r in rows
+        ]
     )
 
 

@@ -326,6 +326,60 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
         )
 
 
+async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
+    """REQ-1491/REQ-1539: a write needs a binding — the environment does not decide who may write.
+
+    WHAT THIS IS NOT. It was once also a permission check: the environment a binding was inherited
+    from carried a ``branch_writable`` flag, and a write through an inherited binding was refused
+    unless that flag was set. REQ-1539 removed it. A member's data rights are the rights their ROLES
+    give them, in every environment alike — an environment is a namespace for the model, not a
+    second permission system layered over the one that already answers "may this person write".
+    Conferring model-editing authority on the creator of an environment (REQ-1528) is what needed
+    bounding, and it is bounded where it arose: that authority no longer carries ``write`` at all.
+
+    WHAT REMAINS is the question a write cannot proceed without an answer to: which binding it would
+    travel. A table nobody registered has no binding, and a source unbound here and in everything it
+    inherited from has none either. Both are refused — not as a permission, but because there is no
+    established target to write to, which is REQ-1491's guarantee that a new environment reaches
+    nothing until somebody says what it reaches.
+
+    Checked on the ONE pipeline every raw-SQL surface funnels through, for the same reason
+    REQ-1157's view guard is: a check on one surface is a check the next surface does not have.
+    prod returns immediately — it inherits from nothing, so every binding it has is its own.
+    """
+    import sqlglot.expressions as _exp
+
+    from provisa.api.org_runtime import active_env
+    from provisa.core.environments import PROD
+
+    env = active_env()
+    if env == PROD:
+        return
+    if not isinstance(parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge)):
+        return
+    target = parsed.this
+    tbl = (
+        target if isinstance(target, _exp.Table) else (target.find(_exp.Table) if target else None)
+    )
+    if tbl is None:
+        return
+    source_id = next(
+        (t["source_id"] for t in getattr(state, "tables", []) if t["table_name"] == tbl.name), None
+    )
+    if source_id is None:
+        raise PermissionError(
+            f"{type(parsed).__name__.upper()} into {tbl.name!r} is not allowed in environment "
+            f"{env!r}: it is not a registered table, so which binding the write would travel "
+            f"cannot be established, and a write with no established target is what REQ-1491 refuses."
+        )
+    if getattr(state, "source_binding_env", {}).get(source_id) is None:
+        raise PermissionError(
+            f"{type(parsed).__name__.upper()} into {tbl.name!r} is not allowed in environment "
+            f"{env!r}: source {source_id!r} is unbound in {env!r} and in every environment it "
+            f"inherited from (REQ-1491). Bind it to write to it."
+        )
+
+
 async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     """REQ-1159: rewrite every inline command call in ``tree`` to a typed local relation, in place.
 
@@ -520,6 +574,8 @@ async def _govern_and_route_planned(
 
     _reject_physical_source_refs(_parsed_input, state)
     _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only
+    # REQ-1529: and a branch writes only through a binding whose supplier admits it.
+    await _reject_unbound_writes(_parsed_input, state)
 
     gov_ctx = build_governance_context(
         role_id,
@@ -1202,6 +1258,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             trace_stage("metric.expand", sql)
 
     _reject_view_writes(_compiled_tree, state)  # REQ-1157: views are query-only
+    await _reject_unbound_writes(_compiled_tree, state)  # REQ-1491
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())

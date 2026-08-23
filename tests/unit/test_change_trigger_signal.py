@@ -85,19 +85,31 @@ async def test_scheduler_pulls_when_trigger_arrives():
 
     # No trigger yet: token unchanged → scheduler must NOT pull.
     probe_changed = reg.token(key) != stored
-    assert should_scheduled_refresh(
-        now=1000.0, window=None, last_refresh_at=100.0, cadence=None,
-        probe_changed=probe_changed,
-    ) is False
+    assert (
+        should_scheduled_refresh(
+            now=1000.0,
+            window=None,
+            last_refresh_at=100.0,
+            cadence=None,
+            probe_changed=probe_changed,
+        )
+        is False
+    )
 
     # A data-less trigger arrives → token bumps → scheduler pulls on the next evaluation.
     await reg.signal(key)
     probe_changed = reg.token(key) != stored
     assert probe_changed is True
-    assert should_scheduled_refresh(
-        now=1000.0, window=None, last_refresh_at=100.0, cadence=None,
-        probe_changed=probe_changed,
-    ) is True
+    assert (
+        should_scheduled_refresh(
+            now=1000.0,
+            window=None,
+            last_refresh_at=100.0,
+            cadence=None,
+            probe_changed=probe_changed,
+        )
+        is True
+    )
 
 
 @pytest.mark.asyncio
@@ -118,12 +130,19 @@ def test_signal_is_probe_capable_in_policy():
     from provisa.federation.scheduled_refresh import resolve_refresh_policy
 
     source = SimpleNamespace(
-        load_protected=True, off_peak_window=None, off_peak_tz="UTC",
-        cache_ttl=None, change_signal="signal",
+        load_protected=True,
+        off_peak_window=None,
+        off_peak_tz="UTC",
+        cache_ttl=None,
+        change_signal="signal",
     )
     table = SimpleNamespace(
-        load_protected=None, off_peak_window=None, off_peak_tz=None,
-        cache_ttl=None, change_signal=None, live=None,
+        load_protected=None,
+        off_peak_window=None,
+        off_peak_tz=None,
+        cache_ttl=None,
+        change_signal=None,
+        live=None,
     )
     policy = resolve_refresh_policy(source, table)
     assert policy.probe_capable

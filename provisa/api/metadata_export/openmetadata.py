@@ -761,9 +761,7 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
                 term=term,
                 fqn=_fqn(term.term_id),
                 body=body,
-                related=tuple(
-                    sorted(_fqn(target) for target in related_ids.get(term.term_id, []))
-                ),
+                related=tuple(sorted(_fqn(target) for target in related_ids.get(term.term_id, []))),
             )
         )
     return plans, errors
@@ -909,9 +907,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         # Extension keys Provisa does not own are somebody's custom properties; only the
         # relationship property tracks the snapshot (including its removal).
         live_extension = {
-            k: v
-            for k, v in (live.get("extension") or {}).items()
-            if k != RELATIONSHIP_PROPERTY
+            k: v for k, v in (live.get("extension") or {}).items() if k != RELATIONSHIP_PROPERTY
         }
         if live_extension:
             entity.body["extension"] = {**live_extension, **entity.body.get("extension", {})}

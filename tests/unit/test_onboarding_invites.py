@@ -119,7 +119,7 @@ async def test_a_pending_invitation_is_reported_with_what_the_ui_needs_to_accept
 
 @pytest.mark.asyncio
 async def test_the_org_name_comes_back_so_the_invitation_is_recognisable(plane):
-    """"Join carolco" means nothing to an invitee; "Join Carolco" is the org they were told about."""
+    """ "Join carolco" means nothing to an invitee; "Join Carolco" is the org they were told about."""
     from provisa.api.auth_router import my_invites
 
     body = await my_invites(_request("carol@example.com"))

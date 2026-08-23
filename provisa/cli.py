@@ -83,7 +83,7 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
 
     Reuses the tested capabilities-preset resolver (desktop_profile.load_profile) so the
     embedded tier is the exact same self-contained runtime the desktop installer ships:
-    DuckDB engine, SQLite control plane, fakeredis cache. Existing process env wins
+    DuckDB engine, embedded PostgreSQL control plane (REQ-1535), fakeredis cache. Existing process env wins
     (setdefault) so a customer-provided external engine (TRINO_HOST/PORT, PROVISA_ENGINE_URL)
     layered on before launch is preserved.
     """
@@ -95,7 +95,7 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     notes = list(profile.notes)
 
     # Stage the DuckDB extensions OFFLINE from the provisa-duckdb-ext PyPI package (installed by
-    # provisa[embedded]) so LOAD never reaches extensions.duckdb.org — required behind an enterprise
+    # provisa[embedded]) so DEPLOY never reaches extensions.duckdb.org — required behind an enterprise
     # firewall where only PyPI/Maven/npm/NuGet are proxied. Absent package = a dev checkout without the
     # extra: leave PROVISA_DUCKDB_EXT_DIR unset so DuckDB's network INSTALL still works for local dev.
     if not os.environ.get("PROVISA_DUCKDB_EXT_DIR"):
@@ -114,26 +114,32 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     return notes
 
 
-async def _control_plane_drift(data_dir: Path) -> str | None:
-    """Return a ``file:table.column`` description of the FIRST schema drift in the embedded control-
-    plane DBs, else None.
+async def _control_plane_drift() -> str | None:
+    """Return a ``plane:table.column`` description of the FIRST schema drift in the embedded control
+    plane, else None.
 
     V1 has no migrations (``create_all`` never ALTERs an existing table), so a native DB left by an
     OLDER Provisa whose table is missing a column the current ORM writes crashes startup with e.g.
     ``no such column: load_protected`` — and uvicorn swallows that inside its lifespan, so the app
     just dies with no useful message. This detects it BEFORE serving so ``run`` can fail loud with a
     ``--reset`` hint. Only MISSING columns are drift; extra DB columns (newer DB on older code) are
-    not this failure mode and are ignored."""
+    not this failure mode and are ignored.
+
+    Read AFTER the launch environment is applied (REQ-1535): the embedded plane is a PostgreSQL
+    instance whose socket the profile resolver starts and names, so the URL is the only way to
+    reach it — there is no file to stat. Both planes are that one instance, and each is inspected
+    under its own metadata because they own different tables in it.
+    """
     import sqlalchemy as sa
 
     from provisa.core import schema_admin, schema_org
     from provisa.core.database import create_engine_from_url
 
-    for fname, meta in (("platform.db", schema_admin.metadata), ("tenant.db", schema_org.metadata)):
-        db = data_dir / fname
-        if not db.exists():
-            continue  # fresh install — create_all builds it current
-        engine = create_engine_from_url(f"sqlite+aiosqlite:///{db}")
+    for plane, meta in (
+        ("platform", schema_admin.metadata),
+        ("tenant", schema_org.metadata),
+    ):
+        engine = create_engine_from_url(os.environ[f"{plane.upper()}_DATABASE_URL"])
         try:
             async with engine.connect() as conn:
                 present = set(await conn.run_sync(lambda c: sa.inspect(c).get_table_names()))
@@ -148,25 +154,27 @@ async def _control_plane_drift(data_dir: Path) -> str | None:
                     }
                     for col in table.columns:
                         if col.name not in have:
-                            return f"{fname}:{table.name}.{col.name}"
+                            return f"{plane}:{table.name}.{col.name}"
         finally:
             await engine.dispose()
     return None
 
 
 def _reset_control_plane(data_dir: Path) -> list[str]:
-    """Delete the embedded control-plane SQLite DBs (and their -wal/-shm sidecars) so the next start
-    rebuilds them at the current schema. The demo re-seeds from config; a non-demo install re-registers
-    from config/UI. Returns the removed file names."""
-    removed: list[str] = []
-    for base in ("platform.db", "tenant.db"):
-        for name in (base, f"{base}-wal", f"{base}-shm"):
-            p = data_dir / name
-            if p.exists():
-                p.unlink()
-                if name == base:
-                    removed.append(name)
-    return removed
+    """Drop the embedded control-plane database so the next start rebuilds it at the current schema.
+
+    REQ-1535 makes that plane a bundled PostgreSQL, so a pristine start is a dropped database rather
+    than deleted files — the data directory is the SERVER's and holds the cluster the next start
+    boots. The demo re-seeds from config; a non-demo install re-registers from config/UI. Returns
+    what was dropped, empty when the install has never been started.
+    """
+    from provisa.core.control_plane_pg import reset
+
+    pg_dir = data_dir / "control-pg"
+    if not pg_dir.exists():
+        return []
+    reset(str(pg_dir))
+    return ["database provisa"]
 
 
 async def _announce_ready(
@@ -330,6 +338,94 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | None = None) -> dict:
+    """One authenticated call to the Provisa API, returning the decoded JSON.
+
+    The CLI is a THIN CLIENT of the same endpoint the UI calls (REQ-1496): same target, same
+    capability check, same report. A deployment pipeline holding a credential that passes that
+    check is the organization delegating its own standing, which is the org's decision to make and
+    revocable as any other credential is.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    api = args.api or os.environ.get("PROVISA_API_URL", "http://127.0.0.1:8000")
+    token = args.token or os.environ.get("PROVISA_API_TOKEN", "")
+    url = f"{api.rstrip('/')}{path}"
+    data = None if body is None else json.dumps(body).encode()
+    req = urllib.request.Request(url, method=method, data=data)
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(
+            f"{method} {path} failed: HTTP {exc.code} — {exc.read().decode(errors='replace')}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"cannot reach the Provisa API at {api}: {exc.reason}") from exc
+
+
+def _print_deploy(result: dict) -> None:
+    """The REQ-1490 report as a deploy log reads it: what would change, by path."""
+    if result.get("requires_approval") and not result["applied"]:
+        request = result["request"]
+        report = request["report"]
+        print(f"Deploy PROPOSED as request {request['id']} — {request['target_env']} is protected.")
+    else:
+        report = result["report"]
+        print(f"Deploy {'APPLIED to' if result['applied'] else 'PLANNED for'} {report['env']}")
+    print(f"  ref       {report['ref']}")
+    for kind in ("added", "changed", "removed"):
+        for path in report[kind]:
+            print(f"  {kind[0].upper()} {path}")
+    print(f"  unchanged {report['unchanged']}")
+
+
+def _cmd_env_deploy(args: argparse.Namespace) -> int:
+    """`provisa env deploy` — make the tree at a ref an environment's model (REQ-1496).
+
+    This is the command a deployment pipeline runs, and the rule it obeys is the one the UI obeys:
+    a deploy is an invocation CARRYING AN IDENTITY against a NAMED control plane. Nothing inside a
+    Provisa deployment applies a merged branch on its own; the pipeline holding a credential is
+    what makes the deploy happen, and revoking that credential is what stops it.
+    """
+    result = _api_call(
+        args,
+        "POST",
+        f"/admin/orgs/{args.org}/environments/{args.env}/deploy",
+        {
+            "ref": args.ref,
+            "dry_run": args.dry_run,
+            "seed": args.seed,
+            "message": args.message or "",
+        },
+    )
+    _print_deploy(result)
+    # A proposal is not a deployment. A pipeline that treated a pending approval as success would
+    # report a release that has not happened, so the exit code says so.
+    return 0 if result["applied"] or args.dry_run else 2
+
+
+def _cmd_env_fetch(args: argparse.Namespace) -> int:
+    """`provisa env fetch` — bring the org's remote branches back (REQ-1541).
+
+    The step BEFORE a deploy in the ordinary flow: the pipeline that just saw a pull request merge
+    on the org's git host runs this, and then deploys ``origin/<branch>``. Provisa never runs it on
+    a timer, so the branch a deploy names is one somebody fetched deliberately.
+    """
+    result = _api_call(
+        args, "POST", f"/admin/orgs/{args.org}/environments/-/repo-integration/fetch", {}
+    )
+    for name, sha in sorted(result["branches"].items()):
+        print(f"origin/{name}  {sha[:12]}")
+    return 0
+
+
 def _maintenance_request(args: argparse.Namespace, body: dict | None) -> dict:
     """One call to /admin/platform/maintenance. GET when ``body`` is None, PUT otherwise.
 
@@ -413,16 +509,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if args.reset:
         removed = _reset_control_plane(data_dir)
         if removed:
-            print(f"  · reset control plane: removed {', '.join(removed)} (rebuilt on start)")
-    drift = asyncio.run(_control_plane_drift(data_dir))
-    if drift:
-        print(
-            f"Control-plane store at {data_dir} is from an older Provisa (missing {drift}) and V1 "
-            f"has no migrations.\nRe-run with --reset to rebuild it:  provisa run"
-            f"{' --demo' if args.demo else ''} --reset",
-            file=sys.stderr,
-        )
-        return 1
+            print(f"  · reset control plane: dropped {', '.join(removed)} (rebuilt on start)")
 
     demo_cfg: Path | None = None
     if args.demo:
@@ -431,7 +518,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
         except FileNotFoundError as exc:
             print(str(exc), file=sys.stderr)
             return 1
+    # The launch environment starts the embedded plane and publishes its URLs, so drift is read
+    # after it and not before: the check needs the socket the resolver has just chosen (REQ-1535).
     notes = _apply_embedded_env(data_dir)
+    drift = asyncio.run(_control_plane_drift())
+    if drift:
+        print(
+            f"Control-plane store at {data_dir} is from an older Provisa (missing {drift}) and V1 "
+            f"has no migrations.\nRe-run with --reset to rebuild it:  provisa run"
+            f"{' --demo' if args.demo else ''} --reset",
+            file=sys.stderr,
+        )
+        return 1
 
     print("Provisa (embedded) starting — no Docker, no Node.")
     if demo_cfg is not None:
@@ -464,7 +562,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument(
         "--demo",
         action="store_true",
-        help="Load the bundled demo (pet-store + shelter sample federation over embedded SQLite)",
+        help="Deploy the bundled demo (pet-store + shelter sample federation over embedded SQLite)",
     )
     run.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
     run.add_argument("--api-port", type=int, default=8000, help="API port (default: 8000)")
@@ -521,6 +619,70 @@ def main(argv: list[str] | None = None) -> int:
         "--timeout", type=int, default=300, help="Publish timeout in seconds (default: 300)"
     )
     meta_export.set_defaults(func=_cmd_metadata_export)
+
+    # REQ-1496: the deploy, as a command, so a deployment pipeline can perform it. The rule is not
+    # that a machine may never deploy -- it is that a deploy is always an invocation carrying an
+    # identity against a named control plane, never something a control plane does to itself on
+    # noticing a commit.
+    env = sub.add_parser("env", help="Environment operations against a running Provisa")
+    env_sub = env.add_subparsers(dest="env_command", required=True)
+    env_deploy = env_sub.add_parser(
+        "deploy", help="Deploy the model at a ref into an environment, making it that environment's"
+    )
+    env_deploy.add_argument("--org", required=True, help="Organization holding the environment")
+    env_deploy.add_argument("--env", required=True, help="Environment that will hold the result")
+    env_deploy.add_argument(
+        "--ref", required=True, help="Branch or commit in the org's repository to deploy"
+    )
+    env_deploy.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what the deploy would do and apply none of it",
+    )
+    env_deploy.add_argument(
+        "--seed",
+        action="store_true",
+        help="Also apply the creation-only classes (roles). Only correct when this deploy is what "
+        "creates the environment: a tree carries the roles of whatever control plane projected it",
+    )
+    env_deploy.add_argument("--message", default=None, help="Note carried onto an approval request")
+    env_deploy.add_argument(
+        "--api",
+        default=None,
+        help="Provisa API base URL (default: $PROVISA_API_URL or http://127.0.0.1:8000)",
+    )
+    env_deploy.add_argument(
+        "--token",
+        default=None,
+        help="Bearer token for an identity that may write the environment "
+        "(default: $PROVISA_API_TOKEN)",
+    )
+    env_deploy.add_argument(
+        "--timeout", type=int, default=300, help="Request timeout in seconds (default: 300)"
+    )
+    env_deploy.set_defaults(func=_cmd_env_deploy)
+
+    # REQ-1541: the other direction. The projection is pushed out, the review and the merge happen
+    # on the org's own git host, and this is what brings the result back as ``origin/<branch>`` for
+    # a deploy to name.
+    env_fetch = env_sub.add_parser(
+        "fetch", help="Fetch the org's remote branches into its Provisa repository"
+    )
+    env_fetch.add_argument("--org", required=True, help="Organization whose remote is fetched")
+    env_fetch.add_argument(
+        "--api",
+        default=None,
+        help="Provisa API base URL (default: $PROVISA_API_URL or http://127.0.0.1:8000)",
+    )
+    env_fetch.add_argument(
+        "--token",
+        default=None,
+        help="Bearer token for an org administrator (default: $PROVISA_API_TOKEN)",
+    )
+    env_fetch.add_argument(
+        "--timeout", type=int, default=300, help="Request timeout in seconds (default: 300)"
+    )
+    env_fetch.set_defaults(func=_cmd_env_fetch)
 
     # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
     # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,

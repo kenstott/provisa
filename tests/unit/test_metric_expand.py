@@ -121,9 +121,7 @@ def test_expand_select_star_rejected():
 def test_expand_metric_wrapped_in_sampling_subquery():
     # Mirrors the SQL Explorer's `_sample` wrapper (SqlPage.tsx): the metrics.<name>
     # reference lives one level down, inside an outer SELECT * FROM (...) LIMIT n.
-    out = _expand(
-        "SELECT * FROM (SELECT region, value FROM metrics.net_revenue) _sample LIMIT 100"
-    )
+    out = _expand("SELECT * FROM (SELECT region, value FROM metrics.net_revenue) _sample LIMIT 100")
     assert out is not None
     rows = dict(_duck().execute(out.sql(dialect="duckdb")).fetchall())
     assert rows == {"east": 295.0, "west": 115.0}
@@ -137,9 +135,7 @@ def test_expand_non_metric_query_in_subquery_still_returns_none():
 
 
 def test_generate_view_metrics_sql_multi_metric():
-    spec = ViewMetricsSpec(
-        metrics=["net_revenue", "order_count"], dimensions=["region", "segment"]
-    )
+    spec = ViewMetricsSpec(metrics=["net_revenue", "order_count"], dimensions=["region", "segment"])
     sql = generate_view_metrics_sql(spec, METRICS, TABLES, RELATIONSHIPS)
     rows = {(r[0], r[1]): (r[2], r[3]) for r in _duck().execute(sql).fetchall()}
     assert rows == {
@@ -243,17 +239,18 @@ def test_streaming_metric_view_config_is_valid():
 def test_metric_reference_tables_single_table():
     from provisa.compiler.metric_expand import metric_reference_tables
 
-    assert metric_reference_tables(
-        "net_revenue", "SUM(orders.amount) - SUM(orders.refunds)"
-    ) == ["orders"]
+    assert metric_reference_tables("net_revenue", "SUM(orders.amount) - SUM(orders.refunds)") == [
+        "orders"
+    ]
 
 
 def test_metric_reference_tables_multi_table_ordered():
     from provisa.compiler.metric_expand import metric_reference_tables
 
-    assert metric_reference_tables(
-        "blend", "SUM(orders.amount) / COUNT(customers.id)"
-    ) == ["orders", "customers"]
+    assert metric_reference_tables("blend", "SUM(orders.amount) / COUNT(customers.id)") == [
+        "orders",
+        "customers",
+    ]
 
 
 def test_metric_reference_tables_unqualified_column_is_error():
@@ -278,9 +275,7 @@ def test_inline_metric_sql_rewrites_to_physical_unqualified():
 def test_inline_metric_sql_uses_resolver_result():
     from provisa.compiler.metric_expand import inline_metric_sql
 
-    sql = inline_metric_sql(
-        "order_count", "COUNT(orders.id)", "orders", lambda c: f"phys_{c}"
-    )
+    sql = inline_metric_sql("order_count", "COUNT(orders.id)", "orders", lambda c: f"phys_{c}")
     assert sql == 'COUNT("phys_id")'
 
 

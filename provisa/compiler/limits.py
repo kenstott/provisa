@@ -49,9 +49,7 @@ class QueryLimitError(Exception):
         self.dimension = dimension
         self.limit = limit
         self.actual = actual
-        super().__init__(
-            f"query {dimension} {actual} exceeds the role limit of {limit}"
-        )
+        super().__init__(f"query {dimension} {actual} exceeds the role limit of {limit}")
 
 
 def measure_query(document: DocumentNode) -> tuple[int, int]:

@@ -23,6 +23,7 @@ from provisa.federation.promote import (
 # Scenario registration
 # ---------------------------------------------------------------------------
 
+
 @scenario(
     "../features/REQ-905.feature",
     "REQ-905 default behaviour",
@@ -35,6 +36,7 @@ def test_req_905_default_behaviour():
 # Shared fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def shared_data():
     return {}
@@ -43,6 +45,7 @@ def shared_data():
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def _make_estimate(value: int | None) -> Estimate:
     if value is None:
@@ -53,6 +56,7 @@ def _make_estimate(value: int | None) -> Estimate:
 # ---------------------------------------------------------------------------
 # Given
 # ---------------------------------------------------------------------------
+
 
 @given(
     "a federated query with row-reducing operators (filter/aggregate) over a VIRTUAL/SCAN source",
@@ -77,6 +81,7 @@ def given_federated_query_with_row_reducing_operators():
 # When
 # ---------------------------------------------------------------------------
 
+
 @when("the source connector cannot push down these operators", target_fixture="shared_data")
 def when_connector_cannot_push_down(shared_data):
     """Assert that there is an unmet reducing pushdown gap and record the result."""
@@ -85,8 +90,7 @@ def when_connector_cannot_push_down(shared_data):
 
     gap = unmet_reducing_pushdown(cap, demand)
     assert gap is True, (
-        f"Expected an unmet reducing pushdown gap but got gap={gap}. "
-        f"cap={cap}, demand={demand}"
+        f"Expected an unmet reducing pushdown gap but got gap={gap}. cap={cap}, demand={demand}"
     )
     shared_data["has_pushdown_gap"] = gap
     return shared_data
@@ -114,6 +118,7 @@ def when_estimated_row_count_default_threshold(shared_data):
 # ---------------------------------------------------------------------------
 # Then
 # ---------------------------------------------------------------------------
+
 
 @then("the source is promoted to MATERIALIZED")
 def then_source_is_promoted_to_materialized(shared_data):
@@ -163,7 +168,9 @@ def then_unknown_cardinality_does_not_promote(shared_data):
 
     # Also verify that a join-only gap (non row-reducing) does not promote, even with a
     # known-large estimate, as stated in the requirement.
-    join_only_cap = Capability(predicate_pushdown=True, aggregate_pushdown=True, join_pushdown=False)
+    join_only_cap = Capability(
+        predicate_pushdown=True, aggregate_pushdown=True, join_pushdown=False
+    )
     join_only_demand = PushdownDemand(join=True)
     large_estimate = _make_estimate(DEFAULT_PROMOTE_ROW_THRESHOLD * 10)
     result_join_only = should_promote(join_only_cap, join_only_demand, large_estimate)

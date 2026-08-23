@@ -128,9 +128,7 @@ def _values_source(
     column types; later rows inherit them. Column order is the declared/first-row order."""
     row_sqls = []
     for i, row in enumerate(rows):
-        cells = [
-            _cast_sql(row.get(c), types.get(c) if i == 0 else None, dialect) for c in columns
-        ]
+        cells = [_cast_sql(row.get(c), types.get(c) if i == 0 else None, dialect) for c in columns]
         row_sqls.append("(" + ", ".join(cells) + ")")
     body = ", ".join(row_sqls)
     col_list = ", ".join(columns)
@@ -140,7 +138,9 @@ def _values_source(
     return _from_source(cast(exp.Expression, wrapper))
 
 
-def _empty_source(alias: str, columns: list[str], types: dict[str, str], dialect: str) -> exp.Expression:
+def _empty_source(
+    alias: str, columns: list[str], types: dict[str, str], dialect: str
+) -> exp.Expression:
     """An empty typed relation (zero returned rows): ``SELECT … WHERE FALSE`` projecting the declared
     columns, so the composed query still type-checks and yields no rows for this command."""
     projs = ", ".join(f"{_cast_sql(None, types.get(c), dialect)} AS {c}" for c in columns)

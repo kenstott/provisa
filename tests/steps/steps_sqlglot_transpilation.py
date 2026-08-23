@@ -259,7 +259,7 @@ def target_dialect_matches_recorded_source_type(shared_data: dict) -> None:
 # value (the customer name) for each outer row — a pattern Trino cannot execute
 # directly across federated sources.
 _CORRELATED_PG_SQL = (
-    'SELECT '
+    "SELECT "
     '"o"."id", '
     '"o"."amount", '
     '(SELECT "c"."name" FROM "public"."customers" "c" '

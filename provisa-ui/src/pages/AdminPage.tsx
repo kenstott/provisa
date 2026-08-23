@@ -41,6 +41,7 @@ import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import { domainGqlAlias } from "../types/admin";
+import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
@@ -66,6 +67,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
   "/admin/overview": "Dashboard",
   "/admin/domains": "Domains",
+  "/admin/environments": "Environments",
   "/admin/cache": "Cache",
   "/admin/scheduled-tasks": "Scheduler",
   "/admin/federation-engine": "Federation",
@@ -248,6 +250,8 @@ export function AdminPage() {
             </Accordion>
           </>
         )}
+
+        {activeTab === "Environments" && <EnvironmentsTab />}
 
         {activeTab === "Domains" && (
           <>

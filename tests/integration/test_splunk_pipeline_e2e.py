@@ -187,9 +187,7 @@ async def test_splunk_cim_model_registers_and_serves_semantic_query(connector_cl
     _splunk_container_id()  # fail fast with a clear message if the service isn't up
     _seed_splunk_cim()
 
-    expected = sorted(
-        ({c: e[c] for c in _COLUMNS} for e in _EVENTS), key=lambda row: row["user"]
-    )
+    expected = sorted(({c: e[c] for c in _COLUMNS} for e in _EVENTS), key=lambda row: row["user"])
 
     await assert_registration_and_query(
         connector_client,

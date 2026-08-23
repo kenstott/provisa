@@ -117,9 +117,13 @@ def _cassandra_container_id() -> str:
     the isolated stack never uses container_name, so it never collides with a parallel run)."""
     out = subprocess.run(
         [
-            "docker", "ps", "-q",
-            "--filter", f"label=com.docker.compose.project={_ITEST_PROJECT}",
-            "--filter", "label=com.docker.compose.service=cassandra",
+            "docker",
+            "ps",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={_ITEST_PROJECT}",
+            "--filter",
+            "label=com.docker.compose.service=cassandra",
         ],  # fmt: skip
         capture_output=True,
         text=True,
@@ -162,9 +166,14 @@ def _seed_cassandra() -> None:
     else:
         raise RuntimeError(f"cassandra keyspace creation never succeeded: {last_err!r}")
 
-    _cqlsh(container_id, f"CREATE TABLE IF NOT EXISTS {_KEYSPACE}.{_TABLE} (id int PRIMARY KEY, name text)")
+    _cqlsh(
+        container_id,
+        f"CREATE TABLE IF NOT EXISTS {_KEYSPACE}.{_TABLE} (id int PRIMARY KEY, name text)",
+    )
     for wid, name in _WIDGETS:
-        _cqlsh(container_id, f"INSERT INTO {_KEYSPACE}.{_TABLE} (id, name) VALUES ({wid}, '{name}')")
+        _cqlsh(
+            container_id, f"INSERT INTO {_KEYSPACE}.{_TABLE} (id, name) VALUES ({wid}, '{name}')"
+        )
 
 
 @pytest.mark.requires_cassandra

@@ -70,7 +70,11 @@ def _ctx() -> CompilationContext:
 _ORDERS_COLUMNS = [
     {"column_name": "id", "data_type": "integer", "visible_to": ["admin", "analyst"]},
     {"column_name": "region", "data_type": "varchar", "visible_to": ["admin", "analyst"]},
-    {"column_name": "amount", "data_type": "numeric", "visible_to": ["admin"]},  # analyst CANNOT see
+    {
+        "column_name": "amount",
+        "data_type": "numeric",
+        "visible_to": ["admin"],
+    },  # analyst CANNOT see
 ]
 
 _ORDERS_TABLE_DICT = {
@@ -152,18 +156,14 @@ class TestBuildGovernanceContextTables:
         """With real tables: analyst can see id, region — NOT amount."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context(
-            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT]
-        )
+        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
         assert gov_ctx.visible_columns[TABLE_ID] == frozenset({"id", "region"})
 
     def test_populated_tables_all_columns_populated(self):
         """With real tables: all_columns contains all three columns."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context(
-            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT]
-        )
+        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
         col_names = [c for c, _ in gov_ctx.all_columns[TABLE_ID]]
         assert col_names == ["id", "region", "amount"]
 
@@ -182,9 +182,7 @@ class TestColumnGovernanceWithPopulatedTables:
         """analyst cannot SELECT amount (visible_to=[admin] only)."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context(
-            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT]
-        )
+        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
         governed = apply_governance("SELECT amount FROM orders", gov_ctx)
         assert "amount" not in governed
 
@@ -192,9 +190,7 @@ class TestColumnGovernanceWithPopulatedTables:
         """SELECT * expands to id, region — amount (admin-only) is dropped."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context(
-            "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT]
-        )
+        gov_ctx = build_governance_context("analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
         governed = apply_governance("SELECT * FROM orders", gov_ctx)
         assert "SELECT *" not in governed  # wildcard expanded
         assert "id" in governed
@@ -216,9 +212,7 @@ class TestColumnGovernanceWithPopulatedTables:
         """admin role has visible_to access to all columns."""
         ctx = _ctx()
         rls = RLSContext.empty()
-        gov_ctx = build_governance_context(
-            "admin", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT]
-        )
+        gov_ctx = build_governance_context("admin", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT])
         governed = apply_governance("SELECT * FROM orders", gov_ctx)
         assert "SELECT *" not in governed  # wildcard still expanded
         assert "id" in governed

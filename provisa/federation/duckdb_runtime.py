@@ -68,9 +68,7 @@ def build_vss_index_connection(
     )
     con.executemany("INSERT INTO chunks VALUES (?, ?, ?, ?, ?)", rows)
     # Cosine HNSW: query with array_cosine_distance; smaller = more similar.
-    con.execute(
-        "CREATE INDEX chunk_hnsw ON chunks USING HNSW (embedding) WITH (metric = 'cosine')"
-    )
+    con.execute("CREATE INDEX chunk_hnsw ON chunks USING HNSW (embedding) WITH (metric = 'cosine')")
     return con
 
 

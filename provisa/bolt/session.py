@@ -480,9 +480,7 @@ class BoltSession:
         # REQ-074/REQ-1386: attribute this RUN's governed statements to the authenticated principal.
         # Bolt executes on the event loop (no thread hop), so a plain scope binds it. An unsecured
         # deployment authenticates nobody — no principal to record, so nothing is bound.
-        _audit_scope = (
-            audit_identity_scope(self.user_id, "bolt") if self.user_id else nullcontext()
-        )
+        _audit_scope = audit_identity_scope(self.user_id, "bolt") if self.user_id else nullcontext()
         try:
             with _audit_scope:
                 columns, rows, redirect = await _execute_cypher(

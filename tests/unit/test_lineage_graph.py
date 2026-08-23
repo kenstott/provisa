@@ -188,12 +188,22 @@ def test_registry_views_uses_user_facing_names_marking_materialized():
     from provisa.api.admin.lineage_router import _registry_views
 
     view_rows = [
-        {"domain_id": "pet-store", "table_name": "test", "view_sql": "SELECT o.a AS a FROM orders o"},
-        {"domain_id": "pet-store", "table_name": "orders_v", "view_sql": "SELECT o.b AS b FROM orders o"},
+        {
+            "domain_id": "pet-store",
+            "table_name": "test",
+            "view_sql": "SELECT o.a AS a FROM orders o",
+        },
+        {
+            "domain_id": "pet-store",
+            "table_name": "orders_v",
+            "view_sql": "SELECT o.b AS b FROM orders o",
+        },
         {"domain_id": "pet-store", "table_name": "empty", "view_sql": None},  # no sql → skipped
     ]
     # "test" is materialized (MV id "view-test"); "orders_v" is a plain view.
-    mvs = [SimpleNamespace(id="view-test", target_table="mv_test", sql="SELECT o.a AS a FROM orders o")]
+    mvs = [
+        SimpleNamespace(id="view-test", target_table="mv_test", sql="SELECT o.a AS a FROM orders o")
+    ]
     views, mats = _registry_views(view_rows, SimpleNamespace(all=lambda: mvs))
     assert set(views) == {
         ("pet_store.test", "SELECT o.a AS a FROM orders o"),

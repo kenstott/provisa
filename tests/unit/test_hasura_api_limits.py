@@ -53,7 +53,10 @@ def test_per_role_wins_and_units_convert():
     rl = _user_limits(
         _md_with_limits(
             {
-                "rate_limit": {"per_role": {"user": {"max_reqs_per_min": 120}}, "global": {"max_reqs_per_min": 600}},
+                "rate_limit": {
+                    "per_role": {"user": {"max_reqs_per_min": 120}},
+                    "global": {"max_reqs_per_min": 600},
+                },
                 "depth_limit": {"per_role": {"user": 5}, "global": 10},
                 "node_limit": {"per_role": {"user": 500}},
                 "time_limit": {"per_role": {"user": 3}},  # seconds
@@ -97,7 +100,9 @@ def test_parse_api_limits_yaml_from_dir(tmp_path: Path):
             {
                 "disabled": False,
                 "depth_limit": {"global": 10, "per_role": {"user": 5}},
-                "rate_limit": {"per_role": {"user": {"max_reqs_per_min": 60, "unique_params": "IP"}}},
+                "rate_limit": {
+                    "per_role": {"user": {"max_reqs_per_min": 60, "unique_params": "IP"}}
+                },
             }
         )
     )

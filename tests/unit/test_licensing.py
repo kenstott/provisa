@@ -230,8 +230,12 @@ def _expired_state():
     from provisa.licensing.state import LicensingState
 
     return LicensingState(
-        machine_id=MID, first_seen="2026-01-01", elapsed_days=99.0,
-        trial_expired=True, licensed=False, license_reason="no license present",
+        machine_id=MID,
+        first_seen="2026-01-01",
+        elapsed_days=99.0,
+        trial_expired=True,
+        licensed=False,
+        license_reason="no license present",
     )
 
 
@@ -251,8 +255,14 @@ def test_emit_no_nag_when_licensed():
     from provisa.licensing.state import LicensingState
 
     emit.set_state(
-        LicensingState(machine_id=MID, first_seen="2026-01-01", elapsed_days=99.0,
-                       trial_expired=True, licensed=True, license_reason="")
+        LicensingState(
+            machine_id=MID,
+            first_seen="2026-01-01",
+            elapsed_days=99.0,
+            trial_expired=True,
+            licensed=True,
+            license_reason="",
+        )
     )
     assert not emit.should_nag()
     assert emit.nag_for_connection("c1") is None

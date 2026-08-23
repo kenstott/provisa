@@ -65,7 +65,9 @@ class _CalendarDriver:
 
     def as_of(self, ts: datetime | None) -> set[tuple]:
         ts_sql = system_ts_literal(ts) if ts is not None else None
-        return set(self.con.execute(reconstruct_as_of_sql(_TARGET, self.spec, _COLS, ts_sql)).fetchall())
+        return set(
+            self.con.execute(reconstruct_as_of_sql(_TARGET, self.spec, _COLS, ts_sql)).fetchall()
+        )
 
 
 @pytest.mark.parametrize("mode", [MODE_SNAPSHOT, MODE_DELTA])

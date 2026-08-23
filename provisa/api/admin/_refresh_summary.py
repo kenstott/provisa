@@ -35,7 +35,11 @@ def _resolve_engine():
     runtime = getattr(state, "federation_engine", None)
     if runtime is None:
         return None
-    engine = runtime if getattr(runtime, "connectors", None) is not None else getattr(runtime, "engine", None)
+    engine = (
+        runtime
+        if getattr(runtime, "connectors", None) is not None
+        else getattr(runtime, "engine", None)
+    )
     if engine is None or getattr(engine, "connectors", None) is None:
         return None
     return engine

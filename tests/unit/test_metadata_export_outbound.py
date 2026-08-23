@@ -60,8 +60,8 @@ def test_port_declares_no_read_method():
     from provisa.api.metadata_export.provider import MetadataExport
 
     declared = {
-        name for name in vars(MetadataExport) if not name.startswith("_") and callable(
-            vars(MetadataExport)[name]
-        )
+        name
+        for name in vars(MetadataExport)
+        if not name.startswith("_") and callable(vars(MetadataExport)[name])
     }
     assert declared == {"publish", "health"}

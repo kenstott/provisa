@@ -60,9 +60,7 @@ _VALID_CONFIG = {
             ],
         }
     ],
-    "roles": [
-        {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
-    ],
+    "roles": [{"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}],
 }
 
 
@@ -224,9 +222,7 @@ class TestParseConfig:
 
 class TestParseConfigFile:
     def _write_yaml(self, content: str) -> Path:
-        f = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-        )
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8")
         f.write(textwrap.dedent(content))
         f.close()
         return Path(f.name)

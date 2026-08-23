@@ -61,7 +61,10 @@ class TestBuildFunctionMutations:
         table_types = {"sales-pg.public.orders": _make_table_type()}
 
         fields = build_function_mutations(
-            functions=[func], webhooks=[], table_gql_types=table_types, role_id="admin",
+            functions=[func],
+            webhooks=[],
+            table_gql_types=table_types,
+            role_id="admin",
         )
 
         assert "process_order" in fields
@@ -84,7 +87,10 @@ class TestBuildFunctionMutations:
         table_types = {"pg.public.orders": _make_table_type()}
 
         fields = build_function_mutations(
-            functions=[func], webhooks=[], table_gql_types=table_types, role_id="analyst",
+            functions=[func],
+            webhooks=[],
+            table_gql_types=table_types,
+            role_id="analyst",
         )
         assert "admin_func" not in fields
 
@@ -99,7 +105,10 @@ class TestBuildFunctionMutations:
         table_types = {"pg.public.orders": _make_table_type()}
 
         fields = build_function_mutations(
-            functions=[func], webhooks=[], table_gql_types=table_types, role_id="anyone",
+            functions=[func],
+            webhooks=[],
+            table_gql_types=table_types,
+            role_id="anyone",
         )
         assert "open_func" in fields
 
@@ -112,7 +121,9 @@ class TestBuildFunctionMutations:
         )
 
         fields = build_function_mutations(
-            functions=[func], webhooks=[], table_gql_types={},
+            functions=[func],
+            webhooks=[],
+            table_gql_types={},
         )
         assert "missing_table_func" not in fields
 
@@ -126,7 +137,9 @@ class TestBuildFunctionMutations:
         table_types = {"pg.public.orders": _make_table_type()}
 
         fields = build_function_mutations(
-            functions=[], webhooks=[wh], table_gql_types=table_types,
+            functions=[],
+            webhooks=[wh],
+            table_gql_types=table_types,
         )
 
         assert "fetch_external" in fields
@@ -145,7 +158,9 @@ class TestBuildFunctionMutations:
         )
 
         fields = build_function_mutations(
-            functions=[], webhooks=[wh], table_gql_types={},
+            functions=[],
+            webhooks=[wh],
+            table_gql_types={},
         )
 
         assert "check_status" in fields
@@ -164,7 +179,9 @@ class TestBuildFunctionMutations:
         )
 
         fields = build_function_mutations(
-            functions=[], webhooks=[wh], table_gql_types={},
+            functions=[],
+            webhooks=[wh],
+            table_gql_types={},
         )
 
         assert "fire_and_forget" in fields
@@ -177,7 +194,10 @@ class TestBuildFunctionMutations:
         )
 
         fields = build_function_mutations(
-            functions=[], webhooks=[wh], table_gql_types={}, role_id="analyst",
+            functions=[],
+            webhooks=[wh],
+            table_gql_types={},
+            role_id="analyst",
         )
         assert "secret_hook" not in fields
 
@@ -196,7 +216,9 @@ class TestBuildFunctionMutations:
         table_types = {"pg.public.orders": _make_table_type()}
 
         fields = build_function_mutations(
-            functions=[func], webhooks=[wh], table_gql_types=table_types,
+            functions=[func],
+            webhooks=[wh],
+            table_gql_types=table_types,
         )
 
         assert "db_action" in fields
@@ -214,7 +236,9 @@ class TestBuildFunctionMutations:
         table_types = {"pg.public.orders": _make_table_type()}
 
         fields = build_function_mutations(
-            functions=[func], webhooks=[], table_gql_types=table_types,
+            functions=[func],
+            webhooks=[],
+            table_gql_types=table_types,
         )
 
         query_type = GraphQLObjectType("Query", {"dummy": GraphQLField(GraphQLString)})
@@ -269,7 +293,16 @@ class TestArgumentTypeResolution:
         """All documented scalar type names should resolve without error."""
         from provisa.compiler.function_gen import _resolve_scalar
 
-        for type_name in ["String", "Int", "Float", "Boolean", "DateTime", "Date", "BigInt", "JSON"]:
+        for type_name in [
+            "String",
+            "Int",
+            "Float",
+            "Boolean",
+            "DateTime",
+            "Date",
+            "BigInt",
+            "JSON",
+        ]:
             scalar = _resolve_scalar(type_name)
             assert scalar is not None
 

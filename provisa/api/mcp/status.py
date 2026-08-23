@@ -87,9 +87,11 @@ def _resolve_mcp_url(request: Request | None, port: int) -> str | None:
         raw_host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
         # Strip any UI port from the host header — MCP has its own port. IPv6 hosts are bracketed.
         if raw_host:
-            hostname = raw_host.rsplit(":", 1)[0] if ":" in raw_host and not raw_host.endswith(
-                "]"
-            ) else raw_host
+            hostname = (
+                raw_host.rsplit(":", 1)[0]
+                if ":" in raw_host and not raw_host.endswith("]")
+                else raw_host
+            )
     return f"{active or req_proto}://{hostname}:{port}/mcp"
 
 

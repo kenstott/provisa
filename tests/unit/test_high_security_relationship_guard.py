@@ -75,9 +75,7 @@ _TABLES = [
     },
 ]
 
-_UNAPPROVED_JOIN = (
-    "SELECT o.id FROM sales.orders o JOIN sales.customers c ON o.customer_id = c.id"
-)
+_UNAPPROVED_JOIN = "SELECT o.id FROM sales.orders o JOIN sales.customers c ON o.customer_id = c.id"
 
 
 def _ctx() -> CompilationContext:
@@ -114,7 +112,12 @@ async def _route(monkeypatch, *, role: dict, security_high: bool, sql: str = _UN
 
 
 _MODELER = {"id": "modeler", "capabilities": ["ignore_relationships"], "domain_access": ["*"]}
-_GUARD_OFF = {"id": "modeler", "capabilities": [], "domain_access": ["*"], "relationship_guard": False}
+_GUARD_OFF = {
+    "id": "modeler",
+    "capabilities": [],
+    "domain_access": ["*"],
+    "relationship_guard": False,
+}
 
 
 async def test_ignore_relationships_bypasses_the_guard_in_ordinary_mode(monkeypatch):

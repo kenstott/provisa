@@ -138,8 +138,7 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
                 "name": c._mapping["column_name"],
                 "data_type": c._mapping["data_type"],
                 "checks": [
-                    _kind_document(k)
-                    for k in checks_for_column(checker, c._mapping["data_type"])
+                    _kind_document(k) for k in checks_for_column(checker, c._mapping["data_type"])
                 ],
             }
             for c in columns

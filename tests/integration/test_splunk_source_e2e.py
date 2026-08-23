@@ -92,7 +92,6 @@ _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
 
 
-
 _SPLUNK_MGMT_PORT = int(os.environ.get("SPLUNK_MGMT_PORT", "8089"))
 _SPLUNK_HEC_PORT = int(os.environ.get("SPLUNK_HEC_PORT", "8088"))
 _SPLUNK_USER = "admin"

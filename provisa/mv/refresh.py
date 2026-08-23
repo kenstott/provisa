@@ -556,9 +556,13 @@ async def detect_orphans(  # REQ-234
     engine,
     registry: MVRegistry,
     schema_name: str,
-    catalog: str = "postgresql",
+    catalog: str,
 ) -> list[str]:
     """Detect orphan tables in the MV cache schema not tracked by the registry.
+
+    ``catalog`` is required: the store catalog is the ACTIVE engine's
+    (``materialize_store_target``), and a ``postgresql`` default silently swept a catalog no
+    Trino/DuckDB deployment has.
 
     Returns list of orphan table names.
     """
@@ -584,7 +588,7 @@ async def drop_expired_orphans(  # REQ-234
     orphan_tables: list[str],
     grace_period: int,
     schema_name: str,
-    catalog: str = "postgresql",
+    catalog: str,
 ) -> list[str]:
     """Drop orphan tables that have exceeded the grace period.
 

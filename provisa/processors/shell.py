@@ -44,9 +44,7 @@ class ShellAdapter(TransportAdapter):  # REQ-940
     def process(
         self, rows: Iterable[dict], *, schema_in: Schema, schema_out: Schema
     ) -> Iterator[dict]:
-        payload = b"".join(
-            ndjson_encode(validate_rows(rows, schema_in, where="shell input"))
-        )
+        payload = b"".join(ndjson_encode(validate_rows(rows, schema_in, where="shell input")))
         try:
             completed = subprocess.run(  # nosec B603 - argv list, no shell, trusted operator command
                 self._argv,

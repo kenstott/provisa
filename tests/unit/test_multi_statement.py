@@ -33,7 +33,7 @@ def test_split_ignores_semicolons_in_literals_comments_dollar_quotes():
         "SELECT 2",
     ]
     assert split_sql_statements("SELECT $$ e;f $$") == ["SELECT $$ e;f $$"]
-    assert split_sql_statements('SELECT 1 -- x;y\n; SELECT 2') == ["SELECT 1 -- x;y", "SELECT 2"]
+    assert split_sql_statements("SELECT 1 -- x;y\n; SELECT 2") == ["SELECT 1 -- x;y", "SELECT 2"]
 
 
 def test_split_edge_cases():
@@ -55,8 +55,12 @@ async def test_execute_sql_batch_runs_all_in_order_returns_last(monkeypatch):
 
     async def _gar(stmt, role_id, **kw):
         return _pipeline._Plan(
-            route=Route.ENGINE, sql=stmt, source_id="pg", dialect="trino",
-            physical_sql=stmt, stamp=_pipeline._mint_stamp(),
+            route=Route.ENGINE,
+            sql=stmt,
+            source_id="pg",
+            dialect="trino",
+            physical_sql=stmt,
+            stamp=_pipeline._mint_stamp(),
         )
 
     async def _exec(plan, state=None):
@@ -79,8 +83,12 @@ async def test_execute_sql_batch_single_statement(monkeypatch):
 
     async def _gar(stmt, role_id, **kw):
         return _pipeline._Plan(
-            route=Route.ENGINE, sql=stmt, source_id="pg", dialect="trino",
-            physical_sql=stmt, stamp=_pipeline._mint_stamp(),
+            route=Route.ENGINE,
+            sql=stmt,
+            source_id="pg",
+            dialect="trino",
+            physical_sql=stmt,
+            stamp=_pipeline._mint_stamp(),
         )
 
     async def _exec(plan, state=None):
@@ -102,8 +110,12 @@ async def test_govern_batch_final_plan_runs_leading_returns_final(monkeypatch):
 
     async def _gar(stmt, role_id, **kw):
         return _pipeline._Plan(
-            route=Route.ENGINE, sql=stmt, source_id="pg", dialect="trino",
-            physical_sql=stmt, stamp=_pipeline._mint_stamp(),
+            route=Route.ENGINE,
+            sql=stmt,
+            source_id="pg",
+            dialect="trino",
+            physical_sql=stmt,
+            stamp=_pipeline._mint_stamp(),
         )
 
     async def _exec(plan, state=None):
@@ -113,7 +125,9 @@ async def test_govern_batch_final_plan_runs_leading_returns_final(monkeypatch):
     monkeypatch.setattr(_pipeline, "_govern_and_route", _gar)
     monkeypatch.setattr(_pipeline, "_execute_plan", _exec)
 
-    final = await _pipeline.govern_batch_final_plan("SELECT 1; SELECT 2; SELECT 3", "admin", object())
+    final = await _pipeline.govern_batch_final_plan(
+        "SELECT 1; SELECT 2; SELECT 3", "admin", object()
+    )
 
     assert executed == ["SELECT 1", "SELECT 2"]  # leading statements executed (governed)
     assert final.sql == "SELECT 3"  # final statement returned as a plan, not executed here

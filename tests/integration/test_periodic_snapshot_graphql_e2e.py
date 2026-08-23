@@ -117,5 +117,11 @@ async def test_invalid_calendar_rejected(pool):
 async def test_schema_exposes_mv_snapshot_binding_fields():
     """The MV config input carries the snapshot-schedule binding (calendar/grain/lateness/preflight)."""
     sdl = admin_schema.as_str()
-    for field in ("mvCalendar", "mvGrain", "mvAllowedLateness", "mvExpectedEvents", "mvBusinessDayGrain"):
+    for field in (
+        "mvCalendar",
+        "mvGrain",
+        "mvAllowedLateness",
+        "mvExpectedEvents",
+        "mvBusinessDayGrain",
+    ):
         assert field in sdl, f"{field} missing from the admin schema"

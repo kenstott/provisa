@@ -270,7 +270,10 @@ async def _execute_with_gql_remote(
         drop_union_branches_for_table,
         where_referenced_tables,
     )
-    from provisa.compiler.naming import apply_sql_name as _apply_sql_name, apply_gql_name as _apply_gql_name
+    from provisa.compiler.naming import (
+        apply_sql_name as _apply_sql_name,
+        apply_gql_name as _apply_gql_name,
+    )
 
     def _gql_selection(c: dict) -> str:
         # The store lands under the semantic sql name; the remote keys the field by its GraphQL

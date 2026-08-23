@@ -102,7 +102,9 @@ def _referenced_view_closure(
         seen.add(rel)
         closure.append((rel, view_map[rel]))
         stack.extend(
-            r for r in _referenced_relations(view_map[rel], dialect) if r in view_map and r not in seen
+            r
+            for r in _referenced_relations(view_map[rel], dialect)
+            if r in view_map and r not in seen
         )
     return closure
 
@@ -208,7 +210,9 @@ async def federation_graph(
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
     # REQ-1161: incremental — only views whose SQL changed since the last request are re-parsed; the
     # rest of the federation graph is unioned from cached per-view sub-DAGs (never a full rebuild).
-    merged = build_federation_graph_incremental(views, commands=commands, materialized_relations=mats)
+    merged = build_federation_graph_incremental(
+        views, commands=commands, materialized_relations=mats
+    )
     if focus is None:
         return merged.to_dict()
     try:
@@ -217,7 +221,5 @@ async def federation_graph(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     out = scoped.to_dict()
     kept = set(scoped.nodes)
-    out["cycles"] = [
-        c.to_dict() for c in merged.cycles if any(n in kept for n in c.nodes)
-    ]
+    out["cycles"] = [c.to_dict() for c in merged.cycles if any(n in kept for n in c.nodes)]
     return out

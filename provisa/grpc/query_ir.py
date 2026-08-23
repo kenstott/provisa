@@ -127,7 +127,12 @@ def split_group_by_columns(columns: list[Any]) -> tuple[list[Any], list[int], li
     dict-keying on it. Shared by the gRPC servicer and the NL executor's gRPC result preview."""
     group_key_idx = [i for i, c in enumerate(columns) if c.nested_in == "groupKey"]
     agg_idx = [i for i, c in enumerate(columns) if c.nested_in != "groupKey"]
-    return [columns[i] for i in group_key_idx], group_key_idx, [columns[i] for i in agg_idx], agg_idx
+    return (
+        [columns[i] for i in group_key_idx],
+        group_key_idx,
+        [columns[i] for i in agg_idx],
+        agg_idx,
+    )
 
 
 def grpc_table_to_aggregate_graphql_text(

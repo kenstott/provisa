@@ -20,8 +20,8 @@ import subprocess
 from unittest.mock import MagicMock, patch
 
 
-
 # ── helpers ────────────────────────────────────────────────────────────────────
+
 
 def _run_fixture_with_marker(marker_name: str, up_side_effect):
     """Drive the _heavy_db_service generator with a fake request node.
@@ -48,7 +48,11 @@ def _run_fixture_with_marker(marker_name: str, up_side_effect):
     request = MagicMock()
     request.node = node
 
-    gen = _heavy_db_service.__wrapped__(request) if hasattr(_heavy_db_service, "__wrapped__") else _heavy_db_service(request)
+    gen = (
+        _heavy_db_service.__wrapped__(request)
+        if hasattr(_heavy_db_service, "__wrapped__")
+        else _heavy_db_service(request)
+    )
 
     with patch("tests.conftest.subprocess.run", side_effect=mock_run):
         try:
@@ -69,11 +73,13 @@ def _run_fixture_with_marker(marker_name: str, up_side_effect):
 
 # ── tests ──────────────────────────────────────────────────────────────────────
 
+
 class TestHeavyDbServiceTeardownOnSetupFailure:
     """Teardown must run even when docker compose up raises CalledProcessError."""
 
     def test_rm_called_when_up_raises(self):
         """When docker compose up fails, docker compose rm must still be called."""
+
         def up_fails(cmd, **_kwargs):
             if "up" in cmd:
                 raise subprocess.CalledProcessError(1, cmd)

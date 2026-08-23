@@ -406,7 +406,9 @@ async def _type_get(self, url, params=None, headers=None):
     """The metadata-type lookups the relationship custom property is registered against."""
     name = url.rsplit("/", 1)[-1]
     return httpx.Response(
-        200, json={"id": str(uuid.uuid5(uuid.NAMESPACE_URL, name))}, request=httpx.Request("GET", url)
+        200,
+        json={"id": str(uuid.uuid5(uuid.NAMESPACE_URL, name))},
+        request=httpx.Request("GET", url),
     )
 
 

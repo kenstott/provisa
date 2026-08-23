@@ -649,7 +649,6 @@ class TestJSONAPIPaginationHTTP:
                 "/data/jsonapi/default/orders",
                 params={"page[number]": "1", "page[size]": "2"},
                 # REQ-1297: this state registers the role "admin"; name it so the request resolves
-
                 # to a role that has a schema instead of the unsecured-server default.
                 headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
@@ -714,7 +713,6 @@ class TestJSONAPIPaginationHTTP:
                 "/data/jsonapi/default/orders",
                 params={"page[number]": "1", "page[size]": "2"},
                 # REQ-1297: this state registers the role "admin"; name it so the request resolves
-
                 # to a role that has a schema instead of the unsecured-server default.
                 headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
@@ -771,7 +769,6 @@ class TestJSONAPIPaginationHTTP:
             response = await client.get(
                 "/data/jsonapi/default/orders",
                 # REQ-1297: this state registers the role "admin"; name it so the request resolves
-
                 # to a role that has a schema instead of the unsecured-server default.
                 headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
@@ -798,7 +795,6 @@ class TestJSONAPIPaginationHTTP:
             response = await client.get(
                 "/data/jsonapi/default/nonexistent",
                 # REQ-1297: this state registers the role "admin"; name it so the request resolves
-
                 # to a role that has a schema instead of the unsecured-server default.
                 headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
@@ -861,7 +857,6 @@ class TestJSONAPIPaginationHTTP:
             response = await client.get(
                 "/data/jsonapi/default/orders",
                 # REQ-1297: this state registers the role "admin"; name it so the request resolves
-
                 # to a role that has a schema instead of the unsecured-server default.
                 headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )

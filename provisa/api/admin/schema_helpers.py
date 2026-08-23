@@ -44,7 +44,9 @@ from provisa.api.admin.types import (
     UniqueConstraintType,
     TableColumnType,
 )
-from provisa.compiler.aggregate_gen import _classify_columns  # REQ-1360: reuse REQ-196 classification
+from provisa.compiler.aggregate_gen import (
+    _classify_columns,
+)  # REQ-1360: reuse REQ-196 classification
 from provisa.compiler.introspect import ColumnMetadata
 
 from provisa.api.admin._row_mappers import _live_type_from_row, _view_metrics_type_from_row

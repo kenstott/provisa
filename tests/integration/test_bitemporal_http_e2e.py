@@ -45,11 +45,15 @@ async def _admin(client, query: str):
 
 
 async def _sql(client, sql: str, **headers):
-    return await client.post("/data/sql", json={"sql": sql, "role": "admin"}, headers=headers or None)
+    return await client.post(
+        "/data/sql", json={"sql": sql, "role": "admin"}, headers=headers or None
+    )
 
 
 async def test_bitemporal_view_http_end_to_end(client):
-    await _admin(client, 'mutation { createDomain(input: { id: "bt", description: "x" }) { success } }')
+    await _admin(
+        client, 'mutation { createDomain(input: { id: "bt", description: "x" }) { success } }'
+    )
 
     reg = await _admin(
         client,
@@ -95,16 +99,26 @@ async def test_bitemporal_view_http_end_to_end(client):
     assert cur.json() == {"data": {"sql": [{"id": 1, "amount": 10}]}}, cur.text
 
     # (3) X-Provisa-As-Of after the refresh → the reconstructed current row (time-travel path).
-    fut = await _sql(client, 'SELECT id, amount FROM "bt"."bt_view"', **{"X-Provisa-As-Of": "2999-01-01T00:00:00"})
+    fut = await _sql(
+        client,
+        'SELECT id, amount FROM "bt"."bt_view"',
+        **{"X-Provisa-As-Of": "2999-01-01T00:00:00"},
+    )
     assert fut.status_code == 200, fut.text
     assert fut.json() == {"data": {"sql": [{"id": 1, "amount": 10}]}}, fut.text
 
     # (4) X-Provisa-As-Of BEFORE the first refresh → no version was effective yet → empty.
-    past = await _sql(client, 'SELECT id, amount FROM "bt"."bt_view"', **{"X-Provisa-As-Of": "2000-01-01T00:00:00"})
+    past = await _sql(
+        client,
+        'SELECT id, amount FROM "bt"."bt_view"',
+        **{"X-Provisa-As-Of": "2000-01-01T00:00:00"},
+    )
     assert past.status_code == 200, past.text
     assert past.json() == {"data": {"sql": []}}, past.text
 
     # (5) A malformed X-Provisa-As-Of is rejected at the endpoint before execution → HTTP 400.
-    bad = await _sql(client, 'SELECT id FROM "bt"."bt_view"', **{"X-Provisa-As-Of": "not-a-timestamp"})
+    bad = await _sql(
+        client, 'SELECT id FROM "bt"."bt_view"', **{"X-Provisa-As-Of": "not-a-timestamp"}
+    )
     assert bad.status_code == 400, bad.text
     assert "as-of" in bad.text.lower() or "as_of" in bad.text.lower()

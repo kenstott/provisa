@@ -140,9 +140,7 @@ def test_a_success_clears_the_history(throttle):
 
 def test_the_counter_is_safe_under_concurrent_surfaces(clock):
     """pgwire authenticates on socketserver worker threads while the API loop authenticates too."""
-    throttle = LoginThrottle(
-        max_attempts=1000, window_seconds=60, lockout_seconds=300, clock=clock
-    )
+    throttle = LoginThrottle(max_attempts=1000, window_seconds=60, lockout_seconds=300, clock=clock)
     threads = [
         threading.Thread(target=lambda: [throttle.record_failure("user:alice") for _ in range(50)])
         for _ in range(8)
@@ -160,8 +158,9 @@ def test_the_counter_is_safe_under_concurrent_surfaces(clock):
 
 @pytest.mark.asyncio
 async def test_throttled_counts_a_rejected_credential_and_then_refuses_to_ask():
-    configure_login_throttle({"login_throttle": {"max_attempts": 2, "window_seconds": 60,
-                                                 "lockout_seconds": 300}})
+    configure_login_throttle(
+        {"login_throttle": {"max_attempts": 2, "window_seconds": 60, "lockout_seconds": 300}}
+    )
     calls = []
 
     async def validator(credential):
@@ -182,8 +181,9 @@ async def test_throttled_counts_a_rejected_credential_and_then_refuses_to_ask():
 @pytest.mark.asyncio
 async def test_an_infrastructure_fault_is_not_counted_as_a_failed_login():
     """A JWKS outage or a dead control plane must not lock every user out of the deployment."""
-    configure_login_throttle({"login_throttle": {"max_attempts": 2, "window_seconds": 60,
-                                                 "lockout_seconds": 300}})
+    configure_login_throttle(
+        {"login_throttle": {"max_attempts": 2, "window_seconds": 60, "lockout_seconds": 300}}
+    )
 
     async def validator(credential):
         del credential
@@ -199,8 +199,9 @@ async def test_an_infrastructure_fault_is_not_counted_as_a_failed_login():
 @pytest.mark.asyncio
 async def test_a_bearer_only_surface_keys_on_the_credential_not_the_caller():
     """No principal on the wire, so one caller's bad token cannot lock out a different one."""
-    configure_login_throttle({"login_throttle": {"max_attempts": 2, "window_seconds": 60,
-                                                 "lockout_seconds": 300}})
+    configure_login_throttle(
+        {"login_throttle": {"max_attempts": 2, "window_seconds": 60, "lockout_seconds": 300}}
+    )
 
     async def validator(credential):
         del credential
@@ -348,8 +349,7 @@ def _http_client(auth_config: dict):
 
 def _basic_header(password: str) -> dict:
     return {
-        "Authorization": "Basic "
-        + base64.b64encode(f"{_USERNAME}:{password}".encode()).decode()
+        "Authorization": "Basic " + base64.b64encode(f"{_USERNAME}:{password}".encode()).decode()
     }
 
 
@@ -436,6 +436,9 @@ def test_the_login_route_counts_into_the_same_store():
 
         assert client.post("/auth/login", json=body).status_code == 429
         # The same account is now locked on a wire surface it never touched.
-        assert _http_client(auth_config).get(
-            "/data/probe", headers=_basic_header(_PASSWORD)
-        ).status_code == 429
+        assert (
+            _http_client(auth_config)
+            .get("/data/probe", headers=_basic_header(_PASSWORD))
+            .status_code
+            == 429
+        )

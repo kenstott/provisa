@@ -470,7 +470,7 @@ def test_with_bare_node_var_group_by_matches_select_star():
     import re
 
     group_by_clause = sql.split("GROUP BY", 1)[1].split("ORDER BY", 1)[0]
-    assert re.search(r'\bn\s*\.\s*\*', group_by_clause)
+    assert re.search(r"\bn\s*\.\s*\*", group_by_clause)
     assert not re.search(r"GROUP BY\s+n\b(?!\s*\.)", sql)
 
 

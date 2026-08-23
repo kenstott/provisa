@@ -18,6 +18,7 @@ import { CapabilityGate } from "./CapabilityGate";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
 import { OrgSwitcher } from "./OrgSwitcher";
+import { EnvSwitcher } from "./EnvSwitcher";
 import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -227,6 +228,7 @@ export function NavBar() {
               </Menu>
             </div>
           )}
+          <EnvSwitcher />
           <RoleSelector />
           <ColorSchemeToggle />
           <Tooltip label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}>

@@ -144,7 +144,6 @@ roles:
         startup_cost: instant              # no initdb — the truly-instant control plane
         prereq: none (aiosqlite bundled)
         url: sqlite+aiosqlite:///{data_dir}/control.db
-        default_for: [demo]
       - id: embedded_pg
         name: Embedded PostgreSQL (asyncpg)
         platforms: [macos, linux, windows]
@@ -152,6 +151,11 @@ roles:
         startup_cost: install-time         # run initdb at INSTALL, not launch
         prereq: "asyncpg bundled; Windows data dir not under %TEMP%"
         url: postgresql+asyncpg://.../     # unix socket via pgserver
+        # REQ-1535: the default control plane in every self-contained tier. SQLite has no schemas,
+        # and REQ-1488 makes an environment a schema — so a SQLite plane can hold prod and nothing
+        # else. The embedded instance is the same PostgreSQL the hosted tier runs, which is what
+        # makes the desktop tier behave like the one it is a rehearsal for.
+        default_for: [demo, native]
       - id: postgresql
         name: PostgreSQL (external, asyncpg)
         platforms: [macos, linux, windows]
@@ -208,21 +212,21 @@ presets:
   demo:
     federation_engine: duckdb
     materialization_store: duckdb_file
-    control_plane_store: sqlite
+    control_plane_store: embedded_pg
     sources: [csv, parquet, json, sqlite, iceberg, openapi, graphql_remote]
     external_services: []          # no trino, redis, minio, otel-collector
     cache: in_memory
     observability: off
     startup_target_seconds: 3
 
-  # The default DESKTOP install: same self-contained runtime as `demo` (DuckDB + sqlite control
-  # plane + in-memory cache, no Trino/Redis/MinIO/Docker) but ships NO demo data — the user starts
+  # The default DESKTOP install: same self-contained runtime as `demo` (DuckDB + embedded PostgreSQL
+  # control plane + in-memory cache, no Trino/Redis/MinIO/Docker) but ships NO demo data — the user starts
   # with an empty model. The wizard may layer overrides on top (a Trino-on-Docker engine, an
   # external engine/store URL, an observability collector) via desktop_profile.load_profile.
   native:
     federation_engine: duckdb
     materialization_store: duckdb_file
-    control_plane_store: sqlite
+    control_plane_store: embedded_pg
     sources: []                    # empty model — no demo sources seeded
     external_services: []          # no trino, redis, minio, otel-collector
     cache: in_memory

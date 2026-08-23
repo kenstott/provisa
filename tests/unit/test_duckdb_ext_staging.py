@@ -67,6 +67,8 @@ def test_missing_platform_blobs_fails_loud(tmp_path, monkeypatch):
 
 def test_package_absent_raises_module_not_found(tmp_path, monkeypatch):
     # A dev checkout without the embedded extra: caller (cli) treats this as "fall back to network".
-    monkeypatch.setitem(sys.modules, "provisa_duckdb_ext", None)  # force ModuleNotFoundError on import
+    monkeypatch.setitem(
+        sys.modules, "provisa_duckdb_ext", None
+    )  # force ModuleNotFoundError on import
     with pytest.raises(ModuleNotFoundError):
         stage_bundled_extensions(tmp_path / "staged")

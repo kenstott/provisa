@@ -175,7 +175,7 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
     node_scalars: list[str] = []
     dim_paths: list[str] = []
     dim_paths_api: list[str] = []
-    for sub in (field_node.selection_set.selections if field_node.selection_set else []):
+    for sub in field_node.selection_set.selections if field_node.selection_set else []:
         if not isinstance(sub, FieldNode):
             continue
         if sub.name.value == "aggregate" and sub.selection_set:
@@ -242,7 +242,9 @@ def _resolve_aggregation_plan(
     # single-table group-by gRPC/JSON:API/OpenAPI (and GraphQL/Cypher) expose lives on inquiries.
     from_expr = tree.find(exp.From)
     from_table = from_expr.this if from_expr is not None else None
-    joined_tables = [j.this for j in (tree.args.get("joins") or []) if isinstance(j.this, exp.Table)]
+    joined_tables = [
+        j.this for j in (tree.args.get("joins") or []) if isinstance(j.this, exp.Table)
+    ]
     all_tables = ([from_table] if isinstance(from_table, exp.Table) else []) + joined_tables
     if not all_tables:
         return None
@@ -252,9 +254,9 @@ def _resolve_aggregation_plan(
     )
     agg_col = agg_node.find(exp.Column) if agg_node is not None else None
     tables_by_ref = {t.alias_or_name: t for t in all_tables}
-    table_expr = (tables_by_ref.get(agg_col.table) if agg_col is not None and agg_col.table else None) or (
-        from_table if isinstance(from_table, exp.Table) else all_tables[0]
-    )
+    table_expr = (
+        tables_by_ref.get(agg_col.table) if agg_col is not None and agg_col.table else None
+    ) or (from_table if isinstance(from_table, exp.Table) else all_tables[0])
     table_name = table_expr.name
     table_ref = table_expr.alias_or_name
     schema_name = table_expr.db or ""
@@ -354,12 +356,14 @@ def _resolve_aggregation_plan(
     if is_aggregate_only and not raw.get("enable_aggregates"):
         return None
 
-    found = {_agg_expr_types()[type(n)] for n in tree.find_all(*_agg_expr_types()) if type(n) in _agg_expr_types()}
+    found = {
+        _agg_expr_types()[type(n)]
+        for n in tree.find_all(*_agg_expr_types())
+        if type(n) in _agg_expr_types()
+    }
     funcs = [fn for fn in AGG_FUNCS if fn in found]
 
-    return AggregationPlan(
-        meta, group_cols, is_aggregate_only, funcs, dim_paths, [], dim_paths_api
-    )
+    return AggregationPlan(meta, group_cols, is_aggregate_only, funcs, dim_paths, [], dim_paths_api)
 
 
 def _generate_grpc_query(
@@ -643,7 +647,11 @@ async def _generate_graphql_sql_from_nl(
     llm = ProvisaLLMClient("sql_generation", config=llm_config, api_keys=llm_api_keys)
 
     valid_query, error = await generation_loop(
-        nl_query, "graphql", schema_sdl, compiler, llm  # type: ignore[arg-type]
+        nl_query,
+        "graphql",
+        schema_sdl,
+        compiler,
+        llm,  # type: ignore[arg-type]
     )
     if error or valid_query is None:
         return None, None, None, error or "GraphQL generation failed"

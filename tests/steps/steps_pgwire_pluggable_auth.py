@@ -168,7 +168,9 @@ def _oidc_config(**overrides) -> dict:
             "client_id": "provisa",
             "audience": "provisa",
         },
-        "role_mapping": [{"type": "exact", "claim": "email", "value": "ada@x.io", "role": "analyst"}],
+        "role_mapping": [
+            {"type": "exact", "claim": "email", "value": "ada@x.io", "role": "analyst"}
+        ],
         "default_role": "viewer",
     }
     config.update(overrides)

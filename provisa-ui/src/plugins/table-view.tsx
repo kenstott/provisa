@@ -25,6 +25,7 @@ import { parse, print, visit, Kind } from "graphql";
 import { lastQueryElapsedMs } from "../query-timing";
 import { setCurrentQueryStats, subscribeQueryStats, type QueryStats } from "../query-stats";
 import { useAuth } from "../context/AuthContext";
+import { MermaidDiagram } from "../components/MermaidDiagram";
 
 type ViewMode = "json" | "table" | "stats";
 
@@ -60,31 +61,6 @@ function injectLimitOffset(query: string, limit: number, offset: number): string
     },
   });
   return print(patched);
-}
-
-let _mermaidDagSeq = 0;
-
-function MermaidDiagram({ chart }: { chart: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const idPrefixRef = useRef(`mermaid-dag-${++_mermaidDagSeq}`);
-  useEffect(() => {
-    let cancelled = false;
-    const charts = chart.split(/\n\n(?=flowchart)/).filter(Boolean);
-    import("mermaid").then((m) => {
-      if (cancelled || !ref.current) return;
-      m.default.initialize({ startOnLoad: false, theme: "dark" });
-      const renders = charts.map((c, i) =>
-        m.default.render(`${idPrefixRef.current}-${i}`, c).then(({ svg }) => svg),
-      );
-      Promise.all(renders).then((svgs) => {
-        if (!cancelled && ref.current) ref.current.innerHTML = svgs.join("");
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [chart]);
-  return <div ref={ref} className="stats-mermaid" />;
 }
 
 function flattenObject(obj: Record<string, unknown>, prefix: string, out: Record<string, unknown>) {

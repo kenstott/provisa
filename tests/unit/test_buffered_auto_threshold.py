@@ -131,7 +131,11 @@ async def test_terminal_materializes_above_threshold(monkeypatch):
     result = await P._execute_plan(_plan(deliv), _FakeState(engine))
 
     assert result.rows == []
-    assert result.redirect == {"sink": "s3://b/x.parquet", "row_count": None, "redirect_url": "http://x"}
+    assert result.redirect == {
+        "sink": "s3://b/x.parquet",
+        "row_count": None,
+        "redirect_url": "http://x",
+    }
     assert captured["sql"] == "SELECT n FROM t"  # the engine-physical CTAS source
     assert closed[0]  # partial buffer abandoned — the stream was closed early, not fully drained
 

@@ -110,7 +110,9 @@ async def _build_mode(tmp_path, mode: str):
         db=db,
         name="snap-box",
         generate=make_mv_bitemporal_generate(_append),
-        deadline_source=PeriodicCalendar(Calendar(name="fy", version="v1"), "monthly", allowed_lateness=0.0),
+        deadline_source=PeriodicCalendar(
+            Calendar(name="fy", version="v1"), "monthly", allowed_lateness=0.0
+        ),
         expected_events=[],  # freshness gates satisfied (calendar-only contract)
         freshness_of=lambda _i: None,
     )
@@ -158,5 +160,7 @@ def _then(ctx):
     for state in ctx["modes"].values():
         assert ctx["fired"][id(state)] is not None  # the boundary cut a version
         # the version is stamped at the boundary (window.end = Jan-close = Feb 1) and addressable there
-        sql = reconstruct_as_of_sql(state["target"], state["mv"].bitemporal, COLS, system_ts_literal(JAN_END))
+        sql = reconstruct_as_of_sql(
+            state["target"], state["mv"].bitemporal, COLS, system_ts_literal(JAN_END)
+        )
         assert set(state["con"].execute(sql).fetchall()) == {(1, "west", 10), (2, "east", 20)}

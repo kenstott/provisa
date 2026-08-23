@@ -66,7 +66,9 @@ def test_duckdb_file_native_declaration_is_true_in_practice(tmp_path):
 
     csv = _write_csv(tmp_path)
     con = duckdb.connect()
-    rows = con.execute(f"SELECT id, region, amount FROM read_csv_auto('{csv}') ORDER BY id").fetchall()
+    rows = con.execute(
+        f"SELECT id, region, amount FROM read_csv_auto('{csv}') ORDER BY id"
+    ).fetchall()
     con.close()
 
     # MEASURED: the file was scanned in place and produced its rows — the trait holds.
@@ -98,9 +100,7 @@ def test_router_scan_decision_for_file_native_engine_actually_runs(tmp_path):
 
     # ...and the scan the router endorsed actually returns rows on DuckDB.
     con = duckdb.connect()
-    n = con.execute(
-        f"SELECT count(*) FROM read_csv_auto('{_write_csv(tmp_path)}')"
-    ).fetchone()[0]
+    n = con.execute(f"SELECT count(*) FROM read_csv_auto('{_write_csv(tmp_path)}')").fetchone()[0]
     con.close()
     assert n == 3
 

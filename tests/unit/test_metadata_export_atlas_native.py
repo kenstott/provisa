@@ -121,9 +121,7 @@ def test_governance_document_rides_the_typed_attribute():
         ],
     )
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
-    table = next(
-        e for e in to_native_entities(snapshot) if e.attributes.get("name") == "pets"
-    )
+    table = next(e for e in to_native_entities(snapshot) if e.attributes.get("name") == "pets")
     doc = json.loads(table.attributes["provisaGovernance"])
     assert doc["approvedRelationships"][0]["id"] == "rel-1"
     assert "userDescription" not in table.attributes
@@ -149,7 +147,9 @@ def test_urn_rebind_updates_in_place_when_the_physical_address_moved():
     column = next(e for e in entities if e.type_name == PROVISA_COLUMN_TYPE)
     old_placeholder = table.guid
     # The catalog holds the same URN under a DIFFERENT physical address (re-platformed).
-    live = {table.attributes["provisaUri"]: ("live-guid-1", "old-source.old_schema.old_name@provisa")}
+    live = {
+        table.attributes["provisaUri"]: ("live-guid-1", "old-source.old_schema.old_name@provisa")
+    }
     rebound = rebind_to_live_identities(entities, live)
     assert rebound == 1
     assert table.guid == "live-guid-1"  # update in place, no duplicate
@@ -176,4 +176,10 @@ def test_atlan_keeps_builtin_types_and_no_classification_merge():
     assert AtlanExport.classification_merge is False
     exporter = AtlanExport.__new__(AtlanExport)
     entities = exporter._atlan_entities(_snapshot())
-    assert {e.type_name for e in entities} <= {"Connection", "Database", "Table", "Column", "Process"}
+    assert {e.type_name for e in entities} <= {
+        "Connection",
+        "Database",
+        "Table",
+        "Column",
+        "Process",
+    }

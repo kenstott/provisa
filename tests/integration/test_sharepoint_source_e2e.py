@@ -59,7 +59,11 @@ import pytest
 import trino.dbapi
 import trino.exceptions
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_sharepoint, pytest.mark.requires_warehouse]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.requires_sharepoint,
+    pytest.mark.requires_warehouse,
+]
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))

@@ -218,7 +218,12 @@ def make_mv_bitemporal_generate(
         preprocess: Callable[..., Any] | None = None,
         forced: bool = False,
     ) -> tuple[str, dict, str | None] | None:
-        del pending, prior_hash, preprocess, forced  # append recomputes to current; trigger is the cue
+        del (
+            pending,
+            prior_hash,
+            preprocess,
+            forced,
+        )  # append recomputes to current; trigger is the cue
         from provisa.mv.bitemporal import system_ts_literal
 
         window = getattr(ctx, "window", None) if ctx is not None else None

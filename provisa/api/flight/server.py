@@ -786,7 +786,9 @@ class ProvisaFlightServer(
             raise flight.FlightServerError(
                 f"Route {plan.route!r} is not supported for Cypher via Flight"
             )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
+        require_governed_plan(
+            plan
+        )  # REQ-1176: verify at the last moment, before the engine executes
 
         def _run() -> list[dict[str, object]]:
             # On a worker thread — go through the sync engine terminal, not a raw cursor.
@@ -896,9 +898,7 @@ class ProvisaFlightServer(
 
         # REQ-1156: a `SELECT fn(...)` naming a registered command invokes it through the single
         # governed executor, matching pgwire/MCP — otherwise commands are dark over Flight SQL.
-        fn_result = self._run_on_loop(
-            maybe_invoke_registered_function(sql, role_id, self._state)
-        )
+        fn_result = self._run_on_loop(maybe_invoke_registered_function(sql, role_id, self._state))
         if fn_result is not None:
             columns = [
                 ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
@@ -914,7 +914,9 @@ class ProvisaFlightServer(
         except ValueError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
+        require_governed_plan(
+            plan
+        )  # REQ-1176: verify at the last moment, before the engine executes
         # REQ-074/REQ-1386: this govern-then-stream terminal never reaches _execute_plan, so the
         # audit row is written here — once the terminal is established, or on the way out.
         try:
@@ -992,7 +994,9 @@ class ProvisaFlightServer(
         except ValueError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
+        require_governed_plan(
+            plan
+        )  # REQ-1176: verify at the last moment, before the engine executes
         # REQ-074/REQ-1386: govern-then-stream terminal — the audit row is written here.
         try:
             if plan.route == Route.DIRECT:

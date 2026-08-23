@@ -111,9 +111,7 @@ def test_the_plans_hints_win_over_the_deployments(issued, monkeypatch):
         raising=False,
     )
 
-    execute_trino(
-        issued.conn, "SELECT id FROM orders", session_hints={"query_max_memory": "8GB"}
-    )
+    execute_trino(issued.conn, "SELECT id FROM orders", session_hints={"query_max_memory": "8GB"})
 
     assert "SET SESSION query_max_memory = '8GB'" in issued.log
     assert "SET SESSION query_max_memory = '2GB'" not in issued.log

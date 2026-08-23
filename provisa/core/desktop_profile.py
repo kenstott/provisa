@@ -29,9 +29,7 @@ import yaml
 # is self-contained. Prefer the packaged copy; fall back to the repo-root config/ in the dev tree.
 _PACKAGED_CAPABILITIES = Path(__file__).resolve().parents[1] / "_config" / "capabilities.yaml"
 _REPO_CAPABILITIES = Path(__file__).resolve().parents[2] / "config" / "capabilities.yaml"
-_CAPABILITIES = (
-    _PACKAGED_CAPABILITIES if _PACKAGED_CAPABILITIES.exists() else _REPO_CAPABILITIES
-)
+_CAPABILITIES = _PACKAGED_CAPABILITIES if _PACKAGED_CAPABILITIES.exists() else _REPO_CAPABILITIES
 
 # capability engine id -> PROVISA_ENGINE registry key (engine.py _ENGINE_BUILDERS: engine/pg/duckdb/sqlalchemy)
 _ENGINE_KEY = {
@@ -98,6 +96,11 @@ def _apply_materialize(
     notes.append(f"materialization store: {mat_store} under {mdd} (embedded)")
 
 
+def _control_plane_options(caps: dict) -> set[str]:
+    """Every control-plane store id the capability catalog offers (REQ-1536)."""
+    return {o["id"] for o in caps["roles"]["control_plane_store"]["options"]}
+
+
 def _apply_control_plane(
     cp_store: str,
     env: dict[str, str],
@@ -116,6 +119,9 @@ def _apply_control_plane(
             "metadata/config/roles store must stay on the embedded home (sqlite/embedded_pg) or an "
             "explicit RDB — Trino/observability are added strictly as compute, never the metadata home"
         )
+    if cp_store == "embedded_pg":
+        _apply_embedded_pg(env, notes, preset=preset, data_dir=data_dir, ephemeral=ephemeral)
+        return
     if cp_store != "sqlite":
         return
     # SQLAlchemy control plane on sqlite — no initdb, no pgserver, no Python-version gate.
@@ -130,6 +136,39 @@ def _apply_control_plane(
     notes.append(f"control plane: sqlite files under {dd} (instant, persistent)")
 
 
+def _apply_embedded_pg(
+    env: dict[str, str],
+    notes: list[str],
+    *,
+    preset: str,
+    data_dir: Path | str | None,
+    ephemeral: bool,
+) -> None:
+    """Boot the bundled pgserver control plane and point both planes at its unix socket (REQ-1535).
+
+    The instance is persistent and idempotent — a second call to the same data dir reuses the server
+    already running there — so resolving the profile is what brings the plane up, exactly as the
+    sqlite branch's files are created by first use.
+
+    The socket directory and port are READ BACK from the started server rather than assumed: pgserver
+    picks the port, and a guessed one names a socket path that does not exist.
+    """
+    if ephemeral:
+        raise ValueError(
+            "control_plane_store 'embedded_pg' has no in-memory form — pgserver is a real "
+            "PostgreSQL with a data directory. Use a data_dir, or pick the 'sqlite' store for an "
+            "ephemeral plane (which then holds only the 'prod' environment, REQ-1534)."
+        )
+    from provisa.core.control_plane_pg import start as start_control_plane_pg
+
+    dd = Path(data_dir) if data_dir else _default_data_dir(preset)
+    host, port = start_control_plane_pg(str(dd / "control-pg"))
+    url = f"postgresql+asyncpg://provisa:provisa@/provisa?host={host}&port={port}"
+    env["PLATFORM_DATABASE_URL"] = url
+    env["TENANT_DATABASE_URL"] = url
+    notes.append(f"control plane: embedded PostgreSQL (pgserver, socket {host}:{port})")
+
+
 def load_profile(
     preset: str = "demo",
     *,
@@ -141,6 +180,7 @@ def load_profile(
     materialize_url: str | None = None,
     trino_endpoint: tuple[str, int] | None = None,
     otlp_endpoint: str | None = None,
+    control_plane: str | None = None,
 ) -> LaunchProfile:
     """Resolve a capabilities preset into the launch environment for a self-contained desktop start.
 
@@ -194,7 +234,14 @@ def load_profile(
         env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint
         notes.append(f"obs export redirected to external collector: {otlp_endpoint}")
 
-    cp_store = spec.get("control_plane_store", "embedded_pg")
+    # The wizard offers every control_plane_store the catalog lists, so an operator's choice
+    # overrides the preset's default the way the engine override does (REQ-1536).
+    cp_store = control_plane or spec.get("control_plane_store", "embedded_pg")
+    if control_plane and control_plane not in _control_plane_options(caps):
+        raise ValueError(
+            f"unknown control_plane_store {control_plane!r}; the catalog offers "
+            f"{', '.join(sorted(_control_plane_options(caps)))}"
+        )
     _apply_control_plane(
         cp_store, env, notes, preset=preset, data_dir=data_dir, ephemeral=ephemeral
     )
@@ -211,7 +258,7 @@ def load_profile(
     return LaunchProfile(
         name=preset,
         env=env,
-        control_plane_store=spec.get("control_plane_store", "embedded_pg"),
+        control_plane_store=cp_store,
         sources=list(spec.get("sources", [])),
         notes=notes,
     )

@@ -33,7 +33,7 @@ carried away, so the person approving the merge (REQ-1504) and the audit record 
 say so.
 """
 
-# Requirements: REQ-1490, REQ-1526, REQ-1539, REQ-1555
+# Requirements: REQ-1490, REQ-1526, REQ-1539, REQ-1555, REQ-1556
 
 from __future__ import annotations
 
@@ -97,6 +97,40 @@ def compare(
     return found
 
 
+def carried(tree: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """``tree`` narrowed to what a merge or a pull actually moves.
+
+    Only what an apply CARRIES can be conflicted by one. The seeded classes are the environment's
+    own answer to who may do what and never travel (REQ-1539), so the two lines differing there is
+    not two edits colliding -- it is the design.
+    """
+    from provisa.core.env_deploy import PROJECTED, table_of
+
+    scope = PROJECTED - SEEDED_AT_CREATION
+    return {p: b for p, b in tree.items() if table_of(p) in scope}
+
+
+def against_base(
+    org_id: str,
+    base_sha: str,
+    incoming: dict[str, dict[str, Any]],
+    current: dict[str, dict[str, Any]],
+) -> list[Conflict]:
+    """What ``current`` holds that ``incoming`` would overwrite, measured from ``base_sha``.
+
+    The form the caller uses when ONE side is a tree rather than a schema -- a pull, where the
+    incoming model is a commit the remote holds and there is no second schema to project
+    (REQ-1556). ``current`` is the environment's own projection, and the caller reads it inside
+    the transaction that applies so that what is named is what that apply acts on.
+    """
+    from provisa.core.env_files import load as load_files
+    from provisa.core.env_repo import files_at
+
+    return compare(
+        carried(load_files(files_at(org_id, base_sha))), carried(incoming), carried(current)
+    )
+
+
 async def detect(
     conn: "Connection",
     org_id: str,
@@ -115,7 +149,7 @@ async def detect(
     the report names is what the apply in that same transaction acts on.
     """
     from provisa.core.env_project import project
-    from provisa.core.env_repo import files_at, merge_base, tip
+    from provisa.core.env_repo import merge_base, tip
     from provisa.core.environments import PROD
 
     source_tip = tip(org_id, source_env or PROD)
@@ -129,18 +163,6 @@ async def detect(
     if base_sha is None:
         return None, []
 
-    from provisa.core.env_deploy import PROJECTED, table_of
-    from provisa.core.env_files import load as load_files
-
-    # Only what a merge CARRIES can be conflicted by one. The seeded classes are the environment's
-    # own answer to who may do what and never travel (REQ-1539), so the two lines differing there
-    # is not two edits colliding -- it is the design.
-    scope = PROJECTED - SEEDED_AT_CREATION
-
-    def carried(tree: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        return {p: b for p, b in tree.items() if table_of(p) in scope}
-
-    base = carried(load_files(files_at(org_id, base_sha)))
-    source = carried(await project(conn, src_schema))
-    target = carried(await project(conn, dst_schema))
-    return base_sha, compare(base, source, target)
+    return base_sha, against_base(
+        org_id, base_sha, await project(conn, src_schema), await project(conn, dst_schema)
+    )

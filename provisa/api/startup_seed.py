@@ -30,6 +30,7 @@ from sqlalchemy import (
     delete as _delete,
     func as _sa_func,
     literal as _sa_literal,
+    or_ as _sa_or,
     select,
     update,
 )
@@ -48,6 +49,7 @@ from provisa.api._catalog_descriptions import (
     TABLE_DESCRIPTIONS as _TBL_DESC,
 )
 from provisa.core.db import init_schema
+from provisa.core.environments import org_schema
 from provisa.core.schema_org import (
     domains as _domains_t,
     registered_tables as _registered_tables_t,
@@ -113,9 +115,7 @@ WHERE span_name LIKE 'provisa.query%'
 ]
 
 
-_CREATE_OR_REPLACE_VIEW_RE = re.compile(
-    r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(\w+)\s+AS", re.IGNORECASE
-)
+_CREATE_OR_REPLACE_VIEW_RE = re.compile(r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(\w+)\s+AS", re.IGNORECASE)
 
 
 def _adapt_view_ddl(ddl: str, dialect: str) -> str:
@@ -139,7 +139,7 @@ def _adapt_view_ddl(ddl: str, dialect: str) -> str:
     if not m:
         return ddl
     view_name = m.group(1)
-    select_sql = ddl[m.end():].strip()
+    select_sql = ddl[m.end() :].strip()
     cascade = " CASCADE" if dialect in ("postgresql", "duckdb") else ""
     return f"DROP VIEW IF EXISTS {view_name}{cascade};\nCREATE VIEW {view_name} AS {select_sql}"
 
@@ -194,13 +194,54 @@ async def _seed_tag_param_values(conn: "Connection") -> None:  # REQ-1467
         )
 
 
+async def _drop_sibling_environment_registrations(
+    conn: "Connection", domain_id: str, org_id: str, schema_name: str
+) -> None:  # REQ-1488
+    """Delete this org's ``provisa-admin`` registrations that name a DIFFERENT environment.
+
+    The two seeds below are the only writers of the control plane's self-catalog rows, and each runs
+    inside a runtime already scoped to one environment's schema. A row naming another environment of
+    the same org is therefore not data to preserve — it is a row an earlier version of this code
+    wrote at the wrong address, before the seeds knew environments existed. It is also fatal rather
+    than untidy: the branch then holds two registrations of every meta table, and
+    ``_assert_domain_table_unique`` refuses the whole runtime on the first request made to it.
+
+    Scoped to THIS org's schemas on purpose. A portable (non-schema) control plane keeps every org's
+    rows in one namespace distinguished only by ``schema_name``, so deleting on "not my schema"
+    alone would take another org's catalog with it.
+
+    Same reasoning as the stale view-name cleanup already in ``_seed_meta_domain``: the seed owns
+    these rows, so the seed retires the ones it should never have written.
+    """
+    prod_schema = org_schema(org_id)
+    await conn.execute_core(
+        _delete(_registered_tables_t).where(
+            _registered_tables_t.c.source_id == "provisa-admin",
+            _registered_tables_t.c.domain_id == domain_id,
+            _registered_tables_t.c.schema_name != schema_name,
+            _sa_or(
+                _registered_tables_t.c.schema_name == prod_schema,
+                _registered_tables_t.c.schema_name.like(f"{prod_schema}_env_%"),
+            ),
+        )
+    )
+
+
 async def _seed_meta_domain(
-    conn: "Connection", org_id: str = "default"
+    conn: "Connection", org_id: str = "default", env: str | None = None
 ) -> None:  # REQ-012, REQ-016, REQ-695
-    """Register admin tables in the built-in meta domain (idempotent)."""
-    schema_name = f"org_{org_id}"
+    """Register admin tables in the built-in meta domain (idempotent).
+
+    REQ-1488: the schema is the ENVIRONMENT's, not the org's. This seed runs once per runtime, and
+    a branch's runtime is scoped to its own schema — naming ``org_<id>`` here registered the
+    branch's meta tables at prod's address, next to the branch's own copies of the same rows, and
+    every request to that runtime then failed the (domain, table) uniqueness assertion.
+    """
+    schema_name = org_schema(org_id, env)
     for ddl in _META_TABLE_VIEWS.values():
         await conn.execute(_adapt_view_ddl(ddl, conn.capabilities.dialect))
+
+    await _drop_sibling_environment_registrations(conn, "meta", org_id, schema_name)
 
     # Remove any stale view-named entries left by older code versions.
     for view_name in _META_TABLE_ALIAS.values():
@@ -296,7 +337,9 @@ async def _seed_meta_domain(
         )
 
 
-async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:  # REQ-884
+async def _seed_ops_domain(
+    conn: "Connection", org_id: str = "default", env: str | None = None
+) -> None:  # REQ-884
     """Expose internal operational logs (query_audit_log, …) as first-class tables in
     the built-in ``ops`` domain, reusing the meta-domain view+seed mechanism.
 
@@ -310,7 +353,8 @@ async def _seed_ops_domain(conn: "Connection", org_id: str = "default") -> None:
     (``_OPS_REPORT_VIEWS``) on the same path — always seeded on install, not demo
     data — and designates ``org_admin`` as the ops-domain steward so the domain
     never surfaces as a REQ-609 PENDING stewardship gap."""
-    schema_name = f"org_{org_id}"
+    schema_name = org_schema(org_id, env)  # REQ-1488: the environment's schema, not the org's
+    await _drop_sibling_environment_registrations(conn, "ops", org_id, schema_name)
     for ddl in _OPS_LOG_TABLE_VIEWS.values():
         await conn.execute(_adapt_view_ddl(ddl, conn.capabilities.dialect))
 
@@ -695,7 +739,12 @@ async def _init_control_planes(
 
 
 async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
-    pg_host: str, pg_port: int, pg_database: str, pg_user: str, org_id: str | None = None
+    pg_host: str,
+    pg_port: int,
+    pg_database: str,
+    pg_user: str,
+    org_id: str | None = None,
+    env: str | None = None,
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __derived__ source rows; seed meta domain and ops; compute clusters.
 
@@ -798,9 +847,9 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # finishing, not a data migration.
         await _conn.execute_core(_delete(_sources_t).where(_sources_t.c.id == "__provisa__"))
         await _seed_tag_param_values(_conn)  # REQ-1467
-        await _seed_meta_domain(_conn, org_id=eff_org)
+        await _seed_meta_domain(_conn, org_id=eff_org, env=env)
         await _seed_ops_pg(_conn)
-        await _seed_ops_domain(_conn, org_id=eff_org)  # REQ-884
+        await _seed_ops_domain(_conn, org_id=eff_org, env=env)  # REQ-884
         await _ensure_ops_steward_grant(_conn)  # REQ-1386
         await _seed_meta_relationships(_conn)
         needs_clusters = (

@@ -264,11 +264,7 @@ def translate(source: str) -> SqlPreflight | None:
     except SyntaxError:
         return None
     func = next(
-        (
-            s
-            for s in tree.body
-            if isinstance(s, ast.FunctionDef) and s.name == REQUIRED_FUNC
-        ),
+        (s for s in tree.body if isinstance(s, ast.FunctionDef) and s.name == REQUIRED_FUNC),
         None,
     )
     # A translatable check is self-contained: exactly the guarded-assertion + trailing return, and

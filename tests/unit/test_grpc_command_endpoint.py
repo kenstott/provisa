@@ -142,16 +142,12 @@ async def test_invoke_unknown_command_404():
 @pytest.mark.asyncio
 async def test_invoke_bad_args_json_400():
     with pytest.raises(HTTPException) as ei:
-        await grpc_command(
-            "admin", _req({"name": "random_grpc_set", "args_json": "{not json"})
-        )
+        await grpc_command("admin", _req({"name": "random_grpc_set", "args_json": "{not json"}))
     assert ei.value.status_code == 400
 
 
 @pytest.mark.asyncio
 async def test_invoke_non_object_args_400():
     with pytest.raises(HTTPException) as ei:
-        await grpc_command(
-            "admin", _req({"name": "random_grpc_set", "args_json": "[1, 2]"})
-        )
+        await grpc_command("admin", _req({"name": "random_grpc_set", "args_json": "[1, 2]"}))
     assert ei.value.status_code == 400

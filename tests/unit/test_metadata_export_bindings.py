@@ -138,9 +138,7 @@ async def test_atlas_captures_the_guid_of_every_published_entity(snapshot, monke
 
 
 @pytest.mark.asyncio
-async def test_atlas_prefers_the_stored_guid_over_the_laggy_search_index(
-    snapshot, monkeypatch
-):
+async def test_atlas_prefers_the_stored_guid_over_the_laggy_search_index(snapshot, monkeypatch):
     """The basic-search index lags commits; the stored binding is the identity of record."""
     monkeypatch.setattr(AtlasExport, "classification_merge", False)
     table = snapshot.tables[0]
@@ -171,9 +169,7 @@ async def test_atlas_prefers_the_stored_guid_over_the_laggy_search_index(
 
 
 @pytest.mark.asyncio
-async def test_atlas_falls_back_to_the_search_index_only_without_a_binding(
-    snapshot, monkeypatch
-):
+async def test_atlas_falls_back_to_the_search_index_only_without_a_binding(snapshot, monkeypatch):
     monkeypatch.setattr(AtlasExport, "classification_merge", False)
     table = snapshot.tables[0]
     live = [
@@ -234,9 +230,7 @@ def _mock_openmetadata(monkeypatch, *, old_live=None):
 
 
 @pytest.mark.asyncio
-async def test_openmetadata_captures_the_table_uuid_from_the_put_response(
-    snapshot, monkeypatch
-):
+async def test_openmetadata_captures_the_table_uuid_from_the_put_response(snapshot, monkeypatch):
     _mock_openmetadata(monkeypatch)
     result = await OpenMetadataExport(_config("openmetadata")).publish(snapshot)
     assert result.ok
@@ -291,9 +285,7 @@ async def test_openmetadata_fqn_change_succeeds_the_old_entity_by_stored_uuid(
 
 
 @pytest.mark.asyncio
-async def test_openmetadata_unchanged_fqn_never_touches_the_predecessor_path(
-    snapshot, monkeypatch
-):
+async def test_openmetadata_unchanged_fqn_never_touches_the_predecessor_path(snapshot, monkeypatch):
     uri = snapshot.tables[0].semantic_uri
     calls = _mock_openmetadata(monkeypatch)
     export = OpenMetadataExport(_config("openmetadata"))
@@ -347,9 +339,7 @@ async def test_collibra_captures_the_asset_uuid_after_a_first_import(snapshot, m
 
 
 @pytest.mark.asyncio
-async def test_collibra_steady_state_reconcile_makes_no_lookup_and_no_rename(
-    snapshot, monkeypatch
-):
+async def test_collibra_steady_state_reconcile_makes_no_lookup_and_no_rename(snapshot, monkeypatch):
     calls, _ = _mock_collibra(monkeypatch)
     export = CollibraExport(_config("collibra"))
     uri = snapshot.tables[0].semantic_uri
@@ -362,9 +352,7 @@ async def test_collibra_steady_state_reconcile_makes_no_lookup_and_no_rename(
 
 
 @pytest.mark.asyncio
-async def test_collibra_renames_the_bound_asset_before_the_name_keyed_import(
-    snapshot, monkeypatch
-):
+async def test_collibra_renames_the_bound_asset_before_the_name_keyed_import(snapshot, monkeypatch):
     """The import upserts by full name; renaming first is what makes it hit the SAME asset."""
     calls, order = _mock_collibra(
         monkeypatch, lookup_results=[{"id": "collibra-uuid-1", "name": TABLE_FQN}]
@@ -420,9 +408,7 @@ async def test_datahub_captures_the_dataset_urn_as_the_vendor_id(snapshot, monke
 
 
 @pytest.mark.asyncio
-async def test_datahub_deprecates_the_old_bound_urn_on_physical_readdress(
-    snapshot, monkeypatch
-):
+async def test_datahub_deprecates_the_old_bound_urn_on_physical_readdress(snapshot, monkeypatch):
     """A dataset URN is immutable identity: the successor publishes as a new URN, and the
     stored binding is what lets the old one be marked deprecated instead of lingering."""
     monkeypatch.setattr(DataHubExport, "tag_merge", False)
@@ -452,9 +438,7 @@ async def test_datahub_deprecates_the_old_bound_urn_on_physical_readdress(
 
 
 @pytest.mark.asyncio
-async def test_publish_snapshot_loads_persists_and_prunes_bindings(
-    snapshot, tmp_path, monkeypatch
-):
+async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp_path, monkeypatch):
     """The binding lifecycle rides the single publish path (REQ-1389): stored bindings are
     handed to the provider before the publish, captured ones are persisted after, and a
     binding whose asset left the model is pruned."""

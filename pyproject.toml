@@ -61,6 +61,9 @@ dependencies = [
     "grpcio-status<1.82",  # aligns with the pinned protobuf<7
     "pyodbc",  # Azure Synapse / Microsoft Fabric federation engine (T-SQL over TDS/ODBC)
     "azure-identity",  # Azure AD token auth for Fabric/Synapse (uses `az login` / managed identity)
+    "dulwich",  # REQ-1524: the per-org model repository. Pure Python — no git binary on the
+    # host (GitPython shells out) and no native build (pygit2 needs libgit2), which REQ-294's
+    # airgap-capable distribution cannot carry a compiler for.
     "psycopg2-binary",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",

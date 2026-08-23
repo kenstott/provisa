@@ -28,6 +28,7 @@
     "itemOrgs": "Orgs",
     "itemDashboard": "Dashboard",
     "itemDomains": "Domains",
+    "itemEnvironments": "Environments",
     "itemCache": "Cache",
     "itemScheduler": "Scheduler",
     "itemFederation": "Federation",

@@ -76,7 +76,12 @@ def _emit_mv(db, store, *, run, emit, router):
         dependents_of=lambda _n: [],  # unused when emit_outcomes is set — routing is per-shape
         name="mv.a",
         generate=make_mv_generate(
-            DsnEngine(store), schema="", table="mv_a", columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store),
+            schema="",
+            table="mv_a",
+            columns=_COLS,
+            run_query=run,
+            pk_columns=["id"],
         ),
         emit_outcomes=frozenset(emit),
         subscribers_of=router,
@@ -92,7 +97,12 @@ def _plain_mv(node, db, store, *, run):
         dependents_of=lambda _n: [],
         name=node,
         generate=make_mv_generate(
-            DsnEngine(store), schema="", table=_TABLE[node], columns=_COLS, run_query=run, pk_columns=["id"]
+            DsnEngine(store),
+            schema="",
+            table=_TABLE[node],
+            columns=_COLS,
+            run_query=run,
+            pk_columns=["id"],
         ),
         db=db,
     )
@@ -145,7 +155,9 @@ async def test_demand_driven_emit_drops_unsubscribed_shape(control_plane):
     procs = [
         _src(cp, store, dep=lambda _n: ["mv.a"], fetch=fetch),
         _emit_mv(
-            cp, store, run=run_a,
+            cp,
+            store,
+            run=run_a,
             emit={"replace", "append", "delta"},
             router=lambda _node, shape: subs[shape],
         ),
@@ -180,7 +192,9 @@ async def test_per_shape_routing_reaches_distinct_dependents(control_plane):
     procs = [
         _src(cp, store, dep=lambda _n: ["mv.a"], fetch=fetch),
         _emit_mv(
-            cp, store, run=run_a,
+            cp,
+            store,
+            run=run_a,
             emit={"replace", "append", "delta"},
             router=lambda _node, shape: subs[shape],
         ),
@@ -253,7 +267,7 @@ async def test_store_land_notifies_pg_subscriber(control_plane):
     pool = await asyncpg.create_pool(store_dsn, min_size=1, max_size=2)
     try:
         async with pool.acquire() as conn:
-            await conn.execute('CREATE TABLE orders (id bigint PRIMARY KEY, status text)')
+            await conn.execute("CREATE TABLE orders (id bigint PRIMARY KEY, status text)")
             await conn.execute(_trigger_sql("public", "orders"))
 
         provider = PgNotificationProvider(pool)
@@ -277,7 +291,7 @@ async def test_store_delete_notifies_delete_change_event(control_plane):
     pool = await asyncpg.create_pool(store_dsn, min_size=1, max_size=2)
     try:
         async with pool.acquire() as conn:
-            await conn.execute('CREATE TABLE orders (id bigint PRIMARY KEY, status text)')
+            await conn.execute("CREATE TABLE orders (id bigint PRIMARY KEY, status text)")
             await conn.execute(_trigger_sql("public", "orders"))
             await conn.execute("INSERT INTO orders (id, status) VALUES (7, 'gone')")
 

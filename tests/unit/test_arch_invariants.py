@@ -41,6 +41,24 @@ from provisa.transpiler.transpile import transpile
 
 _CAPS = Path(__file__).resolve().parents[2] / "config" / "capabilities.yaml"
 
+#: The socket a started embedded control plane reports back (REQ-1535), and the URL built from it.
+_FAKE_SOCKET = ("/tmp/fake-pgsock", 55432)
+_PG_URL = (
+    f"postgresql+asyncpg://provisa:provisa@/provisa?host={_FAKE_SOCKET[0]}&port={_FAKE_SOCKET[1]}"
+)
+
+
+@pytest.fixture(autouse=True)
+def _embedded_pg(monkeypatch):
+    """Stand in for the bundled PostgreSQL the self-contained presets start.
+
+    These are architecture invariants about WHERE the metadata home is, so they must not pay an
+    initdb to ask; the integration probe boots a real cluster.
+    """
+    import provisa.core.control_plane_pg as cp
+
+    monkeypatch.setattr(cp, "start", lambda datadir, **kw: _FAKE_SOCKET)
+
 
 # --------------------------------------------------------------------------- #
 # REQ-830: five pluggable stateful components, each config/URI-resolved        #
@@ -91,15 +109,17 @@ class TestReq830StatefulTopology:
         # Control-plane URIs are a separate object entirely — not derived from the engine.
         assert cfg.control_plane.platform_url != cfg.federation_engine_url
 
-    def test_desktop_preset_collapses_all_to_embedded(self):
-        # On a developer desktop the components collapse to a zero-infra embedded stack (REQ-830):
-        # duckdb engine, embedded materialize store, sqlite control plane, in-memory cache.
-        prof = load_profile("demo", ephemeral=True, capabilities_path=_CAPS)
+    def test_desktop_preset_collapses_all_to_embedded(self, tmp_path):
+        # On a developer desktop the components collapse to a stack that needs no external service
+        # (REQ-830): duckdb engine, embedded materialize store, bundled PostgreSQL control plane
+        # (REQ-1535 — bundled, not external: nothing is installed or reachable over the network),
+        # in-memory cache.
+        prof = load_profile("demo", data_dir=tmp_path, capabilities_path=_CAPS)
         assert prof.env["PROVISA_ENGINE"] == "duckdb"
         assert prof.env["PROVISA_REDIS_EMBEDDED"] == "1"  # hot cache -> fakeredis
         assert prof.env["PROVISA_MATERIALIZE_URL"].startswith(("duckdb", "sqlite"))
-        assert prof.env["PLATFORM_DATABASE_URL"].startswith("sqlite")
-        assert prof.env["TENANT_DATABASE_URL"].startswith("sqlite")
+        assert prof.env["PLATFORM_DATABASE_URL"] == _PG_URL
+        assert prof.env["TENANT_DATABASE_URL"] == _PG_URL
 
 
 # --------------------------------------------------------------------------- #
@@ -110,18 +130,20 @@ class TestReq889MetadataHomeTierInvariant:
     to the container tier adds Trino + observability strictly as COMPUTE — it MUST NOT relocate the
     metadata home. Tier changes are additive + reversible."""
 
-    def _base(self) -> dict:
-        return dict(ephemeral=True, capabilities_path=_CAPS)
+    def _base(self, tmp_path) -> dict:
+        # One data dir across the whole comparison: the invariant is that a tier change does not
+        # MOVE the metadata home, so both profiles must be resolved against the same home.
+        return dict(data_dir=tmp_path, capabilities_path=_CAPS)
 
-    def test_promoting_to_container_tier_does_not_move_metadata_home(self):
-        base = load_profile("native", **self._base())
+    def test_promoting_to_container_tier_does_not_move_metadata_home(self, tmp_path):
+        base = load_profile("native", **self._base(tmp_path))
         # Container-tier promotion: add Trino compute + redirect observability to an external collector.
         promoted = load_profile(
             "native",
             engine="trino",
             trino_endpoint=("trino-host", 8080),
             otlp_endpoint="http://collector:4317",
-            **self._base(),
+            **self._base(tmp_path),
         )
         # The metadata home (control-plane store identity + URIs) is IDENTICAL across tiers.
         assert promoted.control_plane_store == base.control_plane_store
@@ -131,14 +153,14 @@ class TestReq889MetadataHomeTierInvariant:
         assert promoted.env["PROVISA_ENGINE"] == "trino"
         assert promoted.env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://collector:4317"
 
-    def test_toggling_trino_is_reversible_without_catalog_migration(self):
-        with_trino = load_profile("native", engine="trino", **self._base())
-        without = load_profile("native", engine="duckdb", **self._base())
+    def test_toggling_trino_is_reversible_without_catalog_migration(self, tmp_path):
+        with_trino = load_profile("native", engine="trino", **self._base(tmp_path))
+        without = load_profile("native", engine="duckdb", **self._base(tmp_path))
         # Toggling the compute engine on/off never touches the metadata catalog location.
         assert with_trino.env["PLATFORM_DATABASE_URL"] == without.env["PLATFORM_DATABASE_URL"]
         assert with_trino.env["TENANT_DATABASE_URL"] == without.env["TENANT_DATABASE_URL"]
 
-    def test_metadata_home_is_never_a_compute_only_backend(self):
+    def test_metadata_home_is_never_a_compute_only_backend(self, tmp_path):
         # Enforcement (fail loud): a preset that names a compute-only tier addition as its metadata
         # home is rejected — Trino/observability can never become the metadata store.
         for compute in _COMPUTE_ONLY_TIER_ADDITIONS:
@@ -152,7 +174,7 @@ class TestReq889MetadataHomeTierInvariant:
                 yaml.safe_dump(spec, fh)
                 bad = Path(fh.name)
             with pytest.raises(ValueError, match="REQ-889"):
-                load_profile("native", ephemeral=True, capabilities_path=bad)
+                load_profile("native", data_dir=tmp_path, capabilities_path=bad)
 
 
 # --------------------------------------------------------------------------- #

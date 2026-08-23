@@ -232,8 +232,14 @@ def _build_grammar() -> pp.ParserElement:
     # subquery expression: EXISTS/COUNT/COLLECT { ...balanced... }
     subq_body = pp.original_text_for(pp.nested_expr("{", "}"))
     subq = (
-        pp.CaselessKeyword("EXISTS") | pp.CaselessKeyword("COUNT") | pp.CaselessKeyword("COLLECT")
-    )("kind") + pp.FollowedBy("{") + subq_body("body")
+        (
+            pp.CaselessKeyword("EXISTS")
+            | pp.CaselessKeyword("COUNT")
+            | pp.CaselessKeyword("COLLECT")
+        )("kind")
+        + pp.FollowedBy("{")
+        + subq_body("body")
+    )
 
     def _mk_subq(t):
         raw = t["body"].strip()

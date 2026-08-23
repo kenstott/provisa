@@ -348,7 +348,9 @@ async def run_ctas(sql: str, role_id: str) -> str | None:
         from provisa.pgwire._pipeline import require_governed_plan
 
         plan = await _govern_and_route(stmt.select_sql, role_id)
-        require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
+        require_governed_plan(
+            plan
+        )  # REQ-1176: verify at the last moment, before the engine executes
         physical_select = plan.physical_sql if plan.physical_sql is not None else plan.sql
         ddl = f"CREATE TABLE {resolved.schema}.{resolved.table} AS {physical_select}"
         # REQ-074/REQ-1386: the CTAS pushes its own DDL around the governed SELECT and never

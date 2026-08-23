@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """Unit tests for graphql_remote introspection (REQ-307)."""
+
 import base64
 
 import httpx
@@ -21,12 +22,32 @@ SAMPLE_SCHEMA = {
     "queryType": {"name": "Query"},
     "mutationType": None,
     "types": [
-        {"kind": "OBJECT", "name": "Query", "fields": [
-            {"name": "users", "type": {"kind": "LIST", "name": None, "ofType": {"kind": "OBJECT", "name": "User", "ofType": None}}, "args": []}
-        ]},
-        {"kind": "OBJECT", "name": "User", "fields": [
-            {"name": "id", "type": {"kind": "SCALAR", "name": "ID", "ofType": None}, "args": []},
-        ]},
+        {
+            "kind": "OBJECT",
+            "name": "Query",
+            "fields": [
+                {
+                    "name": "users",
+                    "type": {
+                        "kind": "LIST",
+                        "name": None,
+                        "ofType": {"kind": "OBJECT", "name": "User", "ofType": None},
+                    },
+                    "args": [],
+                }
+            ],
+        },
+        {
+            "kind": "OBJECT",
+            "name": "User",
+            "fields": [
+                {
+                    "name": "id",
+                    "type": {"kind": "SCALAR", "name": "ID", "ofType": None},
+                    "args": [],
+                },
+            ],
+        },
     ],
 }
 
@@ -34,6 +55,7 @@ INTROSPECTION_URL = "https://example.com/graphql"
 
 
 # --- _build_headers tests ---
+
 
 def test_build_headers_no_auth():
     assert _build_headers(None) == {}
@@ -61,6 +83,7 @@ def test_build_headers_basic_empty_creds():
 
 
 # --- introspect_schema tests ---
+
 
 @pytest.mark.anyio
 @respx.mock
@@ -90,7 +113,9 @@ async def test_basic_auth_sends_header():
     route = respx.post(INTROSPECTION_URL).mock(
         return_value=httpx.Response(200, json={"data": {"__schema": SAMPLE_SCHEMA}})
     )
-    await introspect_schema(INTROSPECTION_URL, auth={"type": "basic", "username": "u", "password": "p"})
+    await introspect_schema(
+        INTROSPECTION_URL, auth={"type": "basic", "username": "u", "password": "p"}
+    )
     req = route.calls[0].request
     expected = "Basic " + base64.b64encode(b"u:p").decode()
     assert req.headers["Authorization"] == expected
@@ -99,7 +124,9 @@ async def test_basic_auth_sends_header():
 @pytest.mark.anyio
 @respx.mock
 async def test_http_error_raises():
-    respx.post(INTROSPECTION_URL).mock(return_value=httpx.Response(500, text="Internal Server Error"))
+    respx.post(INTROSPECTION_URL).mock(
+        return_value=httpx.Response(500, text="Internal Server Error")
+    )
     with pytest.raises(httpx.HTTPStatusError):
         await introspect_schema(INTROSPECTION_URL)
 

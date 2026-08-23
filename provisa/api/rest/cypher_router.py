@@ -590,6 +590,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # so the V002 SQL-layer guard (bypass_relationship_guard=True below) cannot catch this.
     # We check explicitly at the AST level before SQL generation.
     from provisa.cypher.parser import PathPattern as _PathPattern, PathFunction as _PathFunction  # noqa: PLC0415,E501
+
     _unknown_rels: list[str] = []
     for _mc in ast.match_clauses:
         _pat = _mc.pattern
@@ -871,7 +872,9 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             plan = await _govern_and_route_compiled(semantic_sql, role_id, exec_params=None)
             from provisa.pgwire._pipeline import require_governed_plan
 
-            require_governed_plan(plan)  # REQ-1176: verify at the last moment, before the engine executes
+            require_governed_plan(
+                plan
+            )  # REQ-1176: verify at the last moment, before the engine executes
             from provisa.pgwire._pipeline import finalize_audit
 
             try:

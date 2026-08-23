@@ -301,7 +301,39 @@ export async function pullEnvironment(
   name: string,
 ): Promise<{ applied: boolean; report?: CopyReport; sync: BranchSync }> {
   const res = await fetch(`${base(orgId)}/${encodeURIComponent(name)}/pull`, { method: "POST" });
+  // REQ-1556: a divergence is refused, and the refusal names the objects both lines moved. That
+  // list is the whole point of the refusal -- "the two lines diverged" is not a statement about any
+  // particular object -- so it is carried on the error rather than flattened into its message.
+  if (res.status === 409) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    if (data?.code === "environments.diverged") {
+      throw new DivergedError(
+        serverMessage(data, requestFailed("pullEnvironment", res.status)),
+        data.params?.base ?? null,
+        data.params?.conflicts ?? [],
+      );
+    }
+  }
   return ok(res, "pullEnvironment");
+}
+
+/**
+ * A pull refused because both lines hold commits the other does not (REQ-1556).
+ *
+ * REPORTED, NEVER RESOLVED, and here not even applied: nothing changed, and what this carries is
+ * the account of which objects whoever now has to decide is deciding about. ``base`` is null when
+ * the two lines share no ancestor at all, and an empty ``conflicts`` under it means NOTHING WAS
+ * COMPARED rather than nothing collided.
+ */
+export class DivergedError extends Error {
+  constructor(
+    message: string,
+    readonly base: string | null,
+    readonly conflicts: Conflict[],
+  ) {
+    super(message);
+    this.name = "DivergedError";
+  }
 }
 
 /** Where an environment stands in its own history after a step (REQ-1543). */

@@ -106,8 +106,9 @@ def test_as_of_reconstructs_each_point_in_history(mode):
 
 def test_snapshot_and_delta_agree_at_every_step():
     """The two write choices must be observationally equivalent on reads."""
-    snap, delta = Driver(BitemporalSpec(key=("id",), mode=MODE_SNAPSHOT)), Driver(
-        BitemporalSpec(key=("id",), mode=MODE_DELTA)
+    snap, delta = (
+        Driver(BitemporalSpec(key=("id",), mode=MODE_SNAPSHOT)),
+        Driver(BitemporalSpec(key=("id",), mode=MODE_DELTA)),
     )
     for rows, ts in [(STEP1, T1), (STEP2, T2), (STEP3, T3), (STEP4, T4)]:
         snap.refresh(rows, ts)

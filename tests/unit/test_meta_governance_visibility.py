@@ -82,9 +82,7 @@ class TestREQ1134GovernanceColumnVisibility:
 
     def test_meta_grant_alone_does_not_auto_grant_governance(self):
         # REQ-1134 — a meta DOMAIN grant must NOT imply view_governance.
-        gov = _build(
-            {"id": "meta_reader", "capabilities": [], "domain_access": [META_DOMAIN_ID]}
-        )
+        gov = _build({"id": "meta_reader", "capabilities": [], "domain_access": [META_DOMAIN_ID]})
         visible = gov.visible_columns[1]
         assert visible is not None
         assert "visible_to" not in visible

@@ -106,7 +106,11 @@ def test_partial_publish_exits_nonzero_and_names_assets(monkeypatch, capsys):
 def test_http_error_reports_body_and_exits_nonzero(monkeypatch, capsys):
     def raise_403(req, timeout):
         raise urllib.error.HTTPError(
-            req.full_url, 403, "Forbidden", None, io.BytesIO(b"not entitled")  # type: ignore[arg-type]
+            req.full_url,
+            403,
+            "Forbidden",
+            None,
+            io.BytesIO(b"not entitled"),  # type: ignore[arg-type]
         )
 
     monkeypatch.setattr(urllib.request, "urlopen", raise_403)

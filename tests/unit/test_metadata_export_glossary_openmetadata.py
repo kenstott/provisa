@@ -149,13 +149,17 @@ async def test_glossary_is_upserted_idempotently_under_the_org_stable_name(monke
     assert first.ok and second.ok
     # One PUT per publish, always addressed by the same per-org name: the upsert is the
     # idempotency, not a create-if-missing dance.
-    assert _glossary_puts(calls) == [
-        {
-            "name": GLOSSARY,
-            "displayName": GLOSSARY_DISPLAY_NAME,
-            "description": "Business vocabulary Provisa publishes from its governed semantic layer.",
-        }
-    ] * 2
+    assert (
+        _glossary_puts(calls)
+        == [
+            {
+                "name": GLOSSARY,
+                "displayName": GLOSSARY_DISPLAY_NAME,
+                "description": "Business vocabulary Provisa publishes from its governed semantic layer.",
+            }
+        ]
+        * 2
+    )
     assert first.published["glossary"] == 1
 
 
@@ -214,7 +218,13 @@ async def test_reparented_term_is_moved_by_patch_using_the_new_parents_uuid(monk
     assert _patches(calls) == [
         (
             "https://catalog.example/api/v1/glossaryTerms/uuid-old",
-            [{"op": "add", "path": "/parent", "value": {"id": "uuid-Animal", "type": "glossaryTerm"}}],
+            [
+                {
+                    "op": "add",
+                    "path": "/parent",
+                    "value": {"id": "uuid-Animal", "type": "glossaryTerm"},
+                }
+            ],
         )
     ]
 
@@ -225,7 +235,9 @@ async def test_unbound_vendor_terms_are_never_touched_and_nothing_is_deleted(mon
     exporter = OpenMetadataExport(_export_config())
     # A term published earlier that the snapshot no longer carries: its binding is stored,
     # but absence is never a delete — removal inside the catalog is a steward's call.
-    exporter.stored_bindings = {"provisa://acme/terms/Legacy": ("uuid-legacy", f"{GLOSSARY}.Legacy")}
+    exporter.stored_bindings = {
+        "provisa://acme/terms/Legacy": ("uuid-legacy", f"{GLOSSARY}.Legacy")
+    }
     result = await exporter.publish(_snapshot([_term(1, "Customer")]))
     assert result.ok
     assert not [call for call in calls if call[0] == "DELETE"]

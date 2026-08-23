@@ -112,9 +112,7 @@ class Requirement(BaseModel):
     @classmethod
     def group_canonical(cls, v: str) -> str:
         if v not in canonical_groups():
-            raise ValueError(
-                f"group {v!r} is not in docs/arch/groups.yaml — use a canonical group"
-            )
+            raise ValueError(f"group {v!r} is not in docs/arch/groups.yaml — use a canonical group")
         return v
 
     @field_validator("since")

@@ -130,9 +130,7 @@ def build_values_cte_sql(
             # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
             # still resolve after the relation is renamed to the CTE.
             if not tbl.alias:
-                tbl.set(
-                    "alias", exp.TableAlias(this=exp.to_identifier(alias_name or table_name))
-                )
+                tbl.set("alias", exp.TableAlias(this=exp.to_identifier(alias_name or table_name)))
             tbl.set("catalog", None)
             tbl.set("db", None)
             tbl.set("this", exp.to_identifier(cte_name, quoted=True))

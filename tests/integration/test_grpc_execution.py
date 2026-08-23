@@ -483,9 +483,7 @@ _SECURED_GRPC_PORT = int(os.environ.get("PROVISA_TEST_GRPC_AUTH_PORT", "50161"))
 _SECURED_AUTH_CONFIG = {
     "provider": "oidc",
     "default_role": "analyst",
-    "role_mapping": [
-        {"claim": "groups", "type": "contains", "value": "data-eng", "role": "admin"}
-    ],
+    "role_mapping": [{"claim": "groups", "type": "contains", "value": "data-eng", "role": "admin"}],
 }
 
 

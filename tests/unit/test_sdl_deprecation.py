@@ -89,9 +89,7 @@ def test_deprecated_column_emits_the_directive():
 
 
 def test_deprecated_table_emits_on_the_root_query_field():
-    schema = _schema(
-        _tables(deprecation_reason="Replaced by order_facts"), [], _COLUMN_TYPES
-    )
+    schema = _schema(_tables(deprecation_reason="Replaced by order_facts"), [], _COLUMN_TYPES)
     root = schema.query_type.fields["orders"]
     assert root.deprecation_reason == "Replaced by order_facts"
     # The undeprecated table stays clean.
@@ -111,7 +109,11 @@ def test_deprecated_relationship_emits_on_the_navigational_field():
     schema = _schema(_tables(), [rel], _COLUMN_TYPES)
     orders_fields = schema.type_map["Orders"].fields
     nav = next(
-        (f for name, f in orders_fields.items() if f.deprecation_reason is not None and name != "legacy_code"),
+        (
+            f
+            for name, f in orders_fields.items()
+            if f.deprecation_reason is not None and name != "legacy_code"
+        ),
         None,
     )
     assert nav is not None and nav.deprecation_reason == "Traverse via order_facts"

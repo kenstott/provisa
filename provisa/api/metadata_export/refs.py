@@ -32,7 +32,29 @@ def source_ref(source: Source) -> AssetRef:  # REQ-1070
 
 # REQ-1385: kind keywords are reserved path segments; a domain with one of these names
 # would make its URIs unparseable, so domain creation refuses them.
-RESERVED_KIND_KEYWORDS = ("tables", "sources", "tags", "roles", "commands")
+#
+# REQ-1526 widened the list from the four kinds that appear in a URI to every kind the serialized
+# model gives a DIRECTORY to. In a URI a kind is only ever preceded by domain segments, so an
+# unreserved kind was merely unparseable in the cases that reached it; in a directory tree the kind
+# and the domain are siblings on disk, and a domain named for one would have its own file written
+# into the kind's directory. Reserving the whole set costs an org the use of about a dozen domain
+# names and removes the collision entirely.
+RESERVED_KIND_KEYWORDS = (
+    "tables",
+    "sources",
+    "api-sources",
+    "kafka-sources",
+    "kafka-sinks",
+    "tags",
+    "roles",
+    "commands",
+    "terms",
+    "metrics",
+    "views",
+    "calendars",
+    "naming",
+    "domain",
+)
 
 _URI_SCHEME = "provisa"
 

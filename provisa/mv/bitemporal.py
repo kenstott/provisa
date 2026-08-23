@@ -71,7 +71,9 @@ class BitemporalSpec:
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
-            raise ValueError(f"invalid bitemporal mode {self.mode!r}; expected one of {sorted(MODES)}")
+            raise ValueError(
+                f"invalid bitemporal mode {self.mode!r}; expected one of {sorted(MODES)}"
+            )
         if self.mode == MODE_DELTA and not self.key:
             raise ValueError("delta bitemporal mode requires an entity key (no key ⇒ no delta)")
         managed = [self.system_column, *([self.op_column] if self.mode == MODE_DELTA else [])]
@@ -140,7 +142,7 @@ def _append_snapshot(
     target: str, select_sql: str, spec: BitemporalSpec, business_cols: list[str], now_ts: str
 ) -> str:
     cols = ", ".join(_q(c) for c in business_cols)
-    f_cols = ", ".join(f'{_q("f")}.{_q(c)}' for c in business_cols)
+    f_cols = ", ".join(f"{_q('f')}.{_q(c)}" for c in business_cols)
     sys = _q(spec.system_column)
     return (
         f"INSERT INTO {target} ({cols}, {sys}) "
@@ -161,7 +163,7 @@ def _append_delta(
     current = current_state_sql(target, spec, business_cols)  # the engine reconstructs "now"
 
     # Upserts: fresh rows not identical to any currently-effective row (new keys + changed rows).
-    f_cols = ", ".join(f'{_q("f")}.{_q(c)}' for c in business_cols)
+    f_cols = ", ".join(f"{_q('f')}.{_q(c)}" for c in business_cols)
     upserts = (
         f"INSERT INTO {target} ({cols}, {sys}, {op}) "
         f"SELECT {f_cols}, {now_ts}, '{_OP_UPSERT}' "
@@ -177,7 +179,7 @@ def _append_delta(
     # Bare NULL (not CAST): the INSERT's target column already types it. An explicit cast to a
     # filler type is rejected by strict engines — Postgres won't assign varchar to an int column.
     tomb_select = ", ".join(
-        [f'{_q("c")}.{_q(c)}' for c in key] + [f"NULL AS {_q(c)}" for c in non_key]
+        [f"{_q('c')}.{_q(c)}" for c in key] + [f"NULL AS {_q(c)}" for c in non_key]
     )
     ordered = ", ".join(_q(c) for c in (key + non_key))
     tombstones = (

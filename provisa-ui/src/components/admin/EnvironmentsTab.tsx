@@ -44,16 +44,45 @@ import {
   patchEnvironment,
   previewMerge,
   pullEnvironment,
+  DivergedError,
   pushEnvironment,
   requestReview,
 } from "../../api/environments";
 import { isBase } from "../../api/environments";
-import type { BranchSync, CopyReport, Environment } from "../../api/environments";
+import type { BranchSync, Conflict, CopyReport, Environment } from "../../api/environments";
+import type { NotificationData } from "@mantine/notifications";
 import { MergeRequestsPanel } from "./MergeRequestsPanel";
 import { RepoBrowser } from "./RepoBrowser";
 import { RepoIntegrationPanel } from "./RepoIntegrationPanel";
 
 const PROD = "prod";
+
+/**
+ * The objects a pull collided on, inside the notification that reports it (REQ-1556).
+ *
+ * A pull has no preview to have named them in, so this is the only place they are said. Named and
+ * not offered: the refused pull applied nothing and the fast-forward already applied everything,
+ * so there is nothing here to choose.
+ */
+function ConflictNotice({ head, conflicts }: { head: string; conflicts: Conflict[] }) {
+  const { t } = useTranslation();
+  return (
+    <div data-testid="env-pull-conflicts">
+      <Text size="sm">{head}</Text>
+      <List size="sm" withPadding>
+        {conflicts.map((c) => (
+          <List.Item key={c.path} data-testid="env-pull-conflict">
+            {t("environmentsTab.conflictLine", {
+              path: c.path,
+              source: t(`environmentsTab.conflictSide.${c.source}`),
+              target: t(`environmentsTab.conflictSide.${c.target}`),
+            })}
+          </List.Item>
+        ))}
+      </List>
+    </div>
+  );
+}
 
 /**
  * REQ-1487..REQ-1529: the org's environments, and everything that is done to one.
@@ -113,7 +142,17 @@ export function EnvironmentsTab() {
   const [deleteBranch, setDeleteBranch] = useState(false);
   const [deleteRemote, setDeleteRemote] = useState(false);
 
-  const fail = (err: Error) => notifications.show({ color: "red", message: err.message });
+  /**
+   * REQ-1556: a refused pull names the objects both lines moved, and the notification says so
+   * rather than only that they diverged -- whoever now decides whose work survives is deciding
+   * about particular objects.
+   */
+  const fail = (err: Error) =>
+    notifications.show(
+      err instanceof DivergedError
+        ? { color: "red", message: <ConflictNotice head={err.message} conflicts={err.conflicts} /> }
+        : { color: "red", message: err.message },
+    );
 
   const reload = useCallback(() => {
     if (!activeOrgId) return;
@@ -194,10 +233,10 @@ export function EnvironmentsTab() {
    * acknowledgement, so the table is reloaded from the server afterwards instead of being patched
    * from what the call returned.
    */
-  async function act(env: Environment, run: () => Promise<string>) {
+  async function act(env: Environment, run: () => Promise<NotificationData>) {
     setBusy(env.name);
     try {
-      notifications.show({ color: "green", message: await run() });
+      notifications.show(await run());
       reload();
     } catch (err) {
       fail(err as Error);
@@ -209,16 +248,38 @@ export function EnvironmentsTab() {
   const push = (env: Environment) =>
     act(env, async () => {
       const answer = await pushEnvironment(orgId, env.name);
-      return t("environmentsTab.pushed", { env: env.name, sha: answer.pushed?.slice(0, 7) });
+      return {
+        color: "green",
+        message: t("environmentsTab.pushed", { env: env.name, sha: answer.pushed?.slice(0, 7) }),
+      };
     });
 
   const pull = (env: Environment) =>
     act(env, async () => {
       const answer = await pullEnvironment(orgId, env.name);
       // A pull that found nothing to take is reported as such rather than as a change (REQ-1547).
-      return answer.applied
-        ? t("environmentsTab.pulled", { env: env.name })
-        : t("environmentsTab.pullUpToDate", { env: env.name });
+      if (!answer.applied) {
+        return { color: "green", message: t("environmentsTab.pullUpToDate", { env: env.name }) };
+      }
+      // REQ-1556: a fast-forward is not refused and nothing about it looks dangerous, yet it can
+      // still carry away an edit sitting in this environment that no commit holds. Named here
+      // because there is no preview of a pull for it to have been named in.
+      const carried = answer.report?.conflicts ?? [];
+      if (carried.length === 0) {
+        return { color: "green", message: t("environmentsTab.pulled", { env: env.name }) };
+      }
+      return {
+        color: "yellow",
+        message: (
+          <ConflictNotice
+            head={t("environmentsTab.pulledOverwriting", {
+              env: env.name,
+              count: carried.length,
+            })}
+            conflicts={carried}
+          />
+        ),
+      };
     });
 
   async function toggleProtected(env: Environment) {

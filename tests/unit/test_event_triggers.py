@@ -210,9 +210,7 @@ async def test_retry_on_webhook_failure():
     mgr._running = True
 
     success_result = WebhookResult(status_code=200, data={}, headers={})
-    mock_execute = AsyncMock(
-        side_effect=[_status_error(500), _status_error(500), success_result]
-    )
+    mock_execute = AsyncMock(side_effect=[_status_error(500), _status_error(500), success_result])
 
     data = {"operation": "insert", "table": "orders", "schema": "public", "row": {"id": 1}}
     with patch("provisa.events.triggers.execute_webhook", mock_execute):

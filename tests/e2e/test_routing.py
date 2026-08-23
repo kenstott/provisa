@@ -90,5 +90,3 @@ class TestDirectRouting:
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__customers"]
         assert len(rows) > 0
-
-

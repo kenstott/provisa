@@ -53,18 +53,20 @@ def relation_candidates(domain_sql_name: str, table_sql_name: str) -> set[str]:
 def _matches(relation: str | None, candidates: set[str]) -> bool:
     if relation is None:
         return False
-    return relation in candidates or relation.split(".")[-1] in {c.split(".")[-1] for c in candidates}
+    return relation in candidates or relation.split(".")[-1] in {
+        c.split(".")[-1] for c in candidates
+    }
 
 
-def graph_dependents(
-    graph: LineageGraph, candidates: set[str], column: str
-) -> list[Dependent]:
+def graph_dependents(graph: LineageGraph, candidates: set[str], column: str) -> list[Dependent]:
     """Views and MVs downstream of ``<candidates>.<column>`` in the federation graph.
 
     ``column`` is the EXPOSED name (alias, else the snake_case default) — that is the only name a
     view's SQL can have been written against. Each distinct downstream relation is reported once."""
     origins = [
-        n.id for n in graph.nodes.values() if n.column == column and _matches(n.relation, candidates)
+        n.id
+        for n in graph.nodes.values()
+        if n.column == column and _matches(n.relation, candidates)
     ]
     if not origins:
         return []

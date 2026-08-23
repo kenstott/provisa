@@ -15,11 +15,15 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import insert, select, update
 from sqlalchemy.schema import CreateSchema
 
+from provisa.core.environments import org_schema
+
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
 
-async def create_org_role(conn: Any, org_id: str) -> None:  # REQ-699, REQ-889
+async def create_org_role(
+    conn: Any, org_id: str, env: str | None = None
+) -> None:  # REQ-699, REQ-889
     """Create a PG role scoped to org_<org_id> schema for physical multi-tenant isolation.
 
     PostgreSQL-only hardening — a NO-OP on every other control-plane backend (REQ-889). Provisa
@@ -32,7 +36,9 @@ async def create_org_role(conn: Any, org_id: str) -> None:  # REQ-699, REQ-889
     dialect = getattr(getattr(conn, "capabilities", None), "dialect", "postgresql")
     if dialect != "postgresql":
         return
-    schema_name = f"org_{org_id}"
+    # REQ-1488: the role stays org-level — an environment multiplies the model, not the tenant — so
+    # each of the org's environment schemas is granted to the one role the org already has.
+    schema_name = org_schema(org_id, env)
     role_name = f"role_{org_id}"
     await conn.execute(
         f"DO $$ BEGIN CREATE ROLE {role_name}; EXCEPTION WHEN duplicate_object THEN NULL; END $$"
@@ -67,17 +73,34 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     (
         "org_admin",
         [
-            "source_registration", "table_registration", "create_relationship", "create_view",
-            "approve_view", "approve_relationship", "access_config", "user_management",
-            "masking_config", "column_grant", "view_governance", "query_development",
-            "full_results", "write", "usage", "org_settings", "observability",
+            "source_registration",
+            "table_registration",
+            "create_relationship",
+            "create_view",
+            "approve_view",
+            "approve_relationship",
+            "access_config",
+            "user_management",
+            "masking_config",
+            "column_grant",
+            "view_governance",
+            "query_development",
+            "full_results",
+            "write",
+            "usage",
+            "org_settings",
+            "observability",
         ],
     ),
     ("analyst", ["usage", "query_development"]),
     (
         "developer",
         [
-            "query_development", "create_view", "create_relationship", "full_results", "write",
+            "query_development",
+            "create_view",
+            "create_relationship",
+            "full_results",
+            "write",
             "usage",
         ],
     ),
@@ -86,8 +109,12 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     (
         "modeler",
         [
-            "query_development", "create_relationship", "create_view", "ignore_relationships",
-            "full_results", "usage",
+            "query_development",
+            "create_relationship",
+            "create_view",
+            "ignore_relationships",
+            "full_results",
+            "usage",
         ],
     ),
     ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
@@ -165,7 +192,9 @@ async def _init_schema_portable(pool: "Database") -> None:
                 )
 
 
-async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default") -> None:
+async def init_schema(
+    pool: "Database", schema_sql: str, org_id: str = "default", env: str | None = None
+) -> None:
     """Execute schema SQL scoped to org_<org_id> schema (REQ-697).
 
     PostgreSQL runs the raw ``schema.sql`` script inside an ``org_<id>`` schema.
@@ -176,13 +205,15 @@ async def init_schema(pool: "Database", schema_sql: str, org_id: str = "default"
     if getattr(pool, "dialect", "postgresql") != "postgresql":
         await _init_schema_portable(pool)
         return
-    schema_name = f"org_{org_id}"
+    schema_name = org_schema(org_id, env)
     async with pool.acquire() as conn:
         # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
         # the abstraction so no PG-specific lock SQL appears here.
         async with conn.advisory_lock(7337):
             await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
-            await conn.execute_core(CreateSchema(f"{schema_name}_mv_cache", if_not_exists=True))
+            await conn.execute_core(
+                CreateSchema(org_schema(org_id, env, "_mv_cache"), if_not_exists=True)
+            )
             await conn.execute(f"SET search_path TO {schema_name}")
             # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
             # runs it natively; the control-plane Database shim auto-detects the

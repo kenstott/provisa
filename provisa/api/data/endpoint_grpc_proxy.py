@@ -233,11 +233,7 @@ async def jsonapi_group_by_columns(role_id: str, domain_id: str, table_name: str
         )
     ctx = state.contexts[role_id]
     meta = next(
-        (
-            m
-            for m in ctx.tables.values()
-            if m.domain_id == domain_id and m.table_name == table_name
-        ),
+        (m for m in ctx.tables.values() if m.domain_id == domain_id and m.table_name == table_name),
         None,
     )
     if meta is None:
@@ -286,7 +282,9 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         # server.py's __getattr__, which strips both the "Query" prefix and the
         # "Aggregate"/"GroupBy" suffix before dispatching) — this endpoint's {type_name} path
         # param only ever carries the suffix, never the "Query" prefix.
-        base_type_name = type_name[: -len("GroupBy")] if is_group_by else type_name[: -len("Aggregate")]
+        base_type_name = (
+            type_name[: -len("GroupBy")] if is_group_by else type_name[: -len("Aggregate")]
+        )
 
         # REQ-1361: optional "funcs" body param restricts which aggregate functions are
         # computed (parity with JSON:API/REST's ?aggregate=count,sum), instead of always
@@ -348,7 +346,9 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         if is_group_by:
-            group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
+            group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(
+                compiled.columns
+            )
 
             # The nodes selection compiles to a second SQL string keyed by the group-by columns;
             # run it through the identical govern → route → execute pipeline and join on that key,

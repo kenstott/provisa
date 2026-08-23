@@ -223,9 +223,7 @@ def _http(cred: Credential, secret: str) -> str:
 def _bolt(cred: Credential, secret: str) -> str:
     from provisa.bolt.session import BoltSession
 
-    identity = asyncio.run(
-        BoltSession._authenticate(_state(), cred.scheme, cred.principal, secret)
-    )
+    identity = asyncio.run(BoltSession._authenticate(_state(), cred.scheme, cred.principal, secret))
     if identity is None:
         raise _Rejected("bolt refused the credential")
     return identity.user_id

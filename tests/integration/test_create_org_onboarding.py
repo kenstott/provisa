@@ -74,8 +74,14 @@ def _prepare_sync():
         # meta-domain table, so the tenant plane needs the dataset catalog too — not just the roles.
         org_metadata.create_all(
             conn,
-            tables=[roles, user_role_assignments, sources, domains, registered_tables,
-                    table_columns],
+            tables=[
+                roles,
+                user_role_assignments,
+                sources,
+                domains,
+                registered_tables,
+                table_columns,
+            ],
         )
         conn.execute(insert(roles).values(id="org_admin"))
         conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
@@ -186,9 +192,7 @@ def test_create_org_provisions_and_reaches_ready(planes):
     # Membership granted synchronously (admin plane) — creator owns the org at once.
     membership = _q(
         sync_engine,
-        select(user_org_memberships.c.org_id).where(
-            user_org_memberships.c.user_id == "carol"
-        ),
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "carol"),
     )
     assert [r[0] for r in membership] == ["carolco"]
 

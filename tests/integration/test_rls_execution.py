@@ -136,6 +136,7 @@ async def source_pool():
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _col_index(result, name: str) -> int:
     return result.column_names.index(name)
 
@@ -173,9 +174,7 @@ class TestRLSExecution:
 
         result = await execute_direct(source_pool, "test-pg", compiled_rls.sql, compiled_rls.params)
 
-        assert result.rows == [], (
-            f"Expected empty result but got {len(result.rows)} rows"
-        )
+        assert result.rows == [], f"Expected empty result but got {len(result.rows)} rows"
 
     async def test_rls_multiple_rules_anded(self, source_pool):
         """Two RLS rules on the same table must be ANDed together."""
@@ -253,6 +252,4 @@ class TestRLSExecution:
         assert "region" in result.column_names
         region_idx = _col_index(result, "region")
         for row in result.rows:
-            assert row[region_idx] == "us-east", (
-                f"Join RLS failed: got region={row[region_idx]!r}"
-            )
+            assert row[region_idx] == "us-east", f"Join RLS failed: got region={row[region_idx]!r}"

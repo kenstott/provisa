@@ -37,8 +37,15 @@ _FIXTURE = "tests/fixtures/custom_connectors.yaml"
 
 def _src(**kw):
     base = dict(
-        id="reviews", host="mongodb", port=27017, database="test", username="admin",
-        password="secret", path="/data/x", schema_name="public", table_name="customer_reviews",
+        id="reviews",
+        host="mongodb",
+        port=27017,
+        database="test",
+        username="admin",
+        password="secret",
+        path="/data/x",
+        schema_name="public",
+        table_name="customer_reviews",
         federation_hints={},
     )
     base.update(kw)
@@ -50,7 +57,10 @@ def _src(**kw):
 # --------------------------------------------------------------------------- #
 def test_pg_fdw_no_import_emits_server_ddl_and_table_options():
     d = {
-        "source_type": "mongodb", "kind": "pg_fdw", "extension": "mongo_fdw", "mechanism": "attach_r",
+        "source_type": "mongodb",
+        "kind": "pg_fdw",
+        "extension": "mongo_fdw",
+        "mechanism": "attach_r",
         "server_options": {"address": "{host}", "port": "{port}"},
         "user_mapping": {"username": "{username}", "password": "{password}"},
         "supports_import": False,
@@ -73,7 +83,10 @@ def test_pg_fdw_bare_user_mapping_when_empty():
     # `user_mapping: {}` ⇒ the mapping must EXIST but carry NO options — the SQL/MED form a no-auth FDW
     # (mongo_fdw against an unauthenticated MongoDB) needs; a `username ''` would make the driver auth.
     d = {
-        "source_type": "mongodb", "kind": "pg_fdw", "extension": "mongo_fdw", "mechanism": "attach_r",
+        "source_type": "mongodb",
+        "kind": "pg_fdw",
+        "extension": "mongo_fdw",
+        "mechanism": "attach_r",
         "server_options": {"address": "{host}", "port": "{port}"},
         "user_mapping": {},
         "supports_import": False,
@@ -87,9 +100,12 @@ def test_pg_fdw_bare_user_mapping_when_empty():
 
 def test_pg_fdw_import_path_emits_attach_ddl_and_local_schema():
     d = {
-        "source_type": "widgets", "kind": "pg_fdw", "extension": "widget_fdw",
+        "source_type": "widgets",
+        "kind": "pg_fdw",
+        "extension": "widget_fdw",
         "server_options": {"host": "{host}", "port": "{port}"},
-        "supports_import": True, "remote_schema": "public",
+        "supports_import": True,
+        "remote_schema": "public",
     }
     det = GenericPgFdwConnector(d).details(_src(id="w"))
     assert det["local_schema"] == "fdw_w"
@@ -111,8 +127,12 @@ def test_pg_fdw_capability_write_follows_mechanism():
 # --------------------------------------------------------------------------- #
 def test_duckdb_attach_ducklake_template():
     d = {
-        "source_type": "ducklake", "kind": "duckdb_attach", "extension": "ducklake",
-        "install_from_community": False, "probe_symbol": "ducklake_snapshots", "mechanism": "attach_rw",
+        "source_type": "ducklake",
+        "kind": "duckdb_attach",
+        "extension": "ducklake",
+        "install_from_community": False,
+        "probe_symbol": "ducklake_snapshots",
+        "mechanism": "attach_rw",
         "attach_template": "ATTACH 'ducklake:{path}' AS \"{alias}\" (DATA_PATH '{data_path}')",
         "remote_schema": "main",
     }
@@ -130,8 +150,11 @@ def test_duckdb_attach_ducklake_template():
 # --------------------------------------------------------------------------- #
 def test_duckdb_scan_excel_view_ddl():
     d = {
-        "source_type": "xlsx", "kind": "duckdb_scan", "extension": "excel",
-        "install_from_community": False, "probe_symbol": "read_xlsx",
+        "source_type": "xlsx",
+        "kind": "duckdb_scan",
+        "extension": "excel",
+        "install_from_community": False,
+        "probe_symbol": "read_xlsx",
         "scan_template": "read_xlsx('{path}')",
     }
     c = GenericDuckDbScanConnector(d)
@@ -145,15 +168,18 @@ def test_duckdb_scan_excel_view_ddl():
 # --------------------------------------------------------------------------- #
 def test_clickhouse_database_emits_create_database_and_local_schema():
     d = {
-        "source_type": "redis", "kind": "clickhouse_database", "ch_engine": "Redis",
+        "source_type": "redis",
+        "kind": "clickhouse_database",
+        "ch_engine": "Redis",
         "engine_template": "Redis('{host}:{port}', {db_index}, '{password}')",
     }
     c = GenericClickHouseDatabaseConnector(d)
-    det = c.details(_src(id="cache", host="redis", port=6379, password="pw",
-                         federation_hints={"db_index": "0"}))
+    det = c.details(
+        _src(id="cache", host="redis", port=6379, password="pw", federation_hints={"db_index": "0"})
+    )
     assert det["local_schema"] == "ch_cache"
     assert det["attach_ddl"] == [
-        'CREATE DATABASE IF NOT EXISTS "ch_cache" ENGINE = Redis(\'redis:6379\', 0, \'pw\')'
+        "CREATE DATABASE IF NOT EXISTS \"ch_cache\" ENGINE = Redis('redis:6379', 0, 'pw')"
     ]
     assert c.mechanism is Mechanism.ATTACH_RW
     assert c.capability().write is True
@@ -161,7 +187,9 @@ def test_clickhouse_database_emits_create_database_and_local_schema():
 
 def test_clickhouse_table_emits_engine_clause_and_requires_columns():
     d = {
-        "source_type": "jdbc", "kind": "clickhouse_table", "ch_engine": "JDBC",
+        "source_type": "jdbc",
+        "kind": "clickhouse_table",
+        "ch_engine": "JDBC",
         "engine_template": "JDBC('{jdbc_url}', '{database}', '{table}')",
     }
     det = GenericClickHouseTableConnector(d).details(
@@ -176,14 +204,19 @@ def test_clickhouse_table_emits_engine_clause_and_requires_columns():
 
 def test_clickhouse_scan_emits_inferred_engine_clause():
     d = {
-        "source_type": "hdfs", "kind": "clickhouse_scan", "ch_engine": "HDFS",
+        "source_type": "hdfs",
+        "kind": "clickhouse_scan",
+        "ch_engine": "HDFS",
         "engine_template": "HDFS('{path}', '{format}')",
     }
     c = GenericClickHouseScanConnector(d)
-    det = c.details(_src(id="logs", path="hdfs://nn:8020/logs/*", federation_hints={"format": "JSONEachRow"}))
+    det = c.details(
+        _src(id="logs", path="hdfs://nn:8020/logs/*", federation_hints={"format": "JSONEachRow"})
+    )
     assert det == {
         "engine_clause": "HDFS('hdfs://nn:8020/logs/*', 'JSONEachRow')",
-        "infer": True, "validate": True,
+        "infer": True,
+        "validate": True,
     }
     assert c.mechanism is Mechanism.SCAN
 

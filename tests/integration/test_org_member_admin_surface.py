@@ -79,8 +79,8 @@ async def org_plane(monkeypatch):
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
 
-    schema_sql = (
-        os.path.join(os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql")
+    schema_sql = os.path.join(
+        os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql"
     )
     with open(os.path.abspath(schema_sql), encoding="utf-8") as fh:
         sql = fh.read()

@@ -318,9 +318,7 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-31
     try:
         spec = await request.json()
     except Exception as exc:
-        raise ApiError(
-            422, "openapi.invalid_json", f"Invalid JSON: {exc}", error=str(exc)
-        ) from exc
+        raise ApiError(422, "openapi.invalid_json", f"Invalid JSON: {exc}", error=str(exc)) from exc
 
     from provisa.openapi.register import auto_register_openapi_source
     from provisa.api.admin.actions_router import _ensure_tables

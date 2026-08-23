@@ -47,11 +47,13 @@ async def _candidates_live(
     """Fetch candidates live from native introspection + the engine (cache-miss path)."""
     from provisa.api.admin.introspect import native_tables
     from provisa.api.admin.schema import _get_pool
+    from provisa.api.admin.discovery_resilience import discovery_fallback
 
     source_type = state.source_types.get(source_id, "")
     pool = await _get_pool()
+    raw_tables = None
     async with pool.acquire() as config_conn:
-        try:
+        with discovery_fallback(f"native tables for {source_id!r}.{schema_name}"):
             raw_tables = await native_tables(
                 source_id,
                 source_type,
@@ -60,20 +62,20 @@ async def _candidates_live(
                 config_conn,
                 state,
             )
-        except Exception:
-            raw_tables = None
 
     if raw_tables is None:
         catalog = state.catalog_for(source_id)
-        try:
+        raw_tables_list: list[str] = []
+        # Through the sanctioned discovery boundary, not a bare swallow: on a shard that has just
+        # scaled from zero this read is the one that answers CATALOG_NOT_FOUND, and swallowing it in
+        # place rendered the search as "this source has no tables" with nothing in the log.
+        with discovery_fallback(f"engine tables for {source_id!r}.{schema_name}"):
             res = await state.federation_engine.execute_engine(
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
                 f"WHERE table_schema = '{schema_name}' "
                 f"AND table_type = 'BASE TABLE' ORDER BY table_name"
             )
             raw_tables_list = [row[0] for row in res.rows]
-        except Exception:
-            raw_tables_list = []
         candidates = [
             TableCandidate(name=t, comment=None, columns=[], schema_name=schema_name)
             for t in raw_tables_list
@@ -87,15 +89,13 @@ async def _candidates_live(
     # Enrich with column names (best-effort)
     catalog = state.catalog_for(source_id)
     for c in candidates:
-        try:
+        with discovery_fallback(f"engine columns for {source_id!r}.{schema_name}.{c.name}"):
             res = await state.federation_engine.execute_engine(
                 f'SELECT column_name FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' AND table_name = '{c.name}' "
                 f"ORDER BY ordinal_position"
             )
             c.columns = [row[0] for row in res.rows]
-        except Exception:
-            pass
 
     return candidates
 

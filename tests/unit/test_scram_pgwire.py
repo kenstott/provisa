@@ -106,9 +106,7 @@ class _Pool:
                     return _Result(None if pool.verifier is None else (pool.verifier,))
                 assert "local_users" in text, text
                 return _Result(
-                    None
-                    if pool.user_row is None
-                    else SimpleNamespace(_mapping=pool.user_row)  # type: ignore[arg-type]
+                    None if pool.user_row is None else SimpleNamespace(_mapping=pool.user_row)  # type: ignore[arg-type]
                 )
 
         class _Ctx:
@@ -168,9 +166,7 @@ class _Handler:
         self.authenticated = False
 
         handler = cast(Any, object.__new__(ProvisaHandler))
-        handler.wfile = SimpleNamespace(
-            write=self.written.extend, flush=lambda: None
-        )
+        handler.wfile = SimpleNamespace(write=self.written.extend, flush=lambda: None)
         handler._send_pg_error = lambda severity, sqlstate, message: self.errors.append(
             (severity, sqlstate, message)
         )
@@ -229,7 +225,12 @@ class _Client:
 
     def initial_response(self) -> bytes:
         client_first = (self.gs2_header + self.first_bare).encode("utf-8")
-        return MECHANISM.encode("ascii") + b"\x00" + struct.pack("!i", len(client_first)) + client_first
+        return (
+            MECHANISM.encode("ascii")
+            + b"\x00"
+            + struct.pack("!i", len(client_first))
+            + client_first
+        )
 
     def final(self, server_first: str, *, password: str | None = None) -> bytes:
         fields = dict(part.split("=", 1) for part in server_first.split(","))
@@ -241,9 +242,7 @@ class _Client:
         )
         client_key = hmac.new(salted, b"Client Key", hashlib.sha256).digest()
         stored_key = hashlib.sha256(client_key).digest()
-        without_proof = (
-            f"c={base64.b64encode(self.gs2_header.encode()).decode()},r={fields['r']}"
-        )
+        without_proof = f"c={base64.b64encode(self.gs2_header.encode()).decode()},r={fields['r']}"
         auth_message = f"{self.first_bare},{server_first},{without_proof}"
         signature = hmac.new(stored_key, auth_message.encode("utf-8"), hashlib.sha256).digest()
         proof = bytes(a ^ b for a, b in zip(client_key, signature))
@@ -266,7 +265,7 @@ def _negotiate(handler: _Handler, client: _Client, *, password: str | None = Non
 def test_scram_is_advertised_when_the_deployment_turns_it_on():
     handler = _Handler(_state(_auth_config(), _Pool(verifier=None, user_row=None)))
     handler.send_auth_request()
-    (subcode, body), = handler.messages()
+    ((subcode, body),) = handler.messages()
     assert _subcode(subcode) == _SASL
     # NUL-terminated mechanism names ended by an empty one — the list libpq parses.
     assert body == MECHANISM.encode("ascii") + b"\x00\x00"
@@ -275,7 +274,7 @@ def test_scram_is_advertised_when_the_deployment_turns_it_on():
 def test_the_cleartext_request_is_sent_when_scram_is_off():
     handler = _Handler(_state(_auth_config(scram=False), _Pool(verifier=None, user_row=None)))
     handler.send_auth_request()
-    (subcode, body), = handler.messages()
+    ((subcode, body),) = handler.messages()
     assert (_subcode(subcode), body) == (3, b"")
 
 
@@ -287,9 +286,7 @@ def test_a_bearer_provider_is_not_offered_scram():
 
 
 def test_trust_mode_is_not_offered_scram():
-    state = SimpleNamespace(
-        auth_config=_auth_config(), auth_middleware_active=False, admin_db=None
-    )
+    state = SimpleNamespace(auth_config=_auth_config(), auth_middleware_active=False, admin_db=None)
     handler = _Handler(state)
     handler.send_auth_request()
     assert _subcode(handler.messages()[0][0]) == 3
@@ -324,13 +321,9 @@ def test_the_server_proves_itself_in_the_final_message(pgwire_loop):
     handler.password_message(client.final(server_first))
 
     final = handler.messages()[-1][1].decode("utf-8")
-    without_proof = (
-        f"c=biws,r={dict(p.split('=', 1) for p in server_first.split(','))['r']}"
-    )
+    without_proof = f"c=biws,r={dict(p.split('=', 1) for p in server_first.split(','))['r']}"
     auth_message = f"{client.first_bare},{server_first},{without_proof}"
-    expected = hmac.new(
-        verifier.server_key, auth_message.encode("utf-8"), hashlib.sha256
-    ).digest()
+    expected = hmac.new(verifier.server_key, auth_message.encode("utf-8"), hashlib.sha256).digest()
     assert final == "v=" + base64.b64encode(expected).decode()
 
 

@@ -537,10 +537,14 @@ class TrinoGsheetsConnector(_TrinoConnector):
 
     source_type = "google_sheets"
     trino_connector = "gsheets"
-    mechanism = Mechanism.ATTACH_R  # live in place, read-only — Sheets is not writable through Trino
+    mechanism = (
+        Mechanism.ATTACH_R
+    )  # live in place, read-only — Sheets is not writable through Trino
 
     def capability(self) -> Capability:
-        return Capability()  # the Sheets connector pushes nothing down; Trino filters after the fetch
+        return (
+            Capability()
+        )  # the Sheets connector pushes nothing down; Trino filters after the fetch
 
     def details(self, source: Source) -> dict:
         from provisa.core.secrets import resolve_secrets

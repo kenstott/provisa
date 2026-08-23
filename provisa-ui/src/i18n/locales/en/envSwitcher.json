@@ -1,0 +1,20 @@
+{
+  "envSwitcher": {
+    "env": "Env: {{env}}",
+    "label": "Environment",
+    "drifted": "drifted",
+    "diverged": "diverged",
+    "unpushed": "unpushed",
+    "ahead": "{{n}} to push",
+    "behind": "{{n}} to pull",
+    "undo": "Undo last change to {{env}}",
+    "redo": "Redo in {{env}}",
+    "undone": "{{env}} is back at {{sha}}.",
+    "redone": "{{env}} is forward at {{sha}}.",
+    "versions": "Version",
+    "loadingVersions": "Reading history…",
+    "applied": "{{env}} is at {{sha}}.",
+    "proposed": "{{sha}} is proposed for {{env}}; it is protected, so it waits for approval.",
+    "switched": "Now reading {{env}}."
+  }
+}

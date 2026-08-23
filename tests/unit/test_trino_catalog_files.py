@@ -64,7 +64,13 @@ class TestElasticsearch:
             mapping={
                 "tls": True,
                 "tables": [
-                    {"name": "logs", "index": "nginx-*", "columns": [{"name": "method", "data_type": "VARCHAR", "path": "request.method"}]}
+                    {
+                        "name": "logs",
+                        "index": "nginx-*",
+                        "columns": [
+                            {"name": "method", "data_type": "VARCHAR", "path": "request.method"}
+                        ],
+                    }
                 ],
             },
         )
@@ -93,7 +99,11 @@ class TestPrometheus:
 class TestKafka:
     def test_catalog_file_no_auth(self, tmp_path):
         written = tcf.write_kafka_catalog_files(
-            {"id": "events-bus", "bootstrap_servers": "kafka:9092", "schema_registry_url": "http://sr:8081"},
+            {
+                "id": "events-bus",
+                "bootstrap_servers": "kafka:9092",
+                "schema_registry_url": "http://sr:8081",
+            },
             tmp_path,
         )
         assert [p.name for p in written] == ["events_bus.properties"]

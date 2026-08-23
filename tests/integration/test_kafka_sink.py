@@ -33,6 +33,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 # Infrastructure detection helpers
 # ---------------------------------------------------------------------------
 
+
 def _kafka_bootstrap() -> str:
     return os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
@@ -40,6 +41,7 @@ def _kafka_bootstrap() -> str:
 # ---------------------------------------------------------------------------
 # Real Kafka integration tests (skip if Kafka unavailable)
 # ---------------------------------------------------------------------------
+
 
 class TestKafkaSinkReal:
     pytestmark = [pytest.mark.requires_kafka]
@@ -97,9 +99,7 @@ class TestKafkaSinkReal:
                 {"id": 2002, "amount": 12.0, "region": "eu-west"},
             ]
             for row in rows:
-                await ak_producer.send_and_wait(
-                    topic, value=json.dumps(row, cls=_Encoder).encode()
-                )
+                await ak_producer.send_and_wait(topic, value=json.dumps(row, cls=_Encoder).encode())
         finally:
             await ak_producer.stop()
 

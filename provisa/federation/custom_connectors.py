@@ -54,8 +54,17 @@ def _source_fields(source: Any) -> dict[str, str]:
     """The substitution vocabulary a descriptor template may reference — source attributes as strings
     (None → ''), plus every federation_hints key. Templates use {host}/{port}/{database}/{path}/… ."""
     fields: dict[str, str] = {}
-    for name in ("id", "host", "port", "database", "username", "password", "path",
-                 "schema_name", "table_name"):
+    for name in (
+        "id",
+        "host",
+        "port",
+        "database",
+        "username",
+        "password",
+        "path",
+        "schema_name",
+        "table_name",
+    ):
         val = getattr(source, name, None)
         fields[name] = "" if val is None else str(val)
     for k, v in (getattr(source, "federation_hints", None) or {}).items():
@@ -168,7 +177,9 @@ class GenericDuckDbScanConnector(_DuckDBExtensionConnector):  # REQ-1177
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        return {"view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM {_fmt(self._scan_template, fields)}"}
+        return {
+            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM {_fmt(self._scan_template, fields)}"
+        }
 
 
 async def _probe_clickhouse_engine(fetch, ch_engine: str) -> ProbeResult:  # REQ-1178
@@ -231,7 +242,9 @@ class GenericClickHouseTableConnector(_GenericClickHouseConnector):  # REQ-1178
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        fields["table"] = "{table}"  # runtime binds the collection/table name; keep it a placeholder
+        fields["table"] = (
+            "{table}"  # runtime binds the collection/table name; keep it a placeholder
+        )
         return {"engine_clause": _fmt(self._engine_template, fields), "requires_columns": True}
 
 
@@ -243,7 +256,11 @@ class GenericClickHouseScanConnector(_GenericClickHouseConnector):  # REQ-1178
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        return {"engine_clause": _fmt(self._engine_template, fields), "infer": True, "validate": True}
+        return {
+            "engine_clause": _fmt(self._engine_template, fields),
+            "infer": True,
+            "validate": True,
+        }
 
 
 _KINDS = {

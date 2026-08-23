@@ -114,13 +114,26 @@ class LineageGraph:  # REQ-1160
 
 # Binary/arith operator expression type -> its SQL symbol.
 _OPERATORS: dict[type, str] = {
-    exp.Add: "+", exp.Sub: "-", exp.Mul: "*", exp.Div: "/", exp.Mod: "%",
-    exp.DPipe: "||", exp.EQ: "=", exp.NEQ: "<>", exp.GT: ">", exp.LT: "<",
-    exp.GTE: ">=", exp.LTE: "<=", exp.And: "AND", exp.Or: "OR",
+    exp.Add: "+",
+    exp.Sub: "-",
+    exp.Mul: "*",
+    exp.Div: "/",
+    exp.Mod: "%",
+    exp.DPipe: "||",
+    exp.EQ: "=",
+    exp.NEQ: "<>",
+    exp.GT: ">",
+    exp.LT: "<",
+    exp.GTE: ">=",
+    exp.LTE: "<=",
+    exp.And: "AND",
+    exp.Or: "OR",
 }
 
 
-def name_transform(expression: exp.Expression | None, command_names: frozenset[str]) -> tuple[str, tuple[TransformOp, ...]]:
+def name_transform(
+    expression: exp.Expression | None, command_names: frozenset[str]
+) -> tuple[str, tuple[TransformOp, ...]]:
     """Return (raw transform SQL, ordered named ops) for a projection expression (REQ-1160).
 
     A bare column reference is ``identity``; a literal is ``constant``; a function is a ``command``
@@ -144,11 +157,15 @@ def name_transform(expression: exp.Expression | None, command_names: frozenset[s
             ops.append(TransformOp(node.name, kind, _op_literals(cast(exp.Expression, node))))
         elif isinstance(node, exp.Func):
             ops.append(
-                TransformOp(_func_name(node), "sql_function", _op_literals(cast(exp.Expression, node)))
+                TransformOp(
+                    _func_name(node), "sql_function", _op_literals(cast(exp.Expression, node))
+                )
             )
         elif type(node) in _OPERATORS:
             ops.append(
-                TransformOp(_OPERATORS[type(node)], "operator", _op_literals(cast(exp.Expression, node)))
+                TransformOp(
+                    _OPERATORS[type(node)], "operator", _op_literals(cast(exp.Expression, node))
+                )
             )
     return raw, tuple(ops)
 
@@ -268,7 +285,9 @@ def _splice_commands(tree: exp.Expression, graph: LineageGraph, commands: dict[s
             graph.add_edge(Edge(source=src_id, target=node.id, transform=f"{name}(...)", ops=op))
 
 
-def _command_calls(tree: exp.Expression, commands: dict[str, dict]) -> dict[str, tuple[str, str | None, list[str]]]:
+def _command_calls(
+    tree: exp.Expression, commands: dict[str, dict]
+) -> dict[str, tuple[str, str | None, list[str]]]:
     """Map each command call's alias → (command name, input relation ref, declared input columns)."""
     out: dict[str, tuple[str, str | None, list[str]]] = {}
     for tbl in tree.find_all(exp.Table):

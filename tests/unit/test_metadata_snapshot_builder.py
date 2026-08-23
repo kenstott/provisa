@@ -90,9 +90,7 @@ def test_sources_domains_tables_and_columns_are_published():
                         visible_to=["admin"],
                         description="Order id",
                     ),
-                    Column(
-                        name="amount", data_type="numeric", visible_to=["admin"], alias="total"
-                    ),
+                    Column(name="amount", data_type="numeric", visible_to=["admin"], alias="total"),
                 ],
             )
         ]

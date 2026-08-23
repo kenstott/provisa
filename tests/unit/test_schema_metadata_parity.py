@@ -63,6 +63,13 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1466: the deployment-wide maintenance notice, a control-plane singleton beside the
     # platform registry. Portable metadata only.
     "platform_notice",
+    # REQ-1488: the per-org environment registry. It sits beside ``orgs`` on the platform plane
+    # because the row must be readable to decide which schema to route to — a decision taken
+    # before any org schema is open. Portable metadata only.
+    "environments",
+    # REQ-1504: a proposed merge names TWO environments, so it sits beside them on the platform
+    # plane rather than inside either one. Portable metadata only.
+    "env_merge_requests",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

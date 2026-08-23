@@ -13,6 +13,7 @@
 Uses the live FastAPI test client with respx mocking the remote GraphQL server.
 No external services required for these tests.
 """
+
 import os
 
 import httpx
@@ -37,7 +38,11 @@ SAMPLE_INTROSPECTION_RESPONSE = {
                     "fields": [
                         {
                             "name": "users",
-                            "type": {"kind": "LIST", "name": None, "ofType": {"kind": "OBJECT", "name": "User", "ofType": None}},
+                            "type": {
+                                "kind": "LIST",
+                                "name": None,
+                                "ofType": {"kind": "OBJECT", "name": "User", "ofType": None},
+                            },
                             "args": [],
                         }
                     ],
@@ -50,7 +55,10 @@ SAMPLE_INTROSPECTION_RESPONSE = {
                             "name": "createUser",
                             "type": {"kind": "OBJECT", "name": "CreateUserResult", "ofType": None},
                             "args": [
-                                {"name": "name", "type": {"kind": "SCALAR", "name": "String", "ofType": None}},
+                                {
+                                    "name": "name",
+                                    "type": {"kind": "SCALAR", "name": "String", "ofType": None},
+                                },
                             ],
                         }
                     ],
@@ -59,16 +67,32 @@ SAMPLE_INTROSPECTION_RESPONSE = {
                     "kind": "OBJECT",
                     "name": "User",
                     "fields": [
-                        {"name": "id", "type": {"kind": "SCALAR", "name": "ID", "ofType": None}, "args": []},
-                        {"name": "name", "type": {"kind": "SCALAR", "name": "String", "ofType": None}, "args": []},
+                        {
+                            "name": "id",
+                            "type": {"kind": "SCALAR", "name": "ID", "ofType": None},
+                            "args": [],
+                        },
+                        {
+                            "name": "name",
+                            "type": {"kind": "SCALAR", "name": "String", "ofType": None},
+                            "args": [],
+                        },
                     ],
                 },
                 {
                     "kind": "OBJECT",
                     "name": "CreateUserResult",
                     "fields": [
-                        {"name": "id", "type": {"kind": "SCALAR", "name": "ID", "ofType": None}, "args": []},
-                        {"name": "ok", "type": {"kind": "SCALAR", "name": "Boolean", "ofType": None}, "args": []},
+                        {
+                            "name": "id",
+                            "type": {"kind": "SCALAR", "name": "ID", "ofType": None},
+                            "args": [],
+                        },
+                        {
+                            "name": "ok",
+                            "type": {"kind": "SCALAR", "name": "Boolean", "ofType": None},
+                            "args": [],
+                        },
                     ],
                 },
             ],

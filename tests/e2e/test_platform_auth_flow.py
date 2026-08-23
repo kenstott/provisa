@@ -129,9 +129,7 @@ def _seed_users() -> dict[str, str]:
     with _pg_conn() as conn, conn.cursor() as cur:
         schema = _admin_schema(cur)
         # Idempotence against a rerun on a reused stack: this module owns these rows.
-        cur.execute(
-            f"DELETE FROM {schema}.local_users WHERE username = ANY(%s)", (list(_USERS),)
-        )
+        cur.execute(f"DELETE FROM {schema}.local_users WHERE username = ANY(%s)", (list(_USERS),))
         cur.execute(f"DELETE FROM {schema}.superadmin_bootstrap")
         cur.execute(f"DELETE FROM {schema}.orgs WHERE id = %s", (_ORG2,))
         cur.execute(f"DROP SCHEMA IF EXISTS org_{_ORG2} CASCADE")
@@ -384,9 +382,7 @@ class TestSchemaIsolatedTenantPlane:
 
         deadline = asyncio.get_event_loop().time() + 300
         while True:
-            status = await client.get(
-                f"/admin/orgs/{_ORG2}/status", headers=_basic("carol")
-            )
+            status = await client.get(f"/admin/orgs/{_ORG2}/status", headers=_basic("carol"))
             assert status.status_code == 200, status.text
             record = status.json()
             if record["provisioning_state"] != "provisioning":

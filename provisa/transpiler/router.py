@@ -224,9 +224,7 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
 
 # File/object source types the engine reads IN PLACE only when it declares the file_native trait
 # (REQ-897) — otherwise the source is LANDED before the engine can read it.
-_FILE_SOURCES: frozenset[str] = frozenset(
-    {"delta_lake", "iceberg", "hive", "google_sheets"}
-)
+_FILE_SOURCES: frozenset[str] = frozenset({"delta_lake", "iceberg", "hive", "google_sheets"})
 
 
 def _engine_source_reason(engine: FederationEngine | None, stype: str) -> str:

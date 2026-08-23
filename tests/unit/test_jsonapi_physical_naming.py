@@ -118,9 +118,7 @@ def client(monkeypatch):
     si = _schema_input()
     schema = generate_schema(si)
     ctx = build_context(si)
-    gql_table = next(
-        f for f, meta in ctx.tables.items() if meta.table_name == "inquiries"
-    )
+    gql_table = next(f for f, meta in ctx.tables.items() if meta.table_name == "inquiries")
 
     state = MagicMock()
     state.schemas = {"org_admin": schema}
@@ -134,7 +132,9 @@ def client(monkeypatch):
     state.source_types = {"pet-store-sqlite": "sqlite"}
     state.source_dialects = {"pet-store-sqlite": "sqlite"}
 
-    async def _fake_govern(sql, role_id, exec_params=None, state=None, deliver=None, buffered=False):
+    async def _fake_govern(
+        sql, role_id, exec_params=None, state=None, deliver=None, buffered=False
+    ):
         return SimpleNamespace(_is_count="COUNT(*)" in sql)
 
     async def _fake_execute(plan, state):
@@ -280,7 +280,11 @@ async def test_group_by_keys_come_back_physically_named(client, monkeypatch):
         return {
             "data": {
                 root_field: [
-                    {"groupKey": {"userId": 7}, "aggregate": {"count": 3}, "nodes": [dict(_GQL_ROW)]}
+                    {
+                        "groupKey": {"userId": 7},
+                        "aggregate": {"count": 3},
+                        "nodes": [dict(_GQL_ROW)],
+                    }
                 ]
             }
         }

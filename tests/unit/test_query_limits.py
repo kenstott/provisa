@@ -86,7 +86,16 @@ def test_enforce_noop_when_no_limits():
 @pytest.mark.parametrize(
     "role, expected",
     [
-        ({"rate_limit": {"max_query_depth": 5, "max_query_nodes": 100, "max_query_time_ms": 3000}}, (5, 100, 3000)),
+        (
+            {
+                "rate_limit": {
+                    "max_query_depth": 5,
+                    "max_query_nodes": 100,
+                    "max_query_time_ms": 3000,
+                }
+            },
+            (5, 100, 3000),
+        ),
         ({"rate_limit": {"requests_per_second": 10}}, (None, None, None)),
         ({}, (None, None, None)),
         ({"rate_limit": None}, (None, None, None)),

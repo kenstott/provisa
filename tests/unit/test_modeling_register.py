@@ -65,7 +65,9 @@ def test_fact_lowers_to_aggregate_table_input_and_relationships():
     assert 'SUM("amount")' in (ti.view_sql or "")
     # one relationship per dimension, fact → dimension. The value must be a Cardinality
     # enum literal ("many-to-one") — upsert_relationship rejects anything else at runtime.
-    assert [(r.source_table_id, r.source_column, r.target_table_id, r.cardinality) for r in rels] == [
+    assert [
+        (r.source_table_id, r.source_column, r.target_table_id, r.cardinality) for r in rels
+    ] == [
         ("Sales", "customer_id", "Customer", "many-to-one"),
         ("Sales", "product_id", "Product", "many-to-one"),
     ]

@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "無法刪除系統角色",
-      "cannot_modify_system": "無法修改系統角色",
+      "cannot_modify_administrative": "無法修改管理角色",
       "not_found": "找不到角色",
       "org_selection_required": "需要選取組織"
     },

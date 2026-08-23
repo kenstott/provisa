@@ -80,9 +80,7 @@ _RLS = RLSContext(rules={1: "region = 'west'"}, domain_rules={})
 # Engine-independent ground truth: exactly the rows a CORRECT engine returns for the governed
 # query — case-sensitive equality, NULL excluded by three-valued logic. ids {1, 3, 5}.
 _TRUTH = [
-    (r["id"], r["region"], round(float(r["amount"]), 6))
-    for r in _GOLDEN
-    if r["region"] == "west"
+    (r["id"], r["region"], round(float(r["amount"]), 6)) for r in _GOLDEN if r["region"] == "west"
 ]
 
 
@@ -110,7 +108,9 @@ def _col(n: str, d: str = "varchar", nl: bool = True) -> ColumnMetadata:
     return ColumnMetadata(column_name=n, data_type=d, is_nullable=nl)
 
 
-def _schema_input(source_id: str, source_type: str, catalog: str | None, schema: str = _SCHEMA) -> SchemaInput:
+def _schema_input(
+    source_id: str, source_type: str, catalog: str | None, schema: str = _SCHEMA
+) -> SchemaInput:
     kw: dict[str, Any] = {}
     if catalog is not None:
         kw["source_catalogs"] = {source_id: catalog}
@@ -123,8 +123,7 @@ def _schema_input(source_id: str, source_type: str, catalog: str | None, schema:
                 "schema_name": schema,
                 "table_name": _TABLE,
                 "columns": [
-                    {"column_name": c, "visible_to": ["admin"]}
-                    for c in ("id", "region", "amount")
+                    {"column_name": c, "visible_to": ["admin"]} for c in ("id", "region", "amount")
                 ],
             }
         ],
@@ -175,7 +174,9 @@ class Lane:
             build_governance_context("admin", _RLS, {}, ctx, si.tables, role=_ADMIN),
         )
         rewrite = (
-            rewrite_semantic_to_catalog_physical if self.catalog_rewrite else rewrite_semantic_to_physical
+            rewrite_semantic_to_catalog_physical
+            if self.catalog_rewrite
+            else rewrite_semantic_to_physical
         )
         return transpile(rewrite(gov, ctx), self.dialect)
 
@@ -293,9 +294,14 @@ def _dbx_connect():
 
 
 async def _dbx_seed(rt):
-    src = SimpleNamespace(id="parity-dbx", type="databricks", schema_name=_SCHEMA, table_name=_TABLE)
+    src = SimpleNamespace(
+        id="parity-dbx", type="databricks", schema_name=_SCHEMA, table_name=_TABLE
+    )
     await rt.materialize_source(
-        src, [("id", "bigint"), ("region", "text"), ("amount", "double")], _GOLDEN, change_signal="ttl"
+        src,
+        [("id", "bigint"), ("region", "text"), ("amount", "double")],
+        _GOLDEN,
+        change_signal="ttl",
     )
 
 
@@ -340,9 +346,14 @@ def _bq_connect():
 async def _bq_seed(rt):
     from provisa.core.models import SourceType
 
-    src = SimpleNamespace(id="parity-bq", type=SourceType.bigquery, schema_name=_BQ_DS, table_name=_TABLE)
+    src = SimpleNamespace(
+        id="parity-bq", type=SourceType.bigquery, schema_name=_BQ_DS, table_name=_TABLE
+    )
     await rt.materialize_source(
-        src, [("id", "bigint"), ("region", "text"), ("amount", "double")], _GOLDEN, change_signal="ttl"
+        src,
+        [("id", "bigint"), ("region", "text"), ("amount", "double")],
+        _GOLDEN,
+        change_signal="ttl",
     )
 
 
@@ -377,16 +388,23 @@ def _fab_connect():
     from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
 
     return MssqlWarehouseRuntime(
-        server=os.environ["FABRIC_SQL_SERVER"], database=os.environ["FABRIC_DATABASE"], engine_name="fabric"
+        server=os.environ["FABRIC_SQL_SERVER"],
+        database=os.environ["FABRIC_DATABASE"],
+        engine_name="fabric",
     )
 
 
 async def _fab_seed(rt):
     from provisa.core.models import SourceType
 
-    src = SimpleNamespace(id="parity-fab", type=SourceType.parquet, schema_name=_FAB_SCH, table_name=_TABLE)
+    src = SimpleNamespace(
+        id="parity-fab", type=SourceType.parquet, schema_name=_FAB_SCH, table_name=_TABLE
+    )
     await rt.materialize_source(
-        src, [("id", "bigint"), ("region", "text"), ("amount", "double")], _GOLDEN, change_signal="ttl"
+        src,
+        [("id", "bigint"), ("region", "text"), ("amount", "double")],
+        _GOLDEN,
+        change_signal="ttl",
     )
 
 

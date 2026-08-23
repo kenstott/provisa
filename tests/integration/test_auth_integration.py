@@ -711,7 +711,9 @@ class TestSingleAdminBootstrap:
             "reachable by an authenticated caller or the slot could never be claimed"
         )
         assert resp.json()["role"] != "admin", "authenticating alone must not confer admin"
-        rows = sqlite3.connect(db_file).execute("SELECT user_id FROM superadmin_bootstrap").fetchall()
+        rows = (
+            sqlite3.connect(db_file).execute("SELECT user_id FROM superadmin_bootstrap").fetchall()
+        )
         assert rows == [], "the middleware must never write the slot"
 
 
@@ -768,7 +770,9 @@ class TestFirebaseBootstrapRealWiring:
         )
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
-        _claim_slot(db_file, "alice")  # REQ-1290: the claim is explicit, never a request side effect
+        _claim_slot(
+            db_file, "alice"
+        )  # REQ-1290: the claim is explicit, never a request side effect
         client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
 
         first = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
@@ -790,19 +794,24 @@ class TestFirebaseBootstrapRealWiring:
     def test_real_provider_records_profile(self, monkeypatch, tmp_path):
         # The claimant is persisted to user_profiles with provider="firebase".
         self._patch_firebase(
-            monkeypatch, {"tok-alice": {"uid": "alice", "email": "alice@example.com", "name": "Alice"}}
+            monkeypatch,
+            {"tok-alice": {"uid": "alice", "email": "alice@example.com", "name": "Alice"}},
         )
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
-        _claim_slot(db_file, "alice")  # REQ-1290: the claim is explicit, never a request side effect
+        _claim_slot(
+            db_file, "alice"
+        )  # REQ-1290: the claim is explicit, never a request side effect
         client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
         assert client.get("/echo", headers={"Authorization": "Bearer tok-alice"}).status_code == 200
 
         import sqlite3
 
-        rows = sqlite3.connect(db_file).execute(
-            "SELECT user_id, provider FROM user_profiles"
-        ).fetchall()
+        rows = (
+            sqlite3.connect(db_file)
+            .execute("SELECT user_id, provider FROM user_profiles")
+            .fetchall()
+        )
         assert ("alice", "firebase") in rows
 
 

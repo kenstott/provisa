@@ -242,7 +242,9 @@ class TestWriteSeams:
 
         assert mv.status == MVStatus.SKIPPED_QUOTA
         assert "storage included with the starter plan" in str(mv.last_error)
-        assert not [s for s in engine.sqls if s.lstrip().upper().startswith(("CREATE", "INSERT", "DELETE"))]
+        assert not [
+            s for s in engine.sqls if s.lstrip().upper().startswith(("CREATE", "INSERT", "DELETE"))
+        ]
 
     async def test_a_refresh_with_headroom_still_materializes(
         self, app_state, measured, monkeypatch
@@ -292,9 +294,7 @@ class TestMaterializeStorePrecedence:
 
     @staticmethod
     def _engine(default_store: str | None) -> FederationEngine:
-        return FederationEngine(
-            "test-engine", [], default_materialize_store=lambda: default_store
-        )
+        return FederationEngine("test-engine", [], default_materialize_store=lambda: default_store)
 
     @pytest.fixture(autouse=True)
     def _unbind(self):
@@ -316,9 +316,7 @@ class TestMaterializeStorePrecedence:
         current_org.set("acme")
         assert self._engine(None).materialize_store() == _ORG_STORE
 
-    def test_an_org_without_its_own_store_lands_on_the_platform_store(
-        self, app_state, monkeypatch
-    ):
+    def test_an_org_without_its_own_store_lands_on_the_platform_store(self, app_state, monkeypatch):
         monkeypatch.setattr(
             "provisa.federation.engine.configured_materialize_url", lambda: _PLATFORM_STORE
         )

@@ -198,18 +198,27 @@ if [ "$DEMO" = true ]; then
   COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml"
   echo "Resetting volumes for pristine demo environment..."
   docker compose $COMPOSE_FILES down -v 2>/dev/null || true
-  # The demo control plane is file-based SQLite — wipe it so every start is pristine (session-created
-  # sources/tables/views are cleared and rebuilt from the config). Data files are regenerated below.
-  # Org-level ADMIN SETTINGS (org_settings: metadata-export target, AI keys, …) are the exception:
-  # they are operator configuration, not demo model state, so they are retained across the wipe and
-  # restored once the backend has recreated the schema.
+  # The demo control plane is the embedded PostgreSQL (REQ-1535) — DELETE ITS DATA DIRECTORY so
+  # every start is pristine; the next boot runs initdb and rebuilds it at the current schema (V1 has
+  # no migrations). Dropping the `provisa` database was the earlier form of this, and it leaves the
+  # cluster itself — roles, and anything a future version writes outside that one database — behind.
+  # A demo that carries state forward is a demo that fails in ways no fresh install can reproduce.
+  # Data files are regenerated below. Org-level ADMIN SETTINGS (org_settings: metadata-export
+  # target, AI keys, …) are the exception: they are operator configuration, not demo model state, so
+  # they are dumped across the wipe and restored once the backend has recreated the schema.
+  _DEMO_CP_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo/control-pg"
   _DEMO_SETTINGS_BAK="${PROVISA_HOME:-$HOME/.provisa}/demo/org_settings.restore.sql"
-  if [ -f "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" ] && command -v sqlite3 >/dev/null 2>&1; then
-    sqlite3 "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" \
-      ".mode insert org_settings" "SELECT * FROM org_settings;" 2>/dev/null \
-      | sed 's/^INSERT INTO/INSERT OR REPLACE INTO/' > "$_DEMO_SETTINGS_BAK" || true
+  rm -f "$_DEMO_SETTINGS_BAK"
+  if [ -d "$_DEMO_CP_DIR" ]; then
+    "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg dump-table "$_DEMO_CP_DIR" \
+      --table org_settings --out "$_DEMO_SETTINGS_BAK" >/dev/null
+    # Stop the server before the directory goes: pgserver keeps the postmaster alive across runs
+    # (cleanup_mode=None), and a live postmaster over a deleted data dir is not a stopped server —
+    # it holds the socket the next start would attach to.
+    "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg stop "$_DEMO_CP_DIR" || true
+    rm -rf "$_DEMO_CP_DIR"
+    echo "Deleted the demo control-plane data directory — this start reinitializes it."
   fi
-  rm -f "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" "${PROVISA_HOME:-$HOME/.provisa}/demo/platform.db"
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
     echo "Generating demo files..."
@@ -417,18 +426,16 @@ CP_PG_HOST=localhost
 CP_PG_PORT=5432
 # Human-readable control-plane store, reported on startup.
 CP_STORE_DESC=""
-if [ "$DEMO" = true ]; then
-  # Demo control plane: file-based SQLite (no pgserver) — instant, zero external process, and reset
-  # by simply wiping the files above. The SQLAlchemy control-plane abstraction runs the same code
-  # path on SQLite (REQ-837). Tenant + platform registries share one directory (single-tenant).
-  CP_SQLITE_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo"
-  mkdir -p "$CP_SQLITE_DIR"
-  export TENANT_DATABASE_URL="sqlite+aiosqlite:///$CP_SQLITE_DIR/tenant.db"
-  export PLATFORM_DATABASE_URL="sqlite+aiosqlite:///$CP_SQLITE_DIR/platform.db"
-  CP_STORE_DESC="SQLite files under $CP_SQLITE_DIR (platform.db + tenant.db)"
-  echo "Control plane: $CP_STORE_DESC"
-elif [ "$NATIVE" = true ]; then
-  CP_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/control-pg"
+if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
+  # REQ-1535: both self-contained tiers run the embedded PostgreSQL control plane (pgserver). SQLite
+  # has no schemas and REQ-1488 makes an environment a schema, so a SQLite plane could hold prod and
+  # nothing else — the demo would be unable to show the feature it is demonstrating. Demo keeps its
+  # own data dir so a demo reset never touches the native install's plane.
+  if [ "$DEMO" = true ]; then
+    CP_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo/control-pg"
+  else
+    CP_PG_DIR="${PROVISA_HOME:-$HOME/.provisa}/control-pg"
+  fi
   echo -n "Booting embedded control-plane PostgreSQL ($CP_PG_DIR)... "
   if _CP_OUT="$("$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg start "$CP_PG_DIR" --init-sql db/init.sql 2>>"$LOG_DIR/control-plane-pg.log")"; then
     CP_PG_HOST="$(echo "$_CP_OUT" | sed -n 's/^PG_HOST=//p')"
@@ -437,12 +444,12 @@ elif [ "$NATIVE" = true ]; then
     # Both SQLAlchemy control planes (tenant + platform) connect to the embedded
     # instance over its unix socket — the directory travels in ?host=. The tenant
     # and platform planes share this one embedded database (single-tenant desktop).
-    export TENANT_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}"
-    export PLATFORM_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}"
+    export TENANT_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
+    export PLATFORM_DATABASE_URL="postgresql+asyncpg://provisa:provisa@/provisa?host=${CP_PG_HOST}&port=${CP_PG_PORT}"
     CP_STORE_DESC="embedded PostgreSQL (pgserver, socket $CP_PG_HOST:$CP_PG_PORT)"
   else
     echo "FAILED — see $LOG_DIR/control-plane-pg.log"
-    echo "Native bring-up requires pgserver (Python <=3.12). Aborting."
+    echo "Embedded control plane requires pgserver (Python <=3.12). Aborting."
     exit 1
   fi
 else
@@ -571,9 +578,9 @@ wait "$BACKEND_TAIL_PID" 2>/dev/null || true
 BACKEND_TAIL_PID=""
 # Restore retained org settings into the freshly-initialized demo control plane (see the
 # demo-wipe block): the backend has created the schema by the time /health answers.
-if [ "$DEMO" = true ] && [ "$_backend_ok" = true ] && [ -s "${_DEMO_SETTINGS_BAK:-}" ] \
-   && command -v sqlite3 >/dev/null 2>&1; then
-  if sqlite3 "${PROVISA_HOME:-$HOME/.provisa}/demo/tenant.db" < "$_DEMO_SETTINGS_BAK" 2>/dev/null; then
+if [ "$DEMO" = true ] && [ "$_backend_ok" = true ] && [ -s "${_DEMO_SETTINGS_BAK:-}" ]; then
+  if "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg apply "$CP_PG_DIR" \
+       --file "$_DEMO_SETTINGS_BAK" >/dev/null 2>&1; then
     echo "Restored retained org settings (metadata export, admin config) into the demo control plane."
   else
     echo "WARNING: could not restore retained org settings from $_DEMO_SETTINGS_BAK — re-enter them in Admin."

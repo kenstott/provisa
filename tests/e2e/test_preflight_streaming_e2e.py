@@ -227,7 +227,9 @@ async def _store_rows(store_dsn, sql):
             return []
 
 
-_ORDERS_CLEAN = "CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,6)) AS v(id, amount)"  # sum 16
+_ORDERS_CLEAN = (
+    "CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,6)) AS v(id, amount)"  # sum 16
+)
 _ORDERS_NEG = "CREATE TABLE orders AS SELECT * FROM (VALUES (1,10),(2,-4)) AS v(id, amount)"
 
 
@@ -258,11 +260,7 @@ async def test_warn_advisory_still_lands(tmp_path):
     store_dsn = f"sqlite+aiosqlite:///{tmp_path / 'store.db'}"
     con = duckdb.connect(":memory:")
     con.execute(_ORDERS_CLEAN)
-    gate = (
-        "def preflight(streams, ctx):\n"
-        "    ctx.warn('low sum, but allowed')\n"
-        "    return ctx.ok()"
-    )
+    gate = "def preflight(streams, ctx):\n    ctx.warn('low sum, but allowed')\n    return ctx.ok()"
     async with _cp(tmp_path) as db:
         await _fire(db, MV_NODE)
         proc = _mv_proc(db, con, store_dsn, gate_src=gate)
@@ -340,7 +338,10 @@ async def test_source_preflight_aborts_before_land(tmp_path):
     async with _cp(tmp_path) as db:
         await _fire(db, "s.orders")
         proc = _source_proc(
-            db, store_dsn, rows=[{"id": 1, "amount": 10}, {"id": 2, "amount": -4}], gate_src=_SRC_GATE
+            db,
+            store_dsn,
+            rows=[{"id": 1, "amount": 10}, {"id": 2, "amount": -4}],
+            gate_src=_SRC_GATE,
         )
         async with db.acquire() as conn:
             assert await proc.process_pending(conn) is not None
@@ -354,7 +355,10 @@ async def test_source_preflight_continues_and_lands(tmp_path):
     async with _cp(tmp_path) as db:
         await _fire(db, "s.orders")
         proc = _source_proc(
-            db, store_dsn, rows=[{"id": 1, "amount": 10}, {"id": 2, "amount": 6}], gate_src=_SRC_GATE
+            db,
+            store_dsn,
+            rows=[{"id": 1, "amount": 10}, {"id": 2, "amount": 6}],
+            gate_src=_SRC_GATE,
         )
         async with db.acquire() as conn:
             assert await proc.process_pending(conn) is not None

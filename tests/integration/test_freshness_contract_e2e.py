@@ -136,7 +136,9 @@ def _procs(db, store, *, mv_rows):
 async def _seed_source_change(db):
     async with db.acquire() as conn:
         e = await queue.post_event(conn, source_table=SRC, event_type="replace", payload={})
-        await queue.fan_out(conn, e, [SRC])  # the source node is the first dependent of its own change
+        await queue.fan_out(
+            conn, e, [SRC]
+        )  # the source node is the first dependent of its own change
 
 
 async def _store_rows(store, table):

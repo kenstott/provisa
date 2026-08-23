@@ -66,7 +66,7 @@ class TestInsert:
         resp2 = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sa__customers(where: { id: { eq: 9999 } }) { id name region } }',
+                "query": "{ sa__customers(where: { id: { eq: 9999 } }) { id name region } }",
                 "role": "admin",
             },
         )
@@ -100,7 +100,7 @@ class TestUpdate:
         resp2 = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sa__customers(where: { id: { eq: 9999 } }) { name } }',
+                "query": "{ sa__customers(where: { id: { eq: 9999 } }) { name } }",
                 "role": "admin",
             },
         )
@@ -129,7 +129,7 @@ class TestDelete:
         resp2 = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sa__customers(where: { id: { eq: 9999 } }) { id } }',
+                "query": "{ sa__customers(where: { id: { eq: 9999 } }) { id } }",
                 "role": "admin",
             },
         )

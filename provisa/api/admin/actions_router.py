@@ -534,7 +534,10 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
         fn_def = state.tracked_functions.get(body.name)
         if not fn_def:
             raise ApiError(
-                404, "actions.function_not_found", f"Function '{body.name}' not found", name=body.name
+                404,
+                "actions.function_not_found",
+                f"Function '{body.name}' not found",
+                name=body.name,
             )
 
         impl_kind = fn_def.get("impl_kind", "source_procedure")
@@ -555,7 +558,10 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
 
         if not state.source_pools.has(src_id):
             raise ApiError(
-                503, "actions.source_not_connected", f"Source '{src_id}' not connected", source=src_id
+                503,
+                "actions.source_not_connected",
+                f"Source '{src_id}' not connected",
+                source=src_id,
             )
 
         gov_ctx = None
@@ -566,7 +572,9 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
             from provisa.compiler.stage2 import build_governance_context
 
             if role_id not in state.contexts:
-                raise ApiError(422, "actions.unknown_role", f"Unknown role '{role_id}'", role=role_id)
+                raise ApiError(
+                    422, "actions.unknown_role", f"Unknown role '{role_id}'", role=role_id
+                )
 
             ctx = state.contexts[role_id]
             # Invariant: contexts and rls_contexts are written together per-role

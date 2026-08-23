@@ -22,9 +22,7 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import init_registry_schema
 
 
-async def bring_up_platform(
-    url: str, *, pool_size: int, pool_min: int, org_id: str
-) -> Database:
+async def bring_up_platform(url: str, *, pool_size: int, pool_min: int, org_id: str) -> Database:
     """Build the platform-plane ``Database`` from *url* and initialise its schema
     (org/user/invite registry + SaaS billing). Unscoped — no ``search_path``.
 

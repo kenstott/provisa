@@ -61,8 +61,7 @@ def _parse_text(text: str, checker: str) -> dict:
         raise ContractError(f"{checker} contract is not parseable as YAML/JSON: {exc}") from exc
     if not isinstance(parsed, dict):
         raise ContractError(
-            f"{checker} contract must be a mapping at the top level, got "
-            f"{type(parsed).__name__}"
+            f"{checker} contract must be a mapping at the top level, got {type(parsed).__name__}"
         )
     return parsed
 
@@ -187,9 +186,7 @@ def _soda_list(parsed: dict, key: str) -> list:
     if value is None:
         return []
     if not isinstance(value, list):
-        raise ContractError(
-            f"soda contract {key!r} must be a list, got {type(value).__name__}"
-        )
+        raise ContractError(f"soda contract {key!r} must be a list, got {type(value).__name__}")
     return value
 
 

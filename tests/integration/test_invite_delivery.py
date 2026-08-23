@@ -139,7 +139,9 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['acme']}"))
         conn.execute(
-            insert(user_role_assignments).values(user_id="alice", role_id="org_admin", domain_id="*")
+            insert(user_role_assignments).values(
+                user_id="alice", role_id="org_admin", domain_id="*"
+            )
         )
     return engine
 
@@ -166,7 +168,9 @@ def planes(monkeypatch, smtp):
     # REQ-1337: the runtime's roles registry is where a role id becomes the rights it carries, and
     # every invite gate reads those rights. In a real process it comes from the schema.sql seed;
     # here it mirrors the capability lists written into the role rows above.
-    loaded_roles = {rid: {"id": rid, "capabilities": caps} for rid, caps in _SEEDED_ROLE_CAPS.items()}
+    loaded_roles = {
+        rid: {"id": rid, "capabilities": caps} for rid, caps in _SEEDED_ROLE_CAPS.items()
+    }
     registry = OrgRegistry()
     for org_id, db in org_dbs.items():
         registry.set(org_id, OrgRuntime(org_id=org_id, tenant_db=db, roles=dict(loaded_roles)))
@@ -289,9 +293,7 @@ def test_the_inviting_orgs_branding_reaches_the_delivered_message(planes, smtp):
     with planes.sync.begin() as conn:
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         conn.execute(
-            sa_update(orgs)
-            .where(orgs.c.id == "acme")
-            .values(branding=serialize_branding(document))
+            sa_update(orgs).where(orgs.c.id == "acme").values(branding=serialize_branding(document))
         )
 
     with TestClient(_make_app(planes)) as client:
@@ -324,9 +326,7 @@ def test_the_delivered_link_redeems_the_invitation(planes, smtp):
     with planes.sync.begin() as conn:
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         memberships = conn.execute(
-            select(user_org_memberships.c.org_id).where(
-                user_org_memberships.c.user_id == "carol"
-            )
+            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "carol")
         ).fetchall()
         assert [r[0] for r in memberships] == ["acme"]
 

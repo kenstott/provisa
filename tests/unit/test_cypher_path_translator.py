@@ -63,6 +63,7 @@ def _make_label_map() -> CypherLabelMap:
 def _extract_path_func(query: str):
     ast = parse_cypher(query)
     from provisa.cypher.parser import PathFunction
+
     for clause in ast.match_clauses:
         if isinstance(clause.pattern, PathFunction):
             return clause.pattern, clause.variable
@@ -72,6 +73,7 @@ def _extract_path_func(query: str):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_shortest_path_generates_recursive_cte():
     lm = _make_label_map()

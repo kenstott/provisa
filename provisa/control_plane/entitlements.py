@@ -95,9 +95,7 @@ def min_tier(feature: Feature) -> Tier:  # REQ-1053
     return _MIN_TIER[feature]
 
 
-def require_feature(
-    store: ControlPlaneStore, org_id: str, feature: Feature
-) -> None:  # REQ-1073
+def require_feature(store: ControlPlaneStore, org_id: str, feature: Feature) -> None:  # REQ-1073
     """Raise unless the org registered as ``org_id`` is entitled to ``feature``.
 
     Propagates ``KeyError`` for an unregistered org: an org that the control plane does not

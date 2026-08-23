@@ -250,7 +250,9 @@ def test_full_multi_org_onboarding_lifecycle(planes):
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         # 1. person 1 claims the sole platform superadmin — REQ-1290: by explicitly posting to
         # /auth/claim-bootstrap from the first-login page, never as a side effect of authenticating.
-        claim = client.post("/auth/claim-bootstrap", headers={**_basic("super1"), "host": _CONTROL_HOST})
+        claim = client.post(
+            "/auth/claim-bootstrap", headers={**_basic("super1"), "host": _CONTROL_HOST}
+        )
         assert claim.status_code == 200, claim.text
         # REQ-1296: the claim names the org it seated the claimant in, so the login page can send
         # the next request somewhere populated.
@@ -338,9 +340,7 @@ def test_full_multi_org_onboarding_lifecycle(planes):
     grant3 = _q(
         sync_engine,
         _TENANT_SCHEMA,
-        select(user_role_assignments.c.role_id).where(
-            user_role_assignments.c.user_id == "user3"
-        ),
+        select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "user3"),
     )
     assert [r[0] for r in grant3] == ["analyst"]
     membership3 = _q(

@@ -66,7 +66,9 @@ def test_no_view_map_is_noop():
     class _Empty:
         view_sql_map = {}
 
-    _reject_view_writes(sqlglot.parse_one("INSERT INTO daily_totals VALUES (1)", read="postgres"), _Empty())
+    _reject_view_writes(
+        sqlglot.parse_one("INSERT INTO daily_totals VALUES (1)", read="postgres"), _Empty()
+    )
 
 
 async def test_compiled_pipeline_entrypoint_rejects_view_write():

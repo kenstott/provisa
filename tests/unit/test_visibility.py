@@ -26,7 +26,8 @@ def _table(name="orders", domain="sales", columns=None):
         "domain_id": domain,
         "schema_name": "public",
         "table_name": name,
-        "columns": columns or [
+        "columns": columns
+        or [
             {"column_name": "id", "visible_to": ["admin", "analyst"]},
             {"column_name": "amount", "visible_to": ["admin"]},
             {"column_name": "secret", "visible_to": ["admin"]},
@@ -50,9 +51,13 @@ class TestVisibleTables:
 
     def test_no_visible_columns_excluded(self):
         role = {"id": "nobody", "domain_access": ["*"]}
-        tables = [_table(columns=[
-            {"column_name": "id", "visible_to": ["admin"]},
-        ])]
+        tables = [
+            _table(
+                columns=[
+                    {"column_name": "id", "visible_to": ["admin"]},
+                ]
+            )
+        ]
         result = visible_tables(tables, role)
         assert len(result) == 0
 

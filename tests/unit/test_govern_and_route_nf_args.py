@@ -115,9 +115,11 @@ async def test_nf_condition_extracted_and_forwarded_as_nf_args(monkeypatch):
             (),
         )
 
-    with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_fake_optimize_and_route)):
+    with patch.object(
+        _pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_fake_optimize_and_route)
+    ):
         await _pipeline._govern_and_route(
-            'SELECT * FROM get_pet_by_id WHERE "_nf_petId" = \'1\'', "analyst"
+            "SELECT * FROM get_pet_by_id WHERE \"_nf_petId\" = '1'", "analyst"
         )
 
     assert captured["nf_args"] == {"petId": "1"}

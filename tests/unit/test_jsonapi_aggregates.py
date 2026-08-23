@@ -182,7 +182,9 @@ class TestBuildAggSelection:
 
 class TestBuildGroupByGraphqlQuery:
     def test_basic_by_arg(self):
-        q = _build_group_by_graphql_query("orders_group_by", ["region"], "count", {}, [], None, None)
+        q = _build_group_by_graphql_query(
+            "orders_group_by", ["region"], "count", {}, [], None, None
+        )
         assert q == "{ orders_group_by(by: [region]) { groupKey aggregate { count } } }"
 
     def test_multiple_by_columns(self):
@@ -204,7 +206,13 @@ class TestBuildGroupByGraphqlQuery:
 
     def test_with_sort(self):
         q = _build_group_by_graphql_query(
-            "orders_group_by", ["region"], "count", {}, [{"field": "region", "dir": "asc"}], None, None
+            "orders_group_by",
+            ["region"],
+            "count",
+            {},
+            [{"field": "region", "dir": "asc"}],
+            None,
+            None,
         )
         assert "order_by: {region: asc}" in q
 
@@ -236,7 +244,9 @@ class TestBuildGroupByGraphqlQuery:
         assert "nodes { id region amount }" in q
 
     def test_no_node_selection_omits_nodes_field(self):
-        q = _build_group_by_graphql_query("orders_group_by", ["region"], "count", {}, [], None, None)
+        q = _build_group_by_graphql_query(
+            "orders_group_by", ["region"], "count", {}, [], None, None
+        )
         assert "nodes" not in q
 
 
@@ -257,7 +267,12 @@ class TestAggregateResponseShape:
         # Column order follows compiled.columns; count then sum.amount per the query above.
         fake_row = (5, 250.0)
         shaped = serialize_aggregate(
-            [fake_row], compiled.columns, None, None, compiled.root_field, agg_alias=compiled.agg_alias
+            [fake_row],
+            compiled.columns,
+            None,
+            None,
+            compiled.root_field,
+            agg_alias=compiled.agg_alias,
         )
         agg_payload = shaped["data"][compiled.root_field][compiled.agg_alias]
 

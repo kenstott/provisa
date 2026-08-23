@@ -57,7 +57,7 @@ def _query(view_sql_map: dict[str, str]) -> str:
     """A compiled query that selects the business columns from the view, put through real expand."""
     cols = ", ".join(f'"t0"."{c}"' for c in BUSINESS)
     compiled = CompiledQuery(
-        sql=f"SELECT {cols} FROM {VIEW_REF} \"t0\"",
+        sql=f'SELECT {cols} FROM {VIEW_REF} "t0"',
         params=[],
         root_field=VIEW,
         columns=[],

@@ -37,6 +37,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from provisa.core.environments import PROD
 from provisa.executor.pool import SourcePool
 
 if TYPE_CHECKING:
@@ -52,6 +53,36 @@ if TYPE_CHECKING:
 # raise (see require_current_org); it must never silently pick an org.
 current_org: ContextVar[str | None] = ContextVar("current_org", default=None)
 
+# REQ-1487/REQ-1529: the ENVIRONMENT selected for the current request/task, alongside the org. Unset
+# (None) means prod — the environment a request naming none is served by (REQ-1487) — so every
+# pre-environment path resolves exactly the runtime it resolved before there were environments.
+#
+# It is a SECOND ContextVar rather than an env baked into ``current_org`` because the two are set by
+# different authorities at different moments: the org comes from the authenticated identity and is
+# bound by the auth middleware, the environment comes from the ``x-provisa-env`` header and is a
+# request-scoped selection within an org the caller already proved they belong to.
+current_env: ContextVar[str | None] = ContextVar("current_env", default=None)
+
+
+def runtime_key(org_id: str, env: str | None = None) -> str:
+    """The registry key for one org's ONE environment (REQ-1488, REQ-1529).
+
+    An environment is a separate schema holding a separate copy of the model, so it is a separate
+    data plane: its own compiled schemas, its own source pools, and — the point of REQ-1529 — its
+    own resolved bindings, which may be inherited from its base and may be read-only. One runtime
+    per org would hand a branch its base's connections.
+
+    ``prod`` and ``None`` both key on the BARE org id, which is what keeps an org that never created
+    an environment byte-identical: the key it was registered under before environments existed is
+    still the key it is registered under, and ``org_registry.get(org_id)`` still finds it. The
+    separator matches :func:`provisa.core.environments.org_schema`'s reason for its own — REQ-1309
+    forbids an underscore in an org id, so the first ``_env_`` splits the key into exactly one org
+    and one environment whatever either is called.
+    """
+    if env is None or env == PROD:
+        return org_id
+    return f"{org_id}_env_{env}"
+
 
 @dataclass
 class OrgRuntime:
@@ -64,6 +95,13 @@ class OrgRuntime:
     """
 
     org_id: str
+
+    # REQ-1487/REQ-1529: WHICH ENVIRONMENT of that org this runtime is. ``prod`` for every runtime
+    # built before an org created an environment, and for every request that names none. Carried on
+    # the runtime and not only in the ContextVar because the binding resolution of REQ-1529 needs to
+    # know which environment asked in order to know whose lineage to walk, and the code that asks
+    # holds the runtime rather than the request.
+    env: str = PROD
 
     # REQ-1043/REQ-1067/REQ-1244: per-org federation engine. ``None`` means this org runs on the
     # SHARED engine (the pooled lane, REQ-1243 lane a — every org starts here); an isolated-engine
@@ -131,6 +169,13 @@ class OrgRuntime:
     # source_id; values are raw dicts from the DB sources table.
     runtime_sources: dict[str, dict] = field(default_factory=dict)
 
+    # REQ-1529: source_id → the environment whose binding supplied that source's connection values.
+    # Its own name when this environment bound the source itself, an ancestor's when the binding was
+    # inherited. Empty for prod: prod branches from nothing, so every binding it has is its own.
+    # Recorded at rebuild time because that is when the lineage walk happens, and read by the write
+    # path, which must not walk it again per statement.
+    source_binding_env: dict[str, str] = field(default_factory=dict)
+
     # Raw-SQL governance inputs (published once per org at schema-load time).
     tables: list[dict] = field(default_factory=list)
     relationships: list[dict] = field(default_factory=list)
@@ -179,6 +224,22 @@ class OrgRegistry:
     def invalidate(self, org_id: str) -> None:
         self._runtimes.pop(org_id, None)
 
+    def invalidate_org(self, org_id: str) -> None:
+        """Drop the org's runtime AND every environment runtime built from it (REQ-1488).
+
+        An org is deleted or re-provisioned as a whole: its branches go with it, and a branch
+        runtime left behind holds pools and compiled schemas for a schema that no longer exists.
+        ``invalidate`` alone reaches only prod, because prod is keyed on the bare org id.
+        """
+        prefix = f"{org_id}_env_"
+        for key in [k for k in self._runtimes if k == org_id or k.startswith(prefix)]:
+            self._runtimes.pop(key, None)
+
+    def env_keys(self, org_id: str) -> list[str]:
+        """Every registry key currently held for one org — its prod key and each environment's."""
+        prefix = f"{org_id}_env_"
+        return [k for k in self._runtimes if k == org_id or k.startswith(prefix)]
+
     def all_org_ids(self) -> list[str]:
         return list(self._runtimes.keys())
 
@@ -221,6 +282,27 @@ def set_current_org(org_id: str) -> Token[str | None]:
 
 def reset_current_org(token: Token[str | None]) -> None:
     current_org.reset(token)
+
+
+def set_current_env(env: str | None) -> Token[str | None]:
+    """Bind the active environment for the current context; returns a reset token.
+
+    ``None`` binds prod explicitly, which is the same thing an unbound ContextVar resolves to.
+    """
+    return current_env.set(env)
+
+
+def reset_current_env(token: Token[str | None]) -> None:
+    current_env.reset(token)
+
+
+def active_env() -> str:
+    """The environment bound for this context, ``prod`` when none is (REQ-1487).
+
+    Not a fallback: REQ-1487 settles that a request naming no environment is served by prod, so
+    this is the answer the requirement gives rather than a value invented to fill a hole.
+    """
+    return current_env.get() or PROD
 
 
 def require_current_org() -> str:

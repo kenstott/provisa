@@ -280,9 +280,7 @@ def test_remove_member_clears_both_planes(planes):  # REQ-1305, REQ-1302
         _rows(
             planes.sync,
             _ORG_SCHEMAS["acme"],
-            select(user_role_assignments.c.role_id).where(
-                user_role_assignments.c.user_id == "bob"
-            ),
+            select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "bob"),
         )
         == []
     )
@@ -307,7 +305,10 @@ def test_member_list_names_who_holds_org_admin(planes):  # REQ-1305, REQ-1302, R
         assert by_user["alice"]["is_org_admin"] is True
         assert by_user["bob"]["is_org_admin"] is False
 
-        assert client.post("/admin/orgs/acme/admins/bob", headers=_auth("tok-alice")).status_code == 200
+        assert (
+            client.post("/admin/orgs/acme/admins/bob", headers=_auth("tok-alice")).status_code
+            == 200
+        )
         after = client.get("/admin/orgs/acme/members", headers=_auth("tok-alice")).json()
     assert {r["user_id"] for r in after if r["is_org_admin"]} == {"alice", "bob"}
 
@@ -378,8 +379,7 @@ def test_grant_then_revoke_org_admin_is_audited(planes):  # REQ-1303, REQ-1308
         ),
     )
     actions = [
-        r[0]
-        for r in _rows(planes.sync, _ORG_SCHEMAS["acme"], select(admin_audit_log.c.action))
+        r[0] for r in _rows(planes.sync, _ORG_SCHEMAS["acme"], select(admin_audit_log.c.action))
     ]
     assert actions == ["grant_org_admin", "revoke_org_admin"]
 
@@ -407,17 +407,13 @@ def test_leaving_an_org_survives_the_next_request(planes):  # REQ-1306
     assert _rows(
         planes.sync,
         _ADMIN_SCHEMA,
-        select(org_auto_join_optouts.c.org_id).where(
-            org_auto_join_optouts.c.user_id == "bob"
-        ),
+        select(org_auto_join_optouts.c.org_id).where(org_auto_join_optouts.c.user_id == "bob"),
     ) == [("acme",)]
     assert (
         _rows(
             planes.sync,
             _ADMIN_SCHEMA,
-            select(user_org_memberships.c.org_id).where(
-                user_org_memberships.c.user_id == "bob"
-            ),
+            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "bob"),
         )
         == []
     )
@@ -436,9 +432,7 @@ def test_being_re_added_clears_the_opt_out(planes):  # REQ-1306
         _rows(
             planes.sync,
             _ADMIN_SCHEMA,
-            select(org_auto_join_optouts.c.org_id).where(
-                org_auto_join_optouts.c.user_id == "bob"
-            ),
+            select(org_auto_join_optouts.c.org_id).where(org_auto_join_optouts.c.user_id == "bob"),
         )
         == []
     )
@@ -462,9 +456,7 @@ def test_org_deletion_requires_the_typed_confirmation(planes):  # REQ-1300
         _rows(
             planes.sync,
             _ADMIN_SCHEMA,
-            select(user_org_memberships.c.user_id).where(
-                user_org_memberships.c.org_id == "acme"
-            ),
+            select(user_org_memberships.c.user_id).where(user_org_memberships.c.org_id == "acme"),
         )
         == []
     )
@@ -640,9 +632,7 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
         _rows(
             planes.sync,
             _ADMIN_SCHEMA,
-            select(user_org_memberships.c.org_id).where(
-                user_org_memberships.c.user_id == "bob"
-            ),
+            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "bob"),
         )
         == []
     )
@@ -650,9 +640,7 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
         _rows(
             planes.sync,
             _ORG_SCHEMAS["acme"],
-            select(user_role_assignments.c.role_id).where(
-                user_role_assignments.c.user_id == "bob"
-            ),
+            select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "bob"),
         )
         == []
     )
@@ -671,9 +659,9 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
         _ORG_SCHEMAS["acme"],
         select(admin_audit_log.c.actor_id, admin_audit_log.c.subject_id),
     ) == [(tombstone, "carol")]
-    assert _rows(
-        planes.sync, _ORG_SCHEMAS["acme"], select(query_audit_log.c.user_id)
-    ) == [(tombstone,)]
+    assert _rows(planes.sync, _ORG_SCHEMAS["acme"], select(query_audit_log.c.user_id)) == [
+        (tombstone,)
+    ]
 
 
 def test_account_deletion_is_blocked_for_the_last_platform_admin(planes):  # REQ-1307
@@ -694,9 +682,7 @@ def test_a_second_platform_admin_unblocks_deletion(planes):  # REQ-1307
         )
         # pat administers no org, so only the platform-admin rule can block the deletion.
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
-        conn.execute(
-            delete(user_org_memberships).where(user_org_memberships.c.user_id == "pat")
-        )
+        conn.execute(delete(user_org_memberships).where(user_org_memberships.c.user_id == "pat"))
     with TestClient(_make_app(planes)) as client:
         resp = client.delete("/auth/account?confirm=pat", headers=_auth("tok-pat"))
     assert resp.status_code == 200, resp.text

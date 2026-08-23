@@ -123,7 +123,9 @@ def peer_common_name(peer_cert: dict | None) -> str | None:  # REQ-1228
     return None
 
 
-def assert_principal_binding(auth: ClientAuth | None, peer_cert: dict | None, username: str) -> None:
+def assert_principal_binding(
+    auth: ClientAuth | None, peer_cert: dict | None, username: str
+) -> None:
     """Refuse a connection whose certificate names someone other than the authenticating user.
 
     Only under ``PROVISA_MTLS_BIND_PRINCIPAL`` (REQ-1228). Without it a client certificate proves

@@ -198,8 +198,12 @@ async def test_dq_scorecard_is_an_mv_over_warn_error_emissions(tmp_path):
     def error_hook(streams, ctx):
         raise ValueError("schema drift")  # REQ-957 fatal → an error event about the node
 
-    warn_gen = make_mv_generate(DsnEngine(dsn), schema="", table="ok1", columns=_COLS, run_query=run_ok)
-    err_gen = make_mv_generate(DsnEngine(dsn), schema="", table="ok2", columns=_COLS, run_query=run_ok)
+    warn_gen = make_mv_generate(
+        DsnEngine(dsn), schema="", table="ok1", columns=_COLS, run_query=run_ok
+    )
+    err_gen = make_mv_generate(
+        DsnEngine(dsn), schema="", table="ok2", columns=_COLS, run_query=run_ok
+    )
     async with _db(tmp_path) as db:
         warn_mv = MVTableProcessor(
             "dq.warn",

@@ -234,9 +234,7 @@ class GrpcAdapter(TransportAdapter):
             pool = DescriptorPool(db)
             svc_name = next(s for s in db.get_services() if s.endswith("Service"))
             svc = pool.FindServiceByName(svc_name)
-            method = next(
-                m for m in svc.methods if m.name.startswith("Query") and "rder" in m.name
-            )
+            method = next(m for m in svc.methods if m.name.startswith("Query") and "rder" in m.name)
             req_cls = GetMessageClass(method.input_type)
             resp_cls = GetMessageClass(method.output_type)
             rpc = channel.unary_stream(
@@ -245,9 +243,7 @@ class GrpcAdapter(TransportAdapter):
                 response_deserializer=resp_cls.FromString,
             )
             try:
-                responses = list(
-                    rpc(req_cls(), metadata=(("x-provisa-role", role),), timeout=60)
-                )
+                responses = list(rpc(req_cls(), metadata=(("x-provisa-role", role),), timeout=60))
             except grpc.RpcError as exc:
                 raise _Denied(f"grpc {role}: {exc.details()}") from exc
             # A governed column the role cannot see is absent from the response message.

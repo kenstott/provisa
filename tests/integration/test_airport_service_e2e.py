@@ -220,8 +220,13 @@ else:
 def _run_sql(port: int, role: str, stmts: list[str], *, fetch: bool = True) -> dict:
     result = subprocess.run(
         [
-            sys.executable, "-c", _SQL_CLIENT_SCRIPT,
-            str(port), role, "1" if fetch else "0", json.dumps(stmts),
+            sys.executable,
+            "-c",
+            _SQL_CLIENT_SCRIPT,
+            str(port),
+            role,
+            "1" if fetch else "0",
+            json.dumps(stmts),
         ],
         capture_output=True,
         text=True,
@@ -417,9 +422,13 @@ def test_update_denied_for_non_visible_row_is_governed_noop(airport_server_port)
 def test_create_schema_maps_to_domain(airport_server_port):
     """CREATE SCHEMA via airport creates a Provisa domain through the schema-mutation pipeline."""
     # Should not raise — the create_schema DoAction maps to a domain upsert.
-    _run_sql(airport_server_port, "org_admin", ["CREATE SCHEMA provisa.airport_ddl_test"], fetch=False)
+    _run_sql(
+        airport_server_port, "org_admin", ["CREATE SCHEMA provisa.airport_ddl_test"], fetch=False
+    )
     # drop_schema maps to domain delete.
-    _run_sql(airport_server_port, "org_admin", ["DROP SCHEMA provisa.airport_ddl_test"], fetch=False)
+    _run_sql(
+        airport_server_port, "org_admin", ["DROP SCHEMA provisa.airport_ddl_test"], fetch=False
+    )
 
 
 def test_create_table_roundtrip_via_airport(airport_server_port):
@@ -474,7 +483,9 @@ def test_transaction_create_and_status(airport_server_port):
     # An unknown transaction id reports not-exists (not an error).
     req2 = msgpack.packb({"transaction_id": "does-not-exist"})
     st2 = msgpack.unpackb(
-        list(client.do_action(fl.Action("get_transaction_status", req2), opts))[0].body.to_pybytes(),
+        list(client.do_action(fl.Action("get_transaction_status", req2), opts))[
+            0
+        ].body.to_pybytes(),
         raw=False,
     )
     assert st2["exists"] is False, st2

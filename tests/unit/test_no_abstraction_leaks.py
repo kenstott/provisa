@@ -139,8 +139,7 @@ ACCEPTED_OUT_OF_SCOPE: dict[str, str] = {
         "CDC-signal consumption (motor) — self-contained, not federated querying"
     ),
     "provisa/subscriptions/debezium_provider.py": (
-        "CDC-signal consumption (aiokafka/confluent_kafka) — self-contained, not federated"
-        " querying"
+        "CDC-signal consumption (aiokafka/confluent_kafka) — self-contained, not federated querying"
     ),
     "provisa/subscriptions/trino_polling_provider.py": (
         "CDC-signal consumption (trino) — self-contained, not federated querying"

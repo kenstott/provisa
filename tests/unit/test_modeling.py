@@ -59,7 +59,13 @@ def test_entity_no_history_is_plain_materialized_view():
 
 def test_entity_scd2_lowers_to_delta_bitemporal_mv():
     reg = entity_registration(
-        Entity(name="Customer", source="raw.customers", key=("id",), attributes=("tier",), history="scd2")
+        Entity(
+            name="Customer",
+            source="raw.customers",
+            key=("id",),
+            attributes=("tier",),
+            history="scd2",
+        )
     )
     assert reg["mv_bitemporal_mode"] == "delta"
     assert reg["mv_bitemporal_key"] == ["id"]

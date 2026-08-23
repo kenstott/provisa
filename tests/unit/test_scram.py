@@ -164,7 +164,8 @@ def test_the_wrong_password_does_not(verifier):
 def test_the_server_first_message_carries_the_salt_and_iteration_count(verifier):
     exchange = ScramExchange(verifier)
     fields = dict(
-        part.split("=", 1) for part in exchange.server_first(_Client("alice", "pw").first).split(",")
+        part.split("=", 1)
+        for part in exchange.server_first(_Client("alice", "pw").first).split(",")
     )
     assert base64.b64decode(fields["s"]) == verifier.salt
     assert int(fields["i"]) == verifier.iterations

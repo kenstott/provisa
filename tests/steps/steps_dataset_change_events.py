@@ -82,7 +82,8 @@ def when_mutation_completes(shared_data):
 
 
 @then(
-    "a change event containing table, source, and timestamp is emitted to the configured Kafka topic")
+    "a change event containing table, source, and timestamp is emitted to the configured Kafka topic"
+)
 def then_change_event_emitted(shared_data):
     produced = shared_data["produced"]
     assert len(produced) == 1, f"expected exactly one change event, got {len(produced)}"
@@ -184,7 +185,8 @@ def when_hook_executes(shared_data):
 
 
 @then(
-    "a change event is emitted and cache is invalidated and MVs are marked stale in the same hook")
+    "a change event is emitted and cache is invalidated and MVs are marked stale in the same hook"
+)
 def then_all_side_effects_co_fire(shared_data):
     key = f"{shared_data['source']}.{shared_data['table']}"
 
@@ -212,8 +214,10 @@ def then_all_side_effects_co_fire(shared_data):
     )
 
     # All three derived-state effects fired together — consistency guaranteed.
-    assert len(produced) == len(side_effects["cache_invalidated"]) == len(
-        side_effects["mv_marked_stale"]
+    assert (
+        len(produced)
+        == len(side_effects["cache_invalidated"])
+        == len(side_effects["mv_marked_stale"])
     ), "change event, cache invalidation, and MV staleness must co-fire 1:1"
 
 
@@ -288,8 +292,7 @@ def when_etl_calls_touch_mutation(shared_data):
                 touch(shared_data["source"], shared_data["table"])
 
 
-@then(
-    "Provisa fires the mutation hook and emits a change event as if data had changed directly")
+@then("Provisa fires the mutation hook and emits a change event as if data had changed directly")
 def then_touch_fires_hook_and_emits_event(shared_data):
     key = f"{shared_data['source']}.{shared_data['table']}"
 

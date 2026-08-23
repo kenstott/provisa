@@ -16286,6 +16286,18 @@ NEITHER END OF THE HISTORY IS OFFERED INTO A REFUSAL. Undo and redo are refused 
 
 **Tests:** `tests/unit/test_env_undo_redo.py`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`
 
+### REQ-1556 · Environments {#REQ-1556}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A PULL SAYS WHAT IT OVERWROTE, AND A REFUSED PULL SAYS WHAT COLLIDED. Taking what the remote holds is the same act as a merge with the same silent case in it, so it carries the same report ([REQ-1555](#REQ-1555)), measured from the commit the local branch and the fetched sha last shared. TWO DOORS. When the two lines have DIVERGED the pull is already refused, and the refusal names only that fact -- which leaves the person who must now decide with no account of WHICH objects both sides touched; the refusal therefore carries the conflicts, so the answer to "so what collided?" is in the response rather than in a comparison somebody has to run by hand. When the pull FAST-FORWARDS it is not refused and nothing about it looks dangerous, yet the apply diffs the incoming tree against the environment's CURRENT PROJECTION rather than against the commit that branch stands at -- so an edit sitting in the schema which never reached a commit is carried away and reported as an ordinary change. That is the DRIFTED environment ([REQ-1524](#REQ-1524), a write-through commit that did not land), and it is the case with no divergence recorded anywhere to warn about it. Both are computed at the PATH and inside the transaction that applies, and both are REPORTED, NEVER RESOLVED: the pull that applies still applies, and Provisa offers no way to choose per object. The report reaches the response, the audit record, and the environments screen.
+
+**Use case:** A person pulling the remote's version of an environment can see which objects it overwrote that had been changed locally, and a person refused a pull for divergence can see which objects the two lines both touched.
+
+**Code:** `provisa/core/env_conflicts.py`, `provisa/core/env_deploy.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/admin/EnvironmentsTab.tsx`
+
+**Tests:** —
+
 ### REQ-1555 · Environments {#REQ-1555}
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral

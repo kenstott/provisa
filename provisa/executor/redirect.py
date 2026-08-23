@@ -383,8 +383,12 @@ async def upload_and_presign(  # REQ-029, REQ-044, REQ-137, REQ-138, REQ-139, RE
     except (EndpointConnectionError, ConnectionError, BotoConnectionError) as e:
         # The store is configured but unreachable (e.g. MinIO not running). Fall back to local so a
         # desktop dev can still exercise redirect, and say plainly what happened + how to get shared access.
-        log.warning("Redirect object store %s unreachable (%s); storing locally", config.endpoint_url, e)
-        return _store_local(f"Object store {config.endpoint_url} is not reachable ({type(e).__name__}).")
+        log.warning(
+            "Redirect object store %s unreachable (%s); storing locally", config.endpoint_url, e
+        )
+        return _store_local(
+            f"Object store {config.endpoint_url} is not reachable ({type(e).__name__})."
+        )
 
     response = {
         "redirect_url": url,
@@ -602,7 +606,9 @@ _CONTENT_TYPES = {
 }
 
 
-async def run_materialize(state, physical_sql: str, delivery: Delivery) -> dict:  # REQ-1194, REQ-1195
+async def run_materialize(
+    state, physical_sql: str, delivery: Delivery
+) -> dict:  # REQ-1194, REQ-1195
     """Materialize *physical_sql* to the selected sink and return the delivery handle.
 
     Sink-tier selection rule (REQ-1195): when the engine can write the requested format natively to a

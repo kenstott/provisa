@@ -52,6 +52,16 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
+def is_connection_error(exc: BaseException) -> bool:
+    """Whether ``exc`` is the driver's own "never reached a coordinator" error (REQ-1448).
+
+    Lives here because this module owns the trino driver: a caller that needs to recognise the
+    shape of a failed dial asks the owner what that shape is rather than importing the driver to
+    look at it itself.
+    """
+    return isinstance(exc, trino.exceptions.TrinoConnectionError)
+
+
 def _backoff_secs(attempt: int, cap: float = 30.0) -> float:
     """Full-jitter exponential backoff — spreads retries to avoid thundering herd."""
     return random.uniform(0, min(cap, 1.0 * (2**attempt)))

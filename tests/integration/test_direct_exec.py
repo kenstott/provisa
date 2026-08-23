@@ -40,7 +40,8 @@ async def source_pool():
 class TestDirectExecution:
     async def test_simple_select(self, source_pool):
         result = await execute_direct(
-            source_pool, "test-pg",
+            source_pool,
+            "test-pg",
             'SELECT "id", "amount" FROM "public"."orders" LIMIT 3',
         )
         assert len(result.rows) <= 3
@@ -49,7 +50,8 @@ class TestDirectExecution:
 
     async def test_parameterized_query(self, source_pool):
         result = await execute_direct(
-            source_pool, "test-pg",
+            source_pool,
+            "test-pg",
             'SELECT "id", "region" FROM "public"."orders" WHERE "region" = $1',
             ["us-east"],
         )
@@ -58,7 +60,8 @@ class TestDirectExecution:
 
     async def test_empty_result(self, source_pool):
         result = await execute_direct(
-            source_pool, "test-pg",
+            source_pool,
+            "test-pg",
             'SELECT "id" FROM "public"."orders" WHERE "id" = $1',
             [-999],
         )
@@ -67,12 +70,13 @@ class TestDirectExecution:
 
     async def test_join_query(self, source_pool):
         result = await execute_direct(
-            source_pool, "test-pg",
+            source_pool,
+            "test-pg",
             'SELECT "t0"."id", "t1"."name" '
             'FROM "public"."orders" "t0" '
             'LEFT JOIN "public"."customers" "t1" '
             'ON "t0"."customer_id" = "t1"."id" '
-            'LIMIT 5',
+            "LIMIT 5",
         )
         assert len(result.rows) <= 5
         assert "id" in result.column_names

@@ -42,6 +42,8 @@ from provisa.federation.engine import UnreachableSource
 _tracer = trace.get_tracer(__name__)
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import URL
+
     from provisa.executor.result import QueryResult, ResultStream
 
 _log = logging.getLogger(__name__)
@@ -57,6 +59,33 @@ _log = logging.getLogger(__name__)
 # - __derived__ is the virtual-view sentinel: "the sentinel has no address of its own"
 #   (api/startup_seed.py). Its rows are compiler-emitted views, never a remote database.
 _NO_REMOTE_SOURCE_IDS = frozenset({"provisa-admin", "__derived__"})
+
+
+def libpq_dsn(url: "URL") -> str:
+    """A SQLAlchemy PostgreSQL URL as the libpq keyword DSN DuckDB's postgres extension takes.
+
+    The embedded control plane of REQ-1535 has no host in the netloc: pgserver listens on a unix
+    socket, and the socket directory and the port it names the socket file after are carried in the
+    query (``postgresql+asyncpg:///provisa?host=/dir&port=54321``) because that is the only place
+    asyncpg reads them from. Reading the netloc alone yields ``host=None port=None`` and libpq
+    refuses the DSN outright, so both places are read here — the query first, since a URL that
+    carries them there is the one that means them.
+    """
+
+    def _q(name: str) -> str | None:
+        value = url.query.get(name)  # a SQLAlchemy multi-valued query param can be a tuple
+        return value[0] if isinstance(value, tuple) else value
+
+    host = _q("host") or url.host
+    port = _q("port") or url.port
+    if not host:
+        raise ValueError(f"control-plane URL names no host to attach: {url.render_as_string()}")
+    if not port:
+        raise ValueError(f"control-plane URL names no port to attach: {url.render_as_string()}")
+    parts = [f"host={host}", f"port={port}", f"dbname={url.database}", f"user={url.username}"]
+    if url.password:
+        parts.append(f"password={url.password}")
+    return " ".join(parts)
 
 
 class NativeEngineBackend(EngineBackend):
@@ -183,7 +212,9 @@ class NativeEngineBackend(EngineBackend):
                 self._runtime.attach_source(merged)
                 self._attached.add(key)
             except self._attach_errors as _ae:
-                _log.warning("%s attach of %s failed; table not queryable: %s", self.engine.name, key, _ae)
+                _log.warning(
+                    "%s attach of %s failed; table not queryable: %s", self.engine.name, key, _ae
+                )
 
         for tbl in config.tables:
             src = sources.get(tbl.source_id)
@@ -213,11 +244,7 @@ class NativeEngineBackend(EngineBackend):
             _db_url = tdb.engine.url
             _org_id = getattr(state, "org_id", "default")
             if _dialect == "postgresql":
-                _pw = f" password={_db_url.password}" if _db_url.password else ""
-                _db_path = (
-                    f"host={_db_url.host} port={_db_url.port} dbname={_db_url.database} "
-                    f"user={_db_url.username}{_pw}"
-                )
+                _db_path = libpq_dsn(_db_url)
             else:
                 _db_path = str(_db_url.database or "")
             self._runtime.attach_control_plane(_db_path, f"org_{_org_id}", dialect=_dialect)

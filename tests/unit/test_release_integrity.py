@@ -37,18 +37,14 @@ def test_ensure_release_action_creates_draft():
 
 def test_build_dmg_publish_job_exists():
     """build-dmg workflow must have a publish-release job."""
-    workflow = yaml.safe_load(
-        (_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text()
-    )
+    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
     assert "jobs" in workflow
     assert "publish-release" in workflow["jobs"]
 
 
 def test_build_dmg_publish_job_depends_on_all_builds():
     """publish-release job must wait for all build jobs to complete."""
-    workflow = yaml.safe_load(
-        (_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text()
-    )
+    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
     publish_job = workflow["jobs"]["publish-release"]
     needs = set(publish_job.get("needs", []))
 
@@ -61,16 +57,14 @@ def test_build_dmg_publish_job_depends_on_all_builds():
         "build-windows-container",
         "build-jdbc",
     }
-    assert required_needs.issubset(
-        needs
-    ), f"publish-release missing dependency on: {required_needs - needs}"
+    assert required_needs.issubset(needs), (
+        f"publish-release missing dependency on: {required_needs - needs}"
+    )
 
 
 def test_build_dmg_publish_uses_fail_on_unmatched_files():
     """softprops/action-gh-release must use fail_on_unmatched_files: true."""
-    workflow = yaml.safe_load(
-        (_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text()
-    )
+    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
     publish_job = workflow["jobs"]["publish-release"]
     steps = publish_job.get("steps", [])
 
@@ -81,16 +75,14 @@ def test_build_dmg_publish_uses_fail_on_unmatched_files():
             break
 
     assert attach_step is not None, "Missing 'Attach installers to draft release' step"
-    assert (
-        attach_step.get("with", {}).get("fail_on_unmatched_files") is True
-    ), "fail_on_unmatched_files must be true to prevent partial releases"
+    assert attach_step.get("with", {}).get("fail_on_unmatched_files") is True, (
+        "fail_on_unmatched_files must be true to prevent partial releases"
+    )
 
 
 def test_build_dmg_publish_keeps_draft_status():
     """publish step must upload as draft: true (never as published)."""
-    workflow = yaml.safe_load(
-        (_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text()
-    )
+    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
     publish_job = workflow["jobs"]["publish-release"]
     steps = publish_job.get("steps", [])
 
@@ -101,9 +93,9 @@ def test_build_dmg_publish_keeps_draft_status():
             break
 
     assert attach_step is not None, "Missing 'Attach installers to draft release' step"
-    assert (
-        attach_step.get("with", {}).get("draft") is True
-    ), "Attach step must use draft: true to keep release unpublished until verified"
+    assert attach_step.get("with", {}).get("draft") is True, (
+        "Attach step must use draft: true to keep release unpublished until verified"
+    )
 
 
 def test_sibling_workflows_use_gh_release_upload_clobber():
@@ -115,16 +107,14 @@ def test_sibling_workflows_use_gh_release_upload_clobber():
     ):
         content = (_ROOT / ".github" / "workflows" / workflow_name).read_text()
         # Verify the workflow uses gh release upload with clobber (read raw, not parsed)
-        assert (
-            "gh release upload" in content and "--clobber" in content
-        ), f"{workflow_name} must use 'gh release upload --clobber' to upload without draft/prerelease flipping"
+        assert "gh release upload" in content and "--clobber" in content, (
+            f"{workflow_name} must use 'gh release upload --clobber' to upload without draft/prerelease flipping"
+        )
 
 
 def test_release_manifest_includes_all_installer_types():
     """publish-release files list must include all expected installer types."""
-    workflow = yaml.safe_load(
-        (_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text()
-    )
+    workflow = yaml.safe_load((_ROOT / ".github" / "workflows" / "build-dmg.yml").read_text())
     publish_job = workflow["jobs"]["publish-release"]
     steps = publish_job.get("steps", [])
 
@@ -151,9 +141,9 @@ def test_release_manifest_includes_all_installer_types():
         "jdbc_name",
     ]
     for pattern in expected_patterns:
-        assert (
-            pattern in files_str
-        ), f"Installer manifest must include {pattern} to ensure complete release"
+        assert pattern in files_str, (
+            f"Installer manifest must include {pattern} to ensure complete release"
+        )
 
 
 if __name__ == "__main__":

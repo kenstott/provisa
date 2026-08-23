@@ -262,6 +262,7 @@ class IsolatedServer:
             return ""
         self._stderr_file.flush()
         from pathlib import Path
+
         return Path(self._stderr_file.name).read_text(errors="replace")
 
     def stop_process(self) -> None:

@@ -118,7 +118,9 @@ def test_a_built_check_is_the_same_object_the_parser_reads_back():
     contract = yaml.safe_dump(
         {
             "dataset": "provisa/sales/orders",
-            "columns": [{"name": "order_id", "checks": [{"duplicate": yaml.safe_load(definition)}]}],
+            "columns": [
+                {"name": "order_id", "checks": [{"duplicate": yaml.safe_load(definition)}]}
+            ],
         }
     )
     assert [(c["column_name"], c["check_type"]) for c in contract_checks(contract, "soda")] == [

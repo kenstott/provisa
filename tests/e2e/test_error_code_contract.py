@@ -58,9 +58,7 @@ class TestApiErrorWireFormat:
         uncompilable email rule is refused before anything is written."""
         me = await client.get("/auth/me")
         org_id = me.json()["active_org_id"]
-        resp = await client.patch(
-            f"/admin/orgs/{org_id}/settings", json={"email_rule": "("}
-        )
+        resp = await client.patch(f"/admin/orgs/{org_id}/settings", json={"email_rule": "("})
         assert resp.status_code == 400, resp.text
         body = resp.json()
         assert set(body) == {"detail", "code", "params"}

@@ -38,7 +38,8 @@ def make_table(
         "schema": schema,
         "table": table,
         "governance": governance,
-        "columns": columns or [
+        "columns": columns
+        or [
             {"name": "id", "visible_to": ["admin", "analyst"]},
             {"name": "customer_id", "visible_to": ["admin", "analyst"]},
             {"name": "amount", "visible_to": ["admin"]},

@@ -59,9 +59,7 @@ def _admin_pool():
 
 async def _storage_url_set(org_id: str) -> bool:
     async with _admin_pool().acquire() as conn:
-        result = await conn.execute_core(
-            select(orgs.c.storage_url_enc).where(orgs.c.id == org_id)
-        )
+        result = await conn.execute_core(select(orgs.c.storage_url_enc).where(orgs.c.id == org_id))
         row = result.fetchone()
     if row is None:
         raise ApiError(404, "org_storage.org_not_found", f"org {org_id!r} not found", org=org_id)

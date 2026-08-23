@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "לא ניתן למחוק תפקידי מערכת",
-      "cannot_modify_system": "לא ניתן לשנות תפקידי מערכת",
+      "cannot_modify_administrative": "לא ניתן לשנות תפקידי ניהול",
       "not_found": "התפקיד לא נמצא",
       "org_selection_required": "נדרשת בחירת ארגון"
     },

@@ -437,9 +437,10 @@ def test_collibra_addresses_every_asset_by_name_inside_its_domain(rows):
 
 def test_collibra_relates_each_asset_to_its_parent(rows):
     by_name = {row["name"]: row for row in rows}
-    assert by_name[f"{ORDERS}.ssn"]["relations"][f"{COLUMN_TO_TABLE_RELATION}:TARGET"][0][
-        "name"
-    ] == ORDERS
+    assert (
+        by_name[f"{ORDERS}.ssn"]["relations"][f"{COLUMN_TO_TABLE_RELATION}:TARGET"][0]["name"]
+        == ORDERS
+    )
     assert by_name[ORDERS]["relations"][f"{TABLE_TO_DATABASE_RELATION}:TARGET"][0]["name"] == "wh"
 
 
@@ -509,9 +510,7 @@ async def test_collibra_publish_pins_replace_actions_on_the_import_job(snapshot,
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
     monkeypatch.setattr(httpx.AsyncClient, "get", _get)
     export = CollibraExport(
-        MetadataExportConfig(
-            enabled=True, provider="collibra", endpoint="https://collibra.example"
-        )
+        MetadataExportConfig(enabled=True, provider="collibra", endpoint="https://collibra.example")
     )
     result = await export.publish(snapshot)
     assert result.ok

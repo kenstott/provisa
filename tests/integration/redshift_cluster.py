@@ -283,7 +283,10 @@ def redshift_cluster():
     )
     prior = {k: os.environ.get(k) for k in _ENV_KEYS}
     try:
-        print(f"== provisioning workgroup {workgroup} ({_BASE_CAPACITY_RPU} RPU, public) ==", flush=True)
+        print(
+            f"== provisioning workgroup {workgroup} ({_BASE_CAPACITY_RPU} RPU, public) ==",
+            flush=True,
+        )
         rss.create_workgroup(
             workgroupName=workgroup,
             namespaceName=namespace,

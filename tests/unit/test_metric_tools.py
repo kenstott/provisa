@@ -250,4 +250,9 @@ def test_metric_flight_info_shape():
     assert names == ["region", "month", "value"]
     assert info.schema.metadata[b"metric"] == b"net_revenue"
     assert info.schema.metadata[b"description"] == b"Net revenue"
-    assert [p.decode() for p in info.descriptor.path] == ["metrics", "net_revenue", "region", "month"]
+    assert [p.decode() for p in info.descriptor.path] == [
+        "metrics",
+        "net_revenue",
+        "region",
+        "month",
+    ]

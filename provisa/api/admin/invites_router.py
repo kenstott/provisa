@@ -70,7 +70,9 @@ async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
             )
         )
         if result.fetchone() is None:
-            raise ApiError(403, "invites.not_org_member", f"Not a member of {org_id}", org_id=org_id)
+            raise ApiError(
+                403, "invites.not_org_member", f"Not a member of {org_id}", org_id=org_id
+            )
 
 
 class CreateInviteBody(BaseModel):
@@ -318,7 +320,5 @@ async def revoke_invite(token: str, request: Request):  # REQ-516
         result = await conn.execute_core(stmt.returning(org_invites.c.token))
         row = result.fetchone()
     if row is None:
-        raise ApiError(
-            404, "invites.invite_not_found_or_used", "Invite not found or already used"
-        )
+        raise ApiError(404, "invites.invite_not_found_or_used", "Invite not found or already used")
     return {"revoked": token}

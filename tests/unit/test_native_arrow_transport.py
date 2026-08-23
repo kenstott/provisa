@@ -159,7 +159,9 @@ def test_bigquery_run_arrow_stream_is_lazy():
 def test_mssql_run_arrow_stream_is_lazy(monkeypatch):
     from provisa.federation import mssql_warehouse_runtime as mod
 
-    monkeypatch.setattr(mod, "_ARROW_CHUNK_ROWS", 2)  # small chunks to exercise multi-fetch on 5 rows
+    monkeypatch.setattr(
+        mod, "_ARROW_CHUNK_ROWS", 2
+    )  # small chunks to exercise multi-fetch on 5 rows
 
     class _Cursor:
         def __init__(self) -> None:
@@ -235,7 +237,9 @@ def test_databricks_run_sync_streams_lazily():
 
         def fetchmany_arrow(self, size):
             self.fetch_calls += 1
-            return self._chunks.pop(0) if self._chunks else pa.table({"n": pa.array([], pa.int64())})
+            return (
+                self._chunks.pop(0) if self._chunks else pa.table({"n": pa.array([], pa.int64())})
+            )
 
         def fetchall_arrow(self):
             raise AssertionError("run_sync materialized the full result — not streaming")

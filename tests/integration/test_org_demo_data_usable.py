@@ -197,9 +197,7 @@ async def _poll_ready(client: AsyncClient, org_id: str) -> dict:
 
 
 async def _admin_gql(client: AsyncClient, query: str) -> dict:
-    resp = await client.post(
-        "/admin/graphql", json={"query": query}, headers=_headers("creator")
-    )
+    resp = await client.post("/admin/graphql", json={"query": query}, headers=_headers("creator"))
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert not body.get("errors"), body["errors"]

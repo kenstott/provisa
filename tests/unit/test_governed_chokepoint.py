@@ -61,15 +61,22 @@ def test_stamp_mint_is_valid_and_forgery_is_not():
 async def test_execute_plan_refuses_unstamped_plan():
     """An attacker/side-door that assembles a plan and calls the terminal directly is
     rejected — governed data cannot egress around the pipeline."""
-    plan = _Plan(route=Route.ENGINE, sql="SELECT 1", source_id="pg", dialect="trino",
-                 physical_sql="SELECT 1")  # no stamp — not produced by the pipeline top
+    plan = _Plan(
+        route=Route.ENGINE, sql="SELECT 1", source_id="pg", dialect="trino", physical_sql="SELECT 1"
+    )  # no stamp — not produced by the pipeline top
     with pytest.raises(PermissionError, match="ungoverned plan"):
         await _pipeline._execute_plan(plan, state=object())
 
 
 async def test_execute_plan_refuses_forged_stamp():
-    plan = _Plan(route=Route.ENGINE, sql="SELECT 1", source_id="pg", dialect="trino",
-                 physical_sql="SELECT 1", stamp="f" * 64)
+    plan = _Plan(
+        route=Route.ENGINE,
+        sql="SELECT 1",
+        source_id="pg",
+        dialect="trino",
+        physical_sql="SELECT 1",
+        stamp="f" * 64,
+    )
     with pytest.raises(PermissionError, match="ungoverned plan"):
         await _pipeline._execute_plan(plan, state=object())
 
@@ -85,8 +92,14 @@ async def test_execute_plan_accepts_pipeline_minted_plan():
     class _FakeState:
         federation_engine = _FakeEngine()
 
-    plan = _Plan(route=Route.ENGINE, sql="SELECT 1", source_id="pg", dialect="trino",
-                 physical_sql="SELECT 1", stamp=_mint_stamp())
+    plan = _Plan(
+        route=Route.ENGINE,
+        sql="SELECT 1",
+        source_id="pg",
+        dialect="trino",
+        physical_sql="SELECT 1",
+        stamp=_mint_stamp(),
+    )
     result = await _pipeline._execute_plan(plan, state=_FakeState())
     assert result.rows == [(1,)]
 
@@ -123,7 +136,9 @@ def test_direct_engine_execution_verifies_the_stamp():
     """require_governed_plan is the shared last-moment gate: it rejects an un-minted plan and admits a
     pipeline-minted one. _execute_plan is not the only terminal — the Arrow/streaming sinks call this
     directly before executing plan SQL, so no terminal can run an ungoverned plan (REQ-1176)."""
-    unstamped = _Plan(route=Route.ENGINE, sql="x", source_id="pg", dialect="trino", physical_sql="x")
+    unstamped = _Plan(
+        route=Route.ENGINE, sql="x", source_id="pg", dialect="trino", physical_sql="x"
+    )
     with pytest.raises(PermissionError, match="ungoverned plan"):
         require_governed_plan(unstamped)
     unstamped.stamp = "f" * 64

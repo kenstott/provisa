@@ -32,9 +32,7 @@ FILTERED_SELECT = {
             }
         }
     """,
-    "expected_sql": (
-        'SELECT "id", "amount" FROM "public"."orders" WHERE "region" = $1'
-    ),
+    "expected_sql": ('SELECT "id", "amount" FROM "public"."orders" WHERE "region" = $1'),
     "params": ["us-east"],
 }
 
@@ -68,7 +66,6 @@ PAGINATED_SELECT = {
         }
     """,
     "expected_sql": (
-        'SELECT "id", "amount" FROM "public"."orders"'
-        ' ORDER BY "created_at" DESC LIMIT 10 OFFSET 20'
+        'SELECT "id", "amount" FROM "public"."orders" ORDER BY "created_at" DESC LIMIT 10 OFFSET 20'
     ),
 }

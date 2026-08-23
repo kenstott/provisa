@@ -232,6 +232,23 @@ async def source_limit_for_org(state: Any, org_id: str | None) -> tuple[int, str
     return await plugin.source_limit_for_org(state, org_id)
 
 
+async def environment_limit_for_org(state: Any, org_id: str | None) -> tuple[int, str] | None:
+    """The ``(max_environments, plan)`` a plan admits for ``org_id``, or None when nothing bounds it.
+
+    REQ-1523: an environment is a schema of its own (REQ-1488), so an unbounded count is unbounded
+    schemas — the short-lived per-developer environments an org actually creates accumulate until
+    nothing reaps them. The ceiling counts ``prod`` with the rest: it is a schema like any other,
+    and a plan admitting one environment admits the one every org already has.
+
+    None on a self-hosted deployment and for an id with no ``orgs`` row, for the reason
+    :func:`source_limit_for_org` returns None there — no subscription, so no ceiling.
+    """
+    plugin = load()
+    if plugin is None:
+        return None
+    return await plugin.environment_limit_for_org(state, org_id)
+
+
 # --- trial eligibility ----------------------------------------------------------------------- #
 
 

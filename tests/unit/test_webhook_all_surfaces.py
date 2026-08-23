@@ -124,7 +124,9 @@ async def test_invoke_tracked_function_routes_webhook_over_http(monkeypatch):
     monkeypatch.setattr(action_exec.httpx, "AsyncClient", _Client)
 
     # positional args, as pgwire/bolt pass them — the shared executor resolves the webhook
-    rows = await invoke_tracked_function("add_pet", {"a0": "Rex", "a1": "available"}, _state(), "admin")
+    rows = await invoke_tracked_function(
+        "add_pet", {"a0": "Rex", "a1": "available"}, _state(), "admin"
+    )
 
     assert rows == [{"id": 7, "name": "Rex"}]  # dict response normalized to one row
     assert captured["method"] == "POST"
@@ -194,9 +196,7 @@ def test_callable_field_applies_naming_convention(convention, expected):
             webhooks=[_webhook()],
             domain_prefix=True,
         )
-        _query, mutation = _build_action_fields(
-            si, {}, [], domain_alias_map={"pet-store": "ps"}
-        )
+        _query, mutation = _build_action_fields(si, {}, [], domain_alias_map={"pet-store": "ps"})
         assert expected in mutation
         assert "ps__add_pet" not in mutation or convention == "hasura_graphql"
     finally:

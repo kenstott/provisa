@@ -105,7 +105,9 @@ def test_google_sheets_read_through_duckdb_engine():
     # fast; set PROVISA_GSHEETS_LIVE=1 (with GOOGLE_APPLICATION_CREDENTIALS granting Sheets+Drive and
     # a gsheets extension that accepts a key_file service-account secret) to run it live.
     if not os.environ.get("PROVISA_GSHEETS_LIVE"):
-        pytest.skip("set PROVISA_GSHEETS_LIVE=1 to run the live DuckDB gsheets read (see docstring)")
+        pytest.skip(
+            "set PROVISA_GSHEETS_LIVE=1 to run the live DuckDB gsheets read (see docstring)"
+        )
     if not _FIXTURE_SHEET_ID:
         pytest.skip(
             "GSHEETS_TEST_SHEET_ID not set — provision a Drive sheet (header id,name + Widget A/B/C) "

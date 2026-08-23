@@ -246,8 +246,9 @@ async def test_the_write_is_attributed_to_the_caller(surface):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("handler_name", ["set_metadata_export", "check_metadata_export",
-                                          "publish_metadata_export"])
+@pytest.mark.parametrize(
+    "handler_name", ["set_metadata_export", "check_metadata_export", "publish_metadata_export"]
+)
 async def test_every_operating_handler_refuses_an_unentitled_org(surface, handler_name):
     """REQ-1073: hiding the tab is not the gate — the endpoints are."""
     import provisa.api.admin.metadata_export_router as mod
@@ -364,9 +365,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
 
     assert body["ok"] is False
     assert body["total_published"] == 2
-    assert body["errors"] == [
-        {"asset": "wh.public.orders", "message": "422 unknown field type"}
-    ]
+    assert body["errors"] == [{"asset": "wh.public.orders", "message": "422 unknown field type"}]
     # The tab shows the last outcome without re-publishing to find out what it was.
     assert (await get_metadata_export(_request()))["last_publish"]["errors"] == body["errors"]
 

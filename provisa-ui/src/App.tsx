@@ -534,6 +534,7 @@ function App() {
                               [
                                 ["/admin/overview", "observability"],
                                 ["/admin/domains", "org_settings"],
+              ["/admin/environments", "org_settings"],
                                 ["/admin/cache", "org_settings"],
                                 ["/admin/scheduled-tasks", "org_settings"],
                                 ["/admin/federation-engine", "platform_settings"],

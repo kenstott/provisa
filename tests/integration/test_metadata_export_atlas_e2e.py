@@ -134,7 +134,9 @@ async def test_every_governed_table_and_column_lands_in_the_catalog(published):
 async def test_governance_signals_arrive_as_atlas_classifications(published):
     ssn = await _entity("provisa_column", f"wh.public.orders.ssn@{CLUSTER}")
     masked = next(c for c in ssn["classifications"] if c["typeName"] == "provisa_masked")
-    assert masked["attributes"]["ruleId"] == "mask:provisa://acme/sales/tables/orders#field:ssn:regex"
+    assert (
+        masked["attributes"]["ruleId"] == "mask:provisa://acme/sales/tables/orders#field:ssn:regex"
+    )
     assert masked["attributes"]["exemptRoles"] == ["admin"]
     assert masked["attributes"]["restrictedRoles"] == ["analyst"]
 

@@ -100,9 +100,7 @@ async def read_branding_logo(request: Request):  # REQ-1486
     assert state.admin_db is not None
     async with state.admin_db.acquire() as conn:
         result = await conn.execute_core(
-            select(orgs.c.branding_logo, orgs.c.branding_logo_media_type).where(
-                orgs.c.id == org_id
-            )
+            select(orgs.c.branding_logo, orgs.c.branding_logo_media_type).where(orgs.c.id == org_id)
         )
         row = result.fetchone()
     if row is None or row._mapping["branding_logo"] is None:

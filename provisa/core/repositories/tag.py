@@ -213,8 +213,7 @@ async def param_value_assignment_count(conn: "Connection", tag_id: str, value: s
 async def delete_param_value(conn: "Connection", tag_id: str, value: str) -> bool:
     result = await conn.execute_core(
         _delete(tag_param_values).where(
-            (tag_param_values.c.tag_id == base_tag_id(tag_id))
-            & (tag_param_values.c.value == value)
+            (tag_param_values.c.tag_id == base_tag_id(tag_id)) & (tag_param_values.c.value == value)
         )
     )
     return (result.rowcount or 0) > 0

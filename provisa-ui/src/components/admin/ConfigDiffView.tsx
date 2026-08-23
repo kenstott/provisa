@@ -20,6 +20,14 @@ interface ConfigDiffViewProps {
   current: string;
   /** Fires with the edited right-side doc as chunks are reverted or edited. */
   onCurrentChange?: (doc: string) => void;
+  /**
+   * REQ-1524: compare two refs of the repository without offering to change either.
+   *
+   * Both sides of a repository diff are history — the right one is a commit that has already been
+   * made, not a draft — so the editable side and the revert arrows would offer an edit that has
+   * nowhere to go. This is the same view with those two affordances withheld.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -28,7 +36,12 @@ interface ConfigDiffViewProps {
  * is the per-line/per-chunk undo. The right side is editable; onCurrentChange reports the revised doc
  * (what an "apply" would upload).
  */
-export function ConfigDiffView({ original, current, onCurrentChange }: ConfigDiffViewProps) {
+export function ConfigDiffView({
+  original,
+  current,
+  onCurrentChange,
+  readOnly = false,
+}: ConfigDiffViewProps) {
   const host = useRef<HTMLDivElement>(null);
   // Kept in a ref so the MergeView effect below can stay mounted across renders: writing it during
   // render mutates a ref while React is rendering, so the write belongs in a commit-phase effect.
@@ -48,15 +61,17 @@ export function ConfigDiffView({ original, current, onCurrentChange }: ConfigDif
       },
       b: {
         doc: current,
-        extensions: [
-          lineNumbers(),
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged) changeRef.current?.(u.state.doc.toString());
-          }),
-        ],
+        extensions: readOnly
+          ? [lineNumbers(), EditorState.readOnly.of(true), EditorView.editable.of(false)]
+          : [
+              lineNumbers(),
+              EditorView.updateListener.of((u) => {
+                if (u.docChanged) changeRef.current?.(u.state.doc.toString());
+              }),
+            ],
       },
       // Center revert arrows apply an original chunk onto the current side (undo a change).
-      revertControls: "a-to-b",
+      revertControls: readOnly ? undefined : "a-to-b",
       highlightChanges: true,
       gutter: true,
       collapseUnchanged: { margin: 3, minSize: 4 },
@@ -82,7 +97,7 @@ export function ConfigDiffView({ original, current, onCurrentChange }: ConfigDif
       unlink.forEach((fn) => fn());
       view.destroy();
     };
-  }, [original, current]);
+  }, [original, current, readOnly]);
 
   return <div ref={host} className="config-diff" data-testid="config-diff" />;
 }

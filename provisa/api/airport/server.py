@@ -190,7 +190,10 @@ class ProvisaAirportServer(
                 continue
             if not self._state.source_pools.has(meta.source_id):
                 continue  # internal/system source (meta/otel/results/iceberg) — not user data
-            if self._state.source_types.get(meta.source_id) == "kafka" or meta.source_type == "kafka":
+            if (
+                self._state.source_types.get(meta.source_id) == "kafka"
+                or meta.source_type == "kafka"
+            ):
                 continue  # streaming source — not a static scan (out of read-MVP scope)
             schema = domain_to_sql_name(meta.domain_id) or "default"
             table = semantic_table_name(meta)
@@ -455,9 +458,7 @@ class ProvisaAirportServer(
                     "is_default": False,
                 }
             )
-        return wire.build_list_schemas_response(
-            schema_payloads, _CATALOG_VERSION, is_fixed=True
-        )
+        return wire.build_list_schemas_response(schema_payloads, _CATALOG_VERSION, is_fixed=True)
 
     def _descriptor_path(self, req: dict[str, Any]) -> tuple[str, str]:
         desc_bytes = req.get("descriptor")
@@ -495,13 +496,18 @@ class ProvisaAirportServer(
         if where or columns:
             log.info(
                 "airport pushdown scan role=%s %s.%s columns=%s where=%s",
-                role_id, schema, table, columns, where,
+                role_id,
+                schema,
+                table,
+                columns,
+                where,
             )
         ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]
             self._ticket_json(schema, table, columns=columns, where=where)
         )
         endpoint = flight.FlightEndpoint(  # pyright: ignore[reportPrivateImportUsage]
-            ticket, [flight.Location(self._location)]  # pyright: ignore[reportPrivateImportUsage]
+            ticket,
+            [flight.Location(self._location)],  # pyright: ignore[reportPrivateImportUsage]
         )
         return wire.build_endpoints_response([endpoint.serialize()])
 
@@ -535,9 +541,7 @@ class ProvisaAirportServer(
             self._upsert_domain(str(name), comment or ""), self._main_loop
         ).result()
         serialized, sha256 = wire.serialize_schema_contents([])
-        return wire._encode(
-            {"sha256": sha256, "url": None, "serialized": wire._Str(serialized)}
-        )
+        return wire._encode({"sha256": sha256, "url": None, "serialized": wire._Str(serialized)})
 
     def _do_drop_schema(self, context: flight.ServerCallContext, body: bytes) -> None:  # pyright: ignore[reportPrivateImportUsage]
         role_id = self._role(context)
@@ -608,9 +612,7 @@ class ProvisaAirportServer(
 
         source_id, domain_id, phys_schema = self._resolve_writable_target(role_id, schema)
         asyncio.run_coroutine_threadsafe(
-            self._create_and_register_table(
-                source_id, domain_id, phys_schema, table, columns
-            ),
+            self._create_and_register_table(source_id, domain_id, phys_schema, table, columns),
             self._main_loop,
         ).result()
         # airport create_table response = the new table's FlightInfo protobuf (matches airport-go
@@ -678,18 +680,14 @@ class ProvisaAirportServer(
         # Physical create in the writable source via the store write face — the SAME primitive CTAS
         # uses to create a table in a writable relational source (not a parallel DDL path).
         dsn = _source_sqlalchemy_dsn(app_state, source_id)
-        await store_writer.ensure_table(
-            dsn, schema=phys_schema, table=table, columns=columns
-        )
+        await store_writer.ensure_table(dsn, schema=phys_schema, table=table, columns=columns)
 
         # Register in the governed model (schema-mutation core: table_repo.upsert + rebuild) so the
         # one catalog serves it. Columns are visible+writable to every role — a create_table author
         # publishes an open governed table; governance can be tightened afterward via the admin API.
         all_roles = list(self._state.roles.keys()) or ["admin"]
         col_models = [
-            ColumnModel(
-                name=name, data_type=ir_type, visible_to=all_roles, writable_by=all_roles
-            )
+            ColumnModel(name=name, data_type=ir_type, visible_to=all_roles, writable_by=all_roles)
             for name, ir_type in columns
         ]
         model = TableModel(
@@ -718,9 +716,7 @@ class ProvisaAirportServer(
             raise _err(f"airport: descriptor path must be [schema, table], got {path}")
         return self._flight_info_for(role_id, path[0], path[1])
 
-    def _flight_info_for(
-        self, role_id: str, schema: str, table: str
-    ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]
+    def _flight_info_for(self, role_id: str, schema: str, table: str) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]
         sql_ref = self._lookup(role_id, schema, table)
         base = self._base_schema_cached(role_id, schema, table, sql_ref)
         pk = self._pk_for(role_id, schema, table)
@@ -768,9 +764,7 @@ class ProvisaAirportServer(
             if where:
                 sql += f" WHERE {where}"
             _trace_pushdown(sql)
-            _, batch_gen = governed_table_scan_stream(
-                self._state, self._main_loop, sql, role_id
-            )
+            _, batch_gen = governed_table_scan_stream(self._state, self._main_loop, sql, role_id)
 
         # Stream each governed batch reshaped to the FULL advertised schema (the airport contract:
         # DuckDB planned against the flight_info schema and projects client-side; a narrowed stream
@@ -780,9 +774,7 @@ class ProvisaAirportServer(
         out_gen = self._reshape_batches(batch_gen, base, pk)
         return flight.GeneratorStream(advertised, out_gen)  # pyright: ignore[reportPrivateImportUsage]
 
-    def _reshape_batches(
-        self, batch_gen: Any, base: pa.Schema, pk: list[str]
-    ) -> Any:
+    def _reshape_batches(self, batch_gen: Any, base: pa.Schema, pk: list[str]) -> Any:
         """Yield each streamed RecordBatch padded to ``base`` (+ per-batch rowid when PK) — the
         streaming analogue of _pad_to_schema + _append_rowid, one batch in memory at a time."""
         for batch in batch_gen:
@@ -817,9 +809,7 @@ class ProvisaAirportServer(
             return
         raise _err(f"airport: unsupported do_exchange operation {operation!r}")
 
-    def _do_exchange_insert(
-        self, role_id: str, schema: str, table: str, reader, writer
-    ) -> None:
+    def _do_exchange_insert(self, role_id: str, schema: str, table: str, reader, writer) -> None:
         # Gate on the target engine/source being writable — engine-agnostic (writable.py), never a
         # Trino/duckdb hardcode. A read-only source yields a correct protocol error.
         from provisa.executor.writable import is_writable_on
@@ -934,12 +924,10 @@ class ProvisaAirportServer(
         total = 0
         for row, pk_vals in zip(rows, pk_tuples):
             assignments = ", ".join(f'"{c}" = {_sql_literal(row[c])}' for c in set_cols)
-            where = " AND ".join(
-                f'"{col}" = {_sql_literal(val)}' for col, val in zip(pk, pk_vals)
-            )
+            where = " AND ".join(f'"{col}" = {_sql_literal(val)}' for col, val in zip(pk, pk_vals))
             sql = (
                 f'UPDATE "{schema}"."{table}" SET {assignments} WHERE {where} '
-                f'RETURNING {", ".join(chr(34) + c + chr(34) for c in pk)}'
+                f"RETURNING {', '.join(chr(34) + c + chr(34) for c in pk)}"
             )
             total += governed_mutation(self._state, self._main_loop, sql, role_id)
         return total

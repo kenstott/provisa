@@ -51,7 +51,7 @@
     <section class="hero">
       <div class="container hero-inner">
         <span class="hero-badge"><span class="hero-badge-dot"></span>In preview — general availability coming soon</span>
-        <h1>Query all your data<br />in 3 languages and 9 protocols.<br />In 5 minutes.</h1>
+        <h1>Query all your data<br />in 3 languages in any tool.<br />In 5 minutes.</h1>
         <p class="lead">
           Connect your databases once. Then query them in <strong>GraphQL, SQL, or
           Cypher</strong> — from psql, Tableau, Neo4j Browser, or an AI agent. Governance
@@ -225,6 +225,7 @@
           trail itself, at query time, on every protocol.
         </p>
         <a class="more" href="/why/active-semantic-layer">Active vs. passive — what the word has to mean</a>
+        <a class="more" href="/why/no-lock-in#promote-config">Every change is versioned — promotion is a simple patch</a>
       </div>
     </section>
 
@@ -261,14 +262,15 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Query interfaces &amp; wire protocols</p>
-          <h2>Write in three languages. Connect over nine protocols.</h2>
+          <h2>Write in three languages. Connect your way.</h2>
           <p class="section-sub">
-            From columnar Arrow batches streamed over gRPC to plain HTTP JSON — pick the
-            transport your workload actually wants. Each of these exists for a reason: a
-            BI extract is not a dashboard poll is not a service-to-service call, and the
-            right wire for one is the wrong wire for the next. The query language and the
-            wire protocol are independent choices, and the same governance reaches every
-            entry point.
+            Transport, language, and interface contract are three independent choices,
+            not one bundled "protocol." The transport moves the bytes — HTTP, gRPC, a
+            native driver. The language is what you write — SQL, GraphQL, Cypher. The
+            interface contract is what your tooling expects — JDBC, JSON:API, a typed
+            gRPC schema. Which combination fits is a function of your tooling
+            constraints and performance requirements, not a rule fixed here — and the
+            same governance reaches every combination.
           </p>
         </header>
 
@@ -278,50 +280,53 @@
           <div class="lang"><h4>Cypher</h4><p>Graph traversals over the same federated model, under identical governance.</p></div>
         </div>
 
-        <div class="iface-matrix">
-          <div class="iface-row">
-            <div class="iface-cat">
-              <h4>Relational &amp; BI</h4>
-              <p class="iface-use">Tableau, Power BI, DBeaver, psql, and local analytical engines.</p>
+        <details class="proto-expand">
+          <summary>See how this works for your use case</summary>
+          <div class="iface-matrix">
+            <div class="iface-row">
+              <div class="iface-cat">
+                <h4>Relational &amp; BI</h4>
+                <p class="iface-use">Tableau, Power BI, DBeaver, psql, and local analytical engines.</p>
+              </div>
+              <ul class="iface-list">
+                <li><strong>pgwire</strong> — any Postgres client on port 5439; <code>pg_catalog</code> is answered in-memory, so schema browsers just work.</li>
+                <li><strong>JDBC &amp; REST</strong> — the BI tools over JDBC; JSON:API 1.1 for applications.</li>
+                <li><strong>Airport (DuckDB)</strong> — any DuckDB client attaches Provisa as a database and pushes filters down.</li>
+              </ul>
             </div>
-            <ul class="iface-list">
-              <li><strong>pgwire</strong> — any Postgres client on port 5439; <code>pg_catalog</code> is answered in-memory, so schema browsers just work.</li>
-              <li><strong>JDBC &amp; REST</strong> — the BI tools over JDBC; JSON:API 1.1 for applications.</li>
-              <li><strong>Airport (DuckDB)</strong> — any DuckDB client attaches Provisa as a database and pushes filters down.</li>
-            </ul>
-          </div>
-          <div class="iface-row">
-            <div class="iface-cat">
-              <h4>Graph &amp; search</h4>
-              <p class="iface-use">Neo4j Browser and Bloom, plus application-side traversals.</p>
+            <div class="iface-row">
+              <div class="iface-cat">
+                <h4>Graph &amp; search</h4>
+                <p class="iface-use">Neo4j Browser and Bloom, plus application-side traversals.</p>
+              </div>
+              <ul class="iface-list">
+                <li><strong>Bolt</strong> — the Neo4j tools and official drivers run Cypher against the federated graph.</li>
+                <li><strong>GraphQL over HTTP</strong> — the same per-role schema every other surface enforces.</li>
+              </ul>
             </div>
-            <ul class="iface-list">
-              <li><strong>Bolt</strong> — the Neo4j tools and official drivers run Cypher against the federated graph.</li>
-              <li><strong>GraphQL over HTTP</strong> — the same per-role schema every other surface enforces.</li>
-            </ul>
-          </div>
-          <div class="iface-row">
-            <div class="iface-cat">
-              <h4>High-performance data</h4>
-              <p class="iface-use">Columnar streaming, microservices, zero-serialization ML.</p>
+            <div class="iface-row">
+              <div class="iface-cat">
+                <h4>High-performance data</h4>
+                <p class="iface-use">Columnar streaming, microservices, zero-serialization ML — narrower cases, not the common path.</p>
+              </div>
+              <ul class="iface-list">
+                <li><strong>Arrow Flight</strong> — Arrow record batches over gRPC, columnar all the way out. Accepts GraphQL or SQL.</li>
+                <li><strong>gRPC model API</strong> — a <code>.proto</code> generated from your schema; typed query and insert RPCs per table.</li>
+                <li><strong>WebSocket &amp; SSE</strong> — subscriptions stream change events: Postgres native, MongoDB native, CDC, or polling.</li>
+              </ul>
             </div>
-            <ul class="iface-list">
-              <li><strong>Arrow Flight</strong> — Arrow record batches over gRPC, columnar all the way out. Accepts GraphQL or SQL.</li>
-              <li><strong>gRPC model API</strong> — a <code>.proto</code> generated from your schema; typed query and insert RPCs per table.</li>
-              <li><strong>WebSocket &amp; SSE</strong> — subscriptions stream change events: Postgres native, MongoDB native, CDC, or polling.</li>
-            </ul>
-          </div>
-          <div class="iface-row">
-            <div class="iface-cat">
-              <h4>AI &amp; automation</h4>
-              <p class="iface-use">Agentic tool calls and LLM-driven query generation.</p>
+            <div class="iface-row">
+              <div class="iface-cat">
+                <h4>AI &amp; automation</h4>
+                <p class="iface-use">Agentic tool calls and LLM-driven query generation.</p>
+              </div>
+              <ul class="iface-list">
+                <li><strong>MCP server</strong> — agents query your governed data as tools. The OAuth token maps to a role, so agents get no bypass.</li>
+                <li><strong>Natural language</strong> — NL→SQL, Cypher, or GraphQL powered by Claude, with a validation loop before anything runs.</li>
+              </ul>
             </div>
-            <ul class="iface-list">
-              <li><strong>MCP server</strong> — agents query your governed data as tools. The OAuth token maps to a role, so agents get no bypass.</li>
-              <li><strong>Natural language</strong> — NL→SQL, Cypher, or GraphQL powered by Claude, with a validation loop before anything runs.</li>
-            </ul>
           </div>
-        </div>
+        </details>
 
         <a class="more" href="/why/interfaces">Every interface in detail</a>
 
@@ -528,7 +533,7 @@
       <div class="container dist-inner">
         <div class="dist-copy">
           <p class="eyebrow">Enterprise-ready</p>
-          <h2>Airgap-ready. Installs from your own Artifactory.</h2>
+          <h2>Airgap-ready. Install from PyPI.</h2>
           <p class="section-sub">
             The embedded profile ships the entire runnable system — precompiled UI and all
             — as a single Python wheel. Regulated and airgapped orgs already trust

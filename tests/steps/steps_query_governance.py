@@ -84,7 +84,9 @@ async def audit_pool(shared_data):
     # sole legitimate external-absence case; every default/e2e lane provisions docker, so this scenario
     # RUNS live there instead of skipping on the never-set PROVISA_INTEGRATION flag.
     if os.getenv("PYTEST_NO_DOCKER"):
-        pytest.skip("no docker stack (PYTEST_NO_DOCKER) — REQ-613 audit log needs the core Postgres")
+        pytest.skip(
+            "no docker stack (PYTEST_NO_DOCKER) — REQ-613 audit log needs the core Postgres"
+        )
     org_id = "default"
     engine = create_engine(
         host=os.environ["PG_HOST"],

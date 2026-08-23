@@ -33,6 +33,24 @@ import { isEngineProbePath, noteRequestEnd, noteRequestStart } from "./engineWak
 // unconditionally.
 export const ORG_HEADER = "X-Org-Provisa";
 
+// REQ-1487: the ENVIRONMENT rides along by the same argument as the org — one interceptor rather
+// than a header threaded through every call site. A request that names no environment is served
+// `prod` (provisa/api/env_routing.py), so the header is attached only while a branch is selected,
+// and clearing the selection is deleting the key rather than sending "prod".
+//
+// It is attached whether or not there is a bearer, unlike the org: a deployment with auth disabled
+// branches its model exactly as an authenticated one does, and gating this on a token would pin
+// every such deployment to prod with no way to say otherwise.
+export const ENV_HEADER = "X-Provisa-Env";
+
+/** Where the selected environment is kept. Per-browser, like the active org. */
+export const ENV_STORAGE_KEY = "provisa_env";
+
+/** The environment the next request will name, or null for prod. */
+export function selectedEnv(): string | null {
+  return localStorage.getItem(ENV_STORAGE_KEY);
+}
+
 /**
  * REQ-1434: the bearer to put on the next request.
  *
@@ -47,6 +65,35 @@ export async function currentBearer(): Promise<string | null> {
   const live = await currentFirebaseToken();
   if (live !== null) return live;
   return storedToken();
+}
+
+/** The error code the server answers a request naming an environment it does not have (REQ-1487). */
+const UNKNOWN_ENV_CODE = "env.unknown";
+
+/**
+ * REQ-1487: drop a stored environment the server no longer has, from wherever the 404 landed.
+ *
+ * EnvSwitcher repairs the same stale name, but only once it has rendered — and it cannot render
+ * when the stale header is on `/setup/status`, whose 404 stops the app before any of it mounts.
+ * The browser is then wedged on a deleted branch with no affordance to leave it. Repairing at the
+ * one place every request already passes through covers that case and every other one.
+ *
+ * Only THIS error clears the key. A 404 is otherwise an ordinary answer (a missing table, a
+ * deleted org), and a body that is not this JSON object is not evidence about the environment at
+ * all — hence the shape check rather than the status alone.
+ */
+async function repairStaleEnv(res: Response): Promise<void> {
+  if (res.status !== 404) return;
+  let body: unknown;
+  try {
+    body = await res.clone().json();
+  } catch {
+    return; // not a JSON body, so not this error — every other 404 is left exactly as it is
+  }
+  const code = (body as { error?: { code?: unknown } })?.error?.code;
+  if (code !== UNKNOWN_ENV_CODE) return;
+  localStorage.removeItem(ENV_STORAGE_KEY);
+  window.location.reload();
 }
 
 /** Wrap window.fetch to attach `Authorization: Bearer <provisa_token>` to same-origin requests. */
@@ -99,15 +146,19 @@ export function installAuthFetch(): void {
 
     const token = await currentBearer();
     const orgId = localStorage.getItem("provisa_org");
-    if (!token || !sameOrigin) return sampled(input, init, sameOrigin, url);
+    const env = selectedEnv();
+    if (!sameOrigin || (!token && env === null)) return sampled(input, init, sameOrigin, url);
 
     // Merge onto whichever headers source applies: init overrides a Request's own headers.
     const headers = new Headers(
       init?.headers ?? (input instanceof Request ? input.headers : undefined),
     );
     // Do not clobber an explicit header (e.g. Apollo's authLink already set one).
-    if (!headers.has("authorization")) headers.set("Authorization", `Bearer ${token}`);
-    if (orgId && !headers.has(ORG_HEADER)) headers.set(ORG_HEADER, orgId);
-    return sampled(input, { ...init, headers }, sameOrigin, url);
+    if (token && !headers.has("authorization")) headers.set("Authorization", `Bearer ${token}`);
+    if (token && orgId && !headers.has(ORG_HEADER)) headers.set(ORG_HEADER, orgId);
+    if (env !== null && !headers.has(ENV_HEADER)) headers.set(ENV_HEADER, env);
+    const res = await sampled(input, { ...init, headers }, sameOrigin, url);
+    if (env !== null) await repairStaleEnv(res);
+    return res;
   };
 }

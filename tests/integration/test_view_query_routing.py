@@ -37,7 +37,9 @@ async def client():
 async def test_select_from_provisa_view_routes_through_engine(client):
     await client.post(
         "/admin/graphql",
-        json={"query": 'mutation { createDomain(input: { id: "vq", description: "x" }) { success } }'},
+        json={
+            "query": 'mutation { createDomain(input: { id: "vq", description: "x" }) { success } }'
+        },
     )
     reg = await client.post(
         "/admin/graphql",
@@ -59,7 +61,9 @@ async def test_select_from_provisa_view_routes_through_engine(client):
     )
     assert reg.json()["data"]["registerTable"]["success"], reg.text
     # Rebuild so the view enters view_sql_map (inline-expansion source).
-    rb = await client.post("/admin/graphql", json={"query": "mutation { rebuildSchemas { success } }"})
+    rb = await client.post(
+        "/admin/graphql", json={"query": "mutation { rebuildSchemas { success } }"}
+    )
     assert rb.json()["data"]["rebuildSchemas"]["success"], rb.text
 
     resp = await client.post(

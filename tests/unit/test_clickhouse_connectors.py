@@ -86,7 +86,7 @@ def test_mysql_database_engine_ddl():
 def test_sqlite_database_engine_ddl_from_path():  # REQ-1178
     d = ClickHouseSqliteConnector().details(_src("app", SourceType.sqlite, path="/data/app.db"))
     assert d["attach_ddl"] == [
-        'CREATE DATABASE IF NOT EXISTS "ch_app" ENGINE = SQLite(\'/data/app.db\')'
+        "CREATE DATABASE IF NOT EXISTS \"ch_app\" ENGINE = SQLite('/data/app.db')"
     ]
     assert d["local_schema"] == "ch_app"
     assert ClickHouseSqliteConnector().mechanism is Mechanism.ATTACH_RW
@@ -99,12 +99,17 @@ def test_sqlite_without_path_fails_loud():  # REQ-1178
 
 def test_hudi_lakehouse_engine_ddl_zero_copy():  # REQ-1178
     d = ClickHouseHudiConnector().details(
-        _src("lake", SourceType.hudi, path="s3://bucket/hudi_tbl",
-             federation_hints={"aws_key": "AK", "aws_secret": "SK"})
+        _src(
+            "lake",
+            SourceType.hudi,
+            path="s3://bucket/hudi_tbl",
+            federation_hints={"aws_key": "AK", "aws_secret": "SK"},
+        )
     )
     assert d == {
         "engine_clause": "Hudi('s3://bucket/hudi_tbl', 'AK', 'SK')",
-        "infer": True, "validate": True,
+        "infer": True,
+        "validate": True,
     }
     assert ClickHouseHudiConnector().mechanism is Mechanism.SCAN
     assert ClickHouseHudiConnector().reads_in_place is True

@@ -53,9 +53,9 @@ class TestMetaViewDdlSqliteCompat:
         # "CREATE OR REPLACE VIEW" — that syntax is PostgreSQL-only.
         for call in mock_conn.execute.await_args_list:
             ddl = call.args[0] if call.args else ""
-            assert not re.search(
-                r"CREATE\s+OR\s+REPLACE\s+VIEW", ddl, re.IGNORECASE
-            ), f"SQLite-incompatible DDL sent to conn.execute: {ddl[:120]!r}"
+            assert not re.search(r"CREATE\s+OR\s+REPLACE\s+VIEW", ddl, re.IGNORECASE), (
+                f"SQLite-incompatible DDL sent to conn.execute: {ddl[:120]!r}"
+            )
 
     @pytest.mark.asyncio
     async def test_seed_ops_domain_does_not_use_create_or_replace_view_on_sqlite(
@@ -82,9 +82,9 @@ class TestMetaViewDdlSqliteCompat:
 
         for call in mock_conn.execute.await_args_list:
             ddl = call.args[0] if call.args else ""
-            assert not re.search(
-                r"CREATE\s+OR\s+REPLACE\s+VIEW", ddl, re.IGNORECASE
-            ), f"SQLite-incompatible DDL sent to conn.execute: {ddl[:120]!r}"
+            assert not re.search(r"CREATE\s+OR\s+REPLACE\s+VIEW", ddl, re.IGNORECASE), (
+                f"SQLite-incompatible DDL sent to conn.execute: {ddl[:120]!r}"
+            )
 
     @pytest.mark.asyncio
     async def test_seed_meta_domain_uses_drop_then_create_on_sqlite(

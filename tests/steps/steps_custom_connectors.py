@@ -73,7 +73,9 @@ def _phys(source) -> str:
 # --------------------------------------------------------------------------- REQ-1177
 
 
-@given("an operator declares a custom source connector in config/custom_connectors.yaml with no code change")
+@given(
+    "an operator declares a custom source connector in config/custom_connectors.yaml with no code change"
+)
 def _declares(cc_ctx):
     cc_ctx["declared"] = True
 
@@ -108,8 +110,12 @@ def _duckdb_attach(cc_ctx, tmp_path, monkeypatch):
     rt = DuckDBFederationRuntime()
     cc_ctx["runtimes"].append(rt)
     src = SimpleNamespace(
-        id="lake", type=SimpleNamespace(value="ducklake"), schema_name="main",
-        table_name="events", path=str(cat), federation_hints={"data_path": str(data)},
+        id="lake",
+        type=SimpleNamespace(value="ducklake"),
+        schema_name="main",
+        table_name="events",
+        path=str(cat),
+        federation_hints={"data_path": str(data)},
     )
     rt.attach_source(src)
     cc_ctx["duckdb_attach"] = (rt, src)
@@ -152,14 +158,20 @@ def _duckdb_scan(cc_ctx, tmp_path, monkeypatch):
     rt = DuckDBFederationRuntime()
     cc_ctx["runtimes"].append(rt)
     src = SimpleNamespace(
-        id="sales", type=SimpleNamespace(value="excel"), schema_name="main",
-        table_name="sales", path=str(xlsx), federation_hints={"sheet": "Q1"},
+        id="sales",
+        type=SimpleNamespace(value="excel"),
+        schema_name="main",
+        table_name="sales",
+        path=str(xlsx),
+        federation_hints={"sheet": "Q1"},
     )
     rt.attach_source(src)
     cc_ctx["duckdb_scan"] = (rt, src)
 
 
-@then("the DuckDB engine reaches that source_type and the runtime scans it in place and returns its rows")
+@then(
+    "the DuckDB engine reaches that source_type and the runtime scans it in place and returns its rows"
+)
 def _duckdb_scan_rows(cc_ctx):
     rt, src = cc_ctx["duckdb_scan"]
     assert rt._engine.reachable("excel")
@@ -192,14 +204,23 @@ def _pg_fdw(cc_ctx, tmp_path, monkeypatch):
     monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))
     engine = build_pg_engine()
     src = SimpleNamespace(
-        id="wid", type=SimpleNamespace(value="pgfdw_custom"), host="db.internal", port=5432,
-        database="warehouse", username="reader", password="", schema_name="inventory",
-        table_name="widgets", federation_hints={"schema": "demo_remote"},
+        id="wid",
+        type=SimpleNamespace(value="pgfdw_custom"),
+        host="db.internal",
+        port=5432,
+        database="warehouse",
+        username="reader",
+        password="",
+        schema_name="inventory",
+        table_name="widgets",
+        federation_hints={"schema": "demo_remote"},
     )
     cc_ctx["pg"] = (engine, src)
 
 
-@then("the Postgres engine reaches that source_type and its connector emits standard SQL/MED IMPORT FOREIGN SCHEMA DDL")
+@then(
+    "the Postgres engine reaches that source_type and its connector emits standard SQL/MED IMPORT FOREIGN SCHEMA DDL"
+)
 def _pg_fdw_ddl(cc_ctx):
     engine, src = cc_ctx["pg"]
     assert engine.reachable("pgfdw_custom")
@@ -210,7 +231,9 @@ def _pg_fdw_ddl(cc_ctx):
     assert "IMPORT FOREIGN SCHEMA demo_remote" in ddl
 
 
-@then("a descriptor naming an unknown kind fails loud at load rather than leaving the source_type silently unreachable")
+@then(
+    "a descriptor naming an unknown kind fails loud at load rather than leaving the source_type silently unreachable"
+)
 def _unknown_kind_fails_loud(cc_ctx, tmp_path, monkeypatch):
     cfg = _write(
         tmp_path,
@@ -241,8 +264,12 @@ def _ch_sqlite_ootb(cc_ctx, tmp_path):
     rt = ClickHouseFederationRuntime.embedded()
     cc_ctx["runtimes"].append(rt)
     src = SimpleNamespace(
-        id="shop", type=SimpleNamespace(value="sqlite"), path=str(db),
-        schema_name="inv", table_name="widget", federation_hints={},
+        id="shop",
+        type=SimpleNamespace(value="sqlite"),
+        path=str(db),
+        schema_name="inv",
+        table_name="widget",
+        federation_hints={},
     )
     rt.attach_source(src)
     cc_ctx["ch_ootb"] = rt
@@ -256,7 +283,9 @@ def _ch_sqlite_rows(cc_ctx):
     assert [r[0] for r in rows.rows] == ["gear", "cog"]
 
 
-@when("an operator declares a clickhouse_database/table/scan connector for a new source_type in config/custom_connectors.yaml")
+@when(
+    "an operator declares a clickhouse_database/table/scan connector for a new source_type in config/custom_connectors.yaml"
+)
 def _ch_config_driven(cc_ctx, tmp_path, monkeypatch):
     db = tmp_path / "ledger.db"
     _sqlite(db)
@@ -275,8 +304,12 @@ def _ch_config_driven(cc_ctx, tmp_path, monkeypatch):
     rt = ClickHouseFederationRuntime.embedded()  # builds its engine AFTER the env override
     cc_ctx["runtimes"].append(rt)
     src = SimpleNamespace(
-        id="ledger", type=SimpleNamespace(value="sqlite_custom"), path=str(db),
-        schema_name="fin", table_name="widget", federation_hints={},
+        id="ledger",
+        type=SimpleNamespace(value="sqlite_custom"),
+        path=str(db),
+        schema_name="fin",
+        table_name="widget",
+        federation_hints={},
     )
     rt.attach_source(src)
     cc_ctx["ch_custom"] = (rt, src)

@@ -108,7 +108,6 @@ def _apply_mutation(mutated_table: str, registry: MVRegistry) -> list[MVDefiniti
 
 @scenario(
     "../features/REQ-158.feature",
-
     "REQ-158 default behaviour",
 )
 def test_req_158_default_behaviour():
@@ -191,7 +190,6 @@ def then_mv_definitions_generated(shared_data: dict):
 
 @scenario(
     "../features/REQ-160.feature",
-
     "REQ-160 default behaviour",
 )
 def test_req_160_default_behaviour():
@@ -227,8 +225,7 @@ def when_first_created(shared_data: dict):
     shared_data["initial_row_count"] = mv.row_count
 
 
-@then(
-    "its state is STALE and the background refresh loop populates it before it serves queries")
+@then("its state is STALE and the background refresh loop populates it before it serves queries")
 def then_stale_then_populated(shared_data: dict):
     registry: MVRegistry = shared_data["registry"]
     mv: MVDefinition = shared_data["mv"]
@@ -264,7 +261,6 @@ def then_stale_then_populated(shared_data: dict):
 
 @scenario(
     "../features/REQ-543.feature",
-
     "REQ-543 default behaviour",
 )
 def test_req_543_default_behaviour():
@@ -318,9 +314,7 @@ def when_mutation_applied(shared_data: dict):
     shared_data["invalidated"] = invalidated
 
 
-@then(
-    "the MV is marked stale and scheduled for re-refresh within the refresh_interval"
-)
+@then("the MV is marked stale and scheduled for re-refresh within the refresh_interval")
 def then_marked_stale_and_scheduled(shared_data: dict):
     registry: MVRegistry = shared_data["registry"]
     mv: MVDefinition = shared_data["mv"]

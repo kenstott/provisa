@@ -340,9 +340,7 @@ def rewrite_from_cache(
             # unaliased, so column qualifiers still resolve after the relation
             # is renamed to the cache table (mirrors rewrite_all_from_cache).
             if not tbl.alias:
-                tbl.set(
-                    "alias", exp.TableAlias(this=exp.to_identifier(alias_name or tbl.name))
-                )
+                tbl.set("alias", exp.TableAlias(this=exp.to_identifier(alias_name or tbl.name)))
             tbl.set("catalog", exp.to_identifier(loc.catalog))
             tbl.set("db", exp.to_identifier(loc.schema))
             tbl.set("this", exp.to_identifier(table_name, quoted=True))

@@ -83,7 +83,9 @@ class Measure:
 
     def __post_init__(self) -> None:
         if self.agg not in _AGGS:
-            raise ValueError(f"measure {self.column!r} agg {self.agg!r} must be one of {sorted(_AGGS)}")
+            raise ValueError(
+                f"measure {self.column!r} agg {self.agg!r} must be one of {sorted(_AGGS)}"
+            )
 
 
 @dataclass(frozen=True)
@@ -146,9 +148,7 @@ def fact_registration(f: Fact) -> dict:
         "materialize": True,
         "columns": _dedup([*group_cols, *(m.column for m in f.measures)]),
         # Each dimension FK is a registered relationship to the entity — the only legal join path.
-        "relationships": [
-            {"source_column": d.via, "target_table": d.entity} for d in f.dimensions
-        ],
+        "relationships": [{"source_column": d.via, "target_table": d.entity} for d in f.dimensions],
         # REQ-1320: retain the modeling role — metadata alongside the lowering; never
         # changes the generated view_sql/columns.
         "modeling_role": "fact",

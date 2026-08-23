@@ -221,7 +221,9 @@ class TestStructures:
             assert P(f"node.{name}") == Property(Variable("node"), name)
         assert isinstance(P("COUNT { (a)-[:R]->(b) }"), SubqueryExpr)
         assert isinstance(P("count(*)"), FunctionCall)
-        assert P("a.count + count") == Binary("+", Property(Variable("a"), "count"), Variable("count"))
+        assert P("a.count + count") == Binary(
+            "+", Property(Variable("a"), "count"), Variable("count")
+        )
 
     def test_quantifier(self):
         for kind, text in [

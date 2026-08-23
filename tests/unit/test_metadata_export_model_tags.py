@@ -57,7 +57,11 @@ def _config(**kwargs) -> ProvisaConfig:
         "roles": [],
         "tags": [
             Tag(id="technical", applies_to=["column"], is_system=True),
-            Tag(id="deprecated", applies_to=["source", "table", "column", "relationship"], is_system=True),
+            Tag(
+                id="deprecated",
+                applies_to=["source", "table", "column", "relationship"],
+                is_system=True,
+            ),
             Tag(id="gold", applies_to=["table"], description="Curated"),
         ],
     }
@@ -71,9 +75,7 @@ def test_technical_is_column_only_a_table_assignment_never_excludes():
     config = _config(
         tables=[_table("orders"), _table("etl_audit")],
         tag_assignments=[
-            TagAssignment(
-                tag_id="technical", object_type="table", table_ref="wh.public.etl_audit"
-            )
+            TagAssignment(tag_id="technical", object_type="table", table_ref="wh.public.etl_audit")
         ],
     )
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
@@ -115,8 +117,12 @@ def test_sources_publish_only_when_one_of_their_tables_does():
         ],
         tables=[_table("orders"), _table("drafts", data_product=False)],
         tag_assignments=[
-            TagAssignment(tag_id="deprecated", object_type="source", source_id="internal-admin",
-                          reason="internal"),
+            TagAssignment(
+                tag_id="deprecated",
+                object_type="source",
+                source_id="internal-admin",
+                reason="internal",
+            ),
         ],
     )
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres")

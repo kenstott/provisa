@@ -47,6 +47,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     LargeBinary,
     MetaData,
@@ -147,6 +148,13 @@ orgs = Table(
     Column("branding", Text),
     Column("branding_logo", LargeBinary),
     Column("branding_logo_media_type", Text),
+    # REQ-1527: where this org's environment repository (REQ-1524) is mirrored, and where the
+    # projection's outcome is reported. Both NULL is the ordinary case and the airgapped one: the
+    # org commits, merges and approves with no remote and no CI at all. The remote is stored as
+    # written, secret references included (${env:GIT_TOKEN}), and resolved only at push time, so
+    # the token a push needs never enters the control plane.
+    Column("repo_remote", Text),
+    Column("repo_status_webhook", Text),
 )
 
 user_profiles = Table(
@@ -310,6 +318,145 @@ org_config = Table(
 )
 
 
+# REQ-1488: the environments an org holds. An environment is physically a schema (REQ-1488) and
+# the schema is what holds its model, so this row is deliberately only what the schema CANNOT hold:
+# the plan ceiling's countable unit, the expiry that reaps it, whether a merge into it needs an
+# approval, and whether its repository projection has fallen behind. Per-source boundness
+# (REQ-1491) is per SOURCE and lives in the org schema beside the source; the environment a
+# credential addresses (REQ-1503) lives on the credential. Neither is duplicated here.
+#
+# ``prod`` HAS A ROW. REQ-1487 gives prod to the org at creation rather than by a load, so
+# provisioning writes its row with the schema, the role and the stores — an org whose prod is
+# absent from this table would be an org whose environments cannot be counted and whose prod
+# cannot be protected. It is the one row REQ-1488's create-by-loading rule does not write.
+environments = Table(
+    "environments",
+    metadata,
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    # Validated by provisa.core.environments.validate_env_name against THIS org's id before
+    # anything is provisioned (REQ-1523) — the length a name may reach depends on the id it is
+    # suffixed onto, so the check cannot live in a column type.
+    Column("name", Text, primary_key=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("created_by", Text),
+    # REQ-1523: opt-in. NULL means permanent — an environment is never reaped for being idle,
+    # because a quiet pre-prod is not an abandoned one. prod can carry none.
+    Column("expires_at", DateTime(timezone=True)),
+    # REQ-1504: a merge into a protected environment waits for an approval by someone other than
+    # the requester. prod is protected once the org has more than one member; any environment can
+    # be protected by an org_admin.
+    Column("protected", Boolean, nullable=False, server_default=false()),
+    # REQ-1524: the repository is a projection, and a failed commit must not fail the change it
+    # observes. A change whose commit did not land sets this instead; rebuilding re-serializes
+    # every carried class and clears it.
+    Column("drifted", Boolean, nullable=False, server_default=false()),
+    # REQ-1529: the base this environment branched from, or NULL when it IS a base. A base is what
+    # an org_admin creates, binds with its own credentials and grants membership in; a branch is
+    # what a member creates from one, and it reaches the base's sources by reference rather than
+    # holding a copy of where they point (REQ-1491). Self-referential FK: a branch cannot name an
+    # environment of another org, and a base cannot be dropped while a branch still resolves
+    # through it, which RESTRICT enforces rather than a check somebody has to remember.
+    # REQ-1543: WHERE THE ENVIRONMENT IS in its own history, and where an undo departed from.
+    # ``deployed_sha`` is the commit whose tree the environment's model equals -- written by the
+    # write-through that committed it and by the deploy that applied it, and NOT the same as the
+    # branch tip once an undo has happened. ``redo_sha`` is the position the first undo of a run
+    # departed from, so a redo can step forward along the path back to it; it is cleared by any
+    # deploy or write-through that is not itself an undo, because a new edit makes the abandoned
+    # future unreachable in intent. Neither column can lose work: both name commits that stay in
+    # the object store and stay deployable by sha.
+    Column("deployed_sha", Text),
+    # WHERE THIS ENVIRONMENT'S OWN LINE BEGINS: the last commit that belongs to the environment it
+    # was created from. A branch is seeded at its source's tip so the two share an object history
+    # and ordinary git can move between them, which means the commits below that point are the
+    # SOURCE's -- trees this environment never held. An undo that walked into them would deploy a
+    # model the environment was never running, so it stops here instead: one change made after a
+    # branch is created gives exactly one undo. NULL for an environment with nothing behind it,
+    # which is prod.
+    Column("origin_sha", Text),
+    Column("redo_sha", Text),
+    Column("branched_from", Text),
+    ForeignKeyConstraint(
+        ["org_id", "branched_from"],
+        ["environments.org_id", "environments.name"],
+        ondelete="RESTRICT",
+        name="environments_branched_from_fkey",
+    ),
+)
+
+
+# REQ-1504: a proposed merge from one environment of an org into another, held as a ROW because the
+# approver is by definition someone other than the requester and is therefore not present when the
+# request is made. An ephemeral confirmation would force the approval into the requester's own
+# session, which is the one arrangement the requirement forbids.
+#
+# It sits beside ``environments`` rather than inside an org schema for the same reason that table
+# does: the request names TWO environments, so a row inside either one of them would be a row only
+# half its subject can see.
+#
+# The report is stored as it was READ. REQ-1504 makes a request whose source has moved on STALE
+# rather than applicable, and staleness is only decidable against the report the approver actually
+# saw — recomputing it at approval time would silently approve a different merge than the one
+# reviewed.
+env_merge_requests = Table(
+    "env_merge_requests",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
+    # Where the model comes from and where it is going. A MERGE names an environment within the
+    # same org_id -- a merge across orgs is never a legal operation (REQ-1524), so one org_id
+    # covers both. A LOAD (REQ-1496) names a git ref instead, and pins the sha that ref resolved to
+    # at request time: an approver approves a TREE, and a branch that moves afterwards is a
+    # different tree that has not been approved.
+    Column("source_env", Text),
+    Column("source_ref", Text),
+    Column("source_sha", Text),
+    Column("target_env", Text, nullable=False),
+    Column("requested_by", Text, nullable=False),
+    Column("requested_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # The requester's own words. Together with ``report`` these ARE the review (REQ-1504): the
+    # report is the squash, at object granularity rather than line granularity.
+    Column("message", Text, nullable=False, server_default=""),
+    # REQ-1490's report as the approver read it: added, changed, removed, left alone.
+    Column("report", JSON, nullable=False),
+    # Whether the request asked for removals. Carried on the row because it changes what applying
+    # does, and an approver approves a specific operation rather than a direction.
+    Column("removals", Boolean, nullable=False, server_default=false()),
+    # REQ-1542: whether applying this merge also RETIRES the environment it came from -- its
+    # schemas, its row and its branch. Carried on the row for the same reason ``removals`` is: an
+    # approver approves a specific operation, and "merge this" and "merge this and end the feature
+    # environment" are two of them.
+    Column("retire_source", Boolean, nullable=False, server_default=false()),
+    # REQ-1549: and whether it also deletes the source's branch ON THE REMOTE. A separate column
+    # from ``retire_source`` because it is a separate ask (REQ-1546): the remote copy is what
+    # survives a lost volume, so ending an environment locally never implies ending it there.
+    Column("retire_remote", Boolean, nullable=False, server_default=false()),
+    # requested -> approved | rejected, and approved -> applied. ``stale`` is derived rather than
+    # written: a request is stale when re-planning no longer produces the stored report.
+    Column("state", Text, nullable=False, server_default="requested"),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("decision_note", Text),
+    Column("applied_at", DateTime(timezone=True)),
+    # A load also carries whether it SEEDS -- REQ-1539's creation-only classes -- because that
+    # changes what applying does, exactly as ``removals`` does for a merge.
+    Column("seed", Boolean, nullable=False, server_default=false()),
+    CheckConstraint(
+        "state IN ('requested', 'approved', 'rejected', 'applied')",
+        name="ck_env_merge_requests_state",
+    ),
+    # Exactly one source. A row naming both would leave applying to a preference, and a row naming
+    # neither describes nothing.
+    CheckConstraint(
+        "(source_env IS NULL) <> (source_ref IS NULL)",
+        name="ck_env_merge_requests_one_source",
+    ),
+    CheckConstraint(
+        "(source_ref IS NULL) = (source_sha IS NULL)",
+        name="ck_env_merge_requests_ref_pinned",
+    ),
+)
+
+
 # REQ-1466: the deployment-wide maintenance notice. One row, id ``current``, written only by a
 # holder of ``platform_settings`` and read by every signed-in client so a planned outage — the
 # engine-cluster topology switch is the one that forces it, since flipping
@@ -343,6 +490,8 @@ REGISTRY_TABLES = [
     local_users,
     org_invites,
     superadmin_bootstrap,
+    environments,
+    env_merge_requests,
     org_config,
     personal_access_tokens,
     scram_credentials,
@@ -391,3 +540,12 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
             await conn.execute_core(
                 orgs.update().where(orgs.c.id == org_id).values(seeded_demo=True)
             )
+        # REQ-1487: every org has prod from its creation, the bootstrap org included. Written here
+        # rather than left to the first environment request, because an org absent from this table
+        # is an org whose environments cannot be counted against its plan ceiling (REQ-1523).
+        await conn.upsert(
+            environments,
+            {"org_id": org_id, "name": "prod"},
+            index_elements=["org_id", "name"],
+            update_columns=[],
+        )

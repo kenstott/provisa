@@ -92,8 +92,14 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_ROOT_SCHEMA}"))
         org_metadata.create_all(
             conn,
-            tables=[roles, user_role_assignments, sources, domains, registered_tables,
-                    table_columns],
+            tables=[
+                roles,
+                user_role_assignments,
+                sources,
+                domains,
+                registered_tables,
+                table_columns,
+            ],
         )
         conn.execute(text("INSERT INTO roles (id) VALUES ('org_admin')"))
         conn.execute(
@@ -125,9 +131,7 @@ def planes():
         pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
-    tenant_db = Database(
-        create_engine_from_url(_ASYNC_URL), name="org", search_path=_ROOT_SCHEMA
-    )
+    tenant_db = Database(create_engine_from_url(_ASYNC_URL), name="org", search_path=_ROOT_SCHEMA)
     yield admin_db, tenant_db, sync_engine
 
     with sync_engine.begin() as conn:
@@ -197,7 +201,12 @@ async def test_org_without_a_provisioned_schema_keeps_its_row(planes):
 
     rows = {r[0]: r for r in _read_view(sync_engine)}
     assert rows["r1301pending"] == (
-        "r1301pending", "Pending", "provisioning", None, None, None,
+        "r1301pending",
+        "Pending",
+        "provisioning",
+        None,
+        None,
+        None,
     )
 
 
@@ -207,12 +216,13 @@ async def test_view_exists_only_in_the_root_org(planes):
     await refresh_org_registry_view(tenant_db=tenant_db, admin_db=admin_db)
 
     with sync_engine.begin() as conn:
-        assert conn.execute(
-            text(f"SELECT to_regclass('{_ROOT_SCHEMA}.{VIEW_NAME}')")
-        ).scalar() is not None
-        assert conn.execute(
-            text(f"SELECT to_regclass('{_ACME_SCHEMA}.{VIEW_NAME}')")
-        ).scalar() is None
+        assert (
+            conn.execute(text(f"SELECT to_regclass('{_ROOT_SCHEMA}.{VIEW_NAME}')")).scalar()
+            is not None
+        )
+        assert (
+            conn.execute(text(f"SELECT to_regclass('{_ACME_SCHEMA}.{VIEW_NAME}')")).scalar() is None
+        )
 
 
 async def test_seed_registers_the_view_in_the_meta_domain(planes, monkeypatch):
@@ -237,13 +247,17 @@ async def test_seed_registers_the_view_in_the_meta_domain(planes, monkeypatch):
         ).one()
         assert (row[1], row[2], row[3]) == ("provisa-admin", "meta", _ROOT_SCHEMA)
 
-        cols = conn.execute(
-            text(
-                f"SELECT column_name FROM {_ROOT_SCHEMA}.table_columns WHERE table_id = :i"
-                " ORDER BY column_name"
-            ),
-            {"i": row[0]},
-        ).scalars().all()
+        cols = (
+            conn.execute(
+                text(
+                    f"SELECT column_name FROM {_ROOT_SCHEMA}.table_columns WHERE table_id = :i"
+                    " ORDER BY column_name"
+                ),
+                {"i": row[0]},
+            )
+            .scalars()
+            .all()
+        )
     assert set(cols) == set(VIEW_COLUMNS)
 
 
@@ -262,9 +276,7 @@ async def test_seed_is_idempotent(planes, monkeypatch):
 
     with sync_engine.begin() as conn:
         registrations = conn.execute(
-            text(
-                f"SELECT count(*) FROM {_ROOT_SCHEMA}.registered_tables WHERE table_name = :t"
-            ),
+            text(f"SELECT count(*) FROM {_ROOT_SCHEMA}.registered_tables WHERE table_name = :t"),
             {"t": VIEW_NAME},
         ).scalar()
     assert registrations == 1

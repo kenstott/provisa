@@ -261,9 +261,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
     if body.mode not in ("single", "multi"):
         raise ApiError(400, "setup.invalid_mode", "mode must be 'single' or 'multi'")
     if body.use_domains not in (None, True, False):
-        raise ApiError(
-            400, "setup.invalid_use_domains", "use_domains must be true, false, or null"
-        )
+        raise ApiError(400, "setup.invalid_use_domains", "use_domains must be true, false, or null")
     if body.use_domains is False and not body.default_domain:
         raise ApiError(
             400,
@@ -335,7 +333,9 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
     elif body.provider == "firebase":
         project_id = body.firebase_project_id or os.environ.get("FIREBASE_PROJECT_ID", "")
         if not project_id:
-            raise ApiError(400, "setup.firebase_project_id_required", "firebase_project_id required")
+            raise ApiError(
+                400, "setup.firebase_project_id_required", "firebase_project_id required"
+            )
         # REQ-1266: limited Firebase mode — first user → sole super-admin, rest denied.
         # Drop the blanket admin default (it would admit every Firebase user).
         auth_section["bootstrap_superadmin"] = True

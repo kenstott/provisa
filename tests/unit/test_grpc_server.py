@@ -371,9 +371,7 @@ class TestDictRowToMessage:
         pb2 = SimpleNamespace(Inquiry=Inquiry, User=User)
         servicer = ProvisaServicer(MagicMock(), pb2, MagicMock())
 
-        msg = servicer._dict_row_to_message(
-            Inquiry, {"status": "open", "user": {"name": "Ada"}}
-        )
+        msg = servicer._dict_row_to_message(Inquiry, {"status": "open", "user": {"name": "Ada"}})
 
         assert msg._scalars == {"status": "open"}
         assert isinstance(msg._singular["user"], User)
@@ -405,9 +403,7 @@ class TestDictRowToMessage:
         pb2 = SimpleNamespace(Inquiry=Inquiry)  # User deliberately omitted
         servicer = ProvisaServicer(MagicMock(), pb2, MagicMock())
 
-        msg = servicer._dict_row_to_message(
-            Inquiry, {"status": "open", "user": {"name": "Ada"}}
-        )
+        msg = servicer._dict_row_to_message(Inquiry, {"status": "open", "user": {"name": "Ada"}})
 
         assert msg._scalars == {"status": "open"}
         assert msg._singular["user"] is None

@@ -130,7 +130,8 @@ class TestAuthMiddlewareSkipPaths:
         offenders = {
             p
             for p in _SKIP_PATHS
-            if p.startswith("/admin/") or (p.startswith("/data/") and not p.startswith("/data/openapi/"))
+            if p.startswith("/admin/")
+            or (p.startswith("/data/") and not p.startswith("/data/openapi/"))
         }
         assert offenders == set()
 
@@ -217,7 +218,8 @@ class TestOrgRoutingIsRegistered:
         # Comments are stripped: the surviving REQ-1355 notes name the flag to explain why the
         # guards were removed, and must not read as a reintroduction of them.
         src = "\n".join(
-            line for line in inspect.getsource(create_app).splitlines()
+            line
+            for line in inspect.getsource(create_app).splitlines()
             if not line.lstrip().startswith("#")
         )
         assert "state.multitenancy" not in src, (

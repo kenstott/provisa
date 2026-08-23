@@ -146,7 +146,9 @@ def _dq_kind(kind: dict) -> DqCheckKindType:  # REQ-1443 clause 7
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
-    async def calendars(self, info: StrawberryInfo) -> list["CalendarType"]:  # REQ-962  # pyright: ignore[reportUnusedParameter]
+    async def calendars(
+        self, info: StrawberryInfo
+    ) -> list["CalendarType"]:  # REQ-962  # pyright: ignore[reportUnusedParameter]
         """Every registered snapshot-boundary calendar version (REQ-962) — feeds the snapshot-schedule
         config (a calendar picker) and confirms which calendars a periodic MV may reference."""
         from provisa.core.repositories import calendar as calendar_repo
@@ -332,7 +334,7 @@ class Query:  # REQ-021, REQ-042
                 table_id=r["table_id"],
                 column_name=r["column_name"],
                 relationship_id=r["relationship_id"],
-            command_name=r["command_name"],
+                command_name=r["command_name"],
                 table_ref=r["table_ref"],
                 reason=r["reason"],
                 expires_on=r["expires_on"],
@@ -1130,10 +1132,16 @@ async def resolve_available_columns_metadata(
         except Exception:
             logging.getLogger(__name__).warning(
                 "introspect_columns failed for files source %r %s.%s",
-                source_id, schema_name, table_name, exc_info=True,
+                source_id,
+                schema_name,
+                table_name,
+                exc_info=True,
             )
             return []
-        return [AvailableColumnType(name=name, data_type=dtype, comment=None) for name, dtype in col_dict.items()]
+        return [
+            AvailableColumnType(name=name, data_type=dtype, comment=None)
+            for name, dtype in col_dict.items()
+        ]
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
         from provisa.openapi.register import _schema_to_columns

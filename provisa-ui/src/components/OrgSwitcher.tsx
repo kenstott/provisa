@@ -12,7 +12,7 @@ import type { Org } from "../api/admin";
 
 export function OrgSwitcher() {
   const { t } = useTranslation();
-  const { capabilities, orgMemberships, activeOrgId, selectOrg } = useAuth();
+  const { capabilities, orgMemberships, activeOrgId, selectOrg, multitenancy } = useAuth();
   const [allOrgs, setAllOrgs] = useState<Org[]>([]);
 
   // REQ-1337: listing every org is the cross_org RIGHT, not a role name. The seed decides who
@@ -29,6 +29,11 @@ export function OrgSwitcher() {
   const orgs: Array<{ id: string; name: string }> = canSeeAllOrgs
     ? allOrgs.map((o) => ({ id: o.id, name: o.name }))
     : orgMemberships.map((m) => ({ id: m.org_id, name: m.org_name }));
+
+  // A single-tenant deployment has exactly one org, so naming it in the navbar tells the reader
+  // nothing they could act on and nothing they could change. The switcher is a multi-tenancy
+  // control; without multi-tenancy there is nothing to switch between.
+  if (!multitenancy) return null;
 
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
   const orgName = activeOrg?.name ?? activeOrgId ?? "";

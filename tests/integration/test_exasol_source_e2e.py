@@ -71,14 +71,18 @@ _AMD64 = platform.machine() in ("x86_64", "amd64")
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.asyncio(loop_scope="session"),
-    pytest.mark.skipif(not _AMD64, reason="exasol/docker-db is amd64-only; unbootable under arm64 emulation"),
+    pytest.mark.skipif(
+        not _AMD64, reason="exasol/docker-db is amd64-only; unbootable under arm64 emulation"
+    ),
 ]
 
 _TRINO_HOST = os.environ.get("TRINO_HOST", "localhost")
 _TRINO_PORT = int(os.environ.get("TRINO_PORT", "8080"))
 
 _EXASOL_USER = "sys"
-_EXASOL_PASSWORD = "exasol"  # image default (verified: exasol/docker-db, github.com/exasol/docker-db)
+_EXASOL_PASSWORD = (
+    "exasol"  # image default (verified: exasol/docker-db, github.com/exasol/docker-db)
+)
 _SCHEMA = "PROVISA"
 _TABLE = "WIDGETS"
 _WIDGETS = [(1, "Widget A"), (2, "Widget B"), (3, "Widget C")]
@@ -124,9 +128,13 @@ def _exasol_container_id() -> str:
     isolated stack never uses container_name, so it never collides with a parallel run)."""
     out = subprocess.run(
         [
-            "docker", "ps", "-q",
-            "--filter", f"label=com.docker.compose.project={_ITEST_PROJECT}",
-            "--filter", "label=com.docker.compose.service=exasol",
+            "docker",
+            "ps",
+            "-q",
+            "--filter",
+            f"label=com.docker.compose.project={_ITEST_PROJECT}",
+            "--filter",
+            "label=com.docker.compose.service=exasol",
         ],  # fmt: skip
         capture_output=True,
         text=True,
@@ -152,9 +160,19 @@ def tls_fingerprint(container_id: str) -> str:
     """
     proc = subprocess.run(
         [
-            "docker", "exec", container_id,
-            "exaplus", "-c", "localhost:8563", "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
-            "-sql", "SELECT 1;", "-q",
+            "docker",
+            "exec",
+            container_id,
+            "exaplus",
+            "-c",
+            "localhost:8563",
+            "-u",
+            _EXASOL_USER,
+            "-p",
+            _EXASOL_PASSWORD,
+            "-sql",
+            "SELECT 1;",
+            "-q",
         ],  # fmt: skip
         capture_output=True,
         text=True,
@@ -182,10 +200,19 @@ def _exaplus(container_id: str, statement: str, fingerprint: str) -> str:
     terminated = statement if statement.rstrip().endswith(";") else f"{statement};"
     proc = subprocess.run(
         [
-            "docker", "exec", container_id,
-            "exaplus", "-c", f"localhost/{fingerprint}:8563",
-            "-u", _EXASOL_USER, "-p", _EXASOL_PASSWORD,
-            "-x", "-sql", terminated,
+            "docker",
+            "exec",
+            container_id,
+            "exaplus",
+            "-c",
+            f"localhost/{fingerprint}:8563",
+            "-u",
+            _EXASOL_USER,
+            "-p",
+            _EXASOL_PASSWORD,
+            "-x",
+            "-sql",
+            terminated,
         ],  # fmt: skip
         capture_output=True,
         text=True,
@@ -330,7 +357,9 @@ async def test_exasol_catalog_created_and_queryable():
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
-                cur.execute(f"SELECT id, name FROM {catalog}.{_SCHEMA.lower()}.{_TABLE.lower()} ORDER BY id")
+                cur.execute(
+                    f"SELECT id, name FROM {catalog}.{_SCHEMA.lower()}.{_TABLE.lower()} ORDER BY id"
+                )
                 rows = cur.fetchall()
             except trino.exceptions.TrinoExternalError:
                 rows = []  # catalog freshly created; connector may not be warm yet

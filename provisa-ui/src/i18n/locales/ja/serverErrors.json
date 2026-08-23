@@ -180,7 +180,7 @@
     },
     "roles": {
       "cannot_delete_system": "システムロールは削除できません",
-      "cannot_modify_system": "システムロールは変更できません",
+      "cannot_modify_administrative": "管理ロールは変更できません",
       "not_found": "ロールが見つかりません",
       "org_selection_required": "組織の選択が必要です"
     },

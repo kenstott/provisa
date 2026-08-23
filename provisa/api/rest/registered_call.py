@@ -43,7 +43,9 @@ _COMMANDS_PROC_RE = _re.compile(
 
 
 def _command_signature(cmd: dict) -> str:
-    args = ", ".join(f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"])
+    args = ", ".join(
+        f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"]
+    )
     ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
     return f"{cmd['name']}({args}) :: ({ret})"
 

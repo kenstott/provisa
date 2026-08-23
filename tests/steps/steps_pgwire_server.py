@@ -268,9 +268,7 @@ def _authenticate529(shared_data: dict, *, user: str = "alice") -> None:
     patches = [patch("provisa.pgwire.server.state", state)]
     provider_obj = shared_data.get("provider")
     if provider_obj is not None:
-        patches.append(
-            patch("provisa.auth.wiring.build_auth_provider", return_value=provider_obj)
-        )
+        patches.append(patch("provisa.auth.wiring.build_auth_provider", return_value=provider_obj))
     payload = shared_data["password"].encode("utf-8") + b"\x00"
     try:
         with patches[0]:
@@ -306,7 +304,9 @@ def when_any_password(shared_data):
 @then("the username becomes the role_id and the session is established")
 def then_username_is_role(shared_data):
     assert shared_data["errors"] == [], f"Unexpected errors in trust mode: {shared_data['errors']}"
-    assert shared_data.get("admitted") == [True], "send_authentication_ok must be called in trust mode"
+    assert shared_data.get("admitted") == [True], (
+        "send_authentication_ok must be called in trust mode"
+    )
     assert shared_data["ctx"].session.role_id == "alice", (
         f"role_id must equal the startup username; got {shared_data['ctx'].session.role_id!r}"
     )
@@ -358,9 +358,7 @@ def then_credential_verified_role_resolved(shared_data):
     )
     role = shared_data["ctx"].session.role_id
     assert role is not None, "A role must be set after successful credential verification"
-    assert role != "alice", (
-        "role_id must come from role_mapping/default, not the bare username"
-    )
+    assert role != "alice", "role_id must come from role_mapping/default, not the bare username"
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +452,9 @@ def then_fatal_28p01(shared_data):
     assert shared_data["errors"] == [
         ("FATAL", "28P01", 'password authentication failed for user "alice"')
     ], f"Expected FATAL 28P01; got {shared_data['errors']}"
-    assert shared_data.get("admitted", []) == [], "No session must be admitted on invalid credential"
+    assert shared_data.get("admitted", []) == [], (
+        "No session must be admitted on invalid credential"
+    )
     assert not hasattr(shared_data["ctx"].session, "role_id"), (
         "role_id must not be set when authentication fails"
     )

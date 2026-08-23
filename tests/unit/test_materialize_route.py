@@ -134,9 +134,7 @@ class TestSinkTierSelection:
         state = MagicMock()
         state.engine_conn = object()
         with pytest.raises(NotImplementedError):
-            await run_materialize(
-                state, "SELECT 1", Delivery(output_format="csv", config=_cfg())
-            )
+            await run_materialize(state, "SELECT 1", Delivery(output_format="csv", config=_cfg()))
 
 
 def _pipeline_redirect_module():

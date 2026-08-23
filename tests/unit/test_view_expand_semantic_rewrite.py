@@ -45,9 +45,7 @@ def sqlite_ctx() -> CompilationContext:
 def test_expand_view_with_unquoted_semantic_ref_leaves_semantic_ref(sqlite_ctx):
     """Without a second rewrite pass, the expanded view body still contains the
     unquoted semantic ref that DuckDB cannot resolve."""
-    view_sql_map = {
-        "e2e_mv_a": "SELECT id, name, price FROM pet_store.pets WHERE id = 1"
-    }
+    view_sql_map = {"e2e_mv_a": "SELECT id, name, price FROM pet_store.pets WHERE id = 1"}
     # Simulate outer SQL after first normalize+rewrite (view ref itself has no catalog form)
     outer = "SELECT * FROM (SELECT id, name, price FROM e2e_mv_a) _sample LIMIT 100"
     expanded = expand_view_refs(outer, view_sql_map)
@@ -57,9 +55,7 @@ def test_expand_view_with_unquoted_semantic_ref_leaves_semantic_ref(sqlite_ctx):
 
 def test_expand_view_then_rewrite_produces_catalog_physical(sqlite_ctx):
     """After expansion, a second normalize+rewrite pass lowers semantic refs to catalog-physical."""
-    view_sql_map = {
-        "e2e_mv_a": "SELECT id, name, price FROM pet_store.pets WHERE id = 1"
-    }
+    view_sql_map = {"e2e_mv_a": "SELECT id, name, price FROM pet_store.pets WHERE id = 1"}
     outer = "SELECT * FROM (SELECT id, name, price FROM e2e_mv_a) _sample LIMIT 100"
     expanded = expand_view_refs(outer, view_sql_map)
     # Apply the second pass (the fix)
@@ -74,9 +70,7 @@ def test_expand_view_with_quoted_semantic_ref_also_fixed(sqlite_ctx):
     """Quoted semantic ref "pet_store"."pets" in a view body is also lowered."""
     import re
 
-    view_sql_map = {
-        "e2e_mv_a": 'SELECT id FROM "pet_store"."pets"'
-    }
+    view_sql_map = {"e2e_mv_a": 'SELECT id FROM "pet_store"."pets"'}
     outer = "SELECT * FROM (SELECT id FROM e2e_mv_a) _sample LIMIT 100"
     expanded = expand_view_refs(outer, view_sql_map)
     fixed = rewrite_semantic_to_catalog_physical(

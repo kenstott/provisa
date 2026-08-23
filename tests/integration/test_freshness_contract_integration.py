@@ -94,8 +94,9 @@ def _mv(db, *, expected, generate, lateness=0.0, business_day=False, holidays=fr
         db=db,
         name="box-1",
         generate=_generate,
-        deadline_source=PeriodicCalendar(cal, "daily", allowed_lateness=lateness,
-                                         business_day=business_day),
+        deadline_source=PeriodicCalendar(
+            cal, "daily", allowed_lateness=lateness, business_day=business_day
+        ),
         expected_events=expected,
         freshness_of=make_db_freshness_of(db),  # the REAL DB-backed reader
     )
@@ -151,12 +152,15 @@ async def test_stale_input_is_outage_warn_hold(db, monkeypatch):
     async with _at(monkeypatch, AFTER_BOUNDARY):
         async with db.acquire() as conn:
             assert await proc.process_pending(conn) is None
-            kinds = {r["source_table"]: r["event_type"] for r in await queue.read_since(conn, cursor=0)}
+            kinds = {
+                r["source_table"]: r["event_type"] for r in await queue.read_since(conn, cursor=0)
+            }
             assert kinds.get(MV_NODE) == "warn"  # not a silent skip
             # the claim is completed, not orphaned — the loop does not spin
-            assert await queue.resume_claims(
-                conn, dependent_table=MV_NODE, processor_name="box-1"
-            ) == []
+            assert (
+                await queue.resume_claims(conn, dependent_table=MV_NODE, processor_name="box-1")
+                == []
+            )
 
 
 async def test_failed_input_is_outage(db, monkeypatch):
@@ -168,7 +172,9 @@ async def test_failed_input_is_outage(db, monkeypatch):
     async with _at(monkeypatch, AFTER_BOUNDARY):
         async with db.acquire() as conn:
             assert await proc.process_pending(conn) is None
-            kinds = {r["source_table"]: r["event_type"] for r in await queue.read_since(conn, cursor=0)}
+            kinds = {
+                r["source_table"]: r["event_type"] for r in await queue.read_since(conn, cursor=0)
+            }
             assert kinds.get(MV_NODE) == "warn"
 
 
@@ -179,7 +185,9 @@ async def test_never_refreshed_input_is_outage(db, monkeypatch):
     async with _at(monkeypatch, AFTER_BOUNDARY):
         async with db.acquire() as conn:
             assert await proc.process_pending(conn) is None
-            kinds = {r["source_table"]: r["event_type"] for r in await queue.read_since(conn, cursor=0)}
+            kinds = {
+                r["source_table"]: r["event_type"] for r in await queue.read_since(conn, cursor=0)
+            }
             assert kinds.get(MV_NODE) == "warn"
 
 
@@ -194,8 +202,11 @@ async def test_multi_input_partial_outage_lists_only_stale(db, monkeypatch):
     async with _at(monkeypatch, AFTER_BOUNDARY):
         async with db.acquire() as conn:
             assert await proc.process_pending(conn) is None
-            warn = next(r for r in await queue.read_since(conn, cursor=0)
-                        if r["source_table"] == MV_NODE and r["event_type"] == "warn")
+            warn = next(
+                r
+                for r in await queue.read_since(conn, cursor=0)
+                if r["source_table"] == MV_NODE and r["event_type"] == "warn"
+            )
             reasons = " ".join(warn["payload"]["reasons"])
             assert "s.b" in reasons and "s.c" in reasons and "s.a" not in reasons
 

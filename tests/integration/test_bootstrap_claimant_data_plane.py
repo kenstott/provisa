@@ -229,9 +229,7 @@ def test_a_second_user_is_not_seated_by_the_first_users_claim(planes):
     admin_db, tenant_db, sync_engine = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         _claim(client)
-        resp = client.post(
-            "/auth/claim-bootstrap", headers={"Authorization": "Bearer tok-second"}
-        )
+        resp = client.post("/auth/claim-bootstrap", headers={"Authorization": "Bearer tok-second"})
 
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"claimed": False, "claimed_by": "first", "org_id": None}

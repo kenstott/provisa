@@ -171,15 +171,15 @@ def _comparisons_against_role_ids(tree: ast.AST) -> list[tuple[int, str]]:
         if not isinstance(node, ast.Compare):
             continue
         if any(
-            isinstance(o, ast.Attribute) and isinstance(o.value, ast.Attribute) and o.value.attr == "c"
+            isinstance(o, ast.Attribute)
+            and isinstance(o.value, ast.Attribute)
+            and o.value.attr == "c"
             for o in [node.left, *node.comparators]
         ):
             continue  # SQLAlchemy column predicate — row selection
         for operand in [node.left, *node.comparators]:
             elts = (
-                operand.elts
-                if isinstance(operand, (ast.Set, ast.List, ast.Tuple))
-                else [operand]
+                operand.elts if isinstance(operand, (ast.Set, ast.List, ast.Tuple)) else [operand]
             )
             for e in elts:
                 if isinstance(e, ast.Constant) and e.value in _ROLE_ID_LITERALS:

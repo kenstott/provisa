@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS sources (
     -- password never stored; resolved at runtime via secrets provider
 );
 
+-- REQ-1491: whether this environment has supplied this source's connection values. A copy between environments carries the
+-- row and never the binding, and an empty value is not an absent one, so an unbound source is
+-- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
+
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
     description   TEXT NOT NULL DEFAULT '',
@@ -562,6 +567,12 @@ CREATE TABLE IF NOT EXISTS kafka_sources (
     auth_type           TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE kafka_sources ALTER COLUMN bootstrap_servers SET DEFAULT '';
+
+-- REQ-1491: whether this environment has supplied this cluster's bootstrap servers. A copy between environments carries the
+-- row and never the binding, and an empty value is not an absent one, so an unbound kafka source is
+-- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
+ALTER TABLE kafka_sources ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS kafka_topics (
     id              SERIAL PRIMARY KEY,
@@ -586,6 +597,12 @@ CREATE TABLE IF NOT EXISTS kafka_sinks (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (query_stable_id)
 );
+ALTER TABLE kafka_sinks ALTER COLUMN topic SET DEFAULT '';
+
+-- REQ-1491: whether this environment has supplied this sink's target topic. A copy between environments carries the
+-- row and never the binding, and an empty value is not an absent one, so an unbound kafka sink is
+-- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
+ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
@@ -596,6 +613,12 @@ CREATE TABLE IF NOT EXISTS api_sources (
     auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE api_sources ALTER COLUMN base_url SET DEFAULT '';
+
+-- REQ-1491: whether this environment has supplied this API's base URL and auth. A copy between environments carries the
+-- row and never the binding, and an empty value is not an absent one, so an unbound API source is
+-- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
+ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id              SERIAL PRIMARY KEY,

@@ -105,7 +105,11 @@ def _ns_to_dt(ns: int) -> datetime | None:
     keeps (Iceberg TIMESTAMP(6), Postgres/DuckDB TIMESTAMP), so the sub-microsecond digits are
     dropped here rather than silently at the first write.
     """
-    return datetime.fromtimestamp(ns / 1_000_000_000, timezone.utc).replace(tzinfo=None) if ns else None
+    return (
+        datetime.fromtimestamp(ns / 1_000_000_000, timezone.utc).replace(tzinfo=None)
+        if ns
+        else None
+    )
 
 
 def _date_of(ts: datetime | None) -> date | None:

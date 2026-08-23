@@ -215,8 +215,18 @@ def trust_cert(cert_path: str) -> bool:
                     capture_output=True,
                 )
             subprocess.run(  # nosec B603 B607 - trust as a CA for SSL ("C,,")
-                ["certutil", "-A", "-d", db, "-n", "Provisa MCP (localhost)", "-t", "C,,",
-                 "-i", cert_path],
+                [
+                    "certutil",
+                    "-A",
+                    "-d",
+                    db,
+                    "-n",
+                    "Provisa MCP (localhost)",
+                    "-t",
+                    "C,,",
+                    "-i",
+                    cert_path,
+                ],
                 check=True,
                 capture_output=True,
             )

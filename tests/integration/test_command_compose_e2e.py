@@ -76,7 +76,9 @@ def _query(srv, sql: str) -> list[tuple]:
 def test_standalone_command_returns_enriched_set(server):
     # The standalone short-circuit returns the command's full set (outer LIMIT is not pushed into it),
     # so assert the first rows in id order.
-    rows = _query(server, "SELECT id, score, region_label FROM enrich_orders('sales-pg.public.orders')")
+    rows = _query(
+        server, "SELECT id, score, region_label FROM enrich_orders('sales-pg.public.orders')"
+    )
     by_id = {r[0]: r for r in rows}
     for oid in (1, 2, 3):
         assert by_id[oid] == (oid, _score(oid), f"R-{_ORDER_REGION[oid]}")

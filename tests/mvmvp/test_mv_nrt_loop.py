@@ -60,7 +60,9 @@ def _mv(node, table, run, db, store, *, dep):
         watermark_column=None,
         dependents_of=dep,
         name=node,
-        generate=make_mv_generate(DsnEngine(store), schema="", table=table, columns=_COLS, run_query=run),
+        generate=make_mv_generate(
+            DsnEngine(store), schema="", table=table, columns=_COLS, run_query=run
+        ),
         db=db,
     )
 

@@ -43,14 +43,30 @@ _ENVELOPE: tuple[tuple[str, str, str], ...] = (
     ("target_table", "varchar", "The governed Provisa table the dataset resolved to."),
     ("column_name", "varchar", "The column the check applies to; empty for table-level checks."),
     ("check_name", "varchar", "The check's identity within the contract."),
-    ("check_type", "varchar", "The check's kind (missing, invalid, duplicate, freshness, schema…)."),
-    ("check_definition", "varchar", "The check as declared, so a result is readable without the contract."),
-    ("outcome", "varchar", "pass | fail | warn | error | skipped — an observation, never a verdict."),
+    (
+        "check_type",
+        "varchar",
+        "The check's kind (missing, invalid, duplicate, freshness, schema…).",
+    ),
+    (
+        "check_definition",
+        "varchar",
+        "The check as declared, so a result is readable without the contract.",
+    ),
+    (
+        "outcome",
+        "varchar",
+        "pass | fail | warn | error | skipped — an observation, never a verdict.",
+    ),
     ("metric_value", "double", "The measured value, when the check produced a numeric metric."),
     ("threshold", "varchar", "The declared threshold the value was compared against."),
     ("rows_tested", "bigint", "How many rows the check considered."),
     ("failed_rows", "bigint", "How many rows failed the check."),
-    ("diagnostics", "jsonb", "Check-type-specific detail. Promote a field to a typed column (REQ-119)."),
+    (
+        "diagnostics",
+        "jsonb",
+        "Check-type-specific detail. Promote a field to a typed column (REQ-119).",
+    ),
 )
 
 # REQ-119 promotions shipped with the schema: the two diagnostics fields that are worth a typed

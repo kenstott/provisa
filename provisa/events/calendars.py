@@ -245,7 +245,9 @@ _GREGORIAN_GRAIN = {
 # same calendar-addressable ``[start, end)`` tiling as a grain — consecutive occurrences tile the
 # timeline — so it drops into ``window_for``/``next_boundary``/``PeriodicCalendar`` unchanged.
 _LAST = -1  # sentinel n: the LAST matching weekday of the month
-_SCAN_MONTHS = 24  # bound the occurrence scan (a rule always recurs within ~2 months; guards runaway)
+_SCAN_MONTHS = (
+    24  # bound the occurrence scan (a rule always recurs within ~2 months; guards runaway)
+)
 _WD_ABBR = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")  # date.weekday() index → label
 
 
@@ -359,7 +361,12 @@ class RRuleRecurrence:
         interval = parts.get("INTERVAL")
         if interval and interval != "1":
             tok += interval
-        for key, prefix in (("BYMONTH", "MO"), ("BYMONTHDAY", "D"), ("BYDAY", ""), ("BYSETPOS", "P")):
+        for key, prefix in (
+            ("BYMONTH", "MO"),
+            ("BYMONTHDAY", "D"),
+            ("BYDAY", ""),
+            ("BYSETPOS", "P"),
+        ):
             val = parts.get(key)
             if val:
                 tok += prefix + val.replace(",", "").replace("-", "L")
@@ -375,14 +382,18 @@ def _normalize_rrule(s: str) -> str:
     pairs = [kv.strip() for kv in body.split(";") if kv.strip()]
     upper = {kv.split("=", 1)[0].upper() for kv in pairs}
     if upper & {"COUNT", "UNTIL"}:
-        raise ValueError(f"RRULE grain {s!r} must be unbounded (remove COUNT/UNTIL) — a grain tiles forever")
+        raise ValueError(
+            f"RRULE grain {s!r} must be unbounded (remove COUNT/UNTIL) — a grain tiles forever"
+        )
     return ";".join(f"{kv.split('=', 1)[0].upper()}={kv.split('=', 1)[1]}" for kv in pairs)
 
 
 def _rrule_occurrence_on_or_before(rec: RRuleRecurrence, d: date) -> date:
     occ = rec._rrule().before(datetime(d.year, d.month, d.day), inc=True)
     if occ is None:
-        raise ValueError(f"RRULE grain {rec.rule!r}: no occurrence on/before {d} (after epoch {_RRULE_EPOCH:%Y-%m-%d})")
+        raise ValueError(
+            f"RRULE grain {rec.rule!r}: no occurrence on/before {d} (after epoch {_RRULE_EPOCH:%Y-%m-%d})"
+        )
     return occ.date()
 
 
@@ -401,7 +412,9 @@ def _rrule_window(cal: Calendar, rec: RRuleRecurrence, d: date) -> Window:
     return _window(cal, start, end, f"{start.isoformat()}-{rec.label}")
 
 
-def parse_grain_spec(spec: str | Grain | NthWeekday | RRuleRecurrence) -> Grain | NthWeekday | RRuleRecurrence:
+def parse_grain_spec(
+    spec: str | Grain | NthWeekday | RRuleRecurrence,
+) -> Grain | NthWeekday | RRuleRecurrence:
     """Parse a declared calendar grain into a nesting :class:`Grain`, an anchored :class:`NthWeekday`
     shorthand, or a full :class:`RRuleRecurrence` (REQ-962/1168/1169). Resolution order:
 

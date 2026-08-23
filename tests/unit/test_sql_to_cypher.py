@@ -1263,7 +1263,9 @@ class TestCorrelatedSubqueries:
         assert result is not None
         parse_cypher(result)
         count_item = next(
-            item for item in result.split("RETURN ")[1].split("\n")[0].split(", ") if "COUNT" in item
+            item
+            for item in result.split("RETURN ")[1].split("\n")[0].split(", ")
+            if "COUNT" in item
         )
         parse_expression(count_item.split(" AS ")[0])
 
@@ -1272,7 +1274,7 @@ class TestCorrelatedSubqueries:
         ctx, lm = self._make_ctx_and_label_map()
         sql = (
             "SELECT users.id AS user_id, (SELECT JSON_AGG(JSONB_BUILD_OBJECT("
-            "'pet_id', inquiries.pet_id)) FROM \"pet_store\".\"inquiries\" AS inquiries "
+            '\'pet_id\', inquiries.pet_id)) FROM "pet_store"."inquiries" AS inquiries '
             "WHERE inquiries.user_id = users.id) AS pet_details "
             'FROM "pet_store"."users" AS users LIMIT 100'
         )

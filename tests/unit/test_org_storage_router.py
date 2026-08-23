@@ -101,9 +101,7 @@ async def _org(admin_db: Database, org_id: str = "acme") -> None:
 
 async def _stored_dsn(admin_db: Database, org_id: str = "acme") -> bytes | None:
     async with admin_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(orgs.c.storage_url_enc).where(orgs.c.id == org_id)
-        )
+        result = await conn.execute_core(select(orgs.c.storage_url_enc).where(orgs.c.id == org_id))
         return result.fetchone()[0]
 
 
