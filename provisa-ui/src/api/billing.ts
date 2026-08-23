@@ -251,8 +251,19 @@ export async function fetchPlans(orgId: string): Promise<PlanOffers> {
 // to ask about yet, and the checkout overlay states only the first tier's unit price, which is zero
 // on every plan.
 
-export async function fetchCatalog(): Promise<PlanOffer[]> {
-  return ((await billingFetch("/catalog")) as { plans: PlanOffer[] }).plans;
+export interface Catalog {
+  plans: PlanOffer[];
+  /**
+   * Whether the signed-in account is still owed a free evaluation (REQ-1566). A plan's
+   * `trial_days` is what the STORE sells; this is whether this buyer may have it. False means
+   * Starter is still orderable — same plan, same limits — but billed from the first invoice, so
+   * the page must not advertise free days the checkout is not going to give.
+   */
+  trial_available: boolean;
+}
+
+export async function fetchCatalog(): Promise<Catalog> {
+  return (await billingFetch("/catalog")) as Catalog;
 }
 
 /** Open the signup checkout for `plan`. The server resolves the variant; the client never names it. */

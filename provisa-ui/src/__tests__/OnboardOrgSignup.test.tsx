@@ -106,7 +106,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.billing = false;
   mockFetchMyReservation.mockResolvedValue(null);
-  mockFetchCatalog.mockResolvedValue(CATALOG);
+  mockFetchCatalog.mockResolvedValue({ plans: CATALOG, trial_available: true });
   mockStartPlanCheckout.mockResolvedValue("https://store.lemonsqueezy.com/checkout/x");
   mockStartEgress.mockResolvedValue("https://store.lemonsqueezy.com/checkout/egress");
 });
@@ -133,6 +133,28 @@ describe("org onboarding where the org is sold", () => {
     await waitFor(() =>
       expect(screen.getAllByTestId("onboard-org-signup-desc").length).toBeGreaterThan(0),
     );
+  });
+
+  // REQ-1566: a buyer whose evaluation is spent can still order Starter, so the plan stays on the
+  // page — but the fourteen free days do not, because the checkout is going to bill on day one.
+  it("stops advertising the trial once this account has used it", async () => {
+    mockAuth.billing = true;
+    mockFetchCatalog.mockResolvedValue({ plans: CATALOG, trial_available: false });
+    render(<OnboardOrgPage />);
+
+    await waitFor(() => expect(screen.getByTestId("onboard-org-plan-starter")).toBeTruthy());
+    expect(screen.queryByText(/14-day free trial/)).toBeNull();
+    expect(screen.getByText(/free trial has already been used/)).toBeTruthy();
+    expect(screen.getByTestId("onboard-org-signup-desc").textContent).toMatch(
+      /Billing starts immediately/,
+    );
+  });
+
+  it("still offers the trial to an account that has not used one", async () => {
+    mockAuth.billing = true;
+    render(<OnboardOrgPage />);
+
+    await waitFor(() => expect(screen.getByText(/14-day free trial/)).toBeTruthy());
   });
 
   it("opens the checkout when the create comes back as a reservation", async () => {

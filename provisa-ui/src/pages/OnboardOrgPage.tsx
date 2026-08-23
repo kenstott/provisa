@@ -66,6 +66,10 @@ export function OnboardOrgPage() {
   // REQ-1514: the priced plans, and the one being bought. The checkout overlay states only the
   // first tier's unit price, which is zero on every plan, so the terms are shown here instead.
   const [plans, setPlans] = useState<PlanOffer[] | null>(null);
+  // REQ-1566: whether this account is still owed a free evaluation. Until the catalog answers,
+  // no trial is claimed — promising free days and then billing on day one is the failure this
+  // flag exists to prevent, and the optimistic default is the one that produces it.
+  const [trialAvailable, setTrialAvailable] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
   const [emailRule, setEmailRule] = useState("");
   const [autoJoin, setAutoJoin] = useState(false);
@@ -127,11 +131,12 @@ export function OnboardOrgPage() {
     if (!billing) return;
     let cancelled = false;
     fetchCatalog()
-      .then((offers) => {
+      .then((catalog) => {
         if (cancelled) return;
-        setPlans(offers);
+        setPlans(catalog.plans);
+        setTrialAvailable(catalog.trial_available);
         // The cheapest plan is first (PLAN_ORDER) and is the one carrying the trial.
-        setPlan(offers[0].plan);
+        setPlan(catalog.plans[0].plan);
       })
       .catch((err) => {
         if (!cancelled)
@@ -563,10 +568,17 @@ export function OnboardOrgPage() {
                                   })
                                 : t("onboardOrg.planEngineShared")}
                             </Text>
-                            <Text size="xs" c={p.trial_days === null ? "dimmed" : "green"}>
+                            {/* REQ-1566: a trial this account is not owed is not advertised —
+                                the plan is still orderable, billed from the first invoice. */}
+                            <Text
+                              size="xs"
+                              c={p.trial_days === null || !trialAvailable ? "dimmed" : "green"}
+                            >
                               {p.trial_days === null
                                 ? t("onboardOrg.planNoTrial")
-                                : t("onboardOrg.planTrial", { days: p.trial_days })}
+                                : trialAvailable
+                                  ? t("onboardOrg.planTrial", { days: p.trial_days })
+                                  : t("onboardOrg.planTrialSpent")}
                             </Text>
                           </Stack>
                         </Paper>
@@ -611,7 +623,7 @@ export function OnboardOrgPage() {
                     created by the subscription, so it says what it does. */}
                 {billing && offer && (
                   <Text size="sm" c="dimmed" data-testid="onboard-org-signup-desc">
-                    {offer.trial_days === null
+                    {offer.trial_days === null || !trialAvailable
                       ? t("onboardOrg.signUpDescPaid")
                       : t("onboardOrg.signUpDesc")}
                   </Text>

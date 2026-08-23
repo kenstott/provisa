@@ -55,6 +55,7 @@
     "planEngineDedicated": "Dedicated {{vcpu}} vCPU / {{memory}} GB engine",
     "planTrial": "{{days}}-day free trial — card taken now, nothing charged until it converts",
     "planNoTrial": "No trial on this size; billing starts with your first invoice",
+    "planTrialSpent": "Your free trial has already been used; billing starts with your first invoice",
     "signUpDescPaid": "Creating an organization opens checkout for the plan you chose. Billing starts immediately on this size.",
     "openingCheckout": "Opening secure checkout...",
     "finishingSetup": "Payment received. Building your organization...",
