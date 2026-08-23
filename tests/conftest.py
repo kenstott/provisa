@@ -693,6 +693,21 @@ def pytest_collection_modifyitems(config, items):  # pyright: ignore
 
 
 @pytest.fixture(autouse=True)
+def _repos_stay_in_the_test_instance(tmp_path_factory, monkeypatch):
+    """No test writes a git repository into the maintainer's data directory.
+
+    ``env_repo.repo_root`` falls back to ``~/.provisa/repos`` when nothing points it elsewhere, and
+    ``ensure_repo`` CREATES what it does not find -- so any suite that reaches the projection
+    without setting the variable would build its org's repository inside local-dev's store. test and
+    local-dev are separate instances; a suite that touched one from the other would be a defect
+    whether or not anything visibly broke. Suites that set the variable themselves keep their own.
+    """
+    if not os.environ.get("PROVISA_REPO_DIR"):
+        monkeypatch.setenv("PROVISA_REPO_DIR", str(tmp_path_factory.mktemp("repos")))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_naming_convention():  # pyright: ignore
     """Reset global naming convention to defaults after each test.
 
