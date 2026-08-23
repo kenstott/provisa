@@ -36,6 +36,8 @@
     "itemExplore": "MCP",
     "itemEncryption": "Versleuteling",
     "itemSecurity": "Beveiliging",
+    "itemOrgSecrets": "Organisatiegeheimen",
+    "itemMySecrets": "Jouw geheimen",
     "itemAuthentication": "Authenticatie",
     "itemAiModels": "AI-modellen",
     "itemMetadataExport": "Exporteren",

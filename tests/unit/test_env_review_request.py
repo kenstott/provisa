@@ -79,8 +79,8 @@ def wired(monkeypatch):
     # this a unit test of the router while still recording that the org WAS bound around the call;
     # ``tests/integration/test_secrets_store.py`` drives the real binding.
     @asynccontextmanager
-    async def _bound(_admin_db, org_id):
-        calls.append(("bound", org_id))
+    async def _bound(_admin_db, org_id, *, user_id=None):
+        calls.append(("bound", org_id, user_id))
         yield
 
     monkeypatch.setattr(er, "_admin_pool", lambda: "admin-db")

@@ -36,6 +36,8 @@
     "itemExplore": "MCP",
     "itemEncryption": "הצפנה",
     "itemSecurity": "אבטחה",
+    "itemOrgSecrets": "סודות הארגון",
+    "itemMySecrets": "הסודות שלך",
     "itemAuthentication": "אימות",
     "itemAiModels": "מודלי AI",
     "itemMetadataExport": "ייצוא",

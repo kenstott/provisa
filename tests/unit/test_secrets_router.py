@@ -8,14 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What the Secrets endpoints hand back, and what they will not (REQ-1558).
+"""What the Secrets endpoints hand back, and what they will not (REQ-1558, REQ-1560).
 
 The one claim worth a test here is a negative one: no response carries a stored value. It is not
 enough that no route is named "get" -- the list, the write and the audit record each pass through
 a shape that could carry the value along with the name, so each of them is checked for it.
+
+The second claim is about ADDRESSING: the org vault and a person's vault are the same table under
+two owners, and the personal endpoints take their owner from the authenticated identity, so there
+is no request shape that names another person's secret at all.
 """
 
-# Requirements: REQ-1361, REQ-1557, REQ-1558
+# Requirements: REQ-1361, REQ-1557, REQ-1558, REQ-1560
 
 from __future__ import annotations
 
@@ -23,7 +27,7 @@ import pytest
 
 from provisa.api.admin import secrets_router as sr
 from provisa.api.errors import ApiError
-from provisa.core.secrets_store import SecretInfo
+from provisa.core.secrets_store import ORG_OWNER, SecretInfo
 from provisa.core.secrets_registry import SecretsProviderSpec
 
 pytestmark = pytest.mark.asyncio
@@ -37,47 +41,62 @@ class _Request:
         identity = None
 
 
-def _info(name="GIT_TOKEN"):
+def _info(name="GIT_TOKEN", owner_id=ORG_OWNER):
     return SecretInfo(
-        name=name, description="push", created_at=None, updated_at=None, updated_by="uid-admin"
+        name=name,
+        description="push",
+        created_at=None,
+        updated_at=None,
+        updated_by="uid-admin",
+        owner_id=owner_id,
     )
 
 
 @pytest.fixture
 def store(monkeypatch):
-    """The store as a record of calls, and the built-in (writable) provider selected."""
-    calls: dict[str, list] = {"guard": [], "put": [], "remove": [], "audit": []}
-    held = {"GIT_TOKEN": _info()}
+    """The store as a record of calls, and the built-in (writable) provider selected.
 
-    async def _guard(request, org_id):
+    Held is keyed by (owner_id, name) -- the same shape the table's primary key has, which is what
+    makes "another developer cannot reach your secret" a fact about addressing rather than a check.
+    """
+    calls: dict[str, list] = {"guard": [], "owner": [], "put": [], "remove": [], "audit": []}
+    held: dict[tuple[str, str], SecretInfo] = {(ORG_OWNER, "GIT_TOKEN"): _info()}
+
+    async def _org_guard(request, org_id):
         calls["guard"].append(org_id)
         return "uid-admin"
 
-    async def _listing(admin_db, org_id):
-        return list(held.values())
+    def _personal_owner(request, org_id):
+        calls["owner"].append(org_id)
+        return "uid-dev"
 
-    async def _describe(admin_db, org_id, name):
-        return held.get(name)
+    async def _listing(admin_db, org_id, *, owner_id):
+        return [i for (o, _), i in held.items() if o == owner_id]
 
-    async def _put(admin_db, org_id, name, value, *, description=None, actor=None):
-        calls["put"].append((org_id, name, value, actor))
-        held[name] = _info(name)
-        return held[name]
+    async def _describe(admin_db, org_id, name, *, owner_id):
+        return held.get((owner_id, name))
 
-    async def _remove(admin_db, org_id, name):
-        calls["remove"].append((org_id, name))
-        return held.pop(name, None) is not None
+    async def _put(admin_db, org_id, name, value, *, owner_id, description=None, actor=None):
+        calls["put"].append((org_id, owner_id, name, value, actor))
+        held[(owner_id, name)] = _info(name, owner_id)
+        return held[(owner_id, name)]
+
+    async def _remove(admin_db, org_id, name, *, owner_id):
+        calls["remove"].append((org_id, owner_id, name))
+        return held.pop((owner_id, name), None) is not None
 
     async def _audit(org_id, actor, action, name):
         calls["audit"].append((org_id, actor, action, name))
 
-    monkeypatch.setattr(sr, "_guard", _guard)
+    monkeypatch.setattr(sr, "_org_guard", _org_guard)
+    monkeypatch.setattr(sr, "_personal_owner", _personal_owner)
     monkeypatch.setattr(sr, "_audit", _audit)
     monkeypatch.setattr(sr, "_admin_pool", lambda: "admin-db")
     monkeypatch.setattr(sr.secrets_store, "listing", _listing)
     monkeypatch.setattr(sr.secrets_store, "describe", _describe)
     monkeypatch.setattr(sr.secrets_store, "put", _put)
     monkeypatch.setattr(sr.secrets_store, "remove", _remove)
+    calls["held"] = held
     return calls
 
 
@@ -130,6 +149,55 @@ class TestWhoMayAct:
         await sr.put_secret(_Request(), ORG, "GIT_TOKEN", sr.SecretBody(value=VALUE))
         await sr.delete_secret(_Request(), ORG, "GIT_TOKEN")
         assert store["guard"] == [ORG, ORG]
+
+
+class TestThePersonalVault:
+    """REQ-1560: whose secret it is, is part of where it is."""
+
+    async def test_a_personal_write_lands_under_the_caller_not_the_org(self, store):
+        await sr.put_my_secret(_Request(), ORG, "GIT_TOKEN", sr.SecretBody(value=VALUE))
+        assert store["put"] == [(ORG, "uid-dev", "GIT_TOKEN", VALUE, "uid-dev")]
+        # The org's GIT_TOKEN is untouched: two people may each hold one of that name.
+        assert (ORG_OWNER, "GIT_TOKEN") in store["held"]
+        assert ("uid-dev", "GIT_TOKEN") in store["held"]
+
+    async def test_the_reference_names_the_vault_it_came_from(self, store):
+        answer = await sr.put_my_secret(_Request(), ORG, "GIT_TOKEN", sr.SecretBody(value=VALUE))
+        assert answer["reference"] == "${user:GIT_TOKEN}"
+        assert answer["scope"] == "user"
+        assert VALUE not in str(answer)
+
+    async def test_a_personal_listing_shows_only_the_callers_own(self, store):
+        await sr.put_my_secret(_Request(), ORG, "MINE", sr.SecretBody(value=VALUE))
+        names = [s["name"] for s in (await sr.list_my_secrets(_Request(), ORG))["secrets"]]
+        assert names == ["MINE"]
+        org_names = [s["name"] for s in (await sr.list_secrets(_Request(), ORG))["secrets"]]
+        assert org_names == ["GIT_TOKEN"]
+
+    async def test_holding_a_personal_secret_asks_no_capability(self, store):
+        """No org_settings, no admin -- the owner comes off the identity and that is the whole
+        authorization. What it must NOT do is fall through to the org guard."""
+        await sr.list_my_secrets(_Request(), ORG)
+        await sr.put_my_secret(_Request(), ORG, "MINE", sr.SecretBody(value=VALUE))
+        await sr.delete_my_secret(_Request(), ORG, "MINE")
+        assert store["guard"] == []
+        assert store["owner"] == [ORG, ORG, ORG]
+
+    async def test_a_personal_delete_cannot_reach_the_org_vault(self, store):
+        """GIT_TOKEN exists -- in the ORG vault. Asking for it as a personal secret is a 404,
+        because the name alone does not address it."""
+        with pytest.raises(ApiError) as raised:
+            await sr.delete_my_secret(_Request(), ORG, "GIT_TOKEN")
+        assert raised.value.status_code == 404
+        assert (ORG_OWNER, "GIT_TOKEN") in store["held"]
+
+    async def test_the_audit_record_says_which_vault(self, store):
+        await sr.put_my_secret(_Request(), ORG, "MINE", sr.SecretBody(value=VALUE))
+        await sr.delete_my_secret(_Request(), ORG, "MINE")
+        assert store["audit"] == [
+            (ORG, "uid-dev", "user_secret.created", "MINE"),
+            (ORG, "uid-dev", "user_secret.deleted", "MINE"),
+        ]
 
 
 class TestWhenACentralServiceOwnsThem:

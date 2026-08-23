@@ -36,6 +36,8 @@
     "itemExplore": "MCP",
     "itemEncryption": "Шифрование",
     "itemSecurity": "Безопасность",
+    "itemOrgSecrets": "Секреты организации",
+    "itemMySecrets": "Ваши секреты",
     "itemAuthentication": "Аутентификация",
     "itemAiModels": "Модели ИИ",
     "itemMetadataExport": "Экспорт",

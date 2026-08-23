@@ -36,6 +36,8 @@
     "itemExplore": "MCP",
     "itemEncryption": "एन्क्रिप्शन",
     "itemSecurity": "सुरक्षा",
+    "itemOrgSecrets": "संगठन के सीक्रेट",
+    "itemMySecrets": "आपके सीक्रेट",
     "itemAuthentication": "प्रमाणीकरण",
     "itemAiModels": "AI मॉडल",
     "itemMetadataExport": "निर्यात",

@@ -143,7 +143,7 @@ class TestWhatARefusedPullSays:
         # org around it. Standing in for the binding keeps this a unit test of the refusal;
         # ``tests/integration/test_secrets_store.py`` drives the real binding.
         @asynccontextmanager
-        async def _bound(_admin_db, _org_id):
+        async def _bound(_admin_db, _org_id, *, user_id=None):
             yield
 
         monkeypatch.setattr(secrets_store, "bound", _bound)

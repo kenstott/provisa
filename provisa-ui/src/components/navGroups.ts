@@ -144,8 +144,13 @@ export const NAV_GROUPS: NavGroup[] = [
         commercial: true,
       },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
-      // REQ-1558: Secrets has no entry of its own. It is a sub-tab of Security, which the entry
-      // above already stands for; /admin/secrets remains a deep link into that sub-tab.
+      // REQ-1560: two surfaces, named for whose they are. They are separate entries rather than one
+      // Secrets page with a filter because the question "may I see this" is answered differently for
+      // each: the org vault is an administrator's list of what the org connects to (org_settings),
+      // and a person's own vault is nobody's to grant -- every member has one, so `usage`, the right
+      // every seeded role carries. This supersedes REQ-1558's single sub-tab under Security.
+      { to: "/admin/secrets", labelKey: "navBar.itemOrgSecrets", capability: "org_settings" },
+      { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: "usage" },
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
       // platform_settings — the same right that gates the engine topology switch it announces.
       {

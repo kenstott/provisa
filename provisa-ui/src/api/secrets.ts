@@ -11,13 +11,21 @@
 // REQ-1557, REQ-1558: the org's secrets. There is deliberately no read call here — nothing in the
 // API returns a stored value, so nothing in the browser can be handed one. A `Secret` is a name,
 // what it is for, who last set it and the reference to paste; a lost value is REPLACED.
+//
+// REQ-1560: every call names the VAULT it is addressing. The personal endpoints take their owner
+// from the authenticated identity on the server, so there is no user id to pass here and no way
+// for the browser to ask for anybody else's — "whose" is not a parameter, it is the caller.
 
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-function base(orgId: string): string {
-  return `${API_BASE}/admin/orgs/${encodeURIComponent(orgId)}/secrets`;
+/** Which vault a call addresses: the org's shared one, or the caller's own (REQ-1560). */
+export type Vault = "org" | "user";
+
+function base(orgId: string, vault: Vault): string {
+  const path = vault === "org" ? "secrets" : "my-secrets";
+  return `${API_BASE}/admin/orgs/${encodeURIComponent(orgId)}/${path}`;
 }
 
 async function ok<T>(res: Response, op: string): Promise<T> {
@@ -34,7 +42,9 @@ export interface Secret {
   created_at: string | null;
   updated_at: string | null;
   updated_by: string | null;
-  /** What to paste into a connection field: `${secret:NAME}`. */
+  /** Whose vault this row is in — the grammar of `reference` follows it (REQ-1560). */
+  scope: Vault;
+  /** What to paste into a connection field: `${secret:NAME}` or `${user:NAME}`. */
   reference: string;
 }
 
@@ -79,18 +89,19 @@ export interface SecretsState {
   secrets: Secret[];
 }
 
-export async function fetchSecrets(orgId: string): Promise<SecretsState> {
-  const res = await fetch(base(orgId));
+export async function fetchSecrets(orgId: string, vault: Vault): Promise<SecretsState> {
+  const res = await fetch(base(orgId, vault));
   return ok<SecretsState>(res, "load secrets");
 }
 
 /** Create or replace one secret — the same call, because the name is the identity. */
 export async function putSecret(
   orgId: string,
+  vault: Vault,
   name: string,
   body: { value: string; description?: string | null },
 ): Promise<Secret> {
-  const res = await fetch(`${base(orgId)}/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${base(orgId, vault)}/${encodeURIComponent(name)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -98,8 +109,14 @@ export async function putSecret(
   return ok<Secret>(res, "save secret");
 }
 
-export async function deleteSecret(orgId: string, name: string): Promise<{ deleted: string }> {
-  const res = await fetch(`${base(orgId)}/${encodeURIComponent(name)}`, { method: "DELETE" });
+export async function deleteSecret(
+  orgId: string,
+  vault: Vault,
+  name: string,
+): Promise<{ deleted: string }> {
+  const res = await fetch(`${base(orgId, vault)}/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
   return ok<{ deleted: string }>(res, "delete secret");
 }
 

@@ -36,6 +36,8 @@
     "itemExplore": "MCP",
     "itemEncryption": "加密",
     "itemSecurity": "安全",
+    "itemOrgSecrets": "組織密鑰",
+    "itemMySecrets": "我的密鑰",
     "itemAuthentication": "驗證",
     "itemAiModels": "AI 模型",
     "itemMetadataExport": "匯出",

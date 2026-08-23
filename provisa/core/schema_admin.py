@@ -486,10 +486,15 @@ platform_notice = Table(
 # than any key of this table's own -- a registry copied without that key yields nothing. There is
 # deliberately no plaintext column and no read path back out: a value goes in and is only ever
 # resolved (REQ-1558).
+# REQ-1560: the OWNER is part of the key, not a permission checked around it. ``owner_id`` is the
+# user whose personal vault holds the row, or ``ORG_OWNER`` ("*") for the org vault every member
+# shares. Two people may therefore each hold a GIT_TOKEN of their own, and ${user:GIT_TOKEN}
+# resolves to whichever of them is acting -- there is no way to write down someone else's secret.
 secrets_store = Table(
     "secrets_store",
     metadata,
     Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    Column("owner_id", Text, primary_key=True),
     Column("name", Text, primary_key=True),
     Column("value", LargeBinary, nullable=False),
     # What the secret is for, in the org's own words. Never the value, and never derived from it.

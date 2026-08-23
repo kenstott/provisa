@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Accordion,
@@ -42,6 +42,7 @@ import {
   type Secret,
   type SecretsState,
   type SecretsServiceState,
+  type Vault,
 } from "../../api/secrets";
 
 /**
@@ -193,13 +194,21 @@ function SecretsServicePanel() {
   );
 }
 
-export function SecretsTab() {
+interface VaultProps {
+  /** Which vault this surface is of. There is no third state and no "all" (REQ-1560). */
+  vault: Vault;
+  /** What sits above the list — the service chooser on the org surface, nothing on the personal one. */
+  header?: ReactNode;
+}
+
+/**
+ * One vault's names (REQ-1560). The org surface and the personal surface are the same list, the
+ * same form and the same "replace rather than reveal" rule; what differs is WHOSE, and that is
+ * carried by `vault` into the URL rather than by a user id the browser could change.
+ */
+function SecretsVault({ vault, header }: VaultProps) {
   const { t } = useTranslation();
   const { activeOrgId } = useAuth();
-  // Two rights on one page: the SERVICE is the deployment's, the NAMES are the org's (REQ-1558).
-  const mayChooseService = useCapability("platform_settings");
-  const mayHoldSecrets = useCapability("org_settings");
-  const [servicePanel, setServicePanel] = usePanelState("secretsService");
   const [state, setState] = useState<SecretsState | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -212,13 +221,13 @@ export function SecretsTab() {
   const [saving, setSaving] = useState(false);
 
   const load = () => {
-    if (!activeOrgId || !mayHoldSecrets) return;
-    fetchSecrets(activeOrgId)
+    if (!activeOrgId) return;
+    fetchSecrets(activeOrgId, vault)
       .then(setState)
       .catch((e) => setError(String(e)));
   };
 
-  useEffect(load, [activeOrgId, mayHoldSecrets]);
+  useEffect(load, [activeOrgId, vault]);
 
   const open = (secret: Secret | null) => {
     setEditing(secret ? secret.name : "");
@@ -234,7 +243,7 @@ export function SecretsTab() {
     setSaving(true);
     setError("");
     try {
-      await putSecret(activeOrgId, name, { value, description: description || null });
+      await putSecret(activeOrgId, vault, name, { value, description: description || null });
       setMessage(t(editing ? "secretsTab.replaced" : "secretsTab.created", { name }));
       setEditing(null);
       setValue("");
@@ -250,7 +259,7 @@ export function SecretsTab() {
     if (!activeOrgId) return;
     setError("");
     try {
-      await deleteSecret(activeOrgId, secret.name);
+      await deleteSecret(activeOrgId, vault, secret.name);
       setMessage(t("secretsTab.deleted", { name: secret.name }));
       load();
     } catch (e) {
@@ -258,37 +267,17 @@ export function SecretsTab() {
     }
   };
 
-  // Collapsed by default: choosing the backend happens once for the deployment, reading the names
-  // happens every day, so the page opens on the names. The choice is remembered per browser.
-  const service = mayChooseService ? (
-    <Accordion
-      value={servicePanel}
-      onChange={setServicePanel}
-      variant="contained"
-      data-testid="secrets-service-panel"
-    >
-      <Accordion.Item value="service">
-        <Accordion.Control data-testid="secrets-service-toggle">
-          {t("secretsTab.serviceTitle")}
-        </Accordion.Control>
-        {/* Mounted only when open, so a collapsed panel does not read the deployment config. */}
-        <Accordion.Panel>{servicePanel === "service" && <SecretsServicePanel />}</Accordion.Panel>
-      </Accordion.Item>
-    </Accordion>
-  ) : null;
-
-  if (!mayHoldSecrets) return <Stack data-testid="secrets-tab">{service}</Stack>;
   if (error && !state) return <Alert color="red">{error}</Alert>;
   if (!state) return <Text>{t("secretsTab.loading")}</Text>;
 
   const writable = state.provider.writable;
 
   return (
-    <Stack gap="md" data-testid="secrets-tab">
-      {service}
-      {service && <Divider />}
+    <Stack gap="md" data-testid={vault === "org" ? "secrets-tab" : "my-secrets-tab"}>
+      {header}
+      {header && <Divider />}
       <Text c="dimmed" fz="sm">
-        {t("secretsTab.intro")}
+        {t(vault === "org" ? "secretsTab.intro" : "secretsTab.introPersonal")}
       </Text>
       <Alert color={writable ? "blue" : "yellow"} title={state.provider.label}>
         {writable
@@ -438,4 +427,55 @@ export function SecretsTab() {
       </Modal>
     </Stack>
   );
+}
+
+/**
+ * ORG SECRETS (REQ-1560): the shared vault, plus the deployment's choice of secrets service for
+ * whoever runs the deployment.
+ *
+ * The org half is gated STRICTLY on `org_settings` -- `capabilities.includes` rather than
+ * `hasCapability` -- because the platform wildcard must not answer for it (REQ-1361). A platform
+ * admin holds `admin`, which satisfies every other gate in the UI; here it would have shown them
+ * the list of names an org keeps, which is itself a statement about what that org connects to. The
+ * server refuses the same call, so all the wildcard bought was a page that 403s.
+ */
+export function SecretsTab() {
+  const { t } = useTranslation();
+  const { capabilities } = useAuth();
+  const mayChooseService = useCapability("platform_settings");
+  const mayHoldSecrets = capabilities.includes("org_settings");
+  const [servicePanel, setServicePanel] = usePanelState("secretsService");
+
+  // Collapsed by default: choosing the backend happens once for the deployment, reading the names
+  // happens every day, so the page opens on the names. The choice is remembered per browser.
+  const service = mayChooseService ? (
+    <Accordion
+      value={servicePanel}
+      onChange={setServicePanel}
+      variant="contained"
+      data-testid="secrets-service-panel"
+    >
+      <Accordion.Item value="service">
+        <Accordion.Control data-testid="secrets-service-toggle">
+          {t("secretsTab.serviceTitle")}
+        </Accordion.Control>
+        {/* Mounted only when open, so a collapsed panel does not read the deployment config. */}
+        <Accordion.Panel>{servicePanel === "service" && <SecretsServicePanel />}</Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
+  ) : null;
+
+  if (!mayHoldSecrets) return <Stack data-testid="secrets-tab">{service}</Stack>;
+  return <SecretsVault vault="org" header={service} />;
+}
+
+/**
+ * YOUR SECRETS (REQ-1560): the caller's own vault, in the org they are acting in.
+ *
+ * No capability is consulted, here or on the server. Holding a credential of your own is not a
+ * privilege an administrator grants, and the reason another developer cannot use yours is not a
+ * check -- it is that no request can name it.
+ */
+export function MySecretsTab() {
+  return <SecretsVault vault="user" />;
 }

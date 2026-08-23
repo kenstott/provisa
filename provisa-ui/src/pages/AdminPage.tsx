@@ -59,6 +59,7 @@ import { TagsTab } from "../components/admin/TagsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
+import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { DomainModeCard, NamingConventionsCard } from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { usePanelState } from "../hooks/usePanelState";
@@ -92,19 +93,18 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/encryption": "Security",
   "/admin/auth": "Security",
   "/admin/local-users": "Security",
-  "/admin/secrets": "Security", // REQ-1558: the org's secrets, a Security sub-tab
+  // REQ-1560: one vault per surface, each named for whose it is.
+  "/admin/secrets": "Org Secrets",
+  "/admin/my-secrets": "Your Secrets",
 };
 
 // Which Security sub-tab a route opens on.
-const SECURITY_SUBTAB: Record<
-  string,
-  "posture" | "encryption" | "authentication" | "localUsers" | "secrets"
-> = {
-  "/admin/encryption": "encryption",
-  "/admin/auth": "authentication",
-  "/admin/local-users": "localUsers",
-  "/admin/secrets": "secrets", // REQ-1558
-};
+const SECURITY_SUBTAB: Record<string, "posture" | "encryption" | "authentication" | "localUsers"> =
+  {
+    "/admin/encryption": "encryption",
+    "/admin/auth": "authentication",
+    "/admin/local-users": "localUsers",
+  };
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
@@ -402,6 +402,8 @@ export function AdminPage() {
             initialTab={SECURITY_SUBTAB[location.pathname]}
           />
         )}
+        {activeTab === "Org Secrets" && <SecretsTab />}
+        {activeTab === "Your Secrets" && <MySecretsTab />}
         {activeTab === "Observability" && settings && (
           <ObservabilityTab settings={settings} setSettings={setSettings} />
         )}

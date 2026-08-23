@@ -163,10 +163,34 @@ class TestResolvingOutsideAnOrg:
             secrets_store.StoredSecretsProvider().resolve("GIT_TOKEN")
 
     def test_a_bound_org_resolves_only_its_own_names(self):
-        token = secrets_store._bound.set(("acme", {"GIT_TOKEN": "ghp_x"}))
+        token = secrets_store._bound.set(
+            secrets_store._Binding("acme", {"GIT_TOKEN": "ghp_x"}, None, {})
+        )
         try:
             assert secrets_store.StoredSecretsProvider().resolve("GIT_TOKEN") == "ghp_x"
             with pytest.raises(KeyError, match="no secret named"):
                 secrets_store.StoredSecretsProvider().resolve("OTHER")
+        finally:
+            secrets_store._bound.reset(token)
+
+    def test_a_personal_reference_needs_a_person_not_just_an_org(self):
+        """REQ-1560: ${user:} is answered by whoever is acting, so an org alone cannot answer it."""
+        token = secrets_store._bound.set(
+            secrets_store._Binding("acme", {"GIT_TOKEN": "ghp_x"}, None, {})
+        )
+        try:
+            with pytest.raises(KeyError, match="no acting user"):
+                secrets_store.StoredSecretsProvider().resolve_user("GIT_TOKEN")
+        finally:
+            secrets_store._bound.reset(token)
+
+    def test_the_two_scopes_read_different_vaults(self):
+        token = secrets_store._bound.set(
+            secrets_store._Binding("acme", {"SHARED": "org"}, "uid-dev", {"SHARED": "mine"})
+        )
+        try:
+            provider = secrets_store.StoredSecretsProvider()
+            assert provider.resolve("SHARED") == "org"
+            assert provider.resolve_user("SHARED") == "mine"
         finally:
             secrets_store._bound.reset(token)

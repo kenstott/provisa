@@ -8,12 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1558, REQ-1361: Secrets shares the Security section with the deployment-wide tabs but not
-// their capability. What is tested here is which tabs exist for whom — an org administrator is
-// shown Secrets and none of the deployment's posture, encryption, authentication or local users,
-// while a platform administrator is shown those four AND Secrets, because Secrets also carries
-// the deployment's choice of secrets service. Which HALF of Secrets each of them gets is
-// SecretsTab's own decision, tested in SecretsTab.test.tsx.
+// REQ-1361, REQ-1560: the Security section describes the DEPLOYMENT — its posture, encryption,
+// authentication and local users — and nothing else. Secrets used to sit here as a fifth sub-tab
+// carrying a second capability; REQ-1560 gave each vault its own surface, so what is tested here is
+// that this section is four deployment tabs and that a deep link lands on the one it names.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "../test-utils/render";
@@ -31,12 +29,11 @@ vi.mock("../components/admin/AuthTab", () => ({ AuthTab: () => <div>auth panel</
 vi.mock("../components/admin/LocalUsersTab", () => ({
   LocalUsersTab: () => <div>local users panel</div>,
 }));
-vi.mock("../components/admin/SecretsTab", () => ({ SecretsTab: () => <div>secrets panel</div> }));
 
 const DEPLOYMENT = ["posture", "encryption", "authentication", "localUsers"];
 
 function tabs() {
-  return DEPLOYMENT.concat("secrets").filter((k) => screen.queryByTestId(`security-tab-${k}`));
+  return DEPLOYMENT.filter((k) => screen.queryByTestId(`security-tab-${k}`));
 }
 
 describe("Security section membership", () => {
@@ -44,30 +41,21 @@ describe("Security section membership", () => {
     auth.capabilities = ["platform_settings"];
   });
 
-  it("shows a platform administrator the deployment tabs, secrets among them", () => {
+  it("is the four deployment tabs, and secrets is not among them", () => {
     render(<SecurityManager allRoles={[]} allDomains={[]} />);
-    expect(tabs()).toEqual(DEPLOYMENT.concat("secrets"));
+    expect(tabs()).toEqual(DEPLOYMENT);
+    expect(screen.queryByTestId("security-tab-secrets")).toBeNull();
     expect(screen.getByText("posture panel")).toBeInTheDocument();
   });
 
-  it("shows an org administrator secrets and none of the deployment tabs", () => {
-    auth.capabilities = ["org_settings"];
-    render(<SecurityManager allRoles={[]} allDomains={[]} />);
-    expect(tabs()).toEqual(["secrets"]);
-    expect(screen.getByText("secrets panel")).toBeInTheDocument();
-  });
-
-  it("opens the secrets sub-tab the /admin/secrets route deep-links to", () => {
-    auth.capabilities = ["org_settings", "platform_settings"];
-    render(<SecurityManager allRoles={[]} allDomains={[]} initialTab="secrets" />);
-    expect(tabs()).toEqual(DEPLOYMENT.concat("secrets"));
-    expect(screen.getByText("secrets panel")).toBeInTheDocument();
-  });
-
-  it("ignores a deep link to a sub-tab the person may not see", () => {
-    auth.capabilities = ["org_settings"];
+  it("opens the sub-tab a legacy route deep-links to", () => {
     render(<SecurityManager allRoles={[]} allDomains={[]} initialTab="encryption" />);
-    expect(screen.queryByText("encryption panel")).not.toBeInTheDocument();
-    expect(screen.getByText("secrets panel")).toBeInTheDocument();
+    expect(screen.getByText("encryption panel")).toBeInTheDocument();
+    expect(screen.queryByText("posture panel")).not.toBeInTheDocument();
+  });
+
+  it("opens on posture when no route named a sub-tab", () => {
+    render(<SecurityManager allRoles={[]} allDomains={[]} />);
+    expect(screen.getByText("posture panel")).toBeInTheDocument();
   });
 });

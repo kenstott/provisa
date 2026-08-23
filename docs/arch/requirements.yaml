@@ -51081,3 +51081,69 @@
   - provisa-ui/src/App.css
   depends_on:
   - REQ-1351
+- id: REQ-1560
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  priority: MUST
+  type: behavioral
+  description: 'A SECRET BELONGS TO SOMEONE, AND WHO IT BELONGS TO IS PART OF ITS ADDRESS. A
+    developer needs credentials of their own -- their git token, their warehouse login -- and
+    holding them in the one shared org store means any other developer can write
+    ${secret:GIT_TOKEN} into a config and push as them. Provisa refuses that by making the OWNER
+    part of the reference rather than a permission checked around it. THERE ARE TWO SECRET
+    SCOPES, and the reference grammar names which one it means: ${secret:NAME} is an ORG secret,
+    one value that every member of the org resolves to the same thing; ${user:NAME} is a PERSONAL
+    secret, resolved against WHOEVER IS ACTING, so the same reference in the same config yields
+    each person their own credential and yields nothing at all for someone who has not stored one.
+    Impersonation is impossible not because a check forbids it but because there is no way to
+    write down "someone else''s secret" -- the personal namespace has no addressable owner.
+    ONE SECRETS SERVICE, TWO VAULTS. The scopes are not two backends: the deployment is wired to
+    exactly one secrets service (REQ-1557) and both vaults live inside it, the org vault addressed
+    by the org and each personal vault by its owner -- in Provisa''s own store the owner is a
+    column of the key, in a central service it is a distinct path under the same mount. Choosing
+    the service stays one deployment-wide decision; nobody configures a second one to hold their
+    own credentials.
+    THERE IS NO PRECEDENCE AND NO SHADOWING between the two: ${secret:X} never resolves to a
+    personal secret and ${user:X} never resolves to an org one, so the same name may exist in both
+    scopes and neither silently answers for the other. An unset personal reference is a fail-closed
+    error naming the scope, never a fall-through to the org value.
+    WHO MAY WRITE WHICH. A personal secret is the person''s own: any member of the acting org may
+    create, replace and delete their own, and NOBODY -- not another member, not the org admin, not
+    the platform admin, not cross_org -- may list, replace or delete another person''s, because
+    the API takes the owner from the authenticated identity and never from the request. An ORG
+    secret is the org''s: creating, replacing and deleting one is org_settings, held by org_admin,
+    and it is the org_admin''s act of storing it in the org scope that makes a credential shared.
+    A platform admin holds neither over any org -- cross_org confers org LIFECYCLE, not a read of
+    the names an org keeps, and the platform-bypass wildcard does not satisfy either gate
+    (REQ-1361, REQ-1558).
+    TWO SURFACES, NAMED FOR WHOSE THEY ARE. Admin carries "Org Secrets" (org_settings) and "Your
+    Secrets" (any member), each listing only its own scope, each showing the reference to paste in
+    the grammar of that scope, and each obeying names-go-in-values-never-come-back-out exactly as
+    REQ-1558 requires. Separate surfaces rather than one filtered list, because whose a secret is
+    decides who can break what by rotating it, and a person should never have to read a column to
+    find that out. This supersedes REQ-1558''s single Secrets sub-tab under Security: the org
+    scope keeps /admin/secrets, the personal scope is /admin/my-secrets, and both take a nav entry
+    of their own -- Security answers to platform_settings, so a multitenant org admin could not
+    reach a secrets tab nested under it.
+    Every write is audited by name, scope and actor; the audit record of a personal secret names
+    its owner as the actor and no one else can read it.'
+  use_case: A developer stores their own git token as ${user:GIT_TOKEN} and uses it in a source config, and no other developer in the org can resolve, replace or read it.
+  scenario: 'Given two developers each store a personal secret named GIT_TOKEN
+
+
+    When each resolves ${user:GIT_TOKEN} in the same org
+
+
+    Then each gets their own value, and neither can list or delete the other''s'
+  code:
+  - provisa/core/secrets_store.py
+  - provisa/core/schema_admin.py
+  - provisa/core/secrets.py
+  - provisa/api/admin/secrets_router.py
+  - provisa-ui/src/components/admin/SecretsTab.tsx
+  - provisa-ui/src/components/navGroups.ts
+  depends_on:
+  - REQ-1557
+  - REQ-1558

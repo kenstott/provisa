@@ -36,6 +36,8 @@
     "itemExplore": "MCP",
     "itemEncryption": "暗号化",
     "itemSecurity": "セキュリティ",
+    "itemOrgSecrets": "組織のシークレット",
+    "itemMySecrets": "自分のシークレット",
     "itemAuthentication": "認証",
     "itemAiModels": "AIモデル",
     "itemMetadataExport": "エクスポート",

@@ -60,6 +60,9 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1558: the names an org holds and the values behind them are the org's, so an org_admin
   // owns them and a platform admin operating the control plane does not read them (REQ-1361).
   "/admin/secrets": "org_settings",
+  // REQ-1560: a person's own vault. Not a grant an administrator makes — `usage` is the right every
+  // seeded role carries, so every member of an org reaches their own secrets and nobody else's.
+  "/admin/my-secrets": "usage",
   "/admin/scheduled-tasks": "org_settings",
   "/admin/requests": "org_settings",
   // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external
@@ -147,9 +150,6 @@ describe("admin surface capabilities", () => {
       // The health table was merged into the dashboard, so /admin/system-health is a deep link to
       // /admin/overview's section rather than a nav entry of its own.
       if (path === "/admin/system-health") continue;
-      // REQ-1558: Secrets is a sub-tab of Security, which has its own entry; the route is a deep
-      // link into it rather than a second entry for the same section.
-      if (path === "/admin/secrets") continue;
       expect(nav[path], path).toBe(capability);
     }
   });

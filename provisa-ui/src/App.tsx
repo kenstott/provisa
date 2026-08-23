@@ -543,7 +543,10 @@ function App() {
                                   ["/admin/overview", "observability"],
                                   ["/admin/domains", "org_settings"],
                                   ["/admin/environments", "org_settings"],
-                                  ["/admin/secrets", "org_settings"], // REQ-1558
+                                  ["/admin/secrets", "org_settings"], // REQ-1560: the org vault
+                                  // REQ-1560: a person's own vault is not a grant — `usage` is the
+                                  // right every seeded role carries, so every member reaches it.
+                                  ["/admin/my-secrets", "usage"],
                                   ["/admin/cache", "org_settings"],
                                   ["/admin/scheduled-tasks", "org_settings"],
                                   ["/admin/federation-engine", "platform_settings"],

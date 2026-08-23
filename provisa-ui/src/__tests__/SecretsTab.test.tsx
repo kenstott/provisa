@@ -11,11 +11,15 @@
 // REQ-1558: names go in, values never come back out. What is worth testing on this page is mostly
 // what it does NOT do — no value on screen, no read call, and no create button at all when a
 // central service owns the names.
+//
+// REQ-1560 adds the second claim: WHOSE. Every call names a vault, the personal surface names the
+// caller's without any user id crossing the wire, and the platform `admin` wildcard — which
+// satisfies every other gate in this UI — does not open the org's list of names.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
-import { SecretsTab } from "../components/admin/SecretsTab";
+import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 
 const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
@@ -87,6 +91,7 @@ const SECRET = {
   updated_at: "2026-08-20T00:00:00Z",
   updated_by: "uid-admin",
   reference: "${secret:GIT_TOKEN}",
+  scope: "org" as const,
 };
 
 const BUILT_IN = {
@@ -124,7 +129,7 @@ describe("SecretsTab", () => {
     fireEvent.change(screen.getByLabelText("Value"), { target: { value: "https://hooks" } });
     fireEvent.click(screen.getByTestId("secret-submit"));
     await waitFor(() =>
-      expect(mockPut).toHaveBeenCalledWith("acme", "SLACK_WEBHOOK", {
+      expect(mockPut).toHaveBeenCalledWith("acme", "org", "SLACK_WEBHOOK", {
         value: "https://hooks",
         description: null,
       }),
@@ -142,7 +147,7 @@ describe("SecretsTab", () => {
     fireEvent.change(screen.getByLabelText("Value"), { target: { value: "ghp_rotated" } });
     fireEvent.click(screen.getByTestId("secret-submit"));
     await waitFor(() =>
-      expect(mockPut).toHaveBeenCalledWith("acme", "GIT_TOKEN", {
+      expect(mockPut).toHaveBeenCalledWith("acme", "org", "GIT_TOKEN", {
         value: "ghp_rotated",
         description: "Push access",
       }),
@@ -165,7 +170,7 @@ describe("SecretsTab", () => {
     fireEvent.click(screen.getByTestId("secret-delete-GIT_TOKEN"));
     expect(mockDelete).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
-    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith("acme", "GIT_TOKEN"));
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith("acme", "org", "GIT_TOKEN"));
   });
 
   it("offers nothing to create when a central service owns the names", async () => {
@@ -278,6 +283,73 @@ describe("SecretsTab secrets-service panel", () => {
 
   it("shows a platform admin no org secret names at all", async () => {
     await openService();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("secrets-table")).toBeNull();
+  });
+});
+
+// REQ-1560: the second surface. Same list, same form, different vault — and the difference travels
+// as the vault name in the URL, never as a user id the browser could edit.
+describe("MySecretsTab", () => {
+  const MINE = {
+    provider: { key: "provisa", label: "Provisa (built-in, encrypted)", writable: true },
+    secrets: [
+      {
+        ...SECRET,
+        name: "MY_GIT_TOKEN",
+        reference: "${user:MY_GIT_TOKEN}",
+        scope: "user" as const,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    mockFetch.mockResolvedValue(MINE);
+    // An analyst: `usage` and nothing else. Holding a credential of your own is not a grant.
+    auth.capabilities = ["usage", "query_development"];
+  });
+
+  it("reads the caller's own vault, with no user id to name anybody else's", async () => {
+    render(<MySecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secret-row-MY_GIT_TOKEN")).toBeInTheDocument());
+    expect(mockFetch).toHaveBeenCalledWith("acme", "user");
+    expect(mockFetch.mock.calls[0]).toHaveLength(2);
+    expect(screen.getByText("${user:MY_GIT_TOKEN}")).toBeInTheDocument();
+  });
+
+  it("stores into the personal vault", async () => {
+    mockPut.mockResolvedValue({ ...MINE.secrets[0], name: "MY_PAT" });
+    render(<MySecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("my-secrets-tab")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("secrets-add"));
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "MY_PAT" } });
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "ghp_mine" } });
+    fireEvent.click(screen.getByTestId("secret-submit"));
+    await waitFor(() =>
+      expect(mockPut).toHaveBeenCalledWith("acme", "user", "MY_PAT", {
+        value: "ghp_mine",
+        description: null,
+      }),
+    );
+  });
+
+  it("never offers the deployment's choice of secrets service", async () => {
+    render(<MySecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("my-secrets-tab")).toBeInTheDocument());
+    expect(screen.queryByTestId("secrets-service-toggle")).toBeNull();
+    expect(mockService).not.toHaveBeenCalled();
+  });
+});
+
+// REQ-1560, REQ-1361: `admin` is the platform wildcard and satisfies every other capability gate in
+// this UI. The org vault is the exception, and it has to be: the names an org keeps are themselves
+// a statement about what that org connects to. The server refuses the same call, so the wildcard
+// bought a page that 403s — this asserts the browser does not even ask.
+describe("SecretsTab and the platform wildcard", () => {
+  it("shows a platform admin the service chooser and none of the org's names", async () => {
+    auth.capabilities = ["admin", "platform_settings"];
+    render(<SecretsTab />);
+    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
     expect(mockFetch).not.toHaveBeenCalled();
     expect(screen.queryByTestId("secrets-table")).toBeNull();
   });

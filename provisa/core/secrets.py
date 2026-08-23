@@ -10,18 +10,22 @@
 
 """The reference grammar every secret is written in: ``${provider:reference}``.
 
-Two provider names matter to a person writing config. ``env`` is the process environment -- the
+Three provider names matter to a person writing config. ``env`` is the process environment -- the
 deployment's own configuration, and the only thing a central secrets backend's own credential may
 be written against. ``secret`` is the SECRETS SERVICE, whichever one this deployment is wired to
 (``provisa/core/secrets_registry.py``): Provisa's own encrypted per-org store by default, a central
-service when one is configured. The reference does not change when the backend does.
+service when one is configured. The reference does not change when the backend does. ``user`` is
+the same service and the PERSONAL vault inside it (REQ-1560): it resolves against whoever is
+acting, so the same reference hands each person their own credential and hands a person who has
+stored none an error. There is no third name for "somebody else's secret", which is what stops one
+member of an org using another's.
 
 Resolution is FAIL-CLOSED throughout: an unknown provider, an unset name and an unreachable backend
 all raise. A secret that could not be resolved is never an empty string and never falls through to
 another provider (REQ-1557).
 """
 
-# Requirements: REQ-125, REQ-251, REQ-320, REQ-557, REQ-1557
+# Requirements: REQ-125, REQ-251, REQ-320, REQ-557, REQ-1557, REQ-1560
 
 import os
 import re
@@ -33,6 +37,18 @@ _SECRET_PATTERN = re.compile(r"\$\{(\w+):([^}]+)\}")
 class SecretsProvider(ABC):  # REQ-125, REQ-320
     @abstractmethod
     def resolve(self, reference: str) -> str: ...
+
+    def resolve_user(self, reference: str) -> str:  # REQ-1560
+        """Resolve ``${user:NAME}`` from the acting person's vault in this backend.
+
+        Fail-closed by default: a backend that has no personal vault says so rather than answering
+        with the org's value, which would hand one member another member's credential.
+        """
+        raise ValueError(
+            f"The configured secrets service ({type(self).__name__}) holds no personal vault, so "
+            f"${{user:{reference}}} cannot be resolved. Store it as an organization secret, or "
+            "select a secrets service that supports personal vaults."
+        )
 
 
 class EnvSecretsProvider(SecretsProvider):  # REQ-125
@@ -63,7 +79,7 @@ def _provider_for(name: str) -> SecretsProvider:
     because its default -- Provisa's own store -- must not be constructed until something actually
     asks for a secret (REQ-1557).
     """
-    if name == "secret":
+    if name in ("secret", "user"):
         from provisa.core.secrets_runtime import secrets_backend
 
         return secrets_backend()
@@ -91,7 +107,12 @@ def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
                 f"Secrets provider {provider_name!r} is not permitted here; "
                 f"expected one of {', '.join(providers)}."
             )
-        return _provider_for(provider_name).resolve(reference)
+        provider = _provider_for(provider_name)
+        # REQ-1560: the NAME in the reference decides the vault. ``user`` never reads the org's
+        # names and ``secret`` never reads a person's -- neither scope stands in for the other.
+        if provider_name == "user":
+            return provider.resolve_user(reference)
+        return provider.resolve(reference)
 
     return _SECRET_PATTERN.sub(_replace, value)
 
