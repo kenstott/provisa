@@ -51552,3 +51552,38 @@
   depends_on:
   - REQ-1266
   - REQ-1287
+- id: REQ-1572
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: 'AN INVITATION IS ITSELF THE ADMISSION DECISION, AND THE ORG EMAIL RULE DOES NOT GATE
+    REDEEMING ONE. The email rule (REQ-1268) decides who may join an org on their own initiative --
+    it is the guard on auto-join and on self-service. An invitation is different in kind: an org
+    admin named a person, it is single-use, and it expires. Applying the rule to redemption refused
+    exactly the people an admin deliberately reached outside their own domain -- a contractor, an
+    auditor, someone whose IdP account carries a different address than their work one -- with an
+    error the invitee could do nothing about, and it did so only under bearer identity providers:
+    /register on the basic provider never applied the rule to an invite. Redemption now admits any
+    valid, unused, unexpired invitation regardless of the rule, under both providers.'
+  use_case: An org whose rule admits only its own domain invites an outside contractor, and the
+    contractor's invitation link works.
+  scenario: 'Given an org whose email rule admits only @acme.com
+
+    And a valid invitation issued by an admin of that org
+
+    When someone whose address is bob@rival.com redeems it
+
+    Then they are joined to the org with the invited role
+
+    And the rule still governs who may auto-join without an invitation'
+  code:
+  - provisa/api/auth_router.py
+  tests:
+  - tests/e2e/test_platform_auth_flow.py
+  depends_on:
+  - REQ-516
+  - REQ-1268

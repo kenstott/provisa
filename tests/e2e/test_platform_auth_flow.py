@@ -52,6 +52,7 @@ _USERS = {
     "alice": "alice@acme.com",
     "bob": "bob@rival.com",
     "carol": "carol@newco.com",
+    "erin": "erin@rival.com",
     "dave": "dave@newco.com",
     "opsbot": "ops@acme.com",
 }
@@ -225,7 +226,12 @@ class TestBootstrapClaimIsExplicit:
 
 
 class TestOrgEmailRuleOnRedemption:
-    """REQ-1284: the org's email-address rule gates invite redemption."""
+    """REQ-1572: the org's email-address rule does not gate invite redemption.
+
+    The rule decides who may join on their own initiative. An invitation is an admin naming a
+    person — that decision already made, single-use and expiring — so it admits an address the
+    rule would refuse.
+    """
 
     async def _invite(self, client) -> str:
         resp = await client.post(
@@ -268,18 +274,21 @@ class TestOrgEmailRuleOnRedemption:
             "auto_join_role": None,
         }
 
-    async def test_mismatching_email_is_refused(self, client):
+    async def test_an_address_the_rule_would_refuse_joins_by_invitation(self, client):
+        """bob@rival.com cannot satisfy `@acme.com$`, and is invited anyway — the contractor or
+        auditor case. The invitation is the admission decision, so he joins."""
         token = await self._invite(client)
-        _ctx["bob_invite"] = token
         resp = await client.post(
             "/auth/redeem-invite", json={"token": token}, headers=_basic("bob")
         )
-        assert resp.status_code == 403, resp.text
-        body = resp.json()
-        assert body["code"] == "auth.email_not_permitted"
-        # Refused BEFORE membership: bob belongs to no org.
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            "user_id": _ctx["user_ids"]["bob"],
+            "org_id": _ctx["org1"],
+            "role_id": "analyst",
+        }
         me = await client.get("/auth/me", headers=_basic("bob"))
-        assert me.json()["org_memberships"] == []
+        assert _ctx["org1"] in [m["org_id"] for m in me.json()["org_memberships"]]
 
     async def test_no_rule_accepts_any_email(self, client):
         cleared = await client.patch(
@@ -290,14 +299,14 @@ class TestOrgEmailRuleOnRedemption:
         assert cleared.status_code == 200, cleared.text
         assert cleared.json()["email_rule"] is None
 
-        # The earlier refusal must not have burned the invite; with no rule bob joins.
+        token = await self._invite(client)
         resp = await client.post(
             "/auth/redeem-invite",
-            json={"token": _ctx["bob_invite"]},
-            headers=_basic("bob"),
+            json={"token": token},
+            headers=_basic("erin"),
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["user_id"] == _ctx["user_ids"]["bob"]
+        assert resp.json()["user_id"] == _ctx["user_ids"]["erin"]
 
 
 class TestOnlyAssignedRoleRidesHeader:

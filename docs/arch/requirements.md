@@ -16515,3 +16515,17 @@ SIGN-IN AND REGISTRATION RENDER WITHOUT THE APP SHELL, CENTERED. /login and /reg
 **Code:** `provisa-ui/src/App.tsx`
 
 **Tests:** `provisa-ui/src/__tests__/IdentityRoutes.test.tsx`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1572 · Multi-Tenancy & Organizations {#REQ-1572}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+AN INVITATION IS ITSELF THE ADMISSION DECISION, AND THE ORG EMAIL RULE DOES NOT GATE REDEEMING ONE. The email rule ([REQ-1268](#REQ-1268)) decides who may join an org on their own initiative -- it is the guard on auto-join and on self-service. An invitation is different in kind: an org admin named a person, it is single-use, and it expires. Applying the rule to redemption refused exactly the people an admin deliberately reached outside their own domain -- a contractor, an auditor, someone whose IdP account carries a different address than their work one -- with an error the invitee could do nothing about, and it did so only under bearer identity providers: /register on the basic provider never applied the rule to an invite. Redemption now admits any valid, unused, unexpired invitation regardless of the rule, under both providers.
+
+**Use case:** An org whose rule admits only its own domain invites an outside contractor, and the contractor's invitation link works.
+
+**Code:** `provisa/api/auth_router.py`
+
+**Tests:** `tests/e2e/test_platform_auth_flow.py`

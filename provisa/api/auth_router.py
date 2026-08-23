@@ -32,7 +32,6 @@ from provisa.core.schema_admin import (
 )
 from provisa.core.org_membership import (
     JOINED_VIA_INVITE,
-    email_matches_rule,
     membership_values,
 )
 from provisa.core.secrets import resolve_secrets
@@ -687,24 +686,20 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
                 org_invites.c.role_id,
                 org_invites.c.expires_at,
                 org_invites.c.used_at,
-                orgs.c.email_rule,
-            )
-            .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
-            .where(org_invites.c.token == body.token)
+            ).where(org_invites.c.token == body.token)
         )
         fetched = result.fetchone()
         invite = dict(fetched._mapping) if fetched is not None else None
         if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
             raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
-        # REQ-1268: an org email rule gates who may join, even with a valid invite — the invited
-        # address and the authenticated address can differ. Reject a mismatch (or a missing email
-        # when a rule is set) rather than granting membership the org's policy forbids.
-        if not email_matches_rule(identity.email, invite["email_rule"]):
-            raise ApiError(
-                403,
-                "auth.email_not_permitted",
-                "Your email address is not permitted to join this organization",
-            )
+        # REQ-1572: the org's email rule does NOT gate this. The rule decides who may join on their
+        # own initiative; an invitation is an org admin naming a person, which is that decision
+        # already made, and it is single-use and expiring. Gating it on the rule refused the very
+        # people an admin deliberately reached outside their own domain — a contractor, an auditor,
+        # someone whose work address is not the one their IdP account carries — with an error the
+        # invitee could do nothing about. /register (basic provider) has never applied the rule to
+        # an invite either, so this also ends a split where the same invitation was admitted or
+        # refused depending on which identity provider the deployment ran.
         # REQ-1313: revalidate rather than trusting the stored value — a role can be removed from
         # the org between the invitation being written and this redemption, and assigning a role
         # that no longer exists would leave a user_role_assignments row pointing at nothing. This

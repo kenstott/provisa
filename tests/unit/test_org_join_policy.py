@@ -10,8 +10,8 @@
 
 """REQ-1268/REQ-1269: org join-policy primitives.
 
-``email_matches_rule`` is the single predicate both gates share (invite redemption and
-auto-join); its truth table — NULL rule admits everything, a rule demands a non-empty
+``email_matches_rule`` is the predicate the auto-join gate applies (REQ-1572: invitation
+redemption does not consult it — an invitation is the admission decision); its truth table — NULL rule admits everything, a rule demands a non-empty
 matching email, a corrupt stored rule fails CLOSED. ``_validate_org_policy`` is the
 write-time guard: only compilable rules are ever stored (which is why the read-side
 re.error guard is a hand-edit backstop, not a code path), and auto_join without a
