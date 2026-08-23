@@ -51521,3 +51521,34 @@
   - provisa-ui/src/__tests__/tourWelcome.test.tsx
   depends_on:
   - REQ-1287
+- id: REQ-1571
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 10. UI & Admin Surfaces
+  category: UI & Admin Surfaces
+  priority: MUST
+  type: behavioral
+  description: 'SIGN-IN AND REGISTRATION RENDER WITHOUT THE APP SHELL, CENTERED. /login and /register
+    are identity routes: they establish who someone is, and nothing on them belongs to a session
+    that has not been established yet. Opened with a live session -- the common case for an
+    invitation link -- they used to render inside the authenticated shell, putting the full
+    navigation, the org, environment and role pickers and the admin rail above a left-aligned form.
+    Both paths now render the standalone branded landing card, centered on the page, whether or not
+    a token is present.'
+  use_case: Someone following an invitation link sees a centered sign-in card, not the product
+    navigation of an org they have not joined.
+  scenario: 'Given a browser with a live session
+
+    When an invitation link opens the registration page
+
+    Then no navigation bar, org or environment picker, or admin rail is rendered
+
+    And the sign-in card is centered on the page'
+  code:
+  - provisa-ui/src/App.tsx
+  tests:
+  - provisa-ui/src/__tests__/IdentityRoutes.test.tsx
+  depends_on:
+  - REQ-1266
+  - REQ-1287

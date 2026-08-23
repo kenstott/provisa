@@ -16503,3 +16503,15 @@ THE GUIDED TOUR IS NOT OFFERED OVER A SIGN-IN OR REGISTRATION FORM. An invitatio
 **Code:** `provisa-ui/src/App.tsx`, `provisa-ui/src/tour/TourAutoStart.tsx`
 
 **Tests:** `provisa-ui/src/__tests__/tourWelcome.test.tsx`
+
+### REQ-1571 · UI & Admin Surfaces {#REQ-1571}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+SIGN-IN AND REGISTRATION RENDER WITHOUT THE APP SHELL, CENTERED. /login and /register are identity routes: they establish who someone is, and nothing on them belongs to a session that has not been established yet. Opened with a live session -- the common case for an invitation link -- they used to render inside the authenticated shell, putting the full navigation, the org, environment and role pickers and the admin rail above a left-aligned form. Both paths now render the standalone branded landing card, centered on the page, whether or not a token is present.
+
+**Use case:** Someone following an invitation link sees a centered sign-in card, not the product navigation of an org they have not joined.
+
+**Code:** `provisa-ui/src/App.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/IdentityRoutes.test.tsx`
