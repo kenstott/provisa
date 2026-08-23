@@ -53,7 +53,7 @@ def _seed_org(**overrides):
     return insert(orgs).values(**values)
 
 
-def _prepare_sync(*, org_values: dict):
+def _prepare_sync(*, org_rows: list[dict]):
     engine = create_engine(_SYNC_URL, pool_pre_ping=True)
     with engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_ADMIN_SCHEMA} CASCADE"))
@@ -63,7 +63,8 @@ def _prepare_sync(*, org_values: dict):
 
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
-        conn.execute(_seed_org(**org_values))
+        for values in org_rows:
+            conn.execute(_seed_org(**values))
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=[roles, user_role_assignments])
@@ -71,9 +72,9 @@ def _prepare_sync(*, org_values: dict):
     return engine
 
 
-def _planes(monkeypatch, org_values: dict):
+def _planes(monkeypatch, *org_rows: dict):
     try:
-        sync_engine = _prepare_sync(org_values=org_values)
+        sync_engine = _prepare_sync(org_rows=list(org_rows))
     except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
         pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
 
@@ -230,3 +231,116 @@ def test_auto_join_skipped_when_email_rule_excludes(excluding_planes):
         select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "alice"),
     )
     assert assignment == []
+
+
+# REQ-1568: two orgs claiming one address. Neither is joined at sign-in — the person is shown both
+# and picks, or turns both down and goes on to create their own org.
+
+
+@pytest.fixture
+def contested_planes(monkeypatch):
+    # Both rules admit alice@example.com. Distinct rules, so REQ-1567's uniqueness gate is silent:
+    # the collision is in what they MATCH, which no rule comparison can see.
+    planes = _planes(
+        monkeypatch,
+        {
+            "id": "acme",
+            "name": "Acme",
+            "email_rule": r"@example\.com$",
+            "auto_join": True,
+            "auto_join_role": "analyst",
+        },
+        {
+            "id": "globex",
+            "name": "Globex",
+            "email_rule": r"example\.com$",
+            "auto_join": True,
+            "auto_join_role": "analyst",
+        },
+    )
+    yield planes
+    _cleanup(planes[2])
+
+
+def test_two_claims_join_nothing_and_are_offered_as_a_choice(contested_planes):
+    admin_db, tenant_db, sync_engine = contested_planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        me = client.get("/auth/me", headers={"Authorization": "Bearer tok-alice"})
+        offers = client.get("/auth/auto-join-offers", headers={"Authorization": "Bearer tok-alice"})
+    assert me.status_code == 200, me.text
+    assert offers.status_code == 200, offers.text
+    assert offers.json() == {
+        "offers": [
+            {"org_id": "acme", "org_name": "Acme", "role_id": "analyst"},
+            {"org_id": "globex", "org_name": "Globex", "role_id": "analyst"},
+        ]
+    }
+    membership = _q(
+        sync_engine,
+        _ADMIN_SCHEMA,
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "alice"),
+    )
+    assert membership == []
+
+
+def test_the_org_the_user_picks_is_the_only_one_joined(contested_planes):
+    admin_db, tenant_db, sync_engine = contested_planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        accepted = client.post(
+            "/auth/auto-join",
+            json={"org_id": "globex"},
+            headers={"Authorization": "Bearer tok-alice"},
+        )
+        # The next sign-in must not re-offer the one they passed over.
+        again = client.get("/auth/auto-join-offers", headers={"Authorization": "Bearer tok-alice"})
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json() == {"org_id": "globex", "role_id": "analyst"}
+    assert again.json() == {"offers": []}
+
+    membership = _q(
+        sync_engine,
+        _ADMIN_SCHEMA,
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "alice"),
+    )
+    assert [r[0] for r in membership] == ["globex"]
+    assignment = _q(
+        sync_engine,
+        _TENANT_SCHEMA,
+        select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "alice"),
+    )
+    assert [r[0] for r in assignment] == ["analyst"]
+
+
+def test_an_org_that_never_offered_cannot_be_joined_by_naming_it(contested_planes):
+    admin_db, tenant_db, sync_engine = contested_planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        resp = client.post(
+            "/auth/auto-join",
+            json={"org_id": "root"},
+            headers={"Authorization": "Bearer tok-alice"},
+        )
+    assert resp.status_code == 404, resp.text
+    membership = _q(
+        sync_engine,
+        _ADMIN_SCHEMA,
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "alice"),
+    )
+    assert membership == []
+
+
+def test_declining_every_claim_leaves_the_user_free_to_create_their_own(contested_planes):
+    admin_db, tenant_db, sync_engine = contested_planes
+    with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
+        declined = client.post(
+            "/auth/auto-join/decline", headers={"Authorization": "Bearer tok-alice"}
+        )
+        again = client.get("/auth/auto-join-offers", headers={"Authorization": "Bearer tok-alice"})
+    assert declined.status_code == 200, declined.text
+    assert declined.json() == {"declined": ["acme", "globex"]}
+    assert again.json() == {"offers": []}
+    membership = _q(
+        sync_engine,
+        _ADMIN_SCHEMA,
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "alice"),
+    )
+    assert membership == []

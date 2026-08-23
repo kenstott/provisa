@@ -10,7 +10,7 @@
 
 """Auth introspection endpoint."""
 
-# Requirements: REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125
+# Requirements: REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125, REQ-1568
 
 from __future__ import annotations
 
@@ -396,6 +396,107 @@ async def my_invites(request: Request):  # REQ-1287
             for r in rows
         ]
     }
+
+
+async def _auto_join_offers(request: Request) -> list[dict]:
+    """The auto-join orgs claiming the caller's address that they are not already a member of.
+
+    REQ-1568. A single claim never reaches here — the sign-in path joined it, so the membership
+    filter below removes it. What is left is the set nobody could choose between on the caller's
+    behalf.
+    """
+    from provisa.api.app import state
+    from provisa.core.org_membership import resolve_auto_join_orgs
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or identity.user_id == "anonymous":
+        return []
+
+    admin_db = state.admin_db
+    assert admin_db is not None
+    matches = await resolve_auto_join_orgs(admin_db, identity.email, identity.user_id)
+    if not matches:
+        return []
+    roles_by_org = dict(matches)
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(orgs.c.id, orgs.c.name).where(orgs.c.id.in_(list(roles_by_org)))
+        )
+        names = {r[0]: r[1] for r in result.fetchall()}
+        member_result = await conn.execute_core(
+            select(user_org_memberships.c.org_id).where(
+                user_org_memberships.c.user_id == identity.user_id
+            )
+        )
+        already = {r[0] for r in member_result.fetchall()}
+    return [
+        {"org_id": org_id, "org_name": names[org_id], "role_id": role_id}
+        for org_id, role_id in matches
+        if org_id not in already
+    ]
+
+
+@router.get("/auto-join-offers")
+async def auto_join_offers(request: Request):  # REQ-1568
+    """The orgs the caller may join on the strength of their email address alone.
+
+    Non-empty only when more than one org claimed the address, because a lone claim is joined at
+    sign-in. The page shows the list and the person picks; nothing is joined by reading this.
+    """
+    return {"offers": await _auto_join_offers(request)}
+
+
+class AcceptAutoJoinBody(BaseModel):
+    org_id: str
+
+
+@router.post("/auto-join")
+async def accept_auto_join(request: Request, body: AcceptAutoJoinBody):  # REQ-1568
+    """Join the one org the caller picked out of the offers, and decline the rest.
+
+    The offer list is recomputed here rather than trusted from the client: the org id arriving in
+    the body is only a choice among what the rules currently admit, never a claim of eligibility.
+    Every other claimant records the REQ-1306 opt-out — the person has said which org they belong
+    to, so the others must not ask again at the next sign-in.
+    """
+    from provisa.api.app import state
+    from provisa.api.auto_join import join_org_automatically
+    from provisa.core.org_membership import suppress_auto_join
+
+    offers = await _auto_join_offers(request)
+    chosen = next((o for o in offers if o["org_id"] == body.org_id), None)
+    if chosen is None:
+        raise ApiError(404, "auth.auto_join_not_offered", "That org is not offering to admit you.")
+
+    identity = request.state.identity
+    admin_db = state.admin_db
+    assert admin_db is not None
+    await join_org_automatically(
+        admin_db, identity.user_id, identity.email, chosen["org_id"], chosen["role_id"]
+    )
+    for other in offers:
+        if other["org_id"] != chosen["org_id"]:
+            await suppress_auto_join(admin_db, identity.user_id, other["org_id"])
+    return {"org_id": chosen["org_id"], "role_id": chosen["role_id"]}
+
+
+@router.post("/auto-join/decline")
+async def decline_auto_join(request: Request):  # REQ-1568
+    """Turn down every org claiming the caller's address, so they can go on and create their own.
+
+    Recorded as the REQ-1306 opt-out per org, which is what stops the same question being put at
+    every sign-in.
+    """
+    from provisa.api.app import state
+    from provisa.core.org_membership import suppress_auto_join
+
+    offers = await _auto_join_offers(request)
+    identity = request.state.identity
+    admin_db = state.admin_db
+    assert admin_db is not None
+    for offer in offers:
+        await suppress_auto_join(admin_db, identity.user_id, offer["org_id"])
+    return {"declined": [o["org_id"] for o in offers]}
 
 
 @router.get("/invite/{token}")

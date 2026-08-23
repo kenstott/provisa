@@ -22,6 +22,8 @@
     "autoJoinDesc": "Any new account whose email matches the rule above joins automatically with the role below — no invite needed.",
     "autoJoinRoleLabel": "Default role for auto-joined accounts",
     "autoJoinRoleDesc": "The role granted on auto-join, e.g. a read-only \"analyst\".",
+    "autoJoinBreadthTitle": "This rule reaches past your domain",
+    "autoJoinAcceptRisk": "I have reviewed this rule and accept that it may admit people from outside my organization",
     "createButton": "Create organization",
     "provisioning": "Provisioning your organization. This can take a moment...",
     "createFailed": "Could not create the organization",
@@ -64,5 +66,9 @@
     "resumeBody": "You started signing up for {{name}} but did not finish checkout. The name is held until {{expires}}.",
     "resumeButton": "Resume checkout",
     "checkoutNotSettled": "Your payment has not reached us yet. Reload this page in a minute to finish setting up your organization."
-  }
+  },
+  "autoJoinChoiceTitle": "More than one org matches your email",
+  "autoJoinChoiceBody": "Your email address matches the join rules of several organizations. Pick the one you belong to, or turn them all down and create your own.",
+  "joinOfferedOrg": "Join",
+  "declineAutoJoin": "None of these"
 }

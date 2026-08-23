@@ -146,6 +146,22 @@ export interface OrgJoinPolicy {
   emailRule?: string | null;
   autoJoin?: boolean;
   autoJoinRole?: string | null;
+  // REQ-1567: the author's acceptance that a rule reaching past one exact domain may admit people
+  // from outside their organization. The server measures the reach and refuses without this; it is
+  // sent only after the author has been shown what the rule would admit.
+  riskAcknowledged?: boolean;
+}
+
+/** An /admin/orgs error carrying the server's stable code, which the join-policy copy branches on. */
+export class OrgError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  constructor(status: number, code: string | null, message: string) {
+    super(message);
+    this.name = "OrgError";
+    this.status = status;
+    this.code = code;
+  }
 }
 
 export async function createOrg(
@@ -167,12 +183,17 @@ export async function createOrg(
       email_rule: policy.emailRule ?? null,
       auto_join: policy.autoJoin ?? false,
       auto_join_role: policy.autoJoinRole ?? null,
+      auto_join_risk_acknowledged: policy.riskAcknowledged ?? false,
       isolated_engine: isolatedEngine,
     }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("createOrg", res.status)));
+    throw new OrgError(
+      res.status,
+      typeof data.code === "string" ? data.code : null,
+      serverMessage(data, requestFailed("createOrg", res.status)),
+    );
   }
   return res.json();
 }
@@ -193,11 +214,16 @@ export async function updateOrgSettings(
       email_rule: policy.emailRule ?? null,
       auto_join: policy.autoJoin ?? false,
       auto_join_role: policy.autoJoinRole ?? null,
+      auto_join_risk_acknowledged: policy.riskAcknowledged ?? false,
     }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("updateOrgSettings", res.status)));
+    throw new OrgError(
+      res.status,
+      typeof data.code === "string" ? data.code : null,
+      serverMessage(data, requestFailed("updateOrgSettings", res.status)),
+    );
   }
   return res.json();
 }
@@ -1539,6 +1565,50 @@ export async function redeemInvite(
     throw new Error(serverMessage(data, requestFailed("Redeem invite", res.status)));
   }
   return res.json();
+}
+
+/** REQ-1568: an org whose auto-join rule matches the signed-in address, offered as a choice. */
+export interface AutoJoinOffer {
+  org_id: string;
+  org_name: string;
+  role_id: string;
+}
+
+/**
+ * REQ-1568: the orgs claiming this address that were NOT joined at sign-in.
+ *
+ * Empty in the ordinary case — a single claim is joined before the page loads. A list here means
+ * several orgs matched and the server declined to pick one, so the question comes to the person.
+ */
+export async function fetchAutoJoinOffers(): Promise<AutoJoinOffer[]> {
+  const res = await fetch("/auth/auto-join-offers");
+  if (!res.ok) throw new Error(requestFailed("auto-join-offers", res.status));
+  const data = await res.json();
+  return data.offers;
+}
+
+/** Join the chosen org. The server records the opt-out for every claim passed over. */
+export async function acceptAutoJoin(orgId: string): Promise<{ org_id: string; role_id: string }> {
+  const res = await fetch("/auth/auto-join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ org_id: orgId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("auto-join", res.status)));
+  }
+  return res.json();
+}
+
+/** Turn down every claim, so the page can go on offering org creation. */
+export async function declineAutoJoin(): Promise<string[]> {
+  const res = await fetch("/auth/auto-join/decline", { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("auto-join decline", res.status)));
+  }
+  return (await res.json()).declined;
 }
 
 export async function reloadQueryEngineCatalog(

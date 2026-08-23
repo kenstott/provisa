@@ -31,8 +31,17 @@ import {
   Title,
 } from "@mantine/core";
 import { PartyPopper, ShieldCheck, UserPlus } from "lucide-react";
-import type { PendingInvite } from "../api/admin";
-import { createOrg, fetchMyInvites, fetchOrgStatus, redeemInvite } from "../api/admin";
+import type { AutoJoinOffer, PendingInvite } from "../api/admin";
+import {
+  OrgError,
+  acceptAutoJoin,
+  createOrg,
+  declineAutoJoin,
+  fetchAutoJoinOffers,
+  fetchMyInvites,
+  fetchOrgStatus,
+  redeemInvite,
+} from "../api/admin";
 import type { OrgReservation, PlanOffer } from "../api/billing";
 import {
   BillingError,
@@ -74,6 +83,12 @@ export function OnboardOrgPage() {
   const [emailRule, setEmailRule] = useState("");
   const [autoJoin, setAutoJoin] = useState(false);
   const [autoJoinRole, setAutoJoinRole] = useState("");
+  // REQ-1567: the server measures how far the rule reaches and refuses a broad one until its
+  // author accepts what it admits. The acceptance is offered only after that refusal, with the
+  // addresses it named in hand — a checkbox shown before there is anything to accept would be
+  // ticked out of habit, which is not consent to a risk nobody has been shown.
+  const [breadthWarning, setBreadthWarning] = useState<string | null>(null);
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
   const [invite, setInvite] = useState("");
   const [error, setError] = useState<string | null>(null);
   // "creating" is the org create itself; "provisioning" is only reached after a checkout closed,
@@ -88,6 +103,10 @@ export function OnboardOrgPage() {
   // may never have kept. Invites addressed to this identity's email are offered as one-click joins;
   // the token field stays for link invites, which are addressed to nobody.
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  // REQ-1568: orgs whose auto-join rule matches this address and that the server would not choose
+  // between. A single match never reaches the page — it was joined at sign-in — so anything here
+  // is a genuine ambiguity that only the person holding the address can settle.
+  const [autoJoinOffers, setAutoJoinOffers] = useState<AutoJoinOffer[]>([]);
   // The new org's own address (REQ-1276), told once over the welcome screen. Dismissed state is
   // kept here so closing it does not take the welcome screen with it.
   const [addressShown, setAddressShown] = useState(true);
@@ -103,6 +122,22 @@ export function OnboardOrgPage() {
         // A failed lookup must not block org creation — the token field still works. Nothing to
         // show, so leave the list empty rather than reporting an error the user cannot act on.
         if (!cancelled) setPendingInvites([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAutoJoinOffers()
+      .then((offers) => {
+        if (!cancelled) setAutoJoinOffers(offers);
+      })
+      .catch(() => {
+        // Same reasoning as the invite lookup: a failed read must not stand between the user and
+        // creating their own org. No offers shown is the safe reading — it joins nobody.
+        if (!cancelled) setAutoJoinOffers([]);
       });
     return () => {
       cancelled = true;
@@ -165,6 +200,32 @@ export function OnboardOrgPage() {
     }
   };
 
+  const joinOfferedOrg = async (orgId: string) => {
+    setError(null);
+    setPhase("joining");
+    try {
+      const { org_id } = await acceptAutoJoin(orgId);
+      selectOrg(org_id);
+      await refresh();
+      navigate("/query");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
+      setPhase("form");
+    }
+  };
+
+  // Declining is recorded server-side (REQ-1306) so the question is not put again at the next
+  // sign-in; the page then looks exactly as it would for someone no rule matched.
+  const declineOfferedOrgs = async () => {
+    setError(null);
+    try {
+      await declineAutoJoin();
+      setAutoJoinOffers([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
+    }
+  };
+
   // Bounded poll — the background provisioning task flips the row.
   const waitForReady = async (orgId: string, from: string) => {
     let state = from;
@@ -195,7 +256,8 @@ export function OnboardOrgPage() {
       try {
         state = (await reconcileCheckout(orgId)).state;
       } catch (err) {
-        if (!(err instanceof BillingError) || err.code !== "billing.no_subscription_found") throw err;
+        if (!(err instanceof BillingError) || err.code !== "billing.no_subscription_found")
+          throw err;
         state = (await fetchOrgStatus(orgId)).provisioning_state;
       }
     }
@@ -247,6 +309,7 @@ export function OnboardOrgPage() {
           emailRule: emailRule.trim() || null,
           autoJoin,
           autoJoinRole: autoJoinRole.trim() || null,
+          riskAcknowledged,
         },
         // REQ-1510: where plans are sold the lane is the plan's, not a checkbox's.
         offer ? offer.lane === "isolated" : isolatedEngine,
@@ -260,7 +323,14 @@ export function OnboardOrgPage() {
       }
       await waitForReady(id, created.provisioning_state);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+      if (err instanceof OrgError && err.code === "orgs.auto_join_breadth_unacknowledged") {
+        // REQ-1567: not a failure to report and move on from — it is the question the rule raised,
+        // asked with the addresses it would admit, and the form waits on the answer.
+        setBreadthWarning(err.message);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+      }
       setPhase("form");
     }
   };
@@ -389,7 +459,9 @@ export function OnboardOrgPage() {
         <Stack gap="md" align="center" data-testid="onboard-org-provisioning">
           <Loader />
           <Text>
-            {phase === "provisioning" ? t("onboardOrg.finishingSetup") : t("onboardOrg.provisioning")}
+            {phase === "provisioning"
+              ? t("onboardOrg.finishingSetup")
+              : t("onboardOrg.provisioning")}
           </Text>
         </Stack>
       ) : phase === "joining" ? (
@@ -450,6 +522,43 @@ export function OnboardOrgPage() {
                     </Button>
                   </Group>
                 ))}
+              </Stack>
+            </Alert>
+          )}
+          {autoJoinOffers.length > 0 && (
+            <Alert
+              variant="light"
+              color="blue"
+              icon={<UserPlus size={18} />}
+              title={t("onboardOrg.autoJoinChoiceTitle")}
+              data-testid="onboard-auto-join-offers"
+            >
+              <Stack gap="sm">
+                <Text size="sm">{t("onboardOrg.autoJoinChoiceBody")}</Text>
+                {autoJoinOffers.map((offered) => (
+                  <Group key={offered.org_id} justify="space-between" wrap="nowrap">
+                    <Text size="sm" fw={500}>
+                      {offered.org_name}
+                    </Text>
+                    <Button
+                      size="xs"
+                      data-testid={`onboard-join-offered-${offered.org_id}`}
+                      onClick={() => void joinOfferedOrg(offered.org_id)}
+                    >
+                      {t("onboardOrg.joinOfferedOrg")}
+                    </Button>
+                  </Group>
+                ))}
+                <Group justify="flex-end">
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    data-testid="onboard-decline-auto-join"
+                    onClick={() => void declineOfferedOrgs()}
+                  >
+                    {t("onboardOrg.declineAutoJoin")}
+                  </Button>
+                </Group>
               </Stack>
             </Alert>
           )}
@@ -593,7 +702,13 @@ export function OnboardOrgPage() {
                   description={t("onboardOrg.emailRuleDesc")}
                   placeholder="@acme\.com$"
                   value={emailRule}
-                  onChange={(e) => setEmailRule(e.currentTarget.value)}
+                  onChange={(e) => {
+                    setEmailRule(e.currentTarget.value);
+                    // REQ-1567: the acceptance was of what the PREVIOUS rule admitted. A new rule
+                    // admits a different set, so it has to be measured and accepted again.
+                    setBreadthWarning(null);
+                    setRiskAcknowledged(false);
+                  }}
                 />
                 <Checkbox
                   data-testid="onboard-org-auto-join"
@@ -613,6 +728,24 @@ export function OnboardOrgPage() {
                     onChange={(e) => setAutoJoinRole(e.currentTarget.value)}
                     required
                   />
+                )}
+                {breadthWarning && (
+                  <Alert
+                    variant="light"
+                    color="yellow"
+                    data-testid="onboard-org-breadth-warning"
+                    title={t("onboardOrg.autoJoinBreadthTitle")}
+                  >
+                    <Stack gap="xs">
+                      <Text size="sm">{breadthWarning}</Text>
+                      <Checkbox
+                        data-testid="onboard-org-accept-risk"
+                        label={t("onboardOrg.autoJoinAcceptRisk")}
+                        checked={riskAcknowledged}
+                        onChange={(e) => setRiskAcknowledged(e.currentTarget.checked)}
+                      />
+                    </Stack>
+                  </Alert>
                 )}
                 {error && (
                   <Alert variant="light" color="red" data-testid="onboard-org-error">

@@ -186,3 +186,131 @@ async def test_a_stored_public_domain_rule_never_auto_joins(monkeypatch):
     assert await mod.resolve_auto_join_orgs(_Db(), "alice@acme.com", "alice") == [
         ("acme", "analyst")
     ]
+
+
+# ---------------------------------------------------------------------------
+# REQ-1567: how far past its own domains an auto-join rule reaches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("rule", "reason"),
+    [
+        # Names no domain: it matches by coincidence, at any host in the world.
+        (r"acme", "unbounded_no_domain"),
+        # Not anchored at the end: acme.com.example.net is registered by whoever wants it.
+        (r"@acme\.com", "unbounded_suffix"),
+    ],
+)
+def test_policy_refuses_a_rule_no_membership_could_be(rule, reason):
+    with pytest.raises(HTTPException) as exc:
+        _validate_org_policy(rule, True, "analyst")
+    assert exc.value.status_code == 400
+    assert exc.value.code == "orgs.auto_join_rule_unbounded"
+
+
+def test_an_unbounded_rule_is_refused_even_when_the_risk_is_accepted():
+    """Consent is offered for breadth, not for a rule whose reach has no edge to describe."""
+    with pytest.raises(HTTPException) as exc:
+        _validate_org_policy(r"@acme\.com", True, "analyst", True)
+    assert exc.value.code == "orgs.auto_join_rule_unbounded"
+
+
+def test_a_rule_reaching_past_its_domain_is_shown_to_its_author_first():
+    # No "@" boundary, so notacme.com — a domain a stranger can register — is admitted too.
+    with pytest.raises(HTTPException) as exc:
+        _validate_org_policy(r"acme\.com$", True, "analyst")
+    assert exc.value.status_code == 400
+    assert exc.value.code == "orgs.auto_join_breadth_unacknowledged"
+    assert "someone@notacme.com" in exc.value.detail
+    assert "outside your organization" in exc.value.detail
+
+
+def test_the_same_rule_saves_once_the_author_accepts_the_risk():
+    """The subdivision case: only the author knows a-division.acme.com is theirs."""
+    _validate_org_policy(r"@([a-z-]+\.)?acme\.com$", True, "analyst", True)
+
+
+def test_one_exact_domain_is_never_asked_to_accept_anything():
+    _validate_org_policy(r"@acme\.com$", True, "analyst")
+
+
+def test_breadth_is_not_measured_when_auto_join_is_off():
+    """With auto-join off the rule bounds invite redemption, and an invite is a human decision."""
+    _validate_org_policy(r"acme", False, None)
+
+
+# ---------------------------------------------------------------------------
+# REQ-1567: an auto-join rule is an exclusive claim
+# ---------------------------------------------------------------------------
+
+
+class _FakePool:
+    """An admin pool answering one SELECT with ``row``."""
+
+    def __init__(self, row):
+        self.row = row
+        self.statements = []
+
+    def acquire(pool_self):
+        class _Ctx:
+            async def __aenter__(self):
+                class _Conn:
+                    async def execute_core(_, stmt):
+                        pool_self.statements.append(str(stmt))
+
+                        class _Result:
+                            def fetchone(self):
+                                return pool_self.row
+
+                        return _Result()
+
+                return _Conn()
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Ctx()
+
+
+@pytest.mark.asyncio
+async def test_a_rule_another_org_already_auto_joins_on_is_refused(monkeypatch):
+    from provisa.api.admin import orgs_router
+
+    pool = _FakePool(("acme", "Acme"))
+    monkeypatch.setattr(orgs_router, "_admin_pool", lambda: pool)
+    with pytest.raises(HTTPException) as exc:
+        await orgs_router._reject_duplicate_auto_join(r"@acme\.com$", True)
+    assert exc.value.status_code == 409
+    assert exc.value.code == "orgs.auto_join_rule_taken"
+    assert "Acme" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_an_unclaimed_rule_passes(monkeypatch):
+    from provisa.api.admin import orgs_router
+
+    monkeypatch.setattr(orgs_router, "_admin_pool", lambda: _FakePool(None))
+    await orgs_router._reject_duplicate_auto_join(r"@acme\.com$", True)
+
+
+@pytest.mark.asyncio
+async def test_an_org_does_not_collide_with_itself_on_an_edit(monkeypatch):
+    """Saving the settings page unchanged must not report the org's own rule as taken."""
+    from provisa.api.admin import orgs_router
+
+    pool = _FakePool(None)
+    monkeypatch.setattr(orgs_router, "_admin_pool", lambda: pool)
+    await orgs_router._reject_duplicate_auto_join(r"@acme\.com$", True, exclude_org_id="acme")
+    assert "id !=" in pool.statements[0]
+
+
+@pytest.mark.asyncio
+async def test_two_orgs_may_share_a_rule_that_only_bounds_invites(monkeypatch):
+    """Exclusivity is about the automatic claim; an invite filter takes nobody by itself."""
+    from provisa.api.admin import orgs_router
+
+    pool = _FakePool(("acme", "Acme"))
+    monkeypatch.setattr(orgs_router, "_admin_pool", lambda: pool)
+    await orgs_router._reject_duplicate_auto_join(r"@acme\.com$", False)
+    assert pool.statements == []

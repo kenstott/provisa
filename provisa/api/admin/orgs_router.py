@@ -20,7 +20,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import delete as _delete, func, select, update
+from sqlalchemy import and_, delete as _delete, func, select, update
 
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
@@ -111,6 +111,11 @@ class CreateOrgBody(BaseModel):
     # REQ-1269: when true, any user whose email matches email_rule auto-joins with auto_join_role.
     auto_join: bool = False
     auto_join_role: str | None = None
+    # REQ-1567: the author's explicit acceptance that a rule reaching past one exact domain may
+    # admit people from outside the organization. Only the author knows whether the addresses the
+    # rule would sweep in are their own subdivisions, so the risk is quantified here and consented
+    # to there; a rule that needs this and does not carry it is refused rather than saved quietly.
+    auto_join_risk_acknowledged: bool = False
     # REQ-1043/REQ-1067/REQ-1244: run this org on a dedicated federation-engine instance instead of
     # the shared/pooled engine. Pre-billing surface: the onboarding create-org checkbox.
     isolated_engine: bool = False
@@ -125,10 +130,33 @@ class OrgPolicyBody(BaseModel):
     email_rule: str | None = None
     auto_join: bool = False
     auto_join_role: str | None = None
+    auto_join_risk_acknowledged: bool = False  # REQ-1567
+
+
+# REQ-1567: why a rule is refused outright rather than shown to its author. Each of these admits a
+# set no organization's membership could be, so there is nothing for an author to consent to.
+_UNBOUNDED_REASONS = {
+    "unbounded_no_rule": (
+        "auto_join needs an email rule: without one every address matches, so anyone who signs up "
+        "joins your org."
+    ),
+    "unbounded_no_domain": (
+        "auto_join needs an email rule naming a domain you control. This one names no domain, so it "
+        "matches addresses that merely contain the text — at any domain in the world."
+    ),
+    "unbounded_suffix": (
+        "This auto-join rule is not anchored at the end of the domain, so it also matches addresses "
+        "at domains that merely BEGIN with yours — acme.com.example.net is registered by whoever "
+        r"wants it. End the rule with $ so it matches your domain and nothing after it."
+    ),
+}
 
 
 def _validate_org_policy(
-    email_rule: str | None, auto_join: bool, auto_join_role: str | None
+    email_rule: str | None,
+    auto_join: bool,
+    auto_join_role: str | None,
+    risk_acknowledged: bool = False,
 ) -> None:
     """Reject an uncompilable email rule (REQ-1268) or auto_join without a role (REQ-1269)."""
     if email_rule is not None:
@@ -154,6 +182,68 @@ def _validate_org_policy(
                 f"matches {domain}.",
                 domain=domain,
             )
+        # REQ-1567: how far past its own domains the rule actually reaches. The rule is a regex
+        # matched with re.search, so an unanchored fragment admits every address CONTAINING it —
+        # and everyone it admits arrives holding the org's default role.
+        from provisa.core.auto_join_rules import rule_risk
+
+        risk = rule_risk(email_rule)
+        if risk.refusal is not None:
+            raise ApiError(
+                400,
+                "orgs.auto_join_rule_unbounded",
+                _UNBOUNDED_REASONS[risk.refusal],
+                reason=risk.refusal,
+            )
+        if risk.needs_acknowledgement and not risk_acknowledged:
+            # Not refused: a firm genuinely receiving mail at eu.acme.com and acme.com.au writes a
+            # rule that looks exactly like this. Only the author can tell those apart from a
+            # stranger's domain, so they are shown what it admits and asked to accept it.
+            admits = ", ".join(risk.admits)
+            raise ApiError(
+                400,
+                "orgs.auto_join_breadth_unacknowledged",
+                "Review this auto-join rule carefully or you may admit people from outside your "
+                f"organization: besides {', '.join(risk.domains)}, it also accepts addresses such "
+                f"as {admits}. Anyone at a domain you do not control could then join your org "
+                "automatically. Confirm you accept that risk to save it.",
+                admits=admits,
+                domains=", ".join(risk.domains),
+            )
+
+
+async def _reject_duplicate_auto_join(
+    email_rule: str | None, auto_join: bool, *, exclude_org_id: str | None = None
+) -> None:
+    """REQ-1567: no two orgs may auto-join on the same criteria.
+
+    Two orgs claiming the same addresses is not a policy either of them can express: every person
+    the rule matches belongs to both by the same evidence, so whichever org the resolver happened to
+    read first would take them, and the other would silently never see them. The claim is therefore
+    exclusive — the second org to ask for it is refused and told which org holds it, so the person
+    can go and ask that org for an invite instead of writing a rule that will not work.
+
+    Compared against orgs that have auto_join ON: a rule stored with auto-join off claims nobody,
+    and REQ-1268 still uses it as an invite filter, which two orgs may share harmlessly.
+    """
+    if not auto_join or email_rule is None:
+        return
+    conditions = [orgs.c.auto_join.is_(True), orgs.c.email_rule == email_rule]
+    if exclude_org_id is not None:
+        conditions.append(orgs.c.id != exclude_org_id)
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(select(orgs.c.id, orgs.c.name).where(and_(*conditions)))
+        row = result.fetchone()
+    if row is not None:
+        raise ApiError(
+            409,
+            "orgs.auto_join_rule_taken",
+            f"The organization {row[1]!r} already auto-joins everyone matching this rule. Two orgs "
+            "cannot claim the same addresses — ask them for an invite, or narrow your rule to a "
+            "domain only your organization uses.",
+            org=row[0],
+            org_name=row[1],
+        )
 
 
 # REQ-1309: the pattern lives in provisa.core.org_ids, because the hostname readers (REQ-1234,
@@ -367,7 +457,10 @@ async def create_org(body: CreateOrgBody, request: Request):  # REQ-042, REQ-059
         raise ApiError(401, "orgs.auth_required_create", "Authentication required to create an org")
 
     _validate_new_org_id(body.id)
-    _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
+    _validate_org_policy(
+        body.email_rule, body.auto_join, body.auto_join_role, body.auto_join_risk_acknowledged
+    )
+    await _reject_duplicate_auto_join(body.email_rule, body.auto_join)
     if body.isolated_engine:
         # REQ-1416: accepting the request on a deployment that resolves no dedicated coordinator
         # would create an org whose every query dies at bind time. The same gate the commercial
@@ -547,7 +640,10 @@ async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request
     from provisa.api.admin.invites_router import _require_org_admin
 
     await _require_org_admin(request, org_id)
-    _validate_org_policy(body.email_rule, body.auto_join, body.auto_join_role)
+    _validate_org_policy(
+        body.email_rule, body.auto_join, body.auto_join_role, body.auto_join_risk_acknowledged
+    )
+    await _reject_duplicate_auto_join(body.email_rule, body.auto_join, exclude_org_id=org_id)
     async with _admin_pool().acquire() as conn:
         result = await conn.execute_core(
             update(orgs)

@@ -553,7 +553,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     member_org_ids = [dict(r._mapping)["org_id"] for r in result.fetchall()]
 
             # REQ-1269: auto-join. A just-authenticated user who belongs to no org yet is granted
-            # membership + the default role of every auto-join org whose email rule matches — no
+            # membership + the default role of the auto-join org whose email rule matches — no
             # invite needed. Runs only while member_org_ids is empty (the common member case skips
             # the lookup entirely) and only for a real identity (never the anonymous dev principal).
             if (
@@ -562,37 +562,29 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 and self._admin_pool is not None
                 and identity.user_id != "anonymous"
             ):
-                from provisa.api.app import ensure_org_runtime
-                from provisa.api.org_runtime import reset_current_org, set_current_org
-                from provisa.core.commerce import bind_member_to_org_trial
-                from provisa.core.org_membership import (
-                    JOINED_VIA_AUTO_JOIN,
-                    grant_membership,
-                    grant_org_role,
-                    resolve_auto_join_orgs,
-                )
+                from provisa.api.auto_join import join_org_automatically
+                from provisa.core.org_membership import resolve_auto_join_orgs
 
                 auto = await resolve_auto_join_orgs(
                     self._admin_pool, identity.email, identity.user_id
                 )
-                for auto_org_id, auto_role in auto:
-                    await grant_membership(
-                        self._admin_pool,
-                        identity.user_id,
-                        auto_org_id,
-                        joined_via=JOINED_VIA_AUTO_JOIN,
+                # REQ-1568: one claim on this address is an answer; several are a question. Joining
+                # them all would seat someone in orgs that have no idea who they are, and joining
+                # the first would let row order decide. So nothing is joined here — the person is
+                # left with no membership, which the platform-plane carve-out below keeps working,
+                # and /auth/auto-join-offers puts the choice to them.
+                if len(auto) == 1:
+                    auto_org_id, auto_role = auto[0]
+                    await join_org_automatically(
+                        self._admin_pool, identity.user_id, identity.email, auto_org_id, auto_role
                     )
-                    # REQ-1474: an auto-joined member works under the org's trial if it is running,
-                    # so the trial is spent for them too.
-                    await bind_member_to_org_trial(self._admin_pool, auto_org_id, identity.email)
-                    rt = await ensure_org_runtime(auto_org_id)
-                    if rt.tenant_db is not None:
-                        org_token = set_current_org(auto_org_id)
-                        try:
-                            await grant_org_role(rt.tenant_db, identity.user_id, auto_role)
-                        finally:
-                            reset_current_org(org_token)
                     member_org_ids.append(auto_org_id)
+                elif auto:
+                    logger.info(
+                        "%d auto-join orgs claim %s; leaving the choice to the user",
+                        len(auto),
+                        identity.user_id,
+                    )
 
             # Platform-plane auth endpoints must work for a just-authenticated user who has no
             # membership yet: /auth/redeem-invite CREATES the first membership, /auth/me reports zero

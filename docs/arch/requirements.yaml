@@ -51349,7 +51349,7 @@
   - REQ-1514
   - REQ-1565
 - id: REQ-1567
-  status: proposed
+  status: complete
   since: 2026-08
   target: 2026-Q3
   group: 13. Multi-Tenancy & Organizations
@@ -51390,14 +51390,19 @@
     And a second org claiming a rule another org already holds is refused, naming that org'
   code:
   - provisa/api/admin/orgs_router.py
+  - provisa/core/auto_join_rules.py
   - provisa/core/org_membership.py
   - provisa-ui/src/pages/OnboardOrgPage.tsx
+  tests:
+  - tests/unit/test_auto_join_rules.py
+  - tests/unit/test_org_join_policy.py
+  - provisa-ui/src/__tests__/OnboardOrgAutoJoinRisk.test.tsx
   depends_on:
   - REQ-1268
   - REQ-1269
   - REQ-1477
 - id: REQ-1568
-  status: proposed
+  status: complete
   since: 2026-08
   target: 2026-Q3
   group: 13. Multi-Tenancy & Organizations
@@ -51429,9 +51434,15 @@
 
     And declining both leaves them able to create their own org'
   code:
-  - provisa/core/org_membership.py
+  - provisa/api/auto_join.py
+  - provisa/api/auth_router.py
   - provisa/auth/middleware.py
+  - provisa/core/org_membership.py
+  - provisa-ui/src/api/admin.ts
   - provisa-ui/src/pages/OnboardOrgPage.tsx
+  tests:
+  - tests/integration/test_org_auto_join.py
+  - provisa-ui/src/__tests__/OnboardOrgAutoJoinChoice.test.tsx
   depends_on:
   - REQ-1269
   - REQ-1306

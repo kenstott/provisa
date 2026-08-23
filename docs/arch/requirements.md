@@ -16456,24 +16456,24 @@ STARTER IS ORDERABLE WITHOUT A TRIAL. Signup routes Starter through the trial ch
 
 ### REQ-1567 · Multi-Tenancy & Orgs {#REQ-1567}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 AN AUTO-JOIN RULE IS AN EXCLUSIVE CLAIM ON A SET OF ADDRESSES, AND ITS BREADTH IS ACKNOWLEDGED BY THE ORG THAT WRITES IT. [REQ-1477](#REQ-1477) refuses a rule admitting a consumer domain, which is the extreme case; between that and a safe rule sits the ordinary one that is merely too loose. A rule is a regex, so an unanchored fragment matches any address CONTAINING it -- "acme\.com" admits notacme.com.au and acme.com.attacker.net, sweeping in people the org never meant to admit and granting them its default role and its data. The reverse is equally real and must not be forbidden: a company genuinely receives mail at subdivision domains that carry the parent inside them (eu.acme.com, acme.com.au for the same firm), so a rule that reaches beyond one exact domain is legitimate and cannot simply be banned. So breadth is QUANTIFIED and CONSENTED TO rather than guessed at: (1) rules whose match set is unbounded in the ways nothing legitimate needs -- unanchored at the domain end, matching the empty local part, or admitting an arbitrary suffix after the domain -- are refused outright, because there is no org whose membership those describe; (2) any remaining rule that reaches past a single exact domain is shown back to the author with what it would admit, warning that a loose filter admits people from outside the organization and asking them to review it; and (3) the policy is only saved once the author explicitly accepts that risk, so admitting a stranger is a decision somebody made rather than a regex nobody read. TWO ORGS MAY NOT HOLD THE SAME AUTO-JOIN CRITERIA. An identical rule on two orgs makes the destination of a new sign-up arbitrary, so the second org to claim it is refused and told which org holds it -- the collision is settled between the two orgs, not resolved silently at the moment a person signs in.
 
 **Use case:** An admin who types @acme\.com without anchoring it is shown that it would also admit notacme.com.au and has to accept that before the rule can admit anybody.
 
-**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/org_membership.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
+**Code:** `provisa/api/admin/orgs_router.py`, `provisa/core/auto_join_rules.py`, `provisa/core/org_membership.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
 
-**Tests:** —
+**Tests:** `tests/unit/test_auto_join_rules.py`, `tests/unit/test_org_join_policy.py`, `provisa-ui/src/__tests__/OnboardOrgAutoJoinRisk.test.tsx`
 
 ### REQ-1568 · Multi-Tenancy & Orgs {#REQ-1568}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 AN ADDRESS MATCHING MORE THAN ONE AUTO-JOIN ORG IS A CHOICE PUT TO THE PERSON, NOT A SWEEP. resolve_auto_join_orgs joins every matching org at once, so someone whose address is claimed by two rules silently becomes a member of both -- including one they have never heard of, whose rule happens to contain their domain ([REQ-1567](#REQ-1567)). Even with exclusive criteria this remains reachable, because a subdivision address can legitimately satisfy a parent org rule and a division org rule at the same time. So a single match auto-joins as it does today, and MORE THAN ONE match stops and asks: the person is told their address matches several organizations, shown which, and picks the one to join -- or declines them all and creates an organization of their own, which is the right answer for someone who merely shares a domain suffix with a stranger. Declining an org records the [REQ-1306](#REQ-1306) opt-out for it, so the same question is not asked again at every sign-in. Nothing is joined until they answer: membership granted while the question is open is the outcome this exists to prevent.
 
 **Use case:** A person at eu.acme.com whose address matches both the parent org and their division is asked which to join instead of being made a member of both.
 
-**Code:** `provisa/core/org_membership.py`, `provisa/auth/middleware.py`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
+**Code:** `provisa/api/auto_join.py`, `provisa/api/auth_router.py`, `provisa/auth/middleware.py`, `provisa/core/org_membership.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
 
-**Tests:** —
+**Tests:** `tests/integration/test_org_auto_join.py`, `provisa-ui/src/__tests__/OnboardOrgAutoJoinChoice.test.tsx`
