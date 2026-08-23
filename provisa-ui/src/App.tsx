@@ -23,6 +23,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { SubnavExtraProvider } from "./context/SubnavExtraContext";
 import { NavBar } from "./components/NavBar";
+import { AdminRail } from "./components/AdminRail";
 import { NAV_GROUPS, entryItem } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { CredentialCheck } from "./components/CredentialCheck";
@@ -273,256 +274,263 @@ function App() {
                     the property of any one page. */}
                       <MaintenanceBanner />
                       <NavBar />
-                      <main>
-                        <Suspense fallback={<PageLoading />}>
-                          <Routes>
-                            <Route path="/" element={<Navigate to="/query" replace />} />
-                            <Route
-                              path="/login"
-                              element={
-                                <LoginPage
-                                  onLoginSuccess={handleLoginSuccess}
-                                  authDisabled={!authEnabled}
-                                />
-                              }
-                            />
-                            <Route
-                              path="/register"
-                              element={
-                                <LoginPage
-                                  onLoginSuccess={handleLoginSuccess}
-                                  authDisabled={!authEnabled}
-                                />
-                              }
-                            />
-                            <Route path="/setup" element={<Navigate to="/" replace />} />
-                            <Route
-                              path="/sources"
-                              element={
-                                <CapabilityGate
-                                  capability="source_registration"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <SourcesPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/tables"
-                              element={
-                                <CapabilityGate
-                                  capability="table_registration"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <TablesPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/relationships"
-                              element={
-                                <CapabilityGate
-                                  capability="create_relationship"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <RelationshipsPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/team"
-                              element={
-                                <CapabilityGate
-                                  capability="user_management"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <TeamPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/security"
-                              element={<Navigate to="/security/roles" replace />}
-                            />
-                            <Route
-                              path="/security/roles"
-                              element={
-                                <CapabilityGate
-                                  capability="access_config"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <SecurityRolesPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/security/rls"
-                              element={
-                                <CapabilityGate
-                                  capability="access_config"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <SecurityRlsPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/query"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <QueryPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/schema"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <Suspense fallback={<PageLoading />}>
-                                    <SchemaExplorer />
-                                  </Suspense>
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/graph"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <GraphPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/sql"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <SqlPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/nl"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <NlPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/grpc"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <GrpcPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/jsonapi"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <JsonApiPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/openapi"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <OpenApiPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/explore"
-                              element={
-                                <CapabilityGate
-                                  capability="query_development"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <McpExplorePage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/views"
-                              element={
-                                <CapabilityGate
-                                  capability="table_registration"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <ViewsPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/metrics"
-                              element={
-                                <CapabilityGate
-                                  capability="table_registration"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <MetricsPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route
-                              path="/commands"
-                              element={
-                                <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
-                                  <CommandsPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            <Route path="/actions" element={<Navigate to="/commands" replace />} />
-                            <Route
-                              path="/lineage"
-                              element={
-                                <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
-                                  <LineagePage />
-                                </CapabilityGate>
-                              }
-                            />
+                      {/* REQ-1559: the admin rail stands beside the page rather than above it, so
+                    the row is the shell for both. It renders nothing off an admin route. */}
+                      <div className="app-body">
+                        <AdminRail />
+                        <main>
+                          <Suspense fallback={<PageLoading />}>
+                            <Routes>
+                              <Route path="/" element={<Navigate to="/query" replace />} />
+                              <Route
+                                path="/login"
+                                element={
+                                  <LoginPage
+                                    onLoginSuccess={handleLoginSuccess}
+                                    authDisabled={!authEnabled}
+                                  />
+                                }
+                              />
+                              <Route
+                                path="/register"
+                                element={
+                                  <LoginPage
+                                    onLoginSuccess={handleLoginSuccess}
+                                    authDisabled={!authEnabled}
+                                  />
+                                }
+                              />
+                              <Route path="/setup" element={<Navigate to="/" replace />} />
+                              <Route
+                                path="/sources"
+                                element={
+                                  <CapabilityGate
+                                    capability="source_registration"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <SourcesPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/tables"
+                                element={
+                                  <CapabilityGate
+                                    capability="table_registration"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <TablesPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/relationships"
+                                element={
+                                  <CapabilityGate
+                                    capability="create_relationship"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <RelationshipsPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/team"
+                                element={
+                                  <CapabilityGate
+                                    capability="user_management"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <TeamPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/security"
+                                element={<Navigate to="/security/roles" replace />}
+                              />
+                              <Route
+                                path="/security/roles"
+                                element={
+                                  <CapabilityGate
+                                    capability="access_config"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <SecurityRolesPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/security/rls"
+                                element={
+                                  <CapabilityGate
+                                    capability="access_config"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <SecurityRlsPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/query"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <QueryPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/schema"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <Suspense fallback={<PageLoading />}>
+                                      <SchemaExplorer />
+                                    </Suspense>
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/graph"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <GraphPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/sql"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <SqlPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/nl"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <NlPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/grpc"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <GrpcPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/jsonapi"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <JsonApiPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/openapi"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <OpenApiPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/explore"
+                                element={
+                                  <CapabilityGate
+                                    capability="query_development"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <McpExplorePage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/views"
+                                element={
+                                  <CapabilityGate
+                                    capability="table_registration"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <ViewsPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/metrics"
+                                element={
+                                  <CapabilityGate
+                                    capability="table_registration"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <MetricsPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/commands"
+                                element={
+                                  <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                                    <CommandsPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              <Route
+                                path="/actions"
+                                element={<Navigate to="/commands" replace />}
+                              />
+                              <Route
+                                path="/lineage"
+                                element={
+                                  <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                                    <LineagePage />
+                                  </CapabilityGate>
+                                }
+                              />
 
-                            {/* REQ-1349: approvals are the acting org's own pending creation requests. */}
-                            <Route
-                              path="/admin/requests"
-                              element={
-                                <CapabilityGate
-                                  capability="org_settings"
-                                  fallback={<NotAuthorized />}
-                                >
-                                  <RequestsPage />
-                                </CapabilityGate>
-                              }
-                            />
-                            {/* Docs reader — ungated, available to every role (bundled + live fallback) */}
-                            <Route path="/docs" element={<DocsPage />} />
-                            <Route path="/admin" element={<AdminEntry />} />
-                            {/* REQ-1337: each admin route names the RIGHT it needs, never a role name. The
+                              {/* REQ-1349: approvals are the acting org's own pending creation requests. */}
+                              <Route
+                                path="/admin/requests"
+                                element={
+                                  <CapabilityGate
+                                    capability="org_settings"
+                                    fallback={<NotAuthorized />}
+                                  >
+                                    <RequestsPage />
+                                  </CapabilityGate>
+                                }
+                              />
+                              {/* Docs reader — ungated, available to every role (bundled + live fallback) */}
+                              <Route path="/docs" element={<DocsPage />} />
+                              <Route path="/admin" element={<AdminEntry />} />
+                              {/* REQ-1337: each admin route names the RIGHT it needs, never a role name. The
                       deployment-wide settings surfaces (federation engine, cache storage,
                       encryption/auth providers) require `platform_settings`; administering other
                       orgs requires `cross_org`. The seed decides which role carries each, so a
@@ -530,50 +538,51 @@ function App() {
                       REQ-1349 adds the two org-scoped rights: `org_settings` for surfaces whose
                       subject is the acting org (its AI/NL provider, domains, scheduled tasks,
                       approvals) and `observability` for read-only performance and health. */}
-                            {(
-                              [
-                                ["/admin/overview", "observability"],
-                                ["/admin/domains", "org_settings"],
-                                ["/admin/environments", "org_settings"],
-                                ["/admin/secrets", "org_settings"], // REQ-1558
-                                ["/admin/cache", "org_settings"],
-                                ["/admin/scheduled-tasks", "org_settings"],
-                                ["/admin/federation-engine", "platform_settings"],
-                                ["/admin/org-engine", "org_settings"], // REQ-1412
-                                ["/admin/encryption", "platform_settings"],
-                                ["/admin/auth", "platform_settings"],
-                                ["/admin/system-health", "observability"],
-                                ["/admin/observability", "observability"],
-                                ["/admin/mcp-server", "admin"],
-                                ["/admin/local-users", "admin"],
-                                ["/admin/orgs", "cross_org"],
-                                ["/admin/ai-models", "org_settings"],
-                                ["/admin/metadata-export", "org_settings"],
-                                ["/admin/import", "org_settings"], // REQ-1483
-                                ["/admin/tags", "org_settings"],
-                                ["/admin/reports", "observability"], // REQ-1386
-                                ["/admin/glossary", "org_settings"], // REQ-1387
-                                ["/admin/security", "platform_settings"],
-                                ["/admin/maintenance", "platform_settings"], // REQ-1466
-                                ["/admin/billing", "org_settings"], // REQ-1469
-                              ] as const
-                            ).map(([path, capability]) => (
-                              <Route
-                                key={path}
-                                path={path}
-                                element={
-                                  <CapabilityGate
-                                    capability={capability}
-                                    fallback={<NotAuthorized />}
-                                  >
-                                    <AdminPage />
-                                  </CapabilityGate>
-                                }
-                              />
-                            ))}
-                          </Routes>
-                        </Suspense>
-                      </main>
+                              {(
+                                [
+                                  ["/admin/overview", "observability"],
+                                  ["/admin/domains", "org_settings"],
+                                  ["/admin/environments", "org_settings"],
+                                  ["/admin/secrets", "org_settings"], // REQ-1558
+                                  ["/admin/cache", "org_settings"],
+                                  ["/admin/scheduled-tasks", "org_settings"],
+                                  ["/admin/federation-engine", "platform_settings"],
+                                  ["/admin/org-engine", "org_settings"], // REQ-1412
+                                  ["/admin/encryption", "platform_settings"],
+                                  ["/admin/auth", "platform_settings"],
+                                  ["/admin/system-health", "observability"],
+                                  ["/admin/observability", "observability"],
+                                  ["/admin/mcp-server", "admin"],
+                                  ["/admin/local-users", "admin"],
+                                  ["/admin/orgs", "cross_org"],
+                                  ["/admin/ai-models", "org_settings"],
+                                  ["/admin/metadata-export", "org_settings"],
+                                  ["/admin/import", "org_settings"], // REQ-1483
+                                  ["/admin/tags", "org_settings"],
+                                  ["/admin/reports", "observability"], // REQ-1386
+                                  ["/admin/glossary", "org_settings"], // REQ-1387
+                                  ["/admin/security", "platform_settings"],
+                                  ["/admin/maintenance", "platform_settings"], // REQ-1466
+                                  ["/admin/billing", "org_settings"], // REQ-1469
+                                ] as const
+                              ).map(([path, capability]) => (
+                                <Route
+                                  key={path}
+                                  path={path}
+                                  element={
+                                    <CapabilityGate
+                                      capability={capability}
+                                      fallback={<NotAuthorized />}
+                                    >
+                                      <AdminPage />
+                                    </CapabilityGate>
+                                  }
+                                />
+                              ))}
+                            </Routes>
+                          </Suspense>
+                        </main>
+                      </div>
                     </SubnavExtraProvider>
                   </TourProvider>
                 </RequireAuth>

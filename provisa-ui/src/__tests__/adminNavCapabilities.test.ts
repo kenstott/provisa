@@ -147,6 +147,9 @@ describe("admin surface capabilities", () => {
       // The health table was merged into the dashboard, so /admin/system-health is a deep link to
       // /admin/overview's section rather than a nav entry of its own.
       if (path === "/admin/system-health") continue;
+      // REQ-1558: Secrets is a sub-tab of Security, which has its own entry; the route is a deep
+      // link into it rather than a second entry for the same section.
+      if (path === "/admin/secrets") continue;
       expect(nav[path], path).toBe(capability);
     }
   });

@@ -62,6 +62,10 @@ class SecretsProviderSpec:
     #: UI field descriptors (config_key/label/type/required/secret/placeholder).
     config_fields: list[dict] = field(default_factory=list)
     available: Callable[[], bool] = lambda: True
+    #: The distribution a deployment installs to make this backend available, named so the
+    #: Secrets page can say WHY an unavailable backend is unavailable (REQ-1558). ``None`` for a
+    #: backend that needs nothing installed, which is only Provisa's own store.
+    requires: str | None = None
     aliases: tuple[str, ...] = ()
 
 
@@ -182,6 +186,7 @@ def _register_builtins() -> None:
                 namespace=_cfg(cfg, "namespace", required=False),
             ),
             available=_importable("hvac"),
+            requires="hvac",
             config_fields=[
                 {
                     "config_key": "url",
@@ -228,6 +233,7 @@ def _register_builtins() -> None:
                 endpoint_url=_cfg(cfg, "endpoint_url", required=False),
             ),
             available=_importable("boto3"),
+            requires="boto3",
             config_fields=[
                 {
                     "config_key": "region",
@@ -256,6 +262,7 @@ def _register_builtins() -> None:
             ),
             build=lambda cfg: GcpSecretManagerProvider(project=_cfg(cfg, "project")),
             available=_importable("google.cloud.secretmanager"),
+            requires="google-cloud-secret-manager",
             config_fields=[
                 {
                     "config_key": "project",
@@ -277,6 +284,7 @@ def _register_builtins() -> None:
             ),
             build=lambda cfg: AzureKeyVaultSecretsProvider(vault_url=_cfg(cfg, "vault_url")),
             available=_importable("azure.keyvault.secrets"),
+            requires="azure-keyvault-secrets",
             config_fields=[
                 {
                     "config_key": "vault_url",

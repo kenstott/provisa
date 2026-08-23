@@ -8,15 +8,20 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Accordion,
   Alert,
+  Badge,
   Button,
+  Card,
   Code,
+  Divider,
   Group,
   Modal,
   PasswordInput,
+  Radio,
   Stack,
   Table,
   Text,
@@ -25,13 +30,18 @@ import {
 } from "@mantine/core";
 import { Copy, Plus } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useCapability } from "../../hooks/useCapability";
+import { usePanelState } from "../../hooks/usePanelState";
 import { ConfirmDialog } from "../ConfirmDialog";
 import {
   fetchSecrets,
   putSecret,
   deleteSecret,
+  fetchSecretsService,
+  setSecretsService,
   type Secret,
   type SecretsState,
+  type SecretsServiceState,
 } from "../../api/secrets";
 
 /**
@@ -41,9 +51,155 @@ import {
  * what it is for, who last set it, and the reference to paste. Somebody who has lost a value
  * REPLACES it, which is the same act that created it, so the form is the same form.
  */
+/**
+ * REQ-1557, REQ-1558: which secrets service the DEPLOYMENT is wired to.
+ *
+ * Every backend the build knows is listed, installed or not. A row whose client library is
+ * missing is greyed out and says which one — hiding it would leave an operator unsure whether
+ * Provisa speaks to their secrets manager at all, when the only thing missing is a pip install.
+ */
+function SecretsServicePanel() {
+  const { t } = useTranslation();
+  const [s, setS] = useState<SecretsServiceState | null>(null);
+  const [choice, setChoice] = useState("");
+  const [config, setConfig] = useState<Record<string, Record<string, string>>>({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  const load = () =>
+    fetchSecretsService()
+      .then((state) => {
+        setS(state);
+        setChoice(state.provider);
+        setConfig(
+          Object.fromEntries(
+            state.providers.map((p) => [
+              p.key,
+              Object.fromEntries(
+                p.config_fields.map((f) => [
+                  f.config_key,
+                  String(state.config[p.key]?.[f.config_key] ?? ""),
+                ]),
+              ),
+            ]),
+          ),
+        );
+      })
+      .catch((e) => setError(String(e)));
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const selected = useMemo(() => s?.providers.find((p) => p.key === choice), [s, choice]);
+  const missingRequired = (selected?.config_fields ?? []).some(
+    (f) => f.required && !(config[choice]?.[f.config_key] ?? "").trim(),
+  );
+
+  const setField = (key: string, value: string) =>
+    setConfig((c) => ({ ...c, [choice]: { ...(c[choice] ?? {}), [key]: value } }));
+
+  const save = async () => {
+    setSaving(true);
+    setMsg("");
+    setError("");
+    try {
+      const res = await setSecretsService({ provider: choice, config: config[choice] ?? {} });
+      setMsg(t("secretsTab.serviceSaved", { provider: res.provider }));
+      load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (error && !s) return <Alert color="red">{error}</Alert>;
+  if (!s) return <Text>{t("secretsTab.loading")}</Text>;
+
+  return (
+    <Stack gap="sm" maw={720} data-testid="secrets-service">
+      <Text c="dimmed" fz="sm">
+        {t("secretsTab.serviceIntro")}
+      </Text>
+
+      {error && <Alert color="red">{error}</Alert>}
+      {msg && <Alert color="green">{msg}</Alert>}
+
+      <Radio.Group value={choice} onChange={setChoice}>
+        <Stack gap="xs">
+          {s.providers.map((p) => (
+            <Card
+              key={p.key}
+              withBorder
+              padding="sm"
+              data-testid={`secrets-provider-${p.key}`}
+              data-unavailable={p.available ? undefined : "true"}
+              style={{ opacity: p.available ? 1 : 0.5 }}
+            >
+              <Radio
+                value={p.key}
+                disabled={!p.available}
+                label={
+                  <Group gap="xs">
+                    <Text fw={500} c={p.available ? undefined : "dimmed"}>
+                      {p.label}
+                    </Text>
+                    {p.key === s.provider && (
+                      <Badge color="green" variant="light">
+                        {t("secretsTab.serviceInUse")}
+                      </Badge>
+                    )}
+                    {!p.available && p.requires && (
+                      <Text c="dimmed" fz="xs" data-testid={`secrets-provider-requires-${p.key}`}>
+                        {t("secretsTab.serviceRequires", { library: p.requires })}
+                      </Text>
+                    )}
+                  </Group>
+                }
+                description={p.description}
+              />
+            </Card>
+          ))}
+        </Stack>
+      </Radio.Group>
+
+      {(selected?.config_fields ?? []).map((f) => (
+        <TextInput
+          key={f.config_key}
+          label={f.label}
+          required={f.required}
+          placeholder={f.placeholder}
+          // Never a password field: the value typed here is a ${env:...} REFERENCE to the
+          // credential, not the credential (REQ-1557).
+          value={config[choice]?.[f.config_key] ?? ""}
+          onChange={(e) => setField(f.config_key, e.currentTarget.value)}
+          data-testid={`secrets-service-field-${f.config_key}`}
+        />
+      ))}
+
+      <Group>
+        <Button
+          onClick={save}
+          loading={saving}
+          disabled={missingRequired || choice === ""}
+          data-testid="secrets-service-save"
+        >
+          {t("secretsTab.serviceSave")}
+        </Button>
+      </Group>
+    </Stack>
+  );
+}
+
 export function SecretsTab() {
   const { t } = useTranslation();
   const { activeOrgId } = useAuth();
+  // Two rights on one page: the SERVICE is the deployment's, the NAMES are the org's (REQ-1558).
+  const mayChooseService = useCapability("platform_settings");
+  const mayHoldSecrets = useCapability("org_settings");
+  const [servicePanel, setServicePanel] = usePanelState("secretsService");
   const [state, setState] = useState<SecretsState | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -56,13 +212,13 @@ export function SecretsTab() {
   const [saving, setSaving] = useState(false);
 
   const load = () => {
-    if (!activeOrgId) return;
+    if (!activeOrgId || !mayHoldSecrets) return;
     fetchSecrets(activeOrgId)
       .then(setState)
       .catch((e) => setError(String(e)));
   };
 
-  useEffect(load, [activeOrgId]);
+  useEffect(load, [activeOrgId, mayHoldSecrets]);
 
   const open = (secret: Secret | null) => {
     setEditing(secret ? secret.name : "");
@@ -102,6 +258,26 @@ export function SecretsTab() {
     }
   };
 
+  // Collapsed by default: choosing the backend happens once for the deployment, reading the names
+  // happens every day, so the page opens on the names. The choice is remembered per browser.
+  const service = mayChooseService ? (
+    <Accordion
+      value={servicePanel}
+      onChange={setServicePanel}
+      variant="contained"
+      data-testid="secrets-service-panel"
+    >
+      <Accordion.Item value="service">
+        <Accordion.Control data-testid="secrets-service-toggle">
+          {t("secretsTab.serviceTitle")}
+        </Accordion.Control>
+        {/* Mounted only when open, so a collapsed panel does not read the deployment config. */}
+        <Accordion.Panel>{servicePanel === "service" && <SecretsServicePanel />}</Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
+  ) : null;
+
+  if (!mayHoldSecrets) return <Stack data-testid="secrets-tab">{service}</Stack>;
   if (error && !state) return <Alert color="red">{error}</Alert>;
   if (!state) return <Text>{t("secretsTab.loading")}</Text>;
 
@@ -109,6 +285,8 @@ export function SecretsTab() {
 
   return (
     <Stack gap="md" data-testid="secrets-tab">
+      {service}
+      {service && <Divider />}
       <Text c="dimmed" fz="sm">
         {t("secretsTab.intro")}
       </Text>

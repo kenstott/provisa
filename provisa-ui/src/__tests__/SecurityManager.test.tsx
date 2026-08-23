@@ -9,9 +9,11 @@
 // permission from the copyright holder.
 
 // REQ-1558, REQ-1361: Secrets shares the Security section with the deployment-wide tabs but not
-// their capability. What is tested here is that the two sets stay apart — a platform administrator
-// is not shown an org's secrets, and an org administrator is not shown the deployment's posture,
-// encryption, authentication or local users.
+// their capability. What is tested here is which tabs exist for whom — an org administrator is
+// shown Secrets and none of the deployment's posture, encryption, authentication or local users,
+// while a platform administrator is shown those four AND Secrets, because Secrets also carries
+// the deployment's choice of secrets service. Which HALF of Secrets each of them gets is
+// SecretsTab's own decision, tested in SecretsTab.test.tsx.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "../test-utils/render";
@@ -42,9 +44,9 @@ describe("Security section membership", () => {
     auth.capabilities = ["platform_settings"];
   });
 
-  it("shows a platform administrator the deployment tabs and no secrets", () => {
+  it("shows a platform administrator the deployment tabs, secrets among them", () => {
     render(<SecurityManager allRoles={[]} allDomains={[]} />);
-    expect(tabs()).toEqual(DEPLOYMENT);
+    expect(tabs()).toEqual(DEPLOYMENT.concat("secrets"));
     expect(screen.getByText("posture panel")).toBeInTheDocument();
   });
 

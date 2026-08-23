@@ -33,7 +33,11 @@ const TAB_CAPABILITY = {
   encryption: "platform_settings",
   authentication: "platform_settings",
   localUsers: "platform_settings",
-  secrets: "org_settings",
+  // REQ-1558: Secrets is the one sub-tab EITHER right opens, because it carries two things — the
+  // deployment's choice of secrets service (platform_settings) and the org's secret names
+  // (org_settings). The tab itself decides which half to show; the gate here only decides whether
+  // there is anything on it for this person at all.
+  secrets: "either",
 } as const;
 
 interface SecurityManagerProps {
@@ -48,7 +52,12 @@ export function SecurityManager({ allRoles, allDomains, initialTab }: SecurityMa
   const deployment = useCapability("platform_settings");
   const org = useCapability("org_settings");
   const visible = useMemo(
-    () => TAB_KEYS.filter((k) => (TAB_CAPABILITY[k] === "org_settings" ? org : deployment)),
+    () =>
+      TAB_KEYS.filter((k) => {
+        const need = TAB_CAPABILITY[k];
+        if (need === "either") return org || deployment;
+        return need === "org_settings" ? org : deployment;
+      }),
     [deployment, org],
   );
   // An initialTab the caller deep-linked to is honoured only when it is one this person may see;

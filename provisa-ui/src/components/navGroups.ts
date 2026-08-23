@@ -39,6 +39,20 @@ export interface NavGroup {
   items: DropdownItem[];
 }
 
+/** The group a route belongs to — the nav, the subnav and the admin rail all key off this. */
+export function activeGroupId(pathname: string): string | null {
+  for (const group of NAV_GROUPS) {
+    if (
+      group.items.some(
+        (i) => !i.comingSoon && (pathname === i.to || pathname.startsWith(i.to + "/")),
+      )
+    ) {
+      return group.id;
+    }
+  }
+  return null;
+}
+
 export const NAV_GROUPS: NavGroup[] = [
   {
     id: "model",
@@ -130,10 +144,8 @@ export const NAV_GROUPS: NavGroup[] = [
         commercial: true,
       },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
-      // REQ-1558, REQ-1361: the org's own secrets, a Security sub-tab. org_settings, not
-      // platform_settings: the values belong to the org, and a platform admin operating the
-      // control plane has no read of them.
-      { to: "/admin/secrets", labelKey: "navBar.itemSecrets", capability: "org_settings" },
+      // REQ-1558: Secrets has no entry of its own. It is a sub-tab of Security, which the entry
+      // above already stands for; /admin/secrets remains a deep link into that sub-tab.
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
       // platform_settings — the same right that gates the engine topology switch it announces.
       {

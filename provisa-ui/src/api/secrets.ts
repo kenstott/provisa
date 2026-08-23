@@ -45,6 +45,35 @@ export interface SecretsProvider {
   writable: boolean;
 }
 
+/** A backend the build knows about, whether or not this deployment can use it. */
+export interface SecretsProviderChoice {
+  key: string;
+  label: string;
+  description: string;
+  /** Whether the client library is installed. An unavailable backend is shown, not hidden. */
+  available: boolean;
+  /** The distribution to install to make it available — named in the greyed-out row. */
+  requires: string | null;
+  writable: boolean;
+  config_fields: SecretsConfigField[];
+}
+
+export interface SecretsConfigField {
+  config_key: string;
+  label: string;
+  type: string;
+  required: boolean;
+  secret?: boolean;
+  placeholder?: string;
+}
+
+/** The deployment-wide secrets service: which backend, and what else it could be. */
+export interface SecretsServiceState {
+  provider: string;
+  providers: SecretsProviderChoice[];
+  config: Record<string, Record<string, string>>;
+}
+
 export interface SecretsState {
   provider: SecretsProvider;
   secrets: Secret[];
@@ -72,4 +101,24 @@ export async function putSecret(
 export async function deleteSecret(orgId: string, name: string): Promise<{ deleted: string }> {
   const res = await fetch(`${base(orgId)}/${encodeURIComponent(name)}`, { method: "DELETE" });
   return ok<{ deleted: string }>(res, "delete secret");
+}
+
+// The SERVICE is the deployment's (platform_settings); the NAMES above are the org's
+// (org_settings). Two rights, two endpoints, one page.
+
+export async function fetchSecretsService(): Promise<SecretsServiceState> {
+  const res = await fetch(`${API_BASE}/admin/secrets-service`);
+  return ok<SecretsServiceState>(res, "load secrets service");
+}
+
+export async function setSecretsService(body: {
+  provider: string;
+  config: Record<string, string>;
+}): Promise<{ success: boolean; provider: string }> {
+  const res = await fetch(`${API_BASE}/admin/secrets-service`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return ok<{ success: boolean; provider: string }>(res, "save secrets service");
 }

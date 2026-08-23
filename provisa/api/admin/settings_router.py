@@ -1023,6 +1023,94 @@ async def set_encryption(request: Request):  # REQ-918
     return {"success": True, "restart_required": True}
 
 
+def _secrets_providers() -> list[dict]:
+    """UI view of the secrets-provider registry (REQ-1557, REQ-1558).
+
+    Every registered backend is listed, available or not. An operator asking "does Provisa talk to
+    our Vault?" is answered by the row being there; ``available`` and ``requires`` then say that
+    the only thing missing is the client library, which the page renders as
+    "(requires hvac import)" rather than hiding the row and leaving the question open.
+    """
+    from provisa.core.secrets_registry import secrets_provider_registry
+
+    return [
+        {
+            "key": s.key,
+            "label": s.label,
+            "description": s.description,
+            "available": s.available(),
+            "requires": s.requires,
+            "writable": s.writable,
+            "config_fields": s.config_fields,
+        }
+        for s in secrets_provider_registry()
+    ]
+
+
+@router.get("/admin/secrets-service")
+async def get_secrets_service(request: Request):  # REQ-1557, REQ-1558
+    """Which secrets service this deployment is wired to, and what else it could be.
+
+    The SERVICE is the deployment's, so this is platform_settings — distinct from an org's secret
+    NAMES, which are org_settings and live under /admin/orgs/{org_id}/secrets.
+    """
+    require_platform_settings(request)  # REQ-1337
+    cfg = read_config()
+    sec = cfg.get("secrets", {}) or {}
+    providers = _secrets_providers()
+    # Unset is not unconfigured: it selects Provisa's own encrypted per-org store (REQ-1557).
+    return {
+        "provider": sec.get("provider", "provisa"),
+        "providers": providers,
+        "config": {p["key"]: dict(sec.get(p["key"], {}) or {}) for p in providers},
+    }
+
+
+@router.put("/admin/secrets-service")
+async def set_secrets_service(request: Request):  # REQ-1557, REQ-1558
+    """Select the secrets backend. Persisted to provisa.yaml AND applied to this process."""
+    require_platform_settings(request)  # REQ-1337
+    from provisa.core.secrets_registry import get_secrets_provider_spec
+    from provisa.core.secrets_runtime import configure_secrets
+
+    body = await request.json()
+    provider = body.get("provider")
+    spec = get_secrets_provider_spec(provider)
+    if spec is None:
+        raise ApiError(
+            400,
+            "settings.unknown_secrets_provider",
+            f"unknown secrets provider {provider!r}",
+            provider=str(provider),
+        )
+    if not spec.available():
+        # Fail closed — selecting a backend that cannot be built must not quietly leave the
+        # deployment on the previous one (REQ-1557).
+        raise ApiError(
+            400,
+            "settings.secrets_provider_unavailable",
+            f"secrets provider {provider!r} is not available (install {spec.requires!r} to use it)",
+            provider=str(provider),
+        )
+    path = config_path()
+    cfg = read_config()
+    sec = dict(cfg.get("secrets", {}) or {})
+    sec["provider"] = spec.key
+    allowed = {f["config_key"] for f in spec.config_fields}
+    pcfg = dict(sec.get(spec.key, {}) or {})
+    for k, v in (body.get("config") or {}).items():
+        if k in allowed:
+            pcfg[k] = v
+    if pcfg:
+        sec[spec.key] = pcfg
+    cfg["secrets"] = sec
+    write_config(path, cfg)
+    # The backend is built on first use, so rebinding here is the whole of applying it — no
+    # restart, unlike encryption whose service is held by objects built at startup.
+    configure_secrets(spec.key, config=pcfg)
+    return {"success": True, "provider": spec.key}
+
+
 @router.post("/admin/encryption/generate-key")
 async def generate_encryption_key(request: Request):  # REQ-918
     """Generate a fresh AES-256 master key and store it in the OS keychain under ``key_id``. When no

@@ -25,21 +25,8 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { clearSessionState } from "../lib/session";
-import { NAV_GROUPS, entryItem, writeLastSubnav } from "./navGroups";
+import { NAV_GROUPS, activeGroupId, entryItem, writeLastSubnav } from "./navGroups";
 import { hasCapability } from "../lib/capabilities";
-
-function activeGroupId(pathname: string): string | null {
-  for (const group of NAV_GROUPS) {
-    if (
-      group.items.some(
-        (i) => !i.comingSoon && (pathname === i.to || pathname.startsWith(i.to + "/")),
-      )
-    ) {
-      return group.id;
-    }
-  }
-  return null;
-}
 
 export function NavBar() {
   const { t } = useTranslation();
@@ -310,7 +297,9 @@ export function NavBar() {
           </div>
         </div>
       </nav>
-      {displayedGroup && (
+      {/* REQ-1559: Admin's entries are drawn as a left-hand rail (AdminRail) instead, because two
+          dozen of them only crowd a horizontal bar. One navigation, in one place, never both. */}
+      {displayedGroup && displayedGroup.id !== "admin" && (
         <nav className="subnav" ref={subnavRef}>
           {displayedGroup.items
             .filter((item) => !(item.commercial && !billing) && !(item.installedOnly && billing))

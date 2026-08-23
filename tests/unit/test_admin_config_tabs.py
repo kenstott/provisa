@@ -333,6 +333,101 @@ class TestEncryptionProviders:
         assert read_config()["encryption"]["acme_hsm"]["endpoint"] == "https://hsm.internal"
 
 
+# --- Secrets service registry (REQ-1557, REQ-1558) ------------------------------
+
+
+class TestSecretsService:
+    """Which secrets service the deployment resolves ``${secret:NAME}`` through."""
+
+    def test_get_lists_every_backend_with_availability_and_library(self, client):
+        body = client.get("/admin/secrets-service").json()
+        by_key = {p["key"]: p for p in body["providers"]}
+        # Unset selects Provisa's own store; it needs nothing installed and is the writable one.
+        assert body["provider"] == "provisa"
+        assert by_key["provisa"]["available"] is True
+        assert by_key["provisa"]["requires"] is None
+        assert by_key["provisa"]["writable"] is True
+        # Every central backend is listed whether or not its SDK is installed, and each names the
+        # distribution the page renders as "(requires hvac import)".
+        assert {
+            "hashicorp_vault",
+            "aws_secrets_manager",
+            "gcp_secret_manager",
+            "azure_key_vault",
+        } <= set(by_key)
+        assert by_key["hashicorp_vault"]["requires"] == "hvac"
+        assert by_key["aws_secrets_manager"]["requires"] == "boto3"
+        assert by_key["hashicorp_vault"]["writable"] is False
+        assert {"url", "token", "mount", "namespace"} == {
+            f["config_key"] for f in by_key["hashicorp_vault"]["config_fields"]
+        }
+
+    def test_put_unknown_backend_rejected(self, client):
+        assert client.put("/admin/secrets-service", json={"provider": "rot13"}).status_code == 400
+
+    def test_put_unavailable_backend_rejected_and_names_the_library(self, client):
+        from provisa.core.secrets import SecretsProvider
+        from provisa.core.secrets_registry import (
+            SecretsProviderSpec,
+            register_secrets_provider,
+        )
+
+        class _Never(SecretsProvider):
+            def resolve(self, reference: str) -> str:
+                raise AssertionError("never built")
+
+        register_secrets_provider(
+            SecretsProviderSpec(
+                key="absent_vault",
+                label="Absent",
+                description="test",
+                build=lambda cfg: _Never(),
+                available=lambda: False,
+                requires="absent-sdk",
+            )
+        )
+        r = client.put("/admin/secrets-service", json={"provider": "absent_vault"})
+        assert r.status_code == 400
+        assert "absent-sdk" in r.json()["detail"]
+        # Fail closed: the refused selection did not become the deployment's.
+        assert client.get("/admin/secrets-service").json()["provider"] == "provisa"
+
+    def test_put_persists_config_block_and_rebinds_the_process(self, client):
+        from provisa.core.secrets_runtime import reset_secrets, secrets_backend_spec
+
+        try:
+            r = client.put(
+                "/admin/secrets-service",
+                json={
+                    "provider": "aws",  # alias
+                    "config": {"region": "us-east-1", "not_a_field": "dropped"},
+                },
+            )
+            assert r.status_code == 200
+            sec = read_config()["secrets"]
+            # The canonical key is persisted, so an alias resolves the same way at boot.
+            assert sec["provider"] == "aws_secrets_manager"
+            assert sec["aws_secrets_manager"] == {"region": "us-east-1"}
+            # Applied to THIS process, not deferred to a restart.
+            assert secrets_backend_spec().key == "aws_secrets_manager"
+            assert client.get("/admin/secrets-service").json()["provider"] == "aws_secrets_manager"
+        finally:
+            reset_secrets()
+
+    def test_get_requires_platform_settings(self, client, monkeypatch):
+        """The SERVICE is the deployment's. An org's secret NAMES are a different endpoint."""
+        import provisa.api.admin.settings_router as sr
+
+        def _deny(_request):
+            from provisa.api.errors import ApiError
+
+            raise ApiError(403, "auth.forbidden", "platform_settings required")
+
+        monkeypatch.setattr(sr, "require_platform_settings", _deny)
+        assert client.get("/admin/secrets-service").status_code == 403
+        assert client.put("/admin/secrets-service", json={"provider": "provisa"}).status_code == 403
+
+
 # --- Engine registry exposes the S3 exchange-spool fields -----------------------
 
 

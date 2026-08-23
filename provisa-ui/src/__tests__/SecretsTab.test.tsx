@@ -13,6 +13,7 @@
 // central service owns the names.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { cleanup } from "@testing-library/react";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
 import { SecretsTab } from "../components/admin/SecretsTab";
 
@@ -22,13 +23,62 @@ vi.mock("../api/secrets", () => ({
   fetchSecrets: vi.fn(),
   putSecret: vi.fn(),
   deleteSecret: vi.fn(),
+  fetchSecretsService: vi.fn(),
+  setSecretsService: vi.fn(),
 }));
 
-import { fetchSecrets, putSecret, deleteSecret } from "../api/secrets";
+import {
+  fetchSecrets,
+  putSecret,
+  deleteSecret,
+  fetchSecretsService,
+  setSecretsService,
+} from "../api/secrets";
 
 const mockFetch = vi.mocked(fetchSecrets);
 const mockPut = vi.mocked(putSecret);
 const mockDelete = vi.mocked(deleteSecret);
+const mockService = vi.mocked(fetchSecretsService);
+const mockSetService = vi.mocked(setSecretsService);
+
+const PROVIDERS = {
+  provider: "provisa",
+  providers: [
+    {
+      key: "provisa",
+      label: "Provisa (built-in, encrypted)",
+      description: "Held per-org in the control plane.",
+      available: true,
+      requires: null,
+      writable: true,
+      config_fields: [],
+    },
+    {
+      key: "hashicorp_vault",
+      label: "HashiCorp Vault (KV v2)",
+      description: "Reads names out of a Vault KV v2 mount.",
+      available: false,
+      requires: "hvac",
+      writable: false,
+      config_fields: [
+        { config_key: "url", label: "Vault address", type: "string", required: true },
+        { config_key: "token", label: "Vault token", type: "string", required: true },
+      ],
+    },
+    {
+      key: "aws_secrets_manager",
+      label: "AWS Secrets Manager",
+      description: "Reads names out of AWS Secrets Manager.",
+      available: true,
+      requires: "boto3",
+      writable: false,
+      config_fields: [
+        { config_key: "region", label: "AWS region", type: "string", required: false },
+      ],
+    },
+  ],
+  config: {},
+};
 
 const SECRET = {
   name: "GIT_TOKEN",
@@ -47,6 +97,8 @@ const BUILT_IN = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetch.mockResolvedValue(BUILT_IN);
+  mockService.mockResolvedValue(PROVIDERS);
+  auth.capabilities = ["org_settings"];
 });
 
 describe("SecretsTab", () => {
@@ -55,12 +107,10 @@ describe("SecretsTab", () => {
     await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
     expect(screen.getByText("${secret:GIT_TOKEN}")).toBeInTheDocument();
     expect(screen.getByText("Push access")).toBeInTheDocument();
-    // Nothing in the module can even ask for a value: there is no read call to mock.
-    expect(Object.keys(await import("../api/secrets"))).toEqual([
-      "fetchSecrets",
-      "putSecret",
-      "deleteSecret",
-    ]);
+    // Nothing in the module can even ask for a value: no export reads one back.
+    const exported = Object.keys(await import("../api/secrets"));
+    expect(exported).toContain("fetchSecrets");
+    expect(exported.filter((n) => /read|reveal|show|value|get/i.test(n))).toEqual([]);
   });
 
   it("stores a new secret under the name that was typed", async () => {
@@ -127,5 +177,108 @@ describe("SecretsTab", () => {
     await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
     expect(screen.queryByTestId("secrets-add")).toBeNull();
     expect(screen.getAllByText(/HashiCorp Vault/).length).toBeGreaterThan(0);
+  });
+
+  it("shows an org admin the names and not the deployment's choice of service", async () => {
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
+    expect(screen.queryByTestId("secrets-service")).toBeNull();
+    expect(mockService).not.toHaveBeenCalled();
+  });
+});
+
+describe("SecretsTab secrets-service panel", () => {
+  beforeEach(() => {
+    auth.capabilities = ["platform_settings"];
+    localStorage.clear();
+  });
+
+  /** The panel starts collapsed; open it the way a person does. */
+  async function openService() {
+    render(<SecretsTab />);
+    fireEvent.click(await screen.findByTestId("secrets-service-toggle"));
+    // Mantine hides the collapsing region from the accessibility tree until the transition
+    // finishes, so wait for a control inside it rather than for the container.
+    await screen.findByRole("radio", { name: /Provisa/ });
+  }
+
+  it("starts collapsed and reads nothing until it is opened", async () => {
+    render(<SecretsTab />);
+    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
+    expect(screen.queryByTestId("secrets-service")).toBeNull();
+    expect(mockService).not.toHaveBeenCalled();
+  });
+
+  it("remembers that it was opened, and restores that on the next visit", async () => {
+    await openService();
+    expect(localStorage.getItem("provisa.panel.secretsService")).toBe(JSON.stringify("service"));
+    cleanup();
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secrets-service")).toBeInTheDocument());
+  });
+
+  it("remembers that it was closed again", async () => {
+    await openService();
+    fireEvent.click(screen.getByTestId("secrets-service-toggle"));
+    await waitFor(() => expect(screen.queryByTestId("secrets-service")).toBeNull());
+    cleanup();
+    render(<SecretsTab />);
+    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
+    expect(screen.queryByTestId("secrets-service")).toBeNull();
+  });
+
+  it("lists every backend, greying out one whose library is missing", async () => {
+    await openService();
+    expect(screen.getByTestId("secrets-provider-provisa")).toBeInTheDocument();
+    const vault = screen.getByTestId("secrets-provider-hashicorp_vault");
+    expect(vault).toHaveAttribute("data-unavailable", "true");
+    expect(screen.getByTestId("secrets-provider-requires-hashicorp_vault")).toHaveTextContent(
+      "(requires hvac import)",
+    );
+    expect(screen.getByRole("radio", { name: /HashiCorp Vault/ })).toBeDisabled();
+    // An installed backend says nothing about its library — there is nothing to install.
+    expect(screen.queryByTestId("secrets-provider-requires-aws_secrets_manager")).toBeNull();
+  });
+
+  it("changes the deployment's secrets service", async () => {
+    mockSetService.mockResolvedValue({ success: true, provider: "aws_secrets_manager" });
+    await openService();
+    fireEvent.click(screen.getByRole("radio", { name: /AWS Secrets Manager/ }));
+    fireEvent.change(await screen.findByLabelText("AWS region"), {
+      target: { value: "us-east-1" },
+    });
+    fireEvent.click(screen.getByTestId("secrets-service-save"));
+    await waitFor(() =>
+      expect(mockSetService).toHaveBeenCalledWith({
+        provider: "aws_secrets_manager",
+        config: { region: "us-east-1" },
+      }),
+    );
+  });
+
+  it("will not submit a backend whose required config is blank", async () => {
+    mockService.mockResolvedValue({
+      ...PROVIDERS,
+      providers: [
+        { ...PROVIDERS.providers[1], available: true },
+        ...PROVIDERS.providers.filter((p) => p.key !== "hashicorp_vault"),
+      ],
+      provider: "hashicorp_vault",
+    });
+    await openService();
+    expect(screen.getByTestId("secrets-service-save")).toBeDisabled();
+    fireEvent.change(screen.getByTestId("secrets-service-field-url"), {
+      target: { value: "https://vault.internal:8200" },
+    });
+    fireEvent.change(screen.getByTestId("secrets-service-field-token"), {
+      target: { value: "${env:VAULT_TOKEN}" },
+    });
+    expect(screen.getByTestId("secrets-service-save")).not.toBeDisabled();
+  });
+
+  it("shows a platform admin no org secret names at all", async () => {
+    await openService();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("secrets-table")).toBeNull();
   });
 });

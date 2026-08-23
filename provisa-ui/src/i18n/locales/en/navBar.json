@@ -29,7 +29,6 @@
     "itemDashboard": "Dashboard",
     "itemDomains": "Domains",
     "itemEnvironments": "Environments",
-    "itemSecrets": "Secrets",
     "itemCache": "Cache",
     "itemScheduler": "Scheduler",
     "itemFederation": "Federation",
