@@ -16403,3 +16403,15 @@ A HOSTED DEPLOY ASSERTS ITS COMMERCE CONFIGURATION BEFORE IT SHIPS ANYTHING. The
 **Code:** `scripts/deploy-cloud.sh`
 
 **Tests:** —
+
+### REQ-1563 · Deployment {#REQ-1563}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A HOSTED DEPLOY ALSO ASSERTS THAT THE COMMERCIAL SEAM ACTUALLY LOADED. The settings [REQ-1562](#REQ-1562) preflights are only half of what signup needs; the other half is the plugin that reads them. provisa.core.commerce imports provisa_commercial inside a try and every hook degrades to a no-op when that import fails ([REQ-1473](#REQ-1473)) -- correct for a self-hosted install, wrong for a hosted node, where a silent seam mounts no /billing routes at all and the signup page's GET /billing/catalog has no route to answer it. The seam is silent by design, so the deploy is what speaks: after the restart it reads commerce.enabled() from the running container and fails the deploy when it is False. It is asserted AFTER the restart because the plugin push is what lands the tree and the import resolves once per process, and only when the checkout carries the plugin -- a checkout without it is a deliberate no-billing deploy, the same rule the plugin push holds.
+
+**Use case:** A stack recreate replaces the containers and drops the hot-pushed plugin; the next deploy stops rather than leaving a hosted node whose "Get started" cannot reach a plan catalog.
+
+**Code:** `scripts/deploy-cloud.sh`, `provisa/core/commerce.py`
+
+**Tests:** —

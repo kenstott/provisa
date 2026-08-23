@@ -509,6 +509,29 @@ verify_api() {
 # plane, GKE provisioner, Trino shard — is live. It runs against the public site with the
 # superuser's basic-auth credentials from the repo .env, which is where they live; a query that has
 # to cold-start a shard takes north of a minute, so the timeout is generous by design.
+# REQ-1562: the env keys preflight_commerce asserts are only half of what signup needs -- the OTHER
+# half is the plugin that reads them. provisa.core.commerce imports provisa_commercial inside a try
+# and every hook no-ops when it fails, which is right for a self-hosted install and wrong for this
+# node: a hosted deployment whose seam is off mounts no /billing routes at all, so the signup page's
+# GET /billing/catalog has no route and "Get started" cannot create an organization. The seam is
+# silent by design, so the deploy is what has to speak. Asserted AFTER the restart, because
+# push_plugins is what lands the tree and the import is resolved once per process.
+#
+# Only when this checkout carries the plugin: push_plugins already treats a checkout without the
+# hook as a deliberate no-billing deploy, and this verify holds to the same rule.
+verify_commerce() {
+  [ -f "$REPO/.claude/commercial/deploy-plugin.sh" ] || return 0
+  echo "== verifying the commercial seam"
+  local seam
+  seam="$(ssh_node "sudo docker exec $API_CONTAINER python -c \"import provisa.core.commerce as c; print(c.enabled())\"" | tr -d '\r')"
+  case "$seam" in
+    *True*) echo "   provisa.core.commerce.enabled() -> True" ;;
+    *) echo "$API_CONTAINER did not load provisa_commercial: $seam" >&2
+       echo "Without it no /billing routes mount and nobody can sign up." >&2
+       exit 1 ;;
+  esac
+}
+
 verify_engine() {
   echo "== verifying the engine path (cold start may take ~90s)"
   # Read the two keys rather than sourcing .env: .env also carries names this script uses
@@ -537,18 +560,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; preflight_commerce; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; preflight_commerce; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; preflight_commerce; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine ;;
+    preflight_engine; preflight_commerce; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
   all)
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    preflight_engine; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
 esac
 echo "== deployed $TARGET"
