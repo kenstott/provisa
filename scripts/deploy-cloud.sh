@@ -119,17 +119,26 @@ LEMONSQUEEZY_API_KEY LEMONSQUEEZY_STORE_ID LEMONSQUEEZY_SIGNING_SECRET"
 preflight_commerce() {
   echo "== commerce preflight"
   local env_dump missing=""
-  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^LEMONSQUEEZY' || true" | tr -d '\r')"
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(TEST_)?LEMONSQUEEZY' || true" | tr -d '\r')"
   for k in $COMMERCE_KEYS; do
     printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
   done
+  # REQ-1564: LEMONSQUEEZY_MODE picks WHICH key signs the request, so the key to assert is not a
+  # constant. In test mode the sandbox key is the one read and LEMONSQUEEZY_API_KEY is inert --
+  # a node with the live key set and the test key blank passes a fixed-list check and still sends
+  # "Authorization: Bearer " on every call. Compose forwards every declared variable, so the blank
+  # key arrives as "" rather than absent, which is why "=." (at least one character) is the test.
+  case "$(printf '%s\n' "$env_dump" | sed -n 's/^LEMONSQUEEZY_MODE=//p' | tr -d " \r")" in
+    test) printf '%s\n' "$env_dump" | grep -q "^TEST_LEMONSQUEEZY_API_KEY=." \
+            || missing="$missing TEST_LEMONSQUEEZY_API_KEY(LEMONSQUEEZY_MODE=test)" ;;
+  esac
   if [ -n "$missing" ]; then
     echo "$API_CONTAINER is missing commerce settings:$missing" >&2
     echo "Without them /billing/catalog 500s and nobody can sign up." >&2
     echo "Add them to the node's /root/.provisa/provisa.env and recreate the containers." >&2
     exit 1
   fi
-  printf '%s\n' "$env_dump" | sed -n 's/^\(LEMONSQUEEZY_[A-Z_]*\)=.*/   \1=<set>/p'
+  printf '%s\n' "$env_dump" | sed -n 's/^\(TEST_\)\{0,1\}\(LEMONSQUEEZY_[A-Z_]*\)=.*/   \1\2=<set>/p'
 }
 
 build_ui() {

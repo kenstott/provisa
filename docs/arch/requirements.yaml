@@ -51237,3 +51237,35 @@
   - REQ-1473
   - REQ-1514
   - REQ-1562
+- id: REQ-1564
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Deployment
+  priority: MUST
+  type: behavioral
+  description: 'THE BILLING KEY IS ASSERTED FOR THE STORE THE DEPLOYMENT ACTUALLY TRANSACTS AGAINST,
+    AND A BLANK KEY IS A MISSING KEY. LEMONSQUEEZY_MODE selects which credential signs every Lemon
+    Squeezy call (REQ-1455): test mode reads TEST_LEMONSQUEEZY_API_KEY and leaves LEMONSQUEEZY_API_KEY
+    inert. Two consequences follow. First, the reader raises a named error when the selected key is
+    empty rather than signing with it -- docker compose forwards every declared variable, so an unset
+    key reaches the process as an empty string that os.environ hands back happily, and the request
+    then carries "Authorization: Bearer " for the transport to reject; the operator must see the
+    setting they never wrote, not a protocol error from inside httpx. Second, the deploy preflight
+    asserts the mode-selected key rather than a fixed list, because a node holding the live key with
+    the test key blank satisfies a fixed list and still cannot price a single plan.'
+  use_case: A hosted node runs in test mode with only the live key configured; the deploy names the
+    missing sandbox key instead of shipping a signup page whose plan catalog 500s.
+  scenario: 'Given LEMONSQUEEZY_MODE is test and TEST_LEMONSQUEEZY_API_KEY is empty
+
+
+    When the operator runs the cloud deploy
+
+
+    Then the commerce preflight names TEST_LEMONSQUEEZY_API_KEY and exits non-zero'
+  code:
+  - scripts/deploy-cloud.sh
+  depends_on:
+  - REQ-1455
+  - REQ-1514
+  - REQ-1562

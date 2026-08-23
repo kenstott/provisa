@@ -16415,3 +16415,15 @@ A HOSTED DEPLOY ALSO ASSERTS THAT THE COMMERCIAL SEAM ACTUALLY LOADED. The setti
 **Code:** `scripts/deploy-cloud.sh`, `provisa/core/commerce.py`
 
 **Tests:** —
+
+### REQ-1564 · Deployment {#REQ-1564}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+THE BILLING KEY IS ASSERTED FOR THE STORE THE DEPLOYMENT ACTUALLY TRANSACTS AGAINST, AND A BLANK KEY IS A MISSING KEY. LEMONSQUEEZY_MODE selects which credential signs every Lemon Squeezy call ([REQ-1455](#REQ-1455)): test mode reads TEST_LEMONSQUEEZY_API_KEY and leaves LEMONSQUEEZY_API_KEY inert. Two consequences follow. First, the reader raises a named error when the selected key is empty rather than signing with it -- docker compose forwards every declared variable, so an unset key reaches the process as an empty string that os.environ hands back happily, and the request then carries "Authorization: Bearer " for the transport to reject; the operator must see the setting they never wrote, not a protocol error from inside httpx. Second, the deploy preflight asserts the mode-selected key rather than a fixed list, because a node holding the live key with the test key blank satisfies a fixed list and still cannot price a single plan.
+
+**Use case:** A hosted node runs in test mode with only the live key configured; the deploy names the missing sandbox key instead of shipping a signup page whose plan catalog 500s.
+
+**Code:** `scripts/deploy-cloud.sh`
+
+**Tests:** —
