@@ -500,7 +500,9 @@ function App() {
                                   [
                                     ["/admin/overview", "observability"],
                                     ["/admin/domains", "org_settings"],
-                                    ["/admin/environments", "org_settings"],
+                                    // REQ-1573: environments have their own right — a developer
+                                    // manages them while holding no org settings at all.
+                                    ["/admin/environments", "environment_management"],
                                     ["/admin/secrets", "org_settings"], // REQ-1560: the org vault
                                     // REQ-1560: a person's own vault is not a grant — `usage` is the
                                     // right every seeded role carries, so every member reaches it.

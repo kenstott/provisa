@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { render, screen } from "../test-utils/render";
+import { cleanup, render, screen } from "../test-utils/render";
 import { AdminRail } from "../components/AdminRail";
 
 const auth = {
@@ -50,11 +50,25 @@ describe("AdminRail", () => {
   });
 
   it("offers an org administrator no deployment-wide surface", () => {
+    // REQ-1573: the seeded org_admin carries the environments right alongside org_settings.
+    auth.capabilities = ["org_settings", "environment_management"];
     renderAt("/admin/tags");
     // Security is platform_settings; an org admin holding only org_settings must not see a link
     // that answers with "You do not have permission to view this page."
     expect(screen.queryByRole("link", { name: "Security" })).toBeNull();
     expect(screen.getByRole("link", { name: "Environments" })).toBeInTheDocument();
+  });
+
+  it("offers Environments on its own right and not on org settings", () => {
+    // REQ-1573: a developer manages environments while holding no org settings at all, and an
+    // org_settings holder without the right sees no link to a page that would refuse them.
+    auth.capabilities = ["environment_management"];
+    renderAt("/admin/tags");
+    expect(screen.getByRole("link", { name: "Environments" })).toBeInTheDocument();
+    cleanup();
+    auth.capabilities = ["org_settings"];
+    renderAt("/admin/tags");
+    expect(screen.queryByRole("link", { name: "Environments" })).toBeNull();
   });
 
   it("offers a platform administrator the deployment-wide surfaces", () => {

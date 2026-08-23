@@ -45,7 +45,7 @@ def repo(monkeypatch):
     """The repository answers, and every guard records the name it was asked about."""
     asked: dict[str, list] = {"member": [], "guard": [], "within": []}
 
-    async def _member(request, org_id):
+    async def _member(request, org_id, *rights):  # REQ-1573: rights the endpoint accepts
         asked["member"].append(org_id)
         return "uid-member"
 

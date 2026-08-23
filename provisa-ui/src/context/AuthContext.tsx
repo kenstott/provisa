@@ -49,6 +49,8 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "usage",
     "org_settings",
     "observability",
+    "environment_management",
+    "environment_switch",
   ] as Capability[],
   domain_access: ["*"],
 };

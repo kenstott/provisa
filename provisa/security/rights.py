@@ -82,6 +82,13 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # Held by org_admin so a tenant operator can see how their org is performing; the data behind
     # these surfaces is scoped to the acting org unless the principal also holds CROSS_ORG.
     OBSERVABILITY = "observability"
+    # REQ-1573: create or delete an environment and reach the environments admin surface. Creating
+    # one spends the org's plan ceiling and deleting one drops a schema, so it is an authoring right
+    # rather than a settings one — a developer holds it while holding no ORG_SETTINGS at all.
+    ENVIRONMENT_MANAGEMENT = "environment_management"
+    # REQ-1573: be served by an environment other than prod — the right the org-routing middleware
+    # checks when a request names one. Held by org_admin and developer; an analyst works in prod.
+    ENVIRONMENT_SWITCH = "environment_switch"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
 

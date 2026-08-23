@@ -35,7 +35,12 @@ export type Capability =
   // (its AI/NL provider, domains, scheduled tasks, approvals); `observability` gates read-only
   // performance and health. org_admin carries both in either tenancy mode.
   | "org_settings"
-  | "observability";
+  | "observability"
+  // REQ-1573: the two environment rights. `environment_management` is creating and deleting one and
+  // reaching the environments admin surface; `environment_switch` is being served by one other than
+  // prod. org_admin and developer carry both; analyst and modeler carry neither.
+  | "environment_management"
+  | "environment_switch";
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;

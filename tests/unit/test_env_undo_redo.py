@@ -60,7 +60,7 @@ def listing(monkeypatch):
     """The registry answers with whatever rows a test sets, over a three-commit line."""
     rows: list[dict] = []
 
-    async def _member(request, org_id):
+    async def _member(request, org_id, *rights):  # REQ-1573: rights the endpoint accepts
         return "uid-member"
 
     async def _list_envs(admin_db, org_id):

@@ -90,6 +90,12 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "usage",
             "org_settings",
             "observability",
+            # REQ-1573: the two environment rights. Creating and deleting an environment spends the
+            # org's plan ceiling and drops a schema; being served by one other than prod is working
+            # somewhere that is not production. org_admin and developer hold both; analyst and
+            # modeler hold neither.
+            "environment_management",
+            "environment_switch",
         ],
     ),
     ("analyst", ["usage", "query_development"]),
@@ -102,6 +108,8 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "full_results",
             "write",
             "usage",
+            "environment_management",  # REQ-1573
+            "environment_switch",  # REQ-1573
         ],
     ),
     # REQ-1297: modeler is the only system role holding ignore_relationships — the discovery role
@@ -236,6 +244,14 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
             if role_id != "platform_admin" and "cross_org" in caps:
                 caps.discard("cross_org")
                 changed = True
+            # REQ-1573: the two environment rights, held by org_admin and developer alike. Same
+            # reason as the org_admin block below: the seed cannot add a right to a role row an
+            # earlier release already created.
+            if role_id in ("org_admin", "developer"):
+                for right in ("environment_management", "environment_switch"):
+                    if right not in caps:
+                        caps.add(right)
+                        changed = True
             if role_id == "org_admin":
                 for right in ("org_settings", "observability"):
                     if right not in caps:
@@ -298,6 +314,15 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 "UPDATE roles SET capabilities = capabilities || "
                 f"'[\"{right}\"]'::jsonb"
                 f" WHERE id = 'org_admin' AND NOT capabilities ? '{right}'"
+            )
+        # REQ-1573: environments are their own right rather than a facet of org_settings — a
+        # developer manages and switches them while holding no org settings at all, and an analyst
+        # holds neither. Both roles carry both rights; nothing here names analyst or modeler.
+        for right in ("environment_management", "environment_switch"):
+            await conn.execute(
+                "UPDATE roles SET capabilities = capabilities || "
+                f"'[\"{right}\"]'::jsonb"
+                f" WHERE id IN ('org_admin', 'developer') AND NOT capabilities ? '{right}'"
             )
         if multitenancy:
             await conn.execute(

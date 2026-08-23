@@ -864,7 +864,8 @@ VALUES (
     '["source_registration","table_registration","create_relationship","create_view",
       "approve_view","approve_relationship","access_config","user_management",
       "masking_config","column_grant","view_governance","query_development",
-      "full_results","write","usage","org_settings","observability"]'::jsonb,
+      "full_results","write","usage","org_settings","observability",
+      "environment_management","environment_switch"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -893,7 +894,7 @@ VALUES (
 (
     'developer',
     '["query_development","create_view","create_relationship","full_results","write",
-      "usage"]'::jsonb,
+      "usage","environment_management","environment_switch"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 ),
@@ -938,6 +939,15 @@ ON CONFLICT (id) DO NOTHING;
 -- seed asserting the system role's definition on every init_schema, the same way the retired-id
 -- rewrite below does.
 UPDATE roles SET capabilities = '["admin","superadmin","platform_settings","cross_org"]'::jsonb WHERE id = 'platform_admin';
+
+-- REQ-1573: the two environment rights arrived after these system roles were seeded, and
+-- ON CONFLICT DO NOTHING leaves an existing row alone, so assert them here the same way
+-- platform_admin's narrowing is asserted above. org_admin and developer hold both;
+-- analyst and modeler are named nowhere here and therefore hold neither.
+UPDATE roles SET capabilities = capabilities || '["environment_management","environment_switch"]'::jsonb
+WHERE id IN ('org_admin', 'developer')
+  AND org_id IS NULL
+  AND NOT capabilities @> '["environment_switch"]'::jsonb;
 
 -- REQ-1297: the role ids 'admin' and 'superadmin' are retired. Rewrite existing assignments naming
 -- them to platform_admin, then drop the rows, so nothing resolves them afterward. The rewrite runs

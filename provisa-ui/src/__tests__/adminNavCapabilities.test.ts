@@ -56,7 +56,7 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1487: the org's environments — its branches, the merges between them, and the repository
   // the model is projected into. All of it is the acting org's own model, so none of it is
   // deployment-wide.
-  "/admin/environments": "org_settings",
+  "/admin/environments": "environment_management", // REQ-1573
   // REQ-1558: the names an org holds and the values behind them are the org's, so an org_admin
   // owns them and a platform admin operating the control plane does not read them (REQ-1361).
   "/admin/secrets": "org_settings",

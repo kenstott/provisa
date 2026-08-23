@@ -51,7 +51,7 @@ def created(monkeypatch):
     positions: list[tuple[str, str | None]] = []
     origins: list[tuple[str, str]] = []
 
-    async def _member(request, org_id):
+    async def _member(request, org_id, *rights):  # REQ-1573: rights the endpoint accepts
         return ACTOR
 
     async def _known(org_id, name):

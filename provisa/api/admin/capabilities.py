@@ -50,6 +50,19 @@ def _resolved_capabilities(identity, state) -> set[str]:
     return capabilities_for_claims(getattr(identity, "roles", []), getattr(state, "roles", {}))
 
 
+def env_gate_capabilities(identity, state) -> set[str] | None:
+    """The capability set an ENVIRONMENT gate should read, or ``None`` for no gate (REQ-1573).
+
+    ``None`` and ``set()`` are different answers. An unsecured deployment resolves the anonymous dev
+    principal for every request — the documented enforcement skip every other capability gate makes
+    (``require_capability``) — and returning an empty set there would refuse a branch to the only
+    principal a demo install has. A real user with no rights returns an empty set and is refused.
+    """
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return None
+    return _resolved_capabilities(identity, state)
+
+
 def _domain_access(identity, state) -> set[str]:
     """The domain IDs this identity may act in (REQ-1530).
 

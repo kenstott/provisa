@@ -44,7 +44,7 @@ def repo(monkeypatch):
     asked: dict[str, list] = {"member": [], "guard": []}
     integration = {"value": RepoIntegration(remote="https://git.example/acme.git")}
 
-    async def _member(request, org_id):
+    async def _member(request, org_id, *rights):  # REQ-1573: rights the endpoint accepts
         asked["member"].append(org_id)
         return "uid-member"
 

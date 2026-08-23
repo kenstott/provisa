@@ -36,6 +36,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from provisa.api.env_routing import SWITCH_CAPABILITY
 from provisa.api.errors import ApiError
 from provisa.core import env_approvals, env_ci, env_remote
 from provisa.core.database import Database
@@ -105,13 +106,23 @@ async def _guard(request: Request, org_id: str) -> str | None:
     return _caller_user_id(request)
 
 
-async def _member(request: Request, org_id: str) -> str | None:
-    """CREATING an environment is open to any member of the org (REQ-1528).
+#: The right to create an environment and to reach the environments surface at all (REQ-1573).
+MANAGE_CAPABILITY = "environment_management"
 
-    This is the whole of the privilege-expansion path: a member holding no model-editing rights
-    acquires them by creating an environment and owning it, and there is no other route. The guard
-    is therefore membership rather than org_admin — an org_admin is a member too, so nothing they
-    could do before is refused here.
+
+async def _member(request: Request, org_id: str, *rights: str) -> str | None:
+    """A member of the org holding at least one of ``rights`` (REQ-1528, REQ-1573).
+
+    CREATING an environment is REQ-1528's whole privilege-expansion path: a member holding no
+    model-editing rights acquires them by creating an environment and owning it, and there is no
+    other route. That is why the guard is not org_admin — an org_admin is a member too, so nothing
+    they could do before is refused here.
+
+    REQ-1573 narrows "any member" to "a member whose role carries the right". The argument for
+    leaving it open was that the authority is useless without bindings, which holds against an
+    attacker and not against an accident: an environment is a schema and a place in the org's plan
+    ceiling, and an analyst has no reason to make one. org_admin and developer carry the right in
+    the seed; analyst and modeler do not.
     """
     from provisa.api.admin.capabilities import _resolved_capabilities
     from provisa.api.app import state as _app_state
@@ -121,8 +132,16 @@ async def _member(request: Request, org_id: str) -> str | None:
     if user_id is None:
         return None  # dev mode — no auth configured, matching _require_org_admin
     identity = request.state.identity
-    if can_act_cross_org(_resolved_capabilities(identity, _app_state)):
+    capabilities = _resolved_capabilities(identity, _app_state)
+    if can_act_cross_org(capabilities):
         return user_id
+    if not set(rights) & capabilities:
+        raise ApiError(
+            403,
+            "environments.capability_required",
+            "This requires one of the " + ", ".join(repr(r) for r in rights) + " capabilities.",
+            org=org_id,
+        )
     async with _admin_pool().acquire() as conn:
         result = await conn.execute_core(
             select(user_org_memberships.c.org_id).where(
@@ -134,7 +153,7 @@ async def _member(request: Request, org_id: str) -> str | None:
             raise ApiError(
                 403,
                 "environments.membership_required",
-                f"Creating an environment in {org_id!r} requires membership of it.",
+                f"Acting on the environments of {org_id!r} requires membership of it.",
                 org=org_id,
             )
     return user_id
@@ -286,8 +305,9 @@ class DecideBody(BaseModel):
 @router.get("")
 async def list_environments(request: Request, org_id: str) -> dict:
     # A member sees the org's environments: they cannot decide which one to create theirs from, or
-    # which to propose into, without seeing them (REQ-1528).
-    await _member(request, org_id)
+    # which to propose into, without seeing them (REQ-1528). REQ-1573: either environment right
+    # answers — the switcher lists them to choose one, the admin surface to manage them.
+    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     return {
         "environments": [_with_history(org_id, r) for r in await list_envs(_admin_pool(), org_id)]
     }
@@ -338,7 +358,9 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     # REQ-1529: binding a base is an org_admin's act, so creating one is too. A branch is open to
     # any member, because branching is REQ-1528's only path to model-editing rights.
     actor = await (
-        _member(request, org_id) if body.inherit_connections else _guard(request, org_id)
+        _member(request, org_id, MANAGE_CAPABILITY)
+        if body.inherit_connections
+        else _guard(request, org_id)
     )
     await _known(org_id, body.from_env)  # the source has to exist before anything is reserved
     # REQ-1488: an environment is a schema, so a plane without schemas cannot hold one. Refused
@@ -952,7 +974,7 @@ async def list_merge_requests(request: Request, org_id: str, open_only: bool = F
     """
     from provisa.api.admin.orgs_router import _org_tenant_db
 
-    await _member(request, org_id)
+    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     db = await _org_tenant_db(org_id)
     rows = await env_approvals.list_requests(_admin_pool(), org_id, open_only=open_only)
     return {
@@ -967,7 +989,7 @@ async def get_merge_request(request: Request, org_id: str, request_id: int) -> d
     """One request, with the report as it was produced — which is what the approver reviews."""
     from provisa.api.admin.orgs_router import _org_tenant_db
 
-    await _member(request, org_id)
+    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     row = await _request_or_404(org_id, request_id)
     state = await env_approvals.effective_state(await _org_tenant_db(org_id), org_id, row)
     return {"request": _rendered(row, state)}
@@ -1292,7 +1314,7 @@ async def repo_sync_state(request: Request, org_id: str) -> dict:
     # REQ-1552: read by MEMBERS, not just org_admins. A member owning an environment can push it,
     # and somebody who can push has to be able to see that a push is owed -- an admin-only badge
     # would leave the person who made the change as the one person who cannot see its state.
-    await _member(request, org_id)
+    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     names = sorted({*branches(org_id), *remote_branches(org_id)})
     integration = await env_ci.read_integration(_admin_pool(), org_id)
     return {
@@ -1601,7 +1623,7 @@ async def list_repo_branches(request: Request, org_id: str) -> dict:
     """
     from provisa.core.env_repo import branches
 
-    await _member(request, org_id)
+    await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     return {"branches": branches(org_id)}
 
 

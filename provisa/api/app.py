@@ -1948,10 +1948,12 @@ def create_app() -> FastAPI:
     from fastapi.responses import JSONResponse
 
     from provisa.api.env_routing import (
+        EnvironmentRightError,
         EnvironmentSelectionError,
         env_header_value,
         select_environment,
     )
+    from provisa.api.admin.capabilities import env_gate_capabilities
 
     class _OrgRoutingMiddleware:
         def __init__(self, app):
@@ -1970,11 +1972,23 @@ def create_app() -> FastAPI:
             # single-org deployment branches its model exactly as a multitenant one does.
             requested_env = env_header_value(scope.get("headers") or [])
             env_org = active_org or state.org_id
+            # REQ-1573: being served by anything but prod is a right, checked here because this is
+            # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
+            # (no identity resolved), the exemption every capability gate makes.
+            env_caps = env_gate_capabilities(request_state.get("identity"), state)
             try:
-                selected_env = await select_environment(state.admin_db, env_org, requested_env)
+                selected_env = await select_environment(
+                    state.admin_db, env_org, requested_env, env_caps
+                )
             except EnvironmentSelectionError as exc:
                 await JSONResponse(
                     {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
+                )(scope, receive, send)
+                return
+            except EnvironmentRightError as exc:
+                await JSONResponse(
+                    {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
+                    status_code=403,
                 )(scope, receive, send)
                 return
 

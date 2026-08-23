@@ -88,7 +88,7 @@ def wired(monkeypatch):
         k: [] for k in ("member", "guard", "known", "audit", "decide", "squash")
     }
 
-    async def _member(request, org_id):
+    async def _member(request, org_id, *rights):  # REQ-1573: rights the endpoint accepts
         calls["member"].append(org_id)
         return "uid-reviewer"
 

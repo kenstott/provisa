@@ -13,6 +13,7 @@ import { Badge, Button, Group, Menu, Text } from "@mantine/core";
 import { Check, ChevronDown, GitBranch, Redo2, Undo2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
+import { useCapability } from "../hooks/useCapability";
 import { ENV_STORAGE_KEY, selectedEnv } from "../lib/authFetch";
 import { modelReplaced } from "../apolloClient";
 import { notifications } from "@mantine/notifications";
@@ -45,7 +46,11 @@ const DEFAULT_ENV = "prod";
  */
 export function EnvSwitcher() {
   const { t } = useTranslation();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, loading } = useAuth();
+  // REQ-1573: being served by an environment other than prod is its own right. An analyst holds
+  // neither it nor `environment_management`, and the server answers 403 `env.switch_forbidden` to a
+  // request naming one — so the menu that names them is not shown to a caller who cannot be served.
+  const maySwitch = useCapability("environment_switch");
   const [envs, setEnvs] = useState<Environment[] | null>(null);
   // REQ-1552: the state of the branch being worked in, WHERE the work happens. The admin page has
   // the same counts, but somebody editing the model is not on the admin page — and a change that
@@ -61,6 +66,20 @@ export function EnvSwitcher() {
   const active = selectedEnv() ?? DEFAULT_ENV;
 
   useEffect(() => {
+    // A bootstrap in flight carries no capabilities yet, which is not a withdrawal of the right
+    // (the same reason CapabilityGate waits on `loading`).
+    if (loading) return;
+    if (!maySwitch) {
+      // A selection made while the right was held would otherwise keep riding on every request
+      // after it was withdrawn, and the server answers each one 403 (REQ-1573). Dropping the name
+      // is the repair for a selection that can no longer be served, the same as the deleted-branch
+      // repair below.
+      if (selectedEnv() !== null) {
+        localStorage.removeItem(ENV_STORAGE_KEY);
+        window.location.reload();
+      }
+      return;
+    }
     if (!activeOrgId) return;
     let live = true;
     const load = () =>
@@ -105,9 +124,9 @@ export function EnvSwitcher() {
       live = false;
       window.removeEventListener(ENVIRONMENTS_CHANGED_EVENT, both);
     };
-  }, [activeOrgId, reread]);
+  }, [activeOrgId, loading, maySwitch, reread]);
 
-  if (!activeOrgId || envs === null) return null;
+  if (loading || !activeOrgId || !maySwitch || envs === null) return null;
   const orgId = activeOrgId;
 
   async function select(name: string) {

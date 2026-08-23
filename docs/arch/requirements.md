@@ -16529,3 +16529,15 @@ AN INVITATION IS ITSELF THE ADMISSION DECISION, AND THE ORG EMAIL RULE DOES NOT 
 **Code:** `provisa/api/auth_router.py`
 
 **Tests:** `tests/e2e/test_platform_auth_flow.py`
+
+### REQ-1573 · Environments {#REQ-1573}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+ENVIRONMENTS ARE GOVERNED BY TWO RIGHTS, AND NEITHER IS AN ANALYST'S BY DEFAULT. ``environment_management`` is the right to CREATE and DELETE environments; ``environment_switch`` is the right to BE SERVED BY one other than prod -- to send x-provisa-env and have it honoured. They are separate because they answer different questions: the first is who may spend the org's plan ceiling and drop a schema, the second is who may work anywhere but production. The seed grants BOTH to org_admin and to developer, and NEITHER to analyst or modeler: an analyst reads production, and an environment they cannot create is not one they should be able to switch into. WHICH environment a holder may delete is unchanged ([REQ-1488](#REQ-1488) keeps deletion an org_admin act); the right decides who may make one at all and who may reach the environments surface. This AMENDS [REQ-1528](#REQ-1528), which left creation open to any member on the argument that the authority is useless without bindings. That argument holds against an attacker and not against an accident: every environment is a schema and a place in the plan ceiling, and a member who has no reason to build has no reason to make one. Creation stays [REQ-1528](#REQ-1528)'s only path to model-editing authority; it is now a path a role has to carry the right to walk. ENFORCEMENT IS AT THE SELECTION, not only in the UI: an unheld ``environment_switch`` makes x-provisa-env naming a non-prod environment a refusal for every surface at once -- HTTP, GraphQL, SQL, the wire protocols -- because the environment is bound in the org-routing middleware, before a route is reached. prod needs no right, since it is what a request naming nothing is served by. The platform bypass and dev/no-auth mode are exempt exactly as they are for every other capability gate, and an environment's OWNER still holds their [REQ-1528](#REQ-1528) authority inside it -- ownership decides what may be done to a model, these two rights decide who may make an environment and be served by one.
+
+**Use case:** An org_admin grants a contractor the analyst role; the contractor can query production and neither sees the environment switcher nor can create or delete an environment.
+
+**Code:** `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/security/rights.py`, `provisa/api/app.py`, `provisa/api/env_routing.py`, `provisa/api/admin/capabilities.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/EnvSwitcher.tsx`, `provisa-ui/src/components/navGroups.ts`, `provisa-ui/src/App.tsx`
+
+**Tests:** `tests/unit/test_env_runtime_routing.py`, `tests/unit/test_environment_rights_seed.py`, `tests/unit/test_env_member_rights.py`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `provisa-ui/src/__tests__/AdminRail.test.tsx`

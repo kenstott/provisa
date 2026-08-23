@@ -17,8 +17,11 @@ import pytest
 
 from provisa.api.env_routing import (
     ENV_HEADER,
+    SWITCH_CAPABILITY,
+    EnvironmentRightError,
     EnvironmentSelectionError,
     env_header_value,
+    may_switch,
     select_environment,
 )
 from provisa.api.org_runtime import (
@@ -160,6 +163,64 @@ class TestSelectEnvironment:
         with pytest.raises(RuntimeError) as exc:
             await select_environment(None, "acme", "feature")
         assert not isinstance(exc.value, EnvironmentSelectionError)
+
+
+class TestSwitchRight:
+    """REQ-1573: being served by an environment other than prod is its own right."""
+
+    @pytest.mark.asyncio
+    async def test_prod_needs_no_right(self):
+        # prod is what a request naming nothing is served, so an analyst reaching it is not a
+        # switch and cannot be refused one.
+        db = _FakeDb(set())
+        assert await select_environment(db, "acme", None, set()) == PROD
+        assert await select_environment(db, "acme", PROD, set()) == PROD
+
+    @pytest.mark.asyncio
+    async def test_a_holder_is_served_the_branch(self, monkeypatch):
+        db = _FakeDb({"feature"})
+
+        async def _get_env(_db, org_id, name):
+            _db.queried.append(name)
+            return {"name": name} if name in _db.known else None
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        assert await select_environment(db, "acme", "feature", {SWITCH_CAPABILITY}) == "feature"
+
+    @pytest.mark.asyncio
+    async def test_without_the_right_it_is_a_403_and_never_a_404(self):
+        # Distinct from EnvironmentSelectionError on purpose: telling the caller the name is
+        # unknown would be a lie about the org's model, and the lookup is never even reached.
+        db = _FakeDb({"feature"})
+        with pytest.raises(EnvironmentRightError):
+            await select_environment(db, "acme", "feature", {"read", "query"})
+        assert db.queried == []
+
+    @pytest.mark.asyncio
+    async def test_an_illegal_name_is_still_a_404_first(self):
+        # The name is refused for what it is before who asked is consulted, so a caller without
+        # the right learns nothing about which names exist.
+        db = _FakeDb(set())
+        with pytest.raises(EnvironmentSelectionError):
+            await select_environment(db, "acme", "Not A Name", set())
+
+    @pytest.mark.asyncio
+    async def test_no_capabilities_argument_is_an_unguarded_call_site(self, monkeypatch):
+        # Passing None is not "no capabilities" — it is a caller that has already decided the
+        # question (the CLI, an internal rebind), and the gate sits at the HTTP selection point.
+        db = _FakeDb({"feature"})
+
+        async def _get_env(_db, org_id, name):
+            return {"name": name} if name in _db.known else None
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        assert await select_environment(db, "acme", "feature") == "feature"
+
+    def test_platform_authority_carries_the_right(self):
+        assert may_switch({"superadmin"})
+        assert may_switch({"admin"})
+        assert may_switch({SWITCH_CAPABILITY})
+        assert not may_switch({"read", "query", "create_model"})
 
 
 class _FakeState:

@@ -23,7 +23,13 @@ import { ENV_STORAGE_KEY } from "../lib/authFetch";
 import { ENVIRONMENTS_CHANGED_EVENT } from "../api/environments";
 import type { BranchSync, Environment } from "../api/environments";
 
-const auth = { activeOrgId: "acme" as string | null };
+// REQ-1573: being served by an environment other than prod is a right, so the switcher reads the
+// caller's capabilities as well as their org.
+const auth = {
+  activeOrgId: "acme" as string | null,
+  capabilities: ["environment_switch"] as string[],
+  loading: false,
+};
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 // The store reset is the switch's other half, so what is asserted is that it happens. A real
 // ApolloClient here would put a network stack behind a menu click and test that instead.
@@ -81,6 +87,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   auth.activeOrgId = "acme";
+  auth.capabilities = ["environment_switch"];
+  auth.loading = false;
   mockSync.mockResolvedValue({ remote_configured: true, branches: { prod: syncOf() } });
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -253,5 +261,44 @@ describe("EnvSwitcher", () => {
     render(<EnvSwitcher />);
     expect(screen.queryByTestId("env-switcher-trigger")).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  // REQ-1573: switching environments is org_admin's and developer's; an analyst works in prod.
+  it("is not shown to a caller who may not be served another environment", async () => {
+    auth.capabilities = ["usage", "query_development"];
+    mockFetch.mockResolvedValue([env("prod"), env("dev")]);
+    render(<EnvSwitcher />);
+    await waitFor(() => expect(mockFetch).not.toHaveBeenCalled());
+    expect(screen.queryByTestId("env-switcher-trigger")).toBeNull();
+  });
+
+  it("is shown to the platform administrator, who bypasses every right", async () => {
+    auth.capabilities = ["admin"];
+    mockFetch.mockResolvedValue([env("prod"), env("dev")]);
+    render(<EnvSwitcher />);
+    expect(await screen.findByTestId("env-switcher-trigger")).toBeInTheDocument();
+  });
+
+  it("drops a selection made before the right was withdrawn", async () => {
+    // Every request would otherwise keep carrying the name, and the server answers each one 403.
+    localStorage.setItem(ENV_STORAGE_KEY, "dev");
+    auth.capabilities = ["usage"];
+    mockFetch.mockResolvedValue([env("prod"), env("dev")]);
+    render(<EnvSwitcher />);
+    await waitFor(() => expect(localStorage.getItem(ENV_STORAGE_KEY)).toBeNull());
+    expect(reload).toHaveBeenCalled();
+  });
+
+  it("keeps the selection while the bootstrap is still in flight", async () => {
+    // A caller carries no capabilities until /auth/me answers, and reading that as a withdrawal
+    // would clear a legitimate selection and reload the page on every cold start.
+    localStorage.setItem(ENV_STORAGE_KEY, "dev");
+    auth.capabilities = [];
+    auth.loading = true;
+    mockFetch.mockResolvedValue([env("prod"), env("dev")]);
+    render(<EnvSwitcher />);
+    await waitFor(() => expect(mockFetch).not.toHaveBeenCalled());
+    expect(localStorage.getItem(ENV_STORAGE_KEY)).toBe("dev");
+    expect(reload).not.toHaveBeenCalled();
   });
 });
