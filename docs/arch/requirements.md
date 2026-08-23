@@ -16375,3 +16375,31 @@ A SECRET BELONGS TO SOMEONE, AND WHO IT BELONGS TO IS PART OF ITS ADDRESS. A dev
 **Code:** `provisa/core/secrets_store.py`, `provisa/core/schema_admin.py`, `provisa/core/secrets.py`, `provisa/api/admin/secrets_router.py`, `provisa-ui/src/components/admin/SecretsTab.tsx`, `provisa-ui/src/components/navGroups.ts`
 
 **Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1561 · Environments {#REQ-1561}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A NODE WHOSE PROJECTION DOES NOT HOLD THE COMMIT STILL LISTS ITS ENVIRONMENTS. The repository is a projection and never an authority ([REQ-1524](#REQ-1524)), so the control plane naming a deployed_sha this node's object store never received is a state the design admits -- it is what DRIFTED means. Reading history from such a store is therefore a BROWSE refusal like any other unresolvable ref: parent_of raises RepositoryError rather than letting a dulwich KeyError escape, undo and redo answer 404 through the existing browse contract, and the environments list reports the history as closed at both ends instead of failing the whole read. The environment, its name and its deployed_sha are unaffected: what a projection without the object has lost is the ability to walk back from it, and that is the only answer that changes.
+
+**Use case:** Two processes share one control plane but keep separate repository stores; listing environments on the process that did not write the commit must not 500.
+
+**Code:** `provisa/core/env_repo.py`, `provisa/api/admin/environments_router.py`
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1562 · Deployment {#REQ-1562}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+A HOSTED DEPLOY ASSERTS ITS COMMERCE CONFIGURATION BEFORE IT SHIPS ANYTHING. The plan catalog is the first thing the signup page asks for ([REQ-1514](#REQ-1514)), and a Lemon Squeezy variant id has no default -- variant_id_for_plan raises rather than inventing one ([REQ-1455](#REQ-1455)) -- so a node missing those ids answers GET /billing/catalog with a 500 and nobody can create an organization. The deploy therefore preflights the variant, store and signing settings from the RUNNING container, exactly as it preflights the engine pin, and refuses to deploy rather than leaving a node whose sign-up is broken.
+
+**Use case:** A regenerated provisa.env drops the Lemon Squeezy variant ids; the next deploy stops instead of shipping a node where "Get started" shows Internal server error.
+
+**Code:** `scripts/deploy-cloud.sh`
+
+**Tests:** —

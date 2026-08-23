@@ -118,3 +118,18 @@ class TestSteppingForward:
     async def test_an_environment_at_the_top_has_nothing_ahead(self, listing):
         listing.append(_row("dev", deployed_sha=THIRD, redo_sha=None))
         assert (await _listed("dev"))["can_redo"] is False
+
+
+class TestAProjectionThatDoesNotHoldThePosition:
+    """REQ-1524: the repository is a projection, never an authority. A node whose object store
+    never received the commit the control plane names still LISTS its environments -- what it has
+    lost is the history, and the list is where the loss is reported, not where it 500s."""
+
+    async def test_the_environment_still_lists_with_its_history_closed(self, listing, monkeypatch):
+        def _absent(org_id, sha):
+            raise env_repo.RepositoryError(f"{sha!r} is neither a branch nor a commit")
+
+        monkeypatch.setattr(env_repo, "parent_of", _absent)
+        listing.append(_row("dev", deployed_sha=SECOND))
+        answer = await _listed("dev")
+        assert (answer["can_undo"], answer["can_redo"]) == (False, False)

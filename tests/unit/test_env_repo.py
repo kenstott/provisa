@@ -28,6 +28,7 @@ from provisa.core.env_repo import (
     ensure_repo,
     files_at,
     history,
+    parent_of,
     repo_path,
 )
 
@@ -134,3 +135,18 @@ class TestBrowseIsByRefAndNeverByPath:
         sha = commit_files(ensure_repo(ORG), "prod", MODEL, "seed", None)
         with pytest.raises(RepositoryError, match="neither a branch nor a commit"):
             files_at("other", sha)
+
+
+class TestAProjectionMayNotHoldTheCommitTheControlPlaneNames:
+    """REQ-1524: the repository is a projection, so a sha this store never received is a BROWSE
+    refusal like any other unresolvable ref -- never a raw dulwich KeyError escaping to a 500."""
+
+    def test_walking_back_from_a_sha_this_store_does_not_hold_is_refused(self):
+        commit_files(ensure_repo(ORG), "prod", MODEL, "seed", None)
+        absent = "23f2cfb3db0b2e1a20717a2ba8a7f2fa9be94093"
+        with pytest.raises(RepositoryError, match="neither a branch nor a commit"):
+            parent_of(ORG, absent)
+
+    def test_the_first_commit_of_a_line_has_nothing_behind_it(self):
+        first = commit_files(ensure_repo(ORG), "prod", MODEL, "seed", None)
+        assert parent_of(ORG, first) is None

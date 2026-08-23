@@ -105,6 +105,33 @@ preflight_engine() {
     | sed 's/^/   /'
 }
 
+# REQ-1455/REQ-1514: on a HOSTED node the plan catalog is the first thing the signup page asks for,
+# and variant_id_for_plan raises rather than inventing an id, so a node missing these answers
+# GET /billing/catalog with a 500 and "Get started" cannot create an organization at all. The
+# variant ids ARE the billing configuration -- there is no default to fall back to -- so the deploy
+# asserts them the way it asserts the engine pin, from the RUNNING container.
+COMMERCE_KEYS="LEMONSQUEEZY_VARIANT_STARTER LEMONSQUEEZY_VARIANT_PRO_S \
+LEMONSQUEEZY_VARIANT_PRO_M LEMONSQUEEZY_VARIANT_PRO_L \
+LEMONSQUEEZY_VARIANT_EGRESS_STARTER LEMONSQUEEZY_VARIANT_EGRESS_PRO_S \
+LEMONSQUEEZY_VARIANT_EGRESS_PRO_M LEMONSQUEEZY_VARIANT_EGRESS_PRO_L \
+LEMONSQUEEZY_API_KEY LEMONSQUEEZY_STORE_ID LEMONSQUEEZY_SIGNING_SECRET"
+
+preflight_commerce() {
+  echo "== commerce preflight"
+  local env_dump missing=""
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^LEMONSQUEEZY' || true" | tr -d '\r')"
+  for k in $COMMERCE_KEYS; do
+    printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
+  done
+  if [ -n "$missing" ]; then
+    echo "$API_CONTAINER is missing commerce settings:$missing" >&2
+    echo "Without them /billing/catalog 500s and nobody can sign up." >&2
+    echo "Add them to the node's /root/.provisa/provisa.env and recreate the containers." >&2
+    exit 1
+  fi
+  printf '%s\n' "$env_dump" | sed -n 's/^\(LEMONSQUEEZY_[A-Z_]*\)=.*/   \1=<set>/p'
+}
+
 build_ui() {
   echo "== building UI"
   (cd "$REPO/provisa-ui" && npm run build)
@@ -510,18 +537,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; preflight_commerce; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine ;;
+    preflight_engine; preflight_commerce; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine ;;
   all)
-    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    preflight_engine; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
+    preflight_engine; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine ;;
 esac
 echo "== deployed $TARGET"

@@ -514,9 +514,14 @@ def parent_of(org_id: str, sha: str) -> str | None:
     REQ-1543: this is the whole of what an undo has to know. The FIRST parent is taken because that
     is the line the environment travelled: a commit written by the write-through has exactly one,
     and one written by a merge has its target's history first.
+
+    A sha this repository does not hold is a ``RepositoryError`` like every other browse verb, not a
+    dulwich ``KeyError``: the repository is a PROJECTION, so the control plane naming a commit this
+    node's object store has never seen is a state the callers have to be able to answer, and the
+    BROWSE contract is where they already answer it.
     """
     repo = ensure_repo(org_id)
-    commit = repo.get_object(sha.encode())
+    commit = repo.get_object(_resolve(repo, sha))
     return commit.parents[0].decode() if commit.parents else None
 
 

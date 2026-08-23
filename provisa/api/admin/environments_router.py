@@ -301,14 +301,24 @@ def _with_history(org_id: str, row: dict) -> dict:
     and the person finds out by pressing it and being refused. Both answers are already in the row
     or one parent lookup away, so they travel with the environment instead.
     """
-    from provisa.core.env_repo import parent_of
+    from provisa.core.env_repo import RepositoryError, parent_of
 
     here = row["deployed_sha"]
     # REQ-1553: and the beginning of the line is the ENVIRONMENT's beginning, not the repository's.
     # A branch is seeded at its source's tip, so a parent exists one step below the environment's
     # first own commit -- and that parent is the source's, which is why ``origin_sha`` stops the
     # walk there rather than the absence of a parent doing it.
-    behind = parent_of(org_id, here) if here is not None else None
+    #
+    # REQ-1524: the repository is a PROJECTION, never an authority, so this node's object store not
+    # holding the commit the control plane names is a state the design ADMITS -- it is what DRIFTED
+    # means. The environment still exists and still lists; what it has lost is its history, so the
+    # two history answers are the ones that go false. This is not a fallback for a missing value:
+    # ``deployed_sha`` is present and authoritative, and the question being answered here is
+    # strictly "can this node walk back from it", which a projection without the object cannot.
+    try:
+        behind = parent_of(org_id, here) if here is not None else None
+    except RepositoryError:
+        behind = None
     row["can_undo"] = behind is not None and behind != row["origin_sha"]
     row["can_redo"] = row["redo_sha"] is not None
     return row
