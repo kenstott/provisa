@@ -51000,7 +51000,13 @@
     that mentions it. Secrets are the ORG''S, managed by org_admin: a platform admin operates the
     control plane and has no read of any org''s secret values (REQ-1361). The page also names
     which secrets provider the deployment is using, so an org can tell Provisa''s own store from a
-    central service it is expected to file the secret in instead.'
+    central service it is expected to file the secret in instead. WHERE IT LIVES: Admin / Security
+    / Secrets, a sub-tab beside posture, encryption, authentication and local users, reached at
+    /admin/secrets. Sharing the section does not mean sharing its right: the other four sub-tabs
+    describe the DEPLOYMENT and answer to platform_settings, Secrets is the ORG''S and answers to
+    org_settings, and each person is shown only the sub-tabs their capability carries -- a
+    platform admin sees the four and no secrets, an org admin sees Secrets and none of the four.
+    A deep link to a sub-tab the person may not open lands on one they may.'
   use_case: An org admin can add the git token an environment remote references, rotate it when it expires, and see at a glance which secrets exist without any screen or response ever carrying a secret value.
   scenario: 'Given an org admin has stored a secret named GIT_TOKEN
 
@@ -51014,6 +51020,7 @@
   - provisa/core/secrets_store.py
   - provisa-ui/src/components/admin/SecretsTab.tsx
   - provisa-ui/src/api/secrets.ts
+  - provisa-ui/src/components/admin/SecurityManager.tsx
   depends_on:
   - REQ-1361
   - REQ-1557

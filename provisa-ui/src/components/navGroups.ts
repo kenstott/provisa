@@ -99,9 +99,6 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemEnvironments",
         capability: "org_settings",
       },
-      // REQ-1558: the org's own secrets. org_settings, not platform_settings: the values belong to
-      // the org, and a platform admin operating the control plane has no read of them (REQ-1361).
-      { to: "/admin/secrets", labelKey: "navBar.itemSecrets", capability: "org_settings" },
       // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
       // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a
       // role name. The seed grants it to platform_admin always and to org_admin only in a
@@ -133,6 +130,10 @@ export const NAV_GROUPS: NavGroup[] = [
         commercial: true,
       },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
+      // REQ-1558, REQ-1361: the org's own secrets, a Security sub-tab. org_settings, not
+      // platform_settings: the values belong to the org, and a platform admin operating the
+      // control plane has no read of them.
+      { to: "/admin/secrets", labelKey: "navBar.itemSecrets", capability: "org_settings" },
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
       // platform_settings — the same right that gates the engine topology switch it announces.
       {

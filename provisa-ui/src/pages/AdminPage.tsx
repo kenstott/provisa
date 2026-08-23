@@ -42,7 +42,6 @@ import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import { domainGqlAlias } from "../types/admin";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
-import { SecretsTab } from "../components/admin/SecretsTab";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
@@ -93,16 +92,19 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/encryption": "Security",
   "/admin/auth": "Security",
   "/admin/local-users": "Security",
-  "/admin/secrets": "Secrets", // REQ-1558: the org's secrets
+  "/admin/secrets": "Security", // REQ-1558: the org's secrets, a Security sub-tab
 };
 
 // Which Security sub-tab a route opens on.
-const SECURITY_SUBTAB: Record<string, "posture" | "encryption" | "authentication" | "localUsers"> =
-  {
-    "/admin/encryption": "encryption",
-    "/admin/auth": "authentication",
-    "/admin/local-users": "localUsers",
-  };
+const SECURITY_SUBTAB: Record<
+  string,
+  "posture" | "encryption" | "authentication" | "localUsers" | "secrets"
+> = {
+  "/admin/encryption": "encryption",
+  "/admin/auth": "authentication",
+  "/admin/local-users": "localUsers",
+  "/admin/secrets": "secrets", // REQ-1558
+};
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
@@ -254,9 +256,6 @@ export function AdminPage() {
         )}
 
         {activeTab === "Environments" && <EnvironmentsTab />}
-
-        {/* REQ-1558: names go in, values never come back out. */}
-        {activeTab === "Secrets" && <SecretsTab />}
 
         {activeTab === "Domains" && (
           <>
