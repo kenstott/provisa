@@ -16477,3 +16477,29 @@ AN ADDRESS MATCHING MORE THAN ONE AUTO-JOIN ORG IS A CHOICE PUT TO THE PERSON, N
 **Code:** `provisa/api/auto_join.py`, `provisa/api/auth_router.py`, `provisa/auth/middleware.py`, `provisa/core/org_membership.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
 
 **Tests:** `tests/integration/test_org_auto_join.py`, `provisa-ui/src/__tests__/OnboardOrgAutoJoinChoice.test.tsx`
+
+### REQ-1569 · Multi-Tenancy & Orgs {#REQ-1569}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+AN INVITATION IS A MESSAGE AN ORG_ADMIN CAN ACTUALLY SEND, AND THE JOIN RULE IS READABLE AND EDITABLE AFTER THE ORG EXISTS. Provisa composes a branded invitation and delivers it ([REQ-1310](#REQ-1310), [REQ-1330](#REQ-1330), [REQ-1486](#REQ-1486)), but the team page offered no address field, so every invitation was a link the org_admin had to carry by hand and the branded message was never sent -- branding that promises delivery and a product that cannot deliver. The invite form takes an email address (empty still means a shareable link), the creation response says what became of the message, and a failed or unsupported send is reported next to the link the org_admin must now pass on themselves rather than logged where nobody sees it. The invitation list names the address each invitation went to. Likewise the auto-join rule, written once at onboarding, decides forever who walks in unasked: it is read back and edited on the same page, through the same breadth acknowledgement the onboarding form uses ([REQ-1567](#REQ-1567)), so a company that changes domains or discovers its rule admits strangers can correct it.
+
+**Use case:** An org_admin types a colleague's address, the branded invitation is sent, and the same page shows the auto-join rule the org is running so it can be narrowed.
+
+**Code:** `provisa/api/admin/invites_router.py`, `provisa/api/admin/orgs_router.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/components/OrgJoinSettings.tsx`, `provisa-ui/src/pages/TeamPage.tsx`
+
+**Tests:** `tests/e2e/test_platform_auth_flow.py`, `tests/integration/test_invite_delivery.py`, `provisa-ui/src/__tests__/TeamPageInviteEmail.test.tsx`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1570 · UI & Admin Surfaces {#REQ-1570}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+THE GUIDED TOUR IS NOT OFFERED OVER A SIGN-IN OR REGISTRATION FORM. An invitation link opened while a session is already live renders the sign-in and registration form inside the authenticated shell, and the once-per-session tour welcome modal appeared on top of it -- the person came to accept an invitation and was shown a tour of a product they have not joined. The offer is withheld on the identity routes and, because it is never claimed there, it survives to the first page that has a product to show.
+
+**Use case:** Someone following an invitation link lands on the registration form, not on a tour invitation covering it.
+
+**Code:** `provisa-ui/src/App.tsx`, `provisa-ui/src/tour/TourAutoStart.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/tourWelcome.test.tsx`

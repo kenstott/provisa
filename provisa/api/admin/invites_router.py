@@ -293,6 +293,7 @@ async def list_invites(request: Request):  # REQ-516
             org_invites.c.org_id,
             orgs.c.name.label("org_name"),
             org_invites.c.role_id,
+            org_invites.c.email,
             org_invites.c.created_by,
             org_invites.c.expires_at,
             org_invites.c.used_at,

@@ -40,6 +40,13 @@
     "deleteConfirmButton": "Delete permanently",
     "copyButton": "Copy link",
     "copiedButton": "Copied",
-    "revokeButton": "Revoke"
+    "revokeButton": "Revoke",
+    "emailLabel": "Email address",
+    "emailDesc": "Send the invitation to this address. Leave empty for a link you share yourself.",
+    "sendInvite": "Send invitation",
+    "inviteSent": "Invitation sent to {{email}}. Link: {{url}}",
+    "inviteNotSent": "The invitation for {{email}} was created but could not be sent ({{reason}}). Share this link instead: {{url}}",
+    "inviteNoMail": "This deployment does not send email, so nothing was sent to {{email}}. Share this link instead: {{url}}",
+    "colEmail": "Email"
   }
 }

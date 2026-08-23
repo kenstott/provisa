@@ -35,13 +35,8 @@ import { TitleTooltips } from "./components/TitleTooltips";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { MaintenanceBanner } from "./components/MaintenanceBanner"; // REQ-1466
 import { fetchSetupStatus } from "./api/setup";
-import {
-  TourProvider,
-  useTour,
-  claimTourOffer,
-  resetTourStateForDemoSession,
-} from "./tour/useTour";
-import { TourWelcomeModal } from "./tour/TourWelcomeModal";
+import { TourProvider } from "./tour/useTour";
+import { TourAutoStart } from "./tour/TourAutoStart";
 import { prefetchPageChunksOnIdle } from "./pageChunks";
 import { storedToken } from "./lib/sessionToken";
 import "./App.css";
@@ -120,43 +115,6 @@ function AdminEntry() {
   const target = group ? entryItem(group, capabilities, billing) : undefined;
   if (!target) return <NotAuthorized />;
   return <Navigate to={target.to} replace />;
-}
-
-/**
- * Decides how the guided tour opens on arrival.
- *
- * `?tour=1` starts it outright and strips the param so a refresh doesn't relaunch — that URL is an
- * explicit request. Otherwise the tour is offered, not launched: a welcome modal once per browser
- * session, until it is taken or the modal's checkbox turns the offer off for good.
- */
-function TourAutoStart({ demoMode }: { demoMode: boolean }) {
-  const { startTour } = useTour();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tourParam = searchParams.get("tour");
-  // Decided on the first render rather than in the effect: claimTourOffer marks the session
-  // offered, so it must run exactly once per mount.
-  const [offering, setOffering] = useState(() => {
-    if (tourParam !== null) return false;
-    // Each visit to a demo server is a new visitor: drop the previous one's seen-flag, declined
-    // flag and half-finished progress before deciding whether to offer, so the tour is offered
-    // afresh rather than suppressed by someone else's session.
-    if (demoMode) resetTourStateForDemoSession();
-    return claimTourOffer();
-  });
-  useEffect(() => {
-    if (tourParam === null) return;
-    setSearchParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        n.delete("tour");
-        return n;
-      },
-      { replace: true },
-    );
-    // ?tour=1 always starts fresh from the top.
-    startTour({ restart: true });
-  }, [tourParam, startTour, setSearchParams]);
-  return offering ? <TourWelcomeModal onClose={() => setOffering(false)} /> : null;
 }
 
 /** Redirects to /login when auth is enabled and no token is present. */

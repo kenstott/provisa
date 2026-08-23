@@ -40,6 +40,10 @@ vi.mock("../api/admin", () => ({
   revokeOrgAdmin: (...a: unknown[]) => revokeAdminSpy(...(a as [])),
   deleteOrg: (...a: unknown[]) => deleteOrgSpy(...(a as [])),
   exportOrgConfig: (...a: unknown[]) => exportSpy(...(a as [])),
+  fetchOrgSettings: () =>
+    Promise.resolve({ id: "acme", email_rule: null, auto_join: false, auto_join_role: null }),
+  updateOrgSettings: vi.fn(),
+  OrgError: class OrgError extends Error {},
 }));
 
 vi.mock("../context/AuthContext", () => ({

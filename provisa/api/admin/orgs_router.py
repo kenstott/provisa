@@ -634,6 +634,28 @@ async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ
     return dict(row._mapping)
 
 
+@router.get("/{org_id}/settings")
+async def read_org_settings(org_id: str, request: Request):  # REQ-1268, REQ-1269, REQ-1569
+    """The org's join policy, for the form that edits it.
+
+    A rule that decides who walks into the org unasked has to be readable by the org_admin who
+    owns it — a write-only setting is one nobody can audit or correct.
+    """
+    from provisa.api.admin.invites_router import _require_org_admin
+
+    await _require_org_admin(request, org_id)
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            select(orgs.c.id, orgs.c.email_rule, orgs.c.auto_join, orgs.c.auto_join_role).where(
+                orgs.c.id == org_id
+            )
+        )
+        row = result.fetchone()
+    if row is None:
+        raise ApiError(404, "orgs.not_found", "Org not found")
+    return dict(row._mapping)
+
+
 @router.patch("/{org_id}/settings")
 async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request):  # REQ-1268/1269
     """Edit an org's join policy (email rule + auto-join). Org admin of this org, or platform admin."""

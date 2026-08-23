@@ -30,6 +30,7 @@ const {
   resetTourStateForDemoSession,
 } = await import("../tour/useTour");
 const { TourWelcomeModal } = await import("../tour/TourWelcomeModal");
+const { TourAutoStart } = await import("../tour/TourAutoStart");
 const { TOUR_SEEN_KEY } = await import("../tour/tourKeys");
 
 /** Stands in for the navbar compass: a plain launch click, no offer involved. */
@@ -113,5 +114,46 @@ describe("tour welcome offer", () => {
     localStorage.setItem("provisa_tour_declined", "true");
     resetTourStateForDemoSession();
     expect(tourDeclined()).toBe(false);
+  });
+});
+
+// REQ-1570: an invitation link opened while a session is already live lands on /register, which
+// renders the sign-in form inside the app shell. The tour offered on top of it hides the one thing
+// the person came to do.
+describe("where the offer is made", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  function renderAt(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <TourProvider>
+          <TourAutoStart demoMode={false} />
+        </TourProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("does not offer the tour over an invitation's sign-in form", () => {
+    renderAt("/register?invite=94dcdf60");
+    expect(screen.queryByText("Take the guided tour?")).toBeNull();
+  });
+
+  it("does not offer the tour on the login page", () => {
+    renderAt("/login");
+    expect(screen.queryByText("Take the guided tour?")).toBeNull();
+  });
+
+  it("leaves the offer intact for the page the person lands on next", () => {
+    renderAt("/register?invite=94dcdf60");
+    // The session was never marked offered, so the first product page still asks.
+    expect(claimTourOffer()).toBe(true);
+  });
+
+  it("offers the tour on a product page", async () => {
+    renderAt("/query");
+    expect(await screen.findByText("Take the guided tour?")).toBeTruthy();
   });
 });

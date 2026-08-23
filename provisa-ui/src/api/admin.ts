@@ -198,6 +198,19 @@ export async function createOrg(
   return res.json();
 }
 
+export interface OrgJoinSettings {
+  id: string;
+  email_rule: string | null;
+  auto_join: boolean;
+  auto_join_role: string | null;
+}
+
+export async function fetchOrgSettings(orgId: string): Promise<OrgJoinSettings> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/settings`);
+  if (!res.ok) throw new Error(requestFailed("fetchOrgSettings", res.status));
+  return res.json();
+}
+
 export async function updateOrgSettings(
   orgId: string,
   policy: OrgJoinPolicy,
@@ -1474,10 +1487,15 @@ export interface OrgInvite {
   org_id: string;
   org_name: string;
   role_id: string | null;
+  // REQ-1287: the address the invitation was sent to, absent on a shareable link.
+  email: string | null;
   created_by: string;
   expires_at: string;
   used_at: string | null;
   used_by: string | null;
+  // REQ-1310: only on the creation response — what happened to the message. "not_addressed",
+  // "saas_only", "sent", or "failed: <reason>".
+  delivery?: string;
 }
 
 export interface InviteInfo {

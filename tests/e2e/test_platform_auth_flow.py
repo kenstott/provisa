@@ -256,6 +256,18 @@ class TestOrgEmailRuleOnRedemption:
             "role_id": "analyst",
         }
 
+    async def test_the_rule_reads_back_for_the_admin_who_set_it(self, client):
+        """REQ-1569: a rule that decides who joins has to be readable by its owner, or nobody can
+        audit or correct what the org is actually admitting."""
+        read = await client.get(f"/admin/orgs/{_ctx['org1']}/settings", headers=_basic("founder"))
+        assert read.status_code == 200, read.text
+        assert read.json() == {
+            "id": _ctx["org1"],
+            "email_rule": "@acme\\.com$",
+            "auto_join": False,
+            "auto_join_role": None,
+        }
+
     async def test_mismatching_email_is_refused(self, client):
         token = await self._invite(client)
         _ctx["bob_invite"] = token

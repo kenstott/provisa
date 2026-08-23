@@ -37,6 +37,7 @@ import {
 } from "../api/admin";
 import type { OrgInvite, OrgMember } from "../api/admin";
 import { OrgBrandingSettings } from "../components/OrgBrandingSettings";
+import { OrgJoinSettings } from "../components/OrgJoinSettings";
 import { useSearchParams } from "react-router-dom";
 import { useLocalStorage } from "../components/graph/graph-persistence";
 import { useRoles } from "../hooks/useAdminQueries";
@@ -54,6 +55,9 @@ export function TeamPage() {
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [roleId, setRoleId] = useState<string | null>(null);
+  // REQ-1287/REQ-1310: addressing the invitation is what makes it a message rather than a link the
+  // org_admin has to carry themselves. Empty means a shareable link, which is still a valid choice.
+  const [inviteEmail, setInviteEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   // REQ-1300: deletion is unrecoverable, so it is gated behind an explicit modal in which the
@@ -163,12 +167,28 @@ export function TeamPage() {
   const handleCreate = async () => {
     if (!activeOrgId || !roleId) return;
     setError(null);
+    const email = inviteEmail.trim();
     try {
-      const invite = await createInvite(activeOrgId, roleId);
+      const invite = await createInvite(activeOrgId, roleId, 7, email === "" ? undefined : email);
       setInvites(await fetchInvites());
       const url = inviteUrl(invite.token);
       await navigator.clipboard.writeText(url);
-      notifications.show({ color: "green", message: t("teamPage.inviteCreated", { url }) });
+      setInviteEmail("");
+      // REQ-1310: the server reports what became of the message, and a failed send is the moment
+      // the org_admin has to know they must pass the link on themselves — so it is said here
+      // rather than logged.
+      if (invite.delivery === "sent") {
+        notifications.show({
+          color: "green",
+          message: t("teamPage.inviteSent", { email, url }),
+        });
+      } else if (invite.delivery !== undefined && invite.delivery.startsWith("failed")) {
+        setError(t("teamPage.inviteNotSent", { email, reason: invite.delivery.slice(8), url }));
+      } else if (invite.delivery === "saas_only" && email !== "") {
+        setError(t("teamPage.inviteNoMail", { email, url }));
+      } else {
+        notifications.show({ color: "green", message: t("teamPage.inviteCreated", { url }) });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -299,6 +319,15 @@ export function TeamPage() {
               <Text c="dimmed" size="sm">
                 {t("teamPage.inviteHelp")}
               </Text>
+              <TextInput
+                label={t("teamPage.emailLabel")}
+                description={t("teamPage.emailDesc")}
+                placeholder="person@acme.com"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.currentTarget.value)}
+                data-testid="team-invite-email"
+              />
               <Select
                 label={t("teamPage.roleLabel")}
                 description={t("teamPage.roleDesc")}
@@ -314,7 +343,9 @@ export function TeamPage() {
                 style={{ alignSelf: "flex-start" }}
                 data-testid="team-invite-create"
               >
-                {t("teamPage.generateInvite")}
+                {inviteEmail.trim() === ""
+                  ? t("teamPage.generateInvite")
+                  : t("teamPage.sendInvite")}
               </Button>
             </Stack>
 
@@ -323,6 +354,7 @@ export function TeamPage() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>{t("teamPage.colToken")}</Table.Th>
+                    <Table.Th>{t("teamPage.colEmail")}</Table.Th>
                     <Table.Th>{t("teamPage.colRole")}</Table.Th>
                     <Table.Th>{t("teamPage.colExpires")}</Table.Th>
                     <Table.Th>{t("teamPage.colStatus")}</Table.Th>
@@ -332,7 +364,7 @@ export function TeamPage() {
                 <Table.Tbody>
                   {invites.length === 0 && (
                     <Table.Tr>
-                      <Table.Td colSpan={5} ta="center" c="dimmed">
+                      <Table.Td colSpan={6} ta="center" c="dimmed">
                         {t("teamPage.noInvites")}
                       </Table.Td>
                     </Table.Tr>
@@ -344,6 +376,7 @@ export function TeamPage() {
                           {inv.token.slice(0, 8)}…
                         </Text>
                       </Table.Td>
+                      <Table.Td>{inv.email ?? "—"}</Table.Td>
                       <Table.Td>{inv.role_id ?? "—"}</Table.Td>
                       <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
                       <Table.Td>
@@ -385,6 +418,19 @@ export function TeamPage() {
             </Table.ScrollContainer>
           </Accordion.Panel>
         </Accordion.Item>
+
+        {/* REQ-1569: the rule that decides who joins without an invitation, read and edited by the
+            org_admin who owns it. */}
+        {activeOrgId && (
+          <Accordion.Item value="joining">
+            <Accordion.Control data-testid="team-section-joining">
+              <Title order={4}>{t("orgJoin.heading")}</Title>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <OrgJoinSettings orgId={activeOrgId} onError={reportError} />
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
 
         {/* REQ-1486: the org's own presentation, edited by the same org_admin who runs the team. */}
         {activeOrgId && (

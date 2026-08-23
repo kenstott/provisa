@@ -349,6 +349,20 @@ def test_a_link_invitation_sends_nothing(planes, smtp):
     assert smtp.sink.messages == []
 
 
+def test_the_invite_list_says_who_each_one_was_sent_to(planes, smtp):
+    """REQ-1287: the org_admin looking at their invitations has to see which address each went to,
+    or an addressed invitation is indistinguishable from a link nobody has passed on yet."""
+    with TestClient(_make_app(planes)) as client:
+        _create_invite(client, email="carol@example.test", role_id="analyst")
+        _create_invite(client, role_id="analyst")
+        listed = client.get("/admin/invites/", headers=_auth("tok-alice"))
+
+    assert listed.status_code == 200, listed.text
+    addressed = {row["token"]: row["email"] for row in listed.json()}
+    assert sorted(filter(None, addressed.values())) == ["carol@example.test"]
+    assert list(addressed.values()).count(None) == 1
+
+
 def test_a_delivery_failure_is_reported_and_the_invitation_survives(planes, smtp, monkeypatch):
     """A mail-server problem must not destroy a usable invitation — the link still works, and the
     org_admin is told delivery failed so they can send it by hand."""

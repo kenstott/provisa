@@ -1,0 +1,15 @@
+{
+  "orgJoin": {
+    "heading": "Who can join",
+    "help": "Which email addresses may join this organization. An invitation is checked against this rule; with auto-join on, anyone signing in with a matching address becomes a member without one.",
+    "emailRuleLabel": "Email rule",
+    "emailRuleDesc": "A regular expression matched against the address. Leave empty to accept any address by invitation.",
+    "autoJoinLabel": "Join automatically",
+    "autoJoinDesc": "A matching address becomes a member on first sign-in, with no invitation. Only for a domain your organization controls.",
+    "autoJoinRoleLabel": "Role granted on auto-join",
+    "autoJoinRoleDesc": "The role everyone admitted by the rule receives.",
+    "acceptRisk": "I accept that this rule may admit people from outside my organization",
+    "save": "Save",
+    "saved": "Join rule saved."
+  }
+}
