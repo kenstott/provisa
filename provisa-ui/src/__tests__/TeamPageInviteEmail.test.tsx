@@ -20,7 +20,7 @@ import { MemoryRouter } from "react-router-dom";
 import { TeamPage } from "../pages/TeamPage";
 
 const createInviteSpy = vi.fn();
-const updateSettingsSpy = vi.fn(async () => ({
+const updateSettingsSpy = vi.fn(async (..._args: unknown[]) => ({
   id: "acme",
   email_rule: null,
   auto_join: false,
@@ -44,14 +44,14 @@ vi.mock("../api/admin", () => ({
   deleteOrg: vi.fn(),
   exportOrgConfig: vi.fn(),
   fetchOrgSettings: () => Promise.resolve(mockSettings),
-  updateOrgSettings: (...a: unknown[]) => updateSettingsSpy(...(a as [])),
+  updateOrgSettings: (...a: unknown[]) => updateSettingsSpy(...a),
   OrgError: class OrgError extends Error {
-    constructor(
-      public status: number,
-      public code: string | null,
-      message: string,
-    ) {
+    status: number;
+    code: string | null;
+    constructor(status: number, code: string | null, message: string) {
       super(message);
+      this.status = status;
+      this.code = code;
     }
   },
 }));
