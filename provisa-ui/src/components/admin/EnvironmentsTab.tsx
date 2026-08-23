@@ -647,7 +647,10 @@ export function EnvironmentsTab() {
           <RepoBrowser orgId={orgId} />
         </Tabs.Panel>
         <Tabs.Panel value="integration" pt="md">
-          <RepoIntegrationPanel orgId={orgId} />
+          {/* Storing a remote changes what the rest of this page can say -- the banner, the badge,
+              and whether a push has anywhere to go -- so the page rereads rather than holding the
+              answer it loaded with. */}
+          <RepoIntegrationPanel orgId={orgId} onChanged={reload} />
         </Tabs.Panel>
       </Tabs>
 

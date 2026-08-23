@@ -20,11 +20,13 @@ there is none, and that the comment REQ-1550 requires reaches the host as the bo
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pytest
 
 from provisa.api.admin import environments_router as er
 from provisa.api.errors import ApiError
-from provisa.core import env_ci, env_remote
+from provisa.core import env_ci, env_remote, secrets_store
 
 pytestmark = pytest.mark.asyncio
 
@@ -71,6 +73,18 @@ def wired(monkeypatch):
     def open_pull_request(remote, *, head, base, title, body):
         calls.append(("pr", remote, head, base, title, body))
         return {"url": "https://github.com/acme/model/pull/4", "number": 4, "new": True}
+
+    # REQ-1557: a git call that resolves ``${secret:...}`` runs with the org bound, so the router
+    # reaches for the control plane before it reaches for git. Standing in for the binding keeps
+    # this a unit test of the router while still recording that the org WAS bound around the call;
+    # ``tests/integration/test_secrets_store.py`` drives the real binding.
+    @asynccontextmanager
+    async def _bound(_admin_db, org_id):
+        calls.append(("bound", org_id))
+        yield
+
+    monkeypatch.setattr(er, "_admin_pool", lambda: "admin-db")
+    monkeypatch.setattr(secrets_store, "bound", _bound)
 
     monkeypatch.setattr(er, "_guard_within", _guard_within)
     monkeypatch.setattr(er, "_known", _known)

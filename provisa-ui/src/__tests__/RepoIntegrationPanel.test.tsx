@@ -117,6 +117,48 @@ describe("RepoIntegrationPanel remote probe", () => {
     await waitFor(() => expect(mockCreate).toHaveBeenCalledWith("acme", REMOTE, true));
   });
 
+  it("closes the question once the repository it asked about exists", async () => {
+    // The panel is a question with two good answers. Creating is one of them, and an alert still
+    // saying the repository is missing is then simply wrong.
+    mockProbe.mockResolvedValue(MISSING);
+    mockCreate.mockResolvedValue({ ...MISSING, exists: true, creatable: false });
+    mockSave.mockResolvedValue({ remote: REMOTE, status_webhook: null, configured: true });
+    render(<RepoIntegrationPanel orgId="acme" />);
+    await waitFor(() => expect(screen.getByTestId("repo-remote-probe")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("repo-remote-probe"));
+    fireEvent.click(await screen.findByTestId("repo-remote-create"));
+    await waitFor(() => expect(screen.queryByTestId("repo-remote-missing")).toBeNull());
+    expect(screen.queryByTestId("repo-remote-found")).toBeNull();
+  });
+
+  it("stores the address it was just asked to create", async () => {
+    // Asking for this address to be created is saying it is the remote. Left typed but unstored,
+    // the org had no remote at all and the next push said so.
+    mockProbe.mockResolvedValue(MISSING);
+    mockCreate.mockResolvedValue({ ...MISSING, exists: true, creatable: false });
+    mockSave.mockResolvedValue({ remote: REMOTE, status_webhook: null, configured: true });
+    const changed = vi.fn();
+    render(<RepoIntegrationPanel orgId="acme" onChanged={changed} />);
+    await waitFor(() => expect(screen.getByTestId("repo-remote-probe")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("repo-remote-probe"));
+    fireEvent.click(await screen.findByTestId("repo-remote-create"));
+    await waitFor(() =>
+      expect(mockSave).toHaveBeenCalledWith("acme", { remote: REMOTE, status_webhook: null }),
+    );
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it("keeps the question open when the creation came back still not finding it", async () => {
+    mockProbe.mockResolvedValue(MISSING);
+    mockCreate.mockResolvedValue({ ...MISSING, detail: "the API answered 404" });
+    render(<RepoIntegrationPanel orgId="acme" />);
+    await waitFor(() => expect(screen.getByTestId("repo-remote-probe")).toBeEnabled());
+    fireEvent.click(screen.getByTestId("repo-remote-probe"));
+    fireEvent.click(await screen.findByTestId("repo-remote-create"));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled());
+    expect(screen.getByTestId("repo-remote-missing")).toHaveTextContent("the API answered 404");
+  });
+
   it("says so rather than offering when this remote is one Provisa cannot create", async () => {
     mockProbe.mockResolvedValue({
       ...MISSING,

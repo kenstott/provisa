@@ -1412,6 +1412,17 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         config=_enc_cfg.get(_enc_provider, {}) if _enc_provider else {},
     )
 
+    # REQ-1557: and the secrets service the same way. Unset is not unconfigured -- it selects
+    # Provisa's own encrypted per-org store, which is what a deployment with no central secrets
+    # service uses. The backend itself is built on first use, so this is only the selection.
+    from provisa.core.secrets_runtime import configure_secrets
+
+    _sec_cfg = (raw_config or {}).get("secrets", {}) or {}
+    _sec_provider = _sec_cfg.get("provider")
+    configure_secrets(
+        _sec_provider, config=_sec_cfg.get(_sec_provider, {}) if _sec_provider else {}
+    )
+
     # Clear mutable state before rebuild
     state.masking_rules = {}
     # Invalidate the MCP catalog search index (REQ-1008) — the catalog is changing, so the
@@ -2170,6 +2181,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.environments_router import router as environments_router  # REQ-1487
 
     app.include_router(environments_router)
+    from provisa.api.admin.secrets_router import router as secrets_router  # REQ-1558
+
+    app.include_router(secrets_router)
     from provisa.api.branding_router import router as branding_router  # REQ-1486
 
     app.include_router(branding_router)

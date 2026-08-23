@@ -8,9 +8,20 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Pluggable secrets provider. V1: env vars. Extensible to Vault, K8s, AWS."""
+"""The reference grammar every secret is written in: ``${provider:reference}``.
 
-# Requirements: REQ-125, REQ-251, REQ-320
+Two provider names matter to a person writing config. ``env`` is the process environment -- the
+deployment's own configuration, and the only thing a central secrets backend's own credential may
+be written against. ``secret`` is the SECRETS SERVICE, whichever one this deployment is wired to
+(``provisa/core/secrets_registry.py``): Provisa's own encrypted per-org store by default, a central
+service when one is configured. The reference does not change when the backend does.
+
+Resolution is FAIL-CLOSED throughout: an unknown provider, an unset name and an unreachable backend
+all raise. A secret that could not be resolved is never an empty string and never falls through to
+another provider (REQ-1557).
+"""
+
+# Requirements: REQ-125, REQ-251, REQ-320, REQ-557, REQ-1557
 
 import os
 import re
@@ -44,16 +55,43 @@ def register_provider(name: str, provider: SecretsProvider) -> None:  # REQ-557
     _PROVIDERS[name] = provider
 
 
-def resolve_secrets(value: str) -> str:  # REQ-125, REQ-251, REQ-320
-    """Replace ${provider:reference} patterns with resolved secret values."""
+def _provider_for(name: str) -> SecretsProvider:
+    """The provider ``name`` refers to.
+
+    ``secret`` is resolved through the runtime rather than the table above, because WHICH backend
+    it means is deployment configuration that can be installed after this module is imported, and
+    because its default -- Provisa's own store -- must not be constructed until something actually
+    asks for a secret (REQ-1557).
+    """
+    if name == "secret":
+        from provisa.core.secrets_runtime import secrets_backend
+
+        return secrets_backend()
+    provider = _PROVIDERS.get(name)
+    if provider is None:
+        raise ValueError(f"Unknown secrets provider: {name}")
+    return provider
+
+
+def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
+    value: str, *, providers: tuple[str, ...] | None = None
+) -> str:
+    """Replace ${provider:reference} patterns with resolved secret values.
+
+    ``providers`` narrows which provider names this particular call will honour. The caller that
+    uses it is the one building a central backend from its config: that backend's own credential
+    cannot come out of the store it opens, so its resolution is restricted to ``env``.
+    """
 
     def _replace(match: re.Match) -> str:
         provider_name = match.group(1)
         reference = match.group(2)
-        provider = _PROVIDERS.get(provider_name)
-        if provider is None:
-            raise ValueError(f"Unknown secrets provider: {provider_name}")
-        return provider.resolve(reference)
+        if providers is not None and provider_name not in providers:
+            raise ValueError(
+                f"Secrets provider {provider_name!r} is not permitted here; "
+                f"expected one of {', '.join(providers)}."
+            )
+        return _provider_for(provider_name).resolve(reference)
 
     return _SECRET_PATTERN.sub(_replace, value)
 

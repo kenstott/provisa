@@ -57,6 +57,9 @@ const ORG_SCOPED: Record<string, string> = {
   // the model is projected into. All of it is the acting org's own model, so none of it is
   // deployment-wide.
   "/admin/environments": "org_settings",
+  // REQ-1558: the names an org holds and the values behind them are the org's, so an org_admin
+  // owns them and a platform admin operating the control plane does not read them (REQ-1361).
+  "/admin/secrets": "org_settings",
   "/admin/scheduled-tasks": "org_settings",
   "/admin/requests": "org_settings",
   // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external

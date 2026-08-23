@@ -70,6 +70,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1504: a proposed merge names TWO environments, so it sits beside them on the platform
     # plane rather than inside either one. Portable metadata only.
     "env_merge_requests",
+    # REQ-1557, REQ-1558: the org's own secrets, held beside ``orgs`` on the platform plane so
+    # that a secret is resolvable before any org schema is open. Portable metadata only.
+    "secrets_store",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

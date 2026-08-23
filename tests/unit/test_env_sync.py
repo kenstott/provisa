@@ -20,10 +20,12 @@ are otherwise the same picture.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pytest
 
 from provisa.api.admin import environments_router as er
-from provisa.core import env_ci, env_repo
+from provisa.core import env_ci, env_repo, secrets_store
 from provisa.core.env_ci import RepoIntegration
 
 pytestmark = pytest.mark.asyncio
@@ -137,6 +139,14 @@ class TestWhatARefusedPullSays:
             asked["collisions"] = (org_id, name, base_sha, sha)
             return [Conflict("sales/domain.yaml", "changed", "removed")]
 
+        # REQ-1557: the fetch resolves the remote's secret references, so the router binds the
+        # org around it. Standing in for the binding keeps this a unit test of the refusal;
+        # ``tests/integration/test_secrets_store.py`` drives the real binding.
+        @asynccontextmanager
+        async def _bound(_admin_db, _org_id):
+            yield
+
+        monkeypatch.setattr(secrets_store, "bound", _bound)
         monkeypatch.setattr(er, "_guard_within", _guard_within)
         monkeypatch.setattr(er, "_known", _known)
         monkeypatch.setattr(er, "_remote_of", _remote_of)

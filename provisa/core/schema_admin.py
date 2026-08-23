@@ -480,6 +480,26 @@ platform_notice = Table(
 )
 
 
+# REQ-1557, REQ-1558: the org's own secrets, when no central secrets service is connected. One
+# row is one NAME the org can write ``${secret:NAME}`` against; ``value`` is the envelope blob
+# (REQ-685), so the authority to read it is the encryption master key the process holds rather
+# than any key of this table's own -- a registry copied without that key yields nothing. There is
+# deliberately no plaintext column and no read path back out: a value goes in and is only ever
+# resolved (REQ-1558).
+secrets_store = Table(
+    "secrets_store",
+    metadata,
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    Column("name", Text, primary_key=True),
+    Column("value", LargeBinary, nullable=False),
+    # What the secret is for, in the org's own words. Never the value, and never derived from it.
+    Column("description", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text, nullable=True),
+)
+
+
 # The org/user/invite registry. ``org_config`` is bootstrapped separately by the billing
 # module, so it is excluded here.
 REGISTRY_TABLES = [
@@ -493,6 +513,7 @@ REGISTRY_TABLES = [
     environments,
     env_merge_requests,
     org_config,
+    secrets_store,
     personal_access_tokens,
     scram_credentials,
     platform_notice,

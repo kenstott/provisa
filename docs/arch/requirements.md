@@ -16321,3 +16321,29 @@ AN ENVIRONMENT IS STATE; A BRANCH IS THAT STATE'S HISTORY. The two are paired on
 **Code:** `provisa/core/env_repo.py`, `provisa/core/env_store.py`, `provisa/api/admin/environments_router.py`, `provisa/cli.py`, `provisa-ui/src/components/EnvSwitcher.tsx`
 
 **Tests:** `tests/unit/test_env_sync.py`, `tests/unit/test_cli_env_deploy.py`
+
+## 1. Access Governance & Security
+
+### REQ-1557 · Security {#REQ-1557}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+
+A SECRETS SERVICE, WITH PROVISA'S OWN STORE AS THE ONE THAT IS ALWAYS THERE. ${provider:reference} ([REQ-125](#REQ-125), [REQ-557](#REQ-557)) already names a provider, and a registry already exists to hold more than one -- but only ``env`` was ever registered, and ``register_provider`` has no callers, so in practice a secret can only be an environment variable of the server process. THAT MAKES A SECRET SOMETHING ONLY THE OPERATOR OF THE HOST CAN SET: a hosted org cannot put its own git token, warehouse password or API key anywhere, because it does not own the process environment. The provider set therefore becomes a registry in the shape the encryption providers already use (provisa/encryption/registry.py): a named spec with a label, a description, the config fields it needs and an availability probe, so a deployment wired to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault reads its secrets from there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE: a built-in per-org store in the control plane, each value encrypted through the configured encryption service ([REQ-684](#REQ-684), [REQ-685](#REQ-685)) so the plaintext never rests in a column, and never reachable across orgs. It is the default, not the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE -- a secret that cannot be resolved is never an empty string and never falls through to another provider. WHAT AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope ciphertext, so the authority to read it is the encryption master key ([REQ-684](#REQ-684)) the process already holds, and a control-plane database copied without that key yields nothing. An EXTERNAL provider does need a credential -- a Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved through ${env:...} alone, never an org secret: a store whose own credential lives inside the store cannot be opened, so the chain of trust terminates in the host environment by design. Every read and write is scoped to ONE org: a name is looked up only in the namespace of the org the request is bound to, so two orgs holding GIT_TOKEN hold two unrelated secrets and neither can name the other's.
+
+**Use case:** An org running on hosted Provisa can store its own git token or warehouse password without owning the server's environment, and an enterprise with Vault or AWS Secrets Manager reads the same references out of the service it already runs.
+
+**Code:** `provisa/core/secrets.py`, `provisa/core/secrets_registry.py`, `provisa/core/secrets_store.py`, `provisa/core/schema_admin.py`
+
+**Tests:** —
+
+### REQ-1558 · Security {#REQ-1558}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+ADMIN / SECRETS: NAMES GO IN, VALUES NEVER COME BACK OUT. An org admin creates a secret by giving it a name and a value, and from then on the screen, the API and the audit record speak only in names -- the list says what exists, who last set it and when, and the reference to paste (${secret:NAME}); no endpoint returns a stored value, to anyone, ever. THERE IS NO "SHOW" BUTTON, because a value that can be read back through the API is a credential the browser has already leaked; a person who has lost a secret replaces it rather than reading it. A secret may be REPLACED (same name, new value) and DELETED, and deleting one that a stored reference still names is allowed and reported -- the reference is text, its resolution is checked when it is used, and Provisa does not hold a secret hostage to a config that mentions it. Secrets are the ORG'S, managed by org_admin: a platform admin operates the control plane and has no read of any org's secret values ([REQ-1361](#REQ-1361)). The page also names which secrets provider the deployment is using, so an org can tell Provisa's own store from a central service it is expected to file the secret in instead.
+
+**Use case:** An org admin can add the git token an environment remote references, rotate it when it expires, and see at a glance which secrets exist without any screen or response ever carrying a secret value.
+
+**Code:** `provisa/api/admin/secrets_router.py`, `provisa/core/secrets_store.py`, `provisa-ui/src/components/admin/SecretsTab.tsx`, `provisa-ui/src/api/secrets.ts`
+
+**Tests:** —

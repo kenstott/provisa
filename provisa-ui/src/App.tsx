@@ -534,7 +534,8 @@ function App() {
                               [
                                 ["/admin/overview", "observability"],
                                 ["/admin/domains", "org_settings"],
-              ["/admin/environments", "org_settings"],
+                                ["/admin/environments", "org_settings"],
+                                ["/admin/secrets", "org_settings"], // REQ-1558
                                 ["/admin/cache", "org_settings"],
                                 ["/admin/scheduled-tasks", "org_settings"],
                                 ["/admin/federation-engine", "platform_settings"],

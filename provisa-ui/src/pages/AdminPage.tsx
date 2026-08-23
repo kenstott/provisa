@@ -42,6 +42,7 @@ import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import { domainGqlAlias } from "../types/admin";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
+import { SecretsTab } from "../components/admin/SecretsTab";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
@@ -92,6 +93,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/encryption": "Security",
   "/admin/auth": "Security",
   "/admin/local-users": "Security",
+  "/admin/secrets": "Secrets", // REQ-1558: the org's secrets
 };
 
 // Which Security sub-tab a route opens on.
@@ -252,6 +254,9 @@ export function AdminPage() {
         )}
 
         {activeTab === "Environments" && <EnvironmentsTab />}
+
+        {/* REQ-1558: names go in, values never come back out. */}
+        {activeTab === "Secrets" && <SecretsTab />}
 
         {activeTab === "Domains" && (
           <>

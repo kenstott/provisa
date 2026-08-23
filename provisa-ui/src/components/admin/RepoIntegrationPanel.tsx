@@ -29,7 +29,14 @@ import {
  * than a password one: what belongs in it is a reference, never a token, and masking it would
  * imply the opposite.
  */
-export function RepoIntegrationPanel({ orgId }: { orgId: string }) {
+export function RepoIntegrationPanel({
+  orgId,
+  onChanged,
+}: {
+  orgId: string;
+  /** Called whenever the stored integration changes, so what the page says about it can catch up. */
+  onChanged?: () => void;
+}) {
   const { t } = useTranslation();
   const [remote, setRemote] = useState("");
   const [webhook, setWebhook] = useState("");
@@ -58,22 +65,29 @@ export function RepoIntegrationPanel({ orgId }: { orgId: string }) {
     };
   }, [orgId]);
 
+  /** Write what is on screen, whole, and answer with the stored remote. */
+  async function persist(): Promise<string> {
+    // Both halves are written whole: an org that means to stop mirroring says so by clearing the
+    // field, which is the null the server reads as "no remote".
+    const it = await saveRepoIntegration(orgId, {
+      remote: remote.trim() === "" ? null : remote.trim(),
+      status_webhook: webhook.trim() === "" ? null : webhook.trim(),
+    });
+    setRemote(it.remote ?? "");
+    setWebhook(it.status_webhook ?? "");
+    notifications.show({ color: "green", message: t("environmentsTab.integrationSaved") });
+    onChanged?.();
+    return it.remote ?? "";
+  }
+
   async function save() {
     setSaving(true);
     try {
-      // Both halves are written whole: an org that means to stop mirroring says so by clearing the
-      // field, which is the null the server reads as "no remote".
-      const it = await saveRepoIntegration(orgId, {
-        remote: remote.trim() === "" ? null : remote.trim(),
-        status_webhook: webhook.trim() === "" ? null : webhook.trim(),
-      });
-      setRemote(it.remote ?? "");
-      setWebhook(it.status_webhook ?? "");
-      notifications.show({ color: "green", message: t("environmentsTab.integrationSaved") });
+      const stored = await persist();
       // The stored value is now the one on screen, so a verdict about the typed candidate still
       // describes it. Re-check it so a saved remote that does not exist yet says so immediately
       // rather than waiting for the first push to fail (REQ-1537).
-      await check(it.remote ?? "");
+      await check(stored);
     } catch (err) {
       notifications.show({ color: "red", message: (err as Error).message });
     } finally {
@@ -106,7 +120,15 @@ export function RepoIntegrationPanel({ orgId }: { orgId: string }) {
     setCreating(true);
     try {
       const made = await createRepoRemote(orgId, remote.trim(), makePrivate);
-      setProbe(made);
+      // The panel exists to ask a question, so an answered question closes it: the repository is
+      // there, and an alert still saying it is missing is the wrong sentence. A creation that came
+      // back still not finding it keeps the panel, because that IS the open question (REQ-1537).
+      setProbe(made.exists ? null : made);
+      // ASKING FOR THIS ADDRESS TO BE CREATED IS SAYING IT IS THE REMOTE. Leaving it typed but
+      // unstored left the org with no remote at all, so the next push answered that it had none --
+      // an org that just watched Provisa create its repository is being told about a state it
+      // thought it had left. The webhook goes with it because the store is written whole.
+      if (made.exists) await persist();
       notifications.show({
         color: "green",
         message: t("environmentsTab.probeCreated", { kind: made.kind, target: made.target }),

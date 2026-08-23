@@ -1,0 +1,130 @@
+// Copyright (c) 2026 Kenneth Stott
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+// REQ-1558: names go in, values never come back out. What is worth testing on this page is mostly
+// what it does NOT do — no value on screen, no read call, and no create button at all when a
+// central service owns the names.
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { SecretsTab } from "../components/admin/SecretsTab";
+
+const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
+vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
+vi.mock("../api/secrets", () => ({
+  fetchSecrets: vi.fn(),
+  putSecret: vi.fn(),
+  deleteSecret: vi.fn(),
+}));
+
+import { fetchSecrets, putSecret, deleteSecret } from "../api/secrets";
+
+const mockFetch = vi.mocked(fetchSecrets);
+const mockPut = vi.mocked(putSecret);
+const mockDelete = vi.mocked(deleteSecret);
+
+const SECRET = {
+  name: "GIT_TOKEN",
+  description: "Push access",
+  created_at: "2026-08-01T00:00:00Z",
+  updated_at: "2026-08-20T00:00:00Z",
+  updated_by: "uid-admin",
+  reference: "${secret:GIT_TOKEN}",
+};
+
+const BUILT_IN = {
+  provider: { key: "provisa", label: "Provisa (built-in, encrypted)", writable: true },
+  secrets: [SECRET],
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockFetch.mockResolvedValue(BUILT_IN);
+});
+
+describe("SecretsTab", () => {
+  it("lists the name and the reference to paste, and no value", async () => {
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
+    expect(screen.getByText("${secret:GIT_TOKEN}")).toBeInTheDocument();
+    expect(screen.getByText("Push access")).toBeInTheDocument();
+    // Nothing in the module can even ask for a value: there is no read call to mock.
+    expect(Object.keys(await import("../api/secrets"))).toEqual([
+      "fetchSecrets",
+      "putSecret",
+      "deleteSecret",
+    ]);
+  });
+
+  it("stores a new secret under the name that was typed", async () => {
+    mockPut.mockResolvedValue({ ...SECRET, name: "SLACK_WEBHOOK" });
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("secrets-add"));
+    fireEvent.change(await screen.findByLabelText("Name"), {
+      target: { value: "SLACK_WEBHOOK" },
+    });
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "https://hooks" } });
+    fireEvent.click(screen.getByTestId("secret-submit"));
+    await waitFor(() =>
+      expect(mockPut).toHaveBeenCalledWith("acme", "SLACK_WEBHOOK", {
+        value: "https://hooks",
+        description: null,
+      }),
+    );
+  });
+
+  it("replacing keeps the name, because the name is the identity", async () => {
+    mockPut.mockResolvedValue(SECRET);
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("secret-replace-GIT_TOKEN"));
+    const nameField = await screen.findByLabelText("Name");
+    expect(nameField).toHaveValue("GIT_TOKEN");
+    expect(nameField).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "ghp_rotated" } });
+    fireEvent.click(screen.getByTestId("secret-submit"));
+    await waitFor(() =>
+      expect(mockPut).toHaveBeenCalledWith("acme", "GIT_TOKEN", {
+        value: "ghp_rotated",
+        description: "Push access",
+      }),
+    );
+  });
+
+  it("will not save a secret with no value", async () => {
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("secrets-add"));
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "EMPTY" } });
+    expect(screen.getByTestId("secret-submit")).toBeDisabled();
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("deletes only after the consequence is confirmed", async () => {
+    mockDelete.mockResolvedValue({ deleted: "GIT_TOKEN" });
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("secret-delete-GIT_TOKEN"));
+    expect(mockDelete).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith("acme", "GIT_TOKEN"));
+  });
+
+  it("offers nothing to create when a central service owns the names", async () => {
+    mockFetch.mockResolvedValue({
+      provider: { key: "hashicorp_vault", label: "HashiCorp Vault (KV v2)", writable: false },
+      secrets: [],
+    });
+    render(<SecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
+    expect(screen.queryByTestId("secrets-add")).toBeNull();
+    expect(screen.getAllByText(/HashiCorp Vault/).length).toBeGreaterThan(0);
+  });
+});

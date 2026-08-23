@@ -482,7 +482,7 @@ async def delete_environment(
     if delete_remote_branch:
         remote = await _remote_of(org_id)
         try:
-            await asyncio.to_thread(env_ci.delete_remote_branch, org_id, name, remote)
+            await _remotely(org_id, env_ci.delete_remote_branch, org_id, name, remote)
         except _remote_failures() as exc:
             raise ApiError(
                 400, "environments.remote_unwritable", str(exc), org=org_id, env=name
@@ -715,7 +715,7 @@ async def _retire(org_id: str, actor: str | None, name: str, *, remote: bool = F
     if remote:
         url = await _remote_of(org_id)
         try:
-            await asyncio.to_thread(env_ci.delete_remote_branch, org_id, name, url)
+            await _remotely(org_id, env_ci.delete_remote_branch, org_id, name, url)
         except _remote_failures() as exc:
             raise ApiError(
                 400, "environments.remote_unwritable", str(exc), org=org_id, env=name
@@ -1145,7 +1145,7 @@ async def probe_repo_remote(request: Request, org_id: str, body: RemoteProbeBody
             org=org_id,
         )
     try:
-        probe = await asyncio.to_thread(env_remote.probe, remote)
+        probe = await _remotely(org_id, env_remote.probe, remote)
     except (env_remote.RemoteError, KeyError, ValueError) as exc:
         # KeyError is an unset secret reference and ValueError an unknown provider — both are the
         # operator's own configuration answering, so both are 400s that say what is wrong.
@@ -1168,7 +1168,7 @@ async def create_repo_remote(request: Request, org_id: str, body: RemoteCreateBo
     """
     actor = await _guard(request, org_id)
     try:
-        probe = await asyncio.to_thread(env_remote.create, body.remote, private=body.private)
+        probe = await _remotely(org_id, env_remote.create, body.remote, private=body.private)
     except (env_remote.RemoteError, KeyError, ValueError) as exc:
         raise ApiError(400, "environments.remote_not_created", str(exc), org=org_id) from exc
     await _audit(
@@ -1198,6 +1198,20 @@ def _remote_failures() -> tuple[type[BaseException], ...]:
         ValueError,
         OSError,
     )
+
+
+async def _remotely(org_id: str, call, *args, **kwargs):
+    """Run a git call that will resolve the remote's secret references, with the org bound.
+
+    A remote is stored VERBATIM, references and all (REQ-1525), and resolved only inside the call
+    that actually uses it. The org whose secrets those references name therefore has to be bound
+    AROUND that call rather than at the point of substitution, where there is no org and no
+    connection to read one with (REQ-1557).
+    """
+    from provisa.core import secrets_store
+
+    async with secrets_store.bound(_admin_pool(), org_id):
+        return await asyncio.to_thread(call, *args, **kwargs)
 
 
 async def _remote_of(org_id: str) -> str:
@@ -1279,7 +1293,7 @@ async def push_environment(request: Request, org_id: str, name: str) -> dict:
     await _known(org_id, name)
     remote = await _remote_of(org_id)
     try:
-        await asyncio.to_thread(env_ci.push, org_id, name, remote)
+        await _remotely(org_id, env_ci.push, org_id, name, remote)
     except _remote_failures() as exc:
         raise ApiError(
             400, "environments.remote_unwritable", str(exc), org=org_id, env=name
@@ -1352,7 +1366,7 @@ async def request_review(request: Request, org_id: str, name: str, body: ReviewB
         )
     remote = await _remote_of(org_id)
     try:
-        await asyncio.to_thread(env_ci.push, org_id, name, remote)
+        await _remotely(org_id, env_ci.push, org_id, name, remote)
     except _remote_failures() as exc:
         raise ApiError(
             400, "environments.remote_unwritable", str(exc), org=org_id, env=name
@@ -1406,7 +1420,7 @@ async def pull_environment(request: Request, org_id: str, name: str) -> dict:
     await _known(org_id, name)
     remote = await _remote_of(org_id)
     try:
-        await asyncio.to_thread(env_ci.fetch, org_id, remote)
+        await _remotely(org_id, env_ci.fetch, org_id, remote)
     except _remote_failures() as exc:
         raise ApiError(400, "environments.remote_unreadable", str(exc), org=org_id) from exc
     state = sync_state(org_id, name)
@@ -1477,7 +1491,7 @@ async def fetch_repo_remote(request: Request, org_id: str) -> dict:
     actor = await _guard(request, org_id)
     remote = await _remote_of(org_id)
     try:
-        fetched = await asyncio.to_thread(env_ci.fetch, org_id, remote)
+        fetched = await _remotely(org_id, env_ci.fetch, org_id, remote)
     except _remote_failures() as exc:
         raise ApiError(400, "environments.remote_unreadable", str(exc), org=org_id) from exc
     await _audit(org_id, actor, "environment.repo_fetch", "-", {"branches": sorted(fetched)})
