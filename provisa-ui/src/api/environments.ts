@@ -326,12 +326,13 @@ export async function pullEnvironment(
  * COMPARED rather than nothing collided.
  */
 export class DivergedError extends Error {
-  constructor(
-    message: string,
-    readonly base: string | null,
-    readonly conflicts: Conflict[],
-  ) {
+  readonly base: string | null;
+  readonly conflicts: Conflict[];
+
+  constructor(message: string, base: string | null, conflicts: Conflict[]) {
     super(message);
+    this.base = base;
+    this.conflicts = conflicts;
     this.name = "DivergedError";
   }
 }

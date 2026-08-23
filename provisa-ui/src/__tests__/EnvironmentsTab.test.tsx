@@ -41,12 +41,13 @@ vi.mock("../api/environments", () => ({
   // REQ-1556: the refusal is recognised by TYPE rather than by parsing its message, so the mock
   // has to hand back a real class for the component's instanceof to mean anything.
   DivergedError: class DivergedError extends Error {
-    constructor(
-      message: string,
-      public base: string | null,
-      public conflicts: unknown[],
-    ) {
+    base: string | null;
+    conflicts: unknown[];
+
+    constructor(message: string, base: string | null, conflicts: unknown[]) {
       super(message);
+      this.base = base;
+      this.conflicts = conflicts;
       this.name = "DivergedError";
     }
   },

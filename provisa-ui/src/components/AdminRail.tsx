@@ -17,10 +17,17 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CapabilityGate } from "./CapabilityGate";
 import { useAuth } from "../context/AuthContext";
-import { NAV_GROUPS, activeGroupId } from "./navGroups";
+import { NAV_GROUPS, activeGroupId, type NavGroup } from "./navGroups";
 
-const ADMIN_GROUP = NAV_GROUPS.find((g) => g.id === "admin");
-if (!ADMIN_GROUP) throw new Error("NAV_GROUPS carries no admin group");
+// The rail IS the admin group; a build whose NAV_GROUPS lost it has nothing to render, so this
+// fails at import rather than degrading to an empty rail.
+function adminGroup(): NavGroup {
+  const group = NAV_GROUPS.find((g) => g.id === "admin");
+  if (!group) throw new Error("NAV_GROUPS carries no admin group");
+  return group;
+}
+
+const ADMIN_GROUP = adminGroup();
 
 export function AdminRail() {
   const { t } = useTranslation();
