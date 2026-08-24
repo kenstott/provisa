@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "エキスパート:",
     "hoverRefsLabel": "参照:",
     "excludeFromExportLabel": "メタデータエクスポートから除外",
+    "excludeFromExportHelp": "業務データを担う列もあれば、配管にあたる技術データを担う列もあります。「etl batch identifier」や「row version」のような用語にも確かな定義はありますが、それは業務の言葉ではありません。除外すると、その用語はエンジニア向けにここへ残り、Provisa が公開するカタログには出ません。列はこれまでどおり書き出されますが、用語とその関係は書き出されません。",
     "bulkGenerateDefinitions": "定義",
     "bulkGenerateRelationships": "リレーションシップ",
     "definitionsGenerated": "{{count}} 件の定義を生成しました。",

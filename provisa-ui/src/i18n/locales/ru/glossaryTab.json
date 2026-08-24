@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "Эксперты:",
     "hoverRefsLabel": "Ссылки:",
     "excludeFromExportLabel": "Исключить из экспорта метаданных",
+    "excludeFromExportHelp": "Одни столбцы несут бизнес-данные, другие — техническую обвязку. У термина вроде «etl batch identifier» или «row version» есть настоящее определение — просто это не язык бизнеса. Исключите его, и он останется здесь для инженеров, вне каталогов, куда публикует Provisa. Столбцы по-прежнему экспортируются, а термин и его связи — нет.",
     "bulkGenerateDefinitions": "Определения",
     "bulkGenerateRelationships": "Связи",
     "definitionsGenerated": "{{count}} определение сгенерировано.",

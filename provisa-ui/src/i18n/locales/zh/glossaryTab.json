@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "专家：",
     "hoverRefsLabel": "引用：",
     "excludeFromExportLabel": "从元数据导出中排除",
+    "excludeFromExportHelp": "有些列承载业务数据，有些承载技术管道。像“etl batch identifier”或“row version”这样的术语有确切的定义——只是它并非业务用语。将其排除后，它会留在这里供工程师使用，不会进入 Provisa 发布的目录。列仍会导出；术语及其关系不会。",
     "bulkGenerateDefinitions": "定义",
     "bulkGenerateRelationships": "关系",
     "definitionsGenerated": "已生成 {{count}} 个定义。",

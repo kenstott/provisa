@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "專家：",
     "hoverRefsLabel": "參照：",
     "excludeFromExportLabel": "從中繼數據匯出中排除",
+    "excludeFromExportHelp": "有些欄承載業務資料，有些承載技術管道。像「etl batch identifier」或「row version」這樣的術語有確切的定義——只是它並非業務用語。將其排除後，它會留在這裡供工程師使用，不會進入 Provisa 發佈的目錄。欄仍會匯出；術語及其關係不會。",
     "bulkGenerateDefinitions": "定義",
     "bulkGenerateRelationships": "關係",
     "definitionsGenerated": "已產生 {{count}} 個定義。",

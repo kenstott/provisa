@@ -612,6 +612,7 @@
   "de/glossaryTab.json::glossaryTab.edgeRelLabel": "Relationship",
   "de/glossaryTab.json::glossaryTab.edgeTermLabel": "Term",
   "de/glossaryTab.json::glossaryTab.empty": "No terms.",
+  "de/glossaryTab.json::glossaryTab.excludeFromExportHelp": "Some columns carry business data, some carry plumbing. A term like \"etl batch identifier\" or \"row version\" has a real definition — it just isn't business vocabulary. Exclude it and it stays here for engineers, out of the catalogs Provisa publishes to. The columns still export; the term and its relationships do not.",
   "de/glossaryTab.json::glossaryTab.excludeFromExportLabel": "Exclude from metadata export",
   "de/glossaryTab.json::glossaryTab.expertKindLabel": "Kind",
   "de/glossaryTab.json::glossaryTab.expertUserLabel": "User ID",

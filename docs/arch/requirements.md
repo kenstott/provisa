@@ -16634,6 +16634,16 @@ An org's LLM vendor API key may be the credential itself or a REFERENCE to one h
 
 ## 3. Source Registration & Data Modeling
 
+### REQ-1583 · Business Glossary & Ontology {#REQ-1583}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The exclude-from-metadata-export control says which columns it is for. Some columns carry business data and some carry plumbing -- an ETL batch identifier, a row version, an ingestion timestamp -- and the term derived from a plumbing column has a real definition that is simply not business vocabulary. The help text under the control states the test (does the business speak this word, not is the definition good) and what exclusion does: the term and any relationship ending on it are withheld from the catalogs Provisa publishes to, while the columns themselves still export as assets. That last clause is the part readers get wrong -- excluding a term does not hide the data.
+
+**Code:** `provisa-ui/src/components/admin/GlossaryTab.tsx`, `provisa-ui/src/i18n/locales/en/glossaryTab.json`
+
+**Tests:** `provisa-ui/src/__tests__/GlossaryTab.test.tsx`
+
 ### REQ-1582 · Business Glossary & Ontology {#REQ-1582}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral

@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "विशेषज्ञ:",
     "hoverRefsLabel": "संदर्भ:",
     "excludeFromExportLabel": "मेटाडेटा निर्यात से बाहर रखें",
+    "excludeFromExportHelp": "कुछ कॉलम व्यावसायिक डेटा रखते हैं और कुछ तकनीकी ढाँचा। \"etl batch identifier\" या \"row version\" जैसे टर्म की परिभाषा असली होती है — वह बस व्यावसायिक शब्दावली नहीं है। इसे बाहर रखें और यह इंजीनियरों के लिए यहीं रहेगा, उन कैटलॉग से बाहर जहाँ Provisa प्रकाशित करता है। कॉलम फिर भी निर्यात होते हैं; टर्म और उसके संबंध नहीं।",
     "bulkGenerateDefinitions": "परिभाषाएं",
     "bulkGenerateRelationships": "संबंध",
     "definitionsGenerated": "{{count}} परिभाषा जनरेट की गई।",

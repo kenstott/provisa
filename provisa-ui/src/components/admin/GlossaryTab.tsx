@@ -518,6 +518,7 @@ export function GlossaryTab() {
 
               <Checkbox
                 label={t("glossaryTab.excludeFromExportLabel")}
+                description={t("glossaryTab.excludeFromExportHelp")}
                 checked={exportExcluded}
                 onChange={(e) => {
                   const next = e.currentTarget.checked;

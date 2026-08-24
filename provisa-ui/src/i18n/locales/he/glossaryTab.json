@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "מומחים:",
     "hoverRefsLabel": "הפניות:",
     "excludeFromExportLabel": "החרג מייצוא מטא-נתונים",
+    "excludeFromExportHelp": "חלק מהעמודות נושאות נתונים עסקיים וחלקן את התשתית הטכנית. למונח כמו \"etl batch identifier\" או \"row version\" יש הגדרה אמיתית — הוא פשוט אינו שפה עסקית. החריגו אותו והוא יישאר כאן עבור המהנדסים, מחוץ לקטלוגים שאליהם Provisa מפרסמת. העמודות עדיין מיוצאות; המונח והקשרים שלו לא.",
     "bulkGenerateDefinitions": "הגדרות",
     "bulkGenerateRelationships": "קשרים",
     "definitionsGenerated": "הגדרה {{count}} נוצרה.",

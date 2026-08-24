@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "Esperti:",
     "hoverRefsLabel": "Riferimenti:",
     "excludeFromExportLabel": "Escludi dall'esportazione metadati",
+    "excludeFromExportHelp": "Alcune colonne portano dati di business, altre l'impianto tecnico. Un termine come «etl batch identifier» o «row version» ha una definizione reale: semplicemente non è vocabolario di business. Escludilo e resta qui per gli ingegneri, fuori dai cataloghi in cui Provisa pubblica. Le colonne continuano a essere esportate; il termine e le sue relazioni no.",
     "bulkGenerateDefinitions": "Definizioni",
     "bulkGenerateRelationships": "Relazioni",
     "definitionsGenerated": "{{count}} definizione generata.",

@@ -67,6 +67,7 @@
     "hoverExpertsLabel": "Experts :",
     "hoverRefsLabel": "Références :",
     "excludeFromExportLabel": "Exclure de l'export de métadonnées",
+    "excludeFromExportHelp": "Certaines colonnes portent des données métier, d'autres la tuyauterie technique. Un terme comme « etl batch identifier » ou « row version » a une vraie définition — ce n'est simplement pas du vocabulaire métier. Excluez-le et il reste ici pour les ingénieurs, hors des catalogues où Provisa publie. Les colonnes sont toujours exportées ; le terme et ses relations ne le sont pas.",
     "bulkGenerateDefinitions": "Définitions",
     "bulkGenerateRelationships": "Relations",
     "definitionsGenerated": "{{count}} définition générée.",

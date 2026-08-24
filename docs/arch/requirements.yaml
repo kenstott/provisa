@@ -52113,6 +52113,35 @@
   - REQ-1398
   - REQ-1557
   - REQ-1560
+- id: REQ-1583
+  status: complete
+  since: 2026-08
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The exclude-from-metadata-export control says which columns it is for. Some columns carry business
+    data and some carry plumbing -- an ETL batch identifier, a row version, an ingestion timestamp --
+    and the term derived from a plumbing column has a real definition that is simply not business
+    vocabulary. The help text under the control states the test (does the business speak this word, not
+    is the definition good) and what exclusion does: the term and any relationship ending on it are
+    withheld from the catalogs Provisa publishes to, while the columns themselves still export as
+    assets. That last clause is the part readers get wrong -- excluding a term does not hide the data.
+  scenario: 'Given a glossary term derived from a technical column such as etl_batch_id
+
+    When a curator opens the term and reads the exclude-from-metadata-export control
+
+    Then the help text names the business-vocabulary test and says the columns still export
+
+    '
+  tests:
+  - provisa-ui/src/__tests__/GlossaryTab.test.tsx
+  code:
+  - provisa-ui/src/components/admin/GlossaryTab.tsx
+  - provisa-ui/src/i18n/locales/en/glossaryTab.json
+  depends_on:
+  - REQ-1387
 - id: REQ-1582
   status: complete
   since: 2026-08
