@@ -256,7 +256,51 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS owner TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
+    -- REQ-1586: the junction declaration reaches a relationships table that predates it.
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_table_id INTEGER
+        REFERENCES registered_tables(id) ON DELETE CASCADE;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_source_column TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_target_column TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_type_column TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_type_value TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_label_source TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- REQ-1586: the junction CHECKs the CREATE TABLE above declares, for a table that predates them.
+-- One block each: a constraint already present must not skip the ones after it.
+DO $$ BEGIN
+    ALTER TABLE relationships ADD CONSTRAINT relationships_via_label_source_check
+        CHECK (via_label_source IN ('column', 'table', 'fixed'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE relationships ADD CONSTRAINT relationships_via_complete CHECK (
+        (via_table_id IS NULL AND via_source_column IS NULL AND via_target_column IS NULL
+         AND via_label_source IS NULL)
+        OR (via_table_id IS NOT NULL AND via_source_column IS NOT NULL AND via_target_column IS NOT NULL
+            AND via_label_source IS NOT NULL)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE relationships ADD CONSTRAINT relationships_via_label_source_complete CHECK (
+        via_label_source IS NULL
+        OR (via_label_source = 'column' AND via_type_value IS NOT NULL)
+        OR (via_label_source = 'fixed' AND alias IS NOT NULL)
+        OR via_label_source = 'table'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE relationships ADD CONSTRAINT relationships_via_type_pairs CHECK (
+        (via_type_column IS NULL AND via_type_value IS NULL)
+        OR (via_type_column IS NOT NULL AND via_type_value IS NOT NULL AND via_table_id IS NOT NULL)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- Uniqueness constraint: one alias per (source_table, alias) pair
