@@ -58,6 +58,7 @@
     "profile": "Perfil",
     "settings": "Configuración",
     "logout": "Cerrar sesión",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemOrgKey": "Clave de la organización"
   }
 }

@@ -145,6 +145,14 @@ export const NAV_GROUPS: NavGroup[] = [
         capability: "org_settings",
         commercial: true,
       },
+      // REQ-1574: the key the org's own data is wrapped under. org_settings, beside the org's other
+      // settings rather than under Security — Security is the DEPLOYMENT's posture, and a platform
+      // administrator has no business in this one.
+      {
+        to: "/admin/org-encryption",
+        labelKey: "navBar.itemOrgKey",
+        capability: "org_settings",
+      },
       { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
       // REQ-1560: two surfaces, named for whose they are. They are separate entries rather than one
       // Secrets page with a filter because the question "may I see this" is answered differently for

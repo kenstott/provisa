@@ -19,6 +19,8 @@
     "keyGeneratedStored": "Master key generated and stored in the OS keychain (key id: {{keyId}}).",
     "keyGeneratedNoKeychain": "No OS keychain available — copy this key and set it as {{envVar}}. It will not be shown again.",
     "savedRestartRequired": "Saved. Restart the service to apply.",
-    "saved": "Saved."
+    "saved": "Saved.",
+    "secretOnFile": "Stored — leave blank to keep it",
+    "secretNotSet": "Not set"
   }
 }

@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Check } from "lucide-react";
+import { missingRequired, secretPlaceholder, seedFields } from "./secretFields";
 import {
   fetchEncryption,
   setEncryption,
@@ -32,7 +33,6 @@ export function EncryptionTab() {
   const [generating, setGenerating] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
-  const [generatedKey, setGeneratedKey] = useState<string | null>(null);
 
   const load = () =>
     fetchEncryption()
@@ -40,12 +40,12 @@ export function EncryptionTab() {
         setS(e);
         setProvider(e.provider);
         setKeyId(e.key_id ?? "");
+        // REQ-1575: the server sends every field EXCEPT the secret ones. A secret field seeds
+        // empty and is only sent back if it is typed into, so saving the form cannot overwrite a
+        // stored credential with a mask of itself.
         const seeded: Record<string, Record<string, string>> = {};
         for (const p of e.providers) {
-          const vals = e.config[p.key] ?? {};
-          seeded[p.key] = Object.fromEntries(
-            p.config_fields.map((f) => [f.config_key, String(vals[f.config_key] ?? "")]),
-          );
+          seeded[p.key] = seedFields(p.config_fields, e.config[p.key]);
         }
         setConfig(seeded);
       })
@@ -57,8 +57,11 @@ export function EncryptionTab() {
 
   const current = useMemo(() => s?.providers.find((p) => p.key === provider), [s, provider]);
   const unavailable = current ? !current.available : false;
-  const missingRequired = (current?.config_fields ?? []).some(
-    (f) => f.required && !(config[provider]?.[f.config_key] ?? "").trim(),
+  // A credential already on file satisfies its required field without being retyped (REQ-1575).
+  const incomplete = missingRequired(
+    current?.config_fields ?? [],
+    config[provider],
+    s?.secret_set?.[provider],
   );
 
   const setField = (key: string, value: string) =>
@@ -89,15 +92,11 @@ export function EncryptionTab() {
     setGenerating(true);
     setMsg("");
     setError("");
-    setGeneratedKey(null);
     try {
+      // REQ-1574: the response carries no key material. A deployment with no keychain to hold the
+      // key is a 503 with instructions, not a key printed on the screen.
       const res = await generateEncryptionKey({ key_id: keyId || null });
-      if (res.stored) {
-        setMsg(t("encryptionTab.keyGeneratedStored", { keyId: res.key_id }));
-      } else {
-        setGeneratedKey(res.key_b64);
-        setMsg(t("encryptionTab.keyGeneratedNoKeychain", { envVar: res.env_var }));
-      }
+      setMsg(t("encryptionTab.keyGeneratedStored", { keyId: res.key_id }));
       load();
     } catch (e) {
       setError(String(e));
@@ -149,7 +148,12 @@ export function EncryptionTab() {
             key={f.config_key}
             label={f.label}
             required={f.required}
-            placeholder={f.placeholder}
+            placeholder={
+              secretPlaceholder(f, s.secret_set?.[provider], {
+                set: t("encryptionTab.secretOnFile"),
+                unset: t("encryptionTab.secretNotSet"),
+              }) ?? f.placeholder
+            }
             type={f.secret ? "password" : "text"}
             value={config[provider]?.[f.config_key] ?? ""}
             onChange={(e) => setField(f.config_key, e.currentTarget.value)}
@@ -188,14 +192,6 @@ export function EncryptionTab() {
                 {s.key_present ? t("encryptionTab.rotateKey") : t("encryptionTab.generateKey")}
               </Button>
             </Group>
-
-            {generatedKey && (
-              <Alert color="red" variant="outline">
-                <Text ff="monospace" fz="sm" style={{ wordBreak: "break-all" }}>
-                  {generatedKey}
-                </Text>
-              </Alert>
-            )}
           </>
         )}
       </Stack>
@@ -208,7 +204,7 @@ export function EncryptionTab() {
         <Button
           onClick={save}
           loading={saving}
-          disabled={unavailable || missingRequired}
+          disabled={unavailable || incomplete}
           title={t("encryptionTab.saveTitle")}
           aria-label={t("encryptionTab.saveTitle")}
           data-testid="save-encryption-button"

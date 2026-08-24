@@ -18,7 +18,14 @@ blob cannot be decrypted without the provider.
 
 Storage format (self-describing so any provider's wrapped-DEK length works):
 
-    magic(1) | version(1) | len(wrapped_dek):u32-be | wrapped_dek | iv(12) | ciphertext+tag
+    v1: magic(1) | version(1) | len(wrapped_dek):u32-be | wrapped_dek | iv(12) | ciphertext+tag
+    v2: magic(1) | version(2) | len(key_id):u8 | key_id | len(wrapped_dek):u32-be | wrapped_dek
+        | iv(12) | ciphertext+tag
+
+Version 2 names the KEY that wrapped the DEK (REQ-1574). An org holds a ring of keys rather than
+one key, so that rotating is immediate and is not a re-encryption of everything already stored: the
+new key wraps new writes while a blob written under a retired key still says which key to ask for.
+A v1 blob names no key because there was only ever one -- the deployment's.
 
 Unwrapped DEKs are cached in-process with a short TTL to bound master-key /
 KMS round-trips on repeated reads of the same blob.
@@ -38,7 +45,11 @@ from provisa.encryption.service import EncryptionService
 
 _MAGIC = 0xE1  # marks a provisa envelope blob
 _VERSION = 1
+_VERSION_KEYED = 2  # REQ-1574: the blob names the ring key that wrapped its DEK
 _HEADER = struct.Struct(">BBI")  # magic, version, wrapped_dek_len
+_KEYED_PREFIX = struct.Struct(">BBB")  # magic, version, key_id_len
+_LEN = struct.Struct(">I")  # wrapped_dek_len
+_MAX_KEY_ID = 255  # one byte of length
 _IV_LEN = 12
 _DEK_LEN = 32  # AES-256
 
@@ -83,7 +94,14 @@ class EnvelopeEncryption(EncryptionService):  # REQ-685
         return _HEADER.pack(_MAGIC, _VERSION, len(wrapped)) + wrapped + iv + ciphertext
 
     def decrypt(self, blob: bytes) -> bytes:
-        wrapped, iv, ciphertext = split_envelope(blob)
+        key_id, wrapped, iv, ciphertext = _split(blob)
+        if key_id is not None:
+            # REQ-1574: a keyed blob was written by a RING, and this service holds one provider that
+            # is not necessarily the named entry. Opening it with the only key at hand would be a
+            # wrong answer dressed as a right one.
+            raise ValueError(
+                f"envelope blob names ring key {key_id!r}; a single-key service cannot open it"
+            )
         now = time.monotonic()
         dek = self._cache.get(wrapped, now)
         if dek is None:
@@ -107,12 +125,109 @@ def split_envelope(blob: bytes) -> tuple[bytes, bytes, bytes]:
     The blob is self-describing (see module docstring); this is the framing a client
     parses to decrypt a redirect payload once it has unwrapped the DEK (REQ-687).
     """
-    magic, version, wlen = _HEADER.unpack_from(blob)
-    if magic != _MAGIC or version != _VERSION:
+    return _split(blob)[1:]
+
+
+def envelope_key_id(blob: bytes) -> str | None:
+    """The ring key that wrapped this blob's DEK, or ``None`` for a v1 blob (REQ-1574).
+
+    ``None`` is not "unknown": a v1 blob was written when a deployment had exactly one key, so the
+    absence of a name IS the name. A ring resolves it to the entry it was adopted under.
+    """
+    return _split(blob)[0]
+
+
+def _split(blob: bytes) -> tuple[str | None, bytes, bytes, bytes]:
+    """``(key_id, wrapped_dek, iv, ciphertext+tag)`` for either envelope version."""
+    magic, version = blob[0], blob[1]
+    if magic != _MAGIC or version not in (_VERSION, _VERSION_KEYED):
         raise ValueError("not a provisa envelope blob (bad magic/version)")
-    off = _HEADER.size
+    if version == _VERSION:
+        _, _, wlen = _HEADER.unpack_from(blob)
+        off = _HEADER.size
+        key_id = None
+    else:
+        _, _, klen = _KEYED_PREFIX.unpack_from(blob)
+        off = _KEYED_PREFIX.size
+        key_id = blob[off : off + klen].decode("ascii")
+        off += klen
+        (wlen,) = _LEN.unpack_from(blob, off)
+        off += _LEN.size
     wrapped = blob[off : off + wlen]
     off += wlen
     iv = blob[off : off + _IV_LEN]
     ciphertext = blob[off + _IV_LEN :]
-    return wrapped, iv, ciphertext
+    return key_id, wrapped, iv, ciphertext
+
+
+class RingEnvelopeEncryption(EncryptionService):  # REQ-1574
+    """Envelope encryption over a RING of master keys, one of them active.
+
+    The service an org gets once it has set a key of its own. ``encrypt`` wraps under the active
+    entry and stamps its id into the blob; ``decrypt`` reads the id back and asks that entry, so a
+    key that has been rotated away still decrypts what it wrote. A blob naming an entry this ring
+    does not hold RAISES -- it is never opened with whichever key happens to be active, which would
+    be a wrong answer rather than a missing one.
+
+    ``v1_key_id`` names the ring entry that adopts unnamed (v1) blobs: what the org's data was
+    written under before it held a ring. ``None`` means the ring refuses them, which is correct for
+    a ring whose first key predates any write.
+    """
+
+    def __init__(
+        self,
+        active_key_id: str,
+        providers: dict[str, MasterKeyProvider],
+        *,
+        v1_key_id: str | None = None,
+        dek_cache_ttl: float = 300.0,
+    ) -> None:
+        if active_key_id not in providers:
+            raise ValueError(f"active key {active_key_id!r} is not in the ring")
+        if len(active_key_id.encode("ascii")) > _MAX_KEY_ID:
+            raise ValueError(f"key id {active_key_id!r} is longer than {_MAX_KEY_ID} bytes")
+        self._active = active_key_id
+        self._providers = providers
+        self._v1_key_id = v1_key_id
+        self._cache = _DekCache(dek_cache_ttl)
+
+    @property
+    def active_key_id(self) -> str:
+        return self._active
+
+    def encrypt(self, plaintext: bytes) -> bytes:
+        dek = os.urandom(_DEK_LEN)
+        iv = os.urandom(_IV_LEN)
+        ciphertext = AESGCM(dek).encrypt(iv, plaintext, None)
+        wrapped = self._providers[self._active].wrap_dek(dek)
+        key_id = self._active.encode("ascii")
+        return (
+            _KEYED_PREFIX.pack(_MAGIC, _VERSION_KEYED, len(key_id))
+            + key_id
+            + _LEN.pack(len(wrapped))
+            + wrapped
+            + iv
+            + ciphertext
+        )
+
+    def decrypt(self, blob: bytes) -> bytes:
+        key_id, wrapped, iv, ciphertext = _split(blob)
+        named = key_id if key_id is not None else self._v1_key_id
+        if named is None:
+            raise ValueError(
+                "envelope blob names no key and this ring adopts no unnamed blobs (REQ-1574)"
+            )
+        provider = self._providers.get(named)
+        if provider is None:
+            raise ValueError(f"envelope blob names key {named!r}, which this ring does not hold")
+        now = time.monotonic()
+        cache_key = named.encode("ascii") + wrapped
+        dek = self._cache.get(cache_key, now)
+        if dek is None:
+            dek = provider.unwrap_dek(wrapped)
+            self._cache.put(cache_key, dek, now)
+        return AESGCM(dek).decrypt(iv, ciphertext, None)
+
+    def unwrap(self, wrapped: bytes) -> bytes:
+        """Unwrap a DEK wrapped by the ACTIVE entry (REQ-687 redirect unwrap)."""
+        return self._providers[self._active].unwrap_dek(wrapped)

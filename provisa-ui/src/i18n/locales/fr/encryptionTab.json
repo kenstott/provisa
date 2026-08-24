@@ -19,6 +19,8 @@
     "keyGeneratedStored": "Clé maîtresse générée et stockée dans le trousseau du système (ID de clé : {{keyId}}).",
     "keyGeneratedNoKeychain": "Aucun trousseau système disponible — copiez cette clé et définissez-la comme {{envVar}}. Elle ne sera plus affichée.",
     "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
-    "saved": "Enregistré."
+    "saved": "Enregistré.",
+    "secretOnFile": "Enregistré — laissez vide pour le conserver",
+    "secretNotSet": "Non défini"
   }
 }

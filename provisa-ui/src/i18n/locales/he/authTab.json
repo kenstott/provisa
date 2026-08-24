@@ -13,6 +13,8 @@
     "saveButton": "שמירת הגדרות אימות",
     "loading": "טוען…",
     "saved": "נשמר.",
-    "savedRestartRequired": "נשמר. יש להפעיל מחדש את השירות כדי להחיל."
+    "savedRestartRequired": "נשמר. יש להפעיל מחדש את השירות כדי להחיל.",
+    "secretOnFile": "נשמר — השאירו ריק כדי לשמור עליו",
+    "secretNotSet": "לא הוגדר"
   }
 }

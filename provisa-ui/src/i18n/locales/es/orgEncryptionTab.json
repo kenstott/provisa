@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "Cargando…",
+    "intro": "La clave de cifrado con la que se envuelven los datos de esta organización. Aquí se puede establecer, reemplazar y rotar; nunca se muestra, y nada en esta instalación puede enseñársela a usted ni a nadie.",
+    "fingerprintLabel": "Huella",
+    "supplied": "Aportada",
+    "generated": "Generada aquí",
+    "setOn": "Establecida el {{when}} por {{actor}}",
+    "retired": "{{count}} clave(s) retirada(s) que aún descifran",
+    "unset": "Esta organización no ha establecido una clave propia. Sus datos se envuelven con la clave de la instalación.",
+    "modeLabel": "Cómo establecer la clave",
+    "modeGenerate": "Generar una: existe solo en el anillo y no se muestra a nadie",
+    "modeSupply": "Aportar la mía (base64, 32 bytes)",
+    "keyLabel": "Clave",
+    "keyHelp": "Base64 de 32 bytes aleatorios, p. ej. openssl rand -base64 32. Se escribe una vez y nunca se vuelve a leer.",
+    "rotationNote": "Rotar cambia la clave con la que se envuelven los datos NUEVOS. La clave anterior se retira al anillo y sigue descifrando lo que ya escribió, así que nada queda ilegible; por eso una rotación no es una revocación.",
+    "set": "Establecer clave",
+    "rotate": "Rotar clave",
+    "applied": "Clave {{keyId}} activa — huella {{fingerprint}}"
+  }
+}

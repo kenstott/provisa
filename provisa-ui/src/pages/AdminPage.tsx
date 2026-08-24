@@ -48,6 +48,7 @@ import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 import { ObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
+import { OrgEncryptionTab } from "../components/admin/OrgEncryptionTab";
 import { MaintenanceTab } from "../components/admin/MaintenanceTab"; // REQ-1466
 import { BillingTab } from "../components/admin/BillingTab"; // REQ-1469
 import { McpServerTab } from "../components/admin/McpServerTab";
@@ -73,6 +74,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/scheduled-tasks": "Scheduler",
   "/admin/federation-engine": "Federation",
   "/admin/org-engine": "Org Engine", // REQ-1412: this org's engine lane
+  "/admin/org-encryption": "Org Key", // REQ-1574: the key THIS org's data is wrapped under
   "/admin/maintenance": "Maintenance", // REQ-1466: the scheduled-downtime banner
   "/admin/billing": "Billing", // REQ-1469: plan, current bill, next charge
   "/admin/system-health": "Dashboard",
@@ -393,6 +395,7 @@ export function AdminPage() {
         {activeTab === "Scheduler" && <ScheduledTasks />}
         {activeTab === "Federation" && <FederationEngineTab />}
         {activeTab === "Org Engine" && <OrgEngineTab />}
+        {activeTab === "Org Key" && <OrgEncryptionTab />}
         {activeTab === "Maintenance" && <MaintenanceTab />}
         {activeTab === "Billing" && <BillingTab />}
         {activeTab === "Security" && (

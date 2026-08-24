@@ -59,6 +59,7 @@
     "profile": "Profile",
     "settings": "Settings",
     "logout": "Logout",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemOrgKey": "Org Key"
   }
 }

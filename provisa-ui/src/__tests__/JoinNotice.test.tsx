@@ -47,7 +47,13 @@ beforeEach(() => {
 });
 
 function membership(over: Partial<OrgMembership>): OrgMembership {
-  return { org_id: "acme", org_name: "Acme", joined_via: "auto_join", acknowledged: false, ...over };
+  return {
+    org_id: "acme",
+    org_name: "Acme",
+    joined_via: "auto_join",
+    acknowledged: false,
+    ...over,
+  };
 }
 
 describe("JoinNotice", () => {

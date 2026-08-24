@@ -505,10 +505,43 @@ secrets_store = Table(
 )
 
 
+# REQ-1574: the org's OWN encryption key -- a RING, one row per key the org has ever set. The
+# active key is the row with ``retired_at IS NULL``; the rest stay so that a payload wrapped under
+# one still decrypts, which is what makes rotation immediate rather than a re-encryption of
+# everything stored. ``wrapped_key`` is the org's 32-byte master key wrapped by the DEPLOYMENT's
+# encryption service (REQ-685), for the same reason secrets_store holds an envelope blob: a copy of
+# this table without the deployment master key is not the org's key.
+# There is NO plaintext column and NO read path back out. ``fingerprint`` -- the first 16 hex of
+# SHA-256 over the raw key -- is what an operator is shown instead: enough to tell which key is
+# active and whether a key they just set is the one they meant, and nothing about the key itself.
+org_encryption_keys = Table(
+    "org_encryption_keys",
+    metadata,
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    # Stamped into every envelope blob this key wraps (REQ-1574), so it is ASCII and short.
+    Column("key_id", Text, primary_key=True),
+    Column("wrapped_key", LargeBinary, nullable=False),
+    Column("fingerprint", Text, nullable=False),
+    # Whether the org supplied the key material or asked the server to generate it. Recorded
+    # because it is the difference between a key the org can also hold elsewhere and one that
+    # exists only here.
+    Column("supplied", Boolean, nullable=False, server_default=false()),
+    # REQ-1574: this entry adopts blobs written before the org held a ring (envelope v1, which
+    # names no key). True on at most one row per org -- the first key set for an org that already
+    # had data, which was written under the deployment key and is decrypted by it thereafter.
+    Column("adopts_unkeyed", Boolean, nullable=False, server_default=false()),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("created_by", Text),
+    # NULL is the ACTIVE key. Exactly one row per org has it.
+    Column("retired_at", DateTime(timezone=True)),
+)
+
+
 # The org/user/invite registry. ``org_config`` is bootstrapped separately by the billing
 # module, so it is excluded here.
 REGISTRY_TABLES = [
     orgs,
+    org_encryption_keys,
     user_profiles,
     user_org_memberships,
     org_auto_join_optouts,

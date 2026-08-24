@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "Caricamento…",
+    "intro": "La chiave di cifratura sotto cui sono avvolti i dati di questa organizzazione. Qui si imposta, si sostituisce e si ruota; non viene mai mostrata, e niente in questo deployment può mostrarla a te o a chiunque altro.",
+    "fingerprintLabel": "Impronta",
+    "supplied": "Fornita",
+    "generated": "Generata qui",
+    "setOn": "Impostata il {{when}} da {{actor}}",
+    "retired": "{{count}} chiave/i ritirata/e decifrano ancora",
+    "unset": "Questa organizzazione non ha impostato una chiave propria. I suoi dati sono avvolti sotto la chiave del deployment.",
+    "modeLabel": "Come impostare la chiave",
+    "modeGenerate": "Generarne una — esiste solo nel portachiavi e non viene mostrata a nessuno",
+    "modeSupply": "Fornire la mia (base64, 32 byte)",
+    "keyLabel": "Chiave",
+    "keyHelp": "Base64 di 32 byte casuali, es. openssl rand -base64 32. Scritta una volta e mai riletta.",
+    "rotationNote": "La rotazione cambia la chiave con cui vengono avvolti i dati NUOVI. La precedente si ritira nel portachiavi e continua a decifrare ciò che ha scritto, quindi nulla diventa illeggibile — e perciò una rotazione non è una revoca.",
+    "set": "Imposta chiave",
+    "rotate": "Ruota chiave",
+    "applied": "Chiave {{keyId}} attiva — impronta {{fingerprint}}"
+  }
+}

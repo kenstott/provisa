@@ -13,6 +13,8 @@
     "saveButton": "Salvar configurações de autenticação",
     "loading": "Carregando…",
     "saved": "Salvo.",
-    "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar."
+    "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar.",
+    "secretOnFile": "Guardado — deixe em branco para manter",
+    "secretNotSet": "Não definido"
   }
 }

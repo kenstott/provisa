@@ -13,6 +13,8 @@
     "saveButton": "Enregistrer les paramètres d'authentification",
     "loading": "Chargement…",
     "saved": "Enregistré.",
-    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer."
+    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
+    "secretOnFile": "Enregistré — laissez vide pour le conserver",
+    "secretNotSet": "Non défini"
   }
 }

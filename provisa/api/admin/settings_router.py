@@ -24,6 +24,12 @@ from provisa.api.admin._platform_guard import (
     require_platform_settings,
 )
 from provisa.api.admin._config_io import config_path, read_config, write_config
+from provisa.api.admin.secret_redaction import (  # REQ-1575
+    redact,
+    redact_per_provider,
+    redact_url_password,
+    restore_url_password,
+)
 from provisa.api.errors import ApiError
 
 router = APIRouter()
@@ -746,11 +752,20 @@ async def get_federation_engine():  # REQ-916
     # Return current values for every config key any engine declares (each is a ProvisaConfig
     # field), so the tab can render per-engine fields — connection AND execution tuning — generically.
     all_keys = {f["config_key"] for e in engine_registry() for f in e["config_fields"]}
+    # REQ-1575: the S3 secret key never comes back, and a DSN comes back without its password —
+    # `federation_engine_url` reads as an address but carries a warehouse credential in its userinfo.
+    _fields = [f for e in engine_registry() for f in e["config_fields"]]
+    _safe, _is_set = redact({k: _eng(k) for k in sorted(all_keys)}, _fields)
+    _safe = {
+        k: (redact_url_password(v) if k.endswith("_url") and isinstance(v, str) else v)
+        for k, v in _safe.items()
+    }
     return {
         "current": state.federation_engine.selected_key,
         "persisted": _eng("federation_engine"),
         "env_pinned_engine": env_pinned,
-        "config": {k: _eng(k) for k in sorted(all_keys)},
+        "config": _safe,
+        "secret_set": _is_set,
         "engines": engine_registry(),
         "restart_required_note": note,
     }
@@ -796,6 +811,10 @@ async def set_federation_engine(request: Request):  # REQ-916
     for ck, field in selected_fields.items():
         if ck in body:
             coerced = _coerce(field, body[ck])
+            if ck.endswith("_url") and isinstance(coerced, str):
+                # REQ-1575: the form was handed this URL without its password; posting the page back
+                # unchanged must not be what deletes the credential.
+                coerced = restore_url_password(coerced, cfg.get(ck))
             if coerced is None:
                 cfg.pop(ck, None)
             else:
@@ -968,13 +987,19 @@ async def get_encryption(request: Request):  # REQ-918
     provider = enc.get("provider", "null")
     key_id = enc.get("key_id")
     providers = _encryption_providers()
+    _enc_safe, _enc_set = redact_per_provider(
+        {p["key"]: enc.get(p["key"]) or {} for p in providers}, providers
+    )
     return {
         "provider": provider,
         "key_id": key_id,
         "key_present": master_key_present(key_id) if provider == "local" else None,
         "providers": providers,
         # Per-provider persisted config (mirrors /admin/auth). key_id stays top-level for `local`.
-        "config": {p["key"]: dict(enc.get(p["key"], {}) or {}) for p in providers},
+        # REQ-1575: minus every field the registry marks secret — a KMS credential is not something
+        # this surface hands to a browser. `secret_set` carries the one bit the form needs.
+        "config": _enc_safe,
+        "secret_set": _enc_set,
         "restart_required_note": "The encryption provider binds at startup — changes take effect after a service restart.",
     }
 
@@ -1059,10 +1084,16 @@ async def get_secrets_service(request: Request):  # REQ-1557, REQ-1558
     sec = cfg.get("secrets", {}) or {}
     providers = _secrets_providers()
     # Unset is not unconfigured: it selects Provisa's own encrypted per-org store (REQ-1557).
+    # REQ-1575: the Vault token and its like go out of this response entirely; `secret_set` says
+    # only whether one is on file, which is what the form renders.
+    safe, is_set = redact_per_provider(
+        {p["key"]: sec.get(p["key"]) or {} for p in providers}, providers
+    )
     return {
         "provider": sec.get("provider", "provisa"),
         "providers": providers,
-        "config": {p["key"]: dict(sec.get(p["key"], {}) or {}) for p in providers},
+        "config": safe,
+        "secret_set": is_set,
     }
 
 
@@ -1112,24 +1143,31 @@ async def set_secrets_service(request: Request):  # REQ-1557, REQ-1558
 
 
 @router.post("/admin/encryption/generate-key")
-async def generate_encryption_key(request: Request):  # REQ-918
-    """Generate a fresh AES-256 master key and store it in the OS keychain under ``key_id``. When no
-    OS keychain is available, the base64 key is returned once so the operator can set it as
-    ``PROVISA_ENCRYPTION_KEY``. Never re-displayed after this call."""
+async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574
+    """Generate a fresh AES-256 master key into the OS keychain under ``key_id``. Never returns it.
+
+    REQ-1574 amends REQ-918, whose one-time display was the last place a key was ever shown by any
+    surface. A key that reaches the browser has been through a response body, a devtools network
+    tab and whatever cache sits between — so when there is no keychain to store it in, this refuses
+    rather than printing it, and the operator generates one out of band and sets
+    ``PROVISA_ENCRYPTION_KEY`` themselves. The key generated here exists in the keychain and
+    nowhere else.
+    """
     require_platform_settings(request)  # REQ-1337
     from provisa.encryption.providers import generate_master_key_b64, store_master_key
 
     body = await request.json()
     key_id = body.get("key_id") or None
-    key_b64 = generate_master_key_b64()
-    stored = store_master_key(key_b64, key_id)
-    return {
-        "stored": stored,
-        "key_id": key_id or "master",
-        # Only returned when it could NOT be stored in a keychain — the operator must persist it.
-        "key_b64": None if stored else key_b64,
-        "env_var": None if stored else "PROVISA_ENCRYPTION_KEY",
-    }
+    if not store_master_key(generate_master_key_b64(), key_id):
+        raise ApiError(
+            503,
+            "encryption.no_keystore",
+            "no OS keychain is available to hold the key, and a key is never returned over the "
+            "wire. Generate one out of band (openssl rand -base64 32) and set "
+            "PROVISA_ENCRYPTION_KEY.",
+            env_var="PROVISA_ENCRYPTION_KEY",
+        )
+    return {"stored": True, "key_id": key_id or "master"}
 
 
 _AUTH_PROVIDERS = [
@@ -1234,11 +1272,16 @@ async def get_auth(request: Request):  # REQ-919
             block["jwt_secret"] = auth.get("jwt_secret", "")
         return block
 
+    # REQ-1575: client secrets and the JWT signing secret never leave the server.
+    _auth_safe, _auth_set = redact_per_provider(
+        {p["key"]: _pcfg(p["key"]) for p in _AUTH_PROVIDERS}, _AUTH_PROVIDERS
+    )
     af = AuthConfig.model_fields
     return {
         "provider": provider,
         "providers": _AUTH_PROVIDERS,
-        "config": {p["key"]: _pcfg(p["key"]) for p in _AUTH_PROVIDERS},
+        "config": _auth_safe,
+        "secret_set": _auth_set,
         "common": {
             "default_role": auth.get("default_role", af["default_role"].default),
             "assignments_source": auth.get("assignments_source", af["assignments_source"].default),

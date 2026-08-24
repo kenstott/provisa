@@ -58,6 +58,7 @@
     "profile": "个人资料",
     "settings": "设置",
     "logout": "退出登录",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemOrgKey": "组织密钥"
   }
 }

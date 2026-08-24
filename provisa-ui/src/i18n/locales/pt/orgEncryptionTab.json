@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "A carregar…",
+    "intro": "A chave de cifra sob a qual os dados desta organização são embrulhados. Pode ser definida, substituída e rodada aqui; nunca é mostrada, e nada nesta instalação a pode mostrar a si ou a quem quer que seja.",
+    "fingerprintLabel": "Impressão digital",
+    "supplied": "Fornecida",
+    "generated": "Gerada aqui",
+    "setOn": "Definida a {{when}} por {{actor}}",
+    "retired": "{{count}} chave(s) retirada(s) ainda decifram",
+    "unset": "Esta organização não definiu uma chave própria. Os seus dados são embrulhados sob a chave da instalação.",
+    "modeLabel": "Como definir a chave",
+    "modeGenerate": "Gerar uma — existe apenas no porta-chaves e não é mostrada a ninguém",
+    "modeSupply": "Fornecer a minha (base64, 32 bytes)",
+    "keyLabel": "Chave",
+    "keyHelp": "Base64 de 32 bytes aleatórios, p. ex. openssl rand -base64 32. Escrita uma vez e nunca relida.",
+    "rotationNote": "Rodar muda a chave com que os dados NOVOS são embrulhados. A anterior é retirada para o porta-chaves e continua a decifrar o que escreveu, pelo que nada fica ilegível — e por isso uma rotação não é uma revogação.",
+    "set": "Definir chave",
+    "rotate": "Rodar chave",
+    "applied": "Chave {{keyId}} ativa — impressão digital {{fingerprint}}"
+  }
+}

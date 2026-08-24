@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "Wird geladen…",
+    "intro": "Der Schlüssel, unter dem die Daten dieser Organisation verpackt sind. Er lässt sich hier setzen, ersetzen und rotieren; angezeigt wird er nie, und nichts in dieser Installation kann ihn Ihnen oder jemand anderem zeigen.",
+    "fingerprintLabel": "Fingerabdruck",
+    "supplied": "Mitgebracht",
+    "generated": "Hier erzeugt",
+    "setOn": "Gesetzt am {{when}} von {{actor}}",
+    "retired": "{{count}} zurückgezogene(r) Schlüssel entschlüsselt weiterhin",
+    "unset": "Diese Organisation hat keinen eigenen Schlüssel gesetzt. Ihre Daten sind unter dem Schlüssel der Installation verpackt.",
+    "modeLabel": "Wie der Schlüssel gesetzt wird",
+    "modeGenerate": "Einen erzeugen — er existiert nur im Ring und wird niemandem gezeigt",
+    "modeSupply": "Eigenen mitbringen (base64, 32 Byte)",
+    "keyLabel": "Schlüssel",
+    "keyHelp": "Base64 von 32 Zufallsbytes, z. B. openssl rand -base64 32. Einmal geschrieben, nie zurückgelesen.",
+    "rotationNote": "Rotieren ändert den Schlüssel für NEUE Daten. Der bisherige wird in den Ring zurückgezogen und entschlüsselt weiter, was er geschrieben hat — nichts wird unlesbar, und eine Rotation ist deshalb kein Widerruf.",
+    "set": "Schlüssel setzen",
+    "rotate": "Schlüssel rotieren",
+    "applied": "Schlüssel {{keyId}} aktiv — Fingerabdruck {{fingerprint}}"
+  }
+}

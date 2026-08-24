@@ -285,9 +285,7 @@ export function DataQualityPanel({
                       data-testid={`dq-args-${i}`}
                       aria-label={t("dataQualityPanel.definitionHeader")}
                       value={argDrafts[i] ?? c.definition}
-                      onChange={(e) =>
-                        setArgDrafts({ ...argDrafts, [i]: e.currentTarget.value })
-                      }
+                      onChange={(e) => setArgDrafts({ ...argDrafts, [i]: e.currentTarget.value })}
                       onBlur={() => {
                         const edited = argDrafts[i];
                         if (edited === undefined || edited === c.definition) return;

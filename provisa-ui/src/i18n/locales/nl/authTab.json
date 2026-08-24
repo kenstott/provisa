@@ -13,6 +13,8 @@
     "saveButton": "Authenticatie-instellingen opslaan",
     "loading": "Laden…",
     "saved": "Opgeslagen.",
-    "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen."
+    "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
+    "secretOnFile": "Opgeslagen — laat leeg om te behouden",
+    "secretNotSet": "Niet ingesteld"
   }
 }

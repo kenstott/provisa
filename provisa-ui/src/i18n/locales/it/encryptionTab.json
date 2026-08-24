@@ -19,6 +19,8 @@
     "keyGeneratedStored": "Chiave master generata e archiviata nel portachiavi del sistema operativo (id chiave: {{keyId}}).",
     "keyGeneratedNoKeychain": "Nessun portachiavi del sistema operativo disponibile — copiare questa chiave e impostarla come {{envVar}}. Non verrà mostrata di nuovo.",
     "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
-    "saved": "Salvato."
+    "saved": "Salvato.",
+    "secretOnFile": "Salvato — lascia vuoto per mantenerlo",
+    "secretNotSet": "Non impostato"
   }
 }

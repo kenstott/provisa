@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "Laden…",
+    "intro": "De sleutel waaronder de gegevens van deze organisatie zijn verpakt. Hier kun je hem instellen, vervangen en roteren; hij wordt nooit getoond, en niets in deze installatie kan hem aan jou of aan wie dan ook laten zien.",
+    "fingerprintLabel": "Vingerafdruk",
+    "supplied": "Aangeleverd",
+    "generated": "Hier gegenereerd",
+    "setOn": "Ingesteld op {{when}} door {{actor}}",
+    "retired": "{{count}} ingetrokken sleutel(s) ontsleutelen nog",
+    "unset": "Deze organisatie heeft geen eigen sleutel ingesteld. Haar gegevens zijn verpakt onder de sleutel van de installatie.",
+    "modeLabel": "Hoe de sleutel wordt ingesteld",
+    "modeGenerate": "Er een genereren — hij bestaat alleen in de ring en wordt aan niemand getoond",
+    "modeSupply": "Mijn eigen aanleveren (base64, 32 bytes)",
+    "keyLabel": "Sleutel",
+    "keyHelp": "Base64 van 32 willekeurige bytes, bijv. openssl rand -base64 32. Eenmaal geschreven, nooit teruggelezen.",
+    "rotationNote": "Roteren verandert de sleutel voor NIEUWE gegevens. De vorige wordt ingetrokken in de ring en ontsleutelt door wat hij al schreef, dus niets wordt onleesbaar — en een rotatie is dus geen intrekking.",
+    "set": "Sleutel instellen",
+    "rotate": "Sleutel roteren",
+    "applied": "Sleutel {{keyId}} actief — vingerafdruk {{fingerprint}}"
+  }
+}

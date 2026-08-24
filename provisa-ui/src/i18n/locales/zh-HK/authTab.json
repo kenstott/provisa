@@ -13,6 +13,8 @@
     "saveButton": "儲存驗證設定",
     "loading": "正在載入…",
     "saved": "已儲存。",
-    "savedRestartRequired": "已儲存。請重新啟動服務以套用。"
+    "savedRestartRequired": "已儲存。請重新啟動服務以套用。",
+    "secretOnFile": "已儲存 — 留空即保持不變",
+    "secretNotSet": "未設定"
   }
 }

@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { missingRequired, secretPlaceholder } from "./secretFields";
 import {
   Alert,
   Button,
@@ -55,12 +56,12 @@ export function AuthTab() {
 
   const current = useMemo(() => s?.providers.find((p) => p.key === provider), [s, provider]);
 
-  const missingRequired = useMemo(
+  // REQ-1575: a secret the server holds satisfies its required field without being retyped; the
+  // server never sends it back, so the box is empty and that is not the same as unset.
+  const incomplete = useMemo(
     () =>
-      (current?.config_fields ?? []).some(
-        (f) => f.required && !(config[provider]?.[f.config_key] ?? "").trim(),
-      ),
-    [current, config, provider],
+      missingRequired(current?.config_fields ?? [], config[provider], s?.secret_set?.[provider]),
+    [current, config, provider, s],
   );
 
   const save = async () => {
@@ -122,7 +123,12 @@ export function AuthTab() {
               label={f.label}
               required={f.required}
               value={config[provider]?.[f.config_key] ?? ""}
-              placeholder={f.placeholder}
+              placeholder={
+                secretPlaceholder(f, s.secret_set?.[provider], {
+                  set: t("authTab.secretOnFile"),
+                  unset: t("authTab.secretNotSet"),
+                }) ?? f.placeholder
+              }
               autoComplete="new-password"
               onChange={(e) => setField(f.config_key, e.currentTarget.value)}
             />
@@ -179,7 +185,7 @@ export function AuthTab() {
       <Group gap="sm" align="center">
         <Button
           onClick={save}
-          disabled={saving || missingRequired}
+          disabled={saving || incomplete}
           title={t("authTab.saveButton")}
           aria-label={t("authTab.saveButton")}
           loading={saving}

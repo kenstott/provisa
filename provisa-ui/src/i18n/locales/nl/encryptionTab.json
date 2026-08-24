@@ -19,6 +19,8 @@
     "keyGeneratedStored": "Hoofdsleutel gegenereerd en opgeslagen in de OS-sleutelhanger (sleutel-id: {{keyId}}).",
     "keyGeneratedNoKeychain": "Geen OS-sleutelhanger beschikbaar — kopieer deze sleutel en stel deze in als {{envVar}}. De sleutel wordt niet opnieuw getoond.",
     "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
-    "saved": "Opgeslagen."
+    "saved": "Opgeslagen.",
+    "secretOnFile": "Opgeslagen — laat leeg om te behouden",
+    "secretNotSet": "Niet ingesteld"
   }
 }

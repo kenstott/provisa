@@ -1063,6 +1063,22 @@ async def _read_org_flags(org_id: str) -> OrgLane:
     return OrgLane(bool(row[0]), bool(row[1]), external, row[4], engine_url, row[6], storage_url)
 
 
+async def ensure_org_encryption(org_id: str) -> None:  # REQ-1574
+    """Resolve one org's encryption ring once per process, before any encrypted path reads it.
+
+    Records the answer either way: a ring when the org set a key, ``None`` when it holds none --
+    which is a real answer and not a miss, so the org is served the deployment service rather than
+    refused.
+    """
+    from provisa.core.org_encryption import load_org_ring
+    from provisa.encryption.runtime import org_encryption_loaded, set_org_encryption
+
+    if org_encryption_loaded(org_id):
+        return
+    assert state.admin_db is not None, "the admin plane is required to resolve an org's key ring"
+    set_org_encryption(org_id, await load_org_ring(state.admin_db, org_id))
+
+
 async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:  # REQ-1266
     """Get the org ENVIRONMENT's data-plane runtime, building it (once, under the lock) on a miss.
 
@@ -1077,6 +1093,11 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     copy of the model, not a second tenant, so a branch runs on the same engine, the same shard and
     the same storage its org does; what differs is the schema it reads and the bindings its sources
     resolve through. ``None`` and ``prod`` are the same environment and the same key."""
+
+    # REQ-1574: the org's key ring is resolved BEFORE anything reads its encrypted columns --
+    # _read_org_flags decrypts the org's engine and storage DSNs, and those were written under
+    # whichever key the org holds now.
+    await ensure_org_encryption(org_id)
 
     async def _builder(_key: str) -> OrgRuntime:
         lane = await _read_org_flags(org_id)
@@ -1743,6 +1764,16 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     if _idp and state.admin_db is not None:
         await _auto_configure_idp(_idp, state.admin_db)
 
+    # REQ-1574: teach the encryption accessor how to find the bound org, and record which orgs hold
+    # a key ring of their own. The roster is what makes selection fail closed -- an org named here
+    # is served its own key or refused, never quietly written under the deployment's.
+    if state.admin_db is not None:
+        from provisa.core.org_encryption import ring_owner_org_ids
+        from provisa.encryption.runtime import bind_org_selector, note_org_rings
+
+        bind_org_selector(current_org.get)
+        note_org_rings(await ring_owner_org_ids(state.admin_db))
+
     _prewarm_govdata_jvm(_log)
 
     await _start_background_tasks(_log)
@@ -2157,6 +2188,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(org_storage_router)
+    from provisa.api.admin.org_encryption_router import (  # REQ-1574
+        router as org_encryption_router,
+    )
+
+    app.include_router(org_encryption_router)
     from provisa.api.admin.import_router import router as hasura_import_router  # REQ-1483
 
     app.include_router(hasura_import_router)

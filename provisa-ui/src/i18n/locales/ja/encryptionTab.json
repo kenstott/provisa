@@ -19,6 +19,8 @@
     "keyGeneratedStored": "マスターキーを生成し、OS のキーチェーンに保存しました（キーID：{{keyId}}）。",
     "keyGeneratedNoKeychain": "OS のキーチェーンが利用できません。このキーをコピーして {{envVar}} として設定してください。再表示されません。",
     "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。",
-    "saved": "保存しました。"
+    "saved": "保存しました。",
+    "secretOnFile": "保存済み — そのままにするには空欄のまま",
+    "secretNotSet": "未設定"
   }
 }

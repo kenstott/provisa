@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "加载中…",
+    "intro": "本组织数据所使用的加密密钥。可在此设置、更换和轮换；它从不显示，本部署中没有任何途径能把它展示给你或其他任何人。",
+    "fingerprintLabel": "指纹",
+    "supplied": "自带",
+    "generated": "此处生成",
+    "setOn": "由 {{actor}} 于 {{when}} 设置",
+    "retired": "{{count}} 个已退役密钥仍可解密",
+    "unset": "本组织尚未设置自己的密钥，其数据由部署密钥加密。",
+    "modeLabel": "设置方式",
+    "modeGenerate": "生成一个 —— 它只存在于密钥环中，不向任何人显示",
+    "modeSupply": "提供我自己的（base64，32 字节）",
+    "keyLabel": "密钥",
+    "keyHelp": "32 个随机字节的 base64，例如 openssl rand -base64 32。写入一次，永不回读。",
+    "rotationNote": "轮换只改变新数据使用的密钥。旧密钥退役进入密钥环，继续解密它此前写下的数据，因此不会有任何内容变得不可读 —— 也因此轮换并不等于吊销。",
+    "set": "设置密钥",
+    "rotate": "轮换密钥",
+    "applied": "密钥 {{keyId}} 已生效 —— 指纹 {{fingerprint}}"
+  }
+}

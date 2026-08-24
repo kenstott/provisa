@@ -47,7 +47,9 @@ export function FederationEngineTab() {
         setState(s);
         // The persisted selection, not the running one: this Select edits what a restart will use.
         setSelected(s.persisted);
-        // Seed every declared key from the returned config, keeping booleans as booleans.
+        // Seed every key the server RETURNED, keeping booleans as booleans. A secret field is not
+        // among them (REQ-1575) and so seeds empty, which is what keeps a save from writing a
+        // blank over the stored credential — see `save`.
         const seeded: Record<string, string | boolean> = {};
         for (const key of Object.keys(s.config)) {
           const v = s.config[key];
@@ -63,12 +65,16 @@ export function FederationEngineTab() {
     [state, selected],
   );
 
-  const missingRequired = useMemo(
+  // A stored secret counts as filled: the server does not send it back, so an empty box means
+  // "unchanged", not "missing" (REQ-1575).
+  const incomplete = useMemo(
     () =>
-      (currentEngine?.config_fields ?? []).some(
-        (f) => f.required && !String(values[f.config_key] ?? "").trim(),
-      ),
-    [currentEngine, values],
+      (currentEngine?.config_fields ?? []).some((f) => {
+        if (!f.required) return false;
+        if (String(values[f.config_key] ?? "").trim()) return false;
+        return !(f.secret && state?.secret_set?.[f.config_key]);
+      }),
+    [currentEngine, values, state],
   );
 
   const save = async () => {
@@ -85,7 +91,10 @@ export function FederationEngineTab() {
           continue;
         }
         const raw = String(v ?? "").trim();
-        // Send blanks too, so clearing a field resets it server-side.
+        // A secret field is only sent when it was typed into: absent means "keep what is stored",
+        // and the box starts empty because the server never sent the value back (REQ-1575).
+        if (f.secret && raw === "" && state.secret_set?.[f.config_key]) continue;
+        // Send blanks otherwise, so clearing a field resets it server-side.
         body[f.config_key] = f.type === "number" && raw !== "" ? Number(raw) : raw;
       }
       const res = await setFederationEngine(body);
@@ -201,7 +210,7 @@ export function FederationEngineTab() {
       <Group gap="sm" align="center">
         <Button
           onClick={save}
-          disabled={saving || missingRequired}
+          disabled={saving || incomplete}
           title={t("federationEngineTab.saveButton")}
           aria-label={t("federationEngineTab.saveButton")}
           loading={saving}

@@ -64,10 +64,7 @@ export function DescriptionField({
   );
   return (
     <Stack gap={4} className="desc-field">
-      <div
-        ref={measureSlot}
-        style={{ position: "relative", height: slotHeight ?? undefined }}
-      >
+      <div ref={measureSlot} style={{ position: "relative", height: slotHeight ?? undefined }}>
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}

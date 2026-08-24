@@ -811,8 +811,11 @@ export interface FederationEngineState {
   persisted: string;
   /** `$PROVISA_ENGINE` when the deployment pins the engine; the pin outranks `persisted`. */
   env_pinned_engine: string | null;
-  /** Current value of every config key any engine declares (connection + execution tuning). */
+  /** Current value of every config key any engine declares (connection + execution tuning).
+   *  REQ-1575: minus every key declared `secret`, and with DSN passwords stripped. */
   config: Record<string, string | number | boolean | null>;
+  /** REQ-1575: per secret config key, whether a value is stored. Never the value. */
+  secret_set: Record<string, boolean>;
   engines: EngineRegistryEntry[];
   restart_required_note: string;
 }
@@ -911,6 +914,51 @@ export async function setOrgEngine(body: {
     body: JSON.stringify(body),
   });
   if (!resp.ok) throw new Error(requestFailed("Org engine update", resp.status));
+  return resp.json();
+}
+
+// --- The org's own encryption key (REQ-1574) ---
+
+/** What may be said about an org's key. No field here carries key material, by design. */
+export interface OrgEncryptionState {
+  org_id: string;
+  configured: boolean;
+  key_id?: string;
+  /** First 16 hex of SHA-256 over the key: enough to recognise it, never enough to be it. */
+  fingerprint?: string;
+  supplied?: boolean;
+  created_at?: string | null;
+  created_by?: string | null;
+  retired_count?: number;
+}
+
+export async function fetchOrgEncryption(): Promise<OrgEncryptionState> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/org-encryption`);
+  if (!resp.ok) throw new Error(requestFailed("Org encryption fetch", resp.status));
+  return resp.json();
+}
+
+/**
+ * Set or rotate the key. `key_b64` null means "generate one", in which case the key exists only in
+ * the ring — the response carries a fingerprint and never the key, on this call as on every other.
+ */
+export async function setOrgEncryption(body: { key_b64: string | null }): Promise<{
+  key_id: string;
+  fingerprint: string;
+  supplied: boolean;
+  created_at: string | null;
+  created_by: string | null;
+  retired_count: number;
+}> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/org-encryption`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Org encryption update", resp.status)));
+  }
   return resp.json();
 }
 
@@ -1062,8 +1110,10 @@ export interface EncryptionState {
   key_id: string | null;
   key_present: boolean | null;
   providers: EncryptionProvider[];
-  /** Per-provider persisted config (keyed by provider key). */
+  /** Per-provider persisted config (keyed by provider key), minus every secret field (REQ-1575). */
   config: Record<string, Record<string, unknown>>;
+  /** REQ-1575: per provider, per secret field, whether a value is stored. Never the value. */
+  secret_set: Record<string, Record<string, boolean>>;
   restart_required_note: string;
 }
 
@@ -1087,9 +1137,11 @@ export async function setEncryption(body: {
   return resp.json();
 }
 
+// REQ-1574: the key is generated INTO the OS keychain and is never returned. With no keychain to
+// hold it the server refuses (503) rather than putting a master key on the wire.
 export async function generateEncryptionKey(body: {
   key_id?: string | null;
-}): Promise<{ stored: boolean; key_id: string; key_b64: string | null; env_var: string | null }> {
+}): Promise<{ stored: boolean; key_id: string }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/encryption/generate-key`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1120,7 +1172,10 @@ export interface AuthProviderMeta {
 export interface AuthConfigState {
   provider: string;
   providers: AuthProviderMeta[];
+  /** Per-provider config, minus client secrets and signing secrets (REQ-1575). */
   config: Record<string, Record<string, unknown>>;
+  /** REQ-1575: per provider, per secret field, whether a value is stored. Never the value. */
+  secret_set: Record<string, Record<string, boolean>>;
   common: {
     default_role: string;
     assignments_source: string;

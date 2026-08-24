@@ -511,6 +511,9 @@ function App() {
                                     ["/admin/scheduled-tasks", "org_settings"],
                                     ["/admin/federation-engine", "platform_settings"],
                                     ["/admin/org-engine", "org_settings"], // REQ-1412
+                                    // REQ-1574: the org's own key is the org's to set — org_settings,
+                                    // never platform_settings, which holds no data-plane right at all.
+                                    ["/admin/org-encryption", "org_settings"],
                                     ["/admin/encryption", "platform_settings"],
                                     ["/admin/auth", "platform_settings"],
                                     ["/admin/system-health", "observability"],

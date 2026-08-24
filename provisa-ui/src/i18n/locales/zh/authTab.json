@@ -13,6 +13,8 @@
     "saveButton": "保存身份验证设置",
     "loading": "正在加载…",
     "saved": "已保存。",
-    "savedRestartRequired": "已保存。重启服务后生效。"
+    "savedRestartRequired": "已保存。重启服务后生效。",
+    "secretOnFile": "已保存 — 留空即保持不变",
+    "secretNotSet": "未设置"
   }
 }

@@ -13,6 +13,8 @@
     "saveButton": "Save auth settings",
     "loading": "Loading…",
     "saved": "Saved.",
-    "savedRestartRequired": "Saved. Restart the service to apply."
+    "savedRestartRequired": "Saved. Restart the service to apply.",
+    "secretOnFile": "Stored — leave blank to keep it",
+    "secretNotSet": "Not set"
   }
 }

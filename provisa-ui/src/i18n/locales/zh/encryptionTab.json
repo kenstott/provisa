@@ -19,6 +19,8 @@
     "keyGeneratedStored": "主密钥已生成并存储在操作系统密钥链中（密钥 ID：{{keyId}}）。",
     "keyGeneratedNoKeychain": "没有可用的操作系统密钥链——请复制此密钥并将其设置为 {{envVar}}。此密钥不会再次显示。",
     "savedRestartRequired": "已保存。重启服务以生效。",
-    "saved": "已保存。"
+    "saved": "已保存。",
+    "secretOnFile": "已保存 — 留空即保持不变",
+    "secretNotSet": "未设置"
   }
 }

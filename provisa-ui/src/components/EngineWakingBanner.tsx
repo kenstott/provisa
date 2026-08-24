@@ -60,8 +60,8 @@ export function EngineWakingBanner() {
             Starting the query engine
           </Text>
           <Text size="xs" c="dimmed">
-            It stopped while idle and takes 2–4 minutes to come back. Your query is still running and
-            will return on its own
+            It stopped while idle and takes 2–4 minutes to come back. Your query is still running
+            and will return on its own
             {seconds === null ? "" : ` — ${formatElapsed(seconds)} so far`}.
           </Text>
         </div>

@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { missingRequired, secretPlaceholder, seedFields } from "./secretFields";
 import {
   Accordion,
   Alert,
@@ -73,17 +74,11 @@ function SecretsServicePanel() {
       .then((state) => {
         setS(state);
         setChoice(state.provider);
+        // REQ-1575: seeded from what the server sent, which is every field EXCEPT the secret ones
+        // (the Vault token). A secret field starts empty and is only sent if it is typed into.
         setConfig(
           Object.fromEntries(
-            state.providers.map((p) => [
-              p.key,
-              Object.fromEntries(
-                p.config_fields.map((f) => [
-                  f.config_key,
-                  String(state.config[p.key]?.[f.config_key] ?? ""),
-                ]),
-              ),
-            ]),
+            state.providers.map((p) => [p.key, seedFields(p.config_fields, state.config[p.key])]),
           ),
         );
       })
@@ -94,8 +89,11 @@ function SecretsServicePanel() {
   }, []);
 
   const selected = useMemo(() => s?.providers.find((p) => p.key === choice), [s, choice]);
-  const missingRequired = (selected?.config_fields ?? []).some(
-    (f) => f.required && !(config[choice]?.[f.config_key] ?? "").trim(),
+  // A stored secret satisfies its required field without being retyped (REQ-1575).
+  const incomplete = missingRequired(
+    selected?.config_fields ?? [],
+    config[choice],
+    s?.secret_set?.[choice],
   );
 
   const setField = (key: string, value: string) =>
@@ -171,7 +169,12 @@ function SecretsServicePanel() {
           key={f.config_key}
           label={f.label}
           required={f.required}
-          placeholder={f.placeholder}
+          placeholder={
+            secretPlaceholder(f, s.secret_set?.[choice], {
+              set: t("secretsTab.secretOnFile"),
+              unset: t("secretsTab.secretNotSet"),
+            }) ?? f.placeholder
+          }
           // Never a password field: the value typed here is a ${env:...} REFERENCE to the
           // credential, not the credential (REQ-1557).
           value={config[choice]?.[f.config_key] ?? ""}
@@ -184,7 +187,7 @@ function SecretsServicePanel() {
         <Button
           onClick={save}
           loading={saving}
-          disabled={missingRequired || choice === ""}
+          disabled={incomplete || choice === ""}
           data-testid="secrets-service-save"
         >
           {t("secretsTab.serviceSave")}

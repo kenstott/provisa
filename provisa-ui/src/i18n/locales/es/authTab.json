@@ -13,6 +13,8 @@
     "saveButton": "Guardar configuración de autenticación",
     "loading": "Cargando…",
     "saved": "Guardado.",
-    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios."
+    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios.",
+    "secretOnFile": "Guardado — déjalo en blanco para conservarlo",
+    "secretNotSet": "Sin definir"
   }
 }

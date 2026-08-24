@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "Loading…",
+    "intro": "The encryption key this organization's data is wrapped under. It can be set, replaced and rotated here; it is never displayed, and nothing on this deployment can show it to you or to anyone else.",
+    "fingerprintLabel": "Fingerprint",
+    "supplied": "Supplied",
+    "generated": "Generated here",
+    "setOn": "Set {{when}} by {{actor}}",
+    "retired": "{{count}} retired key(s) still readable",
+    "unset": "This organization has not set a key of its own. Its data is wrapped under the deployment's key.",
+    "modeLabel": "How to set the key",
+    "modeGenerate": "Generate one — it exists only in the ring and is shown to nobody",
+    "modeSupply": "Supply my own (base64, 32 bytes)",
+    "keyLabel": "Key",
+    "keyHelp": "Base64 of 32 random bytes, e.g. openssl rand -base64 32. It is written once and never read back.",
+    "rotationNote": "Rotating changes the key NEW data is wrapped under. The previous key is retired into the ring and goes on decrypting what it already wrote, so nothing becomes unreadable — and so a rotation is not a revocation.",
+    "set": "Set key",
+    "rotate": "Rotate key",
+    "applied": "Key {{keyId}} active — fingerprint {{fingerprint}}"
+  }
+}

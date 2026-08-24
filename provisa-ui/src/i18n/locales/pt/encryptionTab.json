@@ -19,6 +19,8 @@
     "keyGeneratedStored": "Chave mestra gerada e armazenada no keychain do SO (id da chave: {{keyId}}).",
     "keyGeneratedNoKeychain": "Nenhum keychain do SO disponível — copie esta chave e defina-a como {{envVar}}. Ela não será exibida novamente.",
     "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar.",
-    "saved": "Salvo."
+    "saved": "Salvo.",
+    "secretOnFile": "Guardado — deixe em branco para manter",
+    "secretNotSet": "Não definido"
   }
 }

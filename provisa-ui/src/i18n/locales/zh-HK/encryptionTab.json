@@ -19,6 +19,8 @@
     "keyGeneratedStored": "主密鑰已產生並儲存於作業系統鑰匙圈（密鑰 ID：{{keyId}}）。",
     "keyGeneratedNoKeychain": "沒有可用的作業系統鑰匙圈——請複製此密鑰並設定為 {{envVar}}。此密鑰不會再次顯示。",
     "savedRestartRequired": "已儲存。請重新啟動服務以套用。",
-    "saved": "已儲存。"
+    "saved": "已儲存。",
+    "secretOnFile": "已儲存 — 留空即保持不變",
+    "secretNotSet": "未設定"
   }
 }

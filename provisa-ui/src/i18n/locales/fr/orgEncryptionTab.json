@@ -1,0 +1,21 @@
+{
+  "orgEncryptionTab": {
+    "loading": "Chargement…",
+    "intro": "La clé de chiffrement sous laquelle les données de cette organisation sont enveloppées. Elle se définit, se remplace et se renouvelle ici ; elle n'est jamais affichée, et rien dans ce déploiement ne peut vous la montrer, ni à quiconque.",
+    "fingerprintLabel": "Empreinte",
+    "supplied": "Fournie",
+    "generated": "Générée ici",
+    "setOn": "Définie le {{when}} par {{actor}}",
+    "retired": "{{count}} clé(s) retirée(s) encore capables de déchiffrer",
+    "unset": "Cette organisation n'a pas défini de clé propre. Ses données sont enveloppées sous la clé du déploiement.",
+    "modeLabel": "Comment définir la clé",
+    "modeGenerate": "En générer une — elle n'existe que dans le trousseau et n'est montrée à personne",
+    "modeSupply": "Fournir la mienne (base64, 32 octets)",
+    "keyLabel": "Clé",
+    "keyHelp": "Base64 de 32 octets aléatoires, par ex. openssl rand -base64 32. Écrite une fois, jamais relue.",
+    "rotationNote": "Le renouvellement change la clé sous laquelle les NOUVELLES données sont enveloppées. La clé précédente est retirée dans le trousseau et continue de déchiffrer ce qu'elle a écrit : rien ne devient illisible — et un renouvellement n'est donc pas une révocation.",
+    "set": "Définir la clé",
+    "rotate": "Renouveler la clé",
+    "applied": "Clé {{keyId}} active — empreinte {{fingerprint}}"
+  }
+}

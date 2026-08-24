@@ -58,6 +58,7 @@
     "profile": "Profilo",
     "settings": "Impostazioni",
     "logout": "Esci",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemOrgKey": "Chiave dell'organizzazione"
   }
 }

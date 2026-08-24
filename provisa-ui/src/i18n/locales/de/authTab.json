@@ -13,6 +13,8 @@
     "saveButton": "Auth-Einstellungen speichern",
     "loading": "Wird geladen…",
     "saved": "Gespeichert.",
-    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen."
+    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
+    "secretOnFile": "Gespeichert — leer lassen, um ihn zu behalten",
+    "secretNotSet": "Nicht gesetzt"
   }
 }

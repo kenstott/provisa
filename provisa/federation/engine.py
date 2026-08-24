@@ -1012,6 +1012,7 @@ _TRINO_EXEC_FIELDS: list[dict] = [
         "label": "Exchange Spool S3 Secret Key",
         "type": "string",
         "required": False,
+        "secret": True,  # REQ-1575: a credential — write-only, never returned by the settings GET
     },
 ]
 

@@ -265,10 +265,25 @@ class TestEncryption:
 
     async def test_generate_encryption_key(self, client):
         resp = await client.post("/admin/encryption/generate-key", json={})
-        assert resp.status_code == 200
+        assert resp.status_code in (200, 503)
         body = resp.json()
-        assert "stored" in body
-        assert body["key_id"] == "master"
+        if resp.status_code == 200:
+            assert body["stored"] is True
+            assert body["key_id"] == "master"
+        # REQ-1574: the key is never handed back, not even on the call that creates it. A
+        # deployment with nowhere to store it says so; it does not print the key instead.
+        assert "key_b64" not in str(body)
+
+    async def test_encryption_get_returns_no_secret_values(self, client):
+        """REQ-1575: a field the registry marks secret is absent, with a set/unset bit beside it."""
+        resp = await client.get("/admin/encryption")
+        body = resp.json()
+        assert "secret_set" in body
+        for provider in body["providers"]:
+            secret = {f["config_key"] for f in provider["config_fields"] if f.get("secret")}
+            returned = set(body["config"].get(provider["key"], {}))
+            assert not (secret & returned), f"{provider['key']} leaked {secret & returned}"
+            assert set(body["secret_set"].get(provider["key"], {})) == secret
 
 
 class TestAuth:
@@ -282,6 +297,34 @@ class TestAuth:
     async def test_set_auth_unknown_provider(self, client):
         resp = await client.put("/admin/auth", json={"provider": "no-such-provider-xyz"})
         assert resp.status_code == 400
+
+
+class TestSecretsAreWriteOnly:
+    """REQ-1575: names go in, values never come back out -- on every settings surface."""
+
+    async def test_auth_get_returns_no_secret_values(self, client):
+        body = (await client.get("/admin/auth")).json()
+        assert "secret_set" in body
+        for provider in body["providers"]:
+            secret = {f["config_key"] for f in provider["config_fields"] if f.get("secret")}
+            assert not (secret & set(body["config"].get(provider["key"], {})))
+            assert set(body["secret_set"].get(provider["key"], {})) == secret
+
+    async def test_secrets_service_get_returns_no_secret_values(self, client):
+        body = (await client.get("/admin/secrets-service")).json()
+        assert "secret_set" in body
+        for provider in body["providers"]:
+            secret = {f["config_key"] for f in provider["config_fields"] if f.get("secret")}
+            assert not (secret & set(body["config"].get(provider["key"], {})))
+
+    async def test_federation_engine_get_returns_no_secret_values(self, client):
+        body = (await client.get("/admin/federation-engine")).json()
+        assert "secret_set" in body
+        secret = {
+            f["config_key"] for e in body["engines"] for f in e["config_fields"] if f.get("secret")
+        }
+        assert not (secret & set(body["config"]))
+        assert secret <= set(body["secret_set"])
 
 
 class TestSchemaClusters:

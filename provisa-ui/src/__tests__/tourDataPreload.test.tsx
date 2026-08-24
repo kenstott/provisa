@@ -53,9 +53,8 @@ vi.mock("@apollo/client/react", async (importOriginal) => ({
   useQuery: () => ({ ...queryResult, error: undefined, refetch: vi.fn() }),
 }));
 
-const { useTourPrefetch, useSources, useRelationships, useRoles } = await import(
-  "../hooks/useAdminQueries"
-);
+const { useTourPrefetch, useSources, useRelationships, useRoles } =
+  await import("../hooks/useAdminQueries");
 
 describe("REQ-1362 tour data preload", () => {
   beforeEach(() => {

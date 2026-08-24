@@ -58,6 +58,7 @@
     "profile": "प्रोफ़ाइल",
     "settings": "सेटिंग्स",
     "logout": "लॉगआउट",
-    "dev": "DEV"
+    "dev": "DEV",
+    "itemOrgKey": "संगठन कुंजी"
   }
 }

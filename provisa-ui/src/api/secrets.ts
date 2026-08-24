@@ -81,7 +81,10 @@ export interface SecretsConfigField {
 export interface SecretsServiceState {
   provider: string;
   providers: SecretsProviderChoice[];
+  /** Per-provider config, minus every field the registry marks secret (REQ-1575). */
   config: Record<string, Record<string, string>>;
+  /** REQ-1575: per provider, per secret field, whether a value is stored. Never the value. */
+  secret_set: Record<string, Record<string, boolean>>;
 }
 
 export interface SecretsState {
