@@ -35,7 +35,7 @@ import { Sidebar } from "../components/graph/GraphSidebar";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { Neo4jExportModal } from "../components/graph/Neo4jExportModal";
-import { tableLabel as dbTableLabel } from "../naming";
+import { buildDropExpansion } from "./graph-drop";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
@@ -551,90 +551,29 @@ export function GraphPage() {
       const frame = framesRef.current.find((fr) => fr.id === frameId);
       if (!frame) return;
 
-      const droppedTableName = labelToTableLabel[compoundLabel] ?? compoundLabel;
-
-      // Map each declared Cypher label → its query variable by parsing the MATCH
-      // clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch that
-      // returned no rows still declares its label and must remain matchable.
-      const varByLabel: Record<string, string> = {};
-      for (const m of frame.query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*\)/g)) {
-        const [, varName, labels] = m;
-        labels.split(":").forEach((l) => {
-          varByLabel[l] = varName;
-        });
-      }
-
-      // Find a relationship whose one endpoint is the dropped table and whose other
-      // endpoint is a label already declared in the query. Comparison is exact: the
-      // dropped label and dbTableLabel(table_name) are both produced by the same
-      // label-derivation function on registered_tables.table_name.
-      let sourceVar: string | undefined;
-      let relAlias: string | null = null;
-      for (const r of adminRels) {
-        if (r.disableCypher) continue;
-        const srcLabel = dbTableLabel(r.sourceTableName);
-        const tgtLabel = r.targetTableName ? dbTableLabel(r.targetTableName) : null;
-        // dropped node is the relationship target; existing query node is the source
-        if (tgtLabel === droppedTableName && varByLabel[srcLabel]) {
-          sourceVar = varByLabel[srcLabel];
-          relAlias = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase() || null;
-          break;
-        }
-        // dropped node is the relationship source; existing query node is the target
-        if (srcLabel === droppedTableName && tgtLabel && varByLabel[tgtLabel]) {
-          sourceVar = varByLabel[tgtLabel];
-          relAlias = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase() || null;
-          break;
-        }
-      }
-      if (!sourceVar) {
-        // No known relationship — fall back to first MATCH variable
-        const nodeVarMatch = frame.query.match(/\bMATCH\s*\(\s*(\w+)/i);
-        sourceVar = nodeVarMatch?.[1] ?? "n";
-      }
-
-      const suffix = droppedTableName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
-      let relVar = `r${suffix}`;
-      let targetVar = `m${suffix}`;
-      const trimmed = frame.query.replace(/\s+LIMIT\s+\d+\s*$/i, "").trim();
-      let counter = 2;
-      while (
-        trimmed.includes(`[${relVar}`) ||
-        trimmed.includes(` ${targetVar}`) ||
-        trimmed.includes(`(${targetVar}`)
-      ) {
-        relVar = `r${suffix}${counter}`;
-        targetVar = `m${suffix}${counter}`;
-        counter++;
-      }
-      const optMatchPattern = relAlias
-        ? `(${sourceVar})-[${relVar}:${relAlias}]-(${targetVar}:${compoundLabel})`
-        : `(${targetVar}:${compoundLabel})`;
-      const extraReturn = relAlias ? `, ${relVar}, ${targetVar}` : `, ${targetVar}`;
-      const returnMatches = [...trimmed.matchAll(/\bRETURN\b/gi)];
-      const lastReturn = returnMatches.pop();
-      let newQueryBase: string;
-      if (!lastReturn || lastReturn.index === undefined) {
-        newQueryBase = `${trimmed}\nOPTIONAL MATCH ${optMatchPattern}\nRETURN ${sourceVar}${extraReturn}`;
-      } else {
-        const beforeReturn = trimmed.slice(0, lastReturn.index).trimEnd();
-        const returnClause = trimmed.slice(lastReturn.index + 6).trim();
-        newQueryBase = `${beforeReturn}\nOPTIONAL MATCH ${optMatchPattern}\nRETURN ${returnClause}${extraReturn}`;
-      }
+      const { query: newQueryBase, targetVars } = buildDropExpansion(
+        frame.query,
+        compoundLabel,
+        adminRels,
+        labelToTableLabel,
+      );
 
       const droppedNode = schemaNodeLabels.find((n) => {
         const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
         return cl === compoundLabel;
       });
       if (droppedNode && droppedNode.nativeFilterColumns.length > 0) {
-        const tv = targetVar;
+        // Every hop lands on its own copy of the same parameterized node, so the arguments the
+        // steward supplies once have to bind on each of them — an unbound copy is not a filter
+        // that matched nothing, it is a pattern the binder cannot satisfy.
+        const tvs = targetVars;
         const nfc = droppedNode.nativeFilterColumns;
         setNfModal({
           label: droppedNode.tableLabel,
           filterColumns: nfc,
           onConfirm: (params) => {
             setNfModal(null);
-            const clauses = buildNfWhereClauses(tv, nfc, params);
+            const clauses = tvs.flatMap((tv) => buildNfWhereClauses(tv, nfc, params));
             const whereStr = clauses.length > 0 ? `\nWHERE ${clauses.join(" AND ")}` : "";
             const finalQuery = newQueryBase.replace(/(\nRETURN )/, `${whereStr}$1`);
             rerunFrame(frameId, finalQuery);

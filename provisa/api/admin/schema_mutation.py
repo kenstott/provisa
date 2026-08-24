@@ -32,6 +32,7 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+from provisa.compiler.sql_types import key_list
 from provisa.core.repositories import rls as rls_repo
 from provisa.federation.strategy import engine_attaches
 from provisa.api.admin._config_io import config_path as _config_path, read_config
@@ -149,6 +150,25 @@ async def _upsert_relationship_impl(
         return await _queue_creation_request(info, "relationship", "create_relationship", input)
     _cross_domain = _tgt_row is not None and _tgt_row["domain_id"] != _src_row["domain_id"]
 
+    # REQ-1586: a junction end is an ordered column list paired positionally against the
+    # relationship's own key, so the two lists must be the same length. Saving a mismatch would
+    # produce an edge the compiler can only reject at query time.
+    if input.via_table:
+        _via_src = key_list(input.via_source_column)
+        _via_tgt = key_list(input.via_target_column)
+        if len(_via_src) != len(key_list(input.source_column)) or len(_via_tgt) != len(
+            key_list(input.target_column or "")
+        ):
+            return MutationResult(
+                success=False,
+                message=(
+                    "Junction key lists must pair positionally with the relationship's own "
+                    "source and target keys"
+                ),
+                code="schema.relationship_junction_key_mismatch",
+                params={"relationship": input.id},
+            )
+
     # REQ-020: record the defining steward as owner.
     _identity = _identity_from_info(info)
     _owner = getattr(_identity, "user_id", None) if _identity is not None else None
@@ -166,6 +186,13 @@ async def _upsert_relationship_impl(
         alias=input.alias or None,
         graphql_alias=getattr(input, "graphql_alias", None) or None,
         disable_cypher=getattr(input, "disable_cypher", False),
+        # REQ-1586: the junction declaration travels with the edge on save.
+        via_table=input.via_table,
+        via_source_column=input.via_source_column,
+        via_target_column=input.via_target_column,
+        via_type_column=input.via_type_column or None,
+        via_type_value=input.via_type_value or None,
+        via_label_source=input.via_label_source,
         owner=_owner,
     )
     async with pool.acquire() as conn:

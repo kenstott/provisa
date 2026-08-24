@@ -181,15 +181,42 @@ async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
         # duplicate column names when both tables share column names like "id".
         if engine is None:
             raise ValueError(f"MV {mv.id}: engine required to introspect right-table columns")
-        try:
-            rows = (await engine.execute_engine(f'SHOW COLUMNS FROM "{jp.right_table}"')).rows
-        except Exception as exc:
-            # Falling back to left.* silently drops right-table columns — fail loud.
-            raise RuntimeError(
-                f"MV {mv.id}: could not introspect columns for {jp.right_table!r}: {exc}"
-            ) from exc
-        cols = [row[0] for row in rows]
-        right_cols = ", ".join(f'"{jp.right_table}"."{c}" AS "{jp.right_table}__{c}"' for c in cols)
+
+        async def _columns_of(table: str) -> list[str]:
+            try:
+                rows = (await engine.execute_engine(f'SHOW COLUMNS FROM "{table}"')).rows
+            except Exception as exc:
+                # Falling back to left.* silently drops the table's columns — fail loud.
+                raise RuntimeError(
+                    f"MV {mv.id}: could not introspect columns for {table!r}: {exc}"
+                ) from exc
+            return [row[0] for row in rows]
+
+        def _prefixed(table: str, cols: list[str]) -> str:
+            return ", ".join(f'"{table}"."{c}" AS "{table}__{c}"' for c in cols)
+
+        right_cols = _prefixed(jp.right_table, await _columns_of(jp.right_table))
+
+        if jp.is_junction:  # REQ-1586: left -> via -> right, one MV row per edge
+            # The junction's own columns are the edge's attributes; they are materialized
+            # under the same "{table}__{col}" convention the rewriter rewrites refs to.
+            via_cols = _prefixed(jp.via_table, await _columns_of(jp.via_table))
+            join_kw = jp.join_type.upper()
+            sql = (
+                f'SELECT "{jp.left_table}".*, {via_cols}, {right_cols} '
+                f'FROM "{jp.left_table}" '
+                f'{join_kw} JOIN "{jp.via_table}" '
+                f'ON "{jp.left_table}"."{jp.left_column}" = '
+                f'"{jp.via_table}"."{jp.via_left_column}" '
+                f'{join_kw} JOIN "{jp.right_table}" '
+                f'ON "{jp.via_table}"."{jp.via_right_column}" = '
+                f'"{jp.right_table}"."{jp.right_column}"'
+            )
+            if jp.via_type_column:
+                literal = jp.via_type_value.replace("'", "''")
+                sql += f' WHERE "{jp.via_table}"."{jp.via_type_column}" = \'{literal}\''
+            return sql
+
         select_clause = f'"{jp.left_table}".*, {right_cols}'
 
         return (

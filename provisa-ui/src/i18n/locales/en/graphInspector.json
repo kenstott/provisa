@@ -21,6 +21,7 @@
     "graphStats": "Graph stats",
     "properties": "Properties",
     "copyValue": "Copy value",
-    "resizePanel": "Resize inspector panel"
+    "resizePanel": "Resize inspector panel",
+    "junctionTable": "via {{table}}"
   }
 }

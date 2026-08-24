@@ -26,6 +26,11 @@ from typing import TYPE_CHECKING, cast
 import sqlglot.expressions as exp
 
 from provisa.cypher.expr_ast import MapProjection, PatternComprehension, SubqueryExpr
+from provisa.cypher.translator_helpers import (  # REQ-1586
+    _make_junction_joins,
+    via_alias_for,
+)
+from provisa.cypher.translator_helpers import via_column as _via_column  # REQ-1586
 
 if TYPE_CHECKING:
     from provisa.cypher.translator import _Translator
@@ -122,6 +127,15 @@ class TranslatorExprContext:
                     to=exp.DataType.build("json"),
                 )
                 return _anon("JSON_EXTRACT_SCALAR", cast, exp.Literal.string("$"))
+            # REQ-1586: an attribute of a junction-backed relationship is a column of the junction
+            # row, so r.attr anchors on the junction alias — in RETURN, in expressions, and in a
+            # WHERE, where it becomes a predicate on the join rather than on assembled rows.
+            via_bound = t._rel_var_via.get(var)
+            if via_bound is not None:
+                via_alias, via_map = via_bound
+                col_name = via_map.attributes.get(name)
+                if col_name is not None:
+                    return _via_column(via_alias, col_name)
             info = t._var_table.get(var)
             if info and info[1] is not None:
                 sql_alias = info[1].properties.get(name)
@@ -215,6 +229,12 @@ class TranslatorExprContext:
             return exp.Array(expressions=[exp.Literal.string(nm.label)]) if nm is not None else None
         if name == "keys":
             if nm is None:
+                # REQ-1586: keys(r) on a junction-backed edge lists its attribute names.
+                via_bound = t._rel_var_via.get(var)
+                if via_bound is not None:
+                    return exp.Array(
+                        expressions=[exp.Literal.string(k) for k in sorted(via_bound[1].attributes)]
+                    )
                 return None
             return exp.Array(expressions=[exp.Literal.string(k) for k in sorted(nm.properties)])
         if name == "type":
@@ -258,6 +278,15 @@ class TranslatorExprContext:
                 exprs.append(_col(col_name, sql_alias))
             return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
         if var in self._t._rel_var_types:
+            # REQ-1586: a junction-backed edge's properties are the junction row's own columns.
+            via_bound = self._t._rel_var_via.get(var)
+            if via_bound is not None:
+                via_alias, via_map = via_bound
+                via_exprs: list[exp.Expression] = []
+                for prop_name, col_name in via_map.attributes.items():
+                    via_exprs.append(exp.Literal.string(prop_name))
+                    via_exprs.append(_via_column(via_alias, col_name))
+                return exp.Anonymous(this="JSON_OBJECT", expressions=via_exprs)
             return exp.Anonymous(this="JSON_OBJECT", expressions=[])
         return None
 
@@ -384,6 +413,26 @@ class TranslatorExprContext:
                 t._var_table[tgt_var] = saved
 
         src_alias = t._var_table.get(src_var, (src_var, None))[0]
+        tgt_table = exp.table_(
+            tgt_nm.sql_table_name, db=tgt_nm.schema_name, catalog=tgt_nm.catalog_name, quoted=True
+        )
+        if rel.via is not None:
+            # REQ-1586: the comprehension correlates on the junction row, not on the target row —
+            # the junction scan is the FROM, its correlation to the outer source (with the
+            # discriminator) is the WHERE, and the target joins onto it.
+            via_join, tgt_join = _make_junction_joins(
+                rel, False, tgt_nm, tgt_var, src_alias, "INNER", via_alias_for(rel, tgt_var)
+            )
+            where: exp.Expression = (
+                via_join["on"] if pred is None else exp.And(this=via_join["on"], expression=pred)
+            )
+            select = (
+                exp.select(proj)
+                .from_(via_join["table"])
+                .join(tgt_join["table"], on=tgt_join["on"], join_type=tgt_join["join_type"])
+                .where(where)
+            )
+            return _anon("ARRAY", select)
         if rel.source_constant is not None:
             src_ref: exp.Expression = cast("exp.Expression", exp.convert(rel.source_constant))
         else:
@@ -393,9 +442,6 @@ class TranslatorExprContext:
             expression=_col(rel.join_target_column, tgt_var),
         )
         where = join_cond if pred is None else exp.And(this=join_cond, expression=pred)
-        tgt_table = exp.table_(
-            tgt_nm.sql_table_name, db=tgt_nm.schema_name, catalog=tgt_nm.catalog_name, quoted=True
-        )
         select = exp.select(proj).from_(exp.alias_(tgt_table, tgt_var)).where(where)
         return _anon("ARRAY", select)
 

@@ -47,6 +47,8 @@ class Edge:  # REQ-350
     start_node: Node
     end_node: Node
     properties: dict[str, Any]
+    # REQ-1586: the junction table an edge's attributes were read from; None on an FK/PK edge.
+    junction_table: str | None = None
 
 
 @dataclass
@@ -189,8 +191,10 @@ def _parse_edge(data: dict) -> Edge:
                 "start_node",
                 "end_node",
                 "properties",
+                "junctionTable",
             )
         },
+        junction_table=data.get("junctionTable"),
     )
 
 
@@ -459,6 +463,8 @@ def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
             "properties": obj.properties,
             "startNode": to_serializable(obj.start_node),
             "endNode": to_serializable(obj.end_node),
+            # REQ-1586: omitted entirely on an FK/PK edge, so a consumer tests presence, not null.
+            **({} if obj.junction_table is None else {"junctionTable": obj.junction_table}),
         }
     if isinstance(obj, Path):
         return {

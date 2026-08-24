@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, or_, select, update
 
+from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import relationships, table_columns
@@ -42,6 +43,15 @@ async def upsert(
             raise ValueError(f"Target table not registered: {rel.target_table_id}")
         target_tbl_id = target_tbl["id"]
 
+    # REQ-1586: a junction-backed edge names a registered associative table; an unregistered
+    # junction is a declaration error, not something to skip past.
+    via_tbl_id = None
+    if rel.via_table:
+        via_tbl = await table_repo.find_by_table_name(conn, rel.via_table)
+        if via_tbl is None:
+            raise ValueError(f"Junction table not registered: {rel.via_table}")
+        via_tbl_id = via_tbl["id"]
+
     vals = {
         "id": rel.id,
         "source_table_id": source_tbl["id"],
@@ -57,6 +67,12 @@ async def upsert(
         "graphql_alias": rel.graphql_alias or None,
         "disable_cypher": rel.disable_cypher,
         "hide_target_meta": rel.hide_target_meta,
+        "via_table_id": via_tbl_id,
+        "via_source_column": rel.via_source_column or None,
+        "via_target_column": rel.via_target_column or None,
+        "via_type_column": rel.via_type_column or None,
+        "via_type_value": rel.via_type_value or None,
+        "via_label_source": rel.via_label_source or None,
         "source_json_key": rel.source_json_key or None,
         "owner": rel.owner or None,
         "version": rel.version,
@@ -83,6 +99,12 @@ async def upsert(
                 "graphql_alias",
                 "disable_cypher",
                 "hide_target_meta",
+                "via_table_id",
+                "via_source_column",
+                "via_target_column",
+                "via_type_column",
+                "via_type_value",
+                "via_label_source",
                 "source_json_key",
             ],
             set_extra={"version": relationships.c.version + 1, "needs_review": False},
@@ -93,6 +115,20 @@ async def upsert(
                 f"Alias {rel.alias!r} already exists for source table {rel.source_table_id!r}"
             ) from e
         raise
+
+    # REQ-1586: the junction's two keys are foreign keys on the junction table.
+    if via_tbl_id:
+        # Each end may list several columns for a composite key, and every one of them is a
+        # foreign key on the junction table.
+        for col in (*key_list(rel.via_source_column), *key_list(rel.via_target_column)):
+            await conn.execute_core(
+                update(table_columns)
+                .where(
+                    table_columns.c.table_id == via_tbl_id,
+                    table_columns.c.column_name == col,
+                )
+                .values(is_foreign_key=True)
+            )
 
     # Mark source_column as FK on source table
     if rel.source_column:

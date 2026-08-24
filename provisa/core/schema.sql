@@ -199,7 +199,45 @@ CREATE TABLE IF NOT EXISTS relationships (
     refresh_interval INTEGER NOT NULL DEFAULT 300,
     -- REQ-1132: opt this edge OUT of discovery — its target table's metadata is not exposed to a role
     -- that reaches the target only via this relationship (a sensitive target behind an innocuous edge).
-    hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE
+    hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE,
+    -- The Cypher type name a steward pinned on this edge; also what the 'fixed' junction
+    -- nomination below reads, which is why it is declared here rather than added by the
+    -- ALTER block that follows.
+    alias            TEXT,
+    -- REQ-1586: junction declaration. via_table_id names an associative table this edge traverses
+    -- through; its two foreign keys are via_source_column (joined to source_column) and
+    -- via_target_column (joined to target_column). Each is a comma-separated ordered column list,
+    -- so a composite key is mapped by listing its columns in order and pairing them positionally. via_type_column/via_type_value discriminate a
+    -- junction that carries several relationship types — one row declares one exposed type.
+    -- All five null = an ordinary single-hop edge.
+    via_table_id      INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    via_source_column TEXT,
+    via_target_column TEXT,
+    via_type_column   TEXT,
+    via_type_value    TEXT,
+    -- REQ-1586: where this edge's Cypher type name comes from. 'column' = the discriminator value
+    -- in via_type_value; 'table' = the junction table's own name; 'fixed' = the alias pinned on
+    -- this row. All three are upper-snake-cased before they are exposed, so a junction edge names
+    -- itself the same way every other relationship type does.
+    via_label_source  TEXT CHECK (via_label_source IN ('column', 'table', 'fixed')),
+    CONSTRAINT relationships_via_complete CHECK (
+        (via_table_id IS NULL AND via_source_column IS NULL AND via_target_column IS NULL
+         AND via_label_source IS NULL)
+        OR (via_table_id IS NOT NULL AND via_source_column IS NOT NULL AND via_target_column IS NOT NULL
+            AND via_label_source IS NOT NULL)
+    ),
+    -- REQ-1586: each nomination needs the thing it names. 'column' reads via_type_value, 'fixed'
+    -- reads the pinned alias; 'table' needs neither because the junction table is already named.
+    CONSTRAINT relationships_via_label_source_complete CHECK (
+        via_label_source IS NULL
+        OR (via_label_source = 'column' AND via_type_value IS NOT NULL)
+        OR (via_label_source = 'fixed' AND alias IS NOT NULL)
+        OR via_label_source = 'table'
+    ),
+    CONSTRAINT relationships_via_type_pairs CHECK (
+        (via_type_column IS NULL AND via_type_value IS NULL)
+        OR (via_type_column IS NOT NULL AND via_type_value IS NOT NULL AND via_table_id IS NOT NULL)
+    )
 );
 
 -- Migration: add materialize columns if missing

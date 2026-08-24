@@ -183,7 +183,7 @@ Rules:
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. (REQ-661) New labels or types cannot be created through Cypher. (REQ-662)
 - Every write is gated on the target table's `writable_by` ACL; a role without write rights is rejected at compile time. (REQ-663)
 - The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time. (REQ-664)
-- Relationships cannot be written — they are derived from foreign-key joins, not stored edges. Targeting a relationship is a hard error. (REQ-665)
+- Relationships cannot be written — they are derived from the semantic layer's declared joins, not stored edges. Targeting a relationship is a hard error. (REQ-665) A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge. (REQ-1586)
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)
 - `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time. (REQ-671)
 
@@ -208,7 +208,7 @@ Cypher reaches the same governed pipeline over two transports:
 
 1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. (REQ-818, REQ-666, REQ-667, REQ-668) See §Writes below. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. (REQ-671, REQ-818) APOC procedures are also rejected.
 
-2. **No relationship properties.** Relationships (`-[r:TYPE]->`) exist solely as join metadata in the semantic layer. (REQ-574) They carry no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning and is not supported.
+2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists solely as join metadata in the semantic layer (REQ-574) and carries no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning on it. An edge declared over a junction table does carry them: the associative table's remaining columns are the relationship's properties, `RETURN r` returns them, and a `WHERE` on one compiles to a predicate on the junction alias — so it restricts the traversal rather than filtering assembled rows. (REQ-1586) The junction table itself is dropped from the node side of the graph schema; it is an edge here and a table everywhere else.
 
 3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward+backward UNION ALL of all matching directed relationships from the semantic layer. (REQ-575) Every relationship in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions. Extra branches are emitted at the outermost query level — subsequent MATCH patterns in the same query are not duplicated across branches (limitation for multi-MATCH bidirectional).
 

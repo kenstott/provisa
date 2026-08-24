@@ -937,6 +937,20 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     )
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
     hide_target_meta: bool = False  # REQ-1132: when True, suppress the TARGET's metadata from DEFAULT-tier meta discovery
+    # REQ-1586: junction-backed edge. When via_table is set the join traverses that associative
+    # table (source_column = via.via_source_column, via.via_target_column = target_column) and the
+    # junction's remaining columns become the relationship's attributes. via_type_column/value
+    # discriminate a junction carrying several relationship types. Each end is a comma-separated
+    # ordered column list, so a composite key is mapped by listing its columns in order and
+    # pairing them positionally against source_column/target_column.
+    via_table: str = ""  # registered table name of the junction; empty = FK/PK-backed edge
+    via_source_column: str = ""
+    via_target_column: str = ""
+    via_type_column: str | None = None
+    via_type_value: str | None = None
+    # REQ-1586: which of the three nominations names this edge's Cypher type — the discriminator
+    # value ("column"), the junction table name ("table"), or cypher_alias ("fixed").
+    via_label_source: str = ""
     source_json_key: str | None = (
         None  # when set, JOIN extracts this key from source column as JSON object
     )
@@ -944,6 +958,12 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     owner: str | None = None  # role/user id of the defining steward
     version: int = 1  # bumped on every upsert and on re-review flagging
     needs_review: bool = False  # set when a join-field schema change may have stale-d the join
+
+    @property
+    def kind(self) -> str:
+        """REQ-1586: how this edge is backed — 'junction' (via an associative table) or
+        'direct' (an FK/PK column pair). Derived, so it can never disagree with via_table."""
+        return "junction" if self.via_table else "direct"
 
 
 class RoleRateLimit(BaseModel):

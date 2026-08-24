@@ -182,6 +182,13 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
         graphql_alias=graphql_alias,
         computed_cypher_alias=computed_cypher_alias,
         disable_cypher=row.get("disable_cypher", False),
+        # REQ-1586: the junction declaration is part of the edge the UI reads back.
+        via_table_name=row.get("via_table_name"),
+        via_source_column=row.get("via_source_column"),
+        via_target_column=row.get("via_target_column"),
+        via_type_column=row.get("via_type_column"),
+        via_type_value=row.get("via_type_value"),
+        via_label_source=row.get("via_label_source"),
     )
 
 

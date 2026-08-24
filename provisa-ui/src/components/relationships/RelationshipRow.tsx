@@ -26,6 +26,8 @@ import { Trash2, Pencil, Check, X, ArrowLeftRight } from "lucide-react";
 import type { Relationship, RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelForm } from "./relationship-types";
+import { cypherRelType } from "../../naming";
+import { JunctionPanel } from "./JunctionPanel";
 import { TagControl } from "../TagControl";
 
 interface RelationshipRowProps {
@@ -111,6 +113,17 @@ export function RelationshipRow({
                 {t("relationshipRow.fkBadge")}
               </Badge>
             )}
+            {r.viaTableName && (
+              <Badge
+                title={t("relationshipRow.junctionBadgeTitle", { table: r.viaTableName })}
+                size="xs"
+                color="grape"
+                variant="filled"
+                style={{ flexShrink: 0 }}
+              >
+                {t("relationshipRow.junctionBadge")}
+              </Badge>
+            )}
             <span>{`${r.sourceTableName}.${r.sourceColumn}`}</span>
             <TagControl objectType="relationship" relationshipId={String(r.id)} />
           </Group>
@@ -129,10 +142,16 @@ export function RelationshipRow({
                 {t("relationshipRow.cqlLabel")}
               </Text>{" "}
               <code>
-                {r.alias ?? (
-                  <Text span c="dimmed" fs="italic">
-                    {r.computedCypherAlias ?? t("relationshipRow.none")}
-                  </Text>
+                {/* REQ-1586: a junction-backed edge is exposed under its nomination, not its
+                    alias, so the row shows the type a Cypher pattern actually matches. */}
+                {r.viaTableName ? (
+                  (cypherRelType(r) ?? t("relationshipRow.none"))
+                ) : (
+                  (r.alias ?? (
+                    <Text span c="dimmed" fs="italic">
+                      {r.computedCypherAlias ?? t("relationshipRow.none")}
+                    </Text>
+                  ))
                 )}
               </code>
             </div>
@@ -509,6 +528,14 @@ export function RelationshipRow({
                     />
                   )}
                 </Group>
+                {editingRel.targetType === "table" && (
+                  <JunctionPanel
+                    form={editingRel}
+                    setForm={setEditingRel}
+                    tables={tables}
+                    testIdPrefix="rel-edit"
+                  />
+                )}
                 {editingRel.targetType === "table" && editingRel.cardinality === "many-to-one" && (
                   <Text c="orange.7" fz="0.78rem">
                     {t("relationshipRow.cardinalityWarning")}

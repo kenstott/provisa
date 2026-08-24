@@ -23,7 +23,7 @@ import logging
 import re
 
 from provisa.compiler.sql_gen import CompiledQuery
-from provisa.mv.models import MVDefinition
+from provisa.mv.models import JoinPattern, MVDefinition
 from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
@@ -93,6 +93,58 @@ def _match_join_to_mv(
     return cols_match
 
 
+def _match_junction_to_mv(  # REQ-1586
+    root_table: str,
+    joins: list[dict],
+    mv: MVDefinition,
+    sql: str,
+) -> list[int]:
+    """Indices of the JOIN pair a junction MV covers, or [] when it covers none.
+
+    A junction edge is two hops — root -> junction -> target — so it is matched as a chained
+    pair rather than a single JOIN: the second hop must start from the alias the first one
+    introduced. Only the declared direction matches: the MV materializes the left table's
+    columns unprefixed, so a traversal rooted at the target table would read them under the
+    wrong names. When the pattern carries a discriminator, the query must filter the junction
+    on the same value the MV was built with, otherwise a BONDED_PAIR MV would answer a
+    LITTERMATE traversal.
+    """
+    jp = mv.join_pattern
+    if not jp or not jp.is_junction or root_table != jp.left_table:
+        return []
+
+    for i, first in enumerate(joins):
+        if first["right_table"] != jp.via_table:
+            continue
+        if {first["left_column"], first["right_column"]} != {jp.left_column, jp.via_left_column}:
+            continue
+        via_alias = first["right_alias"]
+        for j, second in enumerate(joins):
+            if j == i or second["left_alias"] != via_alias:
+                continue
+            if second["right_table"] != jp.right_table:
+                continue
+            if {second["left_column"], second["right_column"]} != {
+                jp.via_right_column,
+                jp.right_column,
+            }:
+                continue
+            if jp.via_type_column and not _has_type_predicate(sql, via_alias, jp):
+                continue
+            return [i, j]
+    return []
+
+
+def _has_type_predicate(sql: str, via_alias: str, jp: JoinPattern) -> bool:  # REQ-1586
+    """True when the query restricts the junction alias to the MV's discriminator value."""
+    literal = jp.via_type_value.replace("'", "''")
+    pattern = (
+        rf'"{re.escape(via_alias)}"\."{re.escape(jp.via_type_column)}"\s*=\s*'
+        rf"'{re.escape(literal)}'"
+    )
+    return re.search(pattern, sql, re.IGNORECASE) is not None
+
+
 def rewrite_if_mv_match(  # REQ-198, REQ-199, REQ-882
     compiled: CompiledQuery,
     fresh_mvs: list[MVDefinition],
@@ -148,9 +200,12 @@ def _rewrite_join_mv(
                 continue
 
             # Find which joins this MV covers
-            matched_indices = [
-                i for i, join in enumerate(joins) if _match_join_to_mv(root_table, join, mv)
-            ]
+            if mv.join_pattern.is_junction:  # REQ-1586: matched as a chained pair
+                matched_indices = _match_junction_to_mv(root_table, joins, mv, compiled.sql)
+            else:
+                matched_indices = [
+                    i for i, join in enumerate(joins) if _match_join_to_mv(root_table, join, mv)
+                ]
             if not matched_indices:
                 continue
 

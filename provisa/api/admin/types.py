@@ -333,6 +333,14 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
     disable_cypher: bool = False
+    # REQ-1586: junction declaration. via_table_name names the associative table this edge
+    # traverses; via_label_source names where the exposed Cypher type comes from.
+    via_table_name: str | None = None
+    via_source_column: str | None = None
+    via_target_column: str | None = None
+    via_type_column: str | None = None
+    via_type_value: str | None = None
+    via_label_source: str | None = None
 
     @strawberry.field
     def auto_suggested(self) -> bool:
@@ -593,6 +601,14 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     alias: str | None = None  # e.g. WORKS_FOR; unique per (source_table, alias)
     graphql_alias: str | None = None
     disable_cypher: bool = False  # when True, exclude from Cypher graph edges
+    # REQ-1586: junction declaration — the associative table this edge traverses, its two key
+    # columns, an optional discriminator, and which source names the exposed Cypher type.
+    via_table: str = ""  # registered table name of the junction; empty = FK/PK-backed edge
+    via_source_column: str = ""
+    via_target_column: str = ""
+    via_type_column: str | None = None
+    via_type_value: str | None = None
+    via_label_source: str = ""
     record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
 
 

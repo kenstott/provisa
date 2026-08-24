@@ -253,6 +253,42 @@ relationships:
   source_table_id: users
   target_column: user_id
   target_table_id: inquiries
+- cardinality: one-to-many
+  id: pets-bonded-pair
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: bonded pair
+  via_label_source: column
+- cardinality: one-to-many
+  id: pets-littermate
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: littermate
+  via_label_source: column
+- cardinality: one-to-many
+  id: pets-shares-enclosure
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: shares enclosure
+  via_label_source: column
 roles:
 - capabilities:
   - query_development
@@ -1084,6 +1120,51 @@ tables:
   schema: pet_store
   source_id: pet-store-sqlite
   table: pets
+- columns:
+  - description: Unique identifier for the companion link
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet the companion link starts from
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet the companion link points at
+    name: companion_pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Which kind of companionship this row records
+    name: relation_type
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date the two pets were first paired
+    name: since
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Care note explaining the pairing
+    name: note
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  # REQ-1586: the junction behind PetCompanions' three Cypher edge types. Registered like any
+  # other table so the relationship rows can name it; the Cypher schema drops it from the node
+  # side, so it is an edge in the graph and a table everywhere else.
+  description: "Pet-to-pet companion links \u2014 the junction behind the BONDED_PAIR, LITTERMATE, and SHARES_ENCLOSURE relationships"
+  domain_id: pet-store
+  schema: pet_store
+  source_id: pet-store-sqlite
+  table: pet_companions
 # REQ-1443: one results table per contract. The suite below is the whole registration: the scanned
 # target is read back out of meta.dataset (REQ-939), the 16 shipped result columns replace what is
 # declared here, and scan_time becomes the watermark so each scan appends and the table IS the scan

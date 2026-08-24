@@ -42,6 +42,34 @@ class JoinPattern:  # REQ-158
     right_column: str
     join_type: str = "left"  # left, inner
 
+    # REQ-1586: a junction-backed edge is two hops, not one. When ``via_table`` is set the
+    # pattern reads left -> via -> right: left.left_column = via.via_left_column and
+    # via.via_right_column = right.right_column. ``via_type_column``/``via_type_value``
+    # carry the discriminator that splits one associative table into several edge types, so
+    # the MV holds exactly the rows of that one type and may only serve a query carrying the
+    # same predicate. The junction's remaining columns are the edge's own attributes and are
+    # materialized alongside, prefixed "{via_table}__{col}" like any other right-side column.
+    via_table: str | None = None
+    via_left_column: str | None = None
+    via_right_column: str | None = None
+    via_type_column: str | None = None
+    via_type_value: str | None = None
+
+    def __post_init__(self) -> None:
+        via_keys = (self.via_left_column, self.via_right_column)
+        if self.via_table and not all(via_keys):
+            raise ValueError("JoinPattern: via_table requires via_left_column and via_right_column")
+        if not self.via_table and (any(via_keys) or self.via_type_column):
+            raise ValueError("JoinPattern: via_* columns require via_table")
+        if bool(self.via_type_column) != bool(self.via_type_value):
+            raise ValueError(
+                "JoinPattern: via_type_column and via_type_value are declared together"
+            )
+
+    @property
+    def is_junction(self) -> bool:  # REQ-1586
+        return self.via_table is not None
+
 
 @dataclass(frozen=True)
 class SDLConfig:  # REQ-653

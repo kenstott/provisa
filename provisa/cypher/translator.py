@@ -44,7 +44,7 @@ from provisa.cypher.parser import (
     WithClause,
     OrderItem,
 )
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.cypher.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.cypher.path_functions import PathFunctionsMixin
 from provisa.cypher.select_builder import SelectBuilderMixin
 from provisa.cypher.correlated_call import CorrelatedCallMixin
@@ -150,10 +150,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._rel_var_types: dict[str, str] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
+        # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
+        # edge. This is what makes the junction row's columns reachable as the relationship's
+        # attributes — in RETURN r, in r.attr expressions, and in a WHERE on r.attr.
+        self._rel_var_via: dict[str, tuple[str, "JunctionMapping"]] = {}
         # id(RelPattern) → (rel_type, src_alias, src_nm, tgt_alias, tgt_nm, is_reversed) for
         # every resolved rel step, including anonymous/unnamed ones, so flat-JOIN path
         # building can reconstruct full {nodes, edges} even when endpoints have no variable.
         self._rel_step_endpoints: dict[int, tuple] = {}
+        # REQ-1586: (id(NodePattern), table) -> alias for a node with no variable. An anonymous endpoint
+        # aliases to its table name, so a self-referencing pattern -- ()-[:KIND_OF]->() over one
+        # table, which is what a junction edge between two rows of the same entity is -- would
+        # otherwise give both ends the same alias and emit an ambiguous self-join.
+        self._anon_node_aliases: dict[tuple[int, str], str] = {}
         # vars that are pre-built JSON from an all-rels union subquery
         self._passthrough_vars: set[str] = set()
         # relationship variables whose value is JSON_OBJECT({id,type,startNode,endNode})

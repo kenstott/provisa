@@ -325,6 +325,27 @@ def create_pet_store_sqlite() -> None:
             (5, 'Lion 2',   'lion',   'African Lion',     1500.00, 1),
             (6, 'Lion 3',   'lion',   'Barbary Lion',     1600.00, 1),
             (7, 'Rabbit 1', 'rabbit', 'Holland Lop',       150.00, 1);
+
+        -- REQ-1586: an associative table declared as a Cypher relationship rather than a node.
+        -- relation_type discriminates three edge types out of the one table (BONDED_PAIR,
+        -- LITTERMATE, SHARES_ENCLOSURE); since/note are the edge's own attributes, which is what
+        -- a junction carries and an FK/PK pair cannot.
+        CREATE TABLE pet_companions (
+            id INTEGER PRIMARY KEY,
+            pet_id INTEGER NOT NULL REFERENCES pets(id),
+            companion_pet_id INTEGER NOT NULL REFERENCES pets(id),
+            relation_type TEXT NOT NULL,
+            since TEXT NOT NULL,
+            note TEXT NOT NULL
+        );
+
+        INSERT INTO pet_companions (id, pet_id, companion_pet_id, relation_type, since, note) VALUES
+            (1, 1, 2, 'littermate',       '2024-03-11', 'Same litter, rehomed together'),
+            (2, 4, 5, 'bonded pair',      '2023-07-02', 'Will not settle when separated'),
+            (3, 5, 6, 'shares enclosure', '2025-01-20', 'Rotating access to the outdoor run'),
+            (4, 2, 3, 'bonded pair',      '2024-11-05', 'Cat grooms the dog daily'),
+            (5, 3, 7, 'shares enclosure', '2025-04-18', 'Supervised yard time only'),
+            (6, 4, 6, 'littermate',       '2023-07-02', 'Half-siblings, same sire');
     """)
     conn.commit()
     conn.close()

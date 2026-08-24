@@ -61,6 +61,39 @@ class TableMeta:
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
 
 
+def key_list(stored: str) -> tuple[str, ...]:
+    """REQ-1586: split a stored key declaration into its ordered columns.
+
+    A junction end and the relationship end it pairs with are each declared as a comma-separated
+    ordered list, so a composite foreign key is mapped by listing its columns in order. A
+    single-column end is the same declaration with one entry.
+    """
+    return tuple(part.strip() for part in stored.split(",") if part.strip())
+
+
+@dataclass(frozen=True)
+class JunctionMeta:
+    """REQ-1586: the associative table a junction-backed relationship traverses through.
+
+    ``source_columns``/``target_columns`` are the junction's own two foreign keys, each an ordered
+    list of one or more columns, paired positionally against the relationship's own source and
+    target key lists. ``type_column``/``type_value``
+    discriminate a junction that carries several relationship types. ``attributes`` maps exposed
+    property name to physical column for every junction column that is not one of those keys;
+    those are the relationship's attributes.
+    """
+
+    table: TableMeta
+    source_columns: tuple[str, ...]
+    target_columns: tuple[str, ...]
+    type_column: str | None = None
+    type_value: str | None = None
+    attributes: tuple[tuple[str, str], ...] = ()
+    # REQ-1586: which nomination names the exposed type — "column", "table" or "fixed".
+    label_source: str = ""
+    label_fixed: str = ""  # the cypher_alias, carried here so "fixed" can be resolved standalone
+
+
 @dataclass(frozen=True)
 class JoinMeta:
     """Join metadata for a relationship field on a GraphQL type."""
@@ -87,6 +120,7 @@ class JoinMeta:
     child_src_val: str | None = (
         None  # when set, propagate as parent_src_val to child joins instead of sub_src
     )
+    via: "JunctionMeta | None" = None  # REQ-1586: set on a junction-backed edge, None on FK/PK
 
 
 @dataclass

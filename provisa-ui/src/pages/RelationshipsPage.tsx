@@ -177,6 +177,13 @@ export function RelationshipsPage() {
       alias: form.alias || null,
       graphqlAlias: form.graphqlAlias || null,
       disableCypher: form.disableCypher,
+      // REQ-1586: the junction declaration saves with the edge.
+      viaTable: form.viaTable,
+      viaSourceColumn: form.viaSourceColumn,
+      viaTargetColumn: form.viaTargetColumn,
+      viaTypeColumn: form.viaTypeColumn || null,
+      viaTypeValue: form.viaTypeValue || null,
+      viaLabelSource: form.viaLabelSource,
     });
     setSaving(null);
     setForm(EMPTY_FORM);
@@ -201,6 +208,13 @@ export function RelationshipsPage() {
       alias: editingRel.alias || null,
       graphqlAlias: editingRel.graphqlAlias || null,
       disableCypher: editingRel.disableCypher,
+      // REQ-1586: the junction declaration saves with the edge.
+      viaTable: editingRel.viaTable,
+      viaSourceColumn: editingRel.viaSourceColumn,
+      viaTargetColumn: editingRel.viaTargetColumn,
+      viaTypeColumn: editingRel.viaTypeColumn || null,
+      viaTypeValue: editingRel.viaTypeValue || null,
+      viaLabelSource: editingRel.viaLabelSource,
     });
     if (editingRel.originalId && editingRel.originalId !== editingRel.id) {
       await deleteRelationship(editingRel.originalId);
@@ -275,6 +289,15 @@ export function RelationshipsPage() {
         alias: rel.alias ?? "",
         graphqlAlias: rel.graphqlAlias ?? "",
         disableCypher: rel.disableCypher ?? false,
+        viaTable: rel.viaTableName ?? "",
+        viaSourceColumn: rel.viaSourceColumn ?? "",
+        viaTargetColumn: rel.viaTargetColumn ?? "",
+        viaTypeColumn: rel.viaTypeColumn ?? "",
+        viaTypeValue: rel.viaTypeValue ?? "",
+        viaLabelSource: rel.viaLabelSource ?? "",
+        // The panel opens for a row that already declares a junction; the checkbox only has to
+        // hold it open for a row that does not yet name a table.
+        junctionDeclared: Boolean(rel.viaTableName),
       });
     },
     [tableDomainById],

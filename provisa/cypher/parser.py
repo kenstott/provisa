@@ -552,8 +552,14 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
         while (_trc := self._peek()) and _trc.type == "COLON":
             self._advance()
             types.append(self._expect("IDENT").value)
-            if (_trp := self._peek()) and _trp.type == "PIPE":
+            # REQ-1586: type alternation is written both ways — `:A|B` is the spelling Cypher 5
+            # documents and the one a generated pattern uses; `:A|:B` is the older spelling. After a
+            # pipe the next type may therefore arrive with or without its own colon.
+            while (_trp := self._peek()) and _trp.type == "PIPE":
                 self._advance()
+                if (_trc2 := self._peek()) and _trc2.type == "COLON":
+                    break
+                types.append(self._expect("IDENT").value)
 
         if (_trs := self._peek()) and _trs.type == "STAR":
             variable_length = True

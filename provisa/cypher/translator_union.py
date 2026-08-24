@@ -21,6 +21,9 @@ import sqlglot.expressions as exp
 
 from provisa.cypher.translator_helpers import (
     _const_literal,
+    _make_junction_joins,
+    via_alias_for,
+    via_column,
 )
 
 from provisa.cypher.translator_types import CypherTranslateError
@@ -167,6 +170,15 @@ class _UnionMixin:  # mixin for _Translator
                 ),
                 expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
             )
+            # REQ-1586: the junction row's own columns are this edge's properties, so an
+            # all-relationships result carries them exactly as a named pattern does.
+            via_alias = via_alias_for(rm, rel_var or ta) if rm.via is not None else None
+            edge_props: list[exp.Expression] = []
+            if rm.via is not None:
+                assert via_alias is not None
+                for prop_name, col in rm.via.attributes.items():
+                    edge_props.append(exp.Literal.string(prop_name))
+                    edge_props.append(via_column(via_alias, col))
             edge_json = exp.JSONObject(
                 expressions=[
                     exp.JSONKeyValue(this=exp.Literal.string("id"), expression=edge_id),
@@ -175,26 +187,47 @@ class _UnionMixin:  # mixin for _Translator
                     ),
                     exp.JSONKeyValue(this=exp.Literal.string("startNode"), expression=src_json),
                     exp.JSONKeyValue(this=exp.Literal.string("endNode"), expression=tgt_json),
+                    exp.JSONKeyValue(
+                        this=exp.Literal.string("properties"),
+                        expression=exp.Anonymous(this="JSON_OBJECT", expressions=edge_props),
+                    ),
+                    # REQ-1586: a junction-backed edge names the table its attributes came from,
+                    # beside properties rather than inside them so it cannot collide with a column.
+                    *(
+                        []
+                        if rm.via is None
+                        else [
+                            exp.JSONKeyValue(
+                                this=exp.Literal.string("junctionTable"),
+                                expression=exp.Literal.string(rm.via.table_name),
+                            )
+                        ]
+                    ),
                 ]
             )
 
-            branch = (
-                exp.select(
-                    exp.alias_(src_json, src_col),
-                    exp.alias_(edge_json, rel_col),
-                    exp.alias_(tgt_json, tgt_col),
+            branch = exp.select(
+                exp.alias_(src_json, src_col),
+                exp.alias_(edge_json, rel_col),
+                exp.alias_(tgt_json, tgt_col),
+            ).from_(
+                exp.alias_(
+                    exp.Table(
+                        this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
+                        db=exp.Identifier(this=src_nm.schema_name, quoted=True),
+                        catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
+                    ),
+                    alias=sa,
                 )
-                .from_(
-                    exp.alias_(
-                        exp.Table(
-                            this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
-                            db=exp.Identifier(this=src_nm.schema_name, quoted=True),
-                            catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
-                        ),
-                        alias=sa,
-                    )
-                )
-                .join(
+            )
+            if rm.via is not None:
+                # REQ-1586: a junction-backed edge in the union reaches its target through the
+                # junction table, so the branch carries the same two joins a named pattern emits.
+                assert via_alias is not None
+                for d in _make_junction_joins(rm, False, tgt_nm, ta, sa, "INNER", via_alias):
+                    branch = branch.join(d["table"], on=d["on"], join_type=d["join_type"])
+            else:
+                branch = branch.join(
                     exp.alias_(
                         exp.Table(
                             this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
@@ -233,7 +266,6 @@ class _UnionMixin:  # mixin for _Translator
                     ),
                     join_type="INNER",
                 )
-            )
             branches.append(branch)
 
         if not branches:

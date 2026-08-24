@@ -22,8 +22,14 @@ from typing import Any, cast
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.cypher.label_map import (
+    CypherLabelMap,
+    JunctionMapping,
+    NodeMapping,
+    RelationshipMapping,
+)
 from provisa.cypher.parser import MatchClause, NodePattern, PathFunction, RelPattern
+from provisa.cypher.translator_helpers import _make_junction_joins  # REQ-1586
 
 # Requirements: REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351
 
@@ -133,6 +139,55 @@ def _select_candidate_paths(
         return all_paths
     min_hops = min(len(p) for p in all_paths)
     return [p for p in all_paths if len(p) == min_hops]
+
+
+def _hop_on(rel: RelationshipMapping, src_ref: str, tgt_alias: str) -> Any:
+    """The ON condition of a single FK/PK hop from ``src_ref`` to ``tgt_alias``."""
+    return exp.EQ(
+        this=(
+            exp.Literal.string(str(rel.source_constant))
+            if rel.source_constant is not None
+            else (
+                _parse_sql_expr(rel.source_expr.replace("{alias}", f'"{src_ref}"'))
+                if rel.source_expr is not None
+                else exp.Column(
+                    this=exp.Identifier(this=rel.join_source_column, quoted=True),
+                    table=exp.Identifier(this=src_ref),
+                )
+            )
+        ),
+        expression=(
+            _parse_sql_expr(rel.target_expr.replace("{alias}", f'"{tgt_alias}"'))
+            if rel.target_expr is not None
+            else exp.Column(
+                this=exp.Identifier(this=rel.join_target_column, quoted=True),
+                table=exp.Identifier(this=tgt_alias),
+            )
+        ),
+    )
+
+
+def _apply_hop(
+    select: Any,
+    rel: RelationshipMapping,
+    src_ref: str,
+    tgt_nm: NodeMapping,
+    tgt_alias: str,
+    tgt_table: Any,
+) -> Any:
+    """Join one relationship hop onto a recursive-CTE branch.
+
+    REQ-1586: a junction-backed edge joins the junction table first and the target second, with the
+    discriminator on the junction hop, so a variable-length pattern counts one hop per edge rather
+    than one per half-edge. Both CTE branches walk source to target, so the hop is never backwards.
+    """
+    if rel.via is not None:
+        for d in _make_junction_joins(
+            rel, False, tgt_nm, tgt_alias, src_ref, "INNER", f"{tgt_alias}__via"
+        ):
+            select = select.join(d["table"], on=d["on"], join_type=d["join_type"])
+        return select
+    return select.join(tgt_table, on=_hop_on(rel, src_ref, tgt_alias), join_type="INNER")
 
 
 class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
@@ -357,7 +412,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         prev_alias = src_alias
         prev_nm = src_nm
         step_nodes: list[tuple[str, NodeMapping]] = [(src_alias, src_nm)]
-        step_edges: list[tuple[str, str, NodeMapping, str, NodeMapping, bool]] = []
+        # REQ-1586: the last element is the (junction alias, JunctionMapping) of a
+        # junction-backed hop, so the step edge can carry the junction's columns as properties.
+        step_edges: list[
+            tuple[str, str, NodeMapping, str, NodeMapping, bool, tuple[str, JunctionMapping] | None]
+        ] = []
 
         for i, rel_mapping in enumerate(path):
             nxt_nm = self._lm.nodes[rel_mapping.target_label]
@@ -395,7 +454,22 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 ),
                 alias=nxt_alias,
             )
-            joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
+            if rel_mapping.via is not None:
+                # REQ-1586: a junction hop is two joins; the path is already oriented source →
+                # target, so the hop is never backwards here.
+                joins.extend(
+                    _make_junction_joins(
+                        rel_mapping,
+                        False,
+                        nxt_nm,
+                        nxt_alias,
+                        prev_alias,
+                        join_type,
+                        f"{nxt_alias}__via",
+                    )
+                )
+            else:
+                joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
             step_nodes.append((nxt_alias, nxt_nm))
             # Detect if this edge is traversed in reverse of its canonical direction.
             # Canonical source_label is stored on the original RelationshipMapping in self._lm.
@@ -404,7 +478,15 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 canonical_rel is not None and canonical_rel.source_label != rel_mapping.source_label
             )
             step_edges.append(
-                (rel_mapping.rel_type, prev_alias, prev_nm, nxt_alias, nxt_nm, is_reversed)
+                (
+                    rel_mapping.rel_type,
+                    prev_alias,
+                    prev_nm,
+                    nxt_alias,
+                    nxt_nm,
+                    is_reversed,
+                    None if rel_mapping.via is None else (f"{nxt_alias}__via", rel_mapping.via),
+                )
             )
             prev_alias = nxt_alias
             prev_nm = nxt_nm
@@ -556,53 +638,25 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             if src_node_m is None or tgt_node_m is None:
                 continue
 
-            branch = (
-                exp.select(
-                    exp.alias_(
-                        exp.Column(
-                            this=exp.Identifier(this=src_node_m.id_column, quoted=True),
-                            table=exp.Identifier(this="_seed"),
-                        ),
-                        alias="src_id",
+            branch = exp.select(
+                exp.alias_(
+                    exp.Column(
+                        this=exp.Identifier(this=src_node_m.id_column, quoted=True),
+                        table=exp.Identifier(this="_seed"),
                     ),
-                    exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
-                    exp.alias_(
-                        exp.Column(
-                            this=exp.Identifier(this=tgt_node_m.id_column, quoted=True),
-                            table=exp.Identifier(this="_nxt"),
-                        ),
-                        alias="cur_id",
+                    alias="src_id",
+                ),
+                exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
+                exp.alias_(
+                    exp.Column(
+                        this=exp.Identifier(this=tgt_node_m.id_column, quoted=True),
+                        table=exp.Identifier(this="_nxt"),
                     ),
-                    exp.alias_(exp.Literal.number(1), alias="hops"),
-                )
-                .from_(_tbl(src_node_m, "_seed"))
-                .join(
-                    _tbl(tgt_node_m, "_nxt"),
-                    on=exp.EQ(
-                        this=(
-                            exp.Literal.string(str(rel.source_constant))
-                            if rel.source_constant is not None
-                            else (
-                                _parse_sql_expr(rel.source_expr.replace("{alias}", '"_seed"'))
-                                if rel.source_expr is not None
-                                else exp.Column(
-                                    this=exp.Identifier(this=rel.join_source_column, quoted=True),
-                                    table=exp.Identifier(this="_seed"),
-                                )
-                            )
-                        ),
-                        expression=(
-                            _parse_sql_expr(rel.target_expr.replace("{alias}", '"_nxt"'))
-                            if rel.target_expr is not None
-                            else exp.Column(
-                                this=exp.Identifier(this=rel.join_target_column, quoted=True),
-                                table=exp.Identifier(this="_nxt"),
-                            )
-                        ),
-                    ),
-                    join_type="INNER",
-                )
-            )
+                    alias="cur_id",
+                ),
+                exp.alias_(exp.Literal.number(1), alias="hops"),
+            ).from_(_tbl(src_node_m, "_seed"))
+            branch = _apply_hop(branch, rel, "_seed", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             base_branches.append(branch)
 
         # ------------------------------------------------------------------
@@ -670,41 +724,17 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                     ),
                     join_type="INNER",
                 )
-                # JOIN next-node table
-                .join(
-                    _tbl(tgt_node_m, "_nxt"),
-                    on=exp.EQ(
-                        this=(
-                            exp.Literal.string(str(rel.source_constant))
-                            if rel.source_constant is not None
-                            else (
-                                _parse_sql_expr(rel.source_expr.replace("{alias}", '"_cur"'))
-                                if rel.source_expr is not None
-                                else exp.Column(
-                                    this=exp.Identifier(this=rel.join_source_column, quoted=True),
-                                    table=exp.Identifier(this="_cur"),
-                                )
-                            )
-                        ),
-                        expression=(
-                            _parse_sql_expr(rel.target_expr.replace("{alias}", '"_nxt"'))
-                            if rel.target_expr is not None
-                            else exp.Column(
-                                this=exp.Identifier(this=rel.join_target_column, quoted=True),
-                                table=exp.Identifier(this="_nxt"),
-                            )
-                        ),
+            )
+            # JOIN next-node table
+            branch = _apply_hop(
+                branch, rel, "_cur", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt")
+            ).where(
+                exp.LT(
+                    this=exp.Column(
+                        this=exp.Identifier(this="hops"),
+                        table=exp.Identifier(this="t"),
                     ),
-                    join_type="INNER",
-                )
-                .where(
-                    exp.LT(
-                        this=exp.Column(
-                            this=exp.Identifier(this="hops"),
-                            table=exp.Identifier(this="t"),
-                        ),
-                        expression=exp.Literal.number(max_hops),
-                    )
+                    expression=exp.Literal.number(max_hops),
                 )
             )
             rec_branches.append(branch)

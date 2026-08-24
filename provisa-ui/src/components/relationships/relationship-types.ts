@@ -38,6 +38,16 @@ export const EMPTY_FORM = {
   alias: "",
   graphqlAlias: "",
   disableCypher: false,
+  // REQ-1586: junction declaration; blank viaTable means an ordinary FK/PK-backed edge.
+  // junctionDeclared is the checkbox state only — it holds the mapping panel open between checking
+  // the box and picking a table, after which viaTable is what is stored and what is read back.
+  junctionDeclared: false,
+  viaTable: "",
+  viaSourceColumn: "",
+  viaTargetColumn: "",
+  viaTypeColumn: "",
+  viaTypeValue: "",
+  viaLabelSource: "",
 };
 
 export type RelForm = typeof EMPTY_FORM;

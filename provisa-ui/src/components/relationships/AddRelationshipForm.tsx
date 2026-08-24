@@ -23,6 +23,7 @@ import {
 import type { RegisteredTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import type { RelForm } from "./relationship-types";
+import { JunctionPanel } from "./JunctionPanel";
 
 interface AddRelationshipFormProps {
   form: RelForm;
@@ -173,6 +174,9 @@ export function AddRelationshipForm({
               </Text>
             )}
           </Stack>
+        )}
+        {form.targetType === "table" && (
+          <JunctionPanel form={form} setForm={setForm} tables={tables} testIdPrefix="rel-form" />
         )}
         <Group align="flex-end" wrap="wrap">
           <Checkbox

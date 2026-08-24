@@ -311,7 +311,15 @@ docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
     price NUMERIC(10, 2) NOT NULL,
     available BOOLEAN NOT NULL DEFAULT TRUE
   );
-  TRUNCATE pet_store.pets RESTART IDENTITY;
+  CREATE TABLE IF NOT EXISTS pet_store.pet_companions (
+    id SERIAL PRIMARY KEY,
+    pet_id INTEGER NOT NULL REFERENCES pet_store.pets(id),
+    companion_pet_id INTEGER NOT NULL REFERENCES pet_store.pets(id),
+    relation_type VARCHAR(50) NOT NULL,
+    since DATE NOT NULL,
+    note VARCHAR(200) NOT NULL
+  );
+  TRUNCATE pet_store.pet_companions, pet_store.pets RESTART IDENTITY;
   INSERT INTO pet_store.pets (name, species, breed_name, price, available)
   VALUES
     ('Cat 1',    'cat',    'Siamese',          380.00, TRUE),
@@ -321,6 +329,14 @@ docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
     ('Lion 2',   'lion',   'African Lion',     1500.00, TRUE),
     ('Lion 3',   'lion',   'Barbary Lion',     1600.00, TRUE),
     ('Rabbit 1', 'rabbit', 'Holland Lop',       150.00, TRUE);
+  INSERT INTO pet_store.pet_companions (pet_id, companion_pet_id, relation_type, since, note)
+  VALUES
+    (1, 2, 'littermate',       '2024-03-11', 'Same litter, rehomed together'),
+    (4, 5, 'bonded pair',      '2023-07-02', 'Will not settle when separated'),
+    (5, 6, 'shares enclosure', '2025-01-20', 'Rotating access to the outdoor run'),
+    (2, 3, 'bonded pair',      '2024-11-05', 'Cat grooms the dog daily'),
+    (3, 7, 'shares enclosure', '2025-04-18', 'Supervised yard time only'),
+    (4, 6, 'littermate',       '2023-07-02', 'Half-siblings, same sire');
 " 2>/dev/null || echo "pet_store schema setup skipped (will retry on next start)"
 fi  # end NATIVE=false Docker block
 

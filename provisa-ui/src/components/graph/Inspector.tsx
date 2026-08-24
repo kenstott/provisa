@@ -29,6 +29,7 @@ import { Braces, Check, ChevronRight, Copy, X } from "lucide-react";
 import type { Relationship } from "../../types/admin";
 import { PALETTE, labelColor, getStableNodeId } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
+import { cypherRelType } from "../../naming";
 import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -94,7 +95,9 @@ export function Inspector({
   const matchedRel = useMemo(() => {
     if (!selected || selected.kind !== "edge" || !relationships) return null;
     const edgeType = (selected.data as GEdge).type;
-    return relationships.find((r) => (r.alias ?? r.computedCypherAlias) === edgeType) ?? null;
+    // REQ-1586: a junction-backed row is exposed under its nomination, not its alias, so matching
+    // on the alias would leave every junction edge without its relationship row here.
+    return relationships.find((r) => cypherRelType(r) === edgeType) ?? null;
   }, [selected, relationships]);
 
   const prevRelId = useRef<number | null>(null);
@@ -379,6 +382,15 @@ export function Inspector({
               {(selected.data as GEdge).endNode.label || (selected.data as GEdge).end}
             </span>
           </div>
+          {(selected.data as GEdge).junctionTable && (
+            /* REQ-1586: the edge names the junction table its attributes were read from, so the
+               inspector can say where the properties below came from without re-deriving it. */
+            <div className="gf-insp-edge-endpoints" data-testid="inspector-junction-table">
+              {t("graphInspector.junctionTable", {
+                table: (selected.data as GEdge).junctionTable,
+              })}
+            </div>
+          )}
           {matchedRel && onSaveEdgeAlias && (
             <div className="gf-insp-alias-form">
               <TextInput

@@ -40,6 +40,8 @@
     "cardinalityWarning": "Warning: if this join returns more than one row per parent, only the first value will be used.",
     "cancel": "Cancel",
     "save": "Save",
-    "toggleDetails": "Toggle relationship details"
+    "toggleDetails": "Toggle relationship details",
+    "junctionBadge": "via",
+    "junctionBadgeTitle": "Junction-backed relationship through {{table}}"
   }
 }

@@ -23,7 +23,9 @@ from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.compiler.sql_types import (
     CompilationContext,
     JoinMeta,
+    JunctionMeta,
     TableMeta,
+    key_list,
     _TableInfoProto,  # noqa: F401  (used in type annotations)
 )
 
@@ -190,6 +192,63 @@ def _register_table_in_ctx(
         ctx.gql_json_columns.add((t.table_id, col_name))
 
 
+def _build_junction_meta(  # REQ-1586
+    si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
+    rel: Mapping,
+    table_lookup: Mapping[int, _TableInfoProto],
+    physical_map: dict[str, str],
+) -> JunctionMeta | None:
+    """Resolve a relationship row's junction declaration into a JunctionMeta.
+
+    Returns None when the row declares no junction. A declared junction whose table is not in
+    ``table_lookup`` is not visible to this role, so the edge itself is not registered — the caller
+    distinguishes that from "no junction" by checking ``rel["via_table_id"]``.
+    """
+    via_id = rel.get("via_table_id")
+    if not via_id or via_id not in table_lookup:
+        return None
+    via_info = table_lookup[via_id]
+    via_physical = physical_map.get(via_info.table_name, via_info.table_name)
+    via_meta = TableMeta(
+        table_id=via_info.table_id,
+        field_name=via_info.field_name,
+        type_name=via_info.type_name,
+        source_id=via_info.source_id,
+        catalog_name=(si.source_catalogs or {}).get(via_info.source_id)
+        or source_to_catalog(via_info.source_id),
+        schema_name=via_info.schema_name,
+        table_name=via_physical,
+        domain_id=via_info.domain_id,
+        original_table_name=via_info.table_name if via_physical != via_info.table_name else "",
+    )
+    from provisa.compiler.naming import apply_gql_name
+
+    src_keys = key_list(rel["via_source_column"])
+    tgt_keys = key_list(rel["via_target_column"])
+    keys = {*src_keys, *tgt_keys}
+    type_column = rel.get("via_type_column") or None
+    if type_column:
+        # The discriminator is fixed for this edge by via_type_value, so it carries no information
+        # as an attribute.
+        keys.add(type_column)
+    convention = getattr(via_info, "gql_convention_override", None)
+    attributes = tuple(
+        (col.get("alias") or apply_gql_name(col["column_name"], convention), col["column_name"])
+        for col in via_info.visible_columns
+        if col["column_name"] not in keys
+    )
+    return JunctionMeta(
+        table=via_meta,
+        source_columns=src_keys,
+        target_columns=tgt_keys,
+        type_column=type_column,
+        type_value=rel.get("via_type_value") or None,
+        attributes=attributes,
+        label_source=rel["via_label_source"],
+        label_fixed=rel.get("alias") or "",
+    )
+
+
 def _register_relationship_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
@@ -206,6 +265,10 @@ def _register_relationship_joins(
         if src_id not in table_lookup or tgt_id not in table_lookup:
             continue
         if not rel.get("source_column") and not rel.get("target_function_name"):
+            continue
+        # REQ-1586: a junction-backed edge is only traversable when the junction table is visible;
+        # without it there is no join path at all, so the edge is not registered.
+        if rel.get("via_table_id") and rel["via_table_id"] not in table_lookup:
             continue
 
         src_info = table_lookup[src_id]
@@ -259,6 +322,7 @@ def _register_relationship_joins(
             cypher_alias=rel.get("alias") or None,
             disable_cypher=rel.get("disable_cypher", False),
             source_json_key=rel.get("source_json_key") or None,
+            via=_build_junction_meta(si, rel, table_lookup, physical_map),
         )
 
 

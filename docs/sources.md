@@ -601,7 +601,7 @@ relationships:
 | `source_column` | Yes | Column on the source table |
 | `target_column` | Yes | Column on the target table; empty for computed relationships |
 | `cardinality` | Yes | `many-to-one` or `one-to-many` (REQ-019) |
-| `materialize` | No | Auto-create a materialized view for cross-source joins (REQ-158) |
+| `materialize` | No | Auto-create a materialized view for cross-source joins (REQ-158). On a junction-backed edge the view covers the two-hop traversal, not a direct join (REQ-1586) |
 | `refresh_interval` | No | MV refresh interval in seconds (default: 300) |
 | `target_function_name` | No | DB function name for computed relationships |
 | `function_arg` | No | Which function argument receives the source column value |
@@ -609,6 +609,53 @@ relationships:
 | `graphql_alias` | No | Names the SDL field this relationship exposes on the parent type. When absent, the name is derived from the target table's `field_name` and relationship cardinality. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | No | When `true`, exclude this relationship from Cypher graph edges |
 | `source_json_key` | No | Extract this key from source column as a JSON object before JOIN |
+| `via_table` | No | Registered table name of the junction this edge traverses. Setting it makes the edge junction-backed; leaving it empty makes it a foreign-key edge (REQ-1586) |
+| `via_source_column` | No | Junction column pairing with `source_column`. Comma-separated and positional for a composite key |
+| `via_target_column` | No | Junction column pairing with `target_column` |
+| `via_type_column` | No | Discriminator column, when one junction carries several relationship types |
+| `via_type_value` | No | The discriminator value this edge is pinned to |
+| `via_label_source` | No | Which nomination names the Cypher type: `column` (the discriminator value), `table` (the junction's table name), or `fixed` (the declared alias). All are upper-snake-cased |
+
+### Junction-backed relationships
+
+An associative table can be declared as a first-class Cypher relationship instead of a node, so its
+own columns become that relationship's attributes: (REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+The junction is a registered table like any other and must be registered before a relationship can
+name it. Declare it once per discriminator value: three rows over `pet_companions` produce
+`BONDED_PAIR`, `LITTERMATE`, and `SHARES_ENCLOSURE` as three distinct Cypher types, each carrying
+the junction row's remaining columns as edge properties. The shipped demo config declares exactly
+this.
+
+A junction edge is a Cypher relationship, not a GraphQL join field: the GraphQL join emitter builds
+its `ON` clause for a single column pair and has no place for the second hop, so junction edges are
+excluded from generated SDL and from `pg_constraint`. [tool-verified: `provisa/compiler/schema_gen.py:304`]
+The junction table stays queryable as its own root field, and is dropped from the node side of the
+Cypher graph schema so it never appears as a node label.
+
+`materialize: true` works on a junction edge, and what it materializes is the traversal rather than
+a direct `pets`-to-`pets` join: the view holds the source hop, the junction hop, the discriminator,
+and the junction's own columns beside the target's. Because the junction is a third leg of the join,
+whether the edge crosses sources is judged across all three tables — a junction in a different source
+from the two it links is materialized even when those two agree. One declaration materializes one
+edge type, so a view built for `bonded pair` never answers a `littermate` traversal.
 
 Cardinality values [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
 

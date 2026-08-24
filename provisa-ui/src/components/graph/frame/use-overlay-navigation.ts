@@ -13,7 +13,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Relationship } from "../../../types/admin";
 import type { GNode, GEdge } from "../graph-model";
 import { extractElements } from "../graph-model";
-import { tableLabel as dbTableLabel } from "../../../naming";
+import { tableLabel as dbTableLabel, cypherRelType } from "../../../naming";
 
 type OverlayMap = Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>;
 type MergedOverlay = { nodes: Map<string, GNode>; edges: Map<string, GEdge> };
@@ -84,7 +84,10 @@ export function useOverlayNavigation({
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
         rels.map(async (r) => {
-          const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
+          // REQ-1586: a junction-backed edge names itself by its nomination, not by an alias it
+          // does not carry, and a row that names no type at all cannot be matched by type.
+          const relType = cypherRelType(r);
+          if (!relType) return;
           const q = `MATCH (n:${gNode.label})-[r:${relType}]->(child) WHERE id(n) IN [${gNode.id}] RETURN n, r, child`;
           const result = await _fetchNeighbors(q);
           if (result) {
@@ -110,7 +113,8 @@ export function useOverlayNavigation({
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
         rels.map(async (r) => {
-          const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
+          const relType = cypherRelType(r);
+          if (!relType) return;
           const q = `MATCH (parent)-[r:${relType}]->(n:${gNode.label}) WHERE id(n) IN [${gNode.id}] RETURN n, r, parent`;
           const result = await _fetchNeighbors(q);
           if (result) {

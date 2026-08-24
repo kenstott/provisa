@@ -367,6 +367,12 @@ query RelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    viaTableName
+    viaSourceColumn
+    viaTargetColumn
+    viaTypeColumn
+    viaTypeValue
+    viaLabelSource
   }
 }
 
@@ -391,6 +397,12 @@ query AllRelationshipsQuery {
     computedCypherAlias
     autoSuggested
     disableCypher
+    viaTableName
+    viaSourceColumn
+    viaTargetColumn
+    viaTypeColumn
+    viaTypeValue
+    viaLabelSource
   }
 }
 

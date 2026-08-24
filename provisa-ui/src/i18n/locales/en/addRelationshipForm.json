@@ -24,6 +24,18 @@
     "materializeLabel": "Materialize (auto-create MV for cross-source joins)",
     "disableCypherLabel": "Exclude from Cypher graph",
     "refreshIntervalLabel": "Refresh Interval (s)",
-    "save": "Save"
+    "save": "Save",
+    "junctionTitle": "Junction table (advanced)",
+    "junctionHelp": "Declare this edge as traversing an associative table. The junction's remaining columns become the relationship's attributes.",
+    "viaTableLabel": "Junction table",
+    "viaSourceColumnLabel": "Junction column → source",
+    "viaTargetColumnLabel": "Junction column → target",
+    "viaTypeColumnLabel": "Discriminator column",
+    "viaTypeValueLabel": "Discriminator value",
+    "viaTypeValuePlaceholder": "e.g. KIND_OF",
+    "viaLabelSourceLabel": "Name the edge from",
+    "viaLabelSourceColumn": "Discriminator value",
+    "viaLabelSourceTable": "Junction table name",
+    "viaLabelSourceFixed": "Cypher alias"
   }
 }

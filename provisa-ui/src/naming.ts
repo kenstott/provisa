@@ -71,3 +71,53 @@ export function applyConvention(name: string, convention: string | null | undefi
   if (convention === "PascalCase") return toPascalCase(name);
   return toSnakeCase(name);
 }
+
+/** Mirror of Python _upper_snake (provisa/cypher/label_map.py): any name → UPPER_SNAKE. */
+export function upperSnake(text: string): string {
+  const spaced = text.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return spaced
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .toUpperCase();
+}
+
+/**
+ * REQ-1586: the Cypher relationship type a relationship row is exposed as.
+ *
+ * Mirror of Python junction_rel_type plus the ordinary alias path. A junction-backed row carries no
+ * usable alias of its own — its type comes from whichever source the steward nominated — so any
+ * client that names an edge in a generated pattern has to derive it the way the compiler does.
+ * Returns null when the row names no type at all, which is a row that cannot be matched by type.
+ */
+export function cypherRelType(r: {
+  alias: string | null;
+  computedCypherAlias?: string | null;
+  viaTableName?: string | null;
+  viaTypeValue?: string | null;
+  viaLabelSource?: string | null;
+}): string | null {
+  if (r.viaTableName) {
+    // No fallback chain: the nomination is required to be present for the source it names, so a
+    // missing value is a defect in the stored row, not a case to paper over.
+    if (r.viaLabelSource === "column") return r.viaTypeValue ? upperSnake(r.viaTypeValue) : null;
+    if (r.viaLabelSource === "table") return upperSnake(r.viaTableName);
+    if (r.viaLabelSource === "fixed") return r.alias ? upperSnake(r.alias) : null;
+    return null;
+  }
+  const name = r.alias ?? r.computedCypherAlias ?? "";
+  return name ? name.toUpperCase() : null;
+}
+
+/**
+ * REQ-1586: split a stored key declaration into its ordered columns. Mirror of Python key_list
+ * (provisa/compiler/sql_types.py). A junction end and the relationship end it pairs with are each
+ * a comma-separated ordered list, so a composite key is mapped by listing its columns in order.
+ */
+export function keyList(stored: string | null | undefined): string[] {
+  if (!stored) return [];
+  return stored
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+}

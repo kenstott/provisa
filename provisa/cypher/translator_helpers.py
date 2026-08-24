@@ -20,11 +20,12 @@ import re
 
 import sqlglot.expressions as exp
 
+from provisa.compiler.sql_types import key_list
 from provisa.cypher.parser import (
     MatchClause,
     PathPattern,
 )
-from provisa.cypher.label_map import NodeMapping, RelationshipMapping
+from provisa.cypher.label_map import JunctionMapping, NodeMapping, RelationshipMapping
 
 
 def _safe_alias(expr: str) -> str:
@@ -97,6 +98,178 @@ def _src_col_expr_for_rm(
         this=exp.Identifier(this=rm.join_source_column, quoted=True),
         table=exp.Identifier(this=src_table_ref),
     )
+
+
+def via_alias_for(rm: "RelationshipMapping", seed: "str | None") -> str:  # REQ-1586
+    """Deterministic SQL alias for a junction-backed relationship's junction table.
+
+    The seed is the relationship variable when the pattern names one, and the hop's target alias
+    when it does not; both are unique within a query, so two junction hops never collide.
+    """
+    assert rm.via is not None, "via_alias_for called on a relationship with no junction"
+    return f"{seed}__via" if seed else f"{rm.via.table_name}__via"
+
+
+def junction_edge_fields(  # REQ-1586
+    via: "tuple[str, JunctionMapping] | None",
+) -> "list[exp.Expression]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The ``properties`` and ``junctionTable`` fields of an emitted edge object.
+
+    A junction-backed edge exposes its junction's own columns as the edge's properties and names
+    the table they were read from; the name sits beside properties rather than inside it, so it can
+    never collide with a junction column. An FK/PK edge has no junction, so it carries an empty
+    properties object and no table name.
+    """
+    if via is None:
+        return [
+            exp.Literal.string("properties"),
+            exp.Anonymous(this="JSON_OBJECT", expressions=[]),
+        ]
+    via_alias, via_map = via
+    prop_exprs: list[exp.Expression] = []
+    for prop_name, col_name in via_map.attributes.items():
+        prop_exprs.append(exp.Literal.string(prop_name))
+        prop_exprs.append(via_column(via_alias, col_name))
+    return [
+        exp.Literal.string("properties"),
+        exp.Anonymous(this="JSON_OBJECT", expressions=prop_exprs),
+        exp.Literal.string("junctionTable"),
+        exp.Literal.string(via_map.table_name),
+    ]
+
+
+def _via_table_expr(via: "JunctionMapping", alias: str) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Aliased table expression for a junction table (REQ-1586)."""
+    return exp.alias_(  # pyright: ignore[reportReturnType]
+        exp.Table(
+            this=exp.Identifier(this=via.table_name, quoted=True),
+            db=exp.Identifier(this=via.schema_name, quoted=True),
+            catalog=exp.Identifier(this=via.catalog_name, quoted=True),
+        ),
+        alias=alias,
+    )
+
+
+def via_column(alias: str, column: str) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A column on the junction alias — the anchor for edge properties and edge filters."""
+    return exp.Column(
+        this=exp.Identifier(this=column, quoted=True),
+        table=exp.Identifier(this=alias),
+    )
+
+
+def _and_all(conds: list[exp.Expression]) -> exp.Expression:  # REQ-1586
+    """AND a non-empty list of conditions together, left to right."""
+    head, *rest = conds
+    for cond in rest:
+        head = exp.And(this=head, expression=cond)
+    return head
+
+
+def _make_junction_joins(  # REQ-1586
+    rm: "RelationshipMapping",
+    is_bwd: bool,
+    tgt_nm: "NodeMapping",
+    tgt_alias: str,
+    src_table_ref: str,
+    join_type: str,
+    via_alias: str,
+) -> list[dict]:
+    """Build the two join dicts a junction-backed relationship emits.
+
+    Source hop first (source table → junction), then junction → target. The discriminator, when
+    the junction carries several relationship types, is ANDed onto the source hop so it restricts
+    the junction scan rather than the target scan.
+    """
+    via = rm.via
+    assert via is not None
+    # A junction edge is a plain two-key-pair join; the expression escapes exist for FK edges
+    # whose join value is computed, and there is no declaration path that sets both.
+    assert rm.source_expr is None and rm.target_expr is None and rm.source_constant is None, (
+        f"junction relationship {rm.rel_type!r} may not also carry a computed join expression"
+    )
+    if is_bwd:
+        src_keys, tgt_keys = via.target_columns, via.source_columns
+        src_node_cols = key_list(rm.join_target_column)
+        tgt_node_cols = key_list(rm.join_source_column)
+    else:
+        src_keys, tgt_keys = via.source_columns, via.target_columns
+        src_node_cols = key_list(rm.join_source_column)
+        tgt_node_cols = key_list(rm.join_target_column)
+    # A composite end pairs its columns positionally, so the two lists must be the same length —
+    # a mismatch is a malformed declaration, not a case to truncate around.
+    if len(src_keys) != len(src_node_cols) or len(tgt_keys) != len(tgt_node_cols):
+        raise ValueError(
+            f"junction relationship {rm.rel_type!r} pairs {len(src_keys)} source and "
+            f"{len(tgt_keys)} target junction columns against {len(src_node_cols)} and "
+            f"{len(tgt_node_cols)} node columns"
+        )
+
+    src_cond: exp.Expression = _and_all(
+        [
+            exp.EQ(
+                this=exp.Column(
+                    this=exp.Identifier(this=node_col, quoted=True),
+                    table=exp.Identifier(this=src_table_ref),
+                ),
+                expression=via_column(via_alias, via_col),
+            )
+            for node_col, via_col in zip(src_node_cols, src_keys, strict=True)
+        ]
+    )
+    if via.type_column is not None:
+        src_cond = exp.And(
+            this=src_cond,
+            expression=exp.EQ(
+                this=via_column(via_alias, via.type_column),
+                expression=exp.Literal.string(via.type_value),
+            ),
+        )
+    tgt_cond = _and_all(
+        [
+            exp.EQ(
+                this=via_column(via_alias, via_col),
+                expression=exp.Column(
+                    this=exp.Identifier(this=node_col, quoted=True),
+                    table=exp.Identifier(this=tgt_alias),
+                ),
+            )
+            for via_col, node_col in zip(tgt_keys, tgt_node_cols, strict=True)
+        ]
+    )
+    return [
+        {"table": _via_table_expr(via, via_alias), "on": src_cond, "join_type": join_type},
+        {"table": _node_table_expr(tgt_nm, tgt_alias), "on": tgt_cond, "join_type": join_type},
+    ]
+
+
+def _make_rel_joins(
+    rm: "RelationshipMapping",
+    is_bwd: bool,
+    tgt_nm: "NodeMapping",
+    tgt_alias: str,
+    src_table_ref: str,
+    src_nm: "NodeMapping | None",
+    join_type: str,
+    rel_var: "str | None" = None,
+) -> list[dict]:
+    """Build the join dicts for a relationship mapping candidate.
+
+    One dict for an FK/PK edge; two for a junction-backed edge (REQ-1586), junction first.
+    """
+    if rm.source_label != rm.target_label and src_nm is not None:
+        is_bwd = src_nm.type_name == rm.target_label
+    if rm.via is not None:
+        return _make_junction_joins(
+            rm,
+            is_bwd,
+            tgt_nm,
+            tgt_alias,
+            src_table_ref,
+            join_type,
+            via_alias_for(rm, rel_var or tgt_alias),
+        )
+    return [_make_rel_join(rm, is_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type)]
 
 
 def _make_rel_join(

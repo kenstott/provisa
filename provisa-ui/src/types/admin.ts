@@ -421,6 +421,14 @@ export interface Relationship {
   computedCypherAlias: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;
+  // REQ-1586: junction declaration. Present only on a junction-backed edge; viaLabelSource says
+  // where the exposed Cypher type name comes from (column | table | fixed).
+  viaTableName: string | null;
+  viaSourceColumn: string | null;
+  viaTargetColumn: string | null;
+  viaTypeColumn: string | null;
+  viaTypeValue: string | null;
+  viaLabelSource: string | null;
   ownerDomainId: string | null;
 }
 

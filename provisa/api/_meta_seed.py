@@ -338,30 +338,6 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "term",
     ),
     (
-        "meta:glossary_terms:edges_from",
-        _ADMIN,
-        "glossary_terms",
-        "id",
-        "from_term_id",
-        "one-to-many",
-        _ADMIN,
-        "glossary_term_edges",
-        "EDGES_OUT",
-        "edgesOut",
-    ),
-    (
-        "meta:glossary_terms:edges_to",
-        _ADMIN,
-        "glossary_terms",
-        "id",
-        "to_term_id",
-        "one-to-many",
-        _ADMIN,
-        "glossary_term_edges",
-        "EDGES_IN",
-        "edgesIn",
-    ),
-    (
         "meta:glossary_terms:experts",
         _ADMIN,
         "glossary_terms",
@@ -584,4 +560,34 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "GLOSSARY_REFS",
         "glossaryRefs",
     ),
+]
+
+
+# REQ-1586: junction-backed edges. glossary_term_edges is an associative table, not an entity, so
+# it is declared as first-class relationships rather than reached through a reified node — one row
+# per rel_type value, each naming itself from that value ("column" nomination). This is what makes
+# (t:GlossaryTerm)-[:KIND_OF*1..3]->(:GlossaryTerm) count whole hops.
+# (id, src_source, src_table, src_col, tgt_col, cardinality, tgt_source, tgt_table,
+#  via_table, via_source_column, via_target_column, via_type_column, via_type_value,
+#  via_label_source)
+META_JUNCTION_RELATIONSHIPS: list[
+    tuple[str, str, str, str, str, str, str, str, str, str, str, str, str, str]
+] = [
+    (
+        f"meta:glossary_terms:{_rt.lower()}",
+        _ADMIN,
+        "glossary_terms",
+        "id",
+        "id",
+        "one-to-many",
+        _ADMIN,
+        "glossary_terms",
+        "glossary_term_edges",
+        "from_term_id",
+        "to_term_id",
+        "rel_type",
+        _rt,
+        "column",
+    )
+    for _rt in ("KIND_OF", "RELATED_TO", "PART_OF", "SYNONYM_OF")
 ]

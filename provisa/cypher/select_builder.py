@@ -21,8 +21,9 @@ from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.cypher.label_map import CypherLabelMap, JunctionMapping, NodeMapping
 from provisa.cypher.parser import ReturnClause
+from provisa.cypher.translator_helpers import junction_edge_fields  # REQ-1586
 
 # Requirements: REQ-345, REQ-347, REQ-349, REQ-350, REQ-351
 
@@ -46,6 +47,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
     _lm: CypherLabelMap
     _rel_var_types: dict
     _rel_var_endpoints: dict
+    _rel_var_via: dict  # REQ-1586: rel variable → (junction alias, JunctionMapping)
     _domain_nodes: dict[str, str]
     _varlen_rel_vars: dict  # varlen rel variable → outer path variable
 
@@ -60,8 +62,12 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         tgt_alias: str,
         tgt_nm: NodeMapping,
         is_reversed: bool = False,
+        via: "tuple[str, JunctionMapping] | None" = None,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Emit a JSON edge object for RETURN r.
+
+        REQ-1586: ``via`` is the (junction alias, JunctionMapping) of a junction-backed edge; its
+        columns become the edge's properties. An FK/PK edge has no junction and no properties.
 
         Neo4j-compatible format:
         JSON_OBJECT(
@@ -108,6 +114,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             expression=identity_second,
         )
         empty_props = exp.Anonymous(this="JSON_OBJECT", expressions=[])
+        # REQ-1586: a junction-backed edge's properties are its junction's columns, and the edge
+        # names the table they were read from.
+        edge_fields = junction_edge_fields(via)
 
         def _node_props_expr(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             """Build JSON_OBJECT(...) for all node properties, or empty if none defined."""
@@ -187,8 +196,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 tgt_id_col,
                 exp.Literal.string("type"),
                 exp.Literal.string(rel_type),
-                exp.Literal.string("properties"),
-                empty_props,
+                *edge_fields,
                 exp.Literal.string("startNode"),
                 start_node,
                 exp.Literal.string("endNode"),
@@ -332,6 +340,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             tgt_alias: str,
             tgt_nm: "NodeMapping",
             is_reversed: bool = False,
+            via: "tuple[str, JunctionMapping] | None" = None,
         ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             src_id_col = exp.Column(
                 this=exp.Identifier(this=src_nm.id_column, quoted=True),
@@ -378,15 +387,16 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     _node_obj(src_alias, src_nm),
                     exp.Literal.string("endNode"),
                     _node_obj(tgt_alias, tgt_nm),
-                    exp.Literal.string("properties"),
-                    exp.Anonymous(this="JSON_OBJECT", expressions=[]),
+                    # REQ-1586: a path step over a junction carries the junction's columns as the
+                    # step edge's properties, the same as a single-hop edge does.
+                    *junction_edge_fields(via),
                 ],
             )
 
         if not step_nodes and step_edges:
             seen: set[str] = set()
             step_nodes = []
-            for rt, sa, snm, ta, tnm, rev in step_edges:
+            for rt, sa, snm, ta, tnm, rev, _via in step_edges:
                 if sa not in seen:
                     step_nodes.append((sa, snm))
                     seen.add(sa)
@@ -400,7 +410,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         edges_array = exp.Anonymous(
             this="JSON_ARRAY",
             expressions=[
-                _edge_obj(rt, sa, snm, ta, tnm, rev) for rt, sa, snm, ta, tnm, rev in step_edges
+                _edge_obj(rt, sa, snm, ta, tnm, rev, via)
+                for rt, sa, snm, ta, tnm, rev, via in step_edges
             ],
         )
         return exp.Anonymous(
@@ -459,7 +470,13 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
             rel_type = self._rel_var_types[expr_text]
             edge_expr: exp.Expression = self._build_edge_object(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                rel_type, src_alias, src_nm, tgt_alias, tgt_nm, is_reversed
+                rel_type,
+                src_alias,
+                src_nm,
+                tgt_alias,
+                tgt_nm,
+                is_reversed,
+                self._rel_var_via.get(expr_text),  # REQ-1586
             )
         else:
             edge_expr = exp.Null()
@@ -531,8 +548,8 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             edges_array = exp.Anonymous(
                 this="JSON_ARRAY",
                 expressions=[
-                    self._build_edge_object(rt, sa, snm, ta, tnm, rev)
-                    for rt, sa, snm, ta, tnm, rev in step_edges
+                    self._build_edge_object(rt, sa, snm, ta, tnm, rev, via)
+                    for rt, sa, snm, ta, tnm, rev, via in step_edges
                 ],
             )
             return exp.alias_(edges_array, alias or expr_text)

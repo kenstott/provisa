@@ -330,11 +330,11 @@ MVs transparently optimize expensive queries by pre-computing and caching result
 
 ### Relationships as MV Hints
 
-A relationship declaration is not only a governance artifact — it is also the structural description of a join shape. That shape is exactly what the MV optimizer needs: two tables, two columns, a join type. This means a relationship can directly drive materialization.
+A relationship declaration is not only a governance artifact — it is also the structural description of a join shape. That shape is exactly what the MV optimizer needs: the tables, the columns, the join type. This means a relationship can directly drive materialization.
 
-For **cross-source relationships**, this happens automatically at startup: every approved cross-source relationship generates a `JoinPattern` MV (`auto-mv-<rel_id>`). (REQ-158) No separate MV config is required. When the compiler sees that join in a query, the rewriter substitutes the pre-materialized result transparently.
+For **cross-source relationships**, this happens automatically at startup: every relationship carrying `materialize: true` whose legs land in more than one source generates a `JoinPattern` MV (`auto-mv-<rel_id>`). (REQ-158) No separate MV config is required. When the compiler sees that join in a query, the rewriter substitutes the pre-materialized result transparently. Same-source relationships generate nothing — those JOINs are already fast via direct execution. (REQ-159) [tool-verified: `provisa/api/app_loaders.py`]
 
-For **same-source relationships**, stewards can opt in explicitly via `materialize: true`. Same-source JOINs are already fast via direct execution, so materialization is only worthwhile for very hot join paths. (REQ-159)
+A **junction-backed relationship** materializes its traversal rather than a direct join: the associative table is a third leg, so the pattern carries the source hop, the junction hop, and the discriminator that pins the row set to one edge type, with the junction's own columns landing in the view beside the target's. (REQ-1586) Because the junction counts as a leg, an edge whose junction sits in a different source from the two tables it links is cross-source even when those two agree. The rewriter matches the two hops as a chain — the second must start from the alias the first introduced — so a query reaching the same two tables without passing through the junction reads the base tables, and a view built for one discriminator value never answers a traversal filtered to another.
 
 The practical consequence: stewards who approve a relationship are implicitly deciding whether the join is a good candidate for materialization. The governance act and the optimization hint are the same declaration.
 
@@ -345,7 +345,7 @@ The practical consequence: stewards who approve a relationship are implicitly de
 | **Join-pattern** | `join_pattern` in MV config | Rewrites matching JOINs to read from MV table |
 | **Custom SQL** | `sql` in MV config | Arbitrary SELECT, optionally exposed in SDL |
 | **Auto-materialized relationship** | cross-source relationship (automatic) | Auto-generates a join-pattern MV; no config required |
-| **Steward-materialized relationship** | `materialize: true` on same-source relationship | Explicit opt-in for hot same-source join paths |
+| **Junction-backed relationship** | `materialize: true` on a junction relationship | Materializes the two-hop traversal, discriminator and edge attributes included |
 
 ### Auto-Materialization
 

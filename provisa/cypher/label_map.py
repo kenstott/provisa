@@ -23,6 +23,7 @@ from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
     apply_cql_property as _apply_cql_property,
 )
+from provisa.compiler.sql_types import key_list
 from provisa.core import domain_policy
 
 if TYPE_CHECKING:
@@ -77,6 +78,31 @@ class NodeMapping:
 
 
 @dataclass
+class JunctionMapping:  # REQ-1586
+    """The associative table a junction-backed relationship traverses through.
+
+    ``source_columns``/``target_columns`` are the junction's own two foreign keys, each an ordered
+    list of one or more columns, paired positionally against the relationship's own source and
+    target key lists. ``type_column``/``type_value`` add the
+    discriminator predicate for a junction carrying several relationship types. ``attributes``
+    maps Cypher property name to physical column for every other junction column — those are the
+    relationship's attributes, readable as ``r.attr`` and filterable in WHERE.
+    """
+
+    catalog_name: str
+    schema_name: str
+    table_name: str
+    source_columns: tuple[str, ...]
+    target_columns: tuple[str, ...]
+    type_column: str | None = None
+    type_value: str | None = None
+    attributes: dict[str, str] = field(default_factory=dict)
+    # REQ-1586: which nomination names the exposed type — see junction_rel_type.
+    label_source: str = ""
+    label_fixed: str = ""
+
+
+@dataclass
 class RelationshipMapping:
     rel_type: str  # Cypher relationship type (UPPER_SNAKE)
     source_label: str
@@ -95,6 +121,12 @@ class RelationshipMapping:
         None  # when set, use as raw SQL expression on target side; {alias} replaced with join alias
     )
     many: bool = False  # True when cardinality is one-to-many (source is parent, target is array)
+    via: JunctionMapping | None = None  # REQ-1586: set on a junction-backed edge, None on FK/PK
+
+    @property
+    def properties(self) -> dict[str, str]:
+        """REQ-1586: the relationship's attributes. Empty unless it is junction-backed."""
+        return self.via.attributes if self.via else {}
 
 
 class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
@@ -269,6 +301,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         target_pk = _build_target_pk(ctx_typed)
         _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table)
         aliases = _build_relationship_mappings(ctx_typed, relationships)
+        _drop_junction_nodes(ctx_typed, nodes, domains, nodes_by_table)
 
         _all_access = domain_access is not None and "*" in domain_access
         if (
@@ -317,6 +350,42 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             nodes_by_table=nodes_by_table,
             aliases=aliases,
         )
+
+
+def _drop_junction_nodes(  # REQ-1586
+    ctx_typed: "CompilationContext",
+    nodes: dict[str, NodeMapping],
+    domains: dict[str, list[str]],
+    nodes_by_table: dict[str, list[str]],
+) -> None:
+    """Remove every declared junction table from the node side of the Cypher schema.
+
+    A declared junction is an edge, not an entity: it must not appear as a label a pattern can
+    match, as a pill a client can drag onto a canvas, or under a domain's label list. It stays a
+    registered table and is still queryable in SQL and GraphQL — this drops it from the graph
+    schema only. Mutates all three dicts.
+    """
+    junction_types = {
+        join_meta.via.table.type_name
+        for join_meta in ctx_typed.joins.values()
+        if getattr(join_meta, "via", None) is not None
+    }
+    if not junction_types:
+        return
+    for type_name in junction_types:
+        nm = nodes.pop(type_name, None)
+        if nm is None:
+            continue
+        if nm.domain_label and nm.domain_label in domains:
+            domains[nm.domain_label] = [t for t in domains[nm.domain_label] if t != type_name]
+            if not domains[nm.domain_label]:
+                del domains[nm.domain_label]
+        if nm.table_label in nodes_by_table:
+            nodes_by_table[nm.table_label] = [
+                t for t in nodes_by_table[nm.table_label] if t != type_name
+            ]
+            if not nodes_by_table[nm.table_label]:
+                del nodes_by_table[nm.table_label]
 
 
 def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:
@@ -397,6 +466,48 @@ def _build_node_mappings(
         nodes_by_table.setdefault(table_label, []).append(table_meta.type_name)
 
 
+def _upper_snake(text: str) -> str:  # REQ-1586
+    """Normalise a nominated label to the UPPER_SNAKE form every Cypher relationship type takes."""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", text)
+    return re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", spaced)).strip("_").upper()
+
+
+def junction_rel_type(via: JunctionMapping) -> str:  # REQ-1586
+    """The Cypher type name of a junction-backed edge, from its nominated source.
+
+    One of three nominations, upper-snake-cased: ``column`` takes the discriminator value the edge
+    is pinned to, ``table`` takes the junction table's own name, ``fixed`` takes the cypher_alias
+    declared on the relationship row. The registry CHECK constraints guarantee the nominated source
+    is present, so an unknown or empty nomination is a declaration that never should have been
+    stored, not something to name around.
+    """
+    if via.label_source == "column":
+        return _upper_snake(via.type_value)
+    if via.label_source == "table":
+        return _upper_snake(via.table_name)
+    if via.label_source == "fixed":
+        return _upper_snake(via.label_fixed)
+    raise ValueError(f"Junction on {via.table_name!r} has no label source nomination")
+
+
+def _junction_mapping(via: object) -> JunctionMapping | None:  # REQ-1586
+    """Convert a compiler JunctionMeta into the Cypher-side JunctionMapping."""
+    if via is None:
+        return None
+    return JunctionMapping(
+        catalog_name=via.table.catalog_name,
+        schema_name=via.table.schema_name,
+        table_name=via.table.table_name,
+        source_columns=via.source_columns,
+        target_columns=via.target_columns,
+        type_column=via.type_column,
+        type_value=via.type_value,
+        attributes=dict(via.attributes),
+        label_source=via.label_source,
+        label_fixed=via.label_fixed,
+    )
+
+
 def _build_relationship_mappings(
     ctx_typed: "CompilationContext",
     relationships: dict[str, RelationshipMapping],
@@ -408,7 +519,14 @@ def _build_relationship_mappings(
             continue
         cypher_alias = getattr(join_meta, "cypher_alias", None)
         cardinality = getattr(join_meta, "cardinality", None)
-        rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name, cardinality)
+        via = _junction_mapping(getattr(join_meta, "via", None))
+        # REQ-1586: a junction edge is named by its nomination, not by the GraphQL field it would
+        # have had — the field name describes the junction table, the nomination describes the edge.
+        rel_type = (
+            junction_rel_type(via)
+            if via is not None
+            else (cypher_alias if cypher_alias else _to_rel_type(gql_field_name, cardinality))
+        )
         src_json_key = getattr(join_meta, "source_json_key", None)
         _base_source_expr = getattr(join_meta, "source_expr", None)
         source_expr = (
@@ -428,11 +546,51 @@ def _build_relationship_mappings(
             source_expr=source_expr,
             target_expr=getattr(join_meta, "target_expr", None),
             many=(cardinality == "one-to-many"),
+            via=via,
         )
         rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
         relationships[rel_key] = rm
         aliases.setdefault(rel_type, []).append(rm)
     return aliases
+
+
+def _junction_from_rel_dict(  # REQ-1586
+    rel: dict,
+    all_tables_by_id: dict[int, dict],
+    all_column_types: dict,
+    source_catalogs: dict[str, str] | None,
+) -> JunctionMapping | None:
+    """Build a JunctionMapping from a raw relationship row on the cross-domain traversal path."""
+    from provisa.compiler.naming import source_to_catalog as _s2c
+
+    via_id = rel.get("via_table_id")
+    if not via_id:
+        return None
+    via_table = all_tables_by_id[via_id]
+    via_source_id = via_table["source_id"]
+    via_domain_id = via_table.get("domain_id") or None
+    src_keys = key_list(rel["via_source_column"])
+    tgt_keys = key_list(rel["via_target_column"])
+    keys = {*src_keys, *tgt_keys}
+    type_column = rel.get("via_type_column") or None
+    if type_column:
+        keys.add(type_column)
+    return JunctionMapping(
+        catalog_name=(source_catalogs or {}).get(via_source_id) or _s2c(via_source_id),
+        schema_name=via_table["schema_name"],
+        table_name=_strip_domain_prefix(via_table["table_name"], via_domain_id),
+        source_columns=src_keys,
+        target_columns=tgt_keys,
+        type_column=type_column,
+        type_value=rel.get("via_type_value") or None,
+        attributes={
+            _apply_cql_property(c.column_name): c.column_name
+            for c in all_column_types.get(via_id, [])
+            if c.column_name not in keys
+        },
+        label_source=rel["via_label_source"],
+        label_fixed=rel.get("alias") or "",
+    )
 
 
 def _make_traversal_node(
@@ -518,6 +676,9 @@ def _add_cross_domain_nodes(
         tgt_table = all_tables_by_id.get(tgt_id)
         if tgt_table is None:
             continue
+        # REQ-1586: a junction-backed edge is untraversable without its junction table.
+        if rel.get("via_table_id") and rel["via_table_id"] not in all_tables_by_id:
+            continue
         col_metas = all_column_types.get(tgt_id, [])
         if not col_metas:
             continue
@@ -541,10 +702,15 @@ def _add_cross_domain_nodes(
 
         cypher_alias = rel.get("alias") or rel.get("computed_cypher_alias")
         rel_cardinality = rel.get("cardinality")
-        rel_type = (
-            cypher_alias
-            if cypher_alias
-            else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name, rel_cardinality)
+        xvia = _junction_from_rel_dict(rel, all_tables_by_id, all_column_types, source_catalogs)
+        rel_type = (  # REQ-1586: the nomination names a junction edge
+            junction_rel_type(xvia)
+            if xvia is not None
+            else (
+                cypher_alias
+                if cypher_alias
+                else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name, rel_cardinality)
+            )
         )
         rel_key = f"{rel_type}::{src_type}→{tgt_type_name}"
         if rel_key not in relationships:
@@ -564,6 +730,7 @@ def _add_cross_domain_nodes(
                 alias=cypher_alias,
                 source_expr=_xsource_expr,
                 many=(rel_cardinality == "one-to-many"),
+                via=xvia,
             )
             relationships[rel_key] = xrel
             aliases.setdefault(rel_type, []).append(xrel)

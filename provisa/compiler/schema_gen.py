@@ -298,6 +298,11 @@ def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> boo
     tgt_id = rel.get("target_table_id")
     if tgt_id not in table_lookup:
         return False
+    # REQ-1586: a junction-backed edge is a Cypher relationship, not a GraphQL join field. The
+    # GraphQL join emitter builds its ON clause as SQL text for a single column pair and has no
+    # place to put the second hop; the junction table stays queryable as its own root field.
+    if rel.get("via_table_id"):
+        return False
     # Remote-managed relationships (e.g. GraphQL remote) have no FK columns — allow when
     # both tables are visible.
     if not rel.get("source_column"):

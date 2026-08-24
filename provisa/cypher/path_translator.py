@@ -105,6 +105,36 @@ def path_to_recursive_sql(  # REQ-345, REQ-346, REQ-348, REQ-351
     else:
         src_join_expr = f'src."{rel_mapping.join_source_column}"'
 
+    # REQ-1586: a junction-backed edge reaches its target through the associative table, so
+    # each depth step here is src -> junction -> tgt. The discriminator rides the junction hop,
+    # so a discriminated junction contributes only its own edges to the path search.
+    via = rel_mapping.via
+    if via is not None:
+        via_full = f'"{via.catalog_name}"."{via.schema_name}"."{via.table_name}"'
+        via_disc = (
+            f" AND _via.\"{via.type_column}\" = '{via.type_value}'" if via.type_column else ""
+        )
+        # A variable-length path carries one scalar end id per step, so a composite junction end
+        # has nothing to pair against on the recursive hop. That is a limit of the path search,
+        # not something to approximate by matching only the first column.
+        if len(via.source_columns) != 1 or len(via.target_columns) != 1:
+            raise PathTranslateError(
+                f"variable-length path over {rel_mapping.rel_type!r} is not supported: its "
+                "junction maps a composite key, which a path step has no end id to pair with"
+            )
+        base_join = (
+            f'  JOIN {via_full} _via ON {src_join_expr} = _via."{via.source_columns[0]}"{via_disc}\n'
+            f'  JOIN {tgt_full} tgt ON _via."{via.target_columns[0]}" = tgt."{tgt_id_col}"'
+        )
+        step_join = (
+            f'  JOIN {via_full} _via ON p._end_id = CAST(_via."{via.source_columns[0]}" AS VARCHAR)'
+            f"{via_disc}\n"
+            f'  JOIN {tgt_full} tgt ON _via."{via.target_columns[0]}" = tgt."{tgt_id_col}"'
+        )
+    else:
+        base_join = f'  JOIN {tgt_full} tgt ON {src_join_expr} = tgt."{tgt_id_col}"'
+        step_join = f'  JOIN {tgt_full} tgt ON p._end_id = CAST(tgt."{tgt_id_col}" AS VARCHAR)'
+
     is_shortest = path_func.func_name == "shortestpath"
 
     sql = f"""
@@ -118,7 +148,7 @@ WITH RECURSIVE _cypher_path AS (
     'forward' AS _direction,
     CAST(src."{src_pk}" AS VARCHAR) AS _visited
   FROM {src_full} src
-  JOIN {tgt_full} tgt ON {src_join_expr} = tgt."{tgt_id_col}"
+{base_join}
   WHERE _depth <= {effective_max}
 
   UNION ALL
@@ -132,7 +162,7 @@ WITH RECURSIVE _cypher_path AS (
     'forward' AS _direction,
     p._visited || ',' || CAST(tgt."{tgt_pk}" AS VARCHAR) AS _visited
   FROM _cypher_path p
-  JOIN {tgt_full} tgt ON p._end_id = CAST(tgt."{tgt_id_col}" AS VARCHAR)
+{step_join}
   WHERE p._depth < {effective_max}
     AND p._visited NOT LIKE '%,' || CAST(tgt."{tgt_pk}" AS VARCHAR) || ',%'
     AND p._visited NOT LIKE CAST(tgt."{tgt_pk}" AS VARCHAR) || ',%'

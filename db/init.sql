@@ -194,6 +194,29 @@ INSERT INTO pet_store.pets (name, species, breed_name, price, available) VALUES
     ('Lion 3',   'lion',   'Barbary Lion',     1600.00, TRUE),
     ('Rabbit 1', 'rabbit', 'Holland Lop',       150.00, TRUE);
 
+-- REQ-1586: an associative table declared as a Cypher relationship rather than a node.
+-- relation_type discriminates three edge types out of the one table (BONDED_PAIR, LITTERMATE,
+-- SHARES_ENCLOSURE); since/note are the edge's own attributes, which is what a junction carries
+-- and an FK/PK column pair cannot.
+CREATE TABLE pet_store.pet_companions (
+    id SERIAL PRIMARY KEY,
+    pet_id INTEGER NOT NULL REFERENCES pet_store.pets(id),
+    companion_pet_id INTEGER NOT NULL REFERENCES pet_store.pets(id),
+    relation_type VARCHAR(50) NOT NULL,
+    since DATE NOT NULL,
+    note VARCHAR(200) NOT NULL
+);
+
+COMMENT ON TABLE pet_store.pet_companions IS 'Junction table backing the pet-to-pet companion relationships';
+
+INSERT INTO pet_store.pet_companions (pet_id, companion_pet_id, relation_type, since, note) VALUES
+    (1, 2, 'littermate',       '2024-03-11', 'Same litter, rehomed together'),
+    (4, 5, 'bonded pair',      '2023-07-02', 'Will not settle when separated'),
+    (5, 6, 'shares enclosure', '2025-01-20', 'Rotating access to the outdoor run'),
+    (2, 3, 'bonded pair',      '2024-11-05', 'Cat grooms the dog daily'),
+    (3, 7, 'shares enclosure', '2025-04-18', 'Supervised yard time only'),
+    (4, 6, 'littermate',       '2023-07-02', 'Half-siblings, same sire');
+
 -- Hello-world DB function: returns customers filtered by region.
 -- Exposed as the "hello_get_customers" tracked function in Provisa.
 CREATE OR REPLACE FUNCTION get_customers_by_region(p_region TEXT DEFAULT NULL)

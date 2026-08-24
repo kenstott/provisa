@@ -246,6 +246,13 @@ relationships = Table(
     Column("graphql_alias", Text),
     Column("disable_cypher", Boolean, nullable=False, server_default=false()),
     Column("hide_target_meta", Boolean, nullable=False, server_default=false()),  # REQ-1132
+    # REQ-1586: junction declaration — see schema.sql for the shape and the completeness checks.
+    Column("via_table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE")),
+    Column("via_source_column", Text),
+    Column("via_target_column", Text),
+    Column("via_type_column", Text),
+    Column("via_type_value", Text),
+    Column("via_label_source", Text),
     Column("source_json_key", Text),
     Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),

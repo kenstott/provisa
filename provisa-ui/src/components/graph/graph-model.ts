@@ -194,6 +194,8 @@ export interface GEdge {
   properties: Record<string, unknown>;
   startNode: GNode;
   endNode: GNode;
+  // REQ-1586: the junction table this edge traversed; absent on an FK/PK-backed edge.
+  junctionTable?: string;
 }
 
 export function isNode(v: unknown): v is GNode {

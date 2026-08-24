@@ -416,6 +416,12 @@ def _load_mv_and_views_config(
                 right_table=jp_cfg["right_table"],
                 right_column=jp_cfg["right_column"],
                 join_type=jp_cfg.get("join_type", "left"),
+                # REQ-1586: an explicitly declared MV may cover a junction hop as well
+                via_table=jp_cfg.get("via_table"),
+                via_left_column=jp_cfg.get("via_left_column"),
+                via_right_column=jp_cfg.get("via_right_column"),
+                via_type_column=jp_cfg.get("via_type_column"),
+                via_type_value=jp_cfg.get("via_type_value"),
             )
         sdl_cfg = None
         if "sdl_config" in mvc:
@@ -526,8 +532,27 @@ def _load_mv_and_views_config(
         tgt_table = rel_cfg["target_table_id"]
         src_source = _table_source_map.get(src_table)
         tgt_source = _table_source_map.get(tgt_table)
+        if not src_source or not tgt_source:
+            continue
 
-        if src_source and tgt_source and src_source != tgt_source:
+        # REQ-1586: a junction-backed edge is a two-hop traversal, so the associative table
+        # is a third leg of the join and its source counts when deciding whether the edge
+        # crosses sources at all. A junction sitting in a different source from the tables it
+        # links is exactly the case worth materializing even when those two tables agree.
+        via_table = rel_cfg.get("via_table")
+        if via_table:
+            via_source = _table_source_map.get(via_table)
+            if not via_source:
+                raise ValueError(
+                    f"Relationship {rel_cfg['id']!r} declares materialize: true through "
+                    f"junction table {via_table!r}, which is not a registered table"
+                )
+            legs = {src_source, tgt_source, via_source}
+        else:
+            via_source = None
+            legs = {src_source, tgt_source}
+
+        if len(legs) > 1:
             mv_id = f"auto-mv-{rel_cfg['id']}"
             if state.mv_registry.get(mv_id) is not None:
                 continue
@@ -538,13 +563,21 @@ def _load_mv_and_views_config(
                 right_table=tgt_table,
                 right_column=rel_cfg["target_column"],
                 join_type="left",
+                via_table=via_table,
+                via_left_column=rel_cfg.get("via_source_column"),
+                via_right_column=rel_cfg.get("via_target_column"),
+                via_type_column=rel_cfg.get("via_type_column"),
+                via_type_value=rel_cfg.get("via_type_value"),
             )
+            source_tables = [src_table, tgt_table]
+            if via_table:
+                source_tables.insert(1, via_table)
             # The store the ACTIVE engine materializes into — never a hardcoded catalog
             # (Trino → provisa_admin, DuckDB → mat_store).
             _rel_cat, _rel_schema = state.federation_engine.materialize_store_target(state.org_id)
             mv = MVDefinition(
                 id=mv_id,
-                source_tables=[src_table, tgt_table],
+                source_tables=source_tables,
                 target_catalog=_rel_cat,
                 target_schema=_rel_schema,
                 refresh_interval=rel_cfg.get("refresh_interval", 300),
@@ -552,14 +585,26 @@ def _load_mv_and_views_config(
                 join_pattern=jp,
             )
             state.mv_registry.register(mv)
-            logging.getLogger(__name__).info(
-                "Auto-materialized cross-source relationship %s (%s.%s → %s.%s)",
-                rel_cfg["id"],
-                src_source,
-                src_table,
-                tgt_source,
-                tgt_table,
-            )
+            if via_table:
+                logging.getLogger(__name__).info(
+                    "Auto-materialized cross-source junction relationship %s (%s.%s → %s.%s → %s.%s)",
+                    rel_cfg["id"],
+                    src_source,
+                    src_table,
+                    via_source,
+                    via_table,
+                    tgt_source,
+                    tgt_table,
+                )
+            else:
+                logging.getLogger(__name__).info(
+                    "Auto-materialized cross-source relationship %s (%s.%s → %s.%s)",
+                    rel_cfg["id"],
+                    src_source,
+                    src_table,
+                    tgt_source,
+                    tgt_table,
+                )
 
 
 async def _init_ingest_engines() -> None:

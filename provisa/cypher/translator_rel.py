@@ -30,7 +30,8 @@ from provisa.cypher.label_map import NodeMapping, RelationshipMapping
 from provisa.cypher.translator_helpers import (
     _is_bwd_for_candidate,
     _join_alias,
-    _make_rel_join,
+    _make_rel_joins,
+    via_alias_for,
     _node_table_expr,
     _src_col_expr_for_rm,
     _tgt_col_expr_for_rm,
@@ -40,6 +41,41 @@ from provisa.cypher.translator_types import CypherTranslateError
 
 
 class _RelJoinMixin:  # mixin for _Translator
+    def _node_alias(self, node, nm: "NodeMapping", *, as_source: bool) -> str:
+        """REQ-1586: the SQL alias for a pattern node, unique within the query.
+
+        A named node aliases to its variable. An anonymous one aliases to its table name, and
+        because a junction edge commonly joins one table to itself, a second anonymous node on the
+        same table takes a numbered alias rather than colliding with the first. A node entered as
+        one hop's target and re-entered as the next hop's source keeps the alias it was given, so
+        a chain of anonymous hops stays joined end to end.
+        """
+        if node.variable:
+            return node.variable
+        key = (id(node), nm.table_name)
+        cached = self._anon_node_aliases.get(key)
+        if cached is not None:
+            return cached
+        if as_source:
+            # The step resolved this node to a mapping it was not entered under; an earlier hop
+            # already put that table in the query, so reuse the alias it was given there.
+            for (_nid, table), alias in self._anon_node_aliases.items():
+                if table == nm.table_name:
+                    return alias
+        taken = set(self._anon_node_aliases.values()) | set(self._var_table)
+        alias = nm.table_name
+        n = 2
+        while alias in taken:
+            alias = f"{nm.table_name}__{n}"
+            n += 1
+        self._anon_node_aliases[key] = alias
+        return alias
+
+    def _register_rel_via(self, rel_var: "str | None", rm: "RelationshipMapping") -> None:
+        """REQ-1586: record the junction alias for a named junction-backed relationship."""
+        if rel_var and rm.via is not None:
+            self._rel_var_via[rel_var] = (via_alias_for(rm, rel_var), rm.via)
+
     def _resolve_early_rel_mapping(self, rel: "RelPattern") -> "RelationshipMapping | None":
         """Resolve early rel_mapping for domain-node path and anonymous node inference."""
         if not rel.types:
@@ -270,22 +306,40 @@ class _RelJoinMixin:  # mixin for _Translator
                     primary_bwd,
                 )
 
-        primary_join = _make_rel_join(
-            primary_rm, primary_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+        primary_joins = _make_rel_joins(
+            primary_rm,
+            primary_bwd,
+            tgt_nm,
+            tgt_alias,
+            src_table_ref,
+            src_nm,
+            join_type,
+            rel.variable,
         )
+        self._register_rel_via(rel.variable, primary_rm)
         joins_before = list(joins)
 
+        # REQ-1586: a junction-backed edge emits [junction, target]; the lateral takes the first
+        # table as its FROM and its condition as the correlation, the rest stay ordinary joins.
         if src_var and src_var in self._lateral_bound and from_expr is None:
-            from_expr = primary_join["table"]
-            self._lateral_conditions.append(primary_join["on"])
+            from_expr = primary_joins[0]["table"]
+            self._lateral_conditions.append(primary_joins[0]["on"])
+            joins.extend(primary_joins[1:])
         else:
-            joins.append(primary_join)
+            joins.extend(primary_joins)
 
         for extra_rm, extra_bwd in candidates[1:]:
-            extra_join = _make_rel_join(
-                extra_rm, extra_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+            extra_joins = _make_rel_joins(
+                extra_rm,
+                extra_bwd,
+                tgt_nm,
+                tgt_alias,
+                src_table_ref,
+                src_nm,
+                join_type,
+                rel.variable,
             )
-            self._extra_path_branches.append((from_expr, joins_before + [extra_join], {}))
+            self._extra_path_branches.append((from_expr, joins_before + extra_joins, {}))
 
         return from_expr, joins
 
@@ -296,22 +350,22 @@ class _RelJoinMixin:  # mixin for _Translator
         src_var: "str | None",
         src_nm: "NodeMapping",
         tgt_nm: "NodeMapping",
-        tgt_var: "str | None",
+        src_alias: str,
+        tgt_alias: str,
         clause: MatchClause,
         from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: "list[dict]",
     ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build and register joins for a resolved set of rel candidates."""
         join_type = "LEFT" if clause.optional else "INNER"
-        tgt_alias = tgt_var or tgt_nm.table_name
         if src_var and src_var in self._cte_sources:
             src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
         else:
-            src_table_ref = src_var or src_nm.table_name
+            src_table_ref = src_alias
 
         primary_rm, primary_bwd = candidates[0]
-        _src_alias = src_var or src_nm.table_name
-        _tgt_alias = tgt_var or tgt_nm.table_name
+        _src_alias = src_alias
+        _tgt_alias = tgt_alias
         # _make_rel_join derives orientation from labels for non-self-ref rels; mirror that
         # here so the captured edge's start/end nodes match the emitted join.
         _eff_bwd = (
@@ -327,6 +381,11 @@ class _RelJoinMixin:  # mixin for _Translator
                 _tgt_alias,
                 tgt_nm,
                 _eff_bwd,
+                # REQ-1586: the junction this hop traverses, under the same alias the joins use,
+                # so a path step's edge carries the junction's columns as its properties.
+                None
+                if primary_rm.via is None
+                else (via_alias_for(primary_rm, rel.variable or _tgt_alias), primary_rm.via),
             )
         if rel.variable:
             self._rel_var_types[rel.variable] = primary_rm.rel_type
@@ -339,22 +398,40 @@ class _RelJoinMixin:  # mixin for _Translator
                     primary_bwd,
                 )
 
-        primary_join = _make_rel_join(
-            primary_rm, primary_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+        primary_joins = _make_rel_joins(
+            primary_rm,
+            primary_bwd,
+            tgt_nm,
+            tgt_alias,
+            src_table_ref,
+            src_nm,
+            join_type,
+            rel.variable,
         )
+        self._register_rel_via(rel.variable, primary_rm)
         joins_before = list(joins)
 
+        # REQ-1586: a junction-backed edge emits [junction, target]; the lateral takes the first
+        # table as its FROM and its condition as the correlation, the rest stay ordinary joins.
         if src_var and src_var in self._lateral_bound and from_expr is None:
-            from_expr = primary_join["table"]
-            self._lateral_conditions.append(primary_join["on"])
+            from_expr = primary_joins[0]["table"]
+            self._lateral_conditions.append(primary_joins[0]["on"])
+            joins.extend(primary_joins[1:])
         else:
-            joins.append(primary_join)
+            joins.extend(primary_joins)
 
         for extra_rm, extra_bwd in candidates[1:]:
-            extra_join = _make_rel_join(
-                extra_rm, extra_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+            extra_joins = _make_rel_joins(
+                extra_rm,
+                extra_bwd,
+                tgt_nm,
+                tgt_alias,
+                src_table_ref,
+                src_nm,
+                join_type,
+                rel.variable,
             )
-            self._extra_path_branches.append((from_expr, joins_before + [extra_join], {}))
+            self._extra_path_branches.append((from_expr, joins_before + extra_joins, {}))
 
         return from_expr, joins
 
@@ -377,14 +454,23 @@ class _RelJoinMixin:  # mixin for _Translator
         src_var = src_node.variable
         tgt_var = tgt_node.variable
 
+        # A single-hop pattern resolves exactly one relationship mapping, so an alternation would
+        # silently collapse to its first type and answer a question nobody asked. Say so instead;
+        # the caller writes one pattern per type. Variable-length hops take a different path
+        # (path_functions) and do carry the full type list.
+        if len(rel.types) > 1 and not rel.variable_length:
+            raise CypherTranslateError(
+                "Relationship type alternation is only supported on a variable-length hop; "
+                f"write one pattern per type instead of :{('|').join(rel.types)}"
+            )
+
         rel_mapping = self._resolve_early_rel_mapping(rel)
         src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
             src_node, tgt_node, rel_mapping, from_expr
         )
 
         if from_expr is None and src_nm is not None:
-            src_alias = src_var or src_nm.table_name
-            from_expr = _node_table_expr(src_nm, src_alias)
+            from_expr = _node_table_expr(src_nm, self._node_alias(src_node, src_nm, as_source=True))
 
         if src_nm is None or tgt_nm is None:
             if tgt_var and tgt_var in self._domain_nodes and rel_mapping is not None:
@@ -406,8 +492,7 @@ class _RelJoinMixin:  # mixin for _Translator
 
         if not candidates:
             if tgt_var:
-                tgt_alias = tgt_var or tgt_nm.table_name
-                jt = _node_table_expr(tgt_nm, tgt_alias)
+                jt = _node_table_expr(tgt_nm, self._node_alias(tgt_node, tgt_nm, as_source=False))
                 no_rel_join_type = "LEFT" if clause.optional else "INNER"
                 joins.append({"table": jt, "on": exp.false(), "join_type": no_rel_join_type})
             if rel.variable:
@@ -415,7 +500,16 @@ class _RelJoinMixin:  # mixin for _Translator
             return from_expr, joins, True
 
         from_expr, joins = self._build_candidate_joins(
-            rel, candidates, src_var, src_nm, tgt_nm, tgt_var, clause, from_expr, joins
+            rel,
+            candidates,
+            src_var,
+            src_nm,
+            tgt_nm,
+            self._node_alias(src_node, src_nm, as_source=True),
+            self._node_alias(tgt_node, tgt_nm, as_source=False),
+            clause,
+            from_expr,
+            joins,
         )
         return from_expr, joins, False
 
@@ -540,7 +634,7 @@ class _RelJoinMixin:  # mixin for _Translator
                         # unnamed relationships that have no variable to look up.
                         _ep = self._rel_step_endpoints.get(id(_rel))
                         if _ep is not None:
-                            _rt, _sa, _snm, _ta, _tnm, _rev = _ep
+                            _rt, _sa, _snm, _ta, _tnm, _rev, _via = _ep
                             _add_step_node(_sa, _snm)
                             _add_step_node(_ta, _tnm)
                             _step_edges.append(_ep)
@@ -550,7 +644,17 @@ class _RelJoinMixin:  # mixin for _Translator
                             _rt = self._rel_var_types.get(_rel.variable, "")
                             _add_step_node(_sa, _snm)
                             _add_step_node(_ta, _tnm)
-                            _step_edges.append((_rt, _sa, _snm, _ta, _tnm, _rev))
+                            _step_edges.append(
+                                (
+                                    _rt,
+                                    _sa,
+                                    _snm,
+                                    _ta,
+                                    _tnm,
+                                    _rev,
+                                    self._rel_var_via.get(_rel.variable),  # REQ-1586
+                                )
+                            )
                     if _step_nodes or _step_edges:
                         self._path_steps[clause.variable] = (_step_nodes, _step_edges)
 
