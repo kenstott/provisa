@@ -81,7 +81,7 @@
     "retireDone": "Término retirado.",
     "unretireDone": "Término restaurado.",
     "proposed": "Propuesto",
-    "proposedUndefined": "Propuesto: este término se derivó de los nombres de la columna y la tabla. Cámbiele el nombre si el nombre derivado no es adecuado y luego dele una definición para que los agentes y los catálogos lo usen.",
+    "proposedUndefined": "Propuesto: este término se derivó de los nombres de la columna y la tabla. Si el nombre derivado no es adecuado, el problema está en el propio nombre: asigne un alias a la columna en la página Tablas para que los datos se describan solos en todas partes, y este término seguirá al alias. Cambie el nombre del término solo cuando el nombre de la columna sea correcto y el vocabulario no lo sea. Después dele una definición para que los agentes y los catálogos lo usen.",
     "proposedUngrounded": "Propuesto: este término no llega a ninguna columna física. Relaciónelo con un término que sí la tenga para que nombre datos reales.",
     "purposeTitle": "Para qué sirve el glosario",
     "purposeBody": "Es como las personas y los agentes encuentran los datos correctos y los usan bien. Cada término nombra un concepto de negocio, enumera todas las columnas físicas que lo contienen y dice qué significa realmente, de modo que una pregunta hecha en lenguaje de negocio llegue a la columna correcta y no a una equivocada que parece plausible.",

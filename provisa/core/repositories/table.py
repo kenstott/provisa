@@ -248,8 +248,12 @@ async def upsert(
     await glossary_repo.sync_table_refs(
         conn,
         table_id,
+        # REQ-1581: the term derives from the column's BUSINESS name -- its alias where the
+        # modeller set one, the physical name where they did not. Aliasing the column is what
+        # makes the data self-describing everywhere it is read; the glossary follows it rather
+        # than asking for the same correction a second time.
         [
-            c.name
+            (c.name, getattr(c, "alias", None) or c.name)
             for c in table.columns
             if getattr(c, "native_filter_type", None) is None and not c.name.startswith("_nf_")
         ],

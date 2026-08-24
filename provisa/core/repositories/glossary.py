@@ -48,15 +48,29 @@ if TYPE_CHECKING:
 
 
 async def sync_table_refs(
-    conn: "Connection", table_id: int, column_names: list[str], *, table_context: str | None = None
+    conn: "Connection",
+    table_id: int,
+    columns: "list[tuple[str, str]]",
+    *,
+    table_context: str | None = None,
 ) -> None:
     """Reconcile one table's refs with its current column set, in the caller's transaction.
+
+    ``columns`` pairs each column's physical name -- the ref's identity, which is what a query
+    compiles against -- with its BUSINESS name, the alias when the modeller gave it one. The term
+    derives from the business name (REQ-1581): aliasing ``usr_nm`` to ``user name`` is the stronger
+    move than renaming the term it produced, because the alias travels with the data to every
+    surface, while a term rename corrects one catalog entry and leaves the column still reading
+    ``usr_nm`` to the next agent.
 
     New columns create-or-link terms by deterministic normalization (relinking a
     deprecated term revives it); departed columns drop their refs and the affected
     terms are settled under the remove-or-deprecate rule, which keeps any term a
-    curator has worked on. ``table_context`` is the
-    table's business name — it qualifies TOO-GENERIC phrases (employees.first_name →
+    curator has worked on. A re-aliased column re-derives, so the glossary follows the model --
+    but only while the term it currently points at is still an untouched proposal. Once a curator
+    has defined, related, or staffed that term, the link is their work and an alias edit does not
+    move it. ``table_context`` is the
+    table's business name -- it qualifies TOO-GENERIC phrases (employees.first_name ->
     "employee first name") so unrelated tables' name/date/id columns never over-merge.
     """
     existing = {
@@ -69,7 +83,7 @@ async def sync_table_refs(
             )
         ).fetchall()
     }
-    current = set(column_names)
+    current = {physical for physical, _ in columns}
     departed = [c for c in existing if c not in current]
     if departed:
         await conn.execute_core(
@@ -78,18 +92,27 @@ async def sync_table_refs(
                 & (glossary_term_refs.c.column_name.in_(departed))
             )
         )
-    for col in column_names:
-        if col in existing:
-            continue
-        term_id = await _find_or_create_term(conn, normalize_term(col, table_context=table_context))
+    orphaned = {existing[c] for c in departed}
+    graph = await _load_graph(conn) if existing else None
+    for physical, business in columns:
+        wanted = normalize_term(business, table_context=table_context)
+        held = existing.get(physical)
+        if held is not None:
+            assert graph is not None
+            node = graph.terms.get(held)
+            if node is None or _is_curated(graph, node) or node["name"] == wanted:
+                continue
+            orphaned.add(held)
+        term_id = await _find_or_create_term(conn, wanted)
         await conn.upsert(
             glossary_term_refs,
-            {"term_id": term_id, "table_id": table_id, "column_name": col},
+            {"term_id": term_id, "table_id": table_id, "column_name": physical},
             index_elements=["table_id", "column_name"],
             update_columns=["term_id"],
         )
-    if departed:
-        await _settle_terms(conn, {existing[c] for c in departed})
+        orphaned.discard(term_id)
+    if orphaned:
+        await _settle_terms(conn, orphaned)
 
 
 async def sweep_refless_terms(conn: "Connection") -> None:
@@ -225,6 +248,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         await conn.execute_core(
             select(
                 glossary_terms.c.id,
+                glossary_terms.c.name,
                 glossary_terms.c.is_abstract,
                 glossary_terms.c.deprecated,
                 glossary_terms.c.retired,
@@ -248,6 +272,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
     terms = {
         r.id: {
             "id": r.id,
+            "name": r.name,
             "is_abstract": bool(r.is_abstract),
             "deprecated": bool(r.deprecated),
             "retired": bool(r.retired),

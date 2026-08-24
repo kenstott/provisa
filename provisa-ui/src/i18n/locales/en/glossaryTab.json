@@ -81,7 +81,7 @@
     "retireDone": "Term retired.",
     "unretireDone": "Term restored.",
     "proposed": "Proposed",
-    "proposedUndefined": "Proposed: this term was derived from the column and table names. Rename it if the derived name is off, then give it a definition and agents and catalogs will start using it.",
+    "proposedUndefined": "Proposed: this term was derived from the column and table names. If the derived name is off, the name itself is off — alias the column on the Tables page so the data describes itself everywhere it is read, and this term follows the alias. Rename the term only when the column name is right and the vocabulary is not. Then give it a definition and agents and catalogs will start using it.",
     "proposedUngrounded": "Proposed: this term reaches no physical column. Relate it to a term that has one so it names real data.",
     "purposeTitle": "What the glossary is for",
     "purposeBody": "It is how people and agents find the right data and use it correctly. Each term names one business concept, lists every physical column that carries it, and says what it actually means — so a question asked in business language lands on the right column instead of a plausible-looking wrong one.",

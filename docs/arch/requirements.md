@@ -16631,3 +16631,17 @@ An org's LLM vendor API key may be the credential itself or a REFERENCE to one h
 **Code:** `provisa/core/org_secrets.py`, `provisa/core/secrets_store.py`, `provisa/api/app.py`, `provisa-ui/src/i18n/locales/en/aiModelsTab.json`
 
 **Tests:** `tests/integration/test_org_secrets.py`, `tests/unit/test_secrets_request_org.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1581 · Business Glossary & Ontology {#REQ-1581}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A derived glossary term names the column's BUSINESS name -- its alias where the modeller set one, its physical name where they did not. THE RECOMMENDATION THIS ENCODES -- when a proposed term reads wrong, the name it was derived from is what reads wrong, and aliasing the column is the stronger correction than renaming the term. An alias travels with the data to every surface that reads it (SQL, GraphQL, the catalog, an agent's schema), so the model describes itself once; a term rename corrects one catalog entry and leaves the column still reading usr_nm to the next reader, human or agent. Poorly named physical fields mislead agents exactly as they mislead people, and a glossary layered over them is a second place to keep correct. So the proposed-term banner recommends the alias first and the rename only for the case it is actually for -- the column name is right and the vocabulary is not. FOLLOW-THROUGH: re-aliasing a column re-derives its term, so the glossary tracks the model rather than asking for the same correction twice, and the proposal it moves off is settled under the existing remove-or-deprecate rule. CURATION OUTRANKS IT: once the linked term carries a definition, a relationship, an expert, or a curator's retirement, an alias edit does not move the ref -- that link is a person's judgement about which vocabulary this column belongs to, and a name change is not an instruction to discard it. The table's own alias already qualified TOO-GENERIC phrases ([REQ-1387](#REQ-1387)); this extends the same rule to the column itself.
+
+**Use case:** A modeller sees the proposed term "usr name", aliases the column to "user name" on the Tables page, and the term follows -- one correction, and every surface reads the better name.
+
+**Code:** `provisa/core/repositories/glossary.py`, `provisa/core/repositories/table.py`, `provisa-ui/src/i18n/locales/en/glossaryTab.json`
+
+**Tests:** `tests/integration/test_glossary_lifecycle.py`

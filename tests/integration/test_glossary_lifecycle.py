@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1387: glossary term lifecycle against the real catalog registration flow.
+"""REQ-1387, REQ-1581: glossary term lifecycle against the real catalog registration flow.
 
 A real PG metadata DB through the real config loader: registration derives and dedups
 terms, a column departure on reload removes its term, a full-replace reload that drops a
@@ -16,7 +16,7 @@ table sweeps the orphaned terms, and an abstract term hanging on a departing ter
 the outcome from remove to deprecate — with relink reviving the SAME term row.
 """
 
-# Requirements: REQ-1387
+# Requirements: REQ-1387, REQ-1581
 
 from pathlib import Path
 
@@ -54,7 +54,7 @@ async def _clean(tenant_db, _init_schema):
     domain_policy.reset()
 
 
-def _config(tables: dict[str, list[str]]) -> dict:
+def _config(tables: dict) -> dict:
     return {
         "sources": [
             {
@@ -75,8 +75,16 @@ def _config(tables: dict[str, list[str]]) -> dict:
                 "schema": "public",
                 "table": name,
                 # REQ-1426: a design carries a type for every column; the loader assigns none.
+                # REQ-1581: a column entry is either the physical name or (name, alias) -- the
+                # alias is the business name the term derives from.
                 "columns": [
-                    {"name": c, "data_type": "text", "visible_to": ["admin"]} for c in columns
+                    {
+                        "name": c if isinstance(c, str) else c[0],
+                        "data_type": "text",
+                        "visible_to": ["admin"],
+                        **({} if isinstance(c, str) else {"alias": c[1]}),
+                    }
+                    for c in columns
                 ],
             }
             for name, columns in tables.items()
@@ -85,7 +93,7 @@ def _config(tables: dict[str, list[str]]) -> dict:
     }
 
 
-async def _load(conn, tables: dict[str, list[str]], *, replace: bool = False) -> None:
+async def _load(conn, tables: dict, *, replace: bool = False) -> None:
     await load_config(parse_config_dict(_config(tables)), conn, replace=replace)
 
 
@@ -152,3 +160,52 @@ async def test_abstract_dependent_flips_removal_to_deprecation_and_relink_revive
         assert {(e["rel_type"], e["name"]) for e in detail["edges_in"]} == {
             ("KIND_OF", "business date")
         }
+
+
+class TestTheTermFollowsTheColumnsBusinessName:
+    """REQ-1581: aliasing the column is the stronger correction, so the term derives from the
+    alias.
+
+    A term rename fixes one catalog entry; the column still reads ``usr_nm`` to the next agent
+    that queries it. An alias travels with the data to every surface, and the glossary tracks it
+    rather than asking for the same correction twice -- but only while the term it would move off
+    is still an untouched proposal. Curator work outranks a later alias edit.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_alias_names_the_term_not_the_physical_column(self, tenant_db):
+        async with tenant_db.acquire() as conn:
+            await _load(conn, {"people": [("usr_nm", "user name")]})
+            terms = await _terms(conn)
+        assert "user name" in terms
+        assert terms["user name"]["ref_count"] == 1
+        assert "usr name" not in terms  # what usr_nm alone would have produced
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_aliasing_a_column_moves_its_proposal(self, tenant_db):
+        async with tenant_db.acquire() as conn:
+            await _load(conn, {"people": ["usr_nm"]})
+            assert "usr name" in await _terms(conn)
+            await _load(conn, {"people": [("usr_nm", "member handle")]})
+            terms = await _terms(conn)
+        assert terms["member handle"]["ref_count"] == 1
+        assert "usr name" not in terms  # the proposal it left behind held nothing worth keeping
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_defined_term_keeps_its_column_when_the_alias_changes(self, tenant_db):
+        async with tenant_db.acquire() as conn:
+            await _load(conn, {"people": ["usr_nm"]})
+            defined = (await _terms(conn))["usr name"]["id"]
+            await glossary_repo.set_definition(conn, defined, "the person who signs in")
+            await _load(conn, {"people": [("usr_nm", "member handle")]})
+            terms = await _terms(conn)
+        assert terms["usr name"]["ref_count"] == 1
+        assert terms["usr name"]["id"] == defined
+        assert "member handle" not in terms
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_unaliased_column_still_derives_from_its_physical_name(self, tenant_db):
+        async with tenant_db.acquire() as conn:
+            await _load(conn, {"people": [("usr_nm", "user name"), "region_cd"]})
+            terms = await _terms(conn)
+        assert terms["region"]["ref_count"] == 1
