@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "Chiavi API dei fornitori di IA",
-    "apiKeysIntro": "La chiave API della tua organizzazione per ciascun fornitore, usata per le operazioni assistite dall'IA assegnate a quel fornitore. Se non è impostata per un fornitore, viene usata la chiave predefinita dell'installazione. Le chiavi non vengono più mostrate dopo il salvataggio.",
+    "apiKeysIntro": "La chiave API della tua organizzazione per ciascun fornitore, usata per le operazioni assistite dall'IA assegnate a quel fornitore. Se non è impostata per un fornitore, viene usata la chiave predefinita dell'installazione. Le chiavi non vengono più mostrate dopo il salvataggio. Al posto della chiave puoi incollare un riferimento al vault: ${secret:NAME} viene risolto sui segreti della tua organizzazione a ogni utilizzo.",
     "apiKeyLabel": "Chiave API di {{vendor}}",
     "apiKeyPlaceholder": "Chiave API",
     "apiKeySet": "La chiave è impostata",

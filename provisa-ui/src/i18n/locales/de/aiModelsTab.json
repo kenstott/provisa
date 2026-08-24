@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "API-Schlüssel der KI-Anbieter",
-    "apiKeysIntro": "Der eigene API-Schlüssel Ihrer Organisation je Anbieter, verwendet für KI-gestützte Operationen, die diesem Anbieter zugewiesen sind. Ist für einen Anbieter keiner gesetzt, wird der Standardschlüssel der Installation verwendet. Schlüssel werden nach dem Speichern nie wieder angezeigt.",
+    "apiKeysIntro": "Der eigene API-Schlüssel Ihrer Organisation je Anbieter, verwendet für KI-gestützte Operationen, die diesem Anbieter zugewiesen sind. Ist für einen Anbieter keiner gesetzt, wird der Standardschlüssel der Installation verwendet. Schlüssel werden nach dem Speichern nie wieder angezeigt. Statt des Schlüssels können Sie auch eine Tresor-Referenz einfügen: ${secret:NAME} wird bei jeder Verwendung gegen die Secrets Ihrer Organisation aufgelöst.",
     "apiKeyLabel": "API-Schlüssel für {{vendor}}",
     "apiKeyPlaceholder": "API-Schlüssel",
     "apiKeySet": "Schlüssel ist gesetzt",

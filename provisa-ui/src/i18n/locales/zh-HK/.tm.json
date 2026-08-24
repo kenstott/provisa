@@ -207,7 +207,7 @@
   "zh-HK/aiModelsTab.json::aiModelsTab.apiKeySet": "Key is set",
   "zh-HK/aiModelsTab.json::aiModelsTab.apiKeyWillClear": "The key will be cleared when you save.",
   "zh-HK/aiModelsTab.json::aiModelsTab.apiKeysHeading": "AI Vendor API Keys",
-  "zh-HK/aiModelsTab.json::aiModelsTab.apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved.",
+  "zh-HK/aiModelsTab.json::aiModelsTab.apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved. You may paste a vault reference instead of the key itself — ${secret:NAME} is resolved against your org's secrets each time it is used.",
   "zh-HK/aiModelsTab.json::aiModelsTab.loading": "Loading…",
   "zh-HK/aiModelsTab.json::aiModelsTab.modelLabel": "Model",
   "zh-HK/aiModelsTab.json::aiModelsTab.modelsHeading": "AI Model Assignments",

@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "AI 供应商 API 密钥",
-    "apiKeysIntro": "贵组织为各供应商配置的 API 密钥，用于分配给该供应商的 AI 辅助操作。若某供应商未设置，则使用部署的默认密钥。密钥保存后不再显示。",
+    "apiKeysIntro": "贵组织为各供应商配置的 API 密钥，用于分配给该供应商的 AI 辅助操作。若某供应商未设置，则使用部署的默认密钥。密钥保存后不再显示。 也可以粘贴保险库引用来代替密钥本身：${secret:NAME} 每次使用时都会在贵组织的机密中解析。",
     "apiKeyLabel": "{{vendor}} API 密钥",
     "apiKeyPlaceholder": "API 密钥",
     "apiKeySet": "密钥已设置",

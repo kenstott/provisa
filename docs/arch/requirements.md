@@ -16617,3 +16617,17 @@ The front door's waking answer speaks the caller's language. Port 443 carries bo
 **Code:** `terraform/gcp-saas/front-door/proxy.py`, `provisa-ui/src/i18n/locales/en/serverErrors.json`
 
 **Tests:** `tests/unit/test_front_door_wake_idle.py`
+
+## 1. Access Governance & Security
+
+### REQ-1580 · Security {#REQ-1580}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An org's LLM vendor API key may be the credential itself or a REFERENCE to one held in the deployment's secrets service. A ${secret:NAME} typed into the API key field on Admin / AI Models is stored verbatim, encrypted, and resolved against the org's vault on the way OUT -- at the moment a call site builds an LLM client, not when the field is saved. An org that keeps every credential in one vault therefore keeps no second copy of its vendor key here, and rotating the vault entry rotates what the LLM client is handed with no visit to the AI Models page at all. Before this, the reference text was handed to the vendor as the key and the generators failed with the vendor's own authentication error, which names the header and not the reference. WHICH VAULT -- the org running the request, resolved exactly as the per-request data plane resolves it -- the bound org, or the boot org where none is bound. An environment resolves to its base org, because a branch is a copy of the model and not a second organization. The core layer cannot see the API layer's request context, so the API installs a resolver at import, the same seam the domain policy already uses. NO ACTING PERSON is bound, so ${user:NAME} in this field raises naming the scope -- a vendor key is a credential the ORGANIZATION owns and no personal vault stands in for it. A reference naming nothing raises saying which name is unset, rather than reaching the vendor with unresolved text. A stored value carrying no reference is handed over untouched and never looked up.
+
+**Use case:** An org admin pastes ${secret:LLM_KEY} into the Anthropic key field and rotates the credential thereafter in one place, the secrets vault.
+
+**Code:** `provisa/core/org_secrets.py`, `provisa/core/secrets_store.py`, `provisa/api/app.py`, `provisa-ui/src/i18n/locales/en/aiModelsTab.json`
+
+**Tests:** `tests/integration/test_org_secrets.py`, `tests/unit/test_secrets_request_org.py`

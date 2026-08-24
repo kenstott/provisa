@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "Chaves de API dos fornecedores de IA",
-    "apiKeysIntro": "A chave de API da sua organização para cada fornecedor, usada nas operações assistidas por IA atribuídas a esse fornecedor. Se nenhuma for definida para um fornecedor, usa-se a chave padrão da instalação. As chaves nunca são exibidas depois de salvas.",
+    "apiKeysIntro": "A chave de API da sua organização para cada fornecedor, usada nas operações assistidas por IA atribuídas a esse fornecedor. Se nenhuma for definida para um fornecedor, usa-se a chave padrão da instalação. As chaves nunca são exibidas depois de salvas. Em vez da chave, você pode colar uma referência ao cofre: ${secret:NAME} é resolvido nos segredos da sua organização a cada uso.",
     "apiKeyLabel": "Chave de API de {{vendor}}",
     "apiKeyPlaceholder": "Chave de API",
     "apiKeySet": "A chave está definida",

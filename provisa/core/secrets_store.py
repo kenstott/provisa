@@ -38,6 +38,7 @@ secret" to write down, and neither scope ever answers for the other.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -287,6 +288,37 @@ async def bound(admin_db: "Database", org_id: str, *, user_id: str | None = None
         yield
     finally:
         _bound.reset(token)
+
+
+#: REQ-1580: how a core-layer read learns WHICH org's vault a stored reference names. ``core``
+#: cannot import the API layer's ``current_org`` ContextVar or its AppState, so the API layer
+#: installs this resolver at import -- the same seam ``domain_policy`` already uses. It returns
+#: ``(admin_db, org_id)`` for the org this request is running as.
+_request_org: "Callable[[], tuple[Database, str]] | None" = None
+
+
+def set_request_org_resolver(resolver: "Callable[[], tuple[Database, str]]") -> None:
+    """Install the API layer's answer to 'which org is running'. Called once, at import."""
+    global _request_org
+    _request_org = resolver
+
+
+@asynccontextmanager
+async def bound_to_request_org():
+    """Bind the vault of the org running this request, for the duration of the block (REQ-1580).
+
+    The one binding a core-layer read can establish on its own. It carries no acting person, so a
+    ``${user:...}`` inside raises naming the scope -- a credential the ORGANIZATION owns is what
+    ``${secret:...}`` is for, and no personal vault stands in for it.
+    """
+    if _request_org is None:
+        raise RuntimeError(
+            "No request-org resolver is installed, so a ${secret:...} cannot be resolved here. "
+            "The API layer installs it at import (provisa.api.app)."
+        )
+    admin_db, org_id = _request_org()
+    async with bound(admin_db, org_id):
+        yield
 
 
 class StoredSecretsProvider(SecretsProvider):

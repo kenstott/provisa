@@ -80,7 +80,7 @@ from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
 from provisa.core.config_loader import config_replace_mode, load_config, parse_config_dict
 from provisa.core.database import Database
-from provisa.core import domain_policy
+from provisa.core import domain_policy, secrets_store
 from provisa.executor import redirect as _redirect
 from provisa.core.schema_org import (
     domains as _domains_t,
@@ -652,6 +652,20 @@ state = AppState()
 # the resolver here — at import of the API package, before any request or startup build can read a
 # policy. An installed single-tenant deployment binds no org and reads the one unscoped policy.
 domain_policy.set_scope_resolver(current_org.get)
+
+
+def _request_org_for_secrets() -> tuple[Database, str]:
+    """Which org's vault a ``${secret:NAME}`` stored in tenant data resolves against (REQ-1580).
+
+    The same org the request's tenant data came from: ``current_org`` when one is bound, the boot
+    org otherwise, exactly as ``_active_runtime`` resolves it. An environment resolves to its base
+    org -- a branch is a copy of the model, not a second organization, and the vault is the org's.
+    """
+    assert state.admin_db is not None
+    return state.admin_db, current_org.get() or state.org_id
+
+
+secrets_store.set_request_org_resolver(_request_org_for_secrets)
 
 
 def _org_redirect_overrides() -> dict:

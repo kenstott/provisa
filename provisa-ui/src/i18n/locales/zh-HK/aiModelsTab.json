@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "AI 供應商 API 金鑰",
-    "apiKeysIntro": "貴組織為各供應商設定的 API 金鑰，用於指派給該供應商的 AI 輔助作業。若某供應商未設定，則使用部署的預設金鑰。金鑰儲存後不會再顯示。",
+    "apiKeysIntro": "貴組織為各供應商設定的 API 金鑰，用於指派給該供應商的 AI 輔助作業。若某供應商未設定，則使用部署的預設金鑰。金鑰儲存後不會再顯示。 也可貼上保管庫參照來代替金鑰本身：${secret:NAME} 每次使用時都會在貴組織的機密中解析。",
     "apiKeyLabel": "{{vendor}} API 金鑰",
     "apiKeyPlaceholder": "API 金鑰",
     "apiKeySet": "已設定金鑰",

@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "API-sleutels van AI-leveranciers",
-    "apiKeysIntro": "De eigen API-sleutel van uw organisatie per leverancier, gebruikt voor AI-ondersteunde bewerkingen die aan die leverancier zijn toegewezen. Is er voor een leverancier geen sleutel ingesteld, dan wordt de standaardsleutel van de installatie gebruikt. Sleutels worden na het opslaan nooit meer getoond.",
+    "apiKeysIntro": "De eigen API-sleutel van uw organisatie per leverancier, gebruikt voor AI-ondersteunde bewerkingen die aan die leverancier zijn toegewezen. Is er voor een leverancier geen sleutel ingesteld, dan wordt de standaardsleutel van de installatie gebruikt. Sleutels worden na het opslaan nooit meer getoond. In plaats van de sleutel kunt u een kluisverwijzing plakken: ${secret:NAME} wordt bij elk gebruik opgelost tegen de secrets van uw organisatie.",
     "apiKeyLabel": "API-sleutel voor {{vendor}}",
     "apiKeyPlaceholder": "API-sleutel",
     "apiKeySet": "Sleutel is ingesteld",

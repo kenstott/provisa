@@ -19,9 +19,14 @@ there. This module stores each secret as an encrypted blob via the process-wide
 Values are write-only from the caller's perspective in practice: callers that read a secret
 use it immediately (e.g. to construct an LLM client) and must not echo it back in an API
 response.
+
+REQ-1580: what is stored here may be the credential itself or a REFERENCE to one held in the
+deployment's secrets service (``${secret:NAME}``). The reference is stored verbatim and resolved
+on the way OUT, so an org that keeps every credential in one vault does not have to keep a second
+copy of its vendor key here, and rotating the vault entry rotates what the LLM client is handed.
 """
 
-# Requirements: REQ-1395, REQ-1398
+# Requirements: REQ-1395, REQ-1398, REQ-1580
 
 from __future__ import annotations
 
@@ -56,6 +61,24 @@ LLM_VENDORS: frozenset[str] = frozenset(
 ORG_SECRET_KEYS: frozenset[str] = frozenset(f"{vendor}_api_key" for vendor in LLM_VENDORS)
 
 
+async def _resolved(value: str) -> str:
+    """The stored value with any ``${secret:NAME}`` resolved against the org's vault (REQ-1580).
+
+    A stored credential contains no ``${``, so the common case never touches the vault at all;
+    the check is the reference grammar deciding whether this string IS a reference, not a guard
+    around a value that might be missing. A reference that names nothing raises out of
+    ``resolve_secrets`` -- the LLM call fails saying which name is unset, rather than sending the
+    reference text to the vendor as a key and reading back "invalid x-api-key".
+    """
+    if "${" not in value:
+        return value
+    from provisa.core.secrets import resolve_secrets
+    from provisa.core.secrets_store import bound_to_request_org
+
+    async with bound_to_request_org():
+        return resolve_secrets(value)
+
+
 async def read_org_secret(tenant_db: Database, key: str) -> str | None:
     """The org's decrypted secret value, or ``None`` if unset."""
     from sqlalchemy import select
@@ -70,7 +93,7 @@ async def read_org_secret(tenant_db: Database, key: str) -> str | None:
         row = result.fetchone()
     if row is None:
         return None
-    return encryption_service().decrypt(bytes(row[0])).decode("utf-8")
+    return await _resolved(encryption_service().decrypt(bytes(row[0])).decode("utf-8"))
 
 
 async def read_org_api_keys(tenant_db: Database) -> dict[str, str]:
@@ -89,7 +112,9 @@ async def read_org_api_keys(tenant_db: Database) -> dict[str, str]:
         rows = result.fetchall()
     service = encryption_service()
     return {
-        row[0].removesuffix("_api_key"): service.decrypt(bytes(row[1])).decode("utf-8")
+        row[0].removesuffix("_api_key"): await _resolved(
+            service.decrypt(bytes(row[1])).decode("utf-8")
+        )
         for row in rows
     }
 

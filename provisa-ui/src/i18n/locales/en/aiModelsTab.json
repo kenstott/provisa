@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "AI Vendor API Keys",
-    "apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved.",
+    "apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved. You may paste a vault reference instead of the key itself — ${secret:NAME} is resolved against your org's secrets each time it is used.",
     "apiKeyLabel": "{{vendor}} API key",
     "apiKeyPlaceholder": "API key",
     "apiKeySet": "Key is set",

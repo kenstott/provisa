@@ -137,3 +137,75 @@ async def test_read_org_api_keys_returns_every_configured_vendor(tenant_db):
         "anthropic": "sk-ant-example",
         "openai": "sk-openai-example",
     }
+
+
+class TestAStoredReferenceIsResolvedOnTheWayOut:
+    """REQ-1580: an org may store the credential, or the NAME of one held in its vault.
+
+    Real store, real vault, real encryption on both sides: the claim is that what the LLM client
+    is handed is the VAULT's value, and the only way to see that is to put a different value in
+    each place and look at which one comes back.
+    """
+
+    @pytest.fixture
+    async def vault(self, docker_postgres, monkeypatch):
+        """The org's secrets vault, bound the way a request binds it."""
+        from provisa.core import secrets_store
+        from provisa.core.schema_admin import init_registry_schema
+        from provisa.core.secrets_runtime import configure_secrets, reset_secrets
+
+        configure_secrets("provisa")
+        engine = create_engine_from_url(_ASYNC_URL)
+        admin_db = Database(engine, name="admin")
+        await init_registry_schema(admin_db, _ORG_ID)
+        monkeypatch.setattr(secrets_store, "_request_org", lambda: (admin_db, _ORG_ID))
+        yield admin_db
+        await secrets_store.remove(admin_db, _ORG_ID, "LLM_KEY", owner_id=secrets_store.ORG_OWNER)
+        reset_secrets()
+        await engine.dispose()
+
+    async def test_a_reference_is_handed_over_as_the_vaults_value(self, tenant_db, vault):
+        from provisa.core import secrets_store
+
+        await secrets_store.put(
+            vault, _ORG_ID, "LLM_KEY", "sk-ant-from-the-vault", owner_id=secrets_store.ORG_OWNER
+        )
+        await write_org_secret(
+            tenant_db, "anthropic_api_key", "${secret:LLM_KEY}", updated_by="alice"
+        )
+
+        assert await read_org_api_keys(tenant_db) == {"anthropic": "sk-ant-from-the-vault"}
+        assert await read_org_secret(tenant_db, "anthropic_api_key") == "sk-ant-from-the-vault"
+
+    async def test_rotating_the_vault_entry_rotates_the_key_without_a_rewrite(
+        self, tenant_db, vault
+    ):
+        from provisa.core import secrets_store
+
+        await secrets_store.put(
+            vault, _ORG_ID, "LLM_KEY", "sk-ant-first", owner_id=secrets_store.ORG_OWNER
+        )
+        await write_org_secret(
+            tenant_db, "anthropic_api_key", "${secret:LLM_KEY}", updated_by="alice"
+        )
+        assert (await read_org_api_keys(tenant_db))["anthropic"] == "sk-ant-first"
+
+        await secrets_store.put(
+            vault, _ORG_ID, "LLM_KEY", "sk-ant-rotated", owner_id=secrets_store.ORG_OWNER
+        )
+        assert (await read_org_api_keys(tenant_db))["anthropic"] == "sk-ant-rotated"
+
+    async def test_a_reference_naming_nothing_raises_rather_than_reaching_the_vendor(
+        self, tenant_db, vault
+    ):
+        await write_org_secret(
+            tenant_db, "anthropic_api_key", "${secret:NO_SUCH_NAME}", updated_by="alice"
+        )
+        with pytest.raises(KeyError, match="NO_SUCH_NAME"):
+            await read_org_api_keys(tenant_db)
+
+    async def test_a_plain_key_is_handed_over_untouched(self, tenant_db, vault):
+        # The vault is bound and holds nothing of this name; a stored credential is not a
+        # reference and must never be looked up.
+        await write_org_secret(tenant_db, "anthropic_api_key", "sk-ant-plain", updated_by="alice")
+        assert await read_org_api_keys(tenant_db) == {"anthropic": "sk-ant-plain"}

@@ -1,7 +1,7 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "Clés d'API des fournisseurs d'IA",
-    "apiKeysIntro": "La clé d'API propre à votre organisation pour chaque fournisseur, utilisée pour les opérations assistées par IA affectées à ce fournisseur. Si aucune n'est définie pour un fournisseur, la clé par défaut de l'installation est utilisée. Les clés ne sont plus affichées une fois enregistrées.",
+    "apiKeysIntro": "La clé d'API propre à votre organisation pour chaque fournisseur, utilisée pour les opérations assistées par IA affectées à ce fournisseur. Si aucune n'est définie pour un fournisseur, la clé par défaut de l'installation est utilisée. Les clés ne sont plus affichées une fois enregistrées. Vous pouvez coller une référence au coffre au lieu de la clé : ${secret:NAME} est résolu sur les secrets de votre organisation à chaque utilisation.",
     "apiKeyLabel": "Clé d'API {{vendor}}",
     "apiKeyPlaceholder": "Clé d'API",
     "apiKeySet": "La clé est définie",
