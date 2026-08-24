@@ -81,7 +81,7 @@
     "retireDone": "Begriff außer Dienst gestellt.",
     "unretireDone": "Begriff wiederhergestellt.",
     "proposed": "Vorgeschlagen",
-    "proposedUndefined": "Vorgeschlagen: Dieser Begriff wurde aus den Spalten- und Tabellennamen abgeleitet. Ist der abgeleitete Name unpassend, ist der Spaltenname selbst unpassend — vergeben Sie auf der Seite „Tabellen“ einen Alias für die Spalte, damit sich die Daten überall selbst beschreiben; dieser Begriff folgt dem Alias. Benennen Sie den Begriff nur um, wenn der Spaltenname stimmt und nur die Bezeichnung nicht passt. Geben Sie ihm dann eine Definition, damit Agenten und Kataloge ihn verwenden.",
+    "proposedUndefined": "Vorgeschlagen: aus den Spalten- und Tabellennamen abgeleitet. Geben Sie ihm eine Definition — sie ist es, was Agenten und Kataloge lesen. Der Name stammt aus den unten aufgeführten Spalten, und Spalten, die gleich normalisiert werden, landen auf einem Begriff: Vergeben Sie auf der Tabellenseite einen Alias für eine Spalte, um zu ändern, welchem Begriff sie zufließt. Umbenennen ändert hier nur die Formulierung dieses Begriffs.",
     "proposedUngrounded": "Vorgeschlagen: Dieser Begriff erreicht keine physische Spalte. Verknüpfen Sie ihn mit einem Begriff, der eine hat, damit er echte Daten benennt.",
     "purposeTitle": "Wozu das Glossar dient",
     "purposeBody": "Es hilft Menschen und Agenten, die richtigen Daten zu finden und korrekt zu verwenden. Jeder Begriff benennt ein Geschäftskonzept, listet alle physischen Spalten auf, die es tragen, und sagt, was es tatsächlich bedeutet — so trifft eine in Geschäftssprache gestellte Frage die richtige Spalte statt einer plausibel wirkenden falschen.",

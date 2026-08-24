@@ -52113,6 +52113,38 @@
   - REQ-1398
   - REQ-1557
   - REQ-1560
+- id: REQ-1582
+  status: complete
+  since: 2026-08
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A table name is cut at its connective when its concept is derived. An access-path name reaches ONE
+    thing through a lookup key -- user_by_name is a user, orders_by_customer is an order -- so
+    everything from the connective onward is the key, not the concept. Dropping only the connective
+    token left the tail in place, so the surrogate key on user_by_name normalized to the phrase "user
+    name" and collided with the genuine users.name attribute, putting a thing and one of its own fields
+    on one term. The cut applies to table concepts only: in a column name the same token reads as a
+    compound noun (pet_by_name and pet_name are one term, REQ-1387), and a connective with nothing
+    before it names no concept to cut back to. This is what makes the REQ-1387 proxy-token rule land a
+    key on the term for the thing it stands for.
+  scenario: 'Given a table named user_by_name whose surrogate key column is id
+
+    When the glossary derives a term for that column
+
+    Then the table concept is "user", not "user name"
+
+    And the key lands on the term naming the thing it stands for, leaving users.name on "user name"
+
+    '
+  tests:
+  - tests/unit/test_glossary_normalize.py
+  code:
+  - provisa/core/glossary.py
+  depends_on:
+  - REQ-1387
 - id: REQ-1581
   status: complete
   since: 2026-08

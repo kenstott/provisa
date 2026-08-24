@@ -11,13 +11,13 @@ tokenization, abbreviation expansion, and trailing-proxy stripping must all land
 key/id/camel spellings of one concept on the SAME phrase, or the glossary fragments.
 """
 
-# Requirements: REQ-1387
+# Requirements: REQ-1387, REQ-1582
 
 from __future__ import annotations
 
 import pytest
 
-from provisa.core.glossary import normalize_term
+from provisa.core.glossary import normalize_term, table_concept
 
 
 @pytest.mark.parametrize(
@@ -109,3 +109,16 @@ def test_table_concept_singularizes_the_head_noun():
     assert normalize_term("name", table_context="order_lines") == "order line name"
     # -ss nouns keep their form (inflect's false singular 'addres' is rejected).
     assert normalize_term("name", table_context="address") == "address name"
+
+
+def test_a_table_name_is_cut_at_its_connective():
+    # An access-path name reaches one thing through a lookup key (REQ-1582): the concept is
+    # the thing, so the surrogate key on user_by_name lands on "user" -- the term that names
+    # what the key stands for -- instead of colliding with the users.name attribute.
+    assert table_concept("user_by_name") == "user"
+    assert table_concept("orders_by_customer") == "order"
+    assert table_concept("userByName") == "user"
+    assert normalize_term("id", table_context="user_by_name") == "user"
+    assert normalize_term("name", table_context="users") == "user name"
+    # A connective with nothing before it names no concept to cut back to.
+    assert table_concept("by_products") == "product"

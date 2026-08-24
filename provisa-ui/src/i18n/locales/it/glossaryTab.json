@@ -81,7 +81,7 @@
     "retireDone": "Termine ritirato.",
     "unretireDone": "Termine ripristinato.",
     "proposed": "Proposto",
-    "proposedUndefined": "Proposto: questo termine è stato derivato dai nomi della colonna e della tabella. Se il nome derivato non è adatto, il problema è il nome stesso: assegna un alias alla colonna nella pagina Tabelle perché i dati si descrivano da soli ovunque vengano letti, e questo termine seguirà l'alias. Rinomina il termine solo quando il nome della colonna è giusto e non lo è il vocabolario. Poi dagli una definizione perché agenti e cataloghi lo usino.",
+    "proposedUndefined": "Proposto: derivato dai nomi della colonna e della tabella. Dagli una definizione: è ciò che leggono gli agenti e i cataloghi. Il nome deriva dalle colonne qui sotto, e le colonne che si normalizzano allo stesso modo confluiscono in un unico termine: assegna un alias a una colonna nella pagina Tabelle per cambiare il termine a cui contribuisce. Rinominare qui cambia solo la formulazione di questo termine.",
     "proposedUngrounded": "Proposto: questo termine non raggiunge alcuna colonna fisica. Collegalo a un termine che ne ha una perché indichi dati reali.",
     "purposeTitle": "A cosa serve il glossario",
     "purposeBody": "È il modo in cui persone e agenti trovano i dati giusti e li usano correttamente. Ogni termine dà un nome a un concetto di business, elenca tutte le colonne fisiche che lo contengono e dice che cosa significa davvero, così una domanda posta in linguaggio di business arriva alla colonna giusta invece che a una sbagliata dall'aria plausibile.",

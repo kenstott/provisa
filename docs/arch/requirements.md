@@ -16634,6 +16634,16 @@ An org's LLM vendor API key may be the credential itself or a REFERENCE to one h
 
 ## 3. Source Registration & Data Modeling
 
+### REQ-1582 · Business Glossary & Ontology {#REQ-1582}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A table name is cut at its connective when its concept is derived. An access-path name reaches ONE thing through a lookup key -- user_by_name is a user, orders_by_customer is an order -- so everything from the connective onward is the key, not the concept. Dropping only the connective token left the tail in place, so the surrogate key on user_by_name normalized to the phrase "user name" and collided with the genuine users.name attribute, putting a thing and one of its own fields on one term. The cut applies to table concepts only: in a column name the same token reads as a compound noun (pet_by_name and pet_name are one term, [REQ-1387](#REQ-1387)), and a connective with nothing before it names no concept to cut back to. This is what makes the [REQ-1387](#REQ-1387) proxy-token rule land a key on the term for the thing it stands for.
+
+**Code:** `provisa/core/glossary.py`
+
+**Tests:** `tests/unit/test_glossary_normalize.py`
+
 ### REQ-1581 · Business Glossary & Ontology {#REQ-1581}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral

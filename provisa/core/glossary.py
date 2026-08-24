@@ -156,7 +156,10 @@ _GENERIC_TERMS = frozenset(
 )
 
 # Connective tokens carry no concept of their own — "pet by name" and "pet name" are the
-# same term, so they drop anywhere in the phrase (unless nothing else remains).
+# same term, so they drop anywhere in the phrase (unless nothing else remains). In a TABLE
+# name the same token marks an access path rather than a compound noun: everything from
+# "by" onward is the lookup key, so table_concept truncates there instead of dropping
+# (REQ-1582).
 _CONNECTIVE_TOKENS = frozenset({"by"})
 
 # Proxy tokens (post-expansion): a trailing one means the column carries a stand-in value
@@ -173,7 +176,7 @@ _SEPARATORS = re.compile(r"[_\-.\s/]+")
 _NON_ALNUM = re.compile(r"[^a-z0-9 ]+")
 
 
-def _phrase(physical_name: str) -> str:
+def _phrase(physical_name: str, *, cut_at_connective: bool = False) -> str:
     spaced = _CAMEL_2.sub(r"\1 \2", physical_name)
     spaced = _CAMEL_1.sub(r"\1 \2", spaced)
     spaced = _SEPARATORS.sub(" ", spaced).lower()
@@ -182,6 +185,10 @@ def _phrase(physical_name: str) -> str:
     if not tokens:
         return physical_name.strip().lower() or physical_name
     expanded = [_ABBREVIATIONS.get(t, t) for t in tokens]
+    if cut_at_connective:
+        head = next((i for i, t in enumerate(expanded) if t in _CONNECTIVE_TOKENS), None)
+        if head:  # a connective with nothing before it names no concept to cut back to
+            expanded = expanded[:head]
     kept = [t for t in expanded if t not in _CONNECTIVE_TOKENS]
     if kept:
         expanded = kept
@@ -215,8 +222,15 @@ def _singular(token: str) -> str:
 
 
 def table_concept(table_name: str) -> str:
-    """The table's concept phrase: normalized business name with a singular head noun."""
-    tokens = _phrase(table_name).split(" ")
+    """The table's concept phrase: normalized business name with a singular head noun.
+
+    An access-path name is cut at its connective (REQ-1582): ``user_by_name`` and
+    ``orders_by_customer`` are a user and an order reached through a lookup key, so their
+    concepts are "user" and "order". Keeping the tail would make the surrogate key on
+    ``user_by_name`` normalize to "user name" and collide with the genuine ``users.name``
+    attribute -- one term holding both a thing and one of its fields.
+    """
+    tokens = _phrase(table_name, cut_at_connective=True).split(" ")
     tokens[-1] = _singular(tokens[-1])
     return " ".join(tokens)
 

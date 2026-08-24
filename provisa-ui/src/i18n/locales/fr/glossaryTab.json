@@ -81,7 +81,7 @@
     "retireDone": "Terme retiré.",
     "unretireDone": "Terme restauré.",
     "proposed": "Proposé",
-    "proposedUndefined": "Proposé : ce terme a été dérivé des noms de la colonne et de la table. Si le nom dérivé ne convient pas, c'est le nom lui-même qui ne convient pas — donnez un alias à la colonne sur la page Tables pour que les données se décrivent elles-mêmes partout où elles sont lues, et ce terme suivra l'alias. Renommez le terme uniquement lorsque le nom de la colonne est juste et que seul le vocabulaire ne l'est pas. Donnez-lui ensuite une définition pour que les agents et les catalogues l'utilisent.",
+    "proposedUndefined": "Proposé : dérivé des noms de la colonne et de la table. Donnez-lui une définition — c'est ce que lisent les agents et les catalogues. Le nom provient des colonnes ci-dessous, et les colonnes qui se normalisent de la même façon aboutissent à un seul terme : donnez un alias à une colonne sur la page Tables pour changer le terme qu'elle alimente. Renommer ici ne change que la formulation de ce terme.",
     "proposedUngrounded": "Proposé : ce terme n'atteint aucune colonne physique. Reliez-le à un terme qui en possède une pour qu'il désigne des données réelles.",
     "purposeTitle": "À quoi sert le glossaire",
     "purposeBody": "Il permet aux personnes et aux agents de trouver les bonnes données et de les utiliser correctement. Chaque terme nomme un concept métier, énumère toutes les colonnes physiques qui le portent et dit ce qu'il signifie réellement, de sorte qu'une question posée en langage métier atteigne la bonne colonne plutôt qu'une mauvaise qui semble plausible.",

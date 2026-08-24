@@ -633,7 +633,7 @@
   "hi/glossaryTab.json::glossaryTab.noExperts": "No experts.",
   "hi/glossaryTab.json::glossaryTab.noRefs": "No physical refs.",
   "hi/glossaryTab.json::glossaryTab.proposed": "Proposed",
-  "hi/glossaryTab.json::glossaryTab.proposedUndefined": "Proposed: this term was derived from the column and table names. If the derived name is off, the name itself is off — alias the column on the Tables page so the data describes itself everywhere it is read, and this term follows the alias. Rename the term only when the column name is right and the vocabulary is not. Then give it a definition and agents and catalogs will start using it.",
+  "hi/glossaryTab.json::glossaryTab.proposedUndefined": "Proposed: derived from the column and table names. Give it a definition — that is what agents and catalogs read. The name comes from the columns below, and columns that normalize alike land on one term: alias a column on the Tables page to change which term it feeds. Rename here to change only this term's wording.",
   "hi/glossaryTab.json::glossaryTab.proposedUngrounded": "Proposed: this term reaches no physical column. Relate it to a term that has one so it names real data.",
   "hi/glossaryTab.json::glossaryTab.purposeAdd": "Terms for real columns are derived for you. Add one by hand only for a concept no single column carries — an umbrella term you then relate to the terms that do, so it still reaches real data.",
   "hi/glossaryTab.json::glossaryTab.purposeAria": "About the glossary",
