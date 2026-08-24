@@ -49010,7 +49010,21 @@
     the parent''s would both miss a child''s binding and delete an innocent child column sharing a name
     with one of the parent''s. Two tables addressing one path is refused rather than silently overwritten,
     as is a tracked function and a webhook sharing a command name. naming_rules is ONE file (naming/rules.yaml)
-    because rule order is semantic; a directory of per-rule files would encode that order in filenames.'
+    because rule order is semantic; a directory of per-rule files would encode that order in filenames.
+
+    (Amended 2026-08-23, EVERY TAG HAS A FILE:) a tag assignment is routed to the file of the object it
+    is ON, and the routing must cover every object type the schema admits -- source, table, column, relationship
+    and COMMAND -- or an assignment belongs to no file, disappears from the projection, and is then DELETED
+    from the target by the first deploy of that tree, since a load applies the tree whole. A command tag
+    names neither a table nor a source, so the table and source nestings do not claim it; its file is the
+    command''s own, commands/<name>.yaml, and it carries no fragment, because a command has no parts a
+    fragment can address -- a fragment on a command file is refused at load rather than resolved against
+    a table that is not there. (Amended 2026-08-23, A DIRECTORY IS NOT A TABLE:) a deploy''s scope is
+    a set of table names, but the commands directory addresses TWO tables and which one a file belongs
+    to is a fact about its body, not its path -- so the scope test asks the question by directory for
+    commands, and the two registries are in scope together or not at all. Filtering a directory out by
+    name while its tables stay in the apply order is the worst of both: the deploy clears the target''s
+    commands and writes none back.'
   status: proposed
   priority: MUST
   related_reqs:

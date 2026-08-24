@@ -229,8 +229,8 @@ async def _load(
 
     schema = org_schema(org_id, env)
     scope = PROJECTED if seed else PROJECTED - SEEDED_AT_CREATION
-    incoming = {p: b for p, b in tree.items() if table_of(p) in scope}
-    current = {p: b for p, b in (await project(conn, schema)).items() if table_of(p) in scope}
+    incoming = {p: b for p, b in tree.items() if in_scope(p, scope)}
+    current = {p: b for p, b in (await project(conn, schema)).items() if in_scope(p, scope)}
 
     # REQ-1556: which of this environment's own work the incoming tree carries away. Asked against
     # the commit the two lines last shared, because ``current`` alone cannot say whether an object
@@ -272,6 +272,25 @@ def table_of(path: str) -> str:
     if head in _ROOT_DIRS:
         return _ROOT_DIRS[head]
     return "domains" if path.endswith(f"domain{SUFFIX}") else "registered_tables"
+
+
+_COMMAND_TABLES: frozenset[str] = frozenset({"tracked_functions", "tracked_webhooks"})
+
+
+def in_scope(path: str, scope: frozenset[str]) -> bool:
+    """Whether ``path``'s entity is one this apply carries.
+
+    Which registry a command file belongs to is a fact about its BODY, not its path -- REQ-1526
+    gives both registries one address space, ``commands/<name>`` -- so ``table_of`` can only name
+    the directory, and a directory is never in a scope of table names. The two registries are
+    therefore in scope together or not at all; without this every command file is filtered out of
+    the tree while ``_apply`` still clears both registries, and a deploy deletes the target's
+    commands and writes none back.
+    """
+    table = table_of(path)
+    if table == COMMANDS_DIR:
+        return _COMMAND_TABLES <= scope
+    return table in scope
 
 
 # --------------------------------------------------------------------------------------------
@@ -480,11 +499,13 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["calendars"].append({**body, "name": name, "version": version})
 
         elif table == COMMANDS_DIR:
+            own, nested = _split(body, "tags")
             name = _name_of(path)[0]
-            registry = "tracked_functions" if _FUNCTION_MARKER in body else "tracked_webhooks"
+            registry = "tracked_functions" if _FUNCTION_MARKER in own else "tracked_webhooks"
             rows[registry].append(
-                {**body, "name": name, "id": ids.of("commands", f"{registry}/{name}")}
+                {**own, "name": name, "id": ids.of("commands", f"{registry}/{name}")}
             )
+            rows["tag_assignments"].extend(_tags(nested["tags"], path, command_name=name))
 
         elif table == "naming_rules":
             for order, rule in enumerate(body.get("rules") or [], start=1):
@@ -517,6 +538,7 @@ def _tags(
     *,
     table_id: int | None = None,
     source_id: str | None = None,
+    command_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Nested tag entries back into ``tag_assignments`` rows.
 
@@ -528,7 +550,18 @@ def _tags(
     for entry in entries:
         body = {k: v for k, v in entry.items() if k not in ("on", "at")}
         fragment = entry.get("on")
-        if fragment is None and table_id is not None:
+        if command_name is not None and fragment is not None:
+            raise DeployError(
+                f"{path!r} carries a tag on {fragment!r}, but a command has no parts a fragment "
+                f"can name; a command tag is on the command itself"
+            )
+        if fragment is None and command_name is not None:
+            body |= {
+                "object_type": "command",
+                "command_name": command_name,
+                "object_key": f"command:{command_name}",
+            }
+        elif fragment is None and table_id is not None:
             body |= {
                 "object_type": "table",
                 "table_id": table_id,

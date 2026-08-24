@@ -34,6 +34,8 @@ from provisa.core.schema_org import (
     relationships,
     sources,
     table_columns,
+    tag_assignments,
+    tracked_functions,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -208,3 +210,47 @@ class TestDeterminism:
         await _seed(org)
         columns = (await org.tree())["sales/tables/Order.yaml"]["columns"]
         assert [c["column_name"] for c in columns] == ["customer_id", "total"]
+
+
+class TestATagFindsTheFileItsObjectIsIn:
+    """A tag is stored against an object; the projection has to put it in that object's file.
+
+    A command tag names neither a table nor a source, so neither of those nestings claims it. Left
+    that way it belongs to no file and disappears from the tree — and a deploy of that tree would
+    then delete it from the target.
+    """
+
+    async def _command_tag(self, org, env=None):
+        await _seed(org, env)
+        await org.insert(tracked_functions, env, name="refund_order", source_id="warehouse")
+        await org.insert(
+            tag_assignments,
+            env,
+            tag_id="deprecated",
+            base_tag_id="deprecated",
+            object_type="command",
+            command_name="refund_order",
+            object_key="command:refund_order",
+            reason="superseded by refund_line",
+        )
+
+    async def test_a_command_tag_reaches_the_command_file(self, org):
+        await self._command_tag(org)
+        body = (await org.tree())["commands/refund_order.yaml"]
+        assert [t["tag_id"] for t in body["tags"]] == ["deprecated"]
+        assert body["tags"][0]["reason"] == "superseded by refund_line"
+
+    async def test_a_command_tag_carries_no_routing_key_into_the_file(self, org):
+        await self._command_tag(org)
+        (tag,) = (await org.tree())["commands/refund_order.yaml"]["tags"]
+        assert not {"owner_command_name", "owner_table_id", "owner_source_id", "at", "on"} & set(
+            tag
+        )
+
+    async def test_a_command_tag_lands_in_no_other_file(self, org):
+        await self._command_tag(org)
+        tree = await org.tree()
+        elsewhere = [
+            p for p, body in tree.items() if body.get("tags") and p != "commands/refund_order.yaml"
+        ]
+        assert elsewhere == []

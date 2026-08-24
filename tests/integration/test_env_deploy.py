@@ -36,6 +36,8 @@ from provisa.core.schema_org import (
     roles,
     sources,
     table_columns,
+    tag_assignments,
+    tracked_functions,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -376,3 +378,38 @@ class TestWhatAPullOverwrites:
         assert not report.compared
         assert report.as_dict()["base"] is None
         assert report.as_dict()["conflicts"] == []
+
+
+class TestATagOnACommandSurvivesTheTrip:
+    """The projection puts a command's tags in the command's file; the deploy has to read them
+    back as command assignments. Neither half is any use without the other: a tag the tree can
+    carry but the deployer drops is deleted by the first deploy that reaches the target."""
+
+    async def _seed_tagged_command(self, org):
+        await _seed(org)
+        await org.insert(tracked_functions, None, name="refund_order", source_id="warehouse")
+        await org.insert(
+            tag_assignments,
+            None,
+            tag_id="deprecated",
+            base_tag_id="deprecated",
+            object_type="command",
+            command_name="refund_order",
+            object_key="command:refund_order",
+            reason="superseded by refund_line",
+        )
+
+    async def test_the_tag_arrives_against_the_command_it_names(self, org):
+        await self._seed_tagged_command(org)
+        await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
+        (row,) = await org.rows(tag_assignments, ENV)
+        assert row["object_type"] == "command"
+        assert row["command_name"] == "refund_order"
+        assert row["object_key"] == "command:refund_order"
+        assert row["reason"] == "superseded by refund_line"
+
+    async def test_the_round_trip_is_identical(self, org):
+        await self._seed_tagged_command(org)
+        prod = await org.tree()
+        await deploy_tree(org.db, org.id, ENV, prod, ref="deadbeef")
+        assert await org.tree(ENV) == prod

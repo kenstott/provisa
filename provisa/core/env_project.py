@@ -130,7 +130,7 @@ def _fragment(assignment: dict[str, Any], rel_names: dict[str, str]) -> str | No
 #: ``at`` joins them: the fragment alone repeats across the tags on one object, and a sort key that
 #: repeats leaves the order of those tags to whatever the database returned. (base_tag_id,
 #: object_key) is unique, so fragment-plus-tag is unique too.
-OWNER_KEYS = ("owner_table_id", "owner_source_id", "at")
+OWNER_KEYS = ("owner_table_id", "owner_source_id", "owner_command_name", "at")
 
 
 def _assignments_for(
@@ -157,6 +157,9 @@ def _assignments_for(
             row["table_id"] if row["relationship_id"] is None else rel_owner[row["relationship_id"]]
         )
         carried["owner_source_id"] = row["source_id"]
+        # A COMMAND tag hangs off neither a table nor a source, so neither nesting would claim it
+        # and it would vanish the way a relationship tag once did. Its file is commands/<name>.
+        carried["owner_command_name"] = row["command_name"]
         out.append(carried)
     return out
 
@@ -349,7 +352,16 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                     f"webhook; REQ-1385 gives commands ONE address space, so the two registries "
                     f"cannot both claim {path!r}"
                 )
-            tree[path] = entity(table.name, row)
+            tree[path] = entity(
+                table.name,
+                row,
+                tags=Child(
+                    "at",
+                    OWNER_KEYS,
+                    [a for a in tagged if a["owner_command_name"] == row["name"]],
+                    table="tag_assignments",
+                ),
+            )
 
     rules = await _rows(conn, org.naming_rules, schema)
     if rules:

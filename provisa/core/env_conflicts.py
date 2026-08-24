@@ -104,10 +104,10 @@ def carried(tree: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     own answer to who may do what and never travel (REQ-1539), so the two lines differing there is
     not two edits colliding -- it is the design.
     """
-    from provisa.core.env_deploy import PROJECTED, table_of
+    from provisa.core.env_deploy import PROJECTED, in_scope
 
     scope = PROJECTED - SEEDED_AT_CREATION
-    return {p: b for p, b in tree.items() if table_of(p) in scope}
+    return {p: b for p, b in tree.items() if in_scope(p, scope)}
 
 
 def against_base(
