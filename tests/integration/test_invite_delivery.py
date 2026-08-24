@@ -36,7 +36,7 @@ from provisa.api.auth_router import router as auth_router
 from provisa.api.org_runtime import ActiveOrgPool
 from provisa.auth.middleware import AuthMiddleware
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.models import MailConfig
+from provisa.core.models import MailConfig, SmtpMailConfig
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
@@ -90,6 +90,9 @@ class _Sink:
             SimpleNamespace(
                 mail_from=envelope.mail_from,
                 rcpt_tos=list(envelope.rcpt_tos),
+                # REQ-1577: the sender as the invitee's client shows it, and where a reply goes.
+                from_header=parsed["From"],
+                reply_to=parsed["Reply-To"],
                 subject=parsed["Subject"],
                 content_type=parsed.get_content_type(),
                 content=plain_part.get_content(),
@@ -181,9 +184,8 @@ def planes(monkeypatch, smtp):
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 
-    mail = MailConfig(
-        host=smtp.host,
-        port=smtp.port,
+    mail = MailConfig(  # REQ-1576: each transport carries its own block
+        smtp=SmtpMailConfig(host=smtp.host, port=smtp.port),
         from_address="provisa@example.test",
         base_url="https://provisa.example.test",
     )
@@ -366,7 +368,7 @@ def test_the_invite_list_says_who_each_one_was_sent_to(planes, smtp):
 def test_a_delivery_failure_is_reported_and_the_invitation_survives(planes, smtp, monkeypatch):
     """A mail-server problem must not destroy a usable invitation — the link still works, and the
     org_admin is told delivery failed so they can send it by hand."""
-    monkeypatch.setattr(planes.mail, "port", 1, raising=False)  # nothing listens on port 1
+    monkeypatch.setattr(planes.mail.smtp, "port", 1, raising=False)  # nothing listens on port 1
     with TestClient(_make_app(planes)) as client:
         invite = _create_invite(client, email="carol@example.test")
         assert invite["delivery"].startswith("failed: "), invite["delivery"]
@@ -380,12 +382,78 @@ def test_a_delivery_failure_is_reported_and_the_invitation_survives(planes, smtp
 def test_no_mail_host_configured_is_reported_not_silent(planes, smtp, monkeypatch):
     """An invitation that reaches nobody is the same as no invitation, so the refusal is surfaced in
     the response rather than logged and forgotten."""
-    monkeypatch.setattr(planes.mail, "host", "", raising=False)
+    monkeypatch.setattr(planes.mail.smtp, "host", "", raising=False)
     with TestClient(_make_app(planes)) as client:
         invite = _create_invite(client, email="carol@example.test")
 
-    assert "No SMTP host is configured" in invite["delivery"]
+    assert "No SMTP host (mail.smtp.host) is configured" in invite["delivery"]
     assert smtp.sink.messages == []
+
+
+# --- REQ-1577: the org in the display name, the inviter on Reply-To ---
+
+
+def test_the_sender_names_the_org_but_keeps_the_deployments_address(planes, smtp):
+    """The invitee reads the sender column first. It has to say which organization is asking,
+    while the address stays the one domain the deployment has verified for sending."""
+    with TestClient(_make_app(planes)) as client:
+        _create_invite(client, email="carol@example.test", role_id="analyst")
+
+    msg = smtp.sink.messages[0]
+    assert msg.from_header == '"Acme Analytics (via Provisa)" <provisa@example.test>'
+    assert msg.mail_from == "provisa@example.test"  # DKIM and DMARC still align on one domain
+
+
+def test_a_reply_reaches_the_person_who_sent_the_invitation(planes, smtp):
+    """``provisa@`` is not a mailbox anyone reads. The invitee who replies "what is this?" has to
+    reach the colleague who invited them."""
+    with TestClient(_make_app(planes)) as client:
+        _create_invite(client, email="carol@example.test", role_id="analyst")
+
+    assert smtp.sink.messages[0].reply_to == "alice@example.com"
+
+
+def test_an_inviter_with_no_email_address_leaves_the_reply_to_off(planes, smtp, monkeypatch):
+    """A Reply-To pointing at nothing is worse than its absence — the reply would bounce or vanish
+    instead of the invitee seeing they have to find another way to ask."""
+
+    async def _no_email(self, token):
+        from provisa.auth.models import AuthIdentity
+
+        return AuthIdentity(
+            user_id="alice", email=None, display_name="alice", roles=[], raw_claims={"sub": "alice"}
+        )
+
+    monkeypatch.setattr(_FirebaseLikeProvider, "validate_token", _no_email)
+    with TestClient(_make_app(planes)) as client:
+        invite = _create_invite(client, email="carol@example.test", role_id="analyst")
+
+    assert invite["delivery"] == "sent"
+    msg = smtp.sink.messages[0]
+    assert msg.reply_to is None
+    assert msg.from_header == '"Acme Analytics (via Provisa)" <provisa@example.test>'
+
+
+def test_the_orgs_branded_name_is_the_one_in_the_sender_column(planes, smtp):
+    """REQ-1486 renames the org everywhere the invitee sees it; the sender column is where they
+    see it first."""
+    from sqlalchemy import update as sa_update
+
+    from provisa.core.org_branding import serialize_branding, validate_branding
+
+    document = validate_branding({"display_name": "Acme Data Platform"})
+    with planes.sync.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        conn.execute(
+            sa_update(orgs).where(orgs.c.id == "acme").values(branding=serialize_branding(document))
+        )
+
+    with TestClient(_make_app(planes)) as client:
+        _create_invite(client, email="carol@example.test", role_id="analyst")
+
+    assert smtp.sink.messages[0].from_header == (
+        '"Acme Data Platform (via Provisa)" <provisa@example.test>'
+    )
 
 
 # --- REQ-1330: EmailSender port — SaaS-only gating and the provider adapter ---
@@ -457,8 +525,8 @@ def test_resend_adapter_delivers_through_the_port(planes, smtp, resend_api, monk
     """REQ-1330: switching mail.provider to resend re-routes delivery through the Resend adapter —
     no call-site change — and the request carries the key, the sender and the redemption link."""
     monkeypatch.setattr(planes.mail, "provider", "resend", raising=False)
-    monkeypatch.setattr(planes.mail, "api_key", "re_test_key", raising=False)
-    monkeypatch.setattr(planes.mail, "api_url", resend_api.url, raising=False)
+    monkeypatch.setattr(planes.mail.resend, "api_key", "re_test_key", raising=False)
+    monkeypatch.setattr(planes.mail.resend, "api_url", resend_api.url, raising=False)
     monkeypatch.setattr(planes.mail, "from_address", "invites@provisa.dev", raising=False)
 
     with TestClient(_make_app(planes)) as client:
@@ -469,7 +537,10 @@ def test_resend_adapter_delivers_through_the_port(planes, smtp, resend_api, monk
     assert len(resend_api.received) == 1
     req = resend_api.received[0]
     assert req.authorization == "Bearer re_test_key"
-    assert req.payload["from"] == "invites@provisa.dev"
+    # REQ-1577: the org names itself in the display name, over the deployment's verified address,
+    # and a reply reaches the inviter rather than the unattended invites@ mailbox.
+    assert req.payload["from"] == '"Acme Analytics (via Provisa)" <invites@provisa.dev>'
+    assert req.payload["reply_to"] == ["alice@example.com"]
     assert req.payload["to"] == ["carol@example.test"]
     assert f"https://provisa.example.test/?invite={invite['token']}" in req.payload["text"]
     # REQ-1485: the branded part travels through this adapter too, not only over SMTP
@@ -482,17 +553,17 @@ def test_resend_without_api_key_is_reported_not_silent(planes, smtp, monkeypatch
     with TestClient(_make_app(planes)) as client:
         invite = _create_invite(client, email="carol@example.test")
 
-    assert "No Resend API key is configured" in invite["delivery"]
+    assert "No Resend API key (mail.resend.api_key) is configured" in invite["delivery"]
     assert smtp.sink.messages == []
 
 
 def test_an_unknown_provider_is_a_named_config_fault(planes, smtp, monkeypatch):
     """A typo in mail.provider must name the setting, not vanish into a generic failure."""
-    monkeypatch.setattr(planes.mail, "provider", "sendgrid", raising=False)
+    monkeypatch.setattr(planes.mail, "provider", "sendgird", raising=False)
     with TestClient(_make_app(planes)) as client:
         invite = _create_invite(client, email="carol@example.test")
 
-    assert "Unknown mail provider 'sendgrid'" in invite["delivery"]
+    assert "Unknown mail provider 'sendgird'" in invite["delivery"]
     assert smtp.sink.messages == []
 
 

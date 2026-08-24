@@ -51814,3 +51814,164 @@
   - REQ-919
   - REQ-1557
   - REQ-1574
+- id: REQ-1576
+  status: complete
+  since: 2026-08
+  tests:
+  - tests/unit/test_mail_registry.py
+  - tests/unit/test_mail_stats.py
+  - tests/integration/test_mail_settings_api.py
+  - provisa-ui/src/__tests__/MailTab.test.tsx
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Notifications
+  priority: MUST
+  type: behavioral
+  description: 'THE DEPLOYMENT''S MAIL TRANSPORT IS SET FROM THE PLATFORM SETTINGS PAGE, NOT FROM A
+    FILE ON THE NODE. Provisa sends mail on the platform''s behalf -- today the org invitation
+    (REQ-1330), tomorrow anything else the platform must say to a person -- and until now the only
+    way to point it at a mail server was to edit ``mail:`` in provisa.yaml or set
+    ``PROVISA_MAIL_PROVIDER``/``PROVISA_EMAIL_API_KEY`` and restart. That makes the one setting
+    whose failure is invisible -- an invitation nobody receives looks exactly like an invitation
+    never sent -- the one setting a platform_admin cannot see or fix from the product. It becomes a
+    surface: ``platform_settings``, the same right that gates the secrets backend and the encryption
+    provider, persisted to provisa.yaml and applied to the running process, so pointing the
+    deployment at a mail server is a save rather than a redeploy.
+    A TRANSPORT IS A REGISTRY ENTRY, NOT A BRANCH. REQ-1330 gave sending a port (``EmailSender``)
+    and two adapters chosen by ``mail.provider``; both were spelled out in ``email_sender``''s dict
+    and each carried its own switch flattened into one shared config block, which stops working the
+    moment two providers want a field of the same name and different meaning. The transports are a
+    REGISTRY of specs in the shape the secrets and encryption registries already use -- key, label,
+    description, ``config_fields`` the form renders, an availability probe, and a builder over that
+    provider''s OWN config block -- and the config is nested per provider, so a deployment may keep
+    an SMTP host on file while running Resend and switch back without retyping either. Selection is
+    FAIL-CLOSED, as it is for secrets: an unknown provider, or one whose SDK is not installed, is
+    refused at the point of saving with the distribution named, never quietly left on the previous
+    transport.
+    THE METHODS SUPPORTED ARE THE ONES DEPLOYMENTS ACTUALLY USE. Mail has no single popular
+    protocol, so the registry ships the several that matter rather than electing one: SMTP for
+    self-managed and corporate relays (host, port, credentials, STARTTLS or implicit TLS), and the
+    HTTPS transactional APIs -- Resend, SendGrid, Mailgun, Postmark, Amazon SES, and Microsoft 365
+    via Graph ``sendMail`` for a tenant that already sends everything through Exchange Online. Each
+    is one adapter over one HTTPS call or one SDK; the call sites keep depending on ``send()`` alone.
+    THE CREDENTIAL OBEYS REQ-1575 WITHOUT EXCEPTION. An API key, an SMTP password, a Graph client
+    secret is ``secret: True`` in the registry, and the GET that renders the form returns it as
+    absent with a ``secret_set`` bit beside it. There is no show button and no mask. The write is
+    absent-means-unchanged, present-and-empty-means-clear, so an operator can change the SMTP port
+    without retyping the password and can still remove a credential outright.
+    STATS ARE THE RECORD OF WHAT WAS ACTUALLY DELIVERED, NOT A GUESS FROM CONFIG. A configured
+    transport tells an operator nothing about whether mail is arriving, and the failure that
+    matters -- a rejected key, an expired relay credential, a bounced sender domain -- is visible
+    only at send time. Every attempt is recorded in the registry: when, which provider, which kind
+    of message, the recipient, whether it succeeded, and on failure the transport''s own error text.
+    The surface reports the basic counts a platform_admin needs to answer "is mail working" --
+    attempted, delivered and failed over the last day and week, the last successful send, the last
+    failure with its message, and the most recent attempts in order. The record is written whether
+    the send succeeded or failed, because a surface that shows only successes cannot show an outage.
+    A SEND IS VERIFIED BY SENDING. The page can send a test message to an address the operator
+    names, using the configuration as saved, and reports the transport''s answer verbatim. It is
+    the only check that proves the whole path -- credential, sender domain, relay, recipient -- and
+    it lands in the same record as every other attempt rather than in a special case beside it.'
+  use_case: A platform_admin brings up a new deployment, opens Admin -> Email, chooses SendGrid,
+    pastes the API key and the sender address, saves, and sends themselves a test message. It fails
+    with the transport''s own "sender identity not verified" text; they verify the domain and send
+    again. Invitations then work, and a month later, when an org_admin reports that nobody is
+    receiving them, the same page shows the last failure and its reason instead of requiring a
+    shell on the node.
+  scenario: 'Given a platform_admin on the Email settings page
+
+    When they select a transport, fill its fields and save
+
+    Then the configuration is persisted and applied to the running process without a restart
+
+    And the response carries no credential value, only whether one is set
+
+    And when they send a test message
+
+    Then the attempt is recorded and its outcome reported verbatim
+
+    And the page reports attempted, delivered and failed counts, the last success and the last
+    failure'
+  code:
+  - provisa/core/mail_registry.py
+  - provisa/core/mail.py
+  - provisa/core/mail_stats.py
+  - provisa/core/models.py
+  - provisa/core/schema_admin.py
+  - provisa/api/admin/mail_router.py
+  - provisa-ui/src/components/admin/MailTab.tsx
+  - provisa-ui/src/api/mail.ts
+  depends_on:
+  - REQ-1310
+  - REQ-1330
+  - REQ-1337
+  - REQ-1557
+  - REQ-1575
+- id: REQ-1577
+  status: complete
+  since: 2026-08
+  tests:
+  - tests/unit/test_mail_port.py
+  - tests/integration/test_invite_delivery.py
+  target: 2026-Q3
+  group: 11. Platform, Infrastructure & Delivery
+  category: Notifications
+  priority: MUST
+  type: behavioral
+  description: 'THE ORG IS NAMED IN THE FROM DISPLAY NAME AND THE INVITER ANSWERS THE REPLY. An
+    invitation arrives from one deployment-wide address (REQ-1576 ``mail.from_address``), which is
+    what keeps a single verified sending domain and a single warm reputation, but the invitee reads
+    the sender column before they read anything else and "Provisa" alone does not tell them which
+    organization is asking. The message therefore carries a DISPLAY NAME naming the org -- ``"Acme
+    (via Provisa)" <invites@provisa.dev>`` -- so the org is visible in the inbox list while the
+    address, the DKIM signature and the DMARC alignment stay on the one domain the deployment has
+    verified.
+    A REPLY GOES TO A PERSON, NOT TO A NOBODY. The invitee''s first instinct on an unexpected
+    invitation is to reply and ask. ``invites@`` is not a mailbox anyone reads, so the message sets
+    REPLY-TO to the inviter''s own authenticated email address and the answer reaches the human at
+    the org who sent it. The inviter''s address comes from the authenticated identity that created
+    the invitation; when that identity carries no email address there is no Reply-To header at all,
+    because a header pointing somewhere nobody reads is worse than its absence.
+    THIS IS A PROPERTY OF THE MESSAGE, NOT OF THE TRANSPORT. ``MailMessage`` carries ``from_name``
+    and ``reply_to``, and every adapter in the registry honours both in the form its transport
+    takes -- an RFC 5322 display name for SMTP, a formatted from and a reply-to field for the
+    HTTPS APIs, ``from``/``replyTo`` objects for Graph. A message that sets neither is delivered
+    exactly as before, so nothing but the invitation changes shape.
+    ONE TRANSPORT CANNOT CARRY THE DISPLAY NAME, AND THAT DECIDES WHICH TRANSPORT SHIPS. Exchange
+    Online rewrites the sender of an app-only Graph send from the mailbox object itself, so
+    ``microsoft365`` delivers the mailbox display name however the message was addressed; a live
+    send verified this -- the Reply-To arrived intact, the display name did not. The per-org name
+    is the whole point of this requirement, so a deployment that wants it uses a transport that
+    renders the ``From`` header verbatim (smtp, resend, sendgrid, mailgun, postmark, ses), and
+    ``microsoft365`` remains a supported transport that delivers a fixed sender name. The adapter
+    does not pretend otherwise and no substitute name is invented for it.
+    THE ALTERNATIVE WAS REJECTED DELIBERATELY. Sending as ``invites@{org}.provisa.dev`` would put
+    the org in the address itself, but DKIM has no wildcard: every org subdomain would need its own
+    ESP domain registration, its own DNS records, its own verification state machine, and would
+    start with no sending reputation at all. The display name and Reply-To buy the same recognition
+    at no deliverability cost, which is what Slack, Notion and Linear send.'
+  use_case: An org_admin at Acme invites a colleague. The invitation lands showing "Acme (via
+    Provisa)" in the sender column, so the invitee knows who is asking without opening it, and when
+    they reply "what is this?" the reply reaches the colleague who invited them rather than an
+    unattended platform mailbox.
+  scenario: 'Given an org_admin whose authenticated identity carries an email address
+
+    When they create an addressed invitation for their org
+
+    Then the message is sent from the deployment''s verified address
+
+    And its display name names the org
+
+    And its Reply-To is the inviter''s email address
+
+    And when the inviter''s identity carries no email address
+
+    Then the message carries no Reply-To header'
+  code:
+  - provisa/core/mail.py
+  - provisa/api/admin/invites_router.py
+  depends_on:
+  - REQ-1310
+  - REQ-1330
+  - REQ-1486
+  - REQ-1576

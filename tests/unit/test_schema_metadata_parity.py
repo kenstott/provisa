@@ -73,6 +73,12 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1557, REQ-1558: the org's own secrets, held beside ``orgs`` on the platform plane so
     # that a secret is resolvable before any org schema is open. Portable metadata only.
     "secrets_store",
+    # REQ-1574: the org's key ring, held beside ``orgs`` on the platform plane so a blob is
+    # decryptable before any org schema is open. Portable metadata only.
+    "org_encryption_keys",
+    # REQ-1576: the record of what the deployment's mail transport actually delivered. Platform-
+    # wide, beside the registry it reports on. Portable metadata only.
+    "mail_events",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

@@ -19,11 +19,12 @@ The structural half of that is checked by reading the source of the call sites, 
 guarantee is "nobody imports it", which no amount of exercising one call site can show.
 """
 
-# Requirements: REQ-1310, REQ-1330, REQ-1485, REQ-1486
+# Requirements: REQ-1310, REQ-1330, REQ-1485, REQ-1486, REQ-1577
 
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -37,6 +38,9 @@ from provisa.core.mail import (
 from provisa.core.models import MailConfig
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# REQ-1577: the deployment's one verified sending address, which no message may replace.
+_FROM = "invites@provisa.dev"
 
 
 def test_an_unconfigured_provider_is_refused_at_construction():
@@ -61,9 +65,9 @@ def test_each_configured_provider_resolves_to_its_adapter(provider, expected):
 def test_resend_without_a_key_refuses_at_send_rather_than_dropping_the_message():
     """The API key is the SaaS transport's whole credential. Sending without it has to fail in a
     way the admin sees, not return quietly."""
-    sender = ResendEmailSender(MailConfig(provider="resend", api_key=""))
+    sender = ResendEmailSender(MailConfig(provider="resend"))
 
-    with pytest.raises(MailNotConfiguredError, match="mail.api_key"):
+    with pytest.raises(MailNotConfiguredError, match=r"mail\.resend\.api_key"):
         sender.send(MailMessage(to="a@example.com", subject="hi", body="<p>hi</p>"))
 
 
@@ -107,6 +111,7 @@ def _invite() -> MailMessage:
         expires_at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc),
         base_url="https://provisa.example.test",
         token="tok-1",
+        inviter_email="alice@example.test",
     )
 
 
@@ -174,6 +179,7 @@ def _invite_with(branding: dict[str, str]) -> MailMessage:
         expires_at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc),
         base_url="https://provisa.example.test",
         token="tok-1",
+        inviter_email="alice@example.test",
     )
 
 
@@ -213,3 +219,158 @@ def test_the_primary_color_becomes_the_button_color():
 
     assert message.html is not None
     assert "#b91c1c" in message.html
+
+
+# REQ-1577: the org in the From display name, the inviter on Reply-To.
+
+
+def test_the_invitation_names_the_org_in_the_display_name_and_replies_to_the_inviter():
+    message = _invite()
+
+    assert message.from_name == "Acme Analytics (via Provisa)"
+    assert message.reply_to == "alice@example.test"
+
+
+def test_an_inviter_with_no_email_address_leaves_the_message_without_a_reply_to():
+    """No fallback address: a Reply-To nobody reads sends the invitee's question nowhere."""
+    from datetime import datetime, timezone
+
+    from provisa.core.mail import compose_invite_message
+
+    message = compose_invite_message(
+        to="carol@example.test",
+        org_name="Acme Analytics",
+        org_id="acme",
+        inviter="alice",
+        role_id="analyst",
+        expires_at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc),
+        base_url="https://provisa.example.test",
+        token="tok-1",
+        inviter_email=None,
+    )
+
+    assert message.reply_to is None
+    assert message.from_name == "Acme Analytics (via Provisa)"
+
+
+def test_the_orgs_branded_name_is_the_one_in_the_display_name():
+    assert _invite_with({"display_name": "Acme Data Platform"}).from_name == (
+        "Acme Data Platform (via Provisa)"
+    )
+
+
+def test_the_sender_address_is_untouched_by_a_message_that_names_no_org():
+    """A message with no display name is delivered exactly as it was before REQ-1577."""
+    from provisa.core.mail import sender_identity
+
+    plain = MailMessage(to="a@example.test", subject="hi", body="hi")
+    assert sender_identity("invites@provisa.dev", plain) == "invites@provisa.dev"
+    assert sender_identity("invites@provisa.dev", _invite()) == (
+        '"Acme Analytics (via Provisa)" <invites@provisa.dev>'
+    )
+
+
+class _Captured:
+    """What an HTTPS transport put on the wire."""
+
+    def __init__(self) -> None:
+        self.json: dict | None = None
+        self.data: dict | None = None
+
+    def post(self, url, **kwargs):
+        self.json = kwargs.get("json")
+        self.data = kwargs.get("data")
+        return SimpleNamespace(status_code=200, text="", json=lambda: {"id": "1"})
+
+
+@pytest.fixture
+def wire(monkeypatch):
+    import httpx
+
+    captured = _Captured()
+    monkeypatch.setattr(httpx, "post", captured.post)
+    return captured
+
+
+def test_resend_sends_the_display_name_and_the_reply_to(wire):
+    from provisa.core.mail import ResendEmailSender
+    from provisa.core.models import MailConfig, ResendMailConfig
+
+    ResendEmailSender(
+        MailConfig(provider="resend", resend=ResendMailConfig(api_key="k"), from_address=_FROM)
+    ).send(_invite())
+
+    assert wire.json is not None
+    assert wire.json["from"] == f'"Acme Analytics (via Provisa)" <{_FROM}>'
+    assert wire.json["reply_to"] == ["alice@example.test"]
+
+
+def test_sendgrid_names_the_sender_in_its_own_field(wire):
+    from provisa.core.mail import SendgridEmailSender
+    from provisa.core.models import MailConfig, SendgridMailConfig
+
+    SendgridEmailSender(
+        MailConfig(
+            provider="sendgrid", sendgrid=SendgridMailConfig(api_key="k"), from_address=_FROM
+        )
+    ).send(_invite())
+
+    assert wire.json is not None
+    assert wire.json["from"] == {"email": _FROM, "name": "Acme Analytics (via Provisa)"}
+    assert wire.json["reply_to"] == {"email": "alice@example.test"}
+
+
+def test_mailgun_carries_the_reply_to_as_a_header(wire):
+    from provisa.core.mail import MailgunEmailSender
+    from provisa.core.models import MailConfig, MailgunMailConfig
+
+    MailgunEmailSender(
+        MailConfig(
+            provider="mailgun",
+            mailgun=MailgunMailConfig(api_key="k", domain="mg.example.test"),
+            from_address=_FROM,
+        )
+    ).send(_invite())
+
+    assert wire.data is not None
+    assert wire.data["from"] == f'"Acme Analytics (via Provisa)" <{_FROM}>'
+    assert wire.data["h:Reply-To"] == "alice@example.test"
+
+
+def test_postmark_sends_the_display_name_and_the_reply_to(wire):
+    from provisa.core.mail import PostmarkEmailSender
+    from provisa.core.models import MailConfig, PostmarkMailConfig
+
+    PostmarkEmailSender(
+        MailConfig(
+            provider="postmark", postmark=PostmarkMailConfig(server_token="t"), from_address=_FROM
+        )
+    ).send(_invite())
+
+    assert wire.json is not None
+    assert wire.json["From"] == f'"Acme Analytics (via Provisa)" <{_FROM}>'
+    assert wire.json["ReplyTo"] == "alice@example.test"
+
+
+def test_microsoft_graph_sends_the_display_name_and_the_reply_to(monkeypatch, wire):
+    from provisa.core.mail import Microsoft365EmailSender
+    from provisa.core.models import MailConfig, Microsoft365MailConfig
+
+    sender = Microsoft365EmailSender(
+        MailConfig(
+            provider="microsoft365",
+            microsoft365=Microsoft365MailConfig(
+                tenant_id="t", client_id="c", client_secret="s", sender="invites@example.test"
+            ),
+            from_address=_FROM,
+        )
+    )
+    monkeypatch.setattr(type(sender), "_token", lambda self, httpx: "token")
+    sender.send(_invite())
+
+    assert wire.json is not None
+    graph = wire.json["message"]
+    assert graph["from"] == {
+        "emailAddress": {"address": _FROM, "name": "Acme Analytics (via Provisa)"}
+    }
+    assert graph["replyTo"] == [{"emailAddress": {"address": "alice@example.test"}}]

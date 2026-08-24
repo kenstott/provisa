@@ -525,6 +525,7 @@ function App() {
                                     ["/admin/reports", "observability"], // REQ-1386
                                     ["/admin/glossary", "org_settings"], // REQ-1387
                                     ["/admin/security", "platform_settings"],
+                                    ["/admin/email", "platform_settings"], // REQ-1576
                                     ["/admin/maintenance", "platform_settings"], // REQ-1466
                                     ["/admin/billing", "org_settings"], // REQ-1469
                                   ] as const

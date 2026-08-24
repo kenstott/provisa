@@ -539,6 +539,34 @@ org_encryption_keys = Table(
 
 # The org/user/invite registry. ``org_config`` is bootstrapped separately by the billing
 # module, so it is excluded here.
+# REQ-1576: what the mail transport actually did. A configured transport says nothing about
+# whether mail is arriving -- the failures that matter (a rejected key, an expired relay
+# credential, an unverified sender domain) exist only at send time -- so every attempt is written
+# here, failures included, and the Email settings page reports the counts and the last failure out
+# of this table rather than out of the config. Registry-resident because it is platform-wide: the
+# transport belongs to the deployment, not to any org, even though a row usually names the org
+# whose invitation was being sent.
+mail_events = Table(
+    "mail_events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("sent_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # The transport this attempt went through, by registry key. Kept per row rather than read
+    # from config at display time, because the question an operator asks after switching
+    # transports is which of them was failing.
+    Column("provider", Text, nullable=False),
+    # What was being sent: "invite" (REQ-1330) or "test" (the operator's own check).
+    Column("kind", Text, nullable=False),
+    Column("recipient", Text, nullable=False),
+    Column("org_id", Text, nullable=True),
+    Column("succeeded", Boolean, nullable=False),
+    # The transport's own words on failure, kept verbatim -- an operator fixes a rejected sender
+    # identity from the provider's message, not from a rephrasing of it. NULL on success.
+    Column("error", Text, nullable=True),
+    Column("requested_by", Text, nullable=True),
+)
+
+
 REGISTRY_TABLES = [
     orgs,
     org_encryption_keys,
@@ -555,6 +583,7 @@ REGISTRY_TABLES = [
     personal_access_tokens,
     scram_credentials,
     platform_notice,
+    mail_events,
 ]
 
 

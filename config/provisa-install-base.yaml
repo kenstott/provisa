@@ -79,6 +79,13 @@ auth:
 # REQ-1330: outbound mail behind the EmailSender port; see provisa-install.yaml.
 mail:
   provider: ${env:PROVISA_MAIL_PROVIDER:-smtp}
-  api_key: ${env:PROVISA_EMAIL_API_KEY:-}
   from_address: ${env:PROVISA_MAIL_FROM:-provisa@localhost}
   base_url: ${env:PROVISA_MAIL_BASE_URL:-http://localhost:5173}
+  # REQ-1576: per-transport credentials; the settings page writes the rest.
+  resend:
+    api_key: ${env:PROVISA_EMAIL_API_KEY:-}
+  microsoft365:
+    tenant_id: ${env:PROVISA_MAIL_M365_TENANT_ID:-}
+    client_id: ${env:PROVISA_MAIL_M365_CLIENT_ID:-}
+    client_secret: ${env:PROVISA_MAIL_M365_CLIENT_SECRET:-}
+    sender: ${env:PROVISA_MAIL_M365_SENDER:-}

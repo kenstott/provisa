@@ -1189,37 +1189,101 @@ class AuthConfig(
     login_throttle: LoginThrottleConfig = Field(default_factory=LoginThrottleConfig)  # REQ-1393
 
 
-class MailConfig(BaseModel):  # REQ-1310, REQ-1330
-    """Outbound mail, used today only for org invitations. Sending happens only in SaaS
-    deployments (multitenancy) — REQ-1330.
+class SmtpMailConfig(BaseModel):  # REQ-1310, REQ-1576
+    """A mail server spoken to over SMTP -- a corporate relay, a self-managed server, or the
+    loopback server the delivery test starts.
 
-    provider: which EmailSender adapter backs the port — "smtp" or "resend". Each adapter has its
-        own switch (host, api_key); the unset switch means no transport is configured, and sending
-        raises rather than dropping, so an org_admin learns the invitation must be distributed by
-        hand.
-    host: SMTP server (provider "smtp").
-    port: SMTP port. 25 is the plain-SMTP default the local test server listens on; 587 with
-        use_starttls, or 465 with use_ssl, are the usual production pairs.
-    api_key: Resend API key (provider "resend"); use ``${env:PROVISA_EMAIL_API_KEY}``.
-    api_url: Resend endpoint. Overridden only by the delivery test, which captures on loopback.
+    port: 25 is plain SMTP, which is what the local test server listens on; 587 with
+        ``use_starttls`` and 465 with ``use_ssl`` are the two production pairs.
+    """
+
+    host: str = ""
+    port: int = 25
+    username: str = ""
+    password: SecretStr = SecretStr("")
+    use_starttls: bool = False
+    use_ssl: bool = False
+
+
+class ResendMailConfig(BaseModel):  # REQ-1330, REQ-1576
+    """Resend. ``api_url`` is overridden only by the delivery test, which captures on loopback."""
+
+    api_key: SecretStr = SecretStr("")
+    api_url: str = "https://api.resend.com/emails"
+
+
+class SendgridMailConfig(BaseModel):  # REQ-1576
+    api_key: SecretStr = SecretStr("")
+    api_url: str = "https://api.sendgrid.com/v3/mail/send"
+
+
+class MailgunMailConfig(BaseModel):  # REQ-1576
+    """Mailgun. ``domain`` is the sending domain the account is provisioned for, and ``api_url``
+    is the regional base -- the EU region is a different host, not a different account."""
+
+    api_key: SecretStr = SecretStr("")
+    domain: str = ""
+    api_url: str = "https://api.mailgun.net/v3"
+
+
+class PostmarkMailConfig(BaseModel):  # REQ-1576
+    """Postmark. The token is per SERVER, not per account, so it names which stream mail is sent
+    on as well as authenticating."""
+
+    server_token: SecretStr = SecretStr("")
+    api_url: str = "https://api.postmarkapp.com/email"
+    message_stream: str = "outbound"
+
+
+class SesMailConfig(BaseModel):  # REQ-1576
+    """Amazon SES v2, through boto3. Empty credentials mean the ambient AWS chain -- an instance
+    role or a profile -- which is how SES is normally reached from inside AWS."""
+
+    region: str = ""
+    access_key_id: str = ""
+    secret_access_key: SecretStr = SecretStr("")
+
+
+class Microsoft365MailConfig(BaseModel):  # REQ-1576
+    """Microsoft 365 through Graph ``sendMail``, for a tenant whose mail already leaves through
+    Exchange Online. ``sender`` is the mailbox the message is sent AS -- Graph sends on behalf of
+    a named user or shared mailbox, so there is no such thing as a tenant-wide from address."""
+
+    tenant_id: str = ""
+    client_id: str = ""
+    client_secret: SecretStr = SecretStr("")
+    sender: str = ""
+    api_url: str = "https://graph.microsoft.com/v1.0"
+    login_url: str = "https://login.microsoftonline.com"
+
+
+class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
+    """Outbound mail for platform communications -- today the org invitation. Sending happens only
+    in SaaS deployments (multitenancy) -- REQ-1330.
+
+    provider: which EmailSender adapter backs the port, by registry key (REQ-1576). Empty means no
+        transport is configured, and sending raises rather than dropping, so an org_admin learns
+        the invitation must be distributed by hand.
+    Each transport keeps its OWN block below rather than sharing one flat set of fields, so a
+    deployment can hold an SMTP host and an API key at once and switch between them without
+    retyping either (REQ-1576).
     from_address: envelope and header sender. The SaaS deployment sends as invites@provisa.dev.
     base_url: public origin of the UI, used to build the redemption link in the message. It cannot
-        be derived from the request that created the invitation — that request may arrive on an
+        be derived from the request that created the invitation -- that request may arrive on an
         internal address or an org subdomain, and the link must work from the invitee's mailbox.
     """
 
     provider: str = "smtp"
-    host: str = ""
-    port: int = 25
-    api_key: str = ""
-    api_url: str = "https://api.resend.com/emails"
     from_address: str = "provisa@localhost"
-    username: str = ""
-    password: str = ""
-    use_starttls: bool = False
-    use_ssl: bool = False
-    timeout_seconds: int = 10
     base_url: str = "http://localhost:5173"
+    timeout_seconds: int = 10
+    smtp: SmtpMailConfig = Field(default_factory=SmtpMailConfig)
+    resend: ResendMailConfig = Field(default_factory=ResendMailConfig)
+    sendgrid: SendgridMailConfig = Field(default_factory=SendgridMailConfig)
+    mailgun: MailgunMailConfig = Field(default_factory=MailgunMailConfig)
+    postmark: PostmarkMailConfig = Field(default_factory=PostmarkMailConfig)
+    ses: SesMailConfig = Field(default_factory=SesMailConfig)
+    microsoft365: Microsoft365MailConfig = Field(default_factory=Microsoft365MailConfig)
 
 
 class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073

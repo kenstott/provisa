@@ -189,6 +189,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
         org_id=body.org_id,
         org_name=org_name,
         inviter=created_by,
+        inviter_email=identity.email,  # REQ-1577
         role_id=role_id,
         expires_at=expires_at,
         token=token,
@@ -217,6 +218,7 @@ async def _deliver_invite(  # REQ-1310
     org_id: str,
     org_name: str,
     inviter: str,
+    inviter_email: str | None,
     role_id: str,
     expires_at,
     token: str,
@@ -250,18 +252,56 @@ async def _deliver_invite(  # REQ-1310
         # The user id, not a display name: display_name is optional on an identity and this line
         # must name someone in every message.
         inviter=inviter,
+        # REQ-1577: where a reply lands. None when the identity carries no email address, which
+        # leaves the message without a Reply-To rather than pointing it at an unread mailbox.
+        inviter_email=inviter_email,
         role_id=role_id,
         expires_at=expires_at,
         base_url=cfg.mail.base_url,
         token=token,
     )
+    from provisa.core.mail_stats import MailAttempt, record  # REQ-1576
+
     try:
         sender = email_sender(cfg.mail)  # REQ-1330: the port; the provider is config, not code
         await run_in_threadpool(sender.send, message)
     except Exception as exc:  # reported to the caller, never swallowed
         log.error("invitation to %s for org %s could not be delivered: %s", email, org_id, exc)
+        # REQ-1576: recorded BEFORE returning, and failures especially — an invitation nobody
+        # receives is indistinguishable from one nobody sent unless the attempt is on file.
+        await record(
+            _pool_for_stats(),
+            MailAttempt(
+                provider=cfg.mail.provider,
+                kind="invite",
+                recipient=email,
+                succeeded=False,
+                org_id=org_id,
+                error=str(exc),
+                requested_by=inviter,
+            ),
+        )
         return f"failed: {exc}"
+    await record(
+        _pool_for_stats(),
+        MailAttempt(
+            provider=cfg.mail.provider,
+            kind="invite",
+            recipient=email,
+            succeeded=True,
+            org_id=org_id,
+            requested_by=inviter,
+        ),
+    )
     return "sent"
+
+
+def _pool_for_stats() -> Database:
+    """The control plane, where the mail record lives (REQ-1576)."""
+    from provisa.api.app import state
+
+    assert state.admin_db is not None
+    return state.admin_db
 
 
 async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266

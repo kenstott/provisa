@@ -328,28 +328,33 @@ export function TeamPage() {
                 onChange={(e) => setInviteEmail(e.currentTarget.value)}
                 data-testid="team-invite-email"
               />
-              <Select
-                label={t("teamPage.roleLabel")}
-                description={t("teamPage.roleDesc")}
-                placeholder={t("teamPage.rolePlaceholder")}
-                data={roleOptions}
-                value={roleId}
-                onChange={setRoleId}
-                data-testid="team-invite-role"
-              />
-              <Button
-                onClick={handleCreate}
-                disabled={!activeOrgId || !roleId}
-                style={{ alignSelf: "flex-start" }}
-                data-testid="team-invite-create"
-              >
-                {inviteEmail.trim() === ""
-                  ? t("teamPage.generateInvite")
-                  : t("teamPage.sendInvite")}
-              </Button>
+              {/* The button sits beside the role, bottom-aligned with its input: picking the role
+                  is the last thing done before creating the link, and it is the field the button
+                  is disabled on. */}
+              <Group align="flex-end" gap="sm" wrap="nowrap">
+                <Select
+                  label={t("teamPage.roleLabel")}
+                  description={t("teamPage.roleDesc")}
+                  placeholder={t("teamPage.rolePlaceholder")}
+                  data={roleOptions}
+                  value={roleId}
+                  onChange={setRoleId}
+                  data-testid="team-invite-role"
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  onClick={handleCreate}
+                  disabled={!activeOrgId || !roleId}
+                  data-testid="team-invite-create"
+                >
+                  {inviteEmail.trim() === ""
+                    ? t("teamPage.generateInvite")
+                    : t("teamPage.sendInvite")}
+                </Button>
+              </Group>
             </Stack>
 
-            <Table.ScrollContainer minWidth={640}>
+            <Table.ScrollContainer minWidth={640} mt="md">
               <Table striped highlightOnHover withTableBorder verticalSpacing="xs">
                 <Table.Thead>
                   <Table.Tr>

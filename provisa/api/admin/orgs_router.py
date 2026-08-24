@@ -780,6 +780,8 @@ async def preview_invite_message(  # REQ-1486
         org_name=row._mapping["name"],
         org_id=org_id,
         inviter="you",
+        # The preview renders subject, html and text only; the REQ-1577 headers are not part of it.
+        inviter_email=None,
         role_id="analyst",
         expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         base_url=cfg.mail.base_url,

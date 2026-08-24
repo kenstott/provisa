@@ -17,13 +17,15 @@ would actually receive.
 
 Transport sits behind the ``EmailSender`` port (REQ-1330): callers obtain a sender from
 ``email_sender()`` and depend only on ``send()``. Which concrete transport backs it is a
-deployment detail selected by ``mail.provider`` — ``smtp`` (REQ-1310) or ``resend`` (the SaaS
-transactional provider). Swapping providers is a config change plus, at most, a new adapter in
-this module; no call site changes.
+deployment detail selected by ``mail.provider`` and looked up in ``mail_registry`` (REQ-1576) —
+SMTP for relays and self-managed servers, and the HTTPS transactional APIs (Resend, SendGrid,
+Mailgun, Postmark, Amazon SES, Microsoft 365 via Graph). Adding a transport is a spec in the
+registry and an adapter here; no call site changes.
 
 Configuration follows the same shape as every other backing service — a section on ProvisaConfig
-(``mail:``) with the provider's own switch (SMTP host, Resend API key). An unset switch means no
-mail transport is available, which is a refusal at the point of sending, not a silent drop.
+(``mail:``) with a nested block per transport, so a deployment holds an SMTP host and an API key
+at once and switches between them without retyping either. An unset switch means no mail transport
+is available, which is a refusal at the point of sending, not a silent drop.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ import logging
 import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
+from email.utils import formataddr
 from html import escape
 from typing import Protocol
 
@@ -55,6 +58,20 @@ class MailMessage:
     # REQ-1485: branded alternative part. `body` stays the canonical content — every message is
     # readable without it, and text-only clients get the same link and facts.
     html: str | None = None
+    # REQ-1577: who the message appears to come from, and where a reply goes. The address stays the
+    # deployment's one verified sender; `from_name` names the org in the inbox list and `reply_to`
+    # carries the answer to a person. Both unset is a message delivered exactly as before.
+    from_name: str | None = None
+    reply_to: str | None = None
+
+
+def sender_identity(from_address: str, message: MailMessage) -> str:  # REQ-1577
+    """The sender as a transport writes it: the deployment address, display name in front of it."""
+    return (
+        formataddr((message.from_name, from_address))
+        if message.from_name is not None
+        else from_address
+    )
 
 
 class EmailSender(Protocol):  # REQ-1330
@@ -66,6 +83,24 @@ class EmailSender(Protocol):  # REQ-1330
     def send(self, message: MailMessage) -> None: ...
 
 
+def _secret(value) -> str:
+    """The plaintext of a config field held as ``SecretStr``."""
+    return value.get_secret_value() if hasattr(value, "get_secret_value") else str(value)
+
+
+def _unconfigured(setting: str) -> MailNotConfiguredError:
+    return MailNotConfiguredError(
+        f"No {setting} is configured. Set it under Admin -> Email to deliver invitations by "
+        f"email, or distribute the invitation link yourself."
+    )
+
+
+def _refused(provider: str, status: int, text: str) -> RuntimeError:
+    """The transport's own answer, verbatim. An operator fixes a rejected sender identity or an
+    expired key from the words the provider used, not from a rephrasing of them."""
+    return RuntimeError(f"{provider} refused the message ({status}): {text}")
+
+
 class SmtpEmailSender:  # REQ-1310
     """SMTP transport, for self-managed mail infrastructure and the loopback delivery test."""
 
@@ -74,27 +109,27 @@ class SmtpEmailSender:  # REQ-1310
 
     def send(self, message: MailMessage) -> None:
         cfg = self._config
-        if not cfg.host:
-            raise MailNotConfiguredError(
-                "No SMTP host is configured (mail.host). Set it to deliver invitations by email, "
-                "or distribute the invitation link yourself."
-            )
+        smtp_cfg = cfg.smtp
+        if not smtp_cfg.host:
+            raise _unconfigured("SMTP host (mail.smtp.host)")
         msg = EmailMessage()
-        msg["From"] = cfg.from_address
+        msg["From"] = sender_identity(cfg.from_address, message)
         msg["To"] = message.to
         msg["Subject"] = message.subject
+        if message.reply_to is not None:  # REQ-1577
+            msg["Reply-To"] = message.reply_to
         msg.set_content(message.body)
         if message.html is not None:  # REQ-1485: multipart/alternative, text part first
             msg.add_alternative(message.html, subtype="html")
 
-        smtp_class = smtplib.SMTP_SSL if cfg.use_ssl else smtplib.SMTP
-        with smtp_class(cfg.host, cfg.port, timeout=cfg.timeout_seconds) as smtp:
-            if cfg.use_starttls:
+        smtp_class = smtplib.SMTP_SSL if smtp_cfg.use_ssl else smtplib.SMTP
+        with smtp_class(smtp_cfg.host, smtp_cfg.port, timeout=cfg.timeout_seconds) as smtp:
+            if smtp_cfg.use_starttls:
                 smtp.starttls()
-            if cfg.username:
-                smtp.login(cfg.username, cfg.password)
+            if smtp_cfg.username:
+                smtp.login(smtp_cfg.username, _secret(smtp_cfg.password))
             smtp.send_message(msg)
-        log.info("invitation mail delivered to %s", message.to)
+        log.info("mail delivered to %s via smtp", message.to)
 
 
 class ResendEmailSender:  # REQ-1330
@@ -107,38 +142,263 @@ class ResendEmailSender:  # REQ-1330
         import httpx
 
         cfg = self._config
-        if not cfg.api_key:
-            raise MailNotConfiguredError(
-                "No Resend API key is configured (mail.api_key). Set it to deliver invitations "
-                "by email, or distribute the invitation link yourself."
-            )
+        api_key = _secret(cfg.resend.api_key)
+        if not api_key:
+            raise _unconfigured("Resend API key (mail.resend.api_key)")
         payload = {
-            "from": cfg.from_address,
+            "from": sender_identity(cfg.from_address, message),
             "to": [message.to],
             "subject": message.subject,
             "text": message.body,
         }
         if message.html is not None:  # REQ-1485
             payload["html"] = message.html
+        if message.reply_to is not None:  # REQ-1577
+            payload["reply_to"] = [message.reply_to]
         response = httpx.post(
-            cfg.api_url,
-            headers={"Authorization": f"Bearer {cfg.api_key}"},
+            cfg.resend.api_url,
+            headers={"Authorization": f"Bearer {api_key}"},
             json=payload,
             timeout=cfg.timeout_seconds,
         )
         if response.status_code >= 400:
-            raise RuntimeError(
-                f"Resend refused the message ({response.status_code}): {response.text}"
-            )
-        log.info("invitation mail delivered to %s via resend", message.to)
+            raise _refused("Resend", response.status_code, response.text)
+        log.info("mail delivered to %s via resend", message.to)
 
 
-_PROVIDERS = {"smtp": SmtpEmailSender, "resend": ResendEmailSender}
+class SendgridEmailSender:  # REQ-1576
+    """Twilio SendGrid's v3 API."""
+
+    def __init__(self, mail_config) -> None:
+        self._config = mail_config
+
+    def send(self, message: MailMessage) -> None:
+        import httpx
+
+        cfg = self._config
+        api_key = _secret(cfg.sendgrid.api_key)
+        if not api_key:
+            raise _unconfigured("SendGrid API key (mail.sendgrid.api_key)")
+        content = [{"type": "text/plain", "value": message.body}]
+        if message.html is not None:  # REQ-1485: SendGrid picks the LAST part, so html goes last
+            content.append({"type": "text/html", "value": message.html})
+        payload = {
+            "personalizations": [{"to": [{"email": message.to}]}],
+            "from": {"email": cfg.from_address},
+            "subject": message.subject,
+            "content": content,
+        }
+        if message.from_name is not None:  # REQ-1577: SendGrid names the sender in its own field
+            payload["from"]["name"] = message.from_name
+        if message.reply_to is not None:
+            payload["reply_to"] = {"email": message.reply_to}
+        response = httpx.post(
+            cfg.sendgrid.api_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+            timeout=cfg.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            raise _refused("SendGrid", response.status_code, response.text)
+        log.info("mail delivered to %s via sendgrid", message.to)
 
 
-def email_sender(mail_config) -> EmailSender:  # REQ-1330
-    """The configured transport behind the port. An unknown provider is a config fault and is
-    refused here, at construction, where the message names the setting."""
+class MailgunEmailSender:  # REQ-1576
+    """Mailgun's messages API. Form-encoded rather than JSON — that is the API Mailgun offers."""
+
+    def __init__(self, mail_config) -> None:
+        self._config = mail_config
+
+    def send(self, message: MailMessage) -> None:
+        import httpx
+
+        cfg = self._config
+        api_key = _secret(cfg.mailgun.api_key)
+        if not api_key:
+            raise _unconfigured("Mailgun API key (mail.mailgun.api_key)")
+        if not cfg.mailgun.domain:
+            raise _unconfigured("Mailgun sending domain (mail.mailgun.domain)")
+        data = {
+            "from": sender_identity(cfg.from_address, message),
+            "to": message.to,
+            "subject": message.subject,
+            "text": message.body,
+        }
+        if message.html is not None:  # REQ-1485
+            data["html"] = message.html
+        if message.reply_to is not None:  # REQ-1577: Mailgun sets a header via the h: prefix
+            data["h:Reply-To"] = message.reply_to
+        response = httpx.post(
+            f"{cfg.mailgun.api_url.rstrip('/')}/{cfg.mailgun.domain}/messages",
+            auth=("api", api_key),
+            data=data,
+            timeout=cfg.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            raise _refused("Mailgun", response.status_code, response.text)
+        log.info("mail delivered to %s via mailgun", message.to)
+
+
+class PostmarkEmailSender:  # REQ-1576
+    """Postmark's email API."""
+
+    def __init__(self, mail_config) -> None:
+        self._config = mail_config
+
+    def send(self, message: MailMessage) -> None:
+        import httpx
+
+        cfg = self._config
+        token = _secret(cfg.postmark.server_token)
+        if not token:
+            raise _unconfigured("Postmark server token (mail.postmark.server_token)")
+        payload = {
+            "From": sender_identity(cfg.from_address, message),
+            "To": message.to,
+            "Subject": message.subject,
+            "TextBody": message.body,
+            "MessageStream": cfg.postmark.message_stream,
+        }
+        if message.html is not None:  # REQ-1485
+            payload["HtmlBody"] = message.html
+        if message.reply_to is not None:  # REQ-1577
+            payload["ReplyTo"] = message.reply_to
+        response = httpx.post(
+            cfg.postmark.api_url,
+            headers={"X-Postmark-Server-Token": token, "Accept": "application/json"},
+            json=payload,
+            timeout=cfg.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            raise _refused("Postmark", response.status_code, response.text)
+        log.info("mail delivered to %s via postmark", message.to)
+
+
+class SesEmailSender:  # REQ-1576
+    """Amazon SES v2 through boto3.
+
+    Empty credentials are not an unconfigured transport: SES is normally reached from inside AWS,
+    where the instance role IS the credential, so boto3's own chain is what resolves them.
+    """
+
+    def __init__(self, mail_config) -> None:
+        self._config = mail_config
+
+    def send(self, message: MailMessage) -> None:
+        import boto3
+
+        cfg = self._config
+        if not cfg.ses.region:
+            raise _unconfigured("SES region (mail.ses.region)")
+        key_id = cfg.ses.access_key_id
+        secret = _secret(cfg.ses.secret_access_key)
+        client = boto3.client(
+            "sesv2",
+            region_name=cfg.ses.region,
+            **(
+                {"aws_access_key_id": key_id, "aws_secret_access_key": secret}
+                if key_id
+                else {}  # the ambient chain; see the class docstring
+            ),
+        )
+        body: dict = {"Text": {"Data": message.body, "Charset": "UTF-8"}}
+        if message.html is not None:  # REQ-1485
+            body["Html"] = {"Data": message.html, "Charset": "UTF-8"}
+        client.send_email(
+            FromEmailAddress=sender_identity(cfg.from_address, message),
+            Destination={"ToAddresses": [message.to]},
+            Content={
+                "Simple": {
+                    "Subject": {"Data": message.subject, "Charset": "UTF-8"},
+                    "Body": body,
+                }
+            },
+            # REQ-1577: SES takes reply-to as its own list rather than a header.
+            **({"ReplyToAddresses": [message.reply_to]} if message.reply_to is not None else {}),
+        )
+        log.info("mail delivered to %s via ses", message.to)
+
+
+class Microsoft365EmailSender:  # REQ-1576
+    """Microsoft Graph ``sendMail``, with the app-only client-credentials flow.
+
+    The token is fetched per send rather than cached: sending is rare enough that a cache would
+    save nothing measurable, and a cached token is one more piece of state to be wrong about.
+    """
+
+    def __init__(self, mail_config) -> None:
+        self._config = mail_config
+
+    def _token(self, httpx) -> str:
+        cfg = self._config.microsoft365
+        response = httpx.post(
+            f"{cfg.login_url.rstrip('/')}/{cfg.tenant_id}/oauth2/v2.0/token",
+            data={
+                "client_id": cfg.client_id,
+                "client_secret": _secret(cfg.client_secret),
+                "scope": "https://graph.microsoft.com/.default",
+                "grant_type": "client_credentials",
+            },
+            timeout=self._config.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            raise _refused("Microsoft 365", response.status_code, response.text)
+        return response.json()["access_token"]
+
+    def send(self, message: MailMessage) -> None:
+        import httpx
+
+        cfg = self._config
+        m365 = cfg.microsoft365
+        for value, setting in (
+            (m365.tenant_id, "Microsoft 365 tenant id (mail.microsoft365.tenant_id)"),
+            (m365.client_id, "Microsoft 365 client id (mail.microsoft365.client_id)"),
+            (_secret(m365.client_secret), "Microsoft 365 client secret"),
+            (m365.sender, "Microsoft 365 sender mailbox (mail.microsoft365.sender)"),
+        ):
+            if not value:
+                raise _unconfigured(setting)
+        # Graph takes ONE body with a content type, so the branded part replaces the text part
+        # rather than accompanying it -- there is no multipart/alternative to build here.
+        content = (
+            {"contentType": "HTML", "content": message.html}
+            if message.html is not None
+            else {"contentType": "Text", "content": message.body}
+        )
+        graph_message: dict = {
+            "subject": message.subject,
+            "body": content,
+            "toRecipients": [{"emailAddress": {"address": message.to}}],
+        }
+        # REQ-1577: Graph takes a display name here, but Exchange Online rewrites the sender of an
+        # app-only send from the mailbox object, so what arrives is the mailbox's own name. The
+        # field is set because it is the correct thing to send; a deployment that needs the per-org
+        # name in the inbox list uses a transport that renders the From header verbatim.
+        if message.from_name is not None:
+            graph_message["from"] = {
+                "emailAddress": {"address": cfg.from_address, "name": message.from_name}
+            }
+        if message.reply_to is not None:
+            graph_message["replyTo"] = [{"emailAddress": {"address": message.reply_to}}]
+        response = httpx.post(
+            f"{m365.api_url.rstrip('/')}/users/{m365.sender}/sendMail",
+            headers={"Authorization": f"Bearer {self._token(httpx)}"},
+            json={"message": graph_message, "saveToSentItems": True},
+            timeout=cfg.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            raise _refused("Microsoft 365", response.status_code, response.text)
+        log.info("mail delivered to %s via microsoft365", message.to)
+
+
+def email_sender(mail_config) -> EmailSender:  # REQ-1330, REQ-1576
+    """The configured transport behind the port.
+
+    The choice is a registry lookup (REQ-1576), so an unknown key and an uninstalled SDK are both
+    refused here, at construction, where the message can name the setting and what to install.
+    """
+    from provisa.core.mail_registry import get_mail_provider_spec, mail_provider_registry
+
     # Compose overlays interpolate PROVISA_MAIL_PROVIDER as "" when the node sets none, and the
     # env resolver keeps a set-but-empty variable rather than the yaml default — so empty is the
     # documented unconfigured state, not a typo.
@@ -147,14 +407,17 @@ def email_sender(mail_config) -> EmailSender:  # REQ-1330
             "No mail provider is configured (mail.provider / PROVISA_MAIL_PROVIDER). Set it to "
             "deliver invitations by email, or distribute the invitation link yourself."
         )
-    try:
-        provider = _PROVIDERS[mail_config.provider]
-    except KeyError:
+    spec = get_mail_provider_spec(mail_config.provider)
+    if spec is None:
         raise MailNotConfiguredError(
-            f"Unknown mail provider '{mail_config.provider}' (mail.provider); "
-            f"expected one of: {', '.join(sorted(_PROVIDERS))}"
-        ) from None
-    return provider(mail_config)
+            f"Unknown mail provider '{mail_config.provider}' (mail.provider); expected one of: "
+            f"{', '.join(sorted(s.key for s in mail_provider_registry()))}"
+        )
+    if not spec.available():
+        raise MailNotConfiguredError(
+            f"Mail provider '{spec.key}' is not available (install {spec.requires!r} to use it)"
+        )
+    return spec.build(mail_config)
 
 
 def invite_redemption_url(base_url: str, token: str) -> str:
@@ -173,6 +436,7 @@ def compose_invite_message(
     expires_at,
     base_url: str,
     token: str,
+    inviter_email: str | None,
     branding: dict[str, str] | None = None,
 ) -> MailMessage:
     """The invitation as the invitee reads it.
@@ -185,6 +449,10 @@ def compose_invite_message(
     primary_color, and may add one sentence of its own (invite_message) above Provisa's copy. The
     org's own words are additive: everything the invitee needs — role, expiry, link — is stated by
     this function regardless of what the org wrote.
+
+    REQ-1577: the org is named in the From display name and a reply goes to the inviter. When the
+    inviter's identity carries no email address (``inviter_email`` is None) the message carries no
+    Reply-To at all — a reply to an unattended address is worse than no reply address.
     """
     brand = branding or {}
     display_name = brand.get("display_name", org_name)
@@ -219,6 +487,10 @@ def compose_invite_message(
             org_note=org_note,
             button_color=brand.get("primary_color", _BRAND_PRIMARY),
         ),
+        # REQ-1577: "(via Provisa)" keeps the platform visible, so the display name is a
+        # description of the sender rather than an impersonation of the org.
+        from_name=f"{display_name} (via Provisa)",
+        reply_to=inviter_email,
     )
 
 

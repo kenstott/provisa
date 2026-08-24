@@ -32,6 +32,7 @@
     "itemCache": "Cache",
     "itemScheduler": "Scheduler",
     "itemFederation": "Federation",
+    "itemEmail": "Email",
     "itemMaintenance": "Maintenance",
     "itemBilling": "Billing",
     "itemExplore": "MCP",

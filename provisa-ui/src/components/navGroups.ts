@@ -153,6 +153,9 @@ export const NAV_GROUPS: NavGroup[] = [
       // every seeded role carries. This supersedes REQ-1558's single sub-tab under Security.
       { to: "/admin/secrets", labelKey: "navBar.itemOrgSecrets", capability: "org_settings" },
       { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: "usage" },
+      // REQ-1576: the mail transport platform communications go out through. Deployment-wide, and
+      // an invitation is the platform's message rather than any org's, so platform_settings.
+      { to: "/admin/email", labelKey: "navBar.itemEmail", capability: "platform_settings" },
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
       // platform_settings — the same right that gates the engine topology switch it announces.
       {

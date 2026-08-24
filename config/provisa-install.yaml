@@ -125,10 +125,18 @@ graphql_remote:
   max_list_items: 100
   max_object_depth: 5
 mail:
-  api_key: ${env:PROVISA_EMAIL_API_KEY:-}
   base_url: ${env:PROVISA_MAIL_BASE_URL:-http://localhost:5173}
   from_address: ${env:PROVISA_MAIL_FROM:-provisa@localhost}
   provider: ${env:PROVISA_MAIL_PROVIDER:-smtp}
+  # REQ-1576: each transport carries its own credentials, so they no longer share one api_key.
+  # The Email settings page writes these; the env defaults are what a fresh node boots with.
+  resend:
+    api_key: ${env:PROVISA_EMAIL_API_KEY:-}
+  microsoft365:
+    tenant_id: ${env:PROVISA_MAIL_M365_TENANT_ID:-}
+    client_id: ${env:PROVISA_MAIL_M365_CLIENT_ID:-}
+    client_secret: ${env:PROVISA_MAIL_M365_CLIENT_SECRET:-}
+    sender: ${env:PROVISA_MAIL_M365_SENDER:-}
 metrics:
 - datatype: bigint
   description: Number of customer inquiries, re-grainable by any dim_pet attribute
