@@ -60,6 +60,8 @@ WAKE_HOLD_SECONDS = 110  # raw-TCP clients: hold until boot completes or they gi
 STATUS_CACHE_TTL = 10.0
 START_DEBOUNCE_SECONDS = 30.0
 SPLICE_BUF = 65536
+DRAIN_TIMEOUT = 0.5  # bound on reading the rest of a request before closing; see _drain
+DRAIN_LIMIT = 1 << 20
 
 _state_lock = threading.Lock()
 _last_activity = time.monotonic()
@@ -149,7 +151,7 @@ def _backend_connect(port: int, timeout: float = BACKEND_CONNECT_TIMEOUT):
         return None
 
 
-def _backend_ready(port: int) -> bool:
+def _backend_ready(port: int, fresh: bool = False) -> bool:
     """Whether the app behind an HTTPS port is SERVING, not merely accepting.
 
     A TCP accept is the UI container, which binds its port the moment it restarts. The API's
@@ -160,10 +162,12 @@ def _backend_ready(port: int) -> bool:
     the client keeps getting the waking page until the whole path is up.
 
     The result is cached briefly because a browser opens several connections per page load and each
-    one would otherwise cost a probe.
+    one would otherwise cost a probe. ``fresh`` skips that read (never the write): a cached NO is
+    an answer about a moment that has passed, and _https_ready re-asks it before calling a live
+    site down.
     """
     ready, at = _health_cache.get(port, (False, 0.0))
-    if time.monotonic() - at < HEALTH_CACHE_TTL:
+    if not fresh and time.monotonic() - at < HEALTH_CACHE_TTL:
         return ready
     ready = False
     sock = _backend_connect(port, timeout=HEALTH_TIMEOUT)
@@ -187,6 +191,24 @@ def _backend_ready(port: int) -> bool:
             ready = False
     _health_cache[port] = (ready, time.monotonic())
     return ready
+
+
+def _https_ready(port: int) -> bool:
+    """The routing decision for an HTTPS port: is the site up, or does this connection wake it?
+
+    _backend_ready is one connect, one request, one recv against a 2.5s budget, and a single
+    unlucky sample — a GC pause in the app, a momentary accept backlog — answers NO for a site
+    that is serving. That NO is then cached for HEALTH_CACHE_TTL, so every connection in the
+    window gets the waking page and the SPA's XHRs fail against a live instance. This asks the
+    instance state first (already cached, no network cost when it is warm) and re-probes past the
+    cache only when the box is RUNNING: a genuinely stopped coordinator never pays a second
+    connect timeout, and a live one is not declared down on one sample.
+    """
+    if _backend_ready(port):
+        return True
+    if coordinator_status() != "RUNNING":
+        return False
+    return _backend_ready(port, fresh=True)
 
 
 def _splice(client: socket.socket, backend: socket.socket) -> None:
@@ -243,6 +265,47 @@ WAKE_HTML = """\
 </div></body></html>"""
 
 
+def _wants_html(request: bytes) -> bool:
+    """Whether these request bytes are a browser navigating, as opposed to the SPA calling an API.
+
+    Port 443 carries both, so wake_style alone cannot decide: an HTML waking page handed to a
+    fetch() is JSON.parse garbage, and the SPA falls back to the bare reason phrase ("Service
+    Unavailable") instead of saying the instance is starting. This is the same discrimination
+    ui_server.is_spa_navigation makes -- Sec-Fetch-Dest: document, or, for a UA that omits it, the
+    GET + Accept: text/html pair.
+    """
+    head = request.split(b"\r\n\r\n", 1)[0].decode("latin-1")
+    lines = head.split("\r\n")
+    method = lines[0].split(" ")[0].upper() if lines else ""
+    headers = {}
+    for line in lines[1:]:
+        name, sep, value = line.partition(":")
+        if sep:
+            headers[name.strip().lower()] = value.strip()
+    dest = headers.get("sec-fetch-dest")
+    if dest is not None:
+        return dest == "document"
+    return method == "GET" and "text/html" in headers.get("accept", "")
+
+
+def _drain(tls: ssl.SSLSocket) -> None:
+    """Read whatever is left of the request before closing.
+
+    A GraphQL call is a POST, and the first recv takes the headers -- the body often arrives in a
+    later segment. Closing with unread bytes in the receive buffer makes the kernel send RST
+    instead of FIN, and the browser reports a transport failure ("Failed to fetch") rather than
+    the 503 that was just written, so the SPA never sees the waking message at all. Bounded by a
+    short timeout and a byte cap: the point is a clean close, not reading an upload.
+    """
+    tls.settimeout(DRAIN_TIMEOUT)
+    left = DRAIN_LIMIT
+    try:
+        while left > 0 and tls.recv(min(SPLICE_BUF, left)):
+            left -= SPLICE_BUF
+    except (OSError, ssl.SSLError):
+        pass
+
+
 def _serve_wake_response(client: socket.socket, port: int) -> None:
     if not (TLS_CERT and TLS_KEY):
         # No TLS material in this deploy: a plaintext answer on an HTTPS port is
@@ -254,12 +317,21 @@ def _serve_wake_response(client: socket.socket, port: int) -> None:
     try:
         tls = ctx.wrap_socket(client, server_side=True)
         tls.settimeout(10)
-        tls.recv(SPLICE_BUF)  # consume the request; content is irrelevant
-        if PORTS[port]["wake_style"] == "html":
+        request = tls.recv(SPLICE_BUF)
+        if PORTS[port]["wake_style"] == "html" and _wants_html(request):
             body = WAKE_HTML.encode()
             ctype = "text/html; charset=utf-8"
         else:
-            body = json.dumps({"error": "coordinator_waking", "retry_after_seconds": 120}).encode()
+            # REQ-1350 error shape: `code` is what the UI's catalog translates, `detail` is the
+            # English sentence it falls back to when the key is absent.
+            body = json.dumps(
+                {
+                    "detail": "The environment is starting. It will be ready in about two minutes.",
+                    "code": "front_door.coordinator_waking",
+                    "params": {"retry_after_seconds": 120},
+                    "retry_after_seconds": 120,
+                }
+            ).encode()
             ctype = "application/json"
         tls.sendall(
             b"HTTP/1.1 503 Service Unavailable\r\n"
@@ -268,6 +340,7 @@ def _serve_wake_response(client: socket.socket, port: int) -> None:
             + f"Content-Type: {ctype}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode()
             + body
         )
+        _drain(tls)
         tls.close()
     except (OSError, ssl.SSLError) as exc:
         log.debug("wake page handshake failed on :%s: %s", port, exc)
@@ -365,7 +438,7 @@ def _handle(client: socket.socket, port: int) -> None:
         # Readiness on an HTTPS port is /health, not an accept: see _backend_ready. A port that
         # accepts but is not serving still gets the waking page, and still triggers the wake —
         # the box may be RUNNING with the app mid-boot, where trigger_wake is a no-op.
-        if _backend_ready(port):
+        if _https_ready(port):
             backend = _backend_connect(port)
             if backend:
                 _splice(client, backend)

@@ -93,6 +93,9 @@
       "table_id_required": "table_id vereist voor tabelbereik",
       "unknown_source_type": "Onbekend brontype: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer twee minuten gereed."
+    },
     "functions": {
       "binding_missing_key": "functiebinding voor soort '{{kind}}' mist verplichte sleutel '{{key}}'",
       "egress_denied": "uitgaand verkeer naar '{{endpoint}}' is geweigerd: host staat niet op de UDF-egress-toelatingslijst (REQ-885 standaard weigeren). Voeg de host toe aan udf_egress_allowlist om dit toe te staan.",

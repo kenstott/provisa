@@ -93,6 +93,9 @@
       "table_id_required": "table スコープには table_id が必要です",
       "unknown_source_type": "不明なソースタイプ：{{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "環境を起動しています。約 2 分で準備が整います。"
+    },
     "functions": {
       "binding_missing_key": "kind「{{kind}}」の関数バインディングに必須キー「{{key}}」がありません",
       "egress_denied": "「{{endpoint}}」への外部送信は拒否されました：ホストが UDF 外部送信許可リストにありません（REQ-885 デフォルト拒否）。許可するには udf_egress_allowlist に追加してください。",

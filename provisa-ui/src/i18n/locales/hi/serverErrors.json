@@ -93,6 +93,9 @@
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "वातावरण शुरू हो रहा है। यह लगभग दो मिनट में तैयार हो जाएगा।"
+    },
     "functions": {
       "binding_missing_key": "kind '{{kind}}' की फ़ंक्शन बाइंडिंग में आवश्यक कुंजी '{{key}}' गायब है",
       "egress_denied": "'{{endpoint}}' पर ईग्रेस अस्वीकृत है: होस्ट UDF ईग्रेस अनुमति-सूची में नहीं है (REQ-885 डिफ़ॉल्ट-अस्वीकृति)। अनुमति देने के लिए इसे udf_egress_allowlist में जोड़ें।",

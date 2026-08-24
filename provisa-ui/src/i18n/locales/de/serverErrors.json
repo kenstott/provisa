@@ -93,6 +93,9 @@
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa zwei Minuten bereit."
+    },
     "functions": {
       "binding_missing_key": "Funktionsbindung für Art '{{kind}}' fehlt der erforderliche Schlüssel '{{key}}'",
       "egress_denied": "Ausgehender Zugriff auf '{{endpoint}}' verweigert: Host steht nicht auf der UDF-Egress-Zulassungsliste (REQ-885 deny-by-default). Fügen Sie ihn zu udf_egress_allowlist hinzu, um ihn zuzulassen.",

@@ -51995,3 +51995,73 @@
   - REQ-1330
   - REQ-1486
   - REQ-1576
+- id: REQ-1578
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: MUST
+  type: behavioral
+  description: The front door re-probes a RUNNING coordinator before declaring the site down. Readiness
+    on an HTTPS port is one connect, one GET /health and one recv against a 2.5s budget, and its answer
+    is cached for HEALTH_CACHE_TTL; a single unlucky sample -- a pause in the app, a momentary accept
+    backlog -- therefore routed every connection in that window to the waking page while the instance
+    was serving, and the SPA's calls failed against a live site. The routing decision asks the instance
+    state first, which is already cached and costs no network when warm, and re-probes past the health
+    cache only when the box is RUNNING, so a genuinely stopped coordinator never pays a second connect
+    timeout per connection and a live one is not condemned on one sample. The re-probe's answer replaces
+    the cached NO.
+  use_case: An admin loads a page on a running instance and gets the page, not a waking notice, when one
+    health probe happens to miss.
+  tests:
+  - tests/unit/test_front_door_wake_idle.py
+  code:
+  - terraform/gcp-saas/front-door/proxy.py
+  scenario: 'Given a coordinator whose status is RUNNING
+
+    And whose first /health probe does not answer 200
+
+    When a browser connects on 443
+
+    Then the front door probes /health again past the cache
+
+    And splices the connection through when the second probe answers 200'
+  depends_on:
+  - REQ-1333
+  - REQ-1334
+- id: REQ-1579
+  status: complete
+  since: 2026-08
+  group: 11. Platform, Infrastructure & Delivery
+  category: SaaS Infrastructure
+  priority: MUST
+  type: behavioral
+  description: The front door's waking answer speaks the caller's language. Port 443 carries both document
+    navigations and the SPA's fetch() calls, but wake_style is a property of the port, so an XHR received
+    the HTML waking page; res.json() failed on it and the UI fell back to the bare reason phrase, showing
+    the bare status line "Error - Service Unavailable" instead of saying the instance is starting. The front door now makes the
+    same discrimination ui_server.is_spa_navigation makes -- Sec-Fetch-Dest document, or GET plus Accept
+    text/html for a UA that omits it -- and serves the HTML page only to a navigation. Every other request
+    on an html port gets a 503 whose body carries the REQ-1350 error shape, with code
+    front_door.coordinator_waking, the English detail sentence the UI falls back to, and retry_after_seconds.
+    The code is translated in every shipped locale catalog. The rest of the request is read before the
+    connection closes -- a GraphQL call is a POST whose body arrives after the headers, and closing with
+    unread bytes in the receive buffer sends RST rather than FIN, so the browser reported a transport
+    failure ("Failed to fetch") and the 503 just written was never seen.
+  use_case: A page open against an instance that scaled to zero tells the user it is starting and will be
+    ready shortly, rather than showing an HTTP reason phrase.
+  tests:
+  - tests/unit/test_front_door_wake_idle.py
+  code:
+  - terraform/gcp-saas/front-door/proxy.py
+  - provisa-ui/src/i18n/locales/en/serverErrors.json
+  scenario: 'Given a coordinator that is waking
+
+    When the SPA issues a fetch to an API route on 443
+
+    Then the front door answers 503 with a JSON body carrying code front_door.coordinator_waking
+
+    And a document navigation to the same port still receives the HTML waking page'
+  depends_on:
+  - REQ-1334
+  - REQ-1350

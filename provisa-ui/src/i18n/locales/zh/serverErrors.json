@@ -93,6 +93,9 @@
       "table_id_required": "表范围需要 table_id",
       "unknown_source_type": "未知数据源类型：{{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "环境正在启动，大约两分钟后就绪。"
+    },
     "functions": {
       "binding_missing_key": "类型为 '{{kind}}' 的函数绑定缺少必需的键 '{{key}}'",
       "egress_denied": "拒绝出站访问 '{{endpoint}}'：主机不在 UDF 出站允许列表中（REQ-885 默认拒绝）。将其添加到 udf_egress_allowlist 以允许。",

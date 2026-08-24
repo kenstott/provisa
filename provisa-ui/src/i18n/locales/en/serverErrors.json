@@ -94,6 +94,9 @@
       "table_id_required": "table_id required for table scope",
       "unknown_source_type": "Unknown source type: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "The environment is starting. It will be ready in about two minutes."
+    },
     "functions": {
       "binding_missing_key": "function binding for kind '{{kind}}' is missing required key '{{key}}'",
       "egress_denied": "egress to '{{endpoint}}' is denied: host not on the UDF egress allow-list (REQ-885 deny-by-default). Add it to udf_egress_allowlist to permit.",

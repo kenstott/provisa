@@ -93,6 +93,9 @@
       "table_id_required": "table_id requis pour la portée table",
       "unknown_source_type": "Type de source inconnu : {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "L'environnement démarre. Il sera prêt dans environ deux minutes."
+    },
     "functions": {
       "binding_missing_key": "la liaison de fonction pour le type « {{kind}} » n'a pas la clé requise « {{key}} »",
       "egress_denied": "sortie vers « {{endpoint}} » refusée : hôte absent de la liste d'autorisation de sortie UDF (REQ-885, refus par défaut). Ajoutez-le à udf_egress_allowlist pour l'autoriser.",

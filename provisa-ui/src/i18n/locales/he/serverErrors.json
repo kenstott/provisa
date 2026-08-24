@@ -93,6 +93,9 @@
       "table_id_required": "table_id נדרש עבור היקף table",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כשתי דקות."
+    },
     "functions": {
       "binding_missing_key": "לקישור הפונקציה עבור kind '{{kind}}' חסר מפתח חובה '{{key}}'",
       "egress_denied": "יציאה אל '{{endpoint}}' נדחתה: המארח אינו ברשימת ההיתרים ליציאת UDF (REQ-885 deny-by-default). הוסיפו אותו ל-udf_egress_allowlist כדי להתיר.",

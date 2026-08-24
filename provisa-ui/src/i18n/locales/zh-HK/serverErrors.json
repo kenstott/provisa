@@ -93,6 +93,9 @@
       "table_id_required": "資料表範圍需要 table_id",
       "unknown_source_type": "未知的數據來源類型：{{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "環境正在啟動，大約兩分鐘後就緒。"
+    },
     "functions": {
       "binding_missing_key": "類型「{{kind}}」的函數繫結缺少必要索引鍵「{{key}}」",
       "egress_denied": "拒絕連出至「{{endpoint}}」：主機不在 UDF 連出允許清單上（REQ-885 預設拒絕）。請將其加入 udf_egress_allowlist 以允許。",

@@ -27,6 +27,7 @@ import datetime
 import importlib.util
 import json
 import sys
+import time
 
 from pathlib import Path
 
@@ -298,17 +299,12 @@ def test_the_idle_window_comes_from_the_configured_minutes(proxy):
 # site reported it could not reach Provisa — between the waking page and a working site.
 
 
-def _tls_backend(tmp_path, responder):
-    """A TLS listener on localhost answering each request with ``responder(request)``.
+def _self_signed(tmp_path, stem: str):
+    """A self-signed cert/key pair on disk, returned as ``(cert_file, key_file)``.
 
-    Returns ``(port, requests)``. The certificate is self-signed and issued for a name that is not
-    127.0.0.1, which is the deployed shape too: the coordinator's cert is for the public hostname
-    and the front door dials its internal address.
+    The name is not 127.0.0.1, which is the deployed shape too: the coordinator's cert is for the
+    public hostname and the front door dials its internal address.
     """
-    import socket as _socket
-    import ssl as _ssl
-    import threading as _threading
-
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
@@ -327,8 +323,8 @@ def _tls_backend(tmp_path, responder):
         .not_valid_after(now + datetime.timedelta(days=3650))
         .sign(key, hashes.SHA256())
     )
-    cert_file = tmp_path / "backend.crt"
-    key_file = tmp_path / "backend.key"
+    cert_file = tmp_path / f"{stem}.crt"
+    key_file = tmp_path / f"{stem}.key"
     cert_file.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
     key_file.write_bytes(
         key.private_bytes(
@@ -337,6 +333,19 @@ def _tls_backend(tmp_path, responder):
             serialization.NoEncryption(),
         )
     )
+    return cert_file, key_file
+
+
+def _tls_backend(tmp_path, responder):
+    """A TLS listener on localhost answering each request with ``responder(request)``.
+
+    Returns ``(port, requests)``.
+    """
+    import socket as _socket
+    import ssl as _ssl
+    import threading as _threading
+
+    cert_file, key_file = _self_signed(tmp_path, "backend")
 
     srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
     srv.bind(("127.0.0.1", 0))
@@ -437,10 +446,254 @@ def test_a_raw_protocol_port_is_still_judged_by_the_accept(proxy, monkeypatch):
     assert 5432 in probed
 
 
+# --- one bad sample is not an outage (REQ-1333) ------------------------------------------------
+# _backend_ready is a single connect/request/recv. A GC pause in the app or a momentary accept
+# backlog answers NO for a site that is serving, and the NO is then cached — so every connection
+# in that window gets the waking page and the SPA's calls fail against a live instance. That is
+# what put "Error: Service Unavailable" on an admin page while the coordinator was RUNNING.
+
+
+def test_a_running_box_whose_probe_missed_once_is_asked_again(local_backend, tmp_path):
+    answers = ["503 Service Unavailable", "200 OK"]
+    port, requests = _tls_backend(
+        tmp_path, lambda _r: _http(answers.pop(0) if answers else "200 OK")
+    )
+    local_backend.PORTS[port] = {"wake_style": "html"}
+    local_backend.set_status("RUNNING")
+
+    assert local_backend._https_ready(port) is True
+    assert len(requests) == 2
+
+
+def test_a_running_box_that_is_really_down_still_gets_the_waking_page(local_backend, tmp_path):
+    port, requests = _tls_backend(tmp_path, lambda _r: _http("503 Service Unavailable"))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+    local_backend.set_status("RUNNING")
+
+    assert local_backend._https_ready(port) is False
+    assert len(requests) == 2
+
+
+def test_a_stopped_box_is_not_probed_twice(local_backend, tmp_path):
+    """A second 2.5s connect timeout per connection buys nothing on a box that is not there."""
+    port, requests = _tls_backend(tmp_path, lambda _r: _http("503 Service Unavailable"))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+    local_backend.set_status("TERMINATED")
+
+    assert local_backend._https_ready(port) is False
+    assert len(requests) == 1
+
+
+def test_a_healthy_port_is_answered_from_one_probe(local_backend, tmp_path):
+    port, requests = _tls_backend(tmp_path, lambda _r: _http("200 OK"))
+    local_backend.PORTS[port] = {"wake_style": "html"}
+
+    assert local_backend._https_ready(port) is True
+    assert len(requests) == 1
+
+
+def test_the_re_probe_replaces_the_cached_no(local_backend, tmp_path):
+    """Otherwise the stale NO keeps answering for the rest of the cache window."""
+    answers = ["503 Service Unavailable", "200 OK"]
+    port, requests = _tls_backend(
+        tmp_path, lambda _r: _http(answers.pop(0) if answers else "200 OK")
+    )
+    local_backend.PORTS[port] = {"wake_style": "html"}
+    local_backend.set_status("RUNNING")
+
+    assert local_backend._https_ready(port) is True
+    assert local_backend._backend_ready(port) is True
+    assert len(requests) == 2
+
+
+# --- the waking answer speaks the caller's language (REQ-1350) ---------------------------------
+# Port 443 carries both document navigations and the SPA's fetch() calls, and wake_style is a
+# property of the port, so an XHR was handed the HTML waking page. res.json() fails on it and the
+# UI falls back to the bare reason phrase — "Error: Service Unavailable" — instead of saying the
+# instance is starting.
+
+
+@pytest.mark.parametrize(
+    "request_bytes",
+    [
+        b"GET /admin/my-secrets HTTP/1.1\r\nHost: h\r\nSec-Fetch-Dest: document\r\n\r\n",
+        b"GET /admin/my-secrets HTTP/1.1\r\nHost: h\r\nAccept: text/html,*/*\r\n\r\n",
+    ],
+)
+def test_a_browser_navigating_is_recognised(proxy, request_bytes):
+    assert proxy._wants_html(request_bytes) is True
+
+
+@pytest.mark.parametrize(
+    "request_bytes",
+    [
+        b"GET /admin/orgs/default/my-secrets HTTP/1.1\r\nHost: h\r\nSec-Fetch-Dest: empty\r\n"
+        b"Accept: application/json\r\n\r\n",
+        b"POST /data/sql HTTP/1.1\r\nHost: h\r\nAccept: text/html\r\n\r\n",
+        b"GET /assets/index.js HTTP/1.1\r\nHost: h\r\nSec-Fetch-Dest: script\r\n\r\n",
+        b"",
+    ],
+)
+def test_an_api_call_is_not_mistaken_for_a_navigation(proxy, request_bytes):
+    assert proxy._wants_html(request_bytes) is False
+
+
+def _wake_answer(
+    proxy, tmp_path, monkeypatch, request_bytes: bytes, trailer: bytes = b""
+) -> tuple[str, bytes]:
+    """Serve one real wake response over TLS and return ``(headers, body)`` as the client sees it."""
+    import socket as _socket
+    import ssl as _ssl
+    import threading as _threading
+
+    cert_file, key_file = _self_signed(tmp_path, "front-door")
+    monkeypatch.setattr(proxy, "TLS_CERT", str(cert_file))
+    monkeypatch.setattr(proxy, "TLS_KEY", str(key_file))
+
+    srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+
+    def serve():
+        raw, _ = srv.accept()
+        proxy._serve_wake_response(raw, 443)
+
+    _threading.Thread(target=serve, daemon=True).start()
+
+    ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = _ssl.CERT_NONE
+    with ctx.wrap_socket(_socket.create_connection(("127.0.0.1", port), timeout=5)) as tls:
+        tls.settimeout(5)
+        tls.sendall(request_bytes)
+        if trailer:
+            # A separate write, so the server's first recv sees the headers alone — the shape a
+            # real POST arrives in.
+            tls.sendall(trailer)
+        received = b""
+        while True:
+            chunk = tls.recv(65536)
+            if not chunk:
+                break
+            received += chunk
+    srv.close()
+    head, _, body = received.partition(b"\r\n\r\n")
+    return head.decode("latin-1"), body
+
+
+def test_a_navigation_to_a_waking_instance_gets_the_waking_page(proxy, tmp_path, monkeypatch):
+    head, body = _wake_answer(
+        proxy,
+        tmp_path,
+        monkeypatch,
+        b"GET / HTTP/1.1\r\nHost: h\r\nSec-Fetch-Dest: document\r\n\r\n",
+    )
+
+    assert head.startswith("HTTP/1.1 503 Service Unavailable")
+    assert "text/html" in head
+    assert b"Waking your instance" in body
+
+
+def test_an_xhr_to_a_waking_instance_gets_a_translatable_json_error(proxy, tmp_path, monkeypatch):
+    head, body = _wake_answer(
+        proxy,
+        tmp_path,
+        monkeypatch,
+        b"GET /admin/orgs/default/my-secrets HTTP/1.1\r\nHost: h\r\nSec-Fetch-Dest: empty\r\n\r\n",
+    )
+
+    assert head.startswith("HTTP/1.1 503 Service Unavailable")
+    assert "application/json" in head
+    assert "Retry-After: 120" in head
+    payload = json.loads(body)
+    # REQ-1350: the UI translates `code` and falls back to the English `detail`. Neither may be
+    # missing, or the SPA is back to rendering res.statusText.
+    assert payload["code"] == "front_door.coordinator_waking"
+    assert payload["detail"]
+    assert payload["retry_after_seconds"] == 120
+
+
+def test_a_graphql_post_to_a_waking_instance_gets_the_json_error(proxy, tmp_path, monkeypatch):
+    """GraphQL is a POST whose body lands in a segment after the headers."""
+    payload = b'{"query":"{ tables { id } }"}'
+    head, body = _wake_answer(
+        proxy,
+        tmp_path,
+        monkeypatch,
+        b"POST /graphql HTTP/1.1\r\nHost: h\r\nSec-Fetch-Dest: empty\r\n"
+        b"Content-Type: application/json\r\n" + f"Content-Length: {len(payload)}\r\n\r\n".encode(),
+        trailer=payload,
+    )
+
+    assert head.startswith("HTTP/1.1 503 Service Unavailable")
+    assert json.loads(body)["code"] == "front_door.coordinator_waking"
+
+
+def _tls_pair(tmp_path, monkeypatch, proxy):
+    """A connected TLS client/server socket pair on localhost, returned as ``(client, server)``."""
+    import socket as _socket
+    import ssl as _ssl
+    import threading as _threading
+
+    cert_file, key_file = _self_signed(tmp_path, "pair")
+    srv = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    server_ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+    server_ctx.load_cert_chain(str(cert_file), str(key_file))
+    accepted: list = []
+
+    def accept():
+        raw, _ = srv.accept()
+        accepted.append(server_ctx.wrap_socket(raw, server_side=True))
+
+    thread = _threading.Thread(target=accept, daemon=True)
+    thread.start()
+    client_ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+    client_ctx.check_hostname = False
+    client_ctx.verify_mode = _ssl.CERT_NONE
+    client = client_ctx.wrap_socket(_socket.create_connection(("127.0.0.1", port), timeout=5))
+    thread.join(5)
+    srv.close()
+    return client, accepted[0]
+
+
+def test_the_rest_of_a_request_is_read_before_the_close(proxy, tmp_path, monkeypatch):
+    """Unread bytes in the receive buffer make the close an RST rather than a FIN, and the browser
+    reports a transport failure instead of the 503 just written -- which is what put "Could not
+    load registered tables: Failed to fetch" on the tables page while the coordinator was up."""
+    client, server = _tls_pair(tmp_path, monkeypatch, proxy)
+    client.sendall(b'{"query":"{ tables { id } }"}')
+
+    proxy._drain(server)
+
+    server.settimeout(0.2)
+    with pytest.raises((TimeoutError, OSError)):
+        server.recv(65536)  # nothing left: the body was consumed
+    client.close()
+    server.close()
+
+
+def test_draining_a_request_with_nothing_left_does_not_hang_the_answer(
+    proxy, tmp_path, monkeypatch
+):
+    """The common case is a GET whose bytes were all taken by the first recv."""
+    client, server = _tls_pair(tmp_path, monkeypatch, proxy)
+    started = time.monotonic()
+
+    proxy._drain(server)
+
+    assert time.monotonic() - started < proxy.DRAIN_TIMEOUT * 4
+    client.close()
+    server.close()
+
+
 def _routing(proxy, monkeypatch, ready: bool):
     """Drive ``_handle`` on the browser port with the readiness answer fixed, recording the route."""
     took: list[str] = []
-    monkeypatch.setattr(proxy, "_backend_ready", lambda _port: ready)
+    monkeypatch.setattr(proxy, "_https_ready", lambda _port: ready)
     monkeypatch.setattr(proxy, "_backend_connect", lambda port, timeout=None: object())
     monkeypatch.setattr(proxy, "_splice", lambda *_a: took.append("spliced"))
     monkeypatch.setattr(proxy, "_serve_wake_response", lambda *_a: took.append("wake_page"))

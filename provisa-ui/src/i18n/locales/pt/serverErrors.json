@@ -93,6 +93,9 @@
       "table_id_required": "table_id obrigatório para escopo de tabela",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de dois minutos."
+    },
     "functions": {
       "binding_missing_key": "a vinculação de função para o tipo '{{kind}}' está sem a chave obrigatória '{{key}}'",
       "egress_denied": "saída para '{{endpoint}}' negada: host não está na lista de permissões de saída de UDF (REQ-885 negar por padrão). Adicione-o a udf_egress_allowlist para permitir.",

@@ -93,6 +93,9 @@
       "table_id_required": "table_id richiesto per l'ambito tabella",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "L'ambiente si sta avviando. Sarà pronto tra circa due minuti."
+    },
     "functions": {
       "binding_missing_key": "al binding di funzione per il kind '{{kind}}' manca la chiave obbligatoria '{{key}}'",
       "egress_denied": "uscita verso '{{endpoint}}' negata: host non presente nell'elenco consentiti di uscita UDF (REQ-885 rifiuto predefinito). Aggiungerlo a udf_egress_allowlist per consentirlo.",

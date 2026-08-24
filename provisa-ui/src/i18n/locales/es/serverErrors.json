@@ -93,6 +93,9 @@
       "table_id_required": "table_id es obligatorio para el ámbito de tabla",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}"
     },
+    "front_door": {
+      "coordinator_waking": "El entorno se está iniciando. Estará listo en unos dos minutos."
+    },
     "functions": {
       "binding_missing_key": "al enlace de función para el kind '{{kind}}' le falta la clave obligatoria '{{key}}'",
       "egress_denied": "la salida hacia '{{endpoint}}' está denegada: el host no está en la lista de salida permitida de UDF (REQ-885, denegación por defecto). Agréguelo a udf_egress_allowlist para permitirlo.",
