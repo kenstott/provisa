@@ -86,7 +86,7 @@ export function OrgEncryptionTab() {
               actor: s.created_by ?? "—",
             })}
           </Text>
-          {s.retired_count > 0 && (
+          {s.retired_count !== undefined && s.retired_count > 0 && (
             <Text size="xs" c="dimmed" data-testid="org-encryption-retired">
               {t("orgEncryptionTab.retired", { count: s.retired_count })}
             </Text>

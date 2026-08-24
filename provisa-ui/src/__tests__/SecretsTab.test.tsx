@@ -82,6 +82,8 @@ const PROVIDERS = {
     },
   ],
   config: {},
+  // REQ-1575: the server sends this bit and never the value it is about.
+  secret_set: {},
 };
 
 const SECRET = {

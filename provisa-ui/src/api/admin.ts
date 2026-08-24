@@ -791,6 +791,8 @@ export interface EngineConfigField {
   placeholder?: string;
   /** Choices for `type: "select"`. */
   options?: { value: string; label: string }[];
+  /** REQ-1575: write-only — the GET carries no value, only `secret_set`'s bit. */
+  secret?: boolean;
 }
 
 export interface EngineRegistryEntry {

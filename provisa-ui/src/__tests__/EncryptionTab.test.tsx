@@ -56,6 +56,8 @@ function state(overrides: Partial<EncryptionState> = {}): EncryptionState {
       },
     ],
     config: {},
+    // REQ-1575: per provider, per secret field, whether a value is stored. Never the value.
+    secret_set: {},
     restart_required_note: "Restart to apply.",
     ...overrides,
   };
