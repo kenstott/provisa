@@ -51142,7 +51142,18 @@
     of their own -- Security answers to platform_settings, so a multitenant org admin could not
     reach a secrets tab nested under it.
     Every write is audited by name, scope and actor; the audit record of a personal secret names
-    its owner as the actor and no one else can read it.'
+    its owner as the actor and no one else can read it.
+    A MENU ENTRY IS A CLAIM ABOUT WHOSE THE SURFACE IS. The client''s capability check let the
+    platform-bypass wildcard answer every gate, so a platform admin was shown "Org Secrets" -- a
+    link that names an org''s vault as theirs to open -- and the page behind it withheld the org
+    half exactly as the server does, leaving a heading and nothing under it. The client says what
+    the server says: the org vault''s gate is STRICT, satisfied only by a literal org_settings and
+    never by the wildcard. The entry does not disappear, because /admin/secrets carries a second
+    thing gated differently -- the DEPLOYMENT''s choice of secrets service (REQ-1557,
+    platform_settings) -- so the entry survives on that right and is RENAMED for what it opens:
+    "Platform Secrets" for the caller who reaches only the deployment''s half, "Org Secrets" for the
+    administrator of the org, and the page heading says the same. Naming a surface for a half the
+    caller cannot reach is the defect; hiding a half they can is the other one.'
   use_case: A developer stores their own git token as ${user:GIT_TOKEN} and uses it in a source config, and no other developer in the org can resolve, replace or read it.
   scenario: 'Given two developers each store a personal secret named GIT_TOKEN
 

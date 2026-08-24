@@ -17,7 +17,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CapabilityGate } from "./CapabilityGate";
 import { useAuth } from "../context/AuthContext";
-import { NAV_GROUPS, activeGroupId, type NavGroup } from "./navGroups";
+import { NAV_GROUPS, activeGroupId, labelKeyFor, type NavGroup } from "./navGroups";
 
 // The rail IS the admin group; a build whose NAV_GROUPS lost it has nothing to render, so this
 // fails at import rather than degrading to an empty rail.
@@ -32,7 +32,7 @@ const ADMIN_GROUP = adminGroup();
 export function AdminRail() {
   const { t } = useTranslation();
   const location = useLocation();
-  const { billing } = useAuth();
+  const { billing, capabilities } = useAuth();
 
   if (activeGroupId(location.pathname) !== "admin") return null;
 
@@ -46,8 +46,13 @@ export function AdminRail() {
               {t("navBar.comingSoon", { label: t(item.labelKey) })}
             </span>
           ) : (
-            <CapabilityGate key={item.to} capability={item.capability}>
-              <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
+            <CapabilityGate
+              key={item.to}
+              capability={item.capability}
+              strict={item.strict}
+              orCapability={item.orCapability}
+            >
+              <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
             </CapabilityGate>
           ),
         )}

@@ -22,3 +22,34 @@ export function hasCapability(capabilities: string[], cap: Capability): boolean 
   if (capabilities.length === 0) return false;
   return capabilities.includes(cap) || capabilities.includes("admin");
 }
+
+/**
+ * REQ-1361: a gate that the platform wildcard may not answer, and/or that a second right also
+ * opens.
+ *
+ * `admin` is platform authority, and platform authority is not org authority. Most surfaces are
+ * happy to let it stand in — the server lets it stand in too — but a few refuse it by name on the
+ * server (an org's secrets answer to the administrator of that org and to nobody above it), and a
+ * client gate that keeps saying yes there only buys a page that 403s, or worse, a menu entry that
+ * announces the surface exists for this caller when it does not. `strict` makes the client say
+ * exactly what the server says.
+ *
+ * `orCapability` is the other half of the same honesty: a surface can carry two things gated
+ * differently — the org's vault under `org_settings`, the deployment's choice of secrets service
+ * under `platform_settings` — and the entry belongs in the menu when EITHER is reachable.
+ */
+export interface CapabilityRequirement {
+  capability: Capability;
+  strict?: boolean;
+  orCapability?: Capability;
+}
+
+/** Does this capability set open a surface described by `req`? */
+export function meetsRequirement(capabilities: string[], req: CapabilityRequirement): boolean {
+  if (capabilities.length === 0) return false;
+  const primary = req.strict
+    ? capabilities.includes(req.capability)
+    : hasCapability(capabilities, req.capability);
+  if (primary) return true;
+  return req.orCapability !== undefined && hasCapability(capabilities, req.orCapability);
+}

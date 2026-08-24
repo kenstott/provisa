@@ -25,7 +25,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { clearSessionState } from "../lib/session";
-import { NAV_GROUPS, activeGroupId, entryItem, writeLastSubnav } from "./navGroups";
+import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
 import { hasCapability } from "../lib/capabilities";
 
 export function NavBar() {
@@ -311,8 +311,12 @@ export function NavBar() {
                     {t("navBar.comingSoon", { label: t(item.labelKey) })}
                   </span>
                 ) : (
-                  <CapabilityGate capability={item.capability}>
-                    <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
+                  <CapabilityGate
+                    capability={item.capability}
+                    strict={item.strict}
+                    orCapability={item.orCapability}
+                  >
+                    <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
                   </CapabilityGate>
                 )}
               </span>

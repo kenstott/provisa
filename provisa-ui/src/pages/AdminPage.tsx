@@ -119,6 +119,13 @@ export function AdminPage() {
   // REQ-1337: administering orgs other than the active one is the `cross_org` RIGHT. "platform_admin"
   // was never a capability — it was a role id folded in as a pseudo-right, which this rule forbids.
   const canAdministerAllOrgs = capabilities.includes("cross_org");
+  // REQ-1361: /admin/secrets serves whichever half the caller may reach, and the heading says which.
+  // Without a literal `org_settings` there is no org vault on the page -- only the DEPLOYMENT's
+  // choice of secrets service -- and the platform wildcard does not stand in for the org right here.
+  const heading =
+    activeTab === "Org Secrets" && !capabilities.includes("org_settings")
+      ? "Platform Secrets"
+      : activeTab;
   const [stats, setStats] = useState<Record<string, number>>({});
   const [newDomainId, setNewDomainId] = useState("");
   const [newDomainDesc, setNewDomainDesc] = useState("");
@@ -212,7 +219,7 @@ export function AdminPage() {
       {activeTab !== "Glossary" && (
         <Title order={2} mb="md">
           {/* Reads as a breadcrumb: the area, then the section within it. */}
-          {t("adminPage.title")} — {activeTab}
+          {t("adminPage.title")} — {heading}
         </Title>
       )}
 

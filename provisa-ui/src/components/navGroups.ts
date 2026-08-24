@@ -12,7 +12,7 @@
 // file exports only components (react-refresh) — this is the single source the
 // nav, the router capability table test, and App's group-entry navigation read.
 
-import { hasCapability } from "../lib/capabilities";
+import { meetsRequirement } from "../lib/capabilities";
 import { LAST_SUBNAV_KEY } from "../lib/session";
 import type { Capability } from "../types/auth";
 
@@ -31,6 +31,28 @@ export interface DropdownItem {
   // hosted this entry could only report a setting nobody may change or accept one the next deploy
   // overwrites. Resolved from the same `billing` flag, which is what says a deployment is hosted.
   installedOnly?: boolean;
+  // REQ-1361: the platform wildcard (`admin`) does not answer this entry's capability -- the caller
+  // must hold it literally. For a surface the server refuses the wildcard on, a menu entry the
+  // wildcard opens is a claim the surface is theirs, and clicking it proves otherwise.
+  strict?: boolean;
+  // A second right that also opens the entry, for a surface that carries two things gated
+  // differently.
+  orCapability?: Capability;
+  // The label to use when `orCapability` is what opened the entry. An entry that two rights open
+  // for two different reasons is not the same entry to both callers: a platform admin reaching
+  // /admin/secrets gets the DEPLOYMENT's secrets service and no org vault at all, so naming it
+  // "Org Secrets" to them advertises something the page does not contain.
+  orLabelKey?: string;
+}
+
+/** The label an entry wears for this caller (REQ-1361) -- see `orLabelKey`. */
+export function labelKeyFor(item: DropdownItem, capabilities: string[]): string {
+  if (item.orLabelKey === undefined) return item.labelKey;
+  const primary = meetsRequirement(capabilities, {
+    capability: item.capability,
+    strict: item.strict,
+  });
+  return primary ? item.labelKey : item.orLabelKey;
 }
 
 export interface NavGroup {
@@ -151,7 +173,19 @@ export const NAV_GROUPS: NavGroup[] = [
       // each: the org vault is an administrator's list of what the org connects to (org_settings),
       // and a person's own vault is nobody's to grant -- every member has one, so `usage`, the right
       // every seeded role carries. This supersedes REQ-1558's single sub-tab under Security.
-      { to: "/admin/secrets", labelKey: "navBar.itemOrgSecrets", capability: "org_settings" },
+      // REQ-1361: STRICT. The wildcard is platform authority, and an org's secrets answer to the
+      // administrator of that org and to nobody above it -- the server refuses the same call, and
+      // the page renders no org half without a literal `org_settings`. What a platform admin does
+      // reach here is the deployment's choice of secrets SERVICE, which is why the entry survives
+      // on `platform_settings` instead of vanishing.
+      {
+        to: "/admin/secrets",
+        labelKey: "navBar.itemOrgSecrets",
+        capability: "org_settings",
+        strict: true,
+        orCapability: "platform_settings",
+        orLabelKey: "navBar.itemPlatformSecrets",
+      },
       { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: "usage" },
       // REQ-1576: the mail transport platform communications go out through. Deployment-wide, and
       // an invitation is the platform's message rather than any org's, so platform_settings.
@@ -218,7 +252,7 @@ export function entryItem(
   const reachable = group.items.filter(
     (i) =>
       !i.comingSoon &&
-      hasCapability(capabilities, i.capability) &&
+      meetsRequirement(capabilities, i) &&
       !(i.commercial && !commercial) &&
       !(i.installedOnly && commercial),
   );

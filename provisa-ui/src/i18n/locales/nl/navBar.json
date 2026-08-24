@@ -37,6 +37,7 @@
     "itemEncryption": "Versleuteling",
     "itemSecurity": "Beveiliging",
     "itemOrgSecrets": "Organisatiegeheimen",
+    "itemPlatformSecrets": "Platformgeheimen",
     "itemMySecrets": "Jouw geheimen",
     "itemAuthentication": "Authenticatie",
     "itemAiModels": "AI-modellen",

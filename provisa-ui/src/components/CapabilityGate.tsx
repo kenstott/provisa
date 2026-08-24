@@ -10,12 +10,10 @@
 
 import type { ReactNode } from "react";
 import { CredentialCheck } from "./CredentialCheck";
-import { useCapability } from "../hooks/useCapability";
 import { useAuth } from "../context/AuthContext";
-import type { Capability } from "../types/auth";
+import { meetsRequirement, type CapabilityRequirement } from "../lib/capabilities";
 
-interface Props {
-  capability: Capability;
+interface Props extends CapabilityRequirement {
   children: ReactNode;
   fallback?: ReactNode;
 }
@@ -26,9 +24,9 @@ interface Props {
  * /auth/me took to answer (tens of seconds against a cold coordinator), then swapped to the real
  * page when the roles landed — reading as a spontaneous reload. Say what is actually happening.
  */
-export function CapabilityGate({ capability, children, fallback }: Props) {
-  const { loading } = useAuth();
-  const allowed = useCapability(capability);
+export function CapabilityGate({ capability, strict, orCapability, children, fallback }: Props) {
+  const { loading, capabilities } = useAuth();
+  const allowed = meetsRequirement(capabilities, { capability, strict, orCapability });
   // A gate with a fallback owns a whole region — a route body — and has to show something there.
   // A gate without one contributes a nav link or a button to a larger layout: it renders nothing
   // when denied, so it renders nothing while loading too. Otherwise every inline gate on the page

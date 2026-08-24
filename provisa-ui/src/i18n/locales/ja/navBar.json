@@ -37,6 +37,7 @@
     "itemEncryption": "暗号化",
     "itemSecurity": "セキュリティ",
     "itemOrgSecrets": "組織のシークレット",
+    "itemPlatformSecrets": "プラットフォームのシークレット",
     "itemMySecrets": "自分のシークレット",
     "itemAuthentication": "認証",
     "itemAiModels": "AIモデル",

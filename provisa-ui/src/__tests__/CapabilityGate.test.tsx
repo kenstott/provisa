@@ -15,33 +15,32 @@ import { render } from "../test-utils/render";
 import { CapabilityGate } from "../components/CapabilityGate";
 import type { Capability } from "../types/auth";
 
-// REQ-1430: the gate reads `loading` off the auth context. Stub the context rather than mounting a
-// provider, which would fetch /auth/me.
-const authState = { loading: false };
+// REQ-1430: the gate reads `loading` and the resolved capability set off the auth context. Stub the
+// context rather than mounting a provider, which would fetch /auth/me. The capabilities are the
+// real ones the gate decides on -- the decision itself is not mocked, because REQ-1361 turns on
+// which set answers which entry.
+const authState: { loading: boolean; capabilities: string[] } = {
+  loading: false,
+  capabilities: [],
+};
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => authState,
 }));
 
-// Mock the useCapability hook so we can control its return value without
-// mounting a full AuthProvider (which makes network requests).
-vi.mock("../hooks/useCapability", () => ({
-  useCapability: vi.fn(),
-  useCapabilities: vi.fn(),
-}));
-
-import { useCapability } from "../hooks/useCapability";
-
-const mockUseCapability = vi.mocked(useCapability);
+/** Grant `caps` for the next render. */
+function holding(...caps: string[]) {
+  authState.capabilities = caps;
+}
 
 describe("CapabilityGate", () => {
   beforeEach(() => {
-    mockUseCapability.mockReset();
     authState.loading = false;
+    authState.capabilities = [];
   });
 
   it("says credentials are being checked while the bootstrap is in flight", () => {
     authState.loading = true;
-    mockUseCapability.mockReturnValue(false);
+    holding("usage");
 
     render(
       <CapabilityGate
@@ -61,7 +60,7 @@ describe("CapabilityGate", () => {
     // An inline gate — a nav link, a toolbar button — has no region of its own to fill. A spinner
     // per gate covers the page in them.
     authState.loading = true;
-    mockUseCapability.mockReturnValue(false);
+    holding("usage");
 
     const { container } = render(
       <CapabilityGate capability={"admin" as Capability}>
@@ -76,7 +75,7 @@ describe("CapabilityGate", () => {
 
   it("shows the denial only once the bootstrap has settled", () => {
     authState.loading = false;
-    mockUseCapability.mockReturnValue(false);
+    holding("usage");
 
     render(
       <CapabilityGate
@@ -92,7 +91,7 @@ describe("CapabilityGate", () => {
   });
 
   it("renders children when the capability is allowed", () => {
-    mockUseCapability.mockReturnValue(true);
+    holding("admin");
 
     render(
       <CapabilityGate capability={"query_development" as Capability}>
@@ -104,7 +103,7 @@ describe("CapabilityGate", () => {
   });
 
   it("renders nothing when capability is not allowed and no fallback provided", () => {
-    mockUseCapability.mockReturnValue(false);
+    holding("usage");
 
     const { container } = render(
       <CapabilityGate capability={"admin" as Capability}>
@@ -119,7 +118,7 @@ describe("CapabilityGate", () => {
   });
 
   it("renders fallback when capability is not allowed and fallback provided", () => {
-    mockUseCapability.mockReturnValue(false);
+    holding("usage");
 
     render(
       <CapabilityGate
@@ -135,7 +134,7 @@ describe("CapabilityGate", () => {
   });
 
   it("does not render fallback when capability is allowed", () => {
-    mockUseCapability.mockReturnValue(true);
+    holding("admin");
 
     render(
       <CapabilityGate
@@ -150,8 +149,8 @@ describe("CapabilityGate", () => {
     expect(screen.queryByText("Not Authorized")).not.toBeInTheDocument();
   });
 
-  it("passes the correct capability to useCapability", () => {
-    mockUseCapability.mockReturnValue(true);
+  it("decides on the capability it was given, not on another the caller happens to hold", () => {
+    holding("observability");
 
     render(
       <CapabilityGate capability={"approve_view" as Capability}>
@@ -159,6 +158,50 @@ describe("CapabilityGate", () => {
       </CapabilityGate>,
     );
 
-    expect(mockUseCapability).toHaveBeenCalledWith("approve_view");
+    expect(screen.queryByText("Approvals")).not.toBeInTheDocument();
+  });
+
+  // REQ-1361: `strict` refuses the platform wildcard, and `orCapability` opens the same entry on a
+  // second right. An org's secrets are the case both exist for: the server refuses `admin` there by
+  // name, and what a platform admin does reach at that route is the deployment's secrets service.
+  it("refuses the platform wildcard on a strict gate", () => {
+    holding("admin");
+
+    const { container } = render(
+      <CapabilityGate capability={"org_settings" as Capability} strict>
+        <span>Org Secrets</span>
+      </CapabilityGate>,
+    );
+
+    expect(screen.queryByText("Org Secrets")).not.toBeInTheDocument();
+    expect(container.querySelectorAll(":not(style)")).toHaveLength(0);
+  });
+
+  it("admits the literal right on a strict gate", () => {
+    holding("org_settings");
+
+    render(
+      <CapabilityGate capability={"org_settings" as Capability} strict>
+        <span>Org Secrets</span>
+      </CapabilityGate>,
+    );
+
+    expect(screen.getByText("Org Secrets")).toBeInTheDocument();
+  });
+
+  it("opens on the second right when the strict one is absent", () => {
+    holding("admin", "platform_settings");
+
+    render(
+      <CapabilityGate
+        capability={"org_settings" as Capability}
+        strict
+        orCapability={"platform_settings" as Capability}
+      >
+        <span>Secrets service</span>
+      </CapabilityGate>,
+    );
+
+    expect(screen.getByText("Secrets service")).toBeInTheDocument();
   });
 });

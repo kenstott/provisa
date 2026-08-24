@@ -37,6 +37,7 @@
     "itemEncryption": "Шифрование",
     "itemSecurity": "Безопасность",
     "itemOrgSecrets": "Секреты организации",
+    "itemPlatformSecrets": "Секреты платформы",
     "itemMySecrets": "Ваши секреты",
     "itemAuthentication": "Аутентификация",
     "itemAiModels": "Модели ИИ",

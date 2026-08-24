@@ -37,6 +37,7 @@
     "itemEncryption": "הצפנה",
     "itemSecurity": "אבטחה",
     "itemOrgSecrets": "סודות הארגון",
+    "itemPlatformSecrets": "סודות הפלטפורמה",
     "itemMySecrets": "הסודות שלך",
     "itemAuthentication": "אימות",
     "itemAiModels": "מודלי AI",

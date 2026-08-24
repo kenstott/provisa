@@ -37,6 +37,7 @@
     "itemEncryption": "Chiffrement",
     "itemSecurity": "Sécurité",
     "itemOrgSecrets": "Secrets de l'organisation",
+    "itemPlatformSecrets": "Secrets de la plateforme",
     "itemMySecrets": "Vos secrets",
     "itemAuthentication": "Authentification",
     "itemAiModels": "Modèles IA",
