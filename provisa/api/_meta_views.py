@@ -90,7 +90,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
         SELECT id, tag_id, base_tag_id, object_type, source_id, table_id, column_name,
-               relationship_id, command_name, object_key, reason, expires_on, tenant_id
+               relationship_id, command_name, object_key, reason, expires_on,
+               -- REQ-1585: the column identity the tag graph joins on, shared with
+               -- table_columns and glossary_term_refs. NULL for a non-column assignment,
+               -- which is what makes the join select only the column-level tags.
+               CAST(table_id AS TEXT) || ':' || column_name AS column_key,
+               tenant_id
         FROM tag_assignments
     """,
     # REQ-1375: the management report — every assignment with a planned end date, with its
@@ -102,9 +107,88 @@ _META_TABLE_VIEWS: dict[str, str] = {
                relationship_id, command_name, object_key, reason, expires_on,
                CASE WHEN expires_on < CAST(CURRENT_DATE AS TEXT)
                     THEN 'expired' ELSE 'expiring' END AS status,
+               CAST(table_id AS TEXT) || ':' || column_name AS column_key,  -- REQ-1585
                tenant_id
         FROM tag_assignments
         WHERE expires_on IS NOT NULL
+    """,
+    # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
+    # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
+    # in service, defined, and connected over in-service edges to a term holding a physical ref.
+    # Grounding is transitive, so it needs the recursive CTE — every control-plane dialect the
+    # meta domain is served from (PostgreSQL, SQLite, MySQL) supports WITH RECURSIVE in a view.
+    # `rooted` here counts EVERY ref, which is the repository's reading of it; the exporter's
+    # narrower count (refs whose column actually publishes) is a property of the export, not of
+    # the glossary, and belongs in the export.
+    # retired and export_excluded are COLUMNS, never predicates — meta is the internal surface and
+    # withholding is the export's job; a view that filtered them would disagree with the admin
+    # surface it mirrors.
+    "glossary_terms": """
+        CREATE OR REPLACE VIEW glossary_terms_meta AS
+        WITH RECURSIVE in_service AS (
+            SELECT id FROM glossary_terms WHERE retired = FALSE AND deprecated = FALSE
+        ),
+        conducting_edges AS (
+            SELECT e.from_term_id AS a, e.to_term_id AS b
+            FROM glossary_term_edges e
+            JOIN in_service sa ON sa.id = e.from_term_id
+            JOIN in_service sb ON sb.id = e.to_term_id
+            UNION ALL
+            SELECT e.to_term_id, e.from_term_id
+            FROM glossary_term_edges e
+            JOIN in_service sa ON sa.id = e.from_term_id
+            JOIN in_service sb ON sb.id = e.to_term_id
+        ),
+        grounded AS (
+            SELECT DISTINCT r.term_id AS id
+            FROM glossary_term_refs r
+            JOIN in_service s ON s.id = r.term_id
+            UNION
+            SELECT ce.b
+            FROM grounded g
+            JOIN conducting_edges ce ON ce.a = g.id
+        )
+        SELECT t.id, t.name, t.definition, t.is_abstract, t.deprecated, t.retired,
+               t.export_excluded,
+               (SELECT COUNT(*) FROM glossary_term_refs r WHERE r.term_id = t.id) AS ref_count,
+               CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
+                    THEN TRUE ELSE FALSE END AS is_rooted,
+               CASE WHEN t.id IN (SELECT id FROM grounded)
+                     AND TRIM(COALESCE(t.definition, '')) <> ''
+                    THEN TRUE ELSE FALSE END AS live,
+               t.tenant_id
+        FROM glossary_terms t
+    """,
+    # A ref binds a term to a COLUMN — (table_id, column_name) — deliberately not
+    # table_columns.id, which the table upsert replaces wholesale. `relationships` is
+    # single-column, so the ref and the column view both emit the same synthesized
+    # column_key and the registered edge joins on that: stable where the surrogate id is not.
+    "glossary_term_refs": """
+        CREATE OR REPLACE VIEW glossary_term_refs_meta AS
+        SELECT r.id, r.term_id, r.table_id, r.column_name,
+               CAST(r.table_id AS TEXT) || ':' || r.column_name AS column_key,
+               rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
+               r.tenant_id
+        FROM glossary_term_refs r
+        JOIN registered_tables rt ON rt.id = r.table_id
+    """,
+    "glossary_term_edges": """
+        CREATE OR REPLACE VIEW glossary_term_edges_meta AS
+        SELECT e.id, e.from_term_id, e.to_term_id, e.rel_type,
+               f.name AS from_term, t.name AS to_term,
+               e.tenant_id
+        FROM glossary_term_edges e
+        JOIN glossary_terms f ON f.id = e.from_term_id
+        JOIN glossary_terms t ON t.id = e.to_term_id
+    """,
+    # user_id is the only identity data in the glossary set. It is exposed and governed by the
+    # ordinary column visibility rule rather than omitted — a governance query that cannot name
+    # the expert cannot route a question to them.
+    "glossary_term_experts": """
+        CREATE OR REPLACE VIEW glossary_term_experts_meta AS
+        SELECT x.id, x.term_id, x.user_id, x.kind, t.name AS term_name, x.tenant_id
+        FROM glossary_term_experts x
+        JOIN glossary_terms t ON t.id = x.term_id
     """,
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
@@ -118,7 +202,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
-        SELECT id, table_id, column_name, data_type, is_primary_key,
+        SELECT id, table_id, column_name,
+               -- REQ-1584: the stable column identity the glossary binds to, and the join key of
+               -- the registered glossary_term_refs -> table_columns edge (relationships is
+               -- single-column, and table_columns.id is replaced wholesale by the table upsert).
+               CAST(table_id AS TEXT) || ':' || column_name AS column_key,
+               data_type, is_primary_key,
                alias, description, path, scope,
                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
                native_filter_type, is_foreign_key, is_alternate_key,

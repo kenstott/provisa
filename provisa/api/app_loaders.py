@@ -57,6 +57,10 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "registered_tables": "registered_tables_meta",
     "table_columns": "table_columns_meta",
     "roles": "roles_meta",
+    "glossary_terms": "glossary_terms_meta",  # REQ-1584
+    "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
+    "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
+    "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
     "tracked_webhooks": "tracked_webhooks_meta",
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
@@ -1101,6 +1105,10 @@ _META_TABLES = [
     "tag_param_values",  # REQ-1467: the closed value list a parameterized tag accepts
     "tag_expiry",  # REQ-1375: expiring/expired assignments report (view-only, like roles_domain_access)
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
+    "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
+    "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
+    "glossary_term_edges",  # REQ-1584
+    "glossary_term_experts",  # REQ-1584
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped
@@ -1119,6 +1127,13 @@ _RLS_TENANT_TABLES = [
     "tags",  # carries tenant_id (schema.sql tenant block)
     "tag_assignments",
     "tag_param_values",  # REQ-1467
+    # REQ-1584: all four glossary base tables carry tenant_id, so all four take the policy. Their
+    # meta views do not, for the same reason roles_domain_access does not — ALTER TABLE ... ENABLE
+    # ROW LEVEL SECURITY errors on a view.
+    "glossary_terms",
+    "glossary_term_refs",
+    "glossary_term_edges",
+    "glossary_term_experts",
 ]
 
 

@@ -52217,3 +52217,96 @@
     But a term a curator has defined keeps the column when the alias changes'
   depends_on:
   - REQ-1387
+- id: REQ-1584
+  status: complete
+  since: 2026-08
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The business glossary is queryable metadata: its terms, their physical refs, their relationships and
+    their experts are registered in the built-in meta domain, the same surface that already carries the
+    tag registry (REQ-1373/1377) and the derived tags (REQ-1443). THE REASON -- governance reporting
+    belongs in the governed pipeline, not in a bespoke endpoint. Until now the glossary was reachable
+    only through the admin surface and the metadata export, so every question about vocabulary coverage
+    had to be answered by hand. Registered in meta it is SQL, and it is audited, row- and column-
+    governed and reachable from Cypher like every other meta table. WHAT IS EXPOSED -- glossary_terms
+    with a ref count, a rooted flag and a live flag computed by the same admission predicate the export
+    uses, so a query can ask what actually publishes without reimplementing it; glossary_term_refs
+    resolved to its address; glossary_term_edges with both endpoint names beside the ids;
+    glossary_term_experts. THE JOIN IS THE POINT -- a ref is a COLUMN identity, (table_id, column_name),
+    deliberately not table_columns.id, which the table upsert replaces wholesale. The relationships
+    table is single-column, so both the ref view and the table_columns view emit a synthesized
+    column_key of table_id and column_name, and the edge is registered on that: stable in exactly the
+    way the surrogate id is not. Through it a query reaches the column's alias, masking class and
+    description, which is what makes coverage answerable -- exported columns carrying no term, terms
+    bound to masked columns, and a term whose name has drifted from the alias it was derived from
+    (REQ-1581). FLAGS NOT FILTERS -- retired and export_excluded are columns on the view, never
+    predicates: meta is the internal surface and withholding is the export's job, so a meta view that
+    filtered them would disagree with the admin surface it mirrors. user_id on the experts table is the
+    only identity data in the set and is governed by the ordinary column visibility rule rather than
+    omitted. All four tables carry tenant_id, so all four base tables take the tenant isolation policy;
+    the views do not, as with roles_domain_access.
+  use_case: A governance lead asks which exported columns carry no glossary term, and answers it
+    with one SQL query against the meta domain instead of a ticket.
+  scenario: 'Given the glossary tables registered in the meta domain
+
+    When an analyst joins glossary_term_refs to table_columns on the synthesized column_key
+
+    Then each ref resolves to its column''s alias, data type and masking class
+
+    And a retired or export-excluded term is returned with its flag rather than withheld'
+  tests:
+  - tests/integration/test_glossary_meta_domain.py
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/app_loaders.py
+  - provisa/api/startup_seed.py
+  depends_on:
+  - REQ-1387
+  - REQ-1373
+  - REQ-1443
+  - REQ-1581
+- id: REQ-1585
+  status: complete
+  since: 2026-08
+  group: 3. Source Registration & Data Modeling
+  category: Metadata Catalog
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The tag graph is traversable in the meta domain: every tag table is joined to what it labels and to
+    the tag registry itself. THE GAP -- the tag tables were registered as meta TABLES
+    (REQ-1373/1377/1443) but stood unconnected, so a governance query could list assignments and could
+    list columns and had no edge to cross between them; each answer needed a hand-written join over
+    surrogate ids the caller had to know. WHAT IS REGISTERED -- tag_assignments to tags and back, to
+    registered_tables and back, and to table_columns in both directions; tag_expiry, tag_param_values
+    and derived_tags to tags; derived_tags to registered_tables and back. COLUMN-LEVEL TAGS JOIN ON
+    column_key -- the tag_assignments and tag_expiry views emit the same synthesized table_id-and-
+    column_name key that table_columns and glossary_term_refs emit (REQ-1584), because relationships is
+    single-column and table_columns.id is replaced wholesale by the table upsert. The key is null on a
+    source-, relationship- or command-level assignment, which is precisely what makes the join select
+    the column-level tags and nothing else. THE POINT OF THE SHARED KEY -- it closes term to column to
+    pii/deprecated in one traversal, so a business term reaches the governance labels on the columns it
+    binds without any surface knowing about both vocabularies. Cardinality is one-to-many from the
+    column side in both directions: a column carries many tags, and a column key may hold many refs.
+  use_case: A steward asks which columns carrying a business term are also tagged pii, and gets
+    it from one join in the meta domain instead of two exports reconciled by hand.
+  scenario: 'Given the tag tables registered in the meta domain
+
+    When an analyst traverses from a glossary term to its refs and on to tag_assignments on the
+    synthesized column_key
+
+    Then only the column-level assignments on the bound columns are returned
+
+    And a table- or command-level assignment, whose column_key is null, does not join'
+  tests:
+  - tests/integration/test_glossary_meta_domain.py
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  depends_on:
+  - REQ-1584
+  - REQ-1377
+  - REQ-1443

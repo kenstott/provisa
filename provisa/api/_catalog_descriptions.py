@@ -52,6 +52,14 @@ TABLE_DESCRIPTIONS: dict[str, str] = {
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
+    # REQ-1584: the business glossary as queryable metadata.
+    "glossary_terms": "The business vocabulary — one row per term, with the ref count and the "
+    "live flag the export's admission rule computes",
+    "glossary_term_refs": "Each binding of a term to a physical column, resolved to that "
+    "column's source, schema, table and domain",
+    "glossary_term_edges": "The term graph — how terms relate to one another, with both "
+    "endpoint names",
+    "glossary_term_experts": "Who owns or authored each term, for routing a definition question",
     # ops
     "query_audit_log": "One row per governed statement: who ran it, under which role, over which "
     "protocol surface, and how it ended",
@@ -109,6 +117,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "id": "Surrogate key for the column registration",
         "table_id": "The registered table this column belongs to",
         "column_name": "Column name at the source",
+        # REQ-1584: the stable column identity the glossary binds to.
+        "column_key": "Synthesized column identity (table_id:column_name), the join key from "
+        "glossary_term_refs",
         "data_type": "Physical type as reflected from the source",
         "is_primary_key": "Whether the column is part of the table's primary key",
         "alias": "Name the column is exposed under, when it differs from the source name",
@@ -248,6 +259,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_key": "Canonical key of the tagged object, unique across kinds",
         "reason": "Justification recorded with the assignment",
         "expires_on": "Planned end date of the assignment",
+        # REQ-1585: the join key to table_columns and glossary_term_refs; null unless the
+        # assignment is on a column.
+        "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
     },
     "tag_expiry": {
@@ -263,6 +277,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "reason": "Justification recorded with the assignment",
         "expires_on": "Planned end date of the assignment",
         "status": "expired when the end date has passed, expiring while it is still ahead",
+        "column_key": "Synthesized column identity (table_id:column_name) of the tagged "
+        "column",  # REQ-1585
         "tenant_id": _TENANT,
     },
     "derived_tags": {
@@ -273,6 +289,51 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_name": "Name of that table",
         "domain_id": "Domain the table is governed under",
         "object_key": "Canonical key of the tagged object, matching tag_assignments",
+        "tenant_id": _TENANT,
+    },
+    # REQ-1584
+    "glossary_terms": {
+        "id": "Term identifier",
+        "name": "The term phrase, unique across the glossary",
+        "definition": "What the term means; a term without one is a proposal, never live",
+        "is_abstract": "True when the term names a concept with no column of its own",
+        "deprecated": "True when the derivation lost its last column but the row was kept",
+        "retired": "True when a curator took the term out of service",
+        "export_excluded": "True when the term is withheld from consuming surfaces",
+        "ref_count": "How many physical columns the term binds to",
+        "is_rooted": "True when the term holds at least one physical ref of its own",
+        "live": "True when the term is in service, defined, and connected over in-service "
+        "edges to a term holding a physical ref",
+        "tenant_id": _TENANT,
+    },
+    "glossary_term_refs": {
+        "id": "Ref identifier",
+        "term_id": "Term bound by this ref",
+        "table_id": "Table owning the bound column",
+        "column_name": "The bound column",
+        "column_key": "Synthesized column identity (table_id:column_name), the join key to "
+        "table_columns",
+        "source_id": "Source the bound column belongs to",
+        "schema_name": "Schema of the bound column's table",
+        "table_name": "Name of the bound column's table",
+        "domain_id": "Domain the bound column is governed under",
+        "tenant_id": _TENANT,
+    },
+    "glossary_term_edges": {
+        "id": "Edge identifier",
+        "from_term_id": "Term the edge starts at",
+        "to_term_id": "Term the edge ends at",
+        "rel_type": "How the two relate (KIND_OF, RELATED_TO, PART_OF, SYNONYM_OF, …)",
+        "from_term": "Name of the starting term",
+        "to_term": "Name of the ending term",
+        "tenant_id": _TENANT,
+    },
+    "glossary_term_experts": {
+        "id": "Assignment identifier",
+        "term_id": "Term this person owns or authored",
+        "term_name": "Name of that term",
+        "user_id": "The person; governed by ordinary column visibility",
+        "kind": "expert or author",
         "tenant_id": _TENANT,
     },
     "query_audit_log": {
