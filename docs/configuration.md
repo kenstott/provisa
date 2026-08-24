@@ -29,7 +29,7 @@ All sources share a common field set. [tool-verified: `provisa/core/models.py:12
 | `port` | `0` | `0` means each connector supplies its own default — there is no central default-port map |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | Supports `${env:VAR}` secret resolution |
+| `password` | `""` | Supports `${env:VAR}` and `${secret:NAME}` credential references — see [Secrets](secrets.md) |
 | `path` | `null` | File path or URI for file-based sources |
 | `base_url` | `null` | Base URL for API sources |
 | `pool_min` / `pool_max` | `1` / `5` | Connection pool bounds |

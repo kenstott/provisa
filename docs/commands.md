@@ -226,3 +226,6 @@ Exit 0 = full publish. Exit 1 = partial publish or connection failure.
 
 For the full flag reference, auth options, multitenancy host naming, and a cron example, see
 [Metadata Export — From the command line](metadata-export.md#from-the-command-line).
+
+
+Commands appear in each environment's git projection. See [Environments](environments.md) for how a command and its tag assignments survive merge and pull.

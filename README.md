@@ -379,6 +379,9 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 | Endpoint reference (GraphQL, REST, Flight, gRPC) | [docs/api-reference.md](docs/api-reference.md) |
 | System design and component map | [docs/architecture.md](docs/architecture.md) |
 | Security model (RLS, masking, auth) | [docs/security.md](docs/security.md) |
+| Secret storage and `${secret:NAME}` references | [docs/secrets.md](docs/secrets.md) |
+| Business glossary and term curation | [docs/glossary.md](docs/glossary.md) |
+| Environments (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Supported source types | [docs/sources.md](docs/sources.md) |
 | SSE subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, BI tools, Arrow Flight clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |

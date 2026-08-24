@@ -130,8 +130,11 @@ nav:
       - Data Modeling (Entities & Facts): modeling.md
       - Commands: commands.md
       - Column-Level Lineage: lineage.md
+      - Environments: environments.md
   - Security & Governance:
       - Security Model: security.md
+      - Secrets: secrets.md
+      - Business Glossary: glossary.md
       - Metadata Export: metadata-export.md
   - Clients:
       - Python Client: python-client.md

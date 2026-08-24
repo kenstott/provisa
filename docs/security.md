@@ -395,3 +395,5 @@ tables:
 ## Secrets
 
 Credentials use `${env:VAR_NAME}` syntax, resolved at runtime. (REQ-557) Passwords are never stored in the config DB. (REQ-557)
+
+For the full secrets service — vaults, reference syntax, and providers — see [Secrets](secrets.md).

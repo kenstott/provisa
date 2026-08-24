@@ -23,6 +23,9 @@
     "remote-schemas.md",
     "domain-principles.md",
     "migration/hasura-ddn.md",
-    "migration/hasura-v2.md"
+    "migration/hasura-v2.md",
+    "secrets.md",
+    "glossary.md",
+    "environments.md"
   ]
 }

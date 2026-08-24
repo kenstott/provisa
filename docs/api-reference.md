@@ -200,6 +200,67 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 
 ---
 
+### `POST /data/sql/explain`
+
+Explain or analyze a SQL statement through the governed pipeline. (REQ-1519) [tool-verified: `provisa/api/data/endpoint_dev.py:328`]
+
+The endpoint wraps the **governed** SQL — the statement that actually runs under the caller's role, after RLS and masking — in the dialect's EXPLAIN syntax. What the plan shows is the authorized version of the query, not the raw input.
+
+**Request body:**
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders",
+  "role": "admin",
+  "analyze": false
+}
+```
+
+Set `analyze: true` to run EXPLAIN ANALYZE. The query executes and the plan carries real row counts and timings. Not every dialect supports ANALYZE; see the table in [Query plans and statistics](engines.md#query-plans-and-statistics).
+
+**Response:** `{"plan": "<plan text or JSON>", "dialect": "trino", "analyzed": false}`
+
+`400` when the dialect has no EXPLAIN support, or `analyze: true` is requested on a dialect that does not support it (e.g. SQLite). [tool-verified: `provisa/executor/explain.py:wrap_explain`, `analyze_sql`]
+
+---
+
+### `GET /data/engine/state`
+
+Return the engine shard's current state without waking it. (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:892`]
+
+The UI polls this endpoint to show a startup banner while the engine is cold-starting. It never triggers a wake — polling is safe and does not count as activity for the idle reaper.
+
+**Response:**
+
+```json
+{"state": "ready"}
+```
+
+Possible values:
+
+| State | Meaning |
+| --- | --- |
+| `always-on` | Desktop, self-hosted, or BYO coordinator — no lifecycle management |
+| `ready` | Shard is up and accepting queries |
+| `starting` | Cold-start in progress |
+| `stopped` | Shard is scaled to zero |
+
+[tool-verified: `provisa/federation/engine_wake.py:engine_state`]
+
+---
+
+### `POST /data/engine/prewarm`
+
+Trigger an engine wake without running a query. (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:913`]
+
+Returns `202 Accepted` immediately. The wake runs in the background. Use this if you want the engine ready before the first query arrives — for example, from a scheduler that runs queries a few minutes later.
+
+**Response:** `202 Accepted`, body `{"started": true}`
+
+[tool-verified: `provisa/federation/engine_wake.py:prewarm_engine`]
+
+---
+
 ### `GET /data/rest/{domain_id}/{table_name}`
 
 Auto-generated plain REST endpoint for every registered table. The query string maps to GraphQL arguments and the request compiles and executes through the same pipeline (RLS, masking, routing) as GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
@@ -394,6 +455,30 @@ Upload a revised config YAML. The server writes a `.bak` backup, saves the new f
 
 On reload failure: `{"success": false, "message": "<error>"}`.
 
+#### `GET /admin/config/live`
+
+Download the **current live config** — the config as Provisa would write it today, reflecting every admin-created table, relationship, domain, role, and RLS rule that has accumulated since startup. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+
+The file on disk may lag the live state if changes were made through the admin API without a subsequent upload. This endpoint closes that gap: its output is what `PUT /admin/config` would need to receive to make the on-disk file match live state.
+
+Returns `application/x-yaml` with `Content-Disposition: attachment; filename=provisa.live.yaml`.
+
+#### `GET /admin/config/diff`
+
+Return both sides of the config diff — `original` (the startup baseline) and `current` (live state) — normalized identically, so the comparison shows only genuine changes, not reordering or comment drift. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:82`]
+
+**Response:**
+
+```json
+{"original": "<yaml>", "current": "<yaml>"}
+```
+
+#### `POST /admin/config/patch`
+
+Generate a unified-diff patch from the baseline to the posted config. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:93`]
+
+Send the revised YAML as the request body. The response is a `text/x-patch` file (`provisa.config.patch`) that `git apply` or `patch` can consume directly — useful for committing UI-driven config changes through a CI/CD pipeline.
+
 ---
 
 ### Settings
@@ -467,6 +552,99 @@ Updatable fields per section:
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
+
+---
+
+### AI Models
+
+#### `GET /admin/ai-models`
+
+Return the acting org's AI-model assignments, vector-model registry, and NL rate limit. (REQ-464, REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:58`]
+
+**Response:**
+
+```json
+{
+  "ai_models": {
+    "nl": "claude-3-5-sonnet-20241022",
+    "embedding": "text-embedding-3-small"
+  },
+  "vector_models": [...],
+  "nl": {"rate_limit": 20},
+  "api_keys_set": {"anthropic": true, "openai": false}
+}
+```
+
+API keys are never echoed back — `api_keys_set` reports only whether each vendor has a key configured. Changes take effect on the next request; no restart is needed. (REQ-1349)
+
+#### `PUT /admin/ai-models`
+
+Update the org's AI-model assignments, vector-model registry, or NL rate limit. Takes effect on the next request. [tool-verified: `provisa/api/admin/ai_models_router.py:148`]
+
+#### `GET /admin/ai-models/vendors/{vendor}/models`
+
+Return the model names a vendor currently serves, for the model picker. (REQ-1395, REQ-1398, REQ-1409) [tool-verified: `provisa/api/admin/ai_models_router.py:89`]
+
+The list is read live from the vendor's own list-models API using the org's configured key — or the deployment credential when no org key is set. A model released after this build shipped is selectable the same day the vendor serves it.
+
+Returns `400` when the vendor publishes no list-models API (enter the model name directly in that case) or when no key is available. [tool-verified: `provisa/api/admin/ai_models_router.py:109-128`]
+
+---
+
+### Federation Engine
+
+#### `GET /admin/federation-engine`
+
+Return the current federation-engine selection, its connection config, and the full selectable-engine registry. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:730`]
+
+**Response:**
+
+```json
+{
+  "current": "trino",
+  "persisted": "trino",
+  "registry": [
+    {"key": "trino", "label": "Trino (embedded)", "fields": [...]},
+    {"key": "duckdb", "label": "DuckDB", "fields": []}
+  ],
+  "note": "Changing the federation engine takes effect after the service is restarted."
+}
+```
+
+The `current` key is the engine running right now; `persisted` is what is written to the config file and will load on the next restart. They diverge when the config was changed but the service has not restarted yet.
+
+#### `PUT /admin/federation-engine`
+
+Persist a federation-engine selection. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:774`]
+
+**Request body:**
+
+```json
+{"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
+```
+
+The selection is written to the platform config. It takes effect after the next service restart — the engine is chosen once at boot.
+
+---
+
+### Domain Policy
+
+#### `POST /admin/domain-policy`
+
+Change the acting org's domain policy (`use_domains` / `default_domain`). (REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
+
+This is a destructive operation scoped to the acting org. Every registered source, table, domain, and relationship is purged and rebuilt under the new policy. Use it when switching an org from domain-namespaced to flat (or vice versa).
+
+**Request body:**
+
+```json
+{
+  "use_domains": true,
+  "default_domain": "default"
+}
+```
+
+`use_domains: null` clears the org's override and falls back to the deployment-level setting. `use_domains: false` requires `default_domain` (the single domain name all tables land in). The catalog rebuild is synchronous; the response returns once schemas are ready.
 
 ---
 
@@ -574,6 +752,136 @@ Run a column profile on a registered table — cardinality, min/max, null rates.
 #### `POST /admin/source-meta/db-description`
 
 Generate LLM-assisted descriptions for a source's tables and columns. [tool-verified: `provisa/api/admin/source_meta_router.py:48`]
+
+---
+
+### Object Storage (REQ-1046, REQ-1048, REQ-1049)
+
+#### `GET /admin/org-storage`
+
+Report the acting org's storage footprint against its platform allowance, and whether the org has registered its own store. [tool-verified: `provisa/api/admin/org_storage_router.py:69`]
+
+When the org has registered its own DSN, its materializations go there and are no longer counted against the allowance. The DSN itself is never returned.
+
+#### `PUT /admin/org-storage`
+
+Register (or clear) the org's own materialization store. [tool-verified: `provisa/api/admin/org_storage_router.py:81`]
+
+**Request body:**
+
+```json
+{"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
+```
+
+The DSN is validated against the federation engine before being accepted — an unusable DSN fails at registration, not hours later during a refresh. The value is encrypted at rest and never returned by GET.
+
+Send `storage_url: null` to clear the org's own store and return its materializations to the platform store (and allowance). The org runtime is rebuilt in the same call, so the new store is effective immediately. [tool-verified: `provisa/api/admin/org_storage_router.py:123-138`]
+
+---
+
+### Org Encryption (REQ-1574)
+
+#### `GET /admin/org-encryption`
+
+Return the org's current key status: fingerprint, id, and provenance. Never returns key material. [tool-verified: `provisa/api/admin/org_encryption_router.py:53`]
+
+When the org has set no key, returns `{"configured": false}`. Every org starts in this state and inherits the deployment's key.
+
+#### `PUT /admin/org-encryption`
+
+Set or rotate the org's at-rest encryption key. [tool-verified: `provisa/api/admin/org_encryption_router.py:68`]
+
+**Request body:**
+
+```json
+{"key_b64": "<32 raw bytes, base64-encoded>"}
+```
+
+Omit `key_b64` to have Provisa generate a key — the safest path, as the key never appears in a clipboard or request log. Supplying `key_b64` brings your own key.
+
+Rotation adds a new active entry to the key ring and retains the old one, so data written under the previous key remains readable. Rotation is not re-encryption. There is no delete endpoint: retiring the last key would make every wrapped payload unreadable. [tool-verified: `provisa/api/admin/org_encryption_router.py:75`]
+
+The live ring is rebound in the same call, so the next encrypted write uses the new key immediately.
+
+---
+
+### Hasura / DDN Import (REQ-1483)
+
+#### `POST /admin/import/hasura/preview`
+
+Convert a Hasura v2 or DDN project archive into proposed Provisa config without writing anything. [tool-verified: `provisa/api/admin/import_router.py`]
+
+**Request body:**
+
+```json
+{
+  "filename": "my-project.zip",
+  "content_b64": "<base64-encoded archive>",
+  "flavor": "auto",
+  "domain_map": {"public": "sales"},
+  "source_overrides": {}
+}
+```
+
+`flavor` is `"auto"` (detected from archive structure), `"hasura_v2"`, or `"ddn"`.
+
+**Response:**
+
+```json
+{
+  "config_yaml": "...",
+  "warnings": ["..."],
+  "summary": {
+    "sources": 1, "domains": 2, "tables": 40,
+    "columns": 180, "roles": 3, "relationships": 15, "rls_rules": 6
+  }
+}
+```
+
+Nothing is persisted. The preview is not cached server-side; `apply` takes the YAML you supply, so what applies is exactly what was reviewed (and optionally edited).
+
+#### `POST /admin/import/hasura/apply`
+
+Load a previously previewed config into the acting org. [tool-verified: `provisa/api/admin/import_router.py`]
+
+**Request body:**
+
+```json
+{"config_yaml": "<yaml string>"}
+```
+
+Uses the same hot-reload path as `PUT /admin/config`. The org's catalog, schemas, and pools are rebuilt before the response returns.
+
+---
+
+### Apache Ossie Interchange (REQ-1316, REQ-1321)
+
+#### `GET /admin/ossie`
+
+Export the org's governed model as an Apache Ossie (incubating) YAML document. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+The document is derived from live state on every request — never cached — so it cannot be stale. Tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects.
+
+Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa-ossie.yaml`.
+
+#### `POST /admin/ossie/import`
+
+Parse an Ossie YAML or JSON document and return proposed table and relationship registrations. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**Request body:** Raw Ossie YAML or JSON. Format is auto-detected.
+
+**Response:**
+
+```json
+{
+  "proposals": {
+    "tables": [...],
+    "relationships": [...]
+  }
+}
+```
+
+Nothing is registered. Use the admin UI's review screen to accept or trim proposals before any mutation fires.
 
 ---
 

@@ -148,6 +148,7 @@ A daily export at 06:00:
 - **Domains** — each domain's description and its steward. A domain with no steward publishes
   without one rather than with an invented owner.
 - **Approved relationships** — the modeled joins, with cardinality, alias, owner and version.
+- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control.
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,

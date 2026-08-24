@@ -191,7 +191,7 @@ contracts, metric-view grains and MV row keys are all authored against that name
 alias breaks them just as surely as deleting the column does**.
 
 The **physical name** is `table_columns.column_name`, the identity that survives the table upsert's
-wholesale column replace. Relationships, glossary bindings, tag assignments, the watermark column
+wholesale column replace. Relationships, [glossary](glossary.md) bindings, tag assignments, the watermark column
 and column presets store this one, so they only break when the column is **removed**.
 
 `columnDependents` reports both. Downstream views and MVs come from slicing the federation graph at
