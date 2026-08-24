@@ -379,6 +379,9 @@ Siehe [docs/python-client.md](docs/python-client.md) für die vollständige Refe
 | Endpunktreferenz (GraphQL, REST, Flight, gRPC) | [docs/api-reference.md](docs/api-reference.md) |
 | Systemdesign und Komponentenübersicht | [docs/architecture.md](docs/architecture.md) |
 | Sicherheitsmodell (RLS, Maskierung, Auth) | [docs/security.md](docs/security.md) |
+| Secret-Speicherung und `${secret:NAME}`-Referenzen | [docs/secrets.md](docs/secrets.md) |
+| Business-Glossar und Begriffskuratierung | [docs/glossary.md](docs/glossary.md) |
+| Umgebungen (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | Unterstützte Quelltypen | [docs/sources.md](docs/sources.md) |
 | SSE-Subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, BI-Tools, Arrow-Flight-Clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |

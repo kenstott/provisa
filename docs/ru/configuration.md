@@ -1,4 +1,4 @@
-# Справочник конфигурации
+# Справочник по конфигурации
 
 Provisa настраивается через YAML-файл (по умолчанию: `config/provisa.yaml`). (REQ-528)
 
@@ -19,103 +19,103 @@ sources:
     pgbouncer_port: 6432
 ```
 
-Все источники разделяют общий набор полей. [tool-verified: `provisa/core/models.py:129-212`]
+У всех источников общий набор полей. [tool-verified: `provisa/core/models.py:129-212`]
 
 | Поле | По умолчанию | Примечания |
 | ------- | --------- | ------- |
-| `id` | обязательно | Буквы, цифры, дефисы, подчёркивания |
+| `id` | обязательно | Латинские буквы и цифры, дефисы, подчёркивания |
 | `type` | обязательно | См. таблицу ниже |
-| `host` | `""` | Имя хоста или IP |
-| `port` | `0` | `0` означает, что каждый коннектор подставляет собственное значение по умолчанию — единой центральной карты портов по умолчанию нет |
+| `host` | `""` | Имя хоста или IP-адрес |
+| `port` | `0` | `0` означает, что каждый коннектор подставляет собственное значение по умолчанию — центральной карты портов по умолчанию нет |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | Поддерживает разрешение секретов `${env:VAR}` |
+| `password` | `""` | Поддерживает ссылки на учётные данные `${env:VAR}` и `${secret:NAME}` — см. [Секреты](secrets.md) |
 | `path` | `null` | Путь к файлу или URI для файловых источников |
 | `base_url` | `null` | Базовый URL для API-источников |
 | `pool_min` / `pool_max` | `1` / `5` | Границы пула соединений |
-| `cache_enabled` | `true` | Включение/выключение кеширования для всех таблиц этого источника |
+| `cache_enabled` | `true` | Включает кэширование для всех таблиц этого источника |
 | `cache_ttl` | `null` | Секунды; `null` наследует глобальное значение по умолчанию |
-| `federation_hints` | `{}` | Расширенные параметры для каждого коннектора (dict[str,str]); см. справочник типов ниже. REQ-281 |
+| `federation_hints` | `{}` | Расширенные параметры конкретного коннектора (dict[str,str]); см. справочник по типам ниже. REQ-281 |
 | `mapping` | `{}` | DSL сопоставления для redis, elasticsearch, prometheus. REQ-251 |
-| `allowed_domains` | `[]` | Ограничивает этот источник конкретными идентификаторами доменов; пусто = без ограничений |
+| `allowed_domains` | `[]` | Ограничивает источник конкретными идентификаторами доменов; пусто = без ограничений |
 | `description` | `""` | |
 
 ### Поддерживаемые типы источников [tool-verified: `provisa/core/models.py:36-101`]
 
-| Тип | Стиль соединения | Примечания |
+| Тип | Способ подключения | Примечания |
 | ------ | ----------------- | ------- |
-| **РСУБД** | | |
-| `postgresql` | host/port | Пул asyncpg; PgBouncer опционально через `use_pgbouncer` |
+| **RDBMS** | | |
+| `postgresql` | host/port | Пул asyncpg; PgBouncer включается через `use_pgbouncer` |
 | `mysql` | host/port | |
 | `mariadb` | host/port | |
 | `singlestore` | host/port | |
 | `sqlserver` | host/port | |
 | `oracle` | host/port | |
-| `firebird` | host + `path` (файл БД) | Расширение сообщества DuckDB firebird (REQ-899) |
+| `firebird` | host + `path` (файл БД) | Расширение сообщества firebird для DuckDB (REQ-899) |
 | `duckdb` | host/port | |
-| `cockroachdb` | host/port | Использует драйвер/диалект PostgreSQL (REQ-950) |
-| `yugabytedb` | host/port | Использует драйвер/диалект PostgreSQL (REQ-950) |
-| `greenplum` | host/port | Использует драйвер/диалект PostgreSQL (REQ-950) |
-| `tidb` | host/port | Использует драйвер/диалект MySQL (REQ-950) |
-| **Облачное хранилище (Cloud DW)** | | |
-| `snowflake` | host/port + `federation_hints` | `account` обязателен в hints |
-| `bigquery` | `federation_hints` | `project` обязателен; аутентификация через `GOOGLE_APPLICATION_CREDENTIALS` |
-| `databricks` | host + `federation_hints` | `http_path` обязателен в hints |
+| `cockroachdb` | host/port | Использует драйвер и диалект PostgreSQL (REQ-950) |
+| `yugabytedb` | host/port | Использует драйвер и диалект PostgreSQL (REQ-950) |
+| `greenplum` | host/port | Использует драйвер и диалект PostgreSQL (REQ-950) |
+| `tidb` | host/port | Использует драйвер и диалект MySQL (REQ-950) |
+| **Cloud DW** | | |
+| `snowflake` | host/port + `federation_hints` | В подсказках обязателен `account` |
+| `bigquery` | `federation_hints` | Обязателен `project`; аутентификация через `GOOGLE_APPLICATION_CREDENTIALS` |
+| `databricks` | host + `federation_hints` | В подсказках обязателен `http_path` |
 | `fabric` | переменные окружения или `PROVISA_ENGINE_URL` | T-SQL поверх TDS, аутентификация Azure AD |
 | `synapse` | переменные окружения или `PROVISA_ENGINE_URL` | T-SQL поверх TDS, аутентификация Azure AD |
 | `redshift` | host/port | |
 | **OLAP** | | |
-| `clickhouse` | host/port + `federation_hints` | Подсказка `secure` переключает TLS; порт по умолчанию 8123/8443 |
+| `clickhouse` | host/port + `federation_hints` | Подсказка `secure` включает TLS; порт по умолчанию 8123/8443 |
 | `elasticsearch` | host/port + DSL `mapping` | |
 | `pinot` | host/port | REST-эндпоинт контроллера |
-| `druid` | host/port | Avatica-эндпоинт брокера |
+| `druid` | host/port | Эндпоинт Avatica брокера |
 | `exasol` | host/port | |
 | **Data Lake** | | |
-| `delta_lake` | `path` (URI таблицы) | `delta_scan` DuckDB; доступ к объектному хранилищу через `federation_hints` |
-| `iceberg` | `path` (URI таблицы) | `iceberg_scan` DuckDB; доступ к объектному хранилищу через `federation_hints` |
-| `hudi` | `path` (URI таблицы) | Движок Hudi ClickHouse, zero-copy (REQ-1178) |
-| `hive` | host/port (metastore) + `mapping.storage` | Бэкенд хранения в `mapping["storage"]`: hadoop/hdfs/local/s3/azure/adls |
-| `hive_s3` | host/port (metastore) + ключи S3 в `mapping` | Отдельный тип; всегда хранение S3 (REQ-229) |
+| `delta_lake` | `path` (URI таблицы) | `delta_scan` в DuckDB; доступ к объектному хранилищу через `federation_hints` |
+| `iceberg` | `path` (URI таблицы) | `iceberg_scan` в DuckDB; доступ к объектному хранилищу через `federation_hints` |
+| `hudi` | `path` (URI таблицы) | Движок Hudi в ClickHouse, без копирования (REQ-1178) |
+| `hive` | host/port (метахранилище) + `mapping.storage` | Бэкенд хранения в `mapping["storage"]`: hadoop/hdfs/local/s3/azure/adls |
+| `hive_s3` | host/port (метахранилище) + ключи S3 в `mapping` | Отдельный тип; хранилище всегда S3 (REQ-229) |
 | **NoSQL** | | |
-| `mongodb` | host/port | Обычные поля соединения; без DSL сопоставления |
-| `cassandra` | host/port | Обычные поля соединения; без DSL сопоставления |
+| `mongodb` | host/port | Обычные поля подключения; DSL сопоставления не используется |
+| `cassandra` | host/port | Обычные поля подключения; DSL сопоставления не используется |
 | `redis` | host/port + DSL `mapping` | |
-| **Потоковая передача** | | |
-| `kafka` | только регистрация | Реальная конфигурация находится в `kafka_sources[]`; см. §Kafka ниже |
-| `websocket` | host/port/path + `federation_hints` | Внешний фид WebSocket |
-| `rss` | host/port/path + `federation_hints` | Фид RSS 2.0 / Atom |
-| **Граф/Семантика** | | |
+| **Streaming** | | |
+| `kafka` | только регистрация | Настоящая конфигурация находится в `kafka_sources[]`; см. §Kafka ниже |
+| `websocket` | host/port/path + `federation_hints` | Внешний поток WebSocket |
+| `rss` | host/port/path + `federation_hints` | Лента RSS 2.0 / Atom |
+| **Graph/Semantic** | | |
 | `neo4j` | [UNVERIFIED end-to-end mapping] | |
 | `sparql` | [UNVERIFIED end-to-end mapping] | |
-| **Файлы** | | |
-| `sqlite` | `path` | Всегда маршрутизируется через движок (без прямого пула) |
+| **File** | | |
+| `sqlite` | `path` | Всегда маршрутизируется через механизм (без прямого пула) |
 | `csv` | `path` | |
 | `parquet` | `path` | |
-| `files` | `path` (каталог) | Обход по glob-маске; выставляет CSV/Parquet/XLSX/JSON как таблицы |
-| **API/Удалённые** | | |
+| `files` | `path` (каталог) | Обходчик по шаблону; выдаёт CSV/Parquet/XLSX/JSON как таблицы |
+| **API/Remote** | | |
 | `google_sheets` | `federation_hints.spreadsheet_id` | |
 | `prometheus` | host/port или `mapping.url` + DSL `mapping` | |
-| `graphql_remote` | `base_url` + опциональный `mapping` | Заголовки, forward-client-headers, таймаут в `mapping` |
+| `graphql_remote` | `base_url` + необязательный `mapping` | Заголовки, проброс клиентских заголовков, тайм-аут — в `mapping` |
 | `openapi` | `base_url` | |
 | `grpc_remote` | [UNVERIFIED end-to-end mapping] | |
-| `airport` | `base_url` (местоположение Flight) | Расширение airport DuckDB (REQ-899) |
-| `ingest` | приёмник push | Внешние сервисы отправляют JSON-события через POST |
+| `airport` | `base_url` (расположение Flight) | Расширение airport для DuckDB (REQ-899) |
+| `ingest` | приёмник записи | Внешние сервисы отправляют JSON-события методом POST |
 | **SaaS** | | |
 | `sharepoint` | `base_url` или `host` + `mapping` | Аутентификация через `mapping.auth_type` |
 | `splunk` | `host`/`port` или `base_url` + `mapping` | |
 | **GovData** | | |
-| `govdata` | subject + `domain_id` | Отдельная модель `GovDataSource`; см. §GovData ниже |
-| **Контроль качества данных** | | |
-| `soda` | host/port, нацеленные на pgwire Provisa | Требует extra `soda`; Elastic License 2.0, только self-hosted (REQ-1443) |
-| `great_expectations` | host/port, нацеленные на pgwire Provisa | Требует extra `gx`; Apache 2.0 (REQ-1443) |
+| `govdata` | предмет + `domain_id` | Отдельная модель `GovDataSource`; см. §GovData ниже |
+| **Data Quality** | | |
+| `soda` | host/port, нацеленные на pgwire Provisa | Требует дополнение `soda`; Elastic License 2.0, только самостоятельное размещение (REQ-1443) |
+| `great_expectations` | host/port, нацеленные на pgwire Provisa | Требует дополнение `gx`; Apache 2.0 (REQ-1443) |
 
-### Справочник типов источников
+### Справочник по типам источников
 
-Для типов, требующих неочевидной конфигурации, ниже есть краткое описание. Типы РСУБД (postgresql, mysql и т.д.) используют только общие поля выше — дополнительный раздел не нужен.
+Для каждого типа с неочевидной конфигурацией ниже есть короткая запись. Типы RDBMS (postgresql, mysql и т. д.) используют только общие поля выше — отдельный раздел им не нужен.
 
 #### GovData [tool-verified: `provisa/core/models.py:953-983`]
 
-Источники `govdata` используют отдельную модель верхнего уровня, `GovDataSource`, а не общий `Source`. (REQ-540) Доступ разделяется по группировке subject.
+Источники `govdata` используют отдельную модель верхнего уровня, `GovDataSource`, а не общую `Source`. (REQ-540) Доступ разделён по группировке предметов.
 
 ```yaml
 sources:
@@ -128,9 +128,9 @@ sources:
     end_year: 2024                     # optional year filter
 ```
 
-Каждый subject соответствует одной или нескольким схемам GovData. Настройка источника `govdata` с subject автоматически выставляет все схемы этого subject. (REQ-540)
+Каждый предмет соответствует одной или нескольким схемам GovData. Настройка источника `govdata` с предметом автоматически открывает все схемы этого предмета. (REQ-540)
 
-| Subject | Схемы |
+| Предмет | Схемы |
 | --------- | --------- |
 | `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ`, `econ_reference` |
@@ -143,11 +143,11 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-Схемы `ref` и `geo` всегда включены как связующие схемы — не настраиваются и не перечислены выше. (REQ-541) Используйте subject `ALL`, чтобы предоставить доступ ко всем схемам. [tool-verified: `provisa/core/models.py:961-963`]
+Схемы `ref` и `geo` всегда включены как связующие схемы — они не настраиваются и не перечислены выше. (REQ-541) Используйте предмет `ALL`, чтобы дать доступ ко всем схемам. [tool-verified: `provisa/core/models.py:961-963`]
 
 #### Kafka [tool-verified: `provisa/federation/trino_connectors.py:497-502`, `provisa/api/app_loaders.py:113-118`]
 
-Строка `kafka` в `sources:` предназначена только для регистрации. Её `details()` коннектора возвращает `{}` — реальная конфигурация находится в блоке верхнего уровня `kafka_sources[]`, а не в строке `sources:`. Kafka всегда является VIRTUAL_SOURCE (маршрутизируется через движок; без прямого пула). [tool-verified: `provisa/transpiler/router.py:44-63`]
+Строка `kafka` в `sources:` служит только для регистрации. Метод `details()` её коннектора возвращает `{}` — настоящая конфигурация находится в блоке верхнего уровня `kafka_sources[]`, а не в строке `sources:`. Kafka всегда является VIRTUAL_SOURCE (маршрутизируется через механизм; прямого пула нет). [tool-verified: `provisa/transpiler/router.py:44-63`]
 
 ```yaml
 kafka_sources:
@@ -187,21 +187,21 @@ kafka_sources:
             type: timestamp
 ```
 
-**Временное окно** — `default_window` ограничивает каждый запрос недавним периодом времени, предотвращая неограниченные чтения из высоконагруженных топиков. (REQ-148) Формат: `1h`, `30m`, `7d`, `60s`. По умолчанию `1h`. Автоматически внедряется как `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Клиенты могут переопределить это собственным фильтром `_timestamp` в аргументе GraphQL `where`.
+**Временное окно** — `default_window` ограничивает каждый запрос недавним промежутком времени, не давая читать высоконагруженные топики без границ. (REQ-148) Формат: `1h`, `30m`, `7d`, `60s`. По умолчанию `1h`. Подставляется автоматически как `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Клиенты могут переопределить его собственным фильтром по `_timestamp` в аргументе `where` GraphQL.
 
-**Дискриминатор** — Несколько конфигураций топика могут указывать на один и тот же физический топик Kafka с разными значениями `discriminator`, создавая отдельные типы GraphQL. (REQ-149) Дискриминатор автоматически внедряется как предложение WHERE.
+**Дискриминатор** — Несколько конфигураций топиков могут указывать на один физический топик Kafka с разными значениями `discriminator`, порождая отдельные типы GraphQL. (REQ-149) Дискриминатор автоматически подставляется как условие WHERE.
 
 **Источник схемы**
 
 | Значение | Поведение |
 | ------- | ---------- |
 | `registry` | Получить схему из Confluent Schema Registry |
-| `manual` | Определить столбцы напрямую в конфигурации (Schema Registry не требуется) |
-| `sample` | Автоматически определить по образцам сообщений |
+| `manual` | Задать столбцы прямо в конфигурации (Schema Registry не нужен) |
+| `sample` | Определить автоматически по образцам сообщений |
 
 #### Snowflake [tool-verified: `provisa/executor/drivers/snowflake.py:48-62`]
 
-`account` в `federation_hints` обязателен. `warehouse`, `role` и `schema` опциональны.
+`account` в `federation_hints` обязателен. `warehouse`, `role` и `schema` необязательны.
 
 ```yaml
 sources:
@@ -220,7 +220,7 @@ sources:
 
 #### Databricks [tool-verified: `provisa/executor/drivers/databricks.py:34-52`]
 
-`http_path` в `federation_hints` обязателен. `password` несёт токен персонального доступа. `catalog` опционален (передаётся в SQL/hints, а не в поле `database`).
+`http_path` в `federation_hints` обязателен. `password` содержит персональный токен доступа. `catalog` необязателен (передаётся в SQL или подсказках, а не в поле `database`).
 
 ```yaml
 sources:
@@ -235,7 +235,7 @@ sources:
 
 #### BigQuery [tool-verified: `provisa/federation/connector_duckdb.py:238`]
 
-`project` в `federation_hints` обязателен. Аутентификация использует `GOOGLE_APPLICATION_CREDENTIALS` (путь к файлу ключа сервисного аккаунта) или Application Default Credentials в окружении движка.
+`project` в `federation_hints` обязателен. Аутентификация использует `GOOGLE_APPLICATION_CREDENTIALS` (путь к файлу ключа служебного аккаунта) или Application Default Credentials в окружении механизма.
 
 ```yaml
 sources:
@@ -247,7 +247,7 @@ sources:
 
 #### Fabric / Synapse [tool-verified: `provisa/core/models.py:56-57`]
 
-Оба используют T-SQL поверх TDS с аутентификацией Azure AD. Аутентифицируйтесь через `az login` (для разработки) или управляемую идентичность (для продакшена) — движок читает учётные данные через `DefaultAzureCredential` из `azure-identity`. Данные соединения берутся из переменных окружения: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) или `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), либо через `PROVISA_ENGINE_URL`.
+Оба используют T-SQL поверх TDS с аутентификацией Azure AD. Аутентифицируйтесь через `az login` (разработка) или управляемое удостоверение (продуктив) — механизм читает учётные данные через `DefaultAzureCredential` из `azure-identity`. Параметры подключения берутся из переменных окружения: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) либо `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), или из `PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -258,7 +258,7 @@ sources:
 
 #### ClickHouse [tool-verified: `provisa/executor/drivers/clickhouse.py:49-59`]
 
-`secure` в `federation_hints` включает TLS на HTTP-интерфейсе. Порт по умолчанию — `8123` (обычный) или `8443` (при `secure: "true"`). `schema` в `federation_hints` переопределяет удалённую схему. [tool-verified: `provisa/federation/connector_duckdb.py:378-379`]
+`secure` в `federation_hints` включает TLS на HTTP-интерфейсе. Порт по умолчанию `8123` (без шифрования) или `8443` (при `secure: "true"`). `schema` в `federation_hints` переопределяет удалённую схему. [tool-verified: `provisa/federation/connector_duckdb.py:378-379`]
 
 ```yaml
 sources:
@@ -273,7 +273,7 @@ sources:
 
 #### Delta Lake / Iceberg [tool-verified: `provisa/federation/connector_duckdb.py:291-327`]
 
-`path` — это URI таблицы (S3, GCS, ADLS или локальный). Доступ к объектному хранилищу требует учётных данных в `federation_hints`. Для Cloudflare R2 добавьте `account_id`.
+`path` — это URI таблицы (S3, GCS, ADLS или локальный). Для доступа к объектному хранилищу нужны учётные данные в `federation_hints`. Для Cloudflare R2 добавьте `account_id`.
 
 ```yaml
 sources:
@@ -295,9 +295,9 @@ sources:
 
 #### Hive / Hive S3 [tool-verified: `provisa/federation/trino_connectors.py:244-363`]
 
-`host` и `port` указывают на Thrift metastore Hive (порт по умолчанию 9083). Для `hive` установите `mapping["storage"]`, чтобы выбрать бэкенд объектного хранилища. Отсутствующие обязательные ключи приводят к явному сбою — без запасного варианта. [tool-verified: `provisa/federation/trino_connectors.py:328-331`]
+`host` и `port` указывают на метахранилище Hive Thrift (порт по умолчанию 9083). Для `hive` задайте `mapping["storage"]`, чтобы выбрать бэкенд объектного хранилища. Отсутствие обязательных ключей приводит к явной ошибке — без запасных значений. [tool-verified: `provisa/federation/trino_connectors.py:328-331`]
 
-`hive_s3` — отдельный тип, который всегда объявляет хранение S3 (REQ-229); `mapping.storage` не требуется.
+`hive_s3` — отдельный тип, всегда объявляющий хранилище S3 (REQ-229); `mapping.storage` не нужен.
 
 ```yaml
 sources:
@@ -324,11 +324,11 @@ sources:
       # sas_token: ${env:ADLS_SAS_TOKEN}   # alternative to access_key
 ```
 
-Допустимые значения `mapping.storage`: `hadoop` (по умолчанию), `hdfs`, `local`, `s3`, `azure`, `adls`. Ключи сопоставления S3: `endpoint`, `access_key_id`, `secret_access_key`, `region`, `path_style`. Ключи сопоставления ADLS: `storage_account`, `access_key` или `sas_token`.
+Допустимые значения `mapping.storage`: `hadoop` (по умолчанию), `hdfs`, `local`, `s3`, `azure`, `adls`. Ключи сопоставления для S3: `endpoint`, `access_key_id`, `secret_access_key`, `region`, `path_style`. Ключи сопоставления для ADLS: `storage_account`, `access_key` или `sas_token`.
 
 #### Redis [tool-verified: `provisa/core/trino_catalog_files.py:54-75`]
 
-Использует DSL `mapping`. `mongodb` и `cassandra` используют обычные поля соединения и НЕ используют DSL сопоставления.
+Использует DSL `mapping`. `mongodb` и `cassandra` используют обычные поля подключения и НЕ используют DSL сопоставления.
 
 ```yaml
 sources:
@@ -382,7 +382,7 @@ sources:
 
 #### Prometheus [tool-verified: `provisa/core/trino_catalog_files.py:107-124`]
 
-`mapping.url` переопределяет `host:port`, когда присутствуют оба.
+`mapping.url` переопределяет `host:port`, когда заданы оба.
 
 ```yaml
 sources:
@@ -400,7 +400,7 @@ sources:
 
 #### Google Sheets [tool-verified: `provisa/federation/connector_duckdb.py:273-275`]
 
-`spreadsheet_id` в `federation_hints` обязателен. Аутентификация использует DuckDB SECRET `gsheet`, выданный во время присоединения (attach).
+`spreadsheet_id` в `federation_hints` обязателен. Аутентификация использует SECRET `gsheet` в DuckDB, создаваемый в момент подключения.
 
 ```yaml
 sources:
@@ -412,7 +412,7 @@ sources:
 
 #### Файловые источники (csv / parquet / sqlite / files)
 
-`path` обязателен. `files` обходит каталог на предмет файлов CSV, Parquet, XLSX и JSON, выставляя каждый как таблицу. Все файловые источники VIRTUAL (маршрутизируются через движок; без прямого пула). [tool-verified: `provisa/transpiler/router.py:44-48`]
+`path` обязателен. `files` обходит каталог в поисках файлов CSV, Parquet, XLSX и JSON, выдавая каждый как таблицу. Все файловые источники являются VIRTUAL (маршрутизируются через механизм; прямого пула нет). [tool-verified: `provisa/transpiler/router.py:44-48`]
 
 ```yaml
 sources:
@@ -425,9 +425,9 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-#### API / Удалённые источники
+#### Источники API / Remote
 
-**openapi** — установите `base_url` на базовый URL OpenAPI. Обнаружение схемы читает спецификацию OpenAPI при запуске.
+**openapi** — задайте в `base_url` базовый URL OpenAPI. Обнаружение схемы читает спецификацию OpenAPI при запуске.
 
 ```yaml
 sources:
@@ -436,7 +436,7 @@ sources:
     base_url: https://api.payments.example.com/v1
 ```
 
-**graphql_remote** — установите `base_url`. Опциональные ключи `mapping`: `headers` (словарь статических заголовков), `forward_client_headers` (bool), `timeout_seconds` (int). [tool-verified: `provisa/hasura_v2/mapper.py:129-152`]
+**graphql_remote** — задайте `base_url`. Необязательные ключи `mapping`: `headers` (словарь статических заголовков), `forward_client_headers` (bool), `timeout_seconds` (int). [tool-verified: `provisa/hasura_v2/mapper.py:129-152`]
 
 ```yaml
 sources:
@@ -450,7 +450,7 @@ sources:
       timeout_seconds: 30
 ```
 
-**airport** — `base_url` — это местоположение сервера Arrow Flight. Расширение airport DuckDB (REQ-899). [tool-verified: `provisa/federation/connector_duckdb.py:285-288`]
+**airport** — `base_url` — это расположение сервера Arrow Flight. Расширение airport для DuckDB (REQ-899). [tool-verified: `provisa/federation/connector_duckdb.py:285-288`]
 
 ```yaml
 sources:
@@ -516,11 +516,11 @@ sources:
       disable_ssl_validation: false
 ```
 
-#### Средства контроля качества данных (soda / great_expectations)
+#### Проверяющие качества данных (soda / great_expectations)
 
 [tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
 
-Источник-проверка указывает на собственный эндпоинт pgwire Provisa, так что один драйвер postgres сканирует федеративное представление таблицы, обеспеченной Snowflake или Iceberg. Идентичность сканирования декларируется, а не наследуется — политика применяется к этому соединению, и отфильтрованный набор строк не должен приводить к бесшумно проходящей проверке. Ключи соединения берутся из `mapping`: `host`, `port`, `database`, `user`, `password`.
+Источник-проверяющий указывает на собственный эндпоинт pgwire в Provisa, поэтому один драйвер postgres сканирует федеративное представление таблицы, лежащей в Snowflake или Iceberg. Личность сканирования объявляется, а не наследуется — политика применяется к этому соединению, и отфильтрованный набор строк не должен давать молча пройденную проверку. Ключи подключения берутся из `mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
 sources:
@@ -535,27 +535,27 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Каждая таблица результатов несёт `dq_contract` — контракт Soda в YAML или набор Great Expectations в JSON, дословно. Столбцы, водяной знак (watermark) и продвижения выводятся из него; полный вывод см. в [Средствах контроля качества данных](sources.md#req-1443).
+Каждая таблица результатов несёт `dq_contract` — YAML-контракт Soda или JSON набора Great Expectations, дословно. Столбцы, водяной знак и продвижения выводятся из него; полный вывод описан в разделе [Проверяющие качества данных](sources.md#data-quality-checkers-req-1443).
 
-**Выбор на этапе установки.** Проверяющее средство не подключается статически — сканирование выполняется в дочернем интерпретаторе, и библиотека устанавливается только тогда, когда оператор её называет. Каждый путь установщика (`install.sh`, `packaging/linux/first-launch.sh` и мастер macOS через `PROVISA_DQ_CHECKER`) записывает выбор в `~/.provisa/config.yaml`:
+**Выбор при установке.** Проверяющий не встроен в сборку — сканирование выполняется в дочернем интерпретаторе, и библиотека устанавливается, только когда оператор её назовёт. Каждый путь установки (`install.sh`, `packaging/linux/first-launch.sh` и мастер для macOS через `PROVISA_DQ_CHECKER`) записывает выбор в `~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
 ```
 
-`scripts/provisa` читает этот ключ и экспортирует `PROVISA_EXTRAS`, который `docker-compose.app.yml` передаёт как build-аргумент в `ARG PROVISA_EXTRAS` из `Dockerfile`: [tool-verified: `scripts/provisa:69-79`]
+`scripts/provisa` читает этот ключ и экспортирует `PROVISA_EXTRAS`, который `docker-compose.app.yml` передаёт как аргумент сборки в `ARG PROVISA_EXTRAS` из `Dockerfile`: [tool-verified: `scripts/provisa:69-79`]
 
-| `dq_checker` | `PROVISA_EXTRAS` (уровень Docker) | Установка в нативном venv |
+| `dq_checker` | `PROVISA_EXTRAS` (уровень Docker) | Установка в нативное venv |
 | -------------- | -------------------------------- | --------------------- |
 | `none` | `firebase,vector` | `provisa[embedded]` |
 | `soda` | `firebase,vector,soda` | `provisa[embedded,soda]` |
 | `gx` | `firebase,vector,gx` | `provisa[embedded,gx]` |
 
-Установка демонстрационного набора данных повышает `none` до `gx` и сообщает об этом, поскольку демонстрационная конфигурация регистрирует набор Great Expectations поверх `pet_store.pets`, и иначе его карточке качества нечего было бы показать. Указание `soda` оставляет `soda` как есть.
+Установка демонстрационного набора данных поднимает `none` до `gx` и сообщает об этом, потому что демонстрационная конфигурация регистрирует набор Great Expectations поверх `pet_store.pets`, и её карточке качества иначе нечего было бы показать. Выбор `soda` сохраняется.
 
-Обращение к демо через pip, минуя установщик, пропускает этот шаг мастера, поэтому extra `demo` несёт то же проверяющее средство: `pip install 'provisa[embedded,demo]'` — это то, что нужно `provisa run --demo` для запуска своего сканирования. Без этого сканирование сообщает `data-quality checker 'great_expectations' is not installed`, называя команду установки.
+Установка демо через pip, а не через инсталлятор, пропускает этот шаг мастера, поэтому дополнение `demo` несёт тот же проверяющий: `pip install 'provisa[embedded,demo]'` — это то, что нужно `provisa run --demo`, чтобы сканирование запустилось. Без него сканирование сообщает `data-quality checker 'great_expectations' is not installed`, называя команду установки.
 
-Любое другое значение останавливает запуск вместо старта без проверяющего средства, которое запросил оператор. Extra `soda` подтягивает `soda-postgres`; `gx` подтягивает `great-expectations[postgresql]`. Soda Core распространяется по Elastic License 2.0 — `config/capabilities.yaml` помечает опцию как `cloud_eligible: false`, и облачная плоскость (hosted plane) отклоняет её.
+Любое другое значение останавливает запуск, а не стартует без проверяющего, которого запросил оператор. Дополнение `soda` подтягивает `soda-postgres`; `gx` подтягивает `great-expectations[postgresql]`. Soda Core распространяется по Elastic License 2.0 — `config/capabilities.yaml` помечает этот вариант как `cloud_eligible: false`, и размещённая плоскость его отклоняет.
 
 ## Домены
 
@@ -565,7 +565,7 @@ domains:
     description: Sales operational data
 ```
 
-## Наименование
+## Именование
 
 ```yaml
 naming:
@@ -578,9 +578,9 @@ naming:
 
 ### Соглашение об именовании
 
-Орган именования — единственный источник истины для имён, обращённых к клиенту; физические имена столбцов бэкенда никогда не раскрываются клиентам. (REQ-194) Каждый язык запросов выводит имя столбца из его `column.alias`, если он задан, иначе — из физического имени столбца через настроенное соглашение. (REQ-194)
+Служба именования — единственный источник истины для имён, видимых клиенту; физические имена столбцов бэкенда клиентам никогда не раскрываются. (REQ-194) Каждый язык запросов выводит имя столбца из `column.alias`, если он задан, иначе из физического имени столбца по настроенному соглашению. (REQ-194)
 
-Соглашение GraphQL — одно из трёх заранее заданных перечислений. (REQ-416) Старые произвольные строки (`none`, `snake_case`, `camelCase`, `PascalCase`) устарели. (REQ-416)
+Соглашение GraphQL — одно из трёх предустановленных перечислений. (REQ-416) Старые свободные строки (`none`, `snake_case`, `camelCase`, `PascalCase`) устарели. (REQ-416)
 
 | Пресет | По умолчанию | Имена типов | Имена полей | Имена мутаций |
 | -------- | --------- | ------------ | ------------- | ---------------- |
@@ -588,13 +588,13 @@ naming:
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
 
-Соглашение GraphQL по умолчанию — `apollo_graphql`, которое производит имена полей и мутаций в camelCase. (REQ-194, REQ-416) Соглашение SQL отдельное, по умолчанию `snake_case`, применяется через `apply_sql_name()`; соглашение GraphQL применяется через `apply_gql_name()`, а имя CQL выводится из имени GraphQL. (REQ-194)
+Соглашение GraphQL по умолчанию — `apollo_graphql`, оно даёт имена полей и мутаций в camelCase. (REQ-194, REQ-416) Соглашение SQL задаётся отдельно, по умолчанию `snake_case`, и применяется через `apply_sql_name()`; соглашение GraphQL применяется через `apply_gql_name()`, а имя CQL выводится из имени GraphQL. (REQ-194)
 
-`domain_prefix: bool` — независимая опция, применяемая независимо от выбранного пресета. (REQ-416)
+`domain_prefix: bool` — независимый параметр, действующий при любом выбранном пресете. (REQ-416)
 
 Явный `column.alias` является каноническим именем: SQL использует его дословно без применения соглашения, GraphQL применяет к нему своё соглашение, а CQL выводится из имени GraphQL. (REQ-194)
 
-Переопределение для источника:
+Переопределение на уровне источника:
 
 ```yaml
 sources:
@@ -602,7 +602,7 @@ sources:
     naming_convention: hasura_graphql  # overrides global for this source
 ```
 
-Переопределение для таблицы:
+Переопределение на уровне таблицы:
 
 ```yaml
 tables:
@@ -613,18 +613,18 @@ tables:
 
 ### Префикс домена
 
-Когда `domain_prefix: true`, все имена полей и типов GraphQL получают префикс из идентификатора домена с разделителем в виде двойного подчёркивания: (REQ-154)
+При `domain_prefix: true` все имена полей и типов GraphQL получают префикс идентификатора домена через двойное подчёркивание: (REQ-154)
 
 | Таблица | Домен | Имя поля |
 | ------- | -------- | ----------- |
 | `orders` | `sales-analytics` | `sales_analytics__orders` |
 | `customer_segments` | `customer-insights` | `customer_insights__customer_segments` |
 
-Это предотвращает коллизии имён, когда разные домены содержат таблицы с одинаковыми именами, и делает запросы самодокументируемыми.
+Это предотвращает конфликты имён, когда в разных доменах есть таблицы с одинаковыми именами, и делает запросы самодокументируемыми.
 
 ### Правила именования
 
-Правила regex, применяемые к именам таблиц при генерации имён полей GraphQL. Применяются по порядку до разрешения уникальности. (REQ-542)
+Правила на регулярных выражениях, применяемые к именам таблиц при формировании имён полей GraphQL. Применяются по порядку до разрешения уникальности. (REQ-542)
 
 ## Таблицы
 
@@ -669,21 +669,21 @@ tables:
         source: now               # current timestamp
 ```
 
-### Алиасы
+### Псевдонимы
 
-Алиасы таблиц и столбцов переопределяют имя GraphQL по умолчанию. (REQ-155) Полезно для:
+Псевдонимы таблиц и столбцов переопределяют имя GraphQL по умолчанию. (REQ-155) Полезно для:
 
-- Переименования непонятных имён из базы данных (например, `tbl_cust_seg` → `customer_segments`)
-- Избегания сокращений на уровне API
-- Создания чистого, специфичного для домена словаря
+- Переименования непонятных имён в базе данных (например, `tbl_cust_seg` → `customer_segments`)
+- Избавления от сокращений на уровне API
+- Создания чистого предметного словаря
 
 ### Описания
 
-Описания таблиц и столбцов включаются в сгенерированный GraphQL SDL. (REQ-156) Они отображаются в проводнике документации GraphiQL и в запросах интроспекции. Задайте их в YAML-конфигурации или через админ-интерфейс.
+Описания таблиц и столбцов включаются в сформированный SDL GraphQL. (REQ-156) Они появляются в обозревателе документации GraphiQL и в интроспекционных запросах. Задавайте их в YAML-конфигурации или через административный интерфейс.
 
-### Путь (вычисляемое извлечение JSON)
+### Path (вычисляемое извлечение из JSON)
 
-Столбцы могут извлекать значения из исходного столбца JSON/JSONB, используя `path` в точечной нотации. (REQ-151) Это полезно для полуструктурированных данных в сообщениях Kafka, документах MongoDB или столбцах JSONB PostgreSQL.
+Столбцы могут извлекать значения из исходного столбца JSON/JSONB по точечному пути `path`. (REQ-151) Это полезно для полуструктурированных данных в сообщениях Kafka, документах MongoDB или столбцах JSONB в PostgreSQL.
 
 ```yaml
 columns:
@@ -700,17 +700,17 @@ columns:
     visible_to: [admin, analyst]
 ```
 
-Формат пути — `source_column.key1.key2...`. Компилятор генерирует `json_extract_scalar(source_column, '$.key1.key2')` в SQL. (REQ-151)
+Формат пути — `source_column.key1.key2...`. Компилятор порождает в SQL `json_extract_scalar(source_column, '$.key1.key2')`. (REQ-151)
 
-**Влияние на маршрутизацию:** Столбцы path используют операторы JSON PostgreSQL (`->>`), которые нативно поддерживаются прямой маршрутизацией PG. (REQ-152) Для источников, отличных от PostgreSQL (MySQL, SQL Server и т.д.), запросы со столбцами path автоматически маршрутизируются через движок федерации. (REQ-152) Мутации не затронуты, поскольку столбцы path — это вычисляемые поля только для чтения. (REQ-153)
+**Влияние на маршрутизацию:** Столбцы с путями используют операторы JSON PostgreSQL (`->>`), которые изначально поддерживаются прямой маршрутизацией в PG. (REQ-152) Для источников, отличных от PostgreSQL (MySQL, SQL Server и т. д.), запросы со столбцами-путями автоматически направляются через механизм федерации. (REQ-152) Мутации это не затрагивает, поскольку столбцы-пути — вычисляемые поля только для чтения. (REQ-153)
 
 ### Типы маскирования
 
 | Тип | Поля | Описание |
 | ------ | -------- | ------------- |
-| `regex` | `pattern`, `replace` | REGEXP_REPLACE (только для строковых столбцов) |
-| `constant` | `value` | Литеральная замена (NULL, 0, MAX, MIN, произвольное значение) |
-| `truncate` | `precision` | DATE_TRUNC (только для столбцов date/timestamp) |
+| `regex` | `pattern`, `replace` | REGEXP_REPLACE (только строковые столбцы) |
+| `constant` | `value` | Замена литералом (NULL, 0, MAX, MIN, произвольное) |
+| `truncate` | `precision` | DATE_TRUNC (только столбцы date/timestamp) |
 
 ## Связи
 
@@ -735,12 +735,12 @@ relationships:
 
 ### Автоматическая материализация
 
-Установите `materialize: true` на связи, чтобы автоматически сгенерировать материализованное представление для кросс-источниковых JOIN. (REQ-158) Это позволяет избежать дорогостоящих федеративных запросов путём предварительного вычисления результата JOIN.
+Задайте `materialize: true` на связи, чтобы автоматически создавать материализованное представление для межисточниковых JOIN. (REQ-158) Это избавляет от дорогих федеративных запросов за счёт предварительного вычисления результата JOIN.
 
-- MV генерируются только для кросс-источниковых связей (JOIN в пределах одного источника уже быстрые) (REQ-159)
-- MV изначально устарело (stale) и заполняется фоновым циклом обновления (REQ-160)
-- Мутации любой из исходных таблиц помечают MV как устаревшее для повторного обновления (REQ-543)
-- `refresh_interval` по умолчанию 300 секунд (5 минут) (REQ-543)
+- Материализованные представления создаются только для межисточниковых связей (JOIN внутри одного источника и так быстры) (REQ-159)
+- Представление начинается устаревшим и наполняется фоновым циклом обновления (REQ-160)
+- Мутации в любой из исходных таблиц помечают представление устаревшим для повторного обновления (REQ-543)
+- `refresh_interval` по умолчанию равен 300 секундам (5 минут) (REQ-543)
 
 ## Роли
 
@@ -765,18 +765,18 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Роли с `parent_role_id` наследуют возможности и доступ к домену от родителя. (REQ-215) Иерархия сглаживается при запуске. (REQ-215)
+Роли с `parent_role_id` наследуют возможности и доступ к доменам от родителя. (REQ-215) Иерархия разворачивается при запуске. (REQ-215)
 
-### Возможности (Capabilities)
+### Возможности
 
 | Возможность | Описание |
 | ----------- | ------------- |
-| `source_registration` | Регистрация источников данных |
-| `table_registration` | Регистрация таблиц |
-| `relationship_registration` | Определение связей |
-| `security_config` | Настройка RLS, маскирования |
-| `query_development` | Выполнение запросов |
-| `full_results` | Обход лимитов выборки |
+| `source_registration` | Регистрировать источники данных |
+| `table_registration` | Регистрировать таблицы |
+| `relationship_registration` | Определять связи |
+| `security_config` | Настраивать RLS и маскирование |
+| `query_development` | Выполнять запросы |
+| `full_results` | Обходить ограничения выборки |
 | `admin` | Все возможности |
 
 ## Правила RLS
@@ -808,7 +808,7 @@ materialized_views:
 
 ## Представления (управляемые вычисляемые наборы данных)
 
-Представления — это вычисляемые наборы данных, определённые в SQL, с полным governance на уровне столбцов. (REQ-133) Это управляемый механизм для добавления агрегаций, трансформаций и производных метрик в семантический слой. (REQ-136)
+Представления — это вычисляемые наборы данных, заданные на SQL, с полным управлением на уровне столбцов. (REQ-133) Это управляемый способ добавлять агрегаты, преобразования и производные метрики в семантический слой. (REQ-136)
 
 ```yaml
 views:
@@ -838,26 +838,26 @@ views:
 | Поле | Обязательно | Описание |
 | ------- | ---------- | ------------- |
 | `id` | Да | Уникальный идентификатор представления |
-| `sql` | Да | Оператор SQL SELECT, определяющий представление |
+| `sql` | Да | Оператор SQL SELECT, задающий представление |
 | `domain_id` | Да | Домен для видимости схемы |
-| `materialize` | Нет | `true` = периодическое обновление CTAS, `false` = живое федеративное представление |
+| `materialize` | Нет | `true` = периодическое обновление через CTAS, `false` = живое федеративное представление |
 | `refresh_interval` | Нет | Секунды между обновлениями (только для материализованных, по умолчанию 300) |
-| `description` | Нет | Отображается в GraphQL SDL |
+| `description` | Нет | Появляется в SDL GraphQL |
 | `alias` | Нет | Переопределяет имя GraphQL |
-| `columns` | Да | Определения столбцов с видимостью, маскированием, описаниями |
+| `columns` | Да | Определения столбцов с видимостью, маскированием и описаниями |
 
-### Материализованные и живые
+### Материализованное или живое
 
-- **`materialize: true`**: Provisa создаёт таблицу через CTAS и обновляет её по расписанию. (REQ-135) Более быстрые запросы, но данные могут отставать по времени до `refresh_interval` секунд.
-- **`materialize: false`**: Provisa создаёт федеративное представление. (REQ-135) Запросы всегда возвращают живые данные, но могут быть медленнее для сложных агрегаций.
+- **`materialize: true`**: Provisa создаёт таблицу через CTAS и обновляет её по расписанию. (REQ-135) Запросы быстрее, но данные могут отставать на величину до `refresh_interval` секунд.
+- **`materialize: false`**: Provisa создаёт федеративное представление. (REQ-135) Запросы всегда возвращают живые данные, но для сложных агрегатов могут работать медленнее.
 
-Представления проходят через тот же конвейер governance, что и таблицы — RLS, маскирование, выборка и видимость на основе роли. (REQ-134) Это гарантирует, что в платформу нельзя добавить новую семантику без надзора дата-стюарда. (REQ-136)
+Представления проходят тот же управляющий конвейер, что и таблицы, — RLS, маскирование, выборку и видимость по ролям. (REQ-134) Это гарантирует, что новая семантика не появится на платформе без надзора распорядителя данных. (REQ-136)
 
-### Представления только для чтения
+### Представления только для запросов
 
-Как представления с `materialize: true`, так и с `materialize: false` выставляют свой тип GraphQL только для запросов. Для отношений на основе `view_sql` не генерируются мутации insert, upsert, update или delete. (REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
+Представления и с `materialize: true`, и с `materialize: false` открывают свой тип GraphQL только для запросов. Для отношений на основе `view_sql` не порождаются мутации insert, upsert, update и delete. (REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
 
-## Кеш
+## Кэш
 
 ```yaml
 cache:
@@ -866,9 +866,9 @@ cache:
   default_ttl: 300
 ```
 
-### Иерархия кеша
+### Иерархия кэша
 
-Порядок разрешения TTL (наиболее специфичное побеждает): **таблица** > **источник** > **глобальное значение по умолчанию**. (REQ-544) Используется первое ненулевое значение.
+Порядок разрешения TTL (побеждает самое конкретное): **таблица** > **источник** > **глобальное значение по умолчанию**. (REQ-544) Используется первое ненулевое значение.
 
 ```yaml
 cache:
@@ -890,7 +890,7 @@ tables:
     # no cache_ttl → inherits source TTL (600s)
 ```
 
-Установка `cache_enabled: false` на источнике отключает кеширование для всех таблиц этого источника, независимо от TTL на уровне таблицы. (REQ-544) Ключи кеша всегда включают `role_id` + значения контекста RLS для разделения по соображениям безопасности. (REQ-544)
+Установка `cache_enabled: false` на источнике отключает кэширование для всех его таблиц независимо от TTL на уровне таблицы. (REQ-544) Ключи кэша всегда включают `role_id` и значения контекста RLS для разделения по безопасности. (REQ-544)
 
 ## Аутентификация
 
@@ -914,17 +914,17 @@ auth:
     default_role: analyst
 ```
 
-### Типы провайдеров аутентификации
+### Типы поставщиков аутентификации
 
-| Провайдер | Сценарий использования | Валидация токена |
+| Поставщик | Сценарий | Проверка токена |
 | ---------- | ---------- | ----------------- |
-| `simple` | Локальная разработка/тестирование. Пользователи определены в YAML. | JWT, подписанный `PROVISA_JWT_SECRET` |
-| `firebase` | Firebase Authentication (все методы). | SDK `firebase-admin`, `verify_id_token()` |
-| `keycloak` | Keycloak OIDC. Сопоставление ролей тенанта и клиента. | Валидация JWT на основе JWKS |
-| `oauth` | Общий OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS с discovery URL |
-| `basic` | Автономные развёртывания. Учётные записи хранятся в собственном хранилище Provisa. | Пароль bcrypt либо SCRAM-SHA-256 на pgwire |
+| `simple` | Локальная разработка и тестирование. Пользователи заданы в YAML. | JWT, подписанный `PROVISA_JWT_SECRET` |
+| `firebase` | Firebase Authentication (все методы). | `verify_id_token()` из SDK `firebase-admin` |
+| `keycloak` | OIDC в Keycloak. Сопоставляются роли арендатора и клиента. | Проверка JWT по JWKS |
+| `oauth` | Общий OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS из URL обнаружения |
+| `basic` | Автономные развёртывания. Учётные записи хранятся в собственном хранилище Provisa. | Пароль bcrypt или SCRAM-SHA-256 на pgwire |
 
-Учётные данные суперпользователя (блок `superuser`) работают с любым провайдером и всегда разрешаются в роль admin со всеми возможностями. (REQ-125) Используются для первоначальной настройки до конфигурации внешней аутентификации.
+Учётные данные суперпользователя (блок `superuser`) работают с любым поставщиком и всегда дают роль admin со всеми возможностями. (REQ-125) Используются для первоначальной настройки до подключения внешней аутентификации.
 
 ### SCRAM-SHA-256 (`auth.scram`)
 
@@ -934,9 +934,9 @@ auth:
   scram: true
 ```
 
-Заставляет pgwire объявлять SASL с механизмом `SCRAM-SHA-256`, так что пароль доказывается, а не передаётся открытым текстом. (REQ-1394) Это применимо только к провайдеру `basic` — ни один другой провайдер не хранит верификаторы RFC 5802, необходимые SCRAM, — а привязка канала не предлагается.
+Заставляет pgwire объявлять SASL с `SCRAM-SHA-256`, так что пароль доказывается, а не передаётся открытым текстом. (REQ-1394) Работает только с поставщиком `basic` — ни один другой поставщик не хранит верификаторы RFC 5802, нужные SCRAM, — и привязка к каналу не предлагается.
 
-Верификаторы нельзя вывести из существующих bcrypt-хешей. Верификатор записывается всякий раз, когда пароль проходит открытым текстом, поэтому первое SCRAM-соединение каждого пользователя следует за его ближайшей регистрацией, входом, сменой пароля или сбросом администратором. До этого соединения такого пользователя откатываются к обмену открытым текстом поверх TLS; по линии не видно, кто уже перешёл.
+Верификаторы нельзя получить из существующих хешей bcrypt. Верификатор записывается, когда пароль проходит через систему в открытом виде, поэтому первое SCRAM-соединение каждого пользователя наступает после его следующей регистрации, входа, смены пароля или сброса администратором. До этого момента соединения такого пользователя откатываются к обмену открытым текстом поверх TLS; по проводу не видно, кто уже перешёл.
 
 ### Ограничение попыток входа (`auth.login_throttle`)
 
@@ -948,11 +948,11 @@ auth:
     lockout_seconds: 900 # how long a locked-out subject is refused
 ```
 
-Включено по умолчанию с показанными значениями; блок лишь настраивает их. (REQ-1393) Счётчик находится на уровне проверки учётных данных, поэтому неудачи по HTTP, pgwire и Bolt накапливаются на одном субъекте, а блокировка действует на каждом интерфейсе. Он действует в пределах процесса: несколько воркеров API допускают до `max_attempts` каждый.
+Включено по умолчанию с показанными значениями; блок лишь настраивает их. (REQ-1393) Счётчик находится на уровне проверки учётных данных, поэтому неудачи по HTTP, pgwire и Bolt накапливаются для одного и того же субъекта, а блокировка действует на всех поверхностях. Работает на уровне процесса: несколько рабочих API каждый допускают до `max_attempts`.
 
 ### Персональные токены доступа
 
-PAT не требуют блока конфигурации — они принимаются всегда, а хранилище создаётся вместе с остальной схемой управляющего слоя. (REQ-1263) Настраивается срок действия, который пользователь может запросить при выпуске: от 1 до 366 дней либо без срока для бессрочного токена. См. [Модель безопасности](security.md#_16).
+Персональным токенам доступа не нужен блок конфигурации — они принимаются всегда, а хранилище создаётся вместе с остальной схемой плоскости управления. (REQ-1263) Настраивается лишь срок действия, который пользователь может запросить при выпуске: от 1 до 366 дней либо бессрочный токен. См. [Модель безопасности](security.md#personal-access-tokens).
 
 ### Взаимный TLS
 
@@ -960,15 +960,15 @@ PAT не требуют блока конфигурации — они прин�
 
 | Переменная | По умолчанию | Значение |
 | ---------- | --------- | --------- |
-| `PROVISA_MTLS_CLIENT_CA` | не задана | PEM-набор УЦ, которым разрешено подписывать клиентские сертификаты. Её установка включает проверку клиентских сертификатов |
-| `PROVISA_MTLS_MODE` | `required`, как только задан УЦ | `required` или `optional` |
-| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Требует, чтобы common name сертификата совпадал с именем пользователя, под которым аутентифицируется соединение |
+| `PROVISA_MTLS_CLIENT_CA` | не задано | Набор PEM с центрами сертификации, которым разрешено подписывать клиентские сертификаты. Её установка включает проверку клиентских сертификатов |
+| `PROVISA_MTLS_MODE` | `required`, когда задан CA | `required` или `optional` |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Требовать, чтобы общее имя сертификата совпадало с именем пользователя, под которым аутентифицируется соединение |
 
-У каждой есть переопределение на уровне протокола с тем же именованием, что и у настроек TLS. Режим, заданный без УЦ, или режим, не совпадающий ни с одним из двух значений, отказывается запускаться, вместо того чтобы обслуживать соединения, которые оператор считает проверенными.
+Для каждой из них есть переопределение по протоколу с тем же именованием, что и у настроек TLS. Режим, заданный без CA, или режим с иным значением приводит к отказу от запуска, а не к обслуживанию соединений, которые оператор считает проверенными.
 
-### Адресация организации поверх TLS
+### Обращение к организации поверх TLS
 
-Настраивать нечего. В мультиорганизационном развёртывании pgwire и Bolt читают организацию из имени хоста, к которому подключился клиент, переданного в TLS ClientHello, — ровно так же, как HTTP читает её из заголовка `Host`. (REQ-1234) Клиент, подключающийся к `acme.provisa.dev`, запрашивает организацию `acme`; запрос отклоняется, если аутентифицированный principal не состоит в ней. Подключение по IP-адресу не запрашивает организацию — а это каждое соединение в одноорганизационном развёртывании.
+Настраивать нечего. В развёртывании с несколькими организациями pgwire и Bolt читают организацию из имени хоста, к которому подключился клиент, — оно передаётся в TLS ClientHello ровно так же, как HTTP читает его из заголовка `Host`. (REQ-1234) Клиент, подключающийся к `acme.provisa.dev`, запрашивает организацию `acme`; запрос отклоняется, если аутентифицированный субъект не является её участником. Подключение по IP-адресу не запрашивает организацию — так происходит с каждым соединением в развёртывании с одной организацией.
 
 ### Полный пример конфигурации аутентификации (закомментирован)
 
@@ -1007,9 +1007,9 @@ PAT не требуют блока конфигурации — они прин�
 #     default_role: analyst
 ```
 
-## Мутации Upsert
+## Мутации upsert
 
-Для таблиц с первичным ключом Provisa автоматически генерирует поля мутаций `upsert_<table>`. (REQ-212) Они компилируются в upsert на целевом диалекте — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` в PostgreSQL, `ON DUPLICATE KEY UPDATE` в MySQL. (REQ-212)
+Для таблиц с первичным ключом Provisa автоматически порождает поля мутации `upsert_<table>`. (REQ-212) Они компилируются в upsert на целевом диалекте — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` в PostgreSQL, `ON DUPLICATE KEY UPDATE` в MySQL. (REQ-212)
 
 ```graphql
 mutation {
@@ -1019,11 +1019,11 @@ mutation {
 }
 ```
 
-Столбцы конфликта выводятся из метаданных PK. (REQ-212) Применяются все правила видимости столбцов и прав записи.
+Столбцы конфликта выводятся из метаданных первичного ключа. (REQ-212) Все правила видимости столбцов и прав на запись действуют.
 
 ## Distinct On
 
-Аргумент `distinct_on` выбирает первую строку для каждого отдельного значения указанных столбцов. (REQ-213) Доступен для корневых полей запроса.
+Аргумент `distinct_on` выбирает первую строку для каждого различного значения указанных столбцов. (REQ-213) Доступен в корневых полях запросов.
 
 ```graphql
 {
@@ -1035,11 +1035,11 @@ mutation {
 }
 ```
 
-Компилируется в `SELECT DISTINCT ON (region) ...` в PostgreSQL. (REQ-213) Для не-PG диалектов используется запасной вариант на основе оконных функций. (REQ-213)
+Компилируется в `SELECT DISTINCT ON (region) ...` в PostgreSQL. (REQ-213) Для диалектов, отличных от PG, используется запасной вариант на оконной функции. (REQ-213)
 
-## Пресеты столбцов
+## Предустановки столбцов
 
-Автоматическое внедрение значений в столбцы при вставке/обновлении. (REQ-214) Определяется для каждой таблицы в конфигурации.
+Автоматически подставляют значения в столбцы при вставке и обновлении. (REQ-214) Задаются для каждой таблицы в конфигурации.
 
 ```yaml
 tables:
@@ -1058,15 +1058,15 @@ tables:
 
 | Источник | Поведение |
 | -------- | ---------- |
-| `header` | Внедряет значение из указанного HTTP-заголовка запроса |
-| `now` | Внедряет `NOW()` (текущую метку времени) |
-| `literal` | Внедряет константное значение |
+| `header` | Подставляет значение из указанного HTTP-заголовка запроса |
+| `now` | Подставляет `NOW()` (текущая отметка времени) |
+| `literal` | Подставляет константу |
 
-Столбцы-пресеты внедряются во время компиляции мутации перед генерацией SQL. (REQ-214) Они не видны во входном типе мутации. (REQ-214)
+Предустановленные столбцы подставляются при компиляции мутации до генерации SQL. (REQ-214) Во входном типе мутации они не видны. (REQ-214)
 
 ## Наследуемые роли
 
-Роли могут наследовать возможности и доступ к домену от родительской роли через `parent_role_id`. (REQ-215) Иерархия сглаживается при запуске. (REQ-215)
+Роли могут наследовать возможности и доступ к доменам от родительской роли через `parent_role_id`. (REQ-215) Иерархия разворачивается при запуске. (REQ-215)
 
 ```yaml
 roles:
@@ -1088,9 +1088,9 @@ roles:
 
 Поддерживается многоуровневое наследование. (REQ-215) Явные возможности и domain_access дочерней роли объединяются с родительскими. (REQ-215)
 
-## Плановые триггеры
+## Триггеры по расписанию
 
-Триггеры на основе cron, вызывающие URL вебхука по расписанию. (REQ-216) Используется APScheduler. (REQ-216)
+Триггеры на основе cron, вызывающие URL веб-перехватчика по расписанию. (REQ-216) Используется APScheduler. (REQ-216)
 
 ```yaml
 scheduled_triggers:
@@ -1104,11 +1104,11 @@ scheduled_triggers:
     enabled: false
 ```
 
-Плановые задачи управляются через админ-интерфейс (переключатель включения/выключения) или административную мутацию `toggle_scheduled_task`. (REQ-216)
+Запланированными задачами управляют через административный интерфейс (переключатель включения) или административную мутацию `toggle_scheduled_task`. (REQ-216)
 
 ## Формат OrderBy
 
-OrderBy использует формат `{column: direction}` с перечислением из 6 направлений: (REQ-200, REQ-201)
+OrderBy использует формат `{column: direction}` с перечислением направлений из шести значений: (REQ-200, REQ-201)
 
 ```graphql
 {
@@ -1160,29 +1160,29 @@ observability:
 
 ### Фильтры телеметрии [tool-verified]
 
-Provisa использует два независимых пути экспорта OTLP: ваш внутренний коллектор и опциональный эндпоинт поддержки Provisa. (REQ-545) У каждого пути свой фильтр. Фильтры выполняются внутри оборачивающего `_FilteringExporter`, прежде чем спаны покинут процесс — исходные объекты спанов никогда не изменяются. (REQ-546) [tool-verified: `provisa/api/otel_setup.py` lines 156–207]
+Provisa ведёт два независимых пути экспорта OTLP: ваш внутренний сборщик и необязательный эндпоинт поддержки Provisa. (REQ-545) У каждого пути свой фильтр. Фильтры работают внутри обёртки `_FilteringExporter` до того, как спаны покинут процесс, — исходные объекты спанов никогда не изменяются. (REQ-546) [tool-verified: `provisa/api/otel_setup.py` lines 156–207]
 
-**`telemetry_filter`** — управляет тем, что попадает в ваш внутренний коллектор.
+**`telemetry_filter`** — определяет, что попадает в ваш внутренний сборщик.
 
 | Ключ | Тип | По умолчанию | Описание |
 | ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `false` | Заменяет строковые и числовые литералы в `db.statement` на `?` |
 | `redact_attributes` | list[str] | `[]` | Ключи атрибутов, полностью удаляемые из каждого спана |
 
-**`support_telemetry_filter`** — управляет тем, что попадает в эндпоинт поддержки Provisa. Редактирование SQL-литералов по умолчанию включено (`true`) на этом пути, поскольку данные запросов принадлежат вам. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
+**`support_telemetry_filter`** — определяет, что попадает на эндпоинт поддержки Provisa. На этом пути скрытие литералов SQL по умолчанию включено, поскольку данные запросов принадлежат вам. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
 
 | Ключ | Тип | По умолчанию | Описание |
 | ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `true` | Заменяет строковые и числовые литералы в `db.statement` на `?` |
 | `redact_attributes` | list[str] | `[]` | Ключи атрибутов, полностью удаляемые из каждого спана |
 
-Пример редактирования `db.statement` — с `redact_sql_literals: true` этот атрибут спана:
+Пример скрытого `db.statement` — при `redact_sql_literals: true` этот атрибут спана:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 ```
 
-становится:
+становится таким:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
@@ -1190,60 +1190,60 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### Эндпоинт поддержки [tool-verified]
 
-`support_endpoint` (или переменная окружения `PROVISA_SUPPORT_OTLP_ENDPOINT`) пересылает телеметрию в службу поддержки Provisa для диагностики. (REQ-548) Когда не задан, никакие данные не покидают вашу инфраструктуру по этому пути. (REQ-548) Фильтр поддержки применяется независимо от внутреннего фильтра — вы можете редактировать SQL-литералы в обоих экспортах, при этом всё же делясь временем выполнения спанов и данными об ошибках со службой поддержки. (REQ-545) [tool-verified: `provisa/api/otel_setup.py` lines 238–288]
+`support_endpoint` (или переменная окружения `PROVISA_SUPPORT_OTLP_ENDPOINT`) пересылает телеметрию в поддержку Provisa для диагностики. (REQ-548) Когда он не задан, по этому пути данные не покидают вашу инфраструктуру. (REQ-548) Фильтр поддержки применяется независимо от внутреннего фильтра — вы можете скрывать литералы SQL в обоих экспортах, продолжая делиться с поддержкой временными характеристиками спанов и данными об ошибках. (REQ-545) [tool-verified: `provisa/api/otel_setup.py` lines 238–288]
 
 ### Определение протокола эндпоинта [tool-verified]
 
-Provisa выбирает OTLP/HTTP или OTLP/gRPC на основе схемы URL эндпоинта. (REQ-549) URL, начинающиеся с `http://` или `https://`, используют OTLP/HTTP, с автоматическим добавлением `/v1/traces`, `/v1/metrics` и `/v1/logs`. (REQ-549) Любая другая схема использует OTLP/gRPC с `insecure=True`. (REQ-549) [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
+Provisa выбирает OTLP/HTTP или OTLP/gRPC по схеме URL эндпоинта. (REQ-549) URL, начинающиеся с `http://` или `https://`, используют OTLP/HTTP, при этом `/v1/traces`, `/v1/metrics` и `/v1/logs` добавляются автоматически. (REQ-549) Любая другая схема использует OTLP/gRPC с `insecure=True`. (REQ-549) [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
 
-## Движок федерации
+## Механизм федерации
 
-Настройка движка федерации опциональна. По умолчанию используется `duckdb` — без конфигурации, встроен в процесс, внешний сервис не требуется (REQ-989). Выбирайте другой движок, когда вам нужен масштаб MPP или вы хотите переиспользовать существующее хранилище.
+Настраивать механизм федерации необязательно. По умолчанию используется `duckdb` — без конфигурации, внутри процесса, без внешнего сервиса (REQ-989). Выбирайте другой механизм, когда нужен масштаб MPP или хочется задействовать существующее хранилище.
 
-Приоритет: переменная окружения `PROVISA_ENGINE` → сохранённое поле конфигурации `federation_engine` из админ-интерфейса → `duckdb`. Изменения вступают в силу после перезапуска сервиса. [tool-verified: `engine.py` `build_engine`]
+Приоритет: переменная окружения `PROVISA_ENGINE` → сохранённое поле конфигурации `federation_engine` из административного интерфейса → `duckdb`. Изменения вступают в силу после перезапуска сервиса. [tool-verified: `engine.py` `build_engine`]
 
-### Обзор движков [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
+### Обзор механизмов [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`]
 
-| Ключ движка | Метка | Диалект | MPP | Механизм внешней связи | Аутентификация |
+| Ключ механизма | Название | Диалект | MPP | Механизм внешней связи | Аутентификация |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
-| `trino` | Provisa Federation Engine | Trino SQL | Да | Каталоги Trino (широкий набор коннекторов) | Учётные данные JDBC |
-| `trino-byo` | Trino | Trino SQL | Да | То же, что и `trino`; неуправляемый координатор | Учётные данные JDBC |
+| `trino` | Механизм федерации Provisa | Trino SQL | Да | Каталоги Trino (широкий набор коннекторов) | Учётные данные JDBC |
+| `trino-byo` | Trino | Trino SQL | Да | То же, что у `trino`; неуправляемый координатор | Учётные данные JDBC |
 | `pg` | PostgreSQL | PostgreSQL | Нет | FDW / pg_duckdb | Учётные данные PostgreSQL |
-| `duckdb` | DuckDB | DuckDB | Нет | Нативный ATTACH расширения | Нет (в процессе) |
-| `clickhouse` | ClickHouse (встроенный) | ClickHouse | Да | Табличные движки S3 / IcebergS3 / DeltaLake | chdb (в процессе, без аутентификации) |
-| `clickhouse-server` | ClickHouse (Server / Cloud) | ClickHouse | Да | Табличные движки S3 / IcebergS3 / DeltaLake | Учётные данные ClickHouse |
-| `snowflake` | Snowflake | Snowflake | Да | Внешняя стадия + внешняя таблица | `PROVISA_ENGINE_URL` |
+| `duckdb` | DuckDB | DuckDB | Нет | Нативный для расширения ATTACH | Нет (внутри процесса) |
+| `clickhouse` | ClickHouse (встроенный) | ClickHouse | Да | Табличные движки S3 / IcebergS3 / DeltaLake | chdb (внутри процесса, без аутентификации) |
+| `clickhouse-server` | ClickHouse (сервер / облако) | ClickHouse | Да | Табличные движки S3 / IcebergS3 / DeltaLake | Учётные данные ClickHouse |
+| `snowflake` | Snowflake | Snowflake | Да | Внешняя площадка + внешняя таблица | `PROVISA_ENGINE_URL` |
 | `databricks` | Databricks | Databricks SQL | Да | Внешние таблицы Unity Catalog через REST | `PROVISA_ENGINE_URL` (bearer-токен + `http_path`) |
-| `bigquery` | BigQuery | BigQuery | Да | Внешние / BigLake таблицы BigQuery | `GOOGLE_APPLICATION_CREDENTIALS` |
-| `fabric` | Microsoft Fabric | T-SQL | Да | Ярлыки OneLake → OPENROWSET | Azure AD (`az login` или управляемая идентичность) |
-| `synapse` | Azure Synapse | T-SQL | Да | ADLS OPENROWSET / внешние таблицы | Azure AD |
-| `mysql` | MySQL | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `mariadb` | MariaDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `oracle` | Oracle Database | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `mssql` | Microsoft SQL Server | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `db2` | IBM Db2 | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `redshift` | Amazon Redshift | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `greenplum` | Greenplum | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `cockroachdb` | CockroachDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `yugabytedb` | YugabyteDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `opengauss` | openGauss | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `tidb` | TiDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `singlestore` | SingleStore | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `vertica` | Vertica | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `exasol` | Exasol | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `teradata` | Teradata Vantage | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `saphana` | SAP HANA | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `sapase` | SAP ASE (Sybase) | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `sqlanywhere` | SAP SQL Anywhere | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `monetdb` | MonetDB | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `firebird` | Firebird | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
-| `sqlalchemy` | Другая реляционная база данных (по URL соединения) | По диалекту | Нет | Нет (только загрузка) | Учётные данные по диалекту |
+| `bigquery` | BigQuery | BigQuery | Да | Внешние таблицы BigQuery / BigLake | `GOOGLE_APPLICATION_CREDENTIALS` |
+| `fabric` | Microsoft Fabric | T-SQL | Да | Ярлыки OneLake → OPENROWSET | Azure AD (`az login` или управляемое удостоверение) |
+| `synapse` | Azure Synapse | T-SQL | Да | OPENROWSET / внешние таблицы ADLS | Azure AD |
+| `mysql` | MySQL | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `mariadb` | MariaDB | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `oracle` | Oracle Database | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `mssql` | Microsoft SQL Server | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `db2` | IBM Db2 | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `redshift` | Amazon Redshift | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `greenplum` | Greenplum | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `cockroachdb` | CockroachDB | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `yugabytedb` | YugabyteDB | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `opengauss` | openGauss | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `tidb` | TiDB | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `singlestore` | SingleStore | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `vertica` | Vertica | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `exasol` | Exasol | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `teradata` | Teradata Vantage | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `saphana` | SAP HANA | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `sapase` | SAP ASE (Sybase) | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `sqlanywhere` | SAP SQL Anywhere | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `monetdb` | MonetDB | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `firebird` | Firebird | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
+| `sqlalchemy` | Другая реляционная база данных (по URL подключения) | По диалекту | Нет | Нет (только приземление) | Учётные данные по диалекту |
 
-### Справочник движков
+### Справочник по механизмам
 
 #### trino / trino-byo
 
-`trino` — управляемый координатор Provisa; `trino-byo` подключается к вашему собственному кластеру Trino. Оба используют Trino SQL и имеют наибольший охват типов источников.
+`trino` — управляемый координатор Provisa; `trino-byo` подключается к вашему собственному кластеру Trino. Оба используют Trino SQL и охватывают самый широкий набор типов источников.
 
 ```bash
 PROVISA_ENGINE=trino
@@ -1255,7 +1255,7 @@ TRINO_PORT=8080
 
 #### pg
 
-Федерация через postgres_fdw (SQL/MED) и расширения pg_duckdb. Единый узел; без MPP. Лучше всего, когда ваши данные уже находятся в PostgreSQL и вы хотите присоединить несколько удалённых источников.
+Федерация через расширения postgres_fdw (SQL/MED) и pg_duckdb. Один узел; без MPP. Лучший выбор, когда данные уже лежат в PostgreSQL и нужно подключить к ним несколько удалённых источников.
 
 ```bash
 PROVISA_ENGINE=pg
@@ -1266,17 +1266,17 @@ PROVISA_ENGINE=pg
 
 #### duckdb
 
-В процессе; внешний сервис не требуется. Движок по умолчанию (REQ-989). `PROVISA_DATA_DIR` определяет, где находится встроенное хранилище (по умолчанию `~/.provisa`).
+Внутри процесса; без внешнего сервиса. Механизм по умолчанию (REQ-989). `PROVISA_DATA_DIR` задаёт расположение встроенного хранилища (`~/.provisa` по умолчанию).
 
 ```bash
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-Хранилище материализации по умолчанию — `~/.provisa/materialize.duckdb` — единственный движок с хранилищем по умолчанию, отличным от PostgreSQL.
+Хранилище материализации по умолчанию — `~/.provisa/materialize.duckdb`: единственный механизм, у которого хранилище по умолчанию не на PostgreSQL.
 
 #### clickhouse (встроенный) / clickhouse-server
 
-`clickhouse` использует chdb (в процессе). `clickhouse-server` подключается к внешнему экземпляру ClickHouse или ClickHouse Cloud. Оба читают Delta Lake, Iceberg и Hudi напрямую через нативные табличные движки ClickHouse.
+`clickhouse` использует chdb (внутри процесса). `clickhouse-server` подключается к внешнему экземпляру ClickHouse или к ClickHouse Cloud. Оба читают Delta Lake, Iceberg и Hudi напрямую через нативные табличные движки ClickHouse.
 
 ```bash
 # External server
@@ -1288,7 +1288,7 @@ PROVISA_ENGINE_URL="clickhouse://user:pass@host:9000/db"
 
 #### snowflake
 
-Движок как хранилище: Snowflake выполняет запросы; Provisa проталкивает данные источников через внешние стадии.
+Механизм как хранилище: запросы выполняет Snowflake, а Provisa передаёт данные источников через внешние площадки.
 
 ```bash
 PROVISA_ENGINE=snowflake
@@ -1299,7 +1299,7 @@ PROVISA_ENGINE_URL="snowflake://user:pass@account/db/schema?warehouse=WH"
 
 #### databricks
 
-Внешние таблицы Unity Catalog связывают источники, управляемые Provisa, с Databricks SQL.
+Внешние таблицы Unity Catalog связывают источники под управлением Provisa с Databricks SQL.
 
 ```bash
 PROVISA_ENGINE=databricks
@@ -1310,7 +1310,7 @@ PROVISA_ENGINE_URL="databricks://token:TOKEN@my-workspace.azuredatabricks.net?ht
 
 #### bigquery
 
-Внешние и BigLake таблицы BigQuery. Проект берётся из URL или `GOOGLE_CLOUD_PROJECT`; аутентификация через ключ сервисного аккаунта.
+Внешние таблицы BigQuery и BigLake. Проект берётся из URL или `GOOGLE_CLOUD_PROJECT`; аутентификация — по ключу служебного аккаунта.
 
 ```bash
 PROVISA_ENGINE=bigquery
@@ -1322,7 +1322,7 @@ PROVISA_ENGINE_URL="bigquery://my-project?location=US"
 
 #### fabric / synapse
 
-Оба используют T-SQL поверх TDS с аутентификацией Azure AD (`az login` или управляемая идентичность). Опустите `PROVISA_ENGINE_URL`, чтобы вместо этого читать данные соединения из переменных окружения.
+Оба используют T-SQL поверх TDS с аутентификацией Azure AD (`az login` или управляемое удостоверение). Не задавайте `PROVISA_ENGINE_URL`, чтобы читать параметры подключения из переменных окружения.
 
 ```bash
 PROVISA_ENGINE=fabric
@@ -1335,9 +1335,9 @@ PROVISA_ENGINE=synapse
 
 Хранилище материализации по умолчанию — `TENANT_DATABASE_URL`.
 
-#### Движки реляционных баз данных (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) и `sqlalchemy`
+#### Механизмы на реляционных базах данных (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) и `sqlalchemy`
 
-По одному ключу на каждую доступную по сети реляционную базу данных, все — на одном и том же режиме исполнения только-загрузка (без федерации к внешним источникам): каждый источник загружается в хранилище и опрашивается там же. Ключ выбирает базу данных; `PROVISA_ENGINE_URL` несёт DSN, который принимает её диалект. `sqlalchemy` — универсальный вариант для базы данных без собственного ключа. Встроенные файловые хранилища (SQLite, Access) не предлагаются — сервер должен быть доступен по сети.
+По одному ключу на каждую сетевую реляционную базу данных, и все они работают в одном режиме «только приземление» (без федерации к внешним источникам): каждый источник приземляется в хранилище и запрашивается там. Ключ выбирает базу данных; `PROVISA_ENGINE_URL` несёт DSN в формате её диалекта. `sqlalchemy` — универсальный вариант для базы данных, у которой нет собственного ключа. Файловые встроенные хранилища (SQLite, Access) не предлагаются — сервер должен быть доступен по сети.
 
 ```bash
 PROVISA_ENGINE=mysql
@@ -1348,13 +1348,13 @@ PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 
 ### Хранилище материализации
 
-Когда источник не может подключиться вживую (нет коннектора ATTACH для выбранного движка), он загружается в хранилище материализации движка. Порядок разрешения: явный `PROVISA_MATERIALIZE_URL` → заявленное значение по умолчанию движка → явная ошибка (без бесшумного запасного варианта). [tool-verified: `engine.py` `materialize_store`]
+Когда источник нельзя подключить вживую (для выбранного механизма нет коннектора ATTACH), он приземляется в хранилище материализации этого механизма. Порядок разрешения: явный `PROVISA_MATERIALIZE_URL` → объявленное значение по умолчанию для механизма → явная ошибка (молчаливого запасного варианта нет). [tool-verified: `engine.py` `materialize_store`]
 
-DuckDB объявляет свой встроенный файл (`~/.provisa/materialize.duckdb`) как значение по умолчанию. Все остальные движки по умолчанию используют `TENANT_DATABASE_URL` (PostgreSQL). Переопределите для любого движка через `PROVISA_MATERIALIZE_URL`.
+DuckDB объявляет своим значением по умолчанию встроенный файл (`~/.provisa/materialize.duckdb`). Все остальные механизмы по умолчанию используют `TENANT_DATABASE_URL` (PostgreSQL). Любой механизм можно переопределить через `PROVISA_MATERIALIZE_URL`.
 
-### Подсказки федерации для отдельного источника
+### Подсказки федерации на уровне источника
 
-Расширенные параметры соединения, которые не могут нести стандартные поля host/port/user/password, помещаются в `federation_hints` источника. Ключи подсказок для каждого типа см. в справочнике типов источников выше. Сводный пример:
+Расширенные параметры подключения, которые не помещаются в стандартные поля host/port/user/password, задаются в `federation_hints` на источнике. Ключи подсказок для каждого типа перечислены в справочнике по типам источников выше. Сводный пример:
 
 ```yaml
 sources:
@@ -1391,55 +1391,55 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-Для источников Google Cloud установите `GOOGLE_APPLICATION_CREDENTIALS` на путь к файлу ключа сервисного аккаунта. Для Fabric и Synapse аутентифицируйтесь через `az login` (для разработки) или управляемую идентичность (для продакшена) — движок читает учётные данные через `DefaultAzureCredential` из `azure-identity`.
+Для источников в Google Cloud задайте в `GOOGLE_APPLICATION_CREDENTIALS` путь к файлу ключа служебного аккаунта. Для Fabric и Synapse аутентифицируйтесь через `az login` (разработка) или управляемое удостоверение (продуктив) — механизм читает учётные данные через `DefaultAzureCredential` из `azure-identity`.
 
 ## Переменные окружения
 
 | Переменная | По умолчанию | Описание |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Путь к файлу конфигурации |
-| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | URI хранилища управляющей плоскости (SQLAlchemy async); принимает `sqlite+aiosqlite://…` / `duckdb://…` для встроенного десктопного хранилища (REQ-828, REQ-850) |
-| `PLATFORM_DATABASE_URL` | — | URI реестра платформы (каталог тенантов, реестр движков); обязателен при запуске, без запасного варианта (REQ-837) |
-| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` использует встроенный fakeredis вместо сервера Redis — без Docker (REQ-829) |
+| `TENANT_DATABASE_URL` | `postgresql+asyncpg://provisa:provisa@localhost:5432/provisa` | URI хранилища плоскости управления (асинхронный SQLAlchemy); принимает `sqlite+aiosqlite://…` / `duckdb://…` для встроенного настольного хранилища (REQ-828, REQ-850) |
+| `PLATFORM_DATABASE_URL` | — | URI реестра платформы (каталог арендаторов, реестр механизмов); обязателен при запуске, запасного значения нет (REQ-837) |
+| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` включает встроенный fakeredis вместо сервера Redis — без Docker (REQ-829) |
 | `PG_HOST` | `localhost` | Хост PostgreSQL |
 | `PG_PORT` | `5432` | Порт PostgreSQL |
 | `PG_DATABASE` | `provisa` | База данных PostgreSQL |
 | `PG_USER` | `provisa` | Пользователь PostgreSQL |
 | `PG_PASSWORD` | `provisa` | Пароль PostgreSQL |
-| `PROVISA_ENGINE` | `duckdb` | Ключ движка федерации (REQ-989, REQ-916) |
-| `PROVISA_ENGINE_URL` | — | URL соединения для движков, управляемых URL (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
-| `PROVISA_MATERIALIZE_URL` | — | Переопределяет DSN хранилища материализации (по умолчанию — заявленное значение движка) |
+| `PROVISA_ENGINE` | `duckdb` | Ключ механизма федерации (REQ-989, REQ-916) |
+| `PROVISA_ENGINE_URL` | — | URL подключения для механизмов, управляемых через URL (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
+| `PROVISA_MATERIALIZE_URL` | — | Переопределяет DSN хранилища материализации (по умолчанию берётся объявленное значение механизма) |
 | `PROVISA_DATA_DIR` | `~/.provisa` | Каталог данных для встроенного хранилища DuckDB (REQ-989) |
 | `TRINO_HOST` | `localhost` | Хост координатора Trino |
 | `TRINO_PORT` | `8080` | HTTP-порт координатора Trino |
-| `GOOGLE_APPLICATION_CREDENTIALS` | — | Путь к JSON-ключу сервисного аккаунта GCP (движок/источник BigQuery) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | — | Путь к JSON-ключу служебного аккаунта GCP (механизм/источник BigQuery) |
 | `GOOGLE_CLOUD_PROJECT` | — | Проект GCP по умолчанию (BigQuery; переопределяется URL) |
 | `FABRIC_SQL_SERVER` | — | SQL-эндпоинт Fabric Warehouse (альтернатива `PROVISA_ENGINE_URL`) |
 | `FABRIC_DATABASE` | — | Имя базы данных Fabric Warehouse |
 | `SYNAPSE_SQL_SERVER` | — | Бессерверный SQL-эндпоинт Synapse |
 | `SYNAPSE_DATABASE` | — | Имя базы данных Synapse |
-| `REDIS_URL` | — | URL соединения Redis |
-| `PROVISA_SAMPLE_SIZE` | `10000` | Лимит выборки по умолчанию |
-| `PROVISA_DEFAULT_ROW_LIMIT` | `100` | Ограничение строк, когда запрос не задаёт явный `LIMIT` |
-| `PROVISA_RETRY_BUDGET_SECS` | `30` | Бюджет повторных попыток чтения уровня 1 в секундах; экспоненциальная задержка с полным джиттером (REQ-703) |
+| `REDIS_URL` | — | URL подключения к Redis |
+| `PROVISA_SAMPLE_SIZE` | `10000` | Предел выборки по умолчанию |
+| `PROVISA_DEFAULT_ROW_LIMIT` | `100` | Ограничение числа строк, когда запрос не задаёт явный `LIMIT` |
+| `PROVISA_RETRY_BUDGET_SECS` | `30` | Бюджет повторов чтения уровня 1 в секундах; экспоненциальная задержка с полным разбросом (REQ-703) |
 | `ZAYCHIK_PORT` | `8480` | Порт прокси Zaychik Flight SQL |
-| `FLIGHT_PORT` | `8815` | Порт сервера Arrow Flight Provisa |
-| `GRPC_PORT` | `50051` | Порт сервера gRPC Protobuf Provisa |
-| `PROVISA_REDIRECT_ENABLED` | `false` | Включить пороговое перенаправление на стороне сервера |
+| `FLIGHT_PORT` | `8815` | Порт сервера Arrow Flight в Provisa |
+| `GRPC_PORT` | `50051` | Порт сервера Protobuf gRPC в Provisa |
+| `PROVISA_REDIRECT_ENABLED` | `false` | Включает серверное перенаправление по порогу |
 | `PROVISA_REDIRECT_THRESHOLD` | `1000` | Порог количества строк по умолчанию |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Формат перенаправления по умолчанию |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Бакет S3 для перенаправленных результатов |
 | `PROVISA_REDIRECT_ENDPOINT` | — | URL S3-совместимого эндпоинта |
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | Ключ доступа S3 |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | Секретный ключ S3 |
-| `PROVISA_REDIRECT_TTL` | `3600` | TTL подписанного URL (секунды) |
-| `PROVISA_MTLS_CLIENT_CA` | — | PEM-набор УЦ, которым разрешено подписывать клиентские сертификаты; его установка включает проверку клиентских сертификатов на pgwire, Bolt, gRPC и Flight (REQ-1228) |
-| `PROVISA_MTLS_MODE` | `required`, как только задан УЦ | `required` или `optional`; любое другое значение приводит к отказу от запуска (REQ-1228) |
-| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Требует, чтобы common name сертификата совпадал с аутентифицирующимся именем пользователя (REQ-1228) |
-| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Разделённый запятыми список сайтов, которым разрешено открывать Bolt-WebSocket из браузера; если не задана, отклоняется любой браузерный origin (REQ-802) |
-| `PROVISA_EXTRAS` | `firebase,vector` | Extras Pyproject, запечённые в образ приложения; `scripts/provisa` выводит его из `dq_checker` в `~/.provisa/config.yaml` (REQ-1443) |
+| `PROVISA_REDIRECT_TTL` | `3600` | TTL предподписанного URL (в секундах) |
+| `PROVISA_MTLS_CLIENT_CA` | — | Набор PEM с центрами сертификации, которым разрешено подписывать клиентские сертификаты; его установка включает проверку клиентских сертификатов на pgwire, Bolt, gRPC и Flight (REQ-1228) |
+| `PROVISA_MTLS_MODE` | `required`, когда задан CA | `required` или `optional`; любое другое значение приводит к отказу от запуска (REQ-1228) |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Требовать, чтобы общее имя сертификата совпадало с именем аутентифицирующегося пользователя (REQ-1228) |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Разделённый запятыми список сайтов, которым разрешено открывать WebSocket Bolt из браузера; если не задано, любой браузерный источник отклоняется (REQ-802) |
+| `PROVISA_EXTRAS` | `firebase,vector` | Дополнения pyproject, встроенные в образ приложения; `scripts/provisa` выводит его из `dq_checker` в `~/.provisa/config.yaml` (REQ-1443) |
 | `PROVISA_DQ_CHECKER` | `none` | Только для установщика: `none`/`soda`/`gx`, читается `first-launch.sh` в неинтерактивном режиме и записывается в `config.yaml` как `dq_checker` (REQ-1443) |
-| `ANTHROPIC_API_KEY` | — | API-ключ Claude (обнаружение) |
+| `ANTHROPIC_API_KEY` | — | Ключ API Claude (обнаружение) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Переопределяет `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Переопределяет `observability.service_name` |
 | `OTEL_LOG_LEVEL` | `WARNING` | Переопределяет `observability.log_level` |

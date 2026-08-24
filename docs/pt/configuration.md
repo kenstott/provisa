@@ -29,7 +29,7 @@ Todas as fontes compartilham um conjunto comum de campos. [tool-verified: `provi
 | `port` | `0` | `0` significa que cada conector fornece seu próprio padrão — não há um mapa central de portas padrão |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | Suporta resolução de segredo `${env:VAR}` |
+| `password` | `""` | Suporta referências de credencial `${env:VAR}` e `${secret:NAME}` — veja [Segredos](secrets.md) |
 | `path` | `null` | Caminho de arquivo ou URI para fontes baseadas em arquivo |
 | `base_url` | `null` | URL base para fontes de API |
 | `pool_min` / `pool_max` | `1` / `5` | Limites do pool de conexão |

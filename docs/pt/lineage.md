@@ -1,9 +1,9 @@
 # Lineage em Nível de Coluna
 
 O Provisa rastreia lineage de dados em nível de coluna de forma estática — computado a partir de definições
-SQL e contratos de command, sem execução necessária. Duas views estão disponíveis: um DAG por
-declaração e um grafo de proveniência federation-wide abrangendo todas as views e views materializadas
-(MVs) registradas.
+SQL e contratos de command, sem execução necessária. Duas exibições estão disponíveis: um DAG por
+declaração e um grafo de proveniência abrangendo toda a federação, cobrindo todas as exibições e exibições
+materializadas (MVs) registradas.
 
 ## O explorador de lineage
 
@@ -14,7 +14,7 @@ proveniência sobre todas as MVs no registro. [tool-verified: LineagePage.tsx:28
 ## DAG em nível de declaração (REQ-1160)
 
 Cada coluna de saída nomeada no seu SQL se torna um nó. O builder a rastreia de volta através de
-todo CTE, subconsulta, join, e chamada de command inline até suas colunas de fonte, construindo um
+todo CTE, subconsulta, join e chamada de command inline até suas colunas de fonte, construindo um
 grafo direcionado das entradas de fonte até as saídas finais.
 
 ### Exemplo trabalhado
@@ -33,7 +33,7 @@ orders.id   ─╮                                              (taint closure)
 orders.region ─╯
 ```
 
-- `orders.id`, `orders.region`, e `orders.geo` são nós de **fonte** (o contrato de entrada estreito
+- `orders.id`, `orders.region` e `orders.geo` são nós de **fonte** (o contrato de entrada estreito
   de `enrich_grpc_set` declara `id` e `region`; o fechamento de contaminação completo conecta todas
   as entradas declaradas a todas as saídas). [tool-verified: `_splice_commands` in graph.py:223-242]
 - `e.embedding` e `e.geo` são nós de **command** — a fronteira `enrich_grpc_set`.
@@ -57,31 +57,31 @@ fechamento de contaminação continuamente das colunas declaradas da relação d
 Anéis adicionais em um nó:
 
 - **Anel laranja** — uma coluna de saída final da declaração.
-- **Borda dupla** — a relação da coluna é uma view materializada (snapshot MV/CTAS).
+- **Borda dupla** — a relação da coluna é uma exibição materializada (snapshot MV/CTAS).
 - **Anel vermelho** — membro de um ciclo classificado como erro.
-- **Anel amarelo** — membro de um ciclo classificado como loop de feedback.
+- **Anel amarelo** — membro de um ciclo classificado como laço de realimentação.
 
 [tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
 
-### Transformações nomeadas em arestas
+### Transformações nomeadas nas arestas
 
-Toda aresta carrega a expressão SQL bruta que produz a coluna alvo, mais uma lista de operações
-nomeadas: funções SQL (`sql_function`), operadores aritméticos/lógicos (`operator`), commands
-registrados (`command`), referências de coluna simples (`identity`), e literais (`constant`).
+Toda aresta carrega a expressão SQL bruta que produz a coluna de destino, mais uma lista de
+operações nomeadas: funções SQL (`sql_function`), operadores aritméticos/lógicos (`operator`),
+commands registrados (`command`), referências simples de coluna (`identity`) e literais (`constant`).
 [tool-verified: TransformOp and name_transform in graph.py:36-145]
 
-Uma aresta de uma chamada de command é renderizada como uma linha roxa tracejada na UI.
+Uma aresta vinda de uma chamada de command é renderizada como uma linha roxa tracejada na UI.
 [tool-verified: LineageDag.tsx:122-124]
 
-## Grafo federation-wide (REQ-1161)
+## Grafo abrangendo toda a federação (REQ-1161)
 
-O grafo de federação mescla o lineage por declaração de toda MV registrada em um único grafo de
-proveniência. A identidade do nó é `relation.column` — a coluna de saída de uma view e a
-referência de entrada de outra view para a mesma coluna colapsam em um nó. O resultado é um único
-DAG das colunas de fonte base até todo dataset derivado na plataforma. [tool-verified: `build_federation_graph` in merge.py:205-229
+O grafo de federação funde o lineage por declaração de cada MV registrada em um único grafo de proveniência.
+A identidade do nó é `relation.column` — a coluna de saída de uma exibição e a referência de entrada de outra
+exibição à mesma coluna colapsam em um só nó. O resultado é um único DAG das colunas de fonte base até
+cada conjunto de dados derivado na plataforma. [tool-verified: `build_federation_graph` in merge.py:205-229
 and `qualify_outputs` in graph.py:275-299]
 
-Use `focus`, `direction`, e `depth` para delimitar a view em escala de federação sem recomputar
+Use `focus`, `direction` e `depth` para delimitar a exibição em escala de federação sem recomputar
 o grafo. [tool-verified: `slice_graph` in merge.py:160-189]
 
 ## Ciclos (REQ-1161)
@@ -91,15 +91,15 @@ Ciclos são descritos, não rejeitados. O motor de lineage detecta todo ciclo di
 
 | Classificação | Cor da borda | Significado |
 | --- | --- | --- |
-| `feedback` | Amarelo | O ciclo atravessa um nó materializado — um loop de feedback legal e defasado no tempo. O snapshot da MV é a fronteira de versão que o torna bem definido. |
-| `error` | Vermelho | Nenhuma fronteira de materialização no loop — uma definição circular sem ordem de avaliação estável. Provavelmente um erro de design. |
+| `feedback` | Amarelo | O ciclo cruza um nó materializado — um laço de realimentação legítimo e defasado no tempo. O snapshot da MV é a fronteira de versão que o torna bem definido. |
+| `error` | Vermelho | Nenhuma fronteira de materialização no laço — uma definição circular sem ordem de avaliação estável. Provavelmente um erro de projeto. |
 
 [tool-verified: LineagePage.tsx:83-98 cycle alert rendering; merge.py:38-48]
 
-Um ciclo `feedback` não é uma falha. Uma MV de enriquecimento que realimenta uma coluna derivada de
-volta à sua própria relação de fonte é um padrão válido desde que um nó no loop seja materializado
-— o snapshot isola as duas metades temporalmente. Um ciclo `error` precisa de julgamento do
-operador: geralmente significa que duas views se referenciam mutuamente sem um snapshot entre elas.
+Um ciclo `feedback` não é uma falha. Uma MV de enriquecimento que realimenta uma coluna derivada em sua
+própria relação de fonte é um padrão válido desde que um nó do laço seja materializado — o
+snapshot isola as duas metades temporalmente. Um ciclo `error` exige julgamento do operador: normalmente
+significa que duas exibições se referenciam mutuamente sem snapshot no meio.
 
 ## API
 
@@ -146,7 +146,7 @@ Retorna HTTP 422 quando o SQL não pode ser analisado.
 
 ### GET /admin/lineage/federation
 
-Retorna o grafo de proveniência mesclado sobre todas as MVs no registro.
+Retorna o grafo de proveniência fundido sobre todas as MVs no registro.
 
 ```http
 GET /admin/lineage/federation
@@ -159,9 +159,9 @@ Parâmetros de consulta [tool-verified: function signature at lineage_router.py:
 
 | Parâmetro | Valores | Padrão | Efeito |
 | --- | --- | --- | --- |
-| `focus` | Um id de nó | — | Delimita a resposta ao subgrafo ao redor deste nó |
+| `focus` | Um id de nó | — | Delimita a resposta ao subgrafo em torno deste nó |
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Qual direção percorrer a partir de `focus` |
-| `depth` | inteiro | ilimitado | Distância máxima de hop a partir de `focus` |
+| `depth` | inteiro | sem limite | Distância máxima em saltos a partir de `focus` |
 
 A resposta tem o mesmo formato do grafo de declaração, com um campo `cycles` adicionado
 [tool-verified: `MergedGraph.to_dict` in merge.py:60-64]:
@@ -185,20 +185,19 @@ A resposta tem o mesmo formato do grafo de declaração, com um campo `cycles` a
 
 Uma coluna carrega dois nomes, e cada um é armazenado por um conjunto diferente de artefatos.
 
-O **nome exposto** é o que as superfícies SQL e GraphQL mostram: `table_columns.alias`, recaindo
+O **nome exposto** é o que as interfaces SQL e GraphQL mostram: `table_columns.alias`, recaindo
 para o padrão snake_case quando nenhum alias está definido [tool-verified: `computed_sql_alias` at
-`schema_helpers.py:317`]. Views, views materializadas, expressões de métrica, predicados RLS,
-contratos DQ, grãos de metric-view e chaves de linha de MV são todos definidos contra esse nome,
-então **renomear um alias os quebra tão certamente quanto excluir a coluna**.
+`schema_helpers.py:317`]. Exibições, exibições materializadas, expressões de métrica, predicados de RLS,
+contratos de DQ, grãos de exibição de métrica e chaves de linha de MV são todos escritos contra aquele nome, então
+**renomear um alias os quebra tão certamente quanto excluir a coluna**.
 
-O **nome físico** é `table_columns.column_name`, a identidade que sobrevive à substituição
-completa de colunas do upsert de tabela. Relacionamentos, vínculos de glossário, atribuições de
-tag, a coluna de watermark e os presets de coluna armazenam este, então eles só quebram quando a
-coluna é **removida**.
+O **nome físico** é `table_columns.column_name`, a identidade que sobrevive à substituição integral de
+colunas feita pelo upsert da tabela. Relacionamentos, vínculos de [glossário](glossary.md), atribuições de tag, a coluna
+de watermark e presets de coluna guardam este, então eles só quebram quando a coluna é **removida**.
 
-`columnDependents` reporta ambos. Views e MVs a jusante vêm de fatiar o grafo de federação no nome
-exposto da coluna; os artefatos que esse grafo não cobre vêm de uma varredura direta do registro
-[tool-verified: `graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
+`columnDependents` reporta ambos. Exibições e MVs a jusante vêm de fatiar o grafo de federação no
+nome exposto da coluna; os artefatos que o grafo não cobre vêm de uma varredura direta do
+registro [tool-verified: `graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
 `provisa/api/admin/column_dependents.py`].
 
 ```graphql
@@ -210,34 +209,32 @@ query {
 }
 ```
 
-`breaksOn` é `rename` para uma referência de nome exposto e `remove` para uma de nome físico, então
-quem chama consegue identificar qual metade da edição cada artefato está reagindo.
+`breaksOn` é `rename` para uma referência ao nome exposto e `remove` para uma ao nome físico, de modo que quem
+chama consegue dizer a qual metade da edição cada artefato está reagindo.
 
-Faça essa pergunta **antes** de salvar. Uma coluna renomeada é localizada pelo nome exposto que
-ainda carrega no registro; uma vez que o alias foi aplicado, o nome antigo se foi e a consulta não
-encontra nada.
+Pergunte isto **antes** de salvar. Uma coluna renomeada é localizada pelo nome exposto que ela ainda carrega no
+registro; uma vez que o alias tenha sido aplicado, o nome antigo se foi e a consulta não encontra nada.
 
-A página Tables roda a consulta automaticamente quando uma edição pendente muda um alias ou reduz
-o conjunto de colunas, e lista o que encontra [tool-verified: `diffEditedColumns` in
+A página de Tabelas roda a consulta automaticamente quando uma edição pendente muda um alias ou encolhe o
+conjunto de colunas, e lista o que encontra [tool-verified: `diffEditedColumns` in
 `provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]. O aviso é consultivo:
-nomeia os artefatos afetados e o administrador decide. Ele não bloqueia o salvamento, porque nem
-todos os consumidores do estado podem ser alcançados — um dashboard externo ou uma aplicação
-cliente que consulta a coluna pelo nome está além do conhecimento do registro. Pela mesma razão,
-varreduras sobre texto SQL livre casam a coluna como um token identificador em vez de resolver
-escopo, o que pode nomear um artefato que acaba não usando a coluna. Superestimar é a direção
-segura para um aviso.
+ele nomeia os artefatos afetados e o administrador decide. Ele não bloqueia o salvamento, porque
+os consumidores do patrimônio não podem ser todos alcançados — um painel externo ou uma aplicação cliente que
+consulta a coluna pelo nome está além do conhecimento do registro. Pela mesma razão, varreduras sobre
+texto SQL livre casam a coluna como um token identificador em vez de resolver escopo, o que pode nomear um
+artefato que acaba não usando a coluna. Reportar demais é a direção segura para um aviso.
 
 ## Usando lineage para governar contratos de command
 
-Como o fechamento de contaminação conecta toda coluna de entrada declarada a toda coluna de saída
-declarada, a amplitude desse fechamento depende inteiramente do que você declara.
+Como o fechamento de contaminação conecta cada coluna de entrada declarada a cada coluna de saída declarada,
+a amplitude desse fechamento depende inteiramente do que você declara.
 
-Considere um command que recebe uma tabela orders completa (`id`, `region`, `amount`,
-`customer_id`, `discount`, `notes`, ...) e retorna um `embedding`. Se o contrato de entrada lista
-todas essas colunas, toda coluna a jusante que usa o embedding mostrará lineage de todas elas.
-Isso é correto mas não útil — é difícil dizer o que realmente importou.
+Considere um command que recebe uma tabela de orders completa (`id`, `region`, `amount`, `customer_id`,
+`discount`, `notes`, ...) e retorna um `embedding`. Se o contrato de entrada listar todas essas
+colunas, cada coluna a jusante que usar o embedding mostrará lineage a partir de todas elas.
+Isso é preciso mas não é útil — fica difícil dizer o que realmente importou.
 
-Declare somente `id` e `text` (as colunas que o modelo de embedding realmente lê), e o cone de
-lineage se estreita para essas duas colunas de fonte. A derivação é tanto correta quanto precisa.
+Declare somente `id` e `text` (as colunas que o modelo de embedding de fato lê), e o cone de
+lineage se aperta para essas duas colunas de fonte. A derivação é ao mesmo tempo correta e precisa.
 
 Veja [Commands](commands.md) para a mecânica de declarar um contrato de entrada estreito.

@@ -158,4 +158,3 @@ curl -s -X POST http://localhost:8001/data/sql \
 | JDBC, כלי BI, Arrow Flight, Apollo Federation | [integrations.md](integrations.md) |
 | לקוח Python | [python-client.md](python-client.md) |
 | פריסת ייצור | [deployment.md](deployment.md) |
-</content>

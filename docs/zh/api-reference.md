@@ -200,6 +200,67 @@ Cypher 查询也可以提交给仅支持 Cypher 的 `POST /query/cypher` 端点�
 
 ---
 
+### `POST /data/sql/explain`
+
+通过受治理管道解释或分析一条 SQL 语句。(REQ-1519) [tool-verified: `provisa/api/data/endpoint_dev.py:328`]
+
+该端点会把**受治理的** SQL——即在 RLS 与脱敏之后、真正以调用者角色运行的那条语句——包裹进该方言的 EXPLAIN 语法中。计划展示的是查询的授权版本，而非原始输入。
+
+**请求体：**
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders",
+  "role": "admin",
+  "analyze": false
+}
+```
+
+设置 `analyze: true` 以运行 EXPLAIN ANALYZE。查询会实际执行，计划中带有真实的行数与耗时。并非每种方言都支持 ANALYZE；参见[查询计划与统计信息](engines.md#query-plans-and-statistics)中的表格。
+
+**响应：** `{"plan": "<plan text or JSON>", "dialect": "trino", "analyzed": false}`
+
+当方言不支持 EXPLAIN，或在不支持 ANALYZE 的方言（例如 SQLite）上请求 `analyze: true` 时，返回 `400`。[tool-verified: `provisa/executor/explain.py:wrap_explain`, `analyze_sql`]
+
+---
+
+### `GET /data/engine/state`
+
+返回引擎分片的当前状态，且不会唤醒它。(REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:892`]
+
+界面会轮询该端点，以便在引擎冷启动期间显示启动横幅。它绝不会触发唤醒——轮询是安全的，也不会被空闲回收器计为活动。
+
+**响应：**
+
+```json
+{"state": "ready"}
+```
+
+可能的取值：
+
+| 状态 | 含义 |
+| --- | --- |
+| `always-on` | 桌面版、自托管或自带协调器——不做生命周期管理 |
+| `ready` | 分片已启动并接受查询 |
+| `starting` | 冷启动进行中 |
+| `stopped` | 分片已缩容至零 |
+
+[tool-verified: `provisa/federation/engine_wake.py:engine_state`]
+
+---
+
+### `POST /data/engine/prewarm`
+
+在不运行查询的情况下触发引擎唤醒。(REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:913`]
+
+立即返回 `202 Accepted`。唤醒在后台进行。若希望在第一条查询到达之前引擎已就绪，可使用它——例如由几分钟后才运行查询的调度器发起。
+
+**响应：** `202 Accepted`，响应体 `{"started": true}`
+
+[tool-verified: `provisa/federation/engine_wake.py:prewarm_engine`]
+
+---
+
 ### `GET /data/rest/{domain_id}/{table_name}`
 
 为每张已注册表自动生成的普通 REST 端点。查询字符串映射为 GraphQL 参数，请求通过与 GraphQL 相同的管道（RLS、脱敏、路由）编译并执行。(REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
@@ -394,6 +455,30 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点上的浏览器 UI。
 
 重新加载失败时：`{"success": false, "message": "<error>"}`。
 
+#### `GET /admin/config/live`
+
+下载**当前实时配置**——即 Provisa 此刻会写出的配置，反映自启动以来累积的每一处管理端创建的表、关联、域、角色和 RLS 规则。(REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+
+若改动是通过 Admin API 做出且此后未再上传，磁盘上的文件可能落后于实时状态。该端点弥合这一差距：它的输出正是 `PUT /admin/config` 需要收到、才能让磁盘文件与实时状态一致的内容。
+
+返回 `application/x-yaml`，并带 `Content-Disposition: attachment; filename=provisa.live.yaml`。
+
+#### `GET /admin/config/diff`
+
+返回配置差异的两侧——`original`（启动时的基线）与 `current`（实时状态）——二者以相同方式规范化，因此比较只呈现真正的改动，而非重新排序或注释漂移。(REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:82`]
+
+**响应：**
+
+```json
+{"original": "<yaml>", "current": "<yaml>"}
+```
+
+#### `POST /admin/config/patch`
+
+生成一个从基线到所提交配置的 unified diff 补丁。(REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:93`]
+
+把修订后的 YAML 作为请求体发送。响应是一个 `text/x-patch` 文件（`provisa.config.patch`），`git apply` 或 `patch` 可直接使用——便于把界面驱动的配置改动经由 CI/CD 管道提交。
+
 ---
 
 ### 设置
@@ -467,6 +552,99 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点上的浏览器 UI。
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
+
+---
+
+### AI 模型
+
+#### `GET /admin/ai-models`
+
+返回当前操作所属组织的 AI 模型分配、向量模型注册表以及自然语言速率限制。(REQ-464、REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:58`]
+
+**响应：**
+
+```json
+{
+  "ai_models": {
+    "nl": "claude-3-5-sonnet-20241022",
+    "embedding": "text-embedding-3-small"
+  },
+  "vector_models": [...],
+  "nl": {"rate_limit": 20},
+  "api_keys_set": {"anthropic": true, "openai": false}
+}
+```
+
+API 密钥绝不会被回显——`api_keys_set` 只报告每个供应商是否已配置密钥。改动自下一次请求起生效，无需重启。(REQ-1349)
+
+#### `PUT /admin/ai-models`
+
+更新该组织的 AI 模型分配、向量模型注册表或自然语言速率限制。自下一次请求起生效。[tool-verified: `provisa/api/admin/ai_models_router.py:148`]
+
+#### `GET /admin/ai-models/vendors/{vendor}/models`
+
+返回某供应商当前提供的模型名称，供模型选择器使用。(REQ-1395、REQ-1398、REQ-1409) [tool-verified: `provisa/api/admin/ai_models_router.py:89`]
+
+该列表使用组织已配置的密钥（未设置组织密钥时则用部署凭据），从供应商自身的 list-models API 实时读取。在本版本发布之后才推出的模型，供应商上线当天即可选择。
+
+当供应商未发布 list-models API（此时直接输入模型名称）或没有可用密钥时，返回 `400`。[tool-verified: `provisa/api/admin/ai_models_router.py:109-128`]
+
+---
+
+### 联邦引擎
+
+#### `GET /admin/federation-engine`
+
+返回当前的联邦引擎选择、其连接配置，以及完整的可选引擎注册表。(REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:730`]
+
+**响应：**
+
+```json
+{
+  "current": "trino",
+  "persisted": "trino",
+  "registry": [
+    {"key": "trino", "label": "Trino (embedded)", "fields": [...]},
+    {"key": "duckdb", "label": "DuckDB", "fields": []}
+  ],
+  "note": "Changing the federation engine takes effect after the service is restarted."
+}
+```
+
+`current` 键是此刻正在运行的引擎；`persisted` 是写入配置文件、并将在下次重启时加载的那个。当配置已更改但服务尚未重启时，二者会不一致。
+
+#### `PUT /admin/federation-engine`
+
+持久化一次联邦引擎选择。(REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:774`]
+
+**请求体：**
+
+```json
+{"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
+```
+
+该选择会写入平台配置。它在下次服务重启后生效——引擎在启动时选定一次。
+
+---
+
+### 域策略
+
+#### `POST /admin/domain-policy`
+
+更改当前操作所属组织的域策略（`use_domains` / `default_domain`）。(REQ-165、REQ-1266、REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
+
+这是限定在该组织范围内的破坏性操作。每个已注册的数据源、表、域和关联都会被清除并按新策略重建。在把某组织从域命名空间切换为扁平（或反向切换）时使用它。
+
+**请求体：**
+
+```json
+{
+  "use_domains": true,
+  "default_domain": "default"
+}
+```
+
+`use_domains: null` 会清除该组织的覆盖设置，回落到部署级设置。`use_domains: false` 需要提供 `default_domain`（所有表落入的那个唯一域名）。目录重建是同步的；响应在架构就绪后才返回。
 
 ---
 
@@ -574,6 +752,136 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点上的浏览器 UI。
 #### `POST /admin/source-meta/db-description`
 
 为某数据源的表和列生成 LLM 辅助描述。[tool-verified: `provisa/api/admin/source_meta_router.py:48`]
+
+---
+
+### 对象存储（REQ-1046、REQ-1048、REQ-1049）
+
+#### `GET /admin/org-storage`
+
+报告当前操作所属组织相对其平台配额的存储占用，以及该组织是否已注册自有存储。[tool-verified: `provisa/api/admin/org_storage_router.py:69`]
+
+当组织已注册自有 DSN 时，其物化会落到那里，且不再计入配额。DSN 本身绝不返回。
+
+#### `PUT /admin/org-storage`
+
+注册（或清除）该组织自有的物化存储。[tool-verified: `provisa/api/admin/org_storage_router.py:81`]
+
+**请求体：**
+
+```json
+{"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
+```
+
+DSN 在被接受之前会先针对联邦引擎进行验证——不可用的 DSN 在注册时即失败，而不是数小时后在刷新过程中才暴露。该值静态加密存储，GET 绝不返回。
+
+发送 `storage_url: null` 可清除组织自有存储，并把其物化归还到平台存储（及配额）。组织运行时会在同一次调用中重建，因此新存储立即生效。[tool-verified: `provisa/api/admin/org_storage_router.py:123-138`]
+
+---
+
+### 组织加密（REQ-1574）
+
+#### `GET /admin/org-encryption`
+
+返回该组织当前的密钥状态：指纹、id 和来源。绝不返回密钥材料。[tool-verified: `provisa/api/admin/org_encryption_router.py:53`]
+
+当组织未设置密钥时，返回 `{"configured": false}`。每个组织都以此状态起步，并继承部署的密钥。
+
+#### `PUT /admin/org-encryption`
+
+设置或轮换该组织的静态加密密钥。[tool-verified: `provisa/api/admin/org_encryption_router.py:68`]
+
+**请求体：**
+
+```json
+{"key_b64": "<32 raw bytes, base64-encoded>"}
+```
+
+省略 `key_b64` 可让 Provisa 生成密钥——这是最稳妥的路径，因为密钥不会出现在剪贴板或请求日志中。提供 `key_b64` 则表示自带密钥。
+
+轮换会向密钥环中新增一个活动条目并保留旧条目，因此以先前密钥写入的数据仍可读取。轮换不是重新加密。没有删除端点：停用最后一个密钥会让每一份被包裹的载荷都无法读取。[tool-verified: `provisa/api/admin/org_encryption_router.py:75`]
+
+实时密钥环会在同一次调用中重新绑定，因此下一次加密写入立即使用新密钥。
+
+---
+
+### Hasura / DDN 导入（REQ-1483）
+
+#### `POST /admin/import/hasura/preview`
+
+把 Hasura v2 或 DDN 项目归档转换为建议的 Provisa 配置，且不写入任何内容。[tool-verified: `provisa/api/admin/import_router.py`]
+
+**请求体：**
+
+```json
+{
+  "filename": "my-project.zip",
+  "content_b64": "<base64-encoded archive>",
+  "flavor": "auto",
+  "domain_map": {"public": "sales"},
+  "source_overrides": {}
+}
+```
+
+`flavor` 可为 `"auto"`（从归档结构中检测）、`"hasura_v2"` 或 `"ddn"`。
+
+**响应：**
+
+```json
+{
+  "config_yaml": "...",
+  "warnings": ["..."],
+  "summary": {
+    "sources": 1, "domains": 2, "tables": 40,
+    "columns": 180, "roles": 3, "relationships": 15, "rls_rules": 6
+  }
+}
+```
+
+不会持久化任何内容。预览不在服务端缓存；`apply` 取用的是你提交的 YAML，因此所应用的内容与所审阅（并可选择性编辑过）的完全一致。
+
+#### `POST /admin/import/hasura/apply`
+
+把先前预览过的配置加载到当前操作所属的组织。[tool-verified: `provisa/api/admin/import_router.py`]
+
+**请求体：**
+
+```json
+{"config_yaml": "<yaml string>"}
+```
+
+使用与 `PUT /admin/config` 相同的热重载路径。该组织的目录、架构与连接池会在响应返回之前完成重建。
+
+---
+
+### Apache Ossie 互通（REQ-1316、REQ-1321）
+
+#### `GET /admin/ossie`
+
+把该组织的受治理模型导出为 Apache Ossie（孵化中）YAML 文档。(REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+该文档在每次请求时都从实时状态推导——绝不缓存——因此不可能过期。表成为 `dataset` 对象，列成为 `field` 对象，关联映射为 Ossie 的 `relationship` 对象。
+
+返回 `text/yaml`，并带 `Content-Disposition: attachment; filename=provisa-ossie.yaml`。
+
+#### `POST /admin/ossie/import`
+
+解析一份 Ossie 的 YAML 或 JSON 文档，并返回建议注册的表与关联。(REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**请求体：** 原始的 Ossie YAML 或 JSON。格式自动检测。
+
+**响应：**
+
+```json
+{
+  "proposals": {
+    "tables": [...],
+    "relationships": [...]
+  }
+}
+```
+
+不会注册任何内容。请使用管理界面的审阅页面，在任何变更触发之前接受或删减这些建议。
 
 ---
 

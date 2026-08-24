@@ -379,6 +379,9 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | הפניית נקודות קצה (GraphQL, REST, Flight, gRPC) | [docs/api-reference.md](docs/api-reference.md) |
 | עיצוב מערכת ומפת רכיבים | [docs/architecture.md](docs/architecture.md) |
 | מודל אבטחה (RLS, מיסוך, אימות) | [docs/security.md](docs/security.md) |
+| אחסון סודות והפניות `${secret:NAME}` | [docs/secrets.md](docs/secrets.md) |
+| מילון עסקי ואצירת מונחים | [docs/glossary.md](docs/glossary.md) |
+| סביבות (dev / staging / prod) | [docs/environments.md](docs/environments.md) |
 | סוגי מקור נתמכים | [docs/sources.md](docs/sources.md) |
 | מנויי SSE | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, כלי BI, לקוחות Arrow Flight, Apollo Federation | [docs/integrations.md](docs/integrations.md) |

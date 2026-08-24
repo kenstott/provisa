@@ -23,6 +23,25 @@
 
 ## 所有数据源
 
+Provisa 注册了 **53** 种数据源类型。下面各表覆盖全部 53 种；序号即为计数。[tool-verified: `provisa/core/models.py` `SourceType`]
+
+| # | 分组 | 数据源类型 |
+| --- | --- | --- |
+| 1–13 | [关系型数据库（RDBMS）](#rdbms) | `postgresql`、`mysql`、`mariadb`、`singlestore`、`sqlserver`、`oracle`、`duckdb`、`cockroachdb`、`yugabytedb`、`greenplum`、`tidb`、`firebird`、`airport` |
+| 14–20 | [云数据仓库](#_4) | `snowflake`、`bigquery`、`databricks`、`redshift`、`fabric`、`synapse`、`trino` |
+| 21–25 | [分析型 / OLAP](#olap) | `clickhouse`、`druid`、`exasol`、`elasticsearch`、`pinot` |
+| 26–30 | [数据湖 / 开放表格式](#_5) | `iceberg`、`delta_lake`、`hudi`、`hive`、`hive_s3` |
+| 31–33 | [NoSQL](#nosql) | `mongodb`、`cassandra`、`redis` |
+| 34–36 | [流式处理](#_6) | `kafka`、`websocket`、`rss` |
+| 37 | [推送接收方](#_7) | `ingest` |
+| 38–39 | [图与语义](#_8) | `neo4j`、`sparql` |
+| 40–43 | [基于文件](#_9) | `sqlite`、`csv`、`parquet`、`files` |
+| 44–45 | [可观测性与其他](#_10) | `google_sheets`、`prometheus` |
+| 46–47 | [企业级 SaaS](#saas) | `sharepoint`、`splunk` |
+| 48–50 | [API 数据源](#api) | `openapi`、`graphql_remote`、`grpc_remote` |
+| 51 | [GovData](#govdata) | `govdata` |
+| 52–53 | [数据质量检查器](#req-1443) | `soda`、`great_expectations` |
+
 Provisa 支持的每种数据源类型的参考。“直接驱动”表示单数据源查询会针对数据源原生执行（低于 100 毫秒）（REQ-027）。“连接器名称”是该数据源参与多数据源 JOIN 时使用的联邦连接器（REQ-028）。[tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
 ### 关系型数据库（RDBMS）
@@ -40,6 +59,8 @@ Provisa 支持的每种数据源类型的参考。“直接驱动”表示单数
 | `yugabytedb` | asyncpg（pg wire） | postgresql | postgres | 支持 |
 | `greenplum` | asyncpg（pg wire） | postgresql | postgres | 支持 |
 | `tidb` | aiomysql（mysql wire） | mysql | mysql | 支持 |
+| `firebird` | — | —（DuckDB 扩展） | — | 不支持 |
+| `airport` | — | —（DuckDB 扩展） | — | 不支持 |
 
 线协议兼容的数据库复用某个基础线协议的 JDBC 驱动、原生异步驱动和方言——CockroachDB、YugabyteDB 和 Greenplum 搭乘 PostgreSQL 的线协议；TiDB 搭乘 MySQL 的线协议。它们只需要注册表条目，无需新的连接器代码。[tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
@@ -80,6 +101,7 @@ Provisa 支持的每种数据源类型的参考。“直接驱动”表示单数
 | `iceberg` | iceberg | 支持（`as_of` 参数，REQ-372） | — |
 | `delta_lake` | delta_lake | 支持（`as_of` 参数，REQ-372） | — |
 | `hive` | hive | 不支持 | — |
+| `hudi` | —（ClickHouse `Hudi` 引擎，零拷贝 — REQ-1178） | 不支持 | 无联邦连接器；当 ClickHouse 为活动引擎时就地访问 |
 | `hive_s3` | hive | 不支持 | S3 支持的 Hive |
 
 ### NoSQL

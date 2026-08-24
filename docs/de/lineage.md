@@ -197,7 +197,7 @@ alle gegen diesen Namen geschrieben, sodass **das Umbenennen eines Alias sie gen
 bricht wie das Löschen der Spalte**.
 
 Der **physische Name** ist `table_columns.column_name`, die Identität, die den vollständigen
-Spaltenersatz beim Tabellen-Upsert überlebt. Relationships, Glossar-Bindungen,
+Spaltenersatz beim Tabellen-Upsert überlebt. Relationships, [Glossar](glossary.md)-Bindungen,
 Tag-Zuweisungen, die Watermark-Spalte und Spalten-Presets speichern diesen, sodass sie nur
 brechen, wenn die Spalte **entfernt** wird.
 

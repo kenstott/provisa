@@ -60,7 +60,7 @@ GET  /admin/security
 PUT  /admin/security
 ```
 
-Asignaciones de modelos de IA, el registro de modelos de embeddings/vectores, y el límite de tasa de NL — aplicados al reiniciar (REQ-1080):
+Asignaciones de modelos de IA, el registro de modelos de embeddings/vectores, y el límite de tasa de NL — surten efecto en la siguiente solicitud, sin necesidad de reiniciar (REQ-1349): [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
 
 ```http
 GET  /admin/ai-models
@@ -70,6 +70,17 @@ PUT  /admin/ai-models
 La pestaña de cifrado del admin deriva su lista de proveedores en vivo desde el registro de cifrado; los proveedores no disponibles aparecen pero no son seleccionables (REQ-1091).
 
 `GET`/`HEAD /health` y `GET /setup/status` siempre están sin autenticar — eluden el requisito de `Authorization: Bearer` incluso cuando hay un proveedor de autenticación configurado (REQ-539).
+
+### Motor de federación
+
+Lea o cambie qué motor usa el despliegue (REQ-916):
+
+```http
+GET  /admin/federation-engine
+PUT  /admin/federation-engine
+```
+
+`GET` devuelve la clave del motor activo y los campos de configuración que necesita. `PUT` acepta un cuerpo con `engine` (la clave) y cualquier campo específico del motor; la selección se persiste en la configuración de la plataforma y se vincula en el siguiente reinicio del servicio. [tool-verified: `provisa/api/admin/settings_router.py:730-829`]
 
 ### Editor de Relaciones
 
@@ -227,6 +238,68 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
 ```
 
 Una vez registradas, las tablas aparecen en el esquema de GraphQL y son consultables como cualquier otro origen (REQ-016).
+
+### Importación de Hasura / DDN (REQ-1483)
+
+Convierta un proyecto existente de Hasura v2 o de Hasura DDN en configuración de Provisa desde la interfaz de administración o la API, sin que nada aterrice hasta que usted lo apruebe.
+
+```http
+POST /admin/import/hasura/preview
+POST /admin/import/hasura/apply
+```
+
+**La vista previa** convierte el archivo cargado y devuelve el `config_yaml` propuesto, una lista de advertencias y un resumen de lo encontrado (recuentos de orígenes, dominios, tablas, columnas, roles, relaciones y RLS). No se escribe nada en la base de datos del inquilino. Cuerpo de la solicitud:
+
+```json
+{
+  "filename": "my-hasura-project.zip",
+  "content_b64": "<base64-encoded archive>",
+  "flavor": "auto",
+  "domain_map": {"public": "sales"},
+  "source_overrides": {}
+}
+```
+
+`flavor` es `"auto"` (detectado a partir de la estructura del archivo), `"hasura_v2"` o `"ddn"`.
+
+**La aplicación** toma el YAML que usted revisó (y editó, si procede) y lo carga en la organización que actúa, por la misma ruta de recarga en caliente que `PUT /admin/config`. Cuerpo de la solicitud: `{"config_yaml": "<yaml string>"}`.
+
+La vista previa nunca almacena en caché el YAML convertido en el servidor; la aplicación toma el YAML que usted proporciona, así que lo que se aplica es exactamente lo que se revisó. [tool-verified: `provisa/api/admin/import_router.py`]
+
+### Intercambio con Apache Ossie (REQ-1316, REQ-1321)
+
+Provisa interopera con Apache Ossie (en incubación) como frontera de importación y exportación.
+
+```http
+GET  /admin/ossie
+POST /admin/ossie/import
+```
+
+**La exportación** (`GET /admin/ossie`) deriva el documento YAML de Ossie del modelo gobernado en vivo en cada solicitud: nunca se almacena en caché, así que no puede quedar obsoleto. La respuesta es `text/yaml` con una cabecera `Content-Disposition: attachment`. Las tablas se convierten en objetos `dataset`, las columnas en objetos `field`, y las relaciones se asignan a objetos `relationship` de Ossie. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+
+**La importación** (`POST /admin/ossie/import`) acepta un documento YAML o JSON de Ossie (el formato se detecta automáticamente). Analiza el documento y devuelve los registros propuestos de tablas y relaciones como un objeto JSON; no se registra nada. La pantalla de revisión de la interfaz de administración le permite aceptar o recortar las propuestas antes de que se dispare ninguna mutación. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+
+### Almacenamiento de objetos (REQ-1046, REQ-1048, REQ-1049)
+
+Lea o configure el almacenamiento de materialización de la organización:
+
+```http
+GET  /admin/org-storage
+PUT  /admin/org-storage
+```
+
+`GET` informa de cuánta asignación de almacenamiento de la plataforma usa la organización. `PUT` registra el DSN de almacenamiento propio de la organización (cifrado en reposo; nunca lo devuelve GET). Una vez establecido, las materializaciones de la organización aterrizan en su propio bucket y dejan de contar contra la asignación de la plataforma. Enviar `storage_url: null` lo borra y devuelve la organización al almacén de la plataforma. [tool-verified: `provisa/api/admin/org_storage_router.py`]
+
+### Cifrado de la organización (REQ-1574)
+
+Establezca o rote la clave de cifrado en reposo de la organización:
+
+```http
+GET  /admin/org-encryption
+PUT  /admin/org-encryption
+```
+
+`GET` devuelve la huella, el id y la procedencia de la clave; nunca el material de la clave. `PUT` establece o rota la clave. Proporcione `key_b64` (32 bytes en bruto, codificados en base64) para aportar su propia clave, u omítalo para que Provisa genere una. No hay eliminación: retirar la última clave dejaría ilegible toda carga que hubiera envuelto. [tool-verified: `provisa/api/admin/org_encryption_router.py`]
 
 ## GraphiQL
 

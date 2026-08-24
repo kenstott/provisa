@@ -200,6 +200,67 @@ Devuelve `{"data": ...}` para GraphQL, `{"columns": [...], "rows": [...]}` para 
 
 ---
 
+### `POST /data/sql/explain`
+
+Explica o analiza una sentencia SQL a través del pipeline gobernado. (REQ-1519) [tool-verified: `provisa/api/data/endpoint_dev.py:328`]
+
+El endpoint envuelve el SQL **gobernado** —la sentencia que realmente se ejecuta bajo el rol del llamante, después de RLS y enmascaramiento— en la sintaxis EXPLAIN del dialecto. Lo que muestra el plan es la versión autorizada de la consulta, no la entrada sin procesar.
+
+**Cuerpo de la solicitud:**
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders",
+  "role": "admin",
+  "analyze": false
+}
+```
+
+Establezca `analyze: true` para ejecutar EXPLAIN ANALYZE. La consulta se ejecuta y el plan incluye recuentos de filas y tiempos reales. No todos los dialectos admiten ANALYZE; consulte la tabla en [Planes de consulta y estadísticas](engines.md#query-plans-and-statistics).
+
+**Respuesta:** `{"plan": "<plan text or JSON>", "dialect": "trino", "analyzed": false}`
+
+`400` cuando el dialecto no admite EXPLAIN, o cuando se solicita `analyze: true` en un dialecto que no lo admite (por ejemplo, SQLite). [tool-verified: `provisa/executor/explain.py:wrap_explain`, `analyze_sql`]
+
+---
+
+### `GET /data/engine/state`
+
+Devuelve el estado actual del shard del motor sin despertarlo. (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:892`]
+
+La interfaz consulta este endpoint para mostrar un aviso de arranque mientras el motor está en arranque en frío. Nunca provoca un despertar: consultarlo es seguro y no cuenta como actividad para el recolector de inactividad.
+
+**Respuesta:**
+
+```json
+{"state": "ready"}
+```
+
+Valores posibles:
+
+| Estado | Significado |
+| --- | --- |
+| `always-on` | Escritorio, autoalojado o coordinador propio — sin gestión de ciclo de vida |
+| `ready` | El shard está activo y acepta consultas |
+| `starting` | Arranque en frío en curso |
+| `stopped` | El shard está escalado a cero |
+
+[tool-verified: `provisa/federation/engine_wake.py:engine_state`]
+
+---
+
+### `POST /data/engine/prewarm`
+
+Provoca el despertar del motor sin ejecutar una consulta. (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:913`]
+
+Devuelve `202 Accepted` de inmediato. El despertar se ejecuta en segundo plano. Úselo si quiere que el motor esté listo antes de que llegue la primera consulta — por ejemplo, desde un planificador que ejecuta consultas unos minutos después.
+
+**Respuesta:** `202 Accepted`, cuerpo `{"started": true}`
+
+[tool-verified: `provisa/federation/engine_wake.py:prewarm_engine`]
+
+---
+
 ### `GET /data/rest/{domain_id}/{table_name}`
 
 Endpoint REST plano generado automáticamente para cada tabla registrada. La cadena de consulta se asigna a argumentos GraphQL y la solicitud se compila y ejecuta a través del mismo pipeline (RLS, enmascaramiento, enrutamiento) que GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
@@ -394,6 +455,30 @@ Sube un YAML de configuración revisado. El servidor escribe una copia de seguri
 
 En caso de error de recarga: `{"success": false, "message": "<error>"}`.
 
+#### `GET /admin/config/live`
+
+Descarga la **configuración activa actual** — la configuración tal como Provisa la escribiría hoy, reflejando cada tabla, relación, dominio, rol y regla RLS creados por el administrador que se han acumulado desde el arranque. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+
+El archivo en disco puede quedar por detrás del estado activo si se hicieron cambios mediante la API de administración sin una carga posterior. Este endpoint cierra esa brecha: su salida es lo que `PUT /admin/config` tendría que recibir para que el archivo en disco coincida con el estado activo.
+
+Devuelve `application/x-yaml` con `Content-Disposition: attachment; filename=provisa.live.yaml`.
+
+#### `GET /admin/config/diff`
+
+Devuelve ambos lados de la comparación de configuración — `original` (la línea base del arranque) y `current` (el estado activo) — normalizados de forma idéntica, de modo que la comparación muestre solo cambios reales, no reordenaciones ni variaciones en los comentarios. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:82`]
+
+**Respuesta:**
+
+```json
+{"original": "<yaml>", "current": "<yaml>"}
+```
+
+#### `POST /admin/config/patch`
+
+Genera un parche en formato unified diff desde la línea base hasta la configuración enviada. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:93`]
+
+Envíe el YAML revisado como cuerpo de la solicitud. La respuesta es un archivo `text/x-patch` (`provisa.config.patch`) que `git apply` o `patch` pueden consumir directamente — útil para confirmar en el repositorio los cambios de configuración hechos desde la interfaz mediante un pipeline de CI/CD.
+
 ---
 
 ### Configuración (Settings)
@@ -467,6 +552,99 @@ Campos actualizables por sección:
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
+
+---
+
+### Modelos de IA
+
+#### `GET /admin/ai-models`
+
+Devuelve las asignaciones de modelos de IA de la organización activa, el registro de modelos vectoriales y el límite de tasa de NL. (REQ-464, REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:58`]
+
+**Respuesta:**
+
+```json
+{
+  "ai_models": {
+    "nl": "claude-3-5-sonnet-20241022",
+    "embedding": "text-embedding-3-small"
+  },
+  "vector_models": [...],
+  "nl": {"rate_limit": 20},
+  "api_keys_set": {"anthropic": true, "openai": false}
+}
+```
+
+Las claves de API nunca se devuelven — `api_keys_set` solo indica si cada proveedor tiene una clave configurada. Los cambios surten efecto en la siguiente solicitud; no hace falta reiniciar. (REQ-1349)
+
+#### `PUT /admin/ai-models`
+
+Actualiza las asignaciones de modelos de IA de la organización, el registro de modelos vectoriales o el límite de tasa de NL. Surte efecto en la siguiente solicitud. [tool-verified: `provisa/api/admin/ai_models_router.py:148`]
+
+#### `GET /admin/ai-models/vendors/{vendor}/models`
+
+Devuelve los nombres de modelo que sirve actualmente un proveedor, para el selector de modelos. (REQ-1395, REQ-1398, REQ-1409) [tool-verified: `provisa/api/admin/ai_models_router.py:89`]
+
+La lista se lee en vivo desde la propia API de listado de modelos del proveedor usando la clave configurada de la organización — o la credencial del despliegue cuando la organización no tiene clave. Un modelo publicado después de compilarse esta versión se puede seleccionar el mismo día en que el proveedor lo sirve.
+
+Devuelve `400` cuando el proveedor no publica una API de listado de modelos (en ese caso, escriba el nombre del modelo directamente) o cuando no hay ninguna clave disponible. [tool-verified: `provisa/api/admin/ai_models_router.py:109-128`]
+
+---
+
+### Motor de federación
+
+#### `GET /admin/federation-engine`
+
+Devuelve la selección actual del motor de federación, su configuración de conexión y el registro completo de motores seleccionables. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:730`]
+
+**Respuesta:**
+
+```json
+{
+  "current": "trino",
+  "persisted": "trino",
+  "registry": [
+    {"key": "trino", "label": "Trino (embedded)", "fields": [...]},
+    {"key": "duckdb", "label": "DuckDB", "fields": []}
+  ],
+  "note": "Changing the federation engine takes effect after the service is restarted."
+}
+```
+
+La clave `current` es el motor en ejecución en este momento; `persisted` es lo que se escribe en el archivo de configuración y se cargará en el próximo reinicio. Divergen cuando la configuración se cambió pero el servicio aún no se ha reiniciado.
+
+#### `PUT /admin/federation-engine`
+
+Guarda una selección de motor de federación. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:774`]
+
+**Cuerpo de la solicitud:**
+
+```json
+{"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
+```
+
+La selección se escribe en la configuración de la plataforma. Surte efecto tras el siguiente reinicio del servicio — el motor se elige una sola vez, en el arranque.
+
+---
+
+### Política de dominios
+
+#### `POST /admin/domain-policy`
+
+Cambia la política de dominios de la organización activa (`use_domains` / `default_domain`). (REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
+
+Es una operación destructiva limitada a la organización activa. Todos los orígenes, tablas, dominios y relaciones registrados se purgan y se reconstruyen bajo la nueva política. Úsela al cambiar una organización de espacios de nombres por dominio a plana (o al revés).
+
+**Cuerpo de la solicitud:**
+
+```json
+{
+  "use_domains": true,
+  "default_domain": "default"
+}
+```
+
+`use_domains: null` elimina la anulación de la organización y vuelve al ajuste del despliegue. `use_domains: false` requiere `default_domain` (el nombre del dominio único en el que aterrizan todas las tablas). La reconstrucción del catálogo es síncrona; la respuesta se devuelve cuando los esquemas están listos.
 
 ---
 
@@ -574,6 +752,136 @@ Ejecuta un perfil de columnas en una tabla registrada — cardinalidad, mínimo/
 #### `POST /admin/source-meta/db-description`
 
 Genera descripciones asistidas por LLM para las tablas y columnas de un origen. [tool-verified: `provisa/api/admin/source_meta_router.py:48`]
+
+---
+
+### Almacenamiento de objetos (REQ-1046, REQ-1048, REQ-1049)
+
+#### `GET /admin/org-storage`
+
+Informa de la huella de almacenamiento de la organización activa frente a su asignación de plataforma, y de si la organización ha registrado su propio almacén. [tool-verified: `provisa/api/admin/org_storage_router.py:69`]
+
+Cuando la organización ha registrado su propio DSN, sus materializaciones van allí y dejan de contar contra la asignación. El DSN nunca se devuelve.
+
+#### `PUT /admin/org-storage`
+
+Registra (o elimina) el almacén de materialización propio de la organización. [tool-verified: `provisa/api/admin/org_storage_router.py:81`]
+
+**Cuerpo de la solicitud:**
+
+```json
+{"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
+```
+
+El DSN se valida contra el motor de federación antes de aceptarse — un DSN inservible falla en el registro, no horas después durante una actualización. El valor se cifra en reposo y GET nunca lo devuelve.
+
+Envíe `storage_url: null` para eliminar el almacén propio de la organización y devolver sus materializaciones al almacén de la plataforma (y a la asignación). El runtime de la organización se reconstruye en la misma llamada, de modo que el nuevo almacén es efectivo de inmediato. [tool-verified: `provisa/api/admin/org_storage_router.py:123-138`]
+
+---
+
+### Cifrado de la organización (REQ-1574)
+
+#### `GET /admin/org-encryption`
+
+Devuelve el estado actual de la clave de la organización: huella, id y procedencia. Nunca devuelve material de clave. [tool-verified: `provisa/api/admin/org_encryption_router.py:53`]
+
+Cuando la organización no ha establecido ninguna clave, devuelve `{"configured": false}`. Toda organización empieza en este estado y hereda la clave del despliegue.
+
+#### `PUT /admin/org-encryption`
+
+Establece o rota la clave de cifrado en reposo de la organización. [tool-verified: `provisa/api/admin/org_encryption_router.py:68`]
+
+**Cuerpo de la solicitud:**
+
+```json
+{"key_b64": "<32 raw bytes, base64-encoded>"}
+```
+
+Omita `key_b64` para que Provisa genere una clave — la vía más segura, ya que la clave nunca aparece en un portapapeles ni en un registro de solicitudes. Indicar `key_b64` significa aportar su propia clave.
+
+La rotación añade una nueva entrada activa al anillo de claves y conserva la anterior, de modo que los datos escritos con la clave previa siguen siendo legibles. La rotación no es un recifrado. No hay endpoint de borrado: retirar la última clave haría ilegible toda carga envuelta. [tool-verified: `provisa/api/admin/org_encryption_router.py:75`]
+
+El anillo activo se revincula en la misma llamada, de modo que la siguiente escritura cifrada usa la nueva clave de inmediato.
+
+---
+
+### Importación de Hasura / DDN (REQ-1483)
+
+#### `POST /admin/import/hasura/preview`
+
+Convierte un archivo comprimido de un proyecto Hasura v2 o DDN en configuración propuesta de Provisa sin escribir nada. [tool-verified: `provisa/api/admin/import_router.py`]
+
+**Cuerpo de la solicitud:**
+
+```json
+{
+  "filename": "my-project.zip",
+  "content_b64": "<base64-encoded archive>",
+  "flavor": "auto",
+  "domain_map": {"public": "sales"},
+  "source_overrides": {}
+}
+```
+
+`flavor` es `"auto"` (detectado a partir de la estructura del archivo comprimido), `"hasura_v2"` o `"ddn"`.
+
+**Respuesta:**
+
+```json
+{
+  "config_yaml": "...",
+  "warnings": ["..."],
+  "summary": {
+    "sources": 1, "domains": 2, "tables": 40,
+    "columns": 180, "roles": 3, "relationships": 15, "rls_rules": 6
+  }
+}
+```
+
+No se guarda nada. La vista previa no se almacena en caché en el servidor; `apply` toma el YAML que usted envía, así que lo que se aplica es exactamente lo que se revisó (y, si acaso, se editó).
+
+#### `POST /admin/import/hasura/apply`
+
+Carga en la organización activa una configuración previamente vista. [tool-verified: `provisa/api/admin/import_router.py`]
+
+**Cuerpo de la solicitud:**
+
+```json
+{"config_yaml": "<yaml string>"}
+```
+
+Usa la misma vía de recarga en caliente que `PUT /admin/config`. El catálogo, los esquemas y los pools de la organización se reconstruyen antes de que se devuelva la respuesta.
+
+---
+
+### Intercambio con Apache Ossie (REQ-1316, REQ-1321)
+
+#### `GET /admin/ossie`
+
+Exporta el modelo gobernado de la organización como un documento YAML de Apache Ossie (en incubación). (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+El documento se deriva del estado activo en cada solicitud —nunca se almacena en caché—, de modo que no puede quedar obsoleto. Las tablas pasan a ser objetos `dataset`, las columnas objetos `field`, y las relaciones se corresponden con objetos `relationship` de Ossie.
+
+Devuelve `text/yaml` con `Content-Disposition: attachment; filename=provisa-ossie.yaml`.
+
+#### `POST /admin/ossie/import`
+
+Analiza un documento Ossie en YAML o JSON y devuelve registros propuestos de tablas y relaciones. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**Cuerpo de la solicitud:** YAML o JSON de Ossie sin procesar. El formato se detecta automáticamente.
+
+**Respuesta:**
+
+```json
+{
+  "proposals": {
+    "tables": [...],
+    "relationships": [...]
+  }
+}
+```
+
+No se registra nada. Use la pantalla de revisión de la interfaz de administración para aceptar o recortar las propuestas antes de que se dispare cualquier mutación.
 
 ---
 

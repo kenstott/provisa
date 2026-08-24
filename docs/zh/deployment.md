@@ -814,3 +814,6 @@ git push
 git pull
 provisa import config.yaml
 ```
+
+
+另见：[环境](environments.md)讲解如何管理受治理模型的具名、模式隔离副本。

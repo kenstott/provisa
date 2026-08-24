@@ -29,7 +29,7 @@ sources:
 | `port` | `0` | `0` משמעו שכל מחבר מספק ברירת מחדל משלו — אין מפת פורט-ברירת-מחדל מרכזית |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | תומך בפענוח סוד `${env:VAR}` |
+| `password` | `""` | תומך בהפניות אישורים `${env:VAR}` ו-`${secret:NAME}` — ראו [סודות](secrets.md) |
 | `path` | `null` | נתיב קובץ או URI למקורות מבוססי-קובץ |
 | `base_url` | `null` | כתובת URL בסיסית למקורות API |
 | `pool_min` / `pool_max` | `1` / `5` | גבולות pool החיבורים |
@@ -65,7 +65,7 @@ sources:
 | `synapse` | משתני סביבה או `PROVISA_ENGINE_URL` | T-SQL על גבי TDS, אימות Azure AD |
 | `redshift` | host/port | |
 | **OLAP** | | |
-| `clickhouse` | host/port + `federation_hints` | ה-hint‏ `secure` מפעיל TLS; ברירת מחדל לפורט 8123/8443 |
+| `clickhouse` | host/port + `federation_hints` | ה-hint `secure` מפעיל TLS; ברירת מחדל לפורט 8123/8443 |
 | `elasticsearch` | host/port + `mapping` DSL | |
 | `pinot` | host/port | נקודת קצה REST של הבקר |
 | `druid` | host/port | נקודת קצה Avatica של ה-broker |
@@ -143,7 +143,7 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-הסכמות `ref` ו-`geo` תמיד כלולות כסכמות מקשרות (linker) — אינן ניתנות להגדרה ואינן מופיעות ברשימה לעיל. (REQ-541) השתמשו ב-subject‏ `ALL` כדי להעניק גישה לכל הסכמות. [tool-verified: `provisa/core/models.py:961-963`]
+הסכמות `ref` ו-`geo` תמיד כלולות כסכמות מקשרות (linker) — אינן ניתנות להגדרה ואינן מופיעות ברשימה לעיל. (REQ-541) השתמשו ב-subject `ALL` כדי להעניק גישה לכל הסכמות. [tool-verified: `provisa/core/models.py:961-963`]
 
 #### Kafka [tool-verified: `provisa/federation/trino_connectors.py:497-502`, `provisa/api/app_loaders.py:113-118`]
 
@@ -247,7 +247,7 @@ sources:
 
 #### Fabric / Synapse [tool-verified: `provisa/core/models.py:56-57`]
 
-שניהם משתמשים ב-T-SQL על גבי TDS עם אימות Azure AD. התאמתו עם `az login` (פיתוח) או זהות מנוהלת (ייצור) — המנוע קורא את האישורים דרך `DefaultAzureCredential` של `azure-identity`. פרטי חיבור מגיעים ממשתני סביבה: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE‏` (Fabric) או `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE‏` (Synapse), או דרך `PROVISA_ENGINE_URL`.
+שניהם משתמשים ב-T-SQL על גבי TDS עם אימות Azure AD. התאמתו עם `az login` (פיתוח) או זהות מנוהלת (ייצור) — המנוע קורא את האישורים דרך `DefaultAzureCredential` של `azure-identity`. פרטי חיבור מגיעים ממשתני סביבה: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) או `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), או דרך `PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -919,7 +919,7 @@ auth:
 | ספק | מקרה שימוש | אימות token |
 | ---------- | ---------- | ----------------- |
 | `simple` | פיתוח/בדיקות מקומיים. משתמשים מוגדרים ב-YAML. | JWT חתום עם `PROVISA_JWT_SECRET` |
-| `firebase` | Firebase Authentication (כל השיטות). | `verify_id_token()` של SDK‏ `firebase-admin` |
+| `firebase` | Firebase Authentication (כל השיטות). | `verify_id_token()` של SDK `firebase-admin` |
 | `keycloak` | Keycloak OIDC. תפקידי דייר + לקוח ממופים. | אימות JWT מבוסס JWKS |
 | `oauth` | OIDC גנרי (Okta, Azure AD, Auth0, PingFederate). | JWKS מ-URL גילוי |
 | `basic` | פריסות עצמאיות. החשבונות שוכנים במאגר של Provisa עצמה. | סיסמת bcrypt, או SCRAM-SHA-256 ב-pgwire |
@@ -1251,7 +1251,7 @@ TRINO_HOST=trino.internal
 TRINO_PORT=8080
 ```
 
-מאגר המימוש (materialization store) ברירת מחדל `TENANT_DATABASE_URL‏` (PostgreSQL).
+מאגר המימוש (materialization store) ברירת מחדל `TENANT_DATABASE_URL` (PostgreSQL).
 
 #### pg
 
@@ -1350,7 +1350,7 @@ PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 
 כאשר מקור אינו יכול להתחבר (attach) חי (אין מחבר ATTACH למנוע הנבחר), הוא נוחת (lands) לתוך מאגר המימוש של המנוע. סדר פתרון: `PROVISA_MATERIALIZE_URL` מפורש ← ברירת המחדל המוצהרת של המנוע ← שגיאה קשה (ללא נפילה-חוזרת שקטה). [tool-verified: `engine.py` `materialize_store`]
 
-DuckDB מצהיר על קובצו המובנה (`~/.provisa/materialize.duckdb`) כברירת מחדל שלו. כל שאר המנועים ברירת מחדל `TENANT_DATABASE_URL‏` (PostgreSQL). דרסו כל מנוע עם `PROVISA_MATERIALIZE_URL`.
+DuckDB מצהיר על קובצו המובנה (`~/.provisa/materialize.duckdb`) כברירת מחדל שלו. כל שאר המנועים ברירת מחדל `TENANT_DATABASE_URL` (PostgreSQL). דרסו כל מנוע עם `PROVISA_MATERIALIZE_URL`.
 
 ### רמזי פדרציה לפי-מקור
 
@@ -1406,7 +1406,7 @@ sources:
 | `PG_DATABASE` | `provisa` | מסד נתונים PostgreSQL |
 | `PG_USER` | `provisa` | משתמש PostgreSQL |
 | `PG_PASSWORD` | `provisa` | סיסמת PostgreSQL |
-| `PROVISA_ENGINE` | `duckdb` | מפתח מנוע פדרציה (REQ-989) |
+| `PROVISA_ENGINE` | `duckdb` | מפתח מנוע פדרציה (REQ-989, REQ-916) |
 | `PROVISA_ENGINE_URL` | — | URL חיבור למנועים מונעי-URL (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
 | `PROVISA_MATERIALIZE_URL` | — | דריסת DSN של מאגר המימוש (ברירת מחדל לברירת המחדל המוצהרת של המנוע) |
 | `PROVISA_DATA_DIR` | `~/.provisa` | תיקיית נתונים למאגר DuckDB המובנה (REQ-989) |

@@ -278,4 +278,3 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 ```
 
 ADBC מתחבר לשרת ה-Flight על פורט 8815 כברירת מחדל. (REQ-143) העבירו `port=` כדי להגיע לשרת Flight המקושר לפורט לא-ברירת-מחדל. (REQ-711)
-</content>

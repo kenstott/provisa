@@ -29,7 +29,7 @@ Tutte le origini condividono un insieme comune di campi. [tool-verified: `provis
 | `port` | `0` | `0` significa che ogni connettore fornisce il proprio default — non esiste una mappa centrale di porte di default |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | Supporta la risoluzione di secret `${env:VAR}` |
+| `password` | `""` | Supporta i riferimenti a credenziali `${env:VAR}` e `${secret:NAME}` — vedere [Segreti](secrets.md) |
 | `path` | `null` | Percorso file o URI per origini basate su file |
 | `base_url` | `null` | URL base per origini API |
 | `pool_min` / `pool_max` | `1` / `5` | Limiti del connection pool |

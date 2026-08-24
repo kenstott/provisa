@@ -395,3 +395,5 @@ tables:
 ## Segreti
 
 Le credenziali usano la sintassi `${env:VAR_NAME}`, risolta in fase di runtime. (REQ-557) Le password non vengono mai memorizzate nel database di configurazione. (REQ-557)
+
+Per il servizio dei segreti completo — vault, sintassi dei riferimenti e provider — vedere [Segreti](secrets.md).

@@ -379,6 +379,9 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
 | 端点参考（GraphQL、REST、Flight、gRPC） | [docs/api-reference.md](docs/api-reference.md) |
 | 系统设计与组件地图 | [docs/architecture.md](docs/architecture.md) |
 | 安全模型（RLS、脱敏、身份验证） | [docs/security.md](docs/security.md) |
+| 密钥存储与 `${secret:NAME}` 引用 | [docs/secrets.md](docs/secrets.md) |
+| 业务术语表与术语策展 | [docs/glossary.md](docs/glossary.md) |
+| 环境（dev / staging / prod） | [docs/environments.md](docs/environments.md) |
 | 支持的数据源类型 | [docs/sources.md](docs/sources.md) |
 | SSE 订阅 | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC、BI 工具、Arrow Flight 客户端、Apollo Federation | [docs/integrations.md](docs/integrations.md) |

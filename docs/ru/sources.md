@@ -1,32 +1,47 @@
 # Типы источников
-
 ## Модель выполнения
-
-Каждый запрос в конечном счёте выполняется через движок федерации, который обеспечивает федерацию по всем источникам. Источники делятся на три категории в зависимости от их связности. [tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
+Любой запрос в итоге выполняется через федеративный движок, обеспечивающий федерацию по всем источникам. Источники делятся на три категории по способу подключения. [tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
 
 | Категория | Есть прямой драйвер | Есть федеративный коннектор | Примеры |
 | --- | --- | --- | --- |
 | **С прямым доступом** | Да | Да | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
 | **Только федерация** | Нет | Да | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (на базе S3) |
-| **Прямое чтение (реплика)** | Да | Да | Snowflake, Databricks, ClickHouse — драйвер читает данные и загружает реплику; запросы выполняются к реплике в активном движке |
-| **Материализация → федерация** | Нет | Нет | REST/OpenAPI, удалённый GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (приёмник push), GovData, SharePoint, Splunk |
+| **Прямое чтение (реплика)** | Да | Да | Snowflake, Databricks, ClickHouse — драйвер читает данные и создаёт реплику; запросы выполняются к реплике в активном движке |
+| **Материализация → федерация** | Нет | Нет | REST/OpenAPI, удалённый GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (приёмник push-событий), GovData, SharePoint, Splunk |
 
-Источники **с прямым доступом** выполняют однокорневые запросы через свой нативный драйвер (менее 100 мс), минуя движок федерации (REQ-027, REQ-229). Они сохраняют полную поддержку коннектора и участвуют в федерации при соединении с другими источниками (REQ-028).
+Источники **с прямым доступом** выполняют односточниковые запросы через собственный драйвер (менее 100 мс), минуя федеративный движок (REQ-027, REQ-229). При этом они сохраняют полную поддержку коннектора и участвуют в федерации при соединении с другими источниками (REQ-028).
 
-Источники **только федерация** всегда запрашиваются через слой федерации. Прямого драйвера не существует (REQ-229).
+Источники **только с федерацией** всегда опрашиваются через уровень федерации. Прямого драйвера не существует (REQ-229).
 
-Источники **прямого чтения (реплика)** имеют DirectDriver, который читает из хранилища нативно (нативно для Arrow там, где доступно), загружает реплику в хранилище материализации активного движка, и затем запросы выполняются к этой реплике. См. [Хранилища как именованные источники](#_13).
+Источники с **прямым чтением (репликой)** имеют DirectDriver, который читает из хранилища нативно (в формате Arrow, где это доступно), создаёт реплику в хранилище материализации активного движка, и далее запросы выполняются к этой реплике. См. [Хранилища данных как именованные источники](#warehouses-as-named-sources).
 
-Источники **материализации** не имеют федеративного коннектора. Provisa извлекает их данные (при запуске или во время запроса) и кеширует их как Parquet в S3 или в PostgreSQL, делая их доступными для движка федерации для кросс-источниковых запросов (REQ-309).
+Источники с **материализацией** не имеют федеративного коннектора. Provisa получает их данные (при запуске или во время запроса) и кеширует их как Parquet в S3 или в PostgreSQL, делая их доступными федеративному движку для межисточниковых запросов (REQ-309).
 
 ---
 
 ## Все источники
+Provisa регистрирует **53** типа источников. Таблицы ниже охватывают все 53; номер — это порядковый счёт. [tool-verified: `provisa/core/models.py` `SourceType`]
 
-Справочник по всем поддерживаемым Provisa типам источников. «Прямой драйвер» означает, что однокорневые запросы выполняются к источнику нативно (менее 100 мс) (REQ-027). «Имя коннектора» — это федеративный коннектор, используемый, когда источник участвует в многоисточниковых JOIN (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
+| № | Группа | Типы источников |
+| --- | --- | --- |
+| 1–13 | [РСУБД](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport` |
+| 14–20 | [Облачные хранилища данных](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `fabric`, `synapse`, `trino` |
+| 21–25 | [Аналитика и OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 26–30 | [Озеро данных и открытые табличные форматы](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hudi`, `hive`, `hive_s3` |
+| 31–33 | [NoSQL](#nosql) | `mongodb`, `cassandra`, `redis` |
+| 34–36 | [Потоковая передача](#streaming) | `kafka`, `websocket`, `rss` |
+| 37 | [Приёмник push-событий](#push-receiver) | `ingest` |
+| 38–39 | [Графовые и семантические](#graph-semantic) | `neo4j`, `sparql` |
+| 40–43 | [Файловые](#file-based) | `sqlite`, `csv`, `parquet`, `files` |
+| 44–45 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
+| 46–47 | [Корпоративные SaaS](#enterprise-saas-connectors) | `sharepoint`, `splunk` |
+| 48–50 | [Источники API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote` |
+| 51 | [GovData](#govdata) | `govdata` |
+| 52–53 | [Проверки качества данных](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 
-### РСУБД
+Справочник по всем типам источников, поддерживаемым Provisa. «Прямой драйвер» означает, что односточниковые запросы выполняются к источнику нативно (менее 100 мс) (REQ-027). «Имя коннектора» — федеративный коннектор, используемый, когда источник участвует в межисточниковых JOIN (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
+### РСУБД {#rdbms}
 | Тип источника | Прямой драйвер | Имя коннектора | Диалект | Мутации |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- |
 | `postgresql` | asyncpg | postgresql | postgres | Да |
@@ -36,55 +51,55 @@
 | `sqlserver` | aioodbc | sqlserver | tsql | Да |
 | `oracle` | oracledb | oracle | oracle | Да |
 | `duckdb` | duckdb | memory | duckdb | Да |
-| `cockroachdb` | asyncpg (pg wire) | postgresql | postgres | Да |
-| `yugabytedb` | asyncpg (pg wire) | postgresql | postgres | Да |
-| `greenplum` | asyncpg (pg wire) | postgresql | postgres | Да |
-| `tidb` | aiomysql (mysql wire) | mysql | mysql | Да |
+| `cockroachdb` | asyncpg (протокол pg) | postgresql | postgres | Да |
+| `yugabytedb` | asyncpg (протокол pg) | postgresql | postgres | Да |
+| `greenplum` | asyncpg (протокол pg) | postgresql | postgres | Да |
+| `tidb` | aiomysql (протокол mysql) | mysql | mysql | Да |
+| `firebird` | — | — (расширение DuckDB) | — | Нет |
+| `airport` | — | — (расширение DuckDB) | — | Нет |
 
-Совместимые по протоколу базы данных повторно используют JDBC-драйвер, нативный асинхронный драйвер и диалект базового протокола — CockroachDB, YugabyteDB и Greenplum используют протокол PostgreSQL; TiDB — протокол MySQL. Им нужны только записи в реестре, без нового кода коннектора. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
+Базы данных, совместимые по проводному протоколу, переиспользуют JDBC-драйвер, нативный асинхронный драйвер и диалект базового протокола: CockroachDB, YugabyteDB и Greenplum используют протокол PostgreSQL, TiDB — протокол MySQL. Им нужны только записи в реестре, без нового кода коннектора. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
-`firebird` (Firebird 3/4/5) и `airport` (сервер Arrow Flight) — зарегистрированные типы источников, достигаемые на месте через community-расширения DuckDB, когда DuckDB является активным движком — без прямого драйвера, без федеративного коннектора. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
+`firebird` (Firebird 3/4/5) и `airport` (сервер Arrow Flight) — зарегистрированные типы источников, к которым обращаются на месте через расширения сообщества DuckDB, когда активным движком является DuckDB: ни прямого драйвера, ни федеративного коннектора. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
 
-### Облачные хранилища данных
-
+### Облачные хранилища данных {#cloud-data-warehouses}
 [tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`, `executor/drivers/registry.py`]
 
 | Тип источника | Прямой драйвер | Имя коннектора | Диалект | Мутации | Примечания |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `snowflake` | SnowflakeDriver | snowflake | snowflake | Федеративно | Читает через snowflake-connector-python; загружает реплику; `account`/`warehouse`/`role` в `federation_hints` (REQ-988) |
-| `bigquery` | — | bigquery | bigquery | Федеративно | Нет DirectDriver; достигается через движок федерации или ATTACH движка BigQuery |
-| `databricks` | DatabricksDriver | delta_lake | databricks | Федеративно | Читает через databricks-sql-connector (Cloud Fetch, Arrow); загружает реплику; `http_path` обязателен в `federation_hints` (REQ-987) |
+| `snowflake` | SnowflakeDriver | snowflake | snowflake | Федеративно | Читает через snowflake-connector-python; создаёт реплику; `account`/`warehouse`/`role` в `federation_hints` (REQ-988) |
+| `bigquery` | — | bigquery | bigquery | Федеративно | Нет DirectDriver; доступен через федеративный движок или ATTACH движка BigQuery |
+| `databricks` | DatabricksDriver | delta_lake | databricks | Федеративно | Читает через databricks-sql-connector (Cloud Fetch, Arrow); создаёт реплику; в `federation_hints` обязателен `http_path` (REQ-987) |
 | `redshift` | — | redshift | redshift | Федеративно | — |
-| `fabric` | MssqlWarehouseDriver | — | tsql | Федеративно | Microsoft Fabric Warehouse; T-SQL по TDS, аутентификация Azure AD; загружает реплику (REQ-995) |
-| `synapse` | MssqlWarehouseDriver | — | tsql | Федеративно | Azure Synapse SQL; T-SQL по TDS, аутентификация Azure AD; загружает реплику (REQ-995) |
-| `trino` | SQLAlchemyDriver | — | — | Федеративно | Удалённый координатор Trino/Presto читается через диалект SQLAlchemy trino; загружает реплику в любой движок (REQ-994) |
+| `fabric` | MssqlWarehouseDriver | — | tsql | Федеративно | Microsoft Fabric Warehouse; T-SQL поверх TDS, аутентификация Azure AD; создаёт реплику (REQ-995) |
+| `synapse` | MssqlWarehouseDriver | — | tsql | Федеративно | Azure Synapse SQL; T-SQL поверх TDS, аутентификация Azure AD; создаёт реплику (REQ-995) |
+| `trino` | SQLAlchemyDriver | — | — | Федеративно | Чтение с удалённого координатора Trino/Presto через диалект trino для SQLAlchemy; создаёт реплику на любом движке (REQ-994) |
 
-### Аналитика / OLAP
-
+### Аналитика и OLAP {#analytics-olap}
 [tool-verified: `executor/drivers/clickhouse.py`]
 
 | Тип источника | Прямой драйвер | Имя коннектора | Диалект | Мутации | Примечания |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Федеративно | Читает через clickhouse-connect (HTTP); `secure: "true"` в `federation_hints` для TLS (REQ-986) |
+| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Федеративно | Читает через clickhouse-connect (HTTP); для TLS — `secure: "true"` в `federation_hints` (REQ-986) |
 | `druid` | — | druid | druid | Нет | — |
 | `exasol` | — | exasol | exasol | Нет | — |
-| `elasticsearch` | — | elasticsearch | — | Нет | Свойства коннектора берутся из mapping DSL типа [tool-verified: `trino_connectors.py:309`] |
+| `elasticsearch` | — | elasticsearch | — | Нет | Свойства коннектора берутся из DSL-описания сопоставления для этого типа [tool-verified: `trino_connectors.py:309`] |
 | `pinot` | — | pinot | — | Нет | Коннектор Trino `pinot`; `pinot.controller-urls` = host:port контроллера Pinot [tool-verified: `trino_connectors.py:199`] |
 
-### Data Lake / открытые табличные форматы
-
-Эти типы источников доступны только через федерацию — нет прямого драйвера, нет диалекта. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
+### Озеро данных и открытые табличные форматы {#data-lake-open-table-formats}
+Эти типы источников доступны только через федерацию — ни прямого драйвера, ни диалекта. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
 
 | Тип источника | Имя коннектора | Путешествие во времени | Примечания |
 | ------------ | ----------------- | ------------- | ------- |
 | `iceberg` | iceberg | Да (аргумент `as_of`, REQ-372) | — |
 | `delta_lake` | delta_lake | Да (аргумент `as_of`, REQ-372) | — |
 | `hive` | hive | Нет | — |
+| `hudi` | — (движок ClickHouse `Hudi`, без копирования — REQ-1178) | Нет | Федеративного коннектора нет; доступен на месте, когда активным движком является ClickHouse |
 | `hive_s3` | hive | Нет | Hive на базе S3 |
 
 ### NoSQL
 
-`mongodb`, `cassandra` и `redis` имеют коннекторы Trino (`redis` строит свои свойства из mapping DSL типа). [tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
+Для `mongodb`, `cassandra` и `redis` есть коннекторы Trino (`redis` строит свои свойства из DSL-описания сопоставления для этого типа). [tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
 
 | Тип источника | Имя коннектора | Мутации |
 | ------------ | ----------------- | ----------- |
@@ -92,32 +107,28 @@
 | `cassandra` | cassandra | Нет |
 | `redis` | redis | Нет |
 
-### Потоковая передача
-
+### Потоковая передача {#streaming}
 | Тип источника | Механизм | Мутации |
 | ------------ | ----------- | ----------- |
-| `kafka` | Федеративный коннектор Kafka; схема через Confluent Schema Registry (Avro, Protobuf, JSON Schema), ручное определение или вывод по выборке (REQ-147, REQ-150) | Только приёмник (REQ-176) |
-| `websocket` | Внешний фид WebSocket — подключение, подписка, получение событий; результаты материализуются (REQ-338) | Нет |
-| `rss` | Фид RSS 2.0 / Atom — опрос, водяной знак по pubDate/updated; результаты материализуются (REQ-342, REQ-343) | Нет |
+| `kafka` | Федеративный коннектор Kafka; схема через Confluent Schema Registry (Avro, Protobuf, JSON Schema), ручное определение или вывод по образцу (REQ-147, REQ-150) | Только приёмник (REQ-176) |
+| `websocket` | Внешний поток WebSocket — подключение, подписка, приём событий; результаты материализуются (REQ-338) | Нет |
+| `rss` | Лента RSS 2.0 / Atom — опрос, отметка по pubDate/updated; результаты материализуются (REQ-342, REQ-343) | Нет |
 
-### Приёмник Push
-
+### Приёмник push-событий {#push-receiver}
 | Тип источника | Механизм | Мутации |
 | ------------ | ----------- | ----------- |
-| `ingest` | Внешние сервисы отправляют события JSON через POST; результаты материализуются (REQ-331, REQ-335) | Нет |
+| `ingest` | Внешние службы отправляют события JSON методом POST; результаты материализуются (REQ-331, REQ-335) | Нет |
 
-### Граф и семантика
-
+### Графовые и семантические {#graph-semantic}
 | Тип источника | Механизм | Мутации |
 | ------------ | ----------- | ----------- |
 | `neo4j` | Cypher через HTTP API, результаты кешируются в PostgreSQL (REQ-295) | Нет |
-| `sparql` | SPARQL 1.1 POST, результаты кешируются в PostgreSQL (REQ-297) | Нет |
+| `sparql` | SPARQL 1.1 методом POST, результаты кешируются в PostgreSQL (REQ-297) | Нет |
 
-### На основе файлов
+### Файловые {#file-based}
+Файлы охватываются двумя механизмами. Оба используют поле `path` вместо `host`/`port`. [tool-verified: `provisa/core/models.py`] (REQ-553)
 
-Два механизма покрывают файлы. Оба используют поле `path` вместо `host`/`port`. [tool-verified: `provisa/core/models.py`] (REQ-553)
-
-**Источники с одним файлом** — `sqlite`, `csv`, `parquet` указывают `path` на один файл.
+**Однофайловые источники** — `sqlite`, `csv`, `parquet` указывают `path` на один файл.
 
 | Тип источника | Транспорты | Мутации |
 | --- | --- | --- |
@@ -125,13 +136,13 @@
 | `csv` | локальный | Нет |
 | `parquet` | локальный, `s3://` | Нет |
 
-Приватным бакетам требуются учётные данные (регион AWS и ключи из окружения). Для CSV через `s3://` или `http(s)://`, или для регистрации множества файлов сразу, используйте источник `files`. [tool-verified: `provisa/file_source/source.py`]
+Для закрытых бакетов нужны учётные данные (регион и ключи AWS из окружения). Для CSV поверх `s3://` или `http(s)://`, а также чтобы зарегистрировать сразу много файлов, используйте источник `files`. [tool-verified: `provisa/file_source/source.py`]
 
-**Источник `files`** — указывает `path` на glob-шаблон, рекурсивно сканирует его и регистрирует директорию как федеративный каталог таблиц. Он читает множество форматов через множество транспортов; наборы ниже происходят из файлового коннектора (форк kenstott/calcite). [tool-verified: `provisa/core/catalog.py` `files` branch and `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; format and transport lists from the calcite `file` adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
+**Источник `files`** — указывает `path` на шаблон-глоб, рекурсивно обходит его и регистрирует каталог как федеративный каталог таблиц. Он читает множество форматов через множество транспортов; наборы ниже взяты из файлового коннектора (форк kenstott/calcite). [tool-verified: `provisa/core/catalog.py` `files` branch and `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; format and transport lists from the calcite `file` adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
 
 | Форматы | Транспорты |
 | --- | --- |
-| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow и документы, конвертированные в таблицы — HTML, Markdown, DOCX, PPTX | Локальная файловая система, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST и Microsoft Graph) |
+| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow, а также документы, преобразуемые в таблицы, — HTML, Markdown, DOCX, PPTX | Локальная файловая система, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST и Microsoft Graph) |
 
 ```yaml
 - id: sales_files
@@ -139,34 +150,32 @@
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
-### Наблюдаемость и прочее
-
-`prometheus` имеет коннектор Trino (свойства строятся из mapping DSL типа). `google_sheets` — зарегистрированный тип источника без коннектора Trino, материализующийся через конвейер API-кеша. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
+### Наблюдаемость и прочее {#observability-other}
+Для `prometheus` есть коннектор Trino (свойства строятся из DSL-описания сопоставления для этого типа). `google_sheets` — зарегистрированный тип источника без коннектора Trino; он материализуется через конвейер кеша API. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
 
 | Тип источника | Имя коннектора | Мутации |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (материализуется) | Нет |
 | `prometheus` | prometheus | Нет |
 
-### Корпоративные коннекторы SaaS
-
-SharePoint и Splunk регистрируются через коннекторы Apache Calcite (форк kenstott/calcite). Ни у одного нет прямого драйвера — Provisa материализует их строки, запуская встроенный сервер pgwire коннектора (`pgwire-sharepoint`, `pgwire-splunk`), подключаясь к нему как к обычному эндпоинту PostgreSQL, и загружая строки в хранилище материализации для федерации (REQ-954). Оба коннектора всегда включают сопоставление имён без учёта регистра, соответствуя собственной семантике каждого продукта без учёта регистра (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+### Коннекторы корпоративных SaaS {#enterprise-saas-connectors}
+SharePoint и Splunk регистрируются через коннекторы Apache Calcite (форк kenstott/calcite). Прямого драйвера нет ни у одного из них — Provisa материализует их строки, запуская встроенный в коннектор сервер pgwire для Calcite (`pgwire-sharepoint`, `pgwire-splunk`), подключаясь к нему как к обычной конечной точке PostgreSQL и складывая строки в хранилище материализации для федерации (REQ-954). Оба коннектора всегда включают сопоставление имён без учёта регистра, соответствующее собственной регистронезависимой семантике каждого продукта (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
-Списки SharePoint перечисляются как схемы и выставляются как запрашиваемые таблицы (REQ-726, REQ-731). Два метода аутентификации: `CLIENT_CREDENTIALS` (по умолчанию) и на основе сертификата через сертификат PFX (REQ-727). Значения секретов в `mapping` разрешаются через движок секретов до достижения коннектора (REQ-729). [tool-verified: `provisa/federation/trino_connectors.py` lines 230–252]
+Списки SharePoint перечисляются как схемы и выставляются как запрашиваемые таблицы (REQ-726, REQ-731). Два способа аутентификации: `CLIENT_CREDENTIALS` (по умолчанию) и по сертификату через PFX-сертификат (REQ-727). Значения секретов в `mapping` разрешаются через движок секретов до того, как попадут в коннектор (REQ-729). [tool-verified: `provisa/federation/trino_connectors.py` lines 230–252]
 
 | Поле источника | Свойство коннектора | Примечания |
 | --- | --- | --- |
 | `base_url` или `host` | `site-url` | URL сайта SharePoint |
-| `username` | `client-id` | ID клиента приложения Azure |
+| `username` | `client-id` | Идентификатор клиента приложения Azure |
 | `password` | `client-secret` | Секрет клиента приложения Azure |
 | `database` | `tenant-id` | UUID арендатора Azure |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (по умолчанию) или `CERTIFICATE` |
-| `mapping.certificate_path` | `certificate-path` | Путь к PFX при `auth_type: CERTIFICATE` |
+| `mapping.certificate_path` | `certificate-path` | Путь к PFX, когда `auth_type: CERTIFICATE` |
 | `mapping.certificate_password` | `certificate-password` | Пароль PFX |
 
-Когда коннектор не выставляет `information_schema.columns`, зарегистрируйте таблицу с явными определениями столбцов (полученными из Microsoft Graph API) через мутацию `registerTable` (REQ-732).
+Если коннектор не предоставляет `information_schema.columns`, зарегистрируйте таблицу с явными определениями столбцов (полученными из Microsoft Graph API) через мутацию `registerTable` (REQ-732).
 
 ```yaml
 - id: hr-sharepoint
@@ -181,14 +190,14 @@ SharePoint и Splunk регистрируются через коннектор�
 
 #### `splunk`
 
-Результаты поиска Splunk запрашиваются как таблицы (например, `internal_server`) (REQ-721). URL коннектора берётся из `base_url` или строится как `https://{host}:{port}` с портом по умолчанию `8089` (REQ-722). Аутентификация: когда `mapping.use_token` равно `true` (по умолчанию), `password` передаётся как API-токен; когда `false`, `username` и `password` передаются как отдельные учётные данные (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
+Результаты поиска Splunk доступны как таблицы (например, `internal_server`) (REQ-721). URL коннектора берётся из `base_url` либо собирается как `https://{host}:{port}` с портом по умолчанию `8089` (REQ-722). Аутентификация: когда `mapping.use_token` равно `true` (по умолчанию), `password` передаётся как API-токен; когда `false`, `username` и `password` передаются как отдельные учётные данные (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
 
 | Поле источника | Свойство коннектора | Примечания |
 | --- | --- | --- |
 | `base_url` / `host` + `port` | `url` | `base_url`, иначе `https://host:port` (порт по умолчанию 8089) |
 | `password` | `token` или `password` | токен, когда `use_token: true` |
 | `username` | `user` | только когда `use_token: false` |
-| `database` | `app` | ограничение приложением Splunk |
+| `database` | `app` | ограничить приложением Splunk |
 | `mapping.datamodel_filter` | `datamodel-filter` | фильтр по модели данных |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | для самоподписанных сертификатов (REQ-724) |
 
@@ -203,9 +212,8 @@ SharePoint и Splunk регистрируются через коннектор�
     disable_ssl_validation: true
 ```
 
-### Источники API
-
-Зарегистрируйте любой HTTP-эндпоинт как запрашиваемую таблицу. [tool-verified: `provisa/core/models.py` `SourceType` enum] (REQ-314, REQ-307, REQ-322)
+### Источники API {#api-sources}
+Зарегистрируйте любую конечную точку HTTP как запрашиваемую таблицу. [tool-verified: `provisa/core/models.py` `SourceType` enum] (REQ-314, REQ-307, REQ-322)
 
 | Тип API | Обнаружение | Вывод столбцов |
 | --------- | ----------- | ----------------- |
@@ -213,17 +221,17 @@ SharePoint и Splunk регистрируются через коннектор�
 | `graphql_remote` | Интроспекция схемы (REQ-307, REQ-308) | Примитивы → нативные, объекты → JSONB |
 | `grpc_remote` | Рефлексия сервера (REQ-322, REQ-325) | Примитивы → нативные, объекты → JSONB |
 
-Ответы API извлекаются, кешируются в PostgreSQL (настраиваемый TTL) и выставляются как типы GraphQL (REQ-309, REQ-318, REQ-327). Кешированные таблицы участвуют в федеративных запросах, как и любой другой источник (REQ-313).
+Ответы API загружаются, кешируются в PostgreSQL (с настраиваемым TTL) и выставляются как типы GraphQL (REQ-309, REQ-318, REQ-327). Кешированные таблицы участвуют в федеративных запросах наравне с любым другим источником (REQ-313).
 
-**Правила JSONB**: сложные столбцы (объекты, массивы), хранимые как JSONB, не фильтруемы (REQ-119). Доступ к вложенным полям использует извлечение `->>` в SQL (REQ-151). Связи объявляются между таблицами с использованием скалярных столбцов FK — блоб-столбцы JSONB не являются целями соединения. Используйте продвижение JSONB для преобразования вложенных полей в нативные скалярные столбцы, когда фильтрация или соединение по ним необходимы (REQ-119).
+**Правила JSONB**: сложные столбцы (объекты, массивы), хранимые как JSONB, не фильтруются (REQ-119). Доступ к вложенным полям выполняется извлечением `->>` в SQL (REQ-151). Связи объявляются между таблицами по скалярным столбцам внешнего ключа — столбцы-блобы JSONB не являются целями соединения. Используйте продвижение JSONB, чтобы превратить вложенные поля в нативные скалярные столбцы, когда по ним нужно фильтровать или соединять (REQ-119).
 
 ### GovData
 
-Открытые данные правительства США. Доступ разделён по группировке предметов. [tool-verified: `provisa/core/models.py` lines 543–609]
+Открытые данные правительства США. Доступ разделён по тематическим группам. [tool-verified: `provisa/core/models.py` lines 543–609]
 
-Каждый источник `govdata` выбирает один предмет. Этот предмет определяет, какие схемы GovData выставляются. Схемы `ref` и `geo` всегда включены как связующие схемы — они не перечисляются по предмету, но всегда присутствуют. [tool-verified: `provisa/core/models.py` line 562–563 comment]
+Каждый источник `govdata` выбирает одну тему. Тема определяет, какие схемы GovData выставляются. Схемы `ref` и `geo` включаются всегда как связующие схемы — они не перечисляются по темам, но присутствуют всегда. [tool-verified: `provisa/core/models.py` line 562–563 comment]
 
-| Предмет | Выставляемые схемы |
+| Тема | Выставляемые схемы |
 | --------- | ----------------- |
 | `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ` |
@@ -246,29 +254,28 @@ sources:
     description: U.S. commerce and securities data
 ```
 
-| Поле | Обязательно | По умолчанию | Описание |
+| Поле | Обязательное | По умолчанию | Описание |
 | ------- | ---------- | --------- | ------------- |
 | `id` | Да | — | Уникальный идентификатор |
-| `subject` | Да | — | Одно из значений предмета выше |
-| `domain_id` | Да | — | Домен, которому принадлежит этот источник |
-| `description` | Нет | `""` | Человекочитаемое описание |
+| `subject` | Да | — | Одно из значений темы выше |
+| `domain_id` | Да | — | Домен, которому принадлежит источник |
+| `description` | Нет | `""` | Понятное человеку описание |
 
-### Средства проверки качества данных (REQ-1443)
+### Проверки качества данных (REQ-1443) {#data-quality-checkers-req-1443}
+Проверка качества данных — это тип источника, а не подсистема. Результат её сканирования — это данные: результат проверки есть наблюдение, поэтому он попадает в систему по обычному пути источника и наследует периодичность, свежесть, события, происхождение, управление, RLS, сетку и экспорт от всех остальных источников. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
 
-Средство проверки качества данных — это тип источника, а не отдельная подсистема. Результат его сканирования — это данные: результат проверки — это наблюдение, поэтому он проходит через обычный путь источника и наследует периодичность, свежесть, события, происхождение, governance, RLS, сетку и экспорт от любого другого источника. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
+Поддерживаются две, и выбор здесь не столько функциональный, сколько лицензионный.
 
-Поддерживаются два варианта, и выбор — это в той же мере выбор лицензии, что и выбор возможностей.
-
-| Тип источника | Диалект контракта | Дополнительно | Лицензия | Размещение в облачной плоскости |
+| Тип источника | Диалект контракта | Extra | Лицензия | Размещённая облачная плоскость |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
-| `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Отклонено — см. ниже |
-| `great_expectations` | Expectation suite JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Разрешено |
+| `soda` | YAML-контракт Soda | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Запрещено — см. ниже |
+| `great_expectations` | JSON-набор ожиданий | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Разрешено |
 
-Elastic License 2.0 запрещает предоставлять ПО третьим лицам в виде размещённого или управляемого сервиса, а запуск Soda внутри плоскости SaaS от имени арендатора — это именно оно. `config/capabilities.yaml` несёт это разделение как `cloud_eligible: false` на опции `soda`, и размещённая плоскость читает этот флаг. Размещённое развёртывание, которому нужна Soda, обращается к предоставленному оператором эндпоинту Soda, который оператор запускает самостоятельно. [tool-verified: `config/capabilities.yaml` lines 197–203]
+Elastic License 2.0 запрещает предоставлять программное обеспечение третьим лицам как размещённую или управляемую услугу, а запуск Soda внутри SaaS-плоскости от имени арендатора — ровно это. `config/capabilities.yaml` фиксирует это разделение как `cloud_eligible: false` у варианта `soda`, и размещённая плоскость читает этот признак. Размещённое развёртывание, которому нужна Soda, обращается к конечной точке Soda, которую оператор поднимает сам. [tool-verified: `config/capabilities.yaml` lines 197–203]
 
-Provisa ничего не поставляет и не линкует. Сканирование выполняется в дочернем интерпретаторе (`python -m provisa.dq.worker`) — единственном месте, где импортируется `soda_core` или `great_expectations`, поэтому средство проверки с открытым исходным кодом никогда не достигает серверного процесса, а сбой средства проверки убивает подпроцесс, а не цикл событий.  [tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
+Provisa ничего не встраивает и ни с чем не компонуется. Сканирование выполняется в дочернем интерпретаторе (`python -m provisa.dq.worker`), который остаётся единственным местом импорта `soda_core` или `great_expectations`, так что проверка с открытым исходным кодом ограниченной лицензии никогда не попадает в серверный процесс, а её падение убивает подпроцесс, а не цикл событий. [tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
 
-**Источник указывает на собственный эндпоинт pgwire Provisa.** Именно это позволяет одному postgres-драйверу проверять таблицу, поддерживаемую Snowflake или Iceberg: средство проверки сканирует федеративное представление, а не базовую систему. Поскольку к этому соединению применяется политика, идентичность сканирования объявляется явно, а не наследуется — отфильтрованный набор строк никогда не должен незаметно давать проходящую проверку.
+**Источник указывает на собственную конечную точку pgwire в Provisa.** Именно это позволяет одному драйверу postgres проверять таблицу на базе Snowflake или Iceberg: проверка сканирует федеративное представление, а не нижележащую систему. Поскольку к этому соединению применяется политика, идентичность сканирования объявляется явно, а не наследуется, — отфильтрованный набор строк никогда не должен давать молча проходящую проверку.
 
 ```yaml
 sources:
@@ -285,7 +292,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Одна таблица результатов на контракт, и контракт — это вся регистрация.** Таблица несёт `dq_contract` — текст контракта дословно — и ничего больше о своей форме. Столбцы, водяной знак и продвижения выводятся автоматически. [tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
+**Одна таблица результатов на контракт, и контракт составляет всю регистрацию.** Таблица несёт `dq_contract` — текст контракта дословно — и ничего больше о своей форме. Столбцы, отметка и продвижения выводятся автоматически. [tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
 
 ```yaml
 tables:
@@ -315,67 +322,62 @@ tables:
 
 Что регистрация выводит из этого текста:
 
-- **Происхождение.** Контракт уже называет свой целевой набор данных, поэтому регистрация разбирает его так же, как `extract_inputs` разбирает SQL (REQ-939), и сопоставляет его с управляемой таблицей. Одно определение, никакой второй копии, которая могла бы разойтись. Контракт, называющий неуправляемый набор данных, громко отказывает при регистрации, а не загружает строки, которых никто не просил.
-- **Столбцы.** Конверт результата принадлежит средству проверки, а не оператору — 16 поставляемых столбцов от `scan_id` до `diagnostics`. Объявленные столбцы читаются только ради их `visible_to`, которое должно быть единогласным, а затем заменяются. [tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
-- **Водяной знак.** `scan_time` становится водяным знаком, что делает загрузку добавлением (REQ-982). История сканирований накапливается без отдельной подсистемы истории.
-- **Продвижения.** `freshness_max_timestamp` и `dataset_rows_tested` продвигаются из `diagnostics` jsonb как типизированные столбцы (REQ-119). Добавляйте другие так же, как для любого другого столбца jsonb. [tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
+- **Происхождение данных.** Контракт уже называет свой целевой набор данных, поэтому регистрация разбирает его так же, как `extract_inputs` разбирает SQL (REQ-939), и сопоставляет с управляемой таблицей. Одно определение, без второй копии, которая может разойтись. Контракт, называющий неуправляемый набор данных, громко падает при регистрации, а не складывает строки, которых никто не просил.
+- **Столбцы.** Оболочка результата принадлежит проверке, а не оператору, — 16 поставляемых столбцов от `scan_id` до `diagnostics`. Объявленные столбцы читаются только ради их `visible_to`, который должен быть единогласным, после чего они заменяются. [tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
+- **Отметка.** `scan_time` становится отметкой, что делает запись добавлением (REQ-982). История сканирований накапливается без отдельной подсистемы истории.
+- **Продвижения.** `freshness_max_timestamp` и `dataset_rows_tested` продвигаются из jsonb-поля `diagnostics` в типизированные столбцы (REQ-119). Добавляйте новые так же, как для любого другого столбца jsonb. [tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
 
-Тайминг не вводит новых полей. `change_signal` вместе с `cache_ttl` задают периодичность опроса; `mv_debounce_quiet` и `mv_debounce_max_delay` схлопывают всплеск от источника в одно сканирование (REQ-963); календарная гранулярность делает его периодическим (REQ-962); `expected_events` удерживает сканирование, пока его входные данные не станут свежими в пределах окна (REQ-961). Цикл опроса — это планировщик сканирований.
+Тайминг не вводит новых полей. `change_signal` вместе с `cache_ttl` задают частоту опроса; `mv_debounce_quiet` и `mv_debounce_max_delay` сворачивают всплеск изменений выше по потоку в одно сканирование (REQ-963); календарная гранулярность делает его периодическим (REQ-962); `expected_events` удерживает сканирование, пока его входные данные не станут свежими на всём окне (REQ-961). Цикл опроса и есть планировщик сканирований.
 
-`outcome` — одно из `pass`, `fail`, `warn`, `error`, `skipped`. Ни одно из них не является вердиктом — принудительное применение, если оно нужно, объявляется отдельно и позже: как preflight или как MV поверх загруженных результатов. Поскольку загруженное наблюдение не несёт обязательства детерминированности (REQ-964), здесь допустимы недетерминированные проверки, которые никогда не могли бы стоять на preflight-шлюзе — оценка аномалий, изменение по скользящему окну, свежесть относительно текущего момента.
+`outcome` принимает одно из значений `pass`, `fail`, `warn`, `error`, `skipped`. Ни одно из них не является приговором — принуждение, если оно нужно, объявляется отдельно и позже: предполётной проверкой или материализованным представлением над сложенными результатами. Поскольку сложенное наблюдение не несёт обязательства детерминизма (REQ-964), здесь допустимы недетерминированные проверки, которые никогда не могли бы стоять на предполётном шлюзе, — оценка аномалии, изменение по скользящему окну, свежесть относительно текущего момента.
 
-Контракт создаётся в UI, на поверхности редактирования таблицы, в панели качества данных, и исходный текст контракта там всегда является источником истины. Пробный запуск выполняет контракт над живой таблицей и показывает результаты, не загружая их — так вы обнаруживаете контракт, чьё имя набора данных разрешилось куда-то неожиданно и иначе не загрузил бы ничего, кроме проходящих строк.
+Контракт создаётся в интерфейсе, на панели качества данных в форме редактирования таблицы, и сырой текст контракта там всегда является источником истины. Пробный прогон выполняет контракт против живой таблицы и показывает результаты, не сохраняя их, — именно так вы поймаете контракт, чьё имя набора данных разрешилось не туда и который иначе сложил бы только проходящие строки.
 
 ---
 
-## Пользовательские коннекторы (REQ-1177)
+## Собственные коннекторы (REQ-1177)
+Нативные федеративные движки — Postgres, DuckDB и ClickHouse — получают доступ к новому типу источника, когда оператор объявляет для него коннектор в `config/custom_connectors.yaml`. Код не требуется. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
 
-Нативные движки федерации — Postgres, DuckDB и ClickHouse — получают доступность к новому типу источника, когда оператор объявляет для него коннектор в `config/custom_connectors.yaml`. Код не требуется. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
+Сама расширяемость коннекторов появилась раньше. Движок Trino давно расширяем на своём уровне — один универсальный коннектор JDBC, параметризуемый по типу источника, тело каталога `.properties` на каждый тип и собственные подключаемые модули коннекторов Trino от Provisa (Splunk, SharePoint, Calcite). [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 приносит ту же расширяемость через конфигурацию двум нативным бескластерным движкам, у которых прежде был фиксированный набор коннекторов.
 
-Расширяемость коннекторов сама по себе существовала и раньше. Движок Trino давно расширяем на своём собственном уровне — один универсальный JDBC-коннектор, параметризуемый для каждого типа источника, тело `.properties` каталога для каждого типа и собственные плагины пользовательских коннекторов Trino Provisa (Splunk, SharePoint, Calcite). [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 привносит ту же управляемую конфигурацией расширяемость в два нативных движка без кластера, которые ранее несли фиксированный набор коннекторов.
-
-Конфигурация поставляется пустой. Встроенные коннекторы покрывают доступность «из коробки»; всё в этом файле создаётся оператором. [tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] Установите `PROVISA_CUSTOM_CONNECTORS`, чтобы указать на другой путь (полезно для тестов).
+Конфигурация поставляется пустой. Встроенные коннекторы покрывают доступность «из коробки»; всё в этом файле пишет оператор. [tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] Задайте `PROVISA_CUSTOM_CONNECTORS`, чтобы указать другой путь (удобно для тестов).
 
 ### Виды дескрипторов
-
-| Движок | Вид | Механизм | Что предоставляет дескриптор |
+| Движок | Вид | Механизм | Что задаёт дескриптор |
 | --- | --- | --- | --- |
 | `postgres` | `pg_fdw` | SQL/MED (стандарт ISO) | `extension`, `server_options`, `user_mapping`, `supports_import`, `table_options`, `remote_schema` |
 | `duckdb` | `duckdb_attach` | INSTALL/LOAD + ATTACH | `extension`, `probe_symbol`, `attach_template`, `remote_schema` |
 | `duckdb` | `duckdb_scan` | INSTALL/LOAD + представление-сканер | `extension`, `probe_symbol`, `scan_template` |
 | `clickhouse` | `clickhouse_database` | `CREATE DATABASE ENGINE=…` (автоматически выставляет каждую удалённую таблицу) | `ch_engine`, `engine_template` |
-| `clickhouse` | `clickhouse_table` | `CREATE TABLE ENGINE=…` для каждой таблицы (столбцы из реестра) | `ch_engine`, `engine_template` (может нести `{table}`) |
-| `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse выводит схему | `ch_engine`, `engine_template` |
+| `clickhouse` | `clickhouse_table` | `CREATE TABLE ENGINE=…` на таблицу (столбцы из реестра) | `ch_engine`, `engine_template` (может содержать `{table}`) |
+| `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse выводит схему сам | `ch_engine`, `engine_template` |
 
-**Postgres универсален.** SQL/MED — стандарт ISO, поэтому каждый соответствующий FDW разделяет одну и ту же форму DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, опциональный `CREATE USER MAPPING`, затем либо `IMPORT FOREIGN SCHEMA` (когда `supports_import: true`), либо явный `CREATE FOREIGN TABLE` для каждой таблицы (когда `false`). Дескриптор `pg_fdw` предоставляет только вариацию для каждого FDW — имя расширения, ключи опций сервера, ключи сопоставления пользователей, флаг импорта, опции таблицы. Поэтому любой соответствующий стандарту FDW может управляться только конфигурацией. [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
+**Postgres универсален.** SQL/MED — стандарт ISO, поэтому любой соответствующий ему FDW имеет одну и ту же форму DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, необязательный `CREATE USER MAPPING`, а затем либо `IMPORT FOREIGN SCHEMA` (когда `supports_import: true`), либо явный `CREATE FOREIGN TABLE` на каждую таблицу (когда `false`). Дескриптор `pg_fdw` задаёт только то, что различается между FDW, — имя расширения, ключи параметров сервера, ключи сопоставления пользователей, признак импорта, параметры таблицы. Поэтому любым FDW, соответствующим стандарту, можно управлять из одной конфигурации. [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
 
-**DuckDB поддерживает два механизма.** Расширение, выставляющее каталог через ATTACH, использует `duckdb_attach`; выставляющее табличную функцию для чтения использует `duckdb_scan`. Расширение, не подходящее ни под один шаблон, не поддерживается. [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
+**DuckDB поддерживает два механизма.** Расширение, выставляющее каталог через ATTACH, использует `duckdb_attach`; расширение, выставляющее табличную функцию чтения, — `duckdb_scan`. Расширение, не подходящее ни под один из этих шаблонов, не поддерживается. [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
 
-**ClickHouse поддерживает три механизма**, по одному на форму интеграционного движка: реляционный движок DATABASE, автоматически выставляющий каждую удалённую таблицу (`clickhouse_database`, например Redis/MySQL), движок для каждой таблицы, столбцы которого предоставляет реестр (`clickhouse_table`, например мост JDBC/ODBC — `engine_template` может нести заполнитель `{table}`, который связывается во время выполнения), и движок файлов/озера/URL, схему которого ClickHouse выводит (`clickhouse_scan`, например HDFS/URL). SQLite (движок DATABASE, файл, без сервера) и Hudi (lakehouse, без копирования) поставляются «из коробки». [tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
+**ClickHouse поддерживает три механизма** — по одному на форму интеграционного движка: реляционный движок DATABASE, автоматически выставляющий каждую удалённую таблицу (`clickhouse_database`, например Redis/MySQL), потабличный движок, чьи столбцы берутся из реестра (`clickhouse_table`, например мост JDBC/ODBC — `engine_template` может содержать заполнитель `{table}`, который среда выполнения подставляет), и файловый/озёрный/URL-движок, чью схему ClickHouse выводит сам (`clickhouse_scan`, например HDFS/URL). SQLite (движок DATABASE, файл, без сервера) и Hudi (озеро-хранилище, без копирования) поставляются «из коробки». [tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
 
-Неизвестное значение `kind` громко отказывает при запуске — опечатка в дескрипторе не должна незаметно оставлять тип источника недостижимым. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
+Неизвестное значение `kind` громко падает при запуске — опечатка в дескрипторе не должна молча оставить тип источника недостижимым. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
 
-### Проверка доступности (probe gating)
-
-Доступность проверяется в момент присоединения по стандартному каталогу обнаружения каждого движка:
+### Проверка доступности
+Доступность проверяется в момент подключения по стандартному каталогу обнаружения каждого движка:
 
 - **Postgres** — проверяет `pg_extension`, затем `pg_available_extensions`. [tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` lines 333–344]
-- **DuckDB** — выполняет `INSTALL`/`LOAD` и проверяет `duckdb_functions()` на предмет объявленного `probe_symbol`. [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
-- **ClickHouse** — проверяет `system.table_engines` на предмет объявленного `ch_engine`; отсутствие в сборке громко отказывает. [tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
+- **DuckDB** — выполняет `INSTALL`/`LOAD` и проверяет `duckdb_functions()` на объявленный `probe_symbol`. [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
+- **ClickHouse** — проверяет `system.table_engines` на объявленный `ch_engine`; отсутствие в сборке громко падает. [tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
 
-Объявленное расширение, которое невозможно установить, громко отказывает. Никакого тихого пропуска, никакого запасного варианта. Коннектор, чья проверка не проходит, просто не активен для этого развёртывания.
+Объявленное расширение, которое невозможно установить, громко падает. Ни молчаливого пропуска, ни запасного варианта. Коннектор, чья проверка не прошла, просто не активен в этом развёртывании.
 
 ### Переменные шаблона
+Любое значение в `server_options`, любое значение в `user_mapping`, `attach_template` и `scan_template` может использовать заполнители `{field}`. Доступные поля: [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
 
-Каждое значение `server_options`, значение `user_mapping`, `attach_template` и `scan_template` может использовать заполнители `{field}`. Доступные поля: [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, а также любой ключ из `federation_hints`. Шаблоны attach для DuckDB получают ещё и `{alias}` — внутренний псевдоним каталога, который Provisa назначает подключённой базе данных.
 
-`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, плюс любой ключ из `federation_hints`. Шаблоны присоединения DuckDB также получают `{alias}` — внутренний псевдоним каталога, назначаемый Provisa присоединённой базе данных.
-
-Шаблон, ссылающийся на неизвестное поле, громко отказывает в момент присоединения, выявляя несоответствие дескриптора/источника до того, как сломанный DDL достигнет движка.
+Шаблон, ссылающийся на неизвестное поле, громко падает в момент подключения, обнаруживая расхождение между дескриптором и источником до того, как некорректный DDL дойдёт до движка.
 
 ### Примеры
-
-**Postgres — MongoDB через `mongo_fdw` (без импорта схемы; столбцы предоставляются для каждой таблицы)**
+**Postgres — MongoDB через `mongo_fdw` (без импорта схемы; столбцы задаются на каждую таблицу)**
 
 ```yaml
 # config/custom_connectors.yaml
@@ -397,7 +399,7 @@ connectors:
       collection: "{table_name}"
 ```
 
-**DuckDB — файлы Excel через `read_xlsx` (табличная функция-сканер)**
+**DuckDB — файлы Excel через `read_xlsx` (табличная функция сканирования)**
 
 ```yaml
   - engine: duckdb
@@ -411,19 +413,18 @@ connectors:
 
 [tool-verified: `config/custom_connectors.yaml` commented examples, lines 26–50]
 
-При наличии любого из дескрипторов регистрация источника с объявленным `source_type` маршрутизируется через пользовательский коннектор при условии успешной проверки. Никаких других изменений конфигурации не требуется.
+Когда любой из этих дескрипторов на месте, регистрация источника с объявленным `source_type` направляется через собственный коннектор при условии успешной проверки. Никаких других изменений конфигурации не нужно.
 
 ---
 
-## Хранилища как именованные источники
+## Хранилища данных как именованные источники {#warehouses-as-named-sources}
+Snowflake, Databricks и ClickHouse можно зарегистрировать как именованные источники независимо от того, какой федеративный движок активен. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
 
-Snowflake, Databricks и ClickHouse могут быть зарегистрированы как именованные источники независимо от того, какой движок федерации активен. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
+После регистрации Provisa читает хранилище через DirectDriver этого источника и складывает реплику в хранилище материализации активного движка. Затем запрос выполняется к этой реплике. Это отличается от классического пути с прямым доступом (asyncpg, aiomysql), где движок обходится полностью: здесь движок по-прежнему выполняет запрос, но по локальной реплике, а не по сети к хранилищу на каждый запрос.
 
-При регистрации Provisa читает хранилище через DirectDriver источника и загружает реплику в хранилище материализации активного движка. Затем запрос выполняется к этой реплике. Это отличается от традиционного пути с прямым доступом (asyncpg, aiomysql), где движок полностью минуется — здесь движок всё ещё выполняет запрос, но к локальной реплике, а не по проводу к хранилищу при каждом запросе.
+Чтения выполняются нативно в формате Arrow там, где хранилище это поддерживает: Databricks использует Cloud Fetch, Snowflake — `fetch_arrow_table`, а ClickHouse — нативный колоночный интерфейс HTTP.
 
-Чтения нативны для Arrow там, где хранилище это поддерживает: Databricks использует Cloud Fetch, Snowflake использует `fetch_arrow_table`, а ClickHouse использует нативный колоночный HTTP-интерфейс.
-
-Расширенные параметры соединения, которые стандартные поля `host`/`port`/`username`/`password` не могут нести, идут в `federation_hints`:
+Расширенные параметры подключения, которые не помещаются в стандартные поля `host`/`port`/`username`/`password`, задаются в `federation_hints`:
 
 ```yaml
 sources:
@@ -455,9 +456,9 @@ sources:
       secure: "true"              # optional — enables TLS on the HTTP interface
 ```
 
-Регистрация как именованного источника не зависит от выбора того же хранилища в качестве движка федерации. Источник Snowflake на движке DuckDB загружает реплику в DuckDB, а не в Snowflake.
+Регистрация в качестве именованного источника не зависит от выбора того же хранилища в роли федеративного движка. Источник Snowflake на движке DuckDB складывает реплику в DuckDB, а не в Snowflake.
 
-Данные облачного объекта/озера (файлы parquet, csv, iceberg, delta_lake на S3 / GCS / R2) — это отдельный тип источника, который присоединяется на месте, когда у активного движка есть коннектор ATTACH для этого типа. Реплика не загружается — движок сканирует объектное хранилище напрямую. Учётные данные для этих источников также идут в `federation_hints`:
+Данные в облачных объектных хранилищах и озёрах (файлы parquet, csv, iceberg, delta_lake на S3 / GCS / R2) — это отдельный тип источника, который подключается на месте, когда у активного движка есть коннектор ATTACH для этого типа. Реплика не создаётся — движок сканирует объектное хранилище напрямую. Учётные данные для таких источников тоже задаются в `federation_hints`:
 
 ```yaml
 sources:
@@ -473,39 +474,37 @@ sources:
 ---
 
 ## Поля конфигурации источника
+У всех источников есть общий набор полей. [tool-verified: `provisa/core/models.py` `Source` class, lines 138–204]
 
-Все источники разделяют общий набор полей. [tool-verified: `provisa/core/models.py` `Source` class, lines 138–204]
-
-| Поле | Обязательно | По умолчанию | Описание |
+| Поле | Обязательное | По умолчанию | Описание |
 | ------- | ---------- | --------- | ------------- |
-| `id` | Да | — | Уникальный идентификатор; буквенно-цифровой с дефисами/подчёркиваниями |
+| `id` | Да | — | Уникальный идентификатор; буквы и цифры с дефисами и подчёркиваниями |
 | `type` | Да | — | Тип источника (см. таблицы выше) |
-| `host` | Нет | `""` | Имя хоста или IP |
+| `host` | Нет | `""` | Имя узла или IP |
 | `port` | Нет | `0` | Номер порта |
 | `database` | Нет | `""` | Имя базы данных |
 | `username` | Нет | `""` | Имя пользователя |
-| `password` | Нет | `""` | Пароль; используйте `${env:VAR}` для разрешения секрета |
+| `password` | Нет | `""` | Пароль; используйте `${env:VAR}` для разрешения секретов |
 | `path` | Нет | `null` | Путь к файлу или облачный URI для файловых и объектных/озёрных источников |
 | `base_url` | Нет | `null` | Базовый URL для источников OpenAPI |
 | `pool_min` | Нет | `1` | Минимальный размер пула соединений (REQ-052) |
 | `pool_max` | Нет | `5` | Максимальный размер пула соединений (REQ-052) |
-| `use_pgbouncer` | Нет | `false` | Маршрутизировать соединения через PgBouncer (REQ-053) |
+| `use_pgbouncer` | Нет | `false` | Направлять соединения через PgBouncer (REQ-053) |
 | `pgbouncer_port` | Нет | `6432` | Порт PgBouncer (REQ-053) |
 | `cache_enabled` | Нет | `true` | Включить кеширование ответов API |
-| `cache_ttl` | Нет | `null` | TTL кеша в секундах; наследует глобальное значение по умолчанию, если null |
-| `cache_catalog` | Нет | `null` | Федеративный каталог для API-кеша; по умолчанию — собственный каталог источника |
+| `cache_ttl` | Нет | `null` | TTL кеша в секундах; при null наследует глобальное значение по умолчанию |
+| `cache_catalog` | Нет | `null` | Федеративный каталог для кеша API; по умолчанию — собственный каталог источника |
 | `cache_schema` | Нет | `api_cache` | Схема внутри каталога кеша |
-| `naming_convention` | Нет | `null` | Переопределить глобальную конвенцию именования для этого источника (REQ-194) |
-| `federation_hints` | Нет | `{}` | Свойства сессии, передаваемые движку федерации, и расширенные параметры соединения для источников-хранилищ (REQ-278, REQ-281) |
-| `mapping` | Нет | `{}` | Настройки коннектора, специфичные для типа, для источников NoSQL и SaaS (например, `auth_type` для SharePoint, `use_token` для Splunk) (REQ-251) |
+| `naming_convention` | Нет | `null` | Переопределить глобальное соглашение об именовании для этого источника (REQ-194) |
+| `federation_hints` | Нет | `{}` | Свойства сессии, передаваемые федеративному движку, и расширенные параметры подключения для источников-хранилищ (REQ-278, REQ-281) |
+| `mapping` | Нет | `{}` | Настройки коннектора, зависящие от типа, для источников NoSQL и SaaS (например, `auth_type` у SharePoint, `use_token` у Splunk) (REQ-251) |
 | `allowed_domains` | Нет | `[]` | Ограничить источник конкретными доменами; пусто = без ограничений |
-| `description` | Нет | `""` | Человекочитаемое описание |
+| `description` | Нет | `""` | Понятное человеку описание |
 
 ---
 
 ## Источники Kafka
-
-Топики Kafka настраиваются отдельно под `kafka_sources`, ключом является `id` зарегистрированного источника `kafka`. [tool-verified: `config/provisa.yaml` lines 138–151] (REQ-147)
+Топики Kafka настраиваются отдельно в разделе `kafka_sources`, с ключом по `id` зарегистрированного источника типа `kafka`. [tool-verified: `config/provisa.yaml` lines 138–151] (REQ-147)
 
 ```yaml
 kafka_sources:
@@ -528,19 +527,18 @@ kafka_sources:
 
 | Поле | Описание |
 | ------- | ------------- |
-| `id` | Должно соответствовать `id` источника с `type: kafka` |
-| `topics[].id` | Логическое имя для этого топика внутри Provisa |
+| `id` | Должен совпадать с `id` источника с `type: kafka` |
+| `topics[].id` | Логическое имя этого топика внутри Provisa |
 | `topics[].topic` | Имя топика Kafka |
-| `topics[].domain_id` | Домен, которому принадлежит этот топик |
-| `topics[].description` | Человекочитаемое описание |
-| `topics[].default_window` | Временное окно по умолчанию для оконных запросов (например, `1h`) (REQ-148) |
+| `topics[].domain_id` | Домен, которому принадлежит топик |
+| `topics[].description` | Понятное человеку описание |
+| `topics[].default_window` | Окно времени по умолчанию для оконных запросов (например, `1h`) (REQ-148) |
 | `topics[].columns` | Определения столбцов для схемы топика (REQ-150) |
 
 ---
 
 ## Видимость столбцов
-
-Поле `visible_to` для каждого столбца — это список идентификаторов ролей, которые могут видеть этот столбец. [tool-verified: `provisa/core/models.py` `Column` class line 248; `config/provisa.yaml` lines 39–51]
+Поле `visible_to` у каждого столбца — список идентификаторов ролей, которые могут видеть этот столбец. [tool-verified: `provisa/core/models.py` `Column` class line 248; `config/provisa.yaml` lines 39–51]
 
 ```yaml
 columns:
@@ -552,12 +550,11 @@ columns:
     visible_to: [admin, analyst]  # both roles see this column
 ```
 
-Столбцы, опущенные из списка `visible_to` роли, не появляются в схеме GraphQL этой роли и не могут запрашиваться или упоминаться в фильтрах (REQ-039).
+Столбцы, не попавшие в список `visible_to` роли, не появляются в схеме GraphQL для этой роли и не могут быть запрошены или использованы в фильтрах (REQ-039).
 
 ---
 
 ## Связи
-
 Связи соединяют две зарегистрированные таблицы и появляются как вложенные поля в GraphQL. [tool-verified: `provisa/core/models.py` `Relationship` class lines 323–343; `config/provisa.yaml` lines 103–110] (REQ-019)
 
 ```yaml
@@ -571,33 +568,32 @@ relationships:
     cardinality: many-to-one
 ```
 
-| Поле | Обязательно | Описание |
+| Поле | Обязательное | Описание |
 | ------- | ---------- | ------------- |
-| `id` | Да | Уникальный идентификатор для этой связи |
+| `id` | Да | Уникальный идентификатор этой связи |
 | `source_table_id` | Да | Таблица, содержащая внешний ключ |
-| `target_table_id` | Да | Таблица, на которую делается ссылка; пусто для вычисляемых связей |
-| `source_column` | Да | Столбец в исходной таблице |
-| `target_column` | Да | Столбец в целевой таблице; пусто для вычисляемых связей |
+| `target_table_id` | Да | Таблица, на которую ссылаются; пусто для вычисляемых связей |
+| `source_column` | Да | Столбец исходной таблицы |
+| `target_column` | Да | Столбец целевой таблицы; пусто для вычисляемых связей |
 | `cardinality` | Да | `many-to-one` или `one-to-many` (REQ-019) |
-| `materialize` | Нет | Автоматически создать материализованное представление для кросс-источниковых соединений (REQ-158) |
-| `refresh_interval` | Нет | Интервал обновления MV в секундах (по умолчанию: 300) |
+| `materialize` | Нет | Автоматически создавать материализованное представление для межисточниковых соединений (REQ-158) |
+| `refresh_interval` | Нет | Интервал обновления материализованного представления в секундах (по умолчанию: 300) |
 | `target_function_name` | Нет | Имя функции БД для вычисляемых связей |
 | `function_arg` | Нет | Какой аргумент функции получает значение исходного столбца |
-| `alias` | Нет | Человекочитаемый тип связи (например, `WORKS_FOR`) |
-| `graphql_alias` | Нет | Именует поле SDL, которое эта связь выставляет в родительском типе. Если отсутствует, имя выводится из `field_name` целевой таблицы и кардинальности связи. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
+| `alias` | Нет | Понятный человеку тип связи (например, `WORKS_FOR`) |
+| `graphql_alias` | Нет | Задаёт имя поля SDL, которое эта связь выставляет на родительском типе. Когда не задано, имя выводится из `field_name` целевой таблицы и кардинальности связи. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | Нет | Когда `true`, исключить эту связь из рёбер графа Cypher |
-| `source_json_key` | Нет | Извлечь этот ключ из исходного столбца как JSON-объект перед JOIN |
+| `source_json_key` | Нет | Извлечь этот ключ из исходного столбца как объект JSON перед JOIN |
 
 Значения кардинальности [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
 
-- `many-to-one` — каждая исходная строка сопоставляется с одной целевой строкой (FK → PK)
-- `one-to-many` — каждая исходная строка сопоставляется с несколькими целевыми строками (обратное вышеуказанному)
+- `many-to-one` — каждая исходная строка сопоставляется одной целевой строке (FK на PK)
+- `one-to-many` — каждая исходная строка сопоставляется нескольким целевым строкам (обратное к предыдущему)
 
 ---
 
 ## Правила безопасности на уровне строк
-
-Правила RLS внедряют предложения `WHERE` во время выполнения запроса, ограниченные ролью и опционально таблицей или доменом. [tool-verified: `provisa/core/models.py` `RLSRule` class lines 391–395; `config/provisa.yaml` lines 128–131] (REQ-041)
+Правила RLS подставляют условия `WHERE` во время запроса, в пределах роли и, при необходимости, таблицы или домена. [tool-verified: `provisa/core/models.py` `RLSRule` class lines 391–395; `config/provisa.yaml` lines 128–131] (REQ-041)
 
 ```yaml
 rls_rules:
@@ -611,24 +607,22 @@ rls_rules:
     filter: "tenant_id = current_setting('provisa.tenant_id')"
 ```
 
-Когда для одной и той же роли существуют и правило уровня домена, и правило уровня таблицы, правило уровня таблицы имеет приоритет (REQ-403).
+Когда для одной роли есть и правило уровня домена, и правило уровня таблицы, приоритет имеет правило уровня таблицы (REQ-403).
 
-| Поле | Обязательно | Описание |
+| Поле | Обязательное | Описание |
 | ------- | ---------- | ------------- |
 | `table_id` | Условно | Таблица, к которой применяется правило; взаимоисключающе с `domain_id` |
-| `domain_id` | Условно | Домен, к которому применяется правило; применяется ко всем таблицам домена (REQ-402) |
-| `role_id` | Да | Роль, к которой применяется это правило |
-| `filter` | Да | Предикат SQL, внедряемый в `WHERE`; может ссылаться на переменные сессии (REQ-041) |
+| `domain_id` | Условно | Домен, к которому применяется правило; действует на все таблицы домена (REQ-402) |
+| `role_id` | Да | Роль, к которой применяется правило |
+| `filter` | Да | Предикат SQL, подставляемый в `WHERE`; может ссылаться на переменные сессии (REQ-041) |
 
 ---
 
-## Функции и вебхуки
-
+## Функции и веб-хуки
 ### Функции БД
+Возьмите функцию базы данных под учёт и выставьте её как запрос или мутацию GraphQL. [tool-verified: `provisa/core/models.py` `Function` class lines 423–438; `config/provisa.yaml` lines 152–164] (REQ-205)
 
-Отслеживайте функцию базы данных и выставляйте её как запрос или мутацию GraphQL. [tool-verified: `provisa/core/models.py` `Function` class lines 423–438; `config/provisa.yaml` lines 152–164] (REQ-205)
-
-Источники баз данных также могут автоматически обнаруживать свои хранимые процедуры и функции из каталога вендора (`pg_proc`, `information_schema.routines` или эквиваленты вендора), устраняя необходимость вручную регистрировать каждую из них. Обнаружение читает `prokind` и `provolatile`: неизменяемые/стабильные функции регистрируются как параметризованные отношения (аргументы процедуры становятся параметрами запроса, той же формы, что и таблицы GET OpenAPI), а изменчивые процедуры регистрируются как мутации/отслеживаемые функции. Обнаруженные процедуры проходят через governance этапа 2 идентично вручную зарегистрированным. [tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
+Источники-базы данных могут также автоматически обнаруживать свои хранимые процедуры и функции по каталогу поставщика (`pg_proc`, `information_schema.routines` или эквиваленты поставщика), что избавляет от ручной регистрации каждой из них. Обнаружение читает `prokind` и `provolatile`: неизменяемые и стабильные функции регистрируются как параметризованные отношения (аргументы процедуры становятся параметрами запроса — та же форма, что у таблиц GET в OpenAPI), а изменчивые процедуры регистрируются как мутации и учтённые функции. Обнаруженные подпрограммы проходят управление второго этапа так же, как зарегистрированные вручную. [tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
 
 ```yaml
 functions:
@@ -648,23 +642,22 @@ functions:
         type: String
 ```
 
-| Поле | Обязательно | По умолчанию | Описание |
+| Поле | Обязательное | По умолчанию | Описание |
 | ------- | ---------- | --------- | ------------- |
 | `name` | Да | — | Имя поля GraphQL |
 | `source_id` | Да | — | Источник, содержащий функцию |
 | `schema` | Нет | `public` | Схема базы данных |
-| `function_name` | Да | — | Фактическое имя функции базы данных |
+| `function_name` | Да | — | Фактическое имя функции в базе данных |
 | `returns` | Да | — | Идентификатор зарегистрированной таблицы, которую возвращает функция (REQ-207) |
 | `arguments` | Нет | `[]` | Список определений аргументов `{name, type}` (REQ-211) |
 | `visible_to` | Нет | `[]` | Роли, которые могут вызывать эту функцию |
 | `writable_by` | Нет | `[]` | Роли, которые могут вызывать её как мутацию |
-| `domain_id` | Нет | `""` | Домен, которому принадлежит эта функция |
+| `domain_id` | Нет | `""` | Домен, которому принадлежит функция |
 | `description` | Нет | `null` | Описание поля GraphQL |
 | `kind` | Нет | `mutation` | `"query"` или `"mutation"` (REQ-205) |
 
-### Вебхуки
-
-Выставите внешний HTTP-эндпоинт как запрос или мутацию GraphQL. [tool-verified: `provisa/core/models.py` `Webhook` class lines 441–455; `config/provisa.yaml` lines 166–178] (REQ-209)
+### Веб-хуки
+Выставьте внешнюю конечную точку HTTP как запрос или мутацию GraphQL. [tool-verified: `provisa/core/models.py` `Webhook` class lines 441–455; `config/provisa.yaml` lines 166–178] (REQ-209)
 
 ```yaml
 webhooks:
@@ -683,33 +676,32 @@ webhooks:
         type: String
 ```
 
-| Поле | Обязательно | По умолчанию | Описание |
+| Поле | Обязательное | По умолчанию | Описание |
 | ------- | ---------- | --------- | ------------- |
 | `name` | Да | — | Имя поля GraphQL |
-| `url` | Да | — | URL эндпоинта вебхука |
-| `method` | Нет | `POST` | HTTP-метод |
+| `url` | Да | — | URL конечной точки веб-хука |
+| `method` | Нет | `POST` | Метод HTTP |
 | `timeout_ms` | Нет | `5000` | Таймаут запроса в миллисекундах |
-| `returns` | Нет | `null` | Идентификатор зарегистрированной таблицы или null для инлайн-типа |
-| `inline_return_type` | Нет | `[]` | Список полей `{name, type}` для пользовательских форм возврата (REQ-210) |
+| `returns` | Нет | `null` | Идентификатор зарегистрированной таблицы или null для встроенного типа |
+| `inline_return_type` | Нет | `[]` | Список полей `{name, type}` для произвольных форм возврата (REQ-210) |
 | `arguments` | Нет | `[]` | Список определений аргументов `{name, type}` |
-| `visible_to` | Нет | `[]` | Роли, которые могут вызывать этот вебхук |
-| `domain_id` | Нет | `""` | Домен, которому принадлежит этот вебхук |
+| `visible_to` | Нет | `[]` | Роли, которые могут вызывать этот веб-хук |
+| `domain_id` | Нет | `""` | Домен, которому принадлежит веб-хук |
 | `description` | Нет | `null` | Описание поля GraphQL |
 | `kind` | Нет | `mutation` | `"query"` или `"mutation"` |
 
 ---
 
 ## Аутентификация
-
-Аутентификация настраивается под ключом `auth`. [tool-verified: `provisa/core/models.py` `AuthConfig` class lines 467–477] (REQ-120)
+Аутентификация настраивается в разделе `auth`. [tool-verified: `provisa/core/models.py` `AuthConfig` class lines 467–477] (REQ-120)
 
 | Провайдер | Описание |
 | ---------- | ------------- |
-| `none` | Без аутентификации; все запросы обрабатываются как `default_role` |
-| `firebase` | Firebase Authentication; требует `project_id` и `service_account_key` (REQ-121) |
+| `none` | Без аутентификации; все запросы считаются выполняемыми ролью `default_role` |
+| `firebase` | Firebase Authentication; требуются `project_id` и `service_account_key` (REQ-121) |
 | `keycloak` | Keycloak OIDC (REQ-122) |
-| `oauth` | Общий OAuth 2.0 (REQ-123) |
-| `simple` | Имя пользователя/пароль без внешнего провайдера (REQ-124) |
+| `oauth` | Обычный OAuth 2.0 (REQ-123) |
+| `simple` | Имя пользователя и пароль без внешнего провайдера (REQ-124) |
 
 ```yaml
 auth:
@@ -725,27 +717,25 @@ auth:
     service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT_KEY}
 ```
 
-`assignments_source: claims` считывает назначения ролей из утверждений JWT. `assignments_source: provisa` считывает их из собственного хранилища назначений Provisa. [tool-verified: `provisa/core/models.py` line 476] (REQ-551)
+`assignments_source: claims` читает назначения ролей из утверждений JWT. `assignments_source: provisa` читает их из собственного хранилища назначений Provisa. [tool-verified: `provisa/core/models.py` line 476] (REQ-551)
 
 ---
 
 ## Маршрутизация выполнения
+**Прямое выполнение** — односточниковые запросы к РСУБД направляются в нативный драйвер ради задержки менее 100 мс (REQ-027). Для поддержки этого пути источнику нужны и запись `SOURCE_TO_DIALECT`, и запись `SOURCE_TO_CONNECTOR` (REQ-229).
 
-**Прямое выполнение** — однокорневые запросы РСУБД маршрутизируются к нативному драйверу для задержки менее 100 мс (REQ-027). Источникам требуется как запись `SOURCE_TO_DIALECT`, так и запись `SOURCE_TO_CONNECTOR`, чтобы поддерживать этот путь (REQ-229).
+**Федеративное выполнение** — межисточниковые запросы и источники без прямого драйвера направляются через федеративный движок (REQ-028). В состав Provisa входит встроенный федеративный движок; для крупных развёртываний укажите на собственный совместимый кластер (REQ-226).
 
-**Федеративное выполнение** — многоисточниковые запросы и источники без прямого драйвера маршрутизируются через движок федерации (REQ-028). Provisa включает встроенный движок федерации; для развёртываний большого масштаба укажите на собственный совместимый кластер (REQ-226).
-
-**Статистика** — при регистрации Provisa выполняет `ANALYZE` для каждой опубликованной таблицы, чтобы подготовить оптимизатор на основе стоимости (количество строк, доля null, уникальные значения, min/max). Сбои регистрируются и не блокируют регистрацию (REQ-275).
+**Статистика** — при регистрации Provisa выполняет `ANALYZE` для каждой опубликованной таблицы, чтобы наполнить оптимизатор по стоимости (число строк, доля null, число различных значений, min/max). Ошибки записываются в журнал и не блокируют регистрацию (REQ-275).
 
 ---
 
-## Источники графа и семантики
-
+## Графовые и семантические источники
 ### Neo4j
 
-Зарегистрируйте графовую базу данных Neo4j как запрашиваемый источник. Стюарды пишут запросы Cypher, проецирующие скалярные значения; Provisa кеширует результаты и выставляет их как типы GraphQL (REQ-295).
+Зарегистрируйте графовую базу данных Neo4j как запрашиваемый источник. Распорядители пишут запросы Cypher, проецирующие скалярные значения; Provisa кеширует результаты и выставляет их как типы GraphQL (REQ-295).
 
-Запросы Cypher должны использовать аксессоры свойств в предложении `RETURN` (`RETURN n.id AS id, n.name AS name`) — возврат объектов узлов отклоняется во время регистрации (REQ-296).
+Запросы Cypher должны использовать доступ к свойствам в предложении `RETURN` (`RETURN n.id AS id, n.name AS name`) — возврат объектов-узлов отклоняется на этапе регистрации (REQ-296).
 
 ```bash
 # Register via admin API (no YAML config required)
@@ -766,11 +756,11 @@ POST /admin/sources/neo4j/graph/tables
 }
 ```
 
-Эндпоинт предпросмотра (`POST /admin/sources/neo4j/{id}/preview`) возвращает примеры строк и блокирует регистрацию, если Cypher возвращает объекты узлов (REQ-296).
+Конечная точка предпросмотра (`POST /admin/sources/neo4j/{id}/preview`) возвращает образцы строк и блокирует регистрацию, если Cypher возвращает объекты-узлы (REQ-296).
 
 ### SPARQL
 
-Зарегистрируйте любое совместимое с SPARQL 1.1 тройное хранилище (Apache Jena Fuseki, Virtuoso, Stardog и т. д.) как запрашиваемый источник (REQ-297).
+Зарегистрируйте любое хранилище триплетов, совместимое со SPARQL 1.1 (Apache Jena Fuseki, Virtuoso, Stardog и др.), как запрашиваемый источник (REQ-297).
 
 Запросы должны быть запросами `SELECT`. Имена переменных в предложении `SELECT` автоматически становятся именами столбцов (REQ-297).
 
@@ -792,12 +782,11 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-Оба коннектора используют конвейер кеша источников API — результаты хранятся в PostgreSQL с настраиваемым TTL, что делает их доступными для кросс-источниковых федеративных JOIN (REQ-295, REQ-297, REQ-299).
+Оба коннектора используют конвейер кеша источников API — результаты сохраняются в PostgreSQL с настраиваемым TTL, что делает их доступными для межисточниковых федеративных JOIN (REQ-295, REQ-297, REQ-299).
 
 ---
 
-## Примеры соединений
-
+## Примеры подключения
 ### PostgreSQL
 
 ```yaml
@@ -848,8 +837,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
   password: ""
 ```
 
-### Кросс-источниковый запрос
-
+### Межисточниковый запрос
 ```graphql
 {
   orders(where: {region: {eq: "us"}}) {
@@ -867,4 +855,4 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-Однокорневые части маршрутизируются напрямую (REQ-027). Кросс-источниковые JOIN федерируются с автоматическим приведением типов (REQ-028, REQ-552).
+Односточниковые части направляются напрямую (REQ-027). Межисточниковые JOIN федерируются с автоматическим приведением типов (REQ-028, REQ-552).

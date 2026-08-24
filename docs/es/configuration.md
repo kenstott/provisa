@@ -29,7 +29,7 @@ Todos los orígenes comparten un conjunto común de campos. [tool-verified: `pro
 | `port` | `0` | `0` significa que cada conector suministra su propio valor por defecto — no hay un mapa central de puertos por defecto |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | Admite resolución de secretos `${env:VAR}` |
+| `password` | `""` | Admite referencias de credenciales `${env:VAR}` y `${secret:NAME}` — consulte [Secretos](secrets.md) |
 | `path` | `null` | Ruta de archivo o URI para orígenes basados en archivo |
 | `base_url` | `null` | URL base para orígenes de API |
 | `pool_min` / `pool_max` | `1` / `5` | Límites del pool de conexiones |

@@ -1,45 +1,36 @@
 # Modelo de seguridad
-
 Provisa aplica un modelo de seguridad de múltiples capas en todos los lenguajes de consulta (GraphQL, SQL, Cypher) y todos los transportes (REST, gRPC, Arrow Flight, JDBC, WebSocket). (REQ-001, REQ-266) El gobierno se aplica de manera uniforme — no existe ninguna ruta de consulta que lo evite. (REQ-002, REQ-266)
 
 Las capas se aplican en orden. Una solicitud debe superar cada capa antes de que se evalúe la siguiente.
 
 ## Modelo por capas
-
 ### Capa 0 — Filtrado de introspección
-
 El esquema y el catálogo presentados a un rol contienen únicamente las tablas de su lista `domain_access` y las columnas que superan las reglas `visible_to` por columna. (REQ-039) Los objetos fuera del acceso de un rol son invisibles en el momento del descubrimiento — no se pueden consultar, autocompletar ni inferir que existen. (REQ-039) Esto aplica al esquema de GraphQL, al catálogo SQL y al navegador de esquemas del editor de consultas. (REQ-039, REQ-363)
 
 Consulte [Visibilidad de esquemas](#visibilidad-de-esquemas).
 
 ### Capa 1 — Acceso público
-
 Las tablas de dominios sin restricción `domain_access` son visibles para todas las identidades autenticadas sin configuración adicional. Fricción cero para datos genuinamente públicos.
 
 ### Capa 2 — Acceso por dominio
-
 Cada rol tiene una lista `domain_access` de IDs de dominio. Una consulta que toca una tabla fuera de esos dominios se rechaza antes de la ejecución. (REQ-038, REQ-039) Este es el límite de propiedad de grano grueso — un rol de RR. HH. no puede acceder a tablas de finanzas sin importar cómo esté escrito el SQL. (REQ-002)
 
 Consulte [Modelo de derechos](#modelo-de-derechos).
 
 ### Capa 3 — Seguridad de nivel de fila
-
 Después de confirmar el acceso al dominio, se inyectan predicados `WHERE` por tabla y por rol en cada `SELECT` en el momento de la ejecución. (REQ-041, REQ-263) Los predicados se evalúan contra los datos sin procesar. Un gerente regional que consulta una tabla de pedidos compartida solo ve las filas de su región, incluso en un `SELECT *`. (REQ-264)
 
 Consulte [Seguridad de nivel de fila (RLS)](#seguridad-de-nivel-de-fila-rls).
 
 ### Capa 4 — Visibilidad y enmascaramiento de columnas
-
 Las columnas con una lista `visible_to` que excluye al rol solicitante se eliminan de la salida de la consulta. (REQ-040, REQ-263) Las columnas con una regla de enmascaramiento tienen sus valores reemplazados — mediante redacción por regex, reemplazo por constante o truncamiento — antes de que los resultados salgan del servidor. (REQ-263) El enmascaramiento se aplica en todos los lenguajes de consulta y formatos de salida. (REQ-263)
 
 Consulte [Modelo de permisos de columna](#modelo-de-permisos-de-columna) y [Enmascaramiento a nivel de columna](#enmascaramiento-a-nivel-de-columna).
 
 ### Capa 5 — Protección de predicados
-
 Las columnas enmascaradas se rechazan en las cláusulas `WHERE` y `HAVING`. (REQ-263) Sin esto, quien realiza la llamada podría inferir el valor sin enmascarar mediante búsqueda binaria en un filtro, aunque la salida esté enmascarada. El rechazo se aplica en el momento del análisis de la consulta, antes de la ejecución. (REQ-531)
 
 ### Gobierno de relaciones (V002)
-
 Las condiciones JOIN en SQL deben coincidir con una relación registrada y aprobada entre tablas. (REQ-001) Los joins no aprobados se rechazan. Cada relación lleva un motivo y una descripción legibles por humanos — orientación tanto para usuarios como para agentes autónomos sobre por qué existe una ruta de recorrido. Esto es política de gobierno, no un límite de seguridad estricto: las capas 2–5 se mantienen sin importar la estructura del join, de modo que una elusión deliberada no expone datos que el rol no pudiera alcanzar mediante dos consultas separadas. Los intentos de elusión se registran y son auditables.
 
 **Mecanismos de omisión** — V002 se puede omitir de dos maneras. La primera es una capacidad: un rol que posee `ignore_relationships` une relaciones que el catálogo no cubre. Entre los roles de sistema predefinidos solo `modeler` la posee — el rol de descubrimiento cuyo trabajo es determinar el modelo en lugar de aplicarlo. (REQ-1297) `analyst` no la posee. [tool-verified: `provisa/core/db.py:84`]
@@ -66,7 +57,6 @@ Estas capas se componen entre sí. Un rol con acceso por dominio, RLS y columnas
 ---
 
 ## Modelo de derechos
-
 Capacidades asignadas de forma independiente, con jerarquía de roles opcional mediante `parent_role_id`. `admin` otorga todas. (REQ-042)
 
 | Capacidad | Descripción |
@@ -82,7 +72,6 @@ Capacidades asignadas de forma independiente, con jerarquía de roles opcional m
 | `admin` | Superusuario — otorga todas |
 
 ### Herencia de roles
-
 Los roles pueden heredar capacidades y acceso por dominio de un rol padre mediante `parent_role_id`. (REQ-215) La jerarquía se aplana al iniciar — los roles hijos combinan las capacidades y el acceso por dominio del padre con los propios. (REQ-215)
 
 ```yaml
@@ -97,11 +86,9 @@ roles:
 ```
 
 ## Modelo de permisos de columna
-
 Cada columna tiene un modelo de permisos de cuatro campos que controla el acceso de lectura, escritura y enmascaramiento por rol. (REQ-042, REQ-249)
 
 ### Visibilidad de tres niveles
-
 | Nivel | Condición | Resultado |
 | ------ | ----------- | -------- |
 | **Oculta** | El rol no está en `visible_to` | Columna ausente del SDL de GraphQL |
@@ -109,7 +96,6 @@ Cada columna tiene un modelo de permisos de cuatro campos que controla el acceso
 | **Sin enmascarar** | El rol está en `visible_to` Y el rol está en `unmasked_to` (o no hay regla de enmascaramiento) | Acceso de lectura completo |
 
 ### Permisos de escritura
-
 | Campo | Vacío significa | Propósito |
 | ------- | ------------ | --------- |
 | `visible_to` | Todos los roles pueden leer | Controla quién ve la columna (enmascarada o sin enmascarar) |
@@ -119,7 +105,6 @@ Cada columna tiene un modelo de permisos de cuatro campos que controla el acceso
 El permiso de escritura se aplica en el pipeline de mutaciones. Un rol que no está en `writable_by` recibe un error 403 al intentar escribir en una columna restringida. (REQ-033, REQ-034)
 
 ### Ejemplo
-
 ```yaml
 columns:
   - name: email
@@ -147,13 +132,11 @@ En este ejemplo:
 - `created_at`: todos pueden leer, nadie puede escribir
 
 ## Autorización de mutaciones
-
 Las mutaciones registradas (GraphQL remoto, OpenAPI, gRPC, Hasura) están controladas por dos verificaciones independientes. (REQ-867, REQ-868) Un rol solo puede invocar una mutación si posee la capacidad global `write` Y aparece en la lista `writable_by` de esa mutación. (REQ-868) Un `writable_by` vacío es denegación predeterminada — ningún rol puede invocarla. (REQ-867)
 
 Las mutaciones se clasifican como escrituras por contrato, no por declaración de quien realiza la llamada. (REQ-869) Un `SELECT` que hace referencia a una función de tipo mutación se promueve a escritura y queda sujeto a la misma verificación de dos controles, de modo que quien realiza la llamada no puede invocar una mutación disfrazándola de lectura. (REQ-869) Reclasificar una mutación como segura para lectura requiere la capacidad `access_config` y se registra como una decisión de gobierno; no existe una exclusión por solicitud. (REQ-870)
 
 ## Visibilidad de esquemas
-
 Los esquemas de GraphQL por rol ocultan el contenido no autorizado: (REQ-039)
 
 - **Acceso por dominio**: el rol ve tablas solo en sus dominios `domain_access` (`"*"` = todos) (REQ-039)
@@ -161,7 +144,6 @@ Los esquemas de GraphQL por rol ocultan el contenido no autorizado: (REQ-039)
 - Las tablas/columnas no autorizadas no aparecen en el esquema (REQ-039)
 
 ## Seguridad de nivel de fila (RLS)
-
 Inyección de cláusulas SQL WHERE por tabla y por rol. Se aplica después de la compilación, antes de la ejecución. (REQ-041, REQ-263)
 
 ```yaml
@@ -174,7 +156,6 @@ rls_rules:
 El filtro se combina con AND en la cláusula WHERE de la consulta. Funciona tanto para consultas como para mutaciones (UPDATE/DELETE). (REQ-035, REQ-041)
 
 ## Enmascaramiento a nivel de columna
-
 El enmascaramiento se define una vez por columna — es una propiedad de la columna, no del rol. El campo `unmasked_to` controla qué roles lo omiten. (REQ-249)
 
 | Tipo de enmascaramiento | Tipos admitidos | Expresión SQL |
@@ -186,11 +167,9 @@ El enmascaramiento se define una vez por columna — es una propiedad de la colu
 El enmascaramiento se traslada a la proyección SQL SELECT — la base de datos devuelve los datos enmascarados. (REQ-263) Los datos sin enmascarar nunca atraviesan la red para los roles enmascarados. (REQ-263) Las columnas enmascaradas también se bloquean en las cláusulas `WHERE` y `HAVING` (protección de predicados de la capa 5) para evitar la inferencia del valor sin enmascarar mediante filtrado. (REQ-263, REQ-531)
 
 ## Muestreo
-
 Todos los roles ven resultados muestreados (predeterminado: 100 filas) a menos que tengan la capacidad `full_results`. (REQ-554) Se controla mediante la variable de entorno `PROVISA_SAMPLE_SIZE`. (REQ-554)
 
 ## Registro de auditoría
-
 Cada consulta que toca un activo de dominio se registra en el `query_audit_log`, de solo adición. (REQ-596, REQ-613) Cada fila captura `tenant_id`, `user_id`, `role_id`, un hash SHA-256 del texto de la consulta, `table_ids`, `source`, `status_code`, `duration_ms` y `logged_at`. (REQ-596) El texto de la consulta nunca se almacena tal cual — solo su hash. (REQ-596)
 
 El registro es de solo adición a nivel de base de datos: las reglas de PostgreSQL bloquean `DELETE` y `UPDATE`. (REQ-596, REQ-613) Dos índices — `(tenant_id, logged_at)` y `(user_id, logged_at)` — respaldan las consultas de cumplimiento con alcance por inquilino y por rango de tiempo por usuario. (REQ-596, REQ-613)
@@ -198,7 +177,6 @@ El registro es de solo adición a nivel de base de datos: las reglas de PostgreS
 Cuando el cifrado está habilitado, la columna del hash del texto de la consulta se almacena cifrada y solo se descifra en lecturas de administrador autorizadas. (REQ-689)
 
 ## Limitación de tasa
-
 Los límites de tasa por rol se configuran en `provisa.yaml`: número máximo de solicitudes por segundo, número máximo de suscripciones SSE concurrentes y número máximo de flujos Arrow Flight concurrentes. (REQ-369) Los límites se aplican en la capa de API antes de la compilación o la ejecución; las solicitudes que superan el límite se rechazan con HTTP 429 y un encabezado `Retry-After`. (REQ-369)
 
 El servicio de consulta en lenguaje natural (`POST /query/nl`) tiene un límite independiente mediante `nl.rate_limit` (solicitudes por minuto por rol). Las solicitudes que superan el límite se rechazan antes de realizar cualquier llamada al LLM. (REQ-370)
@@ -206,7 +184,6 @@ El servicio de consulta en lenguaje natural (`POST /query/nl`) tiene un límite 
 El estado del límite de tasa reside en Redis (`cache.redis_url`) como un contador de ventana deslizante — sin estado por instancia — de modo que los límites se mantienen en todas las instancias horizontales de Provisa. (REQ-371)
 
 ## Autenticación
-
 Proveedores de autenticación conectables: (REQ-120)
 
 | Proveedor | Tipo de token | Caso de uso |
@@ -223,7 +200,6 @@ Asignación de roles: reclamaciones de identidad → rol de Provisa mediante reg
 Un superusuario configurado en `provisa.yaml` (nombre de usuario más una contraseña proveniente de un secreto de entorno) siempre recibe el rol admin y todas las capacidades, independientemente del proveedor configurado — una ruta de arranque para la configuración inicial. (REQ-125)
 
 ### Superficies y credenciales
-
 Cada superficie se autentica mediante el mismo contrato de proveedor, de modo que una credencial que funciona en una funciona en todas allí donde el protocolo pueda transportarla. (REQ-124, REQ-1263) Esta tabla es la referencia única; los documentos de cada superficie no la repiten.
 
 | Superficie | Contraseña | Token de proveedor | Token de acceso personal | Certificado de cliente (mTLS) |
@@ -240,7 +216,6 @@ Donde una celda muestra `—`, el protocolo no lleva campo de nombre de usuario 
 La matriz la impone `tests/unit/test_auth_surface_conformance.py`, que ejerce el punto de entrada de validación real de cada superficie y falla cuando se añade una superficie nueva sin fila.
 
 ### Tokens de acceso personal
-
 Un PAT es un secreto bearer de larga duración que un usuario acuña para un cliente que no puede completar un inicio de sesión interactivo — un script, una herramienta de BI, un controlador. (REQ-1263) Lleva su propia organización y rol, y todas las superficies lo resuelven mediante el mismo validador, de modo que ninguna superficie necesita saber qué es un PAT.
 
 La forma en el cable es `provisa_pat_` seguido de 43 caracteres base64 seguros para URL. El prefijo es lo que encamina un secreto presentado hacia el almacén de tokens en lugar de al proveedor de identidad, y hace que un token filtrado sea localizable con grep en registros y repositorios.
@@ -251,13 +226,11 @@ La forma en el cable es `provisa_pat_` seguido de 43 caracteres base64 seguros p
 - **Caducidad** — un token puede llevar una fecha de caducidad; un token caducado se rechaza en la validación. Eliminar la pertenencia de un usuario revoca sus tokens con ella.
 
 ### SCRAM-SHA-256 en pgwire
-
 Con el proveedor `basic`, establecer `auth.scram: true` hace que pgwire anuncie SASL (código de autenticación 10) con el mecanismo `SCRAM-SHA-256`, de modo que una contraseña se demuestra en lugar de enviarse. (REQ-1394) La vinculación de canal (`SCRAM-SHA-256-PLUS`) no se ofrece.
 
 SCRAM necesita un verificador RFC 5802, que no puede derivarse de un hash bcrypt. Se escribe un verificador siempre que una contraseña pasa en texto plano — registro, inicio de sesión, cambio de contraseña, restablecimiento por administrador — así que un despliegue que activa SCRAM va recogiendo verificadores a medida que sus usuarios se autentican la próxima vez, y la primera conexión SCRAM de cada usuario sigue a su siguiente introducción de contraseña. A un usuario que aún no tiene verificador se le responde con un intercambio simulado indistinguible de uno real, de modo que el cable no revela quién ha migrado.
 
 ### TLS mutuo
-
 La verificación de certificado de cliente traslada la primera comprobación al handshake TLS: quien llama sin un certificado firmado por la CA del despliegue nunca alcanza la capa de credenciales. (REQ-1228) Está disponible en pgwire, Bolt, gRPC y Arrow Flight — los cuatro transportes que terminan su propio TLS.
 
 | Variable | Significado |
@@ -269,7 +242,6 @@ La verificación de certificado de cliente traslada la primera comprobación al 
 Las anulaciones por protocolo siguen la misma nomenclatura que los ajustes TLS. Nada se infiere: un modo fijado sin CA se niega a arrancar, y un modo no reconocido se niega a arrancar en lugar de leerse como el vecino más seguro — un despliegue que cree exigir certificados de cliente y no lo hace está peor que uno que no arranca.
 
 ### Limitación de intentos de inicio de sesión
-
 Adivinar contraseñas es independiente del protocolo: la misma cuenta puede machacarse por HTTP, pgwire y Bolt. Por eso el contador vive en la capa de validación de credenciales, no en una superficie concreta, de modo que un bloqueo ganado en cualquier sitio se aplica en todas partes. (REQ-1393)
 
 Está activo por defecto — cinco fallos en cinco minutos bloquean al sujeto durante quince minutos — y se ajusta bajo `auth.login_throttle`. A un sujeto bloqueado se le rechaza antes siquiera de examinar la credencial, y una autenticación correcta borra el historial de ese sujeto.
@@ -277,7 +249,6 @@ Está activo por defecto — cinco fallos en cinco minutos bloquean al sujeto du
 La clave es el principal que transporta el protocolo. Una superficie solo-bearer no transporta principal, así que la clave es un resumen de la propia credencial; lo que eso detiene es la repetición sin límite de un único token comprometido. El almacén es por proceso, de modo que un despliegue con varios workers de API permite hasta `max_attempts` por worker — la limitación es un freno a la adivinación, no una cuota distribuida.
 
 ### Direccionar una organización en un protocolo de cable
-
 En multitenencia una organización se direcciona por nombre de host: `acme.provisa.dev` es la organización `acme`. Sobre HTTP ese nombre llega en la cabecera `Host`. Un cliente pgwire o Bolt no envía tal cabecera, pero sí envía el nombre de host al que marcó en el ClientHello de TLS, y Provisa lee la organización de ahí. (REQ-1234) Nada cambia en el cliente — conectarse a `acme.provisa.dev` es todo lo que hace falta.
 
 El nombre de host es una solicitud, no una concesión. Llega al mismo resolutor que la cabecera `Host`, que rechaza cualquier organización de la que el principal autenticado no sea miembro ni tenga el derecho entre organizaciones. Marcar un nombre de host en el que no se tiene pertenencia no alcanza dato alguno. Un cliente que se conectó por dirección IP no envía nombre de host y resuelve su organización solo a partir del principal, que es toda conexión en un despliegue de una sola organización.
@@ -285,7 +256,6 @@ El nombre de host es una solicitud, no una concesión. Llega al mismo resolutor 
 gRPC, Arrow Flight y MCP entregan sus certificados a bibliotecas que no exponen ningún callback de nombre de host; esos transportes nombran una organización con la cabecera de metadatos `x-provisa-org` en su lugar.
 
 ## Modo de alta seguridad
-
 `security.mode: high` en `provisa.yaml` afirma una garantía: el backend de Provisa nunca maneja datos en texto plano. (REQ-693) Toda columna que importa está cifrada en el origen, y solo un cliente que posea la clave de descifrado puede leerla. Esa garantía tiene consecuencias que un despliegue debe planificar.
 
 **Lo que hace el modo:**
@@ -299,11 +269,9 @@ gRPC, Arrow Flight y MCP entregan sus certificados a bibliotecas que no exponen 
 **Verificar que un despliegue está en el modo:** el registro de arranque lo nombra, una petición `/data/sql` sin clave KMS responde 403 con un mensaje que menciona REQ-693, y los puertos de pgwire, Bolt y MCP no están escuchando.
 
 ## Hook de aprobación ABAC
-
 Un hook de política externo opcional que se activa antes de la ejecución de la consulta. (REQ-203) Cuando está configurado, Provisa realiza una llamada a su motor de políticas con la identidad del usuario, los roles, las tablas, las columnas y la operación. La respuesta determina si la consulta continúa. (REQ-203)
 
 ### Alcance
-
 El hook solo se activa cuando la consulta toca una tabla u origen con alcance definido — sobrecarga cero para todo lo demás. (REQ-204)
 
 | Configuración | Efecto |
@@ -313,7 +281,6 @@ El hook solo se activa cuando la consulta toca una tabla u origen con alcance de
 | `tables[].approval_hook: true` | Esa tabla activa el hook |
 
 ### Protocolos
-
 Se admiten tres transportes: (REQ-246)
 
 | Tipo | Caso de uso | Campo de configuración |
@@ -346,7 +313,6 @@ message ApprovalResponse {
 El canal gRPC es persistente — un canal por instancia de Provisa, reutilizado en todas las llamadas a ese endpoint de hook. (REQ-555)
 
 ### Solicitud / Respuesta
-
 Los tres transportes llevan la misma carga útil: (REQ-246)
 
 | Campo | Tipo | Descripción |
@@ -360,7 +326,6 @@ Los tres transportes llevan la misma carga útil: (REQ-246)
 Los transportes webhook y Unix socket intercambian JSON. La respuesta debe incluir `approved` (bool) y, opcionalmente, `reason` (string). (REQ-246)
 
 ### Tiempo de espera y comportamiento por defecto
-
 ```yaml
 auth:
   approval_hook:
@@ -374,7 +339,6 @@ auth:
 Ante un tiempo de espera agotado o un error de transporte, se aplica la política `fallback`. (REQ-247) Un disyuntor (circuit breaker) (predeterminado: se abre después de 5 fallos consecutivos, semiabierto después de 30s) evita fallos en cascada provocados por un endpoint de hook lento. (REQ-556)
 
 ### Ejemplo de configuración
-
 ```yaml
 auth:
   approval_hook:
@@ -393,5 +357,6 @@ tables:
 ```
 
 ## Secretos
-
 Las credenciales usan la sintaxis `${env:VAR_NAME}`, resuelta en tiempo de ejecución. (REQ-557) Las contraseñas nunca se almacenan en la base de datos de configuración. (REQ-557)
+
+Para el servicio de secretos completo —bóvedas, sintaxis de referencia y proveedores— consulte [Secretos](secrets.md).

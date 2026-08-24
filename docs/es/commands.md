@@ -230,7 +230,7 @@ de metadatos bajo demanda del servidor en ejecución (REQ-1072/REQ-1074) enviand
 `/admin/metadata-export/publish` — el mismo endpoint que invoca el botón **Publicar ahora** de la
 pestaña de administración. [tool-verified: `_cmd_metadata_export` in provisa/cli.py:272-310]
 
-Úsalo para lanzar exportaciones programadas desde cron o CI cuando la planificación configurada en
+Úselo para lanzar exportaciones programadas desde cron o CI cuando la planificación configurada en
 `reconcile_cron` no tenga suficiente granularidad:
 
 ```bash
@@ -240,4 +240,7 @@ provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOK
 Salida 0 = publicación completa. Salida 1 = publicación parcial o fallo de conexión.
 
 Para la referencia completa de flags, las opciones de autenticación, el nombrado de hosts en
-multiinquilino y un ejemplo de cron, consulta [Exportación de metadatos — Desde la línea de comandos](metadata-export.md#from-the-command-line).
+multiinquilino y un ejemplo de cron, consulte [Exportación de metadatos — Desde la línea de comandos](metadata-export.md#from-the-command-line).
+
+
+Los comandos aparecen en la proyección git de cada entorno. Consulte [Entornos](environments.md) para saber cómo un comando y sus asignaciones de etiquetas sobreviven a un merge y a un pull.

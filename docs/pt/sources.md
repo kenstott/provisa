@@ -23,6 +23,25 @@ Fontes de **materialização** não têm conector federado. O Provisa busca seus
 
 ## Todas as Fontes
 
+O Provisa registra **53** tipos de fonte. As tabelas abaixo cobrem os 53; o índice é a contagem. [tool-verified: `provisa/core/models.py` `SourceType`]
+
+| # | Grupo | Tipos de fonte |
+| --- | --- | --- |
+| 1–13 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport` |
+| 14–20 | [Data warehouses em nuvem](#data-warehouses-em-nuvem) | `snowflake`, `bigquery`, `databricks`, `redshift`, `fabric`, `synapse`, `trino` |
+| 21–25 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 26–30 | [Data lake / formatos de tabela aberta](#data-lake-formatos-de-tabela-aberta) | `iceberg`, `delta_lake`, `hudi`, `hive`, `hive_s3` |
+| 31–33 | [NoSQL](#nosql) | `mongodb`, `cassandra`, `redis` |
+| 34–36 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 37 | [Receptor push](#receptor-push) | `ingest` |
+| 38–39 | [Grafo e semântico](#grafo-e-semantico) | `neo4j`, `sparql` |
+| 40–43 | [Baseado em arquivo](#baseado-em-arquivo) | `sqlite`, `csv`, `parquet`, `files` |
+| 44–45 | [Observabilidade e outros](#observabilidade-e-outros) | `google_sheets`, `prometheus` |
+| 46–47 | [SaaS empresarial](#conectores-saas-empresariais) | `sharepoint`, `splunk` |
+| 48–50 | [Fontes de API](#fontes-de-api) | `openapi`, `graphql_remote`, `grpc_remote` |
+| 51 | [GovData](#govdata) | `govdata` |
+| 52–53 | [Verificadores de qualidade de dados](#verificadores-de-qualidade-de-dados-req-1443) | `soda`, `great_expectations` |
+
 Referência para todo tipo de fonte que o Provisa suporta. "Driver direto" significa que consultas de fonte única são executadas contra a fonte nativamente (sub-100ms) (REQ-027). "Nome do Conector" é o conector federado usado quando a fonte participa de JOINs multi-fonte (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
 ### RDBMS
@@ -40,6 +59,8 @@ Referência para todo tipo de fonte que o Provisa suporta. "Driver direto" signi
 | `yugabytedb` | asyncpg (pg wire) | postgresql | postgres | Sim |
 | `greenplum` | asyncpg (pg wire) | postgresql | postgres | Sim |
 | `tidb` | aiomysql (mysql wire) | mysql | mysql | Sim |
+| `firebird` | — | — (extensão DuckDB) | — | Não |
+| `airport` | — | — (extensão DuckDB) | — | Não |
 
 Bancos de dados compatíveis com o protocolo de fio reutilizam o driver JDBC, o driver assíncrono nativo, e o dialeto de um fio base — CockroachDB, YugabyteDB, e Greenplum usam o fio PostgreSQL; TiDB usa o fio MySQL. Eles precisam apenas de entradas no registro, sem novo código de conector. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
@@ -80,6 +101,7 @@ Esses tipos de fonte são somente federação — sem driver direto, sem dialeto
 | `iceberg` | iceberg | Sim (argumento `as_of`, REQ-372) | — |
 | `delta_lake` | delta_lake | Sim (argumento `as_of`, REQ-372) | — |
 | `hive` | hive | Não | — |
+| `hudi` | — (motor `Hudi` do ClickHouse, cópia zero — REQ-1178) | Não | Sem conector federado; alcançado no local quando o ClickHouse é o motor ativo |
 | `hive_s3` | hive | Não | Hive apoiado em S3 |
 
 ### NoSQL

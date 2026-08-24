@@ -123,7 +123,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 ### Backend טלמטריה (`otlp2sql`)
 
 מחסנית ה-`--observability` שלמעלה (Collector ← Tempo/Prometheus/Grafana) היא נתיב
-טלמטריה אחד. השני הוא `otlp2sql` (‏`provisa.observability.otlp2sql`): מקלט
+טלמטריה אחד. השני הוא `otlp2sql` (`provisa.observability.otlp2sql`): מקלט
 OTLP/HTTP הכותב traces, מטריקות, ולוגים למסד נתונים SQL
 הנבחר על ידי URL של SQLAlchemy, ומחלץ את מאפייני ה-span‏ `provisa.*` בעת הקליטה
 כך שאין ריצת job‏ compaction נפרדת. כתיבות נצברות ל-batch
@@ -525,8 +525,8 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - קדמו לרישום הפנימי של הייצור שלכם
 
 3. החליטו לפני ההתקנה:
-   - **PostgreSQL** — בתוך-אשכולי (‏`postgresql.enabled: true`) או מנוהל חיצוני (‏`postgresql.host`)? חיצוני מומלץ לייצור
-   - **Redis** — בתוך-אשכולי או חיצוני (‏`redis.host`)? שנו את הסיסמה ברירת המחדל (‏`redis.password`)
+   - **PostgreSQL** — בתוך-אשכולי (‏`postgresql.enabled: true`) או מנוהל חיצוני (`postgresql.host`)? חיצוני מומלץ לייצור
+   - **Redis** — בתוך-אשכולי או חיצוני (‏`redis.host`)? שנו את הסיסמה ברירת המחדל (`redis.password`)
    - **MinIO / S3** — MinIO בתוך-אשכולי או S3 ילידי? עבור AWS, השתמשו ב-S3 עם תפקיד IAM
    - **סודות** — העבירו דרך `--set` להערכה; השתמשו ב-External Secrets או Vault Agent לייצור
 
@@ -646,7 +646,7 @@ Provisa מחילה מודל התאוששות דו-שכבתי על פני כל מ
 | `pyodbc` | Fabric, Synapse | חיבור ODBC לנקודות קצה T-SQL |
 | `azure-identity` | Fabric, Synapse | טוקן Azure AD דרך `DefaultAzureCredential` |
 | `clickhouse-connect` | ClickHouse | קריאות עמודתיות HTTP |
-| `protobuf>=6.33.5,<7` | BigQuery, gRPC | נעילת תאימות — `google-cloud-*` ו-OTel חולקים runtime‏ protobuf; `<7` שומר עליהם מיושרים |
+| `protobuf>=6.33.5,<7` | BigQuery, gRPC | נעילת תאימות — `google-cloud-*` ו-OTel חולקים runtime protobuf; `<7` שומר עליהם מיושרים |
 | `grpcio-status<1.82` | gRPC | מתיישר עם נעילת `protobuf<7` |
 
 ### דרישות ברמת-מערכת
@@ -655,7 +655,7 @@ Provisa מחילה מודל התאוששות דו-שכבתי על פני כל מ
 
 **Microsoft Fabric ו-Azure Synapse (ODBC)**
 
-`pyodbc` מתחבר דרך Microsoft ODBC Driver for SQL Server (‏`msodbcsql18`). הדרייבר חייב להיות מותקן על ה-host — לא דרך pip. [tool-verified: `mssql_warehouse_runtime.py` line 84 `"ODBC Driver 18 for SQL Server"` default]
+`pyodbc` מתחבר דרך Microsoft ODBC Driver for SQL Server (`msodbcsql18`). הדרייבר חייב להיות מותקן על ה-host — לא דרך pip. [tool-verified: `mssql_warehouse_runtime.py` line 84 `"ODBC Driver 18 for SQL Server"` default]
 
 macOS:
 
@@ -832,4 +832,6 @@ git pull
 provisa import config.yaml
 ```
 
-</content>
+
+
+ראו גם: [סביבות](environments.md) מסביר כיצד לנהל עותקים בעלי שם, מבודדי-סכמה, של המודל הממושל שלכם.

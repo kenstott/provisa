@@ -60,7 +60,7 @@ GET  /admin/security
 PUT  /admin/security
 ```
 
-KI-Modellzuweisungen, die Embedding-/Vektor-Modell-Registry und das NL-Rate-Limit — werden beim Neustart angewendet (REQ-1080):
+KI-Modellzuweisungen, die Embedding-/Vektor-Modell-Registry und das NL-Rate-Limit — wirken ab der nächsten Anfrage, kein Neustart nötig (REQ-1349): [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
 
 ```http
 GET  /admin/ai-models
@@ -70,6 +70,17 @@ PUT  /admin/ai-models
 Der Admin-Tab für Verschlüsselung leitet seine Anbieterliste live aus der Verschlüsselungs-Registry ab; nicht verfügbare Anbieter erscheinen, sind aber nicht auswählbar (REQ-1091).
 
 `GET`/`HEAD /health` und `GET /setup/status` sind immer unauthentifiziert — sie umgehen die Anforderung `Authorization: Bearer` selbst dann, wenn ein Auth-Provider konfiguriert ist (REQ-539).
+
+### Föderations-Engine
+
+Lesen oder ändern Sie, welche Engine das Deployment verwendet (REQ-916):
+
+```http
+GET  /admin/federation-engine
+PUT  /admin/federation-engine
+```
+
+`GET` liefert den Schlüssel der aktiven Engine und die Konfigurationsfelder, die sie braucht. `PUT` akzeptiert einen Body mit `engine` (dem Schlüssel) und beliebigen engine-spezifischen Feldern; die Auswahl wird in der Plattformkonfiguration gespeichert und bindet beim nächsten Neustart des Dienstes. [tool-verified: `provisa/api/admin/settings_router.py:730-829`]
 
 ### Relationship-Editor
 
@@ -227,6 +238,68 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
 ```
 
 Nach der Registrierung erscheinen Tabellen im GraphQL-Schema und sind wie jede andere Quelle abfragbar (REQ-016).
+
+### Hasura-/DDN-Import (REQ-1483)
+
+Wandeln Sie ein bestehendes Hasura-v2- oder Hasura-DDN-Projekt über die Admin-UI oder die API in Provisa-Konfiguration um, ohne dass etwas landet, bevor Sie es freigeben.
+
+```http
+POST /admin/import/hasura/preview
+POST /admin/import/hasura/apply
+```
+
+**Preview** konvertiert das hochgeladene Archiv und liefert das vorgeschlagene `config_yaml`, eine Liste von Warnungen und eine Zusammenfassung des Gefundenen (Anzahl von Quellen, Domänen, Tabellen, Spalten, Rollen, Relationships und RLS-Regeln). Nichts wird in die Mandantendatenbank geschrieben. Request-Body:
+
+```json
+{
+  "filename": "my-hasura-project.zip",
+  "content_b64": "<base64-encoded archive>",
+  "flavor": "auto",
+  "domain_map": {"public": "sales"},
+  "source_overrides": {}
+}
+```
+
+`flavor` ist `"auto"` (aus der Archivstruktur erkannt), `"hasura_v2"` oder `"ddn"`.
+
+**Apply** nimmt das YAML, das Sie geprüft (und optional bearbeitet) haben, und lädt es in die handelnde Org — derselbe Hot-Reload-Pfad wie `PUT /admin/config`. Request-Body: `{"config_yaml": "<yaml string>"}`.
+
+Preview cachet das konvertierte YAML nie serverseitig; Apply nimmt das YAML, das Sie liefern, sodass genau das angewendet wird, was geprüft wurde. [tool-verified: `provisa/api/admin/import_router.py`]
+
+### Apache-Ossie-Austausch (REQ-1316, REQ-1321)
+
+Provisa arbeitet mit Apache Ossie (incubating) als Import-/Export-Grenze zusammen.
+
+```http
+GET  /admin/ossie
+POST /admin/ossie/import
+```
+
+**Export** (`GET /admin/ossie`) leitet das Ossie-YAML-Dokument bei jeder Anfrage aus dem lebenden regierten Modell ab — es wird nie gecacht und kann daher nicht veralten. Die Antwort ist `text/yaml` mit einem `Content-Disposition: attachment`-Header. Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Relationships bilden auf Ossie-`relationship`-Objekte ab. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+
+**Import** (`POST /admin/ossie/import`) akzeptiert ein Ossie-Dokument in YAML oder JSON (das Format wird automatisch erkannt). Es parst das Dokument und liefert vorgeschlagene Tabellen- und Relationship-Registrierungen als JSON-Objekt zurück — nichts wird registriert. Der Prüfbildschirm in der Admin-UI lässt Sie Vorschläge annehmen oder kürzen, bevor irgendeine Mutation ausgelöst wird. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+
+### Objektspeicher (REQ-1046, REQ-1048, REQ-1049)
+
+Lesen oder konfigurieren Sie den Materialisierungsspeicher der Org:
+
+```http
+GET  /admin/org-storage
+PUT  /admin/org-storage
+```
+
+`GET` meldet, wie viel des Plattform-Speicherkontingents die Org nutzt. `PUT` registriert die eigene Speicher-DSN der Org (im Ruhezustand verschlüsselt; nie von GET zurückgegeben). Einmal gesetzt, landen die Materialisierungen der Org in ihrem eigenen Bucket und werden nicht mehr auf das Plattformkontingent angerechnet. `storage_url: null` zu senden löscht sie und bewegt die Org zurück zum Plattformspeicher. [tool-verified: `provisa/api/admin/org_storage_router.py`]
+
+### Org-Verschlüsselung (REQ-1574)
+
+Setzen oder rotieren Sie den Verschlüsselungsschlüssel der Org für ruhende Daten:
+
+```http
+GET  /admin/org-encryption
+PUT  /admin/org-encryption
+```
+
+`GET` liefert Fingerabdruck, ID und Herkunft des Schlüssels — nie Schlüsselmaterial. `PUT` setzt oder rotiert den Schlüssel. Übergeben Sie `key_b64` (32 rohe Bytes, base64-kodiert), um einen eigenen Schlüssel mitzubringen, oder lassen Sie es weg, damit Provisa einen erzeugt. Ein Löschen gibt es nicht: Den letzten Schlüssel stillzulegen würde jede damit umschlossene Nutzlast unlesbar machen. [tool-verified: `provisa/api/admin/org_encryption_router.py`]
 
 ## GraphiQL
 

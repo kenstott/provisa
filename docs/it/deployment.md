@@ -831,3 +831,6 @@ git push
 git pull
 provisa import config.yaml
 ```
+
+
+Vedere anche: [Ambienti](environments.md) spiega come gestire copie nominate e isolate per schema del modello governato.

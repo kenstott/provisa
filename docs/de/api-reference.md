@@ -200,6 +200,67 @@ Gibt `{"data": ...}` für GraphQL und `{"columns": [...], "rows": [...]}` für S
 
 ---
 
+### `POST /data/sql/explain`
+
+Erklärt oder analysiert ein SQL-Statement über die geregelte Pipeline. (REQ-1519) [tool-verified: `provisa/api/data/endpoint_dev.py:328`]
+
+Der Endpunkt umschließt das **geregelte** SQL — das Statement, das unter der Rolle des Aufrufers tatsächlich läuft, nach RLS und Maskierung — mit der EXPLAIN-Syntax des Dialekts. Der Plan zeigt also die autorisierte Fassung der Abfrage, nicht die Roheingabe.
+
+**Request-Body:**
+
+```json
+{
+  "sql": "SELECT id, amount FROM orders",
+  "role": "admin",
+  "analyze": false
+}
+```
+
+Setzen Sie `analyze: true`, um EXPLAIN ANALYZE auszuführen. Die Abfrage wird dann ausgeführt, und der Plan trägt echte Zeilenzahlen und Laufzeiten. Nicht jeder Dialekt unterstützt ANALYZE; siehe die Tabelle unter [Abfragepläne und Statistiken](engines.md#query-plans-and-statistics).
+
+**Antwort:** `{"plan": "<plan text or JSON>", "dialect": "trino", "analyzed": false}`
+
+`400`, wenn der Dialekt kein EXPLAIN unterstützt oder wenn `analyze: true` auf einem Dialekt angefordert wird, der es nicht unterstützt (z. B. SQLite). [tool-verified: `provisa/executor/explain.py:wrap_explain`, `analyze_sql`]
+
+---
+
+### `GET /data/engine/state`
+
+Gibt den aktuellen Zustand des Engine-Shards zurück, ohne ihn aufzuwecken. (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:892`]
+
+Die UI pollt diesen Endpunkt, um während eines Engine-Kaltstarts ein Startbanner anzuzeigen. Er löst nie ein Aufwecken aus — Polling ist unbedenklich und zählt für den Idle-Reaper nicht als Aktivität.
+
+**Antwort:**
+
+```json
+{"state": "ready"}
+```
+
+Mögliche Werte:
+
+| Zustand | Bedeutung |
+| --- | --- |
+| `always-on` | Desktop, Self-Hosted oder eigener Koordinator — kein Lifecycle-Management |
+| `ready` | Shard läuft und nimmt Abfragen an |
+| `starting` | Kaltstart läuft |
+| `stopped` | Shard ist auf null skaliert |
+
+[tool-verified: `provisa/federation/engine_wake.py:engine_state`]
+
+---
+
+### `POST /data/engine/prewarm`
+
+Löst ein Aufwecken der Engine aus, ohne eine Abfrage auszuführen. (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:913`]
+
+Gibt sofort `202 Accepted` zurück. Das Aufwecken läuft im Hintergrund. Nutzen Sie dies, wenn die Engine bereitstehen soll, bevor die erste Abfrage eintrifft — etwa aus einem Scheduler heraus, der einige Minuten später Abfragen ausführt.
+
+**Antwort:** `202 Accepted`, Body `{"started": true}`
+
+[tool-verified: `provisa/federation/engine_wake.py:prewarm_engine`]
+
+---
+
 ### `GET /data/rest/{domain_id}/{table_name}`
 
 Automatisch generierter, einfacher REST-Endpunkt für jede registrierte Tabelle. Der Query-String wird auf GraphQL-Argumente abgebildet, und die Anfrage wird durch dieselbe Pipeline (RLS, Maskierung, Routing) wie GraphQL kompiliert und ausgeführt. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
@@ -394,6 +455,30 @@ Lädt eine überarbeitete Config-YAML hoch. Der Server schreibt ein `.bak`-Backu
 
 Bei Reload-Fehler: `{"success": false, "message": "<error>"}`.
 
+#### `GET /admin/config/live`
+
+Lädt die **aktuelle Live-Config** herunter — die Config, wie Provisa sie heute schreiben würde, samt jeder über den Admin angelegten Tabelle, Relationship, Domäne, Rolle und RLS-Regel, die sich seit dem Start angesammelt hat. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:67`]
+
+Die Datei auf der Platte kann hinter dem Live-Zustand zurückbleiben, wenn Änderungen über die Admin-API ohne anschließenden Upload erfolgten. Dieser Endpunkt schließt die Lücke: seine Ausgabe ist genau das, was `PUT /admin/config` erhalten müsste, damit die Datei auf der Platte dem Live-Zustand entspricht.
+
+Gibt `application/x-yaml` mit `Content-Disposition: attachment; filename=provisa.live.yaml` zurück.
+
+#### `GET /admin/config/diff`
+
+Gibt beide Seiten des Config-Diffs zurück — `original` (die Startbasis) und `current` (Live-Zustand) — identisch normalisiert, sodass der Vergleich nur echte Änderungen zeigt, keine Umsortierung und keine Kommentarabweichungen. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:82`]
+
+**Antwort:**
+
+```json
+{"original": "<yaml>", "current": "<yaml>"}
+```
+
+#### `POST /admin/config/patch`
+
+Erzeugt einen Unified-Diff-Patch von der Basis zur übermittelten Config. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:93`]
+
+Senden Sie die überarbeitete YAML als Request-Body. Die Antwort ist eine `text/x-patch`-Datei (`provisa.config.patch`), die `git apply` oder `patch` direkt verarbeiten kann — nützlich, um über die UI vorgenommene Config-Änderungen durch eine CI/CD-Pipeline zu committen.
+
 ---
 
 ### Settings
@@ -467,6 +552,99 @@ Aktualisierbare Felder pro Abschnitt:
 ```json
 {"success": true, "updated": ["otel.support_endpoint", "cache.default_ttl"]}
 ```
+
+---
+
+### KI-Modelle
+
+#### `GET /admin/ai-models`
+
+Gibt die KI-Modellzuordnungen, die Vektormodell-Registry und das NL-Ratelimit der handelnden Org zurück. (REQ-464, REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:58`]
+
+**Antwort:**
+
+```json
+{
+  "ai_models": {
+    "nl": "claude-3-5-sonnet-20241022",
+    "embedding": "text-embedding-3-small"
+  },
+  "vector_models": [...],
+  "nl": {"rate_limit": 20},
+  "api_keys_set": {"anthropic": true, "openai": false}
+}
+```
+
+API-Schlüssel werden nie zurückgegeben — `api_keys_set` meldet lediglich, ob für den jeweiligen Anbieter ein Schlüssel hinterlegt ist. Änderungen wirken ab der nächsten Anfrage, ein Neustart ist nicht nötig. (REQ-1349)
+
+#### `PUT /admin/ai-models`
+
+Aktualisiert die KI-Modellzuordnungen, die Vektormodell-Registry oder das NL-Ratelimit der Org. Wirkt ab der nächsten Anfrage. [tool-verified: `provisa/api/admin/ai_models_router.py:148`]
+
+#### `GET /admin/ai-models/vendors/{vendor}/models`
+
+Gibt für die Modellauswahl die Modellnamen zurück, die ein Anbieter derzeit ausliefert. (REQ-1395, REQ-1398, REQ-1409) [tool-verified: `provisa/api/admin/ai_models_router.py:89`]
+
+Die Liste wird live über die List-Models-API des Anbieters gelesen, mit dem konfigurierten Schlüssel der Org — oder mit den Zugangsdaten des Deployments, wenn die Org keinen eigenen Schlüssel gesetzt hat. Ein Modell, das nach dem Build dieser Version erschienen ist, ist am selben Tag auswählbar, an dem der Anbieter es ausliefert.
+
+Gibt `400` zurück, wenn der Anbieter keine List-Models-API veröffentlicht (geben Sie den Modellnamen in diesem Fall direkt ein) oder wenn kein Schlüssel verfügbar ist. [tool-verified: `provisa/api/admin/ai_models_router.py:109-128`]
+
+---
+
+### Föderations-Engine
+
+#### `GET /admin/federation-engine`
+
+Gibt die aktuelle Auswahl der Föderations-Engine, ihre Verbindungskonfiguration und die vollständige Registry auswählbarer Engines zurück. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:730`]
+
+**Antwort:**
+
+```json
+{
+  "current": "trino",
+  "persisted": "trino",
+  "registry": [
+    {"key": "trino", "label": "Trino (embedded)", "fields": [...]},
+    {"key": "duckdb", "label": "DuckDB", "fields": []}
+  ],
+  "note": "Changing the federation engine takes effect after the service is restarted."
+}
+```
+
+`current` ist die gerade laufende Engine; `persisted` ist das, was in die Config-Datei geschrieben ist und beim nächsten Neustart geladen wird. Sie weichen voneinander ab, wenn die Config geändert wurde, der Dienst aber noch nicht neu gestartet ist.
+
+#### `PUT /admin/federation-engine`
+
+Speichert eine Auswahl der Föderations-Engine dauerhaft. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:774`]
+
+**Request-Body:**
+
+```json
+{"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
+```
+
+Die Auswahl wird in die Plattform-Config geschrieben. Sie wirkt nach dem nächsten Neustart des Dienstes — die Engine wird einmalig beim Boot gewählt.
+
+---
+
+### Domänenrichtlinie
+
+#### `POST /admin/domain-policy`
+
+Ändert die Domänenrichtlinie der handelnden Org (`use_domains` / `default_domain`). (REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
+
+Dies ist eine destruktive Operation im Geltungsbereich der handelnden Org. Jede registrierte Quelle, Tabelle, Domäne und Relationship wird verworfen und unter der neuen Richtlinie neu aufgebaut. Nutzen Sie sie, wenn Sie eine Org von domänen-namensräumig auf flach umstellen (oder umgekehrt).
+
+**Request-Body:**
+
+```json
+{
+  "use_domains": true,
+  "default_domain": "default"
+}
+```
+
+`use_domains: null` löscht die Übersteuerung der Org und fällt auf die Einstellung des Deployments zurück. `use_domains: false` erfordert `default_domain` (den einen Domänennamen, in dem alle Tabellen landen). Der Katalogneuaufbau erfolgt synchron; die Antwort kommt zurück, sobald die Schemas bereit sind.
 
 ---
 
@@ -574,6 +752,136 @@ Führt ein Spaltenprofil auf einer registrierten Tabelle aus — Kardinalität, 
 #### `POST /admin/source-meta/db-description`
 
 Generiert LLM-gestützte Beschreibungen für die Tabellen und Spalten einer Quelle. [tool-verified: `provisa/api/admin/source_meta_router.py:48`]
+
+---
+
+### Objektspeicher (REQ-1046, REQ-1048, REQ-1049)
+
+#### `GET /admin/org-storage`
+
+Meldet den Speicherverbrauch der handelnden Org gegen ihr Plattformkontingent und ob die Org einen eigenen Speicher registriert hat. [tool-verified: `provisa/api/admin/org_storage_router.py:69`]
+
+Hat die Org eine eigene DSN registriert, landen ihre Materialisierungen dort und zählen nicht mehr gegen das Kontingent. Die DSN selbst wird nie zurückgegeben.
+
+#### `PUT /admin/org-storage`
+
+Registriert den eigenen Materialisierungsspeicher der Org — oder löscht ihn. [tool-verified: `provisa/api/admin/org_storage_router.py:81`]
+
+**Request-Body:**
+
+```json
+{"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
+```
+
+Die DSN wird vor der Annahme gegen die Föderations-Engine geprüft — eine unbrauchbare DSN scheitert bei der Registrierung, nicht Stunden später bei einem Refresh. Der Wert wird verschlüsselt gespeichert und von GET nie zurückgegeben.
+
+Senden Sie `storage_url: null`, um den eigenen Speicher der Org zu löschen und ihre Materialisierungen in den Plattformspeicher (und das Kontingent) zurückzuführen. Die Org-Laufzeit wird im selben Aufruf neu aufgebaut, der neue Speicher wirkt also sofort. [tool-verified: `provisa/api/admin/org_storage_router.py:123-138`]
+
+---
+
+### Org-Verschlüsselung (REQ-1574)
+
+#### `GET /admin/org-encryption`
+
+Gibt den aktuellen Schlüsselstatus der Org zurück: Fingerabdruck, ID und Herkunft. Gibt nie Schlüsselmaterial zurück. [tool-verified: `provisa/api/admin/org_encryption_router.py:53`]
+
+Hat die Org keinen Schlüssel gesetzt, kommt `{"configured": false}` zurück. Jede Org startet in diesem Zustand und erbt den Schlüssel des Deployments.
+
+#### `PUT /admin/org-encryption`
+
+Setzt oder rotiert den Ruhedaten-Verschlüsselungsschlüssel der Org. [tool-verified: `provisa/api/admin/org_encryption_router.py:68`]
+
+**Request-Body:**
+
+```json
+{"key_b64": "<32 raw bytes, base64-encoded>"}
+```
+
+Lassen Sie `key_b64` weg, damit Provisa einen Schlüssel erzeugt — der sicherste Weg, denn der Schlüssel taucht dann weder in einer Zwischenablage noch in einem Request-Log auf. Mit `key_b64` bringen Sie Ihren eigenen Schlüssel mit.
+
+Eine Rotation fügt dem Schlüsselring einen neuen aktiven Eintrag hinzu und behält den alten, sodass Daten, die unter dem vorherigen Schlüssel geschrieben wurden, lesbar bleiben. Rotation ist keine Neuverschlüsselung. Einen Lösch-Endpunkt gibt es nicht: den letzten Schlüssel stillzulegen würde jede umschlossene Nutzlast unlesbar machen. [tool-verified: `provisa/api/admin/org_encryption_router.py:75`]
+
+Der Live-Schlüsselring wird im selben Aufruf neu gebunden, der nächste verschlüsselte Schreibvorgang nutzt den neuen Schlüssel also sofort.
+
+---
+
+### Hasura-/DDN-Import (REQ-1483)
+
+#### `POST /admin/import/hasura/preview`
+
+Wandelt ein Hasura-v2- oder DDN-Projektarchiv in eine vorgeschlagene Provisa-Config um, ohne etwas zu schreiben. [tool-verified: `provisa/api/admin/import_router.py`]
+
+**Request-Body:**
+
+```json
+{
+  "filename": "my-project.zip",
+  "content_b64": "<base64-encoded archive>",
+  "flavor": "auto",
+  "domain_map": {"public": "sales"},
+  "source_overrides": {}
+}
+```
+
+`flavor` ist `"auto"` (aus der Archivstruktur erkannt), `"hasura_v2"` oder `"ddn"`.
+
+**Antwort:**
+
+```json
+{
+  "config_yaml": "...",
+  "warnings": ["..."],
+  "summary": {
+    "sources": 1, "domains": 2, "tables": 40,
+    "columns": 180, "roles": 3, "relationships": 15, "rls_rules": 6
+  }
+}
+```
+
+Nichts wird gespeichert. Die Vorschau wird serverseitig nicht zwischengespeichert; `apply` übernimmt die YAML, die Sie übermitteln — angewendet wird also genau das, was geprüft (und gegebenenfalls bearbeitet) wurde.
+
+#### `POST /admin/import/hasura/apply`
+
+Lädt eine zuvor in der Vorschau geprüfte Config in die handelnde Org. [tool-verified: `provisa/api/admin/import_router.py`]
+
+**Request-Body:**
+
+```json
+{"config_yaml": "<yaml string>"}
+```
+
+Nutzt denselben Hot-Reload-Pfad wie `PUT /admin/config`. Katalog, Schemas und Pools der Org werden neu aufgebaut, bevor die Antwort zurückkommt.
+
+---
+
+### Apache-Ossie-Austausch (REQ-1316, REQ-1321)
+
+#### `GET /admin/ossie`
+
+Exportiert das regierte Modell der Org als Apache-Ossie-(incubating-)YAML-Dokument. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+Das Dokument wird bei jeder Anfrage aus dem Live-Zustand abgeleitet — nie zwischengespeichert — und kann daher nicht veralten. Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Relationships bilden auf Ossie-`relationship`-Objekte ab.
+
+Gibt `text/yaml` mit `Content-Disposition: attachment; filename=provisa-ossie.yaml` zurück.
+
+#### `POST /admin/ossie/import`
+
+Parst ein Ossie-YAML- oder -JSON-Dokument und gibt vorgeschlagene Tabellen- und Relationship-Registrierungen zurück. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py`]
+
+**Request-Body:** Rohes Ossie-YAML oder -JSON. Das Format wird automatisch erkannt.
+
+**Antwort:**
+
+```json
+{
+  "proposals": {
+    "tables": [...],
+    "relationships": [...]
+  }
+}
+```
+
+Nichts wird registriert. Nutzen Sie den Prüfbildschirm der Admin-UI, um Vorschläge anzunehmen oder zu kürzen, bevor eine Mutation ausgelöst wird.
 
 ---
 

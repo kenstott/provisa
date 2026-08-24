@@ -1,137 +1,149 @@
-# 來源類型 (Source Types)
-
+# 數據來源類型
 ## 執行模型
+每個查詢最終都經聯邦引擎執行，由它提供跨所有數據來源的聯邦能力。數據來源依其連通性分為三類。 [tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
 
-每一項查詢最終都是透過聯邦引擎執行，該引擎為所有來源提供聯邦能力。來源依其連線方式分為三個類別。[tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
-
-| 類別 | 具備直接驅動程式 | 具備聯邦連接器 | 範例 |
+| 類別 | 有直接驅動程式 | 有聯邦連接器 | 例子 |
 | --- | --- | --- | --- |
-| **可直連 (Direct-capable)** | 是 | 是 | PostgreSQL、MySQL、MariaDB、SingleStore、SQL Server、Oracle、DuckDB |
-| **僅限聯邦 (Federation only)** | 否 | 是 | Redshift、Druid、Exasol、Hive、Iceberg、Delta Lake、Hive（以 S3 為後端） |
-| **直讀 (複本) (Direct-read (replica))** | 是 | 是 | Snowflake、Databricks、ClickHouse——驅動程式讀取數據並落地為一份複本；查詢針對現用引擎中的複本執行 |
+| **可直接執行** | 是 | 是 | PostgreSQL、MySQL、MariaDB、SingleStore、SQL Server、Oracle、DuckDB |
+| **僅聯邦** | 否 | 是 | Redshift、Druid、Exasol、Hive、Iceberg、Delta Lake、Hive（S3 支援） |
+| **直接讀取（副本）** | 是 | 是 | Snowflake、Databricks、ClickHouse——驅動程式讀取數據並落地一份副本；查詢在啟用中的引擎裡針對該副本執行 |
 | **具體化 → 聯邦** | 否 | 否 | REST/OpenAPI、遠端 GraphQL、gRPC、Neo4j Cypher、SPARQL、WebSocket、RSS、CSV、SQLite、Parquet、Ingest（推送接收器）、GovData、SharePoint、Splunk |
 
-**可直連**來源透過其原生驅動程式執行單一來源查詢（延遲低於 100 毫秒），繞過聯邦引擎（REQ-027、REQ-229）。它們保留完整的連接器支援，並在與其他來源 join 時參與聯邦（REQ-028）。
+**可直接執行**的數據來源經其原生驅動程式執行單一來源查詢（低於 100 毫秒），繞過聯邦引擎（REQ-027、REQ-229）。它們保有完整的連接器支援，並在與其他數據來源聯結時參與聯邦（REQ-028）。
 
-**僅限聯邦**來源永遠透過聯邦層查詢。不存在直接驅動程式（REQ-229）。
+**僅聯邦**的數據來源一律經聯邦層查詢。沒有直接驅動程式存在（REQ-229）。
 
-**直讀 (複本)**來源具備一個 DirectDriver，以原生方式讀取數據倉庫（在支援之處採用 Arrow 原生方式），將一份複本落地至現用引擎的具體化儲存區，之後查詢便針對該複本執行。詳見[作為具名來源的數據倉庫](#warehouses-as-named-sources)。
+**直接讀取（副本）**的數據來源具備一個 DirectDriver，會原生地（在可行處以 Arrow 原生方式）自倉庫讀取，把一份副本落地到啟用中引擎的具體化儲存區，之後查詢便針對該副本執行。見 [作為具名數據來源的倉庫](#warehouses-as-named-sources)。
 
-**具體化**來源沒有聯邦連接器。Provisa 會擷取其數據（於啟動時或查詢時），並以 Parquet 格式快取於 S3 或 PostgreSQL 中，使其可供聯邦引擎用於跨來源查詢（REQ-309）。
+**具體化**的數據來源沒有聯邦連接器。Provisa 取得其數據（於啟動時或查詢時），並以 Parquet 快取於 S3 或 PostgreSQL 中，使聯邦引擎能就跨來源查詢觸及它（REQ-309）。
 
 ---
 
-## 所有來源
+## 所有數據來源
+Provisa 註冊了 **53** 種數據來源類型。下方表格涵蓋全部 53 種；索引即為計數。 [tool-verified: `provisa/core/models.py` `SourceType`]
 
-Provisa 所支援每一種來源類型的參考資料。「直接驅動程式」意指單一來源查詢以原生方式（延遲低於 100 毫秒）針對該來源執行（REQ-027）。「連接器名稱」是該來源參與多來源 JOIN 時所使用的聯邦連接器（REQ-028）。[tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
+| # | 群組 | 數據來源類型 |
+| --- | --- | --- |
+| 1–13 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport` |
+| 14–20 | [雲端數據倉庫](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `fabric`, `synapse`, `trino` |
+| 21–25 | [分析／OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 26–30 | [數據湖／開放表格式](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hudi`, `hive`, `hive_s3` |
+| 31–33 | [NoSQL](#nosql) | `mongodb`, `cassandra`, `redis` |
+| 34–36 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
+| 37 | [推送接收器](#push-receiver) | `ingest` |
+| 38–39 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql` |
+| 40–43 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files` |
+| 44–45 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
+| 46–47 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `splunk` |
+| 48–50 | [API 數據來源](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote` |
+| 51 | [GovData](#govdata) | `govdata` |
+| 52–53 | [數據品質檢查器](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 
-### 關聯式資料庫管理系統 (RDBMS)
+Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」指單一來源查詢原生地針對該數據來源執行（低於 100 毫秒）（REQ-027）。「連接器名稱」是該數據來源參與多來源 JOIN 時所用的聯邦連接器（REQ-028）。 [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
-| 來源類型 | 直接驅動程式 | 連接器名稱 | 方言 | Mutation |
+### RDBMS
+
+| 數據來源類型 | 直接驅動程式 | 連接器名稱 | 方言 | 變更操作 |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- |
-| `postgresql` | asyncpg | postgresql | postgres | 支援 |
-| `mysql` | aiomysql | mysql | mysql | 支援 |
-| `mariadb` | aiomysql | mariadb | mysql | 支援 |
-| `singlestore` | — | singlestore | singlestore | 聯邦式 |
-| `sqlserver` | aioodbc | sqlserver | tsql | 支援 |
-| `oracle` | oracledb | oracle | oracle | 支援 |
-| `duckdb` | duckdb | memory | duckdb | 支援 |
-| `cockroachdb` | asyncpg (pg wire) | postgresql | postgres | 支援 |
-| `yugabytedb` | asyncpg (pg wire) | postgresql | postgres | 支援 |
-| `greenplum` | asyncpg (pg wire) | postgresql | postgres | 支援 |
-| `tidb` | aiomysql (mysql wire) | mysql | mysql | 支援 |
+| `postgresql` | asyncpg | postgresql | postgres | 是 |
+| `mysql` | aiomysql | mysql | mysql | 是 |
+| `mariadb` | aiomysql | mariadb | mysql | 是 |
+| `singlestore` | — | singlestore | singlestore | 聯邦 |
+| `sqlserver` | aioodbc | sqlserver | tsql | 是 |
+| `oracle` | oracledb | oracle | oracle | 是 |
+| `duckdb` | duckdb | memory | duckdb | 是 |
+| `cockroachdb` | asyncpg（pg wire） | postgresql | postgres | 是 |
+| `yugabytedb` | asyncpg（pg wire） | postgresql | postgres | 是 |
+| `greenplum` | asyncpg（pg wire） | postgresql | postgres | 是 |
+| `tidb` | aiomysql（mysql wire） | mysql | mysql | 是 |
+| `firebird` | — | —（DuckDB 擴充） | — | 否 |
+| `airport` | — | —（DuckDB 擴充） | — | 否 |
 
-線路相容的資料庫，重用某個基礎線路的 JDBC 驅動程式、原生非同步驅動程式及方言——CockroachDB、YugabyteDB 及 Greenplum 搭乘 PostgreSQL 線路；TiDB 搭乘 MySQL 線路。它們只需要登記項目，不需要新的連接器程式碼。[tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
+wire 相容的資料庫重用基礎 wire 的 JDBC 驅動程式、原生非同步驅動程式與方言——CockroachDB、YugabyteDB 與 Greenplum 走 PostgreSQL wire；TiDB 走 MySQL wire。它們只需要登錄項目，毋須新的連接器程式碼。 [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
-`firebird`（Firebird 3/4/5）及 `airport`（Arrow Flight 伺服器）是已登記的來源類型，當 DuckDB 為現用引擎時，透過 DuckDB 社群擴充功能就地觸及——沒有直接驅動程式，也沒有聯邦連接器。[tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
+`firebird`（Firebird 3/4/5）與 `airport`（Arrow Flight 伺服器）是已註冊的數據來源類型，當 DuckDB 為啟用中的引擎時，經 DuckDB 社群擴充就地觸及——沒有直接驅動程式，也沒有聯邦連接器。 [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
 
-### 雲端數據倉庫
-
+### 雲端數據倉庫 {#cloud-data-warehouses}
 [tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`, `executor/drivers/registry.py`]
 
-| 來源類型 | 直接驅動程式 | 連接器名稱 | 方言 | Mutation | 備註 |
+| 數據來源類型 | 直接驅動程式 | 連接器名稱 | 方言 | 變更操作 | 備註 |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `snowflake` | SnowflakeDriver | snowflake | snowflake | 聯邦式 | 透過 snowflake-connector-python 讀取；落地複本；`account`/`warehouse`/`role` 位於 `federation_hints` 中（REQ-988） |
-| `bigquery` | — | bigquery | bigquery | 聯邦式 | 沒有 DirectDriver；透過聯邦引擎或 BigQuery 引擎 ATTACH 觸及 |
-| `databricks` | DatabricksDriver | delta_lake | databricks | 聯邦式 | 透過 databricks-sql-connector 讀取（Cloud Fetch、Arrow）；落地複本；`federation_hints` 中必須提供 `http_path`（REQ-987） |
-| `redshift` | — | redshift | redshift | 聯邦式 | — |
-| `fabric` | MssqlWarehouseDriver | — | tsql | 聯邦式 | Microsoft Fabric Warehouse；經 TDS 的 T-SQL、Azure AD 身分驗證；落地複本（REQ-995） |
-| `synapse` | MssqlWarehouseDriver | — | tsql | 聯邦式 | Azure Synapse SQL；經 TDS 的 T-SQL、Azure AD 身分驗證；落地複本（REQ-995） |
-| `trino` | SQLAlchemyDriver | — | — | 聯邦式 | 經 SQLAlchemy trino 方言讀取遠端 Trino/Presto 協調器；於任一引擎上落地複本（REQ-994） |
+| `snowflake` | SnowflakeDriver | snowflake | snowflake | 聯邦 | 經 snowflake-connector-python 讀取；落地副本；`federation_hints` 中的 `account`／`warehouse`／`role`（REQ-988） |
+| `bigquery` | — | bigquery | bigquery | 聯邦 | 無 DirectDriver；經聯邦引擎或 BigQuery 引擎 ATTACH 觸及 |
+| `databricks` | DatabricksDriver | delta_lake | databricks | 聯邦 | 經 databricks-sql-connector 讀取（Cloud Fetch、Arrow）；落地副本；`federation_hints` 中必填 `http_path`（REQ-987） |
+| `redshift` | — | redshift | redshift | 聯邦 | — |
+| `fabric` | MssqlWarehouseDriver | — | tsql | 聯邦 | Microsoft Fabric Warehouse；T-SQL over TDS、Azure AD 驗證；落地副本（REQ-995） |
+| `synapse` | MssqlWarehouseDriver | — | tsql | 聯邦 | Azure Synapse SQL；T-SQL over TDS、Azure AD 驗證；落地副本（REQ-995） |
+| `trino` | SQLAlchemyDriver | — | — | 聯邦 | 經 SQLAlchemy trino 方言讀取遠端 Trino/Presto 協調器；在任何引擎上落地副本（REQ-994） |
 
-### Analytics / OLAP
-
+### 分析／OLAP {#analytics-olap}
 [tool-verified: `executor/drivers/clickhouse.py`]
 
-| 來源類型 | 直接驅動程式 | 連接器名稱 | 方言 | Mutation | 備註 |
+| 數據來源類型 | 直接驅動程式 | 連接器名稱 | 方言 | 變更操作 | 備註 |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | 聯邦式 | 透過 clickhouse-connect（HTTP）讀取；`federation_hints` 中的 `secure: "true"` 用於啟用 TLS（REQ-986） |
-| `druid` | — | druid | druid | 不支援 | — |
-| `exasol` | — | exasol | exasol | 不支援 | — |
-| `elasticsearch` | — | elasticsearch | — | 不支援 | 連接器屬性來自該類型的對應 DSL [tool-verified: `trino_connectors.py:309`] |
-| `pinot` | — | pinot | — | 不支援 | Trino `pinot` 連接器；`pinot.controller-urls` = Pinot 控制器的 host:port [tool-verified: `trino_connectors.py:199`] |
+| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | 聯邦 | 經 clickhouse-connect（HTTP）讀取；TLS 時在 `federation_hints` 中設 `secure: "true"`（REQ-986） |
+| `druid` | — | druid | druid | 否 | — |
+| `exasol` | — | exasol | exasol | 否 | — |
+| `elasticsearch` | — | elasticsearch | — | 否 | 連接器屬性來自該類型的映射 DSL [tool-verified: `trino_connectors.py:309`] |
+| `pinot` | — | pinot | — | 否 | Trino `pinot` 連接器；`pinot.controller-urls` = Pinot 控制器的 host:port [tool-verified: `trino_connectors.py:199`] |
 
-### 數據湖 / 開放式資料表格式
+### 數據湖／開放表格式 {#data-lake-open-table-formats}
+這些數據來源類型僅供聯邦使用——沒有直接驅動程式，沒有方言。 [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
 
-這些來源類型僅限聯邦——沒有直接驅動程式，也沒有方言。[tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
-
-| 來源類型 | 連接器名稱 | 時光回溯 | 備註 |
+| 數據來源類型 | 連接器名稱 | 時間旅行 | 備註 |
 | ------------ | ----------------- | ------------- | ------- |
-| `iceberg` | iceberg | 支援（`as_of` 引數，REQ-372） | — |
-| `delta_lake` | delta_lake | 支援（`as_of` 引數，REQ-372） | — |
-| `hive` | hive | 不支援 | — |
-| `hive_s3` | hive | 不支援 | 以 S3 為後端的 Hive |
+| `iceberg` | iceberg | 是（`as_of` 引數，REQ-372） | — |
+| `delta_lake` | delta_lake | 是（`as_of` 引數，REQ-372） | — |
+| `hive` | hive | 否 | — |
+| `hudi` | —（ClickHouse `Hudi` 引擎，零複製——REQ-1178） | 否 | 無聯邦連接器；當 ClickHouse 為啟用中的引擎時就地觸及 |
+| `hive_s3` | hive | 否 | S3 支援的 Hive |
 
 ### NoSQL
 
-`mongodb`、`cassandra` 及 `redis` 均有 Trino 連接器（`redis` 由該類型的對應 DSL 建構其屬性）。[tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
+`mongodb`、`cassandra` 與 `redis` 有 Trino 連接器（`redis` 自該類型的映射 DSL 建構其屬性）。 [tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
 
-| 來源類型 | 連接器名稱 | Mutation |
+| 數據來源類型 | 連接器名稱 | 變更操作 |
 | ------------ | ----------------- | ----------- |
-| `mongodb` | mongodb | 不支援 |
-| `cassandra` | cassandra | 不支援 |
-| `redis` | redis | 不支援 |
+| `mongodb` | mongodb | 否 |
+| `cassandra` | cassandra | 否 |
+| `redis` | redis | 否 |
 
-### 串流 (Streaming)
-
-| 來源類型 | 機制 | Mutation |
+### 串流 {#streaming}
+| 數據來源類型 | 機制 | 變更操作 |
 | ------------ | ----------- | ----------- |
-| `kafka` | 聯邦式 Kafka 連接器；結構描述來自 Confluent Schema Registry（Avro、Protobuf、JSON Schema）、人手定義，或樣本推斷（REQ-147、REQ-150） | 僅限 sink（REQ-176） |
-| `websocket` | 外部 WebSocket 饋送——連線、訂閱、接收事件；結果會被具體化（REQ-338） | 不支援 |
-| `rss` | RSS 2.0 / Atom 饋送——輪詢，依 pubDate/updated 設定水位標記；結果會被具體化（REQ-342、REQ-343） | 不支援 |
+| `kafka` | 聯邦 Kafka 連接器；結構描述經 Confluent Schema Registry（Avro、Protobuf、JSON Schema）、手動定義或樣本推斷取得（REQ-147、REQ-150） | 僅接收端（REQ-176） |
+| `websocket` | 外部 WebSocket 饋送——連線、訂閱、接收事件；結果經具體化（REQ-338） | 否 |
+| `rss` | RSS 2.0／Atom 饋送——輪詢，以 pubDate/updated 標記水位；結果經具體化（REQ-342、REQ-343） | 否 |
 
-### 推送接收器 (Push Receiver)
-
-| 來源類型 | 機制 | Mutation |
+### 推送接收器 {#push-receiver}
+| 數據來源類型 | 機制 | 變更操作 |
 | ------------ | ----------- | ----------- |
-| `ingest` | 外部服務以 POST 方式送入 JSON 事件；結果會被具體化（REQ-331、REQ-335） | 不支援 |
+| `ingest` | 外部服務 POST JSON 事件；結果經具體化（REQ-331、REQ-335） | 否 |
 
-### 圖形與語義
-
-| 來源類型 | 機制 | Mutation |
+### 圖形與語意 {#graph-semantic}
+| 數據來源類型 | 機制 | 變更操作 |
 | ------------ | ----------- | ----------- |
-| `neo4j` | 經由 HTTP API 的 Cypher，結果快取於 PostgreSQL（REQ-295） | 不支援 |
-| `sparql` | SPARQL 1.1 POST，結果快取於 PostgreSQL（REQ-297） | 不支援 |
+| `neo4j` | 經 HTTP API 的 Cypher，結果快取於 PostgreSQL（REQ-295） | 否 |
+| `sparql` | SPARQL 1.1 POST，結果快取於 PostgreSQL（REQ-297） | 否 |
 
-### 以檔案為基礎
+### 檔案式 {#file-based}
+兩種機制涵蓋檔案。兩者都使用 `path` 欄位而非 `host`／`port`。 [tool-verified: `provisa/core/models.py`] (REQ-553)
 
-有兩種機制涵蓋檔案。兩者都使用 `path` 欄位，而非 `host`/`port`。[tool-verified: `provisa/core/models.py`] (REQ-553)
+**單一檔案數據來源**——`sqlite`、`csv`、`parquet` 把 `path` 指向單一檔案。
 
-**單一檔案來源**——`sqlite`、`csv`、`parquet` 會將 `path` 指向單一檔案。
-
-| 來源類型 | 傳輸方式 | Mutation |
+| 數據來源類型 | 傳輸 | 變更操作 |
 | --- | --- | --- |
-| `sqlite` | 本機 | 支援 |
-| `csv` | 本機 | 不支援 |
-| `parquet` | 本機、`s3://` | 不支援 |
+| `sqlite` | 本機 | 是 |
+| `csv` | 本機 | 否 |
+| `parquet` | 本機、`s3://` | 否 |
 
-私有的儲存桶 (bucket) 需要憑證（來自環境變數的 AWS 區域及金鑰）。若要透過 `s3://` 或 `http(s)://` 使用 CSV，或要一次登記多個檔案，請改用 `files` 來源。[tool-verified: `provisa/file_source/source.py`]
+私有貯體需要憑證（自環境取得的 AWS 區域與金鑰）。若 CSV 走 `s3://` 或 `http(s)://`，或要一次註冊多個檔案，請用 `files` 數據來源。 [tool-verified: `provisa/file_source/source.py`]
 
-**`files` 來源**——將 `path` 指向一個萬用字元 (glob) 樣式，遞迴地爬取，並將該目錄登記為一個聯邦目錄下的一組資料表。它能透過多種傳輸方式讀取多種格式；下方的集合來自該檔案連接器（kenstott/calcite 分支版本）。[tool-verified: `provisa/core/catalog.py` `files` branch and `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; format and transport lists from the calcite `file` adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
+**`files` 數據來源**——把 `path` 指向一個 glob，遞迴爬取，並把該目錄註冊為一個由表構成的聯邦目錄。它讀取多種格式、經多種傳輸；下列集合來自檔案連接器（kenstott/calcite fork）。 [tool-verified: `provisa/core/catalog.py` `files` branch and `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; format and transport lists from the calcite `file` adapter — `FileSchema.java`, `storage/StorageProviderFactory.java`]
 
-| 格式 | 傳輸方式 |
+| 格式 | 傳輸 |
 | --- | --- |
-| CSV、TSV、JSON、YAML、Excel（XLS/XLSX）、Parquet、Arrow，以及轉換為資料表的文件——HTML、Markdown、DOCX、PPTX | 本機檔案系統、HTTP(S)、`s3://`、`hdfs://`、`ftp://`/`ftps://`、`sftp://`、`iceberg://`、SharePoint（REST 及 Microsoft Graph） |
+| CSV、TSV、JSON、YAML、Excel（XLS/XLSX）、Parquet、Arrow，以及轉換成表的文件——HTML、Markdown、DOCX、PPTX | 本機檔案系統、HTTP(S)、`s3://`、`hdfs://`、`ftp://`／`ftps://`、`sftp://`、`iceberg://`、SharePoint（REST 與 Microsoft Graph） |
 
 ```yaml
 - id: sales_files
@@ -139,34 +151,32 @@ Provisa 所支援每一種來源類型的參考資料。「直接驅動程式」
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
-### 可觀測性及其他
+### 可觀測性與其他 {#observability-other}
+`prometheus` 有 Trino 連接器（屬性自該類型的映射 DSL 建構）。`google_sheets` 是已註冊的數據來源類型，沒有 Trino 連接器，經 API 快取管線具體化。 [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
 
-`prometheus` 具備一個 Trino 連接器（屬性由該類型的對應 DSL 建構）。`google_sheets` 是一個已登記的來源類型，沒有 Trino 連接器，並透過 API 快取管線進行具體化。[tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
-
-| 來源類型 | 連接器名稱 | Mutation |
+| 數據來源類型 | 連接器名稱 | 變更操作 |
 | ------------ | ----------------- | ----------- |
-| `google_sheets` | —（已具體化） | 不支援 |
-| `prometheus` | prometheus | 不支援 |
+| `google_sheets` | —（經具體化） | 否 |
+| `prometheus` | prometheus | 否 |
 
-### 企業級 SaaS 連接器
-
-SharePoint 及 Splunk 透過 Apache Calcite 連接器（kenstott/calcite 分支版本）進行登記。兩者皆無直接驅動程式——Provisa 藉由啟動該連接器內建的 Calcite pgwire 伺服器（`pgwire-sharepoint`、`pgwire-splunk`），以一般 PostgreSQL 端點的方式連線至它，並將資料列落地至具體化儲存區以供聯邦使用，藉此完成資料的具體化（REQ-954）。兩個連接器均一律啟用不分大小寫的名稱比對，與各自產品本身不分大小寫的語義一致（REQ-725、REQ-730）。[tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+### 企業 SaaS 連接器 {#enterprise-saas-connectors}
+SharePoint 與 Splunk 經 Apache Calcite 連接器（kenstott/calcite fork）註冊。兩者都沒有直接驅動程式——Provisa 啟動連接器隨附的 Calcite pgwire 伺服器（`pgwire-sharepoint`、`pgwire-splunk`），以通用 PostgreSQL 端點的身分連線，並把資料列落地到具體化儲存區供聯邦使用（REQ-954）。兩個連接器都一律啟用不分大小寫的名稱比對，以配合各產品自身不分大小寫的語意（REQ-725、REQ-730）。 [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
-SharePoint 清單會被列舉為結構描述，並公開為可查詢的資料表（REQ-726、REQ-731）。有兩種身分驗證方式：`CLIENT_CREDENTIALS`（預設）及以 PFX 憑證為基礎的憑證式驗證（REQ-727）。`mapping` 中的機密值，會在送達連接器之前先經由機密引擎解析（REQ-729）。[tool-verified: `provisa/federation/trino_connectors.py` lines 230–252]
+SharePoint 清單被列舉為結構描述，並以可查詢的表對外呈現（REQ-726、REQ-731）。兩種驗證方式：`CLIENT_CREDENTIALS`（預設）與經 PFX 憑證的憑證式驗證（REQ-727）。`mapping` 中的密鑰值在抵達連接器之前，先經密鑰引擎解析（REQ-729）。 [tool-verified: `provisa/federation/trino_connectors.py` lines 230–252]
 
-| 來源欄位 | 連接器屬性 | 備註 |
+| 數據來源欄位 | 連接器屬性 | 備註 |
 | --- | --- | --- |
-| `base_url` 或 `host` | `site-url` | SharePoint 網站網址 |
+| `base_url` or `host` | `site-url` | SharePoint 網站 URL |
 | `username` | `client-id` | Azure 應用程式用戶端 ID |
 | `password` | `client-secret` | Azure 應用程式用戶端密鑰 |
 | `database` | `tenant-id` | Azure 租用戶 UUID |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS`（預設）或 `CERTIFICATE` |
-| `mapping.certificate_path` | `certificate-path` | 當 `auth_type: CERTIFICATE` 時的 PFX 路徑 |
+| `mapping.certificate_path` | `certificate-path` | `auth_type: CERTIFICATE` 時的 PFX 路徑 |
 | `mapping.certificate_password` | `certificate-password` | PFX 密碼 |
 
-當連接器未公開 `information_schema.columns` 時，請透過 `registerTable` mutation，以明確的欄位定義（取自 Microsoft Graph API）登記該資料表（REQ-732）。
+當連接器不提供 `information_schema.columns` 時，請經 `registerTable` 變更操作以明確的資料行定義（自 Microsoft Graph API 取得）註冊該表（REQ-732）。
 
 ```yaml
 - id: hr-sharepoint
@@ -181,16 +191,16 @@ SharePoint 清單會被列舉為結構描述，並公開為可查詢的資料表
 
 #### `splunk`
 
-Splunk 搜尋結果可作為資料表查詢（例如 `internal_server`）（REQ-721）。連接器網址來自 `base_url`，否則會以 `https://{host}:{port}` 建構，預設連接埠為 `8089`（REQ-722）。身分驗證：當 `mapping.use_token` 為 `true`（預設值）時，`password` 會作為 API 權杖傳遞；當為 `false` 時，`username` 及 `password` 會作為個別憑證傳遞（REQ-723）。[tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
+Splunk 搜尋結果可作為表查詢（例如 `internal_server`）（REQ-721）。連接器 URL 來自 `base_url`，或以 `https://{host}:{port}` 建構，預設連接埠為 `8089`（REQ-722）。驗證：當 `mapping.use_token` 為 `true`（預設）時，`password` 作為 API 權杖傳遞；為 `false` 時，`username` 與 `password` 作為獨立憑證傳遞（REQ-723）。 [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
 
-| 來源欄位 | 連接器屬性 | 備註 |
+| 數據來源欄位 | 連接器屬性 | 備註 |
 | --- | --- | --- |
 | `base_url` / `host` + `port` | `url` | `base_url`，否則為 `https://host:port`（連接埠預設 8089） |
-| `password` | `token` 或 `password` | 當 `use_token: true` 時為 token |
-| `username` | `user` | 僅當 `use_token: false` 時 |
-| `database` | `app` | 限定於某個 Splunk app |
-| `mapping.datamodel_filter` | `datamodel-filter` | 篩選至某個資料模型 |
-| `mapping.disable_ssl_validation` | `disable-ssl-validation` | 用於自簽憑證（REQ-724） |
+| `password` | `token` or `password` | `use_token: true` 時為 token |
+| `username` | `user` | 僅在 `use_token: false` 時 |
+| `database` | `app` | 限定於某個 Splunk 應用程式 |
+| `mapping.datamodel_filter` | `datamodel-filter` | 篩選至某個數據模型 |
+| `mapping.disable_ssl_validation` | `disable-ssl-validation` | 供自簽憑證使用（REQ-724） |
 
 ```yaml
 - id: ops-splunk
@@ -203,38 +213,37 @@ Splunk 搜尋結果可作為資料表查詢（例如 `internal_server`）（REQ-
     disable_ssl_validation: true
 ```
 
-### API 來源
+### API 數據來源 {#api-sources}
+把任何 HTTP 端點註冊為可查詢的表。 [tool-verified: `provisa/core/models.py` `SourceType` enum] (REQ-314, REQ-307, REQ-322)
 
-將任何 HTTP 端點登記為可查詢的資料表。[tool-verified: `provisa/core/models.py` `SourceType` enum] (REQ-314, REQ-307, REQ-322)
-
-| API 類型 | 探索方式 | 欄位推斷 |
+| API 類型 | 探索 | 資料行推斷 |
 | --------- | ----------- | ----------------- |
-| `openapi` | 剖析 OpenAPI 規格（REQ-314、REQ-316） | 基本型別 → 原生型別，物件 → JSONB |
-| `graphql_remote` | 結構描述內省 (introspection)（REQ-307、REQ-308） | 基本型別 → 原生型別，物件 → JSONB |
-| `grpc_remote` | 伺服器反射 (server reflection)（REQ-322、REQ-325） | 基本型別 → 原生型別，物件 → JSONB |
+| `openapi` | OpenAPI 規格剖析（REQ-314、REQ-316） | 基本型別 → 原生，物件 → JSONB |
+| `graphql_remote` | 結構描述自省（REQ-307、REQ-308） | 基本型別 → 原生，物件 → JSONB |
+| `grpc_remote` | 伺服器反射（REQ-322、REQ-325） | 基本型別 → 原生，物件 → JSONB |
 
-API 回應會被擷取、快取於 PostgreSQL（TTL 可設定），並公開為 GraphQL 型別（REQ-309、REQ-318、REQ-327）。已快取的資料表與任何其他來源一樣參與聯邦查詢（REQ-313）。
+API 回應被取得、快取於 PostgreSQL（TTL 可設定），並以 GraphQL 類型對外呈現（REQ-309、REQ-318、REQ-327）。已快取的表與任何其他數據來源一樣參與聯邦查詢（REQ-313）。
 
-**JSONB 規則**：以 JSONB 儲存的複合欄位（物件、陣列）不可篩選（REQ-119）。子欄位存取在 SQL 中使用 `->>` 擷取（REQ-151）。關聯是使用純量 FK 欄位在資料表之間宣告——JSONB blob 欄位不可作為 join 目標。如需在巢狀欄位上進行篩選或 join，請使用 JSONB 提升 (promotion) 將其轉換為原生純量欄位（REQ-119）。
+**JSONB 規則**：以 JSONB 儲存的複合資料行（物件、陣列）不可篩選（REQ-119）。子欄位存取在 SQL 中使用 `->>` 抽取（REQ-151）。表與表之間的關係以純量 FK 資料行宣告——JSONB blob 資料行不是聯結目標。當需要對巢狀欄位篩選或聯結時，請用 JSONB 晉升把它們轉為原生純量資料行（REQ-119）。
 
 ### GovData
 
-美國政府開放數據。存取權按主題分組劃分。[tool-verified: `provisa/core/models.py` lines 543–609]
+美國政府開放數據。存取按主題分組分割。 [tool-verified: `provisa/core/models.py` lines 543–609]
 
-每個 `govdata` 來源選擇一個主題。該主題決定會公開哪些 GovData 結構描述。`ref` 及 `geo` 結構描述一律作為連結用結構描述被納入——它們不會按主題個別列出，但一律存在。[tool-verified: `provisa/core/models.py` line 562–563 comment]
+每個 `govdata` 數據來源選定一個主題。該主題決定哪些 GovData 結構描述會對外呈現。`ref` 與 `geo` 結構描述一律作為連結結構描述納入——它們不逐主題列出，但一律存在。 [tool-verified: `provisa/core/models.py` line 562–563 comment]
 
-| 主題 | 所公開的結構描述 |
+| 主題 | 對外呈現的結構描述 |
 | --------- | ----------------- |
-| `COMMERCE` | `sec`、`patents` |
+| `COMMERCE` | `sec`, `patents` |
 | `ECONOMY` | `econ` |
-| `EDUCATION` | `census`、`edu` |
+| `EDUCATION` | `census`, `edu` |
 | `HEALTH` | `health` |
-| `CYBER` | `cyber_threat`、`cyber_vuln` |
+| `CYBER` | `cyber_threat`, `cyber_vuln` |
 | `PUBLIC_SAFETY` | `crime` |
 | `ENVIRONMENT` | `lands` |
 | `WEATHER` | `weather` |
-| `GOVERNMENT` | `fedregister`、`fec` |
-| `ALL` | 以上所有結構描述 |
+| `GOVERNMENT` | `fedregister`, `fec` |
+| `ALL` | 以上每一個結構描述 |
 
 ```yaml
 sources:
@@ -246,29 +255,28 @@ sources:
     description: U.S. commerce and securities data
 ```
 
-| 欄位 | 必要 | 預設值 | 說明 |
+| 欄位 | 必填 | 預設 | 說明 |
 | ------- | ---------- | --------- | ------------- |
 | `id` | 是 | — | 唯一識別碼 |
 | `subject` | 是 | — | 上述主題值之一 |
-| `domain_id` | 是 | — | 此來源所屬的網域 |
-| `description` | 否 | `""` | 人類可讀的描述 |
+| `domain_id` | 是 | — | 此數據來源所屬的網域 |
+| `description` | 否 | `""` | 供人閱讀的說明 |
 
-### 數據品質檢查器 (REQ-1443)
+### 數據品質檢查器（REQ-1443） {#data-quality-checkers-req-1443}
+數據品質檢查器是一種數據來源類型，不是一個子系統。它的掃描輸出就是數據：一項檢查結果是一次觀測，因此它經一般的數據來源路徑落地，並與其他每一個數據來源一樣繼承節奏、鮮度、事件、族系、治理、RLS、格線與匯出。 [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
 
-數據品質檢查器是一種來源類型，而非一個子系統。它的掃描輸出即是數據：一個檢查結果即是一項觀測值，因此它會經由一般的來源路徑落地，並從其他每一種來源繼承節奏 (cadence)、新鮮度、事件、血緣、治理、RLS、資料表格檢視及匯出功能。[tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
+支援兩種，而這個選擇既是功能選擇，也同樣是授權選擇。
 
-支援兩種，而選擇它們，既是授權條款上的選擇，也是功能上的選擇。
-
-| 來源類型 | 合約方言 | 額外套件 | 授權條款 | 託管雲端層 |
+| 數據來源類型 | 契約方言 | 額外項 | 授權 | 託管雲端平面 |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
-| `soda` | Soda 合約 YAML | `pip install .[soda]`（`soda-postgres`） | Elastic License 2.0 | 拒絕使用——見下文 |
-| `great_expectations` | Expectation suite JSON | `pip install .[gx]`（`great-expectations[postgresql]`） | Apache 2.0 | 允許使用 |
+| `soda` | Soda 契約 YAML | `pip install .[soda]`（`soda-postgres`） | Elastic License 2.0 | 拒絕——見下文 |
+| `great_expectations` | Expectation suite JSON | `pip install .[gx]`（`great-expectations[postgresql]`） | Apache 2.0 | 允許 |
 
-Elastic License 2.0 禁止將該軟體以託管或代管服務的形式提供給第三方，而在 SaaS 層中代表某個租用戶執行 Soda，正正就是這種行為。`config/capabilities.yaml` 以 `soda` 選項上的 `cloud_eligible: false` 標記這項區分，託管層會讀取該旗標。若某個託管部署想要使用 Soda，會改為觸及一個由營運方自行執行、營運方所提供的 Soda 端點。[tool-verified: `config/capabilities.yaml` lines 197–203]
+Elastic License 2.0 禁止把該軟體以託管或受管服務的形式提供給第三方，而在 SaaS 平面內代租用戶執行 Soda 正正是這件事。`config/capabilities.yaml` 以 `soda` 選項上的 `cloud_eligible: false` 承載這項區分，託管平面會讀取該旗標。想要 Soda 的託管部署，需觸及一個由營運者自行執行、由營運者提供的 Soda 端點。 [tool-verified: `config/capabilities.yaml` lines 197–203]
 
-Provisa 不隨附也不連結任何相關套件。掃描在一個子解譯器 (`python -m provisa.dq.worker`) 中執行，那是唯一匯入 `soda_core` 或 `great_expectations` 的地方，因此一個以原始碼形式提供的檢查器永遠不會觸及伺服器行程，而檢查器發生崩潰時，被終止的只是一個子行程 (subprocess)，而非事件迴圈。[tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
+Provisa 不隨附也不連結任何一者。掃描在子解譯器（`python -m provisa.dq.worker`）中執行，那是唯一匯入 `soda_core` 或 `great_expectations` 的地方，因此一個原始碼可得的檢查器絕不會進入伺服器處理程序，而檢查器當掉時殺掉的是一個子處理程序，不是事件迴圈。 [tool-verified: `provisa/dq/runner.py` `build_command`, `run_contract`]
 
-**該來源指向 Provisa 自身的 pgwire 端點。**正是這一點，讓單一個 postgres 驅動程式得以檢查一個以 Snowflake 或 Iceberg 為後端的資料表：檢查器掃描的是聯邦檢視，而非底層系統。因為政策適用於該連線，掃描身分是明確宣告的，而非繼承而來——一個經過篩選的資料列集合，絕不能讓某項檢查悄悄地通過。
+**該數據來源指向 Provisa 自己的 pgwire 端點。** 正是這一點讓單一個 postgres 驅動程式得以檢查以 Snowflake 或 Iceberg 為後盾的表：檢查器掃描的是聯邦檢視，不是底層系統。由於政策套用在該連線上，掃描身分是宣告出來的，而非繼承而來——一組被篩選過的資料列，絕不能產生一項悄然通過的檢查。
 
 ```yaml
 sources:
@@ -285,7 +293,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**每份合約對應一個結果資料表，而該合約即是全部的登記內容。**該資料表帶有 `dq_contract`——合約文字的逐字內容——除此之外沒有其他任何關於其形狀的資訊。欄位、水位標記及提升 (promotion) 全部都是推導而來的。[tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
+**每份契約一張結果表，而契約就是整份註冊。** 該表承載 `dq_contract`——契約原文逐字——關於其形狀就再無其他。資料行、水位與晉升全部是推導出來的。 [tool-verified: `provisa/dq/registration.py` `derive_checker_table`]
 
 ```yaml
 tables:
@@ -313,69 +321,64 @@ tables:
             must_be_greater_than: 0
 ```
 
-登記程序從該文字推導出的內容：
+註冊從那段文字推導出什麼：
 
-- **血緣。**該合約已經指名其目標數據集，因此登記程序會以剖析 SQL 的方式（`extract_inputs`，REQ-939）剖析它，並將其解析至受治理的資料表。單一定義，不存在可能失步的第二份副本。若合約指名了一個未受治理的數據集，會在登記時立即失敗，而不會落地任何沒人要求的資料列。
-- **欄位。**結果封套 (envelope) 是檢查器的，而非操作人員的——從 `scan_id` 到 `diagnostics` 共 16 個隨附欄位。已宣告的欄位只會被讀取其 `visible_to`（必須全體一致），之後便會被取代。[tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
-- **水位標記。**`scan_time` 成為水位標記，這使得落地成為一種附加操作 (append)（REQ-982）。掃描歷史會不斷累積，不需要任何歷史子系統。
-- **提升 (Promotions)。**`freshness_max_timestamp` 及 `dataset_rows_tested` 會從 `diagnostics` 的 jsonb 中被提升為具型別欄位（REQ-119）。可以像在任何其他 jsonb 欄位上一樣新增更多。[tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
+- **族系。** 契約本身已指名其目標數據集，因此註冊會以 `extract_inputs` 剖析 SQL 的方式剖析它（REQ-939），並解析到受治理的表。一份定義，沒有第二份可能漂移的副本。指名一個未受治理數據集的契約，會在註冊時大聲失敗，而不是落地一堆沒人要的資料列。
+- **資料行。** 結果封套屬於檢查器，不屬於營運者——自 `scan_id` 到 `diagnostics` 共 16 個隨附資料行。已宣告的資料行只被讀取其 `visible_to`（必須一致），之後即被取代。 [tool-verified: `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
+- **水位。** `scan_time` 成為水位，這使得落地成為附加（REQ-982）。掃描歷史在沒有歷史子系統的情況下累積。
+- **晉升。** `freshness_max_timestamp` 與 `dataset_rows_tested` 自 `diagnostics` jsonb 晉升為具型別的資料行（REQ-119）。要加更多，做法與任何其他 jsonb 資料行相同。 [tool-verified: `provisa/dq/results.py` `DQ_PROMOTIONS`]
 
-時序機制不引入任何新欄位。`change_signal` 加上 `cache_ttl` 給出輪詢節奏；`mv_debounce_quiet` 及 `mv_debounce_max_delay` 會把上游的一連串爆發式變更收合為一次掃描（REQ-963）；一個日曆粒度會使其變成週期性（REQ-962）；`expected_events` 會讓掃描保持等待，直到其輸入在該時間窗內已是最新（REQ-961）。輪詢迴圈本身就是掃描排程器。
+時序不引入新欄位。`change_signal` 加上 `cache_ttl` 給出輪詢節奏；`mv_debounce_quiet` 與 `mv_debounce_max_delay` 把一波上游爆發收攏成一次掃描（REQ-963）；一個日曆粒度使它變成週期性（REQ-962）；`expected_events` 會扣住掃描，直到其輸入在該窗口內達到鮮度（REQ-961）。輪詢迴圈就是掃描排程器。
 
-`outcome` 為 `pass`、`fail`、`warn`、`error`、`skipped` 之一。這些都不是一項裁決——若需要強制執行，那是稍後另外的一項宣告：一個 preflight，或是一個建立在已落地結果之上的 MV。由於一個已落地的觀測值不帶有決定性 (determinism) 義務（REQ-964），因此這裡可以容許一些永遠不能放在 preflight 閘門上的非決定性檢查——異常分數、追蹤視窗 (trailing-window) 變化、相對於現在的新鮮度。
+`outcome` 是 `pass`、`fail`、`warn`、`error`、`skipped` 之一。它們沒有一個是裁決——若想要強制執行，那是稍後的一項獨立宣告：一道預檢，或一個建於已落地結果之上的 MV。由於一次已落地的觀測不帶決定性義務（REQ-964），這裡容許放進絕不可能坐在預檢閘門上的非決定性檢查——異常分數、尾隨窗口變化、對照當下的鮮度。
 
-該合約是在使用者介面的資料表編輯介面之數據品質面板中撰寫的，而該處的原始合約文字始終是唯一真實來源。一次試跑 (dry run) 會針對現用資料表執行該合約，並顯示結果而不落地——這正是你發現某份合約的資料集名稱解析到了意料之外的地方，而原本除了通過的資料列之外什麼也不會落地的方式。
+契約在 UI 中、在表編輯介面的數據品質面板中撰寫，而那裡的契約原文永遠是真相來源。試跑會針對上線中的表執行該契約並顯示結果而不落地——這正是你如何抓到一份數據集名稱解析到意料之外的地方、否則只會落地一堆通過資料列的契約。
 
 ---
 
-## 自訂連接器 (REQ-1177)
+## 自訂連接器（REQ-1177）
+當營運者在 `config/custom_connectors.yaml` 中為某個新數據來源類型宣告一個連接器時，原生聯邦引擎——Postgres、DuckDB 與 ClickHouse——即取得對它的可達性。毋須任何程式碼。 [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
 
-當操作人員在 `config/custom_connectors.yaml` 中為某個新的來源類型宣告一個連接器時，原生的聯邦引擎——Postgres、DuckDB 及 ClickHouse——即取得對該類型的可達性。不需要撰寫任何程式碼。[tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
+連接器可擴充性本身早於此。Trino 引擎長久以來在它自己那一層就是可擴充的——一個按數據來源類型參數化的通用 JDBC 連接器、一份逐類型的目錄 `.properties` 本體，以及 Provisa 自己的自訂 Trino 連接器外掛（Splunk、SharePoint、Calcite）。 [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 把同樣的設定驅動可擴充性帶到那兩個原生、免叢集的引擎，它們先前只有一組固定的連接器。
 
-連接器可擴充性本身早於此功能便已存在。Trino 引擎在其自身層面上早已具備可擴充性——一個依來源類型參數化的通用 JDBC 連接器、一份逐類型的目錄 `.properties` 內容，以及 Provisa 自身的訂製 Trino 連接器外掛程式（Splunk、SharePoint、Calcite）。[tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 把同樣以設定為驅動的可擴充性，帶到這兩個原生、不需叢集的引擎，它們過去只有一組固定的連接器集合。
+該設定檔出貨時是空的。內建連接器已涵蓋開箱即用的觸及範圍；此檔案中的一切都由營運者撰寫。 [tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] 設定 `PROVISA_CUSTOM_CONNECTORS` 可指向另一個路徑（供測試使用時很有用）。
 
-該設定檔預設為空。內建連接器已涵蓋開箱即用的觸及範圍；此檔案中的一切內容皆由操作人員自行撰寫。[tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] 設定 `PROVISA_CUSTOM_CONNECTORS` 可指向另一個路徑（適用於測試）。
-
-### 描述子種類
-
-| 引擎 | 種類 | 機制 | 描述子所提供的內容 |
+### 描述元種類
+| 引擎 | 種類 | 機制 | 描述元提供什麼 |
 | --- | --- | --- | --- |
-| `postgres` | `pg_fdw` | SQL/MED（ISO 標準） | `extension`、`server_options`、`user_mapping`、`supports_import`、`table_options`、`remote_schema` |
-| `duckdb` | `duckdb_attach` | INSTALL/LOAD + ATTACH | `extension`、`probe_symbol`、`attach_template`、`remote_schema` |
-| `duckdb` | `duckdb_scan` | INSTALL/LOAD + 掃描器檢視 | `extension`、`probe_symbol`、`scan_template` |
-| `clickhouse` | `clickhouse_database` | `CREATE DATABASE ENGINE=…`（自動公開每一個遠端資料表） | `ch_engine`、`engine_template` |
-| `clickhouse` | `clickhouse_table` | 逐資料表的 `CREATE TABLE ENGINE=…`（欄位來自登記冊） | `ch_engine`、`engine_template`（可能帶有 `{table}`） |
-| `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`，由 ClickHouse 推斷結構描述 | `ch_engine`、`engine_template` |
+| `postgres` | `pg_fdw` | SQL/MED（ISO 標準） | `extension`, `server_options`, `user_mapping`, `supports_import`, `table_options`, `remote_schema` |
+| `duckdb` | `duckdb_attach` | INSTALL/LOAD + ATTACH | `extension`, `probe_symbol`, `attach_template`, `remote_schema` |
+| `duckdb` | `duckdb_scan` | INSTALL/LOAD + 掃描器檢視 | `extension`, `probe_symbol`, `scan_template` |
+| `clickhouse` | `clickhouse_database` | `CREATE DATABASE ENGINE=…`（自動呈現每一張遠端表） | `ch_engine`, `engine_template` |
+| `clickhouse` | `clickhouse_table` | 逐表 `CREATE TABLE ENGINE=…`（資料行來自登錄） | `ch_engine`, `engine_template`（可帶 `{table}`） |
+| `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`，由 ClickHouse 推斷結構描述 | `ch_engine`, `engine_template` |
 
-**Postgres 是通用的。**SQL/MED 是一個 ISO 標準，因此每一個符合規範的 FDW 都共用相同的 DDL 形狀：`CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`，選擇性的 `CREATE USER MAPPING`，接著是 `IMPORT FOREIGN SCHEMA`（當 `supports_import: true` 時），或是逐資料表明確的 `CREATE FOREIGN TABLE`（當為 `false` 時）。一個 `pg_fdw` 描述子只需提供逐 FDW 而異的部分——擴充功能名稱、伺服器選項鍵、user-mapping 鍵、匯入旗標、資料表選項。因此，任何符合標準的 FDW 都能單憑設定即可驅動。[tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
+**Postgres 是通用的。** SQL/MED 是 ISO 標準，因此每個符合標準的 FDW 都共用同一套 DDL 形狀：`CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`、選用的 `CREATE USER MAPPING`，然後是 `IMPORT FOREIGN SCHEMA`（當 `supports_import: true`）或逐表明確的 `CREATE FOREIGN TABLE`（當為 `false`）。一份 `pg_fdw` 描述元只提供逐 FDW 的差異——擴充名稱、伺服器選項索引鍵、使用者映射索引鍵、匯入旗標、表選項。因此任何符合標準的 FDW 都能單憑設定驅動。 [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
 
-**DuckDB 支援兩種機制。**透過 ATTACH 公開目錄的擴充功能使用 `duckdb_attach`；公開一個可讀資料表函式的擴充功能則使用 `duckdb_scan`。不符合這兩種模式的擴充功能則不受支援。[tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
+**DuckDB 支援兩種機制。** 經 ATTACH 呈現目錄的擴充用 `duckdb_attach`；呈現讀取表函式的擴充用 `duckdb_scan`。兩種模式都不符合的擴充不受支援。 [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
 
-**ClickHouse 支援三種機制**，各對應一種整合引擎形狀：一個自動公開每個遠端資料表的關聯式 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、一個由登記冊提供欄位的逐資料表引擎（`clickhouse_table`，例如 JDBC/ODBC 橋接器——`engine_template` 可帶有一個由執行期綁定的 `{table}` 佔位符），以及一個由 ClickHouse 推斷結構描述的檔案/lake/URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、檔案、無需伺服器）及 Hudi（lakehouse、零複製）為開箱即用支援。[tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
+**ClickHouse 支援三種機制**，各對應一種整合引擎形狀：一個自動呈現每張遠端表的關聯式 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、一個資料行由登錄提供的逐表引擎（`clickhouse_table`，例如 JDBC/ODBC 橋接——`engine_template` 可帶一個由執行階段繫結的 `{table}` 佔位符），以及一個由 ClickHouse 推斷結構描述的檔案／湖／URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、檔案、無伺服器）與 Hudi（湖倉、零複製）開箱即有。 [tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
 
-未知的 `kind` 值會在啟動時立即失敗——描述子中的錯字絕不能悄悄地讓某個來源類型變得無法觸及。[tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
+未知的 `kind` 值會在啟動時大聲失敗——描述元的一個錯字絕不可悄悄讓某個數據來源類型變成不可達。 [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
 
-### 探測閘控 (Probe gating)
+### 探測閘門
+可用性在附掛時針對各引擎的標準探索目錄驗證：
 
-可用性是在 attach 時，依各引擎標準的探索目錄進行驗證：
+- **Postgres**——檢查 `pg_extension`，然後 `pg_available_extensions`。 [tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` lines 333–344]
+- **DuckDB**——執行 `INSTALL`／`LOAD` 並在 `duckdb_functions()` 中檢查所宣告的 `probe_symbol`。 [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
+- **ClickHouse**——在 `system.table_engines` 中檢查所宣告的 `ch_engine`；建置中不存在即大聲失敗。 [tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
 
-- **Postgres**——先檢查 `pg_extension`，再檢查 `pg_available_extensions`。[tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` lines 333–344]
-- **DuckDB**——執行 `INSTALL`/`LOAD`，並在 `duckdb_functions()` 中檢查已宣告的 `probe_symbol`。[tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
-- **ClickHouse**——在 `system.table_engines` 中檢查已宣告的 `ch_engine`；若在建置中缺席，會立即失敗。[tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
+一個已宣告但無法安裝的擴充會大聲失敗。沒有默默略過，沒有備援。探測失敗的連接器，在該部署中就是不啟用。
 
-一個已宣告但無法安裝的擴充功能會立即失敗。不會悄悄略過，也不會有任何回退機制。探測失敗的連接器，對該部署而言就是未啟用。
+### 樣板變數
+每個 `server_options` 值、`user_mapping` 值、`attach_template` 與 `scan_template` 都可使用 `{field}` 佔位符。可用欄位： [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
 
-### 樣板 (Template) 變數
+`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，加上 `federation_hints` 中的任何索引鍵。DuckDB 的 attach 樣板另外收到 `{alias}`——Provisa 指派給所附掛資料庫的內部目錄別名。
 
-每一個 `server_options` 值、`user_mapping` 值、`attach_template` 及 `scan_template`，都可以使用 `{field}` 佔位符。可用的欄位：[tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
+引用未知欄位的樣板會在附掛時大聲失敗，讓描述元與數據來源的不相符在損壞的 DDL 抵達引擎之前浮現。
 
-`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，以及來自 `federation_hints` 的任何鍵。DuckDB 的 attach 樣板還會另外收到 `{alias}`——Provisa 指派給已附加資料庫的內部目錄別名。
-
-樣板中若參照了一個未知的欄位，會在 attach 時立即失敗，在損壞的 DDL 送達引擎之前，先揭露出描述子與來源之間的不一致。
-
-### 範例
-
-**Postgres——經由 `mongo_fdw` 存取 MongoDB（不匯入結構描述；欄位逐資料表提供）**
+### 例子
+**Postgres——經 `mongo_fdw` 的 MongoDB（無結構描述匯入；資料行逐表提供）**
 
 ```yaml
 # config/custom_connectors.yaml
@@ -397,7 +400,7 @@ connectors:
       collection: "{table_name}"
 ```
 
-**DuckDB——經由 `read_xlsx` 存取 Excel 檔案（掃描資料表函式）**
+**DuckDB——經 `read_xlsx` 的 Excel 檔案（掃描表函式）**
 
 ```yaml
   - engine: duckdb
@@ -411,19 +414,18 @@ connectors:
 
 [tool-verified: `config/custom_connectors.yaml` commented examples, lines 26–50]
 
-有了上述任一描述子後，以已宣告的 `source_type` 登記一個來源，即會（在探測成功的前提下）路由經由該自訂連接器。不需要任何其他設定變更。
+任一描述元就位後，註冊帶有所宣告 `source_type` 的數據來源即會經該自訂連接器路由，前提是探測成功。毋須其他設定變更。
 
 ---
 
-## 作為具名來源的數據倉庫 {#warehouses-as-named-sources}
+## 作為具名數據來源的倉庫 {#warehouses-as-named-sources}
+Snowflake、Databricks 與 ClickHouse 可註冊為具名數據來源，與哪個聯邦引擎啟用中無關。 [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
 
-Snowflake、Databricks 及 ClickHouse 可以登記為具名來源，與哪一個聯邦引擎為現用引擎無關。[tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
+註冊後，Provisa 經該數據來源的 DirectDriver 讀取倉庫，並把一份副本落地到啟用中引擎的具體化儲存區。查詢隨後針對該副本執行。這有別於傳統的可直接執行路徑（asyncpg、aiomysql），後者完全繞過引擎——這裡引擎仍然執行查詢，但針對的是一份本地副本，而不是每次請求都經網路連往倉庫。
 
-登記後，Provisa 會透過該來源的 DirectDriver 讀取該數據倉庫，並將一份複本落地至現用引擎的具體化儲存區。查詢隨後便針對該複本執行。這與傳統的可直連路徑（asyncpg、aiomysql）不同——在傳統路徑中，引擎完全被繞過——在這裡，引擎依然執行該查詢，但針對的是一份本機複本，而不是每次請求都經由線路連往數據倉庫。
+在倉庫支援之處，讀取是 Arrow 原生的：Databricks 用 Cloud Fetch，Snowflake 用 `fetch_arrow_table`，ClickHouse 用原生資料行式 HTTP 介面。
 
-在數據倉庫支援之處，讀取採 Arrow 原生方式：Databricks 使用 Cloud Fetch，Snowflake 使用 `fetch_arrow_table`，而 ClickHouse 使用原生欄式 HTTP 介面。
-
-標準 `host`/`port`/`username`/`password` 欄位無法承載的擴充連線參數，會放在 `federation_hints` 中：
+標準的 `host`／`port`／`username`／`password` 欄位承載不了的延伸連線參數，放進 `federation_hints`：
 
 ```yaml
 sources:
@@ -455,9 +457,9 @@ sources:
       secure: "true"              # optional — enables TLS on the HTTP interface
 ```
 
-以具名來源登記，與選擇同一個數據倉庫作為聯邦引擎，兩者互不相干。一個位於 DuckDB 引擎上的 Snowflake 來源，會把複本落地至 DuckDB，而不是 Snowflake。
+註冊為具名數據來源，與把同一個倉庫選為聯邦引擎是彼此獨立的。在 DuckDB 引擎上的一個 Snowflake 數據來源，把副本落地到 DuckDB，不是落到 Snowflake。
 
-雲端物件/數據湖數據（位於 S3 / GCS / R2 上的 parquet、csv、iceberg、delta_lake 檔案）是一種獨立的來源類型，當現用引擎具備該類型的 ATTACH 連接器時，會就地附加。不會落地任何複本——引擎直接掃描物件儲存。這些來源的憑證同樣放在 `federation_hints` 中：
+雲端物件／湖數據（S3／GCS／R2 上的 parquet、csv、iceberg、delta_lake 檔案）是另一種數據來源類型，當啟用中的引擎有該類型的 ATTACH 連接器時，就地附掛。不落地副本——引擎直接掃描物件儲存。那些數據來源的憑證同樣放進 `federation_hints`：
 
 ```yaml
 sources:
@@ -472,40 +474,38 @@ sources:
 
 ---
 
-## 來源設定欄位
+## 數據來源設定欄位
+所有數據來源共用一組共通欄位。 [tool-verified: `provisa/core/models.py` `Source` class, lines 138–204]
 
-所有來源共用一組共通欄位。[tool-verified: `provisa/core/models.py` `Source` class, lines 138–204]
-
-| 欄位 | 必要 | 預設值 | 說明 |
+| 欄位 | 必填 | 預設 | 說明 |
 | ------- | ---------- | --------- | ------------- |
-| `id` | 是 | — | 唯一識別碼；英數字加連字號/底線 |
-| `type` | 是 | — | 來源類型（見上方各表） |
+| `id` | 是 | — | 唯一識別碼；英數字加連字號／底線 |
+| `type` | 是 | — | 數據來源類型（見上方表格） |
 | `host` | 否 | `""` | 主機名稱或 IP |
 | `port` | 否 | `0` | 連接埠號 |
 | `database` | 否 | `""` | 資料庫名稱 |
 | `username` | 否 | `""` | 使用者名稱 |
-| `password` | 否 | `""` | 密碼；使用 `${env:VAR}` 進行機密解析 |
-| `path` | 否 | `null` | 檔案型及物件/數據湖來源的檔案路徑或雲端 URI |
-| `base_url` | 否 | `null` | OpenAPI 來源的基底網址 |
-| `pool_min` | 否 | `1` | 連線池最小值（REQ-052） |
-| `pool_max` | 否 | `5` | 連線池最大值（REQ-052） |
-| `use_pgbouncer` | 否 | `false` | 是否透過 PgBouncer 路由連線（REQ-053） |
+| `password` | 否 | `""` | 密碼；密鑰解析請用 `${env:VAR}` |
+| `path` | 否 | `null` | 檔案式與物件／湖數據來源的檔案路徑或雲端 URI |
+| `base_url` | 否 | `null` | OpenAPI 數據來源的基底 URL |
+| `pool_min` | 否 | `1` | 連線池最小大小（REQ-052） |
+| `pool_max` | 否 | `5` | 連線池最大大小（REQ-052） |
+| `use_pgbouncer` | 否 | `false` | 經 PgBouncer 路由連線（REQ-053） |
 | `pgbouncer_port` | 否 | `6432` | PgBouncer 連接埠（REQ-053） |
-| `cache_enabled` | 否 | `true` | 是否啟用 API 回應快取 |
-| `cache_ttl` | 否 | `null` | 快取 TTL（秒）；為 null 時繼承全域預設值 |
-| `cache_catalog` | 否 | `null` | API 快取所用的聯邦目錄；預設為該來源自身的目錄 |
-| `cache_schema` | 否 | `api_cache` | 快取目錄中的結構描述 |
-| `naming_convention` | 否 | `null` | 為此來源覆寫全域命名慣例（REQ-194） |
-| `federation_hints` | 否 | `{}` | 傳遞給聯邦引擎的工作階段屬性，以及數據倉庫來源的擴充連線參數（REQ-278、REQ-281） |
-| `mapping` | 否 | `{}` | NoSQL 及 SaaS 來源的特定類型連接器設定（例如 SharePoint 的 `auth_type`、Splunk 的 `use_token`）（REQ-251） |
-| `allowed_domains` | 否 | `[]` | 將來源限制於特定網域；空值 = 不受限制 |
-| `description` | 否 | `""` | 人類可讀的描述 |
+| `cache_enabled` | 否 | `true` | 啟用 API 回應快取 |
+| `cache_ttl` | 否 | `null` | 快取 TTL（秒）；為 null 時繼承全域預設 |
+| `cache_catalog` | 否 | `null` | API 快取所用的聯邦目錄；預設為數據來源自己的目錄 |
+| `cache_schema` | 否 | `api_cache` | 快取目錄內的結構描述 |
+| `naming_convention` | 否 | `null` | 為此數據來源覆寫全域命名慣例（REQ-194） |
+| `federation_hints` | 否 | `{}` | 傳給聯邦引擎的工作階段屬性，以及倉庫數據來源的延伸連線參數（REQ-278、REQ-281） |
+| `mapping` | 否 | `{}` | NoSQL 與 SaaS 數據來源的類型專屬連接器設定（例如 SharePoint 的 `auth_type`、Splunk 的 `use_token`）（REQ-251） |
+| `allowed_domains` | 否 | `[]` | 把數據來源限制於特定網域；空 = 不受限 |
+| `description` | 否 | `""` | 供人閱讀的說明 |
 
 ---
 
-## Kafka 來源
-
-Kafka 主題 (topic) 是在 `kafka_sources` 之下另行設定的，以已登記的 `kafka` 來源之 `id` 為索引鍵。[tool-verified: `config/provisa.yaml` lines 138–151] (REQ-147)
+## Kafka 數據來源
+Kafka 主題另外設定於 `kafka_sources` 之下，以某個已註冊 `kafka` 數據來源的 `id` 為索引鍵。 [tool-verified: `config/provisa.yaml` lines 138–151] (REQ-147)
 
 ```yaml
 kafka_sources:
@@ -528,19 +528,18 @@ kafka_sources:
 
 | 欄位 | 說明 |
 | ------- | ------------- |
-| `id` | 必須與某個 `type: kafka` 來源的 `id` 相符 |
-| `topics[].id` | 此主題在 Provisa 內部的邏輯名稱 |
+| `id` | 必須符合某個 `type: kafka` 數據來源的 `id` |
+| `topics[].id` | 此主題在 Provisa 內的邏輯名稱 |
 | `topics[].topic` | Kafka 主題名稱 |
 | `topics[].domain_id` | 此主題所屬的網域 |
-| `topics[].description` | 人類可讀的描述 |
-| `topics[].default_window` | 視窗式查詢的預設時間視窗（例如 `1h`）（REQ-148） |
-| `topics[].columns` | 該主題結構描述的欄位定義（REQ-150） |
+| `topics[].description` | 供人閱讀的說明 |
+| `topics[].default_window` | 窗口查詢的預設時間窗口（例如 `1h`）（REQ-148） |
+| `topics[].columns` | 該主題結構描述的資料行定義（REQ-150） |
 
 ---
 
-## 欄位可視性
-
-每個欄位上的 `visible_to` 欄位，是一份可以看見該欄位的角色 ID 清單。[tool-verified: `provisa/core/models.py` `Column` class line 248; `config/provisa.yaml` lines 39–51]
+## 資料行可見性
+每個資料行上的 `visible_to` 欄位，是能看見該資料行的角色 ID 清單。 [tool-verified: `provisa/core/models.py` `Column` class line 248; `config/provisa.yaml` lines 39–51]
 
 ```yaml
 columns:
@@ -552,13 +551,12 @@ columns:
     visible_to: [admin, analyst]  # both roles see this column
 ```
 
-未列於某個角色 `visible_to` 清單中的欄位，不會出現在該角色的 GraphQL 結構描述中，也無法在篩選條件中被查詢或參照（REQ-039）。
+未列入某角色 `visible_to` 清單的資料行，不會出現在該角色的 GraphQL 結構描述中，也無法被查詢或在篩選中引用（REQ-039）。
 
 ---
 
-## 關聯 (Relationships)
-
-關聯連接兩個已登記的資料表，並在 GraphQL 中以巢狀欄位的形式呈現。[tool-verified: `provisa/core/models.py` `Relationship` class lines 323–343; `config/provisa.yaml` lines 103–110] (REQ-019)
+## 關係
+關係連接兩張已註冊的表，並在 GraphQL 中呈現為巢狀欄位。 [tool-verified: `provisa/core/models.py` `Relationship` class lines 323–343; `config/provisa.yaml` lines 103–110] (REQ-019)
 
 ```yaml
 relationships:
@@ -571,33 +569,32 @@ relationships:
     cardinality: many-to-one
 ```
 
-| 欄位 | 必要 | 說明 |
+| 欄位 | 必填 | 說明 |
 | ------- | ---------- | ------------- |
-| `id` | 是 | 此關聯的唯一識別碼 |
-| `source_table_id` | 是 | 持有外部索引鍵的資料表 |
-| `target_table_id` | 是 | 被參照的資料表；對於計算式關聯則為空 |
-| `source_column` | 是 | 來源資料表上的欄位 |
-| `target_column` | 是 | 目標資料表上的欄位；對於計算式關聯則為空 |
+| `id` | 是 | 此關係的唯一識別碼 |
+| `source_table_id` | 是 | 持有外部索引鍵的表 |
+| `target_table_id` | 是 | 被引用的表；計算式關係為空 |
+| `source_column` | 是 | 來源表上的資料行 |
+| `target_column` | 是 | 目標表上的資料行；計算式關係為空 |
 | `cardinality` | 是 | `many-to-one` 或 `one-to-many`（REQ-019） |
-| `materialize` | 否 | 為跨來源 join 自動建立一個具體化檢視（REQ-158） |
+| `materialize` | 否 | 為跨來源聯結自動建立具體化檢視（REQ-158） |
 | `refresh_interval` | 否 | MV 重新整理間隔（秒）（預設：300） |
-| `target_function_name` | 否 | 計算式關聯所用的資料庫函式名稱 |
-| `function_arg` | 否 | 哪一個函式引數接收來源欄位的值 |
-| `alias` | 否 | 人類可讀的關聯類型（例如 `WORKS_FOR`） |
-| `graphql_alias` | 否 | 命名此關聯在父型別上公開的 SDL 欄位。若未提供，該名稱會由目標資料表的 `field_name` 及關聯基數推導而得。[tool-verified: `provisa/compiler/schema_gen.py:1050`] |
-| `disable_cypher` | 否 | 當為 `true` 時，將此關聯排除於 Cypher 圖形邊之外 |
-| `source_json_key` | 否 | 在 JOIN 之前，從來源欄位中擷取此鍵作為一個 JSON 物件 |
+| `target_function_name` | 否 | 計算式關係的 DB 函式名稱 |
+| `function_arg` | 否 | 哪個函式引數接收來源資料行的值 |
+| `alias` | 否 | 供人閱讀的關係類型（例如 `WORKS_FOR`） |
+| `graphql_alias` | 否 | 為此關係在父類型上呈現的 SDL 欄位命名。未提供時，名稱自目標表的 `field_name` 與關係基數推導。 [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
+| `disable_cypher` | 否 | 為 `true` 時，把此關係排除在 Cypher 圖形邊之外 |
+| `source_json_key` | 否 | JOIN 之前先自來源資料行抽出此索引鍵作為 JSON 物件 |
 
-基數 (Cardinality) 值 [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]：
+基數值 [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]：
 
-- `many-to-one`——每一列來源資料列對應一列目標資料列（FK 對應至 PK）
-- `one-to-many`——每一列來源資料列對應多列目標資料列（上述關係的反向）
+- `many-to-one`——每一列來源資料列對應一列目標資料列（FK 對 PK）
+- `one-to-many`——每一列來源資料列對應多列目標資料列（上者的反向）
 
 ---
 
-## 行級安全規則
-
-RLS 規則會在查詢時注入 `WHERE` 子句，範圍限定於某個角色，並可選擇性地限定於某個資料表或網域。[tool-verified: `provisa/core/models.py` `RLSRule` class lines 391–395; `config/provisa.yaml` lines 128–131] (REQ-041)
+## 資料列層級安全規則
+RLS 規則在查詢時注入 `WHERE` 子句，範圍限定於某個角色，並可選擇限定於某張表或某個網域。 [tool-verified: `provisa/core/models.py` `RLSRule` class lines 391–395; `config/provisa.yaml` lines 128–131] (REQ-041)
 
 ```yaml
 rls_rules:
@@ -611,24 +608,22 @@ rls_rules:
     filter: "tenant_id = current_setting('provisa.tenant_id')"
 ```
 
-當同一個角色同時存在網域層級及資料表層級的規則時，資料表層級的規則優先（REQ-403）。
+當同一個角色同時存在網域層級與表層級的規則時，表層級規則優先（REQ-403）。
 
-| 欄位 | 必要 | 說明 |
+| 欄位 | 必填 | 說明 |
 | ------- | ---------- | ------------- |
-| `table_id` | 條件性 | 此規則所套用的資料表；與 `domain_id` 互斥 |
-| `domain_id` | 條件性 | 此規則所套用的網域；適用於該網域內所有資料表（REQ-402） |
-| `role_id` | 是 | 此規則所適用的角色 |
-| `filter` | 是 | 注入 `WHERE` 的 SQL 判斷式；可參照工作階段變數（REQ-041） |
+| `table_id` | 條件式 | 要套用規則的表；與 `domain_id` 互斥 |
+| `domain_id` | 條件式 | 要套用規則的網域；套用至該網域內所有表（REQ-402） |
+| `role_id` | 是 | 此規則所套用的角色 |
+| `filter` | 是 | 注入 `WHERE` 的 SQL 述詞；可引用工作階段變數（REQ-041） |
 
 ---
 
 ## 函式與 Webhook
+### DB 函式
+追蹤一個資料庫函式，並把它呈現為 GraphQL 查詢或變更操作。 [tool-verified: `provisa/core/models.py` `Function` class lines 423–438; `config/provisa.yaml` lines 152–164] (REQ-205)
 
-### 資料庫函式
-
-追蹤一個資料庫函式，並將其公開為一個 GraphQL 查詢或 mutation。[tool-verified: `provisa/core/models.py` `Function` class lines 423–438; `config/provisa.yaml` lines 152–164] (REQ-205)
-
-資料庫來源也可以從供應商目錄（`pg_proc`、`information_schema.routines`，或對等的供應商目錄）自動探索其儲存程序及函式，省去逐一手動登記的需要。探索過程會讀取 `prokind` 及 `provolatile`：不可變/穩定的函式會登記為參數化的關聯（程序引數會成為查詢參數，形狀與 OpenAPI GET 資料表相同），而易變的程序則會登記為 mutation/已追蹤函式。已探索到的常式，與手動登記的常式一樣，同樣流經第二階段治理。[tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
+資料庫數據來源也能自供應商目錄（`pg_proc`、`information_schema.routines` 或供應商對應物）自動探索其預存程序與函式，免去逐一手動註冊。探索會讀取 `prokind` 與 `provolatile`：immutable／stable 的函式註冊為參數化關聯（程序引數變成查詢參數，形狀與 OpenAPI GET 表相同），而 volatile 的程序註冊為變更操作／受追蹤函式。已探索的常式流經 Stage-2 治理的方式，與手動註冊者完全相同。 [tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
 
 ```yaml
 functions:
@@ -648,23 +643,22 @@ functions:
         type: String
 ```
 
-| 欄位 | 必要 | 預設值 | 說明 |
+| 欄位 | 必填 | 預設 | 說明 |
 | ------- | ---------- | --------- | ------------- |
 | `name` | 是 | — | GraphQL 欄位名稱 |
-| `source_id` | 是 | — | 包含該函式的來源 |
+| `source_id` | 是 | — | 含有該函式的數據來源 |
 | `schema` | 否 | `public` | 資料庫結構描述 |
 | `function_name` | 是 | — | 實際的資料庫函式名稱 |
-| `returns` | 是 | — | 該函式所傳回、已登記的資料表 ID（REQ-207） |
-| `arguments` | 否 | `[]` | 一組 `{name, type}` 引數定義（REQ-211） |
-| `visible_to` | 否 | `[]` | 可呼叫此函式的角色 |
-| `writable_by` | 否 | `[]` | 可以 mutation 形式呼叫此函式的角色 |
+| `returns` | 是 | — | 該函式回傳的已註冊表 ID（REQ-207） |
+| `arguments` | 否 | `[]` | `{name, type}` 引數定義清單（REQ-211） |
+| `visible_to` | 否 | `[]` | 能呼叫此函式的角色 |
+| `writable_by` | 否 | `[]` | 能以變更操作呼叫此函式的角色 |
 | `domain_id` | 否 | `""` | 此函式所屬的網域 |
-| `description` | 否 | `null` | GraphQL 欄位描述 |
+| `description` | 否 | `null` | GraphQL 欄位說明 |
 | `kind` | 否 | `mutation` | `"query"` 或 `"mutation"`（REQ-205） |
 
 ### Webhook
-
-將一個外部 HTTP 端點公開為一個 GraphQL 查詢或 mutation。[tool-verified: `provisa/core/models.py` `Webhook` class lines 441–455; `config/provisa.yaml` lines 166–178] (REQ-209)
+把一個外部 HTTP 端點呈現為 GraphQL 查詢或變更操作。 [tool-verified: `provisa/core/models.py` `Webhook` class lines 441–455; `config/provisa.yaml` lines 166–178] (REQ-209)
 
 ```yaml
 webhooks:
@@ -683,33 +677,32 @@ webhooks:
         type: String
 ```
 
-| 欄位 | 必要 | 預設值 | 說明 |
+| 欄位 | 必填 | 預設 | 說明 |
 | ------- | ---------- | --------- | ------------- |
 | `name` | 是 | — | GraphQL 欄位名稱 |
-| `url` | 是 | — | Webhook 端點網址 |
+| `url` | 是 | — | Webhook 端點 URL |
 | `method` | 否 | `POST` | HTTP 方法 |
-| `timeout_ms` | 否 | `5000` | 請求逾時時間（毫秒） |
-| `returns` | 否 | `null` | 已登記的資料表 ID，或 null 表示內嵌型別 |
-| `inline_return_type` | 否 | `[]` | 一組 `{name, type}` 欄位，用於自訂回傳形狀（REQ-210） |
-| `arguments` | 否 | `[]` | 一組 `{name, type}` 引數定義 |
-| `visible_to` | 否 | `[]` | 可呼叫此 webhook 的角色 |
+| `timeout_ms` | 否 | `5000` | 請求逾時（毫秒） |
+| `returns` | 否 | `null` | 已註冊表 ID，或 null 表示內嵌類型 |
+| `inline_return_type` | 否 | `[]` | 自訂回傳形狀的 `{name, type}` 欄位清單（REQ-210） |
+| `arguments` | 否 | `[]` | `{name, type}` 引數定義清單 |
+| `visible_to` | 否 | `[]` | 能呼叫此 webhook 的角色 |
 | `domain_id` | 否 | `""` | 此 webhook 所屬的網域 |
-| `description` | 否 | `null` | GraphQL 欄位描述 |
+| `description` | 否 | `null` | GraphQL 欄位說明 |
 | `kind` | 否 | `mutation` | `"query"` 或 `"mutation"` |
 
 ---
 
-## 身分驗證
-
-身分驗證設定於 `auth` 鍵之下。[tool-verified: `provisa/core/models.py` `AuthConfig` class lines 467–477] (REQ-120)
+## 驗證
+驗證設定於 `auth` 索引鍵之下。 [tool-verified: `provisa/core/models.py` `AuthConfig` class lines 467–477] (REQ-120)
 
 | 提供者 | 說明 |
 | ---------- | ------------- |
-| `none` | 無身分驗證；所有請求均視為 `default_role` |
-| `firebase` | Firebase Authentication；需要 `project_id` 及 `service_account_key`（REQ-121） |
+| `none` | 不驗證；所有請求皆視為 `default_role` |
+| `firebase` | Firebase Authentication；需要 `project_id` 與 `service_account_key`（REQ-121） |
 | `keycloak` | Keycloak OIDC（REQ-122） |
 | `oauth` | 通用 OAuth 2.0（REQ-123） |
-| `simple` | 不透過外部提供者的使用者名稱/密碼（REQ-124） |
+| `simple` | 不經外部提供者的使用者名稱／密碼（REQ-124） |
 
 ```yaml
 auth:
@@ -725,27 +718,25 @@ auth:
     service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT_KEY}
 ```
 
-`assignments_source: claims` 從 JWT 聲明中讀取角色指派。`assignments_source: provisa` 則從 Provisa 自身的指派儲存區讀取。[tool-verified: `provisa/core/models.py` line 476] (REQ-551)
+`assignments_source: claims` 自 JWT 宣告讀取角色指派。`assignments_source: provisa` 自 Provisa 自己的指派儲存區讀取。 [tool-verified: `provisa/core/models.py` line 476] (REQ-551)
 
 ---
 
 ## 執行路由
+**直接執行**——單一來源的 RDBMS 查詢路由到原生驅動程式，取得低於 100 毫秒的延遲（REQ-027）。數據來源需同時具備 `SOURCE_TO_DIALECT` 項目與 `SOURCE_TO_CONNECTOR` 項目才能支援此路徑（REQ-229）。
 
-**直接執行**——單一來源的關聯式資料庫查詢，會路由至原生驅動程式，以取得低於 100 毫秒的延遲（REQ-027）。來源需要同時具備 `SOURCE_TO_DIALECT` 項目及 `SOURCE_TO_CONNECTOR` 項目，才能支援此路徑（REQ-229）。
+**聯邦執行**——多來源查詢，以及沒有直接驅動程式的數據來源，經聯邦引擎路由（REQ-028）。Provisa 內含一個內嵌聯邦引擎；大規模部署可指向你自己的相容叢集（REQ-226）。
 
-**聯邦式執行**——多來源查詢，以及沒有直接驅動程式的來源，會路由經由聯邦引擎（REQ-028）。Provisa 內含一個內嵌的聯邦引擎；大規模部署時可指向你自己相容的叢集（REQ-226）。
-
-**統計資料**——在登記時，Provisa 會針對每個已發佈的資料表執行 `ANALYZE`，以初始化成本導向優化器（資料列數、null 比例、相異值數量、最小/最大值）。失敗會被記錄，且不會阻擋登記（REQ-275）。
+**統計**——註冊時，Provisa 對每張已發佈的表執行 `ANALYZE`，為成本式最佳化器預熱（資料列數、null 比例、相異值、最小／最大值）。失敗會被記錄，且不會阻擋註冊（REQ-275）。
 
 ---
 
-## 圖形與語義來源
-
+## 圖形與語意數據來源
 ### Neo4j
 
-登記一個 Neo4j 圖形資料庫作為可查詢的來源。數據管家撰寫用來投影純量值的 Cypher 查詢；Provisa 會快取結果，並將其公開為 GraphQL 型別（REQ-295）。
+把一個 Neo4j 圖形資料庫註冊為可查詢的數據來源。管理員撰寫投影出純量值的 Cypher 查詢；Provisa 快取結果並把它們呈現為 GraphQL 類型（REQ-295）。
 
-Cypher 查詢必須在 `RETURN` 子句中使用屬性存取子（`RETURN n.id AS id, n.name AS name`）——若傳回節點物件，會在登記時被拒絕（REQ-296）。
+Cypher 查詢必須在 `RETURN` 子句中使用屬性存取子（`RETURN n.id AS id, n.name AS name`）——回傳節點物件在註冊時即被拒絕（REQ-296）。
 
 ```bash
 # Register via admin API (no YAML config required)
@@ -766,13 +757,13 @@ POST /admin/sources/neo4j/graph/tables
 }
 ```
 
-預覽端點（`POST /admin/sources/neo4j/{id}/preview`）會傳回範例資料列，並在該 Cypher 傳回節點物件時阻擋登記（REQ-296）。
+預覽端點（`POST /admin/sources/neo4j/{id}/preview`）回傳樣本資料列，並在 Cypher 回傳節點物件時阻擋註冊（REQ-296）。
 
 ### SPARQL
 
-登記任何符合 SPARQL 1.1 規範的三元組儲存庫（Apache Jena Fuseki、Virtuoso、Stardog 等）作為可查詢的來源（REQ-297）。
+把任何符合 SPARQL 1.1 的三元組儲存（Apache Jena Fuseki、Virtuoso、Stardog 等）註冊為可查詢的數據來源（REQ-297）。
 
-查詢必須是 `SELECT` 查詢。`SELECT` 子句中的變數名稱會自動成為欄位名稱（REQ-297）。
+查詢必須是 `SELECT` 查詢。`SELECT` 子句中的變數名稱自動成為資料行名稱（REQ-297）。
 
 ```bash
 # Register via admin API
@@ -792,12 +783,11 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-兩個連接器都使用 API 來源快取管線——結果儲存於 PostgreSQL 中，TTL 可設定，使其可用於跨來源的聯邦 JOIN（REQ-295、REQ-297、REQ-299）。
+兩個連接器都使用 API 數據來源快取管線——結果以可設定的 TTL 儲存在 PostgreSQL，使它們可用於跨來源的聯邦 JOIN（REQ-295、REQ-297、REQ-299）。
 
 ---
 
 ## 連線範例
-
 ### PostgreSQL
 
 ```yaml
@@ -849,7 +839,6 @@ POST /admin/sources/sparql/knowledge-graph/tables
 ```
 
 ### 跨來源查詢
-
 ```graphql
 {
   orders(where: {region: {eq: "us"}}) {
@@ -867,4 +856,4 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-單一來源的部分會直接路由（REQ-027）。跨來源 JOIN 會以自動型別轉換進行聯邦處理（REQ-028、REQ-552）。
+單一來源的部分直接路由（REQ-027）。跨來源 JOIN 經聯邦執行，並帶自動型別強制轉換（REQ-028、REQ-552）。

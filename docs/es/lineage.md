@@ -196,7 +196,7 @@ de MV se escriben todos contra ese nombre, así que **renombrar un alias los rom
 certeza que eliminar la columna**.
 
 El **nombre físico** es `table_columns.column_name`, la identidad que sobrevive al reemplazo
-completo de columnas del upsert de la tabla. Las relaciones, los enlaces del glosario, las
+completo de columnas del upsert de la tabla. Las relaciones, los enlaces del [glosario](glossary.md), las
 asignaciones de etiquetas, la columna de marca de agua (watermark) y los ajustes preestablecidos de
 columna almacenan este, así que solo se rompen cuando la columna se **elimina**.
 

@@ -29,7 +29,7 @@ sources:
 | `port` | `0` | `0` 表示由各个连接器提供自己的默认值——不存在集中式的默认端口映射 |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | 支持 `${env:VAR}` 密钥解析 |
+| `password` | `""` | 支持 `${env:VAR}` 与 `${secret:NAME}` 凭据引用——参见[密钥](secrets.md) |
 | `path` | `null` | 基于文件的数据源的文件路径或 URI |
 | `base_url` | `null` | API 数据源的基础 URL |
 | `pool_min` / `pool_max` | `1` / `5` | 连接池上下限 |

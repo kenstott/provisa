@@ -60,7 +60,7 @@ GET  /admin/security
 PUT  /admin/security
 ```
 
-AI 模型分配、嵌入/向量模型注册表，以及自然语言速率限制 — 在重启时生效（REQ-1080）：
+AI 模型分配、嵌入/向量模型注册表，以及自然语言速率限制 — 自下一次请求起生效，无需重启（REQ-1349）：[tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
 
 ```http
 GET  /admin/ai-models
@@ -70,6 +70,17 @@ PUT  /admin/ai-models
 管理员加密选项卡会实时从加密注册表获取其提供程序列表；不可用的提供程序会显示，但不可选择（REQ-1091）。
 
 `GET`/`HEAD /health` 和 `GET /setup/status` 始终无需身份验证 — 即使已配置身份验证提供程序，它们也会绕过 `Authorization: Bearer` 的要求（REQ-539）。
+
+### 联邦引擎
+
+读取或更改本部署所使用的引擎（REQ-916）：
+
+```http
+GET  /admin/federation-engine
+PUT  /admin/federation-engine
+```
+
+`GET` 返回当前生效的引擎键，以及它所需的配置字段。`PUT` 接受包含 `engine`（引擎键）及任意引擎专属字段的请求体；该选择会持久化到平台配置，并在下次服务重启时绑定。[tool-verified: `provisa/api/admin/settings_router.py:730-829`]
 
 ### 关联编辑器
 
@@ -221,6 +232,68 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
 ```
 
 注册完成后，表会出现在 GraphQL 架构中，并可像任何其他数据源一样进行查询（REQ-016）。
+
+### Hasura / DDN 导入（REQ-1483）
+
+通过管理界面或 API 把现有的 Hasura v2 或 Hasura DDN 项目转换为 Provisa 配置，在你批准之前不会有任何内容落库。
+
+```http
+POST /admin/import/hasura/preview
+POST /admin/import/hasura/apply
+```
+
+**预览**会转换上传的归档文件，并返回建议的 `config_yaml`、一份警告列表，以及所发现内容的摘要（数据源、域、表、列、角色、关联和 RLS 的数量）。不会向租户数据库写入任何内容。请求体：
+
+```json
+{
+  "filename": "my-hasura-project.zip",
+  "content_b64": "<base64-encoded archive>",
+  "flavor": "auto",
+  "domain_map": {"public": "sales"},
+  "source_overrides": {}
+}
+```
+
+`flavor` 可为 `"auto"`（从归档结构中检测）、`"hasura_v2"` 或 `"ddn"`。
+
+**应用**会取用你已审阅（并可选择性编辑过）的 YAML，把它加载到当前操作所属的组织——与 `PUT /admin/config` 相同的热重载路径。请求体：`{"config_yaml": "<yaml string>"}`。
+
+预览绝不在服务端缓存转换后的 YAML；应用取用的是你提交的 YAML，因此所应用的内容与所审阅的完全一致。[tool-verified: `provisa/api/admin/import_router.py`]
+
+### Apache Ossie 互通（REQ-1316、REQ-1321）
+
+Provisa 以导入/导出边界的形式与 Apache Ossie（孵化中）互通。
+
+```http
+GET  /admin/ossie
+POST /admin/ossie/import
+```
+
+**导出**（`GET /admin/ossie`）在每次请求时都从实时的受治理模型推导出 Ossie YAML 文档——绝不缓存，因此不可能过期。响应为 `text/yaml`，并带 `Content-Disposition: attachment` 标头。表成为 `dataset` 对象，列成为 `field` 对象，关联映射为 Ossie 的 `relationship` 对象。（REQ-1321）[tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+
+**导入**（`POST /admin/ossie/import`）接受 Ossie 的 YAML 或 JSON 文档（格式自动检测）。它解析该文档，并以 JSON 对象返回建议注册的表与关联——不会注册任何内容。管理界面中的审阅页面让你在任何变更触发之前接受或删减这些建议。（REQ-1316）[tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+
+### 对象存储（REQ-1046、REQ-1048、REQ-1049）
+
+读取或配置组织的物化存储：
+
+```http
+GET  /admin/org-storage
+PUT  /admin/org-storage
+```
+
+`GET` 报告该组织用掉了多少平台存储配额。`PUT` 注册该组织自有的存储 DSN（静态加密；GET 绝不返回它）。一经设置，该组织的物化便落入它自己的存储桶，不再计入平台配额。发送 `storage_url: null` 会清除该设置，并把该组织移回平台存储。[tool-verified: `provisa/api/admin/org_storage_router.py`]
+
+### 组织加密（REQ-1574）
+
+设置或轮换组织的静态加密密钥：
+
+```http
+GET  /admin/org-encryption
+PUT  /admin/org-encryption
+```
+
+`GET` 返回密钥的指纹、id 和来源——绝不返回密钥材料。`PUT` 设置或轮换密钥。提供 `key_b64`（32 个原始字节，base64 编码）以自带密钥，或省略它让 Provisa 代为生成。没有删除操作：停用最后一个密钥，会让它包裹过的每一份载荷都无法读取。[tool-verified: `provisa/api/admin/org_encryption_router.py`]
 
 ## GraphiQL
 

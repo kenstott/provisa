@@ -23,6 +23,25 @@
 
 ## כל המקורות
 
+Provisa רושמת **53** סוגי מקור. הטבלאות שלהלן מכסות את כל 53; המספור הוא הספירה. [tool-verified: `provisa/core/models.py` `SourceType`]
+
+| # | קבוצה | סוגי מקור |
+| --- | --- | --- |
+| 1–13 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport` |
+| 14–20 | [מחסני נתונים בענן](#_4) | `snowflake`, `bigquery`, `databricks`, `redshift`, `fabric`, `synapse`, `trino` |
+| 21–25 | [אנליטיקה / OLAP](#olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 26–30 | [Data Lake / פורמטי טבלה פתוחים](#data-lake) | `iceberg`, `delta_lake`, `hudi`, `hive`, `hive_s3` |
+| 31–33 | [NoSQL](#nosql) | `mongodb`, `cassandra`, `redis` |
+| 34–36 | [סטרימינג](#_5) | `kafka`, `websocket`, `rss` |
+| 37 | [Push Receiver](#push-receiver) | `ingest` |
+| 38–39 | [גרף וסמנטיקה](#_6) | `neo4j`, `sparql` |
+| 40–43 | [מבוססי קובץ](#_7) | `sqlite`, `csv`, `parquet`, `files` |
+| 44–45 | [Observability ואחרים](#observability) | `google_sheets`, `prometheus` |
+| 46–47 | [מחברי SaaS ארגוניים](#saas) | `sharepoint`, `splunk` |
+| 48–50 | [מקורות API](#api) | `openapi`, `graphql_remote`, `grpc_remote` |
+| 51 | [GovData](#govdata) | `govdata` |
+| 52–53 | [בודקי איכות נתונים](#req-1443) | `soda`, `great_expectations` |
+
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms) (REQ-027). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
 ### RDBMS
@@ -40,6 +59,8 @@
 | `yugabytedb` | asyncpg (pg wire) | postgresql | postgres | כן |
 | `greenplum` | asyncpg (pg wire) | postgresql | postgres | כן |
 | `tidb` | aiomysql (mysql wire) | mysql | mysql | כן |
+| `firebird` | — | — (DuckDB extension) | — | לא |
+| `airport` | — | — (DuckDB extension) | — | לא |
 
 מסדי נתונים תואמי-wire עושים שימוש חוזר ב-JDBC driver, בדרייבר האסינכרוני הילידי ובדיאלקט של ה-wire הבסיסי — CockroachDB, YugabyteDB ו-Greenplum רוכבים על ה-wire של PostgreSQL; TiDB רוכב על ה-wire של MySQL. הם זקוקים רק לרשומות רישום, ללא קוד מחבר חדש. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
 
@@ -80,6 +101,7 @@
 | `iceberg` | iceberg | כן (ארגומנט `as_of`, REQ-372) | — |
 | `delta_lake` | delta_lake | כן (ארגומנט `as_of`, REQ-372) | — |
 | `hive` | hive | לא | — |
+| `hudi` | — (מנוע `Hudi` של ClickHouse, zero-copy — REQ-1178) | לא | אין קונקטור מפודרר; מגיעים אליו במקומו כאשר ClickHouse הוא המנוע הפעיל |
 | `hive_s3` | hive | לא | Hive מגובה-S3 |
 
 ### NoSQL
@@ -745,7 +767,7 @@ auth:
 
 רישום מסד נתוני גרף Neo4j כמקור ניתן לשאילתה. Stewards כותבים שאילתות Cypher המקרינות ערכים סקלריים; Provisa שומרת את התוצאות במטמון וחושפת אותן כטיפוסי GraphQL (REQ-295).
 
-שאילתות Cypher חייבות להשתמש בגישה למאפיין (property accessor) במשפט `RETURN` (‏`RETURN n.id AS id, n.name AS name`) — החזרת אובייקטי node נדחית בזמן הרישום (REQ-296).
+שאילתות Cypher חייבות להשתמש בגישה למאפיין (property accessor) במשפט `RETURN` (`RETURN n.id AS id, n.name AS name`) — החזרת אובייקטי node נדחית בזמן הרישום (REQ-296).
 
 ```bash
 # Register via admin API (no YAML config required)

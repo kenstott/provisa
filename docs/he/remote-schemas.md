@@ -34,7 +34,7 @@
 
 **מה מתגלה אוטומטית.** כל שדה בסוג ה-`Query` המרוחק המחזיר OBJECT הופך לטבלה וירטואלית. כל שדה בסוג ה-`Mutation` המרוחק הופך ל-command עוקב (tracked function). (REQ-308) [tool-verified: `provisa/graphql_remote/mapper.py:243–278`]
 
-**שיוך שמות טבלה.** טבלאות נקראות `{namespace}__{field_name}`. עם namespace‏ `petstore` ושדה שאילתה `pets`: שם הטבלה הוא `petstore__pets`. (REQ-312) [tool-verified: `provisa/graphql_remote/mapper.py:250`]
+**שיוך שמות טבלה.** טבלאות נקראות `{namespace}__{field_name}`. עם namespace `petstore` ושדה שאילתה `pets`: שם הטבלה הוא `petstore__pets`. (REQ-312) [tool-verified: `provisa/graphql_remote/mapper.py:250`]
 
 **מיפוי טיפוסים (REQ-308).** שדות סקלריים ממופים ישירות לטיפוסי Provisa. שדות OBJECT מתפצלים לשני מקרים תלוי אם הטיפוס היעד ממושל (ראו "טבלאות ממושלות" למטה). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
@@ -62,7 +62,7 @@
 
 **ארגומנטים נדרשים.** כאשר לשדה שאילתה-שורש יש ארגומנטים לא-null ללא ערך ברירת-מחדל, אלה הופכים לעמודות `native_filter_type: query_param` על הטבלה (מוקדמות ב-`_nf_` בזמן הזרקה). ה-executor מעביר אותן כמשתני GraphQL. (REQ-555) [tool-verified: `provisa/graphql_remote/mapper.py:110–120`, `provisa/api/app.py:1280–1303`]
 
-**קשרים מזוהים אוטומטית.** Provisa סורקת את עמודות ה-OBJECT של כל טבלה. כאשר טיפוס ה-GQL המופנה רשום גם הוא כטבלה באותו מקור, קשר נפלט. קשרי many-to-one גוזרים עמודות מקור ויעד ממוסכמות שמות (`breedName` על טיפוס המקור → `name` על טיפוס היעד `Breed`). שדות one-to-many‏ (LIST) פולטים קשרים עם הפניות עמודה ריקות — ה-FK חי בצד היעד. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
+**קשרים מזוהים אוטומטית.** Provisa סורקת את עמודות ה-OBJECT של כל טבלה. כאשר טיפוס ה-GQL המופנה רשום גם הוא כטבלה באותו מקור, קשר נפלט. קשרי many-to-one גוזרים עמודות מקור ויעד ממוסכמות שמות (`breedName` על טיפוס המקור → `name` על טיפוס היעד `Breed`). שדות one-to-many (LIST) פולטים קשרים עם הפניות עמודה ריקות — ה-FK חי בצד היעד. (REQ-554) [tool-verified: `provisa/graphql_remote/mapper.py:162–202`]
 
 **Mutations.** שדות mutation מייצרים commands עוקבים עם טיפוסי ארגומנט ממופים מארגומנטי ה-mutation ו-`return_schema` הנגזר מטיפוס ההחזרה של ה-mutation. (REQ-308) [tool-verified: `provisa/graphql_remote/mapper.py:261–278`]
 
@@ -190,7 +190,7 @@ Provisa מביאה את ה-proto, מפענחת אותו עם parser טקסט-ט�
 
 **מטמון תגובה (REQ-318).** תוצאות פעולת GET נשמרות במטמון ב-PostgreSQL על ידי `pg_cache.py`. כל צירוף של פרמטרי בקשה מקבל קבוצת `_params_hash` משלו. שורות עבור hash נתון מוחלפות כאשר ה-TTL פג. נקודות קצה של פרמטר-נתיב (`/pets/{id}`) מדלגות על האיסוף הראשוני בכמות — טבלת המטמון נוצרת ריקה עבור אינטרוספקציית סכמה, ואז מאוכלסת לפי-PK כאשר בקשות מגיעות. [tool-verified: `provisa/openapi/pg_cache.py:181–234`, `provisa/openapi/pg_cache.py:307–360`]
 
-**רענון (REQ-321).** פענחו-מחדש את ה-spec וקראו שוב ל-`auto_register_openapi_source`. כללי ממשל קיימים נשמרים; רישומים מתעדכנים עם upsert‏ ON CONFLICT. [tool-verified: `provisa/openapi/register.py:249–264`]
+**רענון (REQ-321).** פענחו-מחדש את ה-spec וקראו שוב ל-`auto_register_openapi_source`. כללי ממשל קיימים נשמרים; רישומים מתעדכנים עם upsert ON CONFLICT. [tool-verified: `provisa/openapi/register.py:249–264`]
 
 **מגבלות.**
 
@@ -220,7 +220,7 @@ Provisa מביאה את ה-proto, מפענחת אותו עם parser טקסט-ט�
 
 **עמודות מסוג-OBJECT.** כאשר עמודה ממופה לטיפוס OBJECT‏ inline לא-ממושל של GQL או OpenAPI, טיפוס ה-Provisa שלה הוא `jsonb`. העמודה שומרת את ה-blob המלא של ה-JSON המקונן. כאשר שדות-משנה מוצהרים (`gql_object_fields` או `object_fields`), מפת `gql_object_columns` מאוכלסת בזמן בניית הסכמה. מחולל ה-SQL משתמש במפה זו כדי לפלוט ביטויי חילוץ `->>` עבור שדות-משנה כאשר שאילתה בוחרת אותם. [tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
 
-**ארגומנטים נדרשים כפרמטרי פילטר-ילידי.** שדות שאילתה-שורש עם ארגומנטים לא-null וללא-ברירת-מחדל מזריקים עמודות נוספות לטבלה הרשומה. עמודות אלה נושאות `native_filter_type: query_param`. מתרגם ה-Cypher כותב מחדש `WHERE n.id = $val` ל-`WHERE n._nf_id = $val`, ו-executor‏ ה-GraphQL אוסף אותן כמשתנים להעברה לנקודה הקצה המרוחקת. (REQ-555) [tool-verified: `provisa/api/app.py:1280–1303`]
+**ארגומנטים נדרשים כפרמטרי פילטר-ילידי.** שדות שאילתה-שורש עם ארגומנטים לא-null וללא-ברירת-מחדל מזריקים עמודות נוספות לטבלה הרשומה. עמודות אלה נושאות `native_filter_type: query_param`. מתרגם ה-Cypher כותב מחדש `WHERE n.id = $val` ל-`WHERE n._nf_id = $val`, ו-executor ה-GraphQL אוסף אותן כמשתנים להעברה לנקודה הקצה המרוחקת. (REQ-555) [tool-verified: `provisa/api/app.py:1280–1303`]
 
 ---
 

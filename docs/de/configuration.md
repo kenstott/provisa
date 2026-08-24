@@ -29,7 +29,7 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | `port` | `0` | `0` bedeutet, dass jeder Connector seinen eigenen Standard liefert — es gibt keine zentrale Standard-Port-Zuordnung |
 | `database` | `""` | |
 | `username` | `""` | |
-| `password` | `""` | Unterstützt `${env:VAR}`-Secret-Auflösung |
+| `password` | `""` | Unterstützt `${env:VAR}`- und `${secret:NAME}`-Zugangsdatenreferenzen — siehe [Secrets](secrets.md) |
 | `path` | `null` | Dateipfad oder URI für dateibasierte Quellen |
 | `base_url` | `null` | Basis-URL für API-Quellen |
 | `pool_min` / `pool_max` | `1` / `5` | Grenzen des Connection-Pools |
