@@ -16,6 +16,7 @@
     "rotationNote": "轮换只改变新数据使用的密钥。旧密钥退役进入密钥环，继续解密它此前写下的数据，因此不会有任何内容变得不可读 —— 也因此轮换并不等于吊销。",
     "set": "设置密钥",
     "rotate": "轮换密钥",
-    "applied": "密钥 {{keyId}} 已生效 —— 指纹 {{fingerprint}}"
+    "applied": "密钥 {{keyId}} 已生效 —— 指纹 {{fingerprint}}",
+    "panelTitle": "组织密钥"
   }
 }

@@ -16,6 +16,7 @@
     "rotationNote": "Rotating changes the key NEW data is wrapped under. The previous key is retired into the ring and goes on decrypting what it already wrote, so nothing becomes unreadable — and so a rotation is not a revocation.",
     "set": "Set key",
     "rotate": "Rotate key",
-    "applied": "Key {{keyId}} active — fingerprint {{fingerprint}}"
+    "applied": "Key {{keyId}} active — fingerprint {{fingerprint}}",
+    "panelTitle": "Org Key"
   }
 }

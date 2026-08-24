@@ -16,6 +16,7 @@
     "rotationNote": "Rodar muda a chave com que os dados NOVOS são embrulhados. A anterior é retirada para o porta-chaves e continua a decifrar o que escreveu, pelo que nada fica ilegível — e por isso uma rotação não é uma revogação.",
     "set": "Definir chave",
     "rotate": "Rodar chave",
-    "applied": "Chave {{keyId}} ativa — impressão digital {{fingerprint}}"
+    "applied": "Chave {{keyId}} ativa — impressão digital {{fingerprint}}",
+    "panelTitle": "Chave da organização"
   }
 }

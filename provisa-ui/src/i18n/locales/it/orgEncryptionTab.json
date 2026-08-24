@@ -16,6 +16,7 @@
     "rotationNote": "La rotazione cambia la chiave con cui vengono avvolti i dati NUOVI. La precedente si ritira nel portachiavi e continua a decifrare ciò che ha scritto, quindi nulla diventa illeggibile — e perciò una rotazione non è una revoca.",
     "set": "Imposta chiave",
     "rotate": "Ruota chiave",
-    "applied": "Chiave {{keyId}} attiva — impronta {{fingerprint}}"
+    "applied": "Chiave {{keyId}} attiva — impronta {{fingerprint}}",
+    "panelTitle": "Chiave dell'organizzazione"
   }
 }

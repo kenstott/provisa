@@ -16,6 +16,7 @@
     "rotationNote": "Rotieren ändert den Schlüssel für NEUE Daten. Der bisherige wird in den Ring zurückgezogen und entschlüsselt weiter, was er geschrieben hat — nichts wird unlesbar, und eine Rotation ist deshalb kein Widerruf.",
     "set": "Schlüssel setzen",
     "rotate": "Schlüssel rotieren",
-    "applied": "Schlüssel {{keyId}} aktiv — Fingerabdruck {{fingerprint}}"
+    "applied": "Schlüssel {{keyId}} aktiv — Fingerabdruck {{fingerprint}}",
+    "panelTitle": "Organisationsschlüssel"
   }
 }

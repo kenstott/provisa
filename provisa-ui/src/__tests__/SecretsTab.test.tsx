@@ -39,6 +39,16 @@ import {
   setSecretsService,
 } from "../api/secrets";
 
+// REQ-1574: the org's key panel now lives at the top of this page, so this file has to answer for
+// it too — above all for what it does not do while collapsed.
+vi.mock("../api/admin", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
+  fetchOrgEncryption: vi.fn(),
+  setOrgEncryption: vi.fn(),
+}));
+import { fetchOrgEncryption } from "../api/admin";
+const mockOrgKey = vi.mocked(fetchOrgEncryption);
+
 const mockFetch = vi.mocked(fetchSecrets);
 const mockPut = vi.mocked(putSecret);
 const mockDelete = vi.mocked(deleteSecret);
@@ -105,6 +115,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockFetch.mockResolvedValue(BUILT_IN);
   mockService.mockResolvedValue(PROVIDERS);
+  mockOrgKey.mockResolvedValue({
+    configured: true,
+    supplied: false,
+    fingerprint: "ab12cd34",
+    key_id: "k2",
+    retired_count: 0,
+    org_id: "acme",
+    created_at: "2026-08-24T00:00:00Z",
+    created_by: "ken",
+  });
   auth.capabilities = ["org_settings"];
 });
 
@@ -354,5 +374,36 @@ describe("SecretsTab and the platform wildcard", () => {
     expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
     expect(mockFetch).not.toHaveBeenCalled();
     expect(screen.queryByTestId("secrets-table")).toBeNull();
+  });
+});
+
+// REQ-1574: the key an org's secrets are wrapped under belongs with those secrets, not on a nav
+// entry of its own. Same right, same page, one panel above the names.
+describe("SecretsTab org-key panel", () => {
+  it("offers the key panel collapsed, and reads nothing while it is", async () => {
+    render(<SecretsTab />);
+    expect(await screen.findByTestId("org-key-toggle")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-encryption")).toBeNull();
+    expect(mockOrgKey).not.toHaveBeenCalled();
+  });
+
+  it("mounts the key panel when it is opened", async () => {
+    render(<SecretsTab />);
+    fireEvent.click(await screen.findByTestId("org-key-toggle"));
+    expect(await screen.findByTestId("org-encryption-fingerprint")).toHaveTextContent("ab12cd34");
+  });
+
+  it("never offers it on a personal vault", async () => {
+    auth.capabilities = ["usage"];
+    render(<MySecretsTab />);
+    await waitFor(() => expect(screen.getByTestId("my-secrets-tab")).toBeInTheDocument());
+    expect(screen.queryByTestId("org-key-toggle")).toBeNull();
+  });
+
+  it("never offers it to the platform wildcard", async () => {
+    auth.capabilities = ["admin", "platform_settings"];
+    render(<SecretsTab />);
+    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-key-toggle")).toBeNull();
   });
 });

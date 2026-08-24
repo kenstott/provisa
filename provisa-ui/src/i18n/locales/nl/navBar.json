@@ -58,7 +58,6 @@
     "profile": "Profiel",
     "settings": "Instellingen",
     "logout": "Afmelden",
-    "dev": "DEV",
-    "itemOrgKey": "Organisatiesleutel"
+    "dev": "DEV"
   }
 }

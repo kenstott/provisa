@@ -51710,7 +51710,13 @@
     key nor rotate it. THE DEPLOYMENT KEY OBEYS THE SAME RULE: POST /admin/encryption/generate-key
     stops returning key material. When it has nowhere to store the key it refuses rather than
     printing it, and says to generate one out of band and set PROVISA_ENCRYPTION_KEY -- amending
-    REQ-918, whose one-time display was the last place a key was ever shown.'
+    REQ-918, whose one-time display was the last place a key was ever shown.
+    (Amended 2026-08-24, WHERE IT LIVES:) the org key is not a nav entry of its own. It is a
+    collapsible panel at the TOP OF ORG SECRETS, above the names, because it is the key those names
+    are wrapped under and it is held by the same right, org_settings -- one page answers both halves
+    of the same question. Collapsed by default and mounted only when opened, so a reader who came
+    for the names neither sees nor fetches the key state, and a surface that cannot hold the org''s
+    secrets (the platform wildcard, a personal vault) does not offer the panel at all.'
   use_case: An org under a data-residency contract sets its own encryption key at onboarding and
     rotates it quarterly; the platform operator, its own admins, and a stolen control-plane dump
     can none of them read the key back.

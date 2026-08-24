@@ -16,6 +16,7 @@
     "rotationNote": "Le renouvellement change la clé sous laquelle les NOUVELLES données sont enveloppées. La clé précédente est retirée dans le trousseau et continue de déchiffrer ce qu'elle a écrit : rien ne devient illisible — et un renouvellement n'est donc pas une révocation.",
     "set": "Définir la clé",
     "rotate": "Renouveler la clé",
-    "applied": "Clé {{keyId}} active — empreinte {{fingerprint}}"
+    "applied": "Clé {{keyId}} active — empreinte {{fingerprint}}",
+    "panelTitle": "Clé de l'organisation"
   }
 }

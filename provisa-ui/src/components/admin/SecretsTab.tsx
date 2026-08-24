@@ -34,6 +34,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCapability } from "../../hooks/useCapability";
 import { usePanelState } from "../../hooks/usePanelState";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { OrgEncryptionTab } from "./OrgEncryptionTab";
 import {
   fetchSecrets,
   putSecret,
@@ -448,6 +449,7 @@ export function SecretsTab() {
   const mayChooseService = useCapability("platform_settings");
   const mayHoldSecrets = capabilities.includes("org_settings");
   const [servicePanel, setServicePanel] = usePanelState("secretsService");
+  const [keyPanel, setKeyPanel] = usePanelState("orgKey");
 
   // Collapsed by default: choosing the backend happens once for the deployment, reading the names
   // happens every day, so the page opens on the names. The choice is remembered per browser.
@@ -468,8 +470,35 @@ export function SecretsTab() {
     </Accordion>
   ) : null;
 
+  // REQ-1574: the org's key sits above the org's secrets, because it is the thing they are wrapped
+  // under -- the same right, org_settings, and the same page. Collapsed by default for the reason
+  // the service panel is: setting the key happens once, reading the names happens every day.
+  const orgKey = mayHoldSecrets ? (
+    <Accordion
+      value={keyPanel}
+      onChange={setKeyPanel}
+      variant="contained"
+      data-testid="org-key-panel"
+    >
+      <Accordion.Item value="orgKey">
+        <Accordion.Control data-testid="org-key-toggle">
+          {t("orgEncryptionTab.panelTitle")}
+        </Accordion.Control>
+        {/* Mounted only when open, so a collapsed panel does not read the key's state. */}
+        <Accordion.Panel>{keyPanel === "orgKey" && <OrgEncryptionTab />}</Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
+  ) : null;
+
+  const header = (
+    <>
+      {orgKey}
+      {service}
+    </>
+  );
+
   if (!mayHoldSecrets) return <Stack data-testid="secrets-tab">{service}</Stack>;
-  return <SecretsVault vault="org" header={service} />;
+  return <SecretsVault vault="org" header={header} />;
 }
 
 /**

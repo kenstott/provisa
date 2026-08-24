@@ -16,6 +16,7 @@
     "rotationNote": "Rotar cambia la clave con la que se envuelven los datos NUEVOS. La clave anterior se retira al anillo y sigue descifrando lo que ya escribió, así que nada queda ilegible; por eso una rotación no es una revocación.",
     "set": "Establecer clave",
     "rotate": "Rotar clave",
-    "applied": "Clave {{keyId}} activa — huella {{fingerprint}}"
+    "applied": "Clave {{keyId}} activa — huella {{fingerprint}}",
+    "panelTitle": "Clave de la organización"
   }
 }

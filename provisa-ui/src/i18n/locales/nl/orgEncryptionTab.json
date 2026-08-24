@@ -16,6 +16,7 @@
     "rotationNote": "Roteren verandert de sleutel voor NIEUWE gegevens. De vorige wordt ingetrokken in de ring en ontsleutelt door wat hij al schreef, dus niets wordt onleesbaar — en een rotatie is dus geen intrekking.",
     "set": "Sleutel instellen",
     "rotate": "Sleutel roteren",
-    "applied": "Sleutel {{keyId}} actief — vingerafdruk {{fingerprint}}"
+    "applied": "Sleutel {{keyId}} actief — vingerafdruk {{fingerprint}}",
+    "panelTitle": "Organisatiesleutel"
   }
 }

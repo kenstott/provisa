@@ -58,7 +58,6 @@
     "profile": "Perfil",
     "settings": "Configurações",
     "logout": "Sair",
-    "dev": "DEV",
-    "itemOrgKey": "Chave da organização"
+    "dev": "DEV"
   }
 }
