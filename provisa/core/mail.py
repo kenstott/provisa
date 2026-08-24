@@ -422,7 +422,19 @@ def email_sender(mail_config) -> EmailSender:  # REQ-1330, REQ-1576
 
 def invite_redemption_url(base_url: str, token: str) -> str:
     """The link the invitee follows. The UI reads ``?invite=<token>`` and drives redemption after
-    sign-in, so the token never has to be copied by hand."""
+    sign-in, so the token never has to be copied by hand.
+
+    An empty ``base_url`` is refused rather than defaulted. ``${env:...:-default}`` resolves a
+    variable that is SET BUT EMPTY to the empty string -- the default applies only when the
+    variable is absent -- so a deployment that exports ``PROVISA_MAIL_BASE_URL=`` reaches here
+    with nothing, and the link it would build, ``/?invite=<token>``, is a relative path no mail
+    client can open. The deployment is misconfigured and the invitation must say so.
+    """
+    if not base_url.strip():
+        raise MailNotConfiguredError(
+            "mail.base_url is empty, so the invitation link would be a relative path no mail "
+            "client can open. Set PROVISA_MAIL_BASE_URL to the public origin of the UI."
+        )
     return f"{base_url.rstrip('/')}/?invite={token}"
 
 

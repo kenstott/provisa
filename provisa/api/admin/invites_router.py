@@ -244,25 +244,31 @@ async def _deliver_invite(  # REQ-1310
         raise ApiError(503, "invites.config_not_loaded", "Server configuration is not loaded")
     if not getattr(cfg, "multitenancy", False):  # REQ-1330
         return "saas_only"
-    message = compose_invite_message(
-        branding=await _org_branding(org_id),  # REQ-1486
-        to=email,
-        org_name=org_name,
-        org_id=org_id,
-        # The user id, not a display name: display_name is optional on an identity and this line
-        # must name someone in every message.
-        inviter=inviter,
-        # REQ-1577: where a reply lands. None when the identity carries no email address, which
-        # leaves the message without a Reply-To rather than pointing it at an unread mailbox.
-        inviter_email=inviter_email,
-        role_id=role_id,
-        expires_at=expires_at,
-        base_url=cfg.mail.base_url,
-        token=token,
-    )
+    branding = await _org_branding(org_id)  # REQ-1486
     from provisa.core.mail_stats import MailAttempt, record  # REQ-1576
 
+    # Composition sits inside the reporting boundary with the send. Building the message can fail
+    # on configuration too -- an empty mail.base_url has no link to put in it -- and that failure
+    # belongs in the response and the delivery record like any other, not as a 500 that destroys a
+    # valid invitation row.
     try:
+        message = compose_invite_message(
+            branding=branding,
+            to=email,
+            org_name=org_name,
+            org_id=org_id,
+            # The user id, not a display name: display_name is optional on an identity and this
+            # line must name someone in every message.
+            inviter=inviter,
+            # REQ-1577: where a reply lands. None when the identity carries no email address,
+            # which leaves the message without a Reply-To rather than pointing it at an unread
+            # mailbox.
+            inviter_email=inviter_email,
+            role_id=role_id,
+            expires_at=expires_at,
+            base_url=cfg.mail.base_url,
+            token=token,
+        )
         sender = email_sender(cfg.mail)  # REQ-1330: the port; the provider is config, not code
         await run_in_threadpool(sender.send, message)
     except Exception as exc:  # reported to the caller, never swallowed

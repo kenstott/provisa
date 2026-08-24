@@ -374,3 +374,19 @@ def test_microsoft_graph_sends_the_display_name_and_the_reply_to(monkeypatch, wi
         "emailAddress": {"address": _FROM, "name": "Acme Analytics (via Provisa)"}
     }
     assert graph["replyTo"] == [{"emailAddress": {"address": "alice@example.test"}}]
+
+
+def test_an_empty_base_url_refuses_rather_than_building_a_relative_link():
+    """A set-but-empty PROVISA_MAIL_BASE_URL resolves to "" -- ``:-default`` covers an ABSENT
+    variable, not an empty one -- and the link built from it, ``/?invite=<token>``, is a relative
+    path no mail client can open. The deployment is misconfigured and must be told so."""
+    from provisa.core.mail import MailNotConfiguredError, invite_redemption_url
+
+    with pytest.raises(MailNotConfiguredError, match="mail.base_url is empty"):
+        invite_redemption_url("", "tok")
+    with pytest.raises(MailNotConfiguredError):
+        invite_redemption_url("   ", "tok")
+
+    assert invite_redemption_url("https://cloud.example.test/", "tok") == (
+        "https://cloud.example.test/?invite=tok"
+    )
