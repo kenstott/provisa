@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+Declare um relacionamento apoiado em junção (REQ-1586):
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+Uma tabela associativa é declarada como aresta, nunca descoberta. `viaTable` nomeia uma tabela registrada; suas duas colunas-chave carregam a aresta, e cada coluna restante vira um atributo do relacionamento, filtrável como qualquer outro campo. `viaTypeColumn` / `viaTypeValue` dividem uma mesma tabela de junção em vários tipos de aresta — três linhas de `pet_companions` com `companion_type` igual a `bonded pair`, `littermate` e `shares enclosure` são três relacionamentos distintos sobre o mesmo par de tabelas.
+
+`viaLabelSource` indica de onde vem o nome exposto, e as três formas são convertidas para UPPER_SNAKE_CASE no Cypher: `column` usa `viaTypeValue` (`BONDED_PAIR`), `table` usa o nome da própria tabela de junção (`PET_COMPANIONS`), `fixed` usa o `alias` declarado. Uma tabela de junção declarada assim é uma aresta e não uma entidade — ela sai dos rótulos de nó, então nunca aparece como pílula de nó na UI do grafo. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### Descoberta de relacionamentos por IA
 
 Dispare a análise de FK movida pelo Claude via REST (REQ-167, REQ-018):

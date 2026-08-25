@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+Declare una relación respaldada por una tabla de unión (REQ-1586):
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+Una tabla asociativa se declara como arista, nunca se descubre. `viaTable` nombra una tabla registrada; sus dos columnas clave llevan la arista, y cada columna restante pasa a ser un atributo de la relación, filtrable como cualquier otro campo. `viaTypeColumn` / `viaTypeValue` dividen una misma tabla de unión en varios tipos de arista — tres filas de `pet_companions` con `companion_type` igual a `bonded pair`, `littermate` y `shares enclosure` son tres relaciones distintas sobre el mismo par de tablas.
+
+`viaLabelSource` designa de dónde procede el nombre expuesto, y las tres formas se pasan a UPPER_SNAKE_CASE para Cypher: `column` usa `viaTypeValue` (`BONDED_PAIR`), `table` usa el nombre propio de la tabla de unión (`PET_COMPANIONS`), `fixed` usa el `alias` declarado. Una tabla de unión declarada así es una arista y no una entidad — desaparece de las etiquetas de nodo, por lo que nunca aparece como píldora de nodo en la interfaz del grafo. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### Descubrimiento de Relaciones con IA
 
 Active el análisis de FK impulsado por Claude vía REST (REQ-167, REQ-018):

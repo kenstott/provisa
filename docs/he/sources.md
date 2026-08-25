@@ -601,7 +601,7 @@ relationships:
 | `source_column` | כן | עמודה בטבלת המקור |
 | `target_column` | כן | עמודה בטבלת היעד; ריק עבור קשרים מחושבים |
 | `cardinality` | כן | `many-to-one` או `one-to-many` (REQ-019) |
-| `materialize` | לא | יצירה אוטומטית של Materialized View עבור joins חוצי-מקורות (REQ-158) |
+| `materialize` | לא | יצירה אוטומטית של Materialized View עבור joins חוצי-מקורות (REQ-158). בקשת מגובת junction ה-view מכסה את החצייה בשתי קפיצות, לא join ישיר (REQ-1586) |
 | `refresh_interval` | לא | מרווח רענון MV בשניות (ברירת מחדל: 300) |
 | `target_function_name` | לא | שם פונקציית DB עבור קשרים מחושבים |
 | `function_arg` | לא | איזה ארגומנט פונקציה מקבל את ערך עמודת המקור |
@@ -609,6 +609,39 @@ relationships:
 | `graphql_alias` | לא | קובע את שם שדה ה-SDL שקשר זה חושף על הטיפוס ההורה. כאשר נעדר, השם נגזר מ-`field_name` של טבלת היעד ומקרדינליות הקשר. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | לא | כאשר `true`, מוציא קשר זה מקשתות הגרף של Cypher |
 | `source_json_key` | לא | חילוץ מפתח זה מעמודת המקור כאובייקט JSON לפני JOIN |
+| `via_table` | לא | שם הטבלה הרשומה של ה-junction שהקשת הזו חוצה. הגדרתו הופכת את הקשת למגובת junction; השארתו ריק משאירה אותה קשת מפתח-זר (REQ-1586) |
+| `via_source_column` | לא | עמודת ה-junction המזדווגת עם `source_column`. מופרדת בפסיקים ולפי מיקום עבור מפתח מורכב |
+| `via_target_column` | לא | עמודת ה-junction המזדווגת עם `target_column` |
+| `via_type_column` | לא | עמודת המבחין, כאשר junction אחת נושאת כמה סוגי קשרים |
+| `via_type_value` | לא | ערך המבחין שאליו הקשת הזו מקובעת |
+| `via_label_source` | לא | איזו מועמדות מעניקה את שם טיפוס ה-Cypher: `column` (ערך המבחין), `table` (שם טבלת ה-junction) או `fixed` (הכינוי המוצהר). כולן מומרות ל-UPPER_SNAKE_CASE |
+
+### קשרים מגובי junction
+
+טבלת שיוך יכולה להיות מוצהרת כקשר Cypher מהמעלה הראשונה במקום כצומת, כך שעמודותיה שלה הופכות למאפיינים של אותו קשר: (REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+ה-junction היא טבלה רשומה ככל טבלה אחרת, וחייבת להיות רשומה לפני שקשר יכול לציין אותה. הצהירו עליה פעם אחת לכל ערך מבחין: שלוש שורות מעל `pet_companions` מייצרות את `BONDED_PAIR`, `LITTERMATE` ו-`SHARES_ENCLOSURE` כשלושה טיפוסי Cypher נבדלים, כשכל אחד נושא את יתר עמודות שורת ה-junction כמאפייני קשת. קונפיגורציית הדמו המצורפת מצהירה בדיוק על כך.
+
+קשת junction היא קשר Cypher, לא שדה join של GraphQL: פולט ה-join של GraphQL בונה את פסוקית ה-`ON` שלו עבור זוג עמודות יחיד ואין לו מקום לקפיצה השנייה, ולכן קשתות junction מוחרגות מה-SDL הנוצר ומ-`pg_constraint`. [tool-verified: `provisa/compiler/schema_gen.py:304`] טבלת ה-junction נשארת ניתנת לתשאול כשדה שורש משל עצמה, ונשמטת מצד הצמתים של סכמת גרף ה-Cypher כך שלעולם אינה מופיעה כתווית צומת.
+
+`materialize: true` עובד על קשת junction, ומה שהוא ממש הוא החצייה ולא join ישיר `pets`-ל-`pets`: ה-view מחזיק את קפיצת המקור, את קפיצת ה-junction, את המבחין ואת עמודות ה-junction עצמה לצד אלה של היעד. מכיוון שה-junction היא רגל שלישית של ה-join, השאלה אם הקשת חוצה מקורות נשפטת על פני שלוש הטבלאות — junction במקור אחר משתי הטבלאות שהיא מקשרת ממומשת גם כשהשתיים תואמות. הצהרה אחת ממשת סוג קשת אחד, ולכן view שנבנה עבור `bonded pair` לעולם אינו עונה על חציית `littermate`.
 
 ערכי קרדינליות [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
 

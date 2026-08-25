@@ -205,6 +205,8 @@ estrangeira (Tableau, DBeaver, etc.) verão o grafo de join que o Provisa conhec
 formam a chave primária composta do alvo são colapsados em uma única linha FK com arrays
 `conkey`/`confkey` multi-elemento. (REQ-1094) [tool-verified: `catalog_constraints.py`]
 
+Uma relação apoiada em junção (REQ-1586) não produz nenhuma linha FK. É uma aresta através de uma tabela associativa, não um par de colunas, e `pg_constraint` não tem forma para dois saltos — por isso o modelo de domínio a deixa de fora de `joins` e a tabela de junção aparece como uma tabela comum com as suas próprias chaves estrangeiras para cada extremidade. Clientes SQL chegam a ela fazendo join com essa tabela; clientes Cypher percorrem-na como uma única relação. [tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` é populada com uma linha por restrição de chave primária e UNIQUE (`indrelid` = oid da
 tabela, `indkey` = attnums de chave ordenados, `indisprimary`/`indisunique` definidos). Clientes que
 resolvem colunas de chave via `pg_index.indkey` em vez de `pg_constraint` — DataGrip, por exemplo —

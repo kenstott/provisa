@@ -738,6 +738,7 @@ relationships:
 Imposta `materialize: true` su una relazione per generare automaticamente una vista materializzata per i JOIN cross-source. (REQ-158) Questo evita costose query federate pre-calcolando il risultato del JOIN.
 
 - Solo le relazioni cross-source generano MV (i JOIN sulla stessa origine sono già veloci) (REQ-159)
+- Su una relazione basata su una giunzione la MV copre la traversata a due salti — salto di origine, salto della giunzione, discriminante e le colonne proprie della giunzione come attributi dell'arco. La giunzione conta come una gamba, quindi un arco è cross-source quando una qualsiasi delle tre tabelle sta in un'origine diversa (REQ-1586)
 - La MV parte stale e viene popolata dal loop di refresh in background (REQ-160)
 - Le mutation su una delle due tabelle sorgente marcano la MV come stale per un nuovo refresh (REQ-543)
 - `refresh_interval` è di default 300 secondi (5 minuti) (REQ-543)
@@ -800,6 +801,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300

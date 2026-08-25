@@ -601,7 +601,7 @@ relationships:
 | `source_column` | Oui | Colonne de la table source |
 | `target_column` | Oui | Colonne de la table cible ; vide pour les relations calculées |
 | `cardinality` | Oui | `many-to-one` ou `one-to-many` (REQ-019) |
-| `materialize` | Non | Créer automatiquement une vue matérialisée pour les jointures inter-sources (REQ-158) |
+| `materialize` | Non | Créer automatiquement une vue matérialisée pour les jointures inter-sources (REQ-158). Sur une arête adossée à une jonction, la vue couvre le parcours à deux sauts, non une jointure directe (REQ-1586) |
 | `refresh_interval` | Non | Intervalle de rafraîchissement de la MV en secondes (par défaut : 300) |
 | `target_function_name` | Non | Nom de la fonction de base de données pour les relations calculées |
 | `function_arg` | Non | Quel argument de la fonction reçoit la valeur de la colonne source |
@@ -609,6 +609,39 @@ relationships:
 | `graphql_alias` | Non | Nomme le champ SDL que cette relation expose sur le type parent. En son absence, le nom est dérivé du `field_name` de la table cible et de la cardinalité de la relation. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | Non | Quand `true`, exclure cette relation des arêtes du graphe Cypher |
 | `source_json_key` | Non | Extraire cette clé de la colonne source comme objet JSON avant le JOIN |
+| `via_table` | Non | Nom de table enregistrée de la jonction que traverse cette arête. La renseigner rend l'arête adossée à une jonction ; la laisser vide en fait une arête de clé étrangère (REQ-1586) |
+| `via_source_column` | Non | Colonne de jonction appariée à `source_column`. Séparée par des virgules et positionnelle pour une clé composite |
+| `via_target_column` | Non | Colonne de jonction appariée à `target_column` |
+| `via_type_column` | Non | Colonne discriminante, quand une même jonction porte plusieurs types de relation |
+| `via_type_value` | Non | La valeur de discriminant à laquelle cette arête est fixée |
+| `via_label_source` | Non | Quelle désignation nomme le type Cypher : `column` (la valeur du discriminant), `table` (le nom de la table de jonction) ou `fixed` (l'alias déclaré). Toutes sont mises en UPPER_SNAKE_CASE |
+
+### Relations adossées à une jonction
+
+Une table associative peut être déclarée comme relation Cypher de première classe plutôt que comme nœud, de sorte que ses propres colonnes deviennent les attributs de cette relation : (REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+La jonction est une table enregistrée comme une autre et doit l'être avant qu'une relation puisse la nommer. Déclarez-la une fois par valeur de discriminant : trois lignes sur `pet_companions` produisent `BONDED_PAIR`, `LITTERMATE` et `SHARES_ENCLOSURE` comme trois types Cypher distincts, chacun portant les colonnes restantes de la ligne de jonction comme propriétés d'arête. La configuration de démo livrée déclare exactement cela.
+
+Une arête de jonction est une relation Cypher, pas un champ de jointure GraphQL : l'émetteur de jointures GraphQL construit sa clause `ON` pour une seule paire de colonnes et n'a pas de place pour le second saut, si bien que les arêtes de jonction sont exclues du SDL généré et de `pg_constraint`. [tool-verified: `provisa/compiler/schema_gen.py:304`] La table de jonction reste interrogeable comme son propre champ racine, et disparaît du côté nœuds du schéma du graphe Cypher, de sorte qu'elle n'apparaît jamais comme label de nœud.
+
+`materialize: true` fonctionne sur une arête de jonction, et ce qu'il matérialise est le parcours plutôt qu'une jointure directe `pets`-vers-`pets` : la vue contient le saut source, le saut de jonction, le discriminant et les colonnes propres de la jonction à côté de celles de la cible. Comme la jonction est une troisième patte de la jointure, le fait que l'arête franchisse des sources se juge sur les trois tables — une jonction dans une source différente des deux qu'elle relie est matérialisée même quand ces deux-là concordent. Une déclaration matérialise un type d'arête, donc une vue construite pour `bonded pair` ne répond jamais à un parcours `littermate`.
 
 Valeurs de cardinalité [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81] :
 

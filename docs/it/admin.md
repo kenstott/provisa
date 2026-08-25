@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+Dichiarare una relazione basata su una tabella di giunzione (REQ-1586):
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+Una tabella associativa si dichiara come arco, non viene mai scoperta. `viaTable` nomina una tabella registrata; le sue due colonne chiave portano l'arco, e ogni colonna rimanente diventa un attributo della relazione, filtrabile come qualunque altro campo. `viaTypeColumn` / `viaTypeValue` suddividono una stessa tabella di giunzione in più tipi di arco — tre righe di `pet_companions` con `companion_type` pari a `bonded pair`, `littermate` e `shares enclosure` sono tre relazioni distinte sulla stessa coppia di tabelle.
+
+`viaLabelSource` indica da dove proviene il nome esposto, e tutte e tre le forme vengono portate in UPPER_SNAKE_CASE per Cypher: `column` usa `viaTypeValue` (`BONDED_PAIR`), `table` usa il nome della tabella di giunzione stessa (`PET_COMPANIONS`), `fixed` usa l'`alias` dichiarato. Una tabella di giunzione dichiarata così è un arco e non un'entità — esce dalle etichette dei nodi, quindi non compare mai come pillola di nodo nell'interfaccia del grafo. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### Scoperta delle relazioni con l'AI
 
 Avviare l'analisi delle FK basata su Claude via REST (REQ-167, REQ-018):

@@ -578,7 +578,7 @@ relationships:
 | `source_column` | Sí | Columna en la tabla de origen |
 | `target_column` | Sí | Columna en la tabla de destino; vacío para relaciones calculadas |
 | `cardinality` | Sí | `many-to-one` o `one-to-many` (REQ-019) |
-| `materialize` | No | Crea automáticamente una vista materializada para joins entre orígenes (REQ-158) |
+| `materialize` | No | Crea automáticamente una vista materializada para joins entre orígenes (REQ-158). En una arista respaldada por una tabla de unión, la vista cubre el recorrido de dos saltos, no un join directo (REQ-1586) |
 | `refresh_interval` | No | Intervalo de actualización de la vista materializada en segundos (predeterminado: 300) |
 | `target_function_name` | No | Nombre de función de base de datos para relaciones calculadas |
 | `function_arg` | No | Qué argumento de la función recibe el valor de la columna de origen |
@@ -586,6 +586,39 @@ relationships:
 | `graphql_alias` | No | Nombra el campo SDL que esta relación expone en el tipo padre. Cuando está ausente, el nombre se deriva del `field_name` de la tabla destino y la cardinalidad de la relación. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | No | Cuando es `true`, excluye esta relación de las aristas del grafo Cypher |
 | `source_json_key` | No | Extrae esta clave de la columna de origen como un objeto JSON antes del JOIN |
+| `via_table` | No | Nombre de tabla registrada de la tabla de unión que recorre esta arista. Fijarlo hace que la arista sea respaldada por una tabla de unión; dejarlo vacío la deja como arista de clave foránea (REQ-1586) |
+| `via_source_column` | No | Columna de la tabla de unión que se empareja con `source_column`. Separada por comas y posicional para una clave compuesta |
+| `via_target_column` | No | Columna de la tabla de unión que se empareja con `target_column` |
+| `via_type_column` | No | Columna discriminadora, cuando una misma tabla de unión lleva varios tipos de relación |
+| `via_type_value` | No | El valor de discriminador al que queda fijada esta arista |
+| `via_label_source` | No | Qué designación nombra el tipo Cypher: `column` (el valor del discriminador), `table` (el nombre de la tabla de unión) o `fixed` (el alias declarado). Todas se pasan a UPPER_SNAKE_CASE |
+
+### Relaciones respaldadas por una tabla de unión
+
+Una tabla asociativa puede declararse como relación Cypher de primera clase en lugar de como nodo, de modo que sus propias columnas pasan a ser los atributos de esa relación: (REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+La tabla de unión es una tabla registrada como cualquier otra y debe estar registrada antes de que una relación pueda nombrarla. Declárela una vez por valor de discriminador: tres filas sobre `pet_companions` producen `BONDED_PAIR`, `LITTERMATE` y `SHARES_ENCLOSURE` como tres tipos Cypher distintos, cada uno llevando las columnas restantes de la fila de unión como propiedades de la arista. La configuración de demo incluida declara exactamente esto.
+
+Una arista de unión es una relación Cypher, no un campo de join de GraphQL: el emisor de joins de GraphQL construye su cláusula `ON` para un único par de columnas y no tiene sitio para el segundo salto, así que las aristas de unión quedan excluidas del SDL generado y de `pg_constraint`. [tool-verified: `provisa/compiler/schema_gen.py:304`] La tabla de unión sigue siendo consultable como su propio campo raíz, y desaparece del lado de los nodos del esquema del grafo Cypher, por lo que nunca aparece como etiqueta de nodo.
+
+`materialize: true` funciona en una arista de unión, y lo que materializa es el recorrido en vez de un join directo `pets`-a-`pets`: la vista guarda el salto de origen, el salto de la tabla de unión, el discriminador y las columnas propias de la tabla de unión junto a las del destino. Como la tabla de unión es una tercera pata del join, que la arista cruce orígenes se juzga sobre las tres tablas — una tabla de unión en un origen distinto al de las dos que enlaza se materializa aunque esas dos coincidan. Una declaración materializa un tipo de arista, así que una vista construida para `bonded pair` nunca responde a un recorrido `littermate`.
 
 Valores de cardinalidad [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
 

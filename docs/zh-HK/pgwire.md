@@ -130,6 +130,8 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 
 `pg_constraint` 會以從域模型的 `pk_columns` 及 `joins` 欄位衍生的真實主索引鍵及外部索引鍵數據填充。（REQ-392、REQ-399）檢查外部索引鍵關係的 BI 工具（Tableau、DBeaver 等）將看到 Provisa 所知的連接圖。[tool-verified: `catalog.py:551-632`] 同一來源/目標配對之間的單欄位連接，若其目標欄位共同組成該目標的複合主索引鍵，會被合併為單一 FK 行，並以多元素的 `conkey`/`confkey` 陣列表示。（REQ-1094）[tool-verified: `catalog_constraints.py`]
 
+由聯結資料表支撐的關係（REQ-1586）不會產生 FK 行。它是穿過關聯資料表的一條邊，而不是一對欄位，而 `pg_constraint` 沒有可容納兩跳的形態——因此網域模型不會把它放進 `joins`，聯結資料表則表現為一張普通資料表，各自持有指向兩端的外部索引鍵。SQL 客戶端透過聯結該資料表來存取它；Cypher 客戶端則把它當作單條關係走訪。[tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` 會就每個主索引鍵及 UNIQUE 約束填充一行（`indrelid` = 資料表 oid，`indkey` = 已排序的鍵值 attnum，`indisprimary`/`indisunique` 已設定）。透過 `pg_index.indkey` 而非 `pg_constraint` 解析鍵值欄位的客戶端——例如 DataGrip——會透過標準的 `pg_index` → `pg_attribute` 連接找出正確的欄位。（REQ-1095）[tool-verified: `catalog_constraints.py:340-384`]
 
 以下純量表達式亦會被攔截：（REQ-588）

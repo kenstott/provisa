@@ -738,6 +738,7 @@ relationships:
 Configure `materialize: true` en una relación para generar automáticamente una vista materializada para JOINs entre orígenes. (REQ-158) Esto evita consultas federadas costosas precalculando el resultado del JOIN.
 
 - Solo las relaciones entre orígenes generan MVs (los JOINs del mismo origen ya son rápidos) (REQ-159)
+- En una relación respaldada por una tabla de unión, la MV cubre el recorrido de dos saltos — salto de origen, salto de la tabla de unión, discriminador y las columnas propias de la tabla de unión como atributos de la arista. La tabla de unión cuenta como una pata, así que una arista es entre orígenes cuando cualquiera de las tres tablas está en un origen distinto (REQ-1586)
 - La MV comienza obsoleta y se puebla mediante el bucle de actualización en segundo plano (REQ-160)
 - Las mutaciones sobre cualquiera de las tablas de origen marcan la MV como obsoleta para su reactualización (REQ-543)
 - `refresh_interval` por defecto es de 300 segundos (5 minutos) (REQ-543)
@@ -800,6 +801,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300

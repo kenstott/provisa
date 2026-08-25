@@ -393,6 +393,8 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 **回應：** `application/json`，包含 `node_labels`（各自帶有 `pk`/`pk_columns`）與 `relationship_types`。
 
+每種關係類型還帶有 `junction_table_name` 與 `properties`（REQ-1586）。在由聯結資料表支撐的邊上，前者給出它所穿過的關聯資料表名稱，後者列出該資料表中可作為 `r.attr` 讀取並可在 `WHERE` 中過濾的欄位；在由外部索引鍵支撐的邊上，該名稱為 `null`，屬性清單為空——用戶端正是據此區分兩者。聯結資料表本身永遠不是節點標籤——它就是邊，因此在圖用戶端中沒有對應的標籤膠囊，在 `node_labels` 中也沒有對應資料列。[tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 - `sampling`：`default_sample_size`
 - `cache`：`default_ttl`
 - `naming`：`domain_prefix`、`convention` — 會寫入組態檔並觸發結構描述重新載入 (REQ-253)
-- `relationships`：`auto_track_fk`
+- `relationships`：`auto_track_fk` —— 僅管轄外部索引鍵追蹤。由聯結資料表支撐的關係是在資料表註冊時宣告的，從不被推斷，因此該設定對它不起作用。（REQ-1586）
 - `otel`：`endpoint`、`service_name`、`sample_rate`、`support_endpoint`、`support_redact_sql_literals`、`support_redact_attributes`
 
 **回應：**

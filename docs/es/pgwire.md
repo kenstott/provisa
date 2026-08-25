@@ -130,6 +130,8 @@ Tablas interceptadas:
 
 `pg_constraint` se puebla con datos reales de PK y FK derivados de los campos `pk_columns` y `joins` del modelo de dominio. (REQ-392, REQ-399) Las herramientas de BI que inspeccionan relaciones de clave foránea (Tableau, DBeaver, etc.) verán el grafo de joins que Provisa conoce. [tool-verified: `catalog.py:551-632`] Los joins de una sola columna entre el mismo par origen/destino cuyas columnas de destino forman en conjunto la clave primaria compuesta del destino se colapsan en una sola fila de FK con arreglos `conkey`/`confkey` de varios elementos. (REQ-1094) [tool-verified: `catalog_constraints.py`]
 
+Una relación respaldada por una tabla de unión (junction) (REQ-1586) no produce ninguna fila FK. Es una arista a través de una tabla asociativa, no un par de columnas, y `pg_constraint` no tiene forma para dos saltos — por eso el modelo de dominio la deja fuera de `joins` y la tabla de unión aparece como una tabla corriente con sus propias claves foráneas hacia cada extremo. Los clientes SQL llegan a ella haciendo join con esa tabla; los clientes Cypher la recorren como una única relación. [tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` se puebla con una fila por cada restricción de clave primaria y UNIQUE (`indrelid` = oid de la tabla, `indkey` = attnums de clave ordenados, `indisprimary`/`indisunique` establecidos). Los clientes que resuelven columnas clave mediante `pg_index.indkey` en lugar de `pg_constraint` — DataGrip, por ejemplo — descubren las columnas correctas a través del join estándar `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 También se interceptan las siguientes expresiones escalares: (REQ-588)

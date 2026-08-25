@@ -735,6 +735,7 @@ relationships:
 在关系上设置 `materialize: true`，可为跨数据源的 JOIN 自动生成物化视图。(REQ-158) 这通过预先计算 JOIN 结果来避免昂贵的联合查询。
 
 - 只有跨数据源的关系才会生成物化视图（同数据源的 JOIN 本身已经很快）(REQ-159)
+- 在由联结表支撑的关系上，物化视图覆盖的是两跳遍历——源端跳、联结跳、判别列，以及联结表自身的列作为边属性。联结表算作一条腿，因此只要三张表中任意一张位于不同的数据源，这条边就是跨数据源的 (REQ-1586)
 - 物化视图初始状态为陈旧，由后台刷新循环填充 (REQ-160)
 - 对任一数据源表的变更操作都会将该物化视图标记为陈旧，等待重新刷新 (REQ-543)
 - `refresh_interval` 默认值为 300 秒（5 分钟） (REQ-543)
@@ -797,6 +798,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300

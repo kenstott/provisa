@@ -738,6 +738,7 @@ relationships:
 Setzen Sie `materialize: true` auf einer Beziehung, um automatisch eine materialisierte Sicht für quellenübergreifende JOINs zu generieren. (REQ-158) Dies vermeidet teure föderierte Abfragen, indem das JOIN-Ergebnis vorab berechnet wird.
 
 - Nur quellenübergreifende Beziehungen generieren MVs (Joins innerhalb derselben Quelle sind bereits schnell) (REQ-159)
+- Bei einer Junction-gestützten Beziehung deckt die MV die Zwei-Sprung-Traversierung ab — Quellsprung, Junction-Sprung, Diskriminator und die eigenen Spalten der Junction als Kantenattribute. Die Junction zählt als Bein, eine Kante ist also quellenübergreifend, sobald eine der drei Tabellen in einer anderen Quelle liegt (REQ-1586)
 - Die MV startet veraltet und wird von der Hintergrund-Refresh-Schleife befüllt (REQ-160)
 - Mutationen an einer der beiden Quelltabellen markieren die MV zur erneuten Aktualisierung als veraltet (REQ-543)
 - `refresh_interval` ist standardmäßig 300 Sekunden (5 Minuten) (REQ-543)
@@ -800,6 +801,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300

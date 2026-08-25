@@ -393,6 +393,8 @@ Gibt die Graph-Ansicht des Schemas der Rolle zurück: Knotenlabels und ihre Bezi
 
 **Antwort:** `application/json` mit `node_labels` (jeweils mit `pk`/`pk_columns`) und `relationship_types`.
 
+Jeder Beziehungstyp trägt außerdem `junction_table_name` und `properties` (REQ-1586). Auf einer Junction-gestützten Kante benennt der erste die durchlaufene Zuordnungstabelle und der zweite listet die Spalten dieser Tabelle auf, die als `r.attr` lesbar und in `WHERE` filterbar sind; auf einer Fremdschlüssel-gestützten Kante ist der Name `null` und die Eigenschaftsliste leer — daran unterscheidet ein Client die beiden. Die Junction-Tabelle selbst ist niemals ein Knoten-Label — sie ist die Kante, hat also keine Pille in einem Graph-Client und keine Zeile in `node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ Aktualisierbare Felder pro Abschnitt:
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
 - `naming`: `domain_prefix`, `convention` — schreibt in die Config-Datei und löst einen Schema-Reload aus (REQ-253)
-- `relationships`: `auto_track_fk`
+- `relationships`: `auto_track_fk` — steuert ausschließlich die Fremdschlüssel-Verfolgung. Eine Junction-gestützte Beziehung wird bei der Tabellenregistrierung deklariert und nie hergeleitet, diese Einstellung erreicht sie also nicht. (REQ-1586)
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Antwort:**

@@ -582,7 +582,7 @@ relationships:
 | `source_column` | Ja | Spalte auf der Quelltabelle |
 | `target_column` | Ja | Spalte auf der Zieltabelle; leer für berechnete Beziehungen |
 | `cardinality` | Ja | `many-to-one` oder `one-to-many` (REQ-019) |
-| `materialize` | Nein | Automatisch eine materialisierte Sicht für quellübergreifende Joins erzeugen (REQ-158) |
+| `materialize` | Nein | Automatisch eine materialisierte Sicht für quellübergreifende Joins erzeugen (REQ-158). Auf einer Junction-gestützten Kante deckt die Sicht die Zwei-Sprung-Traversierung ab, nicht einen direkten Join (REQ-1586) |
 | `refresh_interval` | Nein | MV-Aktualisierungsintervall in Sekunden (Standard: 300) |
 | `target_function_name` | Nein | DB-Funktionsname für berechnete Beziehungen |
 | `function_arg` | Nein | Welches Funktionsargument den Quellspaltenwert erhält |
@@ -590,6 +590,39 @@ relationships:
 | `graphql_alias` | Nein | Benennt das SDL-Feld, das diese Beziehung am übergeordneten Typ exponiert. Wenn abwesend, wird der Name aus dem `field_name` der Zieltabelle und der Beziehungskardinalität abgeleitet. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | Nein | Wenn `true`, diese Beziehung von Cypher-Graph-Kanten ausschließen |
 | `source_json_key` | Nein | Diesen Schlüssel aus der Quellspalte als JSON-Objekt extrahieren, vor dem JOIN |
+| `via_table` | Nein | Registrierter Tabellenname der Junction, die diese Kante durchläuft. Gesetzt macht es die Kante Junction-gestützt; leer gelassen bleibt sie eine Fremdschlüssel-Kante (REQ-1586) |
+| `via_source_column` | Nein | Junction-Spalte, die zu `source_column` gehört. Bei zusammengesetztem Schlüssel kommagetrennt und positionsabhängig |
+| `via_target_column` | Nein | Junction-Spalte, die zu `target_column` gehört |
+| `via_type_column` | Nein | Diskriminator-Spalte, wenn eine Junction mehrere Beziehungstypen trägt |
+| `via_type_value` | Nein | Der Diskriminatorwert, auf den diese Kante festgelegt ist |
+| `via_label_source` | Nein | Welche Nominierung den Cypher-Typ benennt: `column` (der Diskriminatorwert), `table` (der Tabellenname der Junction) oder `fixed` (der deklarierte Alias). Alle werden in UPPER_SNAKE_CASE überführt |
+
+### Junction-gestützte Beziehungen
+
+Eine Zuordnungstabelle kann statt als Knoten als vollwertige Cypher-Beziehung deklariert werden, sodass ihre eigenen Spalten zu Attributen dieser Beziehung werden: (REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+Die Junction ist eine registrierte Tabelle wie jede andere und muss registriert sein, bevor eine Beziehung sie benennen kann. Deklarieren Sie sie einmal pro Diskriminatorwert: Drei Zeilen über `pet_companions` ergeben `BONDED_PAIR`, `LITTERMATE` und `SHARES_ENCLOSURE` als drei verschiedene Cypher-Typen, von denen jeder die übrigen Spalten der Junction-Zeile als Kanten-Eigenschaften trägt. Genau das deklariert die mitgelieferte Demo-Konfiguration.
+
+Eine Junction-Kante ist eine Cypher-Beziehung, kein GraphQL-Join-Feld: Der GraphQL-Join-Emitter baut seine `ON`-Klausel für ein einzelnes Spaltenpaar und hat keinen Platz für den zweiten Sprung, daher sind Junction-Kanten aus dem generierten SDL und aus `pg_constraint` ausgeschlossen. [tool-verified: `provisa/compiler/schema_gen.py:304`] Die Junction-Tabelle bleibt als eigenes Root-Feld abfragbar und fällt auf der Knotenseite des Cypher-Graph-Schemas weg, sodass sie nie als Knoten-Label erscheint.
+
+`materialize: true` funktioniert auf einer Junction-Kante, und materialisiert wird die Traversierung statt eines direkten `pets`-zu-`pets`-Joins: Die Sicht hält den Quellsprung, den Junction-Sprung, den Diskriminator und die eigenen Spalten der Junction neben denen des Ziels. Weil die Junction ein drittes Bein des Joins ist, wird über alle drei Tabellen hinweg beurteilt, ob die Kante Quellen überschreitet — eine Junction in einer anderen Quelle als die beiden verbundenen wird materialisiert, selbst wenn diese beiden übereinstimmen. Eine Deklaration materialisiert einen Kantentyp, eine für `bonded pair` gebaute Sicht beantwortet also nie eine `littermate`-Traversierung.
 
 Kardinalitätswerte [tool-verified: `provisa/core/models.py` `Cardinality`-Enum, lines 79–81]:
 

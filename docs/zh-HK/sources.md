@@ -577,7 +577,7 @@ relationships:
 | `source_column` | 是 | 來源表上的資料行 |
 | `target_column` | 是 | 目標表上的資料行；計算式關係為空 |
 | `cardinality` | 是 | `many-to-one` 或 `one-to-many`（REQ-019） |
-| `materialize` | 否 | 為跨來源聯結自動建立具體化檢視（REQ-158） |
+| `materialize` | 否 | 為跨來源聯結自動建立具體化檢視（REQ-158）。在由聯結資料表支撐的邊上，該檢視涵蓋的是兩跳走訪，而不是一次直接 join（REQ-1586） |
 | `refresh_interval` | 否 | MV 重新整理間隔（秒）（預設：300） |
 | `target_function_name` | 否 | 計算式關係的 DB 函式名稱 |
 | `function_arg` | 否 | 哪個函式引數接收來源資料行的值 |
@@ -585,6 +585,39 @@ relationships:
 | `graphql_alias` | 否 | 為此關係在父類型上呈現的 SDL 欄位命名。未提供時，名稱自目標表的 `field_name` 與關係基數推導。 [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | 否 | 為 `true` 時，把此關係排除在 Cypher 圖形邊之外 |
 | `source_json_key` | 否 | JOIN 之前先自來源資料行抽出此索引鍵作為 JSON 物件 |
+| `via_table` | 否 | 這條邊所穿過的聯結資料表的已註冊資料表名稱。設定它會使該邊成為由聯結資料表支撐的邊；留空則它仍是外部索引鍵邊（REQ-1586） |
+| `via_source_column` | 否 | 與 `source_column` 配對的聯結資料表欄位。複合索引鍵時以逗號分隔並按位置對應 |
+| `via_target_column` | 否 | 與 `target_column` 配對的聯結資料表欄位 |
+| `via_type_column` | 否 | 判別欄，用於一張聯結資料表承載多種關係類型的情形 |
+| `via_type_value` | 否 | 這條邊所釘定的判別值 |
+| `via_label_source` | 否 | 由哪一項來命名 Cypher 類型：`column`（判別值）、`table`（聯結資料表的名稱）或 `fixed`（宣告的別名）。三者都會轉成大寫蛇形 |
+
+### 由聯結資料表支撐的關係
+
+關聯資料表可以被宣告為一等的 Cypher 關係而不是節點，這樣它自己的欄位就成為該關係的屬性：（REQ-1586）
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+聯結資料表和其他資料表一樣是一張已註冊的資料表，必須先註冊，關係才能指向它。按判別值逐一宣告：`pet_companions` 上的三個資料列產生 `BONDED_PAIR`、`LITTERMATE` 與 `SHARES_ENCLOSURE` 三種不同的 Cypher 類型，每一種都把聯結資料列其餘的欄位作為邊屬性攜帶。隨附的示範設定宣告的正是這樣。
+
+聯結邊是 Cypher 關係，而不是 GraphQL join 欄位：GraphQL join 產生器為單一欄位對建構它的 `ON` 子句，沒有位置容納第二跳，因此聯結邊被排除在產生的 SDL 與 `pg_constraint` 之外。[tool-verified: `provisa/compiler/schema_gen.py:304`] 聯結資料表仍可作為它自己的根欄位被查詢，並且會從 Cypher 圖綱要的節點一側移除，因此永遠不會作為節點標籤出現。
+
+`materialize: true` 在聯結邊上同樣有效，它具體化的是走訪，而不是一次直接的 `pets` 到 `pets` join：檢視保存來源端跳、聯結跳、判別欄，以及聯結資料表自身的欄位與目標資料表的欄位並列。由於聯結資料表是 join 的第三條腿，這條邊是否跨來源要跨三張資料表來判斷——若聯結資料表所在的來源與它連接的兩張資料表不同，即使那兩張資料表同源也會被具體化。一次宣告具體化一種邊類型，因此為 `bonded pair` 建構的檢視永遠不會回答 `littermate` 的走訪。
 
 基數值 [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]：
 

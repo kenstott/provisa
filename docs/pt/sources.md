@@ -601,7 +601,7 @@ relationships:
 | `source_column` | Sim | Coluna na tabela de origem |
 | `target_column` | Sim | Coluna na tabela alvo; vazio para relacionamentos computados |
 | `cardinality` | Sim | `many-to-one` ou `one-to-many` (REQ-019) |
-| `materialize` | Não | Cria automaticamente uma view materializada para joins entre fontes (REQ-158) |
+| `materialize` | Não | Cria automaticamente uma view materializada para joins entre fontes (REQ-158). Em uma aresta apoiada em junção, a view cobre a travessia de dois saltos, não um join direto (REQ-1586) |
 | `refresh_interval` | Não | Intervalo de atualização de MV em segundos (padrão: 300) |
 | `target_function_name` | Não | Nome da função do BD para relacionamentos computados |
 | `function_arg` | Não | Qual argumento da função recebe o valor da coluna de origem |
@@ -609,6 +609,39 @@ relationships:
 | `graphql_alias` | Não | Nomeia o campo SDL que este relacionamento expõe no tipo pai. Quando ausente, o nome é derivado do `field_name` da tabela alvo e da cardinalidade do relacionamento. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | Não | Quando `true`, exclui este relacionamento das arestas do grafo Cypher |
 | `source_json_key` | Não | Extrai esta chave da coluna de origem como um objeto JSON antes do JOIN |
+| `via_table` | Não | Nome da tabela registrada da junção que esta aresta percorre. Defini-lo torna a aresta apoiada em junção; deixá-lo vazio a mantém uma aresta de chave estrangeira (REQ-1586) |
+| `via_source_column` | Não | Coluna da junção que pareia com `source_column`. Separada por vírgulas e posicional para uma chave composta |
+| `via_target_column` | Não | Coluna da junção que pareia com `target_column` |
+| `via_type_column` | Não | Coluna discriminadora, quando uma mesma junção carrega vários tipos de relacionamento |
+| `via_type_value` | Não | O valor de discriminador ao qual esta aresta está fixada |
+| `via_label_source` | Não | Qual indicação nomeia o tipo Cypher: `column` (o valor do discriminador), `table` (o nome da tabela de junção) ou `fixed` (o alias declarado). Todos são convertidos para UPPER_SNAKE_CASE |
+
+### Relacionamentos apoiados em junção
+
+Uma tabela associativa pode ser declarada como relacionamento Cypher de primeira classe em vez de nó, de modo que suas próprias colunas se tornem os atributos desse relacionamento: (REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+A junção é uma tabela registrada como qualquer outra e precisa estar registrada antes que um relacionamento possa nomeá-la. Declare-a uma vez por valor de discriminador: três linhas sobre `pet_companions` produzem `BONDED_PAIR`, `LITTERMATE` e `SHARES_ENCLOSURE` como três tipos Cypher distintos, cada um carregando as demais colunas da linha de junção como propriedades da aresta. A configuração de demonstração distribuída declara exatamente isso.
+
+Uma aresta de junção é um relacionamento Cypher, não um campo de join GraphQL: o emissor de joins do GraphQL monta sua cláusula `ON` para um único par de colunas e não tem lugar para o segundo salto, então arestas de junção ficam excluídas do SDL gerado e de `pg_constraint`. [tool-verified: `provisa/compiler/schema_gen.py:304`] A tabela de junção continua consultável como seu próprio campo raiz e sai do lado dos nós do esquema do grafo Cypher, de modo que nunca aparece como rótulo de nó.
+
+`materialize: true` funciona em uma aresta de junção, e o que ele materializa é a travessia em vez de um join direto `pets`-para-`pets`: a view guarda o salto de origem, o salto da junção, o discriminador e as colunas próprias da junção ao lado das do destino. Como a junção é uma terceira perna do join, se a aresta cruza fontes é julgado sobre as três tabelas — uma junção em uma fonte diferente das duas que ela liga é materializada mesmo quando essas duas coincidem. Uma declaração materializa um tipo de aresta, então uma view construída para `bonded pair` nunca responde a uma travessia `littermate`.
 
 Valores de cardinalidade [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
 

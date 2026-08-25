@@ -648,7 +648,7 @@ relationships:
 | `source_column` | Sì | Colonna sulla tabella sorgente |
 | `target_column` | Sì | Colonna sulla tabella target; vuoto per relazioni calcolate |
 | `cardinality` | Sì | `many-to-one` o `one-to-many` (REQ-019) |
-| `materialize` | No | Crea automaticamente una vista materializzata per join cross-source (REQ-158) |
+| `materialize` | No | Crea automaticamente una vista materializzata per join cross-source (REQ-158). Su un arco basato su una giunzione la vista copre la traversata a due salti, non un join diretto (REQ-1586) |
 | `refresh_interval` | No | Intervallo di refresh della MV in secondi (default: 300) |
 | `target_function_name` | No | Nome della funzione DB per relazioni calcolate |
 | `function_arg` | No | Quale argomento della funzione riceve il valore della colonna sorgente |
@@ -656,6 +656,39 @@ relationships:
 | `graphql_alias` | No | Nomina il campo SDL che questa relazione espone sul tipo padre. Quando assente, il nome viene derivato dal `field_name` della tabella target e dalla cardinalità della relazione. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | No | Quando `true`, esclude questa relazione dagli archi grafo Cypher |
 | `source_json_key` | No | Estrae questa chiave dalla colonna sorgente come oggetto JSON prima del JOIN |
+| `via_table` | No | Nome della tabella registrata della giunzione che questo arco attraversa. Valorizzarlo rende l'arco basato su una giunzione; lasciarlo vuoto lo lascia un arco su chiave esterna (REQ-1586) |
+| `via_source_column` | No | Colonna della giunzione accoppiata a `source_column`. Separata da virgole e posizionale per una chiave composta |
+| `via_target_column` | No | Colonna della giunzione accoppiata a `target_column` |
+| `via_type_column` | No | Colonna discriminante, quando una stessa giunzione porta più tipi di relazione |
+| `via_type_value` | No | Il valore del discriminante a cui questo arco è fissato |
+| `via_label_source` | No | Quale designazione dà il nome al tipo Cypher: `column` (il valore del discriminante), `table` (il nome della tabella di giunzione) o `fixed` (l'alias dichiarato). Tutte vengono portate in UPPER_SNAKE_CASE |
+
+### Relazioni basate su una tabella di giunzione
+
+Una tabella associativa può essere dichiarata come relazione Cypher di prima classe anziché come nodo, così che le sue colonne diventino gli attributi di quella relazione: (REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+La giunzione è una tabella registrata come tutte le altre e deve essere registrata prima che una relazione possa nominarla. Dichiaratela una volta per valore di discriminante: tre righe su `pet_companions` producono `BONDED_PAIR`, `LITTERMATE` e `SHARES_ENCLOSURE` come tre tipi Cypher distinti, ciascuno con le restanti colonne della riga di giunzione come proprietà dell'arco. La configurazione demo inclusa dichiara esattamente questo.
+
+Un arco di giunzione è una relazione Cypher, non un campo di join GraphQL: l'emettitore di join GraphQL costruisce la sua clausola `ON` per una singola coppia di colonne e non ha posto per il secondo salto, quindi gli archi di giunzione sono esclusi dall'SDL generato e da `pg_constraint`. [tool-verified: `provisa/compiler/schema_gen.py:304`] La tabella di giunzione resta interrogabile come proprio campo radice ed esce dal lato nodi dello schema del grafo Cypher, così da non comparire mai come etichetta di nodo.
+
+`materialize: true` funziona su un arco di giunzione, e ciò che materializza è la traversata anziché un join diretto `pets`-`pets`: la vista contiene il salto di origine, il salto della giunzione, il discriminante e le colonne proprie della giunzione accanto a quelle della destinazione. Poiché la giunzione è una terza gamba del join, se l'arco attraversa origini si giudica su tutte e tre le tabelle — una giunzione in un'origine diversa dalle due che collega viene materializzata anche quando quelle due coincidono. Una dichiarazione materializza un tipo di arco, quindi una vista costruita per `bonded pair` non risponde mai a una traversata `littermate`.
 
 Valori di cardinalità [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
 

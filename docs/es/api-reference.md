@@ -393,6 +393,8 @@ Devuelve la vista de grafo del esquema del rol: etiquetas de nodo y sus tipos de
 
 **Respuesta:** `application/json` con `node_labels` (cada una con `pk`/`pk_columns`) y `relationship_types`.
 
+Cada tipo de relación lleva además `junction_table_name` y `properties` (REQ-1586). En una arista respaldada por una tabla de unión, el primero nombra la tabla asociativa que recorre y el segundo lista las columnas de esa tabla legibles como `r.attr` y filtrables en `WHERE`; en una arista respaldada por clave foránea el nombre es `null` y la lista de propiedades está vacía, que es como un cliente distingue ambas. La propia tabla de unión nunca es una etiqueta de nodo — es la arista, así que no tiene píldora en un cliente de grafo ni fila en `node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ Campos actualizables por sección:
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
 - `naming`: `domain_prefix`, `convention` — escribe en el archivo de configuración y activa la recarga de esquema (REQ-253)
-- `relationships`: `auto_track_fk`
+- `relationships`: `auto_track_fk` — rige únicamente el seguimiento de claves foráneas. Una relación respaldada por una tabla de unión se declara en el registro de la tabla y nunca se infiere, así que este ajuste no la alcanza. (REQ-1586)
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Respuesta:**

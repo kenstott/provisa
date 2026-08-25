@@ -394,6 +394,8 @@ X-Provisa-Redirect-Threshold: 1000
 
 **תגובה:** `application/json` עם `node_labels` (כל אחת נושאת `pk`/`pk_columns`) ו-`relationship_types`.
 
+כל סוג קשר נושא גם `junction_table_name` ו-`properties` (REQ-1586). בקשת מגובת junction הראשון מציין את טבלת השיוך שהיא חוצה והשני מונה את עמודות אותה טבלה הניתנות לקריאה כ-`r.attr` ולסינון ב-`WHERE`; בקשת מגובת מפתח-זר השם הוא `null` ורשימת המאפיינים ריקה — וכך לקוח מבחין בין השתיים. טבלת ה-junction עצמה לעולם אינה תווית צומת — היא הקשת, ולכן אין לה גלולה (pill) בלקוח גרף ואין לה שורה ב-`node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -545,7 +547,7 @@ X-Provisa-Redirect-Threshold: 1000
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
 - `naming`: `domain_prefix`, `convention` — כותב לקובץ התצורה ומפעיל טעינה מחדש של הסכמה (REQ-253)
-- `relationships`: `auto_track_fk`
+- `relationships`: `auto_track_fk` — שולט במעקב אחר מפתחות-זרים בלבד. קשר מגובה junction מוצהר ברישום הטבלה ולעולם אינו מוסק, ולכן ההגדרה הזו אינה מגיעה אליו. (REQ-1586)
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **תגובה:**

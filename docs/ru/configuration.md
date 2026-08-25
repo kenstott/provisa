@@ -738,6 +738,7 @@ relationships:
 Задайте `materialize: true` на связи, чтобы автоматически создавать материализованное представление для межисточниковых JOIN. (REQ-158) Это избавляет от дорогих федеративных запросов за счёт предварительного вычисления результата JOIN.
 
 - Материализованные представления создаются только для межисточниковых связей (JOIN внутри одного источника и так быстры) (REQ-159)
+- У связи через junction материализованное представление покрывает обход в два перехода — переход от источника, переход через junction, дискриминатор и собственные столбцы junction как атрибуты ребра. Junction считается ногой соединения, поэтому ребро межисточниковое, как только любая из трёх таблиц лежит в другом источнике (REQ-1586)
 - Представление начинается устаревшим и наполняется фоновым циклом обновления (REQ-160)
 - Мутации в любой из исходных таблиц помечают представление устаревшим для повторного обновления (REQ-543)
 - `refresh_interval` по умолчанию равен 300 секундам (5 минут) (REQ-543)
@@ -800,6 +801,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300

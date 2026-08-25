@@ -130,6 +130,8 @@ Abgefangene Tabellen:
 
 `pg_constraint` wird mit echten PK- und FK-Daten befüllt, die aus den Feldern `pk_columns` und `joins` des Domänenmodells abgeleitet werden. (REQ-392, REQ-399) BI-Tools, die Fremdschlüsselbeziehungen untersuchen (Tableau, DBeaver usw.), sehen den Join-Graphen, den Provisa kennt. [tool-verified: `catalog.py:551-632`] Einspaltige Joins zwischen demselben Quelle/Ziel-Paar, deren Zielspalten zusammen den zusammengesetzten Primärschlüssel des Ziels bilden, werden zu einer einzigen FK-Zeile mit mehrelementigen `conkey`/`confkey`-Arrays zusammengefasst. (REQ-1094) [tool-verified: `catalog_constraints.py`]
 
+Eine Junction-gestützte Beziehung (REQ-1586) erzeugt keine FK-Zeile. Sie ist eine Kante über eine Zuordnungstabelle, kein Spaltenpaar, und `pg_constraint` hat keine Form für zwei Sprünge — deshalb lässt das Domänenmodell sie aus `joins` heraus, und die Junction-Tabelle erscheint als gewöhnliche Tabelle mit eigenen Fremdschlüsseln auf beide Endpunkte. SQL-Clients erreichen sie, indem sie diese Tabelle joinen; Cypher-Clients traversieren sie als eine einzige Beziehung. [tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` wird mit einer Zeile pro Primärschlüssel- und UNIQUE-Constraint befüllt (`indrelid` = OID der Tabelle, `indkey` = geordnete Schlüssel-Attnums, `indisprimary`/`indisunique` gesetzt). Clients, die Schlüsselspalten über `pg_index.indkey` statt über `pg_constraint` auflösen — zum Beispiel DataGrip —, ermitteln die korrekten Spalten über den Standard-Join `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 Zusätzlich werden folgende skalare Ausdrücke abgefangen: (REQ-588)

@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+Déclarer une relation adossée à une jonction (REQ-1586) :
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+Une table associative est déclarée comme arête, jamais découverte. `viaTable` nomme une table enregistrée ; ses deux colonnes clés portent l'arête, et chaque colonne restante devient un attribut de la relation, filtrable comme n'importe quel autre champ. `viaTypeColumn` / `viaTypeValue` scindent une même table de jonction en plusieurs types d'arêtes — trois lignes de `pet_companions` dont `companion_type` vaut `bonded pair`, `littermate` et `shares enclosure` sont trois relations distinctes sur la même paire de tables.
+
+`viaLabelSource` désigne d'où vient le nom exposé, et les trois formes sont mises en UPPER_SNAKE_CASE pour Cypher : `column` utilise `viaTypeValue` (`BONDED_PAIR`), `table` utilise le nom propre de la table de jonction (`PET_COMPANIONS`), `fixed` utilise l'`alias` déclaré. Une table de jonction déclarée ainsi est une arête et non une entité — elle disparaît des labels de nœuds, si bien qu'elle n'apparaît jamais comme pastille de nœud dans l'interface graphe. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### Découverte de relations par l'IA
 
 Déclenchez l'analyse des clés étrangères assistée par Claude via REST (REQ-167, REQ-018) :

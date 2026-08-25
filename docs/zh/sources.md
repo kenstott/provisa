@@ -601,7 +601,7 @@ relationships:
 | `source_column` | 是 | 源表上的列 |
 | `target_column` | 是 | 目标表上的列；对于计算型关系为空 |
 | `cardinality` | 是 | `many-to-one` 或 `one-to-many`（REQ-019） |
-| `materialize` | 否 | 为跨数据源联结自动创建物化视图（REQ-158） |
+| `materialize` | 否 | 为跨数据源联结自动创建物化视图（REQ-158）。在由联结表支撑的边上，该视图覆盖的是两跳遍历，而不是一次直接连接（REQ-1586） |
 | `refresh_interval` | 否 | 物化视图刷新间隔（秒，默认 300） |
 | `target_function_name` | 否 | 用于计算型关系的数据库函数名称 |
 | `function_arg` | 否 | 哪个函数参数接收源列的值 |
@@ -609,6 +609,39 @@ relationships:
 | `graphql_alias` | 否 | 指定该关系在父类型上暴露的 SDL 字段名称。缺省时，该名称从目标表的 `field_name` 和关系基数派生。[tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | 否 | 当为 `true` 时，将该关系从 Cypher 图边中排除 |
 | `source_json_key` | 否 | 在 JOIN 之前，从源列中以 JSON 对象形式提取该键 |
+| `via_table` | 否 | 这条边所穿过的联结表的已注册表名。设置它会使该边成为由联结表支撑的边；留空则它仍是外键边（REQ-1586） |
+| `via_source_column` | 否 | 与 `source_column` 配对的联结表列。复合键时以逗号分隔并按位置对应 |
+| `via_target_column` | 否 | 与 `target_column` 配对的联结表列 |
+| `via_type_column` | 否 | 判别列，用于一张联结表承载多种关系类型的情形 |
+| `via_type_value` | 否 | 这条边所钉定的判别值 |
+| `via_label_source` | 否 | 由哪一项来命名 Cypher 类型：`column`（判别值）、`table`（联结表的表名）或 `fixed`（声明的别名）。三者都会转成大写蛇形 |
+
+### 由联结表支撑的关系
+
+关联表可以被声明为一等的 Cypher 关系而不是节点，这样它自己的列就成为该关系的属性：(REQ-1586)
+
+```yaml
+relationships:
+
+  - id: pets-bonded-pair
+    source_table_id: pets
+    target_table_id: pets
+    source_column: id
+    target_column: id
+    cardinality: one-to-many
+    via_table: pet_companions
+    via_source_column: pet_id
+    via_target_column: companion_pet_id
+    via_type_column: relation_type
+    via_type_value: bonded pair
+    via_label_source: column
+```
+
+联结表和其他表一样是一张已注册的表，必须先注册，关系才能指向它。按判别值逐一声明：`pet_companions` 上的三行产生 `BONDED_PAIR`、`LITTERMATE` 和 `SHARES_ENCLOSURE` 三种不同的 Cypher 类型，每一种都把联结行其余的列作为边属性携带。随附的演示配置声明的正是这样。
+
+联结边是 Cypher 关系，而不是 GraphQL 连接字段：GraphQL 连接生成器为单一列对构造它的 `ON` 子句，没有位置容纳第二跳，因此联结边被排除在生成的 SDL 和 `pg_constraint` 之外。[tool-verified: `provisa/compiler/schema_gen.py:304`] 联结表仍可作为它自己的根字段被查询，并且会从 Cypher 图模式的节点一侧移除，因此永远不会作为节点标签出现。
+
+`materialize: true` 在联结边上同样有效，它物化的是遍历，而不是一次直接的 `pets` 到 `pets` 连接：视图保存源端跳、联结跳、判别列，以及联结表自身的列与目标表的列并列。由于联结表是连接的第三条腿，这条边是否跨数据源要跨三张表来判断——若联结表所在的数据源与它连接的两张表不同，即使那两张表同源也会被物化。一次声明物化一种边类型，因此为 `bonded pair` 构建的视图永远不会回答 `littermate` 的遍历。
 
 基数取值 [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]：
 

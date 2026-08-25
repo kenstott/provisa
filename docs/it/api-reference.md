@@ -393,6 +393,8 @@ Restituisce la vista a grafo dello schema del ruolo: label dei nodi e i loro tip
 
 **Risposta:** `application/json` con `node_labels` (ciascuno con `pk`/`pk_columns`) e `relationship_types`.
 
+Ogni tipo di relazione porta anche `junction_table_name` e `properties` (REQ-1586). Su un arco basato su una giunzione il primo nomina la tabella associativa che attraversa e il secondo elenca le colonne di quella tabella leggibili come `r.attr` e filtrabili in `WHERE`; su un arco basato su chiave esterna il nome è `null` e l'elenco delle proprietà è vuoto, ed è così che un client distingue i due casi. La tabella di giunzione stessa non è mai un'etichetta di nodo — è l'arco, quindi non ha alcuna pillola in un client grafo né una riga in `node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ Campi aggiornabili per sezione:
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
 - `naming`: `domain_prefix`, `convention` — scrive sul file di configurazione e innesca il reload dello schema (REQ-253)
-- `relationships`: `auto_track_fk`
+- `relationships`: `auto_track_fk` — governa solo il tracciamento delle chiavi esterne. Una relazione basata su una giunzione viene dichiarata alla registrazione della tabella e non è mai inferita, quindi questa impostazione non la raggiunge. (REQ-1586)
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Risposta:**

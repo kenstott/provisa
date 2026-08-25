@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+宣告一個由聯結資料表支撐的關係（REQ-1586）：
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+關聯資料表是被宣告為邊的，從不被自動探索。`viaTable` 指定一張已註冊的資料表；它的兩個索引鍵欄位承載這條邊，其餘每一個欄位都會成為該關係的一個屬性，可以像任何其他欄位一樣被過濾。`viaTypeColumn` / `viaTypeValue` 把一張聯結資料表拆成多個邊類型——`pet_companions` 中 `companion_type` 分別為 `bonded pair`、`littermate` 與 `shares enclosure` 的三類資料列，就是同一對資料表之上的三種不同關係。
+
+`viaLabelSource` 指定對外公開的名稱來自哪裡，三種形式都會為 Cypher 轉成大寫蛇形（UPPER_SNAKE_CASE）：`column` 取 `viaTypeValue`（`BONDED_PAIR`），`table` 取聯結資料表自身的名稱（`PET_COMPANIONS`），`fixed` 取宣告的 `alias`。以這種方式宣告的聯結資料表是一條邊而不是一個實體——它會從節點標籤中移除，因此在圖 UI 中永遠不會出現節點膠囊。[tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### AI 關係探索
 
 經 REST 觸發由 Claude 驅動的外部索引鍵分析（REQ-167、REQ-018）：

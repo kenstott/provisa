@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+הצהרה על קשר מגובה junction (REQ-1586):
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+טבלת שיוך מוצהרת כקשת, לעולם אינה מתגלה אוטומטית. `viaTable` מציין טבלה רשומה; שתי עמודות המפתח שלה נושאות את הקשת, וכל עמודה נותרת הופכת לתכונה של הקשר, ניתנת לסינון כמו כל שדה אחר. `viaTypeColumn` / `viaTypeValue` מפצלים טבלת junction אחת לכמה סוגי קשתות — שלוש שורות של `pet_companions` שבהן `companion_type` הוא `bonded pair`, `littermate` ו-`shares enclosure` הן שלושה קשרים נבדלים מעל אותו זוג טבלאות.
+
+`viaLabelSource` קובע מהיכן מגיע השם הנחשף, ושלוש הצורות מומרות ל-UPPER_SNAKE_CASE עבור Cypher: `column` משתמש ב-`viaTypeValue` (`BONDED_PAIR`), `table` משתמש בשם טבלת ה-junction עצמה (`PET_COMPANIONS`), ו-`fixed` משתמש ב-`alias` המוצהר. טבלת junction שהוצהרה כך היא קשת ולא ישות — היא נשמטת מתוויות הצמתים, ולכן לעולם אינה מופיעה כגלולת צומת בממשק הגרף. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### גילוי קשרים בעזרת AI
 
 הפעילו ניתוח FK מונע-Claude דרך REST ‏(REQ-167, REQ-018):

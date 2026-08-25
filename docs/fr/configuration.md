@@ -738,6 +738,7 @@ relationships:
 Définissez `materialize: true` sur une relation pour générer automatiquement une vue matérialisée destinée aux JOIN inter-sources. (REQ-158) Cela évite des requêtes fédérées coûteuses en pré-calculant le résultat du JOIN.
 
 - Seules les relations inter-sources génèrent des vues matérialisées (les JOIN au sein d'une même source sont déjà rapides) (REQ-159)
+- Sur une relation adossée à une jonction, la vue matérialisée couvre le parcours à deux sauts — saut source, saut de jonction, discriminant et les colonnes propres de la jonction comme attributs d'arête. La jonction compte comme une patte : une arête est donc inter-sources dès que l'une des trois tables se trouve dans une autre source (REQ-1586)
 - La vue matérialisée démarre périmée et est remplie par la boucle de rafraîchissement en arrière-plan (REQ-160)
 - Les mutations sur l'une ou l'autre table source marquent la vue matérialisée comme périmée en vue d'un nouveau rafraîchissement (REQ-543)
 - `refresh_interval` vaut 300 secondes (5 minutes) par défaut (REQ-543)
@@ -800,6 +801,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300

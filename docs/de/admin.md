@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+Eine Junction-gestützte Beziehung deklarieren (REQ-1586):
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+Eine Zuordnungstabelle wird als Kante deklariert, nie entdeckt. `viaTable` benennt eine registrierte Tabelle; ihre beiden Schlüsselspalten tragen die Kante, und jede verbleibende Spalte wird zu einem Attribut der Beziehung, filterbar wie jedes andere Feld. `viaTypeColumn` / `viaTypeValue` teilen eine Junction-Tabelle in mehrere Kantentypen auf — drei Zeilen von `pet_companions` mit `companion_type` gleich `bonded pair`, `littermate` und `shares enclosure` sind drei verschiedene Beziehungen über demselben Tabellenpaar.
+
+`viaLabelSource` bestimmt, woher der ausgestellte Name stammt, und alle drei Formen werden für Cypher in UPPER_SNAKE_CASE überführt: `column` nutzt `viaTypeValue` (`BONDED_PAIR`), `table` nutzt den Namen der Junction-Tabelle selbst (`PET_COMPANIONS`), `fixed` nutzt den deklarierten `alias`. Eine so deklarierte Junction-Tabelle ist eine Kante und keine Entität — sie fällt aus den Knoten-Labels heraus und erscheint daher nie als Knoten-Pille in der Graph-UI. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### KI-gestützte Relationship-Erkennung
 
 Claude-gestützte FK-Analyse über REST auslösen (REQ-167, REQ-018):

@@ -738,6 +738,7 @@ relationships:
 הגדירו `materialize: true` על קשר כדי לחולל אוטומטית Materialized View עבור JOIN-ים חוצי-מקורות. (REQ-158) זה נמנע משאילתות פדרטיביות יקרות על ידי חישוב מראש של תוצאת ה-JOIN.
 
 - רק קשרים חוצי-מקורות מחוללים MV-ים (JOIN-ים באותו מקור כבר מהירים) (REQ-159)
+- בקשר מגובה junction ה-MV מכסה את החצייה בשתי קפיצות — קפיצת המקור, קפיצת ה-junction, המבחין ועמודות ה-junction עצמה כמאפייני קשת. ה-junction נחשבת רגל, ולכן קשת היא חוצת-מקורות כאשר אחת משלוש הטבלאות יושבת במקור אחר (REQ-1586)
 - ה-MV מתחיל מיושן (stale) ומתמלא על ידי לולאת הרענון ברקע (REQ-160)
 - מוטציות לאחת מטבלאות המקור מסמנות את ה-MV כמיושן לרענון מחדש (REQ-543)
 - `refresh_interval` ברירת המחדל היא 300 שניות (5 דקות) (REQ-543)
@@ -800,6 +801,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300

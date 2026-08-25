@@ -130,6 +130,8 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 
 `pg_constraint` מאוכלס בנתוני PK ו-FK אמיתיים הנגזרים מ-`pk_columns` ו-`joins` של מודל הדומיין. (REQ-392, REQ-399) כלי BI הבודקים קשרי מפתח-זר (Tableau, DBeaver וכו') יראו את גרף ה-join ש-Provisa מכירה. [tool-verified: `catalog.py:551-632`] joins חד-עמודתיים בין אותו זוג מקור/יעד שעמודות היעד שלהם יחד מהוות את המפתח הראשי המורכב של היעד מכווצים לשורת FK אחת עם מערכי `conkey`/`confkey` מרובי-איברים. (REQ-1094) [tool-verified: `catalog_constraints.py`]
 
+קשר מגובה junction (REQ-1586) אינו מייצר שורת FK. זוהי קשת דרך טבלת שיוך, לא זוג עמודות, ול-`pg_constraint` אין צורה לשתי קפיצות — ולכן מודל הדומיין משמיט אותה מ-`joins`, וטבלת ה-junction מופיעה כטבלה רגילה עם מפתחות זרים משלה לכל אחד מהקצוות. לקוחות SQL מגיעים אליה על ידי join לטבלה הזו; לקוחות Cypher חוצים אותה כקשר יחיד. [tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` מאוכלס בשורה אחת לכל אילוץ primary-key ו-UNIQUE (`indrelid` = oid הטבלה, `indkey` = attnums מפתח מסודרים, `indisprimary`/`indisunique` מוגדרים). לקוחות הפותרים עמודות מפתח דרך `pg_index.indkey` ולא `pg_constraint` — DataGrip, לדוגמה — מגלים את העמודות הנכונות דרך ה-join הסטנדרטי `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 הביטויים הסקלריים הבאים גם הם מיורטים: (REQ-588)

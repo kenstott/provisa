@@ -130,6 +130,8 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 
 `pg_constraint` 会以从域模型的 `pk_columns` 和 `joins` 字段派生的真实主键及外键数据填充。（REQ-392、REQ-399）检查外键关系的 BI 工具（Tableau、DBeaver 等）将看到 Provisa 所了解的连接图。[tool-verified: `catalog.py:551-632`] 同一数据源/目标对之间的单列连接，若其目标列共同构成该目标的复合主键，会被合并为单行 FK 记录，并以多元素的 `conkey`/`confkey` 数组表示。（REQ-1094）[tool-verified: `catalog_constraints.py`]
 
+由联结表支撑的关系（REQ-1586）不会产生 FK 行。它是穿过关联表的一条边，而不是一对列，而 `pg_constraint` 没有可容纳两跳的形态——因此域模型不会把它放进 `joins`，联结表则表现为一张普通表，各自持有指向两端的外键。SQL 客户端通过联接该表来访问它；Cypher 客户端则把它当作单条关系遍历。[tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` 会就每个主键及 UNIQUE 约束填充一行（`indrelid` = 表 oid，`indkey` = 已排序的键值 attnum，`indisprimary`/`indisunique` 已设置）。通过 `pg_index.indkey` 而非 `pg_constraint` 解析键列的客户端——例如 DataGrip——会通过标准的 `pg_index` → `pg_attribute` 连接找出正确的列。（REQ-1095）[tool-verified: `catalog_constraints.py:340-384`]
 
 以下标量表达式也会被拦截：（REQ-588）

@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+声明一个由联结表支撑的关系（REQ-1586）：
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+关联表是被声明为边的，从不被自动发现。`viaTable` 指定一张已注册的表；它的两个键列承载这条边，其余每一列都会成为该关系的一个属性，可以像任何其他字段一样被过滤。`viaTypeColumn` / `viaTypeValue` 把一张联结表拆成多个边类型——`pet_companions` 中 `companion_type` 分别为 `bonded pair`、`littermate` 和 `shares enclosure` 的三类行，就是同一对表之上的三种不同关系。
+
+`viaLabelSource` 指定对外暴露的名称来自哪里，三种形式都会为 Cypher 转成大写蛇形（UPPER_SNAKE_CASE）：`column` 取 `viaTypeValue`（`BONDED_PAIR`），`table` 取联结表自身的名称（`PET_COMPANIONS`），`fixed` 取声明的 `alias`。以这种方式声明的联结表是一条边而不是一个实体——它会从节点标签中移除，因此在图 UI 中永远不会出现节点胶囊。[tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### AI 关联发现
 
 通过 REST 触发由 Claude 提供支持的外键分析（REQ-167、REQ-018）：

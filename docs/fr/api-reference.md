@@ -393,6 +393,8 @@ Renvoie la vue graphe du schéma du rôle : les libellés de nœuds et leurs ty
 
 **Réponse :** `application/json` avec `node_labels` (portant chacun `pk`/`pk_columns`) et `relationship_types`.
 
+Chaque type de relation porte aussi `junction_table_name` et `properties` (REQ-1586). Sur une arête adossée à une jonction, le premier nomme la table associative qu'elle traverse et le second liste les colonnes de cette table lisibles comme `r.attr` et filtrables dans `WHERE` ; sur une arête adossée à une clé étrangère, le nom vaut `null` et la liste de propriétés est vide, ce qui permet à un client de distinguer les deux. La table de jonction elle-même n'est jamais un label de nœud — elle est l'arête, elle n'a donc ni pastille dans un client graphe ni ligne dans `node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ Champs modifiables par section :
 - `sampling` : `default_sample_size`
 - `cache` : `default_ttl`
 - `naming` : `domain_prefix`, `convention` — écrit dans le fichier de configuration et déclenche un rechargement du schéma (REQ-253)
-- `relationships` : `auto_track_fk`
+- `relationships` : `auto_track_fk` — régit uniquement le suivi des clés étrangères. Une relation adossée à une jonction est déclarée lors de l'enregistrement de la table et n'est jamais inférée, ce réglage ne l'atteint donc pas. (REQ-1586)
 - `otel` : `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Réponse :**

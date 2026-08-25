@@ -393,6 +393,8 @@ Retorna a visão em grafo do esquema da função: rótulos de nó e seus tipos d
 
 **Resposta:** `application/json` com `node_labels` (cada um carregando `pk`/`pk_columns`) e `relationship_types`.
 
+Cada tipo de relacionamento carrega também `junction_table_name` e `properties` (REQ-1586). Em uma aresta apoiada em junção, o primeiro nomeia a tabela associativa que ela percorre e o segundo lista as colunas dessa tabela legíveis como `r.attr` e filtráveis em `WHERE`; em uma aresta apoiada em chave estrangeira o nome é `null` e a lista de propriedades fica vazia, que é como um cliente distingue as duas. A própria tabela de junção nunca é um rótulo de nó — ela é a aresta, portanto não tem pílula em um cliente de grafo nem linha em `node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ Campos atualizáveis por seção:
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
 - `naming`: `domain_prefix`, `convention` — grava no arquivo de configuração e aciona recarregamento de esquema (REQ-253)
-- `relationships`: `auto_track_fk`
+- `relationships`: `auto_track_fk` — governa apenas o rastreamento de chaves estrangeiras. Um relacionamento apoiado em junção é declarado no registro da tabela e nunca é inferido, então esta configuração não o alcança. (REQ-1586)
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Resposta:**

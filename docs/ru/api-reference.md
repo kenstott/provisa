@@ -393,6 +393,8 @@ X-Provisa-Redirect-Threshold: 1000
 
 **Ответ:** `application/json` с `node_labels` (каждый несёт `pk`/`pk_columns`) и `relationship_types`.
 
+Каждый тип связи несёт также `junction_table_name` и `properties` (REQ-1586). У ребра через junction первое называет проходимую ассоциативную таблицу, а второе перечисляет столбцы этой таблицы, читаемые как `r.attr` и фильтруемые в `WHERE`; у ребра на внешнем ключе имя равно `null`, а список свойств пуст — именно так клиент отличает одно от другого. Сама junction-таблица никогда не является меткой узла — она и есть ребро, поэтому у неё нет ни пилюли в графовом клиенте, ни строки в `node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ X-Provisa-Redirect-Threshold: 1000
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
 - `naming`: `domain_prefix`, `convention` — записывается в файл конфигурации и вызывает перезагрузку схемы (REQ-253)
-- `relationships`: `auto_track_fk`
+- `relationships`: `auto_track_fk` — управляет только отслеживанием внешних ключей. Связь через junction объявляется при регистрации таблицы и никогда не выводится автоматически, поэтому эта настройка её не касается. (REQ-1586)
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Ответ:**

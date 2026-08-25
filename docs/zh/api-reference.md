@@ -393,6 +393,8 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点上的浏览器 UI。
 
 **响应：** `application/json`，包含 `node_labels`（每个都带有 `pk`/`pk_columns`）和 `relationship_types`。
 
+每种关系类型还带有 `junction_table_name` 和 `properties`（REQ-1586）。在由联结表支撑的边上，前者给出它所穿过的关联表名，后者列出该表中可作为 `r.attr` 读取并可在 `WHERE` 中过滤的列；在由外键支撑的边上，该名称为 `null`，属性列表为空——客户端正是据此区分两者。联结表本身永远不是节点标签——它就是边，因此在图客户端中没有对应的标签胶囊，在 `node_labels` 中也没有对应行。[tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点上的浏览器 UI。
 - `sampling`：`default_sample_size`
 - `cache`：`default_ttl`
 - `naming`：`domain_prefix`、`convention` — 写入配置文件并触发架构重新加载（REQ-253）
-- `relationships`：`auto_track_fk`
+- `relationships`：`auto_track_fk` —— 仅管辖外键追踪。由联结表支撑的关系是在表注册时声明的，从不被推断，因此该设置对它不起作用。(REQ-1586)
 - `otel`：`endpoint`、`service_name`、`sample_rate`、`support_endpoint`、`support_redact_sql_literals`、`support_redact_attributes`
 
 **响应：**

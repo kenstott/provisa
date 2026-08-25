@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+Объявить связь через junction (REQ-1586):
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+Ассоциативная таблица объявляется как ребро, а не обнаруживается автоматически. `viaTable` называет зарегистрированную таблицу; два её ключевых столбца несут ребро, а каждый оставшийся столбец становится атрибутом связи, фильтруемым как любое другое поле. `viaTypeColumn` / `viaTypeValue` делят одну junction-таблицу на несколько типов рёбер — три строки `pet_companions` со значениями `companion_type` `bonded pair`, `littermate` и `shares enclosure` — это три разные связи над одной и той же парой таблиц.
+
+`viaLabelSource` назначает, откуда берётся публикуемое имя, и все три формы приводятся к UPPER_SNAKE_CASE для Cypher: `column` использует `viaTypeValue` (`BONDED_PAIR`), `table` — собственное имя junction-таблицы (`PET_COMPANIONS`), `fixed` — объявленный `alias`. Объявленная так junction-таблица является ребром, а не сущностью — она исключается из меток узлов и потому никогда не появляется пилюлей узла в графовом UI. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### Обнаружение связей с помощью ИИ
 
 Запустить анализ внешних ключей на базе Claude через REST (REQ-167, REQ-018):

@@ -130,6 +130,8 @@ Tables interceptées :
 
 `pg_constraint` est alimentée avec des données réelles de clé primaire et de clé étrangère dérivées des champs `pk_columns` et `joins` du modèle de domaine. (REQ-392, REQ-399) Les outils de BI qui inspectent les relations de clé étrangère (Tableau, DBeaver, etc.) verront le graphe de jointures que Provisa connaît. [tool-verified: `catalog.py:551-632`] Les jointures à colonne unique entre la même paire source/cible dont les colonnes cibles forment ensemble la clé primaire composite de la cible sont regroupées en une seule ligne de clé étrangère avec des tableaux `conkey`/`confkey` à plusieurs éléments. (REQ-1094) [tool-verified: `catalog_constraints.py`]
 
+Une relation adossée à une jonction (REQ-1586) ne produit aucune ligne FK. C'est une arête passant par une table associative, non une paire de colonnes, et `pg_constraint` n'a pas de forme pour deux sauts — le modèle de domaine la laisse donc hors de `joins`, et la table de jonction apparaît comme une table ordinaire dotée de ses propres clés étrangères vers chaque extrémité. Les clients SQL l'atteignent en joignant cette table ; les clients Cypher la traversent comme une relation unique. [tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` est alimentée avec une ligne par contrainte de clé primaire et UNIQUE (`indrelid` = oid de la table, `indkey` = attnums de clé ordonnés, `indisprimary`/`indisunique` définis). Les clients qui résolvent les colonnes clés via `pg_index.indkey` plutôt que via `pg_constraint` — DataGrip, par exemple — découvrent les bonnes colonnes via la jointure standard `pg_index` → `pg_attribute`. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 Les expressions scalaires suivantes sont également interceptées : (REQ-588)

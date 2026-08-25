@@ -738,6 +738,7 @@ relationships:
 在關係上設定 `materialize: true`，即可為跨數據來源的 JOIN 自動產生具體化檢視。(REQ-158) 這藉由預先計算 JOIN 結果來避免昂貴的聯邦查詢。
 
 - 只有跨數據來源的關係會產生 MV（同一數據來源的 JOIN 本來就很快）(REQ-159)
+- 在由聯結資料表支撐的關係上，MV 涵蓋的是兩跳走訪——來源端跳、聯結跳、判別欄，以及聯結資料表自身的欄位作為邊屬性。聯結資料表算作一條腿，因此只要三張資料表中任何一張位於不同的數據來源，這條邊就是跨數據來源的（REQ-1586）
 - MV 起初是過時的，由背景重新整理迴圈填入 (REQ-160)
 - 對任一方來源表的變更操作會將 MV 標記為過時以便重新整理 (REQ-543)
 - `refresh_interval` 預設為 300 秒（5 分鐘）(REQ-543)
@@ -800,6 +801,9 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
+      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # via_type_column/via_type_value when the junction is discriminated) to
+      # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
     target_schema: mv_cache
     refresh_interval: 300
