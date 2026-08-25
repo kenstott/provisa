@@ -217,6 +217,82 @@ INSERT INTO pet_store.pet_companions (pet_id, companion_pet_id, relation_type, s
     (3, 7, 'shares enclosure', '2025-04-18', 'Supervised yard time only'),
     (4, 6, 'littermate',       '2023-07-02', 'Half-siblings, same sire');
 
+-- REQ-1586: the second junction, and the first that links two different entities. pet_companions
+-- is recursive (pets to pets), which is the harder shape to read; this one is the ordinary
+-- many-to-many, and its label comes from the relationship's alias (via_label_source: fixed)
+-- rather than from a discriminator column.
+CREATE TABLE pet_store.vets (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    clinic VARCHAR(100) NOT NULL,
+    specialty VARCHAR(50) NOT NULL
+);
+
+COMMENT ON TABLE pet_store.vets IS 'Veterinarians the store refers pets to';
+
+INSERT INTO pet_store.vets (name, clinic, specialty) VALUES
+    ('Dr. Amara Osei',   'Riverside Animal Hospital', 'small animal'),
+    ('Dr. Ben Halloran', 'Riverside Animal Hospital', 'exotics'),
+    ('Dr. Ingrid Vance', 'Northgate Veterinary',      'large carnivore'),
+    ('Dr. Paulo Reyes',  'Northgate Veterinary',      'dentistry');
+
+CREATE TABLE pet_store.pet_visits (
+    id SERIAL PRIMARY KEY,
+    pet_id INTEGER NOT NULL REFERENCES pet_store.pets(id),
+    vet_id INTEGER NOT NULL REFERENCES pet_store.vets(id),
+    visit_date DATE NOT NULL,
+    reason VARCHAR(200) NOT NULL
+);
+
+COMMENT ON TABLE pet_store.pet_visits IS 'Junction table backing the TREATED_BY relationship between pets and vets';
+
+INSERT INTO pet_store.pet_visits (pet_id, vet_id, visit_date, reason) VALUES
+    (1, 1, '2025-02-14', 'Annual vaccination'),
+    (2, 1, '2025-03-02', 'Dental scaling referral'),
+    (2, 4, '2025-03-19', 'Dental scaling'),
+    (3, 1, '2025-04-08', 'Limp in left forepaw'),
+    (4, 3, '2025-01-27', 'Weight check'),
+    (5, 3, '2025-05-11', 'Claw trim under sedation'),
+    (6, 3, '2025-06-02', 'Skin condition follow-up'),
+    (7, 2, '2025-06-21', 'Overgrown incisors');
+
+-- REQ-1586: the third junction, and the third way a junction can be labelled — here the edge type
+-- is the junction table's own name (via_label_source: table), so no alias and no discriminator
+-- column is involved.
+CREATE TABLE pet_store.playgroups (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    yard VARCHAR(50) NOT NULL,
+    max_size INTEGER NOT NULL
+);
+
+COMMENT ON TABLE pet_store.playgroups IS 'Supervised exercise groups run in the store yards';
+
+INSERT INTO pet_store.playgroups (name, yard, max_size) VALUES
+    ('Morning Small Animals', 'Yard A', 6),
+    ('Afternoon Dogs',        'Yard B', 4),
+    ('Carnivore Rotation',    'Yard C', 3);
+
+CREATE TABLE pet_store.playgroup_members (
+    id SERIAL PRIMARY KEY,
+    pet_id INTEGER NOT NULL REFERENCES pet_store.pets(id),
+    playgroup_id INTEGER NOT NULL REFERENCES pet_store.playgroups(id),
+    joined_on DATE NOT NULL,
+    note VARCHAR(200) NOT NULL
+);
+
+COMMENT ON TABLE pet_store.playgroup_members IS 'Junction table backing the PLAYGROUP_MEMBERS relationship between pets and playgroups';
+
+INSERT INTO pet_store.playgroup_members (pet_id, playgroup_id, joined_on, note) VALUES
+    (1, 1, '2025-01-09', 'Settles quickly with the rabbits'),
+    (2, 1, '2025-01-09', 'Needs a high perch'),
+    (7, 1, '2025-02-01', 'Shortened sessions'),
+    (3, 2, '2025-02-17', 'Recall training in progress'),
+    (1, 2, '2025-03-04', 'Supervised trial'),
+    (4, 3, '2025-01-20', 'Alternates days with Lion 2'),
+    (5, 3, '2025-01-20', 'Alternates days with Lion 1'),
+    (6, 3, '2025-04-14', 'Solo slot only');
+
 -- Hello-world DB function: returns customers filtered by region.
 -- Exposed as the "hello_get_customers" tracked function in Provisa.
 CREATE OR REPLACE FUNCTION get_customers_by_region(p_region TEXT DEFAULT NULL)

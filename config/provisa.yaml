@@ -170,6 +170,27 @@ relationships:
   via_type_column: relation_type
   via_type_value: shares enclosure
   via_label_source: column
+- alias: TREATED_BY
+  cardinality: one-to-many
+  id: pets-treated-by-vets
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: vets
+  via_table: pet_visits
+  via_source_column: pet_id
+  via_target_column: vet_id
+  via_label_source: fixed
+- cardinality: one-to-many
+  id: pets-in-playgroups
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: playgroups
+  via_table: playgroup_members
+  via_source_column: pet_id
+  via_target_column: playgroup_id
+  via_label_source: table
 roles:
 # REQ-1297/REQ-1349: platform_admin and org_admin are both absent by design. schema.sql seeds each
 # — platform_admin control-plane only, org_admin with the org-scoped rights including org_settings
@@ -311,6 +332,143 @@ tables:
   schema: pet_store
   source_id: pet-store-pg
   table: pet_companions
+- columns:
+  - description: Unique identifier for the vet
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Vet's name
+    name: name
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Practice the vet works out of
+    name: clinic
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Kind of animal the vet is licensed to treat
+    name: specialty
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: "Veterinarians the store refers pets to"
+  domain_id: pet-store
+  schema: pet_store
+  source_id: pet-store-pg
+  table: vets
+- columns:
+  - description: Unique identifier for the visit
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet that was seen
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Vet who saw the pet
+    name: vet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date of the visit
+    name: visit_date
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Why the pet was brought in
+    name: reason
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  # REQ-1586: the junction behind TREATED_BY. Two different entities, so this is the ordinary
+  # many-to-many shape rather than pet_companions' recursive one, and the edge type comes from the
+  # relationship's alias (via_label_source: fixed).
+  description: "Vet visits — the junction behind the TREATED_BY relationship between pets and vets"
+  domain_id: pet-store
+  schema: pet_store
+  source_id: pet-store-pg
+  table: pet_visits
+- columns:
+  - description: Unique identifier for the playgroup
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Name the playgroup is scheduled under
+    name: name
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Yard the playgroup runs in
+    name: yard
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Most pets the yard takes at once
+    name: max_size
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  description: "Supervised exercise groups run in the store yards"
+  domain_id: pet-store
+  schema: pet_store
+  source_id: pet-store-pg
+  table: playgroups
+- columns:
+  - description: Unique identifier for the membership
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet enrolled in the playgroup
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Playgroup the pet is enrolled in
+    name: playgroup_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date the pet joined the playgroup
+    name: joined_on
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Handling note for this pet in this group
+    name: note
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  # REQ-1586: the junction behind PLAYGROUP_MEMBERS, and the third way a junction names its edge —
+  # the junction table's own name (via_label_source: table), with no alias and no discriminator.
+  description: "Playgroup enrolment — the junction behind the PLAYGROUP_MEMBERS relationship between pets and playgroups"
+  domain_id: pet-store
+  schema: pet_store
+  source_id: pet-store-pg
+  table: playgroup_members
 - alias: pet_by_status
   columns:
   - description: Status to filter on - sent to the Petstore API as a query parameter

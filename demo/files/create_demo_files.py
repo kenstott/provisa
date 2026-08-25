@@ -346,6 +346,72 @@ def create_pet_store_sqlite() -> None:
             (4, 2, 3, 'bonded pair',      '2024-11-05', 'Cat grooms the dog daily'),
             (5, 3, 7, 'shares enclosure', '2025-04-18', 'Supervised yard time only'),
             (6, 4, 6, 'littermate',       '2023-07-02', 'Half-siblings, same sire');
+
+        -- REQ-1586: the second junction, and the first that links two different entities.
+        -- pet_companions is recursive (pets to pets); this one is the ordinary many-to-many, and
+        -- its edge type comes from the relationship's alias (via_label_source: fixed).
+        CREATE TABLE vets (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            clinic TEXT NOT NULL,
+            specialty TEXT NOT NULL
+        );
+
+        INSERT INTO vets (id, name, clinic, specialty) VALUES
+            (1, 'Dr. Amara Osei',   'Riverside Animal Hospital', 'small animal'),
+            (2, 'Dr. Ben Halloran', 'Riverside Animal Hospital', 'exotics'),
+            (3, 'Dr. Ingrid Vance', 'Northgate Veterinary',      'large carnivore'),
+            (4, 'Dr. Paulo Reyes',  'Northgate Veterinary',      'dentistry');
+
+        CREATE TABLE pet_visits (
+            id INTEGER PRIMARY KEY,
+            pet_id INTEGER NOT NULL REFERENCES pets(id),
+            vet_id INTEGER NOT NULL REFERENCES vets(id),
+            visit_date TEXT NOT NULL,
+            reason TEXT NOT NULL
+        );
+
+        INSERT INTO pet_visits (id, pet_id, vet_id, visit_date, reason) VALUES
+            (1, 1, 1, '2025-02-14', 'Annual vaccination'),
+            (2, 2, 1, '2025-03-02', 'Dental scaling referral'),
+            (3, 2, 4, '2025-03-19', 'Dental scaling'),
+            (4, 3, 1, '2025-04-08', 'Limp in left forepaw'),
+            (5, 4, 3, '2025-01-27', 'Weight check'),
+            (6, 5, 3, '2025-05-11', 'Claw trim under sedation'),
+            (7, 6, 3, '2025-06-02', 'Skin condition follow-up'),
+            (8, 7, 2, '2025-06-21', 'Overgrown incisors');
+
+        -- REQ-1586: the third junction, and the third way a junction can be labelled — the edge
+        -- type is the junction table's own name (via_label_source: table).
+        CREATE TABLE playgroups (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            yard TEXT NOT NULL,
+            max_size INTEGER NOT NULL
+        );
+
+        INSERT INTO playgroups (id, name, yard, max_size) VALUES
+            (1, 'Morning Small Animals', 'Yard A', 6),
+            (2, 'Afternoon Dogs',        'Yard B', 4),
+            (3, 'Carnivore Rotation',    'Yard C', 3);
+
+        CREATE TABLE playgroup_members (
+            id INTEGER PRIMARY KEY,
+            pet_id INTEGER NOT NULL REFERENCES pets(id),
+            playgroup_id INTEGER NOT NULL REFERENCES playgroups(id),
+            joined_on TEXT NOT NULL,
+            note TEXT NOT NULL
+        );
+
+        INSERT INTO playgroup_members (id, pet_id, playgroup_id, joined_on, note) VALUES
+            (1, 1, 1, '2025-01-09', 'Settles quickly with the rabbits'),
+            (2, 2, 1, '2025-01-09', 'Needs a high perch'),
+            (3, 7, 1, '2025-02-01', 'Shortened sessions'),
+            (4, 3, 2, '2025-02-17', 'Recall training in progress'),
+            (5, 1, 2, '2025-03-04', 'Supervised trial'),
+            (6, 4, 3, '2025-01-20', 'Alternates days with Lion 2'),
+            (7, 5, 3, '2025-01-20', 'Alternates days with Lion 1'),
+            (8, 6, 3, '2025-04-14', 'Solo slot only');
     """)
     conn.commit()
     conn.close()
