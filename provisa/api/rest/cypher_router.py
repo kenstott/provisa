@@ -799,6 +799,11 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "type": r.rel_type,
                     "source": label_map.nodes[r.source_label].label,
                     "target": label_map.nodes[r.target_label].label,
+                    # REQ-1586: the associative table a junction-backed edge traverses, and the
+                    # columns of it that read as relationship properties. Both are absent on an
+                    # FK/PK-backed edge, which is how a client tells the two apart.
+                    "junction_table_name": r.via.table_name if r.via else None,
+                    "properties": sorted(r.properties.keys()),
                 }
                 for r in label_map.relationships.values()
             ],

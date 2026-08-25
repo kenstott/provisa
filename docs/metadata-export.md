@@ -58,7 +58,7 @@ synthesized address can reach a real mailbox. Approved relationships ride in a c
 `provisaRelationships`, which the adapter registers on the `table` type before the first table that
 carries one — OpenMetadata rejects an extension field its entity type has not declared. The
 property is a `string` holding a JSON array because OpenMetadata's own tabular property type caps a
-table at three columns and an approved relationship carries eight fields.
+table at three columns and an approved relationship carries far more than that.
 [tool-verified: provisa/api/metadata_export/openmetadata.py:71-80, 223-258, 431-459]
 
 ## Configuration
@@ -147,7 +147,13 @@ A daily export at 06:00:
   [tool-verified: `build_snapshot`, provisa/api/metadata_export/builder.py]
 - **Domains** — each domain's description and its steward. A domain with no steward publishes
   without one rather than with an invented owner.
-- **Approved relationships** — the modeled joins, with cardinality, alias, owner and version.
+- **Approved relationships** — the modeled joins, with cardinality, alias, owner and version. Each
+  edge also carries its `kind`. A `junction` edge reaches its target through an associative table
+  rather than a column pair, so its `sourceColumn`/`targetColumn` are the two endpoint keys and a
+  catalog that read them as a join condition would invent a foreign key that does not exist; the
+  junction table, its two key columns, and the discriminator that splits it into several edge types
+  publish alongside as `via`. (REQ-1586)
+  [tool-verified: `provisa/api/metadata_export/model.py:110-145`]
 - **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control.
 - **Lineage** — column-level edges with the transforms applied along each one.
 

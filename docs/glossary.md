@@ -124,6 +124,14 @@ Terms relate to other terms through typed edges. The supported relationship type
 Relationships are directional. The UI shows both outgoing edges (this term → another) and incoming
 edges (another term → this term), labeling each direction with its own plain-language phrase.
 
+The edges live in `glossary_term_edges`, an associative table declared as a junction relationship
+(REQ-1586): its `rel_type` column is the discriminator, so each of the types above is a separate
+Cypher relationship type between two `GlossaryTerm` nodes rather than a property on a reified node.
+The table is provisioned with the rest of the metadata schema and is not shown as a node in graph
+clients — it is the edge. Nothing about it is glossary-specific: it is declared the same way you
+would declare a junction over your own tables, and it is read by the same code.
+[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
+
 ## Abstract terms
 
 An abstract term has no physical column refs of its own. Use one for a business concept that spans

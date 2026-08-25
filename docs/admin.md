@@ -117,6 +117,33 @@ mutation {
 }
 ```
 
+Declare a junction-backed relationship (REQ-1586):
+
+```graphql
+mutation {
+  upsertRelationship(input: {
+    id: "pets-bonded-pair"
+    sourceTableId: "pets"
+    targetTableId: "pets"
+    sourceColumn: "id"
+    targetColumn: "id"
+    cardinality: "one-to-many"
+    viaTable: "pet_companions"
+    viaSourceColumn: "pet_id"
+    viaTargetColumn: "companion_pet_id"
+    viaTypeColumn: "companion_type"
+    viaTypeValue: "bonded pair"
+    viaLabelSource: "column"
+  }) {
+    success
+  }
+}
+```
+
+An associative table is declared as an edge, never discovered. `viaTable` names a registered table; its two key columns carry the edge, and every remaining column becomes an attribute of the relationship, filterable like any other field. `viaTypeColumn` / `viaTypeValue` split one junction table into several edge types — three rows of `pet_companions` with `companion_type` of `bonded pair`, `littermate`, and `shares enclosure` are three distinct relationships over the same pair of tables.
+
+`viaLabelSource` nominates where the exposed name comes from, and all three forms are upper-snake-cased for Cypher: `column` uses `viaTypeValue` (`BONDED_PAIR`), `table` uses the junction table's own name (`PET_COMPANIONS`), `fixed` uses the declared `alias`. A junction table declared this way is an edge and not an entity — it is dropped from the node labels, so it never appears as a node pill in the graph UI. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+
 ### AI Relationship Discovery
 
 Trigger Claude-powered FK analysis via REST (REQ-167, REQ-018):

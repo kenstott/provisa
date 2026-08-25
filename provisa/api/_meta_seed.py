@@ -17,6 +17,8 @@ the meta.* tables) upserted into ``relationships`` at startup. Each row is
 
 from __future__ import annotations
 
+from provisa.core.glossary import TERM_EDGE_TYPES
+
 _ADMIN = "provisa-admin"
 _OTEL = "provisa-otel"
 
@@ -566,7 +568,9 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
 # REQ-1586: junction-backed edges. glossary_term_edges is an associative table, not an entity, so
 # it is declared as first-class relationships rather than reached through a reified node — one row
 # per rel_type value, each naming itself from that value ("column" nomination). This is what makes
-# (t:GlossaryTerm)-[:KIND_OF*1..3]->(:GlossaryTerm) count whole hops.
+# (t:GlossaryTerm)-[:KIND_OF*1..3]->(:GlossaryTerm) count whole hops. Nothing here is glossary
+# machinery: these are ordinary `relationships` rows whose via_* columns are filled, seeded by the
+# same loop and read by the same label map as a junction a modeller declares on their own table.
 # (id, src_source, src_table, src_col, tgt_col, cardinality, tgt_source, tgt_table,
 #  via_table, via_source_column, via_target_column, via_type_column, via_type_value,
 #  via_label_source)
@@ -589,5 +593,103 @@ META_JUNCTION_RELATIONSHIPS: list[
         _rt,
         "column",
     )
-    for _rt in ("KIND_OF", "RELATED_TO", "PART_OF", "SYNONYM_OF")
+    # Every supported edge type, read from the one list the glossary itself validates against —
+    # a hand-kept subset here would silently leave the newer types untraversable in Cypher.
+    for _rt in TERM_EDGE_TYPES
 ]
+
+# The column names a seeded relationship row writes, FK-backed and junction-backed alike.
+RELATIONSHIP_SEED_COLUMNS = (
+    "source_table_id",
+    "target_table_id",
+    "source_column",
+    "target_column",
+    "cardinality",
+    "alias",
+    "graphql_alias",
+    "via_table_id",
+    "via_source_column",
+    "via_target_column",
+    "via_type_column",
+    "via_type_value",
+    "via_label_source",
+)
+
+
+def meta_relationship_seed_rows() -> list[
+    tuple[tuple[str, str], tuple[str, str], str | None, dict]
+]:
+    """Every seeded meta relationship, normalized to one shape (REQ-1586).
+
+    Returns ``((src_source, src_table), (tgt_source, tgt_table), via_table_name, columns)`` per
+    row. The two literals above differ in shape, not in kind: a junction-backed edge is an ordinary
+    ``relationships`` row whose via_* columns are filled, so both normalize here and a single seed
+    loop writes them. ``via_table_name`` is the junction's registered table name in the source that
+    holds the endpoints, or ``None`` on an FK/PK-backed edge.
+    """
+    rows: list[tuple[tuple[str, str], tuple[str, str], str | None, dict]] = []
+    _blank = dict.fromkeys(RELATIONSHIP_SEED_COLUMNS)
+    for (
+        _rid,
+        _src_source,
+        _src_table,
+        _src_col,
+        _tgt_col,
+        _card,
+        _tgt_source,
+        _tgt_table,
+        _alias,
+        _gql_alias,
+    ) in META_RELATIONSHIPS:
+        rows.append(
+            (
+                (_src_source, _src_table),
+                (_tgt_source, _tgt_table),
+                None,
+                {
+                    **_blank,
+                    "id": _rid,
+                    "source_column": _src_col,
+                    "target_column": _tgt_col,
+                    "cardinality": _card,
+                    "alias": _alias,
+                    "graphql_alias": _gql_alias,
+                },
+            )
+        )
+    for (
+        _rid,
+        _src_source,
+        _src_table,
+        _src_col,
+        _tgt_col,
+        _card,
+        _tgt_source,
+        _tgt_table,
+        _via_table,
+        _via_src_col,
+        _via_tgt_col,
+        _via_type_col,
+        _via_type_val,
+        _via_label_source,
+    ) in META_JUNCTION_RELATIONSHIPS:
+        rows.append(
+            (
+                (_src_source, _src_table),
+                (_tgt_source, _tgt_table),
+                _via_table,
+                {
+                    **_blank,
+                    "id": _rid,
+                    "source_column": _src_col,
+                    "target_column": _tgt_col,
+                    "cardinality": _card,
+                    "via_source_column": _via_src_col,
+                    "via_target_column": _via_tgt_col,
+                    "via_type_column": _via_type_col,
+                    "via_type_value": _via_type_val,
+                    "via_label_source": _via_label_source,
+                },
+            )
+        )
+    return rows

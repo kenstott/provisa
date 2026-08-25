@@ -506,73 +506,13 @@ async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386
 
 
 async def _seed_meta_relationships(conn: "Connection") -> None:
-    """Seed FK relationships between meta and ops tables (idempotent, runs after both seeds)."""
-    from provisa.api._meta_seed import META_RELATIONSHIPS
+    """Seed the meta/ops relationship rows (idempotent, runs after both seeds).
 
-    for (
-        _rid,
-        _src_source,
-        _src_table,
-        _src_col,
-        _tgt_col,
-        _card,
-        _tgt_source,
-        _tgt_table,
-        _alias,
-        _gql_alias,
-    ) in META_RELATIONSHIPS:
-        _src_id = (
-            await conn.execute_core(
-                select(_registered_tables_t.c.id)
-                .where(
-                    _registered_tables_t.c.source_id == _src_source,
-                    _registered_tables_t.c.table_name == _src_table,
-                )
-                .limit(1)
-            )
-        ).scalar()
-        _tgt_id = (
-            await conn.execute_core(
-                select(_registered_tables_t.c.id)
-                .where(
-                    _registered_tables_t.c.source_id == _tgt_source,
-                    _registered_tables_t.c.table_name == _tgt_table,
-                )
-                .limit(1)
-            )
-        ).scalar()
-        # Empty cross join in the former INSERT...SELECT produced no row; mirror that skip.
-        if _src_id is None or _tgt_id is None:
-            continue
-        await conn.upsert(
-            _relationships_t,
-            {
-                "id": _rid,
-                "source_table_id": _src_id,
-                "target_table_id": _tgt_id,
-                "source_column": _src_col,
-                "target_column": _tgt_col,
-                "cardinality": _card,
-                "alias": _alias,
-                "graphql_alias": _gql_alias,
-            },
-            index_elements=["id"],
-            update_columns=[
-                "source_table_id",
-                "target_table_id",
-                "source_column",
-                "target_column",
-                "cardinality",
-                "alias",
-                "graphql_alias",
-            ],
-        )
-    await _seed_meta_junction_relationships(conn)
-
-
-async def _seed_meta_junction_relationships(conn: "Connection") -> None:
-    """REQ-1586: seed the junction-backed meta relationships (idempotent)."""
-    from provisa.api._meta_seed import META_JUNCTION_RELATIONSHIPS
+    One loop for both edge shapes: an FK/PK-backed edge and a junction-backed one (REQ-1586) are
+    the same ``relationships`` row, differing only in whether the via_* columns are filled, so the
+    glossary's edges go in the same way a modeller-declared junction does.
+    """
+    from provisa.api._meta_seed import RELATIONSHIP_SEED_COLUMNS, meta_relationship_seed_rows
 
     async def _table_id(source_id: str, table_name: str) -> int | None:
         return (
@@ -586,48 +526,28 @@ async def _seed_meta_junction_relationships(conn: "Connection") -> None:
             )
         ).scalar()
 
-    for (
-        _rid,
-        _src_source,
-        _src_table,
-        _src_col,
-        _tgt_col,
-        _card,
+    for (_src_source, _src_table), (
         _tgt_source,
         _tgt_table,
-        _via_table,
-        _via_src_col,
-        _via_tgt_col,
-        _via_type_col,
-        _via_type_val,
-        _via_label_source,
-    ) in META_JUNCTION_RELATIONSHIPS:
+    ), _via_table, _cols in meta_relationship_seed_rows():
         _src_id = await _table_id(_src_source, _src_table)
         _tgt_id = await _table_id(_tgt_source, _tgt_table)
         # The junction lives in the same control-plane source as the endpoints it joins.
-        _via_id = await _table_id(_src_source, _via_table)
-        # Mirrors the FK seed's skip: a meta table that is not registered yet has no edge to seed.
-        if _src_id is None or _tgt_id is None or _via_id is None:
+        _via_id = None if _via_table is None else await _table_id(_src_source, _via_table)
+        # Empty cross join in the former INSERT...SELECT produced no row; mirror that skip. A
+        # declared junction that is not registered yet has no edge to seed either.
+        if _src_id is None or _tgt_id is None or (_via_table is not None and _via_id is None):
             continue
-        _cols = {
-            "id": _rid,
-            "source_table_id": _src_id,
-            "target_table_id": _tgt_id,
-            "source_column": _src_col,
-            "target_column": _tgt_col,
-            "cardinality": _card,
-            "via_table_id": _via_id,
-            "via_source_column": _via_src_col,
-            "via_target_column": _via_tgt_col,
-            "via_type_column": _via_type_col,
-            "via_type_value": _via_type_val,
-            "via_label_source": _via_label_source,
-        }
         await conn.upsert(
             _relationships_t,
-            _cols,
+            {
+                **_cols,
+                "source_table_id": _src_id,
+                "target_table_id": _tgt_id,
+                "via_table_id": _via_id,
+            },
             index_elements=["id"],
-            update_columns=[k for k in _cols if k != "id"],
+            update_columns=list(RELATIONSHIP_SEED_COLUMNS),
         )
 
 

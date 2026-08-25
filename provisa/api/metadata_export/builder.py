@@ -33,6 +33,7 @@ from provisa.api.metadata_export.model import (
     DomainAsset,
     GlossaryTermAsset,
     GlossaryTermEdge,
+    JunctionRef,
     LineageEdge,
     MetadataSnapshot,
     ModelTag,
@@ -167,6 +168,21 @@ def _relationship_edges(
                 version=rel.version,
                 needs_review=rel.needs_review,
                 semantic_uri=relationship_uri(org_id, source, rel.alias, rel.id),
+                # REQ-1586: a junction-backed edge is not a column-pair join. The declaration
+                # travels out with it so a catalog can render the two hops instead of inventing a
+                # direct FK between the endpoint keys.
+                kind=rel.kind,
+                via=(
+                    JunctionRef(
+                        table=table_ref(index.resolve(rel.via_table, context)),
+                        source_column=rel.via_source_column,
+                        target_column=rel.via_target_column,
+                        type_column=rel.via_type_column,
+                        type_value=rel.via_type_value,
+                    )
+                    if rel.via_table
+                    else None
+                ),
             )
         )
     return edges

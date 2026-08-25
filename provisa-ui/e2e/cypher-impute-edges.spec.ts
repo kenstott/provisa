@@ -53,7 +53,20 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
   // stayed on "Run a Cypher query to explore the graph" and .gf-meta-text never rendered).
   // ControlOrMeta is the select-all modifier CodeMirror's Mod- bindings resolve to per platform —
   // Meta alone is a no-op on the Linux CI runners.
-  const QUERY = "MATCH (n:Meta) RETURN n LIMIT 50";
+  // Impute only builds a query for a relationship whose BOTH endpoint labels are in the visible
+  // set, so the node set has to hold two related labels — a set of one yields no edges by design.
+  // Naming the two labels is what makes that deterministic: a bare `MATCH (n:Meta) LIMIT k` leans
+  // on where k lands in a union whose branch order and row counts are registration artifacts (at
+  // LIMIT 50 the whole window was registered_tables and the second label never appeared; at 200 it
+  // reached the second branch but scanned enough of the Meta union to outrun the 60s budget under
+  // full-suite load). RegisteredTables and TableColumns are joined by HAS_TABLE_COLUMNS, so the two
+  // small windows below are a node set impute can always draw edges across. A single bounded
+  // pattern rather than a UNION of two branches: aliasing a node in a union branch (`RETURN t AS n`)
+  // puts the synthetic __id/__label columns through the column-visibility check under the alias and
+  // the query comes back 403 V003.
+  const QUERY =
+    "MATCH (t:Meta:RegisteredTables)-[:HAS_TABLE_COLUMNS]->(c:Meta:TableColumns) " +
+    "RETURN t, c LIMIT 50";
   await expect(async () => {
     await editor.click();
     await page.keyboard.press("ControlOrMeta+a");

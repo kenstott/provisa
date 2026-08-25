@@ -52405,9 +52405,21 @@
     decision and not an accident of the grammar. Where a dropped table is parameterized, the arguments
     supplied once bind on every hop's copy of it, since an unbound copy is a pattern the binder cannot
     satisfy rather than a filter that matched nothing.
-    FIRST ADOPTER -- glossary_term_edges is declared as KIND_OF, RELATED_TO, PART_OF and SYNONYM_OF over
-    glossary_terms, replacing the edges_from/edges_to pair, so (t:GlossaryTerm)-[:KIND_OF*1..3]->(:GlossaryTerm)
-    walks the hierarchy and counts hops correctly.
+    FIRST ADOPTER -- glossary_term_edges is declared over glossary_terms once per supported edge type,
+    replacing the edges_from/edges_to pair, so (t:GlossaryTerm)-[:KIND_OF*1..3]->(:GlossaryTerm) walks the
+    hierarchy and counts hops correctly. The set of types is read from the one list the glossary itself
+    validates a stored edge against, not kept by hand beside it: a hand-kept subset leaves a type the
+    curator can save but Cypher cannot traverse, and the divergence is silent. It is an adopter and
+    nothing more: the glossary gets no junction machinery of its own. Its edges are ordinary
+    relationship rows with the via_* columns filled, written by the same seed loop that writes the
+    FK-backed meta edges and read by the same label map that reads a junction a modeller declares on
+    their own table. A second code path keyed to glossary_term_edges would let the two shapes drift,
+    and the built-in case is the one that must exercise the general mechanism rather than shortcut it.
+    WHAT THE GRAPH SCHEMA PUBLISHES -- the graph-schema endpoint names, on every relationship type, the
+    junction table it traverses and the attributes that traversal exposes; both are absent on an FK/PK edge.
+    A client has no other way to tell the two apart, because the junction table is deliberately not among
+    the node labels, and it needs to: a junction edge offers filterable attributes and an FK edge offers
+    none.
     HOW IT IS DEMONSTRATED -- the shipped demo carries a junction of its own, because glossary_term_edges
     is provisioned into meta and never appears on the modeling surface a new user opens. pet_companions
     joins pet_store.pets to itself and is declared three times over one table, once per relation_type

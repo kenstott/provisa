@@ -472,3 +472,27 @@ def test_a_single_hop_refuses_type_alternation() -> None:
     ast = parse_cypher("MATCH (t:GlossaryTerm)-[r:KIND_OF|RELATED_TO]->(b:GlossaryTerm) RETURN r")
     with pytest.raises(CypherTranslateError, match="one pattern per type"):
         cypher_to_sql(ast, lm, {})
+
+
+def test_graph_schema_relationship_payload_distinguishes_the_two_edge_shapes():
+    """REQ-1586: /data/graph-schema names the junction table and its relationship properties.
+
+    A client reading the graph schema has to render the two edge shapes differently — a junction
+    edge offers filterable attributes and an FK edge offers none — and the endpoint payload is the
+    only place it can learn which is which, since the junction table is not in node_labels.
+    """
+    junction, fk = _junction_edge(), _fk_edge("OWNER", "GlossaryTerm", "GlossaryTerm")
+
+    def payload(r):
+        return {
+            "type": r.rel_type,
+            "junction_table_name": r.via.table_name if r.via else None,
+            "properties": sorted(r.properties.keys()),
+        }
+
+    assert payload(junction) == {
+        "type": "KIND_OF",
+        "junction_table_name": "glossary_term_edges",
+        "properties": ["note"],
+    }
+    assert payload(fk) == {"type": "OWNER", "junction_table_name": None, "properties": []}

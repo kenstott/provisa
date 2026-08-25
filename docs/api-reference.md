@@ -393,6 +393,8 @@ Return the graph view of the role's schema: node labels and their relationship t
 
 **Response:** `application/json` with `node_labels` (each carrying `pk`/`pk_columns`) and `relationship_types`.
 
+Each relationship type also carries `junction_table_name` and `properties` (REQ-1586). On a junction-backed edge the first names the associative table it traverses and the second lists the columns of that table readable as `r.attr` and filterable in `WHERE`; on a foreign-key-backed edge the name is `null` and the property list is empty, which is how a client tells the two apart. The junction table itself is never a node label — it is the edge, so it has no pill in a graph client and no row in `node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+
 ---
 
 ### `GET /data/domains`
@@ -544,7 +546,7 @@ Updatable fields per section:
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
 - `naming`: `domain_prefix`, `convention` — writes to config file and triggers schema reload (REQ-253)
-- `relationships`: `auto_track_fk`
+- `relationships`: `auto_track_fk` — governs foreign-key tracking only. A junction-backed relationship is declared on the table registration and is never inferred, so this setting does not reach it. (REQ-1586)
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Response:**

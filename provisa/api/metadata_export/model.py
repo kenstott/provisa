@@ -107,6 +107,21 @@ class SourceAsset:  # REQ-1070
 
 
 @dataclass
+class JunctionRef:  # REQ-1586
+    """The associative table a junction-backed relationship traverses, as a catalog reference.
+
+    ``type_column``/``type_value`` are the discriminator that splits one junction table into
+    several edge types; both are None on a junction that backs a single relationship.
+    """
+
+    table: AssetRef
+    source_column: str
+    target_column: str
+    type_column: str | None = None
+    type_value: str | None = None
+
+
+@dataclass
 class RelationshipEdge:  # REQ-019, REQ-020, REQ-1070
     """An approved relationship, carrying its defining steward and version (REQ-020)."""
 
@@ -123,6 +138,11 @@ class RelationshipEdge:  # REQ-019, REQ-020, REQ-1070
     # REQ-1385: a relationship is a navigational field of its source concept —
     # <source table uri>#rel:<alias> (registry id when the edge has no alias).
     semantic_uri: str = ""
+    # REQ-1586: "direct" or "junction". A junction-backed edge reaches its target through an
+    # associative table, so source_column and target_column are the two endpoint keys and NOT a
+    # column pair a catalog can join on — kind is what tells a consumer to read ``via`` instead.
+    kind: str = "direct"
+    via: "JunctionRef | None" = None
 
 
 @dataclass
@@ -336,3 +356,21 @@ class MetadataSnapshot:  # REQ-1070
             AssetKind.TABLE.value: len(self.tables),
             AssetKind.COLUMN.value: len(self.columns()),
         }
+
+
+def junction_payload(edge: RelationshipEdge) -> dict:  # REQ-1586
+    """The junction half of an exported relationship, in the shape every adapter emits.
+
+    ``kind`` always ships so a consumer can tell the two edge shapes apart without inspecting
+    the rest of the payload; ``via`` ships only on a junction-backed edge.
+    """
+    payload: dict = {"kind": edge.kind}
+    if edge.via is not None:
+        payload["via"] = {
+            "table": edge.via.table.fqn(),
+            "sourceColumn": edge.via.source_column,
+            "targetColumn": edge.via.target_column,
+            "typeColumn": edge.via.type_column,
+            "typeValue": edge.via.type_value,
+        }
+    return payload

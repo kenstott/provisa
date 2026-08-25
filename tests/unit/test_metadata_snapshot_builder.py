@@ -325,3 +325,64 @@ def test_snapshot_of_an_empty_config_publishes_nothing_rather_than_failing():
     assert snapshot.asset_count() == {"source": 0, "domain": 0, "table": 0, "column": 0}
     assert snapshot.relationships == []
     assert snapshot.lineage == []
+
+
+def test_junction_relationship_publishes_its_associative_table():
+    # REQ-1586: a junction-backed edge's source_column/target_column are the two endpoint keys,
+    # so a catalog that reads them as a column pair would invent a direct FK that does not
+    # exist. The declaration rides out with the edge instead.
+    config = _config(
+        tables=[
+            _table(table_name="pets"),
+            _table(table_name="pet_companions"),
+        ],
+        relationships=[
+            Relationship(
+                id="pets-bonded-pair",
+                source_table_id="pets",
+                target_table_id="pets",
+                source_column="id",
+                target_column="id",
+                cardinality=Cardinality.one_to_many,
+                via_table="pet_companions",
+                via_source_column="pet_id",
+                via_target_column="companion_pet_id",
+                via_type_column="companion_type",
+                via_type_value="bonded pair",
+                via_label_source="column",
+            )
+        ],
+    )
+
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+
+    edge = snapshot.relationships[0]
+    assert edge.kind == "junction"
+    assert edge.via is not None
+    assert edge.via.table.fqn() == "wh.public.pet_companions"
+    assert edge.via.source_column == "pet_id"
+    assert edge.via.target_column == "companion_pet_id"
+    assert edge.via.type_column == "companion_type"
+    assert edge.via.type_value == "bonded pair"
+
+
+def test_fk_relationship_publishes_as_direct_with_no_junction():
+    config = _config(
+        tables=[_table(table_name="orders"), _table(table_name="customers")],
+        relationships=[
+            Relationship(
+                id="orders-to-customers",
+                source_table_id="orders",
+                target_table_id="customers",
+                source_column="customer_id",
+                target_column="id",
+                cardinality=Cardinality.many_to_one,
+            )
+        ],
+    )
+
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+
+    edge = snapshot.relationships[0]
+    assert edge.kind == "direct"
+    assert edge.via is None

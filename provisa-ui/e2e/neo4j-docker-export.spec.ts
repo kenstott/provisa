@@ -125,6 +125,21 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
 
   await waitForNeo4j();
 
+  // ── 0. Empty the database ─────────────────────────────────────────────────
+  // The count assertions at the end compare Neo4j's contents against what THIS attempt
+  // discovered and exported. A retry inherits whatever a previous attempt managed to write
+  // before it was cut short, so without this the counts describe two runs at once (an
+  // interrupted attempt left 2580 nodes behind and the retry's 1227 discovered nodes failed
+  // `nodeCount <= nodes.length`).
+  const wipeResp = await fetch(`${NEO4J_URL}/db/neo4j/tx/commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ statements: [{ statement: "MATCH (n) DETACH DELETE n" }] }),
+  });
+  expect(wipeResp.status, "neo4j wipe must succeed").toBe(200);
+  const wipeBody = (await wipeResp.json()) as { errors: Array<{ message: string }> };
+  expect(wipeBody.errors, `neo4j wipe errors: ${JSON.stringify(wipeBody.errors)}`).toHaveLength(0);
+
   // ── 1. Discover all node labels from the graph schema ─────────────────────
   const schemaResp = await request.get(`${BACKEND_URL}/data/graph-schema`);
   expect(schemaResp.status()).toBe(200);

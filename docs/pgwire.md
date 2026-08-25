@@ -130,6 +130,8 @@ Intercepted tables:
 
 `pg_constraint` is populated with real PK and FK data derived from the domain model's `pk_columns` and `joins`. (REQ-392, REQ-399) BI tools that inspect foreign-key relationships (Tableau, DBeaver, etc.) will see the join graph Provisa knows about. [tool-verified: `catalog.py:551-632`] Single-column joins between the same source/target pair whose target columns together form the target's composite primary key are collapsed into one FK row with multi-element `conkey`/`confkey` arrays. (REQ-1094) [tool-verified: `catalog_constraints.py`]
 
+A junction-backed relationship (REQ-1586) produces no FK row. It is an edge through an associative table, not a column pair, and `pg_constraint` has no shape for two hops — so the domain model leaves it out of `joins` and the junction table appears as an ordinary table with its own foreign keys to each endpoint. SQL clients reach it by joining that table; Cypher clients traverse it as a single relationship. [tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+
 `pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint` — DataGrip, for example — discover the correct columns through the standard `pg_index` → `pg_attribute` join. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
 
 The following scalar expressions are also intercepted: (REQ-588)

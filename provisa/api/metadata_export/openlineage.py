@@ -44,6 +44,7 @@ from provisa.api.metadata_export.provider import (
     MetadataExport,
     PublishResult,
 )
+from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
@@ -140,6 +141,8 @@ def _relationships_facet(edges: list[RelationshipEdge]) -> dict[str, Any]:
                 "owner": edge.owner.id if edge.owner is not None else None,
                 "version": edge.version,
                 "needsReview": edge.needs_review,
+                # REQ-1586: kind plus, on a junction-backed edge, the associative table it traverses.
+                **junction_payload(edge),
             }
             for edge in edges
         ]
