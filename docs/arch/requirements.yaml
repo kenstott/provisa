@@ -52524,6 +52524,7 @@
 
     And the page title, filter and action buttons do not move'
   tests:
+  - provisa-ui/src/__tests__/StickyHeaderLayout.test.ts
   - provisa-ui/e2e/relationships-header.spec.ts
   code:
   - provisa-ui/src/App.css

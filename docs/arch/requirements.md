@@ -16714,7 +16714,7 @@ On the relationships page nothing above the table's header leaves the screen: th
 
 **Code:** `provisa-ui/src/App.css`, `provisa-ui/src/pages/RelationshipsPage.tsx`, `provisa-ui/src/pages/TablesPage.tsx`, `provisa-ui/src/pages/SourcesPage.tsx`
 
-**Tests:** `provisa-ui/e2e/relationships-header.spec.ts`
+**Tests:** `provisa-ui/src/__tests__/StickyHeaderLayout.test.ts`, `provisa-ui/e2e/relationships-header.spec.ts`
 
 ### REQ-1588 · Admin UI {#REQ-1588}
 
