@@ -22,7 +22,7 @@ function rel(over: Partial<Relationship>): Relationship {
     targetTableName: "glossary_term",
     sourceColumn: "id",
     targetColumn: "id",
-    cardinality: "many_to_many",
+    cardinality: "many-to-many",
     materialize: false,
     refreshInterval: 0,
     targetFunctionName: null,

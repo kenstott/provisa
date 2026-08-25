@@ -75,19 +75,23 @@ export function buildErdStylesheet(isDark: boolean) {
         "target-arrow-color": p.relLine,
         "target-arrow-shape": "triangle",
         "source-arrow-color": p.relLine,
+        // Cardinality is stored hyphenated (Cardinality.many_to_one = "many-to-one").
         "source-arrow-shape": (ele: { data(k: string): unknown }) =>
-          (ele.data("cardinality") as string) === "many_to_many" ||
-          (ele.data("cardinality") as string) === "many_to_one"
+          (ele.data("cardinality") as string) === "many-to-many" ||
+          (ele.data("cardinality") as string) === "many-to-one"
             ? "triangle"
             : "none",
         label: (ele: { data(k: string): unknown }) => ele.data("label") as string,
         "font-size": 9,
         color: p.textMuted,
         "text-rotation": "none",
+        // The hash spreads the labels of edges that merely pass near each other; the pathIndex step
+        // separates the ones that genuinely share a node pair, whose labels are otherwise identical
+        // and so would land on the same row.
         "text-margin-y": (ele: { data(k: string): unknown }) => {
           const label = (ele.data("label") as string) ?? "";
           const hash = label.split("").reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
-          return ((hash % 3) - 1) * 14;
+          return ((hash % 3) - 1) * 14 + ((ele.data("pathIndex") as number) ?? 0) * 13;
         },
         "text-background-color": p.tableBg,
         "text-background-opacity": 1,
@@ -124,7 +128,11 @@ export function buildErdStylesheet(isDark: boolean) {
         "source-arrow-color": p.junction,
         "target-label": (ele: { data(k: string): unknown }) => ele.data("pathLabel") as string,
         "target-text-offset": 46,
-        "target-text-margin-y": -10,
+        // Several paths run through one junction between the same two nodes. Their type labels sit
+        // at the same offset from the junction, and the backgrounds are opaque, so without a step
+        // per path only the last-drawn type is readable.
+        "target-text-margin-y": (ele: { data(k: string): unknown }) =>
+          -10 - ((ele.data("pathIndex") as number) ?? 0) * 14,
         "font-size": 9,
         "text-background-color": p.tableBg,
         "text-background-opacity": 1,

@@ -104,7 +104,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     targetTableName: "customers",
     sourceColumn: "customer_id",
     targetColumn: "id",
-    cardinality: "many_to_one",
+    cardinality: "many-to-one",
     materialize: false,
     refreshInterval: 0,
     targetFunctionName: null,
@@ -389,7 +389,7 @@ describe("buildErdElements — junction relationships", () => {
       viaTypeColumn: "relation_type",
       viaTypeValue: "bonded_pair",
       viaLabelSource: "column",
-      cardinality: "many_to_many",
+      cardinality: "many-to-many",
       ...overrides,
     });
   }
@@ -449,6 +449,37 @@ describe("buildErdElements — junction relationships", () => {
       new Set(["BONDED_PAIR", "LITTERMATE", "SHARES_ENCLOSURE"]),
     );
     expect(new Set(edges.map((e) => e.data.id)).size).toBe(6);
+  });
+
+  it("parallel paths get their own label row so one does not cover the rest", () => {
+    const rels = [
+      viaRel({ id: 100, viaTypeValue: "bonded_pair" }),
+      viaRel({ id: 101, viaTypeValue: "littermate" }),
+      viaRel({ id: 102, viaTypeValue: "shares_enclosure" }),
+    ];
+    const { edges } = buildErdElements(
+      [pets, companions],
+      rels,
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    // The label offsets are derived from pathIndex, so every edge sharing a node pair — in either
+    // direction, since both legs are drawn in the same band — needs a distinct one.
+    expect(new Set(edges.map((e) => e.data.pathIndex))).toEqual(new Set([0, 1, 2, 3, 4, 5]));
+  });
+
+  it("a lone edge keeps the first row", () => {
+    const { edges } = buildErdElements(
+      [pets, companions],
+      [viaRel()],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(edges.map((e) => e.data.pathIndex)).toEqual([0, 1]);
   });
 
   it("the junction node is a diamond showing its name only", () => {

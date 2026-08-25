@@ -51,6 +51,11 @@ export interface ErdEdge {
   // rather than deduplicating into a single pair of legs.
   pathLabel: string;
   pathType: string;
+  // Which of the parallel edges between this node pair this one is. Several relationships through
+  // one junction run between the same two nodes, and their labels are placed at a fixed offset from
+  // the endpoint — without a per-edge step they land on the same spot, and the opaque label
+  // backgrounds leave only the last one legible.
+  pathIndex: number;
   via: boolean;
   proxy: boolean;
 }
@@ -86,14 +91,16 @@ export function buildTableLabel(
 }
 
 function cardinalityLabel(cardinality: string): string {
+  // Cardinality is stored hyphenated (provisa/core/models.py:135 Cardinality.one_to_many =
+  // "one-to-many") and reaches the client that way.
   switch (cardinality) {
-    case "one_to_many":
+    case "one-to-many":
       return "1:N";
-    case "many_to_one":
+    case "many-to-one":
       return "N:1";
-    case "many_to_many":
+    case "many-to-many":
       return "N:M";
-    case "one_to_one":
+    case "one-to-one":
       return "1:1";
     default:
       return cardinality;
@@ -183,6 +190,7 @@ export function buildErdElements(
 
   // Build edges, routing through domain proxy nodes when a table is collapsed.
   const seenEdges = new Set<string>();
+  const pairCounts = new Map<string, number>();
   const edges: ErdElements["edges"] = [];
 
   const pushEdge = (
@@ -199,6 +207,11 @@ export function buildErdElements(
     const key = `${src}→${tgt}:${opts.label}:${opts.pathType}:${opts.leg}`;
     if (seenEdges.has(key)) return;
     seenEdges.add(key);
+    // Count by unordered pair: the two directions between one pair are drawn in the same band, so
+    // an inbound and an outbound leg that shared an index would still overlap.
+    const pairKey = src < tgt ? `${src}|${tgt}` : `${tgt}|${src}`;
+    const pathIndex = pairCounts.get(pairKey) ?? 0;
+    pairCounts.set(pairKey, pathIndex + 1);
     const classes = ["erd-rel"];
     if (isProxy) classes.push("erd-rel--proxy");
     if (opts.leg) classes.push("erd-rel--via");
@@ -212,6 +225,7 @@ export function buildErdElements(
         label: opts.label,
         pathLabel: opts.pathLabel,
         pathType: opts.pathType,
+        pathIndex,
         via: opts.leg !== "",
         proxy: isProxy,
       } as ErdEdge,
@@ -244,11 +258,7 @@ export function buildErdElements(
     // proxy would claim a hop that the collapsed domain does not describe, so a junction that is
     // not rendered as a table collapses back to the direct A→B edge instead.
     const junctionNode =
-      r.viaTableId == null
-        ? null
-        : visibleTableIds.has(r.viaTableId)
-          ? `t:${r.viaTableId}`
-          : null;
+      r.viaTableId == null ? null : visibleTableIds.has(r.viaTableId) ? `t:${r.viaTableId}` : null;
 
     if (junctionNode) {
       // The type is written once per path, beside the junction. A row whose nomination names no
