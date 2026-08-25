@@ -48,12 +48,38 @@ def _junction(rel_type: str = "KIND_OF") -> JunctionMapping:
         catalog_name="provisa_admin",
         schema_name="public",
         table_name="glossary_term_edges",
+        type_name="GlossaryTermEdge",
         source_columns=("from_term_id",),
         target_columns=("to_term_id",),
         type_column="rel_type",
         type_value=rel_type,
         attributes={"note": "note"},
         label_source="column",
+    )
+
+
+def _junction_edge(rel_type: str = "KIND_OF") -> RelationshipMapping:
+    """The junction-backed edge itself: its endpoints are the two real nodes, not the junction."""
+    return RelationshipMapping(
+        rel_type=rel_type,
+        source_label="GlossaryTerm",
+        target_label="GlossaryTerm",
+        join_source_column="id",
+        join_target_column="id",
+        field_name="edges",
+        via=_junction(rel_type),
+    )
+
+
+def _fk_edge(rel_type: str, source: str, target: str) -> RelationshipMapping:
+    """An ordinary FK/PK edge — no via, so nothing marks it as a junction edge."""
+    return RelationshipMapping(
+        rel_type=rel_type,
+        source_label=source,
+        target_label=target,
+        join_source_column="id",
+        join_target_column="term_id",
+        field_name=rel_type.lower(),
     )
 
 
@@ -103,6 +129,7 @@ def test_label_from_junction_table_name() -> None:
         catalog_name="c",
         schema_name="s",
         table_name="glossary_term_edges",
+        type_name="GlossaryTermEdge",
         source_columns=("a",),
         target_columns=("b",),
         label_source="table",
@@ -115,6 +142,7 @@ def test_label_from_fixed_alias() -> None:
         catalog_name="c",
         schema_name="s",
         table_name="t",
+        type_name="T",
         source_columns=("a",),
         target_columns=("b",),
         label_source="fixed",
@@ -128,6 +156,7 @@ def test_missing_nomination_is_a_declaration_error() -> None:
         catalog_name="c",
         schema_name="s",
         table_name="t",
+        type_name="T",
         source_columns=("a",),
         target_columns=("b",),
     )
@@ -233,7 +262,6 @@ def test_a_declared_junction_is_not_a_node_label_in_the_graph_schema():
     domain — which is the reified-node modelling the declaration exists to replace. It stays a
     registered table and is still queryable in SQL and GraphQL; only the graph schema drops it.
     """
-    from types import SimpleNamespace
 
     from provisa.cypher.label_map import _drop_junction_nodes
 
@@ -255,27 +283,23 @@ def test_a_declared_junction_is_not_a_node_label_in_the_graph_schema():
     nodes = {"GlossaryTerm": term, "GlossaryTermEdge": edge_node}
     domains = {"Meta": ["GlossaryTerm", "GlossaryTermEdge"]}
     nodes_by_table = {"GlossaryTerm": ["GlossaryTerm"], "GlossaryTermEdge": ["GlossaryTermEdge"]}
-    ctx = SimpleNamespace(
-        joins={
-            "kindOf": SimpleNamespace(
-                via=SimpleNamespace(table=SimpleNamespace(type_name="GlossaryTermEdge"))
-            ),
-            "owner": SimpleNamespace(via=None),
-        }
-    )
+    kind_of, owner = _junction_edge(), _fk_edge("OWNER", "GlossaryTerm", "GlossaryTerm")
+    relationships = {"KIND_OF": kind_of, "OWNER": owner}
+    aliases = {"KIND_OF": [kind_of], "OWNER": [owner]}
 
-    _drop_junction_nodes(ctx, nodes, domains, nodes_by_table)
+    _drop_junction_nodes(nodes, relationships, domains, nodes_by_table, aliases)
 
     assert "GlossaryTermEdge" not in nodes
     assert "GlossaryTerm" in nodes
     assert domains["Meta"] == ["GlossaryTerm"]
     assert "GlossaryTermEdge" not in nodes_by_table
+    # An edge between two surviving nodes is untouched by the drop.
+    assert set(relationships) == {"KIND_OF", "OWNER"}
 
 
 def test_dropping_a_junction_node_leaves_no_empty_domain_or_table_bucket():
     """REQ-1586: a domain or table bucket that held only the junction goes with it, so no surface
     renders an empty group where the junction used to be."""
-    from types import SimpleNamespace
 
     from provisa.cypher.label_map import _drop_junction_nodes
 
@@ -296,19 +320,41 @@ def test_dropping_a_junction_node_leaves_no_empty_domain_or_table_bucket():
     nodes = {"GlossaryTermEdge": edge_node}
     domains = {"Meta": ["GlossaryTermEdge"]}
     nodes_by_table = {"GlossaryTermEdge": ["GlossaryTermEdge"]}
-    ctx = SimpleNamespace(
-        joins={
-            "kindOf": SimpleNamespace(
-                via=SimpleNamespace(table=SimpleNamespace(type_name="GlossaryTermEdge"))
-            )
-        }
-    )
+    kind_of = _junction_edge()
+    relationships = {"KIND_OF": kind_of}
+    aliases = {"KIND_OF": [kind_of]}
 
-    _drop_junction_nodes(ctx, nodes, domains, nodes_by_table)
+    _drop_junction_nodes(nodes, relationships, domains, nodes_by_table, aliases)
 
     assert nodes == {}
     assert domains == {}
     assert nodes_by_table == {}
+
+
+def test_the_junctions_own_fk_edges_go_with_the_node_they_terminate_on():
+    """REQ-1586: the FK edges into and out of a junction table are exactly what the junction edge
+    replaces. Left behind, they name an endpoint label that no longer exists — and every consumer
+    that resolves an endpoint (the graph-schema endpoint list, a label count) reads that key
+    directly, so the stale edge is a KeyError, not a cosmetic duplicate."""
+    from provisa.cypher.label_map import _drop_junction_nodes
+
+    kind_of = _junction_edge()
+    into = _fk_edge("GLOSSARY_TERM_EDGES", "GlossaryTerm", "GlossaryTermEdge")
+    out_of = _fk_edge("GLOSSARY_TERM", "GlossaryTermEdge", "GlossaryTerm")
+    nodes = {"GlossaryTerm": _term_node()}
+    relationships = {"KIND_OF": kind_of, "IN": into, "OUT": out_of}
+    aliases = {
+        "KIND_OF": [kind_of],
+        "GLOSSARY_TERM_EDGES": [into],
+        "GLOSSARY_TERM": [out_of],
+    }
+
+    _drop_junction_nodes(nodes, relationships, {}, {}, aliases)
+
+    assert set(relationships) == {"KIND_OF"}
+    assert set(aliases) == {"KIND_OF"}
+    # Every surviving endpoint resolves — which is the property the graph schema depends on.
+    assert all(r.source_label in nodes and r.target_label in nodes for r in relationships.values())
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +367,7 @@ def _composite_label_map() -> CypherLabelMap:
         catalog_name="provisa_admin",
         schema_name="public",
         table_name="glossary_term_edges",
+        type_name="GlossaryTermEdge",
         source_columns=("from_domain", "from_term_id"),
         target_columns=("to_domain", "to_term_id"),
         label_source="table",

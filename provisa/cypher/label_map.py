@@ -28,6 +28,7 @@ from provisa.core import domain_policy
 
 if TYPE_CHECKING:
     from provisa.compiler.sql_gen import CompilationContext
+    from provisa.compiler.sql_types import JunctionMeta
 
 # Requirements: REQ-351, REQ-392, REQ-394, REQ-467, REQ-471, REQ-574
 
@@ -92,6 +93,9 @@ class JunctionMapping:  # REQ-1586
     catalog_name: str
     schema_name: str
     table_name: str
+    # REQ-1586: the node type name the junction table WOULD have occupied — the key
+    # _drop_junction_nodes removes from `nodes`, and with it every FK edge that named it.
+    type_name: str
     source_columns: tuple[str, ...]
     target_columns: tuple[str, ...]
     type_column: str | None = None
@@ -301,7 +305,6 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         target_pk = _build_target_pk(ctx_typed)
         _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table)
         aliases = _build_relationship_mappings(ctx_typed, relationships)
-        _drop_junction_nodes(ctx_typed, nodes, domains, nodes_by_table)
 
         _all_access = domain_access is not None and "*" in domain_access
         if (
@@ -321,6 +324,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 nodes_by_table,
                 aliases,
             )
+
+        # REQ-1586: after cross-domain expansion, so a junction reached from another domain is
+        # dropped too rather than re-entering as a traversal node.
+        _drop_junction_nodes(nodes, relationships, domains, nodes_by_table, aliases)
 
         # REQ-1320: tag every node with its table's star-schema modeling role so role-tagged
         # tables additionally expose the Fact/Dimension labels to Neo4j clients. all_tables is
@@ -353,25 +360,37 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
 
 
 def _drop_junction_nodes(  # REQ-1586
-    ctx_typed: "CompilationContext",
     nodes: dict[str, NodeMapping],
+    relationships: dict[str, RelationshipMapping],
     domains: dict[str, list[str]],
     nodes_by_table: dict[str, list[str]],
+    aliases: dict[str, list[RelationshipMapping]],
 ) -> None:
     """Remove every declared junction table from the node side of the Cypher schema.
 
     A declared junction is an edge, not an entity: it must not appear as a label a pattern can
     match, as a pill a client can drag onto a canvas, or under a domain's label list. It stays a
     registered table and is still queryable in SQL and GraphQL — this drops it from the graph
-    schema only. Mutates all three dicts.
+    schema only.
+
+    The junction's own foreign keys also produced ordinary FK edges into and out of it. Those
+    edges are what the junction edge replaces, and they name a label that no longer exists, so
+    they go with the node — otherwise any consumer resolving an endpoint label (the graph-schema
+    endpoint, a label count) reads a key that was just removed. Mutates every dict passed in.
     """
-    junction_types = {
-        join_meta.via.table.type_name
-        for join_meta in ctx_typed.joins.values()
-        if getattr(join_meta, "via", None) is not None
-    }
+    junction_types = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
     if not junction_types:
         return
+    for rel_key, rm in list(relationships.items()):
+        if rm.via is not None:
+            continue
+        if rm.source_label in junction_types or rm.target_label in junction_types:
+            del relationships[rel_key]
+            surviving = [r for r in aliases.get(rm.rel_type, []) if r is not rm]
+            if surviving:
+                aliases[rm.rel_type] = surviving
+            else:
+                aliases.pop(rm.rel_type, None)
     for type_name in junction_types:
         nm = nodes.pop(type_name, None)
         if nm is None:
@@ -482,6 +501,8 @@ def junction_rel_type(via: JunctionMapping) -> str:  # REQ-1586
     stored, not something to name around.
     """
     if via.label_source == "column":
+        if via.type_value is None:
+            raise ValueError(f"Junction on {via.table_name!r} nominates a column with no value")
         return _upper_snake(via.type_value)
     if via.label_source == "table":
         return _upper_snake(via.table_name)
@@ -490,7 +511,7 @@ def junction_rel_type(via: JunctionMapping) -> str:  # REQ-1586
     raise ValueError(f"Junction on {via.table_name!r} has no label source nomination")
 
 
-def _junction_mapping(via: object) -> JunctionMapping | None:  # REQ-1586
+def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # REQ-1586
     """Convert a compiler JunctionMeta into the Cypher-side JunctionMapping."""
     if via is None:
         return None
@@ -498,6 +519,7 @@ def _junction_mapping(via: object) -> JunctionMapping | None:  # REQ-1586
         catalog_name=via.table.catalog_name,
         schema_name=via.table.schema_name,
         table_name=via.table.table_name,
+        type_name=via.table.type_name,
         source_columns=via.source_columns,
         target_columns=via.target_columns,
         type_column=via.type_column,
@@ -554,6 +576,13 @@ def _build_relationship_mappings(
     return aliases
 
 
+def _via_type_name(raw_table_name: str, domain_id: str | None) -> str:  # REQ-1586
+    """The node type name a table occupies — the same composition _make_traversal_node uses."""
+    table_label = _apply_cql_label(_strip_domain_prefix(raw_table_name, domain_id))
+    domain_label = _apply_cql_label(domain_id) if domain_id else None
+    return f"{domain_label}_{table_label}" if domain_label else table_label
+
+
 def _junction_from_rel_dict(  # REQ-1586
     rel: dict,
     all_tables_by_id: dict[int, dict],
@@ -579,6 +608,7 @@ def _junction_from_rel_dict(  # REQ-1586
         catalog_name=(source_catalogs or {}).get(via_source_id) or _s2c(via_source_id),
         schema_name=via_table["schema_name"],
         table_name=_strip_domain_prefix(via_table["table_name"], via_domain_id),
+        type_name=_via_type_name(via_table["table_name"], via_domain_id),
         source_columns=src_keys,
         target_columns=tgt_keys,
         type_column=type_column,

@@ -51608,6 +51608,7 @@
   code:
   - provisa/api/auth_router.py
   tests:
+  - tests/unit/test_invite_admission.py
   - tests/e2e/test_platform_auth_flow.py
   depends_on:
   - REQ-516
@@ -52201,6 +52202,7 @@
   use_case: A modeller sees the proposed term "usr name", aliases the column to "user name" on the
     Tables page, and the term follows -- one correction, and every surface reads the better name.
   tests:
+  - tests/unit/test_glossary_alias_derivation.py
   - tests/integration/test_glossary_lifecycle.py
   code:
   - provisa/core/repositories/glossary.py
@@ -52258,6 +52260,7 @@
 
     And a retired or export-excluded term is returned with its flag rather than withheld'
   tests:
+  - tests/unit/test_meta_glossary_views.py
   - tests/integration/test_glossary_meta_domain.py
   code:
   - provisa/api/_meta_views.py
@@ -52302,6 +52305,7 @@
 
     And a table- or command-level assignment, whose column_key is null, does not join'
   tests:
+  - tests/unit/test_meta_glossary_views.py
   - tests/integration/test_glossary_meta_domain.py
   code:
   - provisa/api/_meta_views.py
