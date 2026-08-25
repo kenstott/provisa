@@ -955,7 +955,7 @@ export function SourcesPage() {
   if (loading) return <PageLoading message={t("sourcesPage.loading")} />;
 
   return (
-    <div className="page">
+    <div className="page page-sticky-head">
       <div className="page-header">
         <Title order={2}>{t("sourcesPage.title")}</Title>
         <FilterInput
@@ -1049,8 +1049,18 @@ export function SourcesPage() {
         </form>
       )}
 
-      <Table.ScrollContainer minWidth={860}>
-        <Table striped highlightOnHover withTableBorder verticalSpacing="xs" className="data-table">
+      {/* REQ-1587: the page owns the vertical scroll, so the table's own scroller is the plain
+          horizontal one — a Table.ScrollContainer would become the scrollport the header sticks to
+          and, growing to its content, would never scroll vertically. */}
+      <div className="table-scroll">
+        <Table
+          striped
+          highlightOnHover
+          withTableBorder
+          verticalSpacing="xs"
+          className="data-table"
+          miw={860}
+        >
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("sourcesPage.colId")}</Table.Th>
@@ -1260,7 +1270,7 @@ export function SourcesPage() {
             })()}
           </Table.Tbody>
         </Table>
-      </Table.ScrollContainer>
+      </div>
 
       {(() => {
         const filtered = sources.filter((s) => {

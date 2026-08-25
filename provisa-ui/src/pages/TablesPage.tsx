@@ -490,7 +490,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     return <div className="page">{translate("tablesPage.loading")}</div>;
 
   return (
-    <div className="page">
+    <div className="page page-sticky-head">
       {/* Anchor the tour waits on before highlighting a step whose element lives in the shell —
           tables-add is absent in viewsOnly, so the header is the one marker both modes render. */}
       <div className="page-header" data-tour="tables-header">
@@ -632,510 +632,515 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         />
       )}
 
-      <Table className="data-table">
-        <Table.Thead>
-          <Table.Tr>
-            {(
-              [
-                ["source", "tablesPage.colSource"],
-                ["domain", "tablesPage.colDomain"],
-                ["table", "tablesPage.colTable"],
-              ] as const
-            )
-              .filter(([col]) => domainsEnabled || col !== "domain")
-              .map(([col, labelKey]) => {
-                const label = translate(labelKey);
-                const isGroupable = col === "source" || col === "domain";
-                const groupLevel = groupBy.indexOf(col as "source" | "domain");
-                const isGrouped = groupLevel !== -1;
-                const sortActive = sortCol === col;
-                const sortLabel = sortActive
-                  ? sortDir === "asc"
-                    ? translate("tablesPage.sortAscending")
-                    : translate("tablesPage.sortDescending")
-                  : translate("tablesPage.sortNone");
-                return (
-                  <Table.Th key={col} style={{ whiteSpace: "nowrap" }}>
-                    <Group gap={4} wrap="nowrap" component="span">
-                      <button
-                        type="button"
-                        data-testid={`tables-sort-${col}`}
-                        onClick={() => {
-                          if (sortCol !== col) {
-                            setSortCol(col);
-                            setSortDir("asc");
-                          } else if (sortDir === "asc") setSortDir("desc");
-                          else {
-                            setSortCol(null);
-                            setSortDir("asc");
-                          }
-                        }}
-                        aria-label={`${label}, ${sortLabel}`}
-                        style={{
-                          cursor: "pointer",
-                          userSelect: "none",
-                          background: "none",
-                          border: "none",
-                          padding: 0,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.25rem",
-                          font: "inherit",
-                          color: "inherit",
-                        }}
-                      >
-                        {label}
-                        {sortActive ? (
-                          sortDir === "asc" ? (
-                            <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
-                          ) : (
-                            <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                          )
-                        ) : (
-                          <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                        )}
-                      </button>
-                      {isGroupable && (
-                        <ActionIcon
-                          variant="transparent"
-                          size="xs"
-                          data-testid={`tables-group-${col}`}
-                          aria-label={
-                            isGrouped
-                              ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
-                              : translate("tablesPage.groupBy", { label })
-                          }
-                          title={
-                            isGrouped
-                              ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
-                              : translate("tablesPage.groupBy", { label })
-                          }
-                          onClick={() => toggleGroupBy(col)}
-                          style={{ opacity: isGrouped ? 1 : 0.35 }}
+      <div className="table-scroll">
+        <Table className="data-table">
+          <Table.Thead>
+            <Table.Tr>
+              {(
+                [
+                  ["source", "tablesPage.colSource"],
+                  ["domain", "tablesPage.colDomain"],
+                  ["table", "tablesPage.colTable"],
+                ] as const
+              )
+                .filter(([col]) => domainsEnabled || col !== "domain")
+                .map(([col, labelKey]) => {
+                  const label = translate(labelKey);
+                  const isGroupable = col === "source" || col === "domain";
+                  const groupLevel = groupBy.indexOf(col as "source" | "domain");
+                  const isGrouped = groupLevel !== -1;
+                  const sortActive = sortCol === col;
+                  const sortLabel = sortActive
+                    ? sortDir === "asc"
+                      ? translate("tablesPage.sortAscending")
+                      : translate("tablesPage.sortDescending")
+                    : translate("tablesPage.sortNone");
+                  return (
+                    <Table.Th key={col} style={{ whiteSpace: "nowrap" }}>
+                      <Group gap={4} wrap="nowrap" component="span">
+                        <button
+                          type="button"
+                          data-testid={`tables-sort-${col}`}
+                          onClick={() => {
+                            if (sortCol !== col) {
+                              setSortCol(col);
+                              setSortDir("asc");
+                            } else if (sortDir === "asc") setSortDir("desc");
+                            else {
+                              setSortCol(null);
+                              setSortDir("asc");
+                            }
+                          }}
+                          aria-label={`${label}, ${sortLabel}`}
+                          style={{
+                            cursor: "pointer",
+                            userSelect: "none",
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                            font: "inherit",
+                            color: "inherit",
+                          }}
                         >
-                          <Layers
-                            size={11}
-                            color={isGrouped ? "var(--primary, #6366f1)" : undefined}
-                            aria-hidden="true"
-                          />
-                        </ActionIcon>
-                      )}
-                      {isGroupable && isGrouped && (
-                        <Text span fz="0.65rem" c="var(--primary, #6366f1)">
-                          {groupLevel + 1}
-                        </Text>
-                      )}
-                    </Group>
-                  </Table.Th>
-                );
-              })}
-            <Table.Th>{translate("tablesPage.colNaming")}</Table.Th>
-            <Table.Th>{translate("tablesPage.colCacheTtl")}</Table.Th>
-            <Table.Th>{translate("tablesPage.colEffectiveTtl")}</Table.Th>
-            <Table.Th style={{ whiteSpace: "nowrap" }}>
-              {(() => {
-                const label = translate("tablesPage.colCols");
-                const sortActive = sortCol === "cols";
-                const sortLabel = sortActive
-                  ? sortDir === "asc"
-                    ? translate("tablesPage.sortAscending")
-                    : translate("tablesPage.sortDescending")
-                  : translate("tablesPage.sortNone");
-                return (
-                  <button
-                    type="button"
-                    data-testid="tables-sort-cols"
-                    onClick={() => {
-                      if (sortCol !== "cols") {
-                        setSortCol("cols");
-                        setSortDir("asc");
-                      } else if (sortDir === "asc") setSortDir("desc");
-                      else {
-                        setSortCol(null);
-                        setSortDir("asc");
-                      }
-                    }}
-                    aria-label={`${label}, ${sortLabel}`}
-                    style={{
-                      cursor: "pointer",
-                      userSelect: "none",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                      font: "inherit",
-                      color: "inherit",
-                    }}
-                  >
-                    {label}
-                    {sortActive ? (
-                      sortDir === "asc" ? (
-                        <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                          {label}
+                          {sortActive ? (
+                            sortDir === "asc" ? (
+                              <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                            ) : (
+                              <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                            )
+                          ) : (
+                            <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                          )}
+                        </button>
+                        {isGroupable && (
+                          <ActionIcon
+                            variant="transparent"
+                            size="xs"
+                            data-testid={`tables-group-${col}`}
+                            aria-label={
+                              isGrouped
+                                ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
+                                : translate("tablesPage.groupBy", { label })
+                            }
+                            title={
+                              isGrouped
+                                ? translate("tablesPage.ungroupLevel", { level: groupLevel + 1 })
+                                : translate("tablesPage.groupBy", { label })
+                            }
+                            onClick={() => toggleGroupBy(col)}
+                            style={{ opacity: isGrouped ? 1 : 0.35 }}
+                          >
+                            <Layers
+                              size={11}
+                              color={isGrouped ? "var(--primary, #6366f1)" : undefined}
+                              aria-hidden="true"
+                            />
+                          </ActionIcon>
+                        )}
+                        {isGroupable && isGrouped && (
+                          <Text span fz="0.65rem" c="var(--primary, #6366f1)">
+                            {groupLevel + 1}
+                          </Text>
+                        )}
+                      </Group>
+                    </Table.Th>
+                  );
+                })}
+              <Table.Th>{translate("tablesPage.colNaming")}</Table.Th>
+              <Table.Th>{translate("tablesPage.colCacheTtl")}</Table.Th>
+              <Table.Th>{translate("tablesPage.colEffectiveTtl")}</Table.Th>
+              <Table.Th style={{ whiteSpace: "nowrap" }}>
+                {(() => {
+                  const label = translate("tablesPage.colCols");
+                  const sortActive = sortCol === "cols";
+                  const sortLabel = sortActive
+                    ? sortDir === "asc"
+                      ? translate("tablesPage.sortAscending")
+                      : translate("tablesPage.sortDescending")
+                    : translate("tablesPage.sortNone");
+                  return (
+                    <button
+                      type="button"
+                      data-testid="tables-sort-cols"
+                      onClick={() => {
+                        if (sortCol !== "cols") {
+                          setSortCol("cols");
+                          setSortDir("asc");
+                        } else if (sortDir === "asc") setSortDir("desc");
+                        else {
+                          setSortCol(null);
+                          setSortDir("asc");
+                        }
+                      }}
+                      aria-label={`${label}, ${sortLabel}`}
+                      style={{
+                        cursor: "pointer",
+                        userSelect: "none",
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        font: "inherit",
+                        color: "inherit",
+                      }}
+                    >
+                      {label}
+                      {sortActive ? (
+                        sortDir === "asc" ? (
+                          <ArrowUp size={11} color="var(--text-muted)" aria-hidden="true" />
+                        ) : (
+                          <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                        )
                       ) : (
-                        <ArrowDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                      )
-                    ) : (
-                      <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
-                    )}
-                  </button>
-                );
-              })()}
-            </Table.Th>
-            <Table.Th></Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {(() => {
-            const filtered = tables.filter((t) => {
-              if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
-              if (viewsOnly && !t.viewSql) return false;
-              if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId))
-                return false;
-              const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
-              if (terms.length === 0) return true;
-              const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
-              return terms.every((term) => haystack.includes(term));
-            });
-
-            if (sortCol) {
-              filtered.sort((a, b) => {
-                let cmp = 0;
-                if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
-                else if (sortCol === "domain")
-                  cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
-                else if (sortCol === "table")
-                  cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
-                else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
-                return sortDir === "asc" ? cmp : -cmp;
+                        <ArrowUpDown size={11} color="var(--text-muted)" aria-hidden="true" />
+                      )}
+                    </button>
+                  );
+                })()}
+              </Table.Th>
+              <Table.Th></Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {(() => {
+              const filtered = tables.filter((t) => {
+                if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
+                if (viewsOnly && !t.viewSql) return false;
+                if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId))
+                  return false;
+                const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+                if (terms.length === 0) return true;
+                const haystack = [t.sourceId, t.tableName, t.domainId ?? ""]
+                  .join(" ")
+                  .toLowerCase();
+                return terms.every((term) => haystack.includes(term));
               });
-            }
 
-            const getGroupKey = (t: RegisteredTable, col: "source" | "domain") =>
-              col === "source" ? t.sourceId : t.domainId ? normalizeDomain(t.domainId) : "(none)";
-
-            const colLabel = (col: "source" | "domain") => (col === "source" ? "Source" : "Domain");
-
-            type GroupItem =
-              | { type: "header"; level: 1 | 2; key: string; label: string; count: number }
-              | { type: "row"; t: RegisteredTable };
-
-            let items: GroupItem[];
-
-            if (groupBy.length === 0) {
-              items = filtered
-                .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-                .map((t) => ({ type: "row" as const, t }));
-            } else {
-              items = [];
-              const l1Col = groupBy[0];
-              const l2Col = groupBy[1];
-              const l1Map = new Map<string, RegisteredTable[]>();
-              for (const t of filtered) {
-                const k = getGroupKey(t, l1Col);
-                if (!l1Map.has(k)) l1Map.set(k, []);
-                l1Map.get(k)!.push(t);
-              }
-              for (const [l1Key, l1Tables] of [...l1Map.entries()].sort(([a], [b]) =>
-                a.localeCompare(b),
-              )) {
-                items.push({
-                  type: "header",
-                  level: 1,
-                  key: l1Key,
-                  label: `${colLabel(l1Col)}: ${l1Key}`,
-                  count: l1Tables.length,
+              if (sortCol) {
+                filtered.sort((a, b) => {
+                  let cmp = 0;
+                  if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
+                  else if (sortCol === "domain")
+                    cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
+                  else if (sortCol === "table")
+                    cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
+                  else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
+                  return sortDir === "asc" ? cmp : -cmp;
                 });
-                if (collapsedGroups.has(l1Key)) continue;
-                if (!l2Col) {
-                  for (const t of l1Tables) items.push({ type: "row", t });
-                } else {
-                  const l2Map = new Map<string, RegisteredTable[]>();
-                  for (const t of l1Tables) {
-                    const k = getGroupKey(t, l2Col);
-                    if (!l2Map.has(k)) l2Map.set(k, []);
-                    l2Map.get(k)!.push(t);
-                  }
-                  for (const [l2Key, l2Tables] of [...l2Map.entries()].sort(([a], [b]) =>
-                    a.localeCompare(b),
-                  )) {
-                    const compositeKey = `${l1Key}|${l2Key}`;
-                    items.push({
-                      type: "header",
-                      level: 2,
-                      key: compositeKey,
-                      label: `${colLabel(l2Col)}: ${l2Key}`,
-                      count: l2Tables.length,
-                    });
-                    if (collapsedGroups.has(compositeKey)) continue;
-                    for (const t of l2Tables) items.push({ type: "row", t });
+              }
+
+              const getGroupKey = (t: RegisteredTable, col: "source" | "domain") =>
+                col === "source" ? t.sourceId : t.domainId ? normalizeDomain(t.domainId) : "(none)";
+
+              const colLabel = (col: "source" | "domain") =>
+                col === "source" ? "Source" : "Domain";
+
+              type GroupItem =
+                | { type: "header"; level: 1 | 2; key: string; label: string; count: number }
+                | { type: "row"; t: RegisteredTable };
+
+              let items: GroupItem[];
+
+              if (groupBy.length === 0) {
+                items = filtered
+                  .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+                  .map((t) => ({ type: "row" as const, t }));
+              } else {
+                items = [];
+                const l1Col = groupBy[0];
+                const l2Col = groupBy[1];
+                const l1Map = new Map<string, RegisteredTable[]>();
+                for (const t of filtered) {
+                  const k = getGroupKey(t, l1Col);
+                  if (!l1Map.has(k)) l1Map.set(k, []);
+                  l1Map.get(k)!.push(t);
+                }
+                for (const [l1Key, l1Tables] of [...l1Map.entries()].sort(([a], [b]) =>
+                  a.localeCompare(b),
+                )) {
+                  items.push({
+                    type: "header",
+                    level: 1,
+                    key: l1Key,
+                    label: `${colLabel(l1Col)}: ${l1Key}`,
+                    count: l1Tables.length,
+                  });
+                  if (collapsedGroups.has(l1Key)) continue;
+                  if (!l2Col) {
+                    for (const t of l1Tables) items.push({ type: "row", t });
+                  } else {
+                    const l2Map = new Map<string, RegisteredTable[]>();
+                    for (const t of l1Tables) {
+                      const k = getGroupKey(t, l2Col);
+                      if (!l2Map.has(k)) l2Map.set(k, []);
+                      l2Map.get(k)!.push(t);
+                    }
+                    for (const [l2Key, l2Tables] of [...l2Map.entries()].sort(([a], [b]) =>
+                      a.localeCompare(b),
+                    )) {
+                      const compositeKey = `${l1Key}|${l2Key}`;
+                      items.push({
+                        type: "header",
+                        level: 2,
+                        key: compositeKey,
+                        label: `${colLabel(l2Col)}: ${l2Key}`,
+                        count: l2Tables.length,
+                      });
+                      if (collapsedGroups.has(compositeKey)) continue;
+                      for (const t of l2Tables) items.push({ type: "row", t });
+                    }
                   }
                 }
               }
-            }
 
-            return items.map((item) => {
-              if (item.type === "header") {
-                const isL1 = item.level === 1;
-                const isCollapsed = collapsedGroups.has(item.key);
-                const toggleCollapsed = () =>
-                  setCollapsedGroups((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(item.key)) next.delete(item.key);
-                    else next.add(item.key);
-                    return next;
-                  });
-                return (
-                  <Table.Tr key={`grp-${item.key}`}>
-                    <Table.Td
-                      colSpan={domainsEnabled ? 9 : 8}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={!isCollapsed}
-                      onClick={toggleCollapsed}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleCollapsed();
-                        }
-                      }}
-                      style={{
-                        fontWeight: isL1 ? 600 : 500,
-                        fontSize: isL1 ? "0.8rem" : "0.75rem",
-                        padding: isL1 ? "0.35rem 0.75rem" : "0.25rem 1.5rem",
-                        color: isL1 ? "var(--text-muted)" : "var(--text-muted)",
-                        background: isL1
-                          ? "var(--surface)"
-                          : "var(--surface-raised, var(--surface))",
-                        borderTop: isL1 ? "2px solid var(--border)" : "1px solid var(--border)",
-                        cursor: "pointer",
-                        userSelect: "none",
-                      }}
-                    >
-                      {isCollapsed ? "▶" : "▼"} {item.label}{" "}
-                      <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              }
-              const t = item.t;
-              const isEditing = editingTable?.id === t.id;
-              const row = (
-                <Fragment key={t.id}>
-                  <Table.Tr
-                    onClick={() => {
-                      setExpanded(expanded === t.id ? null : t.id);
-                      if (expanded === t.id) cancelEditing();
-                    }}
-                    className="clickable"
-                  >
-                    <Table.Td>
-                      {t.sourceId === DERIVED_SOURCE_ID ? (
-                        // A derived relation has no external source — its provenance is the
-                        // lineage of its definition, so never print the storage sentinel.
-                        <Badge
-                          size="xs"
-                          variant="light"
-                          color="gray"
-                          data-testid={`tables-derived-${t.tableName}`}
-                        >
-                          {translate("tablesPage.derived")}
-                        </Badge>
-                      ) : (
-                        t.sourceId
-                      )}
-                    </Table.Td>
-                    {domainsEnabled && (
-                      <Table.Td>{t.domainId ? normalizeDomain(t.domainId) : ""}</Table.Td>
-                    )}
-                    <Table.Td
-                      style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
-                      title={t.description || undefined}
-                    >
-                      <Group gap="0.35rem">
-                        {t.alias || t.tableName}
-                        {/* REQ-1320: star-schema role is metadata on the registration itself —
-                            the badge derives live from it, so it can never drift from the def. */}
-                        {t.modelingRole ? (
-                          <Badge
-                            size="xs"
-                            variant="light"
-                            color={t.modelingRole === "fact" ? "grape" : "teal"}
-                            data-testid={`tables-modeling-role-${t.tableName}`}
-                          >
-                            {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
-                          </Badge>
-                        ) : (
-                          <>
-                            {/* REQ-1361: no explicit star-schema role — Enable Aggregates / Enable
-                                Group By directly imply fact/dimension usage, so badge from those. */}
-                            {t.enableAggregates && (
-                              <Badge
-                                size="xs"
-                                variant="outline"
-                                color="grape"
-                                title={translate("tablesPage.modelingRole.impliedFactTitle")}
-                                data-testid={`tables-implied-fact-${t.tableName}`}
-                              >
-                                {translate("tablesPage.modelingRole.fact")}
-                              </Badge>
-                            )}
-                            {t.enableGroupBy && (
-                              <Badge
-                                size="xs"
-                                variant="outline"
-                                color="teal"
-                                title={translate("tablesPage.modelingRole.impliedDimensionTitle")}
-                                data-testid={`tables-implied-dimension-${t.tableName}`}
-                              >
-                                {translate("tablesPage.modelingRole.dimension")}
-                              </Badge>
-                            )}
-                          </>
-                        )}
-                        {t.dataProduct && (
-                          <Badge
-                            size="xs"
-                            variant="light"
-                            color="indigo"
-                            title={translate("tablesPage.dataProductTitle")}
-                            data-testid={`tables-data-product-${t.tableName}`}
-                          >
-                            {translate("tablesPage.dataProduct")}
-                          </Badge>
-                        )}
-                        <TagControl objectType="table" tableId={t.id} />
-                      </Group>
-                    </Table.Td>
-                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))
-                        ?.label ??
-                        t.gqlNamingConvention ??
-                        translate("tablesPage.inheritSource")}
-                    </Table.Td>
-                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {t.cacheTtl != null ? `${t.cacheTtl}s` : translate("tablesPage.inherit")}
-                    </Table.Td>
-                    <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {getEffectiveTableTtl(t)}
-                    </Table.Td>
-                    <Table.Td>{t.columns.length}</Table.Td>
-                    <Table.Td onClick={(e) => e.stopPropagation()}>
-                      <Group gap="xs" wrap="nowrap">
-                        {(() => {
-                          const srcType = sources.find((s) => s.id === t.sourceId)?.type;
-                          const hasCacheable =
-                            srcType === "graphql_remote" ||
-                            srcType === "openapi" ||
-                            srcType === "grpc_remote";
-                          const isFileBacked = srcType === "sqlite";
-                          // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
-                          // The server derives that from the same policy resolution (REQ-1143) this
-                          // reads, so the button appears exactly where the mutation would accept it.
-                          const serving = t.refreshPolicySummary?.serving;
-                          const isLanded = serving === "scheduled" || serving === "frozen";
-                          return (
-                            <>
-                              {isLanded && (
-                                <Button
-                                  size="compact-xs"
-                                  variant="default"
-                                  title={translate("tablesPage.runNowTitle")}
-                                  onClick={() => {
-                                    setRegenReason("");
-                                    setRegenTable(t);
-                                  }}
-                                  data-testid={`tables-run-now-${t.tableName}`}
-                                >
-                                  {translate("tablesPage.runNow")}
-                                </Button>
-                              )}
-                              {hasCacheable && (
-                                <Button
-                                  size="compact-xs"
-                                  variant="default"
-                                  onClick={() => handlePurgeTableCache(t.id)}
-                                  disabled={purging[t.id]}
-                                >
-                                  {purging[t.id]
-                                    ? translate("tablesPage.purging")
-                                    : translate("tablesPage.invalidateCache")}
-                                </Button>
-                              )}
-                              {isFileBacked && (
-                                <Button
-                                  size="compact-xs"
-                                  variant="default"
-                                  onClick={() => handleInvalidateFileSource(t.id)}
-                                  disabled={invalidating[t.id]}
-                                >
-                                  {invalidating[t.id]
-                                    ? translate("tablesPage.refreshing")
-                                    : translate("tablesPage.refreshData")}
-                                </Button>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                  {expanded === t.id && (
-                    <Table.Tr key={`${t.id}-cols`}>
-                      <Table.Td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
-                        {!isEditing ? (
-                          <TableReadView
-                            t={t}
-                            navigate={navigate}
-                            viewsOnly={viewsOnly}
-                            onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
-                            deploying={deploying}
-                            setDeploying={setDeploying}
-                            deployMsg={deployMsg}
-                            setDeployMsg={setDeployMsg}
-                            tableProfiles={tableProfiles}
-                            deployViewToDb={deployViewToDb}
-                            reload={reload}
-                            startEditing={startEditing}
-                            handleDelete={handleDelete}
-                            handleProfile={handleProfile}
-                            onPreview={setPreviewTable}
-                          />
-                        ) : (
-                          editingTable && (
-                            <TableEditForm
-                              editingTable={editingTable}
-                              setEditingTable={setEditingTable}
-                              editingColumnTypes={editingColumnTypes}
-                              cacheTtlEdits={cacheTtlEdits}
-                              setCacheTtlEdits={setCacheTtlEdits}
-                              sources={sources}
-                              roles={roles}
-                              settings={settings}
-                              saving={saving}
-                              generatingDesc={generatingDesc}
-                              setGeneratingDesc={setGeneratingDesc}
-                              generatingColDesc={generatingColDesc}
-                              setGeneratingColDesc={setGeneratingColDesc}
-                              generateTableDescription={generateTableDescription}
-                              generateColumnDescription={generateColumnDescription}
-                              cancelEditing={cancelEditing}
-                              handleSaveEdit={handleSaveEdit}
-                              updateEditCol={updateEditCol}
-                            />
-                          )
-                        )}
+              return items.map((item) => {
+                if (item.type === "header") {
+                  const isL1 = item.level === 1;
+                  const isCollapsed = collapsedGroups.has(item.key);
+                  const toggleCollapsed = () =>
+                    setCollapsedGroups((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(item.key)) next.delete(item.key);
+                      else next.add(item.key);
+                      return next;
+                    });
+                  return (
+                    <Table.Tr key={`grp-${item.key}`}>
+                      <Table.Td
+                        colSpan={domainsEnabled ? 9 : 8}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!isCollapsed}
+                        onClick={toggleCollapsed}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggleCollapsed();
+                          }
+                        }}
+                        style={{
+                          fontWeight: isL1 ? 600 : 500,
+                          fontSize: isL1 ? "0.8rem" : "0.75rem",
+                          padding: isL1 ? "0.35rem 0.75rem" : "0.25rem 1.5rem",
+                          color: isL1 ? "var(--text-muted)" : "var(--text-muted)",
+                          background: isL1
+                            ? "var(--surface)"
+                            : "var(--surface-raised, var(--surface))",
+                          borderTop: isL1 ? "2px solid var(--border)" : "1px solid var(--border)",
+                          cursor: "pointer",
+                          userSelect: "none",
+                        }}
+                      >
+                        {isCollapsed ? "▶" : "▼"} {item.label}{" "}
+                        <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
                       </Table.Td>
                     </Table.Tr>
-                  )}
-                </Fragment>
-              );
-              return row;
-            });
-          })()}
-        </Table.Tbody>
-      </Table>
+                  );
+                }
+                const t = item.t;
+                const isEditing = editingTable?.id === t.id;
+                const row = (
+                  <Fragment key={t.id}>
+                    <Table.Tr
+                      onClick={() => {
+                        setExpanded(expanded === t.id ? null : t.id);
+                        if (expanded === t.id) cancelEditing();
+                      }}
+                      className="clickable"
+                    >
+                      <Table.Td>
+                        {t.sourceId === DERIVED_SOURCE_ID ? (
+                          // A derived relation has no external source — its provenance is the
+                          // lineage of its definition, so never print the storage sentinel.
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color="gray"
+                            data-testid={`tables-derived-${t.tableName}`}
+                          >
+                            {translate("tablesPage.derived")}
+                          </Badge>
+                        ) : (
+                          t.sourceId
+                        )}
+                      </Table.Td>
+                      {domainsEnabled && (
+                        <Table.Td>{t.domainId ? normalizeDomain(t.domainId) : ""}</Table.Td>
+                      )}
+                      <Table.Td
+                        style={{ fontFamily: "monospace", fontSize: "0.9rem" }}
+                        title={t.description || undefined}
+                      >
+                        <Group gap="0.35rem">
+                          {t.alias || t.tableName}
+                          {/* REQ-1320: star-schema role is metadata on the registration itself —
+                            the badge derives live from it, so it can never drift from the def. */}
+                          {t.modelingRole ? (
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color={t.modelingRole === "fact" ? "grape" : "teal"}
+                              data-testid={`tables-modeling-role-${t.tableName}`}
+                            >
+                              {translate(`tablesPage.modelingRole.${t.modelingRole}`)}
+                            </Badge>
+                          ) : (
+                            <>
+                              {/* REQ-1361: no explicit star-schema role — Enable Aggregates / Enable
+                                Group By directly imply fact/dimension usage, so badge from those. */}
+                              {t.enableAggregates && (
+                                <Badge
+                                  size="xs"
+                                  variant="outline"
+                                  color="grape"
+                                  title={translate("tablesPage.modelingRole.impliedFactTitle")}
+                                  data-testid={`tables-implied-fact-${t.tableName}`}
+                                >
+                                  {translate("tablesPage.modelingRole.fact")}
+                                </Badge>
+                              )}
+                              {t.enableGroupBy && (
+                                <Badge
+                                  size="xs"
+                                  variant="outline"
+                                  color="teal"
+                                  title={translate("tablesPage.modelingRole.impliedDimensionTitle")}
+                                  data-testid={`tables-implied-dimension-${t.tableName}`}
+                                >
+                                  {translate("tablesPage.modelingRole.dimension")}
+                                </Badge>
+                              )}
+                            </>
+                          )}
+                          {t.dataProduct && (
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color="indigo"
+                              title={translate("tablesPage.dataProductTitle")}
+                              data-testid={`tables-data-product-${t.tableName}`}
+                            >
+                              {translate("tablesPage.dataProduct")}
+                            </Badge>
+                          )}
+                          <TagControl objectType="table" tableId={t.id} />
+                        </Group>
+                      </Table.Td>
+                      <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                        {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))
+                          ?.label ??
+                          t.gqlNamingConvention ??
+                          translate("tablesPage.inheritSource")}
+                      </Table.Td>
+                      <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                        {t.cacheTtl != null ? `${t.cacheTtl}s` : translate("tablesPage.inherit")}
+                      </Table.Td>
+                      <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                        {getEffectiveTableTtl(t)}
+                      </Table.Td>
+                      <Table.Td>{t.columns.length}</Table.Td>
+                      <Table.Td onClick={(e) => e.stopPropagation()}>
+                        <Group gap="xs" wrap="nowrap">
+                          {(() => {
+                            const srcType = sources.find((s) => s.id === t.sourceId)?.type;
+                            const hasCacheable =
+                              srcType === "graphql_remote" ||
+                              srcType === "openapi" ||
+                              srcType === "grpc_remote";
+                            const isFileBacked = srcType === "sqlite";
+                            // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
+                            // The server derives that from the same policy resolution (REQ-1143) this
+                            // reads, so the button appears exactly where the mutation would accept it.
+                            const serving = t.refreshPolicySummary?.serving;
+                            const isLanded = serving === "scheduled" || serving === "frozen";
+                            return (
+                              <>
+                                {isLanded && (
+                                  <Button
+                                    size="compact-xs"
+                                    variant="default"
+                                    title={translate("tablesPage.runNowTitle")}
+                                    onClick={() => {
+                                      setRegenReason("");
+                                      setRegenTable(t);
+                                    }}
+                                    data-testid={`tables-run-now-${t.tableName}`}
+                                  >
+                                    {translate("tablesPage.runNow")}
+                                  </Button>
+                                )}
+                                {hasCacheable && (
+                                  <Button
+                                    size="compact-xs"
+                                    variant="default"
+                                    onClick={() => handlePurgeTableCache(t.id)}
+                                    disabled={purging[t.id]}
+                                  >
+                                    {purging[t.id]
+                                      ? translate("tablesPage.purging")
+                                      : translate("tablesPage.invalidateCache")}
+                                  </Button>
+                                )}
+                                {isFileBacked && (
+                                  <Button
+                                    size="compact-xs"
+                                    variant="default"
+                                    onClick={() => handleInvalidateFileSource(t.id)}
+                                    disabled={invalidating[t.id]}
+                                  >
+                                    {invalidating[t.id]
+                                      ? translate("tablesPage.refreshing")
+                                      : translate("tablesPage.refreshData")}
+                                  </Button>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                    {expanded === t.id && (
+                      <Table.Tr key={`${t.id}-cols`}>
+                        <Table.Td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
+                          {!isEditing ? (
+                            <TableReadView
+                              t={t}
+                              navigate={navigate}
+                              viewsOnly={viewsOnly}
+                              onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
+                              deploying={deploying}
+                              setDeploying={setDeploying}
+                              deployMsg={deployMsg}
+                              setDeployMsg={setDeployMsg}
+                              tableProfiles={tableProfiles}
+                              deployViewToDb={deployViewToDb}
+                              reload={reload}
+                              startEditing={startEditing}
+                              handleDelete={handleDelete}
+                              handleProfile={handleProfile}
+                              onPreview={setPreviewTable}
+                            />
+                          ) : (
+                            editingTable && (
+                              <TableEditForm
+                                editingTable={editingTable}
+                                setEditingTable={setEditingTable}
+                                editingColumnTypes={editingColumnTypes}
+                                cacheTtlEdits={cacheTtlEdits}
+                                setCacheTtlEdits={setCacheTtlEdits}
+                                sources={sources}
+                                roles={roles}
+                                settings={settings}
+                                saving={saving}
+                                generatingDesc={generatingDesc}
+                                setGeneratingDesc={setGeneratingDesc}
+                                generatingColDesc={generatingColDesc}
+                                setGeneratingColDesc={setGeneratingColDesc}
+                                generateTableDescription={generateTableDescription}
+                                generateColumnDescription={generateColumnDescription}
+                                cancelEditing={cancelEditing}
+                                handleSaveEdit={handleSaveEdit}
+                                updateEditCol={updateEditCol}
+                              />
+                            )
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Fragment>
+                );
+                return row;
+              });
+            })()}
+          </Table.Tbody>
+        </Table>
+      </div>
 
       {(() => {
         const filtered = tables.filter((t) => {

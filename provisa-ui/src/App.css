@@ -515,7 +515,8 @@ main {
   font-weight: 600;
   color: var(--text-muted);
 }
-/* Pinned table headers (REQ-1587) — layout experiment, currently /relationships only.
+/* Pinned table headers (REQ-1587) — the list pages built on .page + .data-table:
+ * /relationships, /tables and /sources.
  * The page itself owns the scroll so the thead has a scrollport to stick to. A wrapper
  * with overflow-x around the table would become that scrollport instead, and since it
  * grows to its content it never scrolls vertically — the header would ride away with the

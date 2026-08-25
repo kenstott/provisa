@@ -16701,3 +16701,29 @@ A junction table is declarable as a first-class Cypher relationship, and its own
 **Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/cypher/parser.py`, `provisa/cypher/label_map.py`, `provisa/cypher/translator_rel.py`, `provisa/cypher/translator_helpers.py`, `provisa/cypher/select_builder.py`, `provisa/cypher/translator.py`, `provisa/cypher/translator_union.py`, `provisa/cypher/expr_context.py`, `provisa/api/_meta_seed.py`, `provisa/mv/models.py`, `provisa/mv/refresh.py`, `provisa/mv/rewriter.py`, `provisa/api/app_loaders.py`, `provisa-ui/src/naming.ts`, `provisa-ui/src/components/relationships/JunctionPanel.tsx`, `provisa-ui/src/pages/GraphPage.tsx`, `provisa-ui/src/pages/graph-drop.ts`, `provisa-ui/src/components/graph/frame/use-overlay-navigation.ts`, `config/provisa.yaml`, `config/provisa-install.yaml`, `demo/files/create_demo_files.py`, `db/init.sql`, `start-ui-install.sh`
 
 **Tests:** `tests/unit/test_cypher_junction_relationships.py`, `tests/unit/test_mv_junction_pattern.py`, `tests/integration/test_glossary_meta_domain.py`, `provisa-ui/src/__tests__/GraphDropExpansion.test.ts`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1587 · Admin UI {#REQ-1587}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+On the relationships page nothing above the table's header leaves the screen: the page title, the filter, the action buttons and the add form hold their place, and only the rows scroll. THE GAP -- the page scrolled as one document, so on a long list the header row, the filter and the actions all rode away and a reader lost both the column names and the controls that would have narrowed the list. WHY THE SCROLLPORT MOVED -- position:sticky sticks to the nearest scrolling ancestor, and a wrapper carrying overflow-x computes overflow-y:auto and becomes that ancestor; since such a wrapper grows to its content it never scrolls vertically, and a header stuck to it rides away with the rows. The page is therefore a flex column that hides its own overflow, and the rows' container is the only scrollport. It carries no padding of its own, because a sticky offset is measured from the padding edge and padding there would park the header below the visible top and let a row show above it. HOW THE HEADER READS AS PINNED -- border-collapse drops a sticky cell's border, so the divider under the header is an inset shadow and the cells carry their own background; without it the rows show through as they pass underneath. The candidates block yields its height to the table and scrolls within what is left rather than being clipped. The layout is the same on every list page built this way -- relationships, tables and sources -- so a header behaves identically wherever a reader meets one. A table's own horizontal scroller is a plain one for that reason: a component scroller that also owned the vertical axis would take the scrollport back.
+
+**Use case:** A steward scrolling a few hundred relationships still sees which column is which, and can filter or add without scrolling back to the top.
+
+**Code:** `provisa-ui/src/App.css`, `provisa-ui/src/pages/RelationshipsPage.tsx`, `provisa-ui/src/pages/TablesPage.tsx`, `provisa-ui/src/pages/SourcesPage.tsx`
+
+**Tests:** `provisa-ui/e2e/relationships-header.spec.ts`
+
+### REQ-1588 · Admin UI {#REQ-1588}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The ERD draws a junction-backed relationship ([REQ-1586](#REQ-1586)) through the junction table's own node: a leg in, a leg out, and the two entities connected by the path rather than by a line that hides the hop. THE GAP -- the diagram read every relationship as one direct edge, so a junction-backed edge either claimed a connection that no foreign key makes, or, when both of its ends are the same table, was dropped by the self-loop guard entirely -- leaving the junction table drawn as an unconnected entity beside the relationship it backs. WHAT IS DRAWN -- the junction is a grape diamond carrying its table name only, in the same grape as the VIA badge on the relationships list; the legs carry cardinality, and the relationship type is written once per path, at the junction end of the inbound leg. Several relationships through one junction share one node and stay distinct paths: the path identity is part of the edge key, so three declared types over one associative table draw three labeled paths, not one merged pair of legs. WHY THE ID TRAVELS -- the diagram keys its nodes by registered-table id, so the relationship carries via_table_id as well as via_table_name; matching on the name would bind the wrong node wherever two sources register the same table name. WHEN THE JUNCTION IS NOT ON THE CANVAS -- its domain hidden or collapsed -- the path collapses back to a single direct edge labeled with the relationship type. It is not routed through the domain proxy: a collapsed domain describes a group of entities, and hopping a path through it would claim a traversal the diagram cannot show.
+
+**Use case:** A modeller opening the ERD sees that pets relate to pets through pet_companions, and which three relationship types that associative table carries.
+
+**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/sections/erd-stylesheet.ts`, `provisa-ui/src/components/erd/sections/erd-palette.ts`, `provisa-ui/src/types/admin.ts`, `provisa-ui/src/hooks/admin.graphql`, `provisa/api/admin/types.py`, `provisa/api/admin/_row_mappers.py`
+
+**Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`, `tests/integration/test_schema_query_api.py`
