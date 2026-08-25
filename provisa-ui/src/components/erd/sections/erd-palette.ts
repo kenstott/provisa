@@ -20,6 +20,10 @@ export interface ErdPalette {
   tableBg: string;
   relLine: string;
   relLineFaint: string;
+  // REQ-1588: junction nodes and the legs through them, in the grape the VIA badge on the
+  // relationships table already uses.
+  junction: string;
+  junctionBg: string;
 }
 
 const DARK: ErdPalette = {
@@ -34,6 +38,8 @@ const DARK: ErdPalette = {
   tableBg: "#1e293b",
   relLine: "#475569",
   relLineFaint: "#334155",
+  junction: "#cc5de8",
+  junctionBg: "#2b1733",
 };
 
 const LIGHT: ErdPalette = {
@@ -48,6 +54,8 @@ const LIGHT: ErdPalette = {
   tableBg: "#ffffff",
   relLine: "#94a3b8",
   relLineFaint: "#cbd5e1",
+  junction: "#be4bdb",
+  junctionBg: "#f8effc",
 };
 
 export function getErdPalette(isDark: boolean): ErdPalette {

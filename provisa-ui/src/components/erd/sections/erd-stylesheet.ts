@@ -95,6 +95,43 @@ export function buildErdStylesheet(isDark: boolean) {
       },
     },
     {
+      // REQ-1588: a junction table is a waypoint on an edge, not an entity, so it is drawn as a
+      // grape diamond carrying its name only — the same grape as the VIA badge on the
+      // relationships table, so the two surfaces name the same thing the same way.
+      selector: ".erd-junction",
+      style: {
+        shape: "diamond",
+        "background-color": p.junctionBg,
+        "border-color": p.junction,
+        "border-width": 2,
+        color: p.junction,
+        "font-weight": "bold",
+        width: 130,
+        height: 90,
+      },
+    },
+    {
+      selector: ".erd-junction:selected",
+      style: { "border-color": p.accent, "border-width": 3 },
+    },
+    {
+      // The legs of a junction-backed path. The type is written once per path, at the junction end
+      // of the inbound leg, so the two legs are readable as one relationship.
+      selector: ".erd-rel--via",
+      style: {
+        "line-color": p.junction,
+        "target-arrow-color": p.junction,
+        "source-arrow-color": p.junction,
+        "target-label": (ele: { data(k: string): unknown }) => ele.data("pathLabel") as string,
+        "target-text-offset": 46,
+        "target-text-margin-y": -10,
+        "font-size": 9,
+        "text-background-color": p.tableBg,
+        "text-background-opacity": 1,
+        "text-background-padding": "3px",
+      },
+    },
+    {
       // proxy edges (collapsed-domain → table/domain) rendered dashed
       selector: ".erd-rel--proxy",
       style: {

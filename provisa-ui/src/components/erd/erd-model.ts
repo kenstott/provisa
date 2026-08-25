@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import type { RegisteredTable, Relationship, Domain, TableColumn } from "../../types/admin";
+import { cypherRelType } from "../../naming";
 
 export type ColumnDetail = "all" | "key" | "none";
 
@@ -31,6 +32,9 @@ export interface ErdNodeTable {
   tableName: string;
   description: string;
   columns: TableColumn[];
+  // REQ-1588: this table is declared as the junction of at least one relationship, so it is drawn
+  // as an edge waypoint (diamond) rather than an entity.
+  junction: boolean;
 }
 
 export interface ErdEdge {
@@ -40,6 +44,14 @@ export interface ErdEdge {
   target: string;
   cardinality: string;
   label: string;
+  // REQ-1588: a junction-backed relationship draws two legs through the junction table's node
+  // instead of one direct line. The legs carry cardinality in `label`; the relationship type is
+  // written once per path, at the junction end of the inbound leg, as `pathLabel`. `pathType`
+  // identifies the path so the several relationships sharing one junction stay distinct edges
+  // rather than deduplicating into a single pair of legs.
+  pathLabel: string;
+  pathType: string;
+  via: boolean;
   proxy: boolean;
 }
 
@@ -134,11 +146,21 @@ export function buildErdElements(
     };
   });
 
+  // REQ-1588: tables declared as a junction are waypoints on an edge, not entities. They carry the
+  // relationship's attributes, but the ERD shows only the table's name — the path types that run
+  // through it are written on the legs, and one node cannot hold several of them.
+  const junctionTableIds = new Set(
+    relationships.map((r) => r.viaTableId).filter((id): id is number => id != null),
+  );
+
   const tableNodes: ErdElements["nodes"] = filteredTables
     .filter((t) => !collapsedDomains.has(t.domainId))
     .map((table) => {
       const name = table.alias || table.tableName;
-      const { label, lineCount } = buildTableLabel(name, table.columns, columnDetail);
+      const junction = junctionTableIds.has(table.id);
+      const { label, lineCount } = junction
+        ? { label: name, lineCount: 1 }
+        : buildTableLabel(name, table.columns, columnDetail);
       return {
         data: {
           type: "table",
@@ -151,8 +173,9 @@ export function buildErdElements(
           tableName: name,
           description: table.description ?? "",
           columns: table.columns,
+          junction,
         } as ErdNodeTable,
-        classes: "erd-table",
+        classes: junction ? "erd-table erd-junction" : "erd-table",
       };
     });
 
@@ -161,6 +184,40 @@ export function buildErdElements(
   // Build edges, routing through domain proxy nodes when a table is collapsed.
   const seenEdges = new Set<string>();
   const edges: ErdElements["edges"] = [];
+
+  const pushEdge = (
+    r: Relationship,
+    src: string,
+    tgt: string,
+    opts: { label: string; pathLabel: string; pathType: string; leg: "" | "in" | "out" },
+  ) => {
+    if (src === tgt) return;
+    const isProxy = src.startsWith("d:") || tgt.startsWith("d:");
+    // Deduplicate by pair + label — allows multiple distinct relationships between the same
+    // collapsed-domain proxy pair to show as separate dashed edges. The path identity is part of
+    // the key so the legs of two relationships through one junction do not merge.
+    const key = `${src}→${tgt}:${opts.label}:${opts.pathType}:${opts.leg}`;
+    if (seenEdges.has(key)) return;
+    seenEdges.add(key);
+    const classes = ["erd-rel"];
+    if (isProxy) classes.push("erd-rel--proxy");
+    if (opts.leg) classes.push("erd-rel--via");
+    edges.push({
+      data: {
+        type: "rel",
+        id: isProxy ? `rp:${key}` : `r:${r.id}${opts.leg ? `:${opts.leg}` : ""}`,
+        source: src,
+        target: tgt,
+        cardinality: r.cardinality,
+        label: opts.label,
+        pathLabel: opts.pathLabel,
+        pathType: opts.pathType,
+        via: opts.leg !== "",
+        proxy: isProxy,
+      } as ErdEdge,
+      classes: classes.join(" "),
+    });
+  };
 
   for (const r of relationships) {
     if (r.targetTableId == null) continue;
@@ -180,28 +237,37 @@ export function buildErdElements(
       hiddenDomains,
     );
 
-    if (!src || !tgt || src === tgt) continue;
+    if (!src || !tgt) continue;
 
-    const isProxy = src.startsWith("d:") || tgt.startsWith("d:");
-    const label = r.alias || r.computedCypherAlias || cardinalityLabel(r.cardinality);
-    // Deduplicate by pair + label — allows multiple distinct relationships between the same
-    // collapsed-domain proxy pair to show as separate dashed edges.
-    const key = `${src}→${tgt}:${label}`;
-    if (seenEdges.has(key)) continue;
-    seenEdges.add(key);
+    // REQ-1588: a declared junction is drawn, so the two entities connect through its node rather
+    // than by a line that hides it. Only its own node will do: routing the path through a domain
+    // proxy would claim a hop that the collapsed domain does not describe, so a junction that is
+    // not rendered as a table collapses back to the direct A→B edge instead.
+    const junctionNode =
+      r.viaTableId == null
+        ? null
+        : visibleTableIds.has(r.viaTableId)
+          ? `t:${r.viaTableId}`
+          : null;
 
-    edges.push({
-      data: {
-        type: "rel",
-        id: isProxy ? `rp:${src}→${tgt}:${label}` : `r:${r.id}`,
-        source: src,
-        target: tgt,
-        cardinality: r.cardinality,
-        label,
-        proxy: isProxy,
-      } as ErdEdge,
-      classes: isProxy ? "erd-rel erd-rel--proxy" : "erd-rel",
-    });
+    if (junctionNode) {
+      // The type is written once per path, beside the junction. A row whose nomination names no
+      // type is a defective row (REQ-1586), and it gets no label rather than a substituted one.
+      const pathType = cypherRelType(r) ?? "";
+      const leg = cardinalityLabel(r.cardinality);
+      pushEdge(r, src, junctionNode, { label: leg, pathLabel: pathType, pathType, leg: "in" });
+      pushEdge(r, junctionNode, tgt, { label: leg, pathLabel: "", pathType, leg: "out" });
+      continue;
+    }
+
+    if (src === tgt) continue;
+
+    // A junction that is not on the canvas still names the edge it backs, so the collapsed form
+    // carries the same relationship type the two legs would have shown.
+    const junctionLabel = r.viaTableId == null ? null : cypherRelType(r);
+    const label =
+      junctionLabel ?? (r.alias || r.computedCypherAlias || cardinalityLabel(r.cardinality));
+    pushEdge(r, src, tgt, { label, pathLabel: "", pathType: "", leg: "" });
   }
 
   return { nodes: [...domainNodes, ...tableNodes], edges };

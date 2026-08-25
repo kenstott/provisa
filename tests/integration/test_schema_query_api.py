@@ -97,10 +97,12 @@ class TestRelationships:
         for field in ("relationships", "allRelationships"):
             data = await _gql(
                 client,
-                "{ %s { id viaTableName viaSourceColumn viaTargetColumn "
+                "{ %s { id viaTableId viaTableName viaSourceColumn viaTargetColumn "
                 "viaTypeColumn viaTypeValue viaLabelSource } }" % field,
             )
             rows = data["data"][field]
+            tables = (await _gql(client, "{ tables { id tableName } }"))["data"]["tables"]
+            junction_table_id = next(t["id"] for t in tables if t["tableName"] == "pet_companions")
             declared = {"pets-bonded-pair", "pets-littermate", "pets-shares-enclosure"}
             junction = [r for r in rows if r["id"] in declared]
             assert {r["id"] for r in junction} == declared, (
@@ -108,6 +110,9 @@ class TestRelationships:
             )
             for r in junction:
                 assert r["viaTableName"] == "pet_companions", r
+                # REQ-1588: the ERD keys its nodes by registered-table id, so the id travels with
+                # the name — it must resolve to the registered junction table, not just be set.
+                assert r["viaTableId"] == junction_table_id, r
                 assert r["viaSourceColumn"] == "pet_id"
                 assert r["viaTargetColumn"] == "companion_pet_id"
                 assert r["viaTypeColumn"] == "relation_type"

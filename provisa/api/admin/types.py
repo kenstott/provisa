@@ -334,7 +334,9 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     computed_cypher_alias: str | None = None
     disable_cypher: bool = False
     # REQ-1586: junction declaration. via_table_name names the associative table this edge
-    # traverses; via_label_source names where the exposed Cypher type comes from.
+    # traverses; via_label_source names where the exposed Cypher type comes from. The ERD keys
+    # its nodes by registered-table id, so it needs the id as well as the name (REQ-1588).
+    via_table_id: int | None = None
     via_table_name: str | None = None
     via_source_column: str | None = None
     via_target_column: str | None = None

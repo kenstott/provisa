@@ -116,6 +116,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     autoSuggested: false,
     disableCypher: false,
     // REQ-1586: an FK/PK relationship declares no junction.
+    viaTableId: null,
     viaTableName: null,
     viaSourceColumn: null,
     viaTargetColumn: null,
@@ -360,5 +361,156 @@ describe("buildErdElements", () => {
       (n) => n.classes === "erd-table" && n.data.type === "table" && n.data.tableId === 4,
     );
     expect(tableNode?.data.type === "table" && tableNode.data.tableName).toBe("Orders");
+  });
+});
+
+// ── junction-backed relationships (REQ-1588) ──────────────────────────────────
+
+describe("buildErdElements — junction relationships", () => {
+  const pets = makeTable({ id: 10, domainId: "sales", tableName: "pets" });
+  const companions = makeTable({
+    id: 11,
+    domainId: "sales",
+    tableName: "pet_companions",
+    columns: [makeCol({ id: 1, columnName: "pet_id", isForeignKey: true })],
+  });
+  const owners = makeTable({ id: 12, domainId: "sales", tableName: "owners" });
+  const domains = [DOMAIN_SALES, DOMAIN_HR];
+
+  function viaRel(overrides: Partial<Relationship> = {}): Relationship {
+    return makeRel({
+      id: 100,
+      sourceTableId: 10,
+      targetTableId: 10,
+      viaTableId: 11,
+      viaTableName: "pet_companions",
+      viaSourceColumn: "pet_id",
+      viaTargetColumn: "companion_pet_id",
+      viaTypeColumn: "relation_type",
+      viaTypeValue: "bonded_pair",
+      viaLabelSource: "column",
+      cardinality: "many_to_many",
+      ...overrides,
+    });
+  }
+
+  it("draws two legs through the junction node instead of one direct edge", () => {
+    const { edges } = buildErdElements(
+      [pets, companions],
+      [viaRel()],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(edges).toHaveLength(2);
+    const inLeg = edges.find((e) => e.data.target === "t:11");
+    const outLeg = edges.find((e) => e.data.source === "t:11");
+    expect(inLeg?.data.source).toBe("t:10");
+    expect(outLeg?.data.target).toBe("t:10");
+    expect(edges.every((e) => e.data.via)).toBe(true);
+    expect(edges.every((e) => e.classes.includes("erd-rel--via"))).toBe(true);
+  });
+
+  it("legs carry cardinality; the type is written once, at the junction end", () => {
+    const { edges } = buildErdElements(
+      [pets, companions],
+      [viaRel()],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(edges.map((e) => e.data.label)).toEqual(["N:M", "N:M"]);
+    const inLeg = edges.find((e) => e.data.target === "t:11");
+    const outLeg = edges.find((e) => e.data.source === "t:11");
+    expect(inLeg?.data.pathLabel).toBe("BONDED_PAIR");
+    expect(outLeg?.data.pathLabel).toBe("");
+    expect(outLeg?.data.pathType).toBe("BONDED_PAIR");
+  });
+
+  it("one junction node carries a distinct labeled path per relationship", () => {
+    const rels = [
+      viaRel({ id: 100, viaTypeValue: "bonded_pair" }),
+      viaRel({ id: 101, viaTypeValue: "littermate" }),
+      viaRel({ id: 102, viaTypeValue: "shares_enclosure" }),
+    ];
+    const { nodes, edges } = buildErdElements(
+      [pets, companions],
+      rels,
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(nodes.filter((n) => n.classes.includes("erd-junction"))).toHaveLength(1);
+    expect(edges).toHaveLength(6);
+    expect(new Set(edges.map((e) => e.data.pathType))).toEqual(
+      new Set(["BONDED_PAIR", "LITTERMATE", "SHARES_ENCLOSURE"]),
+    );
+    expect(new Set(edges.map((e) => e.data.id)).size).toBe(6);
+  });
+
+  it("the junction node is a diamond showing its name only", () => {
+    const { nodes } = buildErdElements(
+      [pets, companions],
+      [viaRel()],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "all",
+    );
+    const jn = nodes.find((n) => n.data.type === "table" && n.data.tableId === 11);
+    expect(jn?.classes).toBe("erd-table erd-junction");
+    expect(jn?.data.type === "table" && jn.data.junction).toBe(true);
+    expect(jn?.data.type === "table" && jn.data.displayLabel).toBe("pet_companions");
+    const entity = nodes.find((n) => n.data.type === "table" && n.data.tableId === 10);
+    expect(entity?.data.type === "table" && entity.data.junction).toBe(false);
+  });
+
+  it("a hidden junction collapses to a direct A→B edge labeled with the type", () => {
+    const hrCompanions = makeTable({ id: 11, domainId: "hr", tableName: "pet_companions" });
+    const { edges } = buildErdElements(
+      [pets, owners, hrCompanions],
+      [viaRel({ targetTableId: 12 })],
+      domains,
+      new Set(),
+      new Set(["hr"]),
+      "none",
+    );
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data.source).toBe("t:10");
+    expect(edges[0].data.target).toBe("t:12");
+    expect(edges[0].data.label).toBe("BONDED_PAIR");
+    expect(edges[0].data.via).toBe(false);
+  });
+
+  it("a collapsed junction domain does not become a routing hop", () => {
+    const hrCompanions = makeTable({ id: 11, domainId: "hr", tableName: "pet_companions" });
+    const { edges } = buildErdElements(
+      [pets, owners, hrCompanions],
+      [viaRel({ targetTableId: 12 })],
+      domains,
+      new Set(["hr"]),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data.source).toBe("t:10");
+    expect(edges[0].data.target).toBe("t:12");
+    expect(edges[0].data.via).toBe(false);
+  });
+
+  it("a self-referencing junction relationship still renders", () => {
+    // pets → pets through pet_companions: the direct form would be dropped as a self-loop.
+    const { edges } = buildErdElements(
+      [pets, companions],
+      [viaRel()],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(edges).toHaveLength(2);
   });
 });

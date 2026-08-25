@@ -121,6 +121,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     autoSuggested: false,
     disableCypher: false,
     // REQ-1586: an FK/PK relationship declares no junction.
+    viaTableId: null,
     viaTableName: null,
     viaSourceColumn: null,
     viaTargetColumn: null,

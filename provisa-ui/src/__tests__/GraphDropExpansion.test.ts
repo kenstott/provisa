@@ -33,6 +33,7 @@ function rel(over: Partial<Relationship>): Relationship {
     computedCypherAlias: null,
     autoSuggested: false,
     disableCypher: false,
+    viaTableId: null,
     viaTableName: null,
     viaSourceColumn: null,
     viaTargetColumn: null,
@@ -47,6 +48,7 @@ function rel(over: Partial<Relationship>): Relationship {
 function junction(id: number, typeValue: string): Relationship {
   return rel({
     id,
+    viaTableId: 99,
     viaTableName: "glossary_term_edges",
     viaSourceColumn: "from_term_id",
     viaTargetColumn: "to_term_id",

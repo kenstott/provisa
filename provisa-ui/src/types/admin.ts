@@ -423,6 +423,9 @@ export interface Relationship {
   disableCypher: boolean;
   // REQ-1586: junction declaration. Present only on a junction-backed edge; viaLabelSource says
   // where the exposed Cypher type name comes from (column | table | fixed).
+  // The ERD keys its nodes by registered-table id, so it needs the id as well as the name
+  // (REQ-1588).
+  viaTableId: number | null;
   viaTableName: string | null;
   viaSourceColumn: string | null;
   viaTargetColumn: string | null;
