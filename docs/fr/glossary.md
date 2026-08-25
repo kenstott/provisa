@@ -134,6 +134,14 @@ Les relations sont orientées. L'interface montre à la fois les arêtes sortant
 autre) et les arêtes entrantes (un autre terme → ce terme), en étiquetant chaque direction par sa
 propre formulation en langage courant.
 
+Les arêtes vivent dans `glossary_term_edges`, une table associative déclarée comme relation de jonction
+(REQ-1586) : sa colonne `rel_type` est le discriminant, de sorte que chacun des types ci-dessus est un
+type de relation Cypher distinct entre deux nœuds `GlossaryTerm`, et non une propriété portée par un nœud
+réifié. La table est provisionnée avec le reste du schéma de métadonnées et n'apparaît pas comme un nœud
+dans les clients graphe — elle est l'arête. Rien en elle n'est spécifique au glossaire : elle se déclare
+exactement comme vous déclareriez une jonction sur vos propres tables, et elle est lue par le même code.
+[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
+
 ## Termes abstraits
 
 Un terme abstrait n'a aucune référence de colonne physique en propre. Employez-en un pour un

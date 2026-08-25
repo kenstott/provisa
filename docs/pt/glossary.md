@@ -125,6 +125,14 @@ Termos se relacionam com outros termos através de arestas tipadas. Os tipos de 
 Relacionamentos são direcionais. A UI mostra tanto arestas de saída (este termo → outro) quanto arestas
 de entrada (outro termo → este termo), rotulando cada direção com sua própria frase em linguagem simples.
 
+As arestas vivem em `glossary_term_edges`, uma tabela associativa declarada como relação de junção
+(REQ-1586): a coluna `rel_type` é o discriminador, de modo que cada um dos tipos acima é um tipo de
+relação Cypher distinto entre dois nós `GlossaryTerm`, e não uma propriedade de um nó reificado. A tabela
+é provisionada com o restante do esquema de metadados e não aparece como nó nos clientes de grafo — ela
+é a aresta. Nada nela é específico do glossário: é declarada do mesmo modo que você declararia uma junção
+sobre as suas próprias tabelas, e é lida pelo mesmo código.
+[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
+
 ## Termos abstratos
 
 Um termo abstrato não tem refs de coluna física próprios. Use um para um conceito de negócio que abrange

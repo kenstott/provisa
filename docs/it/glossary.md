@@ -137,6 +137,14 @@ Le relazioni sono direzionali. La UI mostra sia gli archi in uscita (questo term
 quelli in entrata (un altro termine → questo termine), etichettando ogni direzione con una frase in
 linguaggio corrente.
 
+Gli archi vivono in `glossary_term_edges`, una tabella associativa dichiarata come relazione di giunzione
+(junction) (REQ-1586): la sua colonna `rel_type` è il discriminatore, quindi ciascuno dei tipi qui sopra
+è un tipo di relazione Cypher distinto fra due nodi `GlossaryTerm`, non una proprietà su un nodo reificato.
+La tabella viene provisionata con il resto dello schema di metadati e non è mostrata come nodo nei client
+grafo — è l'arco. Nulla in essa è specifico del glossario: si dichiara esattamente come dichiareresti una
+giunzione sulle tue tabelle, ed è letta dallo stesso codice.
+[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
+
 ## Termini astratti
 
 Un termine astratto non ha ref propri verso colonne fisiche. Se ne usa uno per un concetto di

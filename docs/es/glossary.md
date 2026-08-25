@@ -133,6 +133,14 @@ Las relaciones son direccionales. La interfaz muestra tanto las aristas saliente
 otro) como las entrantes (otro término → este término), y etiqueta cada dirección con su propia
 frase en lenguaje llano.
 
+Las aristas viven en `glossary_term_edges`, una tabla asociativa declarada como relación de unión
+(junction) (REQ-1586): su columna `rel_type` es el discriminador, de modo que cada uno de los tipos
+anteriores es un tipo de relación Cypher distinto entre dos nodos `GlossaryTerm`, y no una propiedad
+de un nodo reificado. La tabla se aprovisiona con el resto del esquema de metadatos y no se muestra como
+nodo en los clientes de grafo — es la arista. Nada en ella es específico del glosario: se declara igual que
+declararías una unión sobre tus propias tablas, y la lee el mismo código.
+[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
+
 ## Términos abstractos
 
 Un término abstracto no tiene referencias propias a columnas físicas. Use uno para un concepto de

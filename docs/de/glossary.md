@@ -134,6 +134,15 @@ Beziehungen sind gerichtet. Die Oberfläche zeigt sowohl ausgehende Kanten (dies
 als auch eingehende Kanten (ein anderer Begriff → dieser) und beschriftet jede Richtung mit ihrer eigenen
 umgangssprachlichen Formulierung.
 
+Die Kanten liegen in `glossary_term_edges`, einer Zuordnungstabelle, die als Junction-Beziehung deklariert ist
+(REQ-1586): Ihre Spalte `rel_type` ist der Diskriminator, sodass jeder der obigen Typen ein
+eigener Cypher-Beziehungstyp zwischen zwei `GlossaryTerm`-Knoten ist und keine Eigenschaft an einem
+reifizierten Knoten. Die Tabelle wird mit dem übrigen Metadatenschema bereitgestellt und erscheint in
+Graph-Clients nicht als Knoten — sie ist die Kante. Nichts daran ist glossarspezifisch: Sie wird genauso
+deklariert, wie Sie eine Junction über Ihre eigenen Tabellen deklarieren würden, und sie wird vom selben
+Code gelesen.
+[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
+
 ## Abstrakte Begriffe
 
 Ein abstrakter Begriff hat keine eigenen Refs auf physische Spalten. Verwenden Sie einen für ein
