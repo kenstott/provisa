@@ -91,6 +91,38 @@ class TestRelationships:
         data = await _gql(client, "{ allRelationships { id sourceColumn cardinality } }")
         assert len(data["data"]["allRelationships"]) > 0
 
+    # REQ-1586: the junction table is stored by id, so a resolver that forgets to resolve it back to
+    # a name hands the UI a row that reads as FK-backed while its via_* siblings say otherwise.
+    async def test_junction_relationship_reports_its_table(self, client):
+        for field in ("relationships", "allRelationships"):
+            data = await _gql(
+                client,
+                "{ %s { id viaTableName viaSourceColumn viaTargetColumn "
+                "viaTypeColumn viaTypeValue viaLabelSource } }" % field,
+            )
+            rows = data["data"][field]
+            declared = {"pets-bonded-pair", "pets-littermate", "pets-shares-enclosure"}
+            junction = [r for r in rows if r["id"] in declared]
+            assert {r["id"] for r in junction} == declared, (
+                f"{field}: {sorted(r['id'] for r in rows)}"
+            )
+            for r in junction:
+                assert r["viaTableName"] == "pet_companions", r
+                assert r["viaSourceColumn"] == "pet_id"
+                assert r["viaTargetColumn"] == "companion_pet_id"
+                assert r["viaTypeColumn"] == "relation_type"
+                assert r["viaLabelSource"] == "column"
+            assert {r["viaTypeValue"] for r in junction} == {
+                "bonded pair",
+                "littermate",
+                "shares enclosure",
+            }
+            # The glossary edges are the same feature, not a special case (REQ-1586) — every
+            # nominated edge must name its junction, whichever table backs it.
+            for r in rows:
+                if r["viaLabelSource"]:
+                    assert r["viaTableName"], r
+
 
 class TestRoles:
     async def test_list_roles(self, client):

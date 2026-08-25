@@ -387,6 +387,9 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
+        # REQ-1586: the junction declaration stores the table by id; the UI reads the edge back by
+        # name, so resolve it here or the row reads as FK-backed even though it is junction-backed.
+        _vt = registered_tables.alias("vt")
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
                 select(
@@ -394,11 +397,12 @@ class Query:  # REQ-021, REQ-042
                     _st.c.table_name.label("source_table_name"),
                     _st.c.domain_id.label("source_domain_id"),
                     _tt.c.table_name.label("target_table_name"),
+                    _vt.c.table_name.label("via_table_name"),
                 )
                 .select_from(
-                    relationships.join(_st, relationships.c.source_table_id == _st.c.id).join(
-                        _tt, relationships.c.target_table_id == _tt.c.id, isouter=True
-                    )
+                    relationships.join(_st, relationships.c.source_table_id == _st.c.id)
+                    .join(_tt, relationships.c.target_table_id == _tt.c.id, isouter=True)
+                    .join(_vt, relationships.c.via_table_id == _vt.c.id, isouter=True)
                 )
                 .where(
                     relationships.c.id.not_like("gql_auto__%"),
@@ -417,6 +421,8 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
+        # REQ-1586: same junction resolution as `relationships` — the ERD reads these rows too.
+        _vt = registered_tables.alias("vt")
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
                 select(
@@ -424,11 +430,12 @@ class Query:  # REQ-021, REQ-042
                     _st.c.table_name.label("source_table_name"),
                     _st.c.domain_id.label("source_domain_id"),
                     _tt.c.table_name.label("target_table_name"),
+                    _vt.c.table_name.label("via_table_name"),
                 )
                 .select_from(
-                    relationships.join(_st, relationships.c.source_table_id == _st.c.id).join(
-                        _tt, relationships.c.target_table_id == _tt.c.id, isouter=True
-                    )
+                    relationships.join(_st, relationships.c.source_table_id == _st.c.id)
+                    .join(_tt, relationships.c.target_table_id == _tt.c.id, isouter=True)
+                    .join(_vt, relationships.c.via_table_id == _vt.c.id, isouter=True)
                 )
                 .where(relationships.c.id.not_like("gql_auto__%"))
                 .order_by(relationships.c.id)
