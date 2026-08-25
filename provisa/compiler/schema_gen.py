@@ -44,6 +44,7 @@ from provisa.compiler.naming import (
     domain_gql_alias,
     domain_to_sql_name,
     generate_name,
+    junction_field_name,
     rel_field_name,
     to_type_name,
 )
@@ -452,7 +453,23 @@ def _add_standard_relationship_field(
         return
     target_type = gql_types[target.table_id]
     cardinality = rel["cardinality"]
-    field_name = rel.get("graphql_alias") or rel_field_name(target.field_name, cardinality)
+    # REQ-1586: a junction-backed edge is named for its nomination, not for the table it reaches —
+    # several such edges can share one target and would otherwise collapse onto one field.
+    if rel.get("graphql_alias"):
+        field_name = rel["graphql_alias"]
+    elif rel.get("via_table_id"):
+        via = table_lookup.get(rel["via_table_id"])
+        if not via:
+            return
+        field_name = junction_field_name(
+            rel["via_label_source"],
+            cardinality,
+            type_value=rel.get("via_type_value"),
+            via_table_name=via.table_name,
+            cypher_alias=rel.get("alias"),
+        )
+    else:
+        field_name = rel_field_name(target.field_name, cardinality)
     if cardinality == "many-to-one":
         fields[field_name] = GraphQLField(
             target_type,

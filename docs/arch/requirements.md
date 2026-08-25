@@ -16528,7 +16528,7 @@ AN INVITATION IS ITSELF THE ADMISSION DECISION, AND THE ORG EMAIL RULE DOES NOT 
 
 **Code:** `provisa/api/auth_router.py`
 
-**Tests:** `tests/e2e/test_platform_auth_flow.py`
+**Tests:** `tests/unit/test_invite_admission.py`, `tests/e2e/test_platform_auth_flow.py`
 
 ### REQ-1573 · Environments {#REQ-1573}
 
@@ -16664,7 +16664,7 @@ A derived glossary term names the column's BUSINESS name -- its alias where the 
 
 **Code:** `provisa/core/repositories/glossary.py`, `provisa/core/repositories/table.py`, `provisa-ui/src/i18n/locales/en/glossaryTab.json`
 
-**Tests:** `tests/integration/test_glossary_lifecycle.py`
+**Tests:** `tests/unit/test_glossary_alias_derivation.py`, `tests/integration/test_glossary_lifecycle.py`
 
 ### REQ-1584 · Business Glossary & Ontology {#REQ-1584}
 
@@ -16676,7 +16676,7 @@ The business glossary is queryable metadata: its terms, their physical refs, the
 
 **Code:** `provisa/api/_meta_views.py`, `provisa/api/app_loaders.py`, `provisa/api/startup_seed.py`
 
-**Tests:** `tests/integration/test_glossary_meta_domain.py`
+**Tests:** `tests/unit/test_meta_glossary_views.py`, `tests/integration/test_glossary_meta_domain.py`
 
 ### REQ-1585 · Metadata Catalog {#REQ-1585}
 
@@ -16688,7 +16688,7 @@ The tag graph is traversable in the meta domain: every tag table is joined to wh
 
 **Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`
 
-**Tests:** `tests/integration/test_glossary_meta_domain.py`
+**Tests:** `tests/unit/test_meta_glossary_views.py`, `tests/integration/test_glossary_meta_domain.py`
 
 ### REQ-1586 · Graph Query {#REQ-1586}
 

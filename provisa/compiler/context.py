@@ -18,7 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence  # noqa: F401
 
-from provisa.compiler.naming import rel_field_name as _rel_field_name, source_to_catalog
+from provisa.compiler.naming import (
+    junction_field_name,
+    rel_field_name as _rel_field_name,
+    source_to_catalog,
+)
 from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.compiler.sql_types import (
     CompilationContext,
@@ -192,6 +196,30 @@ def _register_table_in_ctx(
         ctx.gql_json_columns.add((t.table_id, col_name))
 
 
+def _join_field_name(  # REQ-194, REQ-1586
+    rel: Mapping,
+    tgt_info: _TableInfoProto,
+    table_lookup: Mapping[int, _TableInfoProto],
+) -> str:
+    """The field name this relationship registers its join under.
+
+    An FK edge is named for the table it reaches. A junction-backed edge cannot be: one junction
+    table backs several edges between the same pair of tables, and naming them all for the target
+    leaves ``ctx.joins`` holding whichever one registered last. Its nominated label names it
+    instead — the same nomination the Cypher type takes.
+    """
+    if rel.get("via_table_id"):
+        via_info = table_lookup[rel["via_table_id"]]
+        return junction_field_name(
+            rel["via_label_source"],
+            rel["cardinality"],
+            type_value=rel.get("via_type_value"),
+            via_table_name=via_info.table_name,
+            cypher_alias=rel.get("alias"),
+        )
+    return _rel_field_name(tgt_info.field_name, rel["cardinality"])
+
+
 def _build_junction_meta(  # REQ-1586
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     rel: Mapping,
@@ -204,6 +232,9 @@ def _build_junction_meta(  # REQ-1586
     ``table_lookup`` is not visible to this role, so the edge itself is not registered — the caller
     distinguishes that from "no junction" by checking ``rel["via_table_id"]``.
     """
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
     via_id = rel.get("via_table_id")
     if not via_id or via_id not in table_lookup:
         return None
@@ -309,9 +340,7 @@ def _register_relationship_joins(
             table=tgt_info.table_name,
         )
 
-        join_field_name = rel.get("graphql_alias") or _rel_field_name(
-            tgt_info.field_name, rel["cardinality"]
-        )
+        join_field_name = rel.get("graphql_alias") or _join_field_name(rel, tgt_info, table_lookup)
         ctx.joins[(src_info.type_name, join_field_name)] = JoinMeta(
             source_column=rel["source_column"],
             target_column=rel["target_column"],

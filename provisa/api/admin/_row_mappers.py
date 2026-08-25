@@ -156,8 +156,16 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
     source_column = row.get("source_column") or ""
     alias = row.get("alias")
     persisted_graphql_alias = row.get("graphql_alias") or None
-    graphql_alias = persisted_graphql_alias or _derive_graphql_alias(
-        target_table_name, cardinality, alias, convention
+    graphql_alias = persisted_graphql_alias or _derive_graphql_alias_fn(
+        target_table_name,
+        cardinality,
+        convention,
+        # REQ-1586: several junction-backed edges share one target table, so only the nomination
+        # tells their field names apart.
+        via_label_source=row.get("via_label_source"),
+        via_type_value=row.get("via_type_value"),
+        via_table_name=row.get("via_table_name"),
+        cypher_alias=alias,
     )
     computed_cypher_alias = (
         None

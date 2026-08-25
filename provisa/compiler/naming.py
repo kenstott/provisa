@@ -98,6 +98,45 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194,
     return apply_gql_name("_".join(words))
 
 
+def junction_field_name(  # REQ-1586
+    label_source: str,
+    cardinality: str,
+    *,
+    type_value: str | None = None,
+    via_table_name: str | None = None,
+    cypher_alias: str | None = None,
+) -> str:
+    """The relationship field name a junction-backed edge takes.
+
+    One junction table backs several edges between the same pair of tables — the demo's pets are
+    bonded pairs, littermates and enclosure-mates through one ``pet_companions`` row set. Named
+    after the target table the way an FK edge is, all three become ``pets``: the GraphQL type keeps
+    only the last field of that name, ``ctx.joins`` resolves ``?include=pets`` to whichever edge
+    registered last, and a client rendering the list sees one name three times. The nomination that
+    already distinguishes these edges on the Cypher side names the field here too.
+
+    The three nominations are the ones the registry's CHECK constraints admit, so a missing or
+    unknown one is a declaration that never should have been stored, not something to name around.
+    """
+    if label_source == "column":
+        if not type_value:
+            raise ValueError("Junction nominates a column but carries no via_type_value")
+        label = type_value
+    elif label_source == "table":
+        if not via_table_name:
+            raise ValueError("Junction nominates its table name, which is absent")
+        label = via_table_name
+    elif label_source == "fixed":
+        if not cypher_alias:
+            raise ValueError("Junction nominates a fixed label, which is absent")
+        label = cypher_alias
+    else:
+        raise ValueError(f"Junction has no label source nomination: {label_source!r}")
+    # A nominated label is prose ("bonded pair") or a Cypher type (BONDED_PAIR); rel_field_name
+    # splits on underscores, so give it the words separated the way it expects.
+    return rel_field_name(re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_"), cardinality)
+
+
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase."""
     parts = re.split(r"[_\-]+", name)

@@ -44,18 +44,40 @@ def _to_singular(camel: str) -> str:
     return camel
 
 
-def derive_graphql_alias(  # REQ-155, REQ-194, REQ-351
-    target_table_name: str, cardinality: str, convention: str = "apollo_graphql"
+def derive_graphql_alias(  # REQ-155, REQ-194, REQ-351, REQ-1586
+    target_table_name: str,
+    cardinality: str,
+    convention: str = "apollo_graphql",
+    *,
+    via_label_source: str | None = None,
+    via_type_value: str | None = None,
+    via_table_name: str | None = None,
+    cypher_alias: str | None = None,
 ) -> str | None:
     """Derive GraphQL field name from target table name + cardinality.
 
     Always strips verb prefixes (find/get/list/…) via rel_field_name.
     snake / hasura_graphql → snake_case output; apollo_graphql → camelCase.
+
+    REQ-1586: a junction-backed edge is named for its nominated label instead. Several such edges
+    share one junction table and one target table, so the target's name does not tell them apart —
+    it hands every one of them the same field name.
     """
+    from provisa.compiler.naming import apply_convention, junction_field_name, rel_field_name
+
+    if via_label_source:
+        return apply_convention(
+            junction_field_name(
+                via_label_source,
+                cardinality,
+                type_value=via_type_value,
+                via_table_name=via_table_name,
+                cypher_alias=cypher_alias,
+            ),
+            convention,
+        )
     if not target_table_name:
         return None
-    from provisa.compiler.naming import rel_field_name, apply_convention
-
     name = rel_field_name(target_table_name, cardinality)
     return apply_convention(name, convention)
 
@@ -175,7 +197,12 @@ async def fetch_relationships(
         d = dict(r)
         if not d.get("graphql_alias"):
             d["graphql_alias"] = derive_graphql_alias(
-                d.get("target_table_name") or "", d.get("cardinality") or ""
+                d.get("target_table_name") or "",
+                d.get("cardinality") or "",
+                via_label_source=d.get("via_label_source"),
+                via_type_value=d.get("via_type_value"),
+                via_table_name=d.get("via_table_name"),
+                cypher_alias=d.get("alias"),
             )
         if not d.get("alias"):
             d["computed_cypher_alias"] = derive_cypher_alias(

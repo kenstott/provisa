@@ -173,3 +173,54 @@ class TestNamingConvention:
         assert mutation_style("hasura_graphql") == "snake"
         assert mutation_style("hasura-default") == "snake"
         assert mutation_style("apollo_graphql") == "camel"
+
+
+class TestJunctionFieldName:
+    """REQ-1586: a junction-backed edge is named for its nomination, not its target table."""
+
+    def test_several_edges_through_one_junction_get_distinct_names(self):
+        # The demo's pets reach pets three ways through one pet_companions row set. Named after the
+        # target table all three would be "pets", collapsing ctx.joins and the GraphQL field dict.
+        from provisa.compiler.naming import junction_field_name
+
+        names = {
+            junction_field_name("column", "one-to-many", type_value=v)
+            for v in ("bonded pair", "littermate", "shares enclosure")
+        }
+        assert names == {"bondedPairs", "littermates", "sharesEnclosures"}
+
+    def test_table_and_fixed_nominations(self):
+        from provisa.compiler.naming import junction_field_name
+
+        assert (
+            junction_field_name("table", "one-to-many", via_table_name="pet_companions")
+            == "petCompanions"
+        )
+        assert junction_field_name("fixed", "many-to-one", cypher_alias="KIND_OF") == "kindOf"
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"label_source": "column"},
+            {"label_source": "table"},
+            {"label_source": "fixed"},
+            {"label_source": "guess", "type_value": "x"},
+        ],
+    )
+    def test_absent_nomination_raises(self, kwargs):
+        # No fallback: the registry's CHECK constraints admit only the three nominations, so a
+        # missing one is a row that never should have been stored.
+        from provisa.compiler.naming import junction_field_name
+
+        with pytest.raises(ValueError):
+            junction_field_name(cardinality="one-to-many", **kwargs)
+
+    def test_admin_derivation_matches_the_compiler(self):
+        from provisa.api.admin.db_queries import derive_graphql_alias
+
+        assert (
+            derive_graphql_alias(
+                "pets", "one-to-many", via_label_source="column", via_type_value="bonded pair"
+            )
+            == "bondedPairs"
+        )
