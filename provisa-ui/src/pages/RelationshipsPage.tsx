@@ -399,7 +399,7 @@ export function RelationshipsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredForPaging.length / PAGE_SIZE));
 
   return (
-    <div className="page">
+    <div className="page page-sticky-head">
       <div className="page-header">
         <Title order={2}>{t("relationshipsPage.title")}</Title>
         <FilterInput
@@ -512,7 +512,7 @@ export function RelationshipsPage() {
         </div>
       )}
 
-      <div style={{ overflowX: "auto" }}>
+      <div className="table-scroll">
         <Table className="data-table" style={{ width: "100%", tableLayout: "fixed" }}>
           <Table.Thead>
             <Table.Tr>
@@ -1012,13 +1012,15 @@ export function RelationshipsPage() {
       )}
 
       {candidates.length > 0 && (
-        <CandidatesTable
-          candidates={candidates}
-          tableDomainById={tableDomainById}
-          tableNameById={tableNameById}
-          onAccept={handleAccept}
-          onReject={handleReject}
-        />
+        <div className="page-aux">
+          <CandidatesTable
+            candidates={candidates}
+            tableDomainById={tableDomainById}
+            tableNameById={tableNameById}
+            onAccept={handleAccept}
+            onReject={handleReject}
+          />
+        </div>
       )}
       {showErd && (
         <ErdModal

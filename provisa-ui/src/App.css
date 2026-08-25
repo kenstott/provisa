@@ -515,6 +515,51 @@ main {
   font-weight: 600;
   color: var(--text-muted);
 }
+/* Pinned table headers (REQ-1587) — layout experiment, currently /relationships only.
+ * The page itself owns the scroll so the thead has a scrollport to stick to. A wrapper
+ * with overflow-x around the table would become that scrollport instead, and since it
+ * grows to its content it never scrolls vertically — the header would ride away with the
+ * rows. Same reason .data-table's overflow: hidden (there for the border radius) is
+ * dropped here. border-collapse drops a sticky th's border, so the divider is an inset
+ * shadow and the th needs its own background or rows show through. */
+.page-sticky-head {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Only the rows scroll: the title, filter, actions and the add form sit outside the
+ * scrollport, so nothing above the header can leave the page. */
+.page-sticky-head > * {
+  flex: 0 0 auto;
+}
+.page-sticky-head > .table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* The scrollport carries no padding of its own — a sticky offset is measured from the
+   * padding edge, so padding here would park the thead below the visible top and let rows
+   * show above it. */
+  overflow: auto;
+}
+/* The candidates block yields its height to the table and scrolls within what is left,
+ * rather than being clipped by the page's overflow. */
+.page-sticky-head > .page-aux {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.page-sticky-head .data-table {
+  overflow: visible;
+}
+.page-sticky-head .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-bottom: none;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
 .data-table tr.clickable {
   cursor: pointer;
 }
