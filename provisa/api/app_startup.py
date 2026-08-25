@@ -226,6 +226,8 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     _sqlite_check_interval = 60
 
     async def _sqlite_stale_loop() -> None:
+        from provisa.core.config_loader import sqlite_lands
+        from provisa.core.models import Source, SourceType
         from provisa.file_source.pg_migrate import migrate_if_stale
 
         while True:
@@ -243,6 +245,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                                     _registered_tables_t.c.id,
                                     _registered_tables_t.c.table_name,
                                     _registered_tables_t.c.schema_name,
+                                    _sources_t.c.id.label("source_id"),
                                     _sources_t.c.path,
                                 )
                                 .select_from(
@@ -258,16 +261,35 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                             )
                         ).fetchall()
                     ]
+                    # A replica exists only for an engine that cannot read the file live. The
+                    # registration path already makes that call (config_loader.sqlite_lands); the
+                    # refresh has to make the same one, or an ATTACH engine's sources get a replica
+                    # here that registration deliberately never landed — written into the schema
+                    # the live source already occupies.
+                    lands: dict[str, bool] = {}
                     for r in rows:
-                        try:
-                            migrated = await migrate_if_stale(
-                                r["id"],
-                                r["path"],
-                                r["table_name"],
-                                _sc,
-                                r["schema_name"],
-                                r["table_name"],
+                        _src_id = r["source_id"]
+                        if _src_id not in lands:
+                            lands[_src_id] = sqlite_lands(
+                                state.federation_engine,
+                                Source(id=_src_id, type=SourceType.sqlite),
                             )
+                        if not lands[_src_id]:
+                            continue
+                        try:
+                            # Own transaction per table: a failed statement aborts the whole
+                            # transaction in PostgreSQL, so without this the except below catches
+                            # one table's error and every later table then fails on its own stale
+                            # probe with "current transaction is aborted".
+                            async with _sc.transaction():
+                                migrated = await migrate_if_stale(
+                                    r["id"],
+                                    r["path"],
+                                    r["table_name"],
+                                    _sc,
+                                    r["schema_name"],
+                                    r["table_name"],
+                                )
                             if migrated:
                                 _log.info(
                                     "SQLite stale: re-migrated table %d (%s)",

@@ -252,7 +252,7 @@ def _enrich_openapi_table_columns(
             col.description = spec_col_map[col.name].get("description")
 
 
-def _sqlite_lands(engine: Any, src: Source) -> bool:
+def sqlite_lands(engine: Any, src: Source) -> bool:
     """True iff the engine reaches a sqlite source only by LANDING it into the control-plane store
     (FETCH/DIRECT → MATERIALIZED, e.g. Trino reads a PG replica), so it must be migrated in. An
     engine that ATTACHes sqlite in place (DuckDB) reads the file directly — no migration, which
@@ -485,7 +485,7 @@ async def _upsert_single_table(
     await table_repo.upsert(conn, tbl)
 
     if src and src.type.value == "sqlite" and src.path:
-        await _handle_sqlite_table(conn, tbl, src, land=_sqlite_lands(engine, src))
+        await _handle_sqlite_table(conn, tbl, src, land=sqlite_lands(engine, src))
     elif src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
         if spec:
