@@ -121,10 +121,23 @@ export function startTokenRefresh(
   }, intervalMs);
 }
 
-/** Send the user to the control-plane login, with `?next=` set to return them to this exact page. */
-export function redirectToControlPlaneLogin(): void {
-  const next = encodeURIComponent(window.location.href);
-  window.location.replace(`${controlPlaneOrigin()}/login?next=${next}`);
+/**
+ * Send the user to the control-plane login, with `?next=` set to return them to this exact page.
+ *
+ * An `invite` token in this page's query goes with them rather than staying inside `next`: an
+ * invitation link addresses the org (REQ-1276), but redemption happens on the sign-in page, which
+ * only ever runs on the control plane (REQ-1348). Left in `next` it would arrive back here after
+ * sign-in with nothing on this origin able to redeem it. It is dropped from `next` for the same
+ * reason — the return trip is into the org, not back onto a register page.
+ */
+export function redirectToControlPlaneLogin(here: Location = window.location): void {
+  const url = new URL(here.href);
+  const invite = url.searchParams.get("invite");
+  url.searchParams.delete("invite");
+  const login = new URL(`${controlPlaneOrigin(here)}/login`);
+  login.searchParams.set("next", url.href);
+  if (invite) login.searchParams.set("invite", invite);
+  here.replace(login.href);
 }
 
 /**

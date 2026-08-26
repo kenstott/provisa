@@ -90,6 +90,22 @@ export function orgOrigin(orgId: string, location: Location = window.location): 
 }
 
 /**
+ * The link an invitation is sent as: the invited org's own address (REQ-1276), so the invitee
+ * arrives at the org they were invited to rather than at the control plane's front door.
+ *
+ * The org host cannot run the sign-in itself (REQ-1348), so a signed-out invitee is bounced to the
+ * control-plane login — `redirectToControlPlaneLogin` carries the `invite` token across with them,
+ * because that page is where redemption happens, and returns them here afterwards.
+ *
+ * On a host that addresses no org by name — a desktop install, `localhost` — `orgOrigin` is null
+ * and this deployment has exactly one address, which is the one we are already on.
+ */
+export function inviteUrl(orgId: string, token: string, location: Location = window.location) {
+  const origin = orgOrigin(orgId, location) ?? location.origin;
+  return `${origin}/register?invite=${token}`;
+}
+
+/**
  * True when `origin` is a host of THIS deployment — same scheme, same port, and a single
  * label in front of the same base domain. The relay answers token requests only from these,
  * so a sibling tenant of some other zone can never ask the control plane for a bearer.

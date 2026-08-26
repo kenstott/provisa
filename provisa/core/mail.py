@@ -37,6 +37,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape
 from typing import Protocol
+from urllib.parse import urlsplit, urlunsplit
 
 log = logging.getLogger(__name__)
 
@@ -420,9 +421,16 @@ def email_sender(mail_config) -> EmailSender:  # REQ-1330, REQ-1576
     return spec.build(mail_config)
 
 
-def invite_redemption_url(base_url: str, token: str) -> str:
+def invite_redemption_url(base_url: str, token: str, org_id: str) -> str:
     """The link the invitee follows. The UI reads ``?invite=<token>`` and drives redemption after
     sign-in, so the token never has to be copied by hand.
+
+    REQ-1276: an org is reached at its own host, so the invitation addresses the org rather than the
+    control plane -- ``mail.base_url``'s leftmost label is replaced by the org id, the same rule the
+    UI's ``orgOrigin`` applies. A base_url whose host has no label to strip (``localhost``, a bare
+    hostname) addresses no org by name; there the deployment has exactly one address and it is the
+    one configured. REQ-1348: the org host cannot sign the invitee in, and redirects them to the
+    control-plane login carrying the token, which is where redemption runs.
 
     An empty ``base_url`` is refused rather than defaulted. ``${env:...:-default}`` resolves a
     variable that is SET BUT EMPTY to the empty string -- the default applies only when the
@@ -435,7 +443,15 @@ def invite_redemption_url(base_url: str, token: str) -> str:
             "mail.base_url is empty, so the invitation link would be a relative path no mail "
             "client can open. Set PROVISA_MAIL_BASE_URL to the public origin of the UI."
         )
-    return f"{base_url.rstrip('/')}/?invite={token}"
+    parsed = urlsplit(base_url.strip().rstrip("/"))
+    labels = parsed.hostname.split(".") if parsed.hostname else []
+    if len(labels) >= 2:
+        host = f"{org_id}.{'.'.join(labels[1:])}"
+        netloc = f"{host}:{parsed.port}" if parsed.port else host
+        origin = urlunsplit((parsed.scheme, netloc, "", "", ""))
+    else:
+        origin = base_url.strip().rstrip("/")
+    return f"{origin}/?invite={token}"
 
 
 def compose_invite_message(
@@ -470,7 +486,7 @@ def compose_invite_message(
     display_name = brand.get("display_name", org_name)
     org_note = brand.get("invite_message")
     expiry = expires_at.strftime("%Y-%m-%d %H:%M UTC")
-    url = invite_redemption_url(base_url, token)
+    url = invite_redemption_url(base_url, token, org_id)
     body = (
         f"{inviter} invited you to join {display_name} on Provisa.\n"
         f"\n"

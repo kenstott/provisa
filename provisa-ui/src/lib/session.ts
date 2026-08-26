@@ -51,6 +51,29 @@ export function clearSessionState(): void {
   clearPersistedAdminCache();
 }
 
+/**
+ * End the session and return to the public entry point.
+ *
+ * Lives here rather than in the navbar because the onboarding page has no navbar: an account that
+ * belongs to no org is held on that page by the membership gate, so without its own sign-out there
+ * is no way to reach a different account from it.
+ */
+export async function signOut(): Promise<void> {
+  // Clear the Firebase session too, or signInWithPopup silently reuses the persisted
+  // Google account on the next login and never offers the account chooser.
+  const { signOutFirebase } = await import("./firebase");
+  await signOutFirebase();
+  // REQ-1326: sign-out clears exactly what sign-in clears — token, org, role and the persisted
+  // Apollo snapshot. Clearing a subset left provisa_role and the cached org-scoped admin data
+  // behind for the next identity.
+  clearSessionState();
+  // Full document load, not navigate(): App reads the token only on an authVersion bump (login
+  // path), so an in-app navigate would keep the shell mounted and render /login inside the
+  // navbar. A hard load re-reads the token-less localStorage into the public LandingPage branch
+  // and drops the Apollo/auth state built for the signed-in session.
+  window.location.assign("/");
+}
+
 /** Begin a session for `token`: clear the prior identity's state first, then store the credential. */
 export function startSession(token: string): void {
   clearSessionState();

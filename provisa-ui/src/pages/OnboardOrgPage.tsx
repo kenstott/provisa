@@ -17,9 +17,7 @@ import {
   Box,
   Button,
   Checkbox,
-  Divider,
   Group,
-  List,
   Loader,
   Paper,
   Radio,
@@ -27,10 +25,9 @@ import {
   Stack,
   Text,
   TextInput,
-  ThemeIcon,
   Title,
 } from "@mantine/core";
-import { PartyPopper, ShieldCheck, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import type { AutoJoinOffer, PendingInvite } from "../api/admin";
 import {
   OrgError,
@@ -43,6 +40,7 @@ import {
   redeemInvite,
 } from "../api/admin";
 import type { OrgReservation, PlanOffer } from "../api/billing";
+import { useCheckoutAppearance } from "../api/checkoutAppearance";
 import {
   BillingError,
   fetchCatalog,
@@ -53,8 +51,9 @@ import {
   startPlanCheckout,
 } from "../api/billing";
 import { useAuth } from "../context/AuthContext";
-import { OrgAddressModal } from "../components/OrgAddressModal";
 import { orgOrigin } from "../lib/authHost";
+import { OrgWelcomePage } from "./OrgWelcomePage";
+import { signOut } from "../lib/session";
 import { formatMoney, planName } from "../lib/planDisplay";
 
 // REQ-1266: a member-less authenticated user either self-creates an org OR joins an existing one
@@ -63,8 +62,22 @@ import { formatMoney, planName } from "../lib/planDisplay";
 // Both then refetch identity (so the new membership clears the onboarding gate) and route in.
 export function OnboardOrgPage() {
   const { t } = useTranslation();
-  const { billing, selectOrg, refresh } = useAuth();
+  const { billing, email, selectOrg, refresh } = useAuth();
+  const appearance = useCheckoutAppearance();
   const navigate = useNavigate();
+
+  // REQ-1276: an org's home is its own host, so leaving onboarding for an org lands on that host
+  // rather than staying on the control plane. It is a document load, not a client route, and that
+  // is the point: the org then binds by Host instead of by the `X-Org-Provisa` header, and the
+  // identity bootstrap re-runs against it, so the org_admin grant made moments earlier is in hand
+  // before the first page renders. `orgOrigin` is null only where the host names no org (a desktop
+  // install has no per-org address); there the header IS the binding and the in-app route is the
+  // whole navigation.
+  const enterOrg = (orgId: string, path: string) => {
+    const address = orgOrigin(orgId);
+    if (address) window.location.assign(`${address}${path}`);
+    else navigate(path);
+  };
   const [mode, setMode] = useState<"create" | "join">("create");
   const [id, setId] = useState("");
   const [name, setName] = useState("");
@@ -107,9 +120,6 @@ export function OnboardOrgPage() {
   // between. A single match never reaches the page — it was joined at sign-in — so anything here
   // is a genuine ambiguity that only the person holding the address can settle.
   const [autoJoinOffers, setAutoJoinOffers] = useState<AutoJoinOffer[]>([]);
-  // The new org's own address (REQ-1276), told once over the welcome screen. Dismissed state is
-  // kept here so closing it does not take the welcome screen with it.
-  const [addressShown, setAddressShown] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,7 +203,7 @@ export function OnboardOrgPage() {
       const { org_id } = await redeemInvite(token);
       selectOrg(org_id);
       await refresh();
-      navigate("/query");
+      enterOrg(org_id, "/query");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -207,7 +217,7 @@ export function OnboardOrgPage() {
       const { org_id } = await acceptAutoJoin(orgId);
       selectOrg(org_id);
       await refresh();
-      navigate("/query");
+      enterOrg(org_id, "/query");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -242,7 +252,6 @@ export function OnboardOrgPage() {
     // screen offers links into /team (user_management) and /security/roles (access_config).
     selectOrg(orgId);
     await refresh();
-    setPhase("welcome");
   };
 
   // REQ-1476: the org leaves awaiting_checkout when the purchase binds to it — normally through the
@@ -270,30 +279,53 @@ export function OnboardOrgPage() {
   // where it has not arrived, and the poll then runs the same way for both.
   const runCheckout = async (orgId: string, chosen: string) => {
     setPhase("checkout");
-    const url = await startPlanCheckout(orgId, chosen, window.location.href);
-    await openCheckout(url, () => {
-      void (async () => {
-        setPhase("provisioning");
-        try {
-          await waitForReady(orgId, await settleCheckout(orgId));
-        } catch (err) {
-          setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+    const url = await startPlanCheckout(orgId, chosen, window.location.href, appearance);
+    await openCheckout(
+      url,
+      () => {
+        void (async () => {
+          setPhase("provisioning");
+          try {
+            await waitForReady(orgId, await settleCheckout(orgId));
+          } catch (err) {
+            setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+            setPhase("form");
+            return;
+          }
+          // REQ-1482: the transfer subscription is a second checkout — one Lemon Squeezy variant
+          // carries one usage-based price, and the plan's is the active hour. Ordered after the org
+          // is built, which is when its billing row exists to bind the subscription to. A failure
+          // here is reported over the welcome screen: the org is provisioned and the create is done.
+          try {
+            const egress = await startEgressSubscription(orgId, window.location.href, appearance);
+            await openCheckout(egress, () => {
+              // The webhook binds the subscription; nothing on this page reads it.
+            });
+            // REQ-1276: the create is finished, so it lands on the org's own host — the welcome is
+            // read at `{org}.provisa.dev`, which is the address the org answers at from here on.
+            enterOrg(orgId, "/welcome");
+          } catch (err) {
+            // Stay on the control plane instead: the welcome is shown here, under what failed,
+            // because a document load to the org host would take the report with it.
+            setError(err instanceof Error ? err.message : t("onboardOrg.egressCheckoutFailed"));
+            setPhase("welcome");
+          }
+        })();
+      },
+      () => {
+        // REQ-1476: closing the overlay abandons the checkout, not the org — the id stays reserved
+        // until it expires. Come back to the form holding that reservation, so the way on is the
+        // resume it offers; re-entering the same id would be refused as taken.
+        void (async () => {
           setPhase("form");
-          return;
-        }
-        // REQ-1482: the transfer subscription is a second checkout — one Lemon Squeezy variant
-        // carries one usage-based price, and the plan's is the active hour. Ordered after the org
-        // is built, which is when its billing row exists to bind the subscription to. A failure
-        // here is reported over the welcome screen: the org is provisioned and the create is done.
-        try {
-          await openCheckout(await startEgressSubscription(orgId, window.location.href), () => {
-            // The webhook binds the subscription; nothing on this page reads it.
-          });
-        } catch (err) {
-          setError(err instanceof Error ? err.message : t("onboardOrg.egressCheckoutFailed"));
-        }
-      })();
-    });
+          try {
+            setReservation(await fetchMyReservation());
+          } catch (err) {
+            setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+          }
+        })();
+      },
+    );
   };
 
   const handleCreate = async (e: FormEvent) => {
@@ -322,6 +354,8 @@ export function OnboardOrgPage() {
         return;
       }
       await waitForReady(id, created.provisioning_state);
+      enterOrg(id, "/welcome");
+      return;
     } catch (err) {
       if (err instanceof OrgError && err.code === "orgs.auto_join_breadth_unacknowledged") {
         // REQ-1567: not a failure to report and move on from — it is the question the rule raised,
@@ -355,7 +389,7 @@ export function OnboardOrgPage() {
       const { org_id } = await redeemInvite(invite.trim());
       selectOrg(org_id);
       await refresh();
-      navigate("/query");
+      enterOrg(org_id, "/query");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -363,91 +397,38 @@ export function OnboardOrgPage() {
   };
 
   if (phase === "welcome") {
-    // Null on a deployment whose host names no org — a desktop install has no per-org address.
-    const address = orgOrigin(id);
+    // Reached only when the create finished with something to report — the success path is a
+    // document load to the org's own host, which is where this same page is normally read.
     return (
       <Box maw={560} mx="auto" my={80} data-testid="onboard-org-welcome">
-        {address && (
-          <OrgAddressModal
-            url={address}
-            opened={addressShown}
-            onClose={() => setAddressShown(false)}
-          />
+        {error && (
+          <Alert color="red" mb="lg" data-testid="onboard-welcome-error">
+            {error}
+          </Alert>
         )}
-        <Stack gap="lg">
-          <Group gap="sm">
-            <ThemeIcon size="xl" radius="xl" color="green" variant="light">
-              <PartyPopper size={22} />
-            </ThemeIcon>
-            <div>
-              <Title order={2}>{t("onboardOrg.welcomeTitle", { name })}</Title>
-              <Text c="dimmed" size="sm">
-                {t("onboardOrg.welcomeAdmin")}
-              </Text>
-            </div>
-          </Group>
-
-          <Divider />
-
-          <Group gap="sm" align="flex-start" wrap="nowrap">
-            <ThemeIcon size="lg" radius="md" variant="light">
-              <UserPlus size={18} />
-            </ThemeIcon>
-            <div>
-              <Text fw={600}>{t("onboardOrg.welcomeInviteHeading")}</Text>
-              <Text c="dimmed" size="sm">
-                {t("onboardOrg.welcomeInviteBody")}
-              </Text>
-            </div>
-          </Group>
-
-          <Group gap="sm" align="flex-start" wrap="nowrap">
-            <ThemeIcon size="lg" radius="md" variant="light">
-              <ShieldCheck size={18} />
-            </ThemeIcon>
-            <div>
-              <Text fw={600}>{t("onboardOrg.welcomeGrantHeading")}</Text>
-              <Text c="dimmed" size="sm">
-                {t("onboardOrg.welcomeGrantBody")}
-              </Text>
-              <List size="sm" c="dimmed" mt={4}>
-                <List.Item>{t("onboardOrg.welcomeGrantStep1")}</List.Item>
-                <List.Item>{t("onboardOrg.welcomeGrantStep2")}</List.Item>
-              </List>
-            </div>
-          </Group>
-
-          <Divider />
-
-          <Group>
-            <Button data-testid="onboard-welcome-invite" onClick={() => navigate("/team")}>
-              {t("onboardOrg.welcomeInviteButton")}
-            </Button>
-            <Button
-              variant="default"
-              data-testid="onboard-welcome-roles"
-              onClick={() => navigate("/security/roles")}
-            >
-              {t("onboardOrg.welcomeRolesButton")}
-            </Button>
-            <Button
-              variant="subtle"
-              data-testid="onboard-welcome-continue"
-              onClick={() => navigate("/query")}
-            >
-              {t("onboardOrg.welcomeContinueButton")}
-            </Button>
-          </Group>
-        </Stack>
+        <OrgWelcomePage />
       </Box>
     );
   }
 
   return (
     <Box maw={480} mx="auto" my={80} data-testid="onboard-org-page">
-      <Title order={2}>{t("onboardOrg.title")}</Title>
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <Title order={2}>{t("onboardOrg.title")}</Title>
+        {/* The membership gate holds an org-less account on this page and there is no navbar here,
+            so this is the only way off it — without it, signing in with the wrong account is a dead
+            end that only clearing site data escapes. */}
+        <Button
+          variant="subtle"
+          size="compact-sm"
+          data-testid="onboard-sign-out"
+          onClick={() => void signOut()}
+        >
+          {t("onboardOrg.signOut")}
+        </Button>
+      </Group>
       <Text c="dimmed" size="sm" mb="lg">
-        {t("onboardOrg.subtitle")}
+        {email ? t("onboardOrg.subtitleAs", { email }) : t("onboardOrg.subtitle")}
       </Text>
 
       {phase === "checkout" ? (

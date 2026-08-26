@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../test-utils/render";
 import { OnboardOrgPage } from "../pages/OnboardOrgPage";
+import { signOut } from "../lib/session";
 
 vi.mock("../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/admin")>()),
@@ -33,12 +34,21 @@ vi.mock("../api/billing", async (importOriginal) => ({
   reconcileCheckout: vi.fn(),
   startEgressSubscription: vi.fn(),
 }));
+vi.mock("../lib/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/session")>()),
+  signOut: vi.fn(),
+}));
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
   useNavigate: () => vi.fn(),
 }));
 
-const mockAuth = { billing: false, selectOrg: vi.fn(), refresh: vi.fn() };
+const mockAuth = {
+  billing: false,
+  email: "ks@example.com",
+  selectOrg: vi.fn(),
+  refresh: vi.fn(),
+};
 vi.mock("../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../context/AuthContext")>()),
   useAuth: () => mockAuth,
@@ -157,6 +167,16 @@ describe("org onboarding where the org is sold", () => {
     await waitFor(() => expect(screen.getByText(/14-day free trial/)).toBeTruthy());
   });
 
+  // The membership gate holds an org-less account here and the page carries no navbar, so signing
+  // in with the wrong account would otherwise be a dead end.
+  it("offers a way off the page for the account signed in", async () => {
+    render(<OnboardOrgPage />);
+
+    expect(screen.getByText(/signed in as ks@example.com/)).toBeTruthy();
+    await userEvent.setup().click(screen.getByTestId("onboard-sign-out"));
+    expect(vi.mocked(signOut)).toHaveBeenCalled();
+  });
+
   it("opens the checkout when the create comes back as a reservation", async () => {
     mockAuth.billing = true;
     mockCreateOrg.mockResolvedValue({
@@ -169,8 +189,39 @@ describe("org onboarding where the org is sold", () => {
     await fillAndSubmit();
 
     await waitFor(() => expect(mockOpenCheckout).toHaveBeenCalled());
-    expect(mockStartPlanCheckout).toHaveBeenCalledWith("carolco", "starter", expect.any(String));
+    // The overlay opens on top of this page, so it is minted with the scheme the page is in —
+    // the test app renders dark, and a checkout minted light would be a white card over it.
+    expect(mockStartPlanCheckout).toHaveBeenCalledWith("carolco", "starter", expect.any(String), {
+      scheme: "dark",
+      locale: expect.any(String),
+    });
     expect(screen.getByTestId("onboard-org-checkout")).toBeTruthy();
+  });
+
+  // lemon.js reports the buyer dismissing the overlay and nothing else afterwards, so a page that
+  // only listens for the payment sits on the "opening checkout" spinner for the rest of the session.
+  it("returns to the form offering the reservation when the overlay is dismissed", async () => {
+    mockAuth.billing = true;
+    mockCreateOrg.mockResolvedValue({
+      id: "carolco",
+      name: "Carolco",
+      provisioning_state: "awaiting_checkout",
+    });
+    mockOpenCheckout.mockImplementation(async (_url, _onSuccess, onClose) => {
+      onClose!();
+    });
+    mockFetchMyReservation.mockResolvedValueOnce(null).mockResolvedValue({
+      org_id: "carolco",
+      name: "Carolco",
+      expires_at: "2026-09-01T00:00:00Z",
+    });
+    render(<OnboardOrgPage />);
+
+    await fillAndSubmit();
+
+    const resume = await screen.findByTestId("onboard-resume-checkout");
+    expect(resume).toBeTruthy();
+    expect(screen.queryByTestId("onboard-org-checkout")).toBeNull();
   });
 
   it("reconciles a completed checkout whose webhook has not landed", async () => {
@@ -286,7 +337,10 @@ describe("org onboarding where the org is sold", () => {
     await fillAndSubmit();
 
     await waitFor(() =>
-      expect(mockStartEgress).toHaveBeenCalledWith("carolco", expect.any(String)),
+      expect(mockStartEgress).toHaveBeenCalledWith("carolco", expect.any(String), {
+        scheme: "dark",
+        locale: expect.any(String),
+      }),
     );
     expect(mockOpenCheckout.mock.calls.at(-1)![0]).toBe(
       "https://store.lemonsqueezy.com/checkout/egress",
@@ -330,7 +384,10 @@ describe("org onboarding where the org is sold", () => {
     await userEvent.setup().click(resume);
 
     await waitFor(() =>
-      expect(mockStartPlanCheckout).toHaveBeenCalledWith("carolco", "starter", expect.any(String)),
+      expect(mockStartPlanCheckout).toHaveBeenCalledWith("carolco", "starter", expect.any(String), {
+        scheme: "dark",
+        locale: expect.any(String),
+      }),
     );
     expect(mockCreateOrg).not.toHaveBeenCalled();
   });
@@ -351,7 +408,10 @@ describe("org onboarding where the org is sold", () => {
     await fillAndSubmit();
 
     await waitFor(() =>
-      expect(mockStartPlanCheckout).toHaveBeenCalledWith("carolco", "pro_m", expect.any(String)),
+      expect(mockStartPlanCheckout).toHaveBeenCalledWith("carolco", "pro_m", expect.any(String), {
+        scheme: "dark",
+        locale: expect.any(String),
+      }),
     );
     expect(mockCreateOrg.mock.calls[0][4]).toBe(true);
     // The lane is not asked twice.

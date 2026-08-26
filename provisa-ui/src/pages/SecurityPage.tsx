@@ -61,6 +61,9 @@ const ALL_CAPABILITIES: Capability[] = [
   "column_grant",
   "user_management",
   "masking_config",
+  // REQ-1590: granted and revoked here like any other right — read opens the glossary, rw curates it.
+  "glossary_read",
+  "glossary_rw",
   "superadmin",
 ];
 

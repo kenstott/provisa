@@ -65,6 +65,9 @@ const RequestsPage = lazy(() =>
   import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })),
 );
 const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
+const OrgWelcomePage = lazy(() =>
+  import("./pages/OrgWelcomePage").then((m) => ({ default: m.OrgWelcomePage })),
+);
 const LandingPage = lazy(() =>
   import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })),
 );
@@ -455,7 +458,15 @@ function App() {
                                 <Route
                                   path="/commands"
                                   element={
-                                    <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                                    // Commands are model artifacts authored beside views and
+                                    // metrics, and the endpoints behind them require no capability
+                                    // of their own — so they are gated with the rest of the Model
+                                    // group. `admin` is the platform wildcard, which no org role
+                                    // carries (rights.py PLATFORM_BYPASS_CAPABILITIES).
+                                    <CapabilityGate
+                                      capability="table_registration"
+                                      fallback={<NotAuthorized />}
+                                    >
                                       <CommandsPage />
                                     </CapabilityGate>
                                   }
@@ -467,7 +478,16 @@ function App() {
                                 <Route
                                   path="/lineage"
                                   element={
-                                    <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                                    // REQ-1160: lineage reads the view registry and analyzes a
+                                    // statement -- a modeling surface, gated like the rest of the
+                                    // Model group. `admin` is the platform wildcard (rights.py
+                                    // PLATFORM_BYPASS_CAPABILITIES), which no org role holds, so
+                                    // gating it there denied the page to every org_admin while the
+                                    // endpoint itself requires nothing.
+                                    <CapabilityGate
+                                      capability="table_registration"
+                                      fallback={<NotAuthorized />}
+                                    >
                                       <LineagePage />
                                     </CapabilityGate>
                                   }
@@ -486,6 +506,8 @@ function App() {
                                   }
                                 />
                                 {/* Docs reader — ungated, available to every role (bundled + live fallback) */}
+                                {/* REQ-1276: where an org create lands, on the org's own host. */}
+                                <Route path="/welcome" element={<OrgWelcomePage />} />
                                 <Route path="/docs" element={<DocsPage />} />
                                 <Route path="/admin" element={<AdminEntry />} />
                                 {/* REQ-1337: each admin route names the RIGHT it needs, never a role name. The
@@ -523,7 +545,10 @@ function App() {
                                     ["/admin/import", "org_settings"], // REQ-1483
                                     ["/admin/tags", "org_settings"],
                                     ["/admin/reports", "observability"], // REQ-1386
-                                    ["/admin/glossary", "org_settings"], // REQ-1387
+                                    // REQ-1590: the glossary has its own read right. Reading a term
+                                    // is not administering the org, so an analyst opens it; the
+                                    // curation controls inside are gated on `glossary_rw`.
+                                    ["/admin/glossary", "glossary_read"], // REQ-1387
                                     ["/admin/security", "platform_settings"],
                                     ["/admin/email", "platform_settings"], // REQ-1576
                                     ["/admin/maintenance", "platform_settings"], // REQ-1466

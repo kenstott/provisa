@@ -253,7 +253,8 @@ def test_the_message_names_org_inviter_role_and_expiry(planes, smtp):
     assert "alice" in body  # who invited them
     assert "analyst" in body  # the role they will hold
     assert invite["expires_at"][:10] in body  # the expiry date
-    assert f"https://provisa.example.test/?invite={invite['token']}" in body
+    # REQ-1276: the link addresses the org's own host, not the configured control-plane origin.
+    assert f"https://acme.example.test/?invite={invite['token']}" in body
 
 
 def test_the_message_carries_a_branded_html_alternative(planes, smtp):
@@ -273,9 +274,9 @@ def test_the_message_carries_a_branded_html_alternative(planes, smtp):
     assert "alice" in html
     assert "analyst" in html
     assert invite["expires_at"][:10] in html
-    assert f"https://provisa.example.test/?invite={invite['token']}" in html
+    assert f"https://acme.example.test/?invite={invite['token']}" in html
     # and the plain part is still complete on its own
-    assert f"https://provisa.example.test/?invite={invite['token']}" in msg.content
+    assert f"https://acme.example.test/?invite={invite['token']}" in msg.content
 
 
 def test_the_inviting_orgs_branding_reaches_the_delivered_message(planes, smtp):
@@ -542,9 +543,9 @@ def test_resend_adapter_delivers_through_the_port(planes, smtp, resend_api, monk
     assert req.payload["from"] == '"Acme Analytics (via Provisa)" <invites@provisa.dev>'
     assert req.payload["reply_to"] == ["alice@example.com"]
     assert req.payload["to"] == ["carol@example.test"]
-    assert f"https://provisa.example.test/?invite={invite['token']}" in req.payload["text"]
+    assert f"https://acme.example.test/?invite={invite['token']}" in req.payload["text"]
     # REQ-1485: the branded part travels through this adapter too, not only over SMTP
-    assert f"https://provisa.example.test/?invite={invite['token']}" in req.payload["html"]
+    assert f"https://acme.example.test/?invite={invite['token']}" in req.payload["html"]
 
 
 def test_resend_without_api_key_is_reported_not_silent(planes, smtp, monkeypatch):

@@ -42,6 +42,7 @@ import { useSearchParams } from "react-router-dom";
 import { useLocalStorage } from "../components/graph/graph-persistence";
 import { useRoles } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
+import { inviteUrl } from "../lib/authHost";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -162,8 +163,6 @@ export function TeamPage() {
 
   const roleOptions = roles.map((r) => ({ value: r.id, label: r.id }));
 
-  const inviteUrl = (token: string) => `${window.location.origin}/register?invite=${token}`;
-
   const handleCreate = async () => {
     if (!activeOrgId || !roleId) return;
     setError(null);
@@ -171,7 +170,7 @@ export function TeamPage() {
     try {
       const invite = await createInvite(activeOrgId, roleId, 7, email === "" ? undefined : email);
       setInvites(await fetchInvites());
-      const url = inviteUrl(invite.token);
+      const url = inviteUrl(activeOrgId, invite.token);
       await navigator.clipboard.writeText(url);
       setInviteEmail("");
       // REQ-1310: the server reports what became of the message, and a failed send is the moment
@@ -194,8 +193,8 @@ export function TeamPage() {
     }
   };
 
-  const handleCopy = async (token: string) => {
-    await navigator.clipboard.writeText(inviteUrl(token));
+  const handleCopy = async (orgId: string, token: string) => {
+    await navigator.clipboard.writeText(inviteUrl(orgId, token));
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 2000);
   };
@@ -397,7 +396,7 @@ export function TeamPage() {
                             <Button
                               size="compact-xs"
                               variant="default"
-                              onClick={() => handleCopy(inv.token)}
+                              onClick={() => handleCopy(inv.org_id, inv.token)}
                             >
                               {copiedToken === inv.token
                                 ? t("teamPage.copiedButton")

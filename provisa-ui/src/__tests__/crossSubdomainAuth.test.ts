@@ -19,10 +19,12 @@ import {
   controlPlaneOrigin,
   isControlPlaneHost,
   isOrgSubdomainHost,
+  inviteUrl,
   isSiblingOrigin,
   orgFromHost,
   orgOrigin,
 } from "../lib/authHost";
+import { redirectToControlPlaneLogin } from "../lib/crossSubdomainAuth";
 
 /** A stand-in for `window.location` — only the fields authHost reads. */
 function loc(href: string): Location {
@@ -79,9 +81,47 @@ describe("authHost host classification", () => {
     expect(orgOrigin("acme", loc("http://localhost:5173/"))).toBeNull();
   });
 
+  it("sends an invitation to the org it is an invitation to", () => {
+    // REQ-1276: the invitee's first address for the org is the org's own host, not the front door.
+    expect(inviteUrl("acme", "tok", loc("https://cloud.provisa.dev/team"))).toBe(
+      "https://acme.provisa.dev/register?invite=tok",
+    );
+    // Where no host names an org, the deployment has one address and it is the current one.
+    expect(inviteUrl("acme", "tok", loc("http://localhost:5173/team"))).toBe(
+      "http://localhost:5173/register?invite=tok",
+    );
+  });
+
   it("refuses to guess an origin for a host with no base domain", () => {
     // Guessing here would point sign-in at a host we may not own; there is no safe default.
     expect(() => controlPlaneOrigin(loc("http://localhost:5173/"))).toThrow();
+  });
+});
+
+describe("redirectToControlPlaneLogin", () => {
+  /** `loc` plus the one method the redirect calls. */
+  function here(href: string) {
+    return { ...loc(href), replace: vi.fn() } as unknown as Location & {
+      replace: ReturnType<typeof vi.fn>;
+    };
+  }
+
+  it("returns the user to the page they were sent from", () => {
+    const l = here("https://kstott.provisa.dev/query?tab=history");
+    redirectToControlPlaneLogin(l);
+    const url = new URL(l.replace.mock.calls[0][0] as string);
+    expect(url.origin + url.pathname).toBe("https://cloud.provisa.dev/login");
+    expect(url.searchParams.get("next")).toBe("https://kstott.provisa.dev/query?tab=history");
+  });
+
+  it("carries an invite token to the page that can redeem it", () => {
+    // REQ-1276 addresses the invitation to the org; REQ-1348 puts redemption on the control plane.
+    // Left inside `next` the token would come back to an origin with no sign-in to redeem it on.
+    const l = here("https://kstott.provisa.dev/register?invite=tok-1");
+    redirectToControlPlaneLogin(l);
+    const url = new URL(l.replace.mock.calls[0][0] as string);
+    expect(url.searchParams.get("invite")).toBe("tok-1");
+    expect(new URL(url.searchParams.get("next") as string).search).toBe("");
   });
 });
 

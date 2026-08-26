@@ -40,6 +40,7 @@ import {
 } from "../../api/admin";
 import type { Org, OrgMember, OrgInvite } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
+import { inviteUrl } from "../../lib/authHost";
 
 const PAGE_SIZE = 50;
 
@@ -124,9 +125,10 @@ export function OrgsTab() {
 
   const handleCreateInvite = async () => {
     if (!inviteOrgId || !inviteOrgId.trim()) return;
-    const invite = await createInvite(inviteOrgId.trim(), inviteRoleId);
+    const orgId = inviteOrgId.trim();
+    const invite = await createInvite(orgId, inviteRoleId);
     setOrgInvites(await fetchInvites());
-    const url = `${window.location.origin}/register?invite=${invite.token}`;
+    const url = inviteUrl(orgId, invite.token);
     await navigator.clipboard.writeText(url);
     notifications.show({ color: "green", message: t("orgsTab.inviteCreated", { url }) });
     setInviteOrgId(null);
@@ -153,9 +155,8 @@ export function OrgsTab() {
     setOrgInvites((prev) => prev.filter((i) => i.token !== token));
   };
 
-  const handleCopyInvite = async (token: string) => {
-    const url = `${window.location.origin}/register?invite=${token}`;
-    await navigator.clipboard.writeText(url);
+  const handleCopyInvite = async (orgId: string, token: string) => {
+    await navigator.clipboard.writeText(inviteUrl(orgId, token));
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 2000);
   };
@@ -447,7 +448,7 @@ export function OrgsTab() {
                       <Button
                         size="compact-xs"
                         variant="default"
-                        onClick={() => handleCopyInvite(inv.token)}
+                        onClick={() => handleCopyInvite(inv.org_id, inv.token)}
                       >
                         {copiedToken === inv.token
                           ? t("orgsTab.copiedButton")

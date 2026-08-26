@@ -125,7 +125,8 @@ def test_the_invitation_carries_both_a_text_and_a_branded_part():
         assert "alice" in part
         assert "analyst" in part
         assert "2026-09-01" in part
-        assert "https://provisa.example.test/?invite=tok-1" in part
+        # REQ-1276: the org's own host, not the configured control-plane origin.
+        assert "https://acme.example.test/?invite=tok-1" in part
 
 
 def test_the_branded_part_uses_the_product_palette_and_no_remote_assets():
@@ -383,10 +384,30 @@ def test_an_empty_base_url_refuses_rather_than_building_a_relative_link():
     from provisa.core.mail import MailNotConfiguredError, invite_redemption_url
 
     with pytest.raises(MailNotConfiguredError, match="mail.base_url is empty"):
-        invite_redemption_url("", "tok")
+        invite_redemption_url("", "tok", "acme")
     with pytest.raises(MailNotConfiguredError):
-        invite_redemption_url("   ", "tok")
+        invite_redemption_url("   ", "tok", "acme")
 
-    assert invite_redemption_url("https://cloud.example.test/", "tok") == (
-        "https://cloud.example.test/?invite=tok"
+
+def test_the_invitation_addresses_the_org_host():
+    """REQ-1276: an org is reached at its own host, so the invitation link names the org rather
+    than the control plane -- the leftmost label of mail.base_url is replaced by the org id, the
+    same rule the UI's ``orgOrigin`` applies. The port carries over."""
+    from provisa.core.mail import invite_redemption_url
+
+    assert invite_redemption_url("https://cloud.example.test/", "tok", "acme") == (
+        "https://acme.example.test/?invite=tok"
+    )
+    assert invite_redemption_url("http://cloud.example.test:8080", "tok", "acme") == (
+        "http://acme.example.test:8080/?invite=tok"
+    )
+
+
+def test_a_host_that_names_no_org_keeps_the_configured_address():
+    """A base_url with no label to strip -- a desktop install on localhost -- addresses no org by
+    name; the deployment has exactly one address and it is the configured one."""
+    from provisa.core.mail import invite_redemption_url
+
+    assert invite_redemption_url("http://localhost:5173", "tok", "acme") == (
+        "http://localhost:5173/?invite=tok"
     )

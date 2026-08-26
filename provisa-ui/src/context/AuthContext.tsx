@@ -51,6 +51,8 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "observability",
     "environment_management",
     "environment_switch",
+    "glossary_read", // REQ-1590
+    "glossary_rw", // REQ-1590
   ] as Capability[],
   domain_access: ["*"],
 };

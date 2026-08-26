@@ -2,6 +2,8 @@
   "onboardOrg": {
     "title": "Get started",
     "subtitle": "You're not a member of any organization yet. Create one, or join an existing one with an invite.",
+    "subtitleAs": "You're signed in as {{email}} but not a member of any organization yet. Create one, or join an existing one with an invite.",
+    "signOut": "Sign out",
     "modeCreate": "Create an organization",
     "modeJoin": "Join with an invite",
     "inviteLabel": "Invite code",

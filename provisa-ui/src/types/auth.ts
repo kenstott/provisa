@@ -40,7 +40,12 @@ export type Capability =
   // reaching the environments admin surface; `environment_switch` is being served by one other than
   // prod. org_admin and developer carry both; analyst and modeler carry neither.
   | "environment_management"
-  | "environment_switch";
+  | "environment_switch"
+  // REQ-1590: the glossary's two rights. `glossary_read` opens the surface — reading a term is not
+  // administering the org, so an analyst holds it; `glossary_rw` is curation on top of it, and the
+  // page renders read-only without it. A curator is granted both.
+  | "glossary_read"
+  | "glossary_rw";
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;
