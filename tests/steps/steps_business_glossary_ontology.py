@@ -34,6 +34,7 @@ from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
+    glossary_term_domains,
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
@@ -51,6 +52,7 @@ _TABLES = [
     roles,
     glossary_terms,
     glossary_term_refs,
+    glossary_term_domains,
     glossary_term_edges,
     glossary_term_experts,
 ]
@@ -91,7 +93,7 @@ def _register(shared_data: dict, table_name: str, columns: list[str]) -> None:
         domain_id="d",
         schema_name="s",
         table_name=table_name,
-        columns=[Column(name=c, visible_to=[]) for c in columns],
+        columns=[Column(name=c, data_type="text", visible_to=[]) for c in columns],
         view_sql="SELECT 1",
     )
     _run(shared_data, lambda conn: table_repo.upsert(conn, table))
@@ -169,7 +171,9 @@ def then_curation_round_trip(shared_data: dict) -> None:
 
 @then("a user can create an abstract term linked to a rooted term via KIND_OF")
 def then_create_abstract(shared_data: dict) -> None:
-    abstract_id = _run(shared_data, lambda conn: glossary_repo.create_abstract_term(conn, "party"))
+    abstract_id = _run(
+        shared_data, lambda conn: glossary_repo.create_abstract_term(conn, "party", domains=set())
+    )
     _run(
         shared_data,
         lambda conn: glossary_repo.add_edge(

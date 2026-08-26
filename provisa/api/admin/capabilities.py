@@ -10,7 +10,7 @@
 
 """Server-side capability enforcement for admin GraphQL mutations."""
 
-# Requirements: REQ-042, REQ-060, REQ-434, REQ-1530, REQ-1531
+# Requirements: REQ-042, REQ-060, REQ-434, REQ-1530, REQ-1531, REQ-1591
 
 from __future__ import annotations
 
@@ -153,6 +153,38 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
         return
     if capability not in caps:
         raise ApiError(403, "auth.missing_capability", f"Missing capability: {capability!r}")
+
+
+def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
+    """The domains a REST caller may act in, or ``None`` when domains gate nothing for it.
+
+    ``None`` is an answer, not a missing value: it is returned for the same three exemptions the
+    GraphQL gate honours — dev/no-auth, the platform bypass, and single-domain mode — and for a
+    role whose ``domain_access`` is ``["*"]``. Callers narrow a query with the frozenset and skip
+    narrowing entirely on ``None``, which keeps "unlimited" distinct from "limited to nothing".
+    """
+    from provisa.api.app import state
+    from provisa.core import domain_policy
+    from provisa.core.env_authority import domains_within
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return None
+    if has_platform_bypass(_resolved_capabilities(identity, state)):
+        return None
+    if domain_policy.single_domain():
+        return None
+    allowed = domains_within(sorted(_domain_access(identity, state)))
+    return None if allowed is None else frozenset(allowed)
+
+
+def require_domain_request(request, domain_id: str) -> None:  # REQ-1591
+    """The domain half of the gate for a REST router — the Request twin of :func:`require_domain`."""
+    from provisa.api.errors import ApiError
+
+    allowed = allowed_domains_request(request)
+    if allowed is not None and domain_id not in allowed:
+        raise ApiError(403, "auth.domain_denied", f"No access to domain {domain_id!r}")
 
 
 def has_capability(info: "strawberry.types.Info", capability: str) -> bool:  # REQ-434

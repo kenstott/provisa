@@ -333,10 +333,13 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
 
 
 async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014
+    # REQ-1591: before the row goes. A term's domains are derived by joining its refs to this very
+    # table, so the sweep that follows the delete has nothing left to read them from.
+    domains_before = await glossary_repo.term_domains(conn)
     result = await conn.execute_core(
         _delete(registered_tables).where(registered_tables.c.id == table_id)
     )
     # REQ-1387: the FK cascade just removed this table's glossary refs; settle the terms
     # that lost their last ref (remove, or deprecate when an abstract term hangs on them).
-    await glossary_repo.sweep_refless_terms(conn)
+    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
     return (result.rowcount or 0) > 0

@@ -37,6 +37,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   export_excluded: false,
   retired: false,
   live: true,
+  domains: [],
   ref_count: 1,
   refs: [
     {

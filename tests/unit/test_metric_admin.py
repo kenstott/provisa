@@ -141,6 +141,7 @@ async def _admin_db(tmp_path):
 
     from provisa.core.schema_org import (
         glossary_term_edges,
+        glossary_term_domains,
         glossary_term_experts,
         glossary_term_refs,
         glossary_terms,
@@ -167,6 +168,7 @@ async def _admin_db(tmp_path):
                     glossary_terms,
                     glossary_term_refs,
                     glossary_term_edges,
+                    glossary_term_domains,
                     glossary_term_experts,
                 ],
             )

@@ -496,15 +496,27 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
     experts who can answer questions about it. v1 scope is documentation and
     discovery — term membership does not drive policy.
     """
-    require_role(role, state)
+    role = require_role(role, state)
     if not query or not query.strip():
         raise ValueError("search text is required")
+    from provisa.core.env_authority import domains_within
     from provisa.core.repositories import glossary as glossary_repo
+    from provisa.security.rights import domain_access_for_claims
 
+    # REQ-1591: an agent reaches the vocabulary of the domains its ROLE reaches, by the same ANY
+    # rule the admin list uses. The role name is the whole identity on this surface, so its
+    # domain_access is read directly rather than through a request's claims. ``None`` back from
+    # domains_within is an unlimited role — the one place that decides what ``*`` means.
+    allowed = domains_within(sorted(domain_access_for_claims([role], state.roles)))
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as conn:
-        return await glossary_repo.search_terms(conn, query.strip(), limit=limit)
+        return await glossary_repo.search_terms(
+            conn,
+            query.strip(),
+            limit=limit,
+            domains=None if allowed is None else frozenset(allowed),
+        )
 
 
 def _row_to_json(cols: list[str], row: Any) -> dict:

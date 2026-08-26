@@ -115,11 +115,11 @@ async def test_live_flag_agrees_with_the_python_admission_rule(tenant_db):
         terms = await _terms(conn)
         # defined + rooted -> live; the abstract term reaches data only through it.
         await glossary_repo.set_definition(conn, terms["customer"]["id"], "A buying party.")
-        abstract = await glossary_repo.create_abstract_term(conn, "party")
+        abstract = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.set_definition(conn, abstract, "Anyone we transact with.")
         await glossary_repo.add_edge(conn, abstract, terms["customer"]["id"], "KIND_OF")
         # defined but grounded in nothing, and rooted but undefined: neither is live.
-        floating = await glossary_repo.create_abstract_term(conn, "ambition")
+        floating = await glossary_repo.create_abstract_term(conn, "ambition", domains=set())
         await glossary_repo.set_definition(conn, floating, "Wired to no column.")
 
         expected = await glossary_repo.live_ids(conn)
@@ -179,7 +179,7 @@ async def test_edges_and_experts_carry_their_endpoint_names(tenant_db):
     async with tenant_db.acquire() as conn:
         await _setup(conn, {"orders": ["cust_id"]})
         terms = await _terms(conn)
-        abstract = await glossary_repo.create_abstract_term(conn, "party")
+        abstract = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.add_edge(conn, abstract, terms["customer"]["id"], "KIND_OF")
         await glossary_repo.add_expert(conn, abstract, "dana", kind="author")
         edges = await conn.fetch(

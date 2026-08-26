@@ -52,6 +52,7 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_term_refs",
         "glossary_term_edges",
         "glossary_term_experts",
+        "glossary_term_domains",
         "materialized_views",
         "calendars",
         "kafka_topics",

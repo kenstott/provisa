@@ -49,6 +49,9 @@ export interface GlossaryTermSummary {
   // physical ref. Only live terms reach an agent or a downstream catalog; anything else is
   // a proposal. Groundedness is a property of the term graph, so it is not derivable here.
   live: boolean;
+  // REQ-1591: a rooted term's domains are DERIVED from its refs' tables, an abstract term's are
+  // DECLARED. Empty means unscoped — reachable by any glossary-right holder.
+  domains: string[];
 }
 
 export interface GlossaryRef {
@@ -84,12 +87,18 @@ async function mutationError(res: Response, op: string): Promise<Error> {
   return new Error(serverMessage(data, requestFailed(op, res.status)));
 }
 
+// REQ-1591: ``domains`` is the navbar VIEW filter — null means "no narrowing asked for", which is
+// a different request from an empty selection. It only ever intersects with the caller's role
+// authority on the server; it can never widen it. Repeated ``domains=`` parameters rather than one
+// comma-joined string, because the no-domain bucket's id is the empty string and a join loses it.
 export async function listGlossaryTerms(
   q: string,
   includeDeprecated: boolean,
+  domains: string[] | null = null,
 ): Promise<GlossaryTermSummary[]> {
   const params = new URLSearchParams({ include_deprecated: String(includeDeprecated) });
   if (q) params.set("q", q);
+  if (domains) for (const d of domains) params.append("domains", d);
   const res = await fetch(`${API_BASE}/admin/glossary/terms?${params.toString()}`);
   if (!res.ok) throw new Error(requestFailed("listGlossaryTerms", res.status));
   return res.json();
@@ -118,9 +127,12 @@ export async function fetchGlossaryTermByRef(
   return res.json();
 }
 
+// REQ-1591: an abstract term holds no refs, so its domains are DECLARED here — the server requires
+// at least one in multi-domain mode, and each must be within the caller's own authority.
 export async function createGlossaryTerm(body: {
   name: string;
   definition?: string;
+  domains?: string[];
 }): Promise<{ id: number }> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms`, {
     method: "POST",

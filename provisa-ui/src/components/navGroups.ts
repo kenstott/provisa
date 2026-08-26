@@ -82,8 +82,13 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/views", labelKey: "navBar.itemViews", capability: "table_registration" },
       { to: "/metrics", labelKey: "navBar.itemMetrics", capability: "table_registration" }, // REQ-1317
-      { to: "/commands", labelKey: "navBar.itemCommands", capability: "admin" },
-      { to: "/lineage", labelKey: "navBar.itemLineage", capability: "admin" }, // REQ-1160/1161
+      // Gated with the rest of the Model group: the endpoints behind Commands require no capability
+      // of their own, and `admin` is the platform wildcard, so naming it here hid the entry from
+      // every org role.
+      { to: "/commands", labelKey: "navBar.itemCommands", capability: "table_registration" },
+      // REQ-1160/1161: gated with the rest of the Model group. `admin` is the platform wildcard, so
+      // naming it here hid Lineage from every org role while the endpoint required nothing.
+      { to: "/lineage", labelKey: "navBar.itemLineage", capability: "table_registration" },
     ],
   },
   {

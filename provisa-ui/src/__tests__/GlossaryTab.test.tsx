@@ -39,6 +39,12 @@ vi.mock("../api/glossary", async (importOriginal) => ({
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
+// REQ-1590: every case below is a curator's, so the tab is mounted holding both glossary rights.
+// What a holder of `glossary_read` alone is shown is glossaryReadOnly.test.tsx.
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["glossary_read", "glossary_rw"] }),
+}));
+
 import { notifications } from "@mantine/notifications";
 import {
   deleteGlossaryTerm,
@@ -73,6 +79,7 @@ const REVENUE: GlossaryTermSummary = {
   export_excluded: false,
   retired: false,
   live: true,
+  domains: [],
 };
 const CHURN: GlossaryTermSummary = {
   id: 2,
@@ -84,6 +91,7 @@ const CHURN: GlossaryTermSummary = {
   export_excluded: false,
   retired: false,
   live: true,
+  domains: [],
 };
 const MARGIN: GlossaryTermSummary = {
   id: 3,
@@ -95,6 +103,7 @@ const MARGIN: GlossaryTermSummary = {
   export_excluded: false,
   retired: false,
   live: true,
+  domains: [],
 };
 
 const REVENUE_DETAIL: GlossaryTermDetail = {
@@ -162,7 +171,7 @@ describe("GlossaryTab", () => {
     render(<GlossaryTab />);
 
     expect(await screen.findByTestId("glossary-item-1")).toBeInTheDocument();
-    expect(mockList).toHaveBeenCalledWith("", true);
+    expect(mockList).toHaveBeenCalledWith("", true, null);
 
     const revenue = screen.getByTestId("glossary-item-1");
     expect(within(revenue).getByText("Revenue")).toBeInTheDocument();
@@ -213,13 +222,13 @@ describe("GlossaryTab", () => {
 
     mockList.mockResolvedValue([REVENUE]);
     fireEvent.change(screen.getByTestId("glossary-search"), { target: { value: "rev" } });
-    await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", true));
+    await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", true, null));
     await waitFor(() => expect(screen.queryByTestId("glossary-item-3")).toBeNull());
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
 
     mockList.mockResolvedValue([REVENUE, CHURN]);
     fireEvent.click(screen.getByTestId("glossary-hide-deprecated"));
-    await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", false));
+    await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", false, null));
   });
 
   it("renames the selected term through the PATCH endpoint and refetches", async () => {

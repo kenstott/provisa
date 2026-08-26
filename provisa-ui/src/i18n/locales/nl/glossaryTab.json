@@ -87,6 +87,8 @@
     "purposeTitle": "Waar de woordenlijst voor is",
     "purposeBody": "Zo vinden mensen en agents de juiste gegevens en gebruiken ze die correct. Elke term benoemt één bedrijfsbegrip, somt alle fysieke kolommen op die het dragen en zegt wat het werkelijk betekent — zodat een vraag in bedrijfstaal bij de juiste kolom uitkomt in plaats van bij een aannemelijk ogende verkeerde.",
     "purposeAdd": "Termen voor echte kolommen worden voor u afgeleid. Voeg er alleen handmatig een toe voor een begrip dat geen enkele kolom draagt — een overkoepelende term die u vervolgens koppelt aan de termen die dat wel doen, zodat hij echte gegevens blijft bereiken.",
-    "purposeAria": "Over de woordenlijst"
+    "purposeAria": "Over de woordenlijst",
+    "readOnly": "Alleen-lezen",
+    "readOnlyHint": "U kunt de woordenlijst lezen maar niet beheren. Het beheren van termen, definities en relaties vereist de capability glossary_rw."
   }
 }

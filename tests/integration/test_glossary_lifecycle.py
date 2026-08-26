@@ -143,7 +143,7 @@ async def test_abstract_dependent_flips_removal_to_deprecation_and_relink_revive
     async with tenant_db.acquire() as conn:
         await _load(conn, {"orders": ["order_dt"]})
         terms = await _terms(conn)
-        abstract_id = await glossary_repo.create_abstract_term(conn, "business date")
+        abstract_id = await glossary_repo.create_abstract_term(conn, "business date", domains=set())
         await glossary_repo.add_edge(conn, abstract_id, terms["order date"]["id"], "KIND_OF")
 
         await _load(conn, {"orders": ["placed_ts"]})

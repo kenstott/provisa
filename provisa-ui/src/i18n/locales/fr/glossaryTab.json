@@ -87,6 +87,8 @@
     "purposeTitle": "À quoi sert le glossaire",
     "purposeBody": "Il permet aux personnes et aux agents de trouver les bonnes données et de les utiliser correctement. Chaque terme nomme un concept métier, énumère toutes les colonnes physiques qui le portent et dit ce qu'il signifie réellement, de sorte qu'une question posée en langage métier atteigne la bonne colonne plutôt qu'une mauvaise qui semble plausible.",
     "purposeAdd": "Les termes des colonnes réelles sont dérivés pour vous. N'en créez un à la main que pour un concept qu'aucune colonne ne porte à elle seule : un terme générique que vous reliez ensuite aux termes qui en portent un, afin qu'il atteigne toujours des données réelles.",
-    "purposeAria": "À propos du glossaire"
+    "purposeAria": "À propos du glossaire",
+    "readOnly": "Lecture seule",
+    "readOnlyHint": "Vous pouvez consulter le glossaire mais pas le curer. La curation des termes, définitions et relations nécessite la capacité glossary_rw."
   }
 }

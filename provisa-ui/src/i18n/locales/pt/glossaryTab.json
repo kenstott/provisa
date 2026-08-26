@@ -87,6 +87,8 @@
     "purposeTitle": "Para que serve o glossário",
     "purposeBody": "É como pessoas e agentes encontram os dados certos e os usam corretamente. Cada termo nomeia um conceito de negócio, lista todas as colunas físicas que o carregam e diz o que ele realmente significa — assim uma pergunta feita em linguagem de negócio chega à coluna certa, e não a uma errada de aparência plausível.",
     "purposeAdd": "Os termos de colunas reais são derivados automaticamente. Crie um à mão apenas para um conceito que nenhuma coluna carrega sozinha: um termo guarda-chuva que você depois relaciona aos termos que a têm, para que ele continue alcançando dados reais.",
-    "purposeAria": "Sobre o glossário"
+    "purposeAria": "Sobre o glossário",
+    "readOnly": "Somente leitura",
+    "readOnlyHint": "Você pode ler o glossário, mas não curá-lo. Curar termos, definições e relações exige a capacidade glossary_rw."
   }
 }

@@ -28,6 +28,7 @@ from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
+    glossary_term_domains,
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
@@ -45,6 +46,7 @@ _TABLES = [
     glossary_term_refs,
     glossary_term_edges,
     glossary_term_experts,
+    glossary_term_domains,
 ]
 
 
@@ -135,7 +137,7 @@ async def test_last_ref_removal_deprecates_when_abstract_term_would_dangle(tmp_p
         await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
         rooted = await _term(conn, "order date")
         assert rooted is not None
-        abstract_id = await glossary_repo.create_abstract_term(conn, "business date")
+        abstract_id = await glossary_repo.create_abstract_term(conn, "business date", domains=set())
         await glossary_repo.add_edge(conn, abstract_id, rooted["id"], "KIND_OF")
         await table_repo.upsert(conn, _tbl("orders", ["placed_ts"]))
         kept = await _term(conn, "order date")
@@ -150,7 +152,7 @@ async def test_abstract_term_with_alternative_root_path_does_not_block_removal(t
         order_date = await _term(conn, "order date")
         ship_date = await _term(conn, "ship date")
         assert order_date is not None and ship_date is not None
-        abstract_id = await glossary_repo.create_abstract_term(conn, "business date")
+        abstract_id = await glossary_repo.create_abstract_term(conn, "business date", domains=set())
         await glossary_repo.add_edge(conn, abstract_id, order_date["id"], "KIND_OF")
         await glossary_repo.add_edge(conn, abstract_id, ship_date["id"], "KIND_OF")
         await table_repo.upsert(conn, _tbl("orders", ["ship_dt"]))
@@ -168,7 +170,7 @@ async def test_relink_revives_deprecated_term(tmp_path):
         await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
         rooted = await _term(conn, "order date")
         assert rooted is not None
-        abstract_id = await glossary_repo.create_abstract_term(conn, "business date")
+        abstract_id = await glossary_repo.create_abstract_term(conn, "business date", domains=set())
         await glossary_repo.add_edge(conn, abstract_id, rooted["id"], "KIND_OF")
         await table_repo.upsert(conn, _tbl("orders", []))
         deprecated = await _term(conn, "order date")
@@ -225,8 +227,8 @@ async def test_move_ref_reports_a_surviving_source_term_and_a_missing_ref(tmp_pa
 @pytest.mark.asyncio
 async def test_edge_types_are_a_closed_set(tmp_path):
     async with _conn(tmp_path) as conn:
-        a = await glossary_repo.create_abstract_term(conn, "party")
-        b = await glossary_repo.create_abstract_term(conn, "person")
+        a = await glossary_repo.create_abstract_term(conn, "party", domains=set())
+        b = await glossary_repo.create_abstract_term(conn, "person", domains=set())
         with pytest.raises(ValueError):
             await glossary_repo.add_edge(conn, a, b, "LOOSELY_EVOKES")
         with pytest.raises(ValueError):
@@ -310,7 +312,7 @@ async def test_abstract_term_is_offered_only_while_a_chain_reaches_a_physical_re
         rooted = await _term(conn, "order date")
         assert rooted is not None
         abstract_id = await glossary_repo.create_abstract_term(
-            conn, "business date", definition="A date the business reasons about."
+            conn, "business date", definition="A date the business reasons about.", domains=set()
         )
         # Defined, in service, but wired to nothing: no chain, no data, not offered.
         assert await glossary_repo.search_terms(conn, "business date") == []
@@ -388,7 +390,7 @@ async def test_export_graph_shape(tmp_path):
         await table_repo.upsert(conn, _tbl("orders", ["cust_id"]))
         customer = await _term(conn, "customer")
         assert customer is not None
-        abstract_id = await glossary_repo.create_abstract_term(conn, "party")
+        abstract_id = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.add_edge(conn, customer["id"], abstract_id, "KIND_OF")
         await glossary_repo.add_expert(conn, customer["id"], "alice")
         graph = await glossary_repo.export_graph(conn)

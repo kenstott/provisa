@@ -33,6 +33,7 @@ from provisa.core.database import Database
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
+    glossary_term_domains,
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
@@ -52,6 +53,7 @@ _TABLES = [
     glossary_term_refs,
     glossary_term_edges,
     glossary_term_experts,
+    glossary_term_domains,
 ]
 
 
@@ -89,10 +91,14 @@ async def _surface(tmp_path, monkeypatch):
 
     monkeypatch.setattr(glossary_router, "_pool", _pool)
     monkeypatch.setattr(glossary_router, "_notify", _notify)
-    # The org-settings gate resolves capabilities through app state; the repo's admin-surface
-    # tests exercise the gate itself elsewhere — here it must simply not block the handler.
-    monkeypatch.setattr(glossary_router, "require_org_settings", lambda request: None)
+    # The gates resolve capabilities through app state; which right each endpoint names is asserted
+    # in test_glossary_rights.py (REQ-1590) — here they must simply not block the handler.
+    monkeypatch.setattr(glossary_router, "_require_glossary_read", lambda request: None)
+    monkeypatch.setattr(glossary_router, "_require_glossary_rw", lambda request: None)
     monkeypatch.setattr(glossary_router, "_require_table_registration", lambda request: None)
+    # Likewise the domain half: it too reads app state, and which endpoints narrow by domain is
+    # asserted in test_glossary_domain_scope.py (REQ-1591). None is the unlimited caller.
+    monkeypatch.setattr(glossary_router, "_authority", lambda request: None)
     try:
         async with db.acquire() as conn:
             await table_repo.upsert(
@@ -115,15 +121,15 @@ async def _surface(tmp_path, monkeypatch):
 
 
 async def _term_id(name: str) -> int:
-    terms = await glossary_router.list_terms(_request())
+    terms = await glossary_router.list_terms(_request(), domains=None)
     return next(t["id"] for t in terms if t["name"] == name)
 
 
 async def test_list_search_and_detail(tmp_path, monkeypatch):
     async with _surface(tmp_path, monkeypatch):
-        terms = await glossary_router.list_terms(_request())
+        terms = await glossary_router.list_terms(_request(), domains=None)
         assert {t["name"] for t in terms} == {"customer", "order date"}
-        filtered = await glossary_router.list_terms(_request(), q="custom")
+        filtered = await glossary_router.list_terms(_request(), q="custom", domains=None)
         assert [t["name"] for t in filtered] == ["customer"]
         detail = await glossary_router.get_term(_request(), await _term_id("customer"))
         assert detail["refs"][0]["column_name"] == "cust_id"
@@ -133,7 +139,7 @@ async def test_curation_mutations_notify_the_exporter(tmp_path, monkeypatch):
     async with _surface(tmp_path, monkeypatch) as (_db, notified):
         customer = await _term_id("customer")
         created = await glossary_router.create_abstract_term(
-            _with_json(_request(), {"name": "party", "definition": "Any actor."})
+            _with_json(_request(), {"name": "party", "definition": "Any actor.", "domains": ["d"]})
         )
         await glossary_router.update_term(
             _with_json(_request(), {"definition": "The buyer."}), customer
@@ -174,7 +180,13 @@ async def test_retired_toggle_round_trips_and_hides_the_term_from_mcp_search(tmp
     from provisa.api.mcp import tools
 
     async with _surface(tmp_path, monkeypatch) as (db, notified):
-        state = types.SimpleNamespace(contexts={"analyst": object()}, tenant_db=db)
+        state = types.SimpleNamespace(
+            contexts={"analyst": object()},
+            tenant_db=db,
+            # REQ-1591: the MCP surface narrows the vocabulary to the domains the ROLE reaches;
+            # "*" is the seeded unlimited scope, so the search sees every term here.
+            roles={"analyst": {"domain_access": ["*"]}},
+        )
         customer = await _term_id("customer")
         await glossary_router.update_term(
             _with_json(_request(), {"definition": "The buyer."}), customer
@@ -198,7 +210,9 @@ async def test_edge_type_is_correctable_in_place(tmp_path, monkeypatch):
         customer = await _term_id("customer")
         party = (
             await glossary_router.create_abstract_term(
-                _with_json(_request(), {"name": "party", "definition": "Any actor."})
+                _with_json(
+                    _request(), {"name": "party", "definition": "Any actor.", "domains": ["d"]}
+                )
             )
         )["id"]
         await glossary_router.add_edge(
@@ -274,7 +288,7 @@ async def test_move_ref_and_missing_term_404(tmp_path, monkeypatch):
             )
         )
         assert moved == {"ok": True, "source_term_removed": True}
-        terms = await glossary_router.list_terms(_request())
+        terms = await glossary_router.list_terms(_request(), domains=None)
         assert {t["name"] for t in terms} == {"customer"}
         with pytest.raises(ApiError) as err:
             await glossary_router.get_term(_request(), 99999)
@@ -327,7 +341,13 @@ async def test_mcp_search_terms_requires_role_and_returns_refs(tmp_path, monkeyp
     from provisa.api.mcp import tools
 
     async with _surface(tmp_path, monkeypatch) as (db, _notified):
-        state = types.SimpleNamespace(contexts={"analyst": object()}, tenant_db=db)
+        state = types.SimpleNamespace(
+            contexts={"analyst": object()},
+            tenant_db=db,
+            # REQ-1591: the MCP surface narrows the vocabulary to the domains the ROLE reaches;
+            # "*" is the seeded unlimited scope, so the search sees every term here.
+            roles={"analyst": {"domain_access": ["*"]}},
+        )
         customer = await _term_id("customer")
         # Undefined terms are proposals; the search surface only offers defined ones.
         assert await tools.search_terms(state, "analyst", "customer") == []

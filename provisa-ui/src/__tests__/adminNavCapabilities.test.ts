@@ -51,7 +51,10 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/import": "org_settings", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "org_settings",
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
-  "/admin/glossary": "org_settings", // REQ-1387: the org's own business glossary
+  // REQ-1590: the org's own business glossary, on its own read right. Looking a term up to
+  // understand a column is not administering the org, so every seeded role reaches the surface;
+  // curation inside it is gated on `glossary_rw`.
+  "/admin/glossary": "glossary_read", // REQ-1387
   "/admin/domains": "org_settings",
   // REQ-1487: the org's environments — its branches, the merges between them, and the repository
   // the model is projected into. All of it is the acting org's own model, so none of it is
@@ -161,7 +164,7 @@ describe("admin surface capabilities", () => {
     const linkAt = source.indexOf('to="/admin/glossary"');
     expect(linkAt).toBeGreaterThan(-1);
     const gate = source.slice(Math.max(0, linkAt - 200), linkAt);
-    expect(gate).toContain('capability="org_settings"');
+    expect(gate).toContain('capability="glossary_read"'); // REQ-1590
   });
 
   it("gates every top-level nav link on the right its route requires", () => {

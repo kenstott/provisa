@@ -24,7 +24,7 @@ import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
-import { clearSessionState } from "../lib/session";
+import { signOut } from "../lib/session";
 import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
 import { hasCapability } from "../lib/capabilities";
 
@@ -34,7 +34,7 @@ export function NavBar() {
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode, authEnabled, capabilities, billing } = useAuth();
-  const { startTour, canResume, status: tourStatus } = useTour();
+  const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -77,19 +77,7 @@ export function NavBar() {
   }, [pinnedGroup]);
 
   async function handleLogout() {
-    // Clear the Firebase session too, or signInWithPopup silently reuses the persisted
-    // Google account on the next login and never offers the account chooser.
-    const { signOutFirebase } = await import("../lib/firebase");
-    await signOutFirebase();
-    // REQ-1326: sign-out clears exactly what sign-in clears — token, org, role and the persisted
-    // Apollo snapshot. Clearing a subset left provisa_role and the cached org-scoped admin data
-    // behind for the next identity.
-    clearSessionState();
-    // Full document load, not navigate(): App reads the token only on an authVersion bump (login
-    // path), so an in-app navigate would keep the shell mounted and render /login inside the
-    // navbar. A hard load re-reads the token-less localStorage into the public LandingPage branch
-    // and drops the Apollo/auth state built for the signed-in session.
-    window.location.assign("/");
+    await signOut();
   }
 
   const displayedGroupId = pinnedGroup ?? routeGroup;
@@ -151,7 +139,9 @@ export function NavBar() {
               {t("navBar.relationships")}
             </NavLink>
           </CapabilityGate>
-          <CapabilityGate capability="org_settings">
+          {/* REQ-1590: gated on the glossary's own read right, not org_settings — every seeded
+              role reads the vocabulary the model is described in. */}
+          <CapabilityGate capability="glossary_read">
             <NavLink to="/admin/glossary" data-tour="nav-glossary">
               {t("navBar.itemGlossary")}
             </NavLink>
@@ -218,20 +208,24 @@ export function NavBar() {
           <EnvSwitcher />
           <RoleSelector />
           <ColorSchemeToggle />
-          <Tooltip label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}>
-            <ActionIcon
-              variant="default"
-              size="lg"
-              aria-label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}
-              className="navbar-tour-btn"
-              // The launch prefetch can run for seconds on a loaded machine; the button itself has
-              // to show that the click landed, or it gets clicked again while the tour is starting.
-              loading={tourStatus?.kind === "preparing"}
-              onClick={() => startTour()}
-            >
-              <Compass size={16} aria-hidden />
-            </ActionIcon>
-          </Tooltip>
+          {/* No launcher where the viewer's rights open none of the tour's pages — a button
+              whose tour would be empty is worse than no button. */}
+          {tourAvailable && (
+            <Tooltip label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}>
+              <ActionIcon
+                variant="default"
+                size="lg"
+                aria-label={canResume ? t("navBar.tourResume") : t("navBar.tourStart")}
+                className="navbar-tour-btn"
+                // The launch prefetch can run for seconds on a loaded machine; the button itself has
+                // to show that the click landed, or it gets clicked again while the tour is starting.
+                loading={tourStatus?.kind === "preparing"}
+                onClick={() => startTour()}
+              >
+                <Compass size={16} aria-hidden />
+              </ActionIcon>
+            </Tooltip>
+          )}
           <div className="navbar-user-wrapper">
             <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
               <Menu.Target>

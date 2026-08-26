@@ -198,6 +198,38 @@ async def test_no_other_role_gains_the_org_scoped_rights(tenant_db, multitenancy
         assert not ({"org_settings", "observability"} & caps[role_id]), role_id
 
 
+@pytest.mark.parametrize("multitenancy", [True, False])
+async def test_glossary_rights_are_reasserted_on_pre_existing_rows(tenant_db, multitenancy):
+    # REQ-1590: an org whose role rows predate the glossary rights keeps them stripped forever —
+    # ON CONFLICT (id) DO NOTHING never updates an existing row — which hides the glossary nav link
+    # and 403s the surface for the org's own administrator. Same seam as the REQ-1349 rights.
+    async with tenant_db.acquire() as conn:
+        await conn.execute_core(
+            text(
+                "UPDATE roles SET capabilities = COALESCE("
+                "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
+                "   WHERE v NOT IN ('\"glossary_read\"'::jsonb, '\"glossary_rw\"'::jsonb)),"
+                "  '[]'::jsonb)"
+            )
+        )
+    stripped = await _caps(tenant_db)
+    for role_id in ("org_admin", "analyst", "developer", "modeler"):
+        assert not ({"glossary_read", "glossary_rw"} & stripped[role_id]), role_id
+
+    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
+
+    caps = await _caps(tenant_db)
+    # Every seeded role reads; curation stays with the roles that own the model.
+    for role_id in ("org_admin", "analyst", "developer", "modeler"):
+        assert "glossary_read" in caps[role_id], role_id
+    assert {"glossary_rw"} <= caps["org_admin"]
+    assert {"glossary_rw"} <= caps["modeler"]
+    for role_id in ("analyst", "developer"):
+        assert "glossary_rw" not in caps[role_id], role_id
+    # platform_admin is control-plane only: it gains no data-plane right here.
+    assert not ({"glossary_read", "glossary_rw"} & caps["platform_admin"])
+
+
 async def test_no_other_role_gains_platform_settings(tenant_db):
     # The single-tenant grant is scoped to org_admin: developer and analyst never reach the
     # deployment-wide settings surface in either mode.

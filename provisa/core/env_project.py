@@ -256,6 +256,10 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
 
     edges = await _rows(conn, org.glossary_term_edges, schema)
     experts = await _rows(conn, org.glossary_term_experts, schema)
+    # REQ-1591: a rooted term's domains are derived from its refs and so travel with the tables,
+    # but an abstract term's are DECLARED and exist nowhere else -- projecting them is what keeps
+    # a copied environment's terms scoped to the domains their author named.
+    term_domains = await _rows(conn, org.glossary_term_domains, schema)
     for row in terms:
         tree[term_paths[row["id"]]] = entity(
             "glossary_terms",
@@ -275,6 +279,12 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 "term_id",
                 [e for e in experts if e["term_id"] == row["id"]],
                 table="glossary_term_experts",
+            ),
+            domains=Child(
+                "domain_id",
+                "term_id",
+                [d for d in term_domains if d["term_id"] == row["id"]],
+                table="glossary_term_domains",
             ),
         )
 

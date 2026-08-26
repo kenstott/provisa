@@ -34,6 +34,7 @@ from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
+    glossary_term_domains,
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
@@ -51,6 +52,7 @@ _TABLES = [
     glossary_term_refs,
     glossary_term_edges,
     glossary_term_experts,
+    glossary_term_domains,
 ]
 
 
@@ -141,7 +143,7 @@ async def test_curation_outranks_the_model_and_pins_the_ref(tmp_path, kind):
         elif kind == "expert":
             await glossary_repo.add_expert(conn, term["id"], "alice", kind="author")
         else:
-            party = await glossary_repo.create_abstract_term(conn, "party")
+            party = await glossary_repo.create_abstract_term(conn, "party", domains=set())
             await glossary_repo.add_edge(conn, term["id"], party, "KIND_OF")
 
         await table_repo.upsert(conn, _accounts("login name"))

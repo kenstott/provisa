@@ -12,6 +12,8 @@
     "newTermHint": "An abstract term is a business concept with no physical column refs. Link it to other terms with relationships.",
     "nameLabel": "Name",
     "definitionLabel": "Definition",
+    "domainsLabel": "Domains",
+    "domainsHint": "An abstract term has no columns to derive its domains from, so name them here. Whoever reaches any one of them may read and curate the term.",
     "rename": "Rename",
     "save": "Save",
     "updated": "Term updated.",
@@ -87,6 +89,8 @@
     "purposeTitle": "What the glossary is for",
     "purposeBody": "It is how people and agents find the right data and use it correctly. Each term names one business concept, lists every physical column that carries it, and says what it actually means — so a question asked in business language lands on the right column instead of a plausible-looking wrong one.",
     "purposeAdd": "Terms for real columns are derived for you. Add one by hand only for a concept no single column carries — an umbrella term you then relate to the terms that do, so it still reaches real data.",
-    "purposeAria": "About the glossary"
+    "purposeAria": "About the glossary",
+    "readOnly": "Read-only",
+    "readOnlyHint": "You can read the glossary but not curate it. Curating terms, definitions and relationships needs the glossary_rw capability."
   }
 }

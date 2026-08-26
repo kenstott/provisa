@@ -23,14 +23,20 @@ What any consuming surface may then offer is one rule, ``core.glossary.live_term
 in service, defined, and grounded in a physical column.
 """
 
-# Requirements: REQ-1387
+# Requirements: REQ-1387, REQ-1591
 
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select, update
 
-from provisa.core.glossary import TERM_EDGE_TYPES, live_term_ids, normalize_term
+from provisa.core.glossary import (
+    TERM_EDGE_TYPES,
+    live_term_ids,
+    normalize_term,
+    within_domains,
+)
 from provisa.core.schema_org import (
+    glossary_term_domains,
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
@@ -40,6 +46,59 @@ from provisa.core.schema_org import (
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+
+
+# ---------------------------------------------------------------------------
+# Domain scope (REQ-1591)
+# ---------------------------------------------------------------------------
+
+
+async def term_domains(conn: "Connection") -> dict[int, set[str]]:
+    """Every term's effective domains, by the one rule (REQ-1591).
+
+    A term's domains are the distinct domains of the tables its refs point at while it HOLDS
+    refs, and its declared rows otherwise. Derivation is preferred where it is possible because
+    a derived answer cannot drift out of sync with the model; the declared rows carry the two
+    cases derivation cannot reach — an abstract term, which has no refs by definition, and a
+    rooted term whose last ref has departed, stamped at that moment by ``_settle_terms`` so a
+    deprecated term stays curatable by the people who owned it.
+
+    A term absent from the result has NO domains, which is not the same as no access: an
+    unscoped term is reachable by any holder of the glossary rights (REQ-1591), and the create
+    path is what prevents an empty scope being minted deliberately.
+    """
+    derived: dict[int, set[str]] = {}
+    rows = (
+        await conn.execute_core(
+            select(glossary_term_refs.c.term_id, registered_tables.c.domain_id)
+            .join(registered_tables, glossary_term_refs.c.table_id == registered_tables.c.id)
+            .distinct()
+        )
+    ).fetchall()
+    for r in rows:
+        derived.setdefault(r.term_id, set()).add(r.domain_id)
+    declared: dict[int, set[str]] = {}
+    for r in (
+        await conn.execute_core(
+            select(glossary_term_domains.c.term_id, glossary_term_domains.c.domain_id)
+        )
+    ).fetchall():
+        declared.setdefault(r.term_id, set()).add(r.domain_id)
+    return {**declared, **derived}
+
+
+async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "set[str]") -> None:
+    """Replace a term's declared domains outright — the abstract term's scope, and the stamp."""
+    await conn.execute_core(
+        _delete(glossary_term_domains).where(glossary_term_domains.c.term_id == term_id)
+    )
+    for domain_id in sorted(domain_ids):
+        await conn.upsert(
+            glossary_term_domains,
+            {"term_id": term_id, "domain_id": domain_id},
+            index_elements=["term_id", "domain_id"],
+            update_columns=["domain_id"],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +142,9 @@ async def sync_table_refs(
             )
         ).fetchall()
     }
+    # REQ-1591: taken BEFORE any ref is dropped. A term's domains are derived from its refs, so
+    # by the time the settle decides to deprecate one there is nothing left to derive them from.
+    domains_before = await term_domains(conn)
     current = {physical for physical, _ in columns}
     departed = [c for c in existing if c not in current]
     if departed:
@@ -112,10 +174,10 @@ async def sync_table_refs(
         )
         orphaned.discard(term_id)
     if orphaned:
-        await _settle_terms(conn, orphaned)
+        await _settle_terms(conn, orphaned, domains_before=domains_before)
 
 
-async def sweep_refless_terms(conn: "Connection") -> None:
+async def sweep_refless_terms(conn: "Connection", *, domains_before: "dict[int, set[str]]") -> None:
     """Settle every rooted-born term whose refs are all gone (FK-cascade deletion paths).
 
     Table/source deletion and config purges remove registered_tables rows out of this
@@ -123,6 +185,12 @@ async def sweep_refless_terms(conn: "Connection") -> None:
     the remove-or-deprecate rule. Refs are pruned here by a departed-table probe rather
     than FK cascade, because the SQLite backend runs without PRAGMA foreign_keys and its
     cascades never fire.
+
+    ``domains_before`` is :func:`term_domains` taken BEFORE the caller deleted the rows, and is
+    required rather than computed here (REQ-1591): a term's domains are derived by joining its
+    refs to ``registered_tables``, so once the caller has removed the table row there is nothing
+    left to derive from and a snapshot taken here would already be empty. Requiring it makes the
+    ordering a caller cannot skip — a new deletion path has to take the snapshot to compile.
     """
     await conn.execute_core(
         _delete(glossary_term_refs).where(
@@ -137,7 +205,7 @@ async def sweep_refless_terms(conn: "Connection") -> None:
         )
     ).fetchall()
     if rows:
-        await _settle_terms(conn, {r.id for r in rows})
+        await _settle_terms(conn, {r.id for r in rows}, domains_before=domains_before)
 
 
 async def _find_or_create_term(conn: "Connection", name: str) -> int:
@@ -160,12 +228,19 @@ async def _find_or_create_term(conn: "Connection", name: str) -> int:
     return term_id
 
 
-async def _settle_terms(conn: "Connection", term_ids: set[int]) -> set[int]:
+async def _settle_terms(
+    conn: "Connection", term_ids: set[int], *, domains_before: dict[int, set[str]]
+) -> set[int]:
     """Apply the remove-or-deprecate rule to each candidate that is refless and rooted-born.
 
     Returns the ids that were removed, so a caller holding a reference to one of them
     (the admin surface, whose client has the losing term open) can be told it is gone
     rather than discovering it as a 404 on the next read.
+
+    ``domains_before`` is the caller's snapshot of every term's domains taken BEFORE it dropped
+    the refs that brought us here (REQ-1591). A term kept by this rule has no refs left to derive
+    its domains from, so the snapshot is stamped onto it here; without that stamp a deprecated or
+    retired term becomes unscoped, and the curators who owned it lose the right to touch it.
     """
     removed: set[int] = set()
     if not term_ids:
@@ -179,6 +254,7 @@ async def _settle_terms(conn: "Connection", term_ids: set[int]) -> set[int]:
             await conn.execute_core(
                 update(glossary_terms).where(glossary_terms.c.id == term_id).values(deprecated=True)
             )
+            await set_declared_domains(conn, term_id, domains_before.get(term_id, set()))
             node["deprecated"] = True
         else:
             await conn.execute_core(
@@ -329,8 +405,19 @@ def _dangling_grows(graph: _TermGraph, term_id: int) -> bool:
 
 
 async def list_terms(
-    conn: "Connection", *, q: str | None = None, include_deprecated: bool = True
+    conn: "Connection",
+    *,
+    q: str | None = None,
+    include_deprecated: bool = True,
+    domains: "frozenset[str] | None" = None,
 ) -> list[dict]:
+    """List terms, optionally narrowed to those touching ``domains`` (REQ-1591).
+
+    ``None`` means no narrowing — the caller's role is unlimited, the deployment is in
+    single-domain mode, or every domain is selected — and is a different answer from an empty
+    set, which admits only the unscoped terms. Narrowing happens here rather than in the router
+    because ``q`` searches over the same rows and the two must not disagree about the population.
+    """
     stmt = select(glossary_terms)
     if q:
         pattern = f"%{q.lower()}%"
@@ -348,8 +435,16 @@ async def list_terms(
     # export surfaces enforce, rather than re-deriving it from the flags and guessing at
     # groundedness, which is a property of the graph and not of any one row.
     live = await live_ids(conn)
+    scope = await term_domains(conn)
     return [
-        dict(r._mapping) | {"ref_count": counts.get(r.id, 0), "live": r.id in live} for r in rows
+        dict(r._mapping)
+        | {
+            "ref_count": counts.get(r.id, 0),
+            "live": r.id in live,
+            "domains": sorted(scope.get(r.id, set())),
+        }
+        for r in rows
+        if within_domains(domains, scope.get(r.id, set()))
     ]
 
 
@@ -411,12 +506,24 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     ).fetchall()
     term["experts"] = [dict(r._mapping) for r in experts]
     term["live"] = term_id in await live_ids(conn)
+    # REQ-1591: the same rule the list and the gates use, rather than reading the refs above —
+    # those are empty for an abstract term and for a deprecated one whose columns have gone,
+    # which are exactly the two cases the declared rows exist to answer.
+    term["domains"] = sorted((await term_domains(conn)).get(term_id, set()))
     return term
 
 
 async def create_abstract_term(
-    conn: "Connection", name: str, *, definition: str | None = None
+    conn: "Connection", name: str, *, definition: str | None = None, domains: "set[str]"
 ) -> int:
+    """Create an abstract term, declaring the domains it belongs to (REQ-1591).
+
+    ``domains`` is required rather than defaulted: an abstract term holds no refs, so nothing
+    derives its scope, and a term minted with an empty set is UNSCOPED — reachable by every
+    holder of the glossary rights. That is a legitimate state in a single-domain deployment and
+    a way around the gate in a multi-domain one, so the caller (the router, which knows the
+    deployment's domain policy) decides, and the decision is never made here by omission.
+    """
     name = name.strip()
     if not name:
         raise ValueError("term name is required")
@@ -425,13 +532,15 @@ async def create_abstract_term(
     ).fetchone()
     if existing is not None:
         raise ValueError(f"term {name!r} already exists")
-    return await conn.upsert_returning(
+    term_id = await conn.upsert_returning(
         glossary_terms,
         {"name": name, "definition": definition, "is_abstract": True, "deprecated": False},
         index_elements=["name"],
         returning="id",
         update_columns=["definition"],
     )
+    await set_declared_domains(conn, term_id, domains)
+    return term_id
 
 
 async def rename_term(conn: "Connection", term_id: int, new_name: str) -> bool:
@@ -538,12 +647,15 @@ async def move_ref(
         raise ValueError(f"term {to_term_id} does not exist")
     if row.term_id == to_term_id:
         return {"source_term_removed": False}
+    # REQ-1591: before the move, so a losing term the settle keeps is stamped with the domains it
+    # held rather than the empty set it is left with.
+    domains_before = await term_domains(conn)
     await conn.execute_core(
         update(glossary_term_refs)
         .where(glossary_term_refs.c.id == row.id)
         .values(term_id=to_term_id)
     )
-    removed = await _settle_terms(conn, {row.term_id})
+    removed = await _settle_terms(conn, {row.term_id}, domains_before=domains_before)
     return {"source_term_removed": row.term_id in removed}
 
 
@@ -694,7 +806,13 @@ async def get_term_by_ref(conn: "Connection", table_id: int, column_name: str) -
     return await get_term(conn, row.term_id)
 
 
-async def search_terms(conn: "Connection", query: str, *, limit: int = 25) -> list[dict]:
+async def search_terms(
+    conn: "Connection",
+    query: str,
+    *,
+    limit: int = 25,
+    domains: "frozenset[str] | None" = None,
+) -> list[dict]:
     """Term lookup for the MCP surface: match on name or definition, refs included.
 
     Only live terms are returned — see ``live_term_ids`` for the admission rule. This is the
@@ -704,6 +822,11 @@ async def search_terms(conn: "Connection", query: str, *, limit: int = 25) -> li
 
     The gate runs after the match rather than inside it because groundedness is a property of
     the term graph, not of any one row.
+
+    ``domains`` narrows to the terms the caller's role may reach (REQ-1591), by the same ANY rule
+    the admin list uses; ``None`` is an unlimited caller and narrows nothing. The narrowing runs
+    before the limit is honoured in spirit — the row limit is applied to the match, and a caller
+    seeing fewer than ``limit`` results is seeing its own scope, not the end of the vocabulary.
     """
     live = await live_ids(conn)
     if not live:
@@ -720,8 +843,11 @@ async def search_terms(conn: "Connection", query: str, *, limit: int = 25) -> li
             .limit(limit)
         )
     ).fetchall()
+    scope = await term_domains(conn)
     out = []
     for r in rows:
+        if not within_domains(domains, scope.get(r.id, set())):
+            continue
         term = await get_term(conn, r.id)
         if term is not None:
             out.append(term)

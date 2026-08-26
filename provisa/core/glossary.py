@@ -27,7 +27,7 @@ GraphQL conventions; this maps identifiers into human vocabulary (spaces, expans
 so the boundary regexes here serve a different output alphabet.
 """
 
-# Requirements: REQ-1387
+# Requirements: REQ-1387, REQ-1591
 
 from __future__ import annotations
 
@@ -258,6 +258,26 @@ def normalize_term(physical_name: str, *, table_context: str | None = None) -> s
             tokens.pop()
         return " ".join(tokens)
     return phrase
+
+
+def within_domains(allowed: "AbstractSet[str] | None", term_domains: "AbstractSet[str]") -> bool:
+    """May a caller whose domains are ``allowed`` reach a term scoped to ``term_domains``? (REQ-1591)
+
+    ANY, not all. A term spanning sales and pet-store is reachable by either domain's people,
+    which deliberately breaks the symmetry with REQ-1531's ``require_domains``: that rule guards
+    acts reaching DATA in two domains, whereas a term is prose about a concept both domains
+    already reference, and requiring all would leave a shared term curatable only by someone
+    holding every domain it touches — a deadlock manufactured by a name collision.
+
+    The same answer serves reading and curating; there is no second, stricter predicate. Where two
+    domains genuinely mean different things by one phrase the remedy is a SPLIT — a new term with
+    the refs moved onto it — not a narrower gate on the shared one.
+
+    ``allowed`` of ``None`` is an unlimited role (or a deployment where domains gate nothing) and
+    admits everything; that is an answer, not a missing value. An empty ``term_domains`` is an
+    UNSCOPED term, which nothing scopes and everyone holding the glossary rights may reach.
+    """
+    return allowed is None or not term_domains or bool(term_domains & allowed)
 
 
 def live_term_ids(

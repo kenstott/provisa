@@ -27,6 +27,7 @@ from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
+    glossary_term_domains,
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
@@ -46,6 +47,7 @@ _TABLES = [
     glossary_term_refs,
     glossary_term_edges,
     glossary_term_experts,
+    glossary_term_domains,
 ]
 
 
@@ -70,7 +72,12 @@ async def _server(tmp_path):
                     view_sql="SELECT 1",
                 ),
             )
-        state = types.SimpleNamespace(contexts={"analyst": object()}, tenant_db=db)
+        state = types.SimpleNamespace(
+            contexts={"analyst": object()},
+            tenant_db=db,
+            # REQ-1591: the search narrows to the domains the ROLE reaches; "*" is unlimited.
+            roles={"analyst": {"domain_access": ["*"]}},
+        )
         yield build_mcp_server(state), db
     finally:
         await engine.dispose()

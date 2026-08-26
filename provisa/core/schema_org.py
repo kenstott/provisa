@@ -452,6 +452,19 @@ glossary_term_edges = Table(
     ),
 )
 
+# REQ-1591: a term's DECLARED domains — written only for an abstract term (which holds no refs
+# to derive from) and as the stamp left when a rooted term's last ref departs. A term's domains
+# are its refs' domains while it has refs, and these otherwise. See schema.sql for the full rule.
+glossary_term_domains = Table(
+    "glossary_term_domains",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("domain_id", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "domain_id"),
+)
+
 # People who can answer questions about the term or who authored its definition.
 glossary_term_experts = Table(
     "glossary_term_experts",

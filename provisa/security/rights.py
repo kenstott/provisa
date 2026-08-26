@@ -89,6 +89,14 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # REQ-1573: be served by an environment other than prod — the right the org-routing middleware
     # checks when a request names one. Held by org_admin and developer; an analyst works in prod.
     ENVIRONMENT_SWITCH = "environment_switch"
+    # REQ-1590: the business glossary's two rights. Reading the glossary is not administering the
+    # org — an analyst looks a term up to understand a column — so it is its own right rather than
+    # ORG_SETTINGS, which gated the whole surface and shut every non-admin out of it. GLOSSARY_RW is
+    # curation on top of that visibility: rename, definitions, ref moves, edges, experts, and the
+    # AI generation endpoints that persist. A curator is granted both; granting RW alone leaves the
+    # surface unreachable, because the page itself is gated on READ.
+    GLOSSARY_READ = "glossary_read"
+    GLOSSARY_RW = "glossary_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
 

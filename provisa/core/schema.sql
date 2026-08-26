@@ -507,6 +507,22 @@ CREATE TABLE IF NOT EXISTS glossary_term_edges (
     UNIQUE (from_term_id, to_term_id, rel_type)
 );
 
+-- REQ-1591: a term's DECLARED domains. A rooted term's domains are derived from its refs'
+-- tables and nothing is written here while it holds a ref; rows appear for two reasons only:
+-- an abstract term, which holds no refs to derive from and declares its scope on creation,
+-- and the stamp written when a rooted term's last ref departs — without which a deprecated
+-- term's domains become underivable and its own curators lose the right to touch it.
+-- The rule everywhere: a term's domains are its refs' domains while it has refs, these
+-- otherwise. Not an FK to domains(id): a domain deleted out from under a retired term must
+-- not silently widen that term's scope to everyone.
+CREATE TABLE IF NOT EXISTS glossary_term_domains (
+    id        SERIAL PRIMARY KEY,
+    term_id   INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    domain_id TEXT NOT NULL,
+    tenant_id UUID,
+    UNIQUE (term_id, domain_id)
+);
+
 -- People who can answer questions about the term or who authored its definition.
 CREATE TABLE IF NOT EXISTS glossary_term_experts (
     id        SERIAL PRIMARY KEY,
@@ -947,7 +963,8 @@ VALUES (
       "approve_view","approve_relationship","access_config","user_management",
       "masking_config","column_grant","view_governance","query_development",
       "full_results","write","usage","org_settings","observability",
-      "environment_management","environment_switch"]'::jsonb,
+      "environment_management","environment_switch",
+      "glossary_read","glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -969,21 +986,21 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'analyst',
-    '["usage","query_development"]'::jsonb,
+    '["usage","query_development","glossary_read"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 ),
 (
     'developer',
     '["query_development","create_view","create_relationship","full_results","write",
-      "usage","environment_management","environment_switch"]'::jsonb,
+      "usage","environment_management","environment_switch","glossary_read"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 ),
 (
     'modeler',
     '["query_development","create_relationship","create_view","ignore_relationships",
-      "full_results","usage"]'::jsonb,
+      "full_results","usage","glossary_read","glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )

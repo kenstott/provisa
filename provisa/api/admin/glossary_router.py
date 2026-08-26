@@ -16,16 +16,17 @@ rename, definition, ref moves, experts, abstract terms and their typed edges —
 queues a metadata publish after every mutation because the term graph exports.
 """
 
-# Requirements: REQ-1387
+# Requirements: REQ-1387, REQ-1590, REQ-1591
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from provisa.api.admin._guards import require_active_org_id
-from provisa.api.admin._platform_guard import require_org_settings
+from provisa.api.admin._platform_guard import _require_right
 from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -46,37 +47,154 @@ async def _notify(org_id: str, reason: str) -> None:
     await notify_model_changed(org_id, reason=reason)
 
 
+def _require_glossary_read(request: Request) -> None:
+    """REQ-1590: may this caller SEE the glossary?
+
+    Its own right, not ``org_settings``: looking a term up to understand a column is not
+    administering the org, and gating the surface on org settings shut every non-admin out of
+    the vocabulary the model is described in.
+    """
+    _require_right(request, Capability.GLOSSARY_READ.value)
+
+
+def _require_glossary_rw(request: Request) -> None:
+    """REQ-1590: may this caller CURATE the glossary?
+
+    Rename, definitions, ref moves, edges, experts, and the generation endpoints that persist.
+    Granted alongside ``glossary_read`` — the page a curator works in is gated on read.
+    """
+    _require_right(request, Capability.GLOSSARY_RW.value)
+
+
+def _authority(request: Request) -> frozenset[str] | None:
+    """The domains this caller may reach, ``None`` for unlimited (REQ-1591)."""
+    from provisa.api.admin.capabilities import allowed_domains_request
+
+    return allowed_domains_request(request)
+
+
+def _view_scope(request: Request, selected: "list[str] | None") -> frozenset[str] | None:
+    """The caller's authority INTERSECTED with the domains the navbar filter has selected.
+
+    REQ-1591: the filter is a view preference and never widens authority, so a selection is
+    intersected in, and an unlimited role narrowed by a selection sees only the selection. An
+    absent parameter leaves authority alone — the UI sends none when every domain is checked.
+
+    Repeated ``domains=`` parameters rather than one comma-joined string, because the no-domain
+    domain's id IS the empty string (``schema.sql`` seeds it): joined, a selection of it and an
+    empty selection are the same text, and the filter would silently mean the opposite of what
+    was clicked.
+    """
+    allowed = _authority(request)
+    if selected is None:
+        return allowed
+    chosen = frozenset(selected)
+    return chosen if allowed is None else chosen & allowed
+
+
+def _require_domain(request: Request, domain_id: str) -> None:
+    """Refuse a TABLE's domain the caller may not act in (REQ-1591).
+
+    Routed through :func:`_authority` rather than calling ``require_domain_request`` directly so
+    this router asks its domain question in exactly one place — the table gate and the term gate
+    then cannot disagree about who the caller is.
+    """
+    allowed = _authority(request)
+    if allowed is not None and domain_id not in allowed:
+        raise ApiError(403, "auth.domain_denied", f"No access to domain {domain_id!r}")
+
+
+async def _require_term_in_scope(conn: "Connection", term_id: int, request: Request) -> None:
+    """Refuse a term the caller's domains do not reach — ANY of its domains suffices (REQ-1591).
+
+    Reading and curating ask the same question: a term is prose about a concept, and a shared
+    term curatable only by someone holding every domain it touches is a deadlock. Where two
+    domains mean different things by one phrase, the remedy is to split the term and move the
+    refs, not to narrow this gate.
+    """
+    from provisa.core.glossary import within_domains
+
+    allowed = _authority(request)
+    if allowed is None:
+        return
+    scope = (await glossary_repo.term_domains(conn)).get(term_id, set())
+    if not within_domains(allowed, scope):
+        raise ApiError(403, "auth.domain_denied", f"term {term_id} is outside your domains")
+
+
+def _declared_domains(request: Request, raw: "Any") -> set[str]:
+    """Validate the domains an abstract term is being declared in (REQ-1591).
+
+    An abstract term holds no refs, so nothing derives its scope and the declaration is the whole
+    answer. In multi-domain mode at least one is required — an unscoped term is reachable by every
+    glossary-rights holder, which would otherwise be a way to mint a term outside the gate — and
+    every one named must be within the caller's own authority, since declaring a term into a
+    domain you cannot reach is how a member would widen their scope by hand. In single-domain mode
+    a domain gates nothing and the empty declaration is the correct one.
+
+    ``raw`` is a value straight out of the request's JSON body, hence ``Any``: its type is what
+    the client sent, which is exactly what this function exists to check.
+    """
+    from provisa.core import domain_policy
+
+    if raw is None:
+        declared: set[str] = set()
+    elif isinstance(raw, list):
+        declared = {str(d) for d in raw}
+    else:
+        raise ApiError(400, "glossary.invalid", "domains must be a list of domain ids")
+    if domain_policy.single_domain():
+        return declared
+    if not declared:
+        raise ApiError(400, "glossary.invalid", "at least one domain is required")
+    allowed = _authority(request)
+    if allowed is not None:
+        outside = sorted(declared - allowed)
+        if outside:
+            raise ApiError(403, "auth.domain_denied", f"No access to domain {outside[0]!r}")
+    return declared
+
+
 @router.get("/terms")
 async def list_terms(
-    request: Request, q: str | None = None, include_deprecated: bool = True
+    request: Request,
+    q: str | None = None,
+    include_deprecated: bool = True,
+    domains: "list[str] | None" = Query(None),
 ) -> list[dict]:
-    require_org_settings(request)
+    _require_glossary_read(request)
     require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
         return await glossary_repo.list_terms(
-            cast("Connection", conn), q=q, include_deprecated=include_deprecated
+            cast("Connection", conn),
+            q=q,
+            include_deprecated=include_deprecated,
+            domains=_view_scope(request, domains),
         )
 
 
 @router.get("/terms/{term_id}")
 async def get_term(request: Request, term_id: int) -> dict:
-    require_org_settings(request)
+    _require_glossary_read(request)
     require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
-        term = await glossary_repo.get_term(cast("Connection", conn), term_id)
-    if term is None:
-        raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+        _conn = cast("Connection", conn)
+        term = await glossary_repo.get_term(_conn, term_id)
+        if term is None:
+            raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+        await _require_term_in_scope(_conn, term_id, request)
     return term
 
 
 @router.post("/terms")
 async def create_abstract_term(request: Request) -> dict:
     """Create an abstract term — a user concept with no physical refs."""
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
+    domains = _declared_domains(request, body.get("domains"))
     pool = await _pool()
     async with pool.acquire() as conn:
         try:
@@ -84,6 +202,7 @@ async def create_abstract_term(request: Request) -> dict:
                 cast("Connection", conn),
                 str(body.get("name", "")),
                 definition=body.get("definition"),
+                domains=domains,
             )
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
@@ -94,14 +213,32 @@ async def create_abstract_term(request: Request) -> dict:
 @router.patch("/terms/{term_id}")
 async def update_term(request: Request, term_id: int) -> dict:
     """Rename, set the definition, or flip the export_excluded / retired flags."""
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
+        await _require_term_in_scope(_conn, term_id, request)
         found = False
         try:
+            if "domains" in body:
+                # REQ-1591: DECLARED domains, so only an abstract term takes them. A rooted term's
+                # domains are its refs' — writing rows for one would be a second answer that drifts
+                # the moment a column moves; the way to rescope it is to move the refs.
+                existing = await glossary_repo.get_term(_conn, term_id)
+                if existing is None:
+                    raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+                if not existing["is_abstract"]:
+                    raise ApiError(
+                        400,
+                        "glossary.invalid",
+                        "a rooted term's domains come from its refs and cannot be set",
+                    )
+                await glossary_repo.set_declared_domains(
+                    _conn, term_id, _declared_domains(request, body["domains"])
+                )
+                found = True
             if "name" in body:
                 found = await glossary_repo.rename_term(_conn, term_id, str(body["name"]))
             if "definition" in body:
@@ -122,12 +259,14 @@ async def update_term(request: Request, term_id: int) -> dict:
 
 @router.delete("/terms/{term_id}")
 async def delete_term(request: Request, term_id: int) -> dict:
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_in_scope(_conn, term_id, request)
         try:
-            deleted = await glossary_repo.delete_term(cast("Connection", conn), term_id)
+            deleted = await glossary_repo.delete_term(_conn, term_id)
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not deleted:
@@ -137,9 +276,6 @@ async def delete_term(request: Request, term_id: int) -> dict:
 
 
 def _require_table_registration(request: Request) -> None:
-    from provisa.api.admin._platform_guard import _require_right
-    from provisa.security.rights import Capability
-
     _require_right(request, Capability.TABLE_REGISTRATION.value)
 
 
@@ -154,7 +290,13 @@ async def term_for_ref(request: Request, table_id: int, column_name: str) -> dic
     require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
-        term = await glossary_repo.get_term_by_ref(cast("Connection", conn), table_id, column_name)
+        _conn = cast("Connection", conn)
+        # REQ-1591: the column's own table decides this one — the caller is asking about a column
+        # it can already see on the Tables surface, and that surface is gated by the table's domain.
+        from provisa.api.admin.domain_guard import table_domain
+
+        _require_domain(request, await table_domain(_conn, table_id))
+        term = await glossary_repo.get_term_by_ref(_conn, table_id, column_name)
     if term is None:
         raise ApiError(404, "glossary.ref_not_found", "no term for that column")
     return term
@@ -167,13 +309,15 @@ async def generate_definition(request: Request, term_id: int) -> dict:
     Generation only — nothing persists until the user saves the draft through the
     PATCH endpoint, so a bad draft costs nothing.
     """
-    require_org_settings(request)
+    _require_glossary_rw(request)
     require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
-        term = await glossary_repo.get_term(cast("Connection", conn), term_id)
-    if term is None:
-        raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+        _conn = cast("Connection", conn)
+        term = await glossary_repo.get_term(_conn, term_id)
+        if term is None:
+            raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
+        await _require_term_in_scope(_conn, term_id, request)
     refs = ", ".join(f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"])
     related = ", ".join(
         f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
@@ -203,14 +347,17 @@ async def generate_all_definitions(request: Request) -> dict:
     holding the result — but only ever fills EMPTY definitions; human text is never
     overwritten. One publish notification covers the batch.
     """
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     from provisa.api.admin.schema_helpers import _call_llm
 
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        terms = await glossary_repo.list_terms(_conn)
+        # REQ-1591: the bulk fill writes definitions, so it may only reach the terms this caller
+        # may curate — narrowed here rather than skipped per-term, so the count it reports is the
+        # count of what it was allowed to touch.
+        terms = await glossary_repo.list_terms(_conn, domains=_authority(request))
         generated = 0
         for summary in terms:
             if summary["definition"]:
@@ -253,7 +400,7 @@ async def generate_relationships(request: Request) -> dict:
     rel-type set; anything malformed — unknown term, self-edge, free-form type — is
     dropped, existing edges upsert idempotently, and one notification covers the batch.
     """
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     import json
 
@@ -263,7 +410,9 @@ async def generate_relationships(request: Request) -> dict:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        terms = await glossary_repo.list_terms(_conn, include_deprecated=False)
+        terms = await glossary_repo.list_terms(
+            _conn, include_deprecated=False, domains=_authority(request)
+        )  # REQ-1591: propose edges only within the caller's own domains
         if len(terms) < 2:
             return {"added": 0}
         by_name = {t["name"]: t["id"] for t in terms}
@@ -318,14 +467,29 @@ async def generate_relationships(request: Request) -> dict:
 @router.post("/refs/move")
 async def move_ref(request: Request) -> dict:
     """Move one physical ref to another term (consolidation)."""
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
     pool = await _pool()
     async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        # REQ-1591: three checks, because a move touches three things — the table the ref belongs
+        # to, the term losing it, and the term gaining it. The table's domain is the one that
+        # decides whether this caller may re-point that column at all; the two terms are gated by
+        # the same ANY rule every other curation act uses.
+        from provisa.api.admin.domain_guard import table_domain
+
+        _require_domain(request, await table_domain(_conn, int(body["table_id"])))
+        losing = await glossary_repo.get_term_by_ref(
+            _conn, int(body["table_id"]), str(body["column_name"])
+        )
+        if losing is None:
+            raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
+        await _require_term_in_scope(_conn, losing["id"], request)
+        await _require_term_in_scope(_conn, int(body["to_term_id"]), request)
         try:
             moved = await glossary_repo.move_ref(
-                cast("Connection", conn),
+                _conn,
                 int(body["table_id"]),
                 str(body["column_name"]),
                 int(body["to_term_id"]),
@@ -342,14 +506,17 @@ async def move_ref(request: Request) -> dict:
 
 @router.post("/terms/{term_id}/edges")
 async def add_edge(request: Request, term_id: int) -> dict:
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
     pool = await _pool()
     async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_in_scope(_conn, int(body["to_term_id"]), request)
         try:
             await glossary_repo.add_edge(
-                cast("Connection", conn),
+                _conn,
                 term_id,
                 int(body["to_term_id"]),
                 str(body["rel_type"]),
@@ -369,14 +536,16 @@ async def retype_edge(request: Request, term_id: int) -> dict:
     otherwise have to delete and re-add, which is two publishes and a window where the
     relationship does not exist.
     """
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
     pool = await _pool()
     async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_in_scope(_conn, term_id, request)
         try:
             changed = await glossary_repo.retype_edge(
-                cast("Connection", conn),
+                _conn,
                 term_id,
                 int(body["to_term_id"]),
                 str(body["rel_type"]),
@@ -392,13 +561,13 @@ async def retype_edge(request: Request, term_id: int) -> dict:
 
 @router.delete("/terms/{term_id}/edges")
 async def remove_edge(request: Request, term_id: int, to_term_id: int, rel_type: str) -> dict:
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
-        removed = await glossary_repo.remove_edge(
-            cast("Connection", conn), term_id, to_term_id, rel_type
-        )
+        _conn = cast("Connection", conn)
+        await _require_term_in_scope(_conn, term_id, request)
+        removed = await glossary_repo.remove_edge(_conn, term_id, to_term_id, rel_type)
     if not removed:
         raise ApiError(404, "glossary.edge_not_found", "edge not found")
     await _notify(org_id, "glossary edge removed")
@@ -407,14 +576,16 @@ async def remove_edge(request: Request, term_id: int, to_term_id: int, rel_type:
 
 @router.post("/terms/{term_id}/experts")
 async def add_expert(request: Request, term_id: int) -> dict:
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
     pool = await _pool()
     async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        await _require_term_in_scope(_conn, term_id, request)
         try:
             await glossary_repo.add_expert(
-                cast("Connection", conn),
+                _conn,
                 term_id,
                 str(body["user_id"]),
                 kind=str(body.get("kind", "expert")),
@@ -427,11 +598,13 @@ async def add_expert(request: Request, term_id: int) -> dict:
 
 @router.delete("/terms/{term_id}/experts/{user_id}")
 async def remove_expert(request: Request, term_id: int, user_id: str) -> dict:
-    require_org_settings(request)
+    _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     pool = await _pool()
     async with pool.acquire() as conn:
-        removed = await glossary_repo.remove_expert(cast("Connection", conn), term_id, user_id)
+        _conn = cast("Connection", conn)
+        await _require_term_in_scope(_conn, term_id, request)
+        removed = await glossary_repo.remove_expert(_conn, term_id, user_id)
     if not removed:
         raise ApiError(404, "glossary.expert_not_found", "expert not found")
     await _notify(org_id, "glossary expert removed")

@@ -87,6 +87,8 @@
     "purposeTitle": "A cosa serve il glossario",
     "purposeBody": "È il modo in cui persone e agenti trovano i dati giusti e li usano correttamente. Ogni termine dà un nome a un concetto di business, elenca tutte le colonne fisiche che lo contengono e dice che cosa significa davvero, così una domanda posta in linguaggio di business arriva alla colonna giusta invece che a una sbagliata dall'aria plausibile.",
     "purposeAdd": "I termini delle colonne reali vengono derivati automaticamente. Creane uno a mano solo per un concetto che nessuna singola colonna contiene: un termine ombrello che poi colleghi ai termini che ne hanno una, così continua a raggiungere dati reali.",
-    "purposeAria": "Informazioni sul glossario"
+    "purposeAria": "Informazioni sul glossario",
+    "readOnly": "Sola lettura",
+    "readOnlyHint": "Puoi leggere il glossario ma non curarlo. La cura di termini, definizioni e relazioni richiede la capacità glossary_rw."
   }
 }

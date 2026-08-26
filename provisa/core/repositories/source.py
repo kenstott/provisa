@@ -90,15 +90,18 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014
     on the table list renders empty. `rename` already retargets these rows for the same reason;
     delete is its missing counterpart.
     """
+    from provisa.core.repositories import glossary as glossary_repo
+
     async with conn.transaction():
+        # REQ-1591: the domains a departing term belongs to are derived from the very tables about
+        # to be deleted, so the snapshot is taken first and handed to the sweep.
+        domains_before = await glossary_repo.term_domains(conn)
         await conn.execute_core(
             _delete(registered_tables).where(registered_tables.c.source_id == source_id)
         )
         result = await conn.execute_core(_delete(sources).where(sources.c.id == source_id))
         # REQ-1387: the table deletes cascaded the glossary refs; settle newly refless terms.
-        from provisa.core.repositories import glossary as glossary_repo
-
-        await glossary_repo.sweep_refless_terms(conn)
+        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
     return (result.rowcount or 0) > 0
 
 

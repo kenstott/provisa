@@ -87,6 +87,8 @@
     "purposeTitle": "Para qué sirve el glosario",
     "purposeBody": "Es como las personas y los agentes encuentran los datos correctos y los usan bien. Cada término nombra un concepto de negocio, enumera todas las columnas físicas que lo contienen y dice qué significa realmente, de modo que una pregunta hecha en lenguaje de negocio llegue a la columna correcta y no a una equivocada que parece plausible.",
     "purposeAdd": "Los términos de columnas reales se derivan automáticamente. Cree uno a mano solo para un concepto que ninguna columna contiene por sí sola: un término paraguas que luego relaciona con los términos que sí la tienen, para que siga alcanzando datos reales.",
-    "purposeAria": "Acerca del glosario"
+    "purposeAria": "Acerca del glosario",
+    "readOnly": "Solo lectura",
+    "readOnlyHint": "Puede leer el glosario pero no curarlo. Curar términos, definiciones y relaciones requiere la capacidad glossary_rw."
   }
 }

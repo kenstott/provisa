@@ -453,7 +453,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["tag_assignments"].extend(_tags(nested["tags"], path, table_id=tid))
 
         elif table == "glossary_terms":
-            own, nested = _split(body, "edges", "experts")
+            own, nested = _split(body, "edges", "experts", "domains")
             gid = term_id[path]
             rows["glossary_terms"].append({**own, "id": gid})
             for edge in nested["edges"]:
@@ -466,6 +466,8 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 )
             for expert in nested["experts"]:
                 rows["glossary_term_experts"].append({**expert, "term_id": gid})
+            for domain in nested["domains"]:
+                rows["glossary_term_domains"].append({**domain, "term_id": gid})
 
         elif table == "tags":
             own, nested = _split(body, "values")

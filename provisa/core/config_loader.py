@@ -659,6 +659,13 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # abstraction — a no-op on single-writer backends (SQLite) that need no cross-process lock.
     await conn.advisory_xact_lock(7261748190)
 
+    # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
+    # snapshot step 11's sweep needs is taken here — before the replace cleanup and the
+    # rename purge in _upsert_tables remove the very rows it reads.
+    from provisa.core.repositories import glossary as glossary_repo
+
+    domains_before = await glossary_repo.term_domains(conn)
+
     if replace:
         await _replace_mode_cleanup(conn, config)
 
@@ -753,9 +760,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
     # same column names revives its terms instead of losing their definitions to an early sweep.
-    from provisa.core.repositories import glossary as glossary_repo
-
-    await glossary_repo.sweep_refless_terms(conn)
+    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
 
     return failed_catalogs
 

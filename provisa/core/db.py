@@ -96,9 +96,13 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             # modeler hold neither.
             "environment_management",
             "environment_switch",
+            # REQ-1590: the glossary's two rights. Reading a term is not administering the org, so
+            # every seeded role reads; curation stays with the roles that own the model.
+            "glossary_read",
+            "glossary_rw",
         ],
     ),
-    ("analyst", ["usage", "query_development"]),
+    ("analyst", ["usage", "query_development", "glossary_read"]),  # REQ-1590
     (
         "developer",
         [
@@ -110,6 +114,7 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "usage",
             "environment_management",  # REQ-1573
             "environment_switch",  # REQ-1573
+            "glossary_read",  # REQ-1590
         ],
     ),
     # REQ-1297: modeler is the only system role holding ignore_relationships — the discovery role
@@ -123,6 +128,9 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "ignore_relationships",
             "full_results",
             "usage",
+            # REQ-1590: modeler is the model-curation role, so it curates the glossary too.
+            "glossary_read",
+            "glossary_rw",
         ],
     ),
     ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
@@ -252,6 +260,16 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
                     if right not in caps:
                         caps.add(right)
                         changed = True
+            # REQ-1590: the glossary's two rights — every system role reads, org_admin and modeler
+            # curate. Same seam and same reason as the environment rights above.
+            if role_id in ("org_admin", "analyst", "developer", "modeler"):
+                if "glossary_read" not in caps:
+                    caps.add("glossary_read")
+                    changed = True
+            if role_id in ("org_admin", "modeler"):
+                if "glossary_rw" not in caps:
+                    caps.add("glossary_rw")
+                    changed = True
             if role_id == "org_admin":
                 for right in ("org_settings", "observability"):
                     if right not in caps:
@@ -323,6 +341,20 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 "UPDATE roles SET capabilities = capabilities || "
                 f"'[\"{right}\"]'::jsonb"
                 f" WHERE id IN ('org_admin', 'developer') AND NOT capabilities ? '{right}'"
+            )
+        # REQ-1590: the glossary's two rights, on the same terms as the seed — every system role
+        # reads, and curation stays with the roles that own the model. Re-asserted for the same
+        # reason as the rights above: an org whose role rows predate REQ-1590 keeps them otherwise,
+        # which hides the glossary nav link and 403s the surface for its own org_admin.
+        for role_ids, right in (
+            (("org_admin", "analyst", "developer", "modeler"), "glossary_read"),
+            (("org_admin", "modeler"), "glossary_rw"),
+        ):
+            id_list = ", ".join(f"'{r}'" for r in role_ids)
+            await conn.execute(
+                "UPDATE roles SET capabilities = capabilities || "
+                f"'[\"{right}\"]'::jsonb"
+                f" WHERE id IN ({id_list}) AND NOT capabilities ? '{right}'"
             )
         if multitenancy:
             await conn.execute(
