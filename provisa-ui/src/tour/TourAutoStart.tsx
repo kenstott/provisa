@@ -21,7 +21,7 @@ import { TourWelcomeModal } from "./TourWelcomeModal";
  * session, until it is taken or the modal's checkbox turns the offer off for good.
  */
 export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
-  const { startTour } = useTour();
+  const { startTour, available } = useTour();
   const [searchParams, setSearchParams] = useSearchParams();
   const { pathname } = useLocation();
   const tourParam = searchParams.get("tour");
@@ -53,5 +53,7 @@ export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
     // ?tour=1 always starts fresh from the top.
     startTour({ restart: true });
   }, [tourParam, startTour, setSearchParams]);
-  return offering ? <TourWelcomeModal onClose={() => setOffering(false)} /> : null;
+  // A viewer whose rights open none of the tour's pages is offered nothing: the modal's Start would
+  // open a tour with no steps in it.
+  return offering && available ? <TourWelcomeModal onClose={() => setOffering(false)} /> : null;
 }

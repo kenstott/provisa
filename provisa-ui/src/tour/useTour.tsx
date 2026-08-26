@@ -15,6 +15,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -24,7 +25,9 @@ import { useTranslation } from "react-i18next";
 import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
-import { TOUR_STEPS, stepRoute, LINEAGE_DEMO_SQL, type TourStep } from "./tourSteps";
+import { TOUR_STEPS, stepRoute, tourItinerary, LINEAGE_DEMO_SQL, type TourStep } from "./tourSteps";
+import { useAuth } from "../context/AuthContext";
+import { hasCapability } from "../lib/capabilities";
 import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
 import { prefetchSettings } from "../api/admin";
@@ -320,6 +323,11 @@ interface TourContextValue {
   canResume: boolean;
   /** Non-null while the tour is working with no popover up — drives the overlay and the navbar spinner. */
   status: TourStatus;
+  /**
+   * False when this viewer's rights open none of the tour's pages, so there is no tour to offer.
+   * The launcher and the welcome modal hide rather than present a button that ends immediately.
+   */
+  available: boolean;
 }
 
 const TourContext = createContext<TourContextValue | null>(null);
@@ -391,6 +399,20 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<TourStatus>(null);
   const prefetchTourData = useTourPrefetch();
+  const { capabilities } = useAuth();
+  // The steps this viewer may actually be shown, in order, as indices into TOUR_STEPS. Everything
+  // that used to count against TOUR_STEPS.length — the numbering, what Next/Back move to, which
+  // step is last — counts against this instead, so a tour with steps dropped is a shorter whole
+  // tour rather than one that ends early or numbers past its end.
+  const itinerary = useMemo(
+    () => tourItinerary((capability) => hasCapability(capabilities, capability)),
+    [capabilities],
+  );
+  // Read inside handlers whose closure predates a capability refresh.
+  const itineraryRef = useRef(itinerary);
+  useEffect(() => {
+    itineraryRef.current = itinerary;
+  }, [itinerary]);
   const driverRef = useRef<Driver | null>(null);
   const currentPathRef = useRef<string>("");
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
@@ -441,6 +463,15 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // the last step calls finish() instead of advancing), so TOUR_STEPS[i]
         // is always defined here; a bad index would throw into the catch below.
         const step: TourStep = TOUR_STEPS[i];
+        // A saved position from a session with different rights, or one recorded before a grant was
+        // withdrawn. Entering it would render NotAuthorized and wait out the anchor window, so move
+        // to the next step this viewer does get; past the end there is nothing left to show.
+        if (!itineraryRef.current.includes(i)) {
+          const next = itineraryRef.current.find((n) => n > i);
+          if (next === undefined) endTour("completed");
+          else setActiveStep(next);
+          return;
+        }
         // Before navigating, so the destination page's own call adopts this request rather than
         // opening a second one. Already in flight when the preceding step warmed it.
         warmStep(i);
@@ -485,25 +516,30 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }
         element.scrollIntoView({ block: "center", behavior: "smooth" });
 
-        const isLast = i === TOUR_STEPS.length - 1;
+        // Position within the itinerary, not within TOUR_STEPS: a viewer whose rights drop a
+        // chapter gets "4 of 22", and the step before the dropped one is the one Next skips over.
+        const steps = itineraryRef.current;
+        const pos = steps.indexOf(i);
+        const isFirst = pos === 0;
+        const isLast = pos === steps.length - 1;
         driverRef.current.highlight({
           element,
           popover: {
             title: t(`tour.steps.${step.key}.title`),
             description: t(`tour.steps.${step.key}.description`),
-            showButtons: i === 0 ? ["next", "close"] : ["previous", "next", "close"],
+            showButtons: isFirst ? ["next", "close"] : ["previous", "next", "close"],
             nextBtnText: isLast
               ? t("tour.nav.done")
-              : t("tour.nav.next", { current: i + 1, total: TOUR_STEPS.length }),
+              : t("tour.nav.next", { current: pos + 1, total: steps.length }),
             prevBtnText: t("tour.nav.back"),
             onNextClick: () => {
               clickIfPresent(step.clickAfterNext);
               if (isLast) endTour("completed");
-              else setActiveStep(i + 1);
+              else setActiveStep(steps[pos + 1]);
             },
             onPrevClick: () => {
               clickIfPresent(step.clickAfterNext);
-              setActiveStep(i - 1);
+              setActiveStep(steps[pos - 1]);
             },
             onCloseClick: () => {
               clickIfPresent(step.clickAfterNext);
@@ -513,14 +549,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
             // visitor can restart the tour from any popover. Omitted on step 0,
             // where it would be a no-op.
             onPopoverRender: (popover) => {
-              if (i !== 0) {
+              if (!isFirst) {
                 const startBtn = document.createElement("button");
                 startBtn.type = "button";
                 startBtn.className = "driver-popover-start-btn";
                 startBtn.textContent = t("tour.nav.start");
                 startBtn.addEventListener("click", () => {
                   clickIfPresent(step.clickAfterNext);
-                  setActiveStep(0);
+                  setActiveStep(steps[0]);
                 });
                 popover.footerButtons.prepend(startBtn);
               }
@@ -542,7 +578,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // The popover is on screen and the visitor is reading it — the idle window in which the
         // next step's backend work can run for free. Without this the request only starts when
         // Next is clicked, which is the delay that makes an advance feel dead on a loaded machine.
-        warmStep(i + 1);
+        // The NEXT step on this itinerary, which is not i + 1 when a step between them was dropped.
+        if (!isLast) warmStep(steps[pos + 1]);
       } catch {
         // The anchor never appeared: the page is still working, or this step's target is gone
         // (layout changed / gated by permission). The two are indistinguishable from here, so
@@ -571,6 +608,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const startTour = useCallback(
     (opts?: { restart?: boolean }) => {
       if (driverRef.current) return;
+      // Nothing this viewer may open: every step's page is denied to them. There is no tour to
+      // give, and the offer itself is withheld (see `tourAvailable`), so this is the belt to that
+      // brace rather than a state anyone reaches by clicking.
+      if (itineraryRef.current.length === 0) return;
       const resuming = !opts?.restart && tourResumeStep() !== null;
       // The prefetch below is seconds of work on a loaded machine and the button gives no feedback
       // of its own; without this the click looks ignored and gets clicked again.
@@ -608,7 +649,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }
         // The step's own runner takes over the status from here: it clears it when the anchor
         // lands, or replaces it with waiting/stuck.
-        setActiveStep(opts?.restart ? 0 : (tourResumeStep() ?? 0));
+        // The itinerary's own first step, which is TOUR_STEPS[0] only when this viewer gets it. A
+        // resumed index outside the itinerary is snapped forward by the runner effect.
+        setActiveStep(
+          opts?.restart ? itineraryRef.current[0] : (tourResumeStep() ?? itineraryRef.current[0]),
+        );
       });
     },
     [prefetchTourData],
@@ -621,6 +666,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         running: activeStep !== null,
         canResume: tourResumeStep() !== null,
         status,
+        available: itinerary.length > 0,
       }}
     >
       {children}
@@ -634,8 +680,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
           const i = activeStepRef.current;
           if (i === null) return;
           setStatus(null);
-          if (i + 1 < TOUR_STEPS.length) setActiveStep(i + 1);
-          else endTour("completed");
+          // The next step on this viewer's itinerary — skipping a step never lands on one their
+          // rights would deny.
+          const next = itineraryRef.current.find((n) => n > i);
+          if (next === undefined) endTour("completed");
+          else setActiveStep(next);
         }}
         onExit={() => endTour("dismissed")}
       />

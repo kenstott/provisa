@@ -26,9 +26,24 @@
  * i18n namespace (src/i18n/locales/<lng>/tour.json), keyed by `key`, so the
  * narration is translatable. This file only carries the layout/navigation data.
  */
+import type { Capability } from "../types/auth";
+
 export interface TourStep {
   /** Route to navigate to before the step is shown. Omit to stay put. */
   route?: string;
+  /**
+   * The capability `route`'s gate in App.tsx requires. Declared beside the route it belongs to, and
+   * asserted equal to that gate by tourRouteCapabilities.test.ts — the two must not drift.
+   *
+   * The tour is taken by whoever is signed in, and not every viewer holds every right. A step whose
+   * page the viewer cannot open renders "You do not have permission to view this page", so its
+   * anchor never mounts and the runner waits out the full anchor window before offering its stuck
+   * panel: a tour that appears to hang. Denial is knowable up front, so it is answered up front —
+   * {@link tourItinerary} drops the step before the run starts, and the visitor sees a shorter tour
+   * of the product they actually have rather than a broken one. Only steps that OWN a route carry
+   * this; a routeless step inherits its owner's fate (see `tourItinerary`).
+   */
+  capability?: Capability;
   /**
    * Named side-effect run *before* navigating — resolved by the runner's prep
    * registry. Used to seed demo state (e.g. a canned NL result) so the tour can
@@ -108,6 +123,7 @@ export const TOUR_STEPS: TourStep[] = [
   // ─── SPINE: the five-minute core (register a source → expose tables → query it eight ways) ───
   {
     route: "/sources",
+    capability: "source_registration",
     prefetch: "settings",
     element: ".navbar-tour-btn",
     readySelector: SOURCES_ADD,
@@ -115,6 +131,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/sources",
+    capability: "source_registration",
     prefetch: "settings",
     element: '[data-tour="nav-sources"]',
     readySelector: SOURCES_ADD,
@@ -133,6 +150,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/tables",
+    capability: "table_registration",
     prefetch: "settings",
     element: '[data-tour="nav-tables"]',
     // nav-tables lives in the always-mounted NavBar, so it resolves the instant navigation
@@ -146,6 +164,7 @@ export const TOUR_STEPS: TourStep[] = [
     // Own the route so Back from the first surface (/sql) returns here instead of hanging on
     // clickBefore (the tables-add button only exists on /tables).
     route: "/tables",
+    capability: "table_registration",
     prefetch: "settings",
     element: '[data-tour="tables-form"]',
     key: "step5",
@@ -157,6 +176,7 @@ export const TOUR_STEPS: TourStep[] = [
     // collapse it again on Next. Rows render past the loading state, so the
     // clickBefore await also gates on page readiness.
     route: "/tables",
+    capability: "table_registration",
     prefetch: "settings",
     element: '[data-testid="table-read-view-preview"]',
     key: "stepPreview",
@@ -165,48 +185,56 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/sql",
+    capability: "query_development",
     openBranch: "sql",
     element: '.subnav a[href="/sql"]',
     key: "step6",
   },
   {
     route: "/query",
+    capability: "query_development",
     openBranch: "graphql",
     element: '.subnav a[href="/query"]',
     key: "step7",
   },
   {
     route: "/graph",
+    capability: "query_development",
     openBranch: "cypher",
     element: '.subnav a[href="/graph"]',
     key: "step8",
   },
   {
     route: "/grpc",
+    capability: "query_development",
     openBranch: "grpc",
     element: '.subnav a[href="/grpc"]',
     key: "step9",
   },
   {
     route: "/jsonapi",
+    capability: "query_development",
     openBranch: "jsonapi",
     element: '.subnav a[href="/jsonapi"]',
     key: "step10",
   },
   {
     route: "/openapi",
+    capability: "query_development",
     openBranch: "openapi",
     element: '.subnav a[href="/openapi"]',
     key: "step11",
   },
   {
     route: "/explore",
+    capability: "query_development",
     prep: "seedMcp",
     element: '.subnav a[href="/explore"]',
     key: "step12",
   },
   {
     route: "/nl",
+    capability: "query_development",
     prep: "seedNl",
     element: '[data-testid="nl-question-input"]',
     key: "step13",
@@ -219,6 +247,7 @@ export const TOUR_STEPS: TourStep[] = [
   // ─── GROW: optional depth — link the graph, govern it, build the pipeline, operate it. ───
   {
     route: "/relationships",
+    capability: "create_relationship",
     element: '[data-tour="rels-add"]',
     key: "step15",
   },
@@ -232,6 +261,7 @@ export const TOUR_STEPS: TourStep[] = [
     // Own the route so Back from RBAC (/security/roles) returns here instead of hanging on
     // clickBefore (the ERD trigger only exists on /relationships).
     route: "/relationships",
+    capability: "create_relationship",
     element: '[data-tour="rels-erd-modal"]',
     key: "step17",
     clickBefore: '[data-tour="rels-erd"]',
@@ -239,12 +269,14 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/security/roles",
+    capability: "access_config",
     element: '.subnav a[href="/security/roles"]',
     readySelector: '[data-testid="toggle-role-form"]',
     key: "step18",
   },
   {
     route: "/security/rls",
+    capability: "access_config",
     element: '.subnav a[href="/security/rls"]',
     readySelector: '[data-testid="toggle-rule-form"]',
     key: "step19",
@@ -254,6 +286,7 @@ export const TOUR_STEPS: TourStep[] = [
     // contract is edited where every other table setting is. `?source=` seeds the filter box, so
     // the first row is the checker's results table — expand it and its edit control appears.
     route: "/tables?source=dq-checker",
+    capability: "table_registration",
     prefetch: "settings",
     element: '[data-testid="table-read-view-edit"]',
     key: "stepQualityTable",
@@ -269,6 +302,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/views",
+    capability: "table_registration",
     prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
@@ -276,6 +310,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/views",
+    capability: "table_registration",
     prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
@@ -283,6 +318,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: `/lineage?sql=${encodeURIComponent(LINEAGE_DEMO_SQL)}`,
+    capability: "table_registration",
     prefetch: "lineageDemo",
     element: '[data-testid="lineage-dag"]',
     // The DAG mounts only once LineagePage's deep-link effect has finished analyzing the statement
@@ -294,6 +330,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/admin/overview",
+    capability: "observability",
     element: '[data-tour="nav-admin"]',
     readySelector: '[data-tour="admin-content"]',
     key: "step23",
@@ -301,18 +338,24 @@ export const TOUR_STEPS: TourStep[] = [
   {
     // REQ-1390: the seeded ops-domain management reports and the add-your-own flow.
     route: "/admin/reports",
+    capability: "observability",
     element: '[data-testid="reports-list"]',
     key: "stepReports",
   },
   {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
     route: "/admin/glossary",
+    // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
+    // what this step points at is the AI-generation buttons, which only a curator is shown — so a
+    // read-only viewer skips the step rather than waiting out an anchor that never mounts.
+    capability: "glossary_rw",
     element: '[data-testid="glossary-bulk-definitions-btn"]',
     key: "stepGlossary",
   },
   // ─── CLOSE ───
   {
     route: "/sources",
+    capability: "source_registration",
     prefetch: "settings",
     element: '[data-tour="sources-add"]',
     key: "step24",
@@ -334,4 +377,38 @@ export function stepRoute(index: number): string | undefined {
     if (route) return route;
   }
   return undefined;
+}
+
+/**
+ * The steps this viewer can actually be shown, as indices into {@link TOUR_STEPS} in order.
+ *
+ * The tour narrates surfaces, and a surface the viewer's rights do not open cannot be narrated: the
+ * route paints NotAuthorized, the anchor never mounts, and the runner sits on its waiting overlay
+ * for the whole anchor window before offering Retry / Skip / Exit. That is a permission answer
+ * delivered as a hang, and it is avoidable — the rights are in hand before the tour starts, so the
+ * step is dropped up front and the popover's "n of N" counts only what the visitor will see.
+ *
+ * A routeless step continues on its owner's page (see {@link stepRoute}) and, in several cases,
+ * depends on that step's `clickBefore` having run — so it goes wherever its owner goes. Dropping the
+ * owner alone would leave a step navigating nowhere and highlighting an anchor that was never
+ * opened, which is the same hang by a different path.
+ *
+ * `meets` is passed in rather than imported so this stays pure data logic; the runner supplies
+ * `meetsRequirement` bound to the signed-in capabilities.
+ */
+export function tourItinerary(meets: (capability: Capability) => boolean): number[] {
+  const out: number[] = [];
+  // Whether the route currently in force is one this viewer may open. Steps before the first
+  // routed step (there are none today) would inherit `true` — no gate to fail.
+  let ownerAllowed = true;
+  TOUR_STEPS.forEach((step, i) => {
+    if (step.route) {
+      if (step.capability === undefined) {
+        throw new Error(`Tour: step ${i} declares a route with no capability`);
+      }
+      ownerAllowed = meets(step.capability);
+    }
+    if (ownerAllowed) out.push(i);
+  });
+  return out;
 }
