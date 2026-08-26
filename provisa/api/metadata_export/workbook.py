@@ -38,7 +38,7 @@ import io
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from provisa.api.metadata_export.refs import metric_uri, table_uri
+from provisa.api.metadata_export.refs import metric_uri, table_ref, table_uri
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -70,9 +70,14 @@ OBJECT_SHEETS = (
 )
 
 HEADERS: dict[str, tuple[str, ...]] = {
-    SOURCES: ("id", "source", "type", "description"),
-    TABLES: ("id", "name", "aliases", "source", "domain", "description"),
-    COLUMNS: ("id", "table", "column", "aliases", "data type", "description"),
+    SOURCES: ("id", "source", "type", "tags", "description"),
+    # REQ-1592: data_product is a COLUMN, not a filter — the report covers every registered table
+    # and lets the reviewer filter the sheet on the flag in the spreadsheet. ``tags`` is the same
+    # shape of answer for the registry tags: every taggable sheet carries one comma-delimited
+    # column, so `fact`, `dimension` and `data_quality` are filtered the way `pii` is, rather
+    # than each earning a column of its own.
+    TABLES: ("id", "name", "aliases", "source", "domain", "data_product", "tags", "description"),
+    COLUMNS: ("id", "table", "column", "aliases", "data type", "tags", "description"),
     RELATIONSHIPS: (
         "id",
         "name",
@@ -85,8 +90,9 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "needs review",
         "version",
         "owner",
+        "tags",
     ),
-    VIEWS: ("id", "name", "domain", "source", "definition", "description"),
+    VIEWS: ("id", "name", "domain", "source", "tags", "definition", "description"),
     METRICS: ("id", "metric", "expression", "datatype", "description", "ai context", "from fact"),
     MATERIALIZED_VIEWS: (
         "id",
@@ -96,6 +102,7 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "consistency",
         "persist",
         "incremental",
+        "tags",
         "definition",
     ),
     GLOSSARY: ("id", "term", "definition", "abstract", "deprecated", "refs", "experts"),
@@ -112,6 +119,46 @@ class ReportHeader:  # REQ-1592
     generated_at: "datetime"
     included: tuple[str, ...]
     omitted: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _Tags:  # REQ-1592
+    """The snapshot's registry tags, indexed the way the sheets address their rows.
+
+    One comma-delimited cell per taggable row, filterable in the spreadsheet. Assigned and derived
+    tags share the column deliberately: to a reviewer asking which tables are facts, `fact` is the
+    same kind of answer as `pii`, and splitting them across a column per tag would make the sheet
+    grow a column every time the vocabulary does. A parameterised assignment keeps its parameter
+    (``entity:customer``, REQ-1467) — the parameter is what the tag says.
+    """
+
+    by_asset: dict[tuple[str, ...], str]
+    by_relationship: dict[str, str]
+
+    def asset(self, parts: tuple[str, ...]) -> str:
+        return self.by_asset.get(parts, "")
+
+    def relationship(self, edge_id: str) -> str:
+        return self.by_relationship.get(edge_id, "")
+
+
+def _tag_index(snapshot: "MetadataSnapshot") -> _Tags:
+    by_asset: dict[tuple[str, ...], list[str]] = {}
+    by_relationship: dict[str, list[str]] = {}
+    for tag in snapshot.model_tags:
+        if tag.asset is not None:
+            bucket = by_asset.setdefault(tag.asset.parts, [])
+        elif tag.relationship_id is not None:
+            bucket = by_relationship.setdefault(tag.relationship_id, [])
+        else:
+            raise ValueError(f"model tag {tag.tag_id!r} addresses neither an asset nor an edge")
+        # A tag can be assigned once and derived as well; the reviewer reads one name either way.
+        if tag.tag_id not in bucket:
+            bucket.append(tag.tag_id)
+    return _Tags(
+        by_asset={parts: ", ".join(ids) for parts, ids in by_asset.items()},
+        by_relationship={edge: ", ".join(ids) for edge, ids in by_relationship.items()},
+    )
 
 
 def _view_definition(table: "Table") -> str:
@@ -134,14 +181,20 @@ def _business_name(table: "Table") -> str:
     return table.alias or table.table_name
 
 
-def _sources_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+def _sources_rows(snapshot: "MetadataSnapshot", tags: _Tags) -> list[list[Any]]:
     return [
-        [asset.semantic_uri, asset.id, asset.source_type, asset.description]
+        [
+            asset.semantic_uri,
+            asset.id,
+            asset.source_type,
+            tags.asset(asset.ref.parts),
+            asset.description,
+        ]
         for asset in snapshot.sources
     ]
 
 
-def _tables_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+def _tables_rows(snapshot: "MetadataSnapshot", tags: _Tags) -> list[list[Any]]:
     return [
         [
             asset.semantic_uri,
@@ -149,13 +202,15 @@ def _tables_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
             ", ".join(asset.aliases),
             asset.source_id,
             asset.domain_id or "",
+            asset.data_product,
+            tags.asset(asset.ref.parts),
             asset.description,
         ]
         for asset in snapshot.tables
     ]
 
 
-def _columns_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+def _columns_rows(snapshot: "MetadataSnapshot", tags: _Tags) -> list[list[Any]]:
     rows: list[list[Any]] = []
     for table in snapshot.tables:
         for column in table.columns:
@@ -166,13 +221,14 @@ def _columns_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
                     column.name,
                     ", ".join(column.aliases),
                     column.data_type,
+                    tags.asset(column.ref.parts),
                     column.description,
                 ]
             )
     return rows
 
 
-def _relationships_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
+def _relationships_rows(snapshot: "MetadataSnapshot", tags: _Tags) -> list[list[Any]]:
     rows: list[list[Any]] = []
     for edge in snapshot.relationships:
         target = edge.target.parts[-1] if edge.target is not None else ""
@@ -189,18 +245,20 @@ def _relationships_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
                 edge.needs_review,
                 edge.version,
                 edge.owner.id if edge.owner is not None else "",
+                tags.relationship(edge.id),
             ]
         )
     return rows
 
 
-def _views_rows(org_id: str, tables: list["Table"]) -> list[list[Any]]:
+def _views_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[Any]]:
     return [
         [
             table_uri(org_id, table),
             _business_name(table),
             table.domain_id,
             table.source_id,
+            tags.asset(table_ref(table).parts),
             _view_definition(table),
             table.description,
         ]
@@ -209,7 +267,7 @@ def _views_rows(org_id: str, tables: list["Table"]) -> list[list[Any]]:
     ]
 
 
-def _materialized_rows(org_id: str, tables: list["Table"]) -> list[list[Any]]:
+def _materialized_rows(org_id: str, tables: list["Table"], tags: _Tags) -> list[list[Any]]:
     return [
         [
             table_uri(org_id, table),
@@ -219,6 +277,7 @@ def _materialized_rows(org_id: str, tables: list["Table"]) -> list[list[Any]]:
             table.mv_consistency,
             table.mv_persist,
             table.mv_incremental,
+            tags.asset(table_ref(table).parts),
             _view_definition(table),
         ]
         for table in tables
@@ -287,14 +346,15 @@ def sheet_rows(  # REQ-1592
     # A metric expression names its tables by SEMANTIC name — the alias when there is one, the
     # table name otherwise — so the visibility set the metric filter uses is spelled that way.
     metric_names = frozenset(_business_name(table) for table in tables)
+    tags = _tag_index(snapshot)
     return {
-        SOURCES: _sources_rows(snapshot),
-        TABLES: _tables_rows(snapshot),
-        COLUMNS: _columns_rows(snapshot),
-        RELATIONSHIPS: _relationships_rows(snapshot),
-        VIEWS: _views_rows(org_id, tables),
+        SOURCES: _sources_rows(snapshot, tags),
+        TABLES: _tables_rows(snapshot, tags),
+        COLUMNS: _columns_rows(snapshot, tags),
+        RELATIONSHIPS: _relationships_rows(snapshot, tags),
+        VIEWS: _views_rows(org_id, tables, tags),
         METRICS: _metrics_rows(org_id, config, metric_names),
-        MATERIALIZED_VIEWS: _materialized_rows(org_id, tables),
+        MATERIALIZED_VIEWS: _materialized_rows(org_id, tables, tags),
         GLOSSARY: _glossary_rows(snapshot),
     }
 

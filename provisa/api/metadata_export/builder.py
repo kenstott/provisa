@@ -140,6 +140,7 @@ def _table_assets(
                 if (table_ref(table).parts, column.name) not in technical_columns
             ],
             semantic_uri=table_uri(org_id, table),
+            data_product=table.data_product,
         )
         for table in tables
     ]
@@ -508,6 +509,7 @@ def build_snapshot(
     dialect: str,
     glossary: dict | None = None,
     dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome] | None = None,
+    data_products_only: bool = True,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -520,6 +522,11 @@ def build_snapshot(
     function is a pure projection of the config and never queries data itself. Omitting
     ``dq_outcomes`` publishes every check as never run, which is what a caller with no results to
     read is entitled to say.
+
+    ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
+    receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
+    because a steward reviewing the model is reviewing everything registered, and the unmarked
+    tables are exactly the ones a review is meant to catch.
     """
     # Name resolution sees EVERY table: a bare relationship/lineage name that is ambiguous
     # across the full config stays refused, whether or not both candidates publish.
@@ -530,7 +537,10 @@ def build_snapshot(
     # chose not to publish. REQ-1375: the 'technical' system tag prunes COLUMNS from a
     # published table the same way; at table level the flag itself is the control.
     technical_columns = _technical_columns(config, index)
-    exported = [table for table in config.tables if table.data_product]
+    # REQ-1592: the model report projects the SAME governance over every registered table — it is a
+    # steward's view of what is modelled, not a catalog publish — so it turns the export filter off
+    # and reads the Data Product flag off each row instead.
+    exported = [table for table in config.tables if table.data_product or not data_products_only]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
     tables = _table_assets(exported, org_id, technical_columns)

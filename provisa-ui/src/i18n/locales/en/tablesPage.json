@@ -11,6 +11,8 @@
     "addViewTitle": "Create a new view in the SQL Explorer",
     "model": "+ Model",
     "modelTitle": "Model an entity or fact (star schema / Data Vault)",
+    "reportXlsx": "Workbook",
+    "reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views and glossary terms, one sheet each",
     "viewErd": "View ERD",
     "colSource": "Source",
     "colDomain": "Domain",

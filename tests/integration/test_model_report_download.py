@@ -87,9 +87,9 @@ async def _clean(tenant_db, _init_schema):
 def _config() -> dict:
     """Two domains, a base table in each, a view and a materialized view, and one metric.
 
-    ``staging`` is the control: registered, but not a Data Product, so the export projection drops
-    it — and with it the metric whose expression names it, since a metric expression prints its
-    base tables in plain text.
+    ``staging`` is the control: registered, but not a Data Product. The report covers it anyway
+    and prints the flag as a column, because the report is a steward's review of the whole model
+    rather than a catalog publish.
     """
     src = {
         "id": "pg1",
@@ -225,11 +225,14 @@ async def test_the_download_is_a_workbook_of_the_governed_model(served):
     )
     assert book.sheetnames == [wb.REPORT, *wb.OBJECT_SHEETS]
     names = set(_values(book[wb.TABLES], 1))
-    assert {"orders", "pets"} <= names
-    # Registered but not a Data Product: the export projection drops it, so the reviewer never
-    # sees it — nor the metric whose expression names it.
-    assert "staging" not in names
-    assert set(_values(book[wb.METRICS], 1)) == {"revenue"}
+    # Everything registered, Data Product or not — the report is a review of the model, and the
+    # flag rides along as a filterable column rather than deciding what a reviewer may see.
+    assert {"orders", "pets", "staging"} <= names
+    flag = wb.HEADERS[wb.TABLES].index("data_product")
+    marked = dict(zip(_values(book[wb.TABLES], 1), _values(book[wb.TABLES], flag), strict=True))
+    assert marked["staging"] is False
+    assert marked["orders"] is True
+    assert set(_values(book[wb.METRICS], 1)) == {"revenue", "held"}
     assert _values(book[wb.VIEWS], 1) == ["order_totals"]
     assert _values(book[wb.MATERIALIZED_VIEWS], 1) == ["pet_rollup"]
 
@@ -261,7 +264,7 @@ async def test_a_sheet_the_caller_cannot_read_is_omitted_not_refused(served):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_domain_scoped_role_receives_its_domain_rather_than_a_403(served):
     _, book = await _book("sales_only")
-    assert set(_values(book[wb.TABLES], 1)) == {"orders", "order_totals"}
+    assert set(_values(book[wb.TABLES], 1)) == {"orders", "order_totals", "staging"}
     assert _values(book[wb.MATERIALIZED_VIEWS], 1) == []
     stated = {row[0]: row[1] for row in book[wb.REPORT].iter_rows(min_row=2, values_only=True)}
     assert stated["Domains covered"] == "sales"
@@ -275,14 +278,14 @@ async def test_the_domains_parameter_narrows_but_never_widens(served):
 
     # A scoped role naming a domain it does not hold does not acquire it.
     _, widened = await _book("sales_only", domains=["sales", "petstore"])
-    assert set(_values(widened[wb.TABLES], 1)) == {"orders", "order_totals"}
+    assert set(_values(widened[wb.TABLES], 1)) == {"orders", "order_totals", "staging"}
 
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_narrowing_carries_the_glossary_and_the_source_list_with_it(served):
     """Every sheet follows the tables it addresses — a narrowed workbook leaks no wider shape."""
     _, book = await _book("steward", domains=["petstore"])
-    refs = _values(book[wb.GLOSSARY], 5)
+    refs = _values(book[wb.GLOSSARY], wb.HEADERS[wb.GLOSSARY].index("refs"))
     assert refs, "the derivation produced no terms; the narrowing assertion would be vacuous"
     assert not [ref for ref in refs if "orders" in (ref or "")]
     assert set(_values(book[wb.SOURCES], 1)) == {"pg1"}

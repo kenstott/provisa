@@ -62,6 +62,7 @@ def _config() -> ProvisaConfig:
         tables=[
             _table(
                 "orders",
+                modeling_role="fact",
                 columns=[
                     Column(name="id", data_type="integer", visible_to=["*"]),
                     Column(name="amount", data_type="numeric", visible_to=["*"]),
@@ -87,7 +88,9 @@ def _config() -> ProvisaConfig:
 
 def _rows() -> dict[str, list[list]]:
     config = _config()
-    snapshot = build_snapshot(config, org_id=ORG, dialect="postgres")
+    # REQ-1592: the report is a steward's view of the WHOLE registered model, so it projects with
+    # the export filter off — exactly as provisa/api/admin/report_router.py does.
+    snapshot = build_snapshot(config, org_id=ORG, dialect="postgres", data_products_only=False)
     return wb.sheet_rows(snapshot, config, org_id=ORG)
 
 
@@ -140,26 +143,47 @@ def test_ids_are_the_semantic_uris_a_comment_traces_back_to():
     assert f"provisa://{ORG}/sales/tables/orders#field:amount" in {
         row[0] for row in rows[wb.COLUMNS]
     }
-    assert [row[0] for row in rows[wb.METRICS]] == [metric_uri(ORG, "revenue")]
+    assert metric_uri(ORG, "revenue") in {row[0] for row in rows[wb.METRICS]}
 
 
-def test_sheets_follow_the_governed_projection_not_the_raw_config():
+def test_an_unmarked_table_is_reported_with_the_flag_rather_than_withheld():
+    # The Data Product flag is a COLUMN the reviewer filters on, not the report's export filter:
+    # an unmarked table is one of the things a model review exists to find.
     rows = _rows()
-    names = {row[1] for row in rows[wb.TABLES]}
-    # 'staging' is export-excluded (data_product=False), so it is absent from every sheet that
-    # would name it — including the metric whose expression references it.
-    assert "staging" not in names
-    assert {row[1] for row in rows[wb.METRICS]} == {"revenue"}
+    flag = wb.HEADERS[wb.TABLES].index("data_product")
+    marked = {row[1]: row[flag] for row in rows[wb.TABLES]}
+    assert marked["staging"] is False
+    assert marked["orders"] is True
+    # And the metric that references the unmarked table rides along with it.
+    assert {row[1] for row in rows[wb.METRICS]} == {"revenue", "held"}
 
 
 def test_views_and_materialized_views_are_separate_sheets():
     rows = _rows()
+    definition = wb.HEADERS[wb.VIEWS].index("definition")
     assert [row[1] for row in rows[wb.VIEWS]] == ["order_totals"]
-    assert [row[4] for row in rows[wb.VIEWS]] == ["SELECT 1"]
+    assert [row[definition] for row in rows[wb.VIEWS]] == ["SELECT 1"]
     materialized = rows[wb.MATERIALIZED_VIEWS]
     assert [row[1] for row in materialized] == ["order_rollup"]
-    assert materialized[0][3] == 900
-    assert materialized[0][7] == "metrics: revenue; dimensions: orders.id"
+    assert materialized[0][wb.HEADERS[wb.MATERIALIZED_VIEWS].index("refresh interval (s)")] == 900
+    assert materialized[0][wb.HEADERS[wb.MATERIALIZED_VIEWS].index("definition")] == (
+        "metrics: revenue; dimensions: orders.id"
+    )
+
+
+def test_a_taggable_row_carries_one_comma_delimited_tags_cell():
+    # Derived tags share the column with assigned ones on purpose: to a reviewer asking which
+    # tables are facts, `fact` is the same kind of answer as `pii`, filtered the same way.
+    rows = _rows()
+    tags = wb.HEADERS[wb.TABLES].index("tags")
+    by_name = {row[1]: row[tags] for row in rows[wb.TABLES]}
+    assert "fact" in by_name["orders"].split(", ")
+    assert by_name["staging"] == ""
+    for sheet in (wb.SOURCES, wb.COLUMNS, wb.RELATIONSHIPS, wb.VIEWS, wb.MATERIALIZED_VIEWS):
+        assert "tags" in wb.HEADERS[sheet], sheet
+    # Neither is taggable — `applies_to` never names them, so a tags column would always be blank.
+    for sheet in (wb.METRICS, wb.GLOSSARY):
+        assert "tags" not in wb.HEADERS[sheet], sheet
 
 
 def test_an_omitted_sheet_is_absent_rather_than_empty():

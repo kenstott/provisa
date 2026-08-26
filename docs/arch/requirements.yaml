@@ -52811,8 +52811,17 @@
     exists to remove, and a stale workbook uploaded months later would silently revert the model.
     SOURCED FROM THE GOVERNED VIEW -- the sheets are built from the metadata-export projection
     (provisa/api/metadata_export/), not from the raw config document, so what a reviewer sees is
-    what the platform actually serves, with the same masking, retirement and export-exclusion
-    rules applied. NARROWED, NOT REFUSED -- each sheet is filtered by the rights and domains the
+    what the platform actually serves, with the same masking and retirement rules applied. THE
+    WHOLE MODEL, NOT THE PUBLISHED SUBSET -- the report is a steward's view of everything
+    registered within their domains, so the Data Product export filter is OFF and the flag is a
+    COLUMN on the Tables sheet instead, filterable in the spreadsheet. An unmarked table is one of
+    the things a model review exists to find; withholding it would leave the reviewer sanctioning
+    a model they were never shown. TAGS ARE A COLUMN, NOT A VOCABULARY OF COLUMNS -- every taggable
+    sheet (sources, tables, columns, relationships, views, materialized views) carries one ``tags``
+    cell holding the row's registry tags comma-delimited, assigned and derived alike, so ``fact``,
+    ``dimension`` and ``data_quality`` are filtered the way ``pii`` is. A column per tag would make
+    the sheet grow a column every time the vocabulary does, and to a reviewer asking which tables
+    are facts the derived answer is the same kind of answer as the assigned one. NARROWED, NOT REFUSED -- each sheet is filtered by the rights and domains the
     caller holds, and accepts the same ``domains`` query parameter as the surfaces it mirrors: a
     role scoped to one domain receives a workbook covering that domain rather than a 403 on the
     whole download. A sheet the caller holds no right to read is OMITTED, and a leading "Report"
@@ -52821,12 +52830,17 @@
   tests:
   - tests/unit/test_model_report_workbook.py
   - tests/integration/test_model_report_download.py
+  - provisa-ui/src/__tests__/modelReportDownload.test.ts
   code:
   - provisa/api/admin/report_router.py
   - provisa/api/metadata_export/workbook.py
+  - provisa/api/metadata_export/builder.py
+  - provisa/api/metadata_export/model.py
   - provisa/api/metadata_export/refs.py
   - provisa/api/admin/_platform_guard.py
   - provisa/api/app.py
+  - provisa-ui/src/api/modelReport.ts
+  - provisa-ui/src/pages/TablesPage.tsx
   - pyproject.toml
   scenario: 'Given a caller holding table_registration but no glossary_read, scoped
     to the "sales" domain

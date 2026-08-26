@@ -11,7 +11,7 @@
 import { useState, useEffect, Fragment, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Network, ArrowUp, ArrowDown, ArrowUpDown, Layers, X } from "lucide-react";
+import { Network, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, Layers, X } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -26,6 +26,7 @@ import {
 } from "@mantine/core";
 import { ErdModal } from "../components/erd/ErdModal";
 import { fetchSettings, profileTable, runSql } from "../api/admin";
+import { downloadModelReport } from "../api/modelReport";
 import type { PlatformSettings } from "../api/admin";
 import {
   useTables,
@@ -123,6 +124,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains, domainsEnabled } = useDomainFilter();
   const { domainAccess, role: activeRole } = useAuth();
+  // REQ-1592: the model-report download. Busy while the server builds the workbook.
+  const [reportBusy, setReportBusy] = useState(false);
 
   // Per-table profile state: tableId → profile result or "loading"
   const [tableProfiles, setTableProfiles] = useState<
@@ -313,6 +316,22 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   useEffect(() => {
     setCollapsedGroups(new Set());
   }, [groupByKey]);
+
+  // REQ-1592: send the page's domain filter along, so the workbook covers what the page shows. A
+  // selection of every domain is no selection at all — omitting the parameter then leaves the
+  // caller's own authority to decide, which is what the server does with an absent `domains`.
+  const downloadReport = async () => {
+    const narrowed = checkedDomains.size > 0 && checkedDomains.size < domains.length;
+    setReportBusy(true);
+    setError(null);
+    try {
+      await downloadModelReport(narrowed ? [...checkedDomains] : undefined);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReportBusy(false);
+    }
+  };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this table registration?")) return;
@@ -537,6 +556,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             >
               {translate("tablesPage.model")}
             </Button>
+          )}
+          {!viewsOnly && (
+            // An ancillary action, reached rarely: a borderless icon keeps it out of the
+            // decision the bordered buttons beside it present.
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              data-testid="tables-report-xlsx"
+              loading={reportBusy}
+              // REQ-1592: the whole model as one reviewable workbook, narrowed by the same domain
+              // filter the table below is narrowed by. Download only — never an edit path back in.
+              onClick={downloadReport}
+              aria-label={translate("tablesPage.reportXlsx")}
+              title={translate("tablesPage.reportXlsxTitle")}
+            >
+              <FileSpreadsheet size={18} />
+            </ActionIcon>
           )}
           <HelpBubble
             title={translate("tablesPage.purposeTitle")}
