@@ -83,6 +83,25 @@ def _require_right(request: Request, right: str) -> None:
     raise ApiError(403, "platform.right_required", f"{right} capability required", right=right)
 
 
+def has_right(request: Request, right: str) -> bool:  # REQ-1592
+    """The non-raising twin of :func:`_require_right`, for surfaces that OMIT rather than refuse.
+
+    The workbook report (REQ-1592) is one document covering several object types, each gated on its
+    own right. Refusing the whole download because one sheet is out of reach would make the report
+    useless to every role but the org administrator, so the sheet is left out instead and the
+    leading Report sheet names what was omitted. Same three answers as the raising form: dev/no-auth
+    holds everything, the platform bypass holds everything, otherwise the named right decides.
+    """
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return True  # dev mode — no auth configured
+    caps = _resolved_capabilities(identity, state)
+    return has_platform_bypass(caps) or right in caps
+
+
 def require_org_settings(request: Request) -> None:  # REQ-1349
     """Raise 403 unless the caller holds ``org_settings``.
 

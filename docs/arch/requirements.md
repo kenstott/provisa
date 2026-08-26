@@ -12888,9 +12888,9 @@ HTTP request org is authoritative from Host subdomain (leftmost label of acme.pr
 
 **Use case:** Establishes Host subdomain as the authoritative org identity source across HTTP transports, enabling transparent multi-org routing without requiring org claims in tokens or API headers. Exception for control-plane preserves bootstrap and cross-org admin access patterns.
 
-**Code:** `provisa/auth/middleware.py`
+**Code:** `provisa/auth/middleware.py`, `provisa/core/mail.py`, `provisa-ui/src/lib/authHost.ts`, `provisa-ui/src/lib/crossSubdomainAuth.ts`, `provisa-ui/src/pages/OrgWelcomePage.tsx`
 
-**Tests:** `tests/unit/test_auth_middleware_multitenancy.py`
+**Tests:** `tests/unit/test_auth_middleware_multitenancy.py`, `tests/unit/test_mail_port.py`, `tests/integration/test_invite_delivery.py`, `provisa-ui/src/__tests__/crossSubdomainAuth.test.ts`
 
 ## 2. Authentication & Identity
 
@@ -16727,3 +16727,49 @@ The ERD draws a junction-backed relationship ([REQ-1586](#REQ-1586)) through the
 **Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/sections/erd-stylesheet.ts`, `provisa-ui/src/components/erd/sections/erd-palette.ts`, `provisa-ui/src/types/admin.ts`, `provisa-ui/src/hooks/admin.graphql`, `provisa/api/admin/types.py`, `provisa/api/admin/_row_mappers.py`
 
 **Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`, `tests/integration/test_schema_query_api.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1589 · SaaS Billing {#REQ-1589}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The Lemon Squeezy checkout is dressed from how the buyer is reading the app: the scheme and the language travel with each checkout, and the palette they select is Provisa's own (theme/tokens.css). THE GAP -- the checkout style was one fixed light palette, and lemon.js renders the checkout as an overlay ON the page that opened it, so a buyer reading the app in dark mode paid on a white card floating over a dark page, in whatever language the store defaults to. WHAT TRAVELS -- scheme ("light" or "dark") and the browser's language tag, on every body that opens a checkout (/billing/checkout, /billing/plan/checkout, /billing/trial/start, /billing/egress/checkout). Neither is defaulted server-side: the store holds one appearance for every buyer, only the browser knows which one this buyer is on, and a default is a guess that is wrong for everyone on the other side of it. The UI resolves both from the running app -- Mantine's COMPUTED scheme, so "auto" is answered light or dark rather than passed on -- rather than restating them per call site. LANGUAGE -- Lemon Squeezy renders checkouts in fewer languages than the product ships, so an unsupported tag is left unsent and the store's own default stands; a region-tagged code falls back to its base language, except zh-HK, which is Traditional Chinese and must not fall through to the Simplified checkout. The deprecated `dark` flag is not sent -- it repaints surfaces the colour keys already set. WHAT STAYS THEIRS -- the card fields, as merchant of record, and the store-level logo, favicon and fonts, which are settings on the store rather than checkout options.
+
+**Code:** `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/router.py`, `provisa-ui/src/api/checkoutAppearance.ts`, `provisa-ui/src/api/billing.ts`
+
+**Tests:** `.claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutAppearance`, `.claude/commercial/tests/test_billing_lemonsqueezy.py::TestCheckoutBody`
+
+## 1. Access Governance & Security
+
+### REQ-1590 · Capabilities {#REQ-1590}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+THE BUSINESS GLOSSARY IS GOVERNED BY TWO RIGHTS, AND READING IT IS NOT ADMINISTERING THE ORG. ``glossary_read`` opens the surface -- the /admin/glossary route, its top-level nav link, and the read endpoints GET /glossary/terms and GET /glossary/terms/{id}. ``glossary_rw`` is curation on top of that: create, rename, definition, retire, delete, export exclusion, ref moves, edges (add/retype/remove), experts, and the AI generation endpoints that PERSIST what they draft (generate-definition, generate-definitions, generate-relationships). THE GAP -- the whole surface was gated on ``org_settings``, so an analyst looking up what a column means was shown "You do not have permission to view this page"; the vocabulary the model is described in was reachable only by an administrator. NO IMPLICATION -- the two rights are checked independently and neither implies the other; granting ``glossary_rw`` alone leaves the page unreachable, because the page is gated on read. Both are granted and revoked from the role capability grid like any other right. SEEDS -- org_admin and modeler carry both (modeler is the model-curation role); analyst and developer carry ``glossary_read`` only. READ-ONLY RENDERING -- without ``glossary_rw`` the page still lists terms and shows each term's definition, refs, relationships and experts, but every control that writes is WITHHELD rather than disabled, and a "Read-only" badge names the missing right; a disabled button says nothing about why, and the endpoint behind it answers 403. GET /glossary/ref stays on ``table_registration``: it serves the Tables surface's hover popup, and Tables already requires that right. THE TOUR -- the glossary step points at the AI generation buttons, so it declares ``glossary_rw``, stricter than its route's gate, and a read-only viewer skips the step rather than waiting out an anchor that never mounts.
+
+**Code:** `provisa/security/rights.py`, `provisa/api/admin/glossary_router.py`, `provisa/core/schema.sql`, `provisa/core/db.py`, `provisa-ui/src/components/admin/GlossaryTab.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/pages/SecurityPage.tsx`
+
+**Tests:** `tests/unit/test_glossary_rights.py`, `provisa-ui/src/__tests__/glossaryReadOnly.test.tsx`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`, `provisa-ui/src/__tests__/tourRouteCapabilities.test.ts`
+
+### REQ-1591 · Capabilities {#REQ-1591}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A GLOSSARY TERM IS SCOPED TO DOMAINS, AND ONE TERM MAY SPAN SEVERAL. A rooted term's domains are DERIVED -- the distinct ``registered_tables.domain_id`` of the tables its refs point at -- so nothing is declared and nothing can drift out of sync. An abstract term declares its domains explicitly, one or more, because it holds no refs to derive from. THE COMBINED MODEL -- a term whose refs span two domains is ONE term scoped to both, not two terms. Cross-table merging is the mechanism the glossary is built on (``normalize_term`` sheds trailing proxy tokens so ``orders.id`` and every ``order_id`` foreign key land on one term), and a domain boundary is not a reason to stop it: if ``orders`` is in sales and ``order_id`` is in pet-store, "order" genuinely spans both. THE STAMP -- a rooted term's domains become underivable the moment its last ref departs, so the departing refs' domains are recorded on the term at that moment; a deprecated or retired term stays curatable by exactly the people who owned it. The rule is one line: a term's domains are its refs' domains while it has refs, and its recorded domains otherwise. AUTHORITY IS ANY, NOT ALL -- reading a term requires ANY of its domains to be within the caller's ``roles.domain_access``, and CURATING it requires the same. This deliberately breaks the symmetry with [REQ-1531](#REQ-1531)'s ``require_domains``, which requires ALL: that rule guards acts reaching DATA in two domains, whereas a term definition is prose about a concept both domains already reference -- editing it exposes and changes nothing in the other domain. Requiring all would leave a shared term curatable only by someone holding every domain it touches, an unsolvable deadlock manufactured by a name collision. THE ESCAPE HATCH -- when two domains genuinely mean different things by one phrase, the answer is coordination, and failing that a SPLIT: create a term and move the refs to it with POST /admin/glossary/refs/move. That machinery already exists, and the split survives the next derivation because ``sync_table_refs`` leaves a held ref alone when its term is curated -- so the new term must be given a definition, or the ref drifts back on the next registration. NO DOMAINS IS NOT NO ACCESS -- a term with an empty domain set is UNSCOPED and reachable by any holder of the glossary rights; creating an abstract term in multi-domain mode therefore requires at least one domain, so an empty set cannot be minted as a way around the gate. THE NAVBAR FILTER IS A VIEW PREFERENCE, NOT AUTHORITY -- the glossary list is filtered by the domains checked in the nav bar, passed as a ``domains`` query parameter, and that selection INTERSECTS with the caller's domain access and can never widen it: unchecking a box hides terms, checking every box does not reveal a term the role may not see, and the server answers 403 on a term outside the role's domains whatever the checkboxes say. SINGLE-DOMAIN MODE -- where a domain gates nothing, this gate does nothing either, exactly as every other domain gate behaves.
+
+**Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/glossary.py`, `provisa/core/repositories/glossary.py`, `provisa/api/admin/capabilities.py`, `provisa/api/admin/glossary_router.py`, `provisa-ui/src/api/glossary.ts`, `provisa-ui/src/components/admin/GlossaryTab.tsx`, `provisa/core/env_project.py`, `provisa/core/env_deploy.py`, `provisa/core/env_classes.py`
+
+**Tests:** `tests/unit/test_glossary_domain_scope.py`, `tests/integration/test_glossary_domain_authority.py`, `provisa-ui/src/__tests__/glossaryDomainFilter.test.tsx`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1592 · Reporting {#REQ-1592}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+THE MODEL IS REVIEWABLE AS A WORKBOOK, NOT ONLY AS JSON. Sources, registered tables and their columns, relationships, views, metrics, materialized views and glossary terms are downloadable as a single XLSX from GET /admin/report.xlsx, one SHEET per object type with a stable header row, a frozen header, an autofilter, and an id column on every row so a reviewer's comment traces back to the object. THE POINT -- the config JSON is an input document meant for a machine; a data steward asked to sanction a model reads it in a spreadsheet, sorts it, filters it, and annotates it, and handing them JSON makes review something only an engineer can do. ONE WAY ONLY -- the workbook is a REPORT and is never accepted back as an edit path. Round- tripping a spreadsheet into configuration reintroduces every ambiguity the config format exists to remove, and a stale workbook uploaded months later would silently revert the model. SOURCED FROM THE GOVERNED VIEW -- the sheets are built from the metadata-export projection (provisa/api/metadata_export/), not from the raw config document, so what a reviewer sees is what the platform actually serves, with the same masking, retirement and export-exclusion rules applied. NARROWED, NOT REFUSED -- each sheet is filtered by the rights and domains the caller holds, and accepts the same ``domains`` query parameter as the surfaces it mirrors: a role scoped to one domain receives a workbook covering that domain rather than a 403 on the whole download. A sheet the caller holds no right to read is OMITTED, and a leading "Report" sheet names the org, the environment, the domains covered and the generation timestamp, so a partial workbook can never be mistaken for a complete one.
+
+**Code:** `provisa/api/admin/report_router.py`, `provisa/api/metadata_export/workbook.py`, `provisa/api/metadata_export/refs.py`, `provisa/api/admin/_platform_guard.py`, `provisa/api/app.py`, `pyproject.toml`
+
+**Tests:** `tests/unit/test_model_report_workbook.py`, `tests/integration/test_model_report_download.py`

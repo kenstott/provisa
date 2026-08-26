@@ -2227,6 +2227,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
+    from provisa.api.admin.report_router import router as model_report_router  # REQ-1592
+
+    app.include_router(model_report_router)
     from provisa.api.admin.source_meta_router import router as source_meta_router
 
     app.include_router(source_meta_router)

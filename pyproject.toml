@@ -95,6 +95,10 @@ dependencies = [
     # these lived only in the `dev` extra.
     "aiosqlite",
     "greenlet",
+    # REQ-1592: the model report is served as a workbook (GET /admin/report.xlsx). openpyxl was
+    # already present transitively (databricks-sql-connector); a first-party surface that writes
+    # XLSX cannot depend on another package's dependency graph to keep it there.
+    "openpyxl",
 ]
 
 [project.scripts]

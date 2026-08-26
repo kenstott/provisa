@@ -99,6 +99,16 @@ def column_uri(org_id: str, table: Table, column_name: str, column_alias: str | 
     return f"{table_uri(org_id, table)}#field:{_segment(column_alias or column_name)}"
 
 
+def metric_uri(org_id: str, metric_name: str) -> str:  # REQ-1385, REQ-1592
+    """A governed metric by its (config-unique) name.
+
+    Org-level rather than domain-segmented because a metric has no grain and no domain of its own:
+    its dataset binding is implicit in the semantic references inside its expression (REQ-1317), so
+    there are no domain segments to place it under. ``metrics`` is already a reserved kind keyword.
+    """
+    return f"{_URI_SCHEME}://{_segment(org_id)}/metrics/{_segment(metric_name)}"
+
+
 def term_uri(org_id: str, term_name: str) -> str:  # REQ-1385, REQ-1387
     """A business-glossary term by its (unique) normalized name."""
     return f"{_URI_SCHEME}://{_segment(org_id)}/terms/{_segment(term_name)}"
