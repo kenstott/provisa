@@ -83,7 +83,9 @@ export function NavBar() {
   const displayedGroupId = pinnedGroup ?? routeGroup;
   const displayedGroup = NAV_GROUPS.find((g) => g.id === displayedGroupId) ?? null;
 
-  const onTablesPage =
+  // Every route whose content the domain selection narrows. A page that READS the filter must
+  // offer it here, or it obeys a narrowing the reader cannot see or undo from where they are.
+  const onDomainFilteredPage =
     location.pathname === "/tables" ||
     location.pathname === "/views" ||
     location.pathname === "/commands" ||
@@ -97,7 +99,10 @@ export function NavBar() {
     location.pathname === "/nl" ||
     location.pathname === "/grpc" ||
     location.pathname === "/jsonapi" ||
-    location.pathname === "/openapi";
+    location.pathname === "/openapi" ||
+    // REQ-1591: the glossary list is narrowed by the same selection, and its create modal makes a
+    // term's domains from it.
+    location.pathname === "/admin/glossary";
 
   function toggleGroup(id: string) {
     // If already in this group's route, just toggle the pin
@@ -172,7 +177,7 @@ export function NavBar() {
         </div>
         <div className="navbar-role">
           <OrgSwitcher />
-          {domainsEnabled && onTablesPage && domains.length > 0 && (
+          {domainsEnabled && onDomainFilteredPage && domains.length > 0 && (
             <div className="navbar-domain-wrapper">
               <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
                 <Menu.Target>

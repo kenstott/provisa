@@ -49,15 +49,17 @@ vi.mock("../../hooks/useCapability", () => ({
   useCapability: () => true,
 }));
 
-const runSql = vi.fn().mockResolvedValue({
-  columns: ["plan"],
-  rows: [{ plan: "PHYSICAL EXPANSION" }],
-});
+const runSql = vi.fn().mockResolvedValue({ columns: [], rows: [] });
+// REQ-1322: the expansion is the compiler-derived physical SQL the explain endpoint reports, not
+// a plan tree — and not `EXPLAIN <sql>` through /data/sql, which the parser takes as an opaque
+// command, leaving `metrics.<name>` unexpanded for the engine to reject.
+const explainSql = vi.fn().mockResolvedValue({ sql: "PHYSICAL EXPANSION" });
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files and drops exports they need.
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   runSql: (...a: unknown[]) => runSql(...a),
+  explainSql: (...a: unknown[]) => explainSql(...a),
 }));
 
 // Spread the real module (same registry-sharing reason as above).
@@ -92,7 +94,7 @@ beforeEach(() => {
   localStorage.clear();
   idbStore.clear();
   vi.clearAllMocks();
-  runSql.mockResolvedValue({ columns: ["plan"], rows: [{ plan: "PHYSICAL EXPANSION" }] });
+  explainSql.mockResolvedValue({ sql: "PHYSICAL EXPANSION" });
 });
 
 describe("metric expansion + one-way detach (REQ-1322)", () => {
@@ -117,7 +119,7 @@ describe("metric expansion + one-way detach (REQ-1322)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("sql-expansion-text")).toHaveTextContent("PHYSICAL EXPANSION"),
     );
-    expect(runSql).toHaveBeenCalledWith(`EXPLAIN ${METRIC_SQL}`, "admin");
+    expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false);
     // Editor untouched by the preview
     expect(editor()).toHaveValue(METRIC_SQL);
   });
@@ -132,19 +134,19 @@ describe("metric expansion + one-way detach (REQ-1322)", () => {
     await user.click(screen.getByTestId("sql-detach"));
     await waitFor(() => screen.getByTestId("sql-detach-confirm"));
     expect(editor()).toHaveValue(METRIC_SQL);
-    expect(runSql).not.toHaveBeenCalled();
+    expect(explainSql).not.toHaveBeenCalled();
 
     // Cancel keeps the semantic SQL.
     await user.click(screen.getByTestId("sql-detach-cancel"));
     expect(editor()).toHaveValue(METRIC_SQL);
-    expect(runSql).not.toHaveBeenCalled();
+    expect(explainSql).not.toHaveBeenCalled();
 
     // Confirm requests the expansion and replaces the editor text.
     await user.click(screen.getByTestId("sql-detach"));
     await waitFor(() => screen.getByTestId("sql-detach-confirm"));
     await user.click(screen.getByTestId("sql-detach-confirm"));
     await waitFor(() => expect(editor()).toHaveValue("PHYSICAL EXPANSION"));
-    expect(runSql).toHaveBeenCalledWith(`EXPLAIN ${METRIC_SQL}`, "admin");
+    expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false);
 
     // Tab is badged detached.
     expect(screen.getByText("detached")).toBeInTheDocument();

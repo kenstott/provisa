@@ -263,14 +263,19 @@ export function SqlPage() {
     [viewSqlNormalized],
   );
 
-  // REQ-1322: server-side expansion of a metric query via EXPLAIN on the /data/sql
-  // surface — the server compiler is the single generator (REQ-1321).
+  // REQ-1322: the compiler-derived physical SQL, read off the same EXPLAIN gesture (REQ-1519) —
+  // the server compiler is the single generator (REQ-1321). The statement goes to the explain
+  // endpoint as written: prefixing it with the word EXPLAIN and posting it to /data/sql parses as
+  // an opaque command, so the metric expansion stage never runs and `metrics.<name>` reaches the
+  // engine as a schema it does not have.
   const fetchExpansion = useCallback(async (): Promise<{ text: string; isError: boolean }> => {
     const inner = sqlText.trim().replace(/;+$/, "");
-    const result = await runSql(`EXPLAIN ${inner}`, role);
-    if (result.error) return { text: result.error, isError: true };
-    const text = result.rows.map((r) => Object.values(r).map(String).join(" ")).join("\n");
-    return { text, isError: false };
+    try {
+      const plan = await explainSql(inner, role, false);
+      return { text: plan.sql, isError: false };
+    } catch (e) {
+      return { text: e instanceof Error ? e.message : String(e), isError: true };
+    }
   }, [sqlText, role]);
 
   const handleShowExpansion = useCallback(async () => {

@@ -142,6 +142,12 @@ test.describe("REQ-1387 glossary curation", () => {
     await page
       .getByTestId("glossary-add-definition-input")
       .fill("Umbrella concept for animal classification terms.");
+    // REQ-1591: an abstract term has no refs to derive its domains from, so it declares them and
+    // the modal will not save without one. This deployment is multi-domain, so the field is there.
+    await page.getByTestId("glossary-add-domains-input").click();
+    await page.getByRole("option", { name: "shelter", exact: true }).click();
+    // The MultiSelect keeps its dropdown open after a pick, and it overlays the save button.
+    await page.keyboard.press("Escape");
     await page.getByTestId("glossary-add-save-btn").click();
 
     // Creation selects the new term; it is abstract, so it has no refs.

@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { claimTourOffer, resetTourStateForDemoSession, useTour } from "./useTour";
+import { useAuth } from "../context/AuthContext";
 import { TourWelcomeModal } from "./TourWelcomeModal";
 
 /**
@@ -22,6 +23,7 @@ import { TourWelcomeModal } from "./TourWelcomeModal";
  */
 export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
   const { startTour, available } = useTour();
+  const { loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { pathname } = useLocation();
   const tourParam = searchParams.get("tour");
@@ -42,6 +44,10 @@ export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
   });
   useEffect(() => {
     if (tourParam === null) return;
+    // The itinerary is built from the viewer's rights, and those arrive from the identity
+    // bootstrap after the first render. Starting before they land asks for a tour of no steps,
+    // which startTour declines — and the param is consumed by then, so nothing ever asks again.
+    if (authLoading) return;
     setSearchParams(
       (p) => {
         const n = new URLSearchParams(p);
@@ -52,7 +58,7 @@ export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
     );
     // ?tour=1 always starts fresh from the top.
     startTour({ restart: true });
-  }, [tourParam, startTour, setSearchParams]);
+  }, [tourParam, authLoading, startTour, setSearchParams]);
   // A viewer whose rights open none of the tour's pages is offered nothing: the modal's Start would
   // open a tour with no steps in it.
   return offering && available ? <TourWelcomeModal onClose={() => setOffering(false)} /> : null;
