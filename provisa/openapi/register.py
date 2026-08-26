@@ -319,6 +319,11 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
 ) -> tuple[int, int]:
     """Parse spec and upsert virtual tables + tracked functions. Returns (n_tables, n_mutations)."""
     # Delete stale rows (e.g. pre-fix verb-prefixed names) before upserting fresh set
+    # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
+    # snapshot the sweep needs has to be taken while those rows still exist.
+    from provisa.core.repositories import glossary as glossary_repo
+
+    domains_before = await glossary_repo.term_domains(conn)
     await conn.execute_core(
         _delete(registered_tables).where(
             registered_tables.c.source_id == source_id,
@@ -332,7 +337,5 @@ async def auto_register_openapi_source(  # REQ-314, REQ-316, REQ-317, REQ-321
         await upsert_tracked_function(source_id, m, conn, domain_id)
     # REQ-1387: the stale-row wipe cascaded glossary refs; the upserts above relinked the
     # surviving columns, so settle only the terms whose fields truly departed.
-    from provisa.core.repositories import glossary as glossary_repo
-
-    await glossary_repo.sweep_refless_terms(conn)
+    await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
     return len(queries), len(mutations)
