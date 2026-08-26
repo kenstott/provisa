@@ -159,6 +159,11 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
             (r.table_name, r.column_name): list(r.visible_to or [])
             for r in _existing_rows.fetchall()
         }
+        # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
+        # snapshot has to be taken while the rows the wipe below removes are still there.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        domains_before = await glossary_repo.term_domains(conn)
         await conn.execute_core(
             delete(registered_tables).where(
                 and_(
@@ -204,9 +209,7 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
 
         # REQ-1387: the wipe above cascaded glossary refs; the upserts relinked surviving
         # columns, so settle only the terms whose fields truly departed.
-        from provisa.core.repositories import glossary as glossary_repo
-
-        await glossary_repo.sweep_refless_terms(conn)
+        await glossary_repo.sweep_refless_terms(conn, domains_before=domains_before)
 
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598

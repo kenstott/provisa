@@ -78,6 +78,7 @@ from provisa.api.data.endpoint_executors import (
     _exec_probe_redirect,
     _execute_engine_standard,
 )
+from provisa.federation.engine_wake import ensure_engine_awake, readdress_lost_coordinator
 
 
 log = logging.getLogger(__name__)
@@ -305,6 +306,13 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     except QueryLimitError as e:
         raise HTTPException(status_code=413, detail=str(e))
     # (the role's max_query_time_ms is applied where execution is wrapped — _handle_query.)
+
+    # REQ-1448: the wake belongs to every executing surface, not only the SQL pipeline's
+    # _execute_plan. Introspection returned above without touching the engine; everything below
+    # dispatches to it, so this is the point where the active org's shard must be serving and
+    # holding its catalogs. Without it a shard that had scaled to zero was never woken by GraphQL
+    # and every query dialed the retired coordinator's address until some other surface ran.
+    await ensure_engine_awake(state)
 
     from graphql.language.ast import OperationDefinitionNode as _ODN
 
@@ -643,7 +651,7 @@ async def _execute_one_field(
     _engine_ms: float = 0.0
     physical_sql: str = ""
 
-    try:
+    async def _dispatch():
         if (
             decision.route == Route.DIRECT
             and decision.source_id
@@ -652,33 +660,79 @@ async def _execute_one_field(
             exec_sql = rewrite_semantic_to_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
-            result = await state.federation_engine.execute_native(
-                state.source_pools,
-                decision.source_id,
-                transpile(exec_sql, decision.dialect or "postgres"),
-                compiled.params,
+            return (
+                await state.federation_engine.execute_native(
+                    state.source_pools,
+                    decision.source_id,
+                    transpile(exec_sql, decision.dialect or "postgres"),
+                    compiled.params,
+                ),
+                "",
+                0.0,
+                {},
+                set(),
+                {},
+                set(),
+                {},
             )
-        else:
+        (
+            _result,
+            _physical_sql,
+            _eng_ms,
+            _psms,
+            _dl_srcs,
+            _,
+            _hyd_rows,
+            _hyd_hits,
+            _hints,
+        ) = await _execute_engine_standard(
+            compiled,
+            ctx,
+            state,
+            role_id,
+            root_field,
+            probe_limit,
+            query_session_props,
+            query_text,
+        )
+        return (
+            _result,
+            _physical_sql,
+            _eng_ms,
+            _psms,
+            _dl_srcs,
+            _hyd_rows,
+            _hyd_hits,
+            _hints,
+        )
+
+    try:
+        try:
             (
                 result,
                 physical_sql,
                 _engine_ms,
                 _per_source_ms,
                 _dataloader_srcs,
-                _,
                 _hydration_rows,
                 _hydration_cache_hits,
                 session_hints,
-            ) = await _execute_engine_standard(
-                compiled,
-                ctx,
-                state,
-                role_id,
-                root_field,
-                probe_limit,
-                query_session_props,
-                query_text,
-            )
+            ) = await _dispatch()
+        except Exception as exc:
+            # REQ-1448: the coordinator this query dialed may have been replaced while the wake's
+            # recheck window still recorded its address. Re-resolve; redispatch only if it moved.
+            if not await readdress_lost_coordinator(exc, state):
+                raise
+            (
+                result,
+                physical_sql,
+                _engine_ms,
+                _per_source_ms,
+                _dataloader_srcs,
+                _hydration_rows,
+                _hydration_cache_hits,
+                session_hints,
+            ) = await _dispatch()
     except HTTPException:
         raise
     except (MemoryError, ConnectionError) as e:

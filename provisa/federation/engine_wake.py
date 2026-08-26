@@ -557,8 +557,10 @@ async def readdress_lost_coordinator(exc: BaseException, state: Any) -> bool:
 async def ensure_engine_awake(state: Any) -> None:
     """The query path's wake: the active org's shard is serving, and its catalogs are on it.
 
-    Called at the top of ``_execute_plan``, the one terminal every surface reaches — a per-surface
-    wake would leave whichever surface was added next dispatching at a coordinator that is not there.
+    Called at the top of ``_execute_plan`` — the terminal the SQL pipeline's surfaces reach — and at
+    the top of the GraphQL endpoint's dispatch, which compiles and executes on its own path and
+    therefore never passes through ``_execute_plan``. Any surface that executes without calling this
+    dispatches at a coordinator that may not be there.
     """
     if not k8s.provisioning_available():
         return

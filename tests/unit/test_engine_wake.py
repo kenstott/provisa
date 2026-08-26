@@ -934,3 +934,40 @@ async def test_non_provisioning_deployment_never_re_resolves(monkeypatch):
     assert (
         await engine_wake.readdress_lost_coordinator(_timeout_error(), SimpleNamespace()) is False
     )
+
+
+# ── surfaces that execute outside _execute_plan ─────────────────────────────────
+
+
+def test_graphql_endpoint_wakes_the_engine_before_dispatch():
+    """REQ-1448: /data/graphql compiles and executes on its own path — it never reaches
+    _execute_plan, where the SQL pipeline's wake sits. Without a wake of its own, a shard that had
+    scaled to zero stayed at zero for as long as only GraphQL traffic arrived, and every query
+    failed with a connect timeout at /v1/statement against the retired coordinator's address."""
+    import inspect
+
+    from provisa.api.data import endpoint as endpoint_module
+
+    src = inspect.getsource(endpoint_module.graphql_endpoint)
+    wake = src.index("ensure_engine_awake(state)")
+    # Introspection answers from the GraphQL schema alone and returns before this point.
+    assert src.index("_detect_introspection(document)") < wake, (
+        "introspection wakes the engine it never queries"
+    )
+    for dispatch in ("_handle_query(", "_handle_mutation(", "handle_subscription_sse("):
+        assert wake < src.index(dispatch), f"{dispatch} runs before the wake"
+
+
+def test_graphql_field_execution_redispatches_a_moved_coordinator():
+    """REQ-1448: the wake answers from a recheck window, so a pod replaced inside that window
+    leaves the recorded address stale. The connect failure is the signal to re-resolve, and the
+    statement is worth one more dispatch only when the shard actually moved."""
+    import inspect
+
+    from provisa.api.data import endpoint as endpoint_module
+
+    src = inspect.getsource(endpoint_module._execute_one_field)
+    assert "readdress_lost_coordinator(exc, state)" in src, (
+        "a lost coordinator is never re-resolved on the GraphQL path"
+    )
+    assert src.count("await _dispatch()") == 2, "the redispatch after re-resolution is missing"
