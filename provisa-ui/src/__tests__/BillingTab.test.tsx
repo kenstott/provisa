@@ -212,7 +212,10 @@ describe("BillingTab", () => {
         expect.any(Function),
       ),
     );
-    expect(mockEgress).toHaveBeenCalledWith("acme", window.location.href);
+    expect(mockEgress).toHaveBeenCalledWith("acme", window.location.href, {
+      scheme: "dark",
+      locale: expect.any(String),
+    });
   });
 
   it("does not offer the transfer subscription to an org that has one", async () => {
@@ -245,7 +248,11 @@ describe("BillingTab", () => {
         expect.any(Function),
       ),
     );
-    expect(mockStart).toHaveBeenCalledWith("acme", window.location.href);
+    // The checkout is minted in the scheme this page is being read in; the test app renders dark.
+    expect(mockStart).toHaveBeenCalledWith("acme", window.location.href, {
+      scheme: "dark",
+      locale: expect.any(String),
+    });
   });
 
   // The checkout is an overlay, so the page stays mounted through payment; the summary it is

@@ -102,12 +102,30 @@ export async function fetchMyReservation(): Promise<OrgReservation | null> {
   return data.reservation;
 }
 
+/**
+ * How the buyer is reading the app, sent with every checkout so the overlay opens dressed to match.
+ *
+ * lemon.js renders the checkout on top of the page that asked for it, so the two are on screen
+ * together — a light checkout over the dark app was two designs at once. The store holds one
+ * appearance for every buyer, so the scheme and the language have to travel per checkout; only the
+ * browser knows them. Build it with `useCheckoutAppearance`, which resolves both from the running
+ * app rather than restating them.
+ */
+export interface CheckoutAppearance {
+  scheme: "light" | "dark";
+  locale: string;
+}
+
 /** Mint the Starter trial checkout. The card is captured at the merchant of record, not here. */
-export async function startTrial(orgId: string, redirectUrl: string): Promise<string> {
+export async function startTrial(
+  orgId: string,
+  redirectUrl: string,
+  appearance: CheckoutAppearance,
+): Promise<string> {
   const data = (await billingFetch("/trial/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId, redirect_url: redirectUrl }),
+    body: JSON.stringify({ org_id: orgId, redirect_url: redirectUrl, ...appearance }),
   })) as { checkout_url: string };
   return data.checkout_url;
 }
@@ -119,11 +137,15 @@ export async function startTrial(orgId: string, redirectUrl: string): Promise<st
  * variant's is the active hour. Lemon Squeezy can only start a subscription from a checkout, so the
  * customer completes a second one.
  */
-export async function startEgressSubscription(orgId: string, redirectUrl: string): Promise<string> {
+export async function startEgressSubscription(
+  orgId: string,
+  redirectUrl: string,
+  appearance: CheckoutAppearance,
+): Promise<string> {
   const data = (await billingFetch("/egress/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId, redirect_url: redirectUrl }),
+    body: JSON.stringify({ org_id: orgId, redirect_url: redirectUrl, ...appearance }),
   })) as { checkout_url: string };
   return data.checkout_url;
 }
@@ -132,7 +154,10 @@ declare global {
   interface Window {
     createLemonSqueezy?: () => void;
     LemonSqueezy?: {
-      Setup: (opts: { eventHandler: (e: { event: string }) => void }) => void;
+      // lemon.js forwards every postMessage from the overlay iframe to the handler verbatim: store
+      // events arrive as `{event: "Checkout.Success", ...}` and the overlay's own lifecycle arrives
+      // as the bare strings "mounted" and "close". Typing this as an object hid the second kind.
+      Setup: (opts: { eventHandler: (e: unknown) => void }) => void;
       Url: { Open: (url: string) => void };
     };
   }
@@ -160,13 +185,30 @@ function loadLemonJs(): Promise<void> {
  * The checkout is created with `embed`, so its URL renders as an overlay driven by lemon.js rather
  * than a full page. `onSuccess` fires when the customer completes payment, which is when the
  * summary is worth refetching — the subscription itself is linked by the webhook.
+ *
+ * `onClose` fires when the buyer dismisses the overlay without paying. lemon.js tears the iframe
+ * down and posts nothing else, so a caller that showed a "opening checkout" state has no other way
+ * to learn the checkout is over and would sit on that state for the rest of the session. A close
+ * that follows a success is the buyer closing the receipt, not an abandonment, and is not reported.
  */
-export async function openCheckout(url: string, onSuccess: () => void): Promise<void> {
+export async function openCheckout(
+  url: string,
+  onSuccess: () => void,
+  onClose?: () => void,
+): Promise<void> {
   await loadLemonJs();
   window.createLemonSqueezy!();
+  let paid = false;
   window.LemonSqueezy!.Setup({
     eventHandler: (e) => {
-      if (e.event === "Checkout.Success") onSuccess();
+      if (typeof e === "object" && e !== null && (e as { event?: string }).event) {
+        if ((e as { event: string }).event === "Checkout.Success") {
+          paid = true;
+          onSuccess();
+        }
+        return;
+      }
+      if (e === "close" && !paid) onClose?.();
     },
   });
   window.LemonSqueezy!.Url.Open(url);
@@ -271,11 +313,12 @@ export async function startPlanCheckout(
   orgId: string,
   plan: string,
   redirectUrl: string,
+  appearance: CheckoutAppearance,
 ): Promise<string> {
   const data = (await billingFetch("/plan/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId, plan, redirect_url: redirectUrl }),
+    body: JSON.stringify({ org_id: orgId, plan, redirect_url: redirectUrl, ...appearance }),
   })) as { checkout_url: string };
   return data.checkout_url;
 }

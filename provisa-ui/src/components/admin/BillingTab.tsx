@@ -40,6 +40,7 @@ import {
   type PlanOffer,
   type PlanOffers,
 } from "../../api/billing";
+import { useCheckoutAppearance } from "../../api/checkoutAppearance";
 import { formatMoney, planName } from "../../lib/planDisplay";
 
 const GIB = 1024 ** 3;
@@ -268,6 +269,7 @@ function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void 
  */
 export function BillingTab() {
   const { activeOrgId } = useAuth();
+  const appearance = useCheckoutAppearance();
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -292,7 +294,7 @@ export function BillingTab() {
       // The checkout opens as an overlay on this page. Payment still happens entirely at the
       // merchant of record, and the subscription is linked to the org by the webhook, so a closed
       // overlay after payment still lands the plan (REQ-1469).
-      await openCheckout(await startTrial(activeOrgId, window.location.href), load);
+      await openCheckout(await startTrial(activeOrgId, window.location.href, appearance), load);
       setBusy(false);
     } catch (e) {
       setError(e instanceof BillingError ? e.message : String(e));
@@ -306,7 +308,10 @@ export function BillingTab() {
     setBusy(true);
     setError("");
     try {
-      await openCheckout(await startEgressSubscription(activeOrgId, window.location.href), load);
+      await openCheckout(
+        await startEgressSubscription(activeOrgId, window.location.href, appearance),
+        load,
+      );
       setBusy(false);
     } catch (e) {
       setError(e instanceof BillingError ? e.message : String(e));
