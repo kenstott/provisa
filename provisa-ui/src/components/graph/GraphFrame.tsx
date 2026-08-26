@@ -859,7 +859,7 @@ export function GraphFrame({
                   className="gf-json-view"
                   value={jsonStr}
                   theme={cmTheme}
-                  height={`${graphAreaHeight}px`}
+                  height="100%"
                   readOnly
                   basicSetup={{ foldGutter: true, lineNumbers: true }}
                   extensions={[jsonLang(), EditorView.lineWrapping]}
@@ -927,7 +927,7 @@ export function GraphFrame({
                   className="gf-json-view"
                   value={jsonStr}
                   theme={cmTheme}
-                  height={`${graphAreaHeight}px`}
+                  height="100%"
                   readOnly
                   basicSetup={{ foldGutter: true, lineNumbers: true }}
                   extensions={[jsonLang(), EditorView.lineWrapping]}

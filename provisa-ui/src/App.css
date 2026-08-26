@@ -2033,18 +2033,12 @@ main {
   align-items: center;
   gap: 0.4rem;
 }
+/* className lands on Mantine's root wrapper, which already contains a bordered input — a frame here
+   draws a second box around that one. The wrapper carries only sizing; the input keeps its own
+   border. */
 .trace-filter {
   font-size: 0.875rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--text);
   width: 24rem;
-  outline: none;
-}
-.trace-filter:focus {
-  border-color: var(--primary, #7c6af5);
 }
 .trace-detail {
   width: 100%;

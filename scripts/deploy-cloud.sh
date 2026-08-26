@@ -195,9 +195,18 @@ push_api() {
 CONFIG_FILES="capabilities.yaml pg_extension_catalog.yaml custom_connectors.yaml \
 provisa-install.yaml provisa-install-base.yaml"
 
+# The sample data provisa-install.yaml's SQLite sources resolve to, via ${env:PROVISA_DEMO_DIR},
+# which the demo overlay sets to /app/config/demo/files (Dockerfile:41-45). It ships WITH the config
+# because the config is what registers the tables inside it: shipping only the yaml left the node
+# registering pet_store's REQ-1586 junction tables against an image-baked sqlite that still held
+# `pets` alone, so the schema showed Playgroups and every query through PLAYGROUP_MEMBERS failed
+# with TABLE_NOT_FOUND. Same explicit list as the Dockerfile COPY; the paths are relative to the
+# repo root so they unpack to demo/files/ under /app/config.
+DEMO_DATA="demo/files/pet_store.sqlite demo/files/inquiries.sqlite"
+
 build_cfg() {
   echo "== packaging configs"
-  tar czf "$STAGE/cfg.tgz" -C "$REPO/config" $CONFIG_FILES pgbouncer
+  tar czf "$STAGE/cfg.tgz" -C "$REPO/config" $CONFIG_FILES pgbouncer -C "$REPO" $DEMO_DATA
 }
 
 # Distributions that are not part of this source tree but that the deployed node runs on top of it.
