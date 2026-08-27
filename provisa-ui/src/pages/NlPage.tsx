@@ -371,7 +371,7 @@ export function NlPage() {
       </Group>
 
       {globalError && (
-        <Alert color="red" variant="light" data-testid="nl-global-error">
+        <Alert color="red" variant="light" className="nl-global-error" data-testid="nl-global-error">
           {globalError}
         </Alert>
       )}

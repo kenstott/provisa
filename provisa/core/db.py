@@ -63,50 +63,63 @@ _SEED_DOMAINS: tuple[tuple[str, str, str | None], ...] = (
     ("shelter", "Animal shelter staff and breed management", None),
 )
 
-# REQ-1266/REQ-1297: the five system template roles, mirrored from schema.sql's seed (lines
+# REQ-1266/REQ-1297/REQ-1597: the six system template roles, mirrored from schema.sql's seed (lines
 # 623-712) so non-PostgreSQL (SQLite/portable) deployments reach parity with PostgreSQL/SaaS
 # deployments on role seeding. schema.sql is PG-only DDL and cannot be shared verbatim, so this is
 # a second literal by necessity, not by choice; keep the two in sync on any capability change.
 # platform_settings/cross_org are intentionally absent from org_admin here — those are
 # tenancy-conditional and asserted by apply_tenancy_role_grants after seeding, on every dialect.
+# Named rather than inlined below because REQ-1597's sandbox role is defined by SUBTRACTING from it,
+# and a second copy of the list is a second thing to remember on every capability change.
+_ORG_ADMIN_CAPABILITIES: list[str] = [
+    "source_registration",
+    "table_registration",
+    "create_relationship",
+    "create_view",
+    "approve_view",
+    "approve_relationship",
+    "access_config",
+    "user_management",
+    "masking_config",
+    "column_grant",
+    "view_governance",
+    "query_development",
+    "full_results",
+    "write",
+    "usage",
+    "org_settings",
+    "observability",
+    # REQ-1573: the two environment rights. Creating and deleting an environment spends the
+    # org's plan ceiling and drops a schema; being served by one other than prod is working
+    # somewhere that is not production. org_admin and developer hold both; analyst and
+    # modeler hold neither.
+    "environment_management",
+    "environment_switch",
+    # REQ-1590: the glossary's two rights. Reading a term is not administering the org, so
+    # every seeded role reads; curation stays with the roles that own the model.
+    "glossary_read",
+    "glossary_rw",
+    # REQ-1592: the org's glossary owner — curates any term whatever its domains and
+    # whoever authored it. org_admin ALONE: it is the override that makes the enterprise
+    # scope and the author lock safe, so a term whose authors have all left, or one scoped
+    # to the whole org, still has someone who can maintain it.
+    "org_glossary_rw",
+]
+
+# REQ-1597: the rights sandbox does NOT inherit from org_admin -- see the seed entry below.
+_SANDBOX_DENIED: frozenset[str] = frozenset(
+    {
+        "environment_switch",
+        "environment_management",
+        "user_management",
+        "org_settings",
+        "observability",
+        "org_glossary_rw",
+    }
+)
+
 _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
-    (
-        "org_admin",
-        [
-            "source_registration",
-            "table_registration",
-            "create_relationship",
-            "create_view",
-            "approve_view",
-            "approve_relationship",
-            "access_config",
-            "user_management",
-            "masking_config",
-            "column_grant",
-            "view_governance",
-            "query_development",
-            "full_results",
-            "write",
-            "usage",
-            "org_settings",
-            "observability",
-            # REQ-1573: the two environment rights. Creating and deleting an environment spends the
-            # org's plan ceiling and drops a schema; being served by one other than prod is working
-            # somewhere that is not production. org_admin and developer hold both; analyst and
-            # modeler hold neither.
-            "environment_management",
-            "environment_switch",
-            # REQ-1590: the glossary's two rights. Reading a term is not administering the org, so
-            # every seeded role reads; curation stays with the roles that own the model.
-            "glossary_read",
-            "glossary_rw",
-            # REQ-1592: the org's glossary owner — curates any term whatever its domains and
-            # whoever authored it. org_admin ALONE: it is the override that makes the enterprise
-            # scope and the author lock safe, so a term whose authors have all left, or one scoped
-            # to the whole org, still has someone who can maintain it.
-            "org_glossary_rw",
-        ],
-    ),
+    ("org_admin", _ORG_ADMIN_CAPABILITIES),
     ("analyst", ["usage", "query_development", "glossary_read"]),  # REQ-1590
     (
         "developer",
@@ -138,6 +151,21 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "glossary_rw",
         ],
     ),
+    # REQ-1597: sandbox is what a "Try it Out" invitation confers. It is org_admin's capability list
+    # minus a DENYLIST, rather than a list built up from analyst, because the point of the sandbox is
+    # that a stranger can do everything the product does — register a source, model it, govern it,
+    # query it, write to it — inside an environment that expires. Enumerating what they may do would
+    # make every new capability invisible to them until someone remembered to add it here; taking
+    # away is the direction that stays correct.
+    #
+    # Six rights are withheld, each because it reaches something the environment does not contain:
+    # environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin
+    # would be pointless against a role that could name another); environment_management would spend
+    # the org's plan ceiling and can drop another environment's schemas; user_management would let a
+    # visitor confer roles or admit more people; org_settings and observability are org-wide surfaces
+    # — the org's provider overrides, scheduled tasks, and the query telemetry of everyone working in
+    # production; org_glossary_rw is the override over terms the org's own people authored.
+    ("sandbox", sorted(set(_ORG_ADMIN_CAPABILITIES) - _SANDBOX_DENIED)),
     ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
 )
 

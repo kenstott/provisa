@@ -33,8 +33,11 @@ class EncryptionService(ABC):  # REQ-684
     @abstractmethod
     def encrypt(self, plaintext: bytes) -> bytes: ...
 
+    # ``blob``, not ``ciphertext``: the argument is the whole provider-framed payload -- an
+    # envelope provider splits a key id, a wrapped DEK and an IV off it before any ciphertext
+    # is in hand.
     @abstractmethod
-    def decrypt(self, ciphertext: bytes) -> bytes: ...
+    def decrypt(self, blob: bytes) -> bytes: ...
 
 
 class NullEncryption(EncryptionService):  # REQ-684
@@ -48,5 +51,5 @@ class NullEncryption(EncryptionService):  # REQ-684
     def encrypt(self, plaintext: bytes) -> bytes:
         return plaintext
 
-    def decrypt(self, ciphertext: bytes) -> bytes:
-        return ciphertext
+    def decrypt(self, blob: bytes) -> bytes:
+        return blob

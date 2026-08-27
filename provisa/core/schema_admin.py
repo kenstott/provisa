@@ -59,6 +59,7 @@ from sqlalchemy import (
     false,
     func,
     select,
+    text,
     true,
 )
 
@@ -186,6 +187,13 @@ user_org_memberships = Table(
     # announced as nothing.
     Column("joined_via", Text),
     Column("acknowledged_at", DateTime(timezone=True)),
+    # REQ-1596: the ONE environment this membership may be served by, or NULL for the ordinary
+    # membership that may be served by any environment its role permits. A pinned member naming no
+    # environment is served this one rather than prod, and naming a different one is refused — which
+    # is what makes a sandbox visitor's whole session live inside the environment minted for them
+    # instead of in the org's production data. Nullable because a pin is the exception: every
+    # membership written before an open invite existed, and every ordinary member, has none.
+    Column("env_name", Text),
     PrimaryKeyConstraint("user_id", "org_id"),
 )
 
@@ -245,8 +253,43 @@ org_invites = Table(
     Column("email", Text),
     Column("created_by", Text, nullable=False),
     Column("expires_at", DateTime(timezone=True), nullable=False),
+    # REQ-1594: an invite is redeemable ``max_uses`` times, and ``uses`` counts how many of those
+    # have been spent. ``max_uses`` defaults to 1, which is the addressed invitation every existing
+    # caller mints — so the ordinary invite is still burnt by its first redeemer, expressed as a
+    # count rather than as a timestamp. NULL max_uses is unlimited: the "Try it Out" link on the
+    # marketing site cannot know in advance how many people will click it.
+    Column("uses", Integer, nullable=False, server_default=text("0")),
+    Column("max_uses", Integer, server_default=text("1")),
+    # ``used_at``/``used_by`` are the LAST redemption, not the only one. Kept as scalars because the
+    # account-deletion tombstone (auth_router) rewrites used_by, and because a single-use invite --
+    # still the common case -- has exactly one, so nothing about the addressed invite changed.
     Column("used_at", DateTime(timezone=True)),
     Column("used_by", Text),
+    # REQ-1595: what the redeemer is given to work in. ``none`` is the ordinary invitation: the
+    # person joins the org and is served by it as any member is. ``per_visitor`` mints a fresh
+    # environment for each redemption, expiring ``env_ttl_seconds`` later, which is the sandbox --
+    # the visitor gets real machinery and a real model, and nothing they do outlives the hour.
+    # ``shared`` seats every redeemer in the ONE environment ``env_name`` names, which is the
+    # branded read-only data portal an org publishes to people it has never met.
+    #
+    # Three values rather than a sandbox boolean because the portal and the sandbox differ only in
+    # these fields; a boolean would have to be joined by a second one later.
+    Column("env_policy", Text, nullable=False, server_default=text("'none'")),
+    Column("env_ttl_seconds", Integer),
+    Column("env_name", Text),
+    CheckConstraint(
+        "env_policy IN ('none', 'per_visitor', 'shared')", name="ck_org_invites_env_policy"
+    ),
+    # A per_visitor environment with no TTL would never be reaped and would accumulate one schema
+    # per click, so the TTL is not optional there; a shared environment with no name names nothing.
+    CheckConstraint(
+        "(env_policy <> 'per_visitor' OR env_ttl_seconds IS NOT NULL) AND "
+        "(env_policy <> 'shared' OR env_name IS NOT NULL)",
+        name="ck_org_invites_env_policy_fields",
+    ),
+    CheckConstraint(
+        "uses >= 0 AND (max_uses IS NULL OR max_uses >= 1)", name="ck_org_invites_uses"
+    ),
 )
 
 # REQ-1263: personal access tokens — the long-lived credential every non-browser protocol

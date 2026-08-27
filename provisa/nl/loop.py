@@ -23,8 +23,9 @@ Each iteration:
 
 from __future__ import annotations
 
+import inspect
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -60,7 +61,7 @@ async def generation_loop(  # REQ-355, REQ-356
     nl_query: str,
     target: NlTarget,
     schema_sdl: str,
-    compiler: Callable[[str], CompileResult],
+    compiler: Callable[[str], CompileResult | Awaitable[CompileResult]],
     llm: LLMClient,
     max_iterations: int = MAX_ITERATIONS,
     relevant_entities: str = "",
@@ -102,7 +103,11 @@ async def generation_loop(  # REQ-355, REQ-356
         # Strip leading "cypher" keyword some LLMs emit for Cypher queries
         if target == "cypher" and generated.lower().startswith("cypher "):
             generated = generated[7:].lstrip()
-        result = compiler(generated)
+        # A compiler may be async when validation runs the real downstream compile (the strict
+        # chain compiles the GraphQL to SQL and parses it), so the loop refines against the same
+        # SQL the panel will show rather than against a syntax check the SQL never sees.
+        compiled = compiler(generated)
+        result = await compiled if inspect.isawaitable(compiled) else compiled
 
         if result.valid:
             return generated, None
@@ -134,6 +139,42 @@ def make_cypher_compiler() -> Callable[[str], CompileResult]:  # REQ-464
     return _compile
 
 
+def _check_single_root_field(doc: object) -> CompileResult:  # object-ok: graphql DocumentNode
+    """One question is one query: reject a document with more than one root field.
+
+    Everything downstream of the generated GraphQL is single-query shaped — the strict chain
+    renders one semantic SQL statement, and the gRPC/JSON:API/OpenAPI branches synthesize one
+    request. A document with two root fields compiles to two SQL statements, which the SQL
+    branch then shows as one unparseable statement while the protocol branches silently answer
+    only the first field. Caught here so the generation loop feeds it back and the model
+    rewrites the question as a single field (a join or a group_by), instead of the split
+    surfacing as a downstream parse error.
+    """
+    from graphql import FieldNode, OperationDefinitionNode
+
+    operations = [d for d in doc.definitions if isinstance(d, OperationDefinitionNode)]  # type: ignore[attr-defined]
+    if len(operations) != 1:
+        return CompileResult(
+            valid=False,
+            error=(
+                f"The document defines {len(operations)} operations. Return exactly one query "
+                "operation answering the whole question."
+            ),
+        )
+    roots = operations[0].selection_set.selections
+    if len(roots) != 1:
+        names = ", ".join(s.name.value for s in roots if isinstance(s, FieldNode))
+        return CompileResult(
+            valid=False,
+            error=(
+                f"The query selects {len(roots)} root fields ({names}). Return exactly one root "
+                "field: join the tables through a nested relationship field, or use the type's "
+                "_group_by/_aggregate field, rather than listing each table separately."
+            ),
+        )
+    return CompileResult(valid=True)
+
+
 def make_graphql_compiler(schema: GraphQLSchema) -> Callable[[str], CompileResult]:  # REQ-464
     """Return a compiler callable that validates a GraphQL query against schema."""
     from graphql import parse as gql_parse
@@ -147,7 +188,7 @@ def make_graphql_compiler(schema: GraphQLSchema) -> Callable[[str], CompileResul
         errors = gql_validate(schema, doc)
         if errors:
             return CompileResult(valid=False, error="; ".join(str(e) for e in errors))
-        return CompileResult(valid=True)
+        return _check_single_root_field(doc)
 
     return _compile
 

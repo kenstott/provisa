@@ -210,12 +210,19 @@ def _drop_foreign_rows(signal: str, table):
     import pyarrow as pa
     import pyarrow.compute as pc
 
+    # ``call_function`` rather than ``pc.not_equal``/``pc.equal``: the comparison kernels are
+    # generated onto the module at import time from the C++ function registry, so they exist at
+    # runtime but are not members any reader -- human or checker -- can find in the source.
     if "scope_name" in table.column_names:
-        keep = pc.not_equal(table.column("scope_name"), pa.scalar(_ASYNCPG_SCOPE, type=pa.string()))
+        keep = pc.call_function(
+            "not_equal", [table.column("scope_name"), pa.scalar(_ASYNCPG_SCOPE, type=pa.string())]
+        )
         table = table.filter(pc.fill_null(keep, True))
     if "service_name" in table.column_names:
         service = os.environ.get("PROVISA_OTEL_SERVICE_NAME", "provisa")
-        keep = pc.equal(table.column("service_name"), pa.scalar(service, type=pa.string()))
+        keep = pc.call_function(
+            "equal", [table.column("service_name"), pa.scalar(service, type=pa.string())]
+        )
         table = table.filter(pc.fill_null(keep, False))
     return table
 
@@ -784,6 +791,44 @@ async def watch_engine() -> None:
         return
 
     await state.federation_engine.watchdog()
+
+
+async def reap_environments() -> None:  # REQ-1523
+    """Delete the environments whose expiry has passed, with their schemas and their stores.
+
+    A deployment with no admin control plane bound holds no ``environments`` rows at all — the table
+    lives on the platform registry — so there is nothing expired for this to find and the job is not
+    scheduled in the first place (see ``provisa.api.app_startup``). Both databases are read here
+    rather than captured at registration because the pools are bound during the lifespan.
+    """
+    from provisa.api.app import state
+    from provisa.core.env_reaper import reap_expired
+
+    assert state.admin_db is not None  # the job is registered only when the admin plane is bound
+    assert state.tenant_db is not None
+
+    reaped = await reap_expired(state.tenant_db, state.admin_db, audit=_audit_reaped)
+    if reaped:
+        logger.info("reaped %d expired environment(s)", len(reaped))
+
+
+async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
+    """Record the reap in the ORG's own trail, where the org can see what became of it (REQ-1488).
+
+    The same trail and the same action shape the delete endpoint writes, because a reaped
+    environment and a deleted one are the same act reached by two doors; the actor is the platform
+    rather than a person, which is what the entry says.
+    """
+    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.core.org_membership import record_admin_action
+
+    await record_admin_action(
+        await _org_tenant_db(org_id),
+        action="environment.expired",
+        actor_id="platform",
+        subject_id=name,
+        detail=outcome,
+    )
 
 
 def build_scheduler(

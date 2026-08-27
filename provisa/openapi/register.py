@@ -145,7 +145,6 @@ async def upsert_table(  # REQ-316, REQ-320
     cache_ttl: int = 300,
 ) -> None:
     """Register an OpenAPI GET operation as a virtual table and api_endpoint."""
-    import json
     from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
 
@@ -289,7 +288,11 @@ async def upsert_tracked_function(  # REQ-317
     return_cols = _schema_to_columns(mutation.response_schema)
 
     fn_name = mutation.operation_id
-    return_schema = json.dumps(return_cols) if return_cols else None
+    # The operation's own JSON Schema, stored as an object into a JSON column: the compiler reads
+    # ``return_schema["properties"]`` to build the GraphQL return type (REQ-885), so a serialized
+    # column list would be both the wrong shape and double-encoded. ``return_cols`` decides only
+    # WHETHER there is a shape to project.
+    return_schema = mutation.response_schema if return_cols else None
 
     func = Function(
         name=fn_name,

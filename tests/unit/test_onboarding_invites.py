@@ -135,7 +135,10 @@ async def test_only_unused_unexpired_invitations_addressed_to_the_caller_are_ret
 
     where = plane.statements[0]
     assert "lower(org_invites.email) = " in where.lower().replace("\n", " ")
-    assert "used_at IS NULL" in where
+    # REQ-1594: an invitation is offerable while it is unspent, not while it is untouched -- an
+    # open invitation stays listed after somebody redeems it, until its uses reach max_uses.
+    assert "org_invites.uses < org_invites.max_uses" in where
+    assert "org_invites.max_uses IS NULL" in where
     assert "expires_at >" in where
 
 

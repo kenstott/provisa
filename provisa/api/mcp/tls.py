@@ -132,12 +132,20 @@ def _trust_windows_pure(cert_path: str) -> bool:
     no admin. Returns True on success. Raises on any Win32 error (caller catches)."""
     import ctypes
 
+    # The crypt32 handle and the last-error accessor exist only on Windows, and only Windows calls
+    # this. The guard states the platform this body is written against, which is also what lets a
+    # checker see ``WinDLL``/``get_last_error`` at all.
+    if sys.platform != "win32":
+        raise OSError("the crypt32 trust path is Windows-only")
+
     from cryptography import x509
     from cryptography.hazmat.primitives.serialization import Encoding
 
     der = x509.load_pem_x509_certificate(Path(cert_path).read_bytes()).public_bytes(Encoding.DER)
 
-    crypt32 = ctypes.WinDLL("crypt32.dll")  # type: ignore[attr-defined]  # win32-only
+    # ``use_last_error``: ctypes keeps a private copy of the error as of the call that failed,
+    # which a later unrelated Win32 call cannot overwrite.
+    crypt32 = ctypes.WinDLL("crypt32.dll", use_last_error=True)
     CERT_STORE_PROV_SYSTEM_W = 10
     CERT_SYSTEM_STORE_CURRENT_USER = 1 << 16  # per-user store -> no elevation
     X509_ASN_ENCODING = 0x1
@@ -164,7 +172,7 @@ def _trust_windows_pure(cert_path: str) -> bool:
             None,
         )
         if not ok:
-            raise OSError(f"CertAddEncodedCertificateToStore failed ({ctypes.GetLastError()})")
+            raise OSError(f"CertAddEncodedCertificateToStore failed ({ctypes.get_last_error()})")
         return True
     finally:
         crypt32.CertCloseStore(ctypes.c_void_p(store), 0)

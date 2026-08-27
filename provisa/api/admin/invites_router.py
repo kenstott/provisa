@@ -22,6 +22,13 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
+from provisa.core.org_invite import (
+    ENV_POLICIES,
+    ENV_POLICY_NONE,
+    ENV_POLICY_PER_VISITOR,
+    ENV_POLICY_SHARED,
+    unspent,
+)
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
 from provisa.security.rights import Capability, can_act_cross_org
 
@@ -82,12 +89,48 @@ class CreateInviteBody(BaseModel):
     # REQ-1287: address the invite to a person so GET /auth/my-invites can surface it to them on
     # first sign-in. Omit for a shareable link invite.
     email: str | None = None
+    # REQ-1594: how many redemptions this link admits. 1 is the addressed invitation every caller
+    # minted before open invites existed, so an omitted value changes nothing; None is unlimited,
+    # which is the only answer a "Try it Out" link on a public page can give.
+    max_uses: int | None = 1
+    # REQ-1595: what the redeemer is given to work in — see provisa.core.org_invite.
+    env_policy: str = ENV_POLICY_NONE
+    env_ttl_seconds: int | None = None
+    env_name: str | None = None
 
 
 # REQ-1314: the role a link invitation confers when it names none. analyst is the least-privileged
 # of the four default roles (REQ-1297); defaulting upward would hand a shareable link more authority
 # than its creator chose to grant.
 DEFAULT_INVITE_ROLE = "analyst"
+
+
+def _check_env_policy(body: CreateInviteBody) -> None:
+    """Refuse an env policy the schema would refuse, with an error the inviter can act on (REQ-1595).
+
+    The same rule the CheckConstraints carry, applied here so the inviter gets a 400 naming the
+    missing field instead of the 500 an integrity error becomes. Not a second authority: the
+    constraint remains the one that decides, and this exists so nobody meets it.
+    """
+    if body.env_policy not in ENV_POLICIES:
+        raise ApiError(
+            400,
+            "invites.invalid_env_policy",
+            f"env_policy must be one of {', '.join(ENV_POLICIES)}",
+        )
+    if body.env_policy == ENV_POLICY_PER_VISITOR and body.env_ttl_seconds is None:
+        raise ApiError(
+            400,
+            "invites.env_ttl_required",
+            "A per_visitor invite needs env_ttl_seconds: without one, every redemption leaves an "
+            "environment nothing will ever reap.",
+        )
+    if body.env_policy == ENV_POLICY_SHARED and not body.env_name:
+        raise ApiError(
+            400, "invites.env_name_required", "A shared invite must name the environment it seats"
+        )
+    if body.max_uses is not None and body.max_uses < 1:
+        raise ApiError(400, "invites.invalid_max_uses", "max_uses must be at least 1, or null")
 
 
 async def resolve_invite_role(org_id: str, role_id: str | None) -> str:
@@ -140,6 +183,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     if identity is None:
         raise ApiError(401, "auth.authentication_required", "Authentication required")
     await _require_org_admin(request, body.org_id)
+    _check_env_policy(body)
     created_by = identity.user_id
     # token and expiry are computed app-side (portable) rather than via
     # PG-specific server-side UUID/interval defaults — the platform control
@@ -170,6 +214,10 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
                 email=body.email.strip().lower() if body.email else None,
                 created_by=created_by,
                 expires_at=expires_at,
+                max_uses=body.max_uses,
+                env_policy=body.env_policy,
+                env_ttl_seconds=body.env_ttl_seconds,
+                env_name=body.env_name,
             )
             .returning(
                 org_invites.c.token,
@@ -178,6 +226,11 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
                 org_invites.c.email,
                 org_invites.c.created_by,
                 org_invites.c.expires_at,
+                org_invites.c.uses,
+                org_invites.c.max_uses,
+                org_invites.c.env_policy,
+                org_invites.c.env_ttl_seconds,
+                org_invites.c.env_name,
             )
         )
         row = result.fetchone()
@@ -344,6 +397,14 @@ async def list_invites(request: Request):  # REQ-516
             org_invites.c.expires_at,
             org_invites.c.used_at,
             org_invites.c.used_by,
+            # REQ-1594/REQ-1595: an open invite's row says nothing without these — "used_at is set"
+            # no longer means spent, and the org_admin listing their links needs to see how many
+            # redemptions are left and what each one hands out.
+            org_invites.c.uses,
+            org_invites.c.max_uses,
+            org_invites.c.env_policy,
+            org_invites.c.env_ttl_seconds,
+            org_invites.c.env_name,
         )
         .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
         .order_by(org_invites.c.expires_at.desc())
@@ -360,7 +421,9 @@ async def list_invites(request: Request):  # REQ-516
 async def revoke_invite(token: str, request: Request):  # REQ-516
     scope_org = await _administered_org_scope(request)
     pool = _pool(request)
-    stmt = _delete(org_invites).where(org_invites.c.token == token, org_invites.c.used_at.is_(None))
+    # REQ-1594: revocable while it still has a redemption left in it. An open link is used and
+    # still open, so gating on used_at would make the first redemption un-revoke it.
+    stmt = _delete(org_invites).where(org_invites.c.token == token, unspent())
     if scope_org is not None:
         stmt = stmt.where(org_invites.c.org_id == scope_org)
     async with pool.acquire() as conn:

@@ -91,7 +91,7 @@ def main():
             )
 
     producer.flush()
-    print(f"Done. Seeded ~85 events (50 tickets + ~35 resolutions).")
+    print("Done. Seeded ~85 events (50 tickets + ~35 resolutions).")
 
 
 if __name__ == "__main__":

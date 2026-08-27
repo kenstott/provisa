@@ -57,8 +57,12 @@ class PendingAudit:
     started: float
 
 
-def resolve_table_ids(tree: "exp.Expression", gov_ctx: "GovernanceContext") -> list[int]:
+def resolve_table_ids(tree: "exp.Expr", gov_ctx: "GovernanceContext") -> list[int]:
     """The registered_tables ids this statement reads, in first-reference order.
+
+    ``Expr``, not ``Expression``: the tree handed here is whatever ``sqlglot.parse_one`` returned
+    for the statement the pipeline is auditing — including the ``Block`` a multi-statement string
+    parses into — and the walk below needs nothing but ``find_all``, which the base declares.
 
     ``gov_ctx.table_map`` is the same name→id resolution governance and the domain-access check
     use, keyed by both the semantic ``domain.table`` form and the bare name, so a reference that
@@ -79,7 +83,7 @@ def resolve_table_ids(tree: "exp.Expression", gov_ctx: "GovernanceContext") -> l
 
 
 def begin_audit(
-    query_text: str, role_id: str, tree: "exp.Expression", gov_ctx: "GovernanceContext"
+    query_text: str, role_id: str, tree: "exp.Expr", gov_ctx: "GovernanceContext"
 ) -> PendingAudit | None:
     """Open an audit record for a statement, or None when nothing user-initiated is running.
 
@@ -160,7 +164,7 @@ async def _meter_active_hour(state: Any) -> None:
 async def write_denial(
     query_text: str,
     role_id: str,
-    tree: "exp.Expression | None",
+    tree: "exp.Expr | None",
     gov_ctx: "GovernanceContext | None",
     state: Any = None,
 ) -> None:

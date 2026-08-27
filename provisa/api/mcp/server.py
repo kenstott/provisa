@@ -398,7 +398,10 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     # no stdio bridge. Best-effort with a DESIGN-MANDATED fallback: if a per-machine cert can't be
     # created, serve plain HTTP (the mcp-proxy bridge still works over http). The ACTIVE scheme is
     # published to the process env so the status endpoint tells the UI which connect path to show.
-    ssl_kwargs: dict[str, str] = {}
+    # Any, not str: the values are cert/key paths, but the dict is splatted into ``uvicorn.run``,
+    # whose keyword parameters span int/bool/float -- a str-valued mapping cannot satisfy that
+    # signature no matter which keys it actually carries.
+    ssl_kwargs: dict[str, Any] = {}
     scheme = "http"
     if os.environ.get("PROVISA_MCP_TLS", "").strip().lower() in ("1", "true", "yes"):
         from provisa.api.mcp.tls import ensure_cert, trust_cert

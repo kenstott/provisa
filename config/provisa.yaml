@@ -428,6 +428,11 @@ tables:
     - org_admin
   description: "Supervised exercise groups run in the store yards"
   domain_id: pet-store
+  # REQ-653: "how many pets per playgroup / per yard" is the question this table exists to answer,
+  # and without these the schema has no _aggregate/_group_by root field for it, so every surface
+  # can only list rows.
+  enable_aggregates: true
+  enable_group_by: true
   schema: pet_store
   source_id: pet-store-pg
   table: playgroups
@@ -466,6 +471,10 @@ tables:
   # the junction table's own name (via_label_source: table), with no alias and no discriminator.
   description: "Playgroup enrolment — the junction behind the PLAYGROUP_MEMBERS relationship between pets and playgroups"
   domain_id: pet-store
+  # REQ-653: the membership count per playgroup lives on the junction, so the count-per-group
+  # question needs the group_by root field here too, not only on playgroups.
+  enable_aggregates: true
+  enable_group_by: true
   schema: pet_store
   source_id: pet-store-pg
   table: playgroup_members

@@ -13,6 +13,9 @@ that selects one is checked before anything is bound to it."""
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
 import pytest
 
 from provisa.api.env_routing import (
@@ -110,10 +113,24 @@ class _FakeDb:
         self.queried: list[str] = []
 
 
+def _fake_db(known: set[str]) -> Any:
+    """A ``_FakeDb`` in the position ``select_environment`` types as ``Database``.
+
+    The selection never touches the connection itself -- it hands the handle to ``get_env``, which
+    every one of these tests replaces -- so the fake is the whole surface the function uses.
+    """
+    return _FakeDb(known)
+
+
+def _row(name: str, expires_at: datetime | None = None) -> dict:
+    """A registry row as ``get_env`` returns one: every column, expiry included."""
+    return {"org_id": "acme", "name": name, "expires_at": expires_at}
+
+
 class TestSelectEnvironment:
     @pytest.mark.asyncio
     async def test_no_header_is_prod_without_a_lookup(self, monkeypatch):
-        db = _FakeDb(set())
+        db = _fake_db(set())
         # prod exists for every org from creation and cannot be deleted, so there is nothing a
         # query could tell us — the common path must cost nothing.
         assert await select_environment(db, "acme", None) == PROD
@@ -121,20 +138,20 @@ class TestSelectEnvironment:
 
     @pytest.mark.asyncio
     async def test_explicit_prod_is_prod_without_a_lookup(self):
-        db = _FakeDb(set())
+        db = _fake_db(set())
         assert await select_environment(db, "acme", PROD) == PROD
         assert db.queried == []
 
     @pytest.mark.asyncio
     async def test_illegal_name_is_refused_before_any_lookup(self):
-        db = _FakeDb(set())
+        db = _fake_db(set())
         with pytest.raises(EnvironmentSelectionError):
             await select_environment(db, "acme", "Not A Name")
         assert db.queried == []
 
     @pytest.mark.asyncio
     async def test_unknown_name_is_refused_and_never_falls_back_to_prod(self, monkeypatch):
-        db = _FakeDb(set())
+        db = _fake_db(set())
 
         async def _get_env(_db, org_id, name):
             _db.queried.append(name)
@@ -147,14 +164,58 @@ class TestSelectEnvironment:
 
     @pytest.mark.asyncio
     async def test_known_name_is_returned(self, monkeypatch):
-        db = _FakeDb({"feature"})
+        db = _fake_db({"feature"})
 
         async def _get_env(_db, org_id, name):
             _db.queried.append(name)
-            return {"name": name} if name in _db.known else None
+            return _row(name) if name in _db.known else None
 
         monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
         assert await select_environment(db, "acme", "feature") == "feature"
+
+    @pytest.mark.asyncio
+    async def test_a_future_expiry_is_served_normally(self, monkeypatch):
+        # REQ-1523: an expiry is a deadline, not a mark. Until it passes the environment is
+        # ordinary, and a request naming it is answered like any other.
+        db = _fake_db({"feature"})
+        later = datetime.now(timezone.utc) + timedelta(hours=1)
+
+        async def _get_env(_db, org_id, name):
+            _db.queried.append(name)
+            return _row(name, later)
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        assert await select_environment(db, "acme", "feature") == "feature"
+
+    @pytest.mark.asyncio
+    async def test_a_passed_expiry_is_refused_before_the_sweep_reaches_it(self, monkeypatch):
+        # REQ-1523: the reaper runs on a schedule, so an expired environment still HAS its schemas
+        # between two ticks. Serving it because the sweep has not arrived would make the deadline
+        # the tick rather than the expiry the org was told.
+        db = _fake_db({"feature"})
+        past = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+        async def _get_env(_db, org_id, name):
+            _db.queried.append(name)
+            return _row(name, past)
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        with pytest.raises(EnvironmentSelectionError, match="expired"):
+            await select_environment(db, "acme", "feature")
+
+    @pytest.mark.asyncio
+    async def test_an_expired_environment_never_falls_back_to_prod(self, monkeypatch):
+        # The same rule the unknown-name case states: a caller who believed they were writing to a
+        # branch must not silently write to production.
+        db = _fake_db({"feature"})
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+
+        async def _get_env(_db, org_id, name):
+            return _row(name, past)
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        with pytest.raises(EnvironmentSelectionError):
+            await select_environment(db, "acme", "feature")
 
     @pytest.mark.asyncio
     async def test_no_admin_plane_is_a_server_error_not_a_404(self):
@@ -172,17 +233,17 @@ class TestSwitchRight:
     async def test_prod_needs_no_right(self):
         # prod is what a request naming nothing is served, so an analyst reaching it is not a
         # switch and cannot be refused one.
-        db = _FakeDb(set())
+        db = _fake_db(set())
         assert await select_environment(db, "acme", None, set()) == PROD
         assert await select_environment(db, "acme", PROD, set()) == PROD
 
     @pytest.mark.asyncio
     async def test_a_holder_is_served_the_branch(self, monkeypatch):
-        db = _FakeDb({"feature"})
+        db = _fake_db({"feature"})
 
         async def _get_env(_db, org_id, name):
             _db.queried.append(name)
-            return {"name": name} if name in _db.known else None
+            return _row(name) if name in _db.known else None
 
         monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
         assert await select_environment(db, "acme", "feature", {SWITCH_CAPABILITY}) == "feature"
@@ -191,7 +252,7 @@ class TestSwitchRight:
     async def test_without_the_right_it_is_a_403_and_never_a_404(self):
         # Distinct from EnvironmentSelectionError on purpose: telling the caller the name is
         # unknown would be a lie about the org's model, and the lookup is never even reached.
-        db = _FakeDb({"feature"})
+        db = _fake_db({"feature"})
         with pytest.raises(EnvironmentRightError):
             await select_environment(db, "acme", "feature", {"read", "query"})
         assert db.queried == []
@@ -200,7 +261,7 @@ class TestSwitchRight:
     async def test_an_illegal_name_is_still_a_404_first(self):
         # The name is refused for what it is before who asked is consulted, so a caller without
         # the right learns nothing about which names exist.
-        db = _FakeDb(set())
+        db = _fake_db(set())
         with pytest.raises(EnvironmentSelectionError):
             await select_environment(db, "acme", "Not A Name", set())
 
@@ -208,10 +269,10 @@ class TestSwitchRight:
     async def test_no_capabilities_argument_is_an_unguarded_call_site(self, monkeypatch):
         # Passing None is not "no capabilities" — it is a caller that has already decided the
         # question (the CLI, an internal rebind), and the gate sits at the HTTP selection point.
-        db = _FakeDb({"feature"})
+        db = _fake_db({"feature"})
 
         async def _get_env(_db, org_id, name):
-            return {"name": name} if name in _db.known else None
+            return _row(name) if name in _db.known else None
 
         monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
         assert await select_environment(db, "acme", "feature") == "feature"
@@ -221,6 +282,83 @@ class TestSwitchRight:
         assert may_switch({"admin"})
         assert may_switch({SWITCH_CAPABILITY})
         assert not may_switch({"read", "query", "create_model"})
+
+
+class TestPinnedMembership:
+    """REQ-1596: a membership confined to one environment is served that one and no other."""
+
+    @pytest.fixture
+    def known(self, monkeypatch):
+        async def _get_env(_db, org_id, name):
+            _db.queried.append(name)
+            return _row(name) if name in _db.known else None
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+
+    @pytest.mark.asyncio
+    async def test_naming_nothing_serves_the_pin_not_prod(self, known):
+        # The whole point of the pin: a sandbox visitor who simply omits the header must not be
+        # handed the org's production data.
+        db = _fake_db({"sandbox_ab12"})
+        assert await select_environment(db, "acme", None, set(), pinned="sandbox_ab12") == (
+            "sandbox_ab12"
+        )
+
+    @pytest.mark.asyncio
+    async def test_naming_the_pin_is_the_same_answer(self, known):
+        db = _fake_db({"sandbox_ab12"})
+        assert (
+            await select_environment(db, "acme", "sandbox_ab12", set(), pinned="sandbox_ab12")
+            == "sandbox_ab12"
+        )
+
+    @pytest.mark.asyncio
+    async def test_naming_another_environment_is_refused(self):
+        db = _fake_db({"sandbox_ab12", "feature"})
+        with pytest.raises(EnvironmentRightError):
+            await select_environment(db, "acme", "feature", set(), pinned="sandbox_ab12")
+        assert db.queried == []
+
+    @pytest.mark.asyncio
+    async def test_naming_prod_is_refused_too(self):
+        # prod is the one name that needs no right, which is exactly why a pinned member asking
+        # for it has to be refused here rather than falling through to the ordinary rule.
+        db = _fake_db({"sandbox_ab12"})
+        with pytest.raises(EnvironmentRightError):
+            await select_environment(db, "acme", PROD, set(), pinned="sandbox_ab12")
+        assert db.queried == []
+
+    @pytest.mark.asyncio
+    async def test_the_pin_needs_no_switch_right(self, known):
+        # The sandbox role withholds environment_switch so the visitor cannot leave; requiring it
+        # for the pin itself would leave them with nowhere to be served at all.
+        db = _fake_db({"sandbox_ab12"})
+        assert not may_switch(set())
+        assert await select_environment(db, "acme", None, set(), pinned="sandbox_ab12") == (
+            "sandbox_ab12"
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_expired_pin_stops_serving(self, monkeypatch):
+        past = datetime.now(timezone.utc) - timedelta(minutes=1)
+
+        async def _get_env(_db, org_id, name):
+            return _row(name, past)
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        db = _fake_db({"sandbox_ab12"})
+        with pytest.raises(EnvironmentSelectionError):
+            await select_environment(db, "acme", None, set(), pinned="sandbox_ab12")
+
+    @pytest.mark.asyncio
+    async def test_a_retired_pin_is_refused_and_never_falls_back(self, monkeypatch):
+        async def _get_env(_db, org_id, name):
+            return None
+
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        db = _fake_db(set())
+        with pytest.raises(EnvironmentSelectionError):
+            await select_environment(db, "acme", None, set(), pinned="sandbox_ab12")
 
 
 class _FakeState:

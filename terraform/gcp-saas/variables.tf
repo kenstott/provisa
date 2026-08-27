@@ -432,7 +432,7 @@ variable "mail_from_address" {
 }
 
 variable "mail_base_url" {
-  description = "Public origin of the UI used in invite redemption links (e.g. https://cloud.provisa.dev)."
+  description = "Public origin of the UI used in invite redemption links. Blank derives https://cloud.<dns_zone>, the record dns.tf creates; set it only when the UI is reached at some other origin."
   type        = string
   default     = ""
 }

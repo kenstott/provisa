@@ -75,7 +75,11 @@ class GcpSecretManagerProvider(SecretsProvider):
     """GCP Secret Manager. A reference is the secret id, optionally ``id#version``."""
 
     def __init__(self, project: str):
-        from google.cloud import secretmanager
+        # ``import google.cloud.secretmanager``, not ``from google.cloud import secretmanager``:
+        # ``google.cloud`` is a namespace package other installed google libraries populate, so the
+        # from-form asks for a name inside a package that IS present and resolves to nothing. The
+        # module form names this optional distribution outright.
+        import google.cloud.secretmanager as secretmanager
 
         self._client = secretmanager.SecretManagerServiceClient()
         self._project = project

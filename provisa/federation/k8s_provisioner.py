@@ -671,7 +671,10 @@ def _deployment_manifest(
                                 {"name": "TF_TRINO_HOST", "value": "localhost"},
                                 {"name": "TF_TRINO_PORT", "value": str(port)},
                                 {"name": "TF_TRINO_SSL", "value": "false"},
-                                {"name": "TF_FLIGHT_HOST", "value": "0.0.0.0"},
+                                # B104 reads 0.0.0.0 as exposure: this binds inside the pod's own
+                                # network namespace, where it is the only way the Service can reach
+                                # the listener. The Service is what decides who reaches the pod.
+                                {"name": "TF_FLIGHT_HOST", "value": "0.0.0.0"},  # nosec B104
                                 {"name": "TF_FLIGHT_PORT", "value": str(flight_port)},
                                 {"name": "TF_FLIGHT_SSL", "value": "false"},
                                 {"name": "TF_FLIGHT_AUTH_TYPE", "value": "trino"},

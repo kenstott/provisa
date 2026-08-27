@@ -241,7 +241,8 @@ def _pgwire(cred: Credential, secret: str) -> str:
     handler = object.__new__(ProvisaHandler)
     # socketserver's setup() is bypassed by object.__new__, so the connection's writer is supplied
     # here as setup() builds it (REQ-1452): admitting the connection binds the session's org onto it.
-    handler.wfile = CountingWriter(io.BytesIO(), None)
+    handler._meter = CountingWriter(io.BytesIO(), None)
+    handler.wfile = handler._meter
     handler._send_pg_error = lambda severity, sqlstate, message: errors.append(
         (severity, sqlstate, message)
     )

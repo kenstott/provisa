@@ -178,7 +178,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = await self._publish_entities(self._atlan_entities(snapshot), snapshot)
         if snapshot.glossary_terms:
-            await self._publish_glossary(snapshot, result)
+            await self._publish_atlan_glossary(snapshot, result)
         return result
 
     # --- REQ-1387: business glossary --------------------------------------------------------
@@ -293,8 +293,15 @@ class AtlanExport(AtlasExport):  # REQ-1069
             relationships={"anchor": {"typeName": GLOSSARY_TYPE, "guid": glossary_guid}},
         )
 
-    async def _publish_glossary(self, snapshot: MetadataSnapshot, result: PublishResult) -> None:
+    async def _publish_atlan_glossary(
+        self, snapshot: MetadataSnapshot, result: PublishResult
+    ) -> None:
         """Publish the term graph into the Provisa-owned glossary (REQ-1387).
+
+        Named apart from ``AtlasExport._publish_glossary`` rather than overriding it: Atlan's
+        glossary API takes a different route and a different payload, so this opens its own client
+        and headers and shares no parameters with the base. ``publish`` here is overridden too, so
+        the base's call site never reaches this method.
 
         Every term lands in the ONE glossary Provisa creates and owns. A vendor-side term
         is only ever addressed through a stored Provisa binding, nothing outside the

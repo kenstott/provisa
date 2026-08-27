@@ -12,6 +12,8 @@ Preserves original column case (REQ-157).
 
 from __future__ import annotations
 
+from typing import cast
+
 from graphql import GraphQLInputField, GraphQLInputObjectType
 
 from provisa.compiler.schema_directives import OrderDirection
@@ -38,4 +40,7 @@ def build_order_by_input_type(
         if col_name.lower() in column_metadata:
             fields[col_name] = GraphQLInputField(OrderDirection)
 
-    return GraphQLInputObjectType(f"{type_name}OrderBy", fields)
+    # graphql-core declares ``GraphQLNamedType.__new__`` as returning the BASE, so the
+    # constructor call reads as the base type; the cast restates the class actually built (the same
+    # idiom schema_gen/schema_inputs use).
+    return cast(GraphQLInputObjectType, GraphQLInputObjectType(f"{type_name}OrderBy", fields))

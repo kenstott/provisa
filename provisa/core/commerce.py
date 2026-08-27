@@ -170,8 +170,14 @@ def translate_engine_error(exc: BaseException, caps: Any, plan: str) -> Exceptio
     return plugin.translate_engine_error(exc, caps, plan)
 
 
-def enforce_output_cap(result: "ResultStream", caps: Any, plan: str) -> "ResultStream":
-    """Bound ``result`` at the tier's egress ceiling — a rejection, never a truncation."""
+def enforce_output_cap[T: "ResultStream"](result: T, caps: Any, plan: str) -> T:
+    """Bound ``result`` at the tier's egress ceiling — a rejection, never a truncation.
+
+    Generic in the result's own type rather than ``ResultStream`` in and out: a result over the
+    ceiling raises, and one under it comes back as the very object handed in, so the caller keeps
+    the concrete result it built (``QueryResult`` on the buffered terminal) instead of the widened
+    protocol.
+    """
     plugin = load()
     if plugin is None:
         return result

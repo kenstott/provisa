@@ -115,12 +115,29 @@ def bindable_memberships(user_id: str):  # REQ-1476
             orgs.c.name.label("org_name"),
             user_org_memberships.c.joined_via,
             user_org_memberships.c.acknowledged_at,
+            # REQ-1596: the pin rides along with the membership every binding path already reads,
+            # so resolving which environment serves the request costs no extra query. NULL for the
+            # ordinary member, who is served by whichever environment their role lets them name.
+            user_org_memberships.c.env_name,
         )
         .select_from(user_org_memberships.join(orgs, orgs.c.id == user_org_memberships.c.org_id))
         .where(
             user_org_memberships.c.user_id == user_id,
             orgs.c.provisioning_state != AWAITING_CHECKOUT,
         )
+    )
+
+
+def bindable_org(org_id: str):  # REQ-1476
+    """The org ``org_id``, if it exists AND can be worked in, as a select of (org_id,).
+
+    The membership-free counterpart to :func:`bindable_memberships`, for the break-glass account:
+    it holds no memberships by construction, so existence plus the same reservation exclusion is
+    the whole test. Kept here so both statements apply the reservation rule from one place.
+    """
+    return select(orgs.c.id).where(
+        orgs.c.id == org_id,
+        orgs.c.provisioning_state != AWAITING_CHECKOUT,
     )
 
 
@@ -132,16 +149,25 @@ JOINED_VIA_AUTO_JOIN = "auto_join"
 JOINED_VIA_ADMIN = "admin"
 
 
-def membership_values(user_id: str, org_id: str, joined_via: str) -> dict:  # REQ-1478
+def membership_values(
+    user_id: str, org_id: str, joined_via: str, env_name: str | None = None
+) -> dict:  # REQ-1478
     """The membership row to upsert, for the paths that write it on their own transaction's
     connection rather than through ``grant_membership``.
 
     A membership created by the user's own act needs no announcement, so it is born acknowledged;
     one that happened to them is left unacknowledged until they see the notice.
+
+    ``env_name`` pins the membership to one environment (REQ-1596). Defaulted to None because every
+    caller but the open invite writes the ordinary unpinned membership, and it is written here
+    rather than in a second statement so a pinned member never exists unpinned for an instant --
+    that instant would serve a sandbox visitor the org's production data.
     """
     row: dict[str, object] = {"user_id": user_id, "org_id": org_id, "joined_via": joined_via}
     if joined_via == JOINED_VIA_CREATED:
         row["acknowledged_at"] = datetime.now(timezone.utc)
+    if env_name is not None:
+        row["env_name"] = env_name
     return row
 
 

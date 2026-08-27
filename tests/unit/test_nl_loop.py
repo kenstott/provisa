@@ -120,3 +120,118 @@ async def test_prior_error_passed_to_next_iteration():
     # Second prompt should include the error from the first iteration
     assert len(prompts_seen) == 2
     assert "specific error msg" in prompts_seen[1]
+
+
+def _two_table_schema():
+    from graphql import build_schema
+
+    return build_schema(
+        "type Query { playgroups: [Playgroup] playgroup_members: [PlaygroupMember] }\n"
+        "type Playgroup { id: ID! name: String members: [PlaygroupMember] }\n"
+        "type PlaygroupMember { id: ID! petId: ID playgroupId: ID }"
+    )
+
+
+def test_graphql_compiler_rejects_two_root_fields():
+    """Two root fields compile to two SQL statements, which is not a runnable query."""
+    from provisa.nl.loop import make_graphql_compiler
+
+    compile_gql = make_graphql_compiler(_two_table_schema())
+    result = compile_gql(
+        "query PetsPerPlaygroup { playgroups { id name } playgroup_members { id petId } }"
+    )
+    assert not result.valid
+    assert "2 root fields" in result.error
+    assert "playgroups, playgroup_members" in result.error
+
+
+def test_graphql_compiler_rejects_two_operations():
+    from provisa.nl.loop import make_graphql_compiler
+
+    compile_gql = make_graphql_compiler(_two_table_schema())
+    result = compile_gql("query A { playgroups { id } }\nquery B { playgroup_members { id } }")
+    assert not result.valid
+    assert "2 operations" in result.error
+
+
+def test_graphql_compiler_accepts_one_root_field_with_nested_relationship():
+    from provisa.nl.loop import make_graphql_compiler
+
+    compile_gql = make_graphql_compiler(_two_table_schema())
+    result = compile_gql("query PetsPerPlaygroup { playgroups { id name members { id petId } } }")
+    assert result.valid, result.error
+
+
+@pytest.mark.asyncio
+async def test_generation_loop_feeds_the_root_field_error_back():
+    """The model gets the split-query error as corrective feedback, not a downstream parse error."""
+    from provisa.nl.loop import make_graphql_compiler
+
+    prompts_seen: list[str] = []
+
+    class _CaptureLLM(LLMClient):
+        async def complete(self, prompt: str) -> str:
+            prompts_seen.append(prompt)
+            return "query Q { playgroups { id } playgroup_members { id } }"
+
+    query, error = await generation_loop(
+        "count pets per playgroup",
+        "graphql",
+        _SDL,
+        make_graphql_compiler(_two_table_schema()),
+        _CaptureLLM(),
+        max_iterations=2,
+    )
+    assert query is None
+    assert "root field" in error
+    assert "root field" in prompts_seen[1]
+
+
+@pytest.mark.asyncio
+async def test_generation_loop_awaits_an_async_compiler():
+    """The strict chain's compiler compiles through to SQL, so it is a coroutine, not a callable."""
+    from provisa.nl.loop import CompileResult
+
+    seen: list[str] = []
+
+    async def _compile(query: str) -> CompileResult:
+        seen.append(query)
+        if len(seen) == 1:
+            return CompileResult(valid=False, error="compiled to SQL that does not parse")
+        return CompileResult(valid=True)
+
+    class _LLM(LLMClient):
+        async def complete(self, prompt: str) -> str:
+            return f"query Q{len(seen)} {{ playgroups {{ id }} }}"
+
+    query, error = await generation_loop(
+        "count pets per playgroup", "graphql", _SDL, _compile, _LLM(), max_iterations=3
+    )
+    assert error is None
+    assert query == "query Q1 { playgroups { id } }"
+    assert len(seen) == 2
+
+
+@pytest.mark.asyncio
+async def test_generation_loop_feeds_a_sql_compile_error_back():
+    """A SQL error is corrective feedback for the next generation, never a rendered result."""
+    from provisa.nl.loop import CompileResult
+
+    prompts_seen: list[str] = []
+
+    async def _compile(query: str) -> CompileResult:
+        return CompileResult(
+            valid=False, error="The query compiled to SQL that does not parse: Expected SELECT"
+        )
+
+    class _CaptureLLM(LLMClient):
+        async def complete(self, prompt: str) -> str:
+            prompts_seen.append(prompt)
+            return "query Q { playgroups { id } }"
+
+    query, error = await generation_loop(
+        "count pets per playgroup", "graphql", _SDL, _compile, _CaptureLLM(), max_iterations=2
+    )
+    assert query is None
+    assert "does not parse" in error
+    assert "does not parse" in prompts_seen[1]

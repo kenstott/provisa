@@ -395,7 +395,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
         list[dict],
         list[tuple[str, NodeMapping]],
-        list[tuple[str, str, NodeMapping, str, NodeMapping, bool]],
+        # REQ-1586 added the trailing (junction alias, JunctionMapping) element; the annotation
+        # still described the six-element step edge that preceded it.
+        list[
+            tuple[str, str, NodeMapping, str, NodeMapping, bool, tuple[str, JunctionMapping] | None]
+        ],
     ]:
         """Build FROM + JOIN list for a single flat schema path."""
         src_alias = src_var or src_nm.table_name

@@ -31,9 +31,11 @@ from provisa.api.jsonapi.naming import physical_rel_name
 from provisa.grpc.proto_gen import _to_proto_type_name
 from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobStore
 from provisa.nl.loop import (
+    CompileResult,
     LLMClient,
     generation_loop,
     make_graphql_compiler,
+    make_sql_compiler,
 )
 
 if TYPE_CHECKING:
@@ -642,32 +644,53 @@ async def _generate_graphql_sql_from_nl(
         return None, None, None, f"No GraphQL schema for role: {role}"
 
     schema_sdl = _get_schema_sdl(app_state, role)
-    compiler = make_graphql_compiler(schema)
+    validate_graphql = make_graphql_compiler(schema)
+    validate_sql = make_sql_compiler()
     llm_config, llm_api_keys = await _resolve_llm_org_ctx(app_state)
     llm = ProvisaLLMClient("sql_generation", config=llm_config, api_keys=llm_api_keys)
+
+    # The SQL the panel shows is what has to be valid, so the loop validates all the way through
+    # the real compile rather than stopping at "the GraphQL type-checks": generate → schema-validate
+    # → compile to semantic SQL → parse it. Anything that fails becomes the prior_error the next
+    # iteration refines against, so a SQL error is regenerated instead of rendered.
+    compiled_for: dict[str, dict] = {}
+
+    async def _compile_through_to_sql(query: str) -> CompileResult:
+        gql = validate_graphql(query)
+        if not gql.valid:
+            return gql
+        try:
+            results = await _compile_query_governed(role, query, {})
+        except ValueError as exc:
+            return CompileResult(valid=False, error=f"The query does not compile to SQL: {exc}")
+        if not results:
+            return CompileResult(
+                valid=False, error="The query compiled to no fields. Select a root field."
+            )
+        # One root field per document is what the GraphQL validator enforces, and
+        # _compile_query_governed returns one entry per root field, so this is the one statement.
+        compiled = results[0]
+        sql = validate_sql(compiled["semantic_sql"])
+        if not sql.valid:
+            return CompileResult(
+                valid=False,
+                error=f"The query compiled to SQL that does not parse: {sql.error}",
+            )
+        compiled_for[query] = compiled
+        return CompileResult(valid=True)
 
     valid_query, error = await generation_loop(
         nl_query,
         "graphql",
         schema_sdl,
-        compiler,
+        _compile_through_to_sql,
         llm,  # type: ignore[arg-type]
     )
     if error or valid_query is None:
         return None, None, None, error or "GraphQL generation failed"
 
-    try:
-        results = await _compile_query_governed(role, valid_query, {})
-    except ValueError as exc:
-        return valid_query, None, None, str(exc)
-    if not results:
-        return valid_query, None, None, "No query fields found"
-
-    sql = "\n".join(r["semantic_sql"] for r in results)
-    cypher_parts = [r["compiled_cypher"] for r in results if r.get("compiled_cypher")]
-    cypher = "\n".join(cypher_parts) if cypher_parts else None
-
-    return valid_query, sql, cypher, None
+    compiled = compiled_for[valid_query]
+    return valid_query, compiled["semantic_sql"], compiled.get("compiled_cypher"), None
 
 
 async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359

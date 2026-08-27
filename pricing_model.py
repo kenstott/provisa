@@ -64,8 +64,8 @@ N2_GB_HR = 0.004237
 SPOT_DISCOUNT = 0.72
 CUD_1YR_DISCOUNT = 0.37
 
-E2_MICRO_HR = 0.0             # always-free tier, 1 per billing account (us-central1)
-E2_STANDARD_4_HR = 0.134      # control-plane VM when running
+E2_MICRO_HR = 0.0  # always-free tier, 1 per billing account (us-central1)
+E2_STANDARD_4_HR = 0.134  # control-plane VM when running
 
 GKE_CLUSTER_HR = 0.10
 GKE_FREE_ZONAL_CLUSTERS = 1
@@ -74,12 +74,12 @@ CLOUDSQL_F1_MICRO_HR = 0.0105
 CLOUDSQL_STORAGE_GB_MO = 0.17
 CLOUDSQL_DISK_GB = 20
 
-PD_STANDARD_GB_MO = 0.04      # a retained boot disk on a STOPPED VM still bills
+PD_STANDARD_GB_MO = 0.04  # a retained boot disk on a STOPPED VM still bills
 CONTROL_PLANE_DISK_GB = 100
 FRONT_DOOR_DISK_GB = 10
 
-COST_EGRESS_GB = 0.12         # result bytes leaving GCP. The source-cloud leg is
-                              # billed to whoever owns the source — the customer.
+COST_EGRESS_GB = 0.12  # result bytes leaving GCP. The source-cloud leg is
+# billed to whoever owns the source — the customer.
 OBSERVABILITY_MO = 3.0
 REGISTRY_MO = 0.5
 
@@ -109,8 +109,10 @@ shared_node_hr = node_hr(SHARED_NODE_VCPU, SHARED_NODE_GB)
 #   b. Shared node pool min=0 with no active org (REQ-1450, as amended).
 #   c. Control-plane VM idle-stops behind the front door; only its disk bills.
 zero_customer = [
-    ("GKE cluster management (1 zonal, free tier)",
-     max(0, 1 - GKE_FREE_ZONAL_CLUSTERS) * GKE_CLUSTER_HR * HOURS_MO),
+    (
+        "GKE cluster management (1 zonal, free tier)",
+        max(0, 1 - GKE_FREE_ZONAL_CLUSTERS) * GKE_CLUSTER_HR * HOURS_MO,
+    ),
     ("Shared Trino node pool (min=0, no orgs)", 0.0),
     ("Isolated node pools (none provisioned)", 0.0),
     ("Front door e2-micro (always-free tier)", E2_MICRO_HR * HOURS_MO),
@@ -168,10 +170,10 @@ CONTROL_PLANE_WARM_MO = E2_STANDARD_4_HR * HOURS_MO
 # measured in tens of minutes, so the baseline DB moves to a regional pair. Cloud SQL HA
 # cannot use db-f1-micro at all — shared-core tiers have no regional configuration — so it
 # lands on the smallest dedicated-core tier, billed in both zones.
-CLOUDSQL_HA_HR = 0.1400        # db-custom-1-3840, REGIONAL (both zones billed)
-CP_RECOVERY_MINUTES = 5        # published control-plane RTO: reschedule + runtime rebuild
+CLOUDSQL_HA_HR = 0.1400  # db-custom-1-3840, REGIONAL (both zones billed)
+CP_RECOVERY_MINUTES = 5  # published control-plane RTO: reschedule + runtime rebuild
 CP_HA_DEFERRED_MO = E2_STANDARD_4_HR * HOURS_MO + CONTROL_PLANE_DISK_GB * PD_STANDARD_GB_MO
-ENGINE_RECOVERY_MINUTES = 5    # published engine RTO without the Pro HA add-on (cold pod)
+ENGINE_RECOVERY_MINUTES = 5  # published engine RTO without the Pro HA add-on (cold pod)
 ENGINE_HA_RECOVERY_SECONDS = 30  # with it: repoint to a running standby coordinator
 CONTROL_PLANE_HA_MO = (CLOUDSQL_HA_HR - CLOUDSQL_F1_MICRO_HR) * HOURS_MO
 FIXED_FLOOR_MO = ZERO_CUSTOMER_MO + CONTROL_PLANE_WARM_MO + CONTROL_PLANE_HA_MO
@@ -182,23 +184,49 @@ FIXED_FLOOR_MO = ZERO_CUSTOMER_MO + CONTROL_PLANE_WARM_MO + CONTROL_PLANE_HA_MO
 # same Trino event listener REQ-1450 already requires, and the only per-org unit the
 # shared cluster can honestly report.
 STARTER = {
-    "label": "Starter", "unit": "active-hr",
-    "rate": 1.30,            # exact Hasura v2 parity
-    "egress": 0.13,          # exact Hasura v2 parity
-    "incl_units": 0, "incl_gb": 25,
-    "minimum": 25.0,         # monthly minimum, CREDITED against usage
+    "label": "Starter",
+    "unit": "active-hr",
+    "rate": 1.30,  # exact Hasura v2 parity
+    "egress": 0.13,  # exact Hasura v2 parity
+    "incl_units": 0,
+    "incl_gb": 25,
+    "minimum": 25.0,  # monthly minimum, CREDITED against usage
 }
 # Pro sits under Galaxy per engine-hour, and Galaxy's number is per WORKER.
 PRO = {
-    "Pro S": {"label": "Pro S", "unit": "engine-hr", "vcpu": 4, "gb": 32,
-              "rate": 1.50, "egress": 0.13, "incl_units": 0, "incl_gb": 50,
-              "minimum": 99.0},
-    "Pro M": {"label": "Pro M", "unit": "engine-hr", "vcpu": 8, "gb": 64,
-              "rate": 2.75, "egress": 0.13, "incl_units": 0, "incl_gb": 100,
-              "minimum": 199.0},
-    "Pro L": {"label": "Pro L", "unit": "engine-hr", "vcpu": 16, "gb": 128,
-              "rate": 5.50, "egress": 0.13, "incl_units": 0, "incl_gb": 200,
-              "minimum": 399.0},
+    "Pro S": {
+        "label": "Pro S",
+        "unit": "engine-hr",
+        "vcpu": 4,
+        "gb": 32,
+        "rate": 1.50,
+        "egress": 0.13,
+        "incl_units": 0,
+        "incl_gb": 50,
+        "minimum": 99.0,
+    },
+    "Pro M": {
+        "label": "Pro M",
+        "unit": "engine-hr",
+        "vcpu": 8,
+        "gb": 64,
+        "rate": 2.75,
+        "egress": 0.13,
+        "incl_units": 0,
+        "incl_gb": 100,
+        "minimum": 199.0,
+    },
+    "Pro L": {
+        "label": "Pro L",
+        "unit": "engine-hr",
+        "vcpu": 16,
+        "gb": 128,
+        "rate": 5.50,
+        "egress": 0.13,
+        "incl_units": 0,
+        "incl_gb": 200,
+        "minimum": 399.0,
+    },
 }
 # Enterprise (BYO engine) does NOT get a flat platform fee. Removing our compute
 # cost does not remove the scale of what we govern: a 500-vCPU customer runs every
@@ -209,8 +237,15 @@ PRO = {
 # not self-declared. Comp is Starburst ENTERPRISE (self-managed, licensed per vCPU of
 # the customer's own cluster), not Galaxy — Galaxy prices compute we would be selling.
 ENTERPRISE_VCPU_MO = 75.0
-BYO = {"label": "Enterprise", "unit": "vCPU-mo", "rate": ENTERPRISE_VCPU_MO, "egress": 0.13,
-       "incl_units": 0, "incl_gb": 100, "minimum": 999.0}
+BYO = {
+    "label": "Enterprise",
+    "unit": "vCPU-mo",
+    "rate": ENTERPRISE_VCPU_MO,
+    "egress": 0.13,
+    "incl_units": 0,
+    "incl_gb": 100,
+    "minimum": 999.0,
+}
 
 # Pro's own implied capacity price, for calibration: it is what a customer pays us
 # per vCPU when we also supply the compute. Enterprise must land well under it, since
@@ -243,7 +278,7 @@ CAPS = {
     },
 }
 SELF_SERVE_VCPU_CEILING = 128
-ENT_EXAMPLE_VCPU = 64          # a mid-size customer-operated cluster
+ENT_EXAMPLE_VCPU = 64  # a mid-size customer-operated cluster
 
 # Enterprise may take its own CONTROL PLANE, not just its own engine — a dedicated
 # VM, a dedicated Cloud SQL, and its own GKE cluster, none of it shared with any other
@@ -271,7 +306,7 @@ DEDICATED_CP_PRICE_MO = round(DEDICATED_CP_MO * MARKUP, -1)
 # second node, and is therefore billed at the SAME published engine-hour rate as the
 # primary. That keeps the margin identical to a normal Pro engine and needs no separate
 # rate card.
-PRO_HA_MULTIPLIER = 2.0        # primary + pinned standby, both at the published rate
+PRO_HA_MULTIPLIER = 2.0  # primary + pinned standby, both at the published rate
 
 # Enterprise's control plane is the same active-passive design as the baseline
 # (CONTROL_PLANE_HA_MO above), just dedicated to one tenant rather than shared.
@@ -292,7 +327,7 @@ EGRESS_OVERAGE = round(COST_EGRESS_GB * MARKUP, 2)
 TRIAL_DAYS = 14
 TRIAL_ACTIVE_HRS = 40
 TRIAL_EGRESS_GB = 25
-TRIAL_CARD_REQUIRED = True    # card captured at signup with a $0 authorisation.
+TRIAL_CARD_REQUIRED = True  # card captured at signup with a $0 authorisation.
 # Conversion is Neon-shaped: the trial ends by EXPIRY or by CAP, whichever comes
 # first, and at that boundary the org AUTO-CONVERTS to paid Starter rather than
 # being suspended. The card is what makes that a continuation instead of a second
@@ -337,22 +372,31 @@ rule("1. ZERO-CUSTOMER OPERATING COST  (nobody signed up)")
 for label, cost in zero_customer:
     print(f"  {label:52} {cost:8.2f}")
 print(f"  {'-' * 52} {'-' * 8}")
-print(f"  {'TOTAL':52} {ZERO_CUSTOMER_MO:8.2f} /mo   "
-      f"({ZERO_CUSTOMER_MO / 30:.2f}/day)")
+print(f"  {'TOTAL':52} {ZERO_CUSTOMER_MO:8.2f} /mo   ({ZERO_CUSTOMER_MO / 30:.2f}/day)")
 print()
-print(f"  live fixed floor (control plane warm, >=1 customer): "
-      f"${FIXED_FLOOR_MO:.2f}/mo  (${FIXED_FLOOR_MO / 30:.2f}/day)")
-print(f"  each ADDITIONAL shared shard (shared_2, ...): "
-      f"+${GKE_CLUSTER_HR * HOURS_MO:.0f}/mo, no free tier")
+print(
+    f"  live fixed floor (control plane warm, >=1 customer): "
+    f"${FIXED_FLOOR_MO:.2f}/mo  (${FIXED_FLOOR_MO / 30:.2f}/day)"
+)
+print(
+    f"  each ADDITIONAL shared shard (shared_2, ...): "
+    f"+${GKE_CLUSTER_HR * HOURS_MO:.0f}/mo, no free tier"
+)
 
 rule("2. PRICE VS COMPETITIVE ANCHOR")
-print(f"  Hasura Cloud v2 Professional : ${HASURA_ACTIVE_HR:.2f}/active-hr + "
-      f"${HASURA_EGRESS_GB:.2f}/GB, no base fee")
-print(f"  Starburst Galaxy Pro         : {GALAXY_CREDITS_PER_WORKER_HR} credits x "
-      f"${GALAXY_CREDIT:.2f} = ${GALAXY_WORKER_HR:.2f}/worker-hr, no base fee")
+print(
+    f"  Hasura Cloud v2 Professional : ${HASURA_ACTIVE_HR:.2f}/active-hr + "
+    f"${HASURA_EGRESS_GB:.2f}/GB, no base fee"
+)
+print(
+    f"  Starburst Galaxy Pro         : {GALAXY_CREDITS_PER_WORKER_HR} credits x "
+    f"${GALAXY_CREDIT:.2f} = ${GALAXY_WORKER_HR:.2f}/worker-hr, no base fee"
+)
 print()
-print(f"  {'tier':9} {'unit':>11} {'rate':>7} {'anchor':>8} {'vs anchor':>10} "
-      f"{'min/mo':>8} {'incl GB':>8}")
+print(
+    f"  {'tier':9} {'unit':>11} {'rate':>7} {'anchor':>8} {'vs anchor':>10} "
+    f"{'min/mo':>8} {'incl GB':>8}"
+)
 rows = [STARTER] + [PRO[k] for k in ("Pro S", "Pro M", "Pro L")] + [BYO]
 for p in rows:
     if p["label"] == "Starter":
@@ -368,21 +412,31 @@ for p in rows:
     a = f"{anchor:.2f}" if anchor else "—"
     d = f"{delta:+.0%}" if delta is not None else "—"
     r = f"{p['rate']:.2f}" if p["unit"] != "none" else "—"
-    print(f"  {p['label']:9} {p['unit']:>11} {r:>7} {a:>8} {d:>10} "
-          f"{p['minimum']:8.0f} {p['incl_gb']:8d}")
-print(f"  egress: ${STARTER['egress']:.2f}/GB at Hasura parity inside the allowance, "
-      f"${EGRESS_OVERAGE:.2f}/GB beyond it")
+    print(
+        f"  {p['label']:9} {p['unit']:>11} {r:>7} {a:>8} {d:>10} "
+        f"{p['minimum']:8.0f} {p['incl_gb']:8d}"
+    )
+print(
+    f"  egress: ${STARTER['egress']:.2f}/GB at Hasura parity inside the allowance, "
+    f"${EGRESS_OVERAGE:.2f}/GB beyond it"
+)
 print("  Galaxy's rate is PER WORKER; Provisa's is the whole engine, so Pro M at")
-print(f"  ${PRO['Pro M']['rate']:.2f} undercuts a 1-worker Galaxy cluster and is a fraction of a real one.")
+print(
+    f"  ${PRO['Pro M']['rate']:.2f} undercuts a 1-worker Galaxy cluster and is a fraction of a real one."
+)
 
 rule("3. ENGINE COST TO SERVE (REQ-1449)")
 print(f"  {'size':10} {'vCPU':>5} {'GB':>5} {'$/hr':>8} {'$/mo 24x7':>11} {'$/mo CUD':>10}")
 for label, vcpu, gb in SIZES:
     hr = node_hr(vcpu, gb)
-    print(f"  {label:10} {vcpu:5d} {gb:5d} {hr:8.4f} {hr * HOURS_MO:11.0f} "
-          f"{node_hr(vcpu, gb, cud=True) * HOURS_MO:10.0f}")
-print(f"  {'shared':10} {SHARED_NODE_VCPU:5d} {SHARED_NODE_GB:5d} {shared_node_hr:8.4f}"
-      f" {shared_node_hr * HOURS_MO:11.0f} {node_hr(SHARED_NODE_VCPU, SHARED_NODE_GB, cud=True) * HOURS_MO:10.0f}")
+    print(
+        f"  {label:10} {vcpu:5d} {gb:5d} {hr:8.4f} {hr * HOURS_MO:11.0f} "
+        f"{node_hr(vcpu, gb, cud=True) * HOURS_MO:10.0f}"
+    )
+print(
+    f"  {'shared':10} {SHARED_NODE_VCPU:5d} {SHARED_NODE_GB:5d} {shared_node_hr:8.4f}"
+    f" {shared_node_hr * HOURS_MO:11.0f} {node_hr(SHARED_NODE_VCPU, SHARED_NODE_GB, cud=True) * HOURS_MO:10.0f}"
+)
 
 rule("4. MARGINAL MARGIN — must hold >= 75% for essentially every customer")
 print("  Pro (dedicated node pool, cost is the org's own engine hours):")
@@ -398,12 +452,13 @@ for key in ("Pro S", "Pro M", "Pro L"):
         flag = "" if m >= TARGET_GROSS_MARGIN else "  <-- BELOW"
         if m < TARGET_GROSS_MARGIN:
             pro_fail.append((key, units, gb, m))
-        print(f"    {key:8} {units:5d} {gb:5d} {b:9.2f} {c:8.2f} {b - c:9.2f} "
-              f"{m:7.0%}{flag}")
+        print(f"    {key:8} {units:5d} {gb:5d} {b:9.2f} {c:8.2f} {b - c:9.2f} {m:7.0%}{flag}")
 print()
 print("  Starter (shared node, cost divided by how many orgs are concurrently active):")
-print(f"    {'density':>7} {'$/hr cost':>10} {'160hr bill':>11} {'cost':>8} "
-      f"{'gross':>9} {'margin':>7}")
+print(
+    f"    {'density':>7} {'$/hr cost':>10} {'160hr bill':>11} {'cost':>8} "
+    f"{'gross':>9} {'margin':>7}"
+)
 for d in DENSITIES:
     c_hr = starter_cost_hr(d)
     units, gb = 160, STARTER["incl_gb"]
@@ -431,7 +486,7 @@ for n in (1, 2, 3, 5, 8, 10, 15, 25, 50):
     cells = []
     for name, key in scenarios:
         if key is None:
-            c_hr = starter_cost_hr(min(n, 8))     # density tracks org count, capped
+            c_hr = starter_cost_hr(min(n, 8))  # density tracks org count, capped
             b = bill(STARTER, 160, STARTER["incl_gb"])
             c = marginal_cost(c_hr, 160, STARTER["incl_gb"]) + share
         elif key == "BYO":
@@ -450,40 +505,60 @@ for n in (1, 2, 3, 5, 8, 10, 15, 25, 50):
 print()
 for name, _ in scenarios:
     n = crossover.get(name)
-    print(f"  {name:38} crosses {TARGET_GROSS_MARGIN:.0%} fully-loaded at "
-          f"{'N = ' + str(n) if n else 'not on this grid'}")
+    print(
+        f"  {name:38} crosses {TARGET_GROSS_MARGIN:.0%} fully-loaded at "
+        f"{'N = ' + str(n) if n else 'not on this grid'}"
+    )
 
 rule("6. THE THRESHOLD, STATED PLAINLY")
 share1 = FIXED_FLOOR_MO
 b = bill(STARTER, 160, STARTER["incl_gb"])
 c1 = marginal_cost(starter_cost_hr(1), 160, STARTER["incl_gb"]) + share1
-print(f"  Customer #1 (a lone Starter) is fully-loaded {(b - c1) / b:.0%} margin on a "
-      f"${b:.0f} bill —")
+print(
+    f"  Customer #1 (a lone Starter) is fully-loaded {(b - c1) / b:.0%} margin on a ${b:.0f} bill —"
+)
 print(f"  it is carrying the entire ${FIXED_FLOOR_MO:.0f}/mo floor by itself. That is arithmetic,")
 print("  not mispricing: the price already clears 75% marginally at any real density.")
 print()
 print("  What the ramp actually needs is not a higher price, it is a denominator.")
-print(f"  The floor is small enough (${FIXED_FLOOR_MO:.0f}/mo) that a single Pro M or Enterprise org")
-_cx = lambda label: crossover.get(next(n for n, _ in scenarios if n.startswith(label)))
-print(f"  covers it outright. Starter crosses at {_cx('Starter')} orgs, "
-      f"Pro M at {_cx('Pro M')}, Pro S at {_cx('Pro S')} —")
+print(
+    f"  The floor is small enough (${FIXED_FLOOR_MO:.0f}/mo) that a single Pro M or Enterprise org"
+)
+
+
+def _cx(label):
+    return crossover.get(next(n for n, _ in scenarios if n.startswith(label)))
+
+
+print(
+    f"  covers it outright. Starter crosses at {_cx('Starter')} orgs, "
+    f"Pro M at {_cx('Pro M')}, Pro S at {_cx('Pro S')} —"
+)
 print("  the mix matters more than the count: one Enterprise account clears the")
 print(f"  whole floor on its own, at customer #{_cx('Enterprise')}.")
 print()
-print(f"  Do NOT pin the shared node pool above zero. Pinned, it adds "
-      f"${shared_node_hr * HOURS_MO:.0f}/mo of")
+print(
+    f"  Do NOT pin the shared node pool above zero. Pinned, it adds "
+    f"${shared_node_hr * HOURS_MO:.0f}/mo of"
+)
 print("  fixed cost with no customer to attribute it to, which pushes the crossover")
-print(f"  from a ${FIXED_FLOOR_MO:.0f} floor to a ${FIXED_FLOOR_MO + shared_node_hr * HOURS_MO:.0f} one — "
-      f"{(FIXED_FLOOR_MO + shared_node_hr * HOURS_MO) / FIXED_FLOOR_MO:.1f}x the denominator")
+print(
+    f"  from a ${FIXED_FLOOR_MO:.0f} floor to a ${FIXED_FLOOR_MO + shared_node_hr * HOURS_MO:.0f} one — "
+    f"{(FIXED_FLOOR_MO + shared_node_hr * HOURS_MO) / FIXED_FLOOR_MO:.1f}x the denominator"
+)
 print("  needed at every tier. This is why REQ-1450 was amended.")
 
 rule("7. STARTER FREE TRIAL — bounded due-diligence window, not a free tier")
-print(f"  {TRIAL_DAYS} days, capped at {TRIAL_ACTIVE_HRS} active-hr and "
-      f"{TRIAL_EGRESS_GB} GB, shared lane only.")
+print(
+    f"  {TRIAL_DAYS} days, capped at {TRIAL_ACTIVE_HRS} active-hr and "
+    f"{TRIAL_EGRESS_GB} GB, shared lane only."
+)
 print(f"  card at signup: {'required ($0 auth)' if TRIAL_CARD_REQUIRED else 'not required'}")
-print(f"  ends on: expiry OR cap, whichever first -> AUTO-CONVERTS to paid Starter")
-print(f"  warnings: at {TRIAL_WARN_AT_CAP_FRACTION:.0%} of cap, and "
-      f"{TRIAL_WARN_DAYS_BEFORE_EXPIRY} days before expiry")
+print("  ends on: expiry OR cap, whichever first -> AUTO-CONVERTS to paid Starter")
+print(
+    f"  warnings: at {TRIAL_WARN_AT_CAP_FRACTION:.0%} of cap, and "
+    f"{TRIAL_WARN_DAYS_BEFORE_EXPIRY} days before expiry"
+)
 print(f"  first paid month lands at the ${STARTER['minimum']:.0f} minimum if usage stays low")
 print()
 print(f"  {'density':>7} {'worst-case cost':>16} {'  = CAC per trial'}")
@@ -493,13 +568,16 @@ for d in DENSITIES:
 worst = TRIAL_ACTIVE_HRS * starter_cost_hr(1) + TRIAL_EGRESS_GB * COST_EGRESS_GB
 print()
 print(f"  Worst case is ${worst:.2f} per trial — a trialist alone on a shared node")
-print(f"  burning every capped hour. At $500/mo of trial budget that is "
-      f"{int(500 / worst)} concurrent")
+print(
+    f"  burning every capped hour. At $500/mo of trial budget that is {int(500 / worst)} concurrent"
+)
 print("  trials; at realistic density it is several times more.")
 print()
 b160 = bill(STARTER, 160, STARTER["incl_gb"])
 print(f"  Payback: a converted Starter at ${b160:.0f}/mo repays the worst-case trial in")
-print(f"  {worst / (b160 - marginal_cost(starter_cost_hr(4), 160, STARTER['incl_gb'])) * 30:.1f} days of gross profit at density 4.")
+print(
+    f"  {worst / (b160 - marginal_cost(starter_cost_hr(4), 160, STARTER['incl_gb'])) * 30:.1f} days of gross profit at density 4."
+)
 print()
 print("  The caps are the design, not the duration. An expiring window with no usage")
 print("  cap still lets one trialist run a shared node flat out for two weeks, which")
@@ -513,10 +591,14 @@ print("  It also means the subscription_created webhook fires before any revenue
 print("  entitlement must key off subscription STATUS, not off a payment having landed.")
 
 rule("8. WHERE THE COMPS CONSTRAIN THE MARGIN RULE")
-print(f"  Egress at Hasura parity (${HASURA_EGRESS_GB:.2f}/GB) clears only "
-      f"{(HASURA_EGRESS_GB - COST_EGRESS_GB) / HASURA_EGRESS_GB:.0%} on GCP egress.")
-print(f"  It is priced at parity INSIDE the included allowance and at "
-      f"${EGRESS_OVERAGE:.2f}/GB beyond it,")
+print(
+    f"  Egress at Hasura parity (${HASURA_EGRESS_GB:.2f}/GB) clears only "
+    f"{(HASURA_EGRESS_GB - COST_EGRESS_GB) / HASURA_EGRESS_GB:.0%} on GCP egress."
+)
+print(
+    f"  It is priced at parity INSIDE the included allowance and at "
+    f"${EGRESS_OVERAGE:.2f}/GB beyond it,"
+)
 print("  so the headline matches the comp and only genuinely egress-heavy customers")
 print("  pay the real rate. Getting parity to clear 75% on the headline means leaving")
 print("  GCP egress rates, not discounting.")
@@ -532,14 +614,18 @@ else:
 
 rule("9. ENTERPRISE — capacity meter, not a flat fee")
 print(f"  Enterprise bills ${ENTERPRISE_VCPU_MO:.0f} per vCPU-month of the capacity the CUSTOMER")
-print(f"  operates, read from their coordinator (system.runtime.nodes), with a")
+print("  operates, read from their coordinator (system.runtime.nodes), with a")
 print(f"  ${BYO['minimum']:.0f}/mo minimum. A flat platform fee was the model's one real leak:")
 print("  it priced a 500-vCPU bank the same as an 8-vCPU team, while both run every")
 print("  query through the same compiler, governance and catalog path.")
 print()
 print(f"  Pro's implied capacity price (we supply the compute) : ${PRO_VCPU_MO:,.0f}/vCPU-mo")
-print(f"  Enterprise capacity price (customer supplies compute): ${ENTERPRISE_VCPU_MO:,.0f}/vCPU-mo")
-print(f"  ratio: {ENTERPRISE_VCPU_MO / PRO_VCPU_MO:.0%} of Pro — the discount IS the compute they bring,")
+print(
+    f"  Enterprise capacity price (customer supplies compute): ${ENTERPRISE_VCPU_MO:,.0f}/vCPU-mo"
+)
+print(
+    f"  ratio: {ENTERPRISE_VCPU_MO / PRO_VCPU_MO:.0%} of Pro — the discount IS the compute they bring,"
+)
 print("  and it is deliberately not so deep that BYO becomes the arbitrage everyone takes.")
 print()
 print(f"  {'customer vCPU':>14} {'$/mo':>10} {'$/yr':>12}  {'self-serve?':>12}")
@@ -548,17 +634,23 @@ for v in (8, 16, 32, 64, 128, 256, 512):
     ok = "yes" if v <= SELF_SERVE_VCPU_CEILING else "NEGOTIATED"
     print(f"  {v:14d} {m:10,.0f} {m * 12:12,.0f}  {ok:>12}")
 print()
-print(f"  Dedicated control plane (own VM, own Cloud SQL, own GKE cluster):")
-print(f"    cost ${DEDICATED_CP_MO:,.2f}/mo -> ${DEDICATED_CP_PRICE_MO:,.0f}/mo at the {MARKUP:.0f}x markup,")
+print("  Dedicated control plane (own VM, own Cloud SQL, own GKE cluster):")
+print(
+    f"    cost ${DEDICATED_CP_MO:,.2f}/mo -> ${DEDICATED_CP_PRICE_MO:,.0f}/mo at the {MARKUP:.0f}x markup,"
+)
 print("    ADDED to the capacity licence. It is the only configuration where the")
 print("    customer shares nothing with another org, and it lifts them clear of the")
 print("    REQ-1451 single-replica control plane, so their rebuilds queue behind nobody.")
-print(f"    Its own floor is a full platform floor plus ${GKE_CLUSTER_HR * HOURS_MO:.0f}/mo of GKE management,")
+print(
+    f"    Its own floor is a full platform floor plus ${GKE_CLUSTER_HR * HOURS_MO:.0f}/mo of GKE management,"
+)
 print("    because the free-tier zonal cluster is already spent on the shared one.")
 print()
 print("  Dedicated control plane WITH the regional database (isolation, not a")
 print("  different availability class):")
-print(f"    cost ${DEDICATED_CP_HA_MO:,.2f}/mo -> ${DEDICATED_CP_HA_PRICE_MO:,.0f}/mo at the {MARKUP:.0f}x markup")
+print(
+    f"    cost ${DEDICATED_CP_HA_MO:,.2f}/mo -> ${DEDICATED_CP_HA_PRICE_MO:,.0f}/mo at the {MARKUP:.0f}x markup"
+)
 print("    What Enterprise buys here is ISOLATION. Availability is already baseline,")
 print("    and the recovery target is the same one everybody else gets.")
 
@@ -567,13 +659,23 @@ print("  The SLO is stated in MINUTES and sold as minutes. Every tier gets it; n
 print("  it is an upsell, because a control-plane outage takes out every org at once.")
 print()
 print(f"  {'surface':<34} {'recovery target':>18}  who")
-print(f"  {'control plane (reschedule + rebuild)':<38} {f'~{CP_RECOVERY_MINUTES} min':>14}  every tier, baseline")
+print(
+    f"  {'control plane (reschedule + rebuild)':<38} {f'~{CP_RECOVERY_MINUTES} min':>14}  every tier, baseline"
+)
 print(f"  {'admin DB (regional Cloud SQL)':<34} {'~1-2 min':>18}  every tier, baseline")
-print(f"  {'engine, no add-on (cold pod)':<34} {f'~{ENGINE_RECOVERY_MINUTES} min':>18}  Starter + Pro")
-print(f"  {'engine, Pro HA add-on (repoint)':<34} {f'~{ENGINE_HA_RECOVERY_SECONDS}s':>18}  Pro only")
+print(
+    f"  {'engine, no add-on (cold pod)':<34} {f'~{ENGINE_RECOVERY_MINUTES} min':>18}  Starter + Pro"
+)
+print(
+    f"  {'engine, Pro HA add-on (repoint)':<34} {f'~{ENGINE_HA_RECOVERY_SECONDS}s':>18}  Pro only"
+)
 print()
-print(f"  A WARM STANDBY control plane (${CP_HA_DEFERRED_MO:,.0f}/mo) is DEFERRED, not refused. It would take")
-print(f"  the control-plane target from ~{CP_RECOVERY_MINUTES} min to ~1 min, which is a zone-outage")
+print(
+    f"  A WARM STANDBY control plane (${CP_HA_DEFERRED_MO:,.0f}/mo) is DEFERRED, not refused. It would take"
+)
+print(
+    f"  the control-plane target from ~{CP_RECOVERY_MINUTES} min to ~1 min, which is a zone-outage"
+)
 print("  guarantee neither comp offers a $25 customer and the market does not yet expect.")
 print("  It goes in when the first Pro or Enterprise account lands — the month it pays for")
 print("  itself and the month a contract starts asking. The REGIONAL DATABASE is not")
@@ -603,12 +705,16 @@ print("  PRO HA is an ADD-ON that buys ONE thing: recovery time on the ENGINE, s
 print("  instead of a cold pod start. It is simple to build — a coordinator holds no data")
 print("  and reissues its catalogs from the org's config on every runtime build, so a")
 print("  standby is a second pod plus a repoint, no replication, no state to move.")
-print(f"    price: {PRO_HA_MULTIPLIER:.0f}x the size's engine-hour rate (primary + PINNED standby),")
+print(
+    f"    price: {PRO_HA_MULTIPLIER:.0f}x the size's engine-hour rate (primary + PINNED standby),"
+)
 print("           because a scale-to-zero standby is not a standby. Same rate, same margin.")
 for label, vcpu, gb in SIZES:
     p_ = PRO[label]
-    print(f"      {label:6} ${p_['rate']:.2f}/hr -> ${p_['rate'] * PRO_HA_MULTIPLIER:.2f}/hr HA "
-          f"(${p_['rate'] * PRO_HA_MULTIPLIER * HOURS_MO:,.0f}/mo at 24x7)")
+    print(
+        f"      {label:6} ${p_['rate']:.2f}/hr -> ${p_['rate'] * PRO_HA_MULTIPLIER:.2f}/hr HA "
+        f"(${p_['rate'] * PRO_HA_MULTIPLIER * HOURS_MO:,.0f}/mo at 24x7)"
+    )
 print("    It does NOT shorten the control-plane target and does NOT stop a query from")
 print("    dying on failover. Marketing it as zero downtime is the one claim to refuse.")
 print()
@@ -652,9 +758,9 @@ print("  an SLA — which is not a thing an hourly rate can express.")
 # standby control-plane VM is billed IN FULL here: the floor carries no standby at all
 # (section 9b deferred it), so there is nothing to relocate and region B's plane is net
 # new spend rather than a move.
-CROSS_REGION_EGRESS_GB = 0.02          # same-continent inter-region
-DR_WAL_GB_MO = 50                      # admin-DB change volume shipped to the replica
-CLOUDSQL_REPLICA_HR = CLOUDSQL_HA_HR / 2   # cross-region replica: one zone, not a pair
+CROSS_REGION_EGRESS_GB = 0.02  # same-continent inter-region
+DR_WAL_GB_MO = 50  # admin-DB change volume shipped to the replica
+CLOUDSQL_REPLICA_HR = CLOUDSQL_HA_HR / 2  # cross-region replica: one zone, not a pair
 
 DR_WARM_CP = [
     ("Standby control-plane VM in region B", CP_HA_DEFERRED_MO),  # net new: no standby in the floor
@@ -664,7 +770,7 @@ DR_WARM_CP = [
     ("Second GKE cluster (free zonal tier already spent)", GKE_CLUSTER_HR * HOURS_MO),
 ]
 DR_WARM_CP_MO = sum(c for _, c in DR_WARM_CP)
-DR_WARM_ENGINE_MO = shared_node_hr * HOURS_MO      # a PINNED shard node; min=0 is not warm
+DR_WARM_ENGINE_MO = shared_node_hr * HOURS_MO  # a PINNED shard node; min=0 is not warm
 DR_FULL_MO = DR_WARM_CP_MO + DR_WARM_ENGINE_MO
 
 rule("11. FULL WARM STANDBY OF THE SHARED LANE (second region)")
@@ -676,34 +782,52 @@ print(f"  {'PINNED warm shared shard node in region B':<52} {DR_WARM_ENGINE_MO:8
 print(f"  {'FULL warm standby of the lane':<52} {DR_FULL_MO:8,.2f} /mo")
 print()
 print(f"  live floor today                  ${FIXED_FLOOR_MO:8,.2f}/mo")
-print(f"  + warm CP/DB only (engine cold)    ${FIXED_FLOOR_MO + DR_WARM_CP_MO:8,.2f}/mo   "
-      f"({(FIXED_FLOOR_MO + DR_WARM_CP_MO) / FIXED_FLOOR_MO:.1f}x)")
-print(f"  + FULL warm lane                   ${FIXED_FLOOR_MO + DR_FULL_MO:8,.2f}/mo   "
-      f"({(FIXED_FLOOR_MO + DR_FULL_MO) / FIXED_FLOOR_MO:.1f}x)")
+print(
+    f"  + warm CP/DB only (engine cold)    ${FIXED_FLOOR_MO + DR_WARM_CP_MO:8,.2f}/mo   "
+    f"({(FIXED_FLOOR_MO + DR_WARM_CP_MO) / FIXED_FLOOR_MO:.1f}x)"
+)
+print(
+    f"  + FULL warm lane                   ${FIXED_FLOOR_MO + DR_FULL_MO:8,.2f}/mo   "
+    f"({(FIXED_FLOOR_MO + DR_FULL_MO) / FIXED_FLOOR_MO:.1f}x)"
+)
 print()
 print("  The split is the whole answer: the CONTROL PLANE half is cheap and the ENGINE")
-print(f"  half is not. Warming the plane and its database costs ${DR_WARM_CP_MO:,.0f}/mo — a standby VM")
-print(f"  (${CP_HA_DEFERRED_MO:,.0f}, net new since the floor carries none), a cross-region replica and a")
+print(
+    f"  half is not. Warming the plane and its database costs ${DR_WARM_CP_MO:,.0f}/mo — a standby VM"
+)
+print(
+    f"  (${CP_HA_DEFERRED_MO:,.0f}, net new since the floor carries none), a cross-region replica and a"
+)
 print(f"  second cluster fee. Warming the SHARD costs ${DR_WARM_ENGINE_MO:,.0f}/mo,")
-print(f"  {DR_WARM_ENGINE_MO / DR_WARM_CP_MO:.1f}x more, because a node pool at min=0 is not a standby — and pinning one")
+print(
+    f"  {DR_WARM_ENGINE_MO / DR_WARM_CP_MO:.1f}x more, because a node pool at min=0 is not a standby — and pinning one"
+)
 print("  in region B is exactly the fixed cost REQ-1450 was amended to refuse in region A.")
 print()
 print("  What each buys, stated as the recovery target it changes:")
-print(f"    region outage today                    hours (restore from backup)")
-print(f"    with warm CP/DB, cold engine           ~{ENGINE_RECOVERY_MINUTES + CP_RECOVERY_MINUTES} min "
-      f"(plane repoints, shard scales 0->1)")
+print("    region outage today                    hours (restore from backup)")
+print(
+    f"    with warm CP/DB, cold engine           ~{ENGINE_RECOVERY_MINUTES + CP_RECOVERY_MINUTES} min "
+    f"(plane repoints, shard scales 0->1)"
+)
 print(f"    with the FULL warm lane                ~{CP_RECOVERY_MINUTES} min (repoint only)")
 print()
 print("  So the recommendation is the ASYMMETRIC standby: warm plane, warm replicated")
 print("  database, second cluster present, node pool at min=0. It turns a multi-hour")
-print(f"  restore into a ~{ENGINE_RECOVERY_MINUTES + CP_RECOVERY_MINUTES}-minute recovery for {DR_WARM_CP_MO / DR_FULL_MO:.0%} of the cost, and the")
-print(f"  {ENGINE_RECOVERY_MINUTES} extra minutes it concedes are a cold shard start — which is exactly what")
+print(
+    f"  restore into a ~{ENGINE_RECOVERY_MINUTES + CP_RECOVERY_MINUTES}-minute recovery for {DR_WARM_CP_MO / DR_FULL_MO:.0%} of the cost, and the"
+)
+print(
+    f"  {ENGINE_RECOVERY_MINUTES} extra minutes it concedes are a cold shard start — which is exactly what"
+)
 print("  Starter already accepts every day under REQ-1450's scale-to-zero.")
 print()
 n_needed_cp = (DR_WARM_CP_MO * MARKUP) / (STARTER["minimum"])
 n_needed_full = (DR_FULL_MO * MARKUP) / (STARTER["minimum"])
 print("  Who pays for it, if it is not sold separately:")
-print(f"    warm CP/DB, recovered at the {MARKUP:.0f}x markup, needs {n_needed_cp:,.0f} Starter minimums")
+print(
+    f"    warm CP/DB, recovered at the {MARKUP:.0f}x markup, needs {n_needed_cp:,.0f} Starter minimums"
+)
 print(f"    the FULL warm lane needs {n_needed_full:,.0f} Starter minimums")
 print("  That is the argument for pricing regional standby as a NEGOTIATED Enterprise")
 print("  item rather than a floor line: the shared lane cannot absorb the engine half,")

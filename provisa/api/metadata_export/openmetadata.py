@@ -153,7 +153,9 @@ def _glossary_name(org_id: str) -> str:
 class Entity:  # REQ-1069
     """One upsert: which OpenMetadata collection, what body, and the asset it is about."""
 
-    asset: AssetRef
+    # The union AssetError.asset carries, for the same reason: an upsert may be about a
+    # target-side object that is not a Provisa asset (a classification, a tag, a service).
+    asset: AssetRef | AssetRefStub
     path: str
     kind: str
     body: dict[str, Any]

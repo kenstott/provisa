@@ -98,12 +98,24 @@ def _is_entitled(org_id: str) -> bool:
     return True
 
 
+def _tenant_db():
+    """The org's tenant database, or a 503.
+
+    The export settings live in it, so a runtime with none bound cannot answer this endpoint at
+    all -- that is a wiring fault to surface, not an empty settings document to serve.
+    """
+    from provisa.api.app import state
+
+    if state.tenant_db is None:
+        raise ApiError(503, "metadata_export.database_not_connected", "Database not connected")
+    return state.tenant_db
+
+
 async def _stored() -> dict[str, Any]:
     """The org's export settings as stored, with the deployment's beneath them."""
-    from provisa.api.app import state
     from provisa.core.org_settings import resolve_org_config
 
-    cfg = await resolve_org_config(state.tenant_db)
+    cfg = await resolve_org_config(_tenant_db())
     return dict(cfg.get(CONFIG_KEY) or {})
 
 
@@ -176,7 +188,7 @@ async def set_metadata_export(request: Request) -> dict:  # REQ-1074
     config = _export_config(updated)
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
-        state.tenant_db,
+        _tenant_db(),
         {CONFIG_KEY: updated},
         updated_by=getattr(identity, "user_id", "anonymous"),
     )

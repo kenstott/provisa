@@ -16,7 +16,10 @@ repos:
       - id: pyright
         name: pyright
         language: system
-        entry: pyright
+        # The project venv, not whatever pyright is first on PATH: the checker resolves imports
+        # against the interpreter it runs under, so a system pyright types the code against a
+        # different site-packages than CI's `uv run pyright` and the two disagree.
+        entry: .venv/bin/python -m pyright
         args: ["provisa"]
         pass_filenames: false
         types: [python]

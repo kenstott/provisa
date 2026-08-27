@@ -30,7 +30,9 @@ from provisa.federation.duckdb_extensions import (
 
 async def _main() -> int:
     ext_dir = extension_directory()
-    print(f"Staging DuckDB federation extensions into: {ext_dir or 'DuckDB default cache (~/.duckdb)'}")
+    print(
+        f"Staging DuckDB federation extensions into: {ext_dir or 'DuckDB default cache (~/.duckdb)'}"
+    )
     probes = await stage_and_probe()
 
     width = max(len(p.key) for p in probes)
@@ -39,7 +41,9 @@ async def _main() -> int:
         mark = "OK  " if p.available else "FAIL"
         if not p.available:
             failed += 1
-        line = f"  [{mark}] {p.key.ljust(width)}  {p.extension:<10} -> {p.source_type:<12} {p.reason}"
+        line = (
+            f"  [{mark}] {p.key.ljust(width)}  {p.extension:<10} -> {p.source_type:<12} {p.reason}"
+        )
         print(line)
         if not p.available and p.remediation:
             print(f"         remediation: {p.remediation}")

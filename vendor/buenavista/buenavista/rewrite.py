@@ -36,7 +36,7 @@ class Rewriter:
             for stmt in stmts:
                 ret.append(self.rewrite_one(stmt))
             return ";\n".join(self._write.generate(s) for s in ret)
-        except:
+        except Exception:
             # TODO: log this
             return sql
 

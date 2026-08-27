@@ -25,6 +25,7 @@ def client():
 
 # ── query() ──────────────────────────────────────────────────────────────────
 
+
 @respx.mock
 def test_query_returns_raw_response(client):
     respx.post(f"{BASE}/data/query").mock(
@@ -68,6 +69,7 @@ def test_query_no_token(capfd):
 
 # ── query_df() ───────────────────────────────────────────────────────────────
 
+
 @respx.mock
 def test_query_df_returns_dataframe_graphql(client):
     respx.post(f"{BASE}/data/query").mock(
@@ -85,7 +87,11 @@ def test_query_df_returns_dataframe_graphql(client):
 def test_query_df_returns_dataframe_sql(client):
     respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(
-            200, json={"columns": ["id", "amount"], "rows": [{"id": 1, "amount": 9.99}, {"id": 2, "amount": 4.50}]}
+            200,
+            json={
+                "columns": ["id", "amount"],
+                "rows": [{"id": 1, "amount": 9.99}, {"id": 2, "amount": 4.50}],
+            },
         )
     )
     df = client.query_df("SELECT id, amount FROM orders")
@@ -97,15 +103,14 @@ def test_query_df_returns_dataframe_sql(client):
 @respx.mock
 def test_query_df_raises_on_graphql_errors(client):
     respx.post(f"{BASE}/data/query").mock(
-        return_value=httpx.Response(
-            200, json={"errors": [{"message": "field 'bad' not found"}]}
-        )
+        return_value=httpx.Response(200, json={"errors": [{"message": "field 'bad' not found"}]})
     )
     with pytest.raises(RuntimeError, match="field 'bad' not found"):
         client.query_df("{ bad { field } }")
 
 
 # ── aquery() ─────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -128,6 +133,7 @@ async def test_aquery_sends_role_header(client):
 
 
 # ── _flight_ticket() ─────────────────────────────────────────────────────────
+
 
 def test_flight_ticket_encodes_query_and_role(client):
     ticket = client._flight_ticket("{ orders { id } }", None)

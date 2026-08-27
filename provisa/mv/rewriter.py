@@ -136,7 +136,12 @@ def _match_junction_to_mv(  # REQ-1586
 
 
 def _has_type_predicate(sql: str, via_alias: str, jp: JoinPattern) -> bool:  # REQ-1586
-    """True when the query restricts the junction alias to the MV's discriminator value."""
+    """True when the query restricts the junction alias to the MV's discriminator value.
+
+    Called only for a pattern carrying a discriminator, and JoinPattern.__post_init__ declares
+    ``via_type_column`` and ``via_type_value`` together, so both are present here.
+    """
+    assert jp.via_type_column is not None and jp.via_type_value is not None
     literal = jp.via_type_value.replace("'", "''")
     pattern = (
         rf'"{re.escape(via_alias)}"\."{re.escape(jp.via_type_column)}"\s*=\s*'

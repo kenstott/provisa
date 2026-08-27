@@ -39,6 +39,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib.util import find_spec
+from typing import Literal, overload
 
 from provisa.core.secrets import SecretsProvider
 
@@ -125,11 +126,23 @@ def load_secrets_extensions() -> None:
         pass
 
 
+@overload
+def _cfg(config: dict, key: str, *, required: Literal[True] = True) -> str: ...
+
+
+@overload
+def _cfg(config: dict, key: str, *, required: Literal[False]) -> str | None: ...
+
+
 def _cfg(config: dict, key: str, *, required: bool = True) -> str | None:
     """One config value, with ``${env:...}`` resolved.
 
     ENV ONLY. A backend's own credential cannot come out of the store that credential opens, so
     the resolution here is restricted to the process environment (REQ-1557).
+
+    Overloaded on ``required`` because the two modes answer different questions: a required key
+    raises rather than returning, so its result is a ``str`` and the provider constructors that
+    take one are handed one.
     """
     from provisa.core.secrets import resolve_secrets
 

@@ -212,6 +212,15 @@ resource "google_sql_user" "provisa" {
 locals {
   all_labels = merge(var.labels, { project = "provisa", deployment = "saas" })
 
+  # REQ-1330: the invite link's origin. The SaaS control plane IS `cloud.<dns_zone>` (dns.tf
+  # creates that record and the org wildcard beside it), so the build knows the address without
+  # being told it twice — `mail_base_url` is only for a deployment whose UI is reached at some
+  # other origin. A blank on both, with no host to name, fails the plan below rather than booting
+  # a node that accepts invitations it cannot send.
+  mail_base_url = var.mail_base_url != "" ? var.mail_base_url : (
+    var.dns_zone != "" ? "https://cloud.${var.dns_zone}" : ""
+  )
+
   images_zip      = "provisa-core-images-amd64-${var.provisa_version}.zip"
   plugins_tarball = "provisa-trino-plugins-${var.provisa_version}.tar.gz"
 
@@ -280,7 +289,7 @@ locals {
     export PROVISA_MAIL_PROVIDER="resend"
     export PROVISA_EMAIL_API_KEY='${var.email_api_key}'
     export PROVISA_MAIL_FROM="${var.mail_from_address}"
-    export PROVISA_MAIL_BASE_URL="${var.mail_base_url}"
+    export PROVISA_MAIL_BASE_URL="${local.mail_base_url}"
     # REQ-125: break-glass superuser. first-launch persists these into the systemd
     # EnvironmentFile and the config's auth.superuser block resolves them by ${"$"}{env:...}.
     export PROVISA_SUPERUSER_USERNAME='${var.superuser_username}'
@@ -459,6 +468,16 @@ resource "google_compute_instance" "coordinator" {
   # The front door stops/starts this instance; terraform must not "fix" the
   # resulting TERMINATED state (or flag it as drift) on the next apply.
   desired_status = null
+
+  lifecycle {
+    # REQ-1330: an invitation is undeliverable without an absolute origin to link to, and the
+    # node has no way to discover one, so a build that names neither a dns_zone nor a
+    # mail_base_url is refused here instead of at the first invite.
+    precondition {
+      condition     = local.mail_base_url != ""
+      error_message = "Set dns_zone (the control plane is cloud.<dns_zone>) or mail_base_url; invite links need an absolute origin."
+    }
+  }
 
   depends_on = [google_sql_user.provisa]
 

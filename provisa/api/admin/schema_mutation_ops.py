@@ -36,8 +36,6 @@ from provisa.api.admin._live_mappers import table_model_from_input as _table_mod
 from provisa.api.admin.schema_common import _queue_creation_request, _sync_view_mv
 
 if TYPE_CHECKING:
-    import asyncpg
-
     from strawberry.types.info import Info as StrawberryInfo
 
     from provisa.core.database import Connection
@@ -320,7 +318,7 @@ async def register_table(
                 input.source_id,
                 input.schema_name,
                 input.table_name,
-                cast("asyncpg.Connection", _conn),  # provisa Connection proxies asyncpg calls
+                _conn,
                 hasura_v2_relationship_style=_v2_style,
             )
             if fk_count:

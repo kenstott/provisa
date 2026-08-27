@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
+from provisa.core.egress import CountingWriter
+
 import jwt
 import pytest
 
@@ -238,6 +240,11 @@ class TestReq890OidcAuth:
         handler.wfile = MagicMock()
         handler.wfile.write = MagicMock()
         handler.wfile.flush = MagicMock()
+        # socketserver's setup() is bypassed by object.__new__, so the metering writer admitting
+        # the connection binds the session's org onto (REQ-1452) is installed here as setup()
+        # installs it.
+        handler._meter = CountingWriter(handler.wfile, None)
+        handler.wfile = handler._meter
         handler.send_authentication_ok = MagicMock()
         handler.handle_post_auth = MagicMock()
         handler._send_pg_error = MagicMock()
@@ -333,7 +340,9 @@ class TestPgwireBasicAndPat:
         from provisa.pgwire.server import ProvisaHandler
 
         handler = object.__new__(ProvisaHandler)
-        handler.wfile = MagicMock()
+        # As setup() builds it (REQ-1452), which object.__new__ bypasses.
+        handler._meter = CountingWriter(MagicMock(), None)
+        handler.wfile = handler._meter
         handler.send_authentication_ok = MagicMock()
         handler.handle_post_auth = MagicMock()
         handler._send_pg_error = MagicMock()

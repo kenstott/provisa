@@ -1528,8 +1528,8 @@ class TestRelationshipDirectionAndAmbiguity:
             },
         )
         sql = (
-            'SELECT playgroups.name AS playgroup_name, pets.breed_name, '
-            'COUNT(pets.id) AS pet_count '
+            "SELECT playgroups.name AS playgroup_name, pets.breed_name, "
+            "COUNT(pets.id) AS pet_count "
             'FROM "pet_store"."playgroups" AS playgroups '
             'JOIN "pet_store"."pets" AS pets ON pets.id = playgroups.id '
             "LIMIT 100"

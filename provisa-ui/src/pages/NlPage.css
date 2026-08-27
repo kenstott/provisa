@@ -157,13 +157,12 @@
   cursor: not-allowed;
 }
 
+/* Mantine's Alert root sets overflow:hidden, which makes min-height:auto resolve to 0 for a flex
+   item — so as a child of the .nl-page column it is squashed below its own padding and the message
+   is clipped mid-descender instead of sitting centred in the bar. Same reason .nl-guide holds its
+   size above. */
 .nl-global-error {
-  padding: 8px 12px;
-  background: hsl(0, 50%, 20%);
-  border: 1px solid hsl(0, 70%, 35%);
-  border-radius: 6px;
-  color: hsl(0, 80%, 75%);
-  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .nl-panels {

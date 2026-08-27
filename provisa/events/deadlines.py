@@ -33,7 +33,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
-from provisa.events.calendars import Calendar, Grain, NthWeekday, Window, window_for
+from provisa.events.calendars import (
+    Calendar,
+    Grain,
+    NthWeekday,
+    RRuleRecurrence,
+    Window,
+    window_for,
+)
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -112,7 +119,9 @@ class PeriodicCalendar:
     fire pegs as-of ``target.end``."""
 
     calendar: Calendar
-    grain: str | Grain | NthWeekday  # a nesting grain OR an anchored recurrence (REQ-1168)
+    # A nesting grain, an anchored nth-weekday recurrence (REQ-1168), or a full RRULE
+    # (REQ-1169) -- ``window_for`` tiles all three, so all three reach here from config.
+    grain: str | Grain | NthWeekday | RRuleRecurrence
     allowed_lateness: float = 0.0
     business_day: bool = False
 

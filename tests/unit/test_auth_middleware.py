@@ -43,6 +43,8 @@ def _make_app(
     default_role="analyst",
     superuser=None,
     superuser_session_secret=None,
+    multitenancy=False,
+    admin_pool=None,
 ):
     app = FastAPI()
     app.add_middleware(
@@ -52,6 +54,8 @@ def _make_app(
         default_role=default_role,
         superuser=superuser,
         superuser_session_secret=superuser_session_secret,
+        multitenancy=multitenancy,
+        admin_pool=admin_pool,
     )
 
     @app.get("/health")
@@ -76,6 +80,7 @@ def _make_app(
             "user_id": request.state.identity.user_id,
             "role": request.state.role,
             "assignments": [a.role_id for a in (getattr(request.state, "assignments", None) or [])],
+            "active_org_id": getattr(request.state, "active_org_id", None),
         }
 
     return app
@@ -470,3 +475,85 @@ def test_single_scheme_provider_unchanged():
     client = TestClient(_make_app(provider=MockProvider()))
     assert client.get("/test", headers={"Authorization": "Bearer valid-token"}).status_code == 200
     assert client.get("/test", headers={"Authorization": "Basic valid-token"}).status_code == 401
+
+
+# --- REQ-1276: the Host subdomain binds the break-glass account too ----------
+
+
+class _FakeAdminPool:
+    """Admin plane holding exactly the orgs in ``org_ids``."""
+
+    def __init__(self, org_ids: set[str]) -> None:
+        self._org_ids = org_ids
+        self.statements: list[object] = []  # object-ok: SQLAlchemy Select
+
+    def acquire(self):
+        pool = self
+
+        class _Ctx:
+            async def __aenter__(self):
+                return pool
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Ctx()
+
+    async def execute_core(self, stmt):
+        self.statements.append(stmt)
+        compiled = stmt.compile()
+        wanted = compiled.params["id_1"]
+
+        class _Result:
+            def __init__(self, row):
+                self._row = row
+
+            def fetchone(self):
+                return self._row
+
+        return _Result((wanted,) if wanted in self._org_ids else None)
+
+
+def test_superuser_binds_the_org_named_by_the_host():
+    """A break-glass call to `<org>.provisa.dev` answers from THAT org, not the default one."""
+    pool = _FakeAdminPool({"ks"})
+    app = _make_app(provider=MockProvider(), superuser=_SU, multitenancy=True, admin_pool=pool)
+    resp = TestClient(app).get(
+        "/test", headers={"Authorization": _basic("root", "s3cr3t"), "Host": "ks.provisa.dev"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "ks"
+
+
+def test_superuser_on_an_unknown_org_host_is_refused_not_defaulted():
+    """An org the admin plane does not hold is a 404 — never a quiet fall back to the default."""
+    pool = _FakeAdminPool(set())
+    app = _make_app(provider=MockProvider(), superuser=_SU, multitenancy=True, admin_pool=pool)
+    resp = TestClient(app).get(
+        "/test", headers={"Authorization": _basic("root", "s3cr3t"), "Host": "nope.provisa.dev"}
+    )
+    assert resp.status_code == 404
+
+
+def test_superuser_on_the_control_plane_host_binds_the_default_org():
+    """`cloud.*` carries no org subdomain, so the break-glass account acts in the default org."""
+    pool = _FakeAdminPool({"ks"})
+    app = _make_app(provider=MockProvider(), superuser=_SU, multitenancy=True, admin_pool=pool)
+    resp = TestClient(app).get(
+        "/test", headers={"Authorization": _basic("root", "s3cr3t"), "Host": "cloud.provisa.dev"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "root"
+    assert pool.statements == []
+
+
+def test_superuser_single_org_deployment_ignores_the_host():
+    """Without multitenancy there is one org; the subdomain names nothing to bind."""
+    pool = _FakeAdminPool({"ks"})
+    app = _make_app(provider=MockProvider(), superuser=_SU, multitenancy=False, admin_pool=pool)
+    resp = TestClient(app).get(
+        "/test", headers={"Authorization": _basic("root", "s3cr3t"), "Host": "ks.provisa.dev"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_org_id"] == "root"
+    assert pool.statements == []

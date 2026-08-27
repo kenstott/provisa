@@ -419,7 +419,31 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # role per plane, and the acting role is the data-plane one either way.
                 request.state.role = ORG_ADMIN_ROLE
                 request.state.assignments = su_assignments
-                request.state.active_org_id = self._default_org_id
+                # REQ-1276: the Host subdomain is the SOLE org source, and it binds the
+                # break-glass account like everyone else. Pinning the default org here answered a
+                # request to `<org>.provisa.dev` out of the bootstrap org's schema instead — a
+                # silently wrong org rather than an error, so a per-org probe (SDL, NL, any data
+                # surface) reported another tenant's model as that org's. Break-glass needs no
+                # membership — that is what it is for, and REQ-1327's membership rule governs the
+                # provider path below — but it does not get to ignore the org the caller named.
+                su_org = _requested_org_from_host(request)
+                if su_org is None or not self._multitenancy or su_org == self._default_org_id:
+                    request.state.active_org_id = self._default_org_id
+                    return None
+                if self._admin_pool is None:
+                    return _deny(
+                        request,
+                        503,
+                        f"Cannot resolve org {su_org!r}: no admin plane",
+                        cause="no_admin_pool",
+                    )
+                from provisa.core.org_membership import bindable_org
+
+                async with self._admin_pool.acquire() as conn:
+                    _org_row = (await conn.execute_core(bindable_org(su_org))).fetchone()
+                if _org_row is None:
+                    return _deny(request, 404, f"No org {su_org!r}", cause="unknown_org")
+                request.state.active_org_id = su_org
                 return None
 
         # A provider may accept more than one credential presentation (REQ-124: the basic

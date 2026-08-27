@@ -30,6 +30,13 @@ from provisa.core.schema_admin import (
     user_org_memberships,
     user_profiles,
 )
+from provisa.api.invite_env import redeem_env, release_env
+from provisa.core.org_invite import (
+    INVITE_REDEMPTION_COLUMNS,
+    is_spent,
+    spend,
+    unspent,
+)
 from provisa.core.org_membership import (
     JOINED_VIA_INVITE,
     membership_values,
@@ -377,7 +384,7 @@ async def my_invites(request: Request):  # REQ-1287
             .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
             .where(
                 func.lower(org_invites.c.email) == email.strip().lower(),
-                org_invites.c.used_at.is_(None),
+                unspent(),  # REQ-1594
                 org_invites.c.expires_at > now,
             )
             .order_by(org_invites.c.expires_at)
@@ -513,7 +520,8 @@ async def get_invite(token: str):  # REQ-516
                 orgs.c.name.label("org_name"),
                 org_invites.c.role_id,
                 org_invites.c.expires_at,
-                org_invites.c.used_at,
+                org_invites.c.uses,
+                org_invites.c.max_uses,
             )
             .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
             .where(org_invites.c.token == token)
@@ -526,7 +534,7 @@ async def get_invite(token: str):  # REQ-516
     from datetime import timezone
 
     now = datetime.datetime.now(tz=timezone.utc)
-    if row["used_at"] is not None:
+    if is_spent(row):  # REQ-1594: spent, not merely used — an open link is used and still open
         raise ApiError(410, "auth.invite_already_used", "Invite already used")
     if row["expires_at"] < now:
         raise ApiError(410, "auth.invite_expired", "Invite expired")
@@ -576,6 +584,9 @@ async def register(body: RegisterRequest):
     # local_users/org_invites/user_org_memberships live in the platform control plane.
     admin_db = state.admin_db
     assert admin_db is not None
+    # Set under ``body.invite_token`` below and read under the same condition afterwards, in a
+    # second block that cannot see the transaction's locals.
+    joined_org_id: str | None = None
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
             select(local_users.c.id).where(local_users.c.username == body.username)
@@ -599,29 +610,35 @@ async def register(body: RegisterRequest):
 
             now = datetime.datetime.now(tz=timezone.utc)
             result = await conn.execute_core(
-                select(
-                    org_invites.c.org_id,
-                    org_invites.c.role_id,
-                    org_invites.c.expires_at,
-                    org_invites.c.used_at,
-                ).where(org_invites.c.token == body.invite_token)
+                select(*INVITE_REDEMPTION_COLUMNS).where(org_invites.c.token == body.invite_token)
             )
             fetched = result.fetchone()
             invite = dict(fetched._mapping) if fetched is not None else None
-            if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
+            if invite is None or is_spent(invite) or invite["expires_at"] < now:
                 raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
             joined_org_id = invite["org_id"]
-            await conn.upsert(
-                user_org_memberships,
-                membership_values(user_id, invite["org_id"], JOINED_VIA_INVITE),
-                index_elements=["user_id", "org_id"],
-                update_columns=[],
-            )
-            await conn.execute_core(
-                update(org_invites)
-                .where(org_invites.c.token == body.invite_token)
-                .values(used_at=func.now(), used_by=user_id)
-            )
+            # REQ-1595: the environment is minted BEFORE the membership names it, because a
+            # membership written first would exist unpinned for as long as provisioning takes --
+            # and an unpinned member is served production, which is exactly what a sandbox visitor
+            # must never reach. If the claim below then loses the race, this is retired again.
+            pinned_env = await redeem_env(invite, user_id)
+            try:
+                await conn.upsert(
+                    user_org_memberships,
+                    membership_values(
+                        user_id, invite["org_id"], JOINED_VIA_INVITE, env_name=pinned_env
+                    ),
+                    index_elements=["user_id", "org_id"],
+                    update_columns=[],
+                )
+                claimed = (await conn.execute_core(spend(body.invite_token, user_id))).fetchone()
+            except BaseException:
+                await release_env(invite, pinned_env)
+                raise
+            if claimed is None:
+                # REQ-1594: someone else took the last redemption between the read above and here.
+                await release_env(invite, pinned_env)
+                raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
             # The invite's granted role lives in the tenant control plane (user_role_assignments),
             # not the platform plane above. Without this the invitee gets org MEMBERSHIP but no role,
             # so the capability layer sees an identity with zero assignments — an org with an admin
@@ -643,6 +660,8 @@ async def register(body: RegisterRequest):
         # has: the seam opens its own.
         from provisa.core.commerce import bind_member_to_org_trial
 
+        # An unredeemable invite raises above, so reaching here with a token means the org was named.
+        assert joined_org_id is not None
         await bind_member_to_org_trial(admin_db, joined_org_id, body.email)
     # REQ-1394: registration is the third moment a plaintext password exists, so the account can
     # negotiate SCRAM over pgwire from the start rather than after a password change.
@@ -681,16 +700,11 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
     assert admin_db is not None
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
-            select(
-                org_invites.c.org_id,
-                org_invites.c.role_id,
-                org_invites.c.expires_at,
-                org_invites.c.used_at,
-            ).where(org_invites.c.token == body.token)
+            select(*INVITE_REDEMPTION_COLUMNS).where(org_invites.c.token == body.token)
         )
         fetched = result.fetchone()
         invite = dict(fetched._mapping) if fetched is not None else None
-        if invite is None or invite["used_at"] is not None or invite["expires_at"] < now:
+        if invite is None or is_spent(invite) or invite["expires_at"] < now:
             raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
         # REQ-1572: the org's email rule does NOT gate this. The rule decides who may join on their
         # own initiative; an invitation is an org admin naming a person, which is that decision
@@ -708,17 +722,26 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         from provisa.api.admin.invites_router import resolve_invite_role
 
         role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
-        await conn.upsert(
-            user_org_memberships,
-            membership_values(user_id, invite["org_id"], JOINED_VIA_INVITE),
-            index_elements=["user_id", "org_id"],
-            update_columns=[],
-        )
-        await conn.execute_core(
-            update(org_invites)
-            .where(org_invites.c.token == body.token)
-            .values(used_at=func.now(), used_by=user_id)
-        )
+        # REQ-1595: minted before the membership names it — see /register for why the other order
+        # would serve a sandbox visitor production for the length of a provisioning run.
+        pinned_env = await redeem_env(invite, user_id)
+        try:
+            await conn.upsert(
+                user_org_memberships,
+                membership_values(
+                    user_id, invite["org_id"], JOINED_VIA_INVITE, env_name=pinned_env
+                ),
+                index_elements=["user_id", "org_id"],
+                update_columns=[],
+            )
+            claimed = (await conn.execute_core(spend(body.token, user_id))).fetchone()
+        except BaseException:
+            await release_env(invite, pinned_env)
+            raise
+        if claimed is None:
+            # REQ-1594: the last redemption went to someone else between the read and here.
+            await release_env(invite, pinned_env)
+            raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
     # Role assignment is tenant-plane (see /register for the same split) and must land in the
     # INVITED org's schema. This platform-plane request leaves current_org unset, so state.tenant_db

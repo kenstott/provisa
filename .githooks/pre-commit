@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# core.hooksPath points here, so git never reads .git/hooks -- where `pre-commit install`
+# writes its hook. Without this delegation the ruff/bandit/pyright hooks declared in
+# .pre-commit-config.yaml run on nobody's machine, which is how the type-error count grew.
+set -e
+
+if ! command -v pre-commit >/dev/null 2>&1; then
+    echo "pre-commit not on PATH; install it with 'uv sync --extra dev'" >&2
+    exit 1
+fi
+
+exec pre-commit run --hook-stage pre-commit

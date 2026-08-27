@@ -19,6 +19,7 @@ Translated homepages follow the same transform: a repo-root README.<lng>.md
 (produced by the docs-translate skill, see docs/i18n/manifest.json) becomes
 docs/<lng>/index.md — the file mkdocs-static-i18n's folder structure expects.
 """
+
 import re
 from pathlib import Path
 

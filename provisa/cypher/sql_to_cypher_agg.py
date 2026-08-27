@@ -19,7 +19,11 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.sql_to_cypher_helpers import _resolve_label, _src_alias_from_on
+from provisa.cypher.sql_to_cypher_helpers import (
+    _resolve_label,
+    _src_alias_from_on,
+    rel_pattern,
+)
 
 
 class UntranslatableSubquery(Exception):
@@ -85,8 +89,7 @@ def _next_short_alias(counter: int, letters: list[str]) -> str:
 def _process_array_agg_subqueries(
     select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     domain_to_label: dict[tuple[str, str], str],
-    label_to_rel: dict[str, str | None],
-    src_tgt_to_rel: dict[tuple[str, str], str],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
     alias_map: dict[str, str],
     alias_label: dict[str, str],
     base_alias: str,
@@ -129,7 +132,6 @@ def _process_array_agg_subqueries(
                 _col_table,
                 _src_sql,
                 domain_to_label,
-                label_to_rel,
                 src_tgt_to_rel,
                 alias_map,
                 alias_label,
@@ -156,10 +158,9 @@ def _process_array_agg_subqueries(
             agg_seen[_inner_sql_alias] = _arr_short
             _src_short = alias_map.get(_src_sql, base_alias)
             _src_lbl = alias_label.get(_src_sql, base_label)
-            _agg_rel_type = src_tgt_to_rel.get((_src_lbl, _tgt_lbl)) or label_to_rel.get(_tgt_lbl)
-            _agg_rel_str = f"[:{_agg_rel_type}]" if _agg_rel_type else "[]"
+            _agg_rel = rel_pattern(_src_lbl, _tgt_lbl, src_tgt_to_rel)
             cypher_lines.append(
-                f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}-{_agg_rel_str}->{node_fn(_arr_short, _tgt_lbl)}"
+                f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}{_agg_rel}{node_fn(_arr_short, _tgt_lbl)}"
             )
 
         _prop_ref = f"{agg_seen[_inner_sql_alias]}.{_cypher_prop}"
@@ -177,8 +178,7 @@ def _process_array_agg_chained(
     col_table: str,
     src_sql: str,
     domain_to_label: dict[tuple[str, str], str],
-    label_to_rel: dict[str, str | None],
-    src_tgt_to_rel: dict[tuple[str, str], str],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
     alias_map: dict[str, str],
     alias_label: dict[str, str],
     base_alias: str,
@@ -215,10 +215,9 @@ def _process_array_agg_chained(
         agg_seen[inner_sql_alias] = _arr_short
         _src_short = alias_map.get(src_sql, base_alias)
         _src_lbl = alias_label.get(src_sql, base_label)
-        _parent_rel_type = src_tgt_to_rel.get((_src_lbl, tgt_lbl)) or label_to_rel.get(tgt_lbl)
-        _parent_rel_str = f"[:{_parent_rel_type}]" if _parent_rel_type else "[]"
+        _parent_rel = rel_pattern(_src_lbl, tgt_lbl, src_tgt_to_rel)
         cypher_lines.append(
-            f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}-{_parent_rel_str}->{node_fn(_arr_short, tgt_lbl)}"
+            f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}{_parent_rel}{node_fn(_arr_short, tgt_lbl)}"
         )
 
     if col_table not in agg_seen:
@@ -226,10 +225,9 @@ def _process_array_agg_chained(
         agg_alias_counter += 1
         agg_seen[col_table] = _join_short
         _from_node_short = agg_seen[inner_sql_alias]
-        _join_rel_type = src_tgt_to_rel.get((tgt_lbl, _eff_lbl)) or label_to_rel.get(_eff_lbl)
-        _join_rel_str = f"[:{_join_rel_type}]" if _join_rel_type else "[]"
+        _join_rel = rel_pattern(tgt_lbl, _eff_lbl, src_tgt_to_rel)
         cypher_lines.append(
-            f"OPTIONAL MATCH {node_fn(_from_node_short, tgt_lbl)}-{_join_rel_str}->{node_fn(_join_short, _eff_lbl)}"
+            f"OPTIONAL MATCH {node_fn(_from_node_short, tgt_lbl)}{_join_rel}{node_fn(_join_short, _eff_lbl)}"
         )
 
     _agg_sql_col = agg_col_node.name
@@ -274,8 +272,7 @@ def _count_star_target(inner: exp.Select) -> tuple[exp.Table, exp.EQ] | None:  #
 def _process_count_subqueries(
     select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     domain_to_label: dict[tuple[str, str], str],
-    label_to_rel: dict[str, str | None],
-    src_tgt_to_rel: dict[tuple[str, str], str],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
     alias_map: dict[str, str],
     alias_label: dict[str, str],
     base_alias: str,
@@ -308,11 +305,10 @@ def _process_count_subqueries(
         src_sql = _resolve_where_src_alias(eq, inner_sql_alias, sql_base_alias)
         src_short = alias_map.get(src_sql, base_alias)
         src_lbl = alias_label.get(src_sql, base_label)
-        rel_type = src_tgt_to_rel.get((src_lbl, tgt_lbl)) or label_to_rel.get(tgt_lbl)
-        rel_str = f"[:{rel_type}]" if rel_type else "[]"
+        rel = rel_pattern(src_lbl, tgt_lbl, src_tgt_to_rel)
         tgt_short = _next_short_alias(agg_alias_counter, letters)
         agg_alias_counter += 1
-        pattern = f"{node_fn(src_short, src_lbl)}-{rel_str}->{node_fn(tgt_short, tgt_lbl)}"
+        pattern = f"{node_fn(src_short, src_lbl)}{rel}{node_fn(tgt_short, tgt_lbl)}"
         array_agg_return[expr.alias] = f"COUNT {{ MATCH {pattern} }}"
     return agg_alias_counter
 
@@ -398,8 +394,7 @@ def _extract_jbo_node_for_ret(jbo_sel: exp.Select) -> exp.JSONObject | None:
 def _process_json_subqueries(
     select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     domain_to_label: dict[tuple[str, str], str],
-    label_to_rel: dict[str, str | None],
-    src_tgt_to_rel: dict[tuple[str, str], str],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
     alias_map: dict[str, str],
     alias_label: dict[str, str],
     base_alias: str,
@@ -452,10 +447,9 @@ def _process_json_subqueries(
                 agg_seen_label[_inner_sql_alias] = _tgt_lbl
                 _src_short = alias_map.get(_src_sql) or agg_seen.get(_src_sql, base_alias)
                 _src_lbl = alias_label.get(_src_sql) or agg_seen_label.get(_src_sql, base_label)
-                _rel_type = src_tgt_to_rel.get((_src_lbl, _tgt_lbl)) or label_to_rel.get(_tgt_lbl)
-                _rel_str = f"[:{_rel_type}]" if _rel_type else "[]"
+                _rel = rel_pattern(_src_lbl, _tgt_lbl, src_tgt_to_rel)
                 cypher_lines.append(
-                    f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}-{_rel_str}->{node_fn(_arr_short, _tgt_lbl)}"
+                    f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}{_rel}{node_fn(_arr_short, _tgt_lbl)}"
                 )
 
             # Tables JOINed inside the subquery are further hops off the correlated node; without
@@ -479,17 +473,14 @@ def _process_json_subqueries(
                 _join_src_lbl = agg_seen_label.get(_join_src_sql) or alias_label.get(
                     _join_src_sql, base_label
                 )
-                _join_rel = src_tgt_to_rel.get((_join_src_lbl, _join_lbl)) or label_to_rel.get(
-                    _join_lbl
-                )
-                _join_rel_str = f"[:{_join_rel}]" if _join_rel else "[]"
+                _join_rel = rel_pattern(_join_src_lbl, _join_lbl, src_tgt_to_rel)
                 _join_short = _next_short_alias(agg_alias_counter, letters)
                 agg_alias_counter += 1
                 agg_seen[_join_sql_alias] = _join_short
                 agg_seen_label[_join_sql_alias] = _join_lbl
                 cypher_lines.append(
                     f"OPTIONAL MATCH {node_fn(_join_src_short, _join_src_lbl)}"
-                    f"-{_join_rel_str}->{node_fn(_join_short, _join_lbl)}"
+                    f"{_join_rel}{node_fn(_join_short, _join_lbl)}"
                 )
 
             _enqueue_jbo_nested_subqueries(_sel, _inner_sql_alias, _queue)

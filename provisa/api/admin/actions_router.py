@@ -186,7 +186,7 @@ async def create_function(
 ):  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-253, REQ-304
     """Create a tracked DB function."""
     from provisa.api.app import state
-    from provisa.core.models import Function, FunctionArgument
+    from provisa.core.models import DatasetColumn, Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
 
     if state.tenant_db is None:
@@ -209,7 +209,13 @@ async def create_function(
         impl_kind=body.implKind,
         binding=body.binding,
         materialize=body.materialize,
-        output_columns=body.outputColumns,  # REQ-1159 (pydantic coerces [{name,type}] → DatasetColumn)
+        # REQ-1159: the wire model carries the raw [{name,type}] the UI posts (the update path
+        # below writes it straight into a JSON column); the domain model wants the typed contract.
+        output_columns=(
+            [DatasetColumn(**c) for c in body.outputColumns]
+            if body.outputColumns is not None
+            else None
+        ),
     )
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.tenant_db.acquire() as _conn:

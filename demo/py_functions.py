@@ -57,7 +57,9 @@ def enrich_orders(payload: dict[str, Any], _session: Any) -> list[dict[str, Any]
         None,
     )
     if relation is None:
-        raise ValueError("enrich_orders expects a result_set relation argument (arg_kind: result_set)")
+        raise ValueError(
+            "enrich_orders expects a result_set relation argument (arg_kind: result_set)"
+        )
     out: list[dict[str, Any]] = []
     for row in relation.get("rows") or []:
         # deterministic score derived from id; region_label derived from region (field derivation)

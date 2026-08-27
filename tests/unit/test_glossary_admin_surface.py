@@ -99,6 +99,10 @@ async def _surface(tmp_path, monkeypatch):
     # Likewise the domain half: it too reads app state, and which endpoints narrow by domain is
     # asserted in test_glossary_domain_scope.py (REQ-1591). None is the unlimited caller.
     monkeypatch.setattr(glossary_router, "_authority", lambda request: None)
+    # REQ-1592 split curation off from reach: the mutating gate asks _curate_authority, which reads
+    # app state of its own. Which endpoints narrow by curation scope is asserted in
+    # test_glossary_stewardship.py; here it must not block either.
+    monkeypatch.setattr(glossary_router, "_curate_authority", lambda request: None)
     try:
         async with db.acquire() as conn:
             await table_repo.upsert(

@@ -42,6 +42,10 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
     "graphql": (
         "Generate a GraphQL query (read-only, no mutations or subscriptions).\n"
         "Use only fields and types present in the schema SDL below.\n"
+        "The query must select exactly ONE root field — one question is one query. When the "
+        "question spans two tables, reach the second through a nested relationship field on the "
+        "first, or group/aggregate over the relationship; never list two tables side by side as "
+        "separate root fields.\n"
         "Always wrap the query with a named operation: query SomeCamelCaseName { ... } "
         "where the name is a concise CamelCase slug of the question (e.g. UsersWithInquiryCount).\n"
         "GROUP BY and aggregations (COUNT, SUM, AVG, MIN, MAX) ARE supported, but not via bare "

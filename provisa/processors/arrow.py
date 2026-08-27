@@ -75,17 +75,21 @@ def arrow_encode(
     columnar wire framing for the REQ-940 Arrow transport; the batching is lazy but the IPC stream
     is a single self-describing payload."""
     sink = pa.BufferOutputStream()
-    writer: pa.ipc.RecordBatchStreamWriter | None = None
-    for batch in record_batches(rows, batch_size=batch_size, schema=schema):
-        if writer is None:
-            writer = pa.ipc.new_stream(sink, batch.schema)
+    batches = record_batches(rows, batch_size=batch_size, schema=schema)
+    # The first batch is pulled out rather than tracking an optional writer: the stream is opened
+    # with the schema that batch carries, so from here on there is exactly one writer and no
+    # not-yet-opened state for the loop or the close to re-check.
+    first = next(batches, None)
+    if first is None:
+        if schema is None:
+            return b""
+        writer = pa.ipc.new_stream(sink, schema)
+        writer.close()
+        return sink.getvalue().to_pybytes()
+    writer = pa.ipc.new_stream(sink, first.schema)
+    writer.write_batch(first)
+    for batch in batches:
         writer.write_batch(batch)
-    if writer is None:
-        if schema is not None:
-            writer = pa.ipc.new_stream(sink, schema)
-            writer.close()
-            return sink.getvalue().to_pybytes()
-        return b""
     writer.close()
     return sink.getvalue().to_pybytes()
 

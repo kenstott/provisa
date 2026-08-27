@@ -16,6 +16,7 @@ instantiated alone.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
@@ -41,6 +42,59 @@ from provisa.cypher.translator_types import CypherTranslateError
 
 
 class _RelJoinMixin:  # mixin for _Translator
+    if TYPE_CHECKING:
+        # State and collaborating methods this mixin reads off ``self``. They belong to
+        # ``_Translator`` (its ``__init__`` and its other mixins), which is the only class this is
+        # ever mixed into; declaring them here tells the checker what the composed object provides.
+        # Guarded, because a stub method defined unconditionally would sit ahead of the real one in
+        # the MRO -- ``_RelJoinMixin`` precedes ``_UnionMixin`` -- and shadow it at runtime.
+        from provisa.cypher.label_map import CypherLabelMap, JunctionMapping
+        from provisa.cypher.parser import MatchClause as _MatchClause
+        from provisa.cypher.parser import NodePattern as _NodePattern
+
+        _lm: CypherLabelMap
+        _var_table: dict[str, tuple[str, NodeMapping | None]]
+        _cte_sources: set[str]
+        _domain_nodes: dict[str, str]
+        _path_vars: dict[str, tuple[str, str, bool]]
+        _path_steps: dict[str, tuple[list, list]]
+        _lateral_bound: set[str]
+        _lateral_conditions: list[exp.Expression]
+        _rel_var_types: dict[str, str]
+        _rel_var_endpoints: dict[str, tuple[str, NodeMapping, str, NodeMapping, bool]]
+        _rel_var_via: dict[str, tuple[str, JunctionMapping]]
+        _rel_step_endpoints: dict[int, tuple]
+        _anon_node_aliases: dict[tuple[int, str], str]
+        _passthrough_vars: set[str]
+        _all_rels_rel_vars: set[str]
+        _all_rels_node_vars: set[str]
+        _varlen_rel_vars: dict[str, str]
+
+        def _register_node(self, node: _NodePattern) -> None: ...
+
+        def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]: ...
+
+        def _build_first_node_from(self, first_node: _NodePattern) -> exp.Expression | None: ...
+
+        def _build_standalone_node_join(
+            self, fv: str | None, clause: _MatchClause
+        ) -> dict | None: ...
+
+        def _build_domain_union(self, var: str, domain_name: str) -> exp.Expression: ...
+
+        def _build_all_rels_union(
+            self,
+            src_var: str | None,
+            rel_var: str | None,
+            tgt_var: str | None,
+            src_domain: str | None = None,
+            tgt_domain: str | None = None,
+        ) -> exp.Expression: ...
+
+        def _translate_path_function(
+            self, clause: _MatchClause
+        ) -> tuple[exp.Expression, list[dict]]: ...
+
     def _node_alias(self, node, nm: "NodeMapping", *, as_source: bool) -> str:
         """REQ-1586: the SQL alias for a pattern node, unique within the query.
 

@@ -222,7 +222,9 @@ def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
     validate_preprocess(source)
     namespace: dict[str, Any] = {"__builtins__": dict(_SAFE_BUILTINS)}
     code = compile(source, filename="<preprocess>", mode="exec")
-    exec(code, namespace)  # noqa: S102 — sandboxed: purity-checked source, restricted builtins
+    # S102/B102 flag any exec — the source passed the purity check above and runs against a
+    # restricted builtins mapping, which is what makes compiling a check body possible at all.
+    exec(code, namespace)  # noqa: S102  # nosec B102
     func = namespace.get(REQUIRED_FUNC)
     if not callable(func):
         raise PreprocessValidationError(f"{REQUIRED_FUNC} is not callable after compile")

@@ -1006,7 +1006,33 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- REQ-1297: platform_admin is the deployment-wide administrator and the fourth and last system
+-- REQ-1597: sandbox is what a "Try it Out" invitation confers (REQ-1595). It is org_admin's list
+-- minus a DENYLIST rather than a list built up from analyst, because the point of the sandbox is
+-- that a stranger can do everything the product does -- register a source, model it, govern it,
+-- query it, write to it -- inside an environment that expires. Enumerating what they MAY do would
+-- make every capability added later invisible to them until someone remembered this row; taking
+-- away is the direction that stays correct.
+--
+-- Six rights are withheld, each because it reaches something the environment does not contain:
+-- environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin is
+-- pointless against a role that can name another); environment_management spends the org's plan
+-- ceiling and drops other environments' schemas; user_management would let a visitor confer roles
+-- or admit more people; org_settings and observability are org-WIDE surfaces -- provider overrides,
+-- scheduled tasks, and the query telemetry of everyone working in production; org_glossary_rw is
+-- the override over terms the org's own people authored.
+INSERT INTO roles (id, capabilities, domain_access, org_id)
+VALUES (
+    'sandbox',
+    '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
+      "create_view","full_results","glossary_read","glossary_rw","masking_config",
+      "query_development","source_registration","table_registration","usage","view_governance",
+      "write"]'::jsonb,
+    '["*"]'::jsonb,
+    NULL
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- REQ-1297: platform_admin is the deployment-wide administrator and the last system
 -- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the
 -- platform-bypass capabilities 'admin' and 'superadmin'.
 --

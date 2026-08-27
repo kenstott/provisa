@@ -28,9 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -41,7 +39,7 @@ from provisa.api.errors import ApiError
 from provisa.core import env_approvals, env_ci, env_remote
 from provisa.core.database import Database
 from provisa.core.env_authority import owns_environment
-from provisa.core.env_copy import MERGE, REPLACE, copy_model, plan_copy
+from provisa.core.env_copy import MERGE, copy_model, plan_copy
 from provisa.core.env_deploy import (
     DeployError,
     deploy_tree,
@@ -51,10 +49,8 @@ from provisa.core.env_deploy import (
 from provisa.core.env_retire import RetirementError, retire_environment
 from provisa.core.env_store import (
     EnvironmentLimitError,
-    forget_env,
     get_env,
     list_envs,
-    reserve_env,
     set_expiry,
     set_protected,
 )
@@ -353,7 +349,7 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     schema and the row if the model does not land.
     """
     from provisa.api.admin.orgs_router import _org_tenant_db
-    from provisa.core.org_provisioning import deprovision_org, provision_org
+    from provisa.core.env_create import create_environment as _create_env
 
     # REQ-1529: binding a base is an org_admin's act, so creating one is too. A branch is open to
     # any member, because branching is REQ-1528's only path to model-editing rights.
@@ -377,14 +373,18 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
         )
 
     try:
-        await reserve_env(
+        report = await _create_env(
             _state(),
             _admin_pool(),
+            _pool(),
+            await _org_tenant_db(org_id),
             org_id,
             body.name,
+            from_env=body.from_env,
             created_by=actor,
             expires_at=body.expires_at,
             branched_from=body.from_env if body.inherit_connections else None,
+            note=f"created from {body.from_env}",
         )
     except EnvironmentNameError as exc:
         raise ApiError(
@@ -400,70 +400,6 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
             limit=exc.limit,
             plan=exc.plan,
         ) from exc
-
-    schema_sql_path = Path(__file__).parent.parent.parent / "core" / "schema.sql"
-    schema_sql = schema_sql_path.read_text() if schema_sql_path.exists() else ""
-    try:
-        await provision_org(
-            _pool(),
-            schema_sql,
-            org_id=org_id,
-            redis_url=os.environ.get("REDIS_URL"),
-            redis_password=os.environ.get("PROVISA_REDIS_ORG_PASSWORD"),
-            env=body.name,
-        )
-        report = await copy_model(
-            await _org_tenant_db(org_id),
-            org_id,
-            body.from_env,
-            body.name,
-            mode=REPLACE,
-            # REQ-1539: the only call that seeds roles and assignments. A new environment needs
-            # them to be usable at all; every later copy leaves the target's own answer alone.
-            seed=True,
-        )
-        # REQ-1543: the environment's history starts HERE, where the source it was created from is
-        # standing. Without it the branch has no ref, the first edit somebody makes becomes the
-        # first commit of the line, and an undo of that edit has no parent to step back to -- the
-        # change would be unundoable precisely because it was the first one.
-        #
-        # The ref is seeded from the source BEFORE the write-through so the new environment's line
-        # continues the source's instead of being a root commit no merge could find a base in. The
-        # position is recorded against that same sha: the model was just copied, so an identical
-        # tree writes no commit (REQ-1526) and the write-through would otherwise leave the
-        # environment standing nowhere while its branch stood somewhere.
-        from provisa.core.env_repo import ensure_repo, start_branch, write_through
-        from provisa.core.env_store import set_origin, set_position
-        from provisa.core.environments import org_schema
-
-        started = start_branch(ensure_repo(org_id), body.name, body.from_env)
-        if started is not None:
-            await set_position(
-                _admin_pool(), org_id, body.name, deployed_sha=started, redo_sha=None
-            )
-            # And that sha is the FLOOR of this environment's history: the commits at and below it
-            # are the source's, trees this environment never held. Without it a branch created and
-            # then changed once offered two undos -- the change, and then a step onto the source's
-            # model wearing this environment's name.
-            await set_origin(_admin_pool(), org_id, body.name, started)
-        db = await _org_tenant_db(org_id)
-        async with db.acquire() as conn:
-            await write_through(
-                conn,
-                _admin_pool(),
-                org_id,
-                body.name,
-                org_schema(org_id, body.name),
-                f"created from {body.from_env}",
-                actor,
-            )
-    except BaseException:
-        # Compensating rollback, mirroring provision_org's own: an environment that exists and
-        # holds part of a model is worse than one that was never created. The failure is re-raised,
-        # never swallowed.
-        await deprovision_org(_pool(), org_id, env=body.name)
-        await forget_env(_admin_pool(), org_id, body.name)
-        raise
 
     await _audit(
         org_id,
@@ -1285,17 +1221,19 @@ def _track_pushed(org_id: str, env: str, sha: str) -> None:
     outside a fetch, and it still never touches ``refs/heads``: what the remote holds and what an
     environment holds stay separate namespaces (REQ-1541).
     """
-    from provisa.core.env_repo import REMOTE_PREFIX, ensure_repo
+    from dulwich.objects import ObjectID
 
-    ensure_repo(org_id).refs[REMOTE_PREFIX + env.encode()] = sha.encode()
+    from provisa.core.env_repo import ensure_repo, remote_ref
+
+    ensure_repo(org_id).refs[remote_ref(env)] = ObjectID(sha.encode())
 
 
 def _forget_pushed(org_id: str, env: str) -> None:
     """Drop the tracking ref for a branch that is gone from the remote, so no status claims it."""
-    from provisa.core.env_repo import REMOTE_PREFIX, ensure_repo
+    from provisa.core.env_repo import ensure_repo, remote_ref
 
     refs = ensure_repo(org_id).refs
-    ref = REMOTE_PREFIX + env.encode()
+    ref = remote_ref(env)
     if ref in refs.as_dict():
         del refs[ref]
 

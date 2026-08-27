@@ -499,6 +499,12 @@ class ProvisaConnection(Connection):  # REQ-529
 class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     """Extends BuenaVistaHandler with TLS, cleartext auth, and catalog intercept."""
 
+    # REQ-1452: the metering writer, held apart from ``wfile`` because socketserver declares that
+    # attribute as the plain stream it hands out. ``setup`` installs one before the first byte is
+    # written and the TLS upgrade installs the next, so this always names the writer currently
+    # counting -- and the org binding after auth reaches the one in force.
+    _meter: CountingWriter
+
     # REQ-1394: what was advertised in the authentication request, and the exchange in flight.
     # Class-level so the state exists from the first byte — a connection that never reached
     # send_auth_request has been offered nothing and must not be read as mid-SASL.
@@ -512,7 +518,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # byte total. Starts unattributed and is bound to an org once auth resolves one; the bytes
         # of the startup and auth exchange belong to no org and are dropped rather than guessed.
         super().setup()
-        self.wfile = CountingWriter(self.wfile, None)
+        self._meter = CountingWriter(self.wfile, None)
+        self.wfile = self._meter
 
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
         buf = BVBuffer()
@@ -573,7 +580,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 # Re-wrap: the TLS upgrade replaces the socket, and with it the writer setup()
                 # metered. Leaving it unwrapped would silently stop metering every TLS pgwire
                 # session, i.e. all of them on the hosted deployment.
-                self.wfile = CountingWriter(self.request.makefile("wb", 0), None)
+                self._meter = CountingWriter(self.request.makefile("wb", 0), None)
+                self.wfile = self._meter
                 self.r = BVBuffer(self.rfile)
             else:
                 self.wfile.write(b"N")
@@ -829,6 +837,13 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         auth_provider = self._build_provider(_state, auth_config)
         if auth_provider is None:
             return
+        # REQ-1394: ``_scram_offered`` refuses SASL under any provider but ``basic``, so this
+        # exchange only ever reaches a BasicAuthProvider -- the one that holds the verifier the
+        # client just proved knowledge of, and the only one that can answer ``identity_for``
+        # without a credential. The assert restates that guarantee where the narrow call is made.
+        from provisa.auth.providers.basic import BasicAuthProvider
+
+        assert isinstance(auth_provider, BasicAuthProvider)
         try:
             identity = asyncio.run_coroutine_threadsafe(
                 auth_provider.identity_for(username), loop
@@ -966,7 +981,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self._send_pg_error("FATAL", "28000", f"org selection failed: {exc}")
                 return
         # REQ-1452: attribute this connection's writes from here on.
-        self.wfile.bind_org(getattr(ctx.session, "org_id", None))
+        self._meter.bind_org(getattr(ctx.session, "org_id", None))
         ctx.session.role_id = role  # type: ignore[attr-defined]
         ctx.session.user_id = identity.user_id  # type: ignore[attr-defined]  # REQ-074
         self.send_authentication_ok()

@@ -12,7 +12,20 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 import strawberry
+
+if TYPE_CHECKING:
+    # ``strawberry.scalars.JSON`` is ``NewType("JSON", object)``, so no dict literal is assignable
+    # to it and every ``params={...}`` / ``variables={...}`` site in the mutation resolvers reads as
+    # a type error -- 115 of them, all of the same shape. The GraphQL schema is built from the
+    # RUNTIME annotation (strawberry resolves it with ``get_type_hints`` against this module), so
+    # naming the mapping here gives the checker the shape the code actually passes while strawberry
+    # still receives its scalar and the published schema keeps saying ``JSON``.
+    JsonScalar = dict[str, Any]
+else:
+    JsonScalar = strawberry.scalars.JSON
 
 # Requirements: REQ-012, REQ-013, REQ-019, REQ-040, REQ-041, REQ-042, REQ-135, REQ-247, REQ-252, REQ-262, REQ-402
 
@@ -955,7 +968,7 @@ class MutationResult:  # REQ-533
     # Hybrid server i18n (REQ-1350): stable code + params let the UI render
     # a localized message; English `message` remains the fallback.
     code: str | None = None
-    params: strawberry.scalars.JSON | None = None
+    params: JsonScalar | None = None
 
 
 # --- Compile / Submit types ---
@@ -1000,7 +1013,7 @@ class CompileQueryResult:  # REQ-262, REQ-263, REQ-267
 class CompileQueryInput:
     query: str
     role: str
-    variables: strawberry.scalars.JSON | None = None
+    variables: JsonScalar | None = None
     flat_sql: bool = False
     flat_cypher: bool = False
     node_only_cypher: bool = False

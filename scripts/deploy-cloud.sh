@@ -385,6 +385,8 @@ push_obs_config() {
 # never the container, and the fix looks deployed while the node still runs the old environment.
 # Same ordering rule as the extensions: it recreates the stack, so it runs BEFORE the pushes.
 APP_YML="/root/.provisa/compose/docker-compose.app.yml"
+# The systemd EnvironmentFile first-launch.sh writes; the containers' environment comes from it.
+ENV_FILE="/root/.provisa/provisa.env"
 
 push_app() {
   local want have
@@ -401,6 +403,61 @@ push_app() {
   scp_node "$REPO/docker-compose.app.yml" /tmp/docker-compose.app.yml
   ssh_node "sudo cp $APP_YML $APP_YML.bak-\$(date +%s) && sudo cp /tmp/docker-compose.app.yml $APP_YML"
   echo "== app overlay: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+}
+
+# REQ-1330: the origin invite links are built from. It is not a per-node knob an operator sets — it
+# is $SITE, the address this script already deploys to and verifies against, and terraform derives
+# the same value from the DNS zone it creates the record in. But first-launch writes provisa.env
+# once, at first boot, so a node booted before the build knew the origin keeps an environment with
+# no origin in it and every invite fails to send with nothing to link to. Reconciled here for the
+# same reason the overlays are: what the build says the deployment is has to reach the running
+# container, not just the next one to be created. Read from the RUNNING container (a provisa.env
+# edit nothing recreated is exactly the gap) and, like the overlays, recreate only on a difference.
+#
+# The provider key is the same shape of problem and gets the same treatment. It is not something an
+# operator types into Admin -> Email either: this deployment sends through one Resend account, whose
+# key lives in the repo .env beside the superuser credentials verify_engine already reads from there.
+# A node whose key is empty creates invitations it cannot send, which is the failure this closes.
+# The key's VALUE is never printed — only whether it changed.
+set_node_env() {
+  # first-launch omits the line entirely when the value is empty, so deleting and appending both
+  # replaces an existing line and adds a missing one. Value passed on stdin, never in the command
+  # line, so a secret does not land in the node's process table or the ssh log.
+  printf '%s=%s\n' "$1" "$2" \
+    | ssh_node "sudo sed -i '/^$1=/d' $ENV_FILE && sudo tee -a $ENV_FILE >/dev/null"
+}
+
+push_mail_env() {
+  local origin key want_key changed=""
+  origin="$(ssh_node "sudo docker exec $API_CONTAINER printenv PROVISA_MAIL_BASE_URL || true" | tr -d '\r')"
+  if [ "$origin" = "$SITE" ]; then
+    echo "== mail origin: up to date ($SITE)"
+  else
+    echo "== mail origin: ${origin:-<unset>} -> $SITE"
+    set_node_env PROVISA_MAIL_BASE_URL "$SITE"
+    changed=1
+  fi
+
+  # Read the one key rather than sourcing .env, for the reason verify_engine gives: .env also
+  # carries names this script uses, and sourcing it would redirect the deploy at another node.
+  want_key="${PROVISA_EMAIL_API_KEY:-$(sed -n 's/^PROVISA_EMAIL_API_KEY=//p' "$REPO/.env" 2>/dev/null | tail -1)}"
+  if [ -z "$want_key" ]; then
+    echo "PROVISA_EMAIL_API_KEY is not set (repo .env), so this node would accept invitations" >&2
+    echo "it cannot send. Set it and re-run." >&2
+    exit 1
+  fi
+  key="$(ssh_node "sudo docker exec $API_CONTAINER printenv PROVISA_EMAIL_API_KEY || true" | tr -d '\r')"
+  if [ "$key" = "$want_key" ]; then
+    echo "== mail key: up to date"
+  else
+    echo "== mail key: ${key:+<stale>}${key:-<unset>} -> <set>"
+    set_node_env PROVISA_EMAIL_API_KEY "$want_key"
+    changed=1
+  fi
+
+  [ -n "$changed" ] || return 0
+  echo "== mail env: recreating stack"
   ssh_node "sudo systemctl restart provisa"
 }
 
@@ -578,18 +635,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; preflight_commerce; build_api; push_app; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; preflight_commerce; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
   all)
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
 esac
 echo "== deployed $TARGET"

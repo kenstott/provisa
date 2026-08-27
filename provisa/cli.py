@@ -317,7 +317,9 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+        # B310 wants the scheme pinned: the URL is built from the operator's own --api
+        # argument, so it is http(s) by construction, never file:// or a custom handler.
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:  # nosec B310
             payload = json.load(resp)
     except urllib.error.HTTPError as exc:
         print(
@@ -360,7 +362,9 @@ def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | Non
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+        # B310 wants the scheme pinned: the URL is built from the operator's own --api
+        # argument, so it is http(s) by construction, never file:// or a custom handler.
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:  # nosec B310
             return json.load(resp)
     except urllib.error.HTTPError as exc:
         raise SystemExit(
@@ -452,7 +456,9 @@ def _maintenance_request(args: argparse.Namespace, body: dict | None) -> dict:
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+        # B310 wants the scheme pinned: the URL is built from the operator's own --api
+        # argument, so it is http(s) by construction, never file:// or a custom handler.
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:  # nosec B310
             return json.load(resp)
     except urllib.error.HTTPError as exc:
         raise SystemExit(

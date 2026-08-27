@@ -40802,7 +40802,12 @@
     scope for the application). Prohibited transports: direct SMTP submission to Microsoft 365 (smtp.office365.com)
     and any locally hosted SMTP relay. Self-hosted (non-SaaS) deployments send no email: the feature is
     gated on SaaS mode and invite flows in self-hosted mode surface the invite link for out-of-band delivery
-    instead of sending.'
+    instead of sending. An invite link is an absolute URL, so the sending node needs the public origin
+    of the UI, and the node cannot discover it. SaaS is a single build, so the build carries it: the
+    infrastructure module derives the origin from the DNS zone it already creates the control-plane
+    record in (https://cloud.<dns_zone>), and an explicit override exists only for a deployment reached
+    at some other origin. A build that names neither is refused at plan time rather than booting a node
+    that accepts invitations it cannot send.'
   use_case: Invites must reach users reliably without binding the codebase to one email vendor. A port/adapter
     seam keeps the provider a deployment detail (avoiding the Microsoft 365 SMTP basic-auth retirement
     and its throughput limits), while SaaS-only gating keeps self-hosted installs free of outbound-mail
@@ -52939,3 +52944,206 @@
   - REQ-1387
   - REQ-1590
   - REQ-1591
+- id: REQ-1594
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: >-
+    AN INVITATION ADMITS A NUMBER OF PEOPLE, NOT A PERSON. A "Try it Out" link on a public page is
+    addressed to nobody and redeemed by everybody, and it is the SAME object as the addressed
+    invitation -- an org, a role, an expiry, a creator to attribute it to, a revoke door -- differing
+    only in how many redemptions it admits. So the count is a COLUMN and not a second feature:
+    ``max_uses`` defaults to 1, which is exactly the invitation that already existed, and NULL means
+    unlimited. ``uses`` counts what has been taken; ``used_at``/``used_by`` remain and now name the
+    LAST redemption rather than the only one. WHERE THE CEILING IS ENFORCED -- the claim is a single
+    SQL statement that increments ``uses`` and repeats the ceiling in its own WHERE, returning the
+    row it claimed. Two people clicking the same link at once both read ``uses`` before either wrote
+    it, so an in-Python increment would let both through; a redemption whose claim returns no row
+    lost the race and admits nobody, and anything it already provisioned is released. ONE PREDICATE
+    -- my-invites, the invite preview, both redemption paths and revoke all ask the same question
+    and ask it through one clause, because five hand-written copies is how they stop agreeing. In
+    particular revoke gates on the ceiling and not on ``used_at``, or the first redemption of an open
+    link would un-revoke it.
+  tests:
+  - tests/unit/test_open_invite.py
+  - tests/unit/test_invite_admission.py
+  code:
+  - provisa/core/org_invite.py
+  - provisa/core/schema_admin.py
+  - provisa/api/auth_router.py
+  - provisa/api/admin/invites_router.py
+  scenario: 'Given an invitation minted with max_uses null
+
+    When two visitors redeem it at the same instant
+
+    Then both are admitted, uses reaches 2, and used_by names the later of the two
+
+    When an invitation with max_uses 1 has been redeemed once
+
+    Then the next redemption is refused 400 and the link is still revocable'
+  depends_on:
+  - REQ-516
+  - REQ-1572
+- id: REQ-1595
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Environments
+  priority: MUST
+  type: behavioral
+  description: >-
+    AN INVITATION SAYS WHAT THE REDEEMER IS GIVEN TO WORK IN. ``env_policy`` decides, and it is three
+    -valued rather than a sandbox flag so the same mechanism carries two products. ``none`` is the
+    ordinary invitation: the member is served by the org. ``per_visitor`` mints a FRESH environment
+    per redemption, deployed from prod and given ``env_ttl_seconds`` to live -- the anonymous
+    sandbox, where a stranger gets the org''s real model on real machinery and nothing they do
+    outlives the hour. ``shared`` seats every redeemer in the one environment ``env_name`` names --
+    a branded data portal an org publishes to people it has never met. The two differ only in field
+    values. WHICH ORG ISSUES THE PUBLIC LINK -- the anonymous "Try it Out" link is minted by the org
+    named ``sandbox``, an ordinary tenant org like any other. It is named rather than left to the
+    operator because the org id is what every visitor''s schema, Redis ACL and audit row is keyed by,
+    and a demo issued from a customer-bearing org would seat strangers beside that customer''s data. WHAT EACH POLICY REQUIRES -- ``per_visitor`` without ``env_ttl_seconds`` would leave an
+    environment nothing will ever reap, and ``shared`` without ``env_name`` seats nobody anywhere;
+    both are refused by CheckConstraint, and mirrored app-side ONLY so the inviter gets a 400 naming
+    the missing field instead of the 500 an integrity error becomes. ORDERING -- the environment is
+    minted BEFORE the membership names it, because a membership written first is unpinned for the
+    length of provisioning and an unpinned member is served production. The price is that the loser
+    of a race for the last redemption has already provisioned a schema, so it is retired again,
+    branch and all. A ``shared`` environment is NEVER retired by a failed redemption: the org
+    published it and other people are working in it. ONE PROVISIONING SEQUENCE -- reserve, provision,
+    deploy the model, start the branch, roll every part of it back on any failure -- shared with the
+    admin endpoint rather than re-derived, because the ordering is the part that must not diverge.
+    The GUARD is not shared: the endpoint requires a right in the org, while the invitation IS the
+    authorization, granted when the org minted the link.
+  tests:
+  - tests/unit/test_open_invite.py
+  code:
+  - provisa/core/org_invite.py
+  - provisa/core/env_create.py
+  - provisa/api/invite_env.py
+  - provisa/api/admin/invites_router.py
+  - provisa/api/admin/environments_router.py
+  - provisa/api/auth_router.py
+  scenario: 'Given an invitation with env_policy per_visitor and env_ttl_seconds 3600
+
+    When a visitor redeems it
+
+    Then a fresh environment deployed from prod is minted for them and expires one hour later
+
+    And a second visitor redeeming the same link gets their own, never the first one''s leftovers
+
+    When the claim then fails because someone took the last redemption
+
+    Then that environment and its branch are retired again'
+  depends_on:
+  - REQ-1488
+  - REQ-1523
+  - REQ-1594
+- id: REQ-1596
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Environments
+  priority: MUST
+  type: behavioral
+  description: >-
+    A MEMBERSHIP MAY BE CONFINED TO ONE ENVIRONMENT, AND THE CONFINEMENT IS WHAT MAKES IT A CONTAINER.
+    An environment handed to a stranger is only a sandbox if it is the only place they can be served:
+    the membership carries ``env_name``, and a pinned member naming no environment is served THAT one
+    rather than prod, while naming any other -- prod included -- is refused 403. Without the first
+    half the visitor escapes by omitting a header; without the second they escape by sending one.
+    WHERE IT IS READ -- the pin rides along with the membership the auth middleware already fetches,
+    so resolving which environment serves the request costs no extra query, and it is applied at the
+    same selection point every other environment rule is, which is what makes it cover HTTP, GraphQL,
+    SQL and the wire protocols at once. WHAT IT IS NOT -- the pin does not require
+    ``environment_switch``. It is not a switch, it is where this member lives; the sandbox role
+    withholds that right precisely so the visitor cannot leave, and requiring it for the pin itself
+    would leave them with nowhere to be served at all. WHAT STILL APPLIES -- existence and expiry.
+    A pinned environment that has been retired or has passed its deadline stops serving like any
+    other, which is what makes the hour a deadline rather than a suggestion. HOW IT IS WRITTEN -- in
+    the same row as the membership, never as a second statement: a pinned member existing unpinned
+    for an instant is an instant in which a sandbox visitor is served the org''s production data.
+  tests:
+  - tests/unit/test_env_runtime_routing.py
+  - tests/unit/test_open_invite.py
+  code:
+  - provisa/core/org_membership.py
+  - provisa/core/schema_admin.py
+  - provisa/auth/middleware.py
+  - provisa/api/env_routing.py
+  - provisa/api/app.py
+  scenario: 'Given a membership pinned to a sandbox environment
+
+    When the request names no environment
+
+    Then it is served the sandbox and not prod
+
+    When the request names prod, or any other environment
+
+    Then it is refused 403
+
+    When the sandbox passes its expiry
+
+    Then the request is refused 404 rather than served stale machinery'
+  depends_on:
+  - REQ-1487
+  - REQ-1573
+  - REQ-1595
+- id: REQ-1597
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: >-
+    THE SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIGN. ``sandbox`` is
+    the sixth system template role and what a "Try it Out" invitation confers. A stranger holding
+    that link is meant to be able to do everything the product does -- register a source, model it,
+    govern it, query it, write to it -- inside an environment that expires. Defining the role by
+    ENUMERATING what it may do would make every capability added later invisible to visitors until
+    somebody remembered to edit this one row, so the demo would silently narrow with every release;
+    subtracting is the direction that stays correct, and a new right reaches the sandbox with no
+    second edit. WHAT IS WITHHELD -- six rights, each because it reaches something the environment
+    does not contain. ``environment_switch``: the visitor would leave the sandbox, and REQ-1596's
+    membership pin is pointless against a role that can name another environment -- the two halves
+    contain a stranger only together. ``environment_management``: spends the org''s plan ceiling and
+    drops other environments'' schemas. ``user_management``: would let a visitor confer roles or
+    admit more people, and withholding it is also what closes the role-editing surface to them, so
+    the denylist cannot be edited away from inside the sandbox. ``org_settings`` and
+    ``observability``: org-WIDE surfaces -- provider overrides, scheduled tasks, and the query
+    telemetry of everyone working in production. ``org_glossary_rw``: the override over terms the
+    org''s own people authored. TWO PLANES, ONE DEFINITION -- schema.sql is PostgreSQL-only DDL and
+    provisa/core/db.py is its portable mirror; a role seeded into one and not the other exists on
+    SaaS and not on a laptop, so the two are asserted equal. The re-assertion seams that hand
+    ``environment_management``/``environment_switch`` to pre-existing role rows name org_admin and
+    developer only: naming sandbox there would give back on the next init_schema exactly what the
+    denylist took away.
+  tests:
+  - tests/unit/test_sandbox_role_seed.py
+  code:
+  - provisa/core/db.py
+  - provisa/core/schema.sql
+  scenario: 'Given the seeded system roles
+
+    When the sandbox role is resolved
+
+    Then it holds every capability org_admin holds except the six on the denylist
+
+    And a capability later added to org_admin is held by it without a second edit
+
+    When a sandbox visitor names another environment, edits a role, or opens org settings
+
+    Then each is refused for want of the right'
+  depends_on:
+  - REQ-1297
+  - REQ-1573
+  - REQ-1595
+  - REQ-1596

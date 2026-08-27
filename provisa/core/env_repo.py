@@ -55,7 +55,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from dulwich.graph import find_merge_base
-from dulwich.objects import Blob, Commit, Tree
+from dulwich.objects import Blob, Commit, ObjectID, ShaFile, Tree
+from dulwich.refs import Ref
 from dulwich.repo import Repo
 
 from provisa.core.env_files import dump
@@ -113,8 +114,8 @@ def ensure_repo(org_id: str) -> Repo:
     return Repo.init_bare(str(path))
 
 
-def _branch_ref(env: str) -> bytes:
-    return f"refs/heads/{env}".encode()
+def _branch_ref(env: str) -> Ref:
+    return Ref(f"refs/heads/{env}".encode())
 
 
 #: Where a FETCH puts what the remote had (REQ-1541). Remote-tracking refs are a separate namespace
@@ -125,11 +126,11 @@ def _branch_ref(env: str) -> bytes:
 REMOTE_PREFIX = b"refs/remotes/origin/"
 
 
-def _remote_ref(branch: str) -> bytes:
-    return REMOTE_PREFIX + branch.encode()
+def remote_ref(branch: str) -> Ref:
+    return Ref(REMOTE_PREFIX + branch.encode())
 
 
-def _build_tree(repo: Repo, files: dict[str, str]) -> bytes:
+def _build_tree(repo: Repo, files: dict[str, str]) -> ObjectID:
     """Write ``path -> text`` as git trees and return the root tree's sha.
 
     Built recursively because a git tree names only its immediate children: ``sales/tables/Order``
@@ -146,7 +147,7 @@ def _build_tree(repo: Repo, files: dict[str, str]) -> bytes:
                 raise RepositoryError(f"{path!r} names a directory that is also a file")
         node[name] = text
 
-    def write(node: dict[str, Any]) -> bytes:
+    def write(node: dict[str, Any]) -> ObjectID:
         tree = Tree()
         for name, value in sorted(node.items()):
             if isinstance(value, dict):
@@ -199,7 +200,7 @@ def start_branch(repo: Repo, env: str, from_env: str) -> str | None:
     head = repo.refs.read_ref(_branch_ref(from_env))
     if head is None:
         return None
-    repo.refs[ref] = head
+    repo.refs[ref] = ObjectID(head)
     return head.decode()
 
 
@@ -218,13 +219,13 @@ def commit_files(
     """
     tree_id = _build_tree(repo, files)
     ref = _branch_ref(env)
-    parents = []
+    parents: list[ObjectID] = []
     head = repo.refs.read_ref(ref)
     if head is not None:
-        parent = repo.get_object(head)
+        parent = _object(repo, ObjectID(head), Commit)
         if parent.tree == tree_id:
             return None
-        parents = [head]
+        parents = [ObjectID(head)]
 
     commit = Commit()
     commit.tree = tree_id
@@ -329,7 +330,7 @@ def remote_branches(org_id: str) -> dict[str, str]:
     }
 
 
-def track_remote(org_id: str, refs: dict[bytes, bytes]) -> dict[str, str]:
+def track_remote(org_id: str, refs: dict[Ref, ObjectID | None]) -> dict[str, str]:
     """Write ``refs`` -- a fetch result -- as this repository's remote-tracking branches.
 
     PRUNES: a tracking ref the fetch did not name is deleted, because the branch it named is gone
@@ -342,15 +343,20 @@ def track_remote(org_id: str, refs: dict[bytes, bytes]) -> dict[str, str]:
     convenience.
     """
     repo = ensure_repo(org_id)
-    fetched = {
-        ref[len(b"refs/heads/") :].decode(): sha.decode()
-        for ref, sha in refs.items()
-        if ref.startswith(b"refs/heads/")
-    }
+    fetched: dict[str, str] = {}
+    for ref, sha in refs.items():
+        if not ref.startswith(b"refs/heads/"):
+            continue
+        if sha is None:
+            # dulwich's ref maps carry None for a name that resolves to no object. A fetch result
+            # naming a branch the remote could not resolve is a broken answer, not a branch, and
+            # tracking it would offer a deploy of a tree that does not exist.
+            raise RepositoryError(f"the remote named {ref.decode()!r} with no sha")
+        fetched[ref[len(b"refs/heads/") :].decode()] = sha.decode()
     for name, sha in fetched.items():
-        repo.refs[_remote_ref(name)] = sha.encode()
+        repo.refs[remote_ref(name)] = ObjectID(sha.encode())
     for stale in set(remote_branches(org_id)) - set(fetched):
-        del repo.refs[_remote_ref(stale)]
+        del repo.refs[remote_ref(stale)]
     return fetched
 
 
@@ -374,7 +380,23 @@ def delete_branch(org_id: str, env: str) -> bool:
     return True
 
 
-def _resolve(repo: Repo, ref: str) -> bytes:
+def _object[T: ShaFile](repo: Repo, sha: ObjectID, kind: type[T]) -> T:
+    """``sha``'s object, as the kind the caller resolved it as.
+
+    A ref resolves to a commit and a tree entry declares its own mode, so the store answering with
+    another kind means the projection on disk disagrees with itself. That is a repository error --
+    the same answer BROWSE gives for a sha this node has never seen -- and never an object the
+    caller carries on with.
+    """
+    obj = repo.get_object(sha)
+    if not isinstance(obj, kind):
+        raise RepositoryError(
+            f"{sha.decode()} is a {obj.type_name.decode()}, not a {kind.type_name.decode()}"
+        )
+    return obj
+
+
+def _resolve(repo: Repo, ref: str) -> ObjectID:
     """A branch name, a remote-tracking name, or a sha, as a commit sha. Refuses anything else.
 
     The load sources are a ref in this repository and a set of files the operator brings; there is
@@ -387,12 +409,12 @@ def _resolve(repo: Repo, ref: str) -> bytes:
     """
     branch = repo.refs.read_ref(_branch_ref(ref))
     if branch is not None:
-        return branch
+        return ObjectID(branch)
     if ref.startswith("origin/"):
-        tracked = repo.refs.read_ref(_remote_ref(ref[len("origin/") :]))
+        tracked = repo.refs.read_ref(remote_ref(ref[len("origin/") :]))
         if tracked is not None:
-            return tracked
-    candidate = ref.encode()
+            return ObjectID(tracked)
+    candidate = ObjectID(ref.encode())
     if len(candidate) == 40 and candidate in repo.object_store:
         return candidate
     raise RepositoryError(f"{ref!r} is neither a branch nor a commit in this repository")
@@ -412,9 +434,9 @@ def history(org_id: str, ref: str, limit: int = 100) -> list[dict[str, Any]]:
     """``ref``'s commits, newest first: what BROWSE shows and what LOAD picks from."""
     repo = ensure_repo(org_id)
     out: list[dict[str, Any]] = []
-    sha: bytes | None = _resolve(repo, ref)
+    sha: ObjectID | None = _resolve(repo, ref)
     while sha is not None and len(out) < limit:
-        commit = repo.get_object(sha)
+        commit = _object(repo, sha, Commit)
         out.append(
             {
                 "sha": sha.decode(),
@@ -501,7 +523,7 @@ def merge_base(org_id: str, a: str, b: str) -> str | None:
     merge.
     """
     repo = ensure_repo(org_id)
-    bases = find_merge_base(repo, [a.encode(), b.encode()])
+    bases = find_merge_base(repo, [ObjectID(a.encode()), ObjectID(b.encode())])
     # Several bases means a criss-cross history, which the write-through cannot produce: a commit
     # it writes has one parent, and the only multi-parent commits here are merges recorded against
     # their target's line first. The first is taken for the same reason ``parent_of`` takes it.
@@ -521,7 +543,7 @@ def parent_of(org_id: str, sha: str) -> str | None:
     BROWSE contract is where they already answer it.
     """
     repo = ensure_repo(org_id)
-    commit = repo.get_object(_resolve(repo, sha))
+    commit = _object(repo, _resolve(repo, sha), Commit)
     return commit.parents[0].decode() if commit.parents else None
 
 
@@ -547,16 +569,16 @@ def step_toward(org_id: str, sha: str, top: str) -> str | None:
 def files_at(org_id: str, ref: str) -> dict[str, str]:
     """The tree at ``ref``, as the same ``path -> text`` mapping the projection produced."""
     repo = ensure_repo(org_id)
-    commit = repo.get_object(_resolve(repo, ref))
+    commit = _object(repo, _resolve(repo, ref), Commit)
     files: dict[str, str] = {}
 
-    def walk(tree_id: bytes, prefix: str) -> None:
-        for entry in repo.get_object(tree_id).items():
+    def walk(tree_id: ObjectID, prefix: str) -> None:
+        for entry in _object(repo, tree_id, Tree).items():
             name = f"{prefix}{entry.path.decode()}"
             if entry.mode == 0o040000:
-                walk(entry.sha, f"{name}/")
+                walk(ObjectID(entry.sha), f"{name}/")
             else:
-                files[name] = repo.get_object(entry.sha).data.decode()
+                files[name] = _object(repo, ObjectID(entry.sha), Blob).data.decode()
 
     walk(commit.tree, "")
     return files

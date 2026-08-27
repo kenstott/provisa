@@ -838,13 +838,13 @@ class BuenaVistaServer(socketserver.ThreadingTCPServer):
         conn: Connection,
         *,
         rewriter: Optional[Rewriter] = None,
-        extensions: List[Extension] = [],
+        extensions: Optional[List[Extension]] = None,
         auth: Optional[Dict[str, str]] = None,
     ):
         super().__init__(server_address, BuenaVistaHandler)
         self.conn = conn
         self.rewriter = rewriter
-        self.extensions = {e.type(): e for e in extensions}
+        self.extensions = {e.type(): e for e in extensions or []}
         self.ctxts = {}
         self.auth = auth
 

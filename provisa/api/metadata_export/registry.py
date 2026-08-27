@@ -31,8 +31,12 @@ if TYPE_CHECKING:
 _PROVIDERS: dict[str, type[MetadataExport]] = {}
 
 
-def register_provider(cls: type[MetadataExport]) -> type[MetadataExport]:
+def register_provider[T: type[MetadataExport]](cls: T) -> T:
     """Class decorator registering an adapter under its ``provider_name``.
+
+    Generic in the decorated class, not ``type[MetadataExport]`` in and out: a widened return type
+    would erase the decorated adapter's own members, and a subclass of one (Atlan extends Atlas)
+    would inherit only the base protocol.
 
     A provider that does not set ``provider_name``, or that collides with one already
     registered, fails at import — the two ways a silently-wrong provider could be selected

@@ -107,8 +107,10 @@ def created(monkeypatch):
     monkeypatch.setattr(er, "_member", _member)
     monkeypatch.setattr(er, "_guard", _member)
     monkeypatch.setattr(er, "_known", _known)
-    monkeypatch.setattr(er, "reserve_env", _reserve_env)
-    monkeypatch.setattr(er, "copy_model", _copy_model)
+    # REQ-1595: the reserve/provision/deploy sequence lives in provisa.core.env_create, shared by
+    # this endpoint and by invite redemption, so these are patched where that sequence calls them.
+    monkeypatch.setattr("provisa.core.env_create.reserve_env", _reserve_env)
+    monkeypatch.setattr("provisa.core.env_create.copy_model", _copy_model)
     monkeypatch.setattr(er, "_audit", _audit)
     monkeypatch.setattr(er, "get_env", _get_env)
     monkeypatch.setattr(er, "_pool", lambda: _Pool())

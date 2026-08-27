@@ -198,6 +198,8 @@ async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
         right_cols = _prefixed(jp.right_table, await _columns_of(jp.right_table))
 
         if jp.is_junction:  # REQ-1586: left -> via -> right, one MV row per edge
+            # JoinPattern.__post_init__ admits no junction without a via table and both via keys.
+            assert jp.via_table is not None
             # The junction's own columns are the edge's attributes; they are materialized
             # under the same "{table}__{col}" convention the rewriter rewrites refs to.
             via_cols = _prefixed(jp.via_table, await _columns_of(jp.via_table))
@@ -213,6 +215,8 @@ async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
                 f'"{jp.right_table}"."{jp.right_column}"'
             )
             if jp.via_type_column:
+                # __post_init__ declares the discriminator column and its value together.
+                assert jp.via_type_value is not None
                 literal = jp.via_type_value.replace("'", "''")
                 sql += f' WHERE "{jp.via_table}"."{jp.via_type_column}" = \'{literal}\''
             return sql

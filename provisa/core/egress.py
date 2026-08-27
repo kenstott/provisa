@@ -32,6 +32,7 @@ failing drain raises rather than retrying.
 
 from __future__ import annotations
 
+import io
 import logging
 import threading
 from typing import TYPE_CHECKING, Any
@@ -137,10 +138,16 @@ class EgressMeterMiddleware:
 # --- the stream-socket seam ------------------------------------------------------------------ #
 
 
-class CountingWriter:
+class CountingWriter(io.BufferedIOBase):
     """A binary file-like proxy that meters every byte written through it (pgwire).
 
     Delegates everything else to the wrapped object.
+
+    A real ``BufferedIOBase`` because it IS the handler's ``wfile``: socketserver declares that
+    attribute as one and flushes and closes it at the end of every connection. The four members
+    ``IOBase`` supplies by default (``flush``, ``close``, ``closed``, ``writable``) are forwarded
+    explicitly -- inherited defaults would resolve on this class and never reach ``__getattr__``,
+    so the socket would go unflushed and unclosed while reporting itself open.
     """
 
     __slots__ = ("_inner", "_org_id")
@@ -157,6 +164,19 @@ class CountingWriter:
         written = self._inner.write(data)
         report(self._org_id, len(data))
         return written
+
+    def flush(self) -> None:
+        self._inner.flush()
+
+    def close(self) -> None:
+        self._inner.close()
+
+    @property
+    def closed(self) -> bool:
+        return self._inner.closed
+
+    def writable(self) -> bool:
+        return True
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)

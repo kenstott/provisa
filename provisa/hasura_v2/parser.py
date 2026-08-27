@@ -58,7 +58,9 @@ def _load_yaml(path: Path) -> Any:
     if not path.exists():
         return None
     with open(path, encoding="utf-8") as f:
-        return yaml.load(f, Loader=_HasuraLoader)  # noqa: S506 — _HasuraLoader is SafeLoader-derived
+        # S506/B506 read any yaml.load as unsafe: _HasuraLoader derives from SafeLoader, so no
+        # arbitrary object is constructible; it only adds the tags Hasura metadata uses.
+        return yaml.load(f, Loader=_HasuraLoader)  # noqa: S506  # nosec B506
 
 
 def _resolve_include(entry: Any, base_dir: Path) -> Any:

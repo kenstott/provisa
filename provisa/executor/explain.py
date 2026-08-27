@@ -180,13 +180,11 @@ def _named_estimates(node: dict) -> tuple[float | None, float | None]:
     ``Estimated Cardinality`` string inside ``extra_info``, and Trino carries a per-node
     ``estimates`` list whose first entry is the chosen alternative.
     """
-    extra = node.get("extra_info") if isinstance(node.get("extra_info"), dict) else {}
+    raw_extra = node.get("extra_info")
+    extra: dict = raw_extra if isinstance(raw_extra, dict) else {}
     estimates = node.get("estimates")
-    chosen = (
-        estimates[0]
-        if isinstance(estimates, list) and estimates and isinstance(estimates[0], dict)
-        else {}
-    )
+    first = estimates[0] if isinstance(estimates, list) and estimates else None
+    chosen: dict = first if isinstance(first, dict) else {}
     rows = (
         _num(node.get("operator_cardinality"))
         if "operator_cardinality" in node
@@ -244,7 +242,8 @@ def _from_mysql(payload: dict) -> list[ExplainNode]:
 
 
 def _mysql_node(key: str, raw: dict) -> ExplainNode:
-    cost_info = raw.get("cost_info") if isinstance(raw.get("cost_info"), dict) else {}
+    raw_cost = raw.get("cost_info")
+    cost_info: dict = raw_cost if isinstance(raw_cost, dict) else {}
     if key == "table":
         op = f"{raw.get('access_type', '?')} {raw.get('table_name', '?')}"
         cost = _num(cost_info.get("prefix_cost"))

@@ -43,7 +43,9 @@ WHY NOTHING IS ANNOUNCED WHEN NOTHING CHANGED
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -116,13 +118,14 @@ def push(org_id: str, env: str, remote: str) -> None:
     from provisa.core.secrets import resolve_secrets
 
     ref = _branch_ref(env)
-    porcelain.push(
-        str(repo_path(org_id)),
-        resolve_secrets(remote),
-        [ref + b":" + ref],
-        errstream=_Discard(),
-        outstream=_Discard(),
-    )
+    with _discard() as (binary, _text):
+        porcelain.push(
+            str(repo_path(org_id)),
+            resolve_secrets(remote),
+            [ref + b":" + ref],
+            errstream=binary,
+            outstream=binary,
+        )
 
 
 def delete_remote_branch(org_id: str, env: str, remote: str) -> None:
@@ -138,13 +141,14 @@ def delete_remote_branch(org_id: str, env: str, remote: str) -> None:
     from provisa.core.env_repo import _branch_ref, repo_path
     from provisa.core.secrets import resolve_secrets
 
-    porcelain.push(
-        str(repo_path(org_id)),
-        resolve_secrets(remote),
-        [b":" + _branch_ref(env)],
-        errstream=_Discard(),
-        outstream=_Discard(),
-    )
+    with _discard() as (binary, _text):
+        porcelain.push(
+            str(repo_path(org_id)),
+            resolve_secrets(remote),
+            [b":" + _branch_ref(env)],
+            errstream=binary,
+            outstream=binary,
+        )
 
 
 def fetch(org_id: str, remote: str) -> dict[str, str]:
@@ -167,23 +171,26 @@ def fetch(org_id: str, remote: str) -> dict[str, str]:
     # An org may fetch before it has ever edited a model, and there would then be nothing on disk
     # to fetch INTO. Creating it here holds the same invariant the write-through holds.
     ensure_repo(org_id)
-    result = porcelain.fetch(
-        str(repo_path(org_id)),
-        resolve_secrets(remote),
-        errstream=_Discard(),
-        outstream=_Discard(),
-    )
+    with _discard() as (binary, text):
+        result = porcelain.fetch(
+            str(repo_path(org_id)),
+            resolve_secrets(remote),
+            errstream=binary,
+            outstream=text,
+        )
     return track_remote(org_id, dict(result.refs))
 
 
-class _Discard:
-    """dulwich writes progress to these; nothing here reads it, and it is not the server's log."""
+@contextlib.contextmanager
+def _discard():
+    """dulwich writes progress to these; nothing here reads it, and it is not the server's log.
 
-    def write(self, _data: bytes) -> int:
-        return 0
-
-    def flush(self) -> None:
-        return None
+    Real file objects on the null device rather than a stub with ``write``/``flush``: dulwich
+    declares full ``BinaryIO``/``TextIO`` streams and hands them to code that may use more of the
+    interface than two methods, and the null device discards without accumulating.
+    """
+    with open(os.devnull, "wb") as binary, open(os.devnull, "w") as text:
+        yield binary, text
 
 
 async def post_status(url: str, payload: dict) -> None:

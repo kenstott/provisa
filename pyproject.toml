@@ -329,9 +329,18 @@ typeCheckingMode = "standard"
 # positives there — exclude tests from analysis rather than sprinkle pragmas.
 include = ["provisa"]
 exclude = ["provisa/proto", "**/__pycache__", "**/node_modules", "**/.*", ".venv", "tests", "**/tests"]
+# Optional runtime dependencies (keyring, the mcp extra) are absent by design and their import
+# sites already handle ImportError, so an unresolved import is a note and not a failure.
 reportMissingImports = "warning"
 reportMissingModuleSource = "none"
-extraPaths = ["vendor/buenavista"]
+reportPrivateImportUsage = "none"
+# pytest injects fixture/step-def symbols by name; excluded above, but the same shape appears in
+# strawberry resolvers and mixin stub blocks inside provisa itself.
+reportUnusedVariable = "none"
+reportUnusedFunction = "none"
+venvPath = "."
+venv = ".venv"
+extraPaths = ["vendor/buenavista", ".", "provisa-client", ".claude/commercial"]
 
 [tool.importlinter]
 root_package = "provisa"

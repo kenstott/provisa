@@ -33,12 +33,13 @@ added later inherits it rather than needing to remember it. prod needs no right:
 request naming nothing is served by, and refusing it would refuse every request.
 """
 
-# Requirements: REQ-1487, REQ-1488, REQ-1529, REQ-1573
+# Requirements: REQ-1487, REQ-1488, REQ-1523, REQ-1529, REQ-1573
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from provisa.core.env_reaper import utcnow
 from provisa.core.environments import PROD, is_env_name
 
 if TYPE_CHECKING:
@@ -95,12 +96,28 @@ async def select_environment(
     org_id: str,
     requested: str | None,
     capabilities: set[str] | None = None,
+    pinned: str | None = None,
 ) -> str:
     """The environment ``org_id`` is to be served in, refusing a name it cannot be served in.
 
     ``None`` and ``prod`` both give ``prod`` without a lookup: prod exists for every org from
     creation (REQ-1487) and cannot be deleted, so there is nothing a query could tell us.
+
+    ``pinned`` is the environment this membership is confined to (REQ-1596), and it inverts both of
+    those defaults: naming nothing gives the pin rather than prod, and naming anything else -- prod
+    included -- is refused. A sandbox visitor who could decline the header would be served the org's
+    production data, which is the one thing the pin exists to prevent. The pin does NOT require
+    ``environment_switch``: it is not a switch, it is where this member lives, and the sandbox role
+    withholds that right precisely so the visitor cannot leave. The existence and expiry checks
+    below still apply to it -- an expired sandbox stops serving on its deadline like any other.
     """
+    if pinned is not None:
+        if requested is not None and requested != pinned:
+            raise EnvironmentRightError(
+                f"this membership is confined to environment {pinned!r} "
+                f"and cannot be served by {requested!r}"
+            )
+        return await _existing_env(admin_db, org_id, pinned)
     if requested is None or requested == PROD:
         return PROD
     if admin_db is None:
@@ -122,8 +139,35 @@ async def select_environment(
             f"being served by environment {requested!r} requires the "
             f"{SWITCH_CAPABILITY!r} capability"
         )
+    return await _existing_env(admin_db, org_id, requested)
+
+
+async def _existing_env(admin_db: "Database | None", org_id: str, name: str) -> str:
+    """``name`` if the org has it and it has not expired, refusing it otherwise.
+
+    Separate from the right check above because the pin reaches it without one: what the two callers
+    share is the question of whether the environment is still there to be served, and that answer
+    must not differ between a named environment and a pinned one.
+    """
+    if name == PROD:
+        return PROD
+    if admin_db is None:
+        # Not a selection failure and so not a 404: the environments table lives on the admin plane,
+        # and a request naming an environment before that plane is bound reached a server that
+        # cannot answer the question at all.
+        raise RuntimeError(f"cannot honour environment {name!r}: no admin control plane is bound")
     from provisa.core.env_store import get_env
 
-    if await get_env(admin_db, org_id, requested) is None:
-        raise EnvironmentSelectionError(f"org {org_id!r} has no environment named {requested!r}")
-    return requested
+    row = await get_env(admin_db, org_id, name)
+    if row is None:
+        raise EnvironmentSelectionError(f"org {org_id!r} has no environment named {name!r}")
+    # REQ-1523: the deadline is the instant the expiry names, not the instant the sweep next runs.
+    # ``provisa.core.env_reaper`` drops the schemas on a schedule, so between two ticks an expired
+    # environment is still physically there and would still serve -- which would make the expiry a
+    # suggestion. Refusing here is what makes it the deadline it was promised to be.
+    expires_at = row["expires_at"]
+    if expires_at is not None and expires_at <= utcnow():
+        raise EnvironmentSelectionError(
+            f"environment {name!r} expired at {expires_at.isoformat()} and is being deleted"
+        )
+    return name

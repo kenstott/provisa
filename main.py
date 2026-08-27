@@ -20,6 +20,8 @@ if _env_file.exists():
             if not os.environ.get(_k.strip()):
                 os.environ[_k.strip()] = _v.strip()
 
-from provisa.api.app import create_app
+# Imported after the .env load above, not before: create_app() reads configuration at import time,
+# so hoisting this to the top would build the app from an environment the loop had not filled yet.
+from provisa.api.app import create_app  # noqa: E402
 
 app = create_app()

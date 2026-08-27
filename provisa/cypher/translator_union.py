@@ -16,6 +16,7 @@ instantiated alone.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 import sqlglot.expressions as exp
 
@@ -30,6 +31,16 @@ from provisa.cypher.translator_types import CypherTranslateError
 
 
 class _UnionMixin:  # mixin for _Translator
+    if TYPE_CHECKING:
+        # State and collaborating methods this mixin reads off ``self``; they belong to
+        # ``_Translator``, the only class it is mixed into. Guarded, because an unconditional stub
+        # would sit ahead of the real definition in the MRO and shadow it at runtime.
+        from provisa.cypher.label_map import CypherLabelMap
+
+        _lm: CypherLabelMap
+
+        def _collect_var_props(self, var: str) -> list[str]: ...
+
     def _build_all_rels_union(
         self,
         src_var: str | None,

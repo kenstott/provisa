@@ -55,7 +55,10 @@ def _file_token(path: str) -> str | None:
 
 
 def _ftp_token(parsed) -> str | None:
-    import ftplib
+    # B402 flags the module itself as cleartext: FTP is a sentinel scheme the operator opted
+    # into by writing an ftp:// URL, and the probe only reads a listing to date a file --
+    # no data of the org's ever moves over the connection.
+    import ftplib  # nosec B402
 
     try:
         ftp = ftplib.FTP()  # nosec B321 - operator-configured sentinel host, control-plane only

@@ -654,6 +654,24 @@ def _start_scheduler(_log: logging.Logger) -> None:
             name="engine:watcher",
             replace_existing=True,
         )
+        # REQ-1523: an environment carrying an expiry is deleted with its schema and its store when
+        # it passes. Per-minute, because the expiry is a deadline an org was told — an hour-grained
+        # sweep would make a one-hour environment last up to two. Registered only where the
+        # environments table is: it lives on the platform registry beside ``orgs``, so a deployment
+        # with no admin plane bound has no expiries to fire. ``max_instances=1`` because retirement
+        # drops schemas, and a second sweep starting mid-drop would retire what the first is holding.
+        if state.admin_db is not None:
+            from provisa.scheduler.jobs import reap_environments
+
+            scheduler.add_job(
+                reap_environments,
+                trigger=CronTrigger.from_crontab("* * * * *"),
+                id="env_reap",
+                name="environments:reap_expired",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
         # REQ-1452/REQ-1455: drain the in-memory egress reports into the meter. Registered here
         # rather than by the plugin because the transports that report bytes are core code, and
         # the drain no-ops without the plugin (``meter_egress`` is a plugin passthrough).

@@ -64,6 +64,11 @@ class _Conn:
         self._plane.statements.append(text)
         if text.lstrip().upper().startswith("SELECT"):
             return _Result([_Row(self._plane.invite)])
+        # REQ-1594: the redemption claims a use and reads back the row it claimed — no row means
+        # someone else took the last one. The plane says the claim succeeded unless a test says
+        # otherwise.
+        if text.lstrip().upper().startswith("UPDATE"):
+            return _Result(self._plane.claim)
         return _Result([])
 
     async def upsert(self, table, values, **kwargs):
@@ -94,11 +99,18 @@ def plane(monkeypatch):
         statements=[],
         memberships=[],
         roles=[],
+        claim=[_Row({"token": "tok-1"})],
         invite={
             "org_id": "acme",
             "role_id": "analyst",
             "expires_at": datetime.datetime(2099, 1, 1, tzinfo=timezone.utc),
-            "used_at": None,
+            # REQ-1594: the addressed invitation is the open invite with a ceiling of one.
+            "uses": 0,
+            "max_uses": 1,
+            # REQ-1595: it hands out membership and nothing else.
+            "env_policy": "none",
+            "env_ttl_seconds": None,
+            "env_name": None,
         },
     )
     admin_db = _Db(state)
@@ -177,22 +189,19 @@ async def test_the_org_email_rule_is_never_read_during_redemption(plane):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "used_at,expires_at",
+    "uses,expires_at",
     [
-        (
-            datetime.datetime(2026, 1, 1, tzinfo=timezone.utc),
-            datetime.datetime(2099, 1, 1, tzinfo=timezone.utc),
-        ),
-        (None, datetime.datetime(2020, 1, 1, tzinfo=timezone.utc)),
+        (1, datetime.datetime(2099, 1, 1, tzinfo=timezone.utc)),
+        (0, datetime.datetime(2020, 1, 1, tzinfo=timezone.utc)),
     ],
     ids=["already-used", "expired"],
 )
-async def test_a_spent_or_expired_invitation_admits_nobody(plane, used_at, expires_at):
-    """Single-use and expiring is what makes the invitation safe to trust over the rule."""
+async def test_a_spent_or_expired_invitation_admits_nobody(plane, uses, expires_at):
+    """Bounded and expiring is what makes the invitation safe to trust over the rule."""
     from provisa.api.auth_router import RedeemInviteRequest, redeem_invite
     from provisa.api.errors import ApiError
 
-    plane.invite["used_at"] = used_at
+    plane.invite["uses"] = uses
     plane.invite["expires_at"] = expires_at
 
     with pytest.raises(ApiError) as exc:
@@ -200,6 +209,36 @@ async def test_a_spent_or_expired_invitation_admits_nobody(plane, used_at, expir
 
     assert exc.value.status_code == 400
     assert plane.memberships == []
+
+
+@pytest.mark.asyncio
+async def test_an_open_invite_admits_the_next_visitor_too(plane):
+    """REQ-1594: the same link, redeemed again, because the ceiling is a count and not a flag."""
+    from provisa.api.auth_router import RedeemInviteRequest, redeem_invite
+
+    plane.invite.update(uses=17, max_uses=None)
+
+    body = await redeem_invite(RedeemInviteRequest(token="tok-1"), _request(OUTSIDER))
+
+    assert body["org_id"] == "acme"
+
+
+@pytest.mark.asyncio
+async def test_losing_the_race_for_the_last_redemption_admits_nobody(plane):
+    """REQ-1594: the row read said there was one left; the claim says someone else took it.
+
+    The claim is the authority precisely because it and the read cannot be one act -- and what it
+    refuses here would otherwise be a member the invitation never admitted.
+    """
+    from provisa.api.auth_router import RedeemInviteRequest, redeem_invite
+    from provisa.api.errors import ApiError
+
+    plane.claim = []
+
+    with pytest.raises(ApiError) as exc:
+        await redeem_invite(RedeemInviteRequest(token="tok-1"), _request(OUTSIDER))
+
+    assert exc.value.status_code == 400
 
 
 class _RuleConn:

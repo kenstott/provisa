@@ -56,7 +56,10 @@ class OracleDriver(DirectDriver):  # REQ-052, REQ-229, REQ-550
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(exec_sql, params or [])
-                columns = [desc[0].lower() for desc in cur.description] if cur.description else []
+                # ``desc.name``, not ``desc[0]``: a FetchInfo indexes as the DB-API 7-tuple whose
+                # members span str, int, bool and None, so only the named attribute is the column
+                # name.
+                columns = [desc.name.lower() for desc in cur.description] if cur.description else []
                 rows = await cur.fetchall()
                 return QueryResult(rows=list(rows), column_names=columns)
 
