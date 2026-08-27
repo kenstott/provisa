@@ -718,6 +718,30 @@ def _start_scheduler(_log: logging.Logger) -> None:
         _log.exception("APScheduler startup failed")
 
 
+async def _seed_sandbox_org(_log: logging.Logger) -> None:  # REQ-1598
+    """Build the hosted platform's sandbox org, if this deployment is the hosted platform.
+
+    The switch is the commerce seam, not an environment variable of its own: the sandbox org exists
+    to hand a stranger the product the platform SELLS, so the deployments that need one are exactly
+    the deployments that sell it. A self-hosted install has no public sign-in page, no open invite
+    on it, and no reason to carry a spare org's schema.
+    """
+    from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
+    from provisa.core.commerce import enabled as commerce_enabled
+
+    if not commerce_enabled():
+        return
+    if state.admin_db is None:
+        raise RuntimeError(
+            "REQ-1598: the sandbox org needs the control-plane registry, which is "
+            "not bound — a commercial deployment always has one"
+        )
+    from provisa.api.sandbox_org import SANDBOX_ORG_ID, ensure_sandbox_org
+
+    outcome = await ensure_sandbox_org(state.admin_db)
+    _log.info("sandbox org %s: %s", SANDBOX_ORG_ID, outcome)
+
+
 async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
     """Auto-register the graphql-demo source when GRAPHQL_DEMO_ENABLED is truthy.
 

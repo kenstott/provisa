@@ -53147,3 +53147,67 @@
   - REQ-1573
   - REQ-1595
   - REQ-1596
+- id: REQ-1598
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: >-
+    THE SANDBOX ORG IS BUILT BY STARTUP, NOT BY AN OPERATOR. The public "Try it Out" invite
+    (REQ-1594/REQ-1595) is an invite INTO an org, and the org it names is ``sandbox``. That link sits
+    on the sign-in page of every hosted deployment, so an org a person remembered to create by hand
+    is an org some deployment is missing, and a redemption that arrives at a missing org fails in
+    front of the stranger the invite was for. It is therefore seeded the way the bootstrap org is --
+    by the lifespan, idempotently, on every boot. ORDINARY IN EVERY OTHER RESPECT. It gets the same
+    ``provision_org`` build a self-service org gets, the demo data set seeded into it (an empty
+    sandbox is nothing to try), the shared engine lane, and the Starter plan's ceilings: what a
+    visitor tries is the plan the platform sells. WHAT IT IS NOT IS SOLD. Nobody buys the sandbox, so
+    the checkout gate a commercial deployment puts in front of org creation (REQ-1476) is not in this
+    path -- routing it through that gate would leave it parked at ``awaiting_checkout`` waiting for a
+    subscription webhook that never comes. For the same reason its plan cannot be set by a
+    subscription, and the ``trial`` an org row opens at would EXPIRE the one org that must never stop
+    answering; a commerce seam puts it on Starter directly and leaves ``subscription_status`` NULL,
+    because there is no commercial relationship to describe and the query path caps off the plan
+    alone. ANY UNFINISHED STATE IS REBUILT. A row at ``provisioning`` is a build that died with its
+    process, and one at ``failed`` or ``awaiting_checkout`` is an org the platform still owes its
+    visitors -- all three are taken back to ``provisioning`` and rebuilt, and only ``ready`` is left
+    alone. The build is spawned as the create path's own background task rather than awaited, so a
+    boot does not block for the minute a cold shard takes to wake; ``provisioning_state`` is where
+    its progress is read. OWNERLESS BY CONSTRUCTION. ``created_by`` is NULL because there is no
+    account to grant org_admin to: its members arrive by redeeming the open invite, and the role that
+    invite carries is ``sandbox`` (REQ-1597). THE SWITCH IS THE COMMERCE SEAM, not an environment
+    variable of its own -- the sandbox exists to hand a stranger the product the platform SELLS, so
+    the deployments that need one are exactly the deployments that sell it, and a self-hosted install
+    has no public sign-in page, no open invite on it, and no reason to carry a spare org's schema.
+  tests:
+  - tests/unit/test_sandbox_org_seed.py
+  code:
+  - provisa/api/sandbox_org.py
+  - provisa/api/app_startup.py
+  - provisa/api/app.py
+  - provisa/core/commerce.py
+  scenario: 'Given a hosted deployment with no sandbox org
+
+    When the application starts
+
+    Then the org is created, put on the Starter plan, and provisioned with the demo data set
+
+    Given a boot that finds the sandbox org ready
+
+    Then nothing is created and nothing is rebuilt
+
+    Given a boot that finds it awaiting_checkout, failed, or provisioning
+
+    Then it is returned to provisioning and built again
+
+    Given a self-hosted deployment
+
+    Then no sandbox org is seeded'
+  depends_on:
+  - REQ-1296
+  - REQ-1476
+  - REQ-1595
+  - REQ-1597

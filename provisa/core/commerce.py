@@ -275,6 +275,25 @@ async def bind_member_to_org_trial(pool: Any, org_id: str, email: str | None) ->
     await plugin.bind_member_to_trial(pool, org_id, email)
 
 
+# --- platform-owned orgs ----------------------------------------------------------------------- #
+
+
+async def entitle_starter(pool: Any, org_id: str) -> None:
+    """Put a PLATFORM-OWNED org on the Starter plan, with no purchase behind it (REQ-1598).
+
+    The sandbox org is the deployment's own: nobody buys it, so there is no subscription to set its
+    plan and the trial an org row otherwise opens at would expire the one org that must never stop
+    answering. Its ceilings are Starter's -- what a visitor tries is the plan the platform sells.
+
+    No-op without the plugin: a self-hosted deployment has no plans, so its orgs are already
+    uncapped.
+    """
+    plugin = load()
+    if plugin is None:
+        return
+    await plugin.entitle_starter(pool, org_id)
+
+
 # --- org checkout gate ----------------------------------------------------------------------- #
 
 

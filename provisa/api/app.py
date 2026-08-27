@@ -68,6 +68,7 @@ from provisa.api.app_startup import (
     _auto_register_graphql_demo,
     _capture_config_boot_snapshot,
     _prewarm_govdata_jvm,
+    _seed_sandbox_org,
     _start_background_tasks,
     _start_scheduler,
     _start_servers,
@@ -1801,6 +1802,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     _start_scheduler(_log)
 
     await _auto_register_graphql_demo(_log)
+
+    # REQ-1598: the org the public "Try it Out" invite admits visitors to. Seeded here, after the
+    # registry and the org runtime are up, so a redemption never arrives at an org that is missing.
+    await _seed_sandbox_org(_log)
 
     # Snapshot the config AFTER all boot-time auto-derivation, so the admin config-diff baseline
     # excludes runtime-derived entities (REQ-164). Opt-in; best-effort (the helper degrades and the
