@@ -41,6 +41,8 @@ const PLAN: ExplainResponse = {
   sources: ["orders"],
   optimizations: ["hot-table inline: currencies"],
   sql: "EXPLAIN (FORMAT JSON) SELECT id FROM orders",
+  // REQ-1322: the statement references no metric, so there is no semantic expansion to report.
+  semantic_sql: null,
   plan: [
     {
       op: "Hash Join",
