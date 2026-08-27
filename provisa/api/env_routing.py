@@ -170,4 +170,11 @@ async def _existing_env(admin_db: "Database | None", org_id: str, name: str) -> 
         raise EnvironmentSelectionError(
             f"environment {name!r} expired at {expires_at.isoformat()} and is being deleted"
         )
+    # REQ-1600: and being served is what a sliding expiry is measured from. An environment carrying
+    # an idle TTL is promised to survive as long as it is used, so the request that reaches it here
+    # -- the last point at which the routing knows the environment was actually reached -- restates
+    # the deadline. A no-op for REQ-1523's fixed expiry, which being used is no argument against.
+    from provisa.core.env_store import renew_idle_expiry
+
+    await renew_idle_expiry(admin_db, org_id, name)
     return name

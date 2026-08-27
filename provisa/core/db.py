@@ -169,6 +169,13 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
 )
 
+# REQ-1602: rights a role is SHOWN but does not hold. The sandbox's six withheld rights are the
+# whole list: a visitor is being shown the product, so the surfaces those rights open stay on the
+# page, disabled and badged as belonging to the production system. Hiding them would make the
+# sandbox look like a smaller product rather than the same one with the org's controls held back.
+# Every other role's absence of a right means the same thing it always did -- nothing to show.
+_DEMONSTRATED_ROLES: dict[str, list[str]] = {"sandbox": sorted(_SANDBOX_DENIED)}
+
 
 def add_missing_columns(sync_conn, tables) -> None:
     """Additive column reconciliation: ADD COLUMN any metadata column absent from a live table.
@@ -232,12 +239,24 @@ async def _init_schema_portable(pool: "Database") -> None:
                     insert(domains).values(id=domain_id, description=description, steward=steward)
                 )
         for role_id, capabilities in _SEED_ROLES:
+            demonstrated = _DEMONSTRATED_ROLES.get(role_id, [])
             result = await conn.execute_core(select(roles.c.id).where(roles.c.id == role_id))
             if result.fetchone() is None:
                 await conn.execute_core(
                     insert(roles).values(
-                        id=role_id, capabilities=capabilities, domain_access=["*"], org_id=None
+                        id=role_id,
+                        capabilities=capabilities,
+                        demonstrated=demonstrated,
+                        domain_access=["*"],
+                        org_id=None,
                     )
+                )
+            elif demonstrated:
+                # REQ-1602: the demonstrated list is part of the role's definition, and the seed
+                # above cannot reach a row an earlier release already created -- the same seam the
+                # tenancy grants re-assert their rights through.
+                await conn.execute_core(
+                    roles.update().where(roles.c.id == role_id).values(demonstrated=demonstrated)
                 )
 
 

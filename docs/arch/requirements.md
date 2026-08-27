@@ -16827,3 +16827,55 @@ THE SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIG
 **Code:** `provisa/core/db.py`, `provisa/core/schema.sql`
 
 **Tests:** `tests/unit/test_sandbox_role_seed.py`
+
+### REQ-1598 · Multi-Tenancy & Organizations {#REQ-1598}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+THE SANDBOX ORG IS BUILT BY STARTUP, NOT BY AN OPERATOR. The public "Try it Out" invite ([REQ-1594](#REQ-1594)/[REQ-1595](#REQ-1595)) is an invite INTO an org, and the org it names is ``sandbox``. That link sits on the sign-in page of every hosted deployment, so an org a person remembered to create by hand is an org some deployment is missing, and a redemption that arrives at a missing org fails in front of the stranger the invite was for. It is therefore seeded the way the bootstrap org is -- by the lifespan, idempotently, on every boot. ORDINARY IN EVERY OTHER RESPECT. It gets the same ``provision_org`` build a self-service org gets, the demo data set seeded into it (an empty sandbox is nothing to try), the shared engine lane, and the Starter plan's ceilings: what a visitor tries is the plan the platform sells. WHAT IT IS NOT IS SOLD. Nobody buys the sandbox, so the checkout gate a commercial deployment puts in front of org creation ([REQ-1476](#REQ-1476)) is not in this path -- routing it through that gate would leave it parked at ``awaiting_checkout`` waiting for a subscription webhook that never comes. For the same reason its plan cannot be set by a subscription, and the ``trial`` an org row opens at would EXPIRE the one org that must never stop answering; a commerce seam puts it on Starter directly and leaves ``subscription_status`` NULL, because there is no commercial relationship to describe and the query path caps off the plan alone. ANY UNFINISHED STATE IS REBUILT. A row at ``provisioning`` is a build that died with its process, and one at ``failed`` or ``awaiting_checkout`` is an org the platform still owes its visitors -- all three are taken back to ``provisioning`` and rebuilt, and only ``ready`` is left alone. The build is spawned as the create path's own background task rather than awaited, so a boot does not block for the minute a cold shard takes to wake; ``provisioning_state`` is where its progress is read. OWNERLESS BY CONSTRUCTION. ``created_by`` is NULL because there is no account to grant org_admin to: its members arrive by redeeming the open invite, and the role that invite carries is ``sandbox`` ([REQ-1597](#REQ-1597)). THE SWITCH IS THE COMMERCE SEAM, not an environment variable of its own -- the sandbox exists to hand a stranger the product the platform SELLS, so the deployments that need one are exactly the deployments that sell it, and a self-hosted install has no public sign-in page, no open invite on it, and no reason to carry a spare org's schema.
+
+**Code:** `provisa/api/sandbox_org.py`, `provisa/api/app_startup.py`, `provisa/api/app.py`, `provisa/core/commerce.py`
+
+**Tests:** `tests/unit/test_sandbox_org_seed.py`
+
+### REQ-1599 · Multi-Tenancy & Organizations {#REQ-1599}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+THE DEPLOYMENT'S ADMINISTRATORS MAY USE THE SANDBOX ORG. The sandbox ([REQ-1598](#REQ-1598)) is a tenant org like any other, and platform_admin confers NOTHING inside a tenant org -- it is stripped from the resolved assignment set there ([REQ-1297](#REQ-1297)), and everyone, operators included, is confined to the orgs they are a member of ([REQ-1327](#REQ-1327)). An operator answering for what the public "Try it Out" link shows a stranger would therefore be unable to open the org it admits them to. So they are seated in it THE ORDINARY WAY, exactly as the platform-admin claimant is seated in the bootstrap org ([REQ-1296](#REQ-1296)): a membership on the admin plane and a role assignment inside the sandbox's own schema. THE ROLE IS org_admin, NOT sandbox -- an operator has to reach the environments, the members and the settings a visitor's role deliberately withholds ([REQ-1597](#REQ-1597)). THE MEMBERSHIP IS UNPINNED: the env pin ([REQ-1596](#REQ-1596)) is what confines a stranger to the environment minted for them, and an operator is not a stranger. RECONCILED FROM BOTH ENDS, so no boot leaves an administrator outside the org. The list of administrators is read from the ROOT org's schema, which is the whole list -- platform_admin is only ever conferred there. Seating runs when the sandbox's build finishes (the moment its schema exists), on every later boot that finds the org ready, and on every conferral of a role thereafter -- the super-admin claim and either invitation path. The conferral hook does not ask WHICH role was granted: a gate on a role name is exactly what [REQ-1337](#REQ-1337) forbids, and the answer is already in the assignments the seating reads. It is a no-op, never an error, for a deployment with no sandbox org and for one whose sandbox is still building.
+
+**Code:** `provisa/api/sandbox_org.py`, `provisa/api/auth_router.py`
+
+**Tests:** `tests/unit/test_sandbox_org_seed.py`
+
+### REQ-1600 · Multi-Tenancy & Organizations {#REQ-1600}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+AN ENVIRONMENT MAY BE GIVEN AWAY FOR A SPAN OF USE RATHER THAN A SPAN OF TIME. [REQ-1523](#REQ-1523)'s expires_at is a FIXED deadline: it stands where it was written and nothing moves it, which is right for a branch cut for a named piece of work. It is wrong for an environment handed to a visitor by an invitation, where the promise is "yours until you walk away" -- an hour of work must not end it, and an hour of quiet must. So an environment carries an OPTIONAL idle_ttl_seconds, and a value there makes its expiry SLIDING: the serving path pushes the deadline out by that many seconds each time the environment actually serves a request, which is the last point at which the routing knows the environment was reached. NULL is [REQ-1523](#REQ-1523)'s fixed deadline, unchanged -- being used is no argument against it. THE RENEWAL IS BOUNDED, not per request: it writes only when less than half the TTL remains, which holds the writes to one per half-TTL and still leaves the environment at least that long to be used again -- a row written per request would put an UPDATE on the serving path for no further guarantee. THE REFUSAL COMES FIRST: an environment already past its deadline is refused rather than renewed, because otherwise the request that arrived one second late would be the one that moved the deadline and it could never arrive. The reaper ([REQ-1523](#REQ-1523)) drops the environment on its next sweep either way. A per_visitor invitation ([REQ-1595](#REQ-1595)) passes its env_ttl_seconds through as the idle allowance, so the hour it names is an hour of DISUSE.
+
+**Code:** `provisa/core/env_store.py`, `provisa/api/env_routing.py`, `provisa/api/invite_env.py`
+
+**Tests:** `tests/unit/test_env_idle_expiry.py`, `tests/unit/test_open_invite.py`
+
+### REQ-1601 · Multi-Tenancy & Organizations {#REQ-1601}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+EVERY ORG_ADMIN MAY MINT AN ENVIRONMENT-PROVISIONING INVITATION FROM THEIR OWN TEAM PAGE. The open link ([REQ-1594](#REQ-1594)) and the per-visitor environment ([REQ-1595](#REQ-1595)) are not a sandbox arrangement ([REQ-1598](#REQ-1598)) -- the sandbox is only the first user of a feature every org_admin has: hand someone a link that seats them in a private environment deployed from production, so they see the real model without being able to reach the org, and lose it again once they stop using it. The org_admin's own invite surface ([REQ-1266](#REQ-1266)) therefore carries three further controls: WHO THE LINK ADMITS (a single invitee, or anyone holding it -- an unlimited ceiling), WHAT THE REDEEMER WORKS IN (the org itself, or a fresh environment of their own), and HOW LONG AN UNUSED ENVIRONMENT SURVIVES (a span of DISUSE, [REQ-1600](#REQ-1600), defaulting to one hour). The TTL control appears only for the per-visitor policy, which is the only policy it means anything under. THE INVITE LIST REPORTS WHAT EACH LINK IS: its redemptions against its ceiling, and what it hands its redeemer. AN INVITATION IS SPENT WHEN IT HAS NO REDEMPTIONS LEFT -- "used_at is set" stopped describing that the moment a link could admit more than one person, so copy and revoke are offered against the ceiling and not against the first redemption. Nothing here is gated on which org the org_admin administers: the server scopes create, list and revoke to the caller's active org already.
+
+**Code:** `provisa-ui/src/pages/TeamPage.tsx`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/components/admin/OrgsTab.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/TeamPageEnvInvite.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1602 · Access Governance & Security {#REQ-1602}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities, a role carries a DEMONSTRATED list -- rights it is deliberately denied whose surfaces are still rendered, labelled as part of the production system rather than removed from the page. The sandbox role ([REQ-1597](#REQ-1597)) is the first holder: it is org_admin minus six rights, and a visitor holding it is being shown the product, so deleting those six surfaces would advertise a smaller product than the one being sold. The two lists are disjoint by construction -- a right the role holds is used, never explained -- and the client unions them across the acting roles the same way it unions capabilities, subtracting everything actually held. THE DEMONSTRATION IS REACHABLE, NOT A DEAD BADGE: a nav entry into a demonstrated region stays clickable, the route resolves, and the PAGE carries a banner saying what it is while its contents render inert (aria-disabled, dimmed, keyboard- and pointer-refused by the browser itself). An inline control demonstrates in place instead -- greyed, badged, and explained on hover. NOTHING HERE IS AN AUTHORIZATION CHANGE: the server refuses every call behind a demonstrated surface exactly as it refuses a denied one, and the client reads a rights list off the role, never a role id ([REQ-1337](#REQ-1337)).
+
+**Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/db.py`, `provisa/api/admin/roles_router.py`, `provisa-ui/src/components/DemonstratedFeature.tsx`, `provisa-ui/src/components/CapabilityGate.tsx`, `provisa-ui/src/lib/capabilities.ts`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/components/EnvSwitcher.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/CapabilityGate.test.tsx`, `provisa-ui/src/__tests__/DemonstratedUnion.test.ts`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `tests/unit/test_sandbox_role_seed.py`

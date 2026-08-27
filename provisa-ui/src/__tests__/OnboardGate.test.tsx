@@ -43,6 +43,7 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
           {
             id: "platform_admin",
             capabilities: ["admin", "superadmin", "platform_settings", "cross_org"],
+            demonstrated: [],
             domain_access: ["*"],
           },
         ],

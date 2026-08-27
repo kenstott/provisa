@@ -314,6 +314,7 @@ export function NavBar() {
                     capability={item.capability}
                     strict={item.strict}
                     orCapability={item.orCapability}
+                    navigable
                   >
                     <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
                   </CapabilityGate>

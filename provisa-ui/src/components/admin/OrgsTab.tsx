@@ -123,10 +123,14 @@ export function OrgsTab() {
     }));
   };
 
+  // REQ-1594: an invitation is spent when it has no redemptions left. "used_at is set" stopped
+  // describing that once a link could admit more than the one person it was minted for.
+  const isSpent = (inv: OrgInvite) => inv.max_uses !== null && inv.uses >= inv.max_uses;
+
   const handleCreateInvite = async () => {
     if (!inviteOrgId || !inviteOrgId.trim()) return;
     const orgId = inviteOrgId.trim();
-    const invite = await createInvite(orgId, inviteRoleId);
+    const invite = await createInvite(orgId, { roleId: inviteRoleId });
     setOrgInvites(await fetchInvites());
     const url = inviteUrl(orgId, invite.token);
     await navigator.clipboard.writeText(url);
@@ -438,13 +442,15 @@ export function OrgsTab() {
                 <Table.Td>{inv.created_by}</Table.Td>
                 <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
                 <Table.Td>
-                  {inv.used_at
+                  {isSpent(inv)
+                    ? t("orgsTab.spentStatus")
+                    : inv.used_at
                     ? t("orgsTab.usedStatus", { date: new Date(inv.used_at).toLocaleDateString() })
                     : t("orgsTab.activeStatus")}
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
-                    {!inv.used_at && (
+                    {!isSpent(inv) && (
                       <Button
                         size="compact-xs"
                         variant="default"
@@ -455,7 +461,7 @@ export function OrgsTab() {
                           : t("orgsTab.copyButton")}
                       </Button>
                     )}
-                    {!inv.used_at && (
+                    {!isSpent(inv) && (
                       <Button
                         size="compact-xs"
                         color="red"

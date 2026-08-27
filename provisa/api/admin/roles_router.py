@@ -80,7 +80,15 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
     pool = _pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.domain_access, roles.c.org_id)
+            select(
+                roles.c.id,
+                roles.c.capabilities,
+                # REQ-1602: the rights the role is shown but does not hold -- the client dims and
+                # badges those surfaces instead of dropping them.
+                roles.c.demonstrated,
+                roles.c.domain_access,
+                roles.c.org_id,
+            )
             .where(or_(roles.c.org_id.is_(None), roles.c.org_id == org_id))
             .order_by(roles.c.id)
         )

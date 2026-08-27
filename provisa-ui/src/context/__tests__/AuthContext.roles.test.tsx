@@ -68,9 +68,9 @@ const ORG_ADMIN_IDENTITY = {
 const ORG_ROLE_CATALOG = {
   data: {
     roles: [
-      { id: "admin", capabilities: ["admin"], domainAccess: ["*"] },
-      { id: "analyst", capabilities: ["usage"], domainAccess: ["*"] },
-      { id: "org_admin", capabilities: ["user_management"], domainAccess: ["*"] },
+      { id: "admin", capabilities: ["admin"], demonstrated: [], domainAccess: ["*"] },
+      { id: "analyst", capabilities: ["usage"], demonstrated: [], domainAccess: ["*"] },
+      { id: "org_admin", capabilities: ["user_management"], demonstrated: [], domainAccess: ["*"] },
     ],
   },
 };
@@ -167,8 +167,8 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
     refetchRoles.mockResolvedValue({
       data: {
         roles: [
-          { id: "platform_admin", capabilities: ["admin", "superadmin"], domainAccess: ["*"] },
-          { id: "org_admin", capabilities: ["user_management"], domainAccess: ["*"] },
+          { id: "platform_admin", capabilities: ["admin", "superadmin"], demonstrated: [], domainAccess: ["*"] },
+          { id: "org_admin", capabilities: ["user_management"], demonstrated: [], domainAccess: ["*"] },
         ],
       },
     });

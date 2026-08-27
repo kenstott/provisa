@@ -43,6 +43,7 @@ query RolesQuery {
   roles {
     id
     capabilities
+    demonstrated
     domainAccess
     rateLimit {
       requestsPerSecond

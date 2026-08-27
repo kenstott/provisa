@@ -284,6 +284,10 @@ roles = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column("capabilities", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
+    # badged. A role defined by subtraction (the sandbox, REQ-1597) is a demonstration, and an
+    # absent feature demonstrates nothing. Disjoint from `capabilities` by construction.
+    Column("demonstrated", JSON, nullable=False, default=list, server_default="[]"),
     Column("domain_access", JSON, nullable=False, default=list, server_default="[]"),
     # REQ-1174: per-role rate + query-complexity limits {requests_per_second, max_query_depth,
     # max_query_nodes, max_query_time_ms, ...}. None/absent = unlimited.

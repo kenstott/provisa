@@ -208,6 +208,9 @@ class TestWhatTheRedeemerIsGiven:
 
         left = created[0]["expires_at"] - datetime.now(tz=timezone.utc)
         assert 3500 < left.total_seconds() <= 3600
+        # REQ-1600: and the hour is an hour of DISUSE -- the same span rides along as the idle
+        # allowance, so a visitor still working when it elapses keeps the environment.
+        assert created[0]["idle_ttl_seconds"] == 3600
 
     @pytest.mark.asyncio
     async def test_an_unknown_policy_is_refused_rather_than_treated_as_none(self):

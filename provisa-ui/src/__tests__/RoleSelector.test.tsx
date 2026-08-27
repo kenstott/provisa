@@ -27,12 +27,14 @@ const mockUseAuth = vi.mocked(useAuth);
 const ADMIN_ROLE: Role = {
   id: "admin",
   capabilities: ["admin"] as Capability[],
+  demonstrated: [],
   domain_access: ["*"],
 };
 
 const ANALYST_ROLE: Role = {
   id: "analyst",
   capabilities: ["query_development", "full_results"] as Capability[],
+  demonstrated: [],
   domain_access: ["sales"],
 };
 
@@ -50,6 +52,7 @@ function makeAuthValue(overrides: {
     selectedRoles: selectedRole === "all" ? availableRoles : [selectedRole as Role],
     capabilities: ["admin"] as Capability[],
     domainAccess: ["*"],
+    demonstrated: [] as Capability[],
     selectedRole,
     selectedDomain: null,
     selectRole: overrides.selectRole ?? vi.fn(),

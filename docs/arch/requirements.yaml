@@ -53266,3 +53266,176 @@
   - REQ-1596
   - REQ-1597
   - REQ-1598
+
+- id: REQ-1600
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: 'AN ENVIRONMENT MAY BE GIVEN AWAY FOR A SPAN OF USE RATHER THAN A SPAN
+    OF TIME. REQ-1523''s expires_at is a FIXED deadline: it stands where it was written
+    and nothing moves it, which is right for a branch cut for a named piece of work.
+    It is wrong for an environment handed to a visitor by an invitation, where the
+    promise is "yours until you walk away" -- an hour of work must not end it, and
+    an hour of quiet must. So an environment carries an OPTIONAL idle_ttl_seconds,
+    and a value there makes its expiry SLIDING: the serving path pushes the deadline
+    out by that many seconds each time the environment actually serves a request,
+    which is the last point at which the routing knows the environment was reached.
+    NULL is REQ-1523''s fixed deadline, unchanged -- being used is no argument against
+    it. THE RENEWAL IS BOUNDED, not per request: it writes only when less than half
+    the TTL remains, which holds the writes to one per half-TTL and still leaves the
+    environment at least that long to be used again -- a row written per request would
+    put an UPDATE on the serving path for no further guarantee. THE REFUSAL COMES
+    FIRST: an environment already past its deadline is refused rather than renewed,
+    because otherwise the request that arrived one second late would be the one that
+    moved the deadline and it could never arrive. The reaper (REQ-1523) drops the
+    environment on its next sweep either way. A per_visitor invitation (REQ-1595)
+    passes its env_ttl_seconds through as the idle allowance, so the hour it names
+    is an hour of DISUSE.'
+  tests:
+  - tests/unit/test_env_idle_expiry.py
+  - tests/unit/test_open_invite.py
+  code:
+  - provisa/core/env_store.py
+  - provisa/api/env_routing.py
+  - provisa/api/invite_env.py
+  scenario: 'Given an environment carrying an idle TTL of one hour
+
+    When a request is served by it with less than half an hour left
+
+    Then its deadline is pushed a full hour out
+
+    Given the same environment with more than half an hour left
+
+    Then the deadline is left where it is
+
+    Given an environment whose deadline has passed
+
+    When a request selects it
+
+    Then it is refused rather than renewed
+
+    Given an environment carrying no idle TTL
+
+    Then no amount of use moves its deadline'
+  depends_on:
+  - REQ-1523
+  - REQ-1595
+
+- id: REQ-1601
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: 'EVERY ORG_ADMIN MAY MINT AN ENVIRONMENT-PROVISIONING INVITATION FROM
+    THEIR OWN TEAM PAGE. The open link (REQ-1594) and the per-visitor environment
+    (REQ-1595) are not a sandbox arrangement (REQ-1598) -- the sandbox is only the
+    first user of a feature every org_admin has: hand someone a link that seats them
+    in a private environment deployed from production, so they see the real model
+    without being able to reach the org, and lose it again once they stop using it.
+    The org_admin''s own invite surface (REQ-1266) therefore carries three further
+    controls: WHO THE LINK ADMITS (a single invitee, or anyone holding it -- an unlimited
+    ceiling), WHAT THE REDEEMER WORKS IN (the org itself, or a fresh environment of
+    their own), and HOW LONG AN UNUSED ENVIRONMENT SURVIVES (a span of DISUSE, REQ-1600,
+    defaulting to one hour). The TTL control appears only for the per-visitor policy,
+    which is the only policy it means anything under. THE INVITE LIST REPORTS WHAT
+    EACH LINK IS: its redemptions against its ceiling, and what it hands its redeemer.
+    AN INVITATION IS SPENT WHEN IT HAS NO REDEMPTIONS LEFT -- "used_at is set" stopped
+    describing that the moment a link could admit more than one person, so copy and
+    revoke are offered against the ceiling and not against the first redemption. Nothing
+    here is gated on which org the org_admin administers: the server scopes create,
+    list and revoke to the caller''s active org already.'
+  tests:
+  - provisa-ui/src/__tests__/TeamPageEnvInvite.test.tsx
+  code:
+  - provisa-ui/src/pages/TeamPage.tsx
+  - provisa-ui/src/api/admin.ts
+  - provisa-ui/src/components/admin/OrgsTab.tsx
+  scenario: 'Given an org_admin on their team page
+
+    When they mint an invitation as an open link with a per-visitor environment
+
+    Then the link admits everyone who holds it, and each redeemer gets an environment
+    of their own reaped after the named span of disuse
+
+    Given an invitation whose redemptions have reached its ceiling
+
+    Then it reads as fully redeemed and offers neither copy nor revoke
+
+    Given an invitation with no ceiling
+
+    Then it never reads as spent, however many people have redeemed it'
+  depends_on:
+  - REQ-1266
+  - REQ-1594
+  - REQ-1595
+  - REQ-1600
+- id: REQ-1602
+  status: complete
+  since: 2026-08
+  target: 2026-Q3
+  group: 1. Access Governance & Security
+  category: Access Governance & Security
+  priority: MUST
+  type: behavioral
+  description: 'A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities,
+    a role carries a DEMONSTRATED list -- rights it is deliberately denied whose surfaces
+    are still rendered, labelled as part of the production system rather than removed
+    from the page. The sandbox role (REQ-1597) is the first holder: it is org_admin
+    minus six rights, and a visitor holding it is being shown the product, so deleting
+    those six surfaces would advertise a smaller product than the one being sold. The
+    two lists are disjoint by construction -- a right the role holds is used, never
+    explained -- and the client unions them across the acting roles the same way it
+    unions capabilities, subtracting everything actually held. THE DEMONSTRATION IS
+    REACHABLE, NOT A DEAD BADGE: a nav entry into a demonstrated region stays clickable,
+    the route resolves, and the PAGE carries a banner saying what it is while its contents
+    render inert (aria-disabled, dimmed, keyboard- and pointer-refused by the browser
+    itself). An inline control demonstrates in place instead -- greyed, badged, and
+    explained on hover. NOTHING HERE IS AN AUTHORIZATION CHANGE: the server refuses
+    every call behind a demonstrated surface exactly as it refuses a denied one, and
+    the client reads a rights list off the role, never a role id (REQ-1337).'
+  tests:
+  - provisa-ui/src/__tests__/CapabilityGate.test.tsx
+  - provisa-ui/src/__tests__/DemonstratedUnion.test.ts
+  - provisa-ui/src/__tests__/EnvSwitcher.test.tsx
+  - tests/unit/test_sandbox_role_seed.py
+  code:
+  - provisa/core/schema.sql
+  - provisa/core/schema_org.py
+  - provisa/core/db.py
+  - provisa/api/admin/roles_router.py
+  - provisa-ui/src/components/DemonstratedFeature.tsx
+  - provisa-ui/src/components/CapabilityGate.tsx
+  - provisa-ui/src/lib/capabilities.ts
+  - provisa-ui/src/context/AuthContext.tsx
+  - provisa-ui/src/components/EnvSwitcher.tsx
+  scenario: 'Given a visitor acting as the sandbox role
+
+    When they open the admin rail
+
+    Then Environments is listed and clickable
+
+    When they follow it
+
+    Then the page renders with a banner explaining it is a production feature, and
+    nothing on it can be clicked, focused or typed into
+
+    Given the same visitor and the environment switcher
+
+    Then the control stands where a holder''s would, inert and badged, and no environment
+    is ever fetched
+
+    Given a role that simply lacks a right
+
+    Then its surfaces are absent, as before'
+  depends_on:
+  - REQ-1337
+  - REQ-1349
+  - REQ-1573
+  - REQ-1597

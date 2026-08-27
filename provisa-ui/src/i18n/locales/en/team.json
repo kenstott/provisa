@@ -47,6 +47,24 @@
     "inviteSent": "Invitation sent to {{email}}. Link: {{url}}",
     "inviteNotSent": "The invitation for {{email}} was created but could not be sent ({{reason}}). Share this link instead: {{url}}",
     "inviteNoMail": "This deployment does not send email, so nothing was sent to {{email}}. Share this link instead: {{url}}",
-    "colEmail": "Email"
+    "colEmail": "Email",
+    "openLinkLabel": "Anyone with the link may join",
+    "openLinkDesc": "An open link admits unlimited people and stays usable until it expires or you revoke it. Leave it off for a single-use invitation.",
+    "envPolicyLabel": "What the invitee works in",
+    "envPolicyNone": "The organization itself",
+    "envPolicyPerVisitor": "A fresh environment of their own",
+    "envPolicyDesc": "A private environment is deployed from production, so the invitee sees your real model. It is deleted once it has gone unused for the span below, and the invitee is confined to it.",
+    "envTtlLabel": "Delete the environment after",
+    "envTtl15m": "15 minutes of disuse",
+    "envTtl1h": "1 hour of disuse",
+    "envTtl8h": "8 hours of disuse",
+    "envTtl24h": "24 hours of disuse",
+    "colUses": "Redemptions",
+    "usesUnlimited": "{{used}} of unlimited",
+    "usesOf": "{{used}} of {{max}}",
+    "colEnvironment": "Environment",
+    "envPerVisitorBadge": "Per visitor, {{ttl}}",
+    "envSharedBadge": "Shared: {{name}}",
+    "spentStatus": "Fully redeemed"
   }
 }

@@ -62,6 +62,13 @@ export interface RoleRateLimit {
 export interface Role {
   id: string;
   capabilities: Capability[];
+  /**
+   * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
+   * badged as belonging to the production system. A role defined by subtraction (the sandbox,
+   * REQ-1597) is a demonstration of the product, and a feature that is simply absent demonstrates
+   * nothing. Disjoint from `capabilities`.
+   */
+  demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
 }
@@ -90,6 +97,8 @@ export interface AuthState {
   capabilities: Capability[];
   /** Unioned domain_access across all selected roles. */
   domainAccess: string[];
+  /** REQ-1602: rights shown-but-withheld across all selected roles, minus any actually held. */
+  demonstrated: Capability[];
   selectedRole: Role | "all";
   selectedDomain: string | null;
   /** All role:domain pairs for the authenticated user (empty in dev mode until roles load). */

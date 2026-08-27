@@ -9,13 +9,23 @@
 // permission from the copyright holder.
 
 import { useAuth } from "../context/AuthContext";
-import { hasCapability } from "../lib/capabilities";
+import { hasCapability, isDemonstrated } from "../lib/capabilities";
 import type { Capability } from "../types/auth";
 
 /** Check if unioned capabilities include a capability (admin has all). */
 export function useCapability(cap: Capability): boolean {
   const { capabilities } = useAuth();
   return hasCapability(capabilities, cap);
+}
+
+/**
+ * REQ-1602: is `cap` a right the caller is SHOWN rather than given? For a surface gated by this
+ * hook rather than by CapabilityGate, which does the same on its own. Ask only after
+ * `useCapability` says no -- a right that is held needs no explanation of itself.
+ */
+export function useDemonstrated(cap: Capability): boolean {
+  const { demonstrated } = useAuth();
+  return isDemonstrated(demonstrated, { capability: cap });
 }
 
 /** Check multiple capabilities — returns true if unioned capabilities have ALL. */

@@ -20,12 +20,16 @@ import { AdminRail } from "../components/AdminRail";
 const auth = {
   loading: false,
   capabilities: ["org_settings"] as string[],
+  // REQ-1602: rights this role is SHOWN without holding. Empty here -- the rail's entries are
+  // either held or absent; the demonstration path is covered in CapabilityGate.test.tsx.
+  demonstrated: [] as string[],
   billing: false,
 };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 
 beforeEach(() => {
   auth.capabilities = ["org_settings"];
+  auth.demonstrated = [];
   auth.billing = false;
 });
 

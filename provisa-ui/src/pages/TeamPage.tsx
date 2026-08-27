@@ -18,6 +18,7 @@ import {
   Modal,
   Select,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
@@ -25,6 +26,8 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
+  ENV_POLICY_NONE,
+  ENV_POLICY_PER_VISITOR,
   createInvite,
   deleteOrg,
   exportOrgConfig,
@@ -59,6 +62,14 @@ export function TeamPage() {
   // REQ-1287/REQ-1310: addressing the invitation is what makes it a message rather than a link the
   // org_admin has to carry themselves. Empty means a shareable link, which is still a valid choice.
   const [inviteEmail, setInviteEmail] = useState("");
+  // REQ-1594: an open link admits everyone who holds it instead of the one person it was minted
+  // for. Off is the single-use invitation, which is what an invitation meant before this existed.
+  const [openLink, setOpenLink] = useState(false);
+  // REQ-1595/REQ-1600: what the redeemer is given to work in. `per_visitor` deploys a private
+  // environment per redeemer and reaps it once it has gone `envTtl` seconds without a request --
+  // which is how an org_admin hands out a look at their real model without handing over the org.
+  const [envPolicy, setEnvPolicy] = useState(ENV_POLICY_NONE);
+  const [envTtl, setEnvTtl] = useState("3600");
   const [error, setError] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   // REQ-1300: deletion is unrecoverable, so it is gated behind an explicit modal in which the
@@ -163,12 +174,45 @@ export function TeamPage() {
 
   const roleOptions = roles.map((r) => ({ value: r.id, label: r.id }));
 
+  // REQ-1594: an invitation is spent when it has no redemptions left, which "used_at is set" stopped
+  // describing once a link could admit more than one person. A null ceiling never arrives there.
+  const isSpent = (inv: OrgInvite) => inv.max_uses !== null && inv.uses >= inv.max_uses;
+
+  const ttlOptions = [
+    { value: "900", label: t("teamPage.envTtl15m") },
+    { value: "3600", label: t("teamPage.envTtl1h") },
+    { value: "28800", label: t("teamPage.envTtl8h") },
+    { value: "86400", label: t("teamPage.envTtl24h") },
+  ];
+
+  // What each invitation hands its redeemer, said in the row rather than left to the token.
+  const envSummary = (inv: OrgInvite) => {
+    if (inv.env_policy === ENV_POLICY_PER_VISITOR) {
+      const ttl = ttlOptions.find((o) => o.value === String(inv.env_ttl_seconds));
+      return t("teamPage.envPerVisitorBadge", {
+        ttl: ttl ? ttl.label : `${inv.env_ttl_seconds}s`,
+      });
+    }
+    if (inv.env_name !== null) return t("teamPage.envSharedBadge", { name: inv.env_name });
+    return "—";
+  };
+
   const handleCreate = async () => {
     if (!activeOrgId || !roleId) return;
     setError(null);
     const email = inviteEmail.trim();
     try {
-      const invite = await createInvite(activeOrgId, roleId, 7, email === "" ? undefined : email);
+      const invite = await createInvite(activeOrgId, {
+        roleId,
+        expiresInDays: 7,
+        email: email === "" ? undefined : email,
+        // REQ-1594: null is unlimited, and unlimited is the only ceiling an open link can carry.
+        maxUses: openLink ? null : 1,
+        envPolicy,
+        // REQ-1595: the TTL is what `per_visitor` is missing without, and meaningless with any
+        // other policy -- the server rejects the pairing either way round, so it is sent to match.
+        envTtlSeconds: envPolicy === ENV_POLICY_PER_VISITOR ? Number(envTtl) : null,
+      });
       setInvites(await fetchInvites());
       const url = inviteUrl(activeOrgId, invite.token);
       await navigator.clipboard.writeText(url);
@@ -351,6 +395,37 @@ export function TeamPage() {
                     : t("teamPage.sendInvite")}
                 </Button>
               </Group>
+              {/* REQ-1594/REQ-1595: who the link admits, and what it gives them. Both sit under the
+                  role because both are answered about the invitation as a whole, not per invitee. */}
+              <Switch
+                label={t("teamPage.openLinkLabel")}
+                description={t("teamPage.openLinkDesc")}
+                checked={openLink}
+                onChange={(e) => setOpenLink(e.currentTarget.checked)}
+                data-testid="team-invite-open-link"
+              />
+              <Select
+                label={t("teamPage.envPolicyLabel")}
+                description={t("teamPage.envPolicyDesc")}
+                data={[
+                  { value: ENV_POLICY_NONE, label: t("teamPage.envPolicyNone") },
+                  { value: ENV_POLICY_PER_VISITOR, label: t("teamPage.envPolicyPerVisitor") },
+                ]}
+                value={envPolicy}
+                onChange={(v) => setEnvPolicy(v ?? ENV_POLICY_NONE)}
+                allowDeselect={false}
+                data-testid="team-invite-env-policy"
+              />
+              {envPolicy === ENV_POLICY_PER_VISITOR && (
+                <Select
+                  label={t("teamPage.envTtlLabel")}
+                  data={ttlOptions}
+                  value={envTtl}
+                  onChange={(v) => setEnvTtl(v ?? "3600")}
+                  allowDeselect={false}
+                  data-testid="team-invite-env-ttl"
+                />
+              )}
             </Stack>
 
             <Table.ScrollContainer minWidth={640} mt="md">
@@ -361,6 +436,8 @@ export function TeamPage() {
                     <Table.Th>{t("teamPage.colEmail")}</Table.Th>
                     <Table.Th>{t("teamPage.colRole")}</Table.Th>
                     <Table.Th>{t("teamPage.colExpires")}</Table.Th>
+                    <Table.Th>{t("teamPage.colUses")}</Table.Th>
+                    <Table.Th>{t("teamPage.colEnvironment")}</Table.Th>
                     <Table.Th>{t("teamPage.colStatus")}</Table.Th>
                     <Table.Th>{t("teamPage.colActions")}</Table.Th>
                   </Table.Tr>
@@ -368,7 +445,7 @@ export function TeamPage() {
                 <Table.Tbody>
                   {invites.length === 0 && (
                     <Table.Tr>
-                      <Table.Td colSpan={6} ta="center" c="dimmed">
+                      <Table.Td colSpan={8} ta="center" c="dimmed">
                         {t("teamPage.noInvites")}
                       </Table.Td>
                     </Table.Tr>
@@ -384,15 +461,23 @@ export function TeamPage() {
                       <Table.Td>{inv.role_id ?? "—"}</Table.Td>
                       <Table.Td>{new Date(inv.expires_at).toLocaleDateString()}</Table.Td>
                       <Table.Td>
-                        {inv.used_at
-                          ? t("teamPage.usedStatus", {
-                              date: new Date(inv.used_at).toLocaleDateString(),
-                            })
-                          : t("teamPage.activeStatus")}
+                        {inv.max_uses === null
+                          ? t("teamPage.usesUnlimited", { used: inv.uses })
+                          : t("teamPage.usesOf", { used: inv.uses, max: inv.max_uses })}
+                      </Table.Td>
+                      <Table.Td>{envSummary(inv)}</Table.Td>
+                      <Table.Td>
+                        {isSpent(inv)
+                          ? t("teamPage.spentStatus")
+                          : inv.used_at
+                            ? t("teamPage.usedStatus", {
+                                date: new Date(inv.used_at).toLocaleDateString(),
+                              })
+                            : t("teamPage.activeStatus")}
                       </Table.Td>
                       <Table.Td>
                         <Group gap="xs">
-                          {!inv.used_at && (
+                          {!isSpent(inv) && (
                             <Button
                               size="compact-xs"
                               variant="default"
@@ -403,7 +488,7 @@ export function TeamPage() {
                                 : t("teamPage.copyButton")}
                             </Button>
                           )}
-                          {!inv.used_at && (
+                          {!isSpent(inv) && (
                             <Button
                               size="compact-xs"
                               color="red"

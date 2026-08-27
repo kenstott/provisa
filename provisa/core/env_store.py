@@ -21,11 +21,11 @@ decision taken before any environment schema has been opened; a row inside one o
 be read by first choosing one.
 """
 
-# Requirements: REQ-1487, REQ-1488, REQ-1504, REQ-1523, REQ-1524
+# Requirements: REQ-1487, REQ-1488, REQ-1504, REQ-1523, REQ-1524, REQ-1600
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, func, select, update
@@ -110,6 +110,7 @@ async def reserve_env(
     name: str,
     created_by: str | None = None,
     expires_at: datetime | None = None,
+    idle_ttl_seconds: int | None = None,
     branched_from: str | None = None,
 ) -> None:
     """Validate ``name``, check the plan ceiling, and write the row — before anything is provisioned.
@@ -142,6 +143,7 @@ async def reserve_env(
                 name=name,
                 created_by=created_by,
                 expires_at=expires_at,
+                idle_ttl_seconds=idle_ttl_seconds,
                 branched_from=branched_from,
             )
         )
@@ -168,6 +170,37 @@ async def set_expiry(db: "Database", org_id: str, name: str, expires_at: datetim
     if name == PROD and expires_at is not None:
         raise EnvironmentNameError(f"{PROD!r} cannot expire")
     await _set(db, org_id, name, expires_at=expires_at)
+
+
+async def renew_idle_expiry(db: "Database", org_id: str, name: str) -> None:
+    """Push a sliding expiry out by the environment's idle TTL, because it was just used (REQ-1600).
+
+    A no-op for an environment carrying no ``idle_ttl_seconds``: REQ-1523's expiry is a fixed
+    deadline and being used is not an argument against it. For one that does, the deadline means
+    "this long without a request", so every request that is served by the environment restates it.
+
+    WHY IT IS NOT WRITTEN ON EVERY REQUEST. The renewal only has to keep the deadline ahead of the
+    work; writing a row per request would put an UPDATE on the serving path for no further
+    guarantee. It writes when less than half the TTL is left, which bounds the writes to one per
+    half-TTL and still leaves the environment at least that long to be used again.
+    """
+    row = await get_env(db, org_id, name)
+    if row is None or row["idle_ttl_seconds"] is None:
+        return
+    ttl = int(row["idle_ttl_seconds"])
+    now = datetime.now(tz=timezone.utc)
+    expires_at = row["expires_at"]
+    if expires_at is not None:
+        remaining = (_aware(expires_at) - now).total_seconds()
+        if remaining > ttl / 2:
+            return
+    await _set(db, org_id, name, expires_at=now + timedelta(seconds=ttl))
+
+
+def _aware(moment: datetime) -> datetime:
+    """The stored instant as UTC. SQLite hands back a naive datetime for a timezone-aware column,
+    and comparing that to an aware ``now`` raises rather than answering."""
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
 
 
 async def set_protected(db: "Database", org_id: str, name: str, protected: bool) -> None:

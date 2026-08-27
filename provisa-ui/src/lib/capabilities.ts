@@ -44,6 +44,34 @@ export interface CapabilityRequirement {
   orCapability?: Capability;
 }
 
+/**
+ * REQ-1602: is `req` a surface this role is being SHOWN rather than given? Read only after
+ * `meetsRequirement` says no -- a right that is held needs no explanation of itself. Either half of
+ * an `orCapability` pair being demonstrated is enough: the surface is the same surface.
+ */
+export function isDemonstrated(demonstrated: string[], req: CapabilityRequirement): boolean {
+  if (demonstrated.includes(req.capability)) return true;
+  return req.orCapability !== undefined && demonstrated.includes(req.orCapability);
+}
+
+/**
+ * REQ-1602: what a SET of roles is shown but not given -- the union of their `demonstrated` lists,
+ * minus everything the same set actually holds. A right one selected role withholds and another
+ * grants is simply held: selecting both is holding both, and a held right is used rather than
+ * explained.
+ */
+export function unionDemonstrated(
+  roles: { demonstrated: Capability[] }[],
+  held: Capability[],
+): Capability[] {
+  const set = new Set<Capability>();
+  for (const r of roles) {
+    for (const c of r.demonstrated) set.add(c);
+  }
+  for (const c of held) set.delete(c);
+  return [...set];
+}
+
 /** Does this capability set open a surface described by `req`? */
 export function meetsRequirement(capabilities: string[], req: CapabilityRequirement): boolean {
   if (capabilities.length === 0) return false;

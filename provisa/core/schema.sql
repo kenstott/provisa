@@ -313,6 +313,11 @@ END $$;
 CREATE TABLE IF NOT EXISTS roles (
     id              TEXT PRIMARY KEY,
     capabilities    JSONB NOT NULL DEFAULT '[]',
+    -- REQ-1602: rights this role does NOT hold, whose surfaces are shown to it anyway -- disabled,
+    -- and badged with what they are. A role built by taking rights AWAY (the sandbox, REQ-1597) is
+    -- a demonstration of the product, and a feature that is simply absent demonstrates nothing.
+    -- A right may never appear in both lists; the holder of a right needs no explanation of it.
+    demonstrated    JSONB NOT NULL DEFAULT '[]',
     domain_access   JSONB NOT NULL DEFAULT '[]',
     rate_limit      JSONB,  -- REQ-1174: per-role rate + burst; mirrors schema_org.roles.rate_limit
     parent_role_id  TEXT REFERENCES roles(id)
@@ -902,6 +907,13 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- Add demonstrated to roles (REQ-1602) -- pre-1602 control planes lack it, and the roles query
+-- selects every column.
+DO $$ BEGIN
+    ALTER TABLE roles ADD COLUMN IF NOT EXISTS demonstrated JSONB NOT NULL DEFAULT '[]';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- Add rate_limit to roles (REQ-1174) — pre-1174 control planes lack it, so the role
 -- repository's rate_limit upsert fails against an existing Postgres roles table.
 DO $$ BEGIN
@@ -1020,17 +1032,31 @@ ON CONFLICT (id) DO NOTHING;
 -- or admit more people; org_settings and observability are org-WIDE surfaces -- provider overrides,
 -- scheduled tasks, and the query telemetry of everyone working in production; org_glossary_rw is
 -- the override over terms the org's own people authored.
-INSERT INTO roles (id, capabilities, domain_access, org_id)
+--
+-- REQ-1602: the six are DEMONSTRATED rather than merely absent. A visitor is being shown the
+-- product, so the surfaces those rights open stay on the page -- disabled, and badged as belonging
+-- to the production system. Withholding them by hiding them would make the sandbox look like a
+-- smaller product instead of the same one with the org's own controls held back.
+INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
 VALUES (
     'sandbox',
     '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
       "create_view","full_results","glossary_read","glossary_rw","masking_config",
       "query_development","source_registration","table_registration","usage","view_governance",
       "write"]'::jsonb,
+    '["environment_switch","environment_management","user_management","org_settings",
+      "observability","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- REQ-1602: the demonstrated list is part of the role's definition, and the insert above cannot
+-- reach a sandbox row an earlier release already created.
+UPDATE roles
+SET demonstrated = '["environment_switch","environment_management","user_management",
+                     "org_settings","observability","org_glossary_rw"]'::jsonb
+WHERE id = 'sandbox' AND demonstrated = '[]'::jsonb;
 
 -- REQ-1297: platform_admin is the deployment-wide administrator and the last system
 -- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the

@@ -13,7 +13,8 @@ import { Badge, Button, Group, Menu, Text } from "@mantine/core";
 import { Check, ChevronDown, GitBranch, Redo2, Undo2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
-import { useCapability } from "../hooks/useCapability";
+import { useCapability, useDemonstrated } from "../hooks/useCapability";
+import { DemonstratedFeature } from "./DemonstratedFeature";
 import { ENV_STORAGE_KEY, selectedEnv } from "../lib/authFetch";
 import { modelReplaced } from "../apolloClient";
 import { notifications } from "@mantine/notifications";
@@ -51,6 +52,10 @@ export function EnvSwitcher() {
   // neither it nor `environment_management`, and the server answers 403 `env.switch_forbidden` to a
   // request naming one — so the menu that names them is not shown to a caller who cannot be served.
   const maySwitch = useCapability("environment_switch");
+  // REQ-1602: a role that is shown the right without holding it (the sandbox, REQ-1597) gets the
+  // control where a holder's is, inert and badged -- the environments themselves are never fetched,
+  // so what it demonstrates is that the product has the switch, not what this org's branches are.
+  const demonstrating = useDemonstrated("environment_switch");
   const [envs, setEnvs] = useState<Environment[] | null>(null);
   // REQ-1552: the state of the branch being worked in, WHERE the work happens. The admin page has
   // the same counts, but somebody editing the model is not on the admin page — and a change that
@@ -126,7 +131,25 @@ export function EnvSwitcher() {
     };
   }, [activeOrgId, loading, maySwitch, reread]);
 
-  if (loading || !activeOrgId || !maySwitch || envs === null) return null;
+  if (loading || !activeOrgId) return null;
+  if (!maySwitch) {
+    if (!demonstrating) return null;
+    return (
+      <DemonstratedFeature>
+        <Button
+          variant="default"
+          size="compact-sm"
+          leftSection={<GitBranch size={14} aria-hidden />}
+          rightSection={<ChevronDown size={14} aria-hidden />}
+          data-testid="env-switcher-trigger"
+          aria-label={t("envSwitcher.label")}
+        >
+          {t("envSwitcher.env", { env: DEFAULT_ENV })}
+        </Button>
+      </DemonstratedFeature>
+    );
+  }
+  if (envs === null) return null;
   const orgId = activeOrgId;
 
   async function select(name: string) {

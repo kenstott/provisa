@@ -33,16 +33,19 @@ const mockFetchSettings = vi.mocked(fetchSettings);
 const ANALYST: Role = {
   id: "analyst",
   capabilities: ["query_development"] as Capability[],
+  demonstrated: [],
   domain_access: ["pet-store", "shelter"],
 };
 const ORG_ADMIN: Role = {
   id: "org_admin",
   capabilities: ["user_management"] as Capability[],
+  demonstrated: [],
   domain_access: ["*"],
 };
 const OPS: Role = {
   id: "ops",
   capabilities: ["usage"] as Capability[],
+  demonstrated: [],
   domain_access: ["ops"],
 };
 

@@ -388,6 +388,7 @@ class RoleType:  # REQ-042
     id: str
     capabilities: list[str]
     domain_access: list[str]
+    demonstrated: list[str] = strawberry.field(default_factory=list)  # REQ-1602
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
 
 

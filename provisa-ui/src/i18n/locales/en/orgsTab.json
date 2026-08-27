@@ -51,6 +51,7 @@
     "revokeButton": "Revoke",
     "revokeInvite": "Revoke invite for {{org}}",
     "invitePagination": "Invite links pagination",
-    "orgIdDesc": "2-40 characters, lowercase letters and digits, starting with a letter. It becomes the schema name and the subdomain, and cannot be changed later."
+    "orgIdDesc": "2-40 characters, lowercase letters and digits, starting with a letter. It becomes the schema name and the subdomain, and cannot be changed later.",
+    "spentStatus": "Fully redeemed"
   }
 }

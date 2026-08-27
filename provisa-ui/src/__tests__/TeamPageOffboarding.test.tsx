@@ -31,6 +31,9 @@ let mockMembers: OrgMember[] = [];
 let mockMultitenancy = true;
 
 vi.mock("../api/admin", () => ({
+  ENV_POLICY_NONE: "none",
+  ENV_POLICY_PER_VISITOR: "per_visitor",
+  ENV_POLICY_SHARED: "shared",
   fetchInvites: () => Promise.resolve([]),
   createInvite: vi.fn(),
   revokeInvite: vi.fn(),

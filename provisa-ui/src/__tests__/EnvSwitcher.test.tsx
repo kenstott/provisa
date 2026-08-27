@@ -28,6 +28,8 @@ import type { BranchSync, Environment } from "../api/environments";
 const auth = {
   activeOrgId: "acme" as string | null,
   capabilities: ["environment_switch"] as string[],
+  // REQ-1602: rights the caller is SHOWN without holding them.
+  demonstrated: [] as string[],
   loading: false,
 };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
@@ -88,6 +90,7 @@ beforeEach(() => {
   localStorage.clear();
   auth.activeOrgId = "acme";
   auth.capabilities = ["environment_switch"];
+  auth.demonstrated = [];
   auth.loading = false;
   mockSync.mockResolvedValue({ remote_configured: true, branches: { prod: syncOf() } });
   Object.defineProperty(window, "location", {
@@ -270,6 +273,18 @@ describe("EnvSwitcher", () => {
     render(<EnvSwitcher />);
     await waitFor(() => expect(mockFetch).not.toHaveBeenCalled());
     expect(screen.queryByTestId("env-switcher-trigger")).toBeNull();
+  });
+
+  // REQ-1602: the sandbox role (REQ-1597) is shown this right without holding it, so the control
+  // stays where a holder's is -- inert and badged, and reading no environments at all.
+  it("stands the control on the page, inert, for a role that is shown the right", async () => {
+    auth.capabilities = ["usage"];
+    auth.demonstrated = ["environment_switch"];
+    mockFetch.mockResolvedValue([env("prod"), env("dev")]);
+    render(<EnvSwitcher />);
+    expect(await screen.findByTestId("env-switcher-trigger")).toBeInTheDocument();
+    expect(screen.getByTestId("demonstrated-badge")).toBeInTheDocument();
+    await waitFor(() => expect(mockFetch).not.toHaveBeenCalled());
   });
 
   it("is shown to the platform administrator, who bypasses every right", async () => {

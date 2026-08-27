@@ -413,11 +413,17 @@ export async function fetchOrgRoles(orgId: string): Promise<Role[]> {
     headers: { [ORG_HEADER]: orgId },
   });
   if (!res.ok) throw new Error(requestFailed("fetchOrgRoles", res.status));
-  const rows: Array<{ id: string; capabilities: string[]; domain_access: string[] }> =
-    await res.json();
+  const rows: Array<{
+    id: string;
+    capabilities: string[];
+    demonstrated: string[];
+    domain_access: string[];
+  }> = await res.json();
   return rows.map((r) => ({
     id: r.id,
     capabilities: r.capabilities as import("../types/auth").Capability[],
+    // REQ-1602: rights the role is shown but does not hold.
+    demonstrated: r.demonstrated as import("../types/auth").Capability[],
     domain_access: r.domain_access,
   }));
 }
@@ -1557,6 +1563,36 @@ export interface OrgInvite {
   // REQ-1310: only on the creation response — what happened to the message. "not_addressed",
   // "saas_only", "sent", or "failed: <reason>".
   delivery?: string;
+  // REQ-1594: how many redemptions the link has admitted and how many it admits in total. null is
+  // unlimited — an open link, which "used_at is set" no longer describes.
+  uses: number;
+  max_uses: number | null;
+  // REQ-1595/REQ-1600: what each redeemer is given to work in. "none" seats them in the org;
+  // "shared" seats everyone in `env_name`; "per_visitor" mints one per redeemer, reaped after
+  // `env_ttl_seconds` of disuse.
+  env_policy: string;
+  env_ttl_seconds: number | null;
+  env_name: string | null;
+}
+
+// REQ-1595: the env policies an invitation can carry, as the API names them.
+export const ENV_POLICY_NONE = "none";
+export const ENV_POLICY_PER_VISITOR = "per_visitor";
+export const ENV_POLICY_SHARED = "shared";
+
+export interface CreateInviteOptions {
+  roleId?: string;
+  expiresInDays?: number;
+  // REQ-1287: addressing the invite to an email is what lets the invitee be told they have a
+  // pending invitation on first sign-in. Omit for a shareable link.
+  email?: string;
+  // REQ-1594: null is unlimited, which is the only answer an open link can give. Omitted is the
+  // single-use invitation every caller minted before open invites existed.
+  maxUses?: number | null;
+  // REQ-1595/REQ-1600.
+  envPolicy?: string;
+  envTtlSeconds?: number | null;
+  envName?: string | null;
 }
 
 export interface InviteInfo {
@@ -1575,20 +1611,22 @@ export async function fetchInvites(): Promise<OrgInvite[]> {
 
 export async function createInvite(
   orgId: string,
-  roleId?: string,
-  expiresInDays = 7,
-  // REQ-1287: addressing the invite to an email is what lets the invitee be told they have a
-  // pending invitation on first sign-in. Omit for a shareable link.
-  email?: string,
+  opts: CreateInviteOptions = {},
 ): Promise<OrgInvite> {
   const res = await fetch(`${API_BASE}/admin/invites`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       org_id: orgId,
-      role_id: roleId ?? null,
-      expires_in_days: expiresInDays,
-      email: email ?? null,
+      role_id: opts.roleId ?? null,
+      expires_in_days: opts.expiresInDays ?? 7,
+      email: opts.email ?? null,
+      // REQ-1594: `undefined` is absent from the JSON, so an omitted ceiling is the server's
+      // default of one rather than the unlimited that `null` means.
+      max_uses: opts.maxUses === undefined ? 1 : opts.maxUses,
+      env_policy: opts.envPolicy ?? ENV_POLICY_NONE,
+      env_ttl_seconds: opts.envTtlSeconds ?? null,
+      env_name: opts.envName ?? null,
     }),
   });
   if (!res.ok) throw new Error(requestFailed("createInvite", res.status));

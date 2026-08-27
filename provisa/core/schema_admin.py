@@ -385,6 +385,13 @@ environments = Table(
     # REQ-1523: opt-in. NULL means permanent — an environment is never reaped for being idle,
     # because a quiet pre-prod is not an abandoned one. prod can carry none.
     Column("expires_at", DateTime(timezone=True)),
+    # REQ-1600: how long this environment may go UNUSED before it is reaped, when its lifetime is
+    # measured from the last request that was served by it rather than from its creation. NULL is
+    # REQ-1523's fixed deadline: `expires_at` stands where it was written and nothing moves it. A
+    # value makes `expires_at` a sliding one — `provisa.api.env_routing` pushes it out by this many
+    # seconds each time the environment serves — which is what an environment handed to a visitor
+    # by an invitation needs: an hour of quiet ends it, an hour of work does not.
+    Column("idle_ttl_seconds", Integer),
     # REQ-1504: a merge into a protected environment waits for an approval by someone other than
     # the requester. prod is protected once the org has more than one member; any environment can
     # be protected by an org_admin.

@@ -34,6 +34,9 @@ let mockSettings = {
 };
 
 vi.mock("../api/admin", () => ({
+  ENV_POLICY_NONE: "none",
+  ENV_POLICY_PER_VISITOR: "per_visitor",
+  ENV_POLICY_SHARED: "shared",
   fetchInvites: () => Promise.resolve([]),
   createInvite: (...a: unknown[]) => createInviteSpy(...(a as [])),
   revokeInvite: vi.fn(),
@@ -126,7 +129,19 @@ describe("inviting someone by email", () => {
     await user.click(screen.getByTestId("team-invite-create"));
 
     await waitFor(() => expect(createInviteSpy).toHaveBeenCalled());
-    expect(createInviteSpy.mock.calls[0]).toEqual(["acme", "analyst", 7, "dana@acme.com"]);
+    expect(createInviteSpy.mock.calls[0]).toEqual([
+      "acme",
+      {
+        roleId: "analyst",
+        expiresInDays: 7,
+        email: "dana@acme.com",
+        // REQ-1594/REQ-1595: an addressed invitation, left at the defaults, is the single-use
+        // invitation into the org itself that an invitation was before either existed.
+        maxUses: 1,
+        envPolicy: "none",
+        envTtlSeconds: null,
+      },
+    ]);
     await waitFor(() => expect(notify.mock.calls[0][0].message).toMatch(/dana@acme\.com/));
     expect(screen.queryByTestId("team-error")).toBeNull();
   });
@@ -178,7 +193,7 @@ describe("inviting someone by email", () => {
     await user.click(screen.getByTestId("team-invite-create"));
 
     await waitFor(() => expect(createInviteSpy).toHaveBeenCalled());
-    expect(createInviteSpy.mock.calls[0][3]).toBeUndefined();
+    expect(createInviteSpy.mock.calls[0][1].email).toBeUndefined();
     expect(screen.queryByTestId("team-error")).toBeNull();
   });
 });

@@ -41,9 +41,10 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
 
     ``none`` pins nothing and the member is served by the org as any member is. ``shared`` names an
     environment the org already published, so there is nothing to create -- every redeemer is seated
-    in the one it names. ``per_visitor`` mints a fresh one, expiring ``env_ttl_seconds`` from now:
-    the reaper (REQ-1523) drops it on the sweep, and ``select_environment`` refuses it the moment
-    the deadline passes rather than when the sweep next runs.
+    in the one it names. ``per_visitor`` mints a fresh one whose deadline is
+    ``env_ttl_seconds`` of DISUSE away (REQ-1600): the routing pushes it out on every request the
+    environment serves, the reaper (REQ-1523) drops it on the sweep once it has passed, and
+    ``select_environment`` refuses it from the deadline itself rather than from the next sweep.
 
     Both env-bearing policies deploy from ``prod``, so what the visitor is handed is the org's real
     model rather than an empty schema -- a sandbox with nothing in it demonstrates nothing.
@@ -74,6 +75,10 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
         from_env=PROD,
         created_by=user_id,
         expires_at=datetime.now(tz=timezone.utc) + timedelta(seconds=invite["env_ttl_seconds"]),
+        # REQ-1600: and the same span is the environment's idle allowance, so the deadline is
+        # measured from the last request it served rather than from this moment. A visitor still
+        # working an hour in keeps their environment; one who walked away loses it on schedule.
+        idle_ttl_seconds=invite["env_ttl_seconds"],
         branched_from=None,
         note=f"provisioned for {user_id}",
     )

@@ -1,5 +1,9 @@
 {
   "capabilityGate": {
-    "checking": "Checking your credentials…"
+    "checking": "Checking your credentials…",
+    "demonstrated": {
+      "badge": "Production feature",
+      "explanation": "This is part of the production system. It is shown here so you can see what Provisa does, but it is not available in the sandbox."
+    }
   }
 }

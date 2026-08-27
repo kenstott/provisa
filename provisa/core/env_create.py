@@ -26,7 +26,7 @@ callers answer it differently: the endpoint requires a right in the org, while t
 the authorization, granted when the org minted the link.
 """
 
-# Requirements: REQ-1488, REQ-1523, REQ-1526, REQ-1539, REQ-1543, REQ-1595
+# Requirements: REQ-1488, REQ-1523, REQ-1526, REQ-1539, REQ-1543, REQ-1595, REQ-1600
 
 from __future__ import annotations
 
@@ -59,6 +59,7 @@ async def create_environment(
     from_env: str,
     created_by: str | None,
     expires_at: datetime | None,
+    idle_ttl_seconds: int | None = None,
     branched_from: str | None,
     note: str,
 ) -> CopyReport:
@@ -77,6 +78,7 @@ async def create_environment(
         name,
         created_by=created_by,
         expires_at=expires_at,
+        idle_ttl_seconds=idle_ttl_seconds,
         branched_from=branched_from,
     )
     try:

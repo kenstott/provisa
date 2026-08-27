@@ -614,6 +614,7 @@ type RoleType {
   id: String!
   capabilities: [String!]!
   domainAccess: [String!]!
+  demonstrated: [String!]!
   rateLimit: RoleRateLimitType
 }
 

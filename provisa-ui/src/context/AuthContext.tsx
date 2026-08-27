@@ -15,6 +15,7 @@ import type { Capability, Role, RoleAssignment, AuthState, OrgMembership } from 
 import { AuthMeError, fetchMe } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
+import { unionDemonstrated } from "../lib/capabilities";
 
 // REQ-1297: dev/no-auth mirrors what the server grants an unsecured caller, and that is now
 // org_admin — the DATA-plane administrator — not platform_admin. The no-auth configs' single
@@ -55,6 +56,8 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "glossary_rw", // REQ-1590
     "org_glossary_rw", // REQ-1592
   ] as Capability[],
+  // REQ-1602: org_admin holds every right it is offered, so it is shown nothing it cannot use.
+  demonstrated: [],
   domain_access: ["*"],
 };
 
@@ -341,6 +344,10 @@ export function AuthProvider({
     [selectedRole, availableRoles],
   );
   const capabilities = useMemo(() => unionCapabilities(activeRoles), [activeRoles]);
+  const demonstrated = useMemo(
+    () => unionDemonstrated(activeRoles, capabilities),
+    [activeRoles, capabilities],
+  );
   const domainAccess = availableDomains;
   const role = activeRoles.length > 0 ? activeRoles[0] : null;
   const selectedRoles = activeRoles;
@@ -378,6 +385,7 @@ export function AuthProvider({
         selectedRoles,
         capabilities,
         domainAccess,
+        demonstrated,
         selectedRole,
         selectedDomain,
         selectRole,

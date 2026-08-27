@@ -122,9 +122,17 @@ def _fake_db(known: set[str]) -> Any:
     return _FakeDb(known)
 
 
-def _row(name: str, expires_at: datetime | None = None) -> dict:
-    """A registry row as ``get_env`` returns one: every column, expiry included."""
-    return {"org_id": "acme", "name": name, "expires_at": expires_at}
+def _row(
+    name: str, expires_at: datetime | None = None, idle_ttl_seconds: int | None = None
+) -> dict:
+    """A registry row as ``get_env`` returns one: every column, both expiry columns included."""
+    return {
+        "org_id": "acme",
+        "name": name,
+        "expires_at": expires_at,
+        # REQ-1600: None is REQ-1523's fixed deadline -- the selection renews nothing.
+        "idle_ttl_seconds": idle_ttl_seconds,
+    }
 
 
 class TestSelectEnvironment:

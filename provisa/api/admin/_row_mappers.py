@@ -140,6 +140,8 @@ def _role_from_row(row) -> RoleType:
         id=row["id"],
         capabilities=list(row["capabilities"]),
         domain_access=list(row["domain_access"]),
+        # REQ-1602: the rights this role is shown but does not hold.
+        demonstrated=list(row["demonstrated"]),
         rate_limit=rate_limit,
     )
 

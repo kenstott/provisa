@@ -19,9 +19,12 @@ import type { Capability } from "../types/auth";
 // context rather than mounting a provider, which would fetch /auth/me. The capabilities are the
 // real ones the gate decides on -- the decision itself is not mocked, because REQ-1361 turns on
 // which set answers which entry.
-const authState: { loading: boolean; capabilities: string[] } = {
+const authState: { loading: boolean; capabilities: string[]; demonstrated: string[] } = {
   loading: false,
   capabilities: [],
+  // REQ-1602: rights the caller is SHOWN without holding. Empty for every case below except the
+  // demonstration ones -- a role that simply lacks a right is shown nothing.
+  demonstrated: [],
 };
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => authState,
@@ -36,6 +39,7 @@ describe("CapabilityGate", () => {
   beforeEach(() => {
     authState.loading = false;
     authState.capabilities = [];
+    authState.demonstrated = [];
   });
 
   it("says credentials are being checked while the bootstrap is in flight", () => {
@@ -187,6 +191,113 @@ describe("CapabilityGate", () => {
     );
 
     expect(screen.getByText("Org Secrets")).toBeInTheDocument();
+  });
+
+  // REQ-1602: a right the role is shown but does not hold keeps its surface on the page, inert and
+  // badged as belonging to the production system. The sandbox (REQ-1597) is org_admin minus six
+  // rights, and a visitor holding it is being shown the product -- a feature that is simply absent
+  // demonstrates nothing.
+  describe("a demonstrated right", () => {
+    it("renders the surface it withholds, inert and badged", () => {
+      holding("usage");
+      authState.demonstrated = ["user_management"];
+
+      render(
+        <CapabilityGate capability={"user_management" as Capability}>
+          <button>Invite</button>
+        </CapabilityGate>,
+      );
+
+      expect(screen.getByText("Invite")).toBeInTheDocument();
+      expect(screen.getByTestId("demonstrated-badge")).toBeInTheDocument();
+      expect(screen.getByTestId("demonstrated-children")).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("takes the fallback's place, so a route body demonstrates instead of refusing", () => {
+      holding("usage");
+      authState.demonstrated = ["observability"];
+
+      render(
+        <CapabilityGate
+          capability={"observability" as Capability}
+          fallback={<div>Not Authorized</div>}
+        >
+          <span>Reports</span>
+        </CapabilityGate>,
+      );
+
+      expect(screen.getByText("Reports")).toBeInTheDocument();
+      expect(screen.queryByText("Not Authorized")).not.toBeInTheDocument();
+      expect(screen.getByTestId("demonstrated-banner")).toBeInTheDocument();
+      expect(screen.getByTestId("demonstrated-children")).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("leaves a link into the region clickable", () => {
+      // The nav entry is not the demonstration; the page it opens is. An entry that refuses its own
+      // click leaves the visitor unable to see the feature at all.
+      holding("usage");
+      authState.demonstrated = ["environment_management"];
+
+      render(
+        <CapabilityGate capability={"environment_management" as Capability} navigable>
+          <a href="/admin/environments">Environments</a>
+        </CapabilityGate>,
+      );
+
+      expect(screen.getByText("Environments")).toBeInTheDocument();
+      expect(screen.getByTestId("demonstrated-badge")).toBeInTheDocument();
+      expect(screen.queryByTestId("demonstrated-children")).not.toBeInTheDocument();
+    });
+
+    it("says nothing about a right that is held", () => {
+      // Being shown what you can already use explains nothing; the badge would only be wrong.
+      holding("observability");
+      authState.demonstrated = ["observability"];
+
+      render(
+        <CapabilityGate capability={"observability" as Capability}>
+          <span>Reports</span>
+        </CapabilityGate>,
+      );
+
+      expect(screen.getByText("Reports")).toBeInTheDocument();
+      expect(screen.queryByTestId("demonstrated-badge")).not.toBeInTheDocument();
+    });
+
+    it("waits for the bootstrap before demonstrating anything", () => {
+      // Mid-bootstrap the caller holds nothing yet, and badging every gate on the page as a
+      // production feature would be a claim about rights nobody has resolved.
+      authState.loading = true;
+      authState.demonstrated = ["user_management"];
+
+      const { container } = render(
+        <CapabilityGate capability={"user_management" as Capability}>
+          <button>Invite</button>
+        </CapabilityGate>,
+      );
+
+      expect(screen.queryByTestId("demonstrated-badge")).not.toBeInTheDocument();
+      expect(container.querySelectorAll(":not(style)")).toHaveLength(0);
+    });
+
+    it("demonstrates on either half of a two-right gate", () => {
+      // The surface is the same surface whichever right would have opened it.
+      holding("usage");
+      authState.demonstrated = ["platform_settings"];
+
+      render(
+        <CapabilityGate
+          capability={"org_settings" as Capability}
+          strict
+          orCapability={"platform_settings" as Capability}
+        >
+          <span>Secrets service</span>
+        </CapabilityGate>,
+      );
+
+      expect(screen.getByText("Secrets service")).toBeInTheDocument();
+      expect(screen.getByTestId("demonstrated-badge")).toBeInTheDocument();
+    });
   });
 
   it("opens on the second right when the strict one is absent", () => {
