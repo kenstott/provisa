@@ -1310,3 +1310,233 @@ class TestCorrelatedSubqueries:
         assert "[:HAS_PET]->" in result, result
         assert "pets." not in result, f"raw SQL alias leaked: {result}"
         parse_cypher(result)
+
+
+class TestRelationshipDirectionAndAmbiguity:
+    """The ordered (source, target) label pair picks the relationship, not the target label alone.
+
+    Two relationships landing on Pets used to collapse into one target-keyed entry, so a
+    playgroup-membership join came out as ``(:Playgroups)-[:SHARES_ENCLOSURE]->(:Pets)`` — a real
+    type, the wrong edge, in the wrong direction.
+    """
+
+    def _make_ctx_and_label_map(self):
+        pets_meta = _TableMeta(
+            table_id=1,
+            field_name="pets",
+            type_name="Pets",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pets",
+            domain_id="public",
+        )
+        pg_meta = _TableMeta(
+            table_id=2,
+            field_name="playgroups",
+            type_name="Playgroups",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="playgroups",
+            domain_id="public",
+        )
+        enc_meta = _TableMeta(
+            table_id=3,
+            field_name="enclosures",
+            type_name="Enclosures",
+            source_id="pg-main",
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="enclosures",
+            domain_id="public",
+        )
+        ctx = _Ctx(
+            tables={"pets": pets_meta, "playgroups": pg_meta, "enclosures": enc_meta},
+            aggregate_columns={
+                1: [("id", "integer"), ("name", "varchar"), ("breed", "varchar")],
+                2: [("id", "integer"), ("name", "varchar")],
+                3: [("id", "integer"), ("name", "varchar")],
+            },
+        )
+        pets_node = NodeMapping(
+            label="Pets",
+            type_name="Pets",
+            domain_label=None,
+            table_label="Pets",
+            table_id=1,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pets",
+            properties={"id": "id", "name": "name", "breed": "breed"},
+        )
+        pg_node = NodeMapping(
+            label="Playgroups",
+            type_name="Playgroups",
+            domain_label=None,
+            table_label="Playgroups",
+            table_id=2,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="playgroups",
+            properties={"id": "id", "name": "name"},
+        )
+        enc_node = NodeMapping(
+            label="Enclosures",
+            type_name="Enclosures",
+            domain_label=None,
+            table_label="Enclosures",
+            table_id=3,
+            source_id="pg-main",
+            id_column="id",
+            pk_columns=[],
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="enclosures",
+            properties={"id": "id", "name": "name"},
+        )
+        members_rel = RelationshipMapping(
+            rel_type="PLAYGROUP_MEMBERS",
+            source_label="Pets",
+            target_label="Playgroups",
+            join_source_column="playgroup_id",
+            join_target_column="id",
+            field_name="playgroup",
+            many=False,
+        )
+        # A second edge landing on Pets — the one that used to win the target-keyed lookup.
+        enclosure_rel = RelationshipMapping(
+            rel_type="SHARES_ENCLOSURE",
+            source_label="Enclosures",
+            target_label="Pets",
+            join_source_column="id",
+            join_target_column="enclosure_id",
+            field_name="pets",
+            many=True,
+        )
+        lm = CypherLabelMap(
+            nodes={"Pets": pets_node, "Playgroups": pg_node, "Enclosures": enc_node},
+            relationships={
+                "PLAYGROUP_MEMBERS::Pets→Playgroups": members_rel,
+                "SHARES_ENCLOSURE::Enclosures→Pets": enclosure_rel,
+            },
+        )
+        return ctx, lm
+
+    def test_reverse_pair_flips_the_arrow(self):
+        """Joining Playgroups→Pets must emit <-[:PLAYGROUP_MEMBERS]-, never SHARES_ENCLOSURE."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "playgroups"."name", "pets"."breed" '
+            'FROM "public"."playgroups" '
+            'JOIN "public"."pets" ON "pets"."id" = "playgroups"."id"'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "<-[:PLAYGROUP_MEMBERS]-" in result, result
+        assert "SHARES_ENCLOSURE" not in result, result
+
+    def test_forward_pair_keeps_the_arrow(self):
+        """The same pair in declared order stays a forward arrow."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."breed", "playgroups"."name" '
+            'FROM "public"."pets" '
+            'JOIN "public"."playgroups" ON "playgroups"."id" = "pets"."playgroup_id"'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "-[:PLAYGROUP_MEMBERS]->" in result, result
+
+    def test_unresolved_pair_is_anonymous_and_undirected(self):
+        """No relationship declared between Playgroups and Enclosures — emit -[]-, not a wrong type."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "playgroups"."name", "enclosures"."name" '
+            'FROM "public"."playgroups" '
+            'JOIN "public"."enclosures" ON "enclosures"."id" = "playgroups"."id"'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "-[]-" in result, result
+        assert "PLAYGROUP_MEMBERS" not in result, result
+        assert "SHARES_ENCLOSURE" not in result, result
+
+    def test_three_way_join_column_collision_stays_ambiguous(self):
+        """Reproduces the reported bug: pets.id = playgroups.id resolving to SHARES_ENCLOSURE.
+
+        The real schema has three Pets→Pets relationships (BONDED_PAIR, LITTERMATE,
+        SHARES_ENCLOSURE) that all declare join_source_column="id", join_target_column="id",
+        target_label="Pets" — identical to _build_join_to_rel's dedup key. Once the first
+        collision (BONDED_PAIR vs LITTERMATE) correctly marked that key ambiguous (None), a
+        *third* relationship landing on the same key (SHARES_ENCLOSURE) used to overwrite the
+        None marker instead of leaving it ambiguous, so the join-column lookup handed back
+        SHARES_ENCLOSURE as if it were the one true edge — a real type, the wrong edge, in the
+        wrong direction. The fix must fall through to the ordered (source, target) pair lookup,
+        which resolves this join as PLAYGROUP_MEMBERS.
+        """
+        ctx, lm = self._make_ctx_and_label_map()
+        bonded_rel = RelationshipMapping(
+            rel_type="BONDED_PAIR",
+            source_label="Pets",
+            target_label="Pets",
+            join_source_column="id",
+            join_target_column="id",
+            field_name="bonded_pair",
+            many=True,
+        )
+        littermate_rel = RelationshipMapping(
+            rel_type="LITTERMATE",
+            source_label="Pets",
+            target_label="Pets",
+            join_source_column="id",
+            join_target_column="id",
+            field_name="littermate",
+            many=True,
+        )
+        shares_enclosure_rel = RelationshipMapping(
+            rel_type="SHARES_ENCLOSURE",
+            source_label="Pets",
+            target_label="Pets",
+            join_source_column="id",
+            join_target_column="id",
+            field_name="shares_enclosure",
+            many=True,
+        )
+        members_rel = RelationshipMapping(
+            rel_type="PLAYGROUP_MEMBERS",
+            source_label="Pets",
+            target_label="Playgroups",
+            join_source_column="id",
+            join_target_column="id",
+            field_name="playgroup",
+            many=False,
+        )
+        lm = CypherLabelMap(
+            nodes=lm.nodes,
+            relationships={
+                "BONDED_PAIR::Pets→Pets": bonded_rel,
+                "LITTERMATE::Pets→Pets": littermate_rel,
+                "SHARES_ENCLOSURE::Pets→Pets": shares_enclosure_rel,
+                "PLAYGROUP_MEMBERS::Pets→Playgroups": members_rel,
+            },
+        )
+        sql = (
+            'SELECT playgroups.name AS playgroup_name, pets.breed_name, '
+            'COUNT(pets.id) AS pet_count '
+            'FROM "pet_store"."playgroups" AS playgroups '
+            'JOIN "pet_store"."pets" AS pets ON pets.id = playgroups.id '
+            "LIMIT 100"
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "SHARES_ENCLOSURE" not in result, result
+        assert "BONDED_PAIR" not in result, result
+        assert "LITTERMATE" not in result, result
+        assert "<-[:PLAYGROUP_MEMBERS]-" in result, result

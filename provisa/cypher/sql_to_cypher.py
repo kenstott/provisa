@@ -30,6 +30,7 @@ from provisa.cypher.sql_to_cypher_helpers import (
     _rel_type_from_on,
     _src_alias_from_on,
     _sql_to_cypher_expr,
+    rel_pattern,
 )
 from provisa.cypher.sql_to_cypher_agg import (
     UntranslatableSubquery,
@@ -39,6 +40,11 @@ from provisa.cypher.sql_to_cypher_agg import (
 )
 
 # Requirements: REQ-345, REQ-347, REQ-351, REQ-355
+
+# (is_optional, rel_pattern, src_sql_alias, tgt_sql_alias, tgt_label, inner_limit, is_many).
+# rel_pattern is the whole inter-node pattern including its arrows -- direction is part of the
+# resolved relationship, not something the emitter can assume from SQL join order.
+JoinSegment = tuple[bool, str, str, str, str, int | None, bool]
 
 
 def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
@@ -97,15 +103,16 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     sql_base_alias = from_tbl.alias or from_tbl.name
 
-    label_to_rel, label_to_many, src_tgt_to_rel = _build_label_to_rel(label_map)
+    label_to_many, src_tgt_to_rel = _build_label_to_rel(label_map)
 
     join_segments, skipped_aliases = _resolve_join_segments(
         tree,
         domain_to_label,
         join_to_rel,
-        label_to_rel,
+        src_tgt_to_rel,
         label_to_many,
         sql_base_alias,
+        base_label,
         params,
     )
 
@@ -156,10 +163,9 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
 
     # --- Build MATCH pattern ---
     required_path = _node(base_alias, base_label)
-    for is_optional, rel_type, _, tgt_sql_a, label, _, _ in join_segments:
+    for is_optional, pattern, _, tgt_sql_a, label, _, _ in join_segments:
         if not is_optional:
-            rel_str = f"[:{rel_type}]" if rel_type else "[]"
-            required_path += f"-{rel_str}->{_node(alias_map[tgt_sql_a], label)}"
+            required_path += f"{pattern}{_node(alias_map[tgt_sql_a], label)}"
 
     cypher_lines = [f"MATCH {required_path}"]
 
@@ -190,7 +196,6 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
     _agg_alias_counter = _process_array_agg_subqueries(
         select_exprs,
         domain_to_label,
-        label_to_rel,
         src_tgt_to_rel,
         alias_map,
         alias_label,
@@ -211,7 +216,6 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
     _agg_alias_counter = _process_count_subqueries(
         select_exprs,
         domain_to_label,
-        label_to_rel,
         src_tgt_to_rel,
         alias_map,
         alias_label,
@@ -228,7 +232,6 @@ def semantic_sql_to_cypher(  # REQ-345, REQ-347, REQ-351, REQ-355
         _process_json_subqueries(
             select_exprs,
             domain_to_label,
-            label_to_rel,
             src_tgt_to_rel,
             alias_map,
             alias_label,
@@ -372,32 +375,51 @@ def _build_domain_to_label(
 
 def _build_join_to_rel(
     label_map: CypherLabelMap,
-) -> dict[tuple[str, str, str], RelationshipMapping]:
-    """Build lookup: (src_col, tgt_col, tgt_display_label) → RelationshipMapping."""
-    join_to_rel: dict[tuple[str, str, str], RelationshipMapping] = {}
+) -> dict[tuple[str, str, str], RelationshipMapping | None]:
+    """Build lookup: (src_col, tgt_col, tgt_display_label) → RelationshipMapping.
+
+    A key carrying two different relationships maps to None: the join-column pair no
+    longer identifies one edge, so callers must fall back to the ordered-pair lookup
+    rather than picking whichever relationship the iteration happened to reach last.
+    """
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping | None] = {}
     for rel in label_map.relationships.values():
         tgt_nm = label_map.nodes.get(rel.target_label)
         tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
-        join_to_rel[(rel.join_source_column, rel.join_target_column, tgt_display)] = rel
+        key = (rel.join_source_column, rel.join_target_column, tgt_display)
+        if key not in join_to_rel:
+            join_to_rel[key] = rel
+        elif join_to_rel[key] is not None and join_to_rel[key].rel_type != rel.rel_type:  # pyright: ignore[reportOptionalMemberAccess]
+            # Once a key has ever carried two different relationship types it stays
+            # ambiguous permanently — a third entry (even one that repeats an earlier
+            # type) must not overwrite the None and un-ambiguate it.
+            join_to_rel[key] = None
     return join_to_rel
 
 
 def _build_label_to_rel(
     label_map: CypherLabelMap,
-) -> tuple[dict[str, str | None], dict[str, bool], dict[tuple[str, str], str]]:
-    """Build label → rel_type, label → many, and (src_label, tgt_label) → rel_type lookups."""
-    label_to_rel: dict[str, str | None] = {}
+) -> tuple[dict[str, bool], dict[tuple[str, str], str | None]]:
+    """Build label → many and (src_label, tgt_label) → rel_type lookups.
+
+    A pair carrying two different relationship types maps to None: the ordered pair no longer
+    identifies one edge, so :func:`rel_pattern` emits an anonymous one rather than picking
+    whichever the iteration happened to reach last.
+    """
     label_to_many: dict[str, bool] = {}
-    src_tgt_to_rel: dict[tuple[str, str], str] = {}
+    src_tgt_to_rel: dict[tuple[str, str], str | None] = {}
     for rel in label_map.relationships.values():
         src_nm = label_map.nodes.get(rel.source_label)
         src_display = label_map.display_label(src_nm) if src_nm is not None else rel.source_label
         tgt_nm = label_map.nodes.get(rel.target_label)
         tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
-        label_to_rel[tgt_display] = rel.rel_type
         label_to_many[tgt_display] = rel.many
-        src_tgt_to_rel[(src_display, tgt_display)] = rel.rel_type
-    return label_to_rel, label_to_many, src_tgt_to_rel
+        pair = (src_display, tgt_display)
+        if pair in src_tgt_to_rel and src_tgt_to_rel[pair] != rel.rel_type:
+            src_tgt_to_rel[pair] = None
+        else:
+            src_tgt_to_rel[pair] = rel.rel_type
+    return label_to_many, src_tgt_to_rel
 
 
 def _unwrap_from_table(
@@ -443,16 +465,21 @@ def _resolve_lateral_inner_lim(
 def _resolve_join_segments(
     tree: exp.Select,
     domain_to_label: dict[tuple[str, str], str],
-    join_to_rel: dict[tuple[str, str, str], RelationshipMapping],
-    label_to_rel: dict[str, str | None],
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping | None],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
     label_to_many: dict[str, bool],
     sql_base_alias: str,
+    base_label: str,
     params: list | None,
-) -> tuple[list[tuple[bool, str | None, str, str, str, int | None, bool]], set[str]]:
+) -> tuple[list[JoinSegment], set[str]]:
     """Resolve JOIN clauses into join_segments and collect skipped aliases."""
     joins = tree.args.get("joins") or []
-    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]] = []
+    join_segments: list[JoinSegment] = []
     skipped_aliases: set[str] = set()
+    # The source side of a segment is a SQL alias; its label is the base table's, or that of an
+    # earlier segment that introduced the alias. Tracked here because the relationship type is
+    # resolved from the ORDERED (source, target) label pair.
+    alias_to_label: dict[str, str] = {sql_base_alias: base_label}
 
     for join in joins:
         join_tbl = join.this
@@ -460,9 +487,10 @@ def _resolve_join_segments(
             _process_lateral_join(
                 join_tbl,
                 domain_to_label,
-                label_to_rel,
+                src_tgt_to_rel,
                 label_to_many,
                 sql_base_alias,
+                alias_to_label,
                 params,
                 join_segments,
                 skipped_aliases,
@@ -476,13 +504,19 @@ def _resolve_join_segments(
 
         tgt_sql_alias = join_tbl.alias or join_tbl.name
         on_expr = join.args.get("on")
-        rel_type = _rel_type_from_on(on_expr, join_to_rel, tgt_label) or label_to_rel.get(tgt_label)
         src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
+        pattern = rel_pattern(
+            alias_to_label.get(src_sql_alias),
+            tgt_label,
+            src_tgt_to_rel,
+            rel_type=_rel_type_from_on(on_expr, join_to_rel, tgt_label),
+        )
+        alias_to_label[tgt_sql_alias] = tgt_label
         is_optional = (join.side or "").upper() == "LEFT"
         join_segments.append(
             (
                 is_optional,
-                rel_type,
+                pattern,
                 src_sql_alias,
                 tgt_sql_alias,
                 tgt_label,
@@ -497,11 +531,12 @@ def _resolve_join_segments(
 def _process_lateral_join(
     join_tbl: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     domain_to_label: dict[tuple[str, str], str],
-    label_to_rel: dict[str, str | None],
+    src_tgt_to_rel: dict[tuple[str, str], str | None],
     label_to_many: dict[str, bool],
     sql_base_alias: str,
+    alias_to_label: dict[str, str],
     params: list | None,
-    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]],
+    join_segments: list[JoinSegment],
     skipped_aliases: set[str],
 ) -> None:
     """Try to unwrap a LATERAL join and append a segment, or add to skipped_aliases."""
@@ -519,14 +554,21 @@ def _process_lateral_join(
     if inner_tbl is not None and lateral_alias and inner_select is not None:
         tgt_label = _resolve_label(inner_tbl, domain_to_label)
         if tgt_label is not None:
-            rel_type = label_to_rel.get(tgt_label)
             inner_lim = _resolve_lateral_inner_lim(inner_select, params)
             inner_where = inner_select.args.get("where")
-            lateral_src_alias = _src_alias_from_on(inner_where, lateral_alias, sql_base_alias)
+            lateral_src_alias = _src_alias_from_on(
+                inner_where,
+                lateral_alias,
+                sql_base_alias,
+                also_target=inner_tbl.alias or inner_tbl.name,
+            )
+            # A LATERAL carries no ON clause, so the ordered label pair is the only evidence.
+            pattern = rel_pattern(alias_to_label.get(lateral_src_alias), tgt_label, src_tgt_to_rel)
+            alias_to_label[lateral_alias] = tgt_label
             join_segments.append(
                 (
                     True,
-                    rel_type,
+                    pattern,
                     lateral_src_alias,
                     lateral_alias,
                     tgt_label,
@@ -557,7 +599,7 @@ def _build_alias_needed_props(
 
 
 def _emit_optional_matches(
-    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]],
+    join_segments: list[JoinSegment],
     alias_map: dict[str, str],
     alias_label: dict[str, str],
     base_alias: str,
@@ -570,15 +612,14 @@ def _emit_optional_matches(
     node_fn,
 ) -> None:
     """Emit OPTIONAL MATCH or CALL {} blocks for optional join segments."""
-    for is_optional, rel_type, src_sql_a, tgt_sql_a, label, inner_lim, is_many in join_segments:
+    for is_optional, pattern, src_sql_a, tgt_sql_a, label, inner_lim, is_many in join_segments:
         if not is_optional:
             continue
-        rel_str = f"[:{rel_type}]" if rel_type else "[]"
         src_short = alias_map.get(src_sql_a, base_alias)
         src_lbl = alias_label.get(src_sql_a, base_label)
         tgt_short = alias_map[tgt_sql_a]
         match_line = (
-            f"OPTIONAL MATCH {node_fn(src_short, src_lbl)}-{rel_str}->{node_fn(tgt_short, label)}"
+            f"OPTIONAL MATCH {node_fn(src_short, src_lbl)}{pattern}{node_fn(tgt_short, label)}"
         )
         if not flat and not node_only and (inner_lim is not None or is_many):
             props = alias_needed_props.get(tgt_short, [])
@@ -608,7 +649,7 @@ def _emit_optional_matches(
 
 def _build_node_aliases(
     base_alias: str,
-    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]],
+    join_segments: list[JoinSegment],
     alias_map: dict[str, str],
     agg_seen: dict[str, str],
 ) -> list[str]:
