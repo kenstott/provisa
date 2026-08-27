@@ -9,10 +9,6 @@
     "detachToSemantic": "Scollega in SQL semantico",
     "expansionTitle": "Espansione della metrica",
     "expansionLoading": "Recupero dell'espansione...",
-    "expansionNoMetric": "Questa istruzione non fa riferimento a nessuna metrica: non c'è nulla da espandere.",
-    "detachConfirmTitle": "Scollegare in SQL semantico?",
-    "detachConfirmBody": "Operazione IRREVERSIBILE: il collegamento alla metrica verrà interrotto e la query diventerà SQL libero. Non è possibile ricollegarla alla metrica.",
-    "detachCancel": "Annulla",
-    "detachConfirm": "Scollega"
+    "expansionNoMetric": "Questa istruzione non fa riferimento a nessuna metrica: non c'è nulla da espandere."
   }
 }

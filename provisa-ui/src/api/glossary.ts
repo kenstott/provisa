@@ -31,6 +31,10 @@ export const GLOSSARY_REL_TYPES = [
 ] as const;
 export type GlossaryRelType = (typeof GLOSSARY_REL_TYPES)[number];
 
+// REQ-1592: a term's scope as the whole org rather than a named set of domains. Exclusive — it
+// never appears alongside a domain — and declaring or lifting it takes `org_glossary_rw`.
+export const ENTERPRISE_DOMAIN = "*";
+
 export const GLOSSARY_EXPERT_KINDS = ["expert", "author"] as const;
 export type GlossaryExpertKind = (typeof GLOSSARY_EXPERT_KINDS)[number];
 

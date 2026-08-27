@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from provisa.security.rights import (
     capabilities_for_claims,
+    domain_access_for_capability,
     domain_access_for_claims,
     has_platform_bypass,
 )
@@ -175,6 +176,53 @@ def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
     if domain_policy.single_domain():
         return None
     allowed = domains_within(sorted(_domain_access(identity, state)))
+    return None if allowed is None else frozenset(allowed)
+
+
+def has_capability_request(request, capability: str) -> bool:  # REQ-1592
+    """Non-raising capability check for a REST admin router — the Request twin of
+    :func:`has_capability`.
+
+    For a right that WIDENS what a caller may do rather than admitting them to a surface:
+    ``org_glossary_rw`` overrides the glossary's domain and stewardship rules, so the router asks
+    whether the caller holds it and takes a different path, instead of refusing. Honours the same
+    dev/no-auth and platform-bypass exemptions as :func:`require_capability_request`.
+    """
+    from provisa.api.errors import ApiError
+
+    try:
+        require_capability_request(request, capability)
+        return True
+    except ApiError:
+        return False
+
+
+def allowed_domains_for_capability_request(  # REQ-1592
+    request, capability: str
+) -> frozenset[str] | None:
+    """The domains a REST caller may exercise ``capability`` in — :func:`allowed_domains_request`
+    narrowed to the roles that actually carry the right.
+
+    Same three exemptions and the same ``None``-means-unlimited contract; the difference is which
+    roles contribute scope. Use this wherever the act being authorized is the named right itself,
+    so that holding a right in one domain and a different right in another cannot compose into the
+    first right in the second domain.
+    """
+    from provisa.api.app import state
+    from provisa.core import domain_policy
+    from provisa.core.env_authority import domains_within
+
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
+        return None
+    if has_platform_bypass(_resolved_capabilities(identity, state)):
+        return None
+    if domain_policy.single_domain():
+        return None
+    scoped = domain_access_for_capability(
+        getattr(identity, "roles", []), getattr(state, "roles", {}), capability
+    )
+    allowed = domains_within(sorted(scoped))
     return None if allowed is None else frozenset(allowed)
 
 

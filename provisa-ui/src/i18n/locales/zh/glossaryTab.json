@@ -57,7 +57,7 @@
     "rel_ANTONYM_OF": "反义于",
     "expertsTitle": "专家",
     "noExperts": "暂无专家。",
-    "expertUserLabel": "用户 ID",
+    "expertUserLabel": "人员",
     "expertKindLabel": "类型",
     "addExpert": "添加专家",
     "removeExpert": "移除专家",
@@ -89,6 +89,10 @@
     "purposeAdd": "对应真实列的术语会自动派生。只有当某个概念没有任何单独的列承载时，才手动添加：这类上位术语要再关联到有列的术语，使它仍能触及真实数据。",
     "purposeAria": "关于术语表",
     "readOnly": "只读",
-    "readOnlyHint": "您可以查看术语表，但无法编辑。编辑术语、定义和关系需要 glossary_rw 权限。"
+    "readOnlyHint": "您可以阅读词汇表，但无法维护它。维护术语、定义和关系需要 glossary_rw 能力。",
+    "expertUserPlaceholder": "搜索人员…",
+    "enterpriseDomainLabel": "所有域（全组织）",
+    "domainsLabel": "域",
+    "domainsHint": "抽象术语没有可用于推导域的列，因此请在此指定。能够访问其中任一域的人即可读取和维护该术语。"
   }
 }

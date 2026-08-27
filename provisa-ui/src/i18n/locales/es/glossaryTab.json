@@ -57,7 +57,7 @@
     "rel_ANTONYM_OF": "Antónimo de",
     "expertsTitle": "Expertos",
     "noExperts": "Sin expertos.",
-    "expertUserLabel": "ID de usuario",
+    "expertUserLabel": "Persona",
     "expertKindLabel": "Tipo",
     "addExpert": "Añadir experto",
     "removeExpert": "Eliminar experto",
@@ -89,6 +89,10 @@
     "purposeAdd": "Los términos de columnas reales se derivan automáticamente. Cree uno a mano solo para un concepto que ninguna columna contiene por sí sola: un término paraguas que luego relaciona con los términos que sí la tienen, para que siga alcanzando datos reales.",
     "purposeAria": "Acerca del glosario",
     "readOnly": "Solo lectura",
-    "readOnlyHint": "Puede leer el glosario pero no curarlo. Curar términos, definiciones y relaciones requiere la capacidad glossary_rw."
+    "readOnlyHint": "Puede leer el glosario pero no curarlo. Curar términos, definiciones y relaciones requiere la capacidad glossary_rw.",
+    "expertUserPlaceholder": "Buscar personas…",
+    "enterpriseDomainLabel": "Todos los dominios (empresa)",
+    "domainsLabel": "Dominios",
+    "domainsHint": "Un término abstracto no tiene columnas de las que derivar sus dominios, así que indíquelos aquí. Quien alcance cualquiera de ellos podrá leer y curar el término."
   }
 }

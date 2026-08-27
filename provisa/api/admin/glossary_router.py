@@ -73,6 +73,38 @@ def _authority(request: Request) -> frozenset[str] | None:
     return allowed_domains_request(request)
 
 
+def _curate_authority(request: Request) -> frozenset[str] | None:
+    """The domains this caller may CURATE in — where a role of theirs carries ``glossary_rw``.
+
+    REQ-1592: narrower than :func:`_authority`, which unions domain_access over every role the
+    caller holds regardless of which right came from where. Curation is the act being authorized,
+    so it is curation's own scope that bounds it; otherwise a read-only role scoped to finance
+    lends its domain to a ``glossary_rw`` role scoped to sales.
+    """
+    from provisa.api.admin.capabilities import allowed_domains_for_capability_request
+
+    return allowed_domains_for_capability_request(request, Capability.GLOSSARY_RW.value)
+
+
+def _is_org_curator(request: Request) -> bool:
+    """Whether this caller holds ``org_glossary_rw`` — the override (REQ-1592).
+
+    It is asked rather than required, because it does not admit anyone to the surface: it is what
+    lets a curator past the two rules that would otherwise strand a term — the enterprise ``*``
+    scope, which belongs to no domain, and a term whose authors have all departed.
+    """
+    from provisa.api.admin.capabilities import has_capability_request
+
+    return has_capability_request(request, Capability.ORG_GLOSSARY_RW.value)
+
+
+def _caller_id(request: Request) -> str | None:
+    """The acting user id, or ``None`` when no authenticated identity resolved (dev / no-auth)."""
+    identity = getattr(request.state, "identity", None)
+    user_id = getattr(identity, "user_id", None)
+    return None if user_id is None or user_id == "anonymous" else str(user_id)
+
+
 def _view_scope(request: Request, selected: "list[str] | None") -> frozenset[str] | None:
     """The caller's authority INTERSECTED with the domains the navbar filter has selected.
 
@@ -104,38 +136,97 @@ def _require_domain(request: Request, domain_id: str) -> None:
         raise ApiError(403, "auth.domain_denied", f"No access to domain {domain_id!r}")
 
 
-async def _require_term_in_scope(conn: "Connection", term_id: int, request: Request) -> None:
+async def _require_term_readable(conn: "Connection", term_id: int, request: Request) -> None:
     """Refuse a term the caller's domains do not reach — ANY of its domains suffices (REQ-1591).
 
-    Reading and curating ask the same question: a term is prose about a concept, and a shared
-    term curatable only by someone holding every domain it touches is a deadlock. Where two
-    domains mean different things by one phrase, the remedy is to split the term and move the
-    refs, not to narrow this gate.
+    A term is prose about a concept, so a term spanning two domains is readable by either domain's
+    people; and an enterprise-wide term (``*``) is the org's shared vocabulary and is readable by
+    every holder of ``glossary_read`` (REQ-1592). Curating is a stricter question, asked separately
+    by :func:`_require_term_curatable`.
     """
-    from provisa.core.glossary import within_domains
+    from provisa.core.glossary import readable_term
 
     allowed = _authority(request)
     if allowed is None:
         return
     scope = (await glossary_repo.term_domains(conn)).get(term_id, set())
+    if not readable_term(allowed, scope):
+        raise ApiError(403, "auth.domain_denied", f"term {term_id} is outside your domains")
+
+
+async def _require_term_curatable(conn: "Connection", term_id: int, request: Request) -> None:
+    """May this caller CHANGE this term? (REQ-1592)
+
+    Three ways in, in this order:
+
+    1. ``org_glossary_rw`` — the org's glossary owner, past every rule below.
+    2. The caller is one of the term's AUTHORS. Claiming authorship is claiming the definition,
+       so an author keeps their term wherever it is scoped.
+    3. The term is UNCLAIMED (no authors), is not enterprise-wide, and one of the caller's
+       ``glossary_rw`` domains is among its domains.
+
+    Rule 3 is the old REQ-1591 gate, now bounded twice over. It stops at ``*`` because an
+    enterprise-wide term belongs to no domain in particular, and the ANY rule would otherwise hand
+    the org's shared vocabulary to whoever holds the narrowest domain it touches — declaring a term
+    broadly would make it LEAST protected, which inverts the intent. And it stops at authorship
+    because once someone has put their name to a definition, editing it over their head is an act
+    for the glossary's owner, not for a passer-by who happens to share a domain.
+
+    A term whose authors have all left the org is frozen to everyone but ``org_glossary_rw``. That
+    is the intended cost of rule 2 and the reason the override exists.
+    """
+    from provisa.core.glossary import ENTERPRISE_DOMAIN, within_domains
+
+    if _is_org_curator(request):
+        return
+    authors = await glossary_repo.term_authors(conn, term_id)
+    if authors:
+        caller = _caller_id(request)
+        if caller is not None and caller in authors:
+            return
+        raise ApiError(
+            403,
+            "glossary.term_claimed",
+            f"term {term_id} is authored by {', '.join(sorted(authors))}",
+        )
+    scope = (await glossary_repo.term_domains(conn)).get(term_id, set())
+    if ENTERPRISE_DOMAIN in scope:
+        raise ApiError(
+            403,
+            "auth.domain_denied",
+            f"term {term_id} is enterprise-wide; org_glossary_rw is required to change it",
+        )
+    allowed = _curate_authority(request)
     if not within_domains(allowed, scope):
         raise ApiError(403, "auth.domain_denied", f"term {term_id} is outside your domains")
 
 
-def _declared_domains(request: Request, raw: "Any") -> set[str]:
-    """Validate the domains an abstract term is being declared in (REQ-1591).
+def _declared_domains(request: Request, raw: "Any", *, current: "set[str]") -> set[str]:
+    """Validate the domains an abstract term is being declared in (REQ-1591, REQ-1592).
 
     An abstract term holds no refs, so nothing derives its scope and the declaration is the whole
     answer. In multi-domain mode at least one is required — an unscoped term is reachable by every
-    glossary-rights holder, which would otherwise be a way to mint a term outside the gate — and
-    every one named must be within the caller's own authority, since declaring a term into a
-    domain you cannot reach is how a member would widen their scope by hand. In single-domain mode
-    a domain gates nothing and the empty declaration is the correct one.
+    glossary-rights holder, which would otherwise be a way to mint a term outside the gate. In
+    single-domain mode a domain gates nothing and the empty declaration is the correct one.
+
+    REQ-1592 adds the enterprise scope and tightens who may name a domain:
+
+    * ``*`` is EXCLUSIVE. ``["*", "sales"]`` is a contradiction — enterprise-wide and also sales —
+      and is refused rather than silently reduced to one of the two readings.
+    * Declaring ``*``, or taking it away, takes ``org_glossary_rw``. Both directions, because the
+      protection is worth nothing if any curator can lift it by rescoping the term into their own
+      domain first and editing it afterwards.
+    * Every ordinary domain named must be one the caller holds ``glossary_rw`` in, not merely one
+      some role of theirs can reach. Declaring a term into a domain you cannot curate is how a
+      member would widen their own scope by hand.
+
+    ``current`` is the term's existing declared scope — empty for a create.
 
     ``raw`` is a value straight out of the request's JSON body, hence ``Any``: its type is what
     the client sent, which is exactly what this function exists to check.
     """
     from provisa.core import domain_policy
+    from provisa.core.glossary import ENTERPRISE_DOMAIN
 
     if raw is None:
         declared: set[str] = set()
@@ -143,11 +234,29 @@ def _declared_domains(request: Request, raw: "Any") -> set[str]:
         declared = {str(d) for d in raw}
     else:
         raise ApiError(400, "glossary.invalid", "domains must be a list of domain ids")
+    if ENTERPRISE_DOMAIN in declared and len(declared) > 1:
+        raise ApiError(
+            400,
+            "glossary.invalid",
+            f"{ENTERPRISE_DOMAIN!r} is the whole org and cannot be combined with a domain",
+        )
+    crossing_enterprise = (ENTERPRISE_DOMAIN in declared) != (ENTERPRISE_DOMAIN in current)
+    if crossing_enterprise and not _is_org_curator(request):
+        raise ApiError(
+            403,
+            "auth.missing_capability",
+            "org_glossary_rw is required to make a term enterprise-wide or to narrow one",
+        )
     if domain_policy.single_domain():
         return declared
     if not declared:
         raise ApiError(400, "glossary.invalid", "at least one domain is required")
-    allowed = _authority(request)
+    if ENTERPRISE_DOMAIN in declared or _is_org_curator(request):
+        # REQ-1592: the override is org-wide, so it covers WHERE a term may be placed as well as
+        # WHICH terms may be changed. Without this the org's glossary owner could take a term out
+        # of enterprise scope but not put it anywhere — the one move the override exists to allow.
+        return declared
+    allowed = _curate_authority(request)
     if allowed is not None:
         outside = sorted(declared - allowed)
         if outside:
@@ -184,7 +293,7 @@ async def get_term(request: Request, term_id: int) -> dict:
         term = await glossary_repo.get_term(_conn, term_id)
         if term is None:
             raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_readable(_conn, term_id, request)
     return term
 
 
@@ -194,7 +303,7 @@ async def create_abstract_term(request: Request) -> dict:
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
-    domains = _declared_domains(request, body.get("domains"))
+    domains = _declared_domains(request, body.get("domains"), current=set())
     pool = await _pool()
     async with pool.acquire() as conn:
         try:
@@ -219,7 +328,7 @@ async def update_term(request: Request, term_id: int) -> dict:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_curatable(_conn, term_id, request)
         found = False
         try:
             if "domains" in body:
@@ -236,7 +345,11 @@ async def update_term(request: Request, term_id: int) -> dict:
                         "a rooted term's domains come from its refs and cannot be set",
                     )
                 await glossary_repo.set_declared_domains(
-                    _conn, term_id, _declared_domains(request, body["domains"])
+                    _conn,
+                    term_id,
+                    # REQ-1592: the term's CURRENT scope decides whether this write crosses the
+                    # enterprise boundary in either direction, so it is passed rather than re-read.
+                    _declared_domains(request, body["domains"], current=set(existing["domains"])),
                 )
                 found = True
             if "name" in body:
@@ -264,7 +377,7 @@ async def delete_term(request: Request, term_id: int) -> dict:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_curatable(_conn, term_id, request)
         try:
             deleted = await glossary_repo.delete_term(_conn, term_id)
         except ValueError as exc:
@@ -317,7 +430,7 @@ async def generate_definition(request: Request, term_id: int) -> dict:
         term = await glossary_repo.get_term(_conn, term_id)
         if term is None:
             raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_curatable(_conn, term_id, request)
     refs = ", ".join(f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"])
     related = ", ".join(
         f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
@@ -485,8 +598,8 @@ async def move_ref(request: Request) -> dict:
         )
         if losing is None:
             raise ApiError(404, "glossary.ref_not_found", "physical ref not found")
-        await _require_term_in_scope(_conn, losing["id"], request)
-        await _require_term_in_scope(_conn, int(body["to_term_id"]), request)
+        await _require_term_curatable(_conn, losing["id"], request)
+        await _require_term_curatable(_conn, int(body["to_term_id"]), request)
         try:
             moved = await glossary_repo.move_ref(
                 _conn,
@@ -512,8 +625,8 @@ async def add_edge(request: Request, term_id: int) -> dict:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await _require_term_in_scope(_conn, term_id, request)
-        await _require_term_in_scope(_conn, int(body["to_term_id"]), request)
+        await _require_term_curatable(_conn, term_id, request)
+        await _require_term_curatable(_conn, int(body["to_term_id"]), request)
         try:
             await glossary_repo.add_edge(
                 _conn,
@@ -542,7 +655,7 @@ async def retype_edge(request: Request, term_id: int) -> dict:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_curatable(_conn, term_id, request)
         try:
             changed = await glossary_repo.retype_edge(
                 _conn,
@@ -566,7 +679,7 @@ async def remove_edge(request: Request, term_id: int, to_term_id: int, rel_type:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_curatable(_conn, term_id, request)
         removed = await glossary_repo.remove_edge(_conn, term_id, to_term_id, rel_type)
     if not removed:
         raise ApiError(404, "glossary.edge_not_found", "edge not found")
@@ -582,7 +695,7 @@ async def add_expert(request: Request, term_id: int) -> dict:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_curatable(_conn, term_id, request)
         try:
             await glossary_repo.add_expert(
                 _conn,
@@ -603,7 +716,7 @@ async def remove_expert(request: Request, term_id: int, user_id: str) -> dict:
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
-        await _require_term_in_scope(_conn, term_id, request)
+        await _require_term_curatable(_conn, term_id, request)
         removed = await glossary_repo.remove_expert(_conn, term_id, user_id)
     if not removed:
         raise ApiError(404, "glossary.expert_not_found", "expert not found")

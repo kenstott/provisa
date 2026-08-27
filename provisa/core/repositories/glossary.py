@@ -33,7 +33,7 @@ from provisa.core.glossary import (
     TERM_EDGE_TYPES,
     live_term_ids,
     normalize_term,
-    within_domains,
+    readable_term,
 )
 from provisa.core.schema_org import (
     glossary_term_domains,
@@ -415,8 +415,12 @@ async def list_terms(
 
     ``None`` means no narrowing — the caller's role is unlimited, the deployment is in
     single-domain mode, or every domain is selected — and is a different answer from an empty
-    set, which admits only the unscoped terms. Narrowing happens here rather than in the router
-    because ``q`` searches over the same rows and the two must not disagree about the population.
+    set, which admits only the unscoped terms and the enterprise-wide ones. Narrowing happens here
+    rather than in the router because ``q`` searches over the same rows and the two must not
+    disagree about the population.
+
+    REQ-1592: the rule is ``readable_term``, not ``within_domains`` — a term scoped to ``*`` is the
+    org's shared vocabulary and is listed for everyone, whatever the caller's domains.
     """
     stmt = select(glossary_terms)
     if q:
@@ -444,7 +448,7 @@ async def list_terms(
             "domains": sorted(scope.get(r.id, set())),
         }
         for r in rows
-        if within_domains(domains, scope.get(r.id, set()))
+        if readable_term(domains, scope.get(r.id, set()))
     ]
 
 
@@ -728,6 +732,28 @@ async def add_expert(
     )
 
 
+async def term_authors(conn: "Connection", term_id: int) -> set[str]:
+    """The user ids that AUTHORED this term — the stewardship half of the curation gate (REQ-1592).
+
+    ``kind='author'`` only. An expert is a contact ("ask me about this"), and turning that list
+    into an access-control list would make naming a knowledgeable colleague a hostile act: it would
+    hand them the term and cost the person who named them nothing but their own authority. An
+    author claimed the definition, so an author owns it.
+
+    An empty result is the UNCLAIMED state, in which the ordinary domain rule decides — that is the
+    window in which a term's first author claims it.
+    """
+    rows = (
+        await conn.execute_core(
+            select(glossary_term_experts.c.user_id).where(
+                (glossary_term_experts.c.term_id == term_id)
+                & (glossary_term_experts.c.kind == "author")
+            )
+        )
+    ).fetchall()
+    return {r.user_id for r in rows}
+
+
 async def remove_expert(conn: "Connection", term_id: int, user_id: str) -> bool:
     result = await conn.execute_core(
         _delete(glossary_term_experts).where(
@@ -846,7 +872,7 @@ async def search_terms(
     scope = await term_domains(conn)
     out = []
     for r in rows:
-        if not within_domains(domains, scope.get(r.id, set())):
+        if not readable_term(domains, scope.get(r.id, set())):
             continue
         term = await get_term(conn, r.id)
         if term is not None:

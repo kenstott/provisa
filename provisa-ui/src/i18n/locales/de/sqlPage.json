@@ -9,10 +9,6 @@
     "detachToSemantic": "In semantisches SQL abkoppeln",
     "expansionTitle": "Metrik-Expansion",
     "expansionLoading": "Expansion wird abgerufen...",
-    "expansionNoMetric": "Diese Anweisung verweist auf keine Metrik — es gibt nichts zu expandieren.",
-    "detachConfirmTitle": "In semantisches SQL abkoppeln?",
-    "detachConfirmBody": "Dies ist UNUMKEHRBAR: Die Metrikverknüpfung wird getrennt und die Abfrage wird zu Freihand-SQL. Eine erneute Verknüpfung mit der Metrik ist nicht möglich.",
-    "detachCancel": "Abbrechen",
-    "detachConfirm": "Abkoppeln"
+    "expansionNoMetric": "Diese Anweisung verweist auf keine Metrik — es gibt nichts zu expandieren."
   }
 }

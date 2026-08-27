@@ -97,6 +97,12 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # surface unreachable, because the page itself is gated on READ.
     GLOSSARY_READ = "glossary_read"
     GLOSSARY_RW = "glossary_rw"
+    # REQ-1592: curate ANY term in the org, whatever its domains and whoever authored it. The
+    # override the two narrower rules need to stay safe: an enterprise-wide term (domains ``["*"]``)
+    # belongs to no domain in particular, and a term with authors is theirs — both would otherwise be
+    # unmaintainable the moment their people leave. Seeded to org_admin only; GLOSSARY_RW remains the
+    # ordinary curator's right, bounded by the domains its ROLE carries.
+    ORG_GLOSSARY_RW = "org_glossary_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
 
@@ -173,6 +179,38 @@ def domain_access_for_claims(  # REQ-1530
     for role_id in role_ids_from_claims(claims):
         role = (roles or {}).get(role_id)
         if role is None:
+            continue
+        access = role.get("domain_access")
+        if access is None:
+            raise ValueError(
+                f"role {role_id!r} was loaded without domain_access: the column is NOT NULL on the "
+                "roles table, so this is a registry built by a loader that dropped the field"
+            )
+        out.update(access)
+    return out
+
+
+def domain_access_for_capability(  # REQ-1592
+    claims: "Iterable[str]", roles: dict[str, dict] | None, capability: str
+) -> set[str]:
+    """The domain scopes carried only by those roles that grant ``capability``.
+
+    ``capabilities_for_claims`` and ``domain_access_for_claims`` union INDEPENDENTLY across every
+    role a member holds, which lets two harmless grants compose into one that was never made: a
+    role carrying ``glossary_rw`` in sales plus a read-only role scoped to finance resolves to
+    ``glossary_rw`` AND finance, and the member curates a domain no role gave them curation in.
+    Pairing the right with its own scope closes that: the answer here is the union of
+    ``domain_access`` over the roles that actually carry the named right, and nothing else.
+
+    Interpret the result with ``provisa.core.env_authority.domains_within``, the one place that
+    decides what ``*`` means on a role's scope.
+    """
+    out: set[str] = set()
+    for role_id in role_ids_from_claims(claims):
+        role = (roles or {}).get(role_id)
+        if role is None:
+            continue
+        if capability not in (role.get("capabilities") or []):
             continue
         access = role.get("domain_access")
         if access is None:

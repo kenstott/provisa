@@ -849,6 +849,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # segments both by the URI builder and by the serialized directory tree, so "a/tables" plants
         # a domain directory exactly where the kind directory goes even though the id as a whole
         # matches no reserved word. Checking the id entire only ever caught the one-segment case.
+        # REQ-1592: "*" already means "every domain" on a role's domain_access and on a glossary
+        # term's scope. A domain literally named "*" would collide with both readings — a term
+        # scoped to it would read as enterprise-wide, and a role granted it as unlimited.
+        from provisa.core.glossary import ENTERPRISE_DOMAIN
+
+        if ENTERPRISE_DOMAIN in input.id.split("/"):
+            return MutationResult(
+                success=False,
+                message=f"Domain id {input.id!r} uses the reserved word {ENTERPRISE_DOMAIN!r}",
+                code="schema.domain_reserved_word",
+                params={"domain": input.id, "reserved": ENTERPRISE_DOMAIN},
+            )
         reserved = [seg for seg in input.id.split("/") if seg in RESERVED_KIND_KEYWORDS]
         if reserved:
             return MutationResult(

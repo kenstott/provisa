@@ -42,9 +42,30 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 // REQ-1590: every case below is a curator's, so the tab is mounted holding both glossary rights.
 // What a holder of `glossary_read` alone is shown is glossaryReadOnly.test.tsx.
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ capabilities: ["glossary_read", "glossary_rw"] }),
+  useAuth: () => ({ capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" }),
 }));
 
+// REQ-1592: the expert/author picker is fed by the org's roster, not by typing a user id.
+vi.mock("../api/admin", () => ({
+  fetchOrgMembers: vi.fn(async () => [
+    {
+      user_id: "u1",
+      email: "ada@acme.test",
+      display_name: "Ada Lovelace",
+      provider: "local",
+      is_org_admin: false,
+    },
+    {
+      user_id: "u2",
+      email: "grace@acme.test",
+      display_name: "",
+      provider: "local",
+      is_org_admin: false,
+    },
+  ]),
+}));
+
+import { addGlossaryExpert } from "../api/glossary";
 import { notifications } from "@mantine/notifications";
 import {
   deleteGlossaryTerm,
@@ -407,6 +428,27 @@ describe("GlossaryTab", () => {
       expect(mockNotify).toHaveBeenCalledWith(
         expect.objectContaining({ message: t("glossaryTab.relationshipsGenerated", { count: 1 }) }),
       ),
+    );
+  });
+
+  // The user id is what the term is keyed on, so it is never typed: a mistyped id would attribute
+  // the term to nobody and — for an author — lock every curator out of it.
+  it("picks the author from the org roster and sends that user's id", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    await screen.findByTestId("glossary-expert-user-input");
+
+    const listbox = await openSelect("glossary-expert-user-input");
+    // A member with no display name is offered under the email the server does have.
+    expect(within(listbox).getByText("grace@acme.test")).toBeInTheDocument();
+    fireEvent.click(within(listbox).getByText("Ada Lovelace"));
+
+    const kinds = await openSelect("glossary-expert-kind-select");
+    fireEvent.click(within(kinds).getByText(t("glossaryTab.kind_author")));
+
+    fireEvent.click(screen.getByTestId("glossary-expert-add-btn"));
+    await waitFor(() =>
+      expect(vi.mocked(addGlossaryExpert)).toHaveBeenCalledWith(1, "u1", "author"),
     );
   });
 });

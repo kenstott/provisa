@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1322: one-way detach — confirm modal gates the editor-text replacement.
+// REQ-1322: detach opens the expansion as a new query; the metric SQL it came from survives.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../../test-utils/render";
@@ -129,31 +129,23 @@ describe("metric expansion + one-way detach (REQ-1322)", () => {
     expect(editor()).toHaveValue(METRIC_SQL);
   });
 
-  it("detach is gated behind the confirm modal and replaces the editor only on confirm", async () => {
+  it("detaches into a NEW query and leaves the metric SQL where it was", async () => {
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => screen.getByText("Query 1"));
     fireEvent.change(editor(), { target: { value: METRIC_SQL } });
 
-    // Open the confirm modal — nothing replaced yet.
+    // Detach requests the expansion and opens it as a second query, now the active one.
     await user.click(screen.getByTestId("sql-detach"));
-    await waitFor(() => screen.getByTestId("sql-detach-confirm"));
-    expect(editor()).toHaveValue(METRIC_SQL);
-    expect(explainSql).not.toHaveBeenCalled();
-
-    // Cancel keeps the semantic SQL.
-    await user.click(screen.getByTestId("sql-detach-cancel"));
-    expect(editor()).toHaveValue(METRIC_SQL);
-    expect(explainSql).not.toHaveBeenCalled();
-
-    // Confirm requests the expansion and replaces the editor text.
-    await user.click(screen.getByTestId("sql-detach"));
-    await waitFor(() => screen.getByTestId("sql-detach-confirm"));
-    await user.click(screen.getByTestId("sql-detach-confirm"));
     await waitFor(() => expect(editor()).toHaveValue("SEMANTIC EXPANSION"));
     expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false);
+    expect(screen.getByText("Query 2")).toBeInTheDocument();
 
-    // Tab is badged detached.
-    expect(screen.getByText("detached")).toBeInTheDocument();
+    // Only the new query is detached; the metric-referencing original is untouched, and it is
+    // the only copy of what the author wrote — the detach has no way back.
+    expect(screen.getAllByText("detached")).toHaveLength(1);
+    await user.click(screen.getByText("Query 1"));
+    await waitFor(() => expect(editor()).toHaveValue(METRIC_SQL));
+    expect(screen.getAllByText("detached")).toHaveLength(1);
   });
 });

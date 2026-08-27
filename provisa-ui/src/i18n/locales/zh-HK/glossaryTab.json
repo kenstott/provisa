@@ -57,7 +57,7 @@
     "rel_ANTONYM_OF": "反義於",
     "expertsTitle": "專家",
     "noExperts": "沒有專家。",
-    "expertUserLabel": "使用者 ID",
+    "expertUserLabel": "人員",
     "expertKindLabel": "類型",
     "addExpert": "新增專家",
     "removeExpert": "移除專家",
@@ -89,6 +89,10 @@
     "purposeAdd": "對應真實欄位的術語會自動衍生。只有當某個概念沒有任何單一欄位承載時，才手動新增：這類上位術語要再關聯到擁有欄位的術語，使它仍能觸及真實資料。",
     "purposeAria": "關於術語表",
     "readOnly": "唯讀",
-    "readOnlyHint": "您可以檢視術語表，但無法編輯。編輯術語、定義和關係需要 glossary_rw 權限。"
+    "readOnlyHint": "您可以閱讀詞彙表，但無法維護。維護術語、定義及關係需要 glossary_rw 能力。",
+    "expertUserPlaceholder": "搜尋人員…",
+    "enterpriseDomainLabel": "所有領域（全機構）",
+    "domainsLabel": "領域",
+    "domainsHint": "抽象術語沒有可用以推導領域的欄位，因此請在此指定。能存取其中任一領域的人即可讀取及維護該術語。"
   }
 }

@@ -964,7 +964,7 @@ VALUES (
       "masking_config","column_grant","view_governance","query_development",
       "full_results","write","usage","org_settings","observability",
       "environment_management","environment_switch",
-      "glossary_read","glossary_rw"]'::jsonb,
+      "glossary_read","glossary_rw","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )

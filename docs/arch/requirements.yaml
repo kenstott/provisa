@@ -40468,7 +40468,12 @@
     in, so it can be read in the EXPLAIN plan but never pasted back into an editor. Expanding the metric
     into the editor is an explicit detach action and a ONE-WAY TRIP: the query becomes free-hand SQL, the
     metric link is visibly severed, and there is no re-ingestion of edited SQL back into metric references
-    - de-compiling hand-edited SQL is not attempted, ever.'
+    - de-compiling hand-edited SQL is not attempted, ever. Because the trip is one-way, the expansion opens
+    as a NEW query tab, badged detached, and the metric-referencing query it came from is left untouched -
+    that query is the only copy of what the author wrote, so detaching over it would destroy it to produce
+    something that can never be turned back. The expansion is machine-written SQL, so it is prettified on
+    the way into the editor. Since the original survives, detach takes no confirmation step: there is
+    nothing to warn about and nothing to lose, so the button acts immediately.'
   use_case: The JoinCanvas already generates SELECT/JOIN SQL from dragged tables and registered relationships,
     but it can only express structure - nothing tells it which tables are facts, which columns are measures,
     or which groupings are valid. With roles and metrics in the model, the guided field-well experience
@@ -52865,3 +52870,72 @@
   depends_on:
   - REQ-1387
   - REQ-1530
+- id: REQ-1593
+  status: complete
+  since: 2026-08
+  group: 1. Access Governance & Security
+  category: Capabilities
+  priority: MUST
+  type: behavioral
+  description: >-
+    A GLOSSARY TERM IS OWNED, NOT MERELY REACHABLE. Domain reach alone made every curator a curator
+    of every term they could see, so the terms that matter most -- the ones the whole org shares --
+    were the ones anybody could rewrite. Three rules replace that, over a new capability
+    ``org_glossary_rw``. THE ORG'S GLOSSARY OWNER -- ``org_glossary_rw`` curates ANY term in the org
+    whatever its domains and whoever authored it, and is alone in being able to place a term in a
+    domain it holds no other claim on. It is seeded to org_admin ALONE, not to modeler: modeler
+    curates the model but does not override another curator's authorship. It widens what a curator
+    may do rather than opening the surface, so a holder carries ``glossary_read`` and
+    ``glossary_rw`` as well. THE ENTERPRISE SCOPE -- a term may be scoped to ``"*"``, meaning the
+    whole org: everyone holding ``glossary_read`` may READ it, and only ``org_glossary_rw`` may
+    declare the scope, lift it, or change the term. ``"*"`` is EXCLUSIVE -- ``["*", "sales"]`` is
+    refused 400, because a term is the whole org's or a named set of domains', never both -- and it
+    is declarable on ABSTRACT terms only, since a rooted term derives its scope from its refs. THE
+    AUTHOR LOCK -- once a term has an AUTHOR, only that author or ``org_glossary_rw`` may change it.
+    An EXPERT is a contact, not an owner: naming a colleague as someone to ask must never be a
+    hostile act, so ``kind='expert'`` confers nothing and the lock keys on ``kind='author'`` alone.
+    Adding or removing a steward of either kind is itself a curation act, gated the same way -- a
+    claim on a term is a privilege act, not a free one. WHERE A TERM MAY BE PLACED -- a caller may
+    declare only the domains in which they hold ``glossary_rw``, resolved PER CAPABILITY: an
+    identity's domain_access is unioned over the roles that actually carry the named right, never
+    over all its roles, or role A's right in one domain would compose with role B's domain into a
+    grant nobody made. THE COST, ACCEPTED -- a term whose authors have all left the org is frozen to
+    everyone but ``org_glossary_rw``. That is what the override exists for. THE TWO STARS NEVER MEET
+    -- ``"*"`` on a role's domain_access is unlimited AUTHORITY; ``"*"`` as a term's scope is
+    unlimited MEMBERSHIP. They are different tables and opposite directions and are never read
+    across; creating a domain literally named ``"*"`` is refused so the two readings cannot collide.
+    THE PICKER -- an author or expert is CHOSEN from the org's roster, never typed. A mistyped user
+    id would attribute the term to nobody and, for an author, lock every curator out of it.
+  tests:
+  - tests/unit/test_glossary_rights.py
+  - tests/integration/test_glossary_domain_authority.py
+  - tests/integration/test_tenancy_role_grants.py
+  - provisa-ui/src/__tests__/GlossaryTab.test.tsx
+  - provisa-ui/src/__tests__/glossaryDomainFilter.test.tsx
+  code:
+  - provisa/security/rights.py
+  - provisa/api/admin/glossary_router.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/core/glossary.py
+  - provisa/core/schema.sql
+  - provisa/core/db.py
+  - provisa-ui/src/components/admin/GlossaryTab.tsx
+  - provisa-ui/src/api/glossary.ts
+  - provisa-ui/src/types/auth.ts
+  - provisa-ui/src/context/AuthContext.tsx
+  scenario: 'Given an abstract term scoped to the "sales" domain and authored by one curator
+
+    When a second curator holding glossary_rw in "sales" tries to rename it
+
+    Then the write is refused 403, because the term has an author and they are not it
+
+    And naming that second curator an EXPERT still refuses them, because an expert is a contact
+
+    When the org''s glossary owner scopes the term to "*"
+
+    Then every holder of glossary_read may read it, no domain holder may change it, and a request
+    declaring ["*", "sales"] is refused 400'
+  depends_on:
+  - REQ-1387
+  - REQ-1590
+  - REQ-1591

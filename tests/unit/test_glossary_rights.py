@@ -163,7 +163,7 @@ def _db_seed(role_id: str) -> set[str]:
 
 @pytest.mark.parametrize("role_id", ["org_admin", "analyst", "developer", "modeler"])
 def test_the_two_seeds_agree_on_the_glossary_rights(role_id):
-    glossary = {"glossary_read", "glossary_rw"}
+    glossary = {"glossary_read", "glossary_rw", "org_glossary_rw"}
     assert _schema_sql_seed(role_id) & glossary == _db_seed(role_id) & glossary
 
 
@@ -183,3 +183,25 @@ def test_no_seeded_role_curates_without_reading(role_id):
     caps = _db_seed(role_id)
     if "glossary_rw" in caps:
         assert "glossary_read" in caps
+
+
+# --- REQ-1592: the org's glossary owner ----------------------------------------------------------
+
+
+def test_the_org_glossary_right_is_a_third_and_distinct_right():
+    assert Capability.ORG_GLOSSARY_RW.value == "org_glossary_rw"
+    assert Capability.ORG_GLOSSARY_RW.value != Capability.GLOSSARY_RW.value
+    assert not has_platform_bypass({"org_glossary_rw"})
+
+
+@pytest.mark.parametrize("role_id", ["analyst", "developer", "modeler"])
+def test_org_admin_alone_owns_the_org_glossary(role_id):
+    # The override goes past every domain and every authorship claim, so it is seeded to the role
+    # that already owns the org's data plane and to nothing else — modeler included.
+    assert "org_glossary_rw" in _db_seed("org_admin")
+    assert "org_glossary_rw" not in _db_seed(role_id), role_id
+
+
+def test_the_org_owner_also_holds_the_ordinary_rights():
+    # It widens what a curator may do; it does not replace the right that opens the surface.
+    assert {"glossary_read", "glossary_rw"} <= _db_seed("org_admin")

@@ -45,7 +45,12 @@ export type Capability =
   // administering the org, so an analyst holds it; `glossary_rw` is curation on top of it, and the
   // page renders read-only without it. A curator is granted both.
   | "glossary_read"
-  | "glossary_rw";
+  | "glossary_rw"
+  // REQ-1592: the org's glossary owner — curates any term whatever its domains and whoever
+  // authored it, and is alone in being able to scope a term to the whole org ("*"). Seeded to
+  // org_admin only; it widens what a curator may do rather than opening the surface, so a holder
+  // carries `glossary_read` and `glossary_rw` as well.
+  | "org_glossary_rw";
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;

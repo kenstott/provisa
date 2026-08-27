@@ -19,7 +19,6 @@ import {
   Button,
   Drawer,
   Group,
-  Modal,
   SegmentedControl,
   Checkbox,
   Text,
@@ -81,7 +80,6 @@ export function SqlPage() {
   const [expansionOpen, setExpansionOpen] = useState(false);
   const [expansionText, setExpansionText] = useState("");
   const [expansionLoading, setExpansionLoading] = useState(false);
-  const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
   // REQ-1318: pure semantic metric queries can save as a metric view.
   const [saveAsMetricView, setSaveAsMetricView] = useState(true);
   const tables = tablesData;
@@ -291,19 +289,6 @@ export function SqlPage() {
     setExpansionLoading(false);
   }, [fetchExpansion]);
 
-  // REQ-1322: one-way detach — replaces the editor text with the server expansion
-  // and severs the metric link permanently (no re-ingestion path).
-  const handleDetach = useCallback(async () => {
-    const { text, isError } = await fetchExpansion();
-    setDetachConfirmOpen(false);
-    if (isError) {
-      setResultError(text);
-      return;
-    }
-    setSqlText(text);
-    setTabs((prev) => prev.map((t2) => (t2.id === activeTabId ? { ...t2, detached: true } : t2)));
-  }, [fetchExpansion, activeTabId]);
-
   const domainGroups = useMemo(() => {
     const groups: Record<string, RegisteredTable[]> = {};
     for (const t of tables) {
@@ -417,6 +402,34 @@ export function SqlPage() {
     setActiveTabId(tab.id);
     loadTabIntoWorkingState(tab);
   }, [mergeActive, loadTabIntoWorkingState]);
+
+  // REQ-1322: the server expansion severs the metric link permanently (no re-ingestion path), so it
+  // opens as a NEW query rather than overwriting the one it came from: the metric-referencing SQL is
+  // the only copy of what the author actually wrote, and detaching over it would destroy it to
+  // produce something that can never be turned back. Because the original survives, there is nothing
+  // to warn about and no confirmation step — the detach is just another query. The expansion arrives
+  // as machine-written SQL, so it is prettified on the way into the editor.
+  const handleDetach = useCallback(async () => {
+    const { text, isError } = await fetchExpansion();
+    if (isError) {
+      setResultError(text);
+      return;
+    }
+    let pretty = text;
+    try {
+      pretty = formatSql(text, { language: "postgresql" });
+    } catch {
+      /* leave the expansion unchanged if the formatter can't parse it */
+    }
+    const merged = mergeActive();
+    const tab: SqlTab = {
+      ...emptyTab(newTabId(), nextTabTitle(merged), pretty),
+      detached: true,
+    };
+    setTabs([...merged, tab]);
+    setActiveTabId(tab.id);
+    loadTabIntoWorkingState(tab);
+  }, [fetchExpansion, mergeActive, loadTabIntoWorkingState]);
 
   const closeTab = useCallback(
     (id: string) => {
@@ -704,7 +717,7 @@ export function SqlPage() {
                 size="compact-xs"
                 color="orange"
                 variant="light"
-                onClick={() => setDetachConfirmOpen(true)}
+                onClick={handleDetach}
                 data-testid="sql-detach"
               >
                 {t("sqlPage.detachToSemantic")}
@@ -868,31 +881,6 @@ export function SqlPage() {
           </pre>
         )}
       </Drawer>
-
-      {/* REQ-1322: one-way detach confirmation */}
-      <Modal
-        opened={detachConfirmOpen}
-        onClose={() => setDetachConfirmOpen(false)}
-        title={<Title order={4}>{t("sqlPage.detachConfirmTitle")}</Title>}
-        centered
-        data-testid="sql-detach-confirm-modal"
-      >
-        <Text mb="lg" size="sm">
-          {t("sqlPage.detachConfirmBody")}
-        </Text>
-        <Group justify="flex-end" gap="sm">
-          <Button
-            variant="default"
-            onClick={() => setDetachConfirmOpen(false)}
-            data-testid="sql-detach-cancel"
-          >
-            {t("sqlPage.detachCancel")}
-          </Button>
-          <Button color="orange" onClick={handleDetach} data-testid="sql-detach-confirm">
-            {t("sqlPage.detachConfirm")}
-          </Button>
-        </Group>
-      </Modal>
 
       <ViewModal
         viewModal={viewModal}

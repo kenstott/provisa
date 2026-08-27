@@ -9,10 +9,6 @@
     "detachToSemantic": "Desanexar para SQL semântico",
     "expansionTitle": "Expansão da métrica",
     "expansionLoading": "Buscando expansão...",
-    "expansionNoMetric": "Esta instrução não referencia nenhuma métrica — não há nada a expandir.",
-    "detachConfirmTitle": "Desanexar para SQL semântico?",
-    "detachConfirmBody": "Esta ação é IRREVERSÍVEL: o vínculo com a métrica será rompido e a consulta se torna SQL livre. Não há como reanexá-la à métrica.",
-    "detachCancel": "Cancelar",
-    "detachConfirm": "Desanexar"
+    "expansionNoMetric": "Esta instrução não referencia nenhuma métrica — não há nada a expandir."
   }
 }

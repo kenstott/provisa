@@ -9,10 +9,6 @@
     "detachToSemantic": "Detach to semantic SQL",
     "expansionTitle": "Metric Expansion",
     "expansionLoading": "Fetching expansion...",
-    "expansionNoMetric": "This statement references no metric — there is nothing to expand.",
-    "detachConfirmTitle": "Detach to semantic SQL?",
-    "detachConfirmBody": "This is ONE-WAY: the metric link will be severed and the query becomes free-hand SQL. There is no way to re-attach it to the metric.",
-    "detachCancel": "Cancel",
-    "detachConfirm": "Detach"
+    "expansionNoMetric": "This statement references no metric — there is nothing to expand."
   }
 }

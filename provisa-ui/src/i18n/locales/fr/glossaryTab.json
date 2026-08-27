@@ -57,7 +57,7 @@
     "rel_ANTONYM_OF": "Antonyme de",
     "expertsTitle": "Experts",
     "noExperts": "Aucun expert.",
-    "expertUserLabel": "ID utilisateur",
+    "expertUserLabel": "Personne",
     "expertKindLabel": "Type",
     "addExpert": "Ajouter un expert",
     "removeExpert": "Retirer l'expert",
@@ -89,6 +89,10 @@
     "purposeAdd": "Les termes des colonnes réelles sont dérivés pour vous. N'en créez un à la main que pour un concept qu'aucune colonne ne porte à elle seule : un terme générique que vous reliez ensuite aux termes qui en portent un, afin qu'il atteigne toujours des données réelles.",
     "purposeAria": "À propos du glossaire",
     "readOnly": "Lecture seule",
-    "readOnlyHint": "Vous pouvez consulter le glossaire mais pas le curer. La curation des termes, définitions et relations nécessite la capacité glossary_rw."
+    "readOnlyHint": "Vous pouvez lire le glossaire mais pas le curer. Curer les termes, définitions et relations exige la capacité glossary_rw.",
+    "expertUserPlaceholder": "Rechercher des personnes…",
+    "enterpriseDomainLabel": "Tous les domaines (entreprise)",
+    "domainsLabel": "Domaines",
+    "domainsHint": "Un terme abstrait n'a aucune colonne dont dériver ses domaines : nommez-les ici. Quiconque atteint l'un d'eux peut lire et curer le terme."
   }
 }

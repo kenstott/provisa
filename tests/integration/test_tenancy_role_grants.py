@@ -208,7 +208,8 @@ async def test_glossary_rights_are_reasserted_on_pre_existing_rows(tenant_db, mu
             text(
                 "UPDATE roles SET capabilities = COALESCE("
                 "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
-                "   WHERE v NOT IN ('\"glossary_read\"'::jsonb, '\"glossary_rw\"'::jsonb)),"
+                "   WHERE v NOT IN ('\"glossary_read\"'::jsonb, '\"glossary_rw\"'::jsonb,"
+                "                    '\"org_glossary_rw\"'::jsonb)),"
                 "  '[]'::jsonb)"
             )
         )
@@ -226,8 +227,13 @@ async def test_glossary_rights_are_reasserted_on_pre_existing_rows(tenant_db, mu
     assert {"glossary_rw"} <= caps["modeler"]
     for role_id in ("analyst", "developer"):
         assert "glossary_rw" not in caps[role_id], role_id
+    # REQ-1592: the org's glossary owner is org_admin ALONE — not modeler, which curates the model
+    # but does not override another curator's authorship or the org-wide scope.
+    assert "org_glossary_rw" in caps["org_admin"]
+    for role_id in ("analyst", "developer", "modeler"):
+        assert "org_glossary_rw" not in caps[role_id], role_id
     # platform_admin is control-plane only: it gains no data-plane right here.
-    assert not ({"glossary_read", "glossary_rw"} & caps["platform_admin"])
+    assert not ({"glossary_read", "glossary_rw", "org_glossary_rw"} & caps["platform_admin"])
 
 
 async def test_no_other_role_gains_platform_settings(tenant_db):

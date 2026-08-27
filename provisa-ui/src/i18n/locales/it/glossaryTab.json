@@ -57,7 +57,7 @@
     "rel_ANTONYM_OF": "Contrario di",
     "expertsTitle": "Esperti",
     "noExperts": "Nessun esperto.",
-    "expertUserLabel": "ID utente",
+    "expertUserLabel": "Persona",
     "expertKindLabel": "Tipo",
     "addExpert": "Aggiungi esperto",
     "removeExpert": "Rimuovi esperto",
@@ -89,6 +89,10 @@
     "purposeAdd": "I termini delle colonne reali vengono derivati automaticamente. Creane uno a mano solo per un concetto che nessuna singola colonna contiene: un termine ombrello che poi colleghi ai termini che ne hanno una, così continua a raggiungere dati reali.",
     "purposeAria": "Informazioni sul glossario",
     "readOnly": "Sola lettura",
-    "readOnlyHint": "Puoi leggere il glossario ma non curarlo. La cura di termini, definizioni e relazioni richiede la capacità glossary_rw."
+    "readOnlyHint": "Puoi leggere il glossario ma non curarlo. Curare termini, definizioni e relazioni richiede la capacità glossary_rw.",
+    "expertUserPlaceholder": "Cerca persone…",
+    "enterpriseDomainLabel": "Tutti i domini (aziendale)",
+    "domainsLabel": "Domini",
+    "domainsHint": "Un termine astratto non ha colonne da cui derivare i suoi domini, quindi indicali qui. Chi raggiunge uno qualsiasi di essi può leggere e curare il termine."
   }
 }

@@ -59,7 +59,7 @@
     "rel_ANTONYM_OF": "Antonym of",
     "expertsTitle": "Experts",
     "noExperts": "No experts.",
-    "expertUserLabel": "User ID",
+    "expertUserLabel": "Person",
     "expertKindLabel": "Kind",
     "addExpert": "Add expert",
     "removeExpert": "Remove expert",
@@ -91,6 +91,8 @@
     "purposeAdd": "Terms for real columns are derived for you. Add one by hand only for a concept no single column carries — an umbrella term you then relate to the terms that do, so it still reaches real data.",
     "purposeAria": "About the glossary",
     "readOnly": "Read-only",
-    "readOnlyHint": "You can read the glossary but not curate it. Curating terms, definitions and relationships needs the glossary_rw capability."
+    "readOnlyHint": "You can read the glossary but not curate it. Curating terms, definitions and relationships needs the glossary_rw capability.",
+    "expertUserPlaceholder": "Search people…",
+    "enterpriseDomainLabel": "All domains (enterprise)"
   }
 }

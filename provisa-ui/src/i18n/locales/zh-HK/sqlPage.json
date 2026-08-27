@@ -9,10 +9,6 @@
     "detachToSemantic": "分離為語意 SQL",
     "expansionTitle": "指標展開",
     "expansionLoading": "正在擷取展開結果...",
-    "expansionNoMetric": "此陳述式並未引用任何指標 — 沒有可展開的內容。",
-    "detachConfirmTitle": "分離為語意 SQL？",
-    "detachConfirmBody": "此操作不可逆轉：指標連結會被切斷，查詢會變成自由編寫的 SQL。之後無法重新連結至該指標。",
-    "detachCancel": "取消",
-    "detachConfirm": "分離"
+    "expansionNoMetric": "此陳述式並未引用任何指標 — 沒有可展開的內容。"
   }
 }

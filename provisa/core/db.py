@@ -100,6 +100,11 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             # every seeded role reads; curation stays with the roles that own the model.
             "glossary_read",
             "glossary_rw",
+            # REQ-1592: the org's glossary owner — curates any term whatever its domains and
+            # whoever authored it. org_admin ALONE: it is the override that makes the enterprise
+            # scope and the author lock safe, so a term whose authors have all left, or one scoped
+            # to the whole org, still has someone who can maintain it.
+            "org_glossary_rw",
         ],
     ),
     ("analyst", ["usage", "query_development", "glossary_read"]),  # REQ-1590
@@ -270,6 +275,10 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
                 if "glossary_rw" not in caps:
                     caps.add("glossary_rw")
                     changed = True
+            # REQ-1592: org_admin alone owns the org's glossary — see the seed table above.
+            if role_id == "org_admin" and "org_glossary_rw" not in caps:
+                caps.add("org_glossary_rw")
+                changed = True
             if role_id == "org_admin":
                 for right in ("org_settings", "observability"):
                     if right not in caps:
@@ -349,6 +358,8 @@ async def apply_tenancy_role_grants(  # REQ-1337
         for role_ids, right in (
             (("org_admin", "analyst", "developer", "modeler"), "glossary_read"),
             (("org_admin", "modeler"), "glossary_rw"),
+            # REQ-1592: org_admin alone owns the org's glossary — see the seed table above.
+            (("org_admin",), "org_glossary_rw"),
         ):
             id_list = ", ".join(f"'{r}'" for r in role_ids)
             await conn.execute(

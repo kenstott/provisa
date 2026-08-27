@@ -57,7 +57,7 @@
     "rel_ANTONYM_OF": "Tegenhanger van",
     "expertsTitle": "Experts",
     "noExperts": "Geen experts.",
-    "expertUserLabel": "Gebruikers-ID",
+    "expertUserLabel": "Persoon",
     "expertKindLabel": "Soort",
     "addExpert": "Expert toevoegen",
     "removeExpert": "Expert verwijderen",
@@ -89,6 +89,10 @@
     "purposeAdd": "Termen voor echte kolommen worden voor u afgeleid. Voeg er alleen handmatig een toe voor een begrip dat geen enkele kolom draagt — een overkoepelende term die u vervolgens koppelt aan de termen die dat wel doen, zodat hij echte gegevens blijft bereiken.",
     "purposeAria": "Over de woordenlijst",
     "readOnly": "Alleen-lezen",
-    "readOnlyHint": "U kunt de woordenlijst lezen maar niet beheren. Het beheren van termen, definities en relaties vereist de capability glossary_rw."
+    "readOnlyHint": "U kunt het glossarium lezen maar niet cureren. Termen, definities en relaties cureren vereist de capability glossary_rw.",
+    "expertUserPlaceholder": "Personen zoeken…",
+    "enterpriseDomainLabel": "Alle domeinen (organisatiebreed)",
+    "domainsLabel": "Domeinen",
+    "domainsHint": "Een abstracte term heeft geen kolommen waaruit domeinen zijn af te leiden; benoem ze hier. Wie een ervan bereikt, mag de term lezen en cureren."
   }
 }

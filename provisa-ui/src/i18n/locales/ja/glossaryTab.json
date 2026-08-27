@@ -57,7 +57,7 @@
     "rel_ANTONYM_OF": "対義語",
     "expertsTitle": "エキスパート",
     "noExperts": "エキスパートはいません。",
-    "expertUserLabel": "ユーザー ID",
+    "expertUserLabel": "担当者",
     "expertKindLabel": "種類",
     "addExpert": "エキスパートを追加",
     "removeExpert": "エキスパートを削除",
@@ -89,6 +89,10 @@
     "purposeAdd": "実在する列の用語は自動的に導出されます。手動で追加するのは、単一の列では担えない概念の場合だけです。そうした上位概念は、列を持つ用語と関連付けて、実データに到達できるようにしてください。",
     "purposeAria": "用語集について",
     "readOnly": "読み取り専用",
-    "readOnlyHint": "用語集を閲覧できますが編集はできません。用語・定義・関係の編集には glossary_rw 権限が必要です。"
+    "readOnlyHint": "用語集を閲覧できますが、整備はできません。用語・定義・関連の整備には glossary_rw ケーパビリティが必要です。",
+    "expertUserPlaceholder": "人を検索…",
+    "enterpriseDomainLabel": "すべてのドメイン（全社）",
+    "domainsLabel": "ドメイン",
+    "domainsHint": "抽象用語にはドメインを導き出せる列がないため、ここで指定します。いずれかのドメインに到達できる人は、その用語を閲覧および整備できます。"
   }
 }

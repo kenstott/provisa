@@ -13,7 +13,7 @@
 // this tab carries the human curation — rename, definitions, ref moves,
 // experts, abstract terms and their typed edges.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -57,7 +57,11 @@ import {
   retypeGlossaryEdge,
   updateGlossaryTerm,
 } from "../../api/glossary";
+import { fetchOrgMembers } from "../../api/admin";
+import type { OrgMember } from "../../api/admin";
 import { DescriptionField } from "../../pages/tables/DescriptionField";
+import { useAuth } from "../../context/AuthContext";
+import { ENTERPRISE_DOMAIN } from "../../api/glossary";
 import { useCapability } from "../../hooks/useCapability";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import type {
@@ -75,6 +79,10 @@ export function GlossaryTab() {
   // look a term up — but every control that writes is withheld rather than disabled, because the
   // endpoints behind them answer 403 and a greyed-out button says nothing about why.
   const canEdit = useCapability("glossary_rw");
+  // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
+  // so the option is offered only to a holder — the server refuses it to anyone else.
+  const isOrgGlossaryOwner = useCapability("org_glossary_rw");
+  const { activeOrgId } = useAuth();
   const { domains: filterDomains, checkedDomains, domainsEnabled } = useDomainFilter();
   // REQ-1591: the navbar selection is a VIEW preference, so it narrows the list and nothing else —
   // the server intersects it with role authority and can never widen. Held as the context's own Set
@@ -106,9 +114,11 @@ export function GlossaryTab() {
   const [edgeTermId, setEdgeTermId] = useState<string | null>(null);
   const [edgeRelType, setEdgeRelType] = useState<string | null>(null);
 
-  // Add-expert form
-  const [expertUserId, setExpertUserId] = useState("");
+  // Add-expert form. REQ-1592: the user is PICKED from the org's members, not typed. Naming an
+  // author decides who may change the term from then on, so a typo would hand it to nobody.
+  const [expertUserId, setExpertUserId] = useState<string | null>(null);
   const [expertKind, setExpertKind] = useState<string>("expert");
+  const [members, setMembers] = useState<OrgMember[]>([]);
 
   // New abstract term modal
   const [addOpen, setAddOpen] = useState(false);
@@ -116,7 +126,7 @@ export function GlossaryTab() {
   const [addDefinition, setAddDefinition] = useState("");
   // REQ-1591: an abstract term holds no refs, so nothing derives its scope — the declaration is
   // the whole answer, and the server requires at least one domain in multi-domain mode.
-  const [addDomains, setAddDomains] = useState<string[]>([]);
+  const [addDomains, setAddDomainsRaw] = useState<string[]>([]);
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState("");
 
@@ -147,7 +157,7 @@ export function GlossaryTab() {
       setExportExcluded(term.export_excluded);
       setEdgeTermId(null);
       setEdgeRelType(null);
-      setExpertUserId("");
+      setExpertUserId(null);
       setExpertKind("expert");
     } finally {
       setDetailLoading(false);
@@ -160,6 +170,52 @@ export function GlossaryTab() {
     const timer = window.setTimeout(() => void loadDetail(selectedId), 0);
     return () => window.clearTimeout(timer);
   }, [selectedId, loadDetail]);
+
+  // REQ-1592: the org's members are the people a term can be attributed to. Loaded once for the
+  // whole surface rather than per term — the roster does not change while the page is open — and
+  // only for a curator, since a reader has no picker to fill.
+  useEffect(() => {
+    if (!canEdit || !activeOrgId) return;
+    fetchOrgMembers(activeOrgId)
+      .then(setMembers)
+      .catch((e: unknown) => setActionError(e instanceof Error ? e.message : String(e)));
+  }, [canEdit, activeOrgId]);
+
+  // Label the picker by the name a person would recognise, falling back through the identity the
+  // server actually has: display name, then email, then the user id the term is keyed on.
+  const memberOptions = useMemo(
+    () =>
+      members.map((m) => ({
+        value: m.user_id,
+        label: m.display_name || m.email || m.user_id,
+      })),
+    [members],
+  );
+
+  // REQ-1592: the enterprise scope is offered alongside the domains, to an org_glossary_rw holder
+  // alone. It is exclusive — a term is either the whole org's or a named set of domains' — so
+  // picking it clears the rest, and picking a domain clears it.
+  const addDomainOptions = useMemo(
+    () =>
+      isOrgGlossaryOwner
+        ? [
+            { value: ENTERPRISE_DOMAIN, label: t("glossaryTab.enterpriseDomainLabel") },
+            ...filterDomains,
+          ]
+        : filterDomains,
+    [isOrgGlossaryOwner, filterDomains, t],
+  );
+  const setAddDomains = (next: string[]) => {
+    if (next.includes(ENTERPRISE_DOMAIN)) {
+      setAddDomainsRaw(
+        addDomains.includes(ENTERPRISE_DOMAIN)
+          ? next.filter((d) => d !== ENTERPRISE_DOMAIN)
+          : [ENTERPRISE_DOMAIN],
+      );
+      return;
+    }
+    setAddDomainsRaw(next);
+  };
 
   // Drafts a definition with the org's AI model into the editor; nothing persists
   // until the user saves it.
@@ -840,10 +896,13 @@ export function GlossaryTab() {
               </Stack>
               {canEdit && (
                 <Group align="flex-end" gap="sm">
-                  <TextInput
+                  <Select
                     label={t("glossaryTab.expertUserLabel")}
+                    placeholder={t("glossaryTab.expertUserPlaceholder")}
+                    data={memberOptions}
                     value={expertUserId}
-                    onChange={(e) => setExpertUserId(e.currentTarget.value)}
+                    onChange={setExpertUserId}
+                    searchable
                     w={220}
                     data-testid="glossary-expert-user-input"
                   />
@@ -858,12 +917,13 @@ export function GlossaryTab() {
                   />
                   <Button
                     variant="default"
-                    disabled={!expertUserId.trim()}
+                    disabled={!expertUserId}
                     onClick={() =>
                       void act(() =>
                         addGlossaryExpert(
                           detail.id,
-                          expertUserId.trim(),
+                          // The button is withheld until a person is picked, so the id is present.
+                          expertUserId as string,
                           expertKind as GlossaryExpertKind,
                         ),
                       )
@@ -908,7 +968,7 @@ export function GlossaryTab() {
             <MultiSelect
               label={t("glossaryTab.domainsLabel")}
               description={t("glossaryTab.domainsHint")}
-              data={filterDomains}
+              data={addDomainOptions}
               value={addDomains}
               onChange={setAddDomains}
               data-testid="glossary-add-domains-input"

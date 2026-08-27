@@ -32,9 +32,12 @@ vi.mock("../api/glossary", async (importOriginal) => ({
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
-vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ capabilities: ["glossary_read", "glossary_rw"] }),
-}));
+// REQ-1592: mutated per case — the enterprise scope is offered to an `org_glossary_rw` holder
+// alone, so the same mounted form must be checked from both sides of that right.
+const auth = { capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" };
+vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
+
+vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 
 // The navbar state under test. Mutating the object between cases is what lets "everything checked"
 // and "one box unchecked" be two assertions against one mounted component rather than two suites.
@@ -79,6 +82,7 @@ describe("glossary domain filter", () => {
     filter.domains = ["sales", "hr"];
     filter.checkedDomains = new Set(["sales", "hr"]);
     filter.domainsEnabled = true;
+    auth.capabilities = ["glossary_read", "glossary_rw"];
   });
 
   it("asks for no narrowing when every domain is checked", async () => {
@@ -127,6 +131,42 @@ describe("glossary domain filter", () => {
     fireEvent.click(save);
     await waitFor(() =>
       expect(mockCreate).toHaveBeenCalledWith({ name: "Customer", domains: ["sales"] }),
+    );
+  });
+
+  // REQ-1592: "*" is the whole org, and it is the org's glossary owner who admits a term to it.
+  it("offers the enterprise scope to the org's glossary owner alone", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-new-btn"));
+    const input = await screen.findByTestId("glossary-add-domains-input");
+    fireEvent.click(input);
+    const listbox = document.getElementById(
+      input.getAttribute("aria-controls") as string,
+    ) as HTMLElement;
+    expect(listbox.textContent).not.toContain(t("glossaryTab.enterpriseDomainLabel"));
+  });
+
+  it("makes the enterprise scope exclusive of the named domains", async () => {
+    auth.capabilities = ["glossary_read", "glossary_rw", "org_glossary_rw"];
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-new-btn"));
+    fireEvent.change(await screen.findByTestId("glossary-add-name-input"), {
+      target: { value: "Customer" },
+    });
+
+    const input = screen.getByTestId("glossary-add-domains-input");
+    fireEvent.click(input);
+    const listbox = document.getElementById(
+      input.getAttribute("aria-controls") as string,
+    ) as HTMLElement;
+    fireEvent.click(within_(listbox, "sales"));
+    fireEvent.click(within_(listbox, t("glossaryTab.enterpriseDomainLabel")));
+
+    // The term is the whole org's or a named set of domains', never both: picking the enterprise
+    // scope drops what was already chosen rather than adding to it.
+    fireEvent.click(screen.getByTestId("glossary-add-save-btn"));
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith({ name: "Customer", domains: ["*"] }),
     );
   });
 

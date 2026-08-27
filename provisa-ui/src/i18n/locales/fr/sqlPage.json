@@ -9,10 +9,6 @@
     "detachToSemantic": "Détacher en SQL sémantique",
     "expansionTitle": "Expansion de la métrique",
     "expansionLoading": "Récupération de l'expansion…",
-    "expansionNoMetric": "Cette instruction ne référence aucune métrique : il n'y a rien à développer.",
-    "detachConfirmTitle": "Détacher en SQL sémantique ?",
-    "detachConfirmBody": "Cette action est IRRÉVERSIBLE : le lien avec la métrique sera rompu et la requête deviendra du SQL libre. Il n'existe aucun moyen de la rattacher à la métrique.",
-    "detachCancel": "Annuler",
-    "detachConfirm": "Détacher"
+    "expansionNoMetric": "Cette instruction ne référence aucune métrique : il n'y a rien à développer."
   }
 }
