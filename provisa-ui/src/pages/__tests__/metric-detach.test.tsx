@@ -50,10 +50,13 @@ vi.mock("../../hooks/useCapability", () => ({
 }));
 
 const runSql = vi.fn().mockResolvedValue({ columns: [], rows: [] });
-// REQ-1322: the expansion is the compiler-derived physical SQL the explain endpoint reports, not
-// a plan tree — and not `EXPLAIN <sql>` through /data/sql, which the parser takes as an opaque
-// command, leaving `metrics.<name>` unexpanded for the engine to reject.
-const explainSql = vi.fn().mockResolvedValue({ sql: "PHYSICAL EXPANSION" });
+// REQ-1322: the expansion is the SEMANTIC SQL the explain endpoint reports — not a plan tree, not
+// `EXPLAIN <sql>` through /data/sql (the parser takes that as an opaque command, leaving
+// `metrics.<name>` unexpanded for the engine to reject), and not the plan's physical `sql`, which
+// names source catalogs the pipeline refuses on the way back in.
+const explainSql = vi
+  .fn()
+  .mockResolvedValue({ sql: "PHYSICAL LOWERING", semantic_sql: "SEMANTIC EXPANSION" });
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files and drops exports they need.
 vi.mock("../../api/admin", async (importOriginal) => ({
@@ -94,7 +97,7 @@ beforeEach(() => {
   localStorage.clear();
   idbStore.clear();
   vi.clearAllMocks();
-  explainSql.mockResolvedValue({ sql: "PHYSICAL EXPANSION" });
+  explainSql.mockResolvedValue({ sql: "PHYSICAL LOWERING", semantic_sql: "SEMANTIC EXPANSION" });
 });
 
 describe("metric expansion + one-way detach (REQ-1322)", () => {
@@ -117,9 +120,11 @@ describe("metric expansion + one-way detach (REQ-1322)", () => {
 
     await user.click(screen.getByTestId("sql-show-expansion"));
     await waitFor(() =>
-      expect(screen.getByTestId("sql-expansion-text")).toHaveTextContent("PHYSICAL EXPANSION"),
+      expect(screen.getByTestId("sql-expansion-text")).toHaveTextContent("SEMANTIC EXPANSION"),
     );
     expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false);
+    // The physical lowering is the EXPLAIN plan's business, never the preview's.
+    expect(screen.getByTestId("sql-expansion-text")).not.toHaveTextContent("PHYSICAL LOWERING");
     // Editor untouched by the preview
     expect(editor()).toHaveValue(METRIC_SQL);
   });
@@ -145,7 +150,7 @@ describe("metric expansion + one-way detach (REQ-1322)", () => {
     await user.click(screen.getByTestId("sql-detach"));
     await waitFor(() => screen.getByTestId("sql-detach-confirm"));
     await user.click(screen.getByTestId("sql-detach-confirm"));
-    await waitFor(() => expect(editor()).toHaveValue("PHYSICAL EXPANSION"));
+    await waitFor(() => expect(editor()).toHaveValue("SEMANTIC EXPANSION"));
     expect(explainSql).toHaveBeenCalledWith(METRIC_SQL, "admin", false);
 
     // Tab is badged detached.

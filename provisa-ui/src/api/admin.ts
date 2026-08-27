@@ -1318,6 +1318,10 @@ export interface ExplainResponse {
   sources: string[];
   optimizations: string[];
   sql: string;
+  // REQ-1322: the metric expansion in semantic terms; null when the statement referenced no
+  // metric. `sql` is the physical lowering — it names source catalogs the pipeline refuses on
+  // the way back in, so this is the only expansion form that can be pasted into an editor.
+  semantic_sql: string | null;
   plan: ExplainNodeDto[];
   mermaid: string;
 }

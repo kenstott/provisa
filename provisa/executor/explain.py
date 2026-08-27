@@ -452,6 +452,10 @@ async def analyze_sql(
         "sources": sorted(plan.sources),
         "optimizations": list(plan.optimizations),
         "sql": explained_sql,
+        # REQ-1322: the metric expansion in semantic terms — None when no metric was referenced.
+        # `sql` above is the physical lowering: it names source catalogs and cannot be resubmitted,
+        # so this is the form the SQL editor detaches to.
+        "semantic_sql": plan.semantic_sql,
         "plan": [n.to_dict() for n in nodes],
         "mermaid": build_explain_mermaid(
             nodes,

@@ -6,10 +6,11 @@
     "execMs": "{{ms}} ms",
     "queryStats": "נתוני שאילתה",
     "showExpansion": "הצגת הרחבה",
-    "detachToPhysical": "ניתוק ל-SQL פיזי",
+    "detachToSemantic": "ניתוק ל-SQL סמנטי",
     "expansionTitle": "הרחבת מדד",
     "expansionLoading": "מביא הרחבה...",
-    "detachConfirmTitle": "לנתק ל-SQL פיזי?",
+    "expansionNoMetric": "משפט זה אינו מפנה לאף מדד — אין מה להרחיב.",
+    "detachConfirmTitle": "לנתק ל-SQL סמנטי?",
     "detachConfirmBody": "פעולה זו חד-כיוונית: הקישור למדד יינתק והשאילתה תהפוך ל-SQL חופשי. אין דרך לחבר אותה מחדש למדד.",
     "detachCancel": "ביטול",
     "detachConfirm": "ניתוק"

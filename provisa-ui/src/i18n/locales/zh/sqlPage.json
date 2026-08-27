@@ -6,10 +6,11 @@
     "execMs": "{{ms}} 毫秒",
     "queryStats": "查询统计",
     "showExpansion": "显示展开",
-    "detachToPhysical": "分离为物理 SQL",
+    "detachToSemantic": "分离为语义 SQL",
     "expansionTitle": "指标展开",
     "expansionLoading": "正在获取展开结果...",
-    "detachConfirmTitle": "分离为物理 SQL？",
+    "expansionNoMetric": "该语句未引用任何指标 — 没有可展开的内容。",
+    "detachConfirmTitle": "分离为语义 SQL？",
     "detachConfirmBody": "这是单向操作：指标链接将被切断，查询将变为自由编写的 SQL。无法再将其重新关联到指标。",
     "detachCancel": "取消",
     "detachConfirm": "分离"

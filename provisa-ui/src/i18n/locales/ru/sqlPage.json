@@ -6,10 +6,11 @@
     "execMs": "{{ms}} мс",
     "queryStats": "Статистика запроса",
     "showExpansion": "Показать развёртывание",
-    "detachToPhysical": "Отсоединить в физический SQL",
+    "detachToSemantic": "Отсоединить в семантический SQL",
     "expansionTitle": "Развёртывание метрики",
     "expansionLoading": "Получение развёртывания...",
-    "detachConfirmTitle": "Отсоединить в физический SQL?",
+    "expansionNoMetric": "Этот оператор не ссылается ни на одну метрику — развёртывать нечего.",
+    "detachConfirmTitle": "Отсоединить в семантический SQL?",
     "detachConfirmBody": "Это НЕОБРАТИМО: связь с метрикой будет разорвана, и запрос станет произвольным SQL. Повторно присоединить его к метрике невозможно.",
     "detachCancel": "Отмена",
     "detachConfirm": "Отсоединить"

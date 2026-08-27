@@ -2670,8 +2670,7 @@
   "ja/sqlPage.json::sqlPage.detachCancel": "Cancel",
   "ja/sqlPage.json::sqlPage.detachConfirm": "Detach",
   "ja/sqlPage.json::sqlPage.detachConfirmBody": "This is ONE-WAY: the metric link will be severed and the query becomes free-hand SQL. There is no way to re-attach it to the metric.",
-  "ja/sqlPage.json::sqlPage.detachConfirmTitle": "Detach to physical SQL?",
-  "ja/sqlPage.json::sqlPage.detachToPhysical": "Detach to physical SQL",
+  "ja/sqlPage.json::sqlPage.detachConfirmTitle": "Detach to semantic SQL?",
   "ja/sqlPage.json::sqlPage.execMs": "{{ms}} ms",
   "ja/sqlPage.json::sqlPage.expansionLoading": "Fetching expansion...",
   "ja/sqlPage.json::sqlPage.expansionTitle": "Metric Expansion",
@@ -3493,5 +3492,7 @@
   "orgEngineTab.json::orgEngineTab.hostedStateStopped": "This engine is idle. It starts on the next query.",
   "serverErrors.json::serverErrors.schema.source_limit_reached": "This organization holds {{held}} of the {{limit}} data sources its {{plan}} plan admits. Change the plan on the Billing page, or remove a source.",
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
-  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table"
+  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
+  "ja/sqlPage.json::sqlPage.detachToSemantic": "Detach to semantic SQL",
+  "ja/sqlPage.json::sqlPage.expansionNoMetric": "This statement references no metric — there is nothing to expand."
 }

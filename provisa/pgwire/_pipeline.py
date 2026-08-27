@@ -68,6 +68,12 @@ class _Plan:
     exec_sql: str | None = field(default=None)
     # the engine-specific: fully qualified SQL ready to run
     physical_sql: str | None = field(default=None)
+    # REQ-1322: the metric expansion in SEMANTIC terms — the grouped aggregate over the registered
+    # schema.table names, as the expansion stage produced it and before any physical lowering. This
+    # is the only expansion form a user can paste back into an editor: physical_sql names source
+    # catalogs, which _reject_physical_source_refs refuses on the way in. None when the statement
+    # referenced no metric.
+    semantic_sql: str | None = field(default=None)
     # Per-query the engine session overrides (e.g. retry_policy=NONE to bypass FTE).
     session_hints: dict[str, str] | None = field(default=None)
     # REQ-1194/REQ-1195: an IR-level directive to materialize this result to a sink (CTAS-to-object-
@@ -549,6 +555,9 @@ async def _govern_and_route_planned(
     from provisa.compiler.metric_expand import expand_metric_query
 
     _metric_registry = getattr(state, "metrics", {})
+    # REQ-1322: the expansion in semantic terms, carried on the plan so the explain surface can
+    # report the form a user may paste back into an editor (see _Plan.semantic_sql).
+    _metric_semantic_sql: str | None = None
     if _metric_registry:
         _metric_tables = {
             t["table_name"]: {
@@ -566,6 +575,7 @@ async def _govern_and_route_planned(
         if _expanded is not None:
             _parsed_input = _expanded
             normalized_sql = _parsed_input.sql(dialect="postgres")
+            _metric_semantic_sql = normalized_sql
             # REQ-1319: metric evaluations are traced — the expanded SQL is recorded as a
             # pipeline stage event, same idiom as govern.in/govern.out.
             from provisa.observability.stage_trace import trace_stage
@@ -834,6 +844,7 @@ async def _govern_and_route_planned(
             dialect=state.federation_engine.dialect,
             exec_params=exec_params,
             physical_sql=physical_sql,
+            semantic_sql=_metric_semantic_sql,  # REQ-1322
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
             span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
@@ -876,6 +887,7 @@ async def _govern_and_route_planned(
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            semantic_sql=_metric_semantic_sql,  # REQ-1322
             # REQ-1425: every route carries the plan's span attributes, so the ops queries report
             # covers pushed-down single-source statements identically to federated ones.
             span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),

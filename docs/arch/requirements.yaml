@@ -40459,13 +40459,16 @@
     join or aggregation generation - the server''s compiler expansion is the single generator (REQ-1321);
     the canvas generates the ask, the pipeline generates the plan. (3) Round trip to definition - the
     generated query lands in the editor, editable as ordinary SQL, and the ViewModal gains save-as-metric-view,
-    persisting the selection as a view_metrics definition (REQ-1318) instead of frozen SQL text. (4) Semantic
-    SQL is the artifact; the physical expansion is a VIEW of it - a read-only preview pane (same gesture
-    as EXPLAIN) shows the compiler-derived physical SQL for trust and debugging, and derived output is
-    never the editable master (REQ-1321). Expanding the metric into the editor is an explicit detach action
-    and a ONE-WAY TRIP: the query becomes free-hand SQL, the metric link is visibly severed, and there
-    is no re-ingestion of edited physical SQL back into metric references - de-compiling hand-edited SQL
-    is not attempted, ever.'
+    persisting the selection as a view_metrics definition (REQ-1318) instead of frozen SQL text. (4) The
+    metric reference is the artifact; the expansion is a VIEW of it - a read-only preview pane (same
+    gesture as EXPLAIN) shows the compiler-derived expansion for trust and debugging, and derived output
+    is never the editable master (REQ-1321). The expansion shown and detached to is the SEMANTIC form -
+    the grouped aggregate over registered schema.table names, as the expansion stage emits it before any
+    physical lowering. The physical lowering names source catalogs, which the pipeline refuses on the way
+    in, so it can be read in the EXPLAIN plan but never pasted back into an editor. Expanding the metric
+    into the editor is an explicit detach action and a ONE-WAY TRIP: the query becomes free-hand SQL, the
+    metric link is visibly severed, and there is no re-ingestion of edited SQL back into metric references
+    - de-compiling hand-edited SQL is not attempted, ever.'
   use_case: The JoinCanvas already generates SELECT/JOIN SQL from dragged tables and registered relationships,
     but it can only express structure - nothing tells it which tables are facts, which columns are measures,
     or which groupings are valid. With roles and metrics in the model, the guided field-well experience

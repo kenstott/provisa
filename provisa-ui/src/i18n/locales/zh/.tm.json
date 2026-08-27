@@ -2699,8 +2699,7 @@
   "zh/sqlPage.json::sqlPage.detachCancel": "Cancel",
   "zh/sqlPage.json::sqlPage.detachConfirm": "Detach",
   "zh/sqlPage.json::sqlPage.detachConfirmBody": "This is ONE-WAY: the metric link will be severed and the query becomes free-hand SQL. There is no way to re-attach it to the metric.",
-  "zh/sqlPage.json::sqlPage.detachConfirmTitle": "Detach to physical SQL?",
-  "zh/sqlPage.json::sqlPage.detachToPhysical": "Detach to physical SQL",
+  "zh/sqlPage.json::sqlPage.detachConfirmTitle": "Detach to semantic SQL?",
   "zh/sqlPage.json::sqlPage.execMs": "{{ms}} ms",
   "zh/sqlPage.json::sqlPage.expansionLoading": "Fetching expansion...",
   "zh/sqlPage.json::sqlPage.expansionTitle": "Metric Expansion",
@@ -3493,5 +3492,7 @@
   "zh/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
+  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
+  "zh/sqlPage.json::sqlPage.detachToSemantic": "Detach to semantic SQL",
+  "zh/sqlPage.json::sqlPage.expansionNoMetric": "This statement references no metric — there is nothing to expand."
 }
