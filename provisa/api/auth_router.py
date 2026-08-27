@@ -347,6 +347,11 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     # seat them as its org_admin too. Without this the claim lands on "No roles configured" again: the
     # welcome modal would hand them a deployment whose own org they cannot query.
     await grant_org_role(tenant_db, user_id, ORG_ADMIN_ROLE)
+    # REQ-1599: and in the sandbox org, which is a tenant org their platform_admin reaches no
+    # further into than any other. A no-op while it is still building — that build seats them.
+    from provisa.api.sandbox_org import seat_platform_admins
+
+    await seat_platform_admins(state.admin_db)
 
 
 @router.get("/my-invites")
@@ -652,6 +657,11 @@ async def register(body: RegisterRequest):
             rt = await ensure_org_runtime(invite["org_id"])
             assert rt.tenant_db is not None
             await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
+            # REQ-1599: registering against an invitation that carries platform_admin makes an
+            # administrator too, and one is seated in the sandbox org.
+            from provisa.api.sandbox_org import reseat_after_conferral
+
+            await reseat_after_conferral(admin_db)
     if body.invite_token:
         # REQ-1474: the invitee works under the org's trial if one is running, so the free
         # evaluation is spent for them as well as for the buyer — otherwise an org could mint an
@@ -752,6 +762,11 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
     rt = await ensure_org_runtime(invite["org_id"])
     assert rt.tenant_db is not None
     await grant_org_role(rt.tenant_db, user_id, role_id)
+    # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
+    # is owed the sandbox org the same as the claimant is.
+    from provisa.api.sandbox_org import reseat_after_conferral
+
+    await reseat_after_conferral(admin_db)
     # REQ-1474: see /register — redeeming an invite into a trialling org spends this account's own
     # free evaluation, because from here on they are working inside one.
     from provisa.core.commerce import bind_member_to_org_trial

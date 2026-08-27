@@ -53211,3 +53211,58 @@
   - REQ-1476
   - REQ-1595
   - REQ-1597
+- id: REQ-1599
+  status: complete
+  since: '2026-08'
+  target: '2026-Q3'
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: >-
+    THE DEPLOYMENT'S ADMINISTRATORS MAY USE THE SANDBOX ORG. The sandbox (REQ-1598) is a tenant org
+    like any other, and platform_admin confers NOTHING inside a tenant org -- it is stripped from the
+    resolved assignment set there (REQ-1297), and everyone, operators included, is confined to the
+    orgs they are a member of (REQ-1327). An operator answering for what the public "Try it Out" link
+    shows a stranger would therefore be unable to open the org it admits them to. So they are seated
+    in it THE ORDINARY WAY, exactly as the platform-admin claimant is seated in the bootstrap org
+    (REQ-1296): a membership on the admin plane and a role assignment inside the sandbox's own
+    schema. THE ROLE IS org_admin, NOT sandbox -- an operator has to reach the environments, the
+    members and the settings a visitor's role deliberately withholds (REQ-1597). THE MEMBERSHIP IS
+    UNPINNED: the env pin (REQ-1596) is what confines a stranger to the environment minted for them,
+    and an operator is not a stranger. RECONCILED FROM BOTH ENDS, so no boot leaves an administrator
+    outside the org. The list of administrators is read from the ROOT org's schema, which is the
+    whole list -- platform_admin is only ever conferred there. Seating runs when the sandbox's build
+    finishes (the moment its schema exists), on every later boot that finds the org ready, and on
+    every conferral of a role thereafter -- the super-admin claim and either invitation path. The
+    conferral hook does not ask WHICH role was granted: a gate on a role name is exactly what
+    REQ-1337 forbids, and the answer is already in the assignments the seating reads. It is a
+    no-op, never an error, for a deployment with no sandbox org and for one whose sandbox is still
+    building.
+  tests:
+  - tests/unit/test_sandbox_org_seed.py
+  code:
+  - provisa/api/sandbox_org.py
+  - provisa/api/auth_router.py
+  scenario: 'Given a hosted deployment whose sandbox org is ready
+
+    When a platform_admin is conferred, or the application starts
+
+    Then that administrator holds a sandbox membership and an org_admin assignment in its schema
+
+    And the membership carries no environment pin
+
+    Given the sandbox org is still building
+
+    Then nobody is seated on that pass, and the build seats them when its schema exists
+
+    Given a conferral of a role to someone who is not an administrator
+
+    Then nothing is granted in the sandbox org'
+  depends_on:
+  - REQ-1296
+  - REQ-1297
+  - REQ-1327
+  - REQ-1596
+  - REQ-1597
+  - REQ-1598
