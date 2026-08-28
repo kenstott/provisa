@@ -2051,10 +2051,18 @@ def create_app() -> FastAPI:
                     state.admin_db, env_org, requested_env, env_caps
                 )
             except EnvironmentSelectionError as exc:
-                await JSONResponse(
-                    {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
-                )(scope, receive, send)
-                return
+                # REQ-1602: if ephemeral environment doesn't exist, fall back to prod for sandbox users
+                if (
+                    env_org == "sandbox"
+                    and requested_env
+                    and requested_env.startswith("ephemeral_")
+                ):
+                    selected_env = "prod"
+                else:
+                    await JSONResponse(
+                        {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
+                    )(scope, receive, send)
+                    return
             except EnvironmentRightError as exc:
                 await JSONResponse(
                     {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
