@@ -32,7 +32,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete as sql_delete, func, select
 
 from provisa.api.env_routing import SWITCH_CAPABILITY
 from provisa.api.errors import ApiError
@@ -55,7 +55,7 @@ from provisa.core.env_store import (
     set_protected,
 )
 from provisa.core.environments import PROD, EnvironmentNameError
-from provisa.core.schema_admin import user_org_memberships
+from provisa.core.schema_admin import user_directory, user_org_memberships, user_profiles
 
 log = logging.getLogger(__name__)
 
@@ -481,6 +481,30 @@ async def delete_environment(
         name,
         {**outcome, "remote_branch_deleted": remote_deleted},
     )
+
+    # REQ-EPHEMERAL: if deleting ephemeral_<user_id>, clean up the user if it's their only membership
+    if name.startswith("ephemeral_"):
+        user_id = name[len("ephemeral_") :]
+        pool = _admin_pool()
+        async with pool.acquire() as conn:
+            # Check if this is the user's only org membership
+            stmt = (
+                select(func.count())
+                .select_from(user_org_memberships)
+                .where(user_org_memberships.c.user_id == user_id)
+            )
+            result = await conn.execute_core(stmt)
+            membership_count = result.scalar() or 0
+
+            # If no memberships remain (or just this one being deleted), delete the user
+            if membership_count <= 1:
+                await conn.execute_core(
+                    sql_delete(user_profiles).where(user_profiles.c.user_id == user_id)
+                )
+                await conn.execute_core(
+                    sql_delete(user_directory).where(user_directory.c.user_id == user_id)
+                )
+
     return {
         "deleted": name,
         "branch_deleted": outcome["branch_deleted"],
