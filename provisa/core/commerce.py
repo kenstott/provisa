@@ -250,7 +250,7 @@ async def environment_limit_for_org(state: Any, org_id: str | None) -> tuple[int
     :func:`source_limit_for_org` returns None there — no subscription, so no ceiling.
     """
     plugin = load()
-    if plugin is None:
+    if plugin is None or not hasattr(plugin, "environment_limit_for_org"):
         return None
     return await plugin.environment_limit_for_org(state, org_id)
 
