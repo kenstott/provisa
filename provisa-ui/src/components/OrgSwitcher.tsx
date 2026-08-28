@@ -2,33 +2,23 @@
 // Canary: 50b5c7a7-1c30-467c-bf54-54a96f7c5dec
 // Canary: placeholder
 
-import { useEffect, useState } from "react";
 import { Button, Menu, Text } from "@mantine/core";
 import { Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
-import { fetchOrgs } from "../api/admin";
-import type { Org } from "../api/admin";
 
 export function OrgSwitcher() {
   const { t } = useTranslation();
-  const { capabilities, orgMemberships, activeOrgId, selectOrg, multitenancy } = useAuth();
-  const [allOrgs, setAllOrgs] = useState<Org[]>([]);
+  const { orgMemberships, activeOrgId, selectOrg, multitenancy } = useAuth();
 
-  // REQ-1337: listing every org is the cross_org RIGHT, not a role name. The seed decides who
-  // holds it (platform_admin always; org_admin never, in either tenancy mode).
-  const canSeeAllOrgs = capabilities.includes("cross_org");
-
-  useEffect(() => {
-    if (!canSeeAllOrgs) return;
-    fetchOrgs()
-      .then(setAllOrgs)
-      .catch(() => {});
-  }, [canSeeAllOrgs]);
-
-  const orgs: Array<{ id: string; name: string }> = canSeeAllOrgs
-    ? allOrgs.map((o) => ({ id: o.id, name: o.name }))
-    : orgMemberships.map((m) => ({ id: m.org_id, name: m.org_name }));
+  // REQ-1605: this switcher scopes the data plane (Team, sources, branding, ...) to an org the
+  // caller can actually read. Holding cross_org (platform_admin) lets an identity ACT in any org
+  // via dedicated admin surfaces, but must never list an org here that it holds no admin-plane
+  // membership row in — that membership is exactly what the data-plane endpoints require.
+  const orgs: Array<{ id: string; name: string }> = orgMemberships.map((m) => ({
+    id: m.org_id,
+    name: m.org_name,
+  }));
 
   // A single-tenant deployment has exactly one org, so naming it in the navbar tells the reader
   // nothing they could act on and nothing they could change. The switcher is a multi-tenancy
@@ -38,7 +28,7 @@ export function OrgSwitcher() {
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
   const orgName = activeOrg?.name ?? activeOrgId ?? "";
 
-  if (!canSeeAllOrgs && orgMemberships.length <= 1) {
+  if (orgMemberships.length <= 1) {
     if (orgMemberships.length === 0) return null;
     return <Text data-testid="org-switcher-static">{t("orgSwitcher.org", { org: orgName })}</Text>;
   }

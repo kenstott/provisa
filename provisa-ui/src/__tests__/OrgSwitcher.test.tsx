@@ -10,17 +10,14 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "../test-utils/render";
+import { render, screen } from "../test-utils/render";
 import { OrgSwitcher } from "../components/OrgSwitcher";
 
 vi.mock("../context/AuthContext", () => ({ useAuth: vi.fn() }));
-vi.mock("../api/admin", () => ({ fetchOrgs: vi.fn() }));
 
 import { useAuth } from "../context/AuthContext";
-import { fetchOrgs } from "../api/admin";
 
 const mockUseAuth = vi.mocked(useAuth);
-const mockFetchOrgs = vi.mocked(fetchOrgs);
 
 function auth(overrides: Record<string, unknown> = {}) {
   return {
@@ -36,11 +33,9 @@ function auth(overrides: Record<string, unknown> = {}) {
 describe("OrgSwitcher", () => {
   beforeEach(() => {
     mockUseAuth.mockReset();
-    mockFetchOrgs.mockReset();
-    mockFetchOrgs.mockResolvedValue([]);
   });
 
-  it("names the org when there is more than one tenant in the deployment", () => {
+  it("names the org when there is only one membership", () => {
     mockUseAuth.mockReturnValue(auth());
     render(<OrgSwitcher />);
     expect(screen.getByTestId("org-switcher-static")).toHaveTextContent("Enterprise");
@@ -60,15 +55,21 @@ describe("OrgSwitcher", () => {
     expect(screen.queryByTestId("org-switcher-trigger")).not.toBeInTheDocument();
   });
 
-  it("offers the switch when the viewer may see every org", async () => {
-    mockFetchOrgs.mockResolvedValue([
-      { id: "acme", name: "Enterprise" },
-      { id: "globex", name: "Globex" },
-    ] as never);
-    mockUseAuth.mockReturnValue(auth({ capabilities: ["cross_org"] }));
-    render(<OrgSwitcher />);
-    await waitFor(() =>
-      expect(screen.getByTestId("org-switcher-trigger")).toHaveTextContent("Enterprise"),
+  it("lists only orgs the caller holds a membership in, even for cross_org", () => {
+    // REQ-1605: cross_org (platform_admin) lets an identity ACT in any org via dedicated admin
+    // surfaces, but this switcher must never list an org the caller has no admin-plane
+    // membership row in — that membership is exactly what the data-plane endpoints require.
+    mockUseAuth.mockReturnValue(
+      auth({
+        capabilities: ["cross_org"],
+        orgMemberships: [
+          { org_id: "acme", org_name: "Enterprise", roles: [] },
+          { org_id: "sandbox", org_name: "Sandbox", roles: [] },
+        ],
+      }),
     );
+    render(<OrgSwitcher />);
+    expect(screen.getByTestId("org-switcher-trigger")).toHaveTextContent("Enterprise");
+    expect(screen.queryByText("Globex")).not.toBeInTheDocument();
   });
 });

@@ -41,7 +41,7 @@ from provisa.security.rights import (
     is_control_plane_role as _is_control_plane_role,
     is_tenant_org as _is_tenant_org,
 )
-from provisa.security.sni import is_control_plane_host, org_from_host
+from provisa.security.sni import org_from_host
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
 
@@ -92,9 +92,12 @@ def _requested_org_from_host(request: Request) -> str | None:
     REQ-1234: the label rule itself lives in :mod:`provisa.security.sni`, because the wire protocols
     apply it to the hostname TLS SNI carries. One string, one rule, two transports."""
     host = request.headers.get("host", "")
-    if is_control_plane_host(host):
-        return request.headers.get("x-org-provisa")
-    return org_from_host(host)
+    # Try to read from subdomain (acme.provisa.dev → acme), fallback to header
+    subdomain_org = org_from_host(host)
+    if subdomain_org is not None:
+        return subdomain_org
+    # No org in subdomain (control-plane host or apex) — read from header
+    return request.headers.get("x-org-provisa")
 
 
 # Liveness/readiness probes (/live, /ready) return a static status with no data and must be
