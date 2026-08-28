@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { clearPersistedAdminCache } from "../apolloClient";
+import { controlPlaneOrigin, isOrgSubdomainHost } from "./authHost";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "./domainFilterKeys";
 import { SUPERUSER_TOKEN_KEY } from "./sessionToken";
 
@@ -52,16 +53,40 @@ export function clearSessionState(): void {
 }
 
 /**
+ * The control plane's sign-out path. An org subdomain sends the browser here because the session
+ * being ended is not its own; the control plane serves it out of the SPA fallback like any route,
+ * and the boot answers it before React mounts (main.tsx).
+ */
+export const LOGOUT_PATH = "/logout";
+
+/**
  * End the session and return to the public entry point.
  *
  * Lives here rather than in the navbar because the onboarding page has no navbar: an account that
  * belongs to no org is held on that page by the membership gate, so without its own sign-out there
  * is no way to reach a different account from it.
+ *
+ * REQ-1603: on an org subdomain this hands off to the control plane instead of signing out locally.
+ * REQ-1348 gives an org host no session of its own — it borrows the bearer through the relay iframe
+ * — and the Firebase session that mints that bearer lives in the control-plane origin's storage,
+ * which nothing on this origin can reach. Clearing here and reloading had the boot borrow the very
+ * same session straight back, which is the "logging out does nothing" that was reported.
  */
 export async function signOut(): Promise<void> {
+  if (isOrgSubdomainHost()) {
+    // Clear this origin anyway: the hand-off is a navigation, and a token left behind here would
+    // be read by anything that loads before the control plane finishes the sign-out.
+    clearSessionState();
+    window.location.assign(`${controlPlaneOrigin()}${LOGOUT_PATH}`);
+    return;
+  }
   // Clear the Firebase session too, or signInWithPopup silently reuses the persisted
   // Google account on the next login and never offers the account chooser.
-  const { signOutFirebase } = await import("./firebase");
+  const { installFirebaseTokenSync, signOutFirebase } = await import("./firebase");
+  // Settle the restored user first. Firebase signs out whoever is current, and on the /logout
+  // entry point (a cold document load) no user has been read back out of IndexedDB yet, so a
+  // sign-out issued before that lands on nobody and leaves the session intact.
+  await installFirebaseTokenSync();
   await signOutFirebase();
   // REQ-1326: sign-out clears exactly what sign-in clears — token, org, role and the persisted
   // Apollo snapshot. Clearing a subset left provisa_role and the cached org-scoped admin data

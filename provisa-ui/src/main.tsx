@@ -25,6 +25,7 @@ import { DirectionSync } from "./i18n/direction.tsx";
 import "./index.css";
 import App from "./App.tsx";
 import { isOrgSubdomainHost } from "./lib/authHost.ts";
+import { LOGOUT_PATH, signOut } from "./lib/session.ts";
 
 declare global {
   interface Window {
@@ -46,6 +47,15 @@ const colorSchemeManager = localStorageColorSchemeManager({
 // out / refresh rejected — and no-ops (resolves immediately) on non-firebase deploys. The
 // Firebase SDK is dynamically imported so it stays in its own chunk, loaded only here.
 async function bootstrap() {
+  // REQ-1603: /logout is an entry point, not a route — it is where an org subdomain sends the
+  // browser to end a session it does not hold. Answer it before React mounts: the app rendered
+  // under a still-valid token would fire its signed-in queries during the sign-out it is here to
+  // perform. signOut ends with a navigation, so nothing after this runs.
+  if (window.location.pathname === LOGOUT_PATH) {
+    await signOut();
+    return;
+  }
+
   // REQ-1348: an org subdomain has no session of its own — sign-in runs only on the control
   // plane (lib/authHost.ts) — so it borrows the bearer from there instead of starting Firebase
   // locally, where signInWithPopup would fail with auth/unauthorized-domain. Returns false while
