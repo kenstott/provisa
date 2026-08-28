@@ -11,7 +11,17 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
-import { ActionIcon, Badge, Checkbox, Menu, Stack, Text, Tooltip } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Checkbox,
+  Menu,
+  Modal,
+  Stack,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { BrandMark } from "./BrandMark";
 import { CapabilityGate } from "./CapabilityGate";
@@ -33,11 +43,12 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled, capabilities, billing } = useAuth();
+  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrg } = useAuth();
   const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const subnavRef = useRef<HTMLElement>(null);
 
@@ -77,6 +88,15 @@ export function NavBar() {
   }, [pinnedGroup]);
 
   async function handleLogout() {
+    if (activeOrg === "sandbox") {
+      setShowUpgradeModal(true);
+    } else {
+      await signOut();
+    }
+  }
+
+  async function proceedWithLogout() {
+    setShowUpgradeModal(false);
     await signOut();
   }
 
@@ -325,6 +345,32 @@ export function NavBar() {
         </nav>
       )}
       {profileOpen && <UserProfileModal onClose={() => setProfileOpen(false)} />}
+      <Modal
+        opened={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        title="Ready to Build?"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Your sandbox account is temporary and will be deleted after 30 days of inactivity. You
+            can return to it anytime before then.
+          </Text>
+          <Text size="sm">
+            Ready to create your own organization and start with a Starter plan? You'll get 14 days
+            free.
+          </Text>
+          <Stack gap="xs">
+            <Button fullWidth onClick={() => navigate("/admin/orgs")}>
+              Create Organization
+            </Button>
+            <Button fullWidth variant="default" onClick={proceedWithLogout}>
+              Just Log Out
+            </Button>
+          </Stack>
+        </Stack>
+      </Modal>
     </>
   );
 }

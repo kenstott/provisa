@@ -367,13 +367,33 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     );
   }
 
+  const isSandbox = inviteInfo?.org_id === "sandbox";
+  const sandboxBanner = isSandbox ? (
+    <Alert
+      color="violet"
+      mb="md"
+      title="Try Provisa Free"
+      icon={<Text size="xl">✨</Text>}
+      data-testid="sandbox-notice"
+    >
+      Explore our full platform with sample data — no credit card required. Your sandbox account is
+      temporary and will be deleted after 30 days of inactivity, but you can return anytime. When
+      you're ready, upgrade to a Starter plan to create your own organization.
+    </Alert>
+  ) : null;
+
   if (provider === "firebase") {
     return (
       <div className="page">
         <OrgBrandingHeader branding={branding} />
         <Title order={2}>
-          {firstLogin ? t("loginPage.firstLoginHeading") : t("loginPage.signInTitle")}
+          {isSandbox
+            ? "Try Provisa"
+            : firstLogin
+              ? t("loginPage.firstLoginHeading")
+              : t("loginPage.signInTitle")}
         </Title>
+        {sandboxBanner}
         {firstLoginNotice}
         {error && (
           <Alert color="red" mb="md" data-testid="login-error">
