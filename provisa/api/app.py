@@ -2030,9 +2030,8 @@ def create_app() -> FastAPI:
                 if identity is not None:
                     # Skip ephemeral for control-plane roles (those with cross_org capability)
                     is_control_plane = any(
-                        r.capabilities
+                        "cross_org" in getattr(r, "capabilities", [])
                         for r in getattr(identity, "roles", [])
-                        if "cross_org" in r.capabilities
                     )
                     if not is_control_plane:
                         user_id = getattr(identity, "user_id", None)
