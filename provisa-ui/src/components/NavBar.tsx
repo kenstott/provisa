@@ -35,6 +35,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
+import { deleteEnvironment } from "../api/environments";
 import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
 import { hasCapability } from "../lib/capabilities";
 
@@ -43,7 +44,7 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } = useAuth();
+  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId, userId } = useAuth();
   const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
@@ -96,6 +97,14 @@ export function NavBar() {
   }
 
   async function proceedWithLogout() {
+    // Delete ephemeral environment for sandbox users
+    if (activeOrgId === "sandbox" && userId) {
+      try {
+        await deleteEnvironment("sandbox", `ephemeral_${userId}`);
+      } catch (err) {
+        console.error("Failed to delete ephemeral environment:", err);
+      }
+    }
     setShowUpgradeModal(false);
     await signOut();
   }
@@ -354,8 +363,8 @@ export function NavBar() {
       >
         <Stack gap="md">
           <Text size="sm">
-            Your sandbox account is temporary and will be deleted after 1 day of inactivity. You
-            can return to it anytime before then.
+            Your sandbox account will be deleted when you log out. You can always create a new
+            sandbox account by using the invite link again.
           </Text>
           <Text size="sm">
             Ready to create your own organization and start with a Starter plan? You'll get 14 days

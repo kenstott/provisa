@@ -377,8 +377,9 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       data-testid="sandbox-notice"
     >
       Explore our full platform with sample data — no credit card required. Your sandbox account is
-      temporary and will be deleted after 1 day of inactivity, but you can return anytime. When
-      you're ready, upgrade to a Starter plan to create your own organization.
+      temporary and will be deleted when you log out. You can always create a new sandbox account
+      by using the invite link again. When you're ready, upgrade to a Starter plan to create your
+      own organization.
     </Alert>
   ) : null;
 
