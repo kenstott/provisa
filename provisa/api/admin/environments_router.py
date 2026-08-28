@@ -482,28 +482,34 @@ async def delete_environment(
         {**outcome, "remote_branch_deleted": remote_deleted},
     )
 
-    # REQ-EPHEMERAL: if deleting ephemeral_<user_id>, clean up the user if it's their only membership
+    # REQ-EPHEMERAL: if deleting ephemeral_*, find users whose only membership was this env and delete them
     if name.startswith("ephemeral_"):
-        user_id = name[len("ephemeral_") :]
         pool = _admin_pool()
         async with pool.acquire() as conn:
-            # Check if this is the user's only org membership
-            stmt = (
-                select(func.count())
-                .select_from(user_org_memberships)
-                .where(user_org_memberships.c.user_id == user_id)
+            # Find users pinned to this ephemeral environment (env_name column)
+            stmt = select(user_org_memberships.c.user_id).where(
+                (user_org_memberships.c.env_name == name)
+                & (user_org_memberships.c.org_id == org_id)
             )
             result = await conn.execute_core(stmt)
-            membership_count = result.scalar() or 0
+            users_to_delete = [row[0] for row in result.fetchall()]
 
-            # If no memberships remain (or just this one being deleted), delete the user
-            if membership_count <= 1:
-                await conn.execute_core(
-                    sql_delete(user_profiles).where(user_profiles.c.user_id == user_id)
+            # Delete each user who only had this ephemeral env
+            for user_id in users_to_delete:
+                # Verify this is their only membership before deleting
+                count_stmt = (
+                    select(func.count())
+                    .select_from(user_org_memberships)
+                    .where(user_org_memberships.c.user_id == user_id)
                 )
-                await conn.execute_core(
-                    sql_delete(user_directory).where(user_directory.c.user_id == user_id)
-                )
+                count_result = await conn.execute_core(count_stmt)
+                if (count_result.scalar() or 0) <= 1:
+                    await conn.execute_core(
+                        sql_delete(user_profiles).where(user_profiles.c.user_id == user_id)
+                    )
+                    await conn.execute_core(
+                        sql_delete(user_directory).where(user_directory.c.user_id == user_id)
+                    )
 
     return {
         "deleted": name,

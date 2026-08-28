@@ -2024,13 +2024,18 @@ def create_app() -> FastAPI:
             env_org = active_org or state.org_id
             # REQ-1602: sandbox orgs auto-select the user's ephemeral environment so auth middleware
             # can route without header manipulation or UI complexity. Each sandbox user gets
-            # ephemeral_<user_id> which is created on invite redemption.
+            # ephemeral_<hash-of-user_id> which is created on invite redemption.
             if env_org == "sandbox":
                 identity = request_state.get("identity")
                 if identity is not None:
                     user_id = getattr(identity, "user_id", None)
                     if user_id and user_id != "anonymous":
-                        requested_env = f"ephemeral_{user_id}"
+                        import hashlib
+
+                        user_hash = hashlib.md5(
+                            user_id.encode(), usedforsecurity=False
+                        ).hexdigest()[:8]
+                        requested_env = f"ephemeral_{user_hash}"
             # REQ-1573: being served by anything but prod is a right, checked here because this is
             # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
             # (no identity resolved), the exemption every capability gate makes.
@@ -2286,8 +2291,9 @@ def create_app() -> FastAPI:
     from provisa.api.auth_router import router as auth_router
 
     app.include_router(auth_router)
-    # from provisa.api.admin.email_router import router as email_router
-    # app.include_router(email_router)
+    from provisa.api.admin.email_router import router as email_router
+
+    app.include_router(email_router)
     from provisa.api.pat_router import router as pat_router  # REQ-1263
 
     app.include_router(pat_router)

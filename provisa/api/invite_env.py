@@ -67,7 +67,11 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
 
     org_id = invite["org_id"]
     if org_id == "sandbox":
-        name = f"ephemeral_{user_id}"
+        # Hash user_id to fit 32-char env name limit: ephemeral_<8-char-hash>
+        import hashlib
+
+        user_hash = hashlib.md5(user_id.encode(), usedforsecurity=False).hexdigest()[:8]
+        name = f"ephemeral_{user_hash}"
     else:
         name = sandbox_env_name()
     assert state.admin_db is not None and state.tenant_db is not None
