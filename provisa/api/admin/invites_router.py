@@ -45,11 +45,21 @@ def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParamet
     return state.admin_db
 
 
-async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
+async def _require_org_admin(
+    request: Request, org_id: str, *, allow_cross_org: bool = True
+) -> None:  # REQ-1266
     """Raise 403 unless the caller may issue invites for ``org_id``: a platform_admin (any org),
     or the org_admin of exactly this org. org_admin authority is confined to the org the caller is
     currently acting in (active_org_id) and backed by an admin-plane membership row. Dev/no-auth
-    (anonymous) is allowed, matching _require_platform_admin."""
+    (anonymous) is allowed, matching _require_platform_admin.
+
+    REQ-1605: ``allow_cross_org=False`` withholds the cross_org bypass. Issuing an invite or
+    changing membership is an ACTION platform_admin may still take in any org for support/recovery
+    (REQ-1266, REQ-1303's own grant path). Reading who is in an org, its settings, its branding, or
+    its config is that org's DATA AT REST — platform_admin sees it only where it also holds an
+    actual org_admin assignment (seeded, REQ-1599's sandbox, or a REQ-1303 grant taken for that
+    org), the same gate a non-cross_org caller already passes below.
+    """
     from provisa.api.app import state as _app_state
     from provisa.api.admin.capabilities import _resolved_capabilities
 
@@ -57,7 +67,7 @@ async def _require_org_admin(request: Request, org_id: str) -> None:  # REQ-1266
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return  # dev mode — no auth configured
     caps = _resolved_capabilities(identity, _app_state)
-    if can_act_cross_org(caps):
+    if allow_cross_org and can_act_cross_org(caps):
         return  # holds cross_org — acts in any org
     # REQ-1337: RIGHTS, not role names. Issuing an invitation is user management, and the right is
     # confined to the org being acted in because the caller does not hold cross_org.
@@ -364,9 +374,16 @@ def _pool_for_stats() -> Database:
 
 
 async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266
-    """Return None if the caller is a platform admin (sees all invites), or the single org_id
-    the caller administers (org_admin, scoped to active_org_id). Raise 403 otherwise. Dev/no-auth
-    returns None (sees all)."""
+    """Return the org_id whose invites this request may see, or None for no scope at all.
+
+    REQ-1604: the scope is the ACTIVE org, whoever is asking. cross_org is the right to act in any
+    org (REQ-1318), one at a time — the org named by the Host or the header — not the right to see
+    every org's invitations at once. Listing them all put another org's live invite tokens on the
+    page of the org the operator had selected, and no invite listing is a cross-org report.
+
+    None means the request bound no org at all: the dev/no-auth path, and the cross_org caller on
+    the platform plane before an org is selected. An org_admin without an active org is a 403 --
+    their right is over their own org, so an unbound request has nothing for them to administer."""
     from provisa.api.app import state as _app_state
     from provisa.api.admin.capabilities import _resolved_capabilities
 
@@ -374,9 +391,9 @@ async def _administered_org_scope(request: Request) -> str | None:  # REQ-1266
     if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
         return None  # dev mode
     caps = _resolved_capabilities(identity, _app_state)
-    if can_act_cross_org(caps):
-        return None  # holds cross_org: all orgs
     active_org = getattr(request.state, "active_org_id", None)
+    if can_act_cross_org(caps):
+        return active_org
     if Capability.USER_MANAGEMENT.value not in caps or active_org is None:
         raise ApiError(403, "invites.user_management_required", "user_management required")
     return active_org

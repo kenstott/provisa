@@ -150,3 +150,30 @@ async def test_plain_authenticated_user_rejected(patch):
             _request(identity=_identity("bob", ["viewer"]), active_org="acme"), "acme"
         )
     assert ei.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_allow_cross_org_false_rejects_platform_admin_with_no_membership(patch):
+    # REQ-1605: platform_admin may still ACT (create invites, default allow_cross_org=True), but a
+    # caller reading an org's members/settings/branding/config is withheld the cross_org bypass —
+    # holding only the control-plane right with no admin-plane membership row in this org is a 403.
+    patch(caps={"admin"}, membership_row=None)
+    with pytest.raises(HTTPException) as ei:
+        await inv._require_org_admin(
+            _request(identity=_identity("p", ["admin"]), active_org="acme"),
+            "acme",
+            allow_cross_org=False,
+        )
+    assert ei.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_allow_cross_org_false_allows_platform_admin_with_actual_membership(patch):
+    # A platform_admin who also holds a real org_admin assignment in this org (seeded, REQ-1599's
+    # sandbox, or a REQ-1303 recovery grant) reads it the same as any other org_admin would.
+    patch(caps={"admin", "user_management"}, membership_row=("acme",))
+    await inv._require_org_admin(
+        _request(identity=_identity("p", ["admin", "org_admin:acme"]), active_org="acme"),
+        "acme",
+        allow_cross_org=False,
+    )

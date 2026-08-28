@@ -643,7 +643,7 @@ async def read_org_settings(org_id: str, request: Request):  # REQ-1268, REQ-126
     """
     from provisa.api.admin.invites_router import _require_org_admin
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     async with _admin_pool().acquire() as conn:
         result = await conn.execute_core(
             select(orgs.c.id, orgs.c.email_rule, orgs.c.auto_join, orgs.c.auto_join_role).where(
@@ -701,7 +701,7 @@ async def read_org_branding(org_id: str, request: Request):  # REQ-1486
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_branding import parse_branding
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     async with _admin_pool().acquire() as conn:
         result = await conn.execute_core(
             select(orgs.c.id, orgs.c.branding, orgs.c.branding_logo_media_type).where(
@@ -847,7 +847,7 @@ async def export_org_config(org_id: str, request: Request):  # REQ-1304
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.api.org_runtime import reset_current_org, set_current_org
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     async with _admin_pool().acquire() as conn:
         exists = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if exists.fetchone() is None:
@@ -996,7 +996,7 @@ async def list_members(org_id: str, request: Request):  # REQ-042, REQ-059, REQ-
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_membership import org_admin_user_ids
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     admin_ids = await org_admin_user_ids(await _org_tenant_db(org_id))
     pool = _admin_pool()
     async with pool.acquire() as conn:

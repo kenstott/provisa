@@ -16879,3 +16879,33 @@ A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities, a role
 **Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/db.py`, `provisa/api/admin/roles_router.py`, `provisa-ui/src/components/DemonstratedFeature.tsx`, `provisa-ui/src/components/CapabilityGate.tsx`, `provisa-ui/src/lib/capabilities.ts`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/components/EnvSwitcher.tsx`
 
 **Tests:** `provisa-ui/src/__tests__/CapabilityGate.test.tsx`, `provisa-ui/src/__tests__/DemonstratedUnion.test.ts`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `tests/unit/test_sandbox_role_seed.py`
+
+### REQ-1603 · Access Governance & Security {#REQ-1603}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+SIGNING OUT ENDS THE SESSION WHERE THE SESSION LIVES. An org subdomain holds no session of its own ([REQ-1348](#REQ-1348)) -- it borrows the bearer from the control plane through the relay iframe, and the identity-provider session that mints that bearer is stored in the control-plane origin, which no script on the org origin can reach. A sign-out performed locally therefore ended nothing: it cleared this origin, reloaded, and the boot borrowed the same live session straight back, so the user stayed signed in. The org host instead clears its own borrowed state and hands the browser to the control plane's /logout, which is an ENTRY POINT rather than a route -- the boot answers it before React mounts, so no signed-in query is issued during the sign-out it exists to perform. There the identity session is settled first and only then torn down: on a cold document load no user has been read back out of browser storage yet, and a sign-out issued before that lands on nobody. What is cleared is unchanged ([REQ-1326](#REQ-1326)) -- token, org, role and the persisted snapshot.
+
+**Code:** `provisa-ui/src/lib/session.ts`, `provisa-ui/src/main.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/SignOutHandoff.test.ts`
+
+### REQ-1604 · Access Governance & Security {#REQ-1604}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+AN INVITE LISTING IS SCOPED TO THE ACTIVE ORG, FOR EVERY CALLER. An invitation token is a live credential: it hands whoever holds it an account and a role in the org that issued it. Listing and revoking are therefore bounded by the org the request is bound to -- the org named by the Host or the org header -- and not by how much authority the caller has. cross_org ([REQ-1318](#REQ-1318)) is the right to act in any org one at a time, never a right to read every org's invitations at once; read that way it put one tenant's live tokens on the page of the tenant the operator had selected. A caller bound to no org at all (the platform plane, before an org is chosen) is scoped to nothing rather than to everything, and a caller without user_management is refused as before.
+
+**Code:** `provisa/api/admin/invites_router.py`
+
+**Tests:** `tests/unit/test_invite_scope.py`
+
+### REQ-1605 · Access Governance & Security {#REQ-1605}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+PLATFORM_ADMIN MAY ACT ACROSS ORGS BUT MAY NOT READ AN ORG'S DATA AT REST WITHOUT ITS OWN MEMBERSHIP THERE. cross_org ([REQ-1318](#REQ-1318)/1337) is authority to act in any org for support and recovery -- issue an invite, add or remove a member, reset a policy. It is not a grant to browse who is in an org, its join policy, its branding, or its full config export; those are that org's data, and platform_admin sees them only where it also holds a real org-scoped assignment in that org (seeded, the sandbox org, or a [REQ-1303](#REQ-1303) recovery grant taken there) -- the same gate every other caller already passes. Reading them via the bare cross_org right, with no membership anywhere in the target org, is refused.
+
+**Code:** `provisa/api/admin/invites_router.py`, `provisa/api/admin/orgs_router.py`
+
+**Tests:** `tests/unit/test_require_org_admin.py`
