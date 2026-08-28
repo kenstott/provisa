@@ -12,6 +12,7 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   Group,
   Modal,
   Stack,
@@ -20,10 +21,11 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { deleteAccount, leaveOrg, updateProfile } from "../api/admin";
+import { getEmailPreferences, updateEmailPreferences } from "../api/email";
 import { PersonalAccessTokens } from "./PersonalAccessTokens";
 
 interface Props {
@@ -54,7 +56,26 @@ export function UserProfileModal({ onClose }: Props) {
   // live on their profile rather than under an admin page they may not be able to reach.
   const [membershipError, setMembershipError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState("");
+  const [emailOptIn, setEmailOptIn] = useState(true);
+  const [emailLoading, setEmailLoading] = useState(true);
   const dirty = first !== (givenName ?? "") || last !== (familyName ?? "");
+
+  useEffect(() => {
+    getEmailPreferences()
+      .then((pref) => setEmailOptIn(pref.email_opt_in))
+      .catch(() => setEmailOptIn(true))
+      .finally(() => setEmailLoading(false));
+  }, []);
+
+  async function handleEmailOptInChange(value: boolean) {
+    setEmailOptIn(value);
+    try {
+      await updateEmailPreferences({ email_opt_in: value });
+    } catch (e) {
+      setEmailOptIn(!value);
+      setMembershipError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function handleLeave(orgId: string) {
     setMembershipError(null);
@@ -184,6 +205,29 @@ export function UserProfileModal({ onClose }: Props) {
               )}
             </Table.Tbody>
           </Table>
+        </section>
+
+        <section>
+          <Title
+            order={4}
+            tt="uppercase"
+            fz="0.75rem"
+            c="dimmed"
+            fw={600}
+            mb="xs"
+            style={{ letterSpacing: "0.05em" }}
+          >
+            {t("userProfileModal.emailPreferences")}
+          </Title>
+          {!emailLoading && (
+            <Checkbox
+              label={t("userProfileModal.receiveEmails")}
+              checked={emailOptIn}
+              onChange={(e) => handleEmailOptInChange(e.currentTarget.checked)}
+              description={t("userProfileModal.receiveEmailsHelp")}
+              mb="md"
+            />
+          )}
         </section>
 
         <section>

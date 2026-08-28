@@ -616,6 +616,29 @@ mail_events = Table(
     Column("requested_by", Text, nullable=True),
 )
 
+user_directory = Table(
+    "user_directory",
+    metadata,
+    Column("user_id", Text, primary_key=True),
+    Column("display_name", Text),
+    Column("email", Text),
+    Column("email_opt_in", Boolean, nullable=False, server_default=true()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+email_send_authority_audit = Table(
+    "email_send_authority_audit",
+    metadata,
+    Column("id", Uuid, primary_key=True, server_default=func.gen_random_uuid()),
+    Column("email_address", Text, nullable=False),
+    Column("user_id", Text),
+    Column("granted_by", Text),
+    Column("org_id", Text),
+    Column("action", Text, nullable=False),
+    Column("reason", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 
 REGISTRY_TABLES = [
     orgs,
@@ -634,6 +657,8 @@ REGISTRY_TABLES = [
     scram_credentials,
     platform_notice,
     mail_events,
+    user_directory,
+    email_send_authority_audit,
 ]
 
 

@@ -943,8 +943,23 @@ CREATE TABLE IF NOT EXISTS user_directory (
     user_id      TEXT PRIMARY KEY,
     display_name TEXT,
     email        TEXT,
+    email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS email_send_authority_audit (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email_address   TEXT NOT NULL,
+    user_id         TEXT,
+    granted_by      TEXT,
+    org_id          TEXT,
+    action          TEXT NOT NULL CHECK (action IN ('granted', 'revoked', 'verified')),
+    reason          TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_email_audit_email ON email_send_authority_audit(email_address);
+CREATE INDEX IF NOT EXISTS idx_email_audit_user ON email_send_authority_audit(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_audit_org ON email_send_authority_audit(org_id);
 
 -- tenant_id isolation for _META_TABLES (SaaS multi-tenancy)
 DO $$ BEGIN
