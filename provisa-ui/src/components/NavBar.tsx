@@ -43,7 +43,7 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrg } = useAuth();
+  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } = useAuth();
   const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
@@ -88,7 +88,7 @@ export function NavBar() {
   }, [pinnedGroup]);
 
   async function handleLogout() {
-    if (activeOrg === "sandbox") {
+    if (activeOrgId === "sandbox") {
       setShowUpgradeModal(true);
     } else {
       await signOut();
@@ -354,7 +354,7 @@ export function NavBar() {
       >
         <Stack gap="md">
           <Text size="sm">
-            Your sandbox account is temporary and will be deleted after 30 days of inactivity. You
+            Your sandbox account is temporary and will be deleted after 1 day of inactivity. You
             can return to it anytime before then.
           </Text>
           <Text size="sm">
