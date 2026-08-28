@@ -2023,19 +2023,26 @@ def create_app() -> FastAPI:
             requested_env = env_header_value(scope.get("headers") or [])
             env_org = active_org or state.org_id
             # REQ-1602: sandbox orgs auto-select the user's ephemeral environment so auth middleware
-            # can route without header manipulation or UI complexity. Each sandbox user gets
-            # ephemeral_<hash-of-user_id> which is created on invite redemption.
+            # can route without header manipulation or UI complexity. Control-plane roles (platform_admin)
+            # bypass ephemeral selection and access the org normally.
             if env_org == "sandbox":
                 identity = request_state.get("identity")
                 if identity is not None:
-                    user_id = getattr(identity, "user_id", None)
-                    if user_id and user_id != "anonymous":
-                        import hashlib
+                    # Skip ephemeral for control-plane roles (those with cross_org capability)
+                    is_control_plane = any(
+                        r.capabilities
+                        for r in getattr(identity, "roles", [])
+                        if "cross_org" in r.capabilities
+                    )
+                    if not is_control_plane:
+                        user_id = getattr(identity, "user_id", None)
+                        if user_id and user_id != "anonymous":
+                            import hashlib
 
-                        user_hash = hashlib.md5(
-                            user_id.encode(), usedforsecurity=False
-                        ).hexdigest()[:8]
-                        requested_env = f"ephemeral_{user_hash}"
+                            user_hash = hashlib.md5(
+                                user_id.encode(), usedforsecurity=False
+                            ).hexdigest()[:8]
+                            requested_env = f"ephemeral_{user_hash}"
             # REQ-1573: being served by anything but prod is a right, checked here because this is
             # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
             # (no identity resolved), the exemption every capability gate makes.
