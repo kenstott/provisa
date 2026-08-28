@@ -48,6 +48,9 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
 
     Both env-bearing policies deploy from ``prod``, so what the visitor is handed is the org's real
     model rather than an empty schema -- a sandbox with nothing in it demonstrates nothing.
+
+    REQ-1602: the sandbox org creates per-user ephemeral environments (named ephemeral_<user_id>)
+    so auth middleware can auto-select based on user_id without UI/routing complexity.
     """
     policy = invite["env_policy"]
     if policy == ENV_POLICY_NONE:
@@ -63,7 +66,10 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
     from provisa.core.environments import PROD
 
     org_id = invite["org_id"]
-    name = sandbox_env_name()
+    if org_id == "sandbox":
+        name = f"ephemeral_{user_id}"
+    else:
+        name = sandbox_env_name()
     assert state.admin_db is not None and state.tenant_db is not None
     await create_environment(
         state,

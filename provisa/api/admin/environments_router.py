@@ -348,6 +348,16 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     provisioned, so a refusal leaves no schema behind, and the compensating rollback undoes the
     schema and the row if the model does not land.
     """
+    # REQ-1602: sandbox org has ephemeral per-user environments created at invite redemption.
+    # Users cannot create additional environments in sandbox.
+    if org_id == "sandbox":
+        raise ApiError(
+            403,
+            "environments.sandbox_locked",
+            "cannot create environments in the sandbox org; it provides one ephemeral environment per user",
+            org=org_id,
+        )
+
     from provisa.api.admin.orgs_router import _org_tenant_db
     from provisa.core.env_create import create_environment as _create_env
 
