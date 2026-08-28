@@ -35,7 +35,6 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
-import { deleteEnvironment } from "../api/environments";
 import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
 import { hasCapability } from "../lib/capabilities";
 
@@ -44,7 +43,7 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
-  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId, userId } = useAuth();
+  const { displayName, email, devMode, authEnabled, capabilities, billing, activeOrgId } = useAuth();
   const { startTour, canResume, status: tourStatus, available: tourAvailable } = useTour();
   const { setNode: setSubnavExtraNode } = useSubnavExtraSlot();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
@@ -89,7 +88,9 @@ export function NavBar() {
   }, [pinnedGroup]);
 
   async function handleLogout() {
-    if (activeOrgId === "sandbox") {
+    // Only show upgrade modal for sandbox trial users, not for control-plane roles (platform_admin)
+    const isControlPlane = capabilities.some((cap) => cap === "cross_org");
+    if (activeOrgId === "sandbox" && !isControlPlane) {
       setShowUpgradeModal(true);
     } else {
       await signOut();
@@ -97,14 +98,7 @@ export function NavBar() {
   }
 
   async function proceedWithLogout() {
-    // Delete ephemeral environment for sandbox users
-    if (activeOrgId === "sandbox" && userId) {
-      try {
-        await deleteEnvironment("sandbox", `ephemeral_${userId}`);
-      } catch (err) {
-        console.error("Failed to delete ephemeral environment:", err);
-      }
-    }
+    // Ephemeral environment cleanup happens server-side via cascade delete on TTL expiry
     setShowUpgradeModal(false);
     await signOut();
   }
