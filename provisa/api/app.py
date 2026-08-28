@@ -2286,9 +2286,8 @@ def create_app() -> FastAPI:
     from provisa.api.auth_router import router as auth_router
 
     app.include_router(auth_router)
-    from provisa.api.admin.email_router import router as email_router
-
-    app.include_router(email_router)
+    # from provisa.api.admin.email_router import router as email_router
+    # app.include_router(email_router)
     from provisa.api.pat_router import router as pat_router  # REQ-1263
 
     app.include_router(pat_router)
