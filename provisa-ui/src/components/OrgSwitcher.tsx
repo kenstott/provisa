@@ -15,9 +15,10 @@ export function OrgSwitcher() {
   // caller can actually read. Holding cross_org (platform_admin) lets an identity ACT in any org
   // via dedicated admin surfaces, but must never list an org here that it holds no admin-plane
   // membership row in — that membership is exactly what the data-plane endpoints require.
+  // REQ-1602: the default org displays as "Platform" in multi-tenant mode (control plane label)
   const orgs: Array<{ id: string; name: string }> = orgMemberships.map((m) => ({
     id: m.org_id,
-    name: m.org_name,
+    name: multitenancy && m.org_id === "default" ? "Platform" : m.org_name,
   }));
 
   // A single-tenant deployment has exactly one org, so naming it in the navbar tells the reader

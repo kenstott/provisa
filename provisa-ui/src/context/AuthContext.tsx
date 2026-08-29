@@ -375,8 +375,13 @@ export function AuthProvider({
     else localStorage.removeItem("provisa_org");
   }
 
+  // For control-plane roles on first login, default to "default" org (control plane)
+  // Otherwise use the single membership or previously selected org
+  const isControlPlane = capabilities?.some((cap) => cap === "cross_org");
   const activeOrgId =
-    selectedOrg ?? (orgMemberships.length === 1 ? orgMemberships[0].org_id : null);
+    selectedOrg ??
+    (isControlPlane && orgMemberships.some((m) => m.org_id === "default") ? "default" : null) ??
+    (orgMemberships.length === 1 ? orgMemberships[0].org_id : null);
 
   return (
     <AuthContext.Provider
