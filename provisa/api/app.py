@@ -2092,16 +2092,24 @@ def create_app() -> FastAPI:
                     f"Pinned env query: identity={identity is not None}, admin_db={state.admin_db is not None}, skipping"
                 )
             try:
+                _log.info(
+                    f"select_environment call: env_org={env_org}, requested_env={requested_env}, pinned_env={pinned_env}"
+                )
                 selected_env = await select_environment(
                     state.admin_db, env_org, requested_env, env_caps, pinned_env
                 )
+                _log.info(f"select_environment returned: {selected_env}")
             except EnvironmentSelectionError as exc:
+                _log.info(
+                    f"EnvironmentSelectionError: {exc}, env_org={env_org}, requested_env={requested_env}"
+                )
                 # REQ-1602: if ephemeral environment doesn't exist, fall back to prod for sandbox users
                 if (
                     env_org == "sandbox"
                     and requested_env
                     and requested_env.startswith("ephemeral_")
                 ):
+                    _log.info("Falling back to prod for ephemeral sandbox environment")
                     selected_env = "prod"
                 else:
                     await JSONResponse(
@@ -2109,6 +2117,10 @@ def create_app() -> FastAPI:
                     )(scope, receive, send)
                     return
             except EnvironmentRightError as exc:
+                _log.info(
+                    f"EnvironmentRightError: {exc}, env_org={env_org}, requested_env={requested_env}"
+                )
+
                 await JSONResponse(
                     {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
                     status_code=403,
