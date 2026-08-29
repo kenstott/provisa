@@ -349,7 +349,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             await self.app(scope, receive, send)
 
     async def _process(self, request: Request):  # REQ-486
-        if request.url.path in _SKIP_PATHS:
+        if request.url.path in _SKIP_PATHS or request.url.path.startswith("/public/invite-info/"):
             return None
 
         await self._ensure_resolved()
