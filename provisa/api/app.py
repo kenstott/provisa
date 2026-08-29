@@ -2107,6 +2107,59 @@ def create_app() -> FastAPI:
 
     app.add_middleware(_OrgRoutingMiddleware)
 
+    # REQ-1602: Public invite endpoint (before auth middleware) for sandbox onboarding.
+    # Invites must be fetchable before login, so this route is NOT behind auth.
+    @app.get("/public/invite-info/{token}")
+    async def get_public_invite_info(token: str):
+        from sqlalchemy import select
+
+        from provisa.api.errors import ApiError
+        from provisa.core.schema_admin import org_invites, orgs
+        import datetime
+        from datetime import timezone
+
+        admin_db = state.admin_db
+        if admin_db is None:
+            raise ApiError(503, "service_unavailable", "Admin database not available")
+
+        async with admin_db.acquire() as conn:
+            result = await conn.execute_core(
+                select(
+                    org_invites.c.token,
+                    org_invites.c.org_id,
+                    orgs.c.name.label("org_name"),
+                    org_invites.c.role_id,
+                    org_invites.c.expires_at,
+                    org_invites.c.uses,
+                    org_invites.c.max_uses,
+                )
+                .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
+                .where(org_invites.c.token == token)
+            )
+            fetched = result.fetchone()
+
+        row = dict(fetched._mapping) if fetched is not None else None
+        if row is None:
+            raise ApiError(404, "auth.invite_not_found", "Invite not found")
+
+        now = datetime.datetime.now(tz=timezone.utc)
+        if (
+            row["uses"] is not None
+            and row["max_uses"] is not None
+            and row["uses"] >= row["max_uses"]
+        ):
+            raise ApiError(410, "auth.invite_already_used", "Invite already used")
+        if row["expires_at"] < now:
+            raise ApiError(410, "auth.invite_expired", "Invite expired")
+
+        return {
+            "token": row["token"],
+            "org_id": row["org_id"],
+            "org_name": row["org_name"],
+            "role_id": row["role_id"],
+            "valid": True,
+        }
+
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth
 
