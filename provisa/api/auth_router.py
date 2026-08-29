@@ -635,13 +635,17 @@ async def register(body: RegisterRequest):
                 raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
     if invite is not None:
         # Bind tenant_db to the invited org so we can redeem the environment
-        from provisa.api.app import ensure_org_runtime
+        from provisa.api.app import ensure_org_runtime, set_current_org, reset_current_org
         from provisa.core.org_membership import grant_org_role
 
         rt = await ensure_org_runtime(invite["org_id"])
         assert rt.tenant_db is not None
-        # Mint the environment (REQ-1595)
-        pinned_env = await redeem_env(invite, user_id)
+        # Mint the environment (REQ-1595) - must bind current_org so state.tenant_db resolves correctly
+        token = set_current_org(invite["org_id"])
+        try:
+            pinned_env = await redeem_env(invite, user_id)
+        finally:
+            reset_current_org(token)
         # Update the membership with the environment name
         async with admin_db.acquire() as conn:
             await conn.execute_core(
@@ -710,52 +714,56 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
     # Bind the invited org's tenant_db so redeem_env can create its environment
-    from provisa.api.app import ensure_org_runtime
+    from provisa.api.app import ensure_org_runtime, set_current_org, reset_current_org
     from provisa.core.org_membership import grant_org_role
 
     rt = await ensure_org_runtime(invite["org_id"])
     assert rt.tenant_db is not None
+    # Bind current_org so state.tenant_db resolves to the invited org
+    token = set_current_org(invite["org_id"])
+    try:
+        async with admin_db.acquire() as conn:
+            # REQ-1313: validate the role exists before burning the invite
+            from provisa.api.admin.invites_router import resolve_invite_role
 
-    async with admin_db.acquire() as conn:
-        # REQ-1313: validate the role exists before burning the invite
-        from provisa.api.admin.invites_router import resolve_invite_role
+            role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
+            # REQ-1595: minted before the membership names it — see /register for why the other order
+            # would serve a sandbox visitor production for the length of a provisioning run.
+            pinned_env = await redeem_env(invite, user_id)
+            try:
+                await conn.upsert(
+                    user_org_memberships,
+                    membership_values(
+                        user_id, invite["org_id"], JOINED_VIA_INVITE, env_name=pinned_env
+                    ),
+                    index_elements=["user_id", "org_id"],
+                    update_columns=[],
+                )
+                claimed = (await conn.execute_core(spend(body.token, user_id))).fetchone()
+            except BaseException:
+                await release_env(invite, pinned_env)
+                raise
+            if claimed is None:
+                # REQ-1594: the last redemption went to someone else between the read and here.
+                await release_env(invite, pinned_env)
+                raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
-        role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
-        # REQ-1595: minted before the membership names it — see /register for why the other order
-        # would serve a sandbox visitor production for the length of a provisioning run.
-        pinned_env = await redeem_env(invite, user_id)
-        try:
-            await conn.upsert(
-                user_org_memberships,
-                membership_values(
-                    user_id, invite["org_id"], JOINED_VIA_INVITE, env_name=pinned_env
-                ),
-                index_elements=["user_id", "org_id"],
-                update_columns=[],
-            )
-            claimed = (await conn.execute_core(spend(body.token, user_id))).fetchone()
-        except BaseException:
-            await release_env(invite, pinned_env)
-            raise
-        if claimed is None:
-            # REQ-1594: the last redemption went to someone else between the read and here.
-            await release_env(invite, pinned_env)
-            raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
+        # Role assignment is tenant-plane (see /register for the same split) and must land in the
+        # INVITED org's schema. We've already bound the tenant_db to the invited org above.
+        await grant_org_role(rt.tenant_db, user_id, role_id)
+        # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
+        # is owed the sandbox org the same as the claimant is.
+        from provisa.api.sandbox_org import reseat_after_conferral
 
-    # Role assignment is tenant-plane (see /register for the same split) and must land in the
-    # INVITED org's schema. We've already bound the tenant_db to the invited org above.
-    await grant_org_role(rt.tenant_db, user_id, role_id)
-    # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
-    # is owed the sandbox org the same as the claimant is.
-    from provisa.api.sandbox_org import reseat_after_conferral
+        await reseat_after_conferral(admin_db)
+        # REQ-1474: see /register — redeeming an invite into a trialling org spends this account's own
+        # free evaluation, because from here on they are working inside one.
+        from provisa.core.commerce import bind_member_to_org_trial
 
-    await reseat_after_conferral(admin_db)
-    # REQ-1474: see /register — redeeming an invite into a trialling org spends this account's own
-    # free evaluation, because from here on they are working inside one.
-    from provisa.core.commerce import bind_member_to_org_trial
-
-    await bind_member_to_org_trial(admin_db, invite["org_id"], identity.email)
-    return {"user_id": user_id, "org_id": invite["org_id"], "role_id": role_id}
+        await bind_member_to_org_trial(admin_db, invite["org_id"], identity.email)
+        return {"user_id": user_id, "org_id": invite["org_id"], "role_id": role_id}
+    finally:
+        reset_current_org(token)
 
 
 class ProfileUpdate(BaseModel):
