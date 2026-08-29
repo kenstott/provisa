@@ -2022,6 +2022,12 @@ def create_app() -> FastAPI:
             # single-org deployment branches its model exactly as a multitenant one does.
             requested_env = env_header_value(scope.get("headers") or [])
             env_org = active_org or state.org_id
+            import logging as _logging
+
+            _log = _logging.getLogger(__name__)
+            _log.info(
+                f"RoutingMiddleware: active_org={active_org}, env_org={env_org}, requested_env={requested_env}"
+            )
             # REQ-1602: sandbox orgs auto-select the user's ephemeral environment so auth middleware
             # can route without header manipulation or UI complexity. Control-plane roles (platform_admin)
             # bypass ephemeral selection and access the org normally.
@@ -2042,6 +2048,17 @@ def create_app() -> FastAPI:
                                 user_id.encode(), usedforsecurity=False
                             ).hexdigest()[:8]
                             requested_env = f"ephemeral_{user_hash}"
+                            _log.info(
+                                f"Sandbox ephemeral auto-select: user_id={user_id}, requested_env={requested_env}"
+                            )
+                        else:
+                            _log.info(
+                                "Sandbox: user_id is None or anonymous, skipping ephemeral auto-select"
+                            )
+                    else:
+                        _log.info("Sandbox: is_control_plane=True, skipping ephemeral auto-select")
+                else:
+                    _log.info("Sandbox: identity is None, skipping ephemeral auto-select")
             # REQ-1573: being served by anything but prod is a right, checked here because this is
             # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
             # (no identity resolved), the exemption every capability gate makes.
@@ -2054,9 +2071,7 @@ def create_app() -> FastAPI:
                 user_id = getattr(identity, "user_id", None)
                 if user_id and user_id != "anonymous":
                     from provisa.core.schema_admin import user_org_memberships
-                    import logging
 
-                    logger = logging.getLogger(__name__)
                     async with state.admin_db.acquire() as conn:
                         result = await conn.execute_core(
                             select(user_org_memberships.c.env_name).where(
@@ -2065,11 +2080,17 @@ def create_app() -> FastAPI:
                             )
                         )
                         row = result.fetchone()
-                        logger.info(
-                            f"Pinned env query: user_id={user_id}, org_id={env_org}, result={row}"
+                        _log.info(
+                            f"Pinned env query: user_id={user_id}, org_id={env_org}, env_name={row[0] if row else None}"
                         )
                         if row is not None:
                             pinned_env = row[0]
+                else:
+                    _log.info("Pinned env query: user_id is None or anonymous, skipping")
+            else:
+                _log.info(
+                    f"Pinned env query: identity={identity is not None}, admin_db={state.admin_db is not None}, skipping"
+                )
             try:
                 selected_env = await select_environment(
                     state.admin_db, env_org, requested_env, env_caps, pinned_env
