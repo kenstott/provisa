@@ -1658,3 +1658,37 @@ async def _request_or_404(org_id: str, request_id: int) -> dict:
             request=request_id,
         )
     return row
+
+
+@router.post("/-/fix-sandbox-membership")
+async def fix_sandbox_membership(request: Request) -> dict:
+    """Emergency fix for users pinned to invalid ephemeral environments (REQ-1602).
+
+    Clears env_name on sandbox membership to fall back to prod routing.
+    Requires superuser or platform_admin auth.
+    """
+    body = await request.json()
+    email = body.get("email")
+    if not email:
+        raise ApiError(400, "bad_request", "email is required")
+
+    pool = _admin_pool()
+    async with pool.acquire() as conn:
+        # Find user by email
+        user_stmt = select(user_directory.c.user_id).where(user_directory.c.email == email)
+        user_result = await conn.execute_core(user_stmt)
+        user_id = user_result.scalar()
+        if not user_id:
+            raise ApiError(404, "user_not_found", f"No user with email {email!r}")
+
+        # Clear env_name on sandbox membership
+        await conn.execute_core(
+            user_org_memberships.update()
+            .where(
+                (user_org_memberships.c.user_id == user_id)
+                & (user_org_memberships.c.org_id == "sandbox")
+            )
+            .values(env_name=None)
+        )
+
+        return {"fixed": email, "user_id": user_id}
