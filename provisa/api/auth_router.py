@@ -590,9 +590,6 @@ async def register(body: RegisterRequest):
     # local_users/org_invites/user_org_memberships live in the platform control plane.
     admin_db = state.admin_db
     assert admin_db is not None
-    # Set under ``body.invite_token`` below and read under the same condition afterwards, in a
-    # second block that cannot see the transaction's locals.
-    joined_org_id: str | None = None
     async with admin_db.acquire() as conn:
         result = await conn.execute_core(
             select(local_users.c.id).where(local_users.c.username == body.username)
@@ -610,6 +607,8 @@ async def register(body: RegisterRequest):
                 is_active=True,
             )
         )
+
+        invite = None
         if body.invite_token:
             import datetime
             from datetime import timezone
@@ -622,58 +621,47 @@ async def register(body: RegisterRequest):
             invite = dict(fetched._mapping) if fetched is not None else None
             if invite is None or is_spent(invite) or invite["expires_at"] < now:
                 raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
-            joined_org_id = invite["org_id"]
-            # REQ-1595: the environment is minted BEFORE the membership names it, because a
-            # membership written first would exist unpinned for as long as provisioning takes --
-            # and an unpinned member is served production, which is exactly what a sandbox visitor
-            # must never reach. If the claim below then loses the race, this is retired again.
-            pinned_env = await redeem_env(invite, user_id)
-            try:
-                await conn.upsert(
-                    user_org_memberships,
-                    membership_values(
-                        user_id, invite["org_id"], JOINED_VIA_INVITE, env_name=pinned_env
-                    ),
-                    index_elements=["user_id", "org_id"],
-                    update_columns=[],
-                )
-                claimed = (await conn.execute_core(spend(body.invite_token, user_id))).fetchone()
-            except BaseException:
-                await release_env(invite, pinned_env)
-                raise
+            # Just mark the membership with a placeholder; we'll add the real env after the transaction.
+            # REQ-1595: the environment is minted BEFORE the membership names it.
+            await conn.upsert(
+                user_org_memberships,
+                membership_values(user_id, invite["org_id"], JOINED_VIA_INVITE, env_name=None),
+                index_elements=["user_id", "org_id"],
+                update_columns=[],
+            )
+            claimed = (await conn.execute_core(spend(body.invite_token, user_id))).fetchone()
             if claimed is None:
                 # REQ-1594: someone else took the last redemption between the read above and here.
-                await release_env(invite, pinned_env)
                 raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
-            # The invite's granted role lives in the tenant control plane (user_role_assignments),
-            # not the platform plane above. Without this the invitee gets org MEMBERSHIP but no role,
-            # so the capability layer sees an identity with zero assignments — an org with an admin
-            # who cannot administer it. The invite always carries role_id (schema_admin.org_invites).
-            # It MUST land in the INVITED org's schema: this platform-plane request leaves current_org
-            # unset, so state.tenant_db would resolve the DEFAULT org. Bind the invited org's runtime
-            # (its tenant_db is search_path-scoped to org_<id>).
-            from provisa.api.app import ensure_org_runtime
-            from provisa.core.org_membership import grant_org_role
+    if invite is not None:
+        # Bind tenant_db to the invited org so we can redeem the environment
+        from provisa.api.app import ensure_org_runtime
+        from provisa.core.org_membership import grant_org_role
 
-            rt = await ensure_org_runtime(invite["org_id"])
-            assert rt.tenant_db is not None
-            await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
-            # REQ-1599: registering against an invitation that carries platform_admin makes an
-            # administrator too, and one is seated in the sandbox org.
-            from provisa.api.sandbox_org import reseat_after_conferral
+        rt = await ensure_org_runtime(invite["org_id"])
+        assert rt.tenant_db is not None
+        # Mint the environment (REQ-1595)
+        pinned_env = await redeem_env(invite, user_id)
+        # Update the membership with the environment name
+        async with admin_db.acquire() as conn:
+            await conn.execute_core(
+                update(user_org_memberships)
+                .where(
+                    (user_org_memberships.c.user_id == user_id)
+                    & (user_org_memberships.c.org_id == invite["org_id"])
+                )
+                .values(pinned_environment=pinned_env)
+            )
+        # Grant the role from the invite
+        await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
+        # REQ-1599: if platform_admin, seat in sandbox org
+        from provisa.api.sandbox_org import reseat_after_conferral
 
-            await reseat_after_conferral(admin_db)
-    if body.invite_token:
-        # REQ-1474: the invitee works under the org's trial if one is running, so the free
-        # evaluation is spent for them as well as for the buyer — otherwise an org could mint an
-        # endless supply of trials by inviting accounts that later go and create orgs of their own.
-        # Outside the transaction above, which holds the only admin-plane connection this request
-        # has: the seam opens its own.
+        await reseat_after_conferral(admin_db)
+        # REQ-1474: charge the org trial
         from provisa.core.commerce import bind_member_to_org_trial
 
-        # An unredeemable invite raises above, so reaching here with a token means the org was named.
-        assert joined_org_id is not None
-        await bind_member_to_org_trial(admin_db, joined_org_id, body.email)
+        await bind_member_to_org_trial(admin_db, invite["org_id"], body.email)
     # REQ-1394: registration is the third moment a plaintext password exists, so the account can
     # negotiate SCRAM over pgwire from the start rather than after a password change.
     await write_verifier(admin_db, user_id, body.username, body.password)
@@ -709,27 +697,27 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
 
     admin_db = state.admin_db
     assert admin_db is not None
-    async with admin_db.acquire() as conn:
-        result = await conn.execute_core(
+
+    # Read invite to get org_id so we can bind tenant_db BEFORE redeem_env
+    async with admin_db.acquire() as temp_conn:
+        result = await temp_conn.execute_core(
             select(*INVITE_REDEMPTION_COLUMNS).where(org_invites.c.token == body.token)
         )
         fetched = result.fetchone()
         invite = dict(fetched._mapping) if fetched is not None else None
-        if invite is None or is_spent(invite) or invite["expires_at"] < now:
-            raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
-        # REQ-1572: the org's email rule does NOT gate this. The rule decides who may join on their
-        # own initiative; an invitation is an org admin naming a person, which is that decision
-        # already made, and it is single-use and expiring. Gating it on the rule refused the very
-        # people an admin deliberately reached outside their own domain — a contractor, an auditor,
-        # someone whose work address is not the one their IdP account carries — with an error the
-        # invitee could do nothing about. /register (basic provider) has never applied the rule to
-        # an invite either, so this also ends a split where the same invitation was admitted or
-        # refused depending on which identity provider the deployment ran.
-        # REQ-1313: revalidate rather than trusting the stored value — a role can be removed from
-        # the org between the invitation being written and this redemption, and assigning a role
-        # that no longer exists would leave a user_role_assignments row pointing at nothing. This
-        # runs BEFORE the membership upsert and the burn: a refused role must leave the invitation
-        # intact and re-redeemable once the org restores the role, not spend it on a failure.
+
+    if invite is None or is_spent(invite) or invite["expires_at"] < now:
+        raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
+
+    # Bind the invited org's tenant_db so redeem_env can create its environment
+    from provisa.api.app import ensure_org_runtime
+    from provisa.core.org_membership import grant_org_role
+
+    rt = await ensure_org_runtime(invite["org_id"])
+    assert rt.tenant_db is not None
+
+    async with admin_db.acquire() as conn:
+        # REQ-1313: validate the role exists before burning the invite
         from provisa.api.admin.invites_router import resolve_invite_role
 
         role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
@@ -755,13 +743,7 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
             raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
     # Role assignment is tenant-plane (see /register for the same split) and must land in the
-    # INVITED org's schema. This platform-plane request leaves current_org unset, so state.tenant_db
-    # would resolve the DEFAULT org — bind the invited org's runtime (tenant_db scoped to org_<id>).
-    from provisa.api.app import ensure_org_runtime
-    from provisa.core.org_membership import grant_org_role
-
-    rt = await ensure_org_runtime(invite["org_id"])
-    assert rt.tenant_db is not None
+    # INVITED org's schema. We've already bound the tenant_db to the invited org above.
     await grant_org_role(rt.tenant_db, user_id, role_id)
     # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
     # is owed the sandbox org the same as the claimant is.
