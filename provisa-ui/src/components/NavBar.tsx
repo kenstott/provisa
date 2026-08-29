@@ -89,7 +89,8 @@ export function NavBar() {
 
   async function handleLogout() {
     // Only show upgrade modal for sandbox trial users, not for control-plane roles (platform_admin)
-    const isControlPlane = capabilities.some((cap) => cap === "cross_org");
+    const isControlPlane = capabilities?.some((cap) => cap === "cross_org");
+    console.log("[logout] activeOrgId=%s isControlPlane=%s capabilities=%o", activeOrgId, isControlPlane, capabilities);
     if (activeOrgId === "sandbox" && !isControlPlane) {
       setShowUpgradeModal(true);
     } else {
