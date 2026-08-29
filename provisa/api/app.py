@@ -2054,7 +2054,9 @@ def create_app() -> FastAPI:
                 user_id = getattr(identity, "user_id", None)
                 if user_id and user_id != "anonymous":
                     from provisa.core.schema_admin import user_org_memberships
+                    import logging
 
+                    logger = logging.getLogger(__name__)
                     async with state.admin_db.acquire() as conn:
                         result = await conn.execute_core(
                             select(user_org_memberships.c.env_name).where(
@@ -2063,6 +2065,9 @@ def create_app() -> FastAPI:
                             )
                         )
                         row = result.fetchone()
+                        logger.info(
+                            f"Pinned env query: user_id={user_id}, org_id={env_org}, result={row}"
+                        )
                         if row is not None:
                             pinned_env = row[0]
             try:
