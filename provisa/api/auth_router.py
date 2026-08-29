@@ -650,7 +650,7 @@ async def register(body: RegisterRequest):
                     (user_org_memberships.c.user_id == user_id)
                     & (user_org_memberships.c.org_id == invite["org_id"])
                 )
-                .values(pinned_environment=pinned_env)
+                .values(env_name=pinned_env)
             )
         # Grant the role from the invite
         await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
