@@ -512,6 +512,7 @@ async def decline_auto_join(request: Request):  # REQ-1568
 
 @router.get("/invite/{token}")
 async def get_invite(token: str):  # REQ-516
+    """Fetch invite info without authentication. Invites are public until redeemed."""
     from provisa.api.app import state
 
     # org_invites/orgs live in the platform control plane.

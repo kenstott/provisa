@@ -107,9 +107,16 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("invite");
     if (token) {
+      console.log("[LoginPage] fetching invite info for:", token);
       fetchInviteInfo(token)
-        .then(setInviteInfo)
-        .catch((err) => setInviteError(err.message));
+        .then((info) => {
+          console.log("[LoginPage] invite fetched:", info);
+          setInviteInfo(info);
+        })
+        .catch((err) => {
+          console.error("[LoginPage] invite fetch failed:", err);
+          setInviteError(err.message);
+        });
     }
   }, []);
 

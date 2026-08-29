@@ -1639,7 +1639,11 @@ export async function revokeInvite(token: string): Promise<void> {
 }
 
 export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
-  const res = await fetch(`/auth/invite/${token}`);
+  // Use fetch directly to bypass auth wrapper — invites are public and should work
+  // before login. The global installAuthFetch wrapper would add Bearer token headers
+  // which aren't needed/wanted here since there's no session yet.
+  const originalFetch = window.fetch;
+  const res = await originalFetch(`/auth/invite/${token}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(serverMessage(data, requestFailed("fetchInviteInfo", res.status)));
