@@ -157,6 +157,7 @@ async def me(request: Request):
                 "org_name": r["org_name"],
                 "joined_via": r["joined_via"],
                 "acknowledged": r["acknowledged_at"] is not None,
+                "env_name": r["env_name"],
             }
             for r in org_rows
         ],

@@ -78,8 +78,13 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
         name = f"ephemeral_{user_hash}"
     else:
         name = sandbox_env_name()
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"redeem_env: org_id={org_id}, user_id={user_id}, name={name}, policy={policy}")
     assert state.admin_db is not None and state.tenant_db is not None
     try:
+        logger.info(f"Creating environment {name}...")
         await create_environment(
             state,
             state.admin_db,
@@ -97,12 +102,9 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
             branched_from=None,
             note=f"provisioned for {user_id}",
         )
+        logger.info(f"Environment {name} created successfully")
     except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).error(
-            f"Failed to create environment {name} for {org_id}: {e}", exc_info=True
-        )
+        logger.error(f"Failed to create environment {name} for {org_id}: {e}", exc_info=True)
         raise
     return name
 
