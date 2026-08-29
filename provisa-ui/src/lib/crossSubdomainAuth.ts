@@ -147,17 +147,11 @@ export function redirectToControlPlaneLogin(here: Location = window.location): v
  * already under way and rendering would only flash the app before navigation. Rejects when the
  * relay is unreachable — a broken control plane is not a signed-out state and must not be
  * silently downgraded into one.
- *
- * REQ-1602: sandbox invites should render on the sandbox subdomain for full UX, so don't redirect
- * if there's an invite parameter in the URL.
  */
 export async function establishOrgSubdomainSession(): Promise<boolean> {
   const token = await acquireTokenFromControlPlane();
   if (!token) {
-    // Don't redirect if there's an invite — let the login page handle it
-    if (!new URLSearchParams(window.location.search).get("invite")) {
-      redirectToControlPlaneLogin();
-    }
+    redirectToControlPlaneLogin();
     return false;
   }
   // A different bearer than the one this origin last held means a different identity may be
