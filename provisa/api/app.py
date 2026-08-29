@@ -2046,9 +2046,28 @@ def create_app() -> FastAPI:
             # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
             # (no identity resolved), the exemption every capability gate makes.
             env_caps = env_gate_capabilities(request_state.get("identity"), state)
+            # REQ-1596: fetch the pinned environment (if any) from the user's membership so
+            # ephemeral environments bypass the environment_switch capability check
+            pinned_env = None
+            identity = request_state.get("identity")
+            if identity is not None and state.admin_db is not None:
+                user_id = getattr(identity, "user_id", None)
+                if user_id and user_id != "anonymous":
+                    from provisa.core.schema_admin import user_org_memberships
+
+                    async with state.admin_db.acquire() as conn:
+                        result = await conn.execute_core(
+                            select(user_org_memberships.c.env_name).where(
+                                (user_org_memberships.c.user_id == user_id)
+                                & (user_org_memberships.c.org_id == env_org)
+                            )
+                        )
+                        row = result.fetchone()
+                        if row is not None:
+                            pinned_env = row[0]
             try:
                 selected_env = await select_environment(
-                    state.admin_db, env_org, requested_env, env_caps
+                    state.admin_db, env_org, requested_env, env_caps, pinned_env
                 )
             except EnvironmentSelectionError as exc:
                 # REQ-1602: if ephemeral environment doesn't exist, fall back to prod for sandbox users
