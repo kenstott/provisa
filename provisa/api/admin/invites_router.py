@@ -202,6 +202,11 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     expires_at = datetime.datetime.now(tz=timezone.utc) + datetime.timedelta(
         days=body.expires_in_days
     )
+    env_policy = body.env_policy
+    env_ttl_seconds = body.env_ttl_seconds
+    # REQ-1602: sandbox org invites use 1-day idle TTL if not specified (redeem_env forces PER_VISITOR policy)
+    if body.org_id == "sandbox" and env_ttl_seconds is None:
+        env_ttl_seconds = 86400  # 1 day of inactivity before deletion
     async with pool.acquire() as conn:
         result = await conn.execute_core(
             select(orgs.c.id, orgs.c.name).where(orgs.c.id == body.org_id)
@@ -225,8 +230,8 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
                 created_by=created_by,
                 expires_at=expires_at,
                 max_uses=body.max_uses,
-                env_policy=body.env_policy,
-                env_ttl_seconds=body.env_ttl_seconds,
+                env_policy=env_policy,
+                env_ttl_seconds=env_ttl_seconds,
                 env_name=body.env_name,
             )
             .returning(

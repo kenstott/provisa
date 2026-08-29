@@ -53,6 +53,10 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
     so auth middleware can auto-select based on user_id without UI/routing complexity.
     """
     policy = invite["env_policy"]
+    # REQ-1602: sandbox org always creates per-user ephemeral environments
+    org_id = invite["org_id"]
+    if org_id == "sandbox":
+        policy = ENV_POLICY_PER_VISITOR
     if policy == ENV_POLICY_NONE:
         return None
     if policy == ENV_POLICY_SHARED:
@@ -75,23 +79,31 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
     else:
         name = sandbox_env_name()
     assert state.admin_db is not None and state.tenant_db is not None
-    await create_environment(
-        state,
-        state.admin_db,
-        state.tenant_db,
-        await _org_tenant_db(org_id),
-        org_id,
-        name,
-        from_env=PROD,
-        created_by=user_id,
-        expires_at=datetime.now(tz=timezone.utc) + timedelta(seconds=invite["env_ttl_seconds"]),
-        # REQ-1600: and the same span is the environment's idle allowance, so the deadline is
-        # measured from the last request it served rather than from this moment. A visitor still
-        # working an hour in keeps their environment; one who walked away loses it on schedule.
-        idle_ttl_seconds=invite["env_ttl_seconds"],
-        branched_from=None,
-        note=f"provisioned for {user_id}",
-    )
+    try:
+        await create_environment(
+            state,
+            state.admin_db,
+            state.tenant_db,
+            await _org_tenant_db(org_id),
+            org_id,
+            name,
+            from_env=PROD,
+            created_by=user_id,
+            expires_at=datetime.now(tz=timezone.utc) + timedelta(seconds=invite["env_ttl_seconds"]),
+            # REQ-1600: and the same span is the environment's idle allowance, so the deadline is
+            # measured from the last request it served rather than from this moment. A visitor still
+            # working an hour in keeps their environment; one who walked away loses it on schedule.
+            idle_ttl_seconds=invite["env_ttl_seconds"],
+            branched_from=None,
+            note=f"provisioned for {user_id}",
+        )
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).error(
+            f"Failed to create environment {name} for {org_id}: {e}", exc_info=True
+        )
+        raise
     return name
 
 
