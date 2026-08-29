@@ -71,12 +71,16 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   // REQ-1348: no sign-in form is reachable on an org subdomain — the identity provider only
   // authorizes the control-plane host, so rendering one here offers a button that cannot work.
   // Reached after a sign-out, or by navigating to /login directly.
+  // EXCEPTION: REQ-1602 sandbox invites should render on sandbox.provisa.dev for full sandbox UX.
   useEffect(() => {
     if (!isOrgSubdomainHost()) return;
     // A session that survived (the subdomain relay already borrowed a bearer) means this page was
     // reached with nothing to sign in to; go back to the app rather than out to the control plane.
     if (storedToken()) navigate("/", { replace: true });
-    else redirectToControlPlaneLogin();
+    // Don't redirect if there's an invite — show it on the org subdomain for sandbox UX
+    else if (!new URLSearchParams(window.location.search).get("invite")) {
+      redirectToControlPlaneLogin();
+    }
   }, [navigate]);
 
   useEffect(() => {
