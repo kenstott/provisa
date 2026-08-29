@@ -100,6 +100,26 @@ async def create_environment(
             # them to be usable at all; every later copy leaves the target's own answer alone.
             seed=True,
         )
+        # REQ-1602: ensure sandbox role is present in ephemeral environments for sandbox org
+        if org_id == "sandbox":
+            from provisa.core.schema_org import roles
+            from sqlalchemy import select
+
+            async with tenant_db.acquire() as conn:
+                # Check if sandbox role already exists in this environment
+                result = await conn.execute_core(select(roles.c.id).where(roles.c.id == "sandbox"))
+                if result.fetchone() is None:
+                    # Get sandbox role from prod to copy its capabilities
+
+                    prod_result = await conn.execute_core(
+                        select(roles.c.capabilities).where(roles.c.id == "sandbox")
+                    )
+                    sandbox_caps = prod_result.fetchone()
+                    if sandbox_caps is not None:
+                        # Insert sandbox role with capabilities from prod
+                        await conn.execute_core(
+                            roles.insert().values(id="sandbox", capabilities=sandbox_caps[0])
+                        )
         # REQ-1543: the environment's history starts HERE, where the source it was created from is
         # standing. Without it the branch has no ref, the first edit somebody makes becomes the
         # first commit of the line, and an undo of that edit has no parent to step back to -- the
