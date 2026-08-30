@@ -1048,10 +1048,13 @@ ON CONFLICT (id) DO NOTHING;
 -- scheduled tasks, and the query telemetry of everyone working in production; org_glossary_rw is
 -- the override over terms the org's own people authored.
 --
--- REQ-1602: the six are DEMONSTRATED rather than merely absent. A visitor is being shown the
--- product, so the surfaces those rights open stay on the page -- disabled, and badged as belonging
--- to the production system. Withholding them by hiding them would make the sandbox look like a
--- smaller product instead of the same one with the org's own controls held back.
+-- REQ-1602/REQ-1608: five of the six are DEMONSTRATED rather than merely absent. A visitor is being
+-- shown the product, so the surfaces those rights open stay on the page -- disabled, and badged as
+-- belonging to the production system. Withholding them by hiding them would make the sandbox look
+-- like a smaller product instead of the same one with the org's own controls held back.
+-- `user_management` is the exception: letting a sandbox visitor see a page that implies they could
+-- confer roles or admit people, even inertly, misrepresents what the role can ever do here, so
+-- /team stays a hard block instead of a demonstration.
 INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
 VALUES (
     'sandbox',
@@ -1059,19 +1062,21 @@ VALUES (
       "create_view","full_results","glossary_read","glossary_rw","masking_config",
       "query_development","source_registration","table_registration","usage","view_governance",
       "write"]'::jsonb,
-    '["environment_switch","environment_management","user_management","org_settings",
+    '["environment_switch","environment_management","org_settings",
       "observability","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
 ON CONFLICT (id) DO NOTHING;
 
--- REQ-1602: the demonstrated list is part of the role's definition, and the insert above cannot
--- reach a sandbox row an earlier release already created.
+-- REQ-1602/REQ-1608: the demonstrated list is part of the role's definition, and the insert above
+-- cannot reach a sandbox row an earlier release already created -- including a row an earlier
+-- release of this same reconcile left with `user_management` still in it.
 UPDATE roles
-SET demonstrated = '["environment_switch","environment_management","user_management",
+SET demonstrated = '["environment_switch","environment_management",
                      "org_settings","observability","org_glossary_rw"]'::jsonb
-WHERE id = 'sandbox' AND demonstrated = '[]'::jsonb;
+WHERE id = 'sandbox'
+  AND (demonstrated = '[]'::jsonb OR demonstrated @> '["user_management"]'::jsonb);
 
 -- REQ-1297: platform_admin is the deployment-wide administrator and the last system
 -- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the

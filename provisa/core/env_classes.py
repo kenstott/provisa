@@ -111,6 +111,7 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "preserved_snapshots",
         "admin_audit_log",
         "catalog_bindings",
+        "email_send_authority_audit",
     }
 )
 

@@ -191,11 +191,13 @@ describe("admin surface capabilities", () => {
     // REQ-1469: billing sits in the person pulldown, not the Admin group. The item must be gated
     // both on `billing` (self-hosted deployments do not mount the routes) and on the same right
     // the /admin/billing route requires, or the link 404s or hides the surface.
+    // REQ-1608: gated through CapabilityGate (not a raw hasCapability check) so a role that is only
+    // shown org_settings, not holding it, gets the demonstrated treatment instead of nothing.
     const source = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
     const itemAt = source.indexOf('data-testid="navbar-billing"');
     expect(itemAt).toBeGreaterThan(-1);
     const gate = source.slice(Math.max(0, itemAt - 300), itemAt);
     expect(gate).toContain("billing &&");
-    expect(gate).toContain('hasCapability(capabilities, "org_settings")');
+    expect(gate).toContain('capability="org_settings"');
   });
 });

@@ -36,7 +36,6 @@ import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
 import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
-import { hasCapability } from "../lib/capabilities";
 
 export function NavBar() {
   const { t } = useTranslation();
@@ -302,13 +301,15 @@ export function NavBar() {
                     account rather than under Admin. Shown only where the deployment mounts
                     /billing (`billing` on /auth/me) — the right exists in every deployment, the
                     routes do not — and only to the org right that owns the subscription. */}
-                {billing && hasCapability(capabilities, "org_settings") && (
-                  <Menu.Item
-                    onClick={() => navigate("/admin/billing")}
-                    data-testid="navbar-billing"
-                  >
-                    {t("navBar.itemBilling")}
-                  </Menu.Item>
+                {billing && (
+                  <CapabilityGate capability="org_settings" navigable>
+                    <Menu.Item
+                      onClick={() => navigate("/admin/billing")}
+                      data-testid="navbar-billing"
+                    >
+                      {t("navBar.itemBilling")}
+                    </Menu.Item>
+                  </CapabilityGate>
                 )}
                 {authEnabled && (
                   <Menu.Item color="red" onClick={handleLogout}>

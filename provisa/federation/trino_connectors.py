@@ -180,6 +180,14 @@ class TrinoOpenapiConnector(TrinoPgBackedConnector):
     source_type = "openapi"
 
 
+# REQ-1602-followup: graphql_remote is landed the same way openapi is (materialize_exec.py) --
+# Trino reads the PG replica, not the live GraphQL endpoint. Without a connector here
+# create_catalog skips every graphql_remote source and its catalog name resolves to nothing
+# (CATALOG_NOT_FOUND), exactly the failure TrinoGreatExpectationsConnector's comment describes.
+class TrinoGraphqlRemoteConnector(TrinoPgBackedConnector):
+    source_type = "graphql_remote"
+
+
 # REQ-1443: a checker has no remote table to federate against — its rows ARE one scan's results,
 # produced by running the contract and landed like any other produced dataset. Trino reads that
 # landed replica out of the Postgres store, so the checker's catalog is PG-backed exactly as
@@ -594,6 +602,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoSqlServerConnector(),
         TrinoSqliteConnector(),
         TrinoOpenapiConnector(),
+        TrinoGraphqlRemoteConnector(),
         TrinoGreatExpectationsConnector(),
         TrinoSodaConnector(),
         TrinoMongoConnector(),

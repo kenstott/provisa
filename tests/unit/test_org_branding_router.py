@@ -228,7 +228,7 @@ def admin_client(admin_db, monkeypatch):
 def _allow_org_admin(monkeypatch, allowed: str | None):
     from provisa.api.admin import invites_router as invites_mod
 
-    async def _gate(_request, org_id):
+    async def _gate(_request, org_id, *, allow_cross_org=True):
         if org_id != allowed:
             raise ApiError(403, "orgs.forbidden", "Not an admin of this org")
 

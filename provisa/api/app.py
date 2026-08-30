@@ -22,6 +22,7 @@ import logging
 import os
 import time
 import uuid
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -1636,6 +1637,22 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         await _register_user_views_in_state(conn, raw_config)
 
+        # Schema-currency reconcile (REQ-846/932): converge this environment's own landing tables
+        # to the registered shape before introspection reads them. Boot and post-mutation registration
+        # both do this for whatever env they touch, but neither runs against an environment created by
+        # copying another (REQ-1529/env_create) — its MATERIALIZED/FETCH sources (e.g. an openapi
+        # source landed via TrinoPgBackedConnector) would otherwise have no relation for
+        # introspect_tables to read, and _build_visible_tables silently drops every table it can't
+        # find column metadata for. DDL only, best-effort like the other two call sites.
+        try:
+            _landed = await state.federation_engine.reconcile_landed_tables()
+            if _landed:
+                _rebuild_log.info(
+                    "reconciled %d landed table(s) into the materialization store", len(_landed)
+                )
+        except Exception:
+            _rebuild_log.exception("landed-table schema reconcile failed")
+
         # Introspect the engine metadata
         col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
             state.engine_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})}
@@ -1754,10 +1771,31 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
 
+class _DebugLogBufferHandler(logging.Handler):
+    """In-memory ring buffer of routing/auth diagnostics, read back via /debug/logs."""
+
+    def __init__(self, capacity: int = 5000) -> None:
+        super().__init__()
+        self.buffer: deque[str] = deque(maxlen=capacity)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Routing/auth diagnostics only -- apscheduler/trino background chatter fires every
+        # few seconds and would otherwise evict these entries long before anyone reads them.
+        if not record.name.startswith("provisa.api."):
+            return
+        self.buffer.append(self.format(record))
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
     _log = logging.getLogger("uvicorn.error")
+    # Set up in-memory log buffer for debugging (max 1000 lines)
+    buffer_handler = _DebugLogBufferHandler(capacity=5000)
+    buffer_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    logging.getLogger().addHandler(buffer_handler)
     state.schema_boot_id = uuid.uuid4().hex
     try:
         await _load_and_build()
@@ -2497,5 +2535,25 @@ def create_app() -> FastAPI:
             response.status_code = 503
             return {"status": "warming"}
         return {"status": "ready"}
+
+    @app.api_route("/debug/logs", methods=["GET"])
+    async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
+        """Return recent logs, optionally filtered by pattern. For debugging only."""
+        # Get the root logger and look for our custom buffer handler
+        root_logger = logging.getLogger()
+        buffer_handler = next(
+            (h for h in root_logger.handlers if isinstance(h, _DebugLogBufferHandler)), None
+        )
+
+        if buffer_handler is None:
+            return {"error": "log buffer not initialized", "logs": []}
+
+        logs = list(buffer_handler.buffer)
+        if pattern:
+            import re
+
+            logs = [log for log in logs if re.search(pattern, log)]
+
+        return {"count": len(logs), "logs": logs[-limit:]}
 
     return app

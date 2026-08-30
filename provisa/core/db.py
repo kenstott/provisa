@@ -169,12 +169,16 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
 )
 
-# REQ-1602: rights a role is SHOWN but does not hold. The sandbox's six withheld rights are the
-# whole list: a visitor is being shown the product, so the surfaces those rights open stay on the
-# page, disabled and badged as belonging to the production system. Hiding them would make the
-# sandbox look like a smaller product rather than the same one with the org's controls held back.
+# REQ-1602/REQ-1608: rights a role is SHOWN but does not hold. Five of the sandbox's six withheld
+# rights stay on the page, disabled and badged as belonging to the production system -- hiding them
+# would make the sandbox look like a smaller product rather than the same one with the org's controls
+# held back. `user_management` is the exception (REQ-1608): letting a sandbox visitor see a page that
+# implies they could confer roles or admit people, even inertly, misrepresents what the role can ever
+# do here, so /team stays a hard NotAuthorized instead of a demonstration.
 # Every other role's absence of a right means the same thing it always did -- nothing to show.
-_DEMONSTRATED_ROLES: dict[str, list[str]] = {"sandbox": sorted(_SANDBOX_DENIED)}
+_DEMONSTRATED_ROLES: dict[str, list[str]] = {
+    "sandbox": sorted(_SANDBOX_DENIED - {"user_management"})
+}
 
 
 def add_missing_columns(sync_conn, tables) -> None:

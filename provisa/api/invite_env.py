@@ -99,7 +99,10 @@ async def redeem_env(invite: dict, user_id: str) -> str | None:
             # measured from the last request it served rather than from this moment. A visitor still
             # working an hour in keeps their environment; one who walked away loses it on schedule.
             idle_ttl_seconds=invite["env_ttl_seconds"],
-            branched_from=None,
+            # REQ-1529: an unbound source resolves its connection through branched_from's lineage.
+            # A visitor's environment never binds its own sources, so without this it would inherit
+            # nothing and every table on a source would be unreachable in it.
+            branched_from=PROD,
             note=f"provisioned for {user_id}",
         )
         logger.info(f"Environment {name} created successfully")

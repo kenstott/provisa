@@ -17,7 +17,7 @@ subtracts, and this file asserts the subtraction rather than the resulting list:
 in the sandbox automatically, and the six that are withheld stay withheld.
 """
 
-# Requirements: REQ-1595, REQ-1596, REQ-1597, REQ-1602
+# Requirements: REQ-1595, REQ-1596, REQ-1597, REQ-1602, REQ-1608
 
 from __future__ import annotations
 
@@ -92,16 +92,19 @@ class TestPlaneParity:
 
 
 class TestWhatIsDemonstrated:
-    """REQ-1602: the six withheld rights are shown to the visitor rather than hidden from them.
+    """REQ-1602/REQ-1608: five of the six withheld rights are shown to the visitor rather than
+    hidden from them.
 
-    A sandbox that simply omitted the environments, members and settings surfaces would advertise a
-    smaller product than the one being sold, so the role carries the withheld rights a second time
-    under `demonstrated` -- the client renders those surfaces inert, banners them, and the server
-    still refuses every call behind them.
+    A sandbox that simply omitted the environments and settings surfaces would advertise a smaller
+    product than the one being sold, so the role carries those withheld rights a second time under
+    `demonstrated` -- the client renders those surfaces inert, banners them, and the server still
+    refuses every call behind them. `user_management` is the one exception (REQ-1608): a sandbox
+    visitor seeing a page that implies they could confer roles or admit people, even inertly,
+    misrepresents what the role can ever do here, so /team is a hard block instead.
     """
 
-    def test_the_sandbox_demonstrates_exactly_what_it_withholds(self):
-        assert set(_DEMONSTRATED_ROLES[SANDBOX]) == _SANDBOX_DENIED
+    def test_the_sandbox_demonstrates_what_it_withholds_except_user_management(self):
+        assert set(_DEMONSTRATED_ROLES[SANDBOX]) == _SANDBOX_DENIED - {"user_management"}
 
     def test_no_other_seeded_role_demonstrates_anything(self):
         # Demonstration is the sandbox's whole purpose; anywhere else it would be a surface that
@@ -113,11 +116,13 @@ class TestWhatIsDemonstrated:
         explained, and a client that saw a right in both would badge a working control."""
         assert not set(_DEMONSTRATED_ROLES[SANDBOX]) & _caps(SANDBOX)
 
-    def test_the_postgres_seed_demonstrates_the_same_six(self):
+    def test_the_postgres_seed_demonstrates_the_same_five(self):
         sql = open("provisa/core/schema.sql").read()
         match = re.search(r"SET demonstrated = '(\[.*?\])'::jsonb", sql, re.S)
         assert match is not None, "no demonstrated reconcile in the PostgreSQL seed"
-        assert set(json.loads(re.sub(r"\s+", "", match.group(1)))) == _SANDBOX_DENIED
+        assert set(json.loads(re.sub(r"\s+", "", match.group(1)))) == _SANDBOX_DENIED - {
+            "user_management"
+        }
 
     def test_the_postgres_insert_carries_the_column(self):
         # The reconcile above only reaches a row an earlier release left behind; a fresh control

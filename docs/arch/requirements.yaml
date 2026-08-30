@@ -53559,3 +53559,220 @@
   - REQ-1318
   - REQ-1337
   - REQ-1604
+- id: REQ-1606
+  status: complete
+  since: 2026-08
+  group: "10. UI & Admin Surfaces"
+  category: Demonstrated Capabilities
+  priority: SHOULD
+  type: ui
+  description: >-
+    EnvSwitcher control returns null (is hidden entirely) for a role that only demonstrates
+    environment_switch without holding it, rather than rendering an inert badged control per REQ-1602.
+  use_case: >-
+    The environment switcher must reflect the visitor's actual ephemeral environment, which cannot
+    be fetched for demonstrating-only callers (REQ-1602); hiding the control entirely is clearer
+    than showing a hardcoded "prod" label that cannot change.
+  code:
+    - provisa-ui/src/components/EnvSwitcher.tsx
+  tests:
+    - provisa-ui/src/__tests__/EnvSwitcher.test.tsx
+  scenario: |
+    Given a visitor acting as a role that demonstrates environment_switch without holding it
+    When they load the page
+    Then the EnvSwitcher control is not rendered
+  depends_on:
+    - REQ-1602
+- id: REQ-1607
+  status: complete
+  since: 2026-08
+  group: "0. Architecture & Design Principles"
+  category: Schema Introspection & Rebuilding
+  priority: MUST
+  type: constraint
+  description: >-
+    During schema rebuild, _rebuild_schemas() must call state.federation_engine.reconcile_landed_tables()
+    immediately before introspect_tables(), ensuring landing-store table shapes converge before GraphQL schema introspection.
+  use_case: >-
+    Ephemeral per-visitor sandbox environments must have landing-store table shapes fully reconciled
+    before introspection reads them; otherwise materialized sources lack query fields in the compiled schema.
+  code:
+    - provisa/api/app.py
+    - provisa/api/admin/schema_mutation_ops.py
+  tests:
+    - tests/integration/test_schema_mutation_api.py
+    - tests/unit/test_reconcile_landed.py
+    - tests/unit/test_env_deploy_refresh.py
+  scenario: |
+    Given a freshly-provisioned ephemeral environment (REQ-1602)
+    When _rebuild_schemas() is invoked during compilation
+    Then federation_engine.reconcile_landed_tables() is called before federation_engine.introspect_tables()
+    And materialized source queries are present in the final GraphQL schema
+  depends_on:
+    - REQ-846
+    - REQ-932
+    - REQ-1595
+    - REQ-1596
+    - REQ-1600
+    - REQ-1602
+- id: REQ-1608
+  status: proposed
+  target: "2026-Q4"
+  group: "1. Access Governance & Security"
+  category: Sandbox Role
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The sandbox role grants read-only access to normally-restricted admin surfaces and ops domain
+    data to illustrate admin capabilities in ephemeral per-visitor environments. Most admin features
+    are exposed as READ-ONLY; mutation-dangerous features (team member management) are explicitly
+    BLOCKED. Every admin page shown to a sandbox-role user displays a modal or banner stating these
+    features are illustrative only and not functional in sandbox mode.
+  use_case: >-
+    Sandbox visitors need to see what administrative capabilities look like without granting actual
+    mutation capability or long-lived access. This requires special treatment: sandbox role reads ops
+    domain (normally locked down per REQ-1133), sees read-only views of admin pages, and understands
+    that they are in an illustrative context.
+  scenario: |
+    Given a visitor assigned the sandbox role in an ephemeral environment (REQ-1602)
+    When they navigate to an admin page (e.g. settings, team management, schema editor)
+    Then they see a banner or modal stating "in sandbox mode these features are shown to illustrate
+    admin capabilities; they are not functional"
+    And they can view admin data (including ops domain tables per REQ-1133 exception)
+    And mutation operations are either read-only views or explicitly blocked with appropriate messaging
+    And team member management is completely blocked (not shown even read-only)
+  depends_on:
+    - REQ-1602
+    - REQ-1133
+    - REQ-1386
+  e2e: true
+  e2e_reason: >-
+    Sandbox role behavior is only verifiable end-to-end across multiple admin UI pages and data
+    access patterns (ops domain visibility, read-only states, blocked mutations, banner display).
+- id: REQ-1609
+  status: complete
+  since: 2026-08
+  group: "1. Access Governance & Security"
+  category: Sandbox Role
+  priority: MUST
+  type: constraint
+  description: >-
+    The _ensure_ops_steward_grant() function grants both org_admin and sandbox role read visibility
+    (visible_to) on every ops-domain column, enabling the sandbox role to illustrate ops-domain
+    admin access as part of REQ-1608 (sandbox role admin illustration).
+  use_case: >-
+    The sandbox role must access ops-domain tables to display admin-only data in illustrative contexts
+    (REQ-1608), fulfilling the ops-domain-exception requirement within the broader admin illustration feature.
+  code:
+    - provisa/api/startup_seed.py
+  tests:
+    - tests/unit/test_ops_domain.py
+  scenario: |
+    Given an ops-domain column has been created
+    When _ensure_ops_steward_grant() is called during startup
+    Then both org_admin and sandbox roles are granted read (visible_to) permission on that column
+    And org_admin can illustrate ops-domain access to sandbox-role visitors
+  depends_on:
+    - REQ-1608
+    - REQ-1386
+    - REQ-1133
+- id: REQ-1610
+  status: complete
+  since: 2026-08
+  group: "1. Access Governance & Security"
+  category: Sandbox Role
+  priority: MUST
+  type: structural
+  description: >-
+    The backend role definition (_DEMONSTRATED_ROLES["sandbox"] in provisa/core/db.py) narrows
+    demonstrated capabilities to exclude user_management, ensuring sandbox visitors are hard-blocked
+    from team member management rather than shown an inert illustration.
+  use_case: >-
+    REQ-1608 requires that sandbox visitors see read-only admin features but are hard-blocked from
+    mutation-dangerous operations like conferring roles or admitting people. Letting them see a team
+    management page—even inert—misrepresents what the role can ever do.
+  code:
+    - provisa/core/db.py
+  scenario: |
+    Given the sandbox role is instantiated
+    When _DEMONSTRATED_ROLES["sandbox"] is consulted
+    Then it includes five withheld capabilities (environment_switch, environment_management,
+    org_settings, observability, org_glossary_rw) but not user_management
+    And the /team endpoint rejects sandbox-role requests with NotAuthorized rather than rendering
+    a demonstrated-but-inert page
+- id: REQ-1611
+  status: complete
+  since: 2026-08
+  group: "1. Access Governance & Security"
+  category: Sandbox Role
+  priority: MUST
+  type: structural
+  description: >-
+    The schema.sql role seed for sandbox excludes user_management from the demonstrated jsonb column,
+    and the reconciliation UPDATE migrates any legacy rows still containing user_management by
+    matching on demonstrated @> '["user_management"]'::jsonb and replacing with the five-right list.
+  use_case: >-
+    Deployment continuity: earlier releases seeded sandbox with six demonstrated rights. Older
+    databases may have legacy rows still carrying user_management in the demonstrated column. The
+    reconciliation ensures schema state matches the new backend definition (REQ-1610) even on
+    databases created before this change.
+  code:
+    - provisa/core/schema.sql
+  scenario: |
+    Given a PostgreSQL database with a legacy sandbox role row (demonstrated includes user_management)
+    When schema reconciliation runs
+    Then the UPDATE clause matches rows where demonstrated contains user_management
+    And demonstrated is rewritten to the five-right list
+    And subsequent schema introspection sees user_management excluded from sandbox's demonstrated rights
+- id: REQ-1612
+  status: complete
+  since: 2026-08
+  group: "10. UI & Admin Surfaces"
+  category: Sandbox Role
+  priority: MUST
+  type: ui
+  description: >-
+    EnvSwitcher.tsx renders a DemonstratedFeature-wrapped inert button (navigable=false) when
+    sandbox role is demonstrated environment_switch but does not hold it, and skips the
+    localStorage-clear/reload side effect since there is no prior selection to repair.
+  use_case: >-
+    REQ-1608 requires that sandbox visitors see a read-only illustration of the environment switch
+    capability. Showing an inert button (rather than hiding it outright) is consistent with how other
+    demonstrated features are rendered across the admin surfaces. Skipping the reload for a caller
+    that never held the right prevents spurious reloads on ephemeral visitors.
+  code:
+    - provisa-ui/src/components/EnvSwitcher.tsx
+  tests:
+    - provisa-ui/src/__tests__/TitleTooltips.test.tsx
+  scenario: |
+    Given a sandbox-role user is viewing the nav
+    When EnvSwitcher renders
+    Then it shows a DemonstratedFeature-wrapped button badged as illustrative
+    And clicking the button does not trigger a localStorage clear or reload
+    And the button is aria-disabled and visually inert
+- id: REQ-1613
+  status: complete
+  since: 2026-08
+  group: "10. UI & Admin Surfaces"
+  category: Sandbox Role
+  priority: SHOULD
+  type: ui
+  description: >-
+    NavBar.tsx wraps the Billing menu item in CapabilityGate with navigable=true, replacing the
+    previous raw hasCapability check, so sandbox role sees the item as inert and clickable rather
+    than hidden.
+  use_case: >-
+    REQ-1608 requires consistent demonstration of admin capabilities across all surfaces. The
+    Billing menu item was an exception—it was hidden entirely for demonstrated-but-not-holding
+    roles. Using CapabilityGate brings it in line with the rest of the demonstrated-capability
+    mechanism and allows sandbox visitors to see that billing administration exists.
+  code:
+    - provisa-ui/src/components/NavBar.tsx
+  tests:
+    - provisa-ui/src/__tests__/TitleTooltips.test.tsx
+  scenario: |
+    Given a sandbox-role user is viewing the navbar
+    When NavBar renders the account menu
+    Then the Billing item is visible, wrapped in CapabilityGate(navigable=true)
+    And it appears dimmed/inert with a demonstration badge
+    And clicking it navigates to /admin/billing (which renders read-only)

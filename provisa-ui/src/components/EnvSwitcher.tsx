@@ -52,10 +52,10 @@ export function EnvSwitcher() {
   // neither it nor `environment_management`, and the server answers 403 `env.switch_forbidden` to a
   // request naming one — so the menu that names them is not shown to a caller who cannot be served.
   const maySwitch = useCapability("environment_switch");
-  // REQ-1602: a role that is shown the right without holding it (the sandbox, REQ-1597) gets the
-  // control where a holder's is, inert and badged -- the environments themselves are never fetched,
-  // so what it demonstrates is that the product has the switch, not what this org's branches are.
-  const demonstrating = useDemonstrated("environment_switch");
+  // REQ-1608: sandbox holds neither `environment_switch` nor a real second environment to move to --
+  // the withdrawal-repair below (drop a selection the right can no longer serve) does not apply to a
+  // role that never had a selection to begin with, so it must not fire the reload for this caller.
+  const demonstrated = useDemonstrated("environment_switch");
   const [envs, setEnvs] = useState<Environment[] | null>(null);
   // REQ-1552: the state of the branch being worked in, WHERE the work happens. The admin page has
   // the same counts, but somebody editing the model is not on the admin page — and a change that
@@ -78,8 +78,9 @@ export function EnvSwitcher() {
       // A selection made while the right was held would otherwise keep riding on every request
       // after it was withdrawn, and the server answers each one 403 (REQ-1573). Dropping the name
       // is the repair for a selection that can no longer be served, the same as the deleted-branch
-      // repair below.
-      if (selectedEnv() !== null) {
+      // repair below. Not for a demonstrated caller (REQ-1608): the right was never held, so there
+      // is no prior selection to repair, and this role has no environments to fetch anyway.
+      if (!demonstrated && selectedEnv() !== null) {
         localStorage.removeItem(ENV_STORAGE_KEY);
         window.location.reload();
       }
@@ -129,13 +130,15 @@ export function EnvSwitcher() {
       live = false;
       window.removeEventListener(ENVIRONMENTS_CHANGED_EVENT, both);
     };
-  }, [activeOrgId, loading, maySwitch, reread]);
+  }, [activeOrgId, loading, maySwitch, demonstrated, reread]);
 
   if (loading || !activeOrgId) return null;
   if (!maySwitch) {
-    if (!demonstrating) return null;
+    if (!demonstrated) return null;
+    // REQ-1608: no environment list to show (sandbox has none, and the endpoint would 403 it
+    // regardless) -- the badge illustrates that the control exists, not a working switcher.
     return (
-      <DemonstratedFeature>
+      <DemonstratedFeature navigable={false}>
         <Button
           variant="default"
           size="compact-sm"

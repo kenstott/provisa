@@ -877,7 +877,23 @@ user_directory = Table(
     Column("user_id", Text, primary_key=True),
     Column("display_name", Text),
     Column("email", Text),
+    Column("email_opt_in", Boolean, nullable=False, server_default=true()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# REQ-1330: who granted/revoked/verified consent to mail an address, and when. See the matching
+# block in schema.sql.
+email_send_authority_audit = Table(
+    "email_send_authority_audit",
+    metadata,
+    Column("id", Uuid, primary_key=True, server_default=func.gen_random_uuid()),
+    Column("email_address", Text, nullable=False),
+    Column("user_id", Text),
+    Column("granted_by", Text),
+    Column("org_id", Text),
+    Column("action", Text, nullable=False),
+    Column("reason", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 node_ids = Table(

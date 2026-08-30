@@ -471,15 +471,19 @@ async def _seed_ops_domain(
     )
 
 
-async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386
-    """Give the ops steward (``org_admin``) read access to every ops column.
+async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386, REQ-1608
+    """Give the ops stewards (``org_admin``, ``sandbox``) read access to every ops column.
 
     The two ops seeds insert their columns once (``update_columns=[]``) so a later grant made
     through the admin UI survives a restart. That also means a column first written without the
     steward grant keeps it forever, and in a lockdown domain that column is in no role's schema —
     the report's ``ops.<table>`` reference then reaches the engine unrewritten. This adds the
-    steward to any ops column missing it and touches nothing else, so REQ-1133 grants to other
+    stewards to any ops column missing them and touches nothing else, so REQ-1133 grants to other
     roles are preserved.
+
+    ``sandbox`` is included so its illustration of admin capabilities (REQ-1608) covers ops the
+    same as a real org_admin's would; it is otherwise a read-only, capability-denylisted role
+    (REQ-1597) and this grant does not change that.
     """
     rows = (
         await conn.execute_core(
@@ -493,9 +497,10 @@ async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386
         )
     ).all()
     for col_id, visible_to in rows:
-        # Set difference, not a role-id comparison: this constructs the grant the ops steward
-        # must hold (REQ-1337 forbids a role id in a GATE, not in a grant being written).
-        missing = {"org_admin"}.difference(visible_to)
+        # List membership, not a role-id comparison: this constructs the grant the ops stewards
+        # must hold (REQ-1337 forbids a role id in a GATE, not in a grant being written). A list,
+        # not a set, keeps the appended order deterministic across runs.
+        missing = [s for s in ("org_admin", "sandbox") if s not in visible_to]
         if not missing:
             continue
         await conn.execute_core(

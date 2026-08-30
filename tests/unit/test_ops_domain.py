@@ -291,11 +291,12 @@ class TestOpsStewardGrant:
         assert conn.execute_core.await_args_list, "stale provisa-otel rows not deleted"
 
     def test_existing_columns_converge_on_steward_grant(self):
-        # A column seeded before the grant existed gains org_admin; grants made to other
-        # roles through the UI (REQ-1133) are kept, and an already-granted column is untouched.
+        # A column seeded before the grant existed gains org_admin and sandbox (REQ-1608); grants
+        # made to other roles through the UI (REQ-1133) are kept, and an already-granted column
+        # is untouched.
         from provisa.api.startup_seed import _ensure_ops_steward_grant
 
-        rows = [(1, []), (2, ["analyst"]), (3, ["org_admin"])]
+        rows = [(1, []), (2, ["analyst"]), (3, ["org_admin", "sandbox"])]
 
         class _Result:
             def all(self):
@@ -315,8 +316,8 @@ class TestOpsStewardGrant:
         updates = [s for s in calls[1:]]
         assert len(updates) == 2, "expected exactly the two ungranted columns to be updated"
         assert [u.compile().params["visible_to"] for u in updates] == [
-            ["org_admin"],
-            ["analyst", "org_admin"],
+            ["org_admin", "sandbox"],
+            ["analyst", "org_admin", "sandbox"],
         ]
 
 

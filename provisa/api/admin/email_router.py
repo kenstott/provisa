@@ -20,7 +20,7 @@ from sqlalchemy import insert, select
 
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
-from provisa.core.schema_admin import user_directory, email_send_authority_audit
+from provisa.core.schema_org import user_directory, email_send_authority_audit
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -45,7 +45,8 @@ class EmailAuditEntry(BaseModel):
 def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParameter]
     from provisa.api.app import state
 
-    return state.pool  # pyright: ignore[reportAttributeAccessIssue]
+    assert state.tenant_db is not None
+    return state.tenant_db
 
 
 @router.get("/preferences", response_model=EmailPreference)

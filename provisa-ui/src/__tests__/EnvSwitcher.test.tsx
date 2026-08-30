@@ -275,16 +275,21 @@ describe("EnvSwitcher", () => {
     expect(screen.queryByTestId("env-switcher-trigger")).toBeNull();
   });
 
-  // REQ-1602: the sandbox role (REQ-1597) is shown this right without holding it, so the control
-  // stays where a holder's is -- inert and badged, and reading no environments at all.
-  it("stands the control on the page, inert, for a role that is shown the right", async () => {
+  // A role shown this right without holding it (the sandbox, REQ-1608) gets an inert stub: the
+  // environments it would name are never fetched (there is nothing real behind the control), but
+  // the trigger stays on the page, badged and disabled, to illustrate that the control exists.
+  it("shows an inert stub to a role that is only shown the right, not holding it", async () => {
     auth.capabilities = ["usage"];
     auth.demonstrated = ["environment_switch"];
     mockFetch.mockResolvedValue([env("prod"), env("dev")]);
     render(<EnvSwitcher />);
-    expect(await screen.findByTestId("env-switcher-trigger")).toBeInTheDocument();
-    expect(screen.getByTestId("demonstrated-badge")).toBeInTheDocument();
     await waitFor(() => expect(mockFetch).not.toHaveBeenCalled());
+    const trigger = await screen.findByTestId("env-switcher-trigger");
+    const wrapper = screen.getByTestId("demonstrated-children");
+    expect(wrapper).toContainElement(trigger);
+    expect(wrapper).toHaveAttribute("aria-disabled", "true");
+    expect(wrapper.closest("[inert]")).not.toBeNull();
+    expect(screen.getByTestId("demonstrated-badge")).toBeInTheDocument();
   });
 
   it("is shown to the platform administrator, who bypasses every right", async () => {

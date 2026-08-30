@@ -55,7 +55,7 @@ from provisa.core.env_store import (
     set_protected,
 )
 from provisa.core.environments import PROD, EnvironmentNameError
-from provisa.core.schema_admin import user_directory, user_org_memberships, user_profiles
+from provisa.core.schema_admin import user_org_memberships, user_profiles
 
 log = logging.getLogger(__name__)
 
@@ -506,9 +506,6 @@ async def delete_environment(
                 if (count_result.scalar() or 0) <= 1:
                     await conn.execute_core(
                         sql_delete(user_profiles).where(user_profiles.c.user_id == user_id)
-                    )
-                    await conn.execute_core(
-                        sql_delete(user_directory).where(user_directory.c.user_id == user_id)
                     )
 
     return {
@@ -1675,7 +1672,7 @@ async def fix_sandbox_membership(request: Request) -> dict:
     pool = _admin_pool()
     async with pool.acquire() as conn:
         # Find user by email
-        user_stmt = select(user_directory.c.user_id).where(user_directory.c.email == email)
+        user_stmt = select(user_profiles.c.user_id).where(user_profiles.c.email == email)
         user_result = await conn.execute_core(user_stmt)
         user_id = user_result.scalar()
         if not user_id:
