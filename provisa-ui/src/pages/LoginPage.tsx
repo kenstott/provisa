@@ -59,6 +59,10 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const [regDisplayName, setRegDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // REQ-1602: create_environment (reserve + provision + copy_model) runs synchronously inside
+  // redeemInvite and can take several seconds — distinct from the generic "signing in" state so a
+  // sandbox visitor sees what is actually happening instead of a stalled-looking button.
+  const [provisioning, setProvisioning] = useState(false);
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   // REQ-1472: the deployment's break-glass account. It is not an IdP account, so under a
@@ -264,7 +268,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       // invite's role. This is how a GitHub-authed user becomes the first admin of an invited org.
       const inviteToken = new URLSearchParams(window.location.search).get("invite");
       if (inviteToken) {
-        await redeemInvite(inviteToken);
+        setProvisioning(true);
+        try {
+          await redeemInvite(inviteToken);
+        } finally {
+          setProvisioning(false);
+        }
       }
       finishLogin(idToken);
     } catch (err) {
@@ -297,7 +306,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       }
       const inviteToken = new URLSearchParams(window.location.search).get("invite");
       if (inviteToken) {
-        await redeemInvite(inviteToken);
+        setProvisioning(true);
+        try {
+          await redeemInvite(inviteToken);
+        } finally {
+          setProvisioning(false);
+        }
       }
       finishLogin(idToken);
     } catch (err) {
@@ -376,18 +390,30 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
 
   const isSandbox = inviteInfo?.org_id === "sandbox";
   const sandboxBanner = isSandbox ? (
-    <Alert
-      color="violet"
-      mb="md"
-      title="Try Provisa Free"
-      icon={<Text size="xl">✨</Text>}
-      data-testid="sandbox-notice"
-    >
-      Explore our full platform with sample data — no credit card required. Your sandbox account is
-      temporary and will be deleted when you log out. You can always create a new sandbox account
-      by using the invite link again. When you're ready, upgrade to a Starter plan to create your
-      own organization.
-    </Alert>
+    provisioning ? (
+      <Alert
+        color="violet"
+        mb="md"
+        title="Building your sandbox…"
+        icon={<Text size="xl">✨</Text>}
+        data-testid="sandbox-provisioning-notice"
+      >
+        Setting up a private copy of the sample data just for you — this takes a few seconds.
+      </Alert>
+    ) : (
+      <Alert
+        color="violet"
+        mb="md"
+        title="Try Provisa Free"
+        icon={<Text size="xl">✨</Text>}
+        data-testid="sandbox-notice"
+      >
+        Explore our full platform with sample data — no credit card required. Your sandbox account is
+        temporary and will be deleted when you log out. You can always create a new sandbox account
+        by using the invite link again. When you're ready, upgrade to a Starter plan to create your
+        own organization.
+      </Alert>
+    )
   ) : null;
 
   if (provider === "firebase") {

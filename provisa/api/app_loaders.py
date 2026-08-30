@@ -1062,20 +1062,19 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
             continue
         si = _schema_input(role, tables, metrics)
-        try:
-            from provisa.compiler.schema_gen import build_table_path_map
+        from provisa.compiler.schema_gen import build_table_path_map
 
-            state.schemas[role["id"]] = generate_schema(si)
-            state.table_path_maps[role["id"]] = build_table_path_map(si)
-            state.contexts[role["id"]] = build_context(si)
-            state.rls_contexts[role["id"]] = build_rls_context(
-                rls_rules,
-                role["id"],
-            )
-        except ValueError as _schema_err:
-            logging.getLogger(__name__).error(
-                "generate_schema failed for role %r: %s", role["id"], _schema_err
-            )
+        # No swallow: a role missing from state.schemas here is served with a permanently cached
+        # "no schema available" for every request to this org runtime (the build is cache-only-on-
+        # success). Let generate_schema raise so a bad role definition fails the build loudly and
+        # gets fixed at the source, matching generate_proto below.
+        state.schemas[role["id"]] = generate_schema(si)
+        state.table_path_maps[role["id"]] = build_table_path_map(si)
+        state.contexts[role["id"]] = build_context(si)
+        state.rls_contexts[role["id"]] = build_rls_context(
+            rls_rules,
+            role["id"],
+        )
 
         # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
         # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and
