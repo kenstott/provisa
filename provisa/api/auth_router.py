@@ -643,16 +643,8 @@ async def register(body: RegisterRequest):
         assert rt.tenant_db is not None
         # Mint the environment (REQ-1595) - must bind current_org so state.tenant_db resolves correctly
         token = set_current_org(invite["org_id"])
-        pinned_env = None
         try:
             pinned_env = await redeem_env(invite, user_id)
-        except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).error(
-                f"Failed to create ephemeral environment for {user_id} in {invite['org_id']}: {e}",
-                exc_info=True,
-            )
         finally:
             reset_current_org(token)
         # Update the membership with the environment name
