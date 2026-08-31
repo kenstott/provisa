@@ -247,9 +247,12 @@ class OrgRegistry:
     async def get_or_build(
         self, org_id: str, builder: Callable[[str], Awaitable[OrgRuntime]]
     ) -> OrgRuntime:
-        existing = self._runtimes.get(org_id)
-        if existing is not None:
-            return existing
+        # No lock-free fast path: the builder registers a runtime under this same key BEFORE it
+        # finishes building (build_org_runtime needs the entry early so the AppState property
+        # shims can route build-time writes onto it), so a bare dict.get() here could return a
+        # half-built runtime — schemas still empty — to a concurrent caller. Always taking the
+        # lock serializes against that build; an already-built entry is a cheap uncontended
+        # acquire, not a rebuild.
         async with self._lock_for(org_id):
             existing = self._runtimes.get(org_id)
             if existing is not None:
