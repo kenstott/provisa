@@ -153,6 +153,7 @@ export function AuthProvider({
   const [selectedOrg, setSelectedOrg] = useState<string | null>(() =>
     localStorage.getItem("provisa_org"),
   );
+  const [wasSelectedOrgValid, setWasSelectedOrgValid] = useState(true);
   const [orgMemberships, setOrgMemberships] = useState<OrgMembership[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [identityErrorStatus, setIdentityErrorStatus] = useState<number | null>(null);
@@ -378,10 +379,28 @@ export function AuthProvider({
   // For control-plane roles on first login, default to "default" org (control plane)
   // Otherwise use the single membership or previously selected org
   const isControlPlane = capabilities?.some((cap) => cap === "cross_org");
+  // A stored org id names a membership from a PRIOR identity on this browser (shared machine, a
+  // reused tab, a stale invite-redemption localStorage). Trusting it unvalidated routed a
+  // freshly-invited visitor into whatever org an earlier session left behind rather than the org
+  // they were just granted -- so it is only honored once it is confirmed among this identity's
+  // current memberships, same as the stored-env repair in EnvSwitcher.
+  const selectedOrgValid =
+    selectedOrg !== null && orgMemberships.some((m) => m.org_id === selectedOrg);
   const activeOrgId =
-    selectedOrg ??
+    (selectedOrgValid ? selectedOrg : null) ??
     (isControlPlane && orgMemberships.some((m) => m.org_id === "default") ? "default" : null) ??
     (orgMemberships.length === 1 ? orgMemberships[0].org_id : null);
+
+  // React-endorsed "adjust state while rendering" pattern (not an effect): a ref-free
+  // render-time comparison against the previous validity so the reset happens exactly once
+  // per invalid transition, without the cascading-render risk of setState-in-effect.
+  if (!loading && selectedOrg !== null && !selectedOrgValid && wasSelectedOrgValid) {
+    setWasSelectedOrgValid(false);
+    localStorage.removeItem("provisa_org");
+    setSelectedOrg(null);
+  } else if (selectedOrgValid && !wasSelectedOrgValid) {
+    setWasSelectedOrgValid(true);
+  }
 
   return (
     <AuthContext.Provider

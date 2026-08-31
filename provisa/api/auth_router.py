@@ -657,8 +657,15 @@ async def register(body: RegisterRequest):
                 )
                 .values(env_name=pinned_env)
             )
-        # Grant the role from the invite
-        await grant_org_role(rt.tenant_db, user_id, invite["role_id"])
+        # Grant the role from the invite. An env-bearing invite (REQ-1595) pins the redeemer to a
+        # specific environment, not prod -- rt.tenant_db is prod-scoped (env=None), so the
+        # assignment must be written through a runtime scoped to pinned_env instead, or it lands in
+        # the wrong schema and the pinned environment never resolves the redeemer's role.
+        role_rt = (
+            rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
+        )
+        assert role_rt.tenant_db is not None
+        await grant_org_role(role_rt.tenant_db, user_id, invite["role_id"])
         # REQ-1599: if platform_admin, seat in sandbox org
         from provisa.api.sandbox_org import reseat_after_conferral
 
@@ -750,8 +757,14 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
                 raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
         # Role assignment is tenant-plane (see /register for the same split) and must land in the
-        # INVITED org's schema. We've already bound the tenant_db to the invited org above.
-        await grant_org_role(rt.tenant_db, user_id, role_id)
+        # environment the redeemer was pinned to, not prod -- rt.tenant_db is prod-scoped
+        # (env=None); an env-bearing invite (REQ-1595) needs the assignment in pinned_env's own
+        # schema or that environment never resolves the redeemer's role.
+        role_rt = (
+            rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
+        )
+        assert role_rt.tenant_db is not None
+        await grant_org_role(role_rt.tenant_db, user_id, role_id)
         # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
         # is owed the sandbox org the same as the claimant is.
         from provisa.api.sandbox_org import reseat_after_conferral

@@ -37,7 +37,10 @@ request naming nothing is served by, and refusing it would refuse every request.
 
 from __future__ import annotations
 
+import hashlib
 from typing import TYPE_CHECKING
+
+from sqlalchemy import select
 
 from provisa.core.env_reaper import utcnow
 from provisa.core.environments import PROD, is_env_name
@@ -140,6 +143,59 @@ async def select_environment(
             f"{SWITCH_CAPABILITY!r} capability"
         )
     return await _existing_env(admin_db, org_id, requested)
+
+
+async def resolve_selected_env(
+    admin_db: "Database | None",
+    org_id: str,
+    identity,
+    requested: str | None,
+    capabilities: set[str] | None,
+) -> str:
+    """The environment ``org_id`` serves this request from (REQ-1602, REQ-1596).
+
+    Single source of truth for both the role read (:mod:`provisa.auth.middleware`) and the
+    request binding (:class:`provisa.api.app._OrgRoutingMiddleware`) -- the two must agree or a
+    role granted in one environment is invisible to the request bound to another. Folds in the
+    sandbox ephemeral auto-select (REQ-1602: a sandbox visitor names no environment, so one is
+    derived from their user id) and the membership pin (REQ-1596) before deferring to
+    :func:`select_environment` for the existence/expiry/right checks.
+    """
+    if org_id == "sandbox" and identity is not None:
+        is_control_plane = any(
+            "cross_org" in getattr(r, "capabilities", []) for r in getattr(identity, "roles", [])
+        )
+        if not is_control_plane:
+            user_id = getattr(identity, "user_id", None)
+            if user_id and user_id != "anonymous":
+                user_hash = hashlib.md5(user_id.encode(), usedforsecurity=False).hexdigest()[:8]
+                requested = f"ephemeral_{user_hash}"
+
+    pinned_env = None
+    if identity is not None and admin_db is not None:
+        user_id = getattr(identity, "user_id", None)
+        if user_id and user_id != "anonymous":
+            from provisa.core.schema_admin import user_org_memberships
+
+            async with admin_db.acquire() as conn:
+                result = await conn.execute_core(
+                    select(user_org_memberships.c.env_name).where(
+                        (user_org_memberships.c.user_id == user_id)
+                        & (user_org_memberships.c.org_id == org_id)
+                    )
+                )
+                row = result.fetchone()
+                if row is not None:
+                    pinned_env = row[0]
+
+    try:
+        return await select_environment(admin_db, org_id, requested, capabilities, pinned_env)
+    except EnvironmentSelectionError:
+        # REQ-1602: an ephemeral sandbox environment that does not exist yet (or expired) falls
+        # back to prod rather than 404ing a visitor mid-redemption.
+        if org_id == "sandbox" and requested and requested.startswith("ephemeral_"):
+            return PROD
+        raise
 
 
 async def _existing_env(admin_db: "Database | None", org_id: str, name: str) -> str:

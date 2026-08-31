@@ -30,7 +30,7 @@ def _stub_org_runtime(monkeypatch):
     schema, pre-building its data-plane runtime via ensure_org_runtime. That build is an integration
     concern (needs the real admin plane); here the fake db_pool ignores the bound org, so stub it."""
 
-    async def _noop(_org_id: str):
+    async def _noop(_org_id: str, _env: str | None = None):
         return None
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _noop, raising=False)

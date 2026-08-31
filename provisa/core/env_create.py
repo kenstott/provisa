@@ -100,26 +100,15 @@ async def create_environment(
             # them to be usable at all; every later copy leaves the target's own answer alone.
             seed=True,
         )
-        # REQ-1602: ensure sandbox role is present in ephemeral environments for sandbox org
-        if org_id == "sandbox":
-            from provisa.core.schema_org import roles
-            from sqlalchemy import select
-
-            async with tenant_db.acquire() as conn:
-                # Check if sandbox role already exists in this environment
-                result = await conn.execute_core(select(roles.c.id).where(roles.c.id == "sandbox"))
-                if result.fetchone() is None:
-                    # Get sandbox role from prod to copy its capabilities
-
-                    prod_result = await conn.execute_core(
-                        select(roles.c.capabilities).where(roles.c.id == "sandbox")
-                    )
-                    sandbox_caps = prod_result.fetchone()
-                    if sandbox_caps is not None:
-                        # Insert sandbox role with capabilities from prod
-                        await conn.execute_core(
-                            roles.insert().values(id="sandbox", capabilities=sandbox_caps[0])
-                        )
+        # REQ-1602: the sandbox role reaching every ephemeral environment of the sandbox org is
+        # already the copy above's job -- seed=True carries SEEDED_AT_CREATION tables (roles among
+        # them) from from_env (always PROD for this caller), and PROD's own row is guaranteed
+        # current because the invite-redemption callers build PROD's runtime (re-running the
+        # idempotent schema.sql seed) before ever reaching this function. A second reconciliation
+        # here duplicated that guarantee and got it wrong: it queried through tenant_db, which is
+        # bound to PROD's schema (ensure_org_runtime with no env), so both its "does the new
+        # environment already have it" check and its "insert" ran against PROD, never the
+        # newly-created environment.
         # REQ-1543: the environment's history starts HERE, where the source it was created from is
         # standing. Without it the branch has no ref, the first edit somebody makes becomes the
         # first commit of the line, and an undo of that edit has no parent to step back to -- the

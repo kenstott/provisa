@@ -2039,7 +2039,6 @@ def create_app() -> FastAPI:
         EnvironmentRightError,
         EnvironmentSelectionError,
         env_header_value,
-        select_environment,
     )
     from provisa.api.admin.capabilities import env_gate_capabilities
 
@@ -2066,94 +2065,29 @@ def create_app() -> FastAPI:
             _log.info(
                 f"RoutingMiddleware: active_org={active_org}, env_org={env_org}, requested_env={requested_env}"
             )
-            # REQ-1602: sandbox orgs auto-select the user's ephemeral environment so auth middleware
-            # can route without header manipulation or UI complexity. Control-plane roles (platform_admin)
-            # bypass ephemeral selection and access the org normally.
-            if env_org == "sandbox":
-                identity = request_state.get("identity")
-                if identity is not None:
-                    # Skip ephemeral for control-plane roles (those with cross_org capability)
-                    is_control_plane = any(
-                        "cross_org" in getattr(r, "capabilities", [])
-                        for r in getattr(identity, "roles", [])
-                    )
-                    if not is_control_plane:
-                        user_id = getattr(identity, "user_id", None)
-                        if user_id and user_id != "anonymous":
-                            import hashlib
-
-                            user_hash = hashlib.md5(
-                                user_id.encode(), usedforsecurity=False
-                            ).hexdigest()[:8]
-                            requested_env = f"ephemeral_{user_hash}"
-                            _log.info(
-                                f"Sandbox ephemeral auto-select: user_id={user_id}, requested_env={requested_env}"
-                            )
-                        else:
-                            _log.info(
-                                "Sandbox: user_id is None or anonymous, skipping ephemeral auto-select"
-                            )
-                    else:
-                        _log.info("Sandbox: is_control_plane=True, skipping ephemeral auto-select")
-                else:
-                    _log.info("Sandbox: identity is None, skipping ephemeral auto-select")
             # REQ-1573: being served by anything but prod is a right, checked here because this is
             # where the environment is bound — one gate for every surface. ``None`` means dev/no-auth
             # (no identity resolved), the exemption every capability gate makes.
-            env_caps = env_gate_capabilities(request_state.get("identity"), state)
-            # REQ-1596: fetch the pinned environment (if any) from the user's membership so
-            # ephemeral environments bypass the environment_switch capability check
-            pinned_env = None
             identity = request_state.get("identity")
-            if identity is not None and state.admin_db is not None:
-                user_id = getattr(identity, "user_id", None)
-                if user_id and user_id != "anonymous":
-                    from provisa.core.schema_admin import user_org_memberships
+            env_caps = env_gate_capabilities(identity, state)
+            # REQ-1602/REQ-1596: sandbox ephemeral auto-select and the membership pin both live in
+            # resolve_selected_env, shared with AuthMiddleware's role read (provisa.auth.middleware)
+            # so the two always agree on which environment's schema a request is served from.
+            from provisa.api.env_routing import resolve_selected_env
 
-                    async with state.admin_db.acquire() as conn:
-                        result = await conn.execute_core(
-                            select(user_org_memberships.c.env_name).where(
-                                (user_org_memberships.c.user_id == user_id)
-                                & (user_org_memberships.c.org_id == env_org)
-                            )
-                        )
-                        row = result.fetchone()
-                        _log.info(
-                            f"Pinned env query: user_id={user_id}, org_id={env_org}, env_name={row[0] if row else None}"
-                        )
-                        if row is not None:
-                            pinned_env = row[0]
-                else:
-                    _log.info("Pinned env query: user_id is None or anonymous, skipping")
-            else:
-                _log.info(
-                    f"Pinned env query: identity={identity is not None}, admin_db={state.admin_db is not None}, skipping"
-                )
             try:
-                _log.info(
-                    f"select_environment call: env_org={env_org}, requested_env={requested_env}, pinned_env={pinned_env}"
+                selected_env = await resolve_selected_env(
+                    state.admin_db, env_org, identity, requested_env, env_caps
                 )
-                selected_env = await select_environment(
-                    state.admin_db, env_org, requested_env, env_caps, pinned_env
-                )
-                _log.info(f"select_environment returned: {selected_env}")
+                _log.info(f"resolve_selected_env returned: {selected_env}")
             except EnvironmentSelectionError as exc:
                 _log.info(
                     f"EnvironmentSelectionError: {exc}, env_org={env_org}, requested_env={requested_env}"
                 )
-                # REQ-1602: if ephemeral environment doesn't exist, fall back to prod for sandbox users
-                if (
-                    env_org == "sandbox"
-                    and requested_env
-                    and requested_env.startswith("ephemeral_")
-                ):
-                    _log.info("Falling back to prod for ephemeral sandbox environment")
-                    selected_env = "prod"
-                else:
-                    await JSONResponse(
-                        {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
-                    )(scope, receive, send)
-                    return
+                await JSONResponse(
+                    {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
+                )(scope, receive, send)
+                return
             except EnvironmentRightError as exc:
                 _log.info(
                     f"EnvironmentRightError: {exc}, env_org={env_org}, requested_env={requested_env}"

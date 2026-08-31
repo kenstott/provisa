@@ -14,7 +14,6 @@ import { Check, ChevronDown, GitBranch, Redo2, Undo2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { useCapability, useDemonstrated } from "../hooks/useCapability";
-import { DemonstratedFeature } from "./DemonstratedFeature";
 import { ENV_STORAGE_KEY, selectedEnv } from "../lib/authFetch";
 import { modelReplaced } from "../apolloClient";
 import { notifications } from "@mantine/notifications";
@@ -133,25 +132,10 @@ export function EnvSwitcher() {
   }, [activeOrgId, loading, maySwitch, demonstrated, reread]);
 
   if (loading || !activeOrgId) return null;
-  if (!maySwitch) {
-    if (!demonstrated) return null;
-    // REQ-1608: no environment list to show (sandbox has none, and the endpoint would 403 it
-    // regardless) -- the badge illustrates that the control exists, not a working switcher.
-    return (
-      <DemonstratedFeature navigable={false}>
-        <Button
-          variant="default"
-          size="compact-sm"
-          leftSection={<GitBranch size={14} aria-hidden />}
-          rightSection={<ChevronDown size={14} aria-hidden />}
-          data-testid="env-switcher-trigger"
-          aria-label={t("envSwitcher.label")}
-        >
-          {t("envSwitcher.env", { env: DEFAULT_ENV })}
-        </Button>
-      </DemonstratedFeature>
-    );
-  }
+  // A sandbox visitor has no environment to switch to -- ephemeral is the only one they're ever
+  // served, and a dropdown claiming otherwise (even a badged/inert one, REQ-1608) misrepresents
+  // that. No control at all, not an illustrative one.
+  if (!maySwitch) return null;
   if (envs === null) return null;
   const orgId = activeOrgId;
 

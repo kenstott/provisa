@@ -286,11 +286,13 @@ class TestSuperuserBootstrap:
         assert check_superuser("", "su_secret", config) is None
 
     def test_superuser_identity_has_admin_role(self):
-        # REQ-125: superuser must always resolve to admin role regardless of provider.
+        # REQ-125/REQ-1327: superuser must always resolve to BOTH planes regardless of
+        # provider — platform_admin administers the deployment, org_admin is what lets it
+        # read a table.
         config = {"username": "bootstrap", "password": "bootstrap_pw"}
         identity = check_superuser("bootstrap", "bootstrap_pw", config)
         assert identity is not None
-        assert identity.roles == [PLATFORM_ADMIN_ROLE]
+        assert identity.roles == [PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE]
 
     def test_resolve_superuser_config_returns_none_when_empty(self):
         # REQ-125: resolve_superuser_config returns None when config is None.
@@ -322,8 +324,9 @@ class TestSuperuserBootstrap:
         creds = base64.b64encode(b"su:su_pw").decode("ascii")
         resp = client.get("/echo", headers={"Authorization": f"Basic {creds}"})
         assert resp.status_code == 200
-        assert resp.json()["role"] == PLATFORM_ADMIN_ROLE, (
-            "REQ-125/REQ-1297: superuser Basic auth must resolve to the platform admin role"
+        assert resp.json()["role"] == ORG_ADMIN_ROLE, (
+            "REQ-125/REQ-1327: superuser Basic auth holds both planes, but the ACTING role "
+            "is the data-plane one (org_admin) — a control-plane role is never the acting role"
         )
 
 
@@ -616,13 +619,36 @@ def _make_admin_db(db_file: str):
     return Database(engine, name="admin")
 
 
-def _make_bootstrap_app(provider: AuthProvider, admin_db) -> Starlette:
+def _make_tenant_db(db_file: str):
+    """Build a real tenant control-plane Database over a temp SQLite file.
+
+    REQ-1439: the bootstrap-claimant profile upsert mirrors into this plane's
+    ``user_directory``, so any middleware exercising ``_upsert_profile`` needs one bound —
+    same synchronous-DDL-then-async-connect split as ``_make_admin_db``. It also needs
+    ``user_role_assignments``: the "provisa" assignments source reads platform-plane grants
+    from this same db_pool (``_read_assignments``)."""
+    from sqlalchemy import create_engine as _sa_sync_engine
+
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_org import metadata, user_directory, user_role_assignments
+
+    sync_engine = _sa_sync_engine(f"sqlite:///{db_file}")
+    with sync_engine.begin() as conn:
+        metadata.create_all(conn, tables=[user_directory, user_role_assignments])
+    sync_engine.dispose()
+
+    engine = create_engine_from_url(f"sqlite+aiosqlite:///{db_file}")
+    return Database(engine, name="tenant")
+
+
+def _make_bootstrap_app(provider: AuthProvider, admin_db, tenant_db) -> Starlette:
     routes = [Route("/echo", _echo_identity)]
     app = Starlette(routes=routes)
     app.add_middleware(
         AuthMiddleware,
         provider=provider,
         admin_pool=admin_db,
+        db_pool=tenant_db,
         assignments_source="provisa",
         default_assignments=[],
         bootstrap_superadmin=True,
@@ -651,9 +677,10 @@ class TestSingleAdminBootstrap:
         # REQ-1266: whoever holds the sole admin slot resolves to the admin role on every request.
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
+        tenant_db = _make_tenant_db(str(tmp_path / "tenant.db"))
         _claim_slot(db_file, "alice")
         provider = _FirebaseLikeProvider({"tok-alice": "alice"})
-        app = _make_bootstrap_app(provider, admin_db)
+        app = _make_bootstrap_app(provider, admin_db, tenant_db)
         client = TestClient(app, raise_server_exceptions=True)
 
         resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
@@ -666,9 +693,10 @@ class TestSingleAdminBootstrap:
         # REQ-1266: once the slot is claimed, a different user is denied (403).
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
+        tenant_db = _make_tenant_db(str(tmp_path / "tenant.db"))
         _claim_slot(db_file, "alice")
         provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
-        app = _make_bootstrap_app(provider, admin_db)
+        app = _make_bootstrap_app(provider, admin_db, tenant_db)
         client = TestClient(app, raise_server_exceptions=True)
 
         first = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
@@ -682,9 +710,10 @@ class TestSingleAdminBootstrap:
         # REQ-1266: the claiming user keeps admin on every subsequent login.
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
+        tenant_db = _make_tenant_db(str(tmp_path / "tenant.db"))
         _claim_slot(db_file, "alice")
         provider = _FirebaseLikeProvider({"tok-alice": "alice", "tok-bob": "bob"})
-        app = _make_bootstrap_app(provider, admin_db)
+        app = _make_bootstrap_app(provider, admin_db, tenant_db)
         client = TestClient(app, raise_server_exceptions=True)
 
         assert client.get("/echo", headers={"Authorization": "Bearer tok-alice"}).status_code == 200
@@ -702,8 +731,11 @@ class TestSingleAdminBootstrap:
 
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
+        tenant_db = _make_tenant_db(str(tmp_path / "tenant.db"))
         provider = _FirebaseLikeProvider({"tok-alice": "alice"})
-        client = TestClient(_make_bootstrap_app(provider, admin_db), raise_server_exceptions=True)
+        client = TestClient(
+            _make_bootstrap_app(provider, admin_db, tenant_db), raise_server_exceptions=True
+        )
 
         resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert resp.status_code == 200, (
@@ -741,7 +773,7 @@ class TestFirebaseBootstrapRealWiring:
 
         monkeypatch.setattr(fb.firebase_auth, "verify_id_token", _verify, raising=False)
 
-    def _wire(self, admin_db):
+    def _wire(self, admin_db, tenant_db):
         from fastapi import FastAPI
 
         from provisa.auth.wiring import wire_auth
@@ -757,7 +789,7 @@ class TestFirebaseBootstrapRealWiring:
             "bootstrap_superadmin": True,
             "firebase": {"project_id": "demo-project"},
         }
-        wire_auth(app, auth_config, db_pool=None, admin_pool=admin_db)
+        wire_auth(app, auth_config, db_pool=tenant_db, admin_pool=admin_db)
         return app
 
     def test_real_provider_first_admin_second_denied(self, monkeypatch, tmp_path):
@@ -770,10 +802,11 @@ class TestFirebaseBootstrapRealWiring:
         )
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
+        tenant_db = _make_tenant_db(str(tmp_path / "tenant.db"))
         _claim_slot(
             db_file, "alice"
         )  # REQ-1290: the claim is explicit, never a request side effect
-        client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
+        client = TestClient(self._wire(admin_db, tenant_db), raise_server_exceptions=True)
 
         first = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
         assert first.status_code == 200
@@ -787,7 +820,8 @@ class TestFirebaseBootstrapRealWiring:
     def test_real_provider_invalid_token_401(self, monkeypatch, tmp_path):
         self._patch_firebase(monkeypatch, {"tok-alice": {"uid": "alice"}})
         admin_db = _make_admin_db(str(tmp_path / "admin.db"))
-        client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
+        tenant_db = _make_tenant_db(str(tmp_path / "tenant.db"))
+        client = TestClient(self._wire(admin_db, tenant_db), raise_server_exceptions=True)
         resp = client.get("/echo", headers={"Authorization": "Bearer garbage"})
         assert resp.status_code == 401
 
@@ -799,10 +833,11 @@ class TestFirebaseBootstrapRealWiring:
         )
         db_file = str(tmp_path / "admin.db")
         admin_db = _make_admin_db(db_file)
+        tenant_db = _make_tenant_db(str(tmp_path / "tenant.db"))
         _claim_slot(
             db_file, "alice"
         )  # REQ-1290: the claim is explicit, never a request side effect
-        client = TestClient(self._wire(admin_db), raise_server_exceptions=True)
+        client = TestClient(self._wire(admin_db, tenant_db), raise_server_exceptions=True)
         assert client.get("/echo", headers={"Authorization": "Bearer tok-alice"}).status_code == 200
 
         import sqlite3

@@ -29,7 +29,12 @@ export function JoinNotice() {
   const [error, setError] = useState<string | null>(null);
 
   const pending = orgMemberships.find(
-    (m) => m.acknowledged === false && ANNOUNCED.includes(m.joined_via ?? ""),
+    (m) =>
+      m.acknowledged === false &&
+      ANNOUNCED.includes(m.joined_via ?? "") &&
+      // A per_visitor ephemeral membership (sandbox invite) was never a choice to join an org --
+      // it's a throwaway environment minted for one visitor, so there is nothing to announce.
+      !m.env_name,
   );
   if (!pending) return null;
 

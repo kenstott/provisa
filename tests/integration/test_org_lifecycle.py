@@ -194,7 +194,7 @@ def planes(monkeypatch):
 
     monkeypatch.setattr(registry, "invalidate", _invalidate)
 
-    async def _org_runtime(org_id: str):
+    async def _org_runtime(org_id: str, env: str | None = None):
         return registry.get(org_id) or SimpleNamespace(tenant_db=None)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
@@ -533,9 +533,10 @@ def test_org_creation_cap(planes, monkeypatch):  # REQ-1311
         assert after_failure.status_code == 200, after_failure.text
 
 
-def test_isolated_engine_flag_round_trips(planes):  # REQ-1043, REQ-1067, REQ-1244
+def test_isolated_engine_flag_round_trips(planes, monkeypatch):  # REQ-1043, REQ-1067, REQ-1244
     """An org created with the "Isolated engine" checkbox persists the flag, reports it on
     status, and hands it to the provisioning task that binds the dedicated engine."""
+    monkeypatch.setenv("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE", "provisa-trino-{org_id}")
     with TestClient(_make_app(planes)) as client:
         created = client.post(
             "/admin/orgs/",

@@ -86,6 +86,10 @@ export interface OrgMembership {
   org_name: string;
   joined_via?: string | null;
   acknowledged?: boolean;
+  /** Set only for a per_visitor ephemeral membership (provisa/api/invite_env.py) -- the visitor
+   *  never chose to belong to the org, an invite minted them a throwaway sandbox, so there is
+   *  nothing about "joining" worth announcing. */
+  env_name?: string | null;
 }
 
 export interface AuthState {

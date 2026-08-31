@@ -232,8 +232,9 @@ class OrgRegistry:
         ``invalidate`` alone reaches only prod, because prod is keyed on the bare org id.
         """
         prefix = f"{org_id}_env_"
-        for key in [k for k in self._runtimes if k == org_id or k.startswith(prefix)]:
+        for key in [k for k in self._runtimes if k.startswith(prefix)]:
             self._runtimes.pop(key, None)
+        self.invalidate(org_id)
 
     def env_keys(self, org_id: str) -> list[str]:
         """Every registry key currently held for one org — its prod key and each environment's."""

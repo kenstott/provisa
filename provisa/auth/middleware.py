@@ -663,14 +663,48 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 and active_org_id is not None
                 and active_org_id != self._default_org_id
             ):
-                from provisa.api.app import ensure_org_runtime
-                from provisa.api.org_runtime import reset_current_org, set_current_org
+                from provisa.api.admin.capabilities import env_gate_capabilities
+                from provisa.api.app import ensure_org_runtime, state as _app_state
+                from provisa.api.env_routing import (
+                    EnvironmentRightError,
+                    EnvironmentSelectionError,
+                )
+                from provisa.api.env_routing import resolve_selected_env as _resolve_selected_env
+                from provisa.api.org_runtime import (
+                    reset_current_env,
+                    reset_current_org,
+                    set_current_env,
+                    set_current_org,
+                )
 
-                await ensure_org_runtime(active_org_id)
+                # REQ-1602/REQ-1596: a member's assignment can live in a pinned or sandbox
+                # ephemeral environment's OWN schema rather than the org's prod schema (see
+                # env_create.py/copy_model's seed=True) -- resolve_selected_env is the same
+                # resolution _OrgRoutingMiddleware binds the request to later, so this read and
+                # that binding always land on the same schema.
+                try:
+                    active_env = await _resolve_selected_env(
+                        self._admin_pool,
+                        active_org_id,
+                        identity,
+                        None,
+                        env_gate_capabilities(identity, _app_state),
+                    )
+                except (EnvironmentSelectionError, EnvironmentRightError):
+                    # Not this middleware's job to answer for -- _OrgRoutingMiddleware resolves
+                    # (and, on failure, responds to) the same call below. The role set read here
+                    # only feeds request.state.role/assignments; an unservable environment makes
+                    # the request fail there regardless of what role was resolved here.
+                    active_env = None
+
+                await ensure_org_runtime(active_org_id, active_env)
                 org_token = set_current_org(active_org_id)
+                env_token = set_current_env(active_env) if active_env is not None else None
                 try:
                     assignments = await self._read_assignments(identity)
                 finally:
+                    if env_token is not None:
+                        reset_current_env(env_token)
                     reset_current_org(org_token)
             else:
                 assignments = platform_assignments

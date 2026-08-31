@@ -110,7 +110,7 @@ def planes(monkeypatch):
     # here the tenant schema IS the org's schema, so resolve the runtime to a stub carrying tenant_db.
     from types import SimpleNamespace
 
-    async def _org_runtime(_org_id: str):
+    async def _org_runtime(_org_id: str, _env: str | None = None):
         return SimpleNamespace(tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
